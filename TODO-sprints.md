@@ -41,7 +41,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 6 — Correções de Bugs, Segurança e RT-Safety 🛡️
+## ÉPICO 6 — Correções de Bugs, Segurança e RT-Safety 🛡️ [DONE]
 
 > Objetivo: eliminar as violações reais encontradas pela auditoria. Prioridade máxima; tarefas pequenas e atômicas.
 
@@ -121,7 +121,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 7.1 — Arquiteturas oficiais ausentes
 
-- **[T7.1] Core DSP e Modelo da arquitetura `Linear`.**
+- **[T7.1] Core DSP e Modelo da arquitetura `Linear`.** [DONE]
 
   - Criar o modelo em `src/models/linear.rs` (RT-safe, histórico com `MirroredBuffer`).
   - Implementar o cálculo da inferência (dot product do histórico de amostras com os pesos + bias) e a variante correspondente no enum `StaticModel` (`src/models/static_model.rs`).
@@ -435,14 +435,16 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
+Liberar v2.1 (A2 Beta): Rodada de testes no cli e no plugin CLAP. Bitwig e Reaper: ficar com os 2 ou apenas 1 deles?
+
 ---
 
-## ÉPICO 100 (FUTURO — fora do escopo v2.1)
+## ÉPICO 100 (FUTURO)
 
-- **Rodadas de burilamento**: `pesquisador-inovador.md`; `refatora-rust.md`; `refatora-doc.md`
+- **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
-- **FFT** e outros features no **hot path** considerar internalizar o código e ultra otimizações.
+- **FFT** e outros features no **hot path**: Considerar internalizar o código eaplicar ultra otimizações.
 - **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
-- Novos **ISAs e Arquiteturas** (<https://gemini.google.com/app/71c4c68e27c64e10>): /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
+- **ISAs e Arquiteturas** <https://gemini.google.com/app/71c4c68e27c64e10>: /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
   - Intel/AMD: Focar no AVX-512/AVX-10 (Especialmente: AVX512F, AVX512VL, AVX512_VNNI) em vez de AMX (muito focado em inferência e servidores); Eficiência Híbrida (AVX-10 / AVX-512 Light): Focado no uso de instruções AVX-512, mas restringindo o tamanho dos vetores a 256 bits.
   - ARM: focar na Linha de Base Unificada NEON de 128 bits (Rpi5 e Qualcomm, apesar da volatilidade má vontade desta última); A Linha Avançada é SVE2/VLA (basicamente NVIDIA RTX Spark).

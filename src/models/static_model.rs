@@ -19,7 +19,7 @@ impl StaticModel {
             Self::WavenetLite(m) => m.set_effective_layers(n),
             Self::WavenetFeather(m) => m.set_effective_layers(n),
             Self::WavenetNano(m) => m.set_effective_layers(n),
-            // LSTM, A2, and Container: no-op — reduction handled at pipeline level
+            // LSTM, A2, Container, and Linear: no-op — reduction handled at pipeline level
             Self::WavenetA2Full(_)
             | Self::WavenetA2Lite(_)
             | Self::Container(_)
@@ -32,6 +32,7 @@ impl StaticModel {
             | Self::Lstm2x16(_)
             | Self::Lstm1x40(_)
             | Self::Lstm2x24(_) => {}
+            Self::Linear(_) => {}
         }
     }
 
@@ -62,6 +63,7 @@ impl StaticModel {
             | Self::Lstm1x16(_)
             | Self::Lstm1x24(_)
             | Self::Lstm1x40(_) => 1,
+            Self::Linear(_) => 0,
         }
     }
 
@@ -117,6 +119,7 @@ impl StaticModel {
             Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
             Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
             Self::Lstm1x40(_) => 40,
+            Self::Linear(_) => 1,
         }
     }
 
@@ -124,6 +127,7 @@ impl StaticModel {
     pub fn receptive_field(&self) -> usize {
         match self {
             Self::Container(_) => 0,
+            Self::Linear(m) => m.receptive_field,
             _ if self.is_lstm() => 0,
             _ => self.prewarm_samples(),
         }
@@ -150,6 +154,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.process(input, output),
             Self::Lstm1x40(m) => m.process(input, output),
             Self::Lstm2x24(m) => m.process(input, output),
+            Self::Linear(m) => m.process(input, output),
         }
     }
 
@@ -172,6 +177,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.prewarm(num_samples),
             Self::Lstm1x40(m) => m.prewarm(num_samples),
             Self::Lstm2x24(m) => m.prewarm(num_samples),
+            Self::Linear(m) => m.prewarm(num_samples),
         }
     }
 
@@ -193,6 +199,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x40(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x24(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Linear(m) => m.reset(sample_rate, max_buffer_size),
         }
     }
 
@@ -214,6 +221,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x40(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm2x24(m) => m.set_max_buffer_size(max_buf),
+            Self::Linear(m) => m.set_max_buffer_size(max_buf),
         }
     }
 
@@ -235,6 +243,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.prewarm_samples(),
             Self::Lstm1x40(m) => m.prewarm_samples(),
             Self::Lstm2x24(m) => m.prewarm_samples(),
+            Self::Linear(m) => m.prewarm_samples(),
         }
     }
 }

@@ -8,6 +8,7 @@
 
 pub mod a2;
 pub mod container;
+pub mod linear;
 pub mod lstm;
 pub mod slimmable;
 pub mod wavenet;
@@ -101,6 +102,8 @@ pub enum StaticModel {
     Lstm2x24(Box<lstm::Lstm2x24>),
     /// SlimmableContainer — bundle of submodels selected by quality threshold.
     Container(Box<container::ContainerModel>),
+    /// Linear — FIR-based model (dot product of input history with weights + bias).
+    Linear(Box<linear::LinearModel>),
 }
 
 impl sealed::Sealed for StaticModel {}
