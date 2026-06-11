@@ -16,7 +16,7 @@ Objective: first impression — layout, loading, sound, basic controls.
 ### 1.1 Layout and identity
 
 - [ ] **1.1.1** Open NAM-rs GUI → fixed window **600×275 px** (no host decoration).
-- [ ] **1.1.2** Zone 1 (left): turquoise logo `"NAM-rs⚡"`, subtitle `"Neural Amp Modeler"`, version + SIMD badge, `[📂 Load Model]` button, model box with dark background.
+- [ ] **1.1.2** Zone 1 (left): turquoise logo `"NAM-rs⚡"`, subtitle `"Neural Amp Modeler"`, version + SIMD badge, `"MODEL"` section header, `[📂 Load Model]` button, model box with dark background; below it (separated by 12px): `"CAB SIM IR"` section header (9pt), `[📂 Load IR]` button, `[🗑 Clear IR]` button (visible only if IR loaded), IR file name display frame (120px wide, dark background).
 - [ ] **1.1.3** Zone 2 (center): 3 knobs — **INPUT** (70px, turquoise), **OUTPUT** (70px, turquoise), **GATE** (42px, amber).
 - [ ] **1.1.4** Zone 3 (right): **adaptive** VU meter — 1 centered bar (no label) 76px wide when plugin is on a mono track; 2 bars labeled **L** / **R** (36px each) when on a stereo track.
 - [ ] **1.1.5** Zone 4 (far right): **BYPASS** toggle with LED and `"ACTIVE"`/`"BYPASSED"` label.
@@ -145,7 +145,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ### 2I — Accessibility (Keyboard)
 
-- [ ] **2I.1** Tab → focus cycles: INPUT → OUTPUT → GATE → BYPASS → Load Model → INPUT. Focus ring visible.
+- [ ] **2I.1** Tab → focus cycles: INPUT → OUTPUT → GATE → BYPASS → Load Model → Load IR → INPUT. Focus ring visible.
 - [ ] **2I.2** Shift+Tab → reverse order.
 - [ ] **2I.3** Focused knob: ↑/→ = +1.0 dB, ↓/← = −1.0 dB. Ctrl+↑ = +0.1 dB, Ctrl+↓ = −0.1 dB. Limits respected.
 - [ ] **2I.4** Load Model focused → Space/Enter opens picker.
@@ -236,6 +236,34 @@ Each section testable after touching the corresponding feature. Self-contained, 
 - [ ] **2P.4** **Save project:** Set parameters + model → save DAW project → close → reopen. All state preserved (model loads from absolute path).
 - [ ] **2P.5** **Model missing on project load:** Move the model file from its absolute path → reopen project → `"No model loaded"` appears in status bar. No crash.
 - [ ] **2P.6** **DSP load meter and telemetry status bar** continue updating correctly after preset/project load.
+
+---
+
+### 2Q — IR CabSim (Impulse Response)
+
+> **Prerequisites:** At least one `.wav` IR file available (mono, 16/24/32-bit PCM or float, commonly 44.1–96 kHz). A second `.wav` IR file for load-change tests. A bogus/invalid `.wav` (truncated or non-WAV data renamed to `.wav`). A `.nam` model already loaded (IR cab sim operates post-inference on the processed signal).
+> **Position in pipeline:** Input Gain → Model Inference → Output Gain → **CabSim IR** → Limiter → Bypass/Output.
+
+- [ ] **2Q.1** Zone 1 displays `"CAB SIM IR"` section header (9pt, strong, muted color) below the model section, separated by 12px.
+- [ ] **2Q.2** `[📂 Load IR]` button opens system file picker filtered to `.wav` files. DAW remains responsive during file dialog (drag window, move faders).
+- [ ] **2Q.3** Select valid mono `.wav` IR → loading animation `"Loading"` / `"Loading."` / `"Loading.."` / `"Loading..."` plays in the IR display frame. After load completes: IR file name (basename) appears, audio undergoes cab-sim convolution (audible difference vs dry signal).
+- [ ] **2Q.4** Cancel system picker for IR → returns to previous state. Button remains clickable.
+- [ ] **2Q.5** With IR loaded, `[🗑 Clear IR]` button appears below `[📂 Load IR]`. Click it → IR display changes to `"No IR loaded"`, audio returns to post-model without cab sim. Clear IR button disappears.
+- [ ] **2Q.6** Load an invalid/corrupt `.wav` → red `"⚠ IR load failed"` displayed in the IR frame for ~3s, then returns to previous state (previous IR preserved if one was loaded). No crash.
+- [ ] **2Q.7** Hover over IR name frame → tooltip shows full path. On error, hover shows detailed error message.
+- [ ] **2Q.8** Load IR → save project → close DAW completely → reopen → load project. IR path preserved, IR reloaded automatically. Audio identical. Model and IR both restored.
+- [ ] **2Q.9** Move `.wav` IR file from its location → reopen project → `"⚠ IR load failed"` appears. Model still loads, audio processed without cab sim.
+- [ ] **2Q.10** Load a different IR on top of an existing one → IR name updates, cab-sim audio changes without stopping playback or causing XRUNs.
+- [ ] **2Q.11** Load IR, check status bar latency → reported latency includes cab-sim partition size (= buffer size). Toggle bypass or clear IR → latency updates in host PDC.
+- [ ] **2Q.12** Change project sample rate (44.1→96 kHz) with IR loaded → IR engine rebuilds for new buffer size; latency updates in status bar; audio continues without desync.
+- [ ] **2Q.13** (Fender Studio Pro) Load IR → host parameters reflect IR path. Move IR in host generic params → GUI updates.
+- [ ] **2Q.14** (Bitwig) Automation on cab-sim parameters (IR load/clear via host generic params): automation curve shows smooth transitions.
+- [ ] **2Q.15** Tab to `[📂 Load IR]` button → Space/Enter opens file picker. Tab/Shift+Tab includes IR button in focus cycle.
+- [ ] **2Q.16** Load IR → switch to a different `.nam` model → IR preserved, cab sim active on new model's output.
+- [ ] **2Q.17** **Multi-instance:** 2 NAM-rs instances on different tracks. Load IR in instance 1, load different IR in instance 2 → each processes independently.
+- [ ] **2Q.18** 3 instances: IR on 1st, no IR on 2nd, load IR on 3rd during playback → no XRUNs, all independent.
+- [ ] **2Q.19** **Stress:** Load 10 different IRs in <1 minute with audio running → no crash, no freeze, RSS stable (growth < 2 MB after 10 reloads).
+- [ ] **2Q.20** **Bypass null test with IR active:** NAM-rs in bypass + identical signal in parallel with inverted phase + active ADC. Result = silence (<−120 dBFS). Bypass is bit-transparent regardless of cab-sim state.
 
 ---
 
