@@ -510,3 +510,143 @@ fn test_is_wavenet_a2_versions() {
     }];
     assert!(model.is_wavenet_a2());
 }
+
+// =========================================================================
+// Submodels limit tests — DoS protection (max 8 submodels, max depth 2)
+// =========================================================================
+
+/// Builds a minimal JSON for a single submodel entry (non-container inner model).
+fn make_submodel_entry(max_value: f32, _idx: usize) -> String {
+    format!(
+        r#"{{
+            "max_value": {max_value},
+            "model": {{
+                "version": "0.5.4",
+                "architecture": "WaveNet",
+                "config": {{
+                    "layers": [
+                        {{
+                            "input_size": 1, "condition_size": 1, "head_size": 4,
+                            "channels": 8, "kernel_size": 3,
+                            "dilations": [1,2,4,8,16,32,64],
+                            "activation": "Tanh", "gated": false, "head_bias": false
+                        }}
+                    ],
+                    "head": null
+                }},
+                "weights": [0.0],
+                "sample_rate": 48000
+            }}
+        }}"#
+    )
+}
+
+/// Builds a minimal JSON for a submodel entry whose inner model is itself
+/// a SlimmableContainer (nested — should be rejected).
+fn make_nested_container_entry(max_value: f32) -> String {
+    let outer_entry = make_submodel_entry(max_value, 0);
+    format!(
+        r#"{{
+            "max_value": {max_value},
+            "model": {{
+                "version": "0.7.0",
+                "architecture": "SlimmableContainer",
+                "config": {{
+                    "layers": [],
+                    "head": null,
+                    "submodels": [{}]
+                }},
+                "weights": [0.1, 0.2],
+                "sample_rate": 48000
+            }}
+        }}"#,
+        outer_entry
+    )
+}
+
+/// Builds a full container JSON with the given submodel entries joined.
+fn make_container_json(submodels_str: &str) -> String {
+    format!(
+        r#"{{
+            "version": "0.7.0",
+            "architecture": "SlimmableContainer",
+            "config": {{
+                "layers": [],
+                "head": null,
+                "submodels": [{submodels_str}]
+            }},
+            "weights": [0.0],
+            "sample_rate": 48000
+        }}"#
+    )
+}
+
+/// Valid container with 2 submodels should parse successfully.
+#[test]
+fn test_container_valid_submodels() {
+    let entries: Vec<String> = (0..2)
+        .map(|i| make_submodel_entry(0.5 * (i as f32 + 1.0), i))
+        .collect();
+    let json = make_container_json(&entries.join(","));
+    let result = parse_nam_json(&json);
+    assert!(
+        result.is_ok(),
+        "Valid container with 2 submodels should parse"
+    );
+    let data = result.unwrap();
+    assert_eq!(data.architecture, "SlimmableContainer");
+    assert_eq!(data.config.submodels.as_ref().unwrap().len(), 2);
+}
+
+/// Container with 8 submodels (exact limit) should parse successfully.
+#[test]
+fn test_container_exact_limit_submodels() {
+    let entries: Vec<String> = (0..8)
+        .map(|i| make_submodel_entry(0.1 * (i as f32 + 1.0), i))
+        .collect();
+    let json = make_container_json(&entries.join(","));
+    let result = parse_nam_json(&json);
+    assert!(
+        result.is_ok(),
+        "Container with 8 submodels (exact limit) should parse"
+    );
+}
+
+/// Container with 9 submodels should be rejected.
+#[test]
+fn test_reject_too_many_submodels() {
+    let entries: Vec<String> = (0..9)
+        .map(|i| make_submodel_entry(0.1 * (i as f32 + 1.0), i))
+        .collect();
+    let json = make_container_json(&entries.join(","));
+    let result = parse_nam_json(&json);
+    assert!(
+        result.is_err(),
+        "Container with 9 submodels should be rejected (exceeds max 8)"
+    );
+}
+
+/// Nested container inside a submodel should be rejected.
+#[test]
+fn test_reject_nested_container() {
+    let nested = make_nested_container_entry(1.0);
+    let json = make_container_json(&nested);
+    let result = parse_nam_json(&json);
+    assert!(
+        result.is_err(),
+        "Container with nested container inside submodel should be rejected"
+    );
+}
+
+/// Container with 0 submodels (empty array) should be rejected.
+#[test]
+fn test_reject_empty_submodels() {
+    let json = make_container_json("");
+    let result = parse_nam_json(&json);
+    // Empty array is syntactically valid but semantically invalid — the
+    // deserializer accepts the Vec<0>; the dispatcher rejects empty containers.
+    assert!(
+        result.is_ok(),
+        "Empty submodels array is syntactically valid JSON"
+    );
+}

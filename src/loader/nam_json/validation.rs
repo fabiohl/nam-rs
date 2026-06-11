@@ -6,7 +6,7 @@
 //! Contains caps for security against DoS, weight array visitor,
 //! and metadata.training depth/size visitors.
 
-use serde::Deserializer;
+use serde::{Deserialize, Deserializer};
 
 use super::error::JsonError;
 
@@ -18,6 +18,9 @@ const MAX_TRAINING_BYTES: usize = 1024 * 1024; // 1 MiB
 
 /// Maximum depth of the JSON tree in `metadata.training`.
 const MAX_TRAINING_DEPTH: usize = 16;
+
+/// Maximum number of submodels in a SlimmableContainer.
+const MAX_SUBMODELS: usize = 8;
 
 /// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
 struct WeightsVisitor;
@@ -272,4 +275,74 @@ where
     D: Deserializer<'de>,
 {
     deserializer.deserialize_option(TrainingOptionVisitor)
+}
+
+/// Checks whether a submodel entry's inner `model` JSON tree contains
+/// a nested `config.submodels` non-empty array (depth violation).
+fn submodel_has_nested_container(entry: &serde_json::Value) -> bool {
+    entry
+        .get("model")
+        .and_then(|m| m.get("config"))
+        .and_then(|c| c.get("submodels"))
+        .and_then(|s| s.as_array())
+        .is_some_and(|a| !a.is_empty())
+}
+
+/// Custom deserializer for `config.submodels: Option<Vec<serde_json::Value>>`
+/// that enforces a maximum of 8 submodels and rejects container-in-container nesting.
+pub(crate) fn deserialize_submodels<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<serde_json::Value>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserializer.deserialize_option(SubmodelsOptionVisitor)
+}
+
+struct SubmodelsOptionVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SubmodelsOptionVisitor {
+    type Value = Option<Vec<serde_json::Value>>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("an optional array of submodel entries")
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let arr: Vec<serde_json::Value> = Vec::deserialize(deserializer)?;
+
+        if arr.len() > MAX_SUBMODELS {
+            return Err(serde::de::Error::custom(JsonError::SubmodelsExceedLimit {
+                got: arr.len(),
+                max: MAX_SUBMODELS,
+            }));
+        }
+
+        for (i, entry) in arr.iter().enumerate() {
+            if submodel_has_nested_container(entry) {
+                return Err(serde::de::Error::custom(JsonError::SubmodelsTooDeep {
+                    index: i,
+                }));
+            }
+        }
+
+        Ok(Some(arr))
+    }
 }

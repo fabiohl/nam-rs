@@ -38,6 +38,10 @@ pub enum NamErrorCode {
     NamJsonTrainingTooLarge,
     /// JSON `metadata.training` field exceeds tree depth limit.
     NamJsonTrainingTooDeep,
+    /// JSON `config.submodels` array exceeds the maximum count (8).
+    NamJsonSubmodelsExceedLimit,
+    /// JSON `config.submodels` contains a nested container (depth > 2).
+    NamJsonSubmodelsTooDeep,
     /// .namb CRC32 checksum does not match expected value.
     NambCrc32Mismatch,
     /// CRC32 flag missing in .namb v2+ file (mandatory).
@@ -105,6 +109,8 @@ impl NamErrorCode {
             Self::NamJsonWeightsExceedLimit => "E1206",
             Self::NamJsonTrainingTooLarge => "E1207",
             Self::NamJsonTrainingTooDeep => "E1208",
+            Self::NamJsonSubmodelsExceedLimit => "E1209",
+            Self::NamJsonSubmodelsTooDeep => "E1210",
             Self::NambCrc32Mismatch => "E1201",
             Self::NambCrc32Missing => "E1205",
             Self::NambInvalidMagic => "E1202",
@@ -142,6 +148,8 @@ impl NamErrorCode {
             Self::NamJsonWeightsExceedLimit => "JSON weights exceed limit",
             Self::NamJsonTrainingTooLarge => "Training metadata too large",
             Self::NamJsonTrainingTooDeep => "Training metadata too deeply nested",
+            Self::NamJsonSubmodelsExceedLimit => "Submodels count exceeds limit (max 8)",
+            Self::NamJsonSubmodelsTooDeep => "Nested container inside submodel (max depth 2)",
             Self::NambCrc32Mismatch => "CRC32 checksum mismatch",
             Self::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
             Self::NambInvalidMagic => "Invalid signature",
@@ -179,6 +187,8 @@ impl NamErrorCode {
             Self::NamJsonWeightsExceedLimit => "NAM_JSON_WEIGHTS_EXCEED_LIMIT",
             Self::NamJsonTrainingTooLarge => "NAM_JSON_TRAINING_TOO_LARGE",
             Self::NamJsonTrainingTooDeep => "NAM_JSON_TRAINING_TOO_DEEP",
+            Self::NamJsonSubmodelsExceedLimit => "NAM_JSON_SUBMODELS_EXCEED_LIMIT",
+            Self::NamJsonSubmodelsTooDeep => "NAM_JSON_SUBMODELS_TOO_DEEP",
             Self::NambCrc32Mismatch => "NAMB_CRC32_MISMATCH",
             Self::NambCrc32Missing => "NAMB_CRC32_MISSING",
             Self::NambInvalidMagic => "NAMB_INVALID_MAGIC",

@@ -120,6 +120,12 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                     NamErrorCode::NamJsonTrainingTooLarge
                 }
                 nam_json::JsonError::TrainingTooDeep { .. } => NamErrorCode::NamJsonTrainingTooDeep,
+                nam_json::JsonError::SubmodelsExceedLimit { .. } => {
+                    NamErrorCode::NamJsonSubmodelsExceedLimit
+                }
+                nam_json::JsonError::SubmodelsTooDeep { .. } => {
+                    NamErrorCode::NamJsonSubmodelsTooDeep
+                }
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)

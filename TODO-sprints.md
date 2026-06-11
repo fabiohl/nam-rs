@@ -81,7 +81,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     stress concorrente push/drain (pode usar threads reais, fora da lane RT) em `src/common/spsc/spsc_test.rs`;
     zero alloc no `push` (heap-audit existente verde).
 
-- **[T6.4] Limitar `submodels` no parser `.nam` (DoS).**
+- **[T6.4] Limitar `submodels` no parser `.nam` (DoS).** [DONE]
 
   - `src/loader/nam_json/model.rs:163`: `submodels: Option<Vec<serde_json::Value>>` sem limite de contagem nem de
     profundidade permite JSON malicioso com dezenas de submodelos de 256 MiB cada (alocação multi-GiB).

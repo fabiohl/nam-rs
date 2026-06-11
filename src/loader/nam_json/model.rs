@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::validation::{deserialize_training, deserialize_weights};
+use super::validation::{deserialize_submodels, deserialize_training, deserialize_weights};
 
 /// Structure representing a date and time associated with the model's metadata.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
@@ -159,7 +159,11 @@ pub struct NamConfig {
     pub hidden_size: Option<usize>,
     /// Submodel entries for SlimmableContainer architecture.
     /// Each entry is `{"max_value": f32, "model": { ... full inner .nam JSON ... }}`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_submodels"
+    )]
     pub submodels: Option<Vec<serde_json::Value>>,
 }
 

@@ -27,6 +27,18 @@ pub enum JsonError {
         /// Maximum allowed size.
         max_size: usize,
     },
+    /// The `submodels` array exceeds the count limit.
+    SubmodelsExceedLimit {
+        /// Number of submodels received.
+        got: usize,
+        /// Maximum allowed submodels.
+        max: usize,
+    },
+    /// Nested container detected inside a submodel (max depth is 2).
+    SubmodelsTooDeep {
+        /// Index of the offending submodel.
+        index: usize,
+    },
     /// Generic serde_json parse error.
     Serde(String),
 }
@@ -53,6 +65,20 @@ impl std::fmt::Display for JsonError {
                     f,
                     "metadata.training JSON too large ({} bytes, max is {} bytes)",
                     size, max_size
+                )
+            }
+            Self::SubmodelsExceedLimit { got, max } => {
+                write!(
+                    f,
+                    "submodels array exceeds limit ({} submodels, max is {})",
+                    got, max
+                )
+            }
+            Self::SubmodelsTooDeep { index } => {
+                write!(
+                    f,
+                    "submodel[{}] contains a nested container (max depth is 2)",
+                    index
                 )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),

@@ -141,7 +141,10 @@ fn test_gc_corrupted_slot_unknown_type() {
 
     // Manually inject a corrupted slot at position 3 (beyond write_idx):
     // unknown type_id (99) with a valid pointer
-    overflow.slots[3].store((99u64 << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF), Ordering::Release);
+    overflow.slots[3].store(
+        (99u64 << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF),
+        Ordering::Release,
+    );
 
     assert!(!rt_status.check_flag(RT_STATUS_GC_CORRUPTED));
 

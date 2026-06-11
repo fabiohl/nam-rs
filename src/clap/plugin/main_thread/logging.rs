@@ -43,8 +43,9 @@ impl<'a> NamClapMainThread<'a> {
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_CORRUPTED)
             {
-                let msg = CString::new("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.")
-                    .unwrap_or_default();
+                let msg =
+                    CString::new("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.")
+                        .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
             }
 
