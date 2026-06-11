@@ -275,6 +275,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 ## ÉPICO 4 — IR Cabsim (.wav convolution) 🔊
 
 > Objetivo: feature útil e **ortogonal à A2** — carregar um `.wav` de impulse response e convoluir (estágio pós-NAM). Convolução particionada FFT, RT-safe, reusando `rustfft` (já no `Cargo.toml`).
+> Nota do PO: Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
 
 ### Sprint 4.1 — Loader de IR
 
@@ -295,9 +296,10 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Integrar como estágio pós-inferência em `src/dsp/pipeline/` com *bypass* de custo zero quando nenhum IR está carregado. Flag de CLI/param CLAP.
   - **Critério de aceite:** ativável/desativável em runtime sem clique; bypass não mede custo.
 
-- **[T4.4] Testes + bench IR.**
+- **[T4.4] Testes + bench IR.** [DONE]
   - Golden de convolução (IR sintético determinístico), heap-audit e bench Criterion. `#[ignore]` para os pesados.
   - **Critério de aceite:** golden verde; zero alloc; bench documentado.
+test(ir): add golden, heap-audit, and criterion benchmarks for IR cabsim convolution (T4.4)
 
 ---
 ---

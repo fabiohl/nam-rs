@@ -1246,6 +1246,137 @@ fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
 #[cfg(not(feature = "clap-plugin"))]
 fn bench_clap_process_block_64samp(_c: &mut criterion::Criterion) {}
 
+// ── IR Cabsim Convolution Benchmarks ──
+
+fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
+    let sample_rate = 48000u32;
+    (0..len)
+        .map(|n| {
+            let t = n as f32 / sample_rate as f32;
+            (std::f32::consts::TAU * freq * t).sin() * (-decay * t).exp()
+        })
+        .collect()
+}
+
+fn bench_cabsim_process_block(
+    c: &mut criterion::Criterion,
+    ir_len: usize,
+    partition_size: usize,
+    label: &str,
+) {
+    use nam_rs::dsp::cabsim::conv::ConvEngine;
+
+    let ir = synth_ir(ir_len, 440.0, 10.0);
+    let mut engine = ConvEngine::new(&ir, partition_size);
+
+    let mut input = vec![0.0f32; partition_size];
+    let mut output = vec![0.0f32; partition_size];
+
+    for (j, v) in input.iter_mut().enumerate() {
+        *v = (j as f32 * 0.01).sin();
+    }
+
+    // Warm-up: fill FDL
+    for _ in 0..engine.num_partitions().max(1) {
+        engine.process(&input, &mut output);
+    }
+
+    c.bench_function(label, |b| {
+        b.iter(|| {
+            for (j, v) in input.iter_mut().enumerate() {
+                *v = (j as f32 * 0.01).sin();
+            }
+            engine.process(
+                std::hint::black_box(&input),
+                std::hint::black_box(&mut output),
+            );
+        });
+    });
+}
+
+fn bench_cabsim_short_ir_64samp(c: &mut criterion::Criterion) {
+    bench_cabsim_process_block(c, 64, 64, "Cabsim_ShortIR_64samp");
+}
+
+fn bench_cabsim_medium_ir_64samp(c: &mut criterion::Criterion) {
+    bench_cabsim_process_block(c, 2048, 64, "Cabsim_MediumIR_2048_64samp");
+}
+
+fn bench_cabsim_long_ir_64samp(c: &mut criterion::Criterion) {
+    bench_cabsim_process_block(c, 16384, 64, "Cabsim_LongIR_16384_64samp");
+}
+
+fn bench_cabsim_256samp_block(c: &mut criterion::Criterion) {
+    bench_cabsim_process_block(c, 2048, 256, "Cabsim_MediumIR_2048_256samp");
+}
+
+fn bench_cabsim_engine_construction(c: &mut criterion::Criterion) {
+    use nam_rs::dsp::cabsim::conv::ConvEngine;
+
+    let ir = synth_ir(2048, 440.0, 10.0);
+
+    c.bench_function("Cabsim_Engine_Construction_2048_64", |b| {
+        b.iter(|| {
+            let engine = ConvEngine::new(&ir, 64);
+            std::hint::black_box(engine);
+        });
+    });
+}
+
+fn bench_cabsim_engine_construction_long(c: &mut criterion::Criterion) {
+    use nam_rs::dsp::cabsim::conv::ConvEngine;
+
+    let ir = synth_ir(16384, 440.0, 10.0);
+
+    c.bench_function("Cabsim_Engine_Construction_16384_64", |b| {
+        b.iter(|| {
+            let engine = ConvEngine::new(&ir, 64);
+            std::hint::black_box(engine);
+        });
+    });
+}
+
+#[cfg(feature = "long_bench")]
+fn bench_cabsim_long_run(c: &mut criterion::Criterion) {
+    use nam_rs::dsp::cabsim::conv::ConvEngine;
+
+    let ir = synth_ir(16384, 440.0, 10.0);
+    let mut engine = ConvEngine::new(&ir, 64);
+    let mut input = vec![0.0f32; 4096];
+    let mut output = vec![0.0f32; 4096];
+
+    // Warm-up
+    for i in 0..engine.num_partitions().max(1) {
+        let mut buf_in = vec![0.0f32; 64];
+        let mut buf_out = vec![0.0f32; 64];
+        for (j, v) in buf_in.iter_mut().enumerate() {
+            *v = ((i * 64 + j) as f32 * 0.01).sin();
+        }
+        engine.process(&buf_in, &mut buf_out);
+        output[..64].copy_from_slice(&buf_out);
+    }
+
+    let mut group = c.benchmark_group("Cabsim_LongRun");
+    group.sample_size(100);
+    group.measurement_time(std::time::Duration::from_secs(35));
+    group.bench_function("4096samp_block", |b| {
+        b.iter(|| {
+            for (j, v) in input.iter_mut().enumerate() {
+                *v = (j as f32 * 0.01).sin();
+            }
+            for chunk in 0..(4096 / 64) {
+                let start = chunk * 64;
+                engine.process(
+                    std::hint::black_box(&input[start..start + 64]),
+                    std::hint::black_box(&mut output[start..start + 64]),
+                );
+            }
+            std::hint::black_box(&output);
+        });
+    });
+    group.finish();
+}
+
 // Main benchmark group definition (inference latency and DSP kernels)
 criterion_group!(
     name = benches;
@@ -1284,7 +1415,13 @@ criterion_group!(
     bench_prewarm_a2_full,
     bench_prewarm_a2_lite,
     bench_head_rechannel_fp32,
-    bench_clap_process_block_64samp
+    bench_clap_process_block_64samp,
+    bench_cabsim_short_ir_64samp,
+    bench_cabsim_medium_ir_64samp,
+    bench_cabsim_long_ir_64samp,
+    bench_cabsim_256samp_block,
+    bench_cabsim_engine_construction,
+    bench_cabsim_engine_construction_long
 );
 
 // Long-running benchmark group definition (Soak Tests)
@@ -1292,7 +1429,7 @@ criterion_group!(
 criterion_group!(
     name = long_benches;
     config = Criterion::default();
-    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run, bench_a2_full_long_run, bench_a2_lite_long_run
+    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run, bench_a2_full_long_run, bench_a2_lite_long_run, bench_cabsim_long_run
 );
 
 // Conditional entry point depending on stress feature activation

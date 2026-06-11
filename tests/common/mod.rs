@@ -10,6 +10,7 @@
 #![allow(unused_imports)]
 
 pub mod constants;
+pub mod conv_helpers;
 pub mod io_helpers;
 pub mod metrics;
 pub mod mushra_primitives;

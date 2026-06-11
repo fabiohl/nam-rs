@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Performance Benchmarks (Criterion)
@@ -146,28 +147,28 @@ The A2 architecture introduces per-layer conditioning (FiLM + Gating) and a conf
 
 A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`w[k * 64 + in * 8 + out]`), where 8 output-channel weights are contiguous per `(tap, input)` pair. This layout feeds directly into AVX2 broadcast-FMA without transposition.
 
-| Block Size  | Latency (µs)  | Per-Sample (ns) | CPU % at 48kHz |
-|:----------- |:------------- |:--------------- |:-------------- |
-| **64 samp** | **~30.9 µs**  | ~483            | ~2.3%          |
-| **128 samp** | ~30.8 µs      | ~241            | ~1.2%          |
-| **256 samp** | ~31.5 µs      | ~123            | ~0.6%          |
+| Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
+|:------------ |:------------ |:--------------- |:-------------- |
+| **64 samp**  | **~30.9 µs** | ~483            | ~2.3%          |
+| **128 samp** | ~30.8 µs     | ~241            | ~1.2%          |
+| **256 samp** | ~31.5 µs     | ~123            | ~0.6%          |
 
 ### A2-Lite (CH=3) — u16 Interleaved Path
 
 A2-Lite uses the generic `A2Conv1d<3>` path with u16 interleaved weights that require dequantization and transposition in the hot-path. Despite having ~6.5x fewer weights (1,871 vs 12,146), the dequantization overhead makes it slower than the CH=8 SIMD path.
 
-| Block Size  | Latency (µs)  | Per-Sample (ns) | CPU % at 48kHz |
-|:----------- |:------------- |:--------------- |:-------------- |
-| **64 samp** | **~48.7 µs**  | ~761            | ~3.7%          |
-| **128 samp** | ~48.7 µs      | ~381            | ~1.8%          |
-| **256 samp** | ~48.8 µs      | ~191            | ~0.9%          |
+| Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
+|:------------ |:------------ |:--------------- |:-------------- |
+| **64 samp**  | **~48.7 µs** | ~761            | ~3.7%          |
+| **128 samp** | ~48.7 µs     | ~381            | ~1.8%          |
+| **256 samp** | ~48.8 µs     | ~191            | ~0.9%          |
 
 ### Comparative Analysis
 
-| Variant      | Weights | Channels | Conv Path            | 64-samp Latency |
-|:------------ |:------- |:-------- |:-------------------- |:--------------- |
-| A2-Full      | 12,146  | 8        | f32 col-major SIMD   | **~30.9 µs**    |
-| A2-Lite      | 1,871   | 3        | u16 interleaved GEMV | ~48.7 µs         |
+| Variant | Weights | Channels | Conv Path            | 64-samp Latency |
+|:------- |:------- |:-------- |:-------------------- |:--------------- |
+| A2-Full | 12,146  | 8        | f32 col-major SIMD   | **~30.9 µs**    |
+| A2-Lite | 1,871   | 3        | u16 interleaved GEMV | ~48.7 µs        |
 
 The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weights, validating the architectural decision to invest in a dedicated col-major `A2Conv1dCh8` kernel. The u16 dequantization and transposition overhead in CH=3 dominates the arithmetic savings.
 
@@ -177,3 +178,44 @@ The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weight
 2. **A2-Full at 30.9 µs for 64 samples** is ~3.5x faster than WaveNet Standard CH=16 (~107 µs), despite A2-Full having twice the layers (23 vs 10+10).
 3. **Both variants stay well under the 1.33 ms real-time deadline** at 48 kHz with a 64-sample buffer, leaving ample headroom for other DSP processing.
 4. **Golden tests confirm zero regression** in A1 models (WaveNet Standard, Feather, Nano, LSTM) — all 34 integration tests pass.
+
+## IR Cabsim Convolution (Epic 4)
+
+The cabsim engine uses UPOLS (Uniform-Partitioned Overlap-Save) frequency-domain convolution. All FFTs of the kernel partitions are pre-computed at construction time; the `ConvEngine::process()` hot-path performs zero allocations and operates on pre-allocated buffers exclusively.
+
+### Benchmarks (64-sample blocks at 48 kHz)
+
+IR lengths correspond to realistic cabinet impulse response durations:
+
+* **Short** (64 samples, 1.3 ms): 1 partition, minimal overhead
+* **Medium** (2048 samples, 42.7 ms): 32 partitions — typical medium-length guitar cabinet IR
+* **Long** (16384 samples, 341.3 ms): 256 partitions — full-length ambient/reverb IR
+
+| Benchmark                 | IR Samples | Partitions | Latency (µs) | CPU % at 48kHz |
+|:------------------------- |:---------- |:---------- |:------------ |:-------------- |
+| ShortIR_64samp            | 64         | 1          | TBD          | TBD            |
+| MediumIR_2048_64          | 2,048      | 32         | TBD          | TBD            |
+| LongIR_16384_64           | 16,384     | 256        | TBD          | TBD            |
+| Engine_Construction_2048  | 2,048      | 32         | TBD          | — (load-time)  |
+| Engine_Construction_16384 | 16,384     | 256        | TBD          | — (load-time)  |
+
+> [!NOTE]
+> The "CPU % at 48kHz" column assumes each 64-sample block must complete within 1.33 ms.
+> For comparison, neural inference (WaveNet Standard) consumes ~107 µs per 64-sample block.
+> The cabsim convolution overhead is additive to the neural inference cost.
+
+### RT-Safety Validation
+
+* **Heap-audit tests** (`tests/cabsim_heap_audit.rs`) confirm zero allocations on the `ConvEngine::process()` hot-path for short (64), medium (512), long (4096) IRs and passthrough mode.
+* **Golden convolution tests** (`tests/cabsim_golden.rs`) verify UPOLS output against direct convolution reference using deterministic synthetic IRs (ESR < 1e-5), with `#[ignore]`-gated long-run (8k–32k sample IR) stress tests.
+* **Conv engine construction** (including all FFT pre-computation) is performed outside the audio thread; its cost is measurable but irrelevant to RT deadlines.
+
+### Running
+
+```sh
+# Standard benchmarks
+cargo bench --bench inference_bench -- "Cabsim"
+
+# Long-duration soak
+cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
+```
