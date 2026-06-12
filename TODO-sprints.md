@@ -330,7 +330,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 9 — Refatoração Estrutural (refatora-rust) 🧹
+## ÉPICO 9 — Refatoração Estrutural (refatora-rust) 🧹 [DONE]
 
 > Estrutura, não lógica. Regressões proibidas — goldens e benches são o juiz.
 
@@ -415,7 +415,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 10.1 — Precisão e links
 
-- **[T10.1] Corrigir todos os links com barra inicial nos Markdown.**
+- **[T10.1] Corrigir todos os links com barra inicial nos Markdown.** [DONE]
 
   - `docs/architecture.md` (~10 ocorrências: linhas 42, 106, 112, 273, 307, 426, 513, 517, 552, 581, 595),
     `docs/cpp_parity_map.md:123,237`, `docs/clap_integration.md:95`. Padrão do projeto: links relativos funcionais.

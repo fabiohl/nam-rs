@@ -17,7 +17,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 ## 2. Inference & Microarchitecture (SIMD x86-64-v3/v4)
 
 - **Multiversioning via `dispatch_simd!` Macro:** Dynamic dispatch at model load time that selects the best SIMD kernel v-table (`Avx2Math`, `Avx512Math`, etc.). The use of macros for monomorphization ensures that the compiler emits native intrinsics without v-table overhead in the inference hot-path.
-- **FastMath Activations & Gain LUT:** `simd_tanh` uses a **Padé [5,4]** rational approximant with hardware `_mm256_div_ps`; `simd_sigmoid` uses a direct **Minimax degree-17** polynomial. Maximum error: tanh ~2.32e-3 on [-4, 4], sigmoid ~4.09e-4 on [-8, 8] (see [docs/fastmath-approximations.md](docs/fastmath-approximations.md)). Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
+- **FastMath Activations & Gain LUT:** `simd_tanh` uses a **Padé [5,4]** rational approximant with hardware `_mm256_div_ps`; `simd_sigmoid` uses a direct **Minimax degree-17** polynomial. Maximum error: tanh ~2.32e-3 on [-4, 4], sigmoid ~4.09e-4 on [-8, 8] (see [fastmath-approximations.md](fastmath-approximations.md)). Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unification of `tanh` and `sigmoid` into a single native SIMD kernel, reducing register pressure and avoiding multiple passes over the activation vector.
 - **Dot Product ILP:** Implementation with multiple independent accumulators (`sum0..sum3` in AVX2, `acc0..acc7` in AVX-512) to saturate FMA port throughput, breaking dependency chains.
 - **Weight Compression (F16C/BF16):** Weights are stored in `f16` (Half-Precision) or `bf16` (Bfloat16) to reduce L1/L2 memory traffic. Precision selection and the corresponding on-the-fly conversion/decompression (via `_mm256_cvtph_ps`/`_mm512_cvtph_ps` for F16, or corresponding bit-unpacking for BF16) occur at runtime via dynamic dispatch managed by `SimdMathConfig` (initialized by the dispatcher based on the CPU's supported instruction set, such as AVX2, AVX-512 F16/BF16).
@@ -39,7 +39,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 >
 > **Validation:** Deterministic sweep, proptest (10k inputs), golden vectors cross-validation against NeuralAmpModelerCore (7 models).
 >
-> **References:** [src/math/activations/tanh.rs](/src/math/activations/tanh.rs), [src/math/activations/sigmoid.rs](/src/math/activations/sigmoid.rs), [docs/fastmath-approximations.md](/docs/fastmath-approximations.md), [tests/nam_infer_test.rs](/tests/nam_infer_test.rs).
+> **References:** [src/math/activations/tanh/](../src/math/activations/tanh/), [src/math/activations/sigmoid.rs](../src/math/activations/sigmoid.rs), [docs/fastmath-approximations.md](fastmath-approximations.md), [tests/nam_infer_test.rs](../tests/nam_infer_test.rs).
 
 ### Technical Decision: Portability and Virtual Allocation of `MirroredBuffer`
 
@@ -102,8 +102,8 @@ To optimize the trade-off between computational latency and tonal accuracy, NAM-
 
 To prevent the accumulation of numerical drift and mathematical instabilities in long-duration runs:
 
-- **Kahan Summation (E8.T06):** Employed in the outer accumulation loop of [conv1d.rs](/src/models/wavenet/conv1d.rs) convolutions and in the interleaved 4x scalar fallbacks. By maintaining an error compensation register for each channel, it reduces the relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$ in deep causal convolutions.
-- **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage ([apply_input_stage](/src/dsp/pipeline/stages/input.rs#L47) after gain) with corresponding compensatory subtraction at the output ([apply_output_stage](/src/dsp/pipeline/stages/output.rs#L21)). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
+- **Kahan Summation (E8.T06):** Employed in the outer accumulation loop of [conv1d.rs](../src/models/wavenet/conv1d.rs) convolutions and in the interleaved 4x scalar fallbacks. By maintaining an error compensation register for each channel, it reduces the relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$ in deep causal convolutions.
+- **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L47) after gain) with corresponding compensatory subtraction at the output ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L21)). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
 
 ## 3. Time Management and Isolation (Strict RT)
 
@@ -270,7 +270,7 @@ The CLAP plugin exposes IR loading via:
 
 In standalone mode, the `--cab <path>` CLI flag triggers IR loading; the `cabsim_producer` SPSC channel handles runtime buffer-size changes.
 
-For full architectural decisions on validation and cross-reference, see [TODO-sprints.md](/TODO-sprints.md) (Épico 4).
+For full architectural decisions on validation and cross-reference, see [TODO-sprints.md](../TODO-sprints.md) (Épico 4).
 
 ## 6. Testing Strategy & Quality
 
@@ -304,11 +304,11 @@ Two validation layers capture **different classes of bug** and are deliberately 
 
 - **Scalar reference (`src/math/common/scalar_ref.rs`) — tight-band oracle.** SIMD↔scalar parity must hold to `~1e-6` (only floating-point reassociation differs). Driven by **PropTests** over a wide random input space (10k+ cases with independent `f64`/`f32::tanh()` references), it localizes kernel bugs, sweeps edge cases the golden never exercises (remainder lengths `n % 8`, denormals, alignment boundaries), runs in the **fast hermetic lane** (`cargo test`, no C++ toolchain), and is the shared **cross-ISA invariant** when new SIMD paths (e.g., AVX-512) are added.
   - **Not a production fallback.** There is no scalar runtime path for non-AVX2 CPUs: detection (`src/math/common/dispatch/detect.rs`) **fail-fasts** because x86-64-v3 (AVX2+FMA) is the mandatory baseline. In production, the `_fallback` functions act only as the **tail/remainder and small-N handlers inside the SIMD kernels** (and as the native-`f32` path for select LSTM head ops).
-- **Golden Vectors vs. NeuralAmpModelerCore — loose-band external truth.** By design (see [docs/perceptual_validation.md](/docs/perceptual_validation.md)), goldens are **not bit-exact** with the C++ reference: divergence is dominated by the FastMath approximations (see [docs/fastmath-approximations.md](/docs/fastmath-approximations.md)), so they are validated against an adaptive **tolerance band** (SNR/ESR/MR-STFT). They anchor the *algorithm/spec* against canonical truth, end-to-end, in the slow lane (`#[ignore]`, `utils/tests-long.sh`).
+- **Golden Vectors vs. NeuralAmpModelerCore — loose-band external truth.** By design (see [docs/perceptual_validation.md](perceptual_validation.md)), goldens are **not bit-exact** with the C++ reference: divergence is dominated by the FastMath approximations (see [docs/fastmath-approximations.md](fastmath-approximations.md)), so they are validated against an adaptive **tolerance band** (SNR/ESR/MR-STFT). They anchor the *algorithm/spec* against canonical truth, end-to-end, in the slow lane (`#[ignore]`, `utils/tests-long.sh`).
 
 > **Why both?** A kernel bug small enough to stay inside the loose golden band but large enough to break the tight scalar parity is caught only by the scalar oracle. Conversely, a spec error shared by both scalar and SIMD implementations is caught only by the external golden. Removing either layer leaves a corresponding blind spot.
 >
-> **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](/tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](/docs/dependencies.md#L108).
+> **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](../tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](dependencies.md#L108).
 
 ### Benchmarks and Performance
 
@@ -454,25 +454,26 @@ eliminate additional lines beyond what `gc_cascade()` already does.
    in `resampler_swap.rs` and `commands.rs` are fixed by adopting it, not by adding a new type.
 
 **Consequences:**
+
 - The standalone inline GC cascades in `resampler_swap.rs` and `commands.rs` are replaced with
   direct `gc_cascade()` calls.
 - `push_to_gc()` in `clap/processor/gc.rs` delegates to `gc_cascade()` instead of duplicating it.
 - `drain_parking_lot()` remains a distinct concern (re-draining parked items on each audio block),
   which `gc_cascade()` does not handle.
 
-**References:** [src/common/spsc/gc.rs](/src/common/spsc/gc.rs),
-[src/standalone/pw_host/rt_callback/resampler_swap.rs](/src/standalone/pw_host/rt_callback/resampler_swap.rs),
-[src/clap/processor/gc.rs](/src/clap/processor/gc.rs).
+**References:** [src/common/spsc/gc.rs](../src/common/spsc/gc.rs),
+[src/standalone/pw_host/rt_callback/resampler_swap.rs](../src/standalone/pw_host/rt_callback/resampler_swap.rs),
+[src/clap/processor/gc.rs](../src/clap/processor/gc.rs).
 
 ### CLAP Extensions and Graphical Interface
 
 The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
 
-For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](/docs/clap_integration.md).
+For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](clap_integration.md).
 
 ## 8.2 CLAP DSP Pipeline and Parameter Flow
 
-The CLAP plugin's audio processing engine is designed for zero-jitter, low-latency, real-time audio operations. The host DAW invokes the `process()` callback inside [PluginAudioProcessor::process](/src/clap/processor/mod.rs#L178), executing a sequential pipeline of event handling, DSP, and telemetry compilation.
+The CLAP plugin's audio processing engine is designed for zero-jitter, low-latency, real-time audio operations. The host DAW invokes the `process()` callback inside [PluginAudioProcessor::process](../src/clap/processor/mod.rs#L178), executing a sequential pipeline of event handling, DSP, and telemetry compilation.
 
 ### CLAP DSP Pipeline Diagram
 
@@ -530,24 +531,24 @@ graph TD
 
 ### 8.2.1 Pipeline Execution Flow
 
-The processing execution pathway inside [process_dsp_audio](/src/clap/processor/dsp/orchestrator.rs#L16) consists of the following consecutive stages:
+The processing execution pathway inside [process_dsp_audio](../src/clap/processor/dsp/orchestrator.rs#L16) consists of the following consecutive stages:
 
-1. **Bypass Evaluation:** Evaluates whether active bypass is requested via [process_bypass](/src/clap/processor/dsp/bypass.rs#L11). If bypass is active, the pipeline copies input samples directly to the output ports, writes zero/clipping telemetry, and short-circuits the downstream DSP/inference modules.
-2. **Channel Extraction:** Calls [extract_channels](/src/clap/processor/dsp/channels.rs#L10) to map host audio ports (which might be mono or stereo depending on the DAW configuration) to thread-local aligned input buffers.
-3. **Input Gain Stage:** Multiplies the input samples by the configured input gain using SIMD operations, driven by a sample-accurate [ParamSmoother](/src/dsp/smoother.rs#L12) to prevent zipper noise.
+1. **Bypass Evaluation:** Evaluates whether active bypass is requested via [process_bypass](../src/clap/processor/dsp/bypass.rs#L11). If bypass is active, the pipeline copies input samples directly to the output ports, writes zero/clipping telemetry, and short-circuits the downstream DSP/inference modules.
+2. **Channel Extraction:** Calls [extract_channels](../src/clap/processor/dsp/channels.rs#L10) to map host audio ports (which might be mono or stereo depending on the DAW configuration) to thread-local aligned input buffers.
+3. **Input Gain Stage:** Multiplies the input samples by the configured input gain using SIMD operations, driven by a sample-accurate [ParamSmoother](../src/dsp/smoother.rs#L12) to prevent zipper noise.
 4. **Gate Parameter Refresh:** If gate parameters have been marked dirty, the pipeline dynamically computes the linear squared thresholds for opening and closing the gate.
-5. **Input Pipeline Stage (Dither & Gate):** Calls [apply_input_stage](/src/dsp/pipeline/stages/input.rs#L47). This function injects a deterministic $-220\text{ dBFS}$ dither offset to avoid denormal numbers (preventing CPU performance degradation) and evaluates the Noise Gate state machine ([GateState](/src/dsp/gate.rs#L60)). If the gate is closed, the processing skips inference and proceeds to immediately fill the output buffers with silence.
-6. **Model Inference:** If the gate is open, calls [run_inference](/src/dsp/pipeline/stages/inference.rs#L113) to run the neural net. If the host sample rate differs from the model's native rate, the [NamResampler](/src/dsp/resampler.rs#L283) up-samples the buffer. Next, the active neural model runs inference (`NamModel::process`), and the resampler down-samples the result back to the host rate.
-7. **Output Pipeline Stage (Dither compensation & Gate Fade):** Calls [apply_output_stage](/src/dsp/pipeline/stages/output.rs#L21). This stage subtracts the compensatory dither offset, applies linear fade-in/out transitions when the gate opens or closes, and measures block execution time to run the **Adaptive Compute** FSM.
-8. **Output Gain Stage:** Multiplies the output by the output gain, smoothed via [ParamSmoother](/src/dsp/smoother.rs#L12).
-9. **VU Peaks Telemetry:** Computes the output peaks via [compute_output_peaks](/src/clap/processor/dsp/peaks.rs#L10) and stores them in shared memory for the GUI using [store_peaks](/src/clap/processor/dsp/peaks.rs#L95).
-10. **High-Precision Telemetry:** Reads CPU cycle metrics at the end of the block via `minstant::Instant` in [process_telemetry](/src/clap/processor/dsp/telemetry.rs#L10) to compute the actual DSP load without system call overhead.
+5. **Input Pipeline Stage (Dither & Gate):** Calls [apply_input_stage](../src/dsp/pipeline/stages/input.rs#L47). This function injects a deterministic $-220\text{ dBFS}$ dither offset to avoid denormal numbers (preventing CPU performance degradation) and evaluates the Noise Gate state machine ([GateState](../src/dsp/gate.rs#L60)). If the gate is closed, the processing skips inference and proceeds to immediately fill the output buffers with silence.
+6. **Model Inference:** If the gate is open, calls [run_inference](../src/dsp/pipeline/stages/inference.rs#L113) to run the neural net. If the host sample rate differs from the model's native rate, the [NamResampler](../src/dsp/resampler.rs#L283) up-samples the buffer. Next, the active neural model runs inference (`NamModel::process`), and the resampler down-samples the result back to the host rate.
+7. **Output Pipeline Stage (Dither compensation & Gate Fade):** Calls [apply_output_stage](../src/dsp/pipeline/stages/output.rs#L21). This stage subtracts the compensatory dither offset, applies linear fade-in/out transitions when the gate opens or closes, and measures block execution time to run the **Adaptive Compute** FSM.
+8. **Output Gain Stage:** Multiplies the output by the output gain, smoothed via [ParamSmoother](../src/dsp/smoother.rs#L12).
+9. **VU Peaks Telemetry:** Computes the output peaks via [compute_output_peaks](../src/clap/processor/dsp/peaks.rs#L10) and stores them in shared memory for the GUI using [store_peaks](../src/clap/processor/dsp/peaks.rs#L95).
+10. **High-Precision Telemetry:** Reads CPU cycle metrics at the end of the block via `minstant::Instant` in [process_telemetry](../src/clap/processor/dsp/telemetry.rs#L10) to compute the actual DSP load without system call overhead.
 
 ### 8.2.2 Parameter Flow and Synchronization
 
-Parameters (e.g., gain, gate threshold, bypass state, and neural model files) are synchronized across threads via a lock-free protocol in [process_events](/src/clap/processor/events.rs#L21). Synchronization handles three incoming paths:
+Parameters (e.g., gain, gate threshold, bypass state, and neural model files) are synchronized across threads via a lock-free protocol in [process_events](../src/clap/processor/events.rs#L21). Synchronization handles three incoming paths:
 
-- **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](/src/clap/plugin/shared.rs#L17) to the RT thread. If loading a model, [cold_load_model](/src/clap/processor/events.rs#L136) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
+- **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](../src/clap/plugin/shared.rs#L17) to the RT thread. If loading a model, [cold_load_model](../src/clap/processor/events.rs#L136) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
 - **Host DAW Events Queue:** The host DAW feeds sample-accurate automation and MIDI events into the processing block's input queue. The RT thread reads these events sequentially to update local parameter targets.
 - **GUI Atomics Sync:** GUI controls (e.g., egui knobs) write parameter updates to atomic variables in `NamClapShared::ui_to_rt` and increment `gui_param_generation` using `Release` ordering. The RT thread performs an `Acquire` check of the generation count; if they differ, it pulls the updated atomic values and aligns local targets.
 
@@ -555,11 +556,11 @@ Parameters (e.g., gain, gate threshold, bypass state, and neural model files) ar
 
 ## 8.3 Architectural Decisions
 
-Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](/docs/clap_integration.md). A comprehensive guide to the graphical user interface architecture, rendering lifecycle, and thread synchronization is available in [docs/gui-architecture.md](/docs/gui-architecture.md).
+Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](clap_integration.md). A comprehensive guide to the graphical user interface architecture, rendering lifecycle, and thread synchronization is available in [docs/gui-architecture.md](gui-architecture.md).
 
 ### 8.3.1 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
-The graphical interface is decomposed from its original monolithic state into a structure of readable and reusable modules located in [src/clap/gui/ui/](/src/clap/gui/ui/) (see the detailed [docs/gui-architecture.md](/docs/gui-architecture.md) for full architectural mapping):
+The graphical interface is decomposed from its original monolithic state into a structure of readable and reusable modules located in [src/clap/gui/ui/](../src/clap/gui/ui/) (see the detailed [docs/gui-architecture.md](gui-architecture.md) for full architectural mapping):
 
 - **`mod.rs`:** Main drawing orchestrator. The `draw_ui` function delegates to 5 zone functions: `draw_zone1_identity`, `draw_zone2_controls`, `draw_zone3_meters`, `draw_zone4_bypass`, and `draw_zone5_status_bar`.
 - **`zones/`:** One file per GUI zone — `identity.rs` (Zone 1 logo + model loader), `controls.rs` (Zone 2 knobs), `meters.rs` (Zone 3 adaptive VU meters), `bypass_zone.rs` (Zone 4 bypass toggle).
@@ -576,25 +577,25 @@ The graphical interface is decomposed from its original monolithic state into a 
 
 #### Technical Decision: Adaptive VU Meter Layout (Mono vs. Stereo)
 
-> **Decision:** The Zone 3 VU meter uses a dynamic layout to display either a single centered mono meter or dual L/R stereo meters based on the host routing context [active_channel_count](/src/clap/plugin/shared.rs#L75), rather than being locked to a mono meter to match the DSP engine's mono processing.
+> **Decision:** The Zone 3 VU meter uses a dynamic layout to display either a single centered mono meter or dual L/R stereo meters based on the host routing context [active_channel_count](../src/clap/plugin/shared.rs#L75), rather than being locked to a mono meter to match the DSP engine's mono processing.
 >
 > **Motivation:** Inform the user of the signal level present on the processed channel and detect routing imbalances or mismatch configurations in the host DAW.
 >
 > **Implementation:**
 >
-> 1. The audio processing thread determines the active host output channel count in [extract_channels](/src/clap/processor/dsp/channels.rs#L10).
-> 2. It updates the atomic variable [active_channel_count](/src/clap/plugin/shared.rs#L75) in [shared.rs](/src/clap/plugin/shared.rs) via relaxed memory ordering (`Ordering::Relaxed`).
-> 3. The GUI thread dynamically loads the count and checks if the count is $\ge 2$ in [meters.rs](/src/clap/gui/ui/zones/meters.rs#L40). If so, it renders dual visual meters (L and R); otherwise, it falls back to a single centered mono meter.
+> 1. The audio processing thread determines the active host output channel count in [extract_channels](../src/clap/processor/dsp/channels.rs#L10).
+> 2. It updates the atomic variable [active_channel_count](../src/clap/plugin/shared.rs#L75) in [shared.rs](../src/clap/plugin/shared.rs) via relaxed memory ordering (`Ordering::Relaxed`).
+> 3. The GUI thread dynamically loads the count and checks if the count is $\ge 2$ in [meters.rs](../src/clap/gui/ui/zones/meters.rs#L40). If so, it renders dual visual meters (L and R); otherwise, it falls back to a single centered mono meter.
 >
 > **Trade-off:** Displaying a stereo VU meter with a mono DSP engine introduces no real-time performance overhead. Only the left channel (L) is processed by the neural model, and the right channel (R) is mapped to the peak value of either a bypass buffer (if stereo bypass mode is supported) or a copy of the same buffer, without running redundant neural inference.
 >
-> **References:** [channels.rs](/src/clap/processor/dsp/channels.rs), [meters.rs](/src/clap/gui/ui/zones/meters.rs), [shared.rs](/src/clap/plugin/shared.rs).
+> **References:** [channels.rs](../src/clap/processor/dsp/channels.rs), [meters.rs](../src/clap/gui/ui/zones/meters.rs), [shared.rs](../src/clap/plugin/shared.rs).
 
 ### 8.3.2 Math & SIMD — Modular Reorganization
 
 - **Decision:** Fragmentation of the monolithic mathematical infrastructure into domain-specific modules (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).
 - **Justification:** Reduces cognitive noise in files with 2000+ lines, allows isolated unit testing per kernel, and facilitates compiler inlining audits.
-- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs. *(Planned: the remaining alias and the now-dead `Avx2Vnni`/`Avx512Vnni` `InstructionSet` variants are slated for full removal — see [TODO-sprints.md](/TODO-sprints.md) T0.1.)*
+- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs. *(Planned: the remaining alias and the now-dead `Avx2Vnni`/`Avx512Vnni` `InstructionSet` variants are slated for full removal — see [TODO-sprints.md](../TODO-sprints.md) T0.1.)*
 - **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. We identified that the dispatch abstraction in `math/common/dispatch.rs` is a design debt point that will be unified in Epic 8 (V-Table Unification).
 
 ### 8.3.3 GUI Conditional Rendering (Idle Reduce)
@@ -623,7 +624,7 @@ The graphical interface is decomposed from its original monolithic state into a 
 > - **Toast/Loading Animations:** Visual elements that animate or fade out cannot rely solely on the host scheduling frame ticks or on passive repaint flags. Instead, they must actively call `request_repaint()` on the `egui::Context` during their active duration.
 > - **Reduced Idle CPU:** CPU utilization drops to virtually 0% when the UI is open but static (no audio playing and no user interaction).
 >
-> **References:** [handler.rs](/src/clap/gui/window/handler.rs), [gui-architecture.md](/docs/gui-architecture.md#L154-L172).
+> **References:** [handler.rs](../src/clap/gui/window/handler.rs), [gui-architecture.md](gui-architecture.md#L154-L172).
 
 ## 9. Error Catalog (NamErrorCode)
 
@@ -637,7 +638,7 @@ Typed error codes for structured diagnostics. Defined in `src/common/diagnostics
 | `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND     |
 | `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*          |
 
-Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see [diagnostico.md](/.agents/workflows/diagnostico.md)).
+Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see [diagnostico.md](../.agents/workflows/diagnostico.md)).
 
 ## 10. References
 

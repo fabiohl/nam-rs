@@ -11,7 +11,7 @@ This document describes the structure, lifecycle, rendering path, and synchroniz
 
 ## 1. Directory and Module Organization
 
-The GUI codebase is housed entirely in the [src/clap/gui/](/src/clap/gui/) directory. It is structured into two main sub-modules to separate platform-specific windowing and OpenGL integration from host-agnostic visual interface drawing logic:
+The GUI codebase is housed entirely in the [src/clap/gui/](../src/clap/gui/) directory. It is structured into two main sub-modules to separate platform-specific windowing and OpenGL integration from host-agnostic visual interface drawing logic:
 
 - **`window/`**: Handles OS/host window management, OpenGL context mapping, event parsing, conditional paint loop scheduling, and raw shader management.
 - **`ui/`**: Declares layout structure, styling, theme definitions, focus maps, custom widgets (like rotary knobs), and draws individual components.
@@ -43,21 +43,21 @@ graph TD
 
 ### Module Roles and File Map
 
-- [gui/mod.rs](/src/clap/gui/mod.rs): Main GUI entryway. Exposes the width (600px) and height (275px) constants and helper unsafe functions to safely extend host lifetimes across window lifecycle boundaries.
-- [gui/window/state.rs](/src/clap/gui/window/state.rs): Declares `NamPluginWindow` and handles initialization of OpenGL contexts, `egui_glow` painter construction, GLSL program compilation, custom dark theme setup, and resource teardown.
-- [gui/window/handler.rs](/src/clap/gui/window/handler.rs): Implements `baseview::WindowHandler` which manages the OS frame lifecycle (`on_frame`) and translates window system input events (mouse, keyboard, drag-and-drop) to `egui::RawInput` (`on_event`).
-- [gui/window/shaders.rs](/src/clap/gui/window/shaders.rs): GLSL vertex and fragment shader sources for rendering the VU meter bar with dB gradient scales, distance field corners, and peak-hold indicators.
-- [gui/ui/mod.rs](/src/clap/gui/ui/mod.rs): Directs the 5-zone layout placement. Coordinates horizontal alignment of Zones 1–4, appends Zone 5 as a footer, manages error toast timers, and processes model drag-and-drop overlays.
-- [gui/ui/zones/](/src/clap/gui/ui/zones/):
+- [gui/mod.rs](../src/clap/gui/mod.rs): Main GUI entryway. Exposes the width (600px) and height (275px) constants and helper unsafe functions to safely extend host lifetimes across window lifecycle boundaries.
+- [gui/window/state.rs](../src/clap/gui/window/state.rs): Declares `NamPluginWindow` and handles initialization of OpenGL contexts, `egui_glow` painter construction, GLSL program compilation, custom dark theme setup, and resource teardown.
+- [gui/window/handler.rs](../src/clap/gui/window/handler.rs): Implements `baseview::WindowHandler` which manages the OS frame lifecycle (`on_frame`) and translates window system input events (mouse, keyboard, drag-and-drop) to `egui::RawInput` (`on_event`).
+- [gui/window/shaders.rs](../src/clap/gui/window/shaders.rs): GLSL vertex and fragment shader sources for rendering the VU meter bar with dB gradient scales, distance field corners, and peak-hold indicators.
+- [gui/ui/mod.rs](../src/clap/gui/ui/mod.rs): Directs the 5-zone layout placement. Coordinates horizontal alignment of Zones 1–4, appends Zone 5 as a footer, manages error toast timers, and processes model drag-and-drop overlays.
+- [gui/ui/zones/](../src/clap/gui/ui/zones/):
   - `identity.rs` (Zone 1): Logo, versions, SIMD badges, and asynchronous model file picker button.
   - `controls.rs` (Zone 2): Renders custom interactive dials for Input Gain, Output Gain, and Gate Threshold.
   - `meters.rs` (Zone 3): Adapts VU meter layout dynamically to mono or stereo.
   - `bypass_zone.rs` (Zone 4): Large interactive bypass toggle.
-- [gui/ui/status_bar/](/src/clap/gui/ui/status_bar/):
+- [gui/ui/status_bar/](../src/clap/gui/ui/status_bar/):
   - `orchestrator.rs`: Formats the status bar layout, displaying model name/metadata or warning toasts.
   - `telemetry.rs`: Translates real-time audio thread CPU performance, latency, and sample rate into human-readable strings.
   - `metadata.rs`: Extracts and aligns model metadata records.
-- [gui/ui/meter/](/src/clap/gui/ui/meter/):
+- [gui/ui/meter/](../src/clap/gui/ui/meter/):
   - `orchestrator.rs`: Dispatches drawing to GPU shader path, CPU fallback, and peak text readouts.
   - `glow.rs`: Formats parameters and injects paint callbacks into `egui::Shape` for execution inside OpenGL paint runs.
   - `cpu.rs`: Secondary CPU layout fallback rendering flat rectangles if OpenGL fails.
@@ -113,7 +113,7 @@ sequenceDiagram
 
 ## 3. UI ↔ RT Lock-Free Synchronization Protocol
 
-Due to strict RT-Safety requirements, the audio processing thread must never be blocked by GUI activities (such as mouse drags, file picks, or rendering runs). All interaction occurs via lock-free primitives mapped inside [src/clap/plugin/shared.rs](/src/clap/plugin/shared.rs) through `NamClapShared`.
+Due to strict RT-Safety requirements, the audio processing thread must never be blocked by GUI activities (such as mouse drags, file picks, or rendering runs). All interaction occurs via lock-free primitives mapped inside [src/clap/plugin/shared.rs](../src/clap/plugin/shared.rs) through `NamClapShared`.
 
 To eliminate CPU cache line invalidation conflicts (cache bouncing) between threads, the shared structure divides fields into isolated structures, padded to 128 bytes (`#[repr(align(128))]`):
 
@@ -135,7 +135,7 @@ To eliminate CPU cache line invalidation conflicts (cache bouncing) between thre
 
 - When knobs are dragged or buttons are pressed, the UI thread writes the new parameter values directly to the corresponding atomic fields in `UiToRt` (`param_input_gain`, `param_output_gain`, `param_gate_thresh`, `param_bypass`, `param_adaptive_compute`).
 - Simultaneously, it sets the corresponding modification status in `gesture_flags` (so the processor can report them back to the host DAW) and bumps `gui_param_generation` using `Release` ordering.
-- During processing inside `PluginAudioProcessor::process()`, the RT thread reads `gui_param_generation` with an `Acquire` load. If it matches its cached local generation, the RT thread skips checking all parameters. If it changed, it reads the new values using `Relaxed` loads, updating local DSP targets smoothly via [ParamSmoother](/src/dsp/smoother.rs).
+- During processing inside `PluginAudioProcessor::process()`, the RT thread reads `gui_param_generation` with an `Acquire` load. If it matches its cached local generation, the RT thread skips checking all parameters. If it changed, it reads the new values using `Relaxed` loads, updating local DSP targets smoothly via [ParamSmoother](../src/dsp/smoother.rs).
 
 ### 3.2 Telemetry and VU Peak Updates (RT → UI)
 
@@ -177,8 +177,8 @@ The VU meter is drawn using a hardware-accelerated OpenGL path via `egui_glow` i
 
 ### 5.1 Shader Pipeline
 
-- **Vertex Shader**: Programmed in [src/clap/gui/window/shaders.rs](/src/clap/gui/window/shaders.rs#L12). It generates a quad using `gl_VertexID` without requiring VBO vertex buffers. NDC positions are calculated dynamically by transforming raw pixel boundaries (`u_meter_rect`) against the egui viewport size (`u_viewport`).
-- **Fragment Shader**: Declared in [src/clap/gui/window/shaders.rs](/src/clap/gui/window/shaders.rs#L65). It calculates a three-color gradient based on standard VU dB ranges:
+- **Vertex Shader**: Programmed in [src/clap/gui/window/shaders.rs](../src/clap/gui/window/shaders.rs#L12). It generates a quad using `gl_VertexID` without requiring VBO vertex buffers. NDC positions are calculated dynamically by transforming raw pixel boundaries (`u_meter_rect`) against the egui viewport size (`u_viewport`).
+- **Fragment Shader**: Declared in [src/clap/gui/window/shaders.rs](../src/clap/gui/window/shaders.rs#L65). It calculates a three-color gradient based on standard VU dB ranges:
   - **Green**: Up to $-12\text{ dBFS}$ (fraction: $48/66$ of height)
   - **Yellow**: $-12\text{ dBFS}$ to $-3\text{ dBFS}$ (fraction: $57/66$ of height)
   - **Red**: $-3\text{ dBFS}$ to $+6\text{ dBFS}$ (full scale)
@@ -188,7 +188,7 @@ The VU meter is drawn using a hardware-accelerated OpenGL path via `egui_glow` i
 ### 5.2 CPU Fallback
 
 - If shaders fail to compile or context features are missing, `draw_vertical_meter()` receives a `None` shader program.
-- In this case, rendering falls back to [gui/ui/meter/cpu.rs](/src/clap/gui/ui/meter/cpu.rs), which draws flat colored boxes directly onto the `egui::Ui` painter mesh, ensuring the interface remains usable.
+- In this case, rendering falls back to [gui/ui/meter/cpu.rs](../src/clap/gui/ui/meter/cpu.rs), which draws flat colored boxes directly onto the `egui::Ui` painter mesh, ensuring the interface remains usable.
 
 ---
 
@@ -196,7 +196,7 @@ The VU meter is drawn using a hardware-accelerated OpenGL path via `egui_glow` i
 
 ### 6.1 Asynchronous File Dialog
 
-- Clicking "📂 Load Model" spawns a background thread via `spawn_file_dialog()` in [gui/ui/zones/identity.rs](/src/clap/gui/ui/zones/identity.rs#L18) using the `rfd` library.
+- Clicking "📂 Load Model" spawns a background thread via `spawn_file_dialog()` in [gui/ui/zones/identity.rs](../src/clap/gui/ui/zones/identity.rs#L18) using the `rfd` library.
 - This background thread runs in X11 space to prevent freezing the main DAW UI.
 - While the dialog is open, `ui_loading` is set to true, displaying a loading message.
 - If the user selects a file, the path is stored in `ui_pending_model` and `host.request_callback()` is triggered.
@@ -224,6 +224,6 @@ Focus cycles through interactive controls in the following order:
 [Input Gain Knob] ➔ [Output Gain Knob] ➔ [Gate Knob] ➔ [Bypass] ➔ [Load Button]
 ```
 
-- **Navigation mapping**: Keyboard focus cycling is implemented in [gui/ui/focus.rs](/src/clap/gui/ui/focus.rs). Tab moves forward; Shift+Tab moves backward.
+- **Navigation mapping**: Keyboard focus cycling is implemented in [gui/ui/focus.rs](../src/clap/gui/ui/focus.rs). Tab moves forward; Shift+Tab moves backward.
 - **Visual Highlight**: Active controls display a distinct colored ring (using the current accent color) outside their borders.
 - **Keyboard Triggers**: Space and Enter keys are mapped to activate the Load button and the Bypass toggle when they are focused.

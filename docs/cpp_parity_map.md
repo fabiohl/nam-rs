@@ -120,9 +120,9 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 5. A2 Architecture (Fixed fast-path port)
 
-> **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](/TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
+> **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 >
-> **⚠ T7.8 — C++ Live Cross-Validation Blocked (Upstream Bug):** The C++ `a2_fast.cpp` render tool produces numerically unstable output for A2 models (A2-Full: output ~10^14; A2-Lite: output ~360 drifting to ~8×10^4). The Rust port is structurally faithful and internally self-consistent (MSE = 0.0 between independent runs). Cross-validation via `tests/cpp_parity.rs` is `#[ignore]` — golden vectors use a **self-golden** pattern (Rust validates Rust) until the upstream C++ bug is resolved. See [TODO-sprints.md §T7.8](/TODO-sprints.md) for root-cause analysis (Rust `prewarm()` zero-fill vs C++ silent-process mismatch — fixed in T7.8, but C++ still diverges).
+> **⚠ T7.8 — C++ Live Cross-Validation Blocked (Upstream Bug):** The C++ `a2_fast.cpp` render tool produces numerically unstable output for A2 models (A2-Full: output ~10^14; A2-Lite: output ~360 drifting to ~8×10^4). The Rust port is structurally faithful and internally self-consistent (MSE = 0.0 between independent runs). Cross-validation via `tests/cpp_parity.rs` is `#[ignore]` — golden vectors use a **self-golden** pattern (Rust validates Rust) until the upstream C++ bug is resolved. See [TODO-sprints.md §T7.8](../TODO-sprints.md) for root-cause analysis (Rust `prewarm()` zero-fill vs C++ silent-process mismatch — fixed in T7.8, but C++ still diverges).
 
 | C++ (`NeuralAmpModelerCore/`)                            | Rust (`src/`)                                                                                                     | Parity established |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -236,7 +236,7 @@ divergences, and the sprint/task that established each equivalence.
 | A2-Full (8 ch)        | `models::a2::WaveNetA2<8>` (fixed fast-path, 8 channels, tap-major frame-tiled convolution) |
 | A2-Lite (3 ch)        | `models::a2::WaveNetA2<3>` (fixed fast-path, 3 channels, unrolled GEMV convolution)         |
 
-> Rows marked **Dyn** above were removed in Sprint 1.5 — see §3.3 and [TODO-sprints.md](/TODO-sprints.md).
+> Rows marked **Dyn** above were removed in Sprint 1.5 — see §3.3 and [TODO-sprints.md](../TODO-sprints.md).
 
 ---
 
@@ -256,7 +256,10 @@ divergences, and the sprint/task that established each equivalence.
 | **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                            |
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
 | **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                                      |
-| **`condition_size ≠ 1` or `head` (non-null) rejected** | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features not implemented in NAM-rs. Models using them are **rejected at load time** with a clear diagnostic (T7.3). All known A1 WaveNet models (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null`; these features are only needed for advanced architectures (A2 FiLM conditioning, custom post-stack heads). If real-world models requiring them are found in circulation (Tone3000/ToneHunt), they can be supported in a future sprint. |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features not implemented in NAM-rs. Models using them are **rejected at load   |
+| `head` (non-null) rejected**                  | time** with a clear diagnostic (T7.3). All known A1 WaveNet models (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null`; these features are only needed for advanced         |
+|                                               | architectures (A2 FiLM conditioning, custom post-stack heads). If real-world models requiring them are found in circulation (Tone3000/ToneHunt), they can be supported in a future sprint.  |
 
 ### 10.2 Math
 
@@ -380,9 +383,9 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 
 ## 15. Version History
 
-| Date       | Change                                                                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Date       | Change                                                                                                                                                                                                                                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm. |
-| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                  |
-| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                              |
-| 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences. |
+| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                                                       |
+| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                                                                   |
+| 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences.                                      |
