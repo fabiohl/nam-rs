@@ -40,7 +40,15 @@ impl<'a> NamClapProcessor<'a> {
                     model_l,
                     model_r,
                     new_resampler,
-                } => self.cold_load_model(model_l, model_r, new_resampler),
+                    input_mult_adj,
+                    output_mult_adj,
+                } => self.cold_load_model(
+                    model_l,
+                    model_r,
+                    new_resampler,
+                    input_mult_adj,
+                    output_mult_adj,
+                ),
                 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
                 ClapParamPayload::LoadCabIr { engine } => {
                     self.cold_load_cabsim(engine);
@@ -154,6 +162,8 @@ impl<'a> NamClapProcessor<'a> {
         model_l: Option<Box<crate::models::StaticModel>>,
         model_r: Option<Box<crate::models::StaticModel>>,
         new_resampler: Box<crate::dsp::resampler::NamResampler>,
+        input_mult_adj: f32,
+        output_mult_adj: f32,
     ) {
         if let Some(old_l) = std::mem::replace(&mut self.model_l, model_l) {
             self.push_to_gc(GcItem::Model(old_l));
@@ -167,6 +177,9 @@ impl<'a> NamClapProcessor<'a> {
         }
         let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
         self.push_to_gc(GcItem::Resampler(old_resampler));
+
+        self.model_input_mult_adj = input_mult_adj;
+        self.model_output_mult_adj = output_mult_adj;
     }
 
     #[cold]

@@ -170,6 +170,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             shared,
             smoother_in,
             smoother_out,
+            model_input_mult_adj: 1.0,
+            model_output_mult_adj: 1.0,
             param_rx,
             gc_tx,
             gc_overflow: Arc::clone(&shared.cold.gc_overflow),

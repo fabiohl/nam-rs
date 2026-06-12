@@ -515,7 +515,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 11.1 — Normalização de ganho do modelo no CLAP
 
-- **[T11.1] CLAP descarta a calibração de ganho de entrada/saída do modelo (`input_level_dbu`/`loudness`).**
+- **[T11.1] CLAP descarta a calibração de ganho de entrada/saída do modelo (`input_level_dbu`/`loudness`).**[DONE]
 
   - **Severidade: ALTA (soa errado em silêncio — pior modo de falha).** O loader calcula
     `input_mult_adj`/`output_mult_adj` a partir dos metadados `input_level_dbu` e `loudness`

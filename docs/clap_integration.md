@@ -177,4 +177,33 @@ Since loading neural network models and resamplers requires disk access, parsing
    - The RT thread must never drop heap-allocated objects (such as `Box<StaticModel>` or `Box<NamResampler>`), as dropping can trigger system deallocations and block the audio thread.
    - When a new model is loaded, the RT thread replaces the active model/resampler and pushes the obsolete instances into `gc_tx` as `GcItem` variants.
    - The Main thread periodically drains `gc_rx` and safely drops the resources.
-   - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
+    - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
+
+## 10. Model Gain Calibration (input_level_dbu / loudness)
+
+NAM models carry metadata fields `input_level_dbu` and `loudness` that specify the reference
+input level (dBu) and output loudness (dB) used during training. The loader computes calibration
+multipliers (`input_mult_adj` / `output_mult_adj`) from these fields to normalize the model's
+gain to standard reference values (12.0 dBu input, −18 dB loudness).
+
+**Decision: always apply model calibration (parity with the standalone binary).**
+
+The CLAP plugin applies model calibration multipliers unconditionally through the DSP pipeline
+context (`input_gain_mult` / `output_gain_mult`), separate from the user-configured input/output
+gain parameters. This design avoids duplicating user gain while ensuring that every model sounds
+at the same level as it does in the standalone binary and in the reference C++ implementation
+(where similar normalization is applied via `calibrated_loudness`).
+
+The flow is:
+1. `load_and_build_model()` → computes `input_mult_adj` / `output_mult_adj` from metadata
+   (`src/loader/build.rs:145-151`), stores them in `LoadedModelPair`
+2. CLAP `load_model()` → extracts the multipliers and sends them via `ClapParamPayload::LoadModel`
+3. Audio thread `cold_load_model()` → stores them in `NamClapProcessor.model_input_mult_adj` /
+   `model_output_mult_adj`
+4. Each `process()` block → pipeline context carries `self.model_input_mult_adj` /
+   `self.model_output_mult_adj`, while `smoother_in` / `smoother_out` carry only user gain
+
+This differs from the standalone where `compute_gain_multipliers()` fuses user and model
+multipliers into a single combined value before entering the pipeline. The CLAP approach
+keeps them separate to support sample-accurate parameter smoothing of user gain without
+touching the static model calibration.

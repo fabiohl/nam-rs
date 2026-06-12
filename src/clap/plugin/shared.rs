@@ -25,6 +25,10 @@ pub enum ClapParamPayload {
         model_r: Option<Box<StaticModel>>,
         /// Polyphase sinc resampler
         new_resampler: Box<NamResampler>,
+        /// Model input gain calibration multiplier (from input_level_dbu metadata).
+        input_mult_adj: f32,
+        /// Model output gain calibration multiplier (from loudness metadata).
+        output_mult_adj: f32,
     },
     /// Loading of a new cab-sim convolution engine via SPSC.
     /// Follows the same pattern as `LoadModel`: the engine is constructed

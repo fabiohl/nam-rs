@@ -57,16 +57,18 @@ impl<'a> NamClapProcessor<'a> {
                 self.gate_dirty = false;
             }
 
-            // In the CLAP plugin, input/output gain is applied separately via
+            // In the CLAP plugin, user input/output gain is applied separately via
             // `apply_input_gain`/`apply_output_gain` (which use smoothed
-            // user-configured gains from `smoother_in`/`smoother_out`), so the
-            // pipeline-level multipliers are always 1.0.
+            // user-configured gains from `smoother_in`/`smoother_out`). Model
+            // calibration multipliers (`input_mult_adj`/`output_mult_adj`), derived
+            // from `input_level_dbu`/`loudness` metadata, are applied through the
+            // pipeline context — enforcing parity with the standalone.
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
                 active_model_r: &mut self.active_model_r,
-                input_gain_mult: 1.0,
-                output_gain_mult: 1.0,
+                input_gain_mult: self.model_input_mult_adj,
+                output_gain_mult: self.model_output_mult_adj,
                 gate_params: &self.cached_gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut self.mono_hyst,
@@ -123,7 +125,7 @@ impl<'a> NamClapProcessor<'a> {
                 &mut self.buf_out_l[..n_out],
                 &mut self.buf_out_r[..n_out],
                 n_out,
-                1.0,
+                self.model_output_mult_adj,
                 ctx.silence_hysteresis,
                 ctx.rt_status,
                 *ctx.process_mono,
