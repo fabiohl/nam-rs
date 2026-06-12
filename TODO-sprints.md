@@ -705,7 +705,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 15.1 — Defasagens detectadas
 
-- **[T15.1] Corrigir a contagem de extensões CLAP em `docs/architecture.md:470`.**
+- **[T15.1] Corrigir a contagem de extensões CLAP em `docs/architecture.md:470`.** [DONE]
 
   - O texto diz "8 CLAP extensions"; o código implementa **11**: `audio_ports`, `params`, `state`,
     `latency`, `track_info`, `remote_controls`, `param_indication`, `gui`, **`preset_load`**, **`render`**,

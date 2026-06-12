@@ -467,7 +467,7 @@ eliminate additional lines beyond what `gc_cascade()` already does.
 
 ### CLAP Extensions and Graphical Interface
 
-The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
+The plugin implements 11 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, `preset_load`, `render`, `state_context`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
 
 For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](clap_integration.md).
 
