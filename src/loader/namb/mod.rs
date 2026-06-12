@@ -17,6 +17,9 @@ pub use fallback::{make_fallback_model_data, make_standard_wavenet_config};
 pub use header::{FLAG_HAS_CRC32, NambHeader, check_crc, crc32_ieee};
 pub use parse::parse_namb;
 
+/// Maximum number of floats in the weight section (MAX_MODEL_BYTES / 4).
+pub(crate) const MAX_FLOAT_COUNT: usize = (256 * 1024 * 1024 / 4) as usize;
+
 #[cfg(test)]
 #[path = "../namb_test.rs"]
 mod namb_test;

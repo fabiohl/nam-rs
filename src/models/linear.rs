@@ -90,7 +90,10 @@ impl LinearModel {
 
         self.write_pos += 1;
         let limit = self.history.size();
-        if self.write_pos >= limit * 2 {
+        let double_limit = limit
+            .checked_mul(2)
+            .expect("MirroredBuffer size overflow: limit * 2 exceeds usize");
+        if self.write_pos >= double_limit {
             self.write_pos -= limit;
         }
 

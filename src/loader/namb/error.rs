@@ -60,4 +60,13 @@ pub enum NambError {
         /// NAMB file version.
         version: u16,
     },
+
+    /// Number of floats in the weight section exceeds the maximum (defense-in-depth).
+    #[error("weight section too large: {got} floats, maximum {max}")]
+    WeightsTooLarge {
+        /// Floating-point counts read from the file.
+        got: usize,
+        /// Maximum allowed number of floats (MAX_MODEL_BYTES/4).
+        max: usize,
+    },
 }

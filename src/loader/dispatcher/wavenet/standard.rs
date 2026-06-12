@@ -30,6 +30,8 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
 
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
+    // Invariant: WaveNet topology guarantees at least 2 layers (enforced by topology.rs:85).
+    debug_assert!(data.config.layers.len() >= 2);
     let l0 = &data.config.layers[0];
     let l1 = &data.config.layers[1];
     let dils_0 = l0

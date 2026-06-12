@@ -22,6 +22,9 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     // 1. Reads the header
+    // SAFETY: `data.len() >= header_size` was validated in lines 16-22. `NambHeader` is
+    // `Copy` + `repr(C, packed)`, so a byte-level read of the header prefix is well-defined
+    // (no padding, no uninit bytes, correct alignment via `read_unaligned`).
     let header = unsafe { core::ptr::read_unaligned(data.as_ptr().cast::<NambHeader>()) };
     header.validate()?;
 
@@ -86,6 +89,14 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         .into());
     }
     let float_count = pesos_raw.len() / 4;
+    // Defense-in-depth: cap to MAX_MODEL_BYTES / 4 (already protected by build.rs, duplicated here)
+    if float_count > super::MAX_FLOAT_COUNT {
+        return Err(NambError::WeightsTooLarge {
+            got: float_count,
+            max: super::MAX_FLOAT_COUNT,
+        }
+        .into());
+    }
     let mut weights = Vec::with_capacity(float_count);
 
     for chunk in pesos_raw.chunks_exact(4) {

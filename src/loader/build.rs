@@ -67,6 +67,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 | Some(namb::NambError::InvalidWeightsOffset { .. }) => NamErrorCode::NambTruncated,
                 Some(namb::NambError::CrcMismatch { .. }) => NamErrorCode::NambCrc32Mismatch,
                 Some(namb::NambError::CrcMissing { .. }) => NamErrorCode::NambCrc32Missing,
+                Some(namb::NambError::WeightsTooLarge { .. }) => NamErrorCode::ModelTooLarge,
                 None => NamErrorCode::ModelBuildFailed,
             };
             NamDiagnostic::new(code, sys)

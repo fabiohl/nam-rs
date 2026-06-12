@@ -677,7 +677,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** teste de rejeição (container com `max_value` NaN/Inf) com erro limpo; containers
     oficiais seguem carregando.
 
-- **[T14.2] Defesa-em-profundidade e comentários `// SAFETY` no parser `.namb`.**
+- **[T14.2] Defesa-em-profundidade e comentários `// SAFETY` no parser `.namb`.** [DONE]
 
   - `src/loader/namb/parse.rs:24-25`: adicionar comentário `// SAFETY:` documentando a pré-condição
     (`data.len() >= header_size` validado nas linhas 16-22; `NambHeader` é `Copy`+`repr(C, packed)`).
