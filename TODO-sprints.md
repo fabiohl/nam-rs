@@ -165,13 +165,12 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     e versão >= 0.6.0 apenas como telemetria (log::warn!). Teste de tabela `test_dispatch_table_a1_high_version_not_misrouted`
     em `tests/a2_placeholder_interface.rs` cobre A1 c/ versão alta, A2 real e shapes ambíguos. Goldens A1/A2 verdes.
 
-- **[T7.5] Validar `sample_rate` esperado do modelo vs host.**
-
-  - `src/loader/build.rs:141`: o `sample_rate` do modelo é lido mas nunca confrontado com a SR ativa. O resampler
-    interno cobre a conversão, mas a divergência deve ser ao menos **logada** (e exposta na telemetria/GUI metadata,
-    `src/clap/gui/ui/status_bar/metadata.rs`) para diagnóstico.
-  - **Critério de aceite:** log estruturado quando `model_sr != host_sr`; campo no `DiagnosticBundle`
-    (`src/common/diagnostics/`); teste cobrindo.
+- **[T7.5] Validar `sample_rate` esperado do modelo vs host.** ✅ [DONE]
+  - **Feito:** `ModelInfo.model_sample_rate` adicionado ao DiagnosticBundle; `model.sample_rate` renderizado
+    separadamente de `audio.sr` para diagnóstico visual de mismatch. `NamModelMetadata.sample_rate` populado
+    e exibido na barra de metadados da GUI. Log estruturado (`log::warn!` + `HostLog::Warning`) emitido no
+    CLAP quando `host_rate != model_rate`. Standalone já logava via `run.rs:145-151`. Teste
+    `test_diagnostic_bundle_model_sample_rate_mismatch` cobre bundle com SRs divergentes (44100 vs 48000).
 
 ### Sprint 7.3 — Golden vectors: cobertura total do catálogo
 

@@ -43,6 +43,8 @@ pub struct NamModelMetadata {
     pub architecture: String,
     /// Model topology (e.g. "Standard", "1x64").
     pub topology: String,
+    /// Model native sample rate (Hz).
+    pub sample_rate: u32,
     /// Author / Modeled by.
     pub modeled_by: Option<String>,
     /// Original equipment manufacturer.

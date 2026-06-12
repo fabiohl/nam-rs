@@ -26,6 +26,8 @@ pub struct ModelInfo {
     pub channels: usize,
     /// Receptive field size of the model.
     pub receptive_field: usize,
+    /// Native sample rate of the model (Hz).
+    pub model_sample_rate: u32,
     /// Weights layout format (e.g. "Original", "GateMajorLstm", "Interleaved4WaveNet").
     pub weights_layout: String,
     /// Basename of the model file.

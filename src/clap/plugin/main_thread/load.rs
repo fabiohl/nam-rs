@@ -35,8 +35,24 @@ impl<'a> NamClapMainThread<'a> {
 
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+        let model_rate = model_pair.sample_rate;
+        if host_rate != model_rate {
+            log::warn!(
+                "Model sample rate ({model_rate} Hz) differs from host sample rate ({host_rate} Hz); \
+                 resampler will convert internally"
+            );
+            if let Some(log) = self.host.get_extension::<HostLog>() {
+                let msg = format!(
+                    "NAM-rs: model sample rate ({model_rate} Hz) differs from host ({host_rate} Hz); \
+                     will resample internally"
+                );
+                if let Ok(c_msg) = std::ffi::CString::new(msg) {
+                    log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                }
+            }
+        }
         let new_resampler = Box::new(
-            NamResampler::new(host_rate, model_pair.sample_rate, 0).map_err(|e| {
+            NamResampler::new(host_rate, model_rate, 0).map_err(|e| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
                         .message("Failed to build resampler")
@@ -64,6 +80,7 @@ impl<'a> NamClapMainThread<'a> {
             *meta_guard = Some(NamModelMetadata {
                 architecture,
                 topology,
+                sample_rate: model_rate,
                 modeled_by: metadata.as_ref().and_then(|m| m.modeled_by.clone()),
                 gear_make: metadata.as_ref().and_then(|m| m.gear_make.clone()),
                 gear_model: metadata.as_ref().and_then(|m| m.gear_model.clone()),
@@ -90,7 +107,7 @@ impl<'a> NamClapMainThread<'a> {
         self.shared
             .cold
             .model_sample_rate
-            .store(model_pair.sample_rate, Ordering::Relaxed);
+            .store(model_rate, Ordering::Relaxed);
 
         let model_l = model_pair.model_l;
         let model_r = model_pair.model_r;

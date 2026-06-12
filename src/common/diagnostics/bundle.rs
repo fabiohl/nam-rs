@@ -182,12 +182,14 @@ impl DiagnosticBundle {
                  model.topology={}\n\
                  model.channels={}\n\
                  model.receptive_field={}\n\
+                 model.sample_rate={}\n\
                  model.weights_layout={}\n\
                  model.path_basename={}\n",
                 model.arch_label,
                 model.topology,
                 model.channels,
                 model.receptive_field,
+                model.model_sample_rate,
                 model.weights_layout,
                 path_val
             ));

@@ -17,6 +17,7 @@ pub(crate) fn update_metadata_cache(state: &mut UiState, meta: &NamModelMetadata
             || cached.gear_type != meta.gear_type
             || cached.tone_type != meta.tone_type
             || cached.date != meta.date
+            || cached.sample_rate != meta.sample_rate
     });
 
     if metadata_changed {
@@ -28,6 +29,15 @@ pub(crate) fn update_metadata_cache(state: &mut UiState, meta: &NamModelMetadata
             text_buf,
             "Neural network architecture type and topology geometry".to_string(),
         ));
+
+        if meta.sample_rate > 0 {
+            let mut buf = String::new();
+            let _ = write!(buf, "SR: {} Hz", meta.sample_rate);
+            state.metadata_display.push((
+                buf,
+                "Native sample rate expected by the model".to_string(),
+            ));
+        }
 
         if let Some(ref author) = meta.modeled_by {
             let trimmed = author.trim();

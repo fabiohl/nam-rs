@@ -48,6 +48,7 @@ fn test_diagnostic_bundle_with_mock_provider() {
             topology: "Standard".to_string(),
             channels: 16,
             receptive_field: 2048,
+            model_sample_rate: 48000,
             weights_layout: "Interleaved4WaveNet".to_string(),
             path_basename: "test_model.nam".to_string(),
         }),
@@ -83,6 +84,7 @@ fn test_diagnostic_bundle_with_mock_provider() {
     assert!(rendered.contains("model.channels=16"));
     assert!(rendered.contains("model.receptive_field=2048"));
     assert!(rendered.contains("model.weights_layout=Interleaved4WaveNet"));
+    assert!(rendered.contains("model.sample_rate=48000"));
     assert!(rendered.contains("model.path_basename=test_model.nam"));
 
     // Verify audio info
@@ -309,6 +311,7 @@ fn test_diagnostic_bundle_path_redaction() {
             topology: "Standard".to_string(),
             channels: 16,
             receptive_field: 2048,
+            model_sample_rate: 48000,
             weights_layout: "Interleaved4WaveNet".to_string(),
             path_basename: home_path.clone(),
         }),
@@ -435,6 +438,7 @@ fn test_diagnostic_bundle_regex_roundtrip() {
             topology: "1x8".to_string(),
             channels: 8,
             receptive_field: 0,
+            model_sample_rate: 48000,
             weights_layout: "GateMajorLstm".to_string(),
             path_basename: "test.nam".to_string(),
         }),
@@ -485,6 +489,10 @@ fn test_diagnostic_bundle_regex_roundtrip() {
     assert_eq!(
         keys.get("model.weights_layout").map(|s| s.as_str()),
         Some("GateMajorLstm")
+    );
+    assert_eq!(
+        keys.get("model.sample_rate").map(|s| s.as_str()),
+        Some("48000")
     );
     assert_eq!(
         keys.get("model.path_basename").map(|s| s.as_str()),
@@ -542,25 +550,57 @@ fn test_diagnostic_bundle_regex_roundtrip() {
     assert!(rendered.lines().any(|l| l.starts_with("timestamp=")));
 }
 
+#[test]
+fn test_diagnostic_bundle_model_sample_rate_mismatch() {
+    let provider = MockSnapshotProvider {
+        model: Some(ModelInfo {
+            arch_label: "WaveNet".to_string(),
+            topology: "Lite".to_string(),
+            channels: 12,
+            receptive_field: 1024,
+            model_sample_rate: 44100,
+            weights_layout: "Interleaved4WaveNet".to_string(),
+            path_basename: "wavenet_lite_44k.nam".to_string(),
+        }),
+        audio: AudioInfo {
+            sample_rate: 48000,
+            buffer_size: 256,
+            channel_count: 2,
+            host_name: "CLAP".to_string(),
+        },
+        rt: RtInfo {
+            thread_priority: 90,
+            scheduler: "FIFO".to_string(),
+            cpu_pinned: Some(2),
+            huge_pages_active: false,
+        },
+        telemetry: TelemetrySnapshot::default(),
+        flags: 0,
+    };
+
+    let bundle = DiagnosticBundle::capture_with_runtime(&provider);
+    let rendered = bundle.render();
+
+    assert!(rendered.contains("model.sample_rate=44100"));
+    assert!(rendered.contains("audio.sr=48000"));
+    assert!(
+        rendered.contains("model.sample_rate=44100") && rendered.contains("audio.sr=48000"),
+        "Diagnostic bundle must expose model sample rate separately from host audio rate \
+         so that a mismatch is visible for triage"
+    );
+}
+
 #[cfg(feature = "heap-audit")]
-mod audit_tests {
+mod heap_audit_tests {
     use nam_rs::common::spsc::RtStatusFlags;
-    use std::sync::atomic::Ordering;
-
-    #[cfg(not(feature = "clap-plugin"))]
+    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
     use std::alloc::{GlobalAlloc, Layout, System};
-    #[cfg(not(feature = "clap-plugin"))]
-    use std::sync::atomic::{AtomicI32, AtomicUsize};
 
-    #[cfg(not(feature = "clap-plugin"))]
     static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-    #[cfg(not(feature = "clap-plugin"))]
     static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
 
-    #[cfg(not(feature = "clap-plugin"))]
     struct CountingAllocator;
 
-    #[cfg(not(feature = "clap-plugin"))]
     unsafe impl GlobalAlloc for CountingAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
@@ -574,80 +614,44 @@ mod audit_tests {
         }
     }
 
-    #[cfg(not(feature = "clap-plugin"))]
     #[global_allocator]
     static GLOBAL: CountingAllocator = CountingAllocator;
 
-    struct TrackingGuard {
-        #[cfg(feature = "clap-plugin")]
-        _inner: nam_rs::common::alloc_audit::TrackingGuard,
-    }
+    struct TrackingGuard;
 
     impl TrackingGuard {
         fn new() -> Self {
-            #[cfg(feature = "clap-plugin")]
-            {
-                Self {
-                    _inner: nam_rs::common::alloc_audit::TrackingGuard::new(),
-                }
-            }
-            #[cfg(not(feature = "clap-plugin"))]
-            {
-                let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-                TRACKING_THREAD.store(tid, Ordering::Relaxed);
-                ALLOC_COUNT.store(0, Ordering::Relaxed);
-                Self {}
-            }
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            TRACKING_THREAD.store(tid, Ordering::Relaxed);
+            ALLOC_COUNT.store(0, Ordering::Relaxed);
+            Self {}
         }
     }
 
     impl Drop for TrackingGuard {
         fn drop(&mut self) {
-            #[cfg(not(feature = "clap-plugin"))]
-            {
-                TRACKING_THREAD.store(0, Ordering::Relaxed);
-            }
-        }
-    }
-
-    fn get_alloc_count() -> usize {
-        #[cfg(feature = "clap-plugin")]
-        {
-            nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
-        }
-        #[cfg(not(feature = "clap-plugin"))]
-        {
-            ALLOC_COUNT.load(Ordering::Relaxed)
+            TRACKING_THREAD.store(0, Ordering::Relaxed);
         }
     }
 
     #[test]
     fn test_diagnostic_bundle_heap_audit() {
         let rt_status = RtStatusFlags::new();
-
-        // Warmup status flags and telemetry
         rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
         rt_status.latency_hist.record(150);
 
         let allocs = {
             let _guard = TrackingGuard::new();
-
-            // Test 5: Verify typical RT thread status & telemetry updates do not allocate
             rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
             rt_status.clear_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
             let _ = rt_status.check_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
             let _ = rt_status.check_and_clear_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
-
             rt_status.latency_hist.record(500);
             rt_status.xruns.fetch_add(1, Ordering::Relaxed);
             rt_status.drains.fetch_add(1, Ordering::Relaxed);
-
-            get_alloc_count()
+            ALLOC_COUNT.load(Ordering::Relaxed)
         };
 
-        assert_eq!(
-            allocs, 0,
-            "RT status/telemetry operations triggered heap allocations!"
-        );
+        assert_eq!(allocs, 0, "RT status/telemetry operations triggered heap allocations!");
     }
 }

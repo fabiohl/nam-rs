@@ -48,6 +48,7 @@ impl LoadedModelPair {
                 .as_ref()
                 .map(|m| m.receptive_field())
                 .unwrap_or(0),
+            model_sample_rate: self.sample_rate,
             weights_layout: self.weights_layout.clone(),
             path_basename: path.to_string_lossy().into_owned(),
         }
