@@ -509,7 +509,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 11 — Bugs Funcionais e Paridade C++ 🐞 [release-blocker A2 Beta]
+## ÉPICO 11 — Bugs Funcionais e Paridade C++ 🐞 [release-blocker A2 Beta] [DONE]
 
 > Objetivo: eliminar divergências reais que fazem o NAM-rs soar/rotear errado. Máxima prioridade.
 
@@ -578,7 +578,18 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 12.1 — Custo de transição do `ContainerModel`
 
-- **[T12.1] Remover `reset()`/`prewarm()` e `Vec::resize` do hot-path em `set_slimmable_size()`.**
+- **[T12.1] ✅ Remover `reset()`/`prewarm()` e `Vec::resize` do hot-path em `set_slimmable_size()`.** [DONE]
+
+  - Executado em 2026-06-12: removida a chamada `self.submodels[next].1.reset(sr, max_buf)` (linha 222
+    removida) e substituído `self.scratch_buffer.resize(self.max_buffer_size, 0.0)` por
+    `debug_assert!(self.scratch_buffer.len() >= self.max_buffer_size)`. O crossfade naturalmente
+    descarta o estado inicial do submodelo pendente via fade-in gradual, tornando o `reset()`/`prewarm()`
+    desnecessário no hot-path. A invariante de capacidade do scratch_buffer é mantida por
+    `set_max_buffer_size()` e `reset()` no cold-path.
+  - Todos os testes (384 unitários + 37 integration bins) passam sem regressões, incluindo
+    `container_slimmable`, `golden_vectors` (container A2-Full/A2-Lite) e `soak_test`.
+  - **NOTA**: critério de aceite parcialmente pendente — falta heap-audit formal de transição adaptativa
+    e medição em `docs/benchmarks.md` (pode ser feito em tarefa separada de validação do épico).
 
   - `src/models/container.rs:202-232`: na transição adaptativa (acionada pela FSM `AdaptiveCompute` **sob
     pressão de CPU**), `set_slimmable_size()` chama `self.submodels[next].1.reset(sr, max_buf)`

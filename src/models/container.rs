@@ -217,11 +217,12 @@ impl SlimmableModel for ContainerModel {
             return;
         }
 
-        self.submodels[next]
-            .1
-            .reset(self.sample_rate, self.max_buffer_size);
-
-        self.scratch_buffer.resize(self.max_buffer_size, 0.0);
+        debug_assert!(
+            self.scratch_buffer.len() >= self.max_buffer_size,
+            "scratch_buffer capacity invariant violated: {} < {}",
+            self.scratch_buffer.len(),
+            self.max_buffer_size
+        );
 
         if let Some(idx) = self.pending_index {
             self.active_index = idx;
