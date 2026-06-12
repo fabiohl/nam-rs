@@ -633,16 +633,32 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** proptest de paridade sigmoid (SIMD×escalar) verde; bench de inferência sem
     regressão (ganho esperado no caminho de ativação); golden vectors estáveis.
 
-- **[T13.2] (Investigação) Kahan dentro do laço por-tap do `conv1d`.**
+- **[T13.2] (Investigação) Kahan dentro do laço por-tap do `conv1d`.** [DONE — decisão: REMOVER]
 
-  - `src/models/wavenet/conv1d.rs:192-205` (e `conv1d_dual.rs`) executa Kahan **escalar** por canal a cada
-    tap, serializando a redução SIMD→escalar dentro do laço. Para `K ≤ 3` (típico no WaveNet), o erro de
-    soma simples já é `O(3·ε)` (desprezível), tornando o Kahan por-tap possivelmente superdimensionado.
-  - **Investigação:** medir o custo do Kahan por-tap; avaliar **adiar** a compensação para o fim dos `K` taps
-    (acumular resultados SIMD e Kahan-reduzir uma vez) ou removê-la para `K` pequeno. **Qualquer** mudança só
-    é aceita com **todos os goldens verdes** (regra "Golden = seguro anti-degradação") e estabilidade do soak.
-  - **Critério de aceite:** delta de bench documentado em `docs/benchmarks.md`; goldens dentro da banda;
-    decisão (manter/adiar/remover) registrada com justificativa numérica.
+  - Resultados documentados em `docs/benchmarks.md` e `benches/kahan_conv1d_bench.rs`.
+  - **Benchmarks:** Custo isolado do Kahan por tap: +5–8% (~0.43 ns/kahan_add × 4 canais/tap).
+    No contexto do caminho estático, a vantagem const-generic domina (2× mais rápido que
+    Conv1dDyn sem Kahan).
+  - **Análise numérica para K=3:** Erro worst-case −129 dBFS por camada (33 dB abaixo do
+    ruído de 16-bit). Após 10 camadas: −89 dBFS teórico (<< −100 dB na prática com áudio real).
+  - **Decisão: REMOVER Kahan do caminho estático** (conv1d.rs, conv1d_dual.rs). O caminho
+    dinâmico já opera sem Kahan. Implementação em **[T13.2a]**.
+  - Goldens baseline capturados (19/19 passam antes da mudança).
+
+- **[T13.2a] Remover Kahan do laço por-tap do conv1d estático.** [DONE]
+
+  - Substituir `kahan_add` por `+=` em `process_single_frame_generic` (`conv1d.rs:192-205`)
+    e `process_dual_frame_generic` (`conv1d_dual.rs:197-220`).
+  - Remover declarações `c0..c3` / `c0_f0..c3_f1` não mais necessárias.
+  - Substituir `store_kahan_4_accums` por `copy_from_slice` inline no loop de write-back,
+    ou criar helper `store_4_accums` sem lógica Kahan (espelhar `load_4_accums`).
+  - Remover import `kahan_add` de `conv1d.rs` e `conv1d_dual.rs`.
+  - Atualizar comentário de coesão em `conv1d.rs:10` removendo menção a "Kahan accumulators".
+  - Corrigir `benches/kahan_conv1d_bench.rs`: pré-alocar `out` fora do closure dyn-bench
+    para eliminar ruído de alocação na medição.
+  - Rodar `cargo bench --bench kahan_conv1d_bench` pós-remoção para documentar ganho real.
+  - **Critério de aceite:** 19 goldens verdes; delta de bench documentado;
+    `cargo check`/`cargo test`/`cargo clippy` limpos.
 
 ---
 

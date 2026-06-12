@@ -248,6 +248,110 @@ cargo bench --bench inference_bench -- "Cabsim_MediumIR_2048_256"
 # Construction cost benchmarks
 cargo bench --bench inference_bench -- "Cabsim_Engine_Construction"
 
+## Investigação T13.2: Custo do Kahan por-tap no Conv1d
+
+### Contexto
+
+A implementação estática do conv1d (`src/models/wavenet/conv1d.rs:192-205` e `conv1d_dual.rs:197-220`)
+executa Kahan compensated summation **dentro** do laço per-tap, serializando a redução SIMD→escalar
+a cada tap. Para K ≤ 3 (todos os modelos A1 WaveNet), o erro de soma simples é O(3·ε) — desprezível
+para áudio — tornando o Kahan por-tap potencialmente superdimensionado.
+
+O próprio módulo `kahan.rs` documenta K ≤ 3 como um caso de "Quando NÃO usar" (linha 16-17).
+
+### Metodologia
+
+**Benchmark 1: Loop interno isolado** (`kahan_inner_loop_isolated`)
+
+Isola o padrão exato do laço per-tap: `dot_product_4x_interleaved` + acumulação Kahan vs plain `+=`.
+Testa K ∈ {1, 2, 3, 6, 15, 32} com IN=16 para medir o custo marginal por tap.
+
+**Benchmark 2: Conv1d completo** (`conv1d_kahan_full`)
+
+Compara `Conv1d` estático (Kahan, const-generics) vs `Conv1dDyn` (sem Kahan, dimensões runtime)
+para configurações típicas de WaveNet A1 (K=3, IN/OUT ∈ {8, 12, 16}), processando 64 frames.
+
+Arquivo: `benches/kahan_conv1d_bench.rs`.
+
+### Resultados
+
+#### Loop interno isolado (custo por tap)
+
+| K  | Kahan (ns) | Plain (ns) | Overhead | Overhead % |
+|:---|-----------:|-----------:|---------:|-----------:|
+| 1  | 8.51       | 8.09       | 0.43 ns  | +5.3%      |
+| 2  | 16.42      | 15.12      | 1.30 ns  | +8.6%      |
+| 3  | 24.11      | 22.80      | 1.31 ns  | +5.7%      |
+| 6  | 47.00      | 44.77      | 2.23 ns  | +5.0%      |
+| 15 | 115.79     | 107.64     | 8.15 ns  | +7.6%      |
+| 32 | 249.72     | 231.84     | 17.88 ns | +7.7%      |
+
+**Custo marginal por kahan_add:** ~0.43 ns por chamada (4 chamadas/tap = 4 canais).
+O overhead relativo estabiliza em ~5–8% independente de K — a maior parte do tempo
+é dominada pelo `dot_product_4x_interleaved` SIMD.
+
+#### Conv1d completo (64 frames)
+
+| Config              | Static Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
+|:--------------------|------------------:|------------------:|------:|
+| IN=8,  OUT=8,  K=3 | 1.128             | 2.688             | 2.38× |
+| IN=8,  OUT=16, K=3 | 2.024             | 4.755             | 2.35× |
+| IN=16, OUT=16, K=3 | 3.474             | 6.941             | 2.00× |
+| IN=12, OUT=12, K=3 | 2.024             | 4.466             | 2.21× |
+
+**Observação:** O `Conv1d` estático (com Kahan) é **2× mais rápido** que o `Conv1dDyn`
+(sem Kahan). A vantagem estrutural do caminho const-generic (unrolling, stack arrays,
+eliminação de indireção de ponteiros) domina completamente o custo do Kahan — o Kahan é
+"grátis" no contexto do caminho estático versus a alternativa dinâmica.
+
+### Análise numérica
+
+**Para K = 3 taps com f32 (ε ≈ 1.19×10⁻⁷):**
+
+- Erro worst-case por canal: 3 × ε ≈ 3.6×10⁻⁷ absoluto
+- Em dBFS (sinal de magnitude 1.0): 20×log₁₀(3.6×10⁻⁷) ≈ **−129 dB**
+- Limiar de percepção humana: ~0.1 dB a −80 dBFS
+- Ruído de quantização 16-bit: −96 dBFS
+- **Conclusão:** O erro de soma simples para K=3 está 33 dB abaixo do ruído de 16-bit
+  e 49 dB abaixo do limiar perceptivo.
+
+**Cadeia completa de 10 camadas WaveNet A1 (IN=16, K=3, 300 adições sequenciais):**
+
+- Erro worst-case sem Kahan: 300 × ε ≈ 3.6×10⁻⁵
+- Em dBFS: 20×log₁₀(3.6×10⁻⁵) ≈ **−89 dB**
+- **Ainda abaixo do ruído de 16-bit (−96 dB)**, mas com margem reduzida (7 dB).
+- Com Kahan: erro limitado a ε ≈ 1.2×10⁻⁷ (−138 dBFS) — 42 dB de margem extra,
+  completamente irrelevante para áudio.
+
+> [!NOTE]
+> O worst-case acima assume acumulação monotônica (todos os termos com mesmo sinal),
+> que nunca ocorre em sinais de áudio reais (alternam polaridade). Na prática, o erro
+> real é ordens de grandeza menor por cancelamento parcial.
+
+### Decisão
+
+**Remover Kahan do caminho estático (Conv1d, Conv1dDual) para K ≤ 3.** Justificativa:
+
+1. **Numérica:** O erro de soma simples para K=3 é −129 dBFS por camada — irrisório mesmo
+   após 10 camadas (−89 dB worst-case teórico, << −100 dB na prática com áudio real).
+2. **Performance:** O ganho de remover Kahan (~5–8% no loop interno) é modesto mas
+   real. No contexto do caminho estático, o custo é absorvido pela vantagem estrutural
+   const-generic, mas a simplificação do hot-path reduz pressão de registrador e
+   melhora a previsibilidade do compilador.
+3. **Consistência:** O caminho dinâmico (`conv1d_dyn_kernels.rs`) já usa plain `+=` sem
+   Kahan. Alinhar os caminhos elimina um delta de precisão entre modos de compilação.
+4. **Documentação:** O próprio módulo `kahan.rs:16-17` já lista "Single-digit additions
+   (K ≤ 3 taps)" como caso de não-uso.
+
+**Antes de efetivar a remoção**, executar a suíte completa de goldens (`cargo test --test golden_vectors`)
+para confirmar que a saída do modelo se mantém dentro da banda de tolerância.
+
+### Como executar o benchmark
+
+```sh
+cargo bench --bench kahan_conv1d_bench
+```
+
 # Long-duration soak (35s+ measurement, 4096-sample blocks)
 cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ```

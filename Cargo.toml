@@ -53,6 +53,10 @@ harness = false
 name = "dot_4x_bench"
 harness = false
 
+[[bench]]
+name = "kahan_conv1d_bench"
+harness = false
+
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]
