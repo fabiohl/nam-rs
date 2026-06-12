@@ -149,6 +149,23 @@ run_phase \
     "cargo bench && cargo bench --features standalone,long_bench --bench inference_bench" \
     "phase5-benchmarks.log"
 
+# --- Phase 6: PipeWire Integration Test (optional – skipped when daemon is absent) ---
+run_pipewire_phase() {
+    echo "  Verificando daemon PipeWire..."
+    if pw-cli info >/dev/null 2>&1; then
+        echo "  PipeWire detectado. Executando teste de integração..."
+        cargo test --release --features standalone --test pw_integration_test -- --ignored --nocapture
+    else
+        echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
+        return 0
+    fi
+}
+
+run_phase \
+    "PipeWire Integration Test" \
+    "run_pipewire_phase" \
+    "phase6-pipewire.log"
+
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"
 echo -e "${BLUE}${BOLD}                  AUDIT SUMMARY REPORT                          ${NC}"

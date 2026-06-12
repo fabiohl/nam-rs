@@ -247,7 +247,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     Em 4 deles o `_test.rs` irmão **já existe** — apenas mover/fundir os blocos inline.
   - **Critério de aceite:** nenhum arquivo ≥ 300 linhas com `#[cfg(test)] mod tests` inline; suíte verde.
 
-- **[T8.5] Resgatar `tests/pw_integration_test.rs` (órfão).**
+- **[T8.5] Resgatar `tests/pw_integration_test.rs` (órfão).** [DONE]
 
   - Nenhum script executa este teste (exige daemon PipeWire). Marcar `#[ignore]` com comentário de pré-requisito e
     adicionar fase opcional em `utils/tests-long.sh` (skip limpo se `pw-cli info` falhar).

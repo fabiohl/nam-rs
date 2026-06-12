@@ -6,9 +6,8 @@
 //! PipeWire Pipeline Integration (End-to-End) Test
 //!
 //! This test ensures the correct initialization of the PipeWire Core context.
-//! Note: It will intentionally fail without being ignored if PipeWire is not present,
-//! unless it is mocked. The CI environment (e.g. GitHub Actions) needs the PipeWire daemon
-//! or a test environment with PipeWire support.
+//! Prerequisite: a running PipeWire daemon (session or system). Without it the test is skipped
+//! by the `#[ignore]` attribute; `utils/tests-long.sh` auto-detects the daemon via `pw-cli info`.
 
 use minstant::Anchor;
 use nam_rs::common::diagnostics::SystemSnapshot;
@@ -28,6 +27,7 @@ use std::time::Duration;
 /// 3. Sending gain parameters via the control channel.
 /// 4. Shutdown signaled via atomic flag.
 #[test]
+#[ignore = "requires a running PipeWire daemon (session or system); auto-detected by utils/tests-long.sh"]
 fn test_pipewire_integration() {
     // Initializes the native library. In environments without libpipewire installed, this will panic.
     pipewire::init();
