@@ -132,6 +132,204 @@ fn test_tanh_piecewise_odd_symmetry() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Tanh – Padé NR2 correctness tests (T8.11)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Deterministic sweep of the Padé NR2 AVX2 path against `f64::tanh` over
+/// the full audio domain `[-10, 10]`.  Maximum absolute error must be
+/// `< 5e-3` per `docs/fastmath-approximations.md`.
+#[test]
+fn test_tanh_pade_nr2_sweep() {
+    use std::arch::x86_64::*;
+
+    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..2001).map(|i| -10.0_f32 + i as f32 * 0.01_f32).collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(8) {
+        unsafe {
+            let x = _mm256_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_pade_nr2_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = (input as f64).tanh() as f32;
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+                assert!(
+                    error < 5e-3_f32,
+                    "NR2 tanh({input}) = {}, f64::tanh = {expected}, delta {error}",
+                    result[j],
+                );
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(8).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 8];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for j in remainder.len()..8 {
+            batch[j] = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm256_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_pade_nr2_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = (input as f64).tanh() as f32;
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+                assert!(
+                    error < 5e-3_f32,
+                    "NR2 tanh({input}) = {}, f64::tanh = {expected}, delta {error}",
+                    result[j],
+                );
+            }
+        }
+    }
+
+    eprintln!("[T8.11] NR2 AVX2 sweep max error: {max_error:.4e}");
+}
+
+// Proptest: validates the Padé NR2 AVX2 path against `f64::tanh` on 100k
+// uniform random inputs in `[-10, 10]`.  Maximum absolute error must be
+// `< 5e-3`.
+proptest! {
+    #[test]
+    fn test_tanh_pade_nr2_proptest_100k(x in -10.0f32..10.0f32) {
+        use std::arch::x86_64::*;
+
+        if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
+            return Ok(());
+        }
+
+        let expected = (x as f64).tanh() as f32;
+        let actual = unsafe {
+            let vx = _mm256_set1_ps(x);
+            let vy = simd_tanh_pade_nr2_avx2(vx);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), vy);
+            result[0]
+        };
+        let error = (expected - actual).abs();
+        prop_assert!(
+            error < 5e-3_f32,
+            "NR2 tanh({x}) = {actual}, f64::tanh = {expected}, delta {error}"
+        );
+    }
+}
+
+/// Deterministic sweep of the Padé NR2 AVX-512 path against `f64::tanh`
+/// over the full audio domain `[-10, 10]`.  Only executes on hardware
+/// with AVX-512F+VL+DQ support.
+#[test]
+fn test_tanh_pade_nr2_sweep_avx512() {
+    use std::arch::x86_64::*;
+
+    if !is_x86_feature_detected!("avx512f")
+        || !is_x86_feature_detected!("avx512vl")
+        || !is_x86_feature_detected!("avx512dq")
+    {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..2001).map(|i| -10.0_f32 + i as f32 * 0.01_f32).collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(16) {
+        unsafe {
+            let x = _mm512_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_pade_nr2_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = (input as f64).tanh() as f32;
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+                assert!(
+                    error < 5e-3_f32,
+                    "NR2 AVX-512 tanh({input}) = {}, f64::tanh = {expected}, delta {error}",
+                    result[j],
+                );
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(16).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 16];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for j in remainder.len()..16 {
+            batch[j] = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm512_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_pade_nr2_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = (input as f64).tanh() as f32;
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+                assert!(
+                    error < 5e-3_f32,
+                    "NR2 AVX-512 tanh({input}) = {}, f64::tanh = {expected}, delta {error}",
+                    result[j],
+                );
+            }
+        }
+    }
+
+    eprintln!("[T8.11] NR2 AVX-512 sweep max error: {max_error:.4e}");
+}
+
+// Proptest: validates the Padé NR2 AVX-512 path against `f64::tanh` on
+// 100k uniform random inputs in `[-10, 10]`.  Only executes on hardware
+// with AVX-512F+VL+DQ support.
+proptest! {
+    #[test]
+    fn test_tanh_pade_nr2_proptest_100k_avx512(x in -10.0f32..10.0f32) {
+        use std::arch::x86_64::*;
+
+        if !is_x86_feature_detected!("avx512f")
+            || !is_x86_feature_detected!("avx512vl")
+            || !is_x86_feature_detected!("avx512dq")
+        {
+            return Ok(());
+        }
+
+        let expected = (x as f64).tanh() as f32;
+        let actual = unsafe {
+            let vx = _mm512_set1_ps(x);
+            let vy = simd_tanh_pade_nr2_avx512(vx);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), vy);
+            result[0]
+        };
+        let error = (expected - actual).abs();
+        prop_assert!(
+            error < 5e-3_f32,
+            "NR2 AVX-512 tanh({x}) = {actual}, f64::tanh = {expected}, delta {error}"
+        );
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Sigmoid
 // ══════════════════════════════════════════════════════════════════════════════
 

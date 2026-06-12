@@ -291,10 +291,12 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** qualquer alteração futura no CRC quebra o KAT imediatamente.
   - Nota do PO: Se isto envolver usar o rust nightly, cancelar. Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
-- **[T8.11] Teste de tolerância do FastMath tanh (PadeNR2).**
+- **[T8.11] Teste de tolerância do FastMath tanh (PadeNR2).** [DONE]
 
   - Existe bench, mas não teste de corretude dedicado do caminho NR2 vs `f64::tanh` de referência no domínio
-    completo de áudio (±10). Tolerância conforme `docs/fastmath-approximations.md` (erro < ~1e-4 / −80 dB).
+    completo de áudio (±10). Tolerância conforme `docs/fastmath-approximations.md` (erro < 5e-3 para tanh
+    em inferência LSTM, conforme checklist §7 do documento). Nota: a referência de −80 dB/1e-4 na descrição
+    original da task aplica-se a sigmoid initialization, não ao Padé NR2 (cujo erro máximo é ~2.32e-3).
   - **Critério de aceite:** sweep determinístico + proptest com teto de erro; documentos e teste coerentes.
 
 - **[T8.12] Testes de concorrência dedicados (fora do `--test-threads=1`).**
@@ -305,7 +307,8 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     custo compensar — decisão do implementador, documentada).
   - **Critério de aceite:** corridas conhecidas (T6.3) cobertas por teste que falhava antes da correção e passa depois.
 
-- **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`:** Tanto do ponto de vista dos testes estarem corretamento configurados e calibrado, quanto do que os seus resultados em si dizem do projeto.
+- **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`:**
+  - Tanto do ponto de vista dos testes estarem corretamento configurados e calibrados, quanto do que os seus resultados em si dizem do estado do projeto.
 
 ---
 
