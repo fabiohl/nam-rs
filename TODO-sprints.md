@@ -166,6 +166,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     em `tests/a2_placeholder_interface.rs` cobre A1 c/ versão alta, A2 real e shapes ambíguos. Goldens A1/A2 verdes.
 
 - **[T7.5] Validar `sample_rate` esperado do modelo vs host.** ✅ [DONE]
+
   - **Feito:** `ModelInfo.model_sample_rate` adicionado ao DiagnosticBundle; `model.sample_rate` renderizado
     separadamente de `audio.sr` para diagnóstico visual de mismatch. `NamModelMetadata.sample_rate` populado
     e exibido na barra de metadados da GUI. Log estruturado (`log::warn!` + `HostLog::Warning`) emitido no
@@ -308,6 +309,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** corridas conhecidas (T6.3) cobertas por teste que falhava antes da correção e passa depois.
 
 - **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`:** [DONE]
+
   - Tanto do ponto de vista dos testes estarem corretamento configurados e calibrados, quanto do que os seus resultados em si dizem do estado do projeto.
   - Anotar aqui um relatório dos achados, para referência futura.
 
@@ -407,7 +409,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     LeakyReLU via `prelu_slice` (`src/models/a2/activations.rs:112`) com zero diferença de performance.
     Removidos: módulo `activations/leaky_relu.rs`, entry na `SimdMathConfig`, 3 testes unitários
     - proptest (~75 linhas), e `leaky_relu_slice_fallback` em `scalar_ref`. Sem regressão funcional
-    nem de bench — a cobertura de LeakyReLU/LeakyReLU(0.01) segue integral via `prelu_slice`.
+      nem de bench — a cobertura de LeakyReLU/LeakyReLU(0.01) segue integral via `prelu_slice`.
 
 ---
 
@@ -482,6 +484,226 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     Comentários `//` estratégicos (o quê/por quê em cada fase), sem poluir.
   - **Critério de aceite:** nenhum bloco > ~50 linhas em código `unsafe`/hot-path sem ao menos um comentário
     estrutural por fase lógica; `///` para itens públicos preservado (`#[warn(missing_docs)]` segue ativo).
+
+---
+
+## 🔁 Rodada v2.2 — 2ª Passada da Auditoria Geral (`revisor-auditor`)
+
+> Resultado de uma nova rodada completa do `revisor-auditor` sobre o código já estabilizado pela v2.1. Cada
+> achado abaixo foi **verificado na fonte** (não é especulação de subagente): os `file:line` foram lidos e
+> confirmados. A baseline verde (`utils/tests-cargo.sh` + `utils/lints.sh`) continua mandatória ao fechar cada
+> tarefa, e as **Convenções Mandatórias** no topo deste documento aplicam-se integralmente.
+>
+> **Prioridade de release:** **[T11.1]**, **[T11.2]** e **[T12.1]** são questões de **correção** (não cosméticas)
+> e deveriam ser resolvidas **antes do GA do A2 Beta** (ver linha "Liberar v2.1" abaixo). As demais são
+> endurecimento/otimização/documentação e podem seguir o fluxo normal de sprints.
+
+### ⚠️ Apêndice de verificação v2.2 (suspeitas investigadas e **descartadas** — NÃO "corrigir")
+
+| Suspeita levantada                                                           | Veredito verificado                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "A2 lê `head_scale` do stream de pesos em vez do campo `config.head_scale`"  | **Falso (é o comportamento correto).** O C++ de referência lê o `head_scale` como **o último float do stream**, sobrescrevendo o campo JSON: `NAM/wavenet/model.cpp:632` (`_head_scale = *(it++)`) e `NAM/wavenet/a2_fast.cpp:122-124,274-275`. O Rust (`src/models/a2/model/set_weights.rs:167-170`) está alinhado. Ver porém **[T11.2]**. |
+| "GEMV deveria usar broadcast-FMA fundido em vez de `_mm*_set1_ps` + `fmadd`" | **Provável falso.** Em `src/math/gemm/gemv/kernel_macro.rs:54,134` o broadcast vem de carga de memória; no AVX-512 o LLVM funde em `{1toN}` embedded-broadcast e no AVX2 não há broadcast embutido em FMA (a forma atual já é a ótima). Só abrir tarefa com evidência de assembly (`cargo-show-asm`) mostrando o contrário.                 |
+| "Heurística A2 por `version >= 0.6.0` é frágil"                              | **Já corrigido na v2.1 (T7.4).** `is_wavenet_a2()` usa shape como detector primário; versão é só telemetria. O gap remanescente é a **estritude** do shape-matching, tratada em **[T11.2]**, não a versão.                                                                                                                                  |
+| "`#[allow(dead_code)]` em `output_pw.rs:17` (`AppState`) é injustificado"    | **Provável falso (RAII).** `AppState` é vinculado como `let _app_state = …` em `run.rs` apenas para manter streams/listeners vivos via `Drop`; os campos nunca são lidos por design, então o lint dispararia sem o `allow`. Apenas **documentar** o motivo no atributo (parte de **[T14.3]**), não remover às cegas.                        |
+
+---
+
+## ÉPICO 11 — Bugs Funcionais e Paridade C++ 🐞 [release-blocker A2 Beta]
+
+> Objetivo: eliminar divergências reais que fazem o NAM-rs soar/rotear errado. Máxima prioridade.
+
+### Sprint 11.1 — Normalização de ganho do modelo no CLAP
+
+- **[T11.1] CLAP descarta a calibração de ganho de entrada/saída do modelo (`input_level_dbu`/`loudness`).**
+
+  - **Severidade: ALTA (soa errado em silêncio — pior modo de falha).** O loader calcula
+    `input_mult_adj`/`output_mult_adj` a partir dos metadados `input_level_dbu` e `loudness`
+    (`src/loader/build.rs:145-151`) e os entrega em `LoadedModelPair` (`build.rs:230-231`).
+  - **Standalone aplica** corretamente: `compute_gain_multipliers()` combina `user × model`
+    (`src/standalone/rt_setup/mod.rs:33-34`, alimentado em `pw_host/capture/setup.rs:141-146`), e o
+    pipeline multiplica por `ctx.input_gain_mult`/`output_gain_mult` (`src/dsp/pipeline/stages/input.rs:115`,
+    `stages/output.rs:55`). `src/main.rs:156-157` propaga os multiplicadores no payload.
+  - **CLAP descarta:** `ClapParamPayload::LoadModel` (`src/clap/plugin/shared.rs:21-28`) **não carrega**
+    `input_mult_adj`/`output_mult_adj`; `load_model` (`src/clap/plugin/main_thread/load.rs:113-118`) os
+    joga fora; e o orquestrador fixa `input_gain_mult: 1.0`/`output_gain_mult: 1.0`
+    (`src/clap/processor/dsp/orchestrator.rs:68-69,126`). O comentário em `orchestrator.rs:60-63` só
+    justifica não duplicar o **ganho do usuário** — não cobre a **calibração do modelo**, que no CLAP
+    fica sem nenhum caminho de aplicação. Resultado: um `.nam` com `loudness` ≠ −18 dB (comum: o trainer
+    NAM grava `loudness` por padrão) toca com nível **diferente** no CLAP vs. standalone vs. C++.
+  - **Decisão de produto necessária:** aplicar **sempre** (paridade com o standalone deste projeto) ou
+    expor um **toggle de calibração** (semântica do NeuralAmpModelerPlugin oficial, onde input-cal/output-norm
+    são opcionais). Registrar a decisão em `docs/clap_integration.md`.
+  - **Implementação sugerida:** adicionar `input_mult_adj: f32` e `output_mult_adj: f32` a
+    `ClapParamPayload::LoadModel`; armazenar no estado do processor no swap; aplicar como
+    `input_gain_mult`/`output_gain_mult` no `DspPipelineContext` (ou fundir nos smoothers, cuidando para
+    **não** dobrar o ganho do usuário).
+  - **Critério de aceite:** teste verificando que um modelo com `loudness`/`input_level_dbu` não-default
+    produz o **mesmo nível** de saída no CLAP e no standalone (dentro da tolerância de ganho); zero alloc
+    no hot-path (heap-audit verde); decisão de semântica documentada.
+
+### Sprint 11.2 — Endurecer a detecção A2 (anti-misroute)
+
+- **[T11.2] `is_a2_shape()` estrita, com paridade ao detector `is_a2()` do C++.**
+
+  - **Gap conhecido e auto-documentado** em `src/loader/nam_json/topology.rs:152-156`. O detector C++
+    (`NAM/wavenet/a2_fast.cpp:875-908`) exige **todos** estes critérios para rotear ao fast-path A2:
+    `layers.len()==1`, `head` ausente/nulo, **`head_scale` presente e numérico**, **`in_channels==1`**,
+    **`layers[0].input_size==1`**, `condition_size==1`, **`channels==bottleneck`**, `channels ∈ {3,8}`,
+    `dilations==kDilations`, **`kernel_sizes`** compatíveis e ativação **LeakyReLU** (não gated/blended),
+    sem FiLM/`condition_dsp`.
+  - **Rust hoje só checa:** `architecture=="WaveNet"`, `layers.len()==1`, `channels ∈ {3,8}` e `dilations`
+    (`topology.rs:157-189`). **Faltam:** `bottleneck==channels`, `input_size`, `kernel_sizes`, tipo de
+    ativação, FiLM/`condition_dsp` e presença de `head_scale`. (`condition_size`/`head` já são barrados por
+    `validate_wavenet_features()`.)
+  - **Risco:** um modelo com `channels ∈ {3,8}` + dilations A2 porém `bottleneck≠channels`, ou com ativação
+    gated/blended, ou com FiLM, é **roteado ao fast-path fixo A2** que assume `bottleneck==channels` e
+    LeakyReLU → **saída silenciosamente incorreta** (ou erro confuso de exhaustion no `set_weights`). Como a
+    cross-validation A2 × C++ está bloqueada por bug upstream (T7.8), a detecção A2 só é validada contra
+    fixtures próprias — tornando a divergência de critério um risco real para o A2 Beta.
+  - **Implementação:** adicionar os campos faltantes em `NamLayerConfig` (`bottleneck`, `input_size`,
+    `kernel_sizes`, `activation`/`negative_slope`, flags FiLM/`condition_dsp`); estender `is_a2_shape()` para
+    casar **exatamente** a assinatura A2; **rejeitar com diagnóstico claro** (não fast-path silencioso) tudo
+    que não casar. Atualizar a referência `a2_fast.cpp:754-885` no comentário para `a2_fast.cpp:875-908`.
+  - **Critério de aceite:** fixtures sintéticas com `bottleneck≠channels`, ativação gated e FiLM são
+    rejeitadas com mensagem clara; A2-Full/A2-Lite oficiais seguem carregando; goldens A1/A2 verdes;
+    divergência/decisão registrada em `docs/cpp_parity_map.md`.
+
+---
+
+## ÉPICO 12 — RT-Safety na Degradação Adaptativa 🛡️ [release-blocker A2 Beta]
+
+> Objetivo: garantir que o caminho de *graceful degradation* não faça trabalho pesado exatamente no momento
+> de pressão de CPU.
+
+### Sprint 12.1 — Custo de transição do `ContainerModel`
+
+- **[T12.1] Remover `reset()`/`prewarm()` e `Vec::resize` do hot-path em `set_slimmable_size()`.**
+
+  - `src/models/container.rs:202-232`: na transição adaptativa (acionada pela FSM `AdaptiveCompute` **sob
+    pressão de CPU**), `set_slimmable_size()` chama `self.submodels[next].1.reset(sr, max_buf)`
+    (`container.rs:220-222`) e `self.scratch_buffer.resize(self.max_buffer_size, 0.0)` (`container.rs:224`)
+    **na thread de áudio**.
+  - **Problema 1 (CPU spike):** para submodelos WaveNet/A2, `reset()` → `prewarm()` processa
+    `receptive_field_size` frames de silêncio por `process()` (rede A2 profunda de 23 camadas). Isso é um
+    pico de CPU disparado **justamente quando o bloco já estourou o budget** — contraproducente para a
+    degradação graciosa. Contradiz parcialmente `docs/architecture.md §7` ("swap ... zero heap allocations"):
+    é zero-alloc, mas **não** zero-CPU.
+  - **Problema 2 (alloc latente):** o `resize` é redundante (em produção `len == max_buffer_size` já fixado
+    em `reset`/`set_max_buffer_size` no cold-path), porém **frágil** — se a capacidade não estiver pré-reservada,
+    realoca no RT. Note que o `process()` em crossfade já roda **ambos** os submodelos (`container.rs:146-168`),
+    então durante o fade a CPU é maior, não menor.
+  - **Investigação + correção:** (a) medir o custo do `reset()`/`prewarm()` por submodelo A2 sob AVX2 e
+    confirmar se estoura o budget na transição; (b) garantir `resize` no-alloc (pré-reservar capacidade em
+    `set_max_buffer_size` e trocar por `debug_assert!(capacity >= max_buf)` + uso de slice já alocado); (c) se
+    o prewarm for caro, redesenhar para manter o submodelo *pendente* aquecido sem prewarm no hot-path
+    (estratégia *keep-warm* ou warmup incremental amortizado), avaliando se o `reset` é sequer necessário dado
+    que o crossfade já mistura saídas.
+  - **Critério de aceite:** novo caso de heap-audit cobrindo uma transição adaptativa Full→Lite (zero alloc);
+    medição registrada em `docs/benchmarks.md` mostrando que a transição não estoura o budget de bloco; soak
+    e `concurrency_stress` verdes.
+
+---
+
+## ÉPICO 13 — Otimizações de Hot-Path (Cycle Budget) ⚡
+
+> Estrutura/kernels, sem mudar a semântica numérica observável (goldens são o juiz).
+
+### Sprint 13.1 — Kernels de ativação e convolução
+
+- **[T13.1] `simd_sigmoid_dual_avx2`: compartilhar o broadcast de constantes entre as duas lanes.**
+
+  - `src/math/activations/sigmoid.rs:58-62` apenas chama `simd_sigmoid_avx2` **duas vezes**, rebroadcastando
+    ~14 constantes (`c0..c8`, clamps, `half`, `zero`, `one`) por lane. O par `tanh` já faz o certo
+    (broadcast único compartilhado em `src/math/activations/tanh/production.rs:67-107`). O caminho dual é
+    chamado em `sigmoid_slice_avx2` (`sigmoid.rs:116`) — quente na ativação gated do WaveNet/A2.
+  - **Implementação:** inlinar o corpo do dual broadcastando as constantes **uma vez** e computando ambas as
+    lanes (espelhar o padrão do `tanh` dual).
+  - **Critério de aceite:** proptest de paridade sigmoid (SIMD×escalar) verde; bench de inferência sem
+    regressão (ganho esperado no caminho de ativação); golden vectors estáveis.
+
+- **[T13.2] (Investigação) Kahan dentro do laço por-tap do `conv1d`.**
+
+  - `src/models/wavenet/conv1d.rs:192-205` (e `conv1d_dual.rs`) executa Kahan **escalar** por canal a cada
+    tap, serializando a redução SIMD→escalar dentro do laço. Para `K ≤ 3` (típico no WaveNet), o erro de
+    soma simples já é `O(3·ε)` (desprezível), tornando o Kahan por-tap possivelmente superdimensionado.
+  - **Investigação:** medir o custo do Kahan por-tap; avaliar **adiar** a compensação para o fim dos `K` taps
+    (acumular resultados SIMD e Kahan-reduzir uma vez) ou removê-la para `K` pequeno. **Qualquer** mudança só
+    é aceita com **todos os goldens verdes** (regra "Golden = seguro anti-degradação") e estabilidade do soak.
+  - **Critério de aceite:** delta de bench documentado em `docs/benchmarks.md`; goldens dentro da banda;
+    decisão (manter/adiar/remover) registrada com justificativa numérica.
+
+---
+
+## ÉPICO 14 — Robustez de Parsers e Higiene de Código 🧹
+
+### Sprint 14.1 — Robustez
+
+- **[T14.1] Validar `max_value` finito e positivo no `ContainerModel`.**
+
+  - `src/models/container.rs:66` ordena com `partial_cmp(...).unwrap_or(Ordering::Equal)`: um `max_value`
+    `NaN`/`±Inf` (vindo do JSON via `src/loader/dispatcher/container/mod.rs`) passa pela validação de
+    monotonicidade (comparações com NaN são `false`) e depois quebra a seleção em `set_slimmable_size()`
+    (`val < NaN` é sempre `false` → submodelo nunca selecionado).
+  - **Correção:** validar `max_value.is_finite() && max_value >= 0.0` em `ContainerModel::new()` (ou no
+    dispatcher), com erro diagnóstico claro; trocar `submodels.last().unwrap()` (`container.rs:73`) por
+    acesso explícito.
+  - **Critério de aceite:** teste de rejeição (container com `max_value` NaN/Inf) com erro limpo; containers
+    oficiais seguem carregando.
+
+- **[T14.2] Defesa-em-profundidade e comentários `// SAFETY` no parser `.namb`.**
+
+  - `src/loader/namb/parse.rs:24-25`: adicionar comentário `// SAFETY:` documentando a pré-condição
+    (`data.len() >= header_size` validado nas linhas 16-22; `NambHeader` é `Copy`+`repr(C, packed)`).
+  - `src/loader/namb/parse.rs:88-89`: cap explícito de `float_count` (defesa-em-profundidade, hoje só
+    protegido pelo `MAX_MODEL_BYTES` em `build.rs:36`).
+  - `src/models/linear.rs:91-94`: usar `checked_mul`/assert no `limit * 2` (proteção contra overflow teórico).
+  - `src/loader/dispatcher/wavenet/standard.rs:35-36`: `debug_assert!(data.config.layers.len() >= 2)` para
+    tornar explícito o invariante hoje implícito (garantido por `topology.rs:85`).
+  - **Critério de aceite:** proptest de parsers segue verde; novos asserts/caps não regridem fixtures
+    oficiais; `utils/lints.sh` verde.
+
+### Sprint 14.2 — Higiene de `#[allow]`
+
+- **[T14.3] Revisar `#[allow(...)]` residuais.**
+
+  - `src/common/spsc/gc.rs:7` (`clippy::large_enum_variant`): todas as variantes de `GcItem` são `Box<…>`
+    (8 bytes) — o lint provavelmente não dispara mais; **remover e confirmar** com `cargo clippy`.
+  - `src/dsp/pipeline/output_pw.rs:17` (`dead_code` em `AppState`): **manter**, porém adicionar comentário
+    explicando que os campos existem só para manter os streams/listeners vivos via RAII (ver apêndice v2.2).
+  - **Critério de aceite:** nenhum `#[allow]` sem justificativa rastreável; `utils/lints.sh` verde.
+
+---
+
+## ÉPICO 15 — Documentação: Correções de Precisão 📚
+
+### Sprint 15.1 — Defasagens detectadas
+
+- **[T15.1] Corrigir a contagem de extensões CLAP em `docs/architecture.md:470`.**
+
+  - O texto diz "8 CLAP extensions"; o código implementa **11**: `audio_ports`, `params`, `state`,
+    `latency`, `track_info`, `remote_controls`, `param_indication`, `gui`, **`preset_load`**, **`render`**,
+    **`state_context`** (ver `src/clap/extensions/`). Atualizar a contagem e a lista.
+
+- **[T15.2] Remover referências quebradas em `docs/architecture.md:309`.**
+
+  - O parágrafo cita `tests/regression_goldens.rs` e `tests/golden/`, **ambos inexistentes** (foram
+    substituídos pela ancoragem externa ao NeuralAmpModelerCore, como o próprio parágrafo narra). Remover os
+    caminhos mortos ou anotá-los como `(removido)`.
+
+- **[T15.3] Corrigir a alegação de latência do resampler em `docs/architecture.md:183`.**
+
+  - "reduz a latência de ~1.5ms para ~0.1ms" não bate com `latency_samples()`
+    (`src/dsp/resampler.rs:358-376`): com `taps_half=16`, a latência real é ~24–33 amostras
+    (≈0.25–0.75 ms conforme a razão). Re-medir e publicar o valor real.
+
+- **[T15.4] Comentários inline em blocos densos sem explicação do "porquê".**
+
+  - `src/loader/nam_json/validation.rs:70-222` (`LimitedValueVisitor` — explicar as estimativas de bytes por
+    tipo), `src/loader/dispatcher/wavenet/layout.rs:14-96` (transposição interleaved-4-wide),
+    `src/loader/dispatcher/wavenet/bias_tune.rs:34-127` (premissa DC=1.0 da compensação de bias).
+  - **Critério de aceite:** acionar `refatora-doc`; nenhum bloco lógico denso sem ao menos um comentário de
+    intenção; `#[warn(missing_docs)]` segue satisfeito.
 
 ---
 
