@@ -17,7 +17,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 44 minutes - cold run)   ${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 46 minutes - cold run)   ${NC}"
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
 
 # Ensure we are in the project root directory
@@ -136,11 +136,11 @@ run_clap_audit_local() {
     echo "  Executando testes de concorrência com instâncias múltiplas..."
     cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture && \
       echo "  Executando teste de stress do GC com 1000 swaps..." && \
-      cargo test --no-default-features --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps -- --ignored --nocapture && \
+      cargo test --no-default-features --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture && \
       echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..." && \
       cargo test --features standalone --test concurrency_stress -- --ignored --nocapture && \
       echo "  Executando testes unitários e de integração em modo Mono..." && \
-      cargo test --no-default-features --features "clap-plugin" -- --test-threads=1
+      cargo test --no-default-features --features "clap-plugin,testing" -- --test-threads=1
 }
 
 run_phase \

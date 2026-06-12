@@ -17,7 +17,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}        nam-rs Standard QA & Test Suite (± 1,5 minutos)        ${NC}"
+echo -e "${BLUE}${BOLD}         nam-rs Standard QA & Test Suite (± 2 minutos)         ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory

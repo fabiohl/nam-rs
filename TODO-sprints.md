@@ -732,16 +732,11 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     intenção; `#[warn(missing_docs)]` segue satisfeito.
 
 ---
-
-Liberar v2.1 (A2 Beta):
-utils/tests-long.sh
-utils/build-release.sh
-Testes cli utils/run-standalone.sh
-Testes CLAP
-
 ---
 
 ## ÉPICO 100 (FUTURO)
+
+> Liberar v2.1 (A2 Beta): utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
