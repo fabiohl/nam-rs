@@ -79,7 +79,6 @@ pub const fn a2_receptive_field() -> usize {
 /// ## Source of truth
 /// - `a2_fast.cpp`: class `A2FastModel` (members, process, prewarm, reset)
 /// - `detail.h`: `LayerArray::Process` (per-layer sequence)
-/// - `docs/wavenet_walkthrough.rst:278-351`
 pub struct WaveNetA2<const CH: usize> {
     /// 23 A2 layers (one per layer index). Populated by `set_weights` (T1.6).
     pub layers: Vec<A2Layer>,

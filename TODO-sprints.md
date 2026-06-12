@@ -422,7 +422,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     Nunca `/src/...` cru ou esquema `file://` absoluto.
   - **Critério de aceite:** verificação automatizada simples (script ou grep) de que todo alvo de link existe.
 
-- **[T10.2] Eliminar referências ao inexistente `docs/wavenet_walkthrough.rst`.**
+- **[T10.2] Eliminar referências ao inexistente `docs/wavenet_walkthrough.rst`.** [DONE]
 
   - Ocorrências: `src/models/a2/model.rs:83` e `src/models/a2/layer.rs:14` (docs/*.md já estão limpos). Substituir
     por referência ao trecho equivalente do espelho C++ ou remover.

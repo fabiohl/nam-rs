@@ -11,7 +11,6 @@
 //! ## Source of truth
 //! - `a2_fast.cpp:417-690` (`_layer_forward_k`)
 //! - `NAM/wavenet/detail.h` (`Layer`)
-//! - `docs/wavenet_walkthrough.rst:103-214`
 
 use super::conv1d::A2Conv1d;
 use super::conv1d_ch3::A2Conv1dCh3;
