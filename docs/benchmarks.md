@@ -153,9 +153,9 @@ A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`
 | **128 samp** | ~30.8 µs     | ~241            | ~1.2%          |
 | **256 samp** | ~31.5 µs     | ~123            | ~0.6%          |
 
-### A2-Lite (CH=3) — u16 Interleaved Path
+### A2-Lite (CH=3) — f32 Native GEMV Path
 
-A2-Lite uses the generic `A2Conv1d<3>` path with u16 interleaved weights that require dequantization and transposition in the hot-path. Despite having ~6.5x fewer weights (1,871 vs 12,146), the dequantization overhead makes it slower than the CH=8 SIMD path.
+A2-Lite uses the dedicated `A2Conv1dCh3` fast path (`src/models/a2/conv1d_ch3.rs`), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2. Despite having ~6.5x fewer weights (1,871 vs 12,146), the smaller CH=3 vector width (needing only 128-bit XMM registers vs 256-bit YMM for CH=8) results in a latency profile closer to the CH=8 SIMD path.
 
 | Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
 |:------------ |:------------ |:--------------- |:-------------- |
@@ -165,12 +165,12 @@ A2-Lite uses the generic `A2Conv1d<3>` path with u16 interleaved weights that re
 
 ### Comparative Analysis
 
-| Variant | Weights | Channels | Conv Path            | 64-samp Latency |
-|:------- |:------- |:-------- |:-------------------- |:--------------- |
-| A2-Full | 12,146  | 8        | f32 col-major SIMD   | **~30.9 µs**    |
-| A2-Lite | 1,871   | 3        | u16 interleaved GEMV | ~48.7 µs        |
+| Variant | Weights | Channels | Conv Path                   | 64-samp Latency |
+|:------- |:------- |:-------- |:--------------------------- |:--------------- |
+| A2-Full | 12,146  | 8        | f32 col-major SIMD          | **~30.9 µs**    |
+| A2-Lite | 1,871   | 3        | f32 col-major unrolled GEMV | ~48.7 µs        |
 
-The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weights, validating the architectural decision to invest in a dedicated col-major `A2Conv1dCh8` kernel. The u16 dequantization and transposition overhead in CH=3 dominates the arithmetic savings.
+The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weights, validating the architectural decision to invest in a dedicated col-major `A2Conv1dCh8` kernel. The CH=3 kernel operates on 128-bit XMM registers (3 channels + 1 zero pad) versus 256-bit YMM for CH=8, reducing SIMD throughput per instruction.
 
 ### Key Findings
 
@@ -198,7 +198,7 @@ The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callb
 * FadingOut includes the ramp step arithmetic (`fade_counter -= n_samples`, `current_multiplier = fade_counter * inv_fade_frames`, `ramp_samples = n_samples`) and remains constant across block sizes because only the numeric subtraction and multiplication are block-size-independent.
 * The gate's actual computational cost is in `apply_gain_rt` / `apply_gain_rt_stereo` (SIMD gain application), not in the FSM decision logic measured here.
 
-### Running
+### Running Gate_FSM bench
 
 ```sh
 cargo bench --bench inference_bench -- "Gate_FSM"

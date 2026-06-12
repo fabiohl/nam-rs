@@ -428,7 +428,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     por referência ao trecho equivalente do espelho C++ ou remover.
   - **Critério de aceite:** zero referências ao arquivo fantasma (`grep -r wavenet_walkthrough` vazio).
 
-- **[T10.3] Atualizar conteúdo defasado.**
+- **[T10.3] Atualizar conteúdo defasado.** [DONE]
 
   - `docs/architecture.md` §8.3.2: o texto diz que a remoção do `Avx2VnniMath` está "planejada" — já foi concluída;
     remover também a menção ao "Epic 8 (V-Table Unification)" (não existe mais).
@@ -438,6 +438,9 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     de `conv1d_ch3.rs`; atualizar texto e conferir se os números publicados correspondem ao kernel vigente.
   - `docs/dependencies.md`: corrigir rationale do `rustfft` (também usado no cabsim e MR-STFT, não só no resampler).
   - **Critério de aceite:** cada doc reflete o estado real do código (verificação por amostragem do revisor).
+  - **Nota (T10.3):** O texto do A2-Lite em `docs/benchmarks.md` foi atualizado para refletir o kernel f32 GEMV
+    desenrolado de `conv1d_ch3.rs`. Os números de latência (~48.7 µs) são herdados do kernel u16 anterior e
+    precisam ser re-medidos com `cargo bench` — o kernel f32 nativo deve apresentar latência inferior.
 
 ### Sprint 10.2 — Política, consistência e comentários
 

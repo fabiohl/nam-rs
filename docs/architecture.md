@@ -171,7 +171,7 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 
 | Build Profile            | Compilation Command                                              | Generated Asset        | Main Dependencies                                      |
 |:------------------------ |:---------------------------------------------------------------- |:---------------------- |:------------------------------------------------------ |
-| **Standalone** (default) | `cargo build --features standalone`                              | Executable Binary      | `pipewire`, `rtrb`, `clap` (CLI)                       |
+| **Standalone** (default) | `cargo build`                                                    | Executable Binary      | `pipewire`, `rtrb`, `clap` (CLI)                       |
 | **CLAP Plugin**          | `cargo build --no-default-features --features clap-plugin --lib` | `.so` Library (cdylib) | `clack-plugin`, `clack-extensions`, `egui`, `baseview` |
 | **DSP Lib (Pure)**       | `cargo build --no-default-features --lib`                        | Rust Library (`.rlib`) | Core DSP only (no-std ready)                           |
 
@@ -595,8 +595,8 @@ The graphical interface is decomposed from its original monolithic state into a 
 
 - **Decision:** Fragmentation of the monolithic mathematical infrastructure into domain-specific modules (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).
 - **Justification:** Reduces cognitive noise in files with 2000+ lines, allows isolated unit testing per kernel, and facilitates compiler inlining audits.
-- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs. *(Planned: the remaining alias and the now-dead `Avx2Vnni`/`Avx512Vnni` `InstructionSet` variants are slated for full removal — see [TODO-sprints.md](../TODO-sprints.md) T0.1.)*
-- **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. We identified that the dispatch abstraction in `math/common/dispatch.rs` is a design debt point that will be unified in Epic 8 (V-Table Unification).
+- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs. The cleanup of the `Avx2Vnni`/`Avx512Vnni` `InstructionSet` variants has been completed; only `Avx512VnniBf16` remains as an actively used VNNI variant (BF16 dot-product for weight-compressed WaveNet models).
+- **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. The dispatch abstraction in `math/common/dispatch.rs` is a recognized design debt point.
 
 ### 8.3.3 GUI Conditional Rendering (Idle Reduce)
 

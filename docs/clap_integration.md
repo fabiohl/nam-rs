@@ -37,7 +37,7 @@ The model path (`model_path`) will be treated as a **State Property**, allowing 
 
 The project uses *feature flags* to allow multiple build targets:
 
-- `cargo build --features standalone`: Executable binary with PipeWire backend (default).
+- `cargo build`: Executable binary with PipeWire backend (default). The `standalone` feature is enabled by default.
 - `cargo build --no-default-features --features clap-plugin --lib`: Dynamic library (`.clap`) with a complete GUI.
 
 The `clap-plugin` feature will omit the entire `src/standalone/` module (PipeWire host, RT setup, and CLI), keeping the final binary free of PipeWire dependencies.
