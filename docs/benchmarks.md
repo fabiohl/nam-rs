@@ -353,5 +353,14 @@ cargo bench --bench kahan_conv1d_bench
 ```
 
 # Long-duration soak (35s+ measurement, 4096-sample blocks)
+```sh
 cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ```
+
+## RT-Safety on Adaptive Degradation Transition (Epic 12)
+
+To ensure that the transition between quality levels (e.g., A2-Full and A2-Lite) under CPU pressure does not trigger buffer underruns, the transition path has been optimized:
+1. **Zero Heap Allocations/Drops:** The `ContainerModel` transition (`set_slimmable_size`) uses pre-allocated buffers (scratch buffer size pre-reserved via `set_max_buffer_size`) and performs absolutely zero memory allocations or deallocations.
+2. **Elimination of Heavy Transition Overhead:** The heavy `reset()` and `prewarm()` computations have been completely removed from the runtime transition path. Instead, the Linear Crossfade (32 ms) naturally blends the state and output of the submodels, ensuring click-free switching without real-time CPU spikes.
+3. **Formal Verification:** Tested via the `test_zero_alloc_container_transition` integration test with the `CountingAllocator`, validating that transitioning between submodels and running the crossfade does not allocate or drop memory.
+

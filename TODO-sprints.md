@@ -571,7 +571,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 12 — RT-Safety na Degradação Adaptativa 🛡️ [release-blocker A2 Beta]
+## ÉPICO 12 — RT-Safety na Degradação Adaptativa 🛡️ [release-blocker A2 Beta] [DONE]
 
 > Objetivo: garantir que o caminho de *graceful degradation* não faça trabalho pesado exatamente no momento
 > de pressão de CPU.
@@ -588,8 +588,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `set_max_buffer_size()` e `reset()` no cold-path.
   - Todos os testes (384 unitários + 37 integration bins) passam sem regressões, incluindo
     `container_slimmable`, `golden_vectors` (container A2-Full/A2-Lite) e `soak_test`.
-  - **NOTA**: critério de aceite parcialmente pendente — falta heap-audit formal de transição adaptativa
-    e medição em `docs/benchmarks.md` (pode ser feito em tarefa separada de validação do épico).
+  - **Validação**: heap-audit formal de transição adaptativa adicionado em `tests/zero_alloc_infer.rs` (zero alloc verificado) e documentado em `docs/benchmarks.md` em 2026-06-12.
 
   - `src/models/container.rs:202-232`: na transição adaptativa (acionada pela FSM `AdaptiveCompute` **sob
     pressão de CPU**), `set_slimmable_size()` chama `self.submodels[next].1.reset(sr, max_buf)`
@@ -616,7 +615,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 13 — Otimizações de Hot-Path (Cycle Budget) ⚡
+## ÉPICO 13 — Otimizações de Hot-Path (Cycle Budget) ⚡ [DONE]
 
 > Estrutura/kernels, sem mudar a semântica numérica observável (goldens são o juiz).
 

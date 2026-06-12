@@ -238,3 +238,60 @@ fn test_zero_alloc_capture_pipeline() {
         "Allocation in capture_dsp_pipeline! The entire pipeline must be zero-alloc."
     );
 }
+
+/// Zero-Allocation Verification Test for ContainerModel Submodel Transition (RT-Safety).
+#[test]
+fn test_zero_alloc_container_transition() {
+    use nam_rs::models::StaticModel;
+    use nam_rs::models::slimmable::SlimmableModel;
+
+    let full_nam_path = model_path("wavenet_a2_full.nam");
+    let lite_nam_path = model_path("wavenet_a2_lite.nam");
+    if !full_nam_path.exists() || !lite_nam_path.exists() {
+        eprintln!("SKIP: A2 model files not found. Container transition test impossible.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container = nam_rs::models::container::ContainerModel::new(
+        vec![(0.5, lite_model), (1.0, full_model)],
+        sample_rate,
+    )
+    .expect("Failed to create ContainerModel");
+
+    let mut model = StaticModel::Container(Box::new(container));
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    // Pre-run one block
+    model.process(&input, &mut output);
+
+    let count = {
+        let _guard = TrackingGuard::new();
+        if let StaticModel::Container(ref mut c) = model {
+            // Trigger transition: switch from Full to Lite
+            c.set_slimmable_size(0.25);
+        }
+        // Run several blocks to process through the entire crossfade duration
+        for _ in 0..30 {
+            model.process(&input, &mut output);
+        }
+        get_alloc_count()
+    };
+
+    assert_eq!(
+        count, 0,
+        "Allocations detected during ContainerModel transition and crossfade! count={}",
+        count
+    );
+}
