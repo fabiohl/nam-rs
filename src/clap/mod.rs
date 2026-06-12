@@ -9,8 +9,6 @@ pub mod descriptor;
 pub mod entry;
 pub mod extensions;
 pub mod factory;
-#[cfg(feature = "heap-audit")]
-pub mod heap_audit;
 
 pub mod plugin;
 pub mod processor;

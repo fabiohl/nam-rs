@@ -7,7 +7,6 @@
 pub mod bypass;
 pub mod channels;
 pub mod gain;
-pub mod gate_flags;
 pub mod orchestrator;
 pub mod peaks;
 pub mod telemetry;

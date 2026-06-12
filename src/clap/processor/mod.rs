@@ -12,6 +12,8 @@
 mod dsp;
 mod events;
 mod gc;
+#[cfg(feature = "heap-audit")]
+mod heap_audit;
 mod params;
 mod state;
 

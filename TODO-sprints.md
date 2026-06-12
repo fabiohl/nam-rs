@@ -368,7 +368,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 9.2 — Layout físico e duplicações
 
-- **[T9.5] Micro-arrumações de módulos.**
+- **[T9.5] Micro-arrumações de módulos.**[DONE]
 
   - Eliminar `src/clap/processor/dsp/gate_flags.rs` (5 linhas, só re-export) — inlinar o `use` em
     `clap/processor/dsp/mod.rs`.

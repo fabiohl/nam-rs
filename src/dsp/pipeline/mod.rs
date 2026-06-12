@@ -52,7 +52,11 @@ pub use output_pw::PipewireHostConfig;
 pub(crate) use output_pw::{build_spa_format_pod, playback_dsp_cycle};
 
 #[cfg(test)]
-pub(crate) mod test_util;
+pub(crate) mod test_util {
+    pub mod infra {
+        pub use crate::common::alloc_audit::{ALLOC_COUNT, CountingAllocator, TrackingGuard};
+    }
+}
 
 #[cfg(test)]
 #[global_allocator]

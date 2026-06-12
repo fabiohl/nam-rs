@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::super::NamClapProcessor;
-use crate::clap::processor::dsp::{channels, gate_flags, peaks};
+use crate::clap::processor::dsp::{channels, peaks};
 use crate::dsp::gate::GateState;
+use crate::dsp::gate_flags;
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
 };
