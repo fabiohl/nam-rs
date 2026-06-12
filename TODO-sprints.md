@@ -661,7 +661,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 14 — Robustez de Parsers e Higiene de Código 🧹
+## ÉPICO 14 — Robustez de Parsers e Higiene de Código 🧹 [DONE]
 
 ### Sprint 14.1 — Robustez
 
@@ -701,7 +701,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 15 — Documentação: Correções de Precisão 📚
+## ÉPICO 15 — Documentação: Correções de Precisão 📚 [DONE]
 
 ### Sprint 15.1 — Defasagens detectadas
 

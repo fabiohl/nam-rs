@@ -103,8 +103,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         // --- 1. Setup (Bias and Mixin) ---
         let full_blocks = OUT & !3;
         for i in (0..full_blocks).step_by(4) {
-            let acc_f0: &mut [f32; 4] = (&mut out_frame_f0[i..i + 4]).try_into().unwrap();
-            let acc_f1: &mut [f32; 4] = (&mut out_frame_f1[i..i + 4]).try_into().unwrap();
+            // SAFETY: `i + 4 <= OUT` since `i` ranges up to `full_blocks` in steps of 4, where `full_blocks = OUT & !3`.
+            // The slice pointers are well-aligned and point to valid sequences of 4 floats, which aligns with `[f32; 4]`.
+            // The lifetimes are correctly constrained by the borrows of `out_frame_f0` and `out_frame_f1`.
+            let acc_f0: &mut [f32; 4] =
+                unsafe { &mut *(out_frame_f0.as_mut_ptr().add(i) as *mut [f32; 4]) };
+            let acc_f1: &mut [f32; 4] =
+                unsafe { &mut *(out_frame_f1.as_mut_ptr().add(i) as *mut [f32; 4]) };
             unsafe {
                 init_accum_with_bias_mixin::<M>(acc_f0, &self.bias, mixin_f0, i, self.do_bias);
                 init_accum_with_bias_mixin::<M>(acc_f1, &self.bias, mixin_f1, i, self.do_bias);

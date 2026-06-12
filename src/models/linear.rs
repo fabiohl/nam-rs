@@ -49,6 +49,8 @@ pub struct LinearModel {
     pub write_pos: usize,
     /// Number of input samples in the receptive field (= `weights.len()`).
     pub receptive_field: usize,
+    /// Precalculated limit * 2 to avoid runtime multiplication overflow checks.
+    double_limit: usize,
 }
 
 impl LinearModel {
@@ -69,12 +71,16 @@ impl LinearModel {
         weights.reverse();
         let history = MirroredBuffer::<f32>::new(receptive_field)?;
         let limit = history.size();
+        let double_limit = limit.checked_mul(2).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Limit overflow")
+        })?;
         Ok(Self {
             weights,
             bias,
             history,
             write_pos: limit,
             receptive_field,
+            double_limit,
         })
     }
 
@@ -89,12 +95,8 @@ impl LinearModel {
         self.history[self.write_pos] = input;
 
         self.write_pos += 1;
-        let limit = self.history.size();
-        let double_limit = limit
-            .checked_mul(2)
-            .expect("MirroredBuffer size overflow: limit * 2 exceeds usize");
-        if self.write_pos >= double_limit {
-            self.write_pos -= limit;
+        if self.write_pos >= self.double_limit {
+            self.write_pos -= self.history.size();
         }
 
         let start = self.write_pos - self.receptive_field;
