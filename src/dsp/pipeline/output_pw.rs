@@ -14,14 +14,11 @@ use pipewire as pw;
 
 /// Holds essential PipeWire instances (`StreamBox` and `Listener`).
 #[cfg(feature = "standalone")]
+#[allow(dead_code)]
 pub(crate) struct AppState<S1, L1, S2, L2> {
-    #[allow(dead_code)]
     pub capture_stream: S1,
-    #[allow(dead_code)]
     pub capture_listener: L1,
-    #[allow(dead_code)]
     pub playback_stream: S2,
-    #[allow(dead_code)]
     pub playback_listener: L2,
 }
 

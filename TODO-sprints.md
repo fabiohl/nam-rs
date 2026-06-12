@@ -358,7 +358,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     remover se órfãs, ou documentar o consumidor num comentário do `Cargo.toml`.
   - **Critério de aceite:** nenhuma feature declarada sem consumidor rastreável.
 
-- **[T9.4] Remover `#[allow(...)]` residuais.**
+- **[T9.4] Remover `#[allow(...)]` residuais.** [DONE]
 
   - `src/clap/extensions/state.rs:49` (`unused_mut`), `src/dsp/resampler.rs:384,407,430,452` (`unused_parens`),
     `src/math/gemm/mod.rs:30` (`unused_imports` em `pub use gemv_bf16::*` — verificar consumidores reais e remover

@@ -46,8 +46,7 @@ struct StateEnvelope {
     params: NamPluginParams,
 }
 
-#[allow(unused_mut)]
-fn migrate(version: u32, mut params: NamPluginParams) -> NamPluginParams {
+fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
     if version < 1 {
         // v0 → v1: common fields copied, new fields use Default
         // (NamPluginParams already has #[serde(default)] on all fields)

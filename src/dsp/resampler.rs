@@ -381,7 +381,6 @@ impl NamResampler {
     ///
     /// # Returns
     /// Number of samples written to `out_l` / `out_r`.
-    #[allow(unused_parens)]
     pub fn process_input(
         &mut self,
         in_l: &[f32],
@@ -395,7 +394,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal, (in_l), (in_r), (out_l), (out_r))
+        dispatch_simd!(core, process_internal, in_l, in_r, out_l, out_r)
     }
 
     /// **Output resampling** (output path): `nam_rate → pw_rate`.
@@ -404,7 +403,6 @@ impl NamResampler {
     ///
     /// # Returns
     /// Number of samples written to `out_l` / `out_r`.
-    #[allow(unused_parens)]
     pub fn process_output(
         &mut self,
         in_l: &[f32],
@@ -418,7 +416,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal, (in_l), (in_r), (out_l), (out_r))
+        dispatch_simd!(core, process_internal, in_l, in_r, out_l, out_r)
     }
 
     /// **Mono input resampling** (input path): `pw_rate → nam_rate`.
@@ -427,7 +425,6 @@ impl NamResampler {
     ///
     /// # Returns
     /// Number of samples written to `out_l` / `out_r`.
-    #[allow(unused_parens)]
     pub fn process_input_mono(
         &mut self,
         in_l: &[f32],
@@ -440,7 +437,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_l[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal_mono, (in_l), (out_l), (out_r))
+        dispatch_simd!(core, process_internal_mono, in_l, out_l, out_r)
     }
 
     /// **Mono output resampling** (output path): `nam_rate → pw_rate`.
@@ -449,7 +446,6 @@ impl NamResampler {
     ///
     /// # Returns
     /// Number of samples written to `out_l` / `out_r`.
-    #[allow(unused_parens)]
     pub fn process_output_mono(
         &mut self,
         in_l: &[f32],
@@ -462,7 +458,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_l[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal_mono, (in_l), (out_l), (out_r))
+        dispatch_simd!(core, process_internal_mono, in_l, out_l, out_r)
     }
 }
 

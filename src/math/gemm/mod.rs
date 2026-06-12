@@ -27,5 +27,3 @@ pub use dot_4x::*;
 pub use gemm_batch::*;
 pub use gemv::*;
 pub use gemv_4gate::*;
-#[allow(unused_imports)]
-pub use gemv_bf16::*;
