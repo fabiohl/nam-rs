@@ -1,64 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+// Copyright (c) 2026 Fabio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! A2 Interface Tests.
+//! A2 Loader Tests.
 //!
-//! Validates that the Rust A2 constants mirror `a2_fast.h` exactly,
-//! and that `is_a2_shape` accepts valid A2 topologies while rejecting
-//! non-A2 shapes.
-//!
-//! Real A2 inference is validated by golden tests (see Sprint 1.4).
+//! Covers constant parity with C++ `a2_fast.h`, topology detection (`is_a2_shape`,
+//! `is_wavenet_a2` dispatch), fixture loading, real inference sanity, forward‑compatibility
+//! error handling, and A1 model regression.
 
+use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
     NamConfig, NamLayerConfig, NamModelData, WeightsLayout, get_wavenet_topology, is_a2_shape,
+    parse_nam_json,
 };
+use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS,
 };
+use std::fs;
+use std::path::PathBuf;
 
-// =============================================================================
-// 1. Constants cross-check with a2_fast.h (raw C++ source embedded as string)
-// =============================================================================
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-#[test]
-fn test_a2_constants_match_cpp_reference() {
-    // Raw C++ constants from github.com/NeuralAmpModelerCore/NAM/wavenet/a2_fast.h
-    assert_eq!(A2_NUM_LAYERS, 23, "kNumLayers mismatch");
-
-    assert_eq!(A2_HEAD_KERNEL_SIZE, 16, "kHeadKernelSize mismatch");
-
-    assert!(
-        (A2_LEAKY_SLOPE - 0.01f32).abs() < f32::EPSILON,
-        "kLeakySlope mismatch: got {}, expected 0.01",
-        A2_LEAKY_SLOPE
-    );
-
-    // Cross-check kernel sizes against raw a2_fast.h values
-    let cpp_kernel_sizes: [usize; 23] = [
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
-    ];
-    assert_eq!(A2_KERNEL_SIZES, cpp_kernel_sizes, "kKernelSizes mismatch");
-
-    // Cross-check dilations against raw a2_fast.h values
-    let cpp_dilations: [usize; 23] = [
-        1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
-    ];
-    assert_eq!(A2_DILATIONS, cpp_dilations, "kDilations mismatch");
-
-    // Cross-check valid channels
-    let cpp_valid_channels: [u8; 2] = [3, 8];
-    assert_eq!(
-        A2_VALID_CHANNELS, cpp_valid_channels,
-        "valid channels mismatch"
-    );
+fn model_path(filename: &str) -> PathBuf {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.push("tests/fixtures/models");
+    p.push(filename);
+    p
 }
 
-// =============================================================================
-// 2. is_a2_shape accepts valid A2 topologies, rejects others
-// =============================================================================
-
-/// Helper: creates NamModelData for testing is_a2_shape.
 fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
     NamModelData {
         version: Some("0.6.0".to_string()),
@@ -89,6 +61,74 @@ fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
         weights_layout: WeightsLayout::Original,
     }
 }
+
+fn make_unrecognized_a2_like_data(channels: usize) -> NamModelData {
+    NamModelData {
+        version: Some("0.6.0".to_string()),
+        architecture: "WaveNet".to_string(),
+        config: NamConfig {
+            layers: vec![NamLayerConfig {
+                input_size: Some(1),
+                condition_size: Some(1),
+                head_size: None,
+                channels: Some(channels),
+                kernel_size: None,
+                dilations: Some(vec![1, 2, 4, 8, 16, 32, 64]),
+                activation: Some("LeakyReLU".to_string()),
+                gated: None,
+                head_bias: None,
+            }],
+            head: None,
+            head_scale: Some(1.0),
+            num_layers: None,
+            hidden_size: None,
+            receptive_field: None,
+            bias: None,
+            submodels: None,
+        },
+        weights: vec![],
+        sample_rate: Some(48000.0),
+        metadata: None,
+        weights_layout: WeightsLayout::Original,
+    }
+}
+
+// =============================================================================
+// 1. Constants cross‑check with C++ a2_fast.h
+// =============================================================================
+
+#[test]
+fn test_a2_constants_match_cpp_reference() {
+    assert_eq!(A2_NUM_LAYERS, 23, "kNumLayers mismatch");
+
+    assert_eq!(A2_HEAD_KERNEL_SIZE, 16, "kHeadKernelSize mismatch");
+
+    assert!(
+        (A2_LEAKY_SLOPE - 0.01f32).abs() < f32::EPSILON,
+        "kLeakySlope mismatch: got {}, expected 0.01",
+        A2_LEAKY_SLOPE
+    );
+
+    let cpp_kernel_sizes: [usize; 23] = [
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
+    ];
+    assert_eq!(A2_KERNEL_SIZES, cpp_kernel_sizes, "kKernelSizes mismatch");
+
+    let cpp_dilations: [usize; 23] = [
+        1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
+    ];
+    assert_eq!(A2_DILATIONS, cpp_dilations, "kDilations mismatch");
+
+    let cpp_valid_channels: [u8; 2] = [3, 8];
+    assert_eq!(
+        A2_VALID_CHANNELS, cpp_valid_channels,
+        "valid channels mismatch"
+    );
+}
+
+// =============================================================================
+// 2. is_a2_shape: accepts valid topologies, rejects others
+// =============================================================================
 
 #[test]
 fn test_is_a2_shape_accepts_channels_3() {
@@ -239,7 +279,7 @@ fn test_is_a2_shape_rejects_wrong_dilations_length() {
 
 #[test]
 fn test_a2_shape_does_not_match_standard_wavenet() {
-    // Standard WaveNet topology (16 channels, non-A2 dilations) should not match
+    let a1_std_dils = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let data = NamModelData {
         version: Some("0.5.4".to_string()),
         architecture: "WaveNet".to_string(),
@@ -247,7 +287,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
             layers: vec![
                 NamLayerConfig {
                     channels: Some(16),
-                    dilations: Some(vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512]),
+                    dilations: Some(a1_std_dils.clone()),
                     activation: Some("Tanh".to_string()),
                     input_size: None,
                     condition_size: None,
@@ -258,7 +298,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
                 },
                 NamLayerConfig {
                     channels: Some(16),
-                    dilations: Some(vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512]),
+                    dilations: Some(a1_std_dils),
                     activation: Some("Tanh".to_string()),
                     input_size: None,
                     condition_size: None,
@@ -293,24 +333,15 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
 }
 
 // =============================================================================
-// 3. Dispatch table: A1 with version >= 0.6.0 must NOT be misrouted to A2
+// 3. Dispatch table: A1 with high version must NOT be misrouted to A2
 // =============================================================================
 
-/// Table-driven test ensuring `is_wavenet_a2()` uses shape as the primary
-/// detector. An A1 WaveNet model with a high version string must NOT be
-/// classified as A2 — version is telemetry only.
 #[test]
 fn test_dispatch_table_a1_high_version_not_misrouted() {
-    use nam_rs::models::a2::A2_DILATIONS;
-
-    // A1 Standard dilations
     let a1_std_dils: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    // A1 Lite layer-0 dilations
     let a1_lite_dils_0: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64];
-    // A1 Lite layer-1 dilations
     let a1_lite_dils_1: Vec<usize> = vec![128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-    /// Each case: description, NamModelData factory, expected is_a2_shape, expected is_wavenet_a2
     struct Case {
         desc: &'static str,
         data: NamModelData,
@@ -319,7 +350,6 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
     }
 
     let cases = vec![
-        // ── A1 topologies with high version — must NOT be A2 ──
         Case {
             desc: "A1 Standard v0.5.4 — baseline A1",
             data: NamModelData {
@@ -504,7 +534,6 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
             expect_a2_shape: None,
             expect_wavenet_a2: false,
         },
-        // ── Real A2 topologies — must be A2 ──
         Case {
             desc: "A2 real CH=3 (Lite shape)",
             data: NamModelData {
@@ -571,7 +600,6 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
             expect_a2_shape: Some(8),
             expect_wavenet_a2: true,
         },
-        // ── Ambiguous shapes — version is telemetry only, shape is primary ──
         Case {
             desc: "Ambiguous: CH=3, wrong dils, LeakyReLU — A2 via activation",
             data: NamModelData {
@@ -603,7 +631,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                 weights_layout: WeightsLayout::Original,
             },
             expect_a2_shape: None,
-            expect_wavenet_a2: true, // non-Tanh activation
+            expect_wavenet_a2: true,
         },
         Case {
             desc: "Ambiguous: CH=8, wrong dils, Tanh, high version — NOT A2",
@@ -636,7 +664,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                 weights_layout: WeightsLayout::Original,
             },
             expect_a2_shape: None,
-            expect_wavenet_a2: false, // version alone is NOT sufficient
+            expect_wavenet_a2: false,
         },
         Case {
             desc: "Ambiguous: CH=4 (A1 Nano channels), single layer, high version, Tanh — NOT A2",
@@ -685,6 +713,156 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
             wavenet_a2_result, case.expect_wavenet_a2,
             "[{}] is_wavenet_a2 mismatch: expected {}, got {}",
             case.desc, case.expect_wavenet_a2, wavenet_a2_result,
+        );
+    }
+}
+
+// =============================================================================
+// 4. Fixture loading (real .nam files from tests/fixtures/models/)
+// =============================================================================
+
+#[test]
+fn test_a2_full_fixture_loads() {
+    let json = fs::read_to_string(model_path("wavenet_a2_full.nam")).unwrap();
+    let data = nam_rs::loader::nam_json::parse_nam_json(&json)
+        .expect("Failed to parse wavenet_a2_full.nam");
+
+    assert_eq!(data.architecture, "WaveNet");
+    assert_eq!(data.weights.len(), 12146);
+
+    let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
+    assert_eq!(ch, 8);
+
+    let _model = build_model(&data).expect("Should dispatch to A2-Full");
+}
+
+#[test]
+fn test_a2_lite_fixture_loads() {
+    let json = fs::read_to_string(model_path("wavenet_a2_lite.nam")).unwrap();
+    let data = nam_rs::loader::nam_json::parse_nam_json(&json)
+        .expect("Failed to parse wavenet_a2_lite.nam");
+
+    assert_eq!(data.architecture, "WaveNet");
+    assert_eq!(data.weights.len(), 1871);
+
+    let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
+    assert_eq!(ch, 3);
+
+    let _model = build_model(&data).expect("Should dispatch to A2-Lite");
+}
+
+// =============================================================================
+// 5. Real inference sanity: A2 models produce finite output
+// =============================================================================
+
+#[test]
+fn test_a2_lite_inference_produces_finite_output() {
+    use nam_rs::models::a2::WaveNetA2;
+
+    let mut model = WaveNetA2::<3>::new();
+    model.prewarm();
+    let input = [0.01f32; 64];
+    let mut output = [0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for &s in output.iter() {
+        assert!(s.is_finite(), "A2-Lite output must be finite");
+    }
+}
+
+#[test]
+fn test_a2_full_inference_produces_finite_output() {
+    use nam_rs::models::a2::WaveNetA2;
+
+    let mut model = WaveNetA2::<8>::new();
+    model.prewarm();
+    let input = [0.01f32; 64];
+    let mut output = [0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for &s in output.iter() {
+        assert!(s.is_finite(), "A2-Full output must be finite");
+    }
+}
+
+// =============================================================================
+// 6. Forward‑compatibility: unrecognized A2‑like shapes return clear errors
+// =============================================================================
+
+#[test]
+fn test_unrecognized_a2_shape_returns_clear_error() {
+    let data = make_unrecognized_a2_like_data(5);
+    assert!(
+        data.is_wavenet_a2(),
+        "model should be detected as A2 via activation (LeakyReLU, non-Tanh)"
+    );
+    let result = build_model(&data);
+    assert!(
+        result.is_err(),
+        "unrecognized A2 shape must produce an error, not a silent bypass"
+    );
+    let err_msg = format!("{}", result.err().unwrap());
+    assert!(
+        err_msg.contains("not recognized") || err_msg.contains("shape"),
+        "Error should mention topology not being recognized: {err_msg}",
+    );
+}
+
+// =============================================================================
+// 7. Regression: A1 models continue to load and infer
+// =============================================================================
+
+#[test]
+fn test_regression_a1_wavenet_standard() {
+    let path = model_path("BossWN-standard.nam");
+
+    if !path.exists() {
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON file");
+    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build WaveNet A1 Standard model");
+
+    model.prewarm(2048);
+
+    let input = [0.0f32; 64];
+    let mut output = [0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for &s in output.iter() {
+        assert!(
+            s.is_finite(),
+            "WaveNet A1 output contains non-finite values (NaN/Inf)"
+        );
+    }
+}
+
+#[test]
+fn test_regression_a1_lstm() {
+    let path = model_path("BossLSTM-1x16.nam");
+
+    if !path.exists() {
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON file");
+    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+
+    let mut model = build_model(&model_data).expect("Dispatcher failed to build LSTM A1 model");
+
+    model.prewarm(2048);
+
+    let input = [0.0f32; 64];
+    let mut output = [0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for &s in output.iter() {
+        assert!(
+            s.is_finite(),
+            "LSTM A1 output contains non-finite values (NaN/Inf)"
         );
     }
 }

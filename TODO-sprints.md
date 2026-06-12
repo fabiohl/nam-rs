@@ -234,7 +234,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `tests/common/alloc_audit.rs`; cada binário declara apenas seu `#[global_allocator]` apontando para o tipo comum.
   - **Critério de aceite:** zero duplicação; todos os heap-audits verdes.
 
-- **[T8.3] Fundir os 3 testes de loader A2.**
+- **[T8.3] Fundir os 3 testes de loader A2.** [DONE]
 
   - `tests/a2_placeholder_interface.rs` + `tests/a2_fixture_validation.rs` + `tests/loader_a2_compat.rs` →
     `tests/a2_loader.rs` único (remover redundâncias; o nome "placeholder" é histórico e enganoso).
