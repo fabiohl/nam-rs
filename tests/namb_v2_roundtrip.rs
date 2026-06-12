@@ -98,6 +98,7 @@ fn make_synthetic_lstm(num_layers: usize, hidden_size: usize) -> NamModelData {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights,
         sample_rate: Some(48000.0),
@@ -279,6 +280,7 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
                     activation: Some("Tanh".to_string()),
                     gated: Some(false),
                     head_bias: Some(false),
+                    ..Default::default()
                 },
                 NamLayerConfig {
                     input_size: Some(ch),
@@ -290,6 +292,7 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
                     activation: Some("Tanh".to_string()),
                     gated: Some(false),
                     head_bias: Some(true),
+                    ..Default::default()
                 },
             ],
             head: None,
@@ -299,6 +302,7 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights,
         sample_rate: Some(48000.0),

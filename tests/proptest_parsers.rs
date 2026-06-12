@@ -322,6 +322,7 @@ fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
                 activation: Some(activation),
                 gated: Some(gated),
                 head_bias: Some(head_bias),
+                ..Default::default()
             },
         )
 }
@@ -345,6 +346,7 @@ fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
                 receptive_field: None,
                 bias: None,
                 submodels: None,
+                ..Default::default()
             },
         )
 }

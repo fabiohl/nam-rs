@@ -66,6 +66,7 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         // Weights initialized with a small value (0.01) to avoid premature saturation/infs
         // during repeated benchmark runs.

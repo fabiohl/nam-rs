@@ -54,8 +54,27 @@ pub struct NamMetadata {
     pub loudness: Option<f32>,
 }
 
+/// Helper struct for deserializing `NamLayerConfig` — mirrors the JSON shape
+/// and captures all typed fields while also storing the raw JSON value for
+/// complex nested checks (activation arrays, FiLM keys, etc.).
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct NamLayerConfigHelper {
+    input_size: Option<usize>,
+    condition_size: Option<usize>,
+    head_size: Option<usize>,
+    channels: Option<usize>,
+    kernel_size: Option<usize>,
+    kernel_sizes: Option<Vec<usize>>,
+    dilations: Option<Vec<usize>>,
+    activation: Option<serde_json::Value>,
+    gated: Option<bool>,
+    head_bias: Option<bool>,
+    bottleneck: Option<usize>,
+}
+
 /// The structural configuration of a single layer of the network (whether WaveNet or LSTM).
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct NamLayerConfig {
     /// Optional: Input tensor size.
     pub input_size: Option<usize>,
@@ -67,67 +86,56 @@ pub struct NamLayerConfig {
     pub channels: Option<usize>,
     /// Optional: Convolutional kernel size.
     pub kernel_size: Option<usize>,
+    /// Optional: Per-layer kernel sizes (A2 architecture — 23 elements).
+    pub kernel_sizes: Option<Vec<usize>>,
     /// Optional: Array of dilation factors.
     pub dilations: Option<Vec<usize>>,
     /// Optional: Activation function (e.g. "Tanh" for A1, array of objects for A2 LeakyReLU).
-    #[serde(default, deserialize_with = "deser_activation")]
     pub activation: Option<String>,
     /// Optional: Whether the architecture uses gating.
     pub gated: Option<bool>,
     /// Optional: Whether the processing head has bias.
     pub head_bias: Option<bool>,
+    /// Optional: Bottleneck size (internal channel count for A2).
+    pub bottleneck: Option<usize>,
+    /// Raw JSON value for this layer, preserved for complex shape
+    /// checks (activation arrays, FiLM keys, condition_dsp, etc.).
+    /// `None` when the struct is constructed directly (not via JSON deserialization).
+    #[serde(skip)]
+    pub layer_raw: Option<serde_json::Value>,
 }
 
-/// Custom deserializer for the `activation` field.
-///
-/// Accepts:
-/// - A plain string (A1/WaveNet): `"Tanh"`, `"ReLU"`, etc.
-/// - An array of objects (A2): `[{"type": "LeakyReLU", ...}, ...]` → returns `None`
-/// - Absent/null → returns `None`
-fn deser_activation<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de;
+impl<'de> Deserialize<'de> for NamLayerConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw_value = serde_json::Value::deserialize(deserializer)?;
+        let helper: NamLayerConfigHelper =
+            serde_json::from_value(raw_value.clone()).map_err(serde::de::Error::custom)?;
 
-    struct ActivationVisitor;
-    impl<'de> de::Visitor<'de> for ActivationVisitor {
-        type Value = Option<String>;
+        let activation = match helper.activation {
+            Some(serde_json::Value::String(s)) => Some(s),
+            Some(serde_json::Value::Array(_)) => None, // A2 per-layer activation arrays → not a simple string
+            None => None,
+            _ => None,
+        };
 
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("a string or an array of activation objects")
-        }
-
-        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-            Ok(Some(v.to_string()))
-        }
-
-        fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
-            Ok(Some(v))
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-            while let Ok(Some(_)) = seq.next_element::<serde::de::IgnoredAny>() {}
-            Ok(None)
-        }
-
-        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(None)
-        }
-
-        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(None)
-        }
-
-        fn visit_some<D2: serde::Deserializer<'de>>(
-            self,
-            deser: D2,
-        ) -> Result<Self::Value, D2::Error> {
-            deser.deserialize_any(self)
-        }
+        Ok(NamLayerConfig {
+            input_size: helper.input_size,
+            condition_size: helper.condition_size,
+            head_size: helper.head_size,
+            channels: helper.channels,
+            kernel_size: helper.kernel_size,
+            kernel_sizes: helper.kernel_sizes,
+            dilations: helper.dilations,
+            activation,
+            gated: helper.gated,
+            head_bias: helper.head_bias,
+            bottleneck: helper.bottleneck,
+            layer_raw: Some(raw_value),
+        })
     }
-
-    deserializer.deserialize_any(ActivationVisitor)
 }
 
 /// Weight layout options supported in the `.namb` format.
@@ -144,11 +152,14 @@ pub enum WeightsLayout {
 }
 
 /// The internal configuration of the architecture node in the JSON.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamConfig {
     /// List of stacked layer configurations (present in WaveNet, absent in LSTM).
     #[serde(default)]
     pub layers: Vec<NamLayerConfig>,
+    /// Number of input channels (WaveNet A2). Defaults to 1 when absent.
+    #[serde(default)]
+    pub in_channels: Option<usize>,
     /// A possible auxiliary string for the final head. If null in JSON, it may be absent.
     pub head: Option<std::option::Option<String>>,
     /// Fine scale over the network summation (WaveNet only).

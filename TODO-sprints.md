@@ -544,7 +544,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 11.2 — Endurecer a detecção A2 (anti-misroute)
 
-- **[T11.2] `is_a2_shape()` estrita, com paridade ao detector `is_a2()` do C++.**
+- **[T11.2] `is_a2_shape()` estrita, com paridade ao detector `is_a2()` do C++.**[DONE]
 
   - **Gap conhecido e auto-documentado** em `src/loader/nam_json/topology.rs:152-156`. O detector C++
     (`NAM/wavenet/a2_fast.cpp:875-908`) exige **todos** estes critérios para rotear ao fast-path A2:

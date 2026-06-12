@@ -469,6 +469,7 @@ fn test_is_wavenet_a2_versions() {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: None,
@@ -502,6 +503,7 @@ fn test_is_wavenet_a2_versions() {
         activation: Some("ReLU".to_string()),
         gated: None,
         head_bias: None,
+        ..Default::default()
     }];
     assert!(model.is_wavenet_a2());
 
@@ -517,6 +519,7 @@ fn test_is_wavenet_a2_versions() {
         activation: Some("LeakyReLU".to_string()),
         gated: None,
         head_bias: None,
+        ..Default::default()
     }];
     assert!(model.is_wavenet_a2());
 
@@ -531,6 +534,7 @@ fn test_is_wavenet_a2_versions() {
         activation: Some("LeakyReLU".to_string()),
         gated: None,
         head_bias: None,
+        ..Default::default()
     }];
     assert!(model.is_wavenet_a2());
 }

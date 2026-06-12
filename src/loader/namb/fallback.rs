@@ -36,6 +36,7 @@ pub fn make_standard_wavenet_config() -> NamConfig {
         activation: Some("Tanh".to_string()),
         gated: Some(false),
         head_bias: Some(false),
+        ..Default::default()
     };
 
     // Second layer (usually identical to the first in Standard models).
@@ -49,6 +50,7 @@ pub fn make_standard_wavenet_config() -> NamConfig {
         activation: Some("Tanh".to_string()),
         gated: Some(false),
         head_bias: Some(true),
+        ..Default::default()
     };
 
     NamConfig {
@@ -60,5 +62,6 @@ pub fn make_standard_wavenet_config() -> NamConfig {
         receptive_field: None,
         bias: None,
         submodels: None,
+        ..Default::default()
     }
 }

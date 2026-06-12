@@ -32,6 +32,7 @@ fn model_path(filename: &str) -> PathBuf {
 }
 
 fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
+    use crate::A2_KERNEL_SIZES;
     NamModelData {
         version: Some("0.6.0".to_string()),
         architecture: "WaveNet".to_string(),
@@ -42,10 +43,13 @@ fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
                 head_size: None,
                 channels: Some(channels as usize),
                 kernel_size: None,
+                kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
                 dilations: Some(dilations),
                 activation: Some("LeakyReLU".to_string()),
                 gated: None,
                 head_bias: None,
+                bottleneck: Some(channels as usize),
+                ..Default::default()
             }],
             head: None,
             head_scale: Some(1.0),
@@ -54,6 +58,7 @@ fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: Some(48000.0),
@@ -77,6 +82,7 @@ fn make_unrecognized_a2_like_data(channels: usize) -> NamModelData {
                 activation: Some("LeakyReLU".to_string()),
                 gated: None,
                 head_bias: None,
+                ..Default::default()
             }],
             head: None,
             head_scale: Some(1.0),
@@ -85,6 +91,7 @@ fn make_unrecognized_a2_like_data(channels: usize) -> NamModelData {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: Some(48000.0),
@@ -199,6 +206,7 @@ fn test_is_a2_shape_rejects_multiple_layers() {
                     activation: Some("LeakyReLU".to_string()),
                     gated: None,
                     head_bias: None,
+                    ..Default::default()
                 },
                 NamLayerConfig {
                     input_size: Some(1),
@@ -210,6 +218,7 @@ fn test_is_a2_shape_rejects_multiple_layers() {
                     activation: Some("Tanh".to_string()),
                     gated: None,
                     head_bias: None,
+                    ..Default::default()
                 },
             ],
             head: None,
@@ -219,6 +228,7 @@ fn test_is_a2_shape_rejects_multiple_layers() {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: Some(48000.0),
@@ -247,6 +257,7 @@ fn test_is_a2_shape_rejects_non_wavenet_architecture() {
                 activation: Some("LeakyReLU".to_string()),
                 gated: None,
                 head_bias: None,
+                ..Default::default()
             }],
             head: None,
             head_scale: Some(1.0),
@@ -255,6 +266,7 @@ fn test_is_a2_shape_rejects_non_wavenet_architecture() {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: Some(48000.0),
@@ -295,6 +307,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
                     kernel_size: None,
                     gated: Some(false),
                     head_bias: Some(false),
+                    ..Default::default()
                 },
                 NamLayerConfig {
                     channels: Some(16),
@@ -306,6 +319,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
                     kernel_size: None,
                     gated: Some(false),
                     head_bias: Some(true),
+                    ..Default::default()
                 },
             ],
             head: None,
@@ -315,6 +329,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
             receptive_field: None,
             bias: None,
             submodels: None,
+            ..Default::default()
         },
         weights: vec![],
         sample_rate: Some(48000.0),
@@ -367,6 +382,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(false),
+                            ..Default::default()
                         },
                         NamLayerConfig {
                             channels: Some(16),
@@ -378,6 +394,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(true),
+                            ..Default::default()
                         },
                     ],
                     head: None,
@@ -387,6 +404,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -413,6 +431,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(false),
+                            ..Default::default()
                         },
                         NamLayerConfig {
                             channels: Some(16),
@@ -424,6 +443,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(true),
+                            ..Default::default()
                         },
                     ],
                     head: None,
@@ -433,6 +453,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -459,6 +480,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(false),
+                            ..Default::default()
                         },
                         NamLayerConfig {
                             channels: Some(12),
@@ -470,6 +492,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(true),
+                            ..Default::default()
                         },
                     ],
                     head: None,
@@ -479,6 +502,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -505,6 +529,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(false),
+                            ..Default::default()
                         },
                         NamLayerConfig {
                             channels: Some(8),
@@ -516,6 +541,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                             kernel_size: None,
                             gated: Some(false),
                             head_bias: Some(true),
+                            ..Default::default()
                         },
                     ],
                     head: None,
@@ -525,6 +551,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -550,6 +577,9 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                         kernel_size: None,
                         gated: None,
                         head_bias: None,
+                        kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
+                        bottleneck: Some(3),
+                        ..Default::default()
                     }],
                     head: None,
                     head_scale: Some(1.0),
@@ -558,6 +588,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -583,6 +614,9 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                         kernel_size: None,
                         gated: None,
                         head_bias: None,
+                        kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
+                        bottleneck: Some(8),
+                        ..Default::default()
                     }],
                     head: None,
                     head_scale: Some(1.0),
@@ -591,6 +625,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -616,6 +651,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                         kernel_size: None,
                         gated: None,
                         head_bias: None,
+                        ..Default::default()
                     }],
                     head: None,
                     head_scale: Some(1.0),
@@ -624,6 +660,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -649,6 +686,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                         kernel_size: None,
                         gated: None,
                         head_bias: None,
+                        ..Default::default()
                     }],
                     head: None,
                     head_scale: Some(1.0),
@@ -657,6 +695,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -682,6 +721,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                         kernel_size: None,
                         gated: None,
                         head_bias: None,
+                        ..Default::default()
                     }],
                     head: None,
                     head_scale: Some(1.0),
@@ -690,6 +730,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                     receptive_field: None,
                     bias: None,
                     submodels: None,
+                    ..Default::default()
                 },
                 weights: vec![],
                 sample_rate: Some(48000.0),
@@ -809,7 +850,118 @@ fn test_unrecognized_a2_shape_returns_clear_error() {
 }
 
 // =============================================================================
-// 7. Regression: A1 models continue to load and infer
+// 7. Strict A2 shape rejection (acceptance criteria for T11.2)
+// =============================================================================
+
+/// bottleneck != channels must be rejected by is_a2_shape (prevents
+/// silent misroute to fast-path that assumes bottleneck==channels).
+#[test]
+fn test_is_a2_shape_rejects_bottleneck_neq_channels() {
+    let json = r#"{
+        "version": "0.6.0",
+        "architecture": "WaveNet",
+        "config": {
+            "in_channels": 1,
+            "head_scale": 1.0,
+            "head": null,
+            "layers": [{
+                "input_size": 1,
+                "condition_size": 1,
+                "channels": 8,
+                "bottleneck": 16,
+                "kernel_sizes": [6,6,6,6,6,6,6,6,6,6,6,6,6,6,15,15,6,6,6,6,6,6,6],
+                "dilations": [1,3,7,17,41,101,239,1,3,7,17,41,101,239,1,13,1,3,7,17,41,101,239],
+                "activation": [{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01}],
+                "gating_mode": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+                "layer1x1": {"active": true, "groups": 1},
+                "head1x1": null,
+                "head": {"out_channels": 1, "kernel_size": 16, "bias": true},
+                "groups_input": 1,
+                "groups_input_mixin": 1
+            }]
+        },
+        "weights": []
+    }"#;
+    let data = parse_nam_json(json).expect("JSON parse failed");
+    assert!(
+        is_a2_shape(&data).is_none(),
+        "bottleneck=16 != channels=8 must be rejected by is_a2_shape"
+    );
+}
+
+/// Gated activation (gating_mode not all "none") must be rejected.
+#[test]
+fn test_is_a2_shape_rejects_gated_activation() {
+    let json = r#"{
+        "version": "0.6.0",
+        "architecture": "WaveNet",
+        "config": {
+            "in_channels": 1,
+            "head_scale": 1.0,
+            "head": null,
+            "layers": [{
+                "input_size": 1,
+                "condition_size": 1,
+                "channels": 8,
+                "bottleneck": 8,
+                "kernel_sizes": [6,6,6,6,6,6,6,6,6,6,6,6,6,6,15,15,6,6,6,6,6,6,6],
+                "dilations": [1,3,7,17,41,101,239,1,3,7,17,41,101,239,1,13,1,3,7,17,41,101,239],
+                "activation": [{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01}],
+                "gating_mode": ["gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated","gated"],
+                "layer1x1": {"active": true, "groups": 1},
+                "head1x1": null,
+                "head": {"out_channels": 1, "kernel_size": 16, "bias": true},
+                "groups_input": 1,
+                "groups_input_mixin": 1
+            }]
+        },
+        "weights": []
+    }"#;
+    let data = parse_nam_json(json).expect("JSON parse failed");
+    assert!(
+        is_a2_shape(&data).is_none(),
+        "gating_mode=all gated must be rejected by is_a2_shape"
+    );
+}
+
+/// Active FiLM conditioning must be rejected (fast-path A2 assumes no FiLM).
+#[test]
+fn test_is_a2_shape_rejects_active_film() {
+    let json = r#"{
+        "version": "0.6.0",
+        "architecture": "WaveNet",
+        "config": {
+            "in_channels": 1,
+            "head_scale": 1.0,
+            "head": null,
+            "layers": [{
+                "input_size": 1,
+                "condition_size": 1,
+                "channels": 8,
+                "bottleneck": 8,
+                "kernel_sizes": [6,6,6,6,6,6,6,6,6,6,6,6,6,6,15,15,6,6,6,6,6,6,6],
+                "dilations": [1,3,7,17,41,101,239,1,3,7,17,41,101,239,1,13,1,3,7,17,41,101,239],
+                "activation": [{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01}],
+                "gating_mode": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+                "layer1x1": {"active": true, "groups": 1},
+                "head1x1": null,
+                "head": {"out_channels": 1, "kernel_size": 16, "bias": true},
+                "groups_input": 1,
+                "groups_input_mixin": 1,
+                "conv_pre_film": {"active": true, "shared": false, "num_inputs": 1}
+            }]
+        },
+        "weights": []
+    }"#;
+    let data = parse_nam_json(json).expect("JSON parse failed");
+    assert!(
+        is_a2_shape(&data).is_none(),
+        "active FiLM (conv_pre_film) must be rejected by is_a2_shape"
+    );
+}
+
+// =============================================================================
+// 8. Regression: A1 models continue to load and infer
 // =============================================================================
 
 #[test]
