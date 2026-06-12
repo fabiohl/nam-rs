@@ -53,7 +53,7 @@ echo -e "  Clippy: Pure Core..."
 cargo clippy --lib --no-default-features -- -D warnings
 
 echo -e "  Clippy: CLAP Plugin..."
-cargo clippy --all-targets --no-default-features --features clap-plugin -- -D warnings
+cargo clippy --all-targets --no-default-features --features clap-plugin,testing -- -D warnings
 
 echo -e "  Clippy: All Features..."
 cargo clippy --all-targets --all-features -- -D warnings

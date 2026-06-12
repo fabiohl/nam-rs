@@ -213,7 +213,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 8 — Suíte de Testes e Benches em Estágio "Produção" 🧪
+## ÉPICO 8 — Suíte de Testes e Benches em Estágio "Produção" 🧪 [DONE]
 
 > Objetivo: depois deste épico, testes/benches não precisam mais ser editados — só consultados como seguro.
 > Remover peso morto, consolidar duplicações e fechar lacunas de cobertura.
@@ -336,7 +336,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 9.1 — Higiene de build e features
 
-- **[T9.1] Gate do módulo `testing` fora dos binários release.**
+- **[T9.1] Gate do módulo `testing` fora dos binários release.** [DONE]
 
   - `src/lib.rs:46` exporta `pub mod testing` incondicionalmente (~930 linhas + `rustfft` em todo build, incl. o
     plugin CLAP). Criar feature `testing`, gatear o módulo com `#[cfg(any(test, feature = "testing"))]` e habilitar

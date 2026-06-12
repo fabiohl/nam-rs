@@ -43,6 +43,7 @@ pub mod math;
 /// Tensor definitions and neural network topologies.
 pub mod models;
 /// Testing utilities (signal generation, perceptual metrics, WAV I/O).
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
 // Backward compatibility with older GLIBC versions (e.g. for Flatpak/Bitwig).
