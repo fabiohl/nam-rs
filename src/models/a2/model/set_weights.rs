@@ -65,21 +65,26 @@ impl<const CH: usize> WaveNetA2<CH> {
                 total,
                 &format!("layer[{i}].conv_w"),
             )?;
+            // Owned copy: needed for CH=8 col-major-per-tap (re-indexed, not interleaved-4-wide).
             let conv_w_f32_owned: Vec<f32> = conv_w_f32.to_vec();
+            // Interleave-4-wide + quantize u16 for the scalar/SIMD fallback path.
             let mut conv_w = AlignedVec::new(conv_w_padded, 0u16);
             transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize, is_bf16);
 
-            // 2b. Conv bias.
+            // 2b. Conv bias (f32, one per output channel).
             let conv_b_f32 =
                 read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].conv_b"))?;
             let conv_b = AlignedVec::from(conv_b_f32.to_vec());
 
+            // Prefetch strategy: large dilations (≥128) benefit from 2-stage prefetch
+            // (intermediate cache lines), small dilations use simple linear prefetch.
             let prefetch_fn: PrefetchFn = if dilation >= 128 {
                 crate::math::common::prefetch_strategy_2stage
             } else {
                 crate::math::common::prefetch_strategy_simple
             };
 
+            // Build the scalar/SIMD fallback conv (interleaved-4-wide u16 weights).
             let conv = crate::models::a2::conv1d::A2Conv1d::new(
                 conv_w,
                 conv_b.clone(),
@@ -91,7 +96,8 @@ impl<const CH: usize> WaveNetA2<CH> {
                 prefetch_fn,
             );
 
-            // Build CH=3 col-major-per-tap f32 weights if applicable (ÉPICO 2 fix).
+            // Optional CH=3 col-major-per-tap f32 conv (ÉPICO 2 fix).
+            // Uses the original (non-interleaved) f32 weights for SIMD-friendly access.
             let ch3_conv = if CH == 3 {
                 Some(A2Conv1dCh3::new(
                     conv_w_f32, CH, CH, ksize, dilation, conv_b_f32,
@@ -100,7 +106,8 @@ impl<const CH: usize> WaveNetA2<CH> {
                 None
             };
 
-            // Build CH=8 col-major-per-tap weights if applicable (T2.2/T2.4).
+            // Optional CH=8 col-major-per-tap conv (T2.2/T2.4).
+            // Uses the owned f32 copy since conv_w_f32 reference may not outlive the scope.
             let ch8_conv = if CH == 8 {
                 Some(A2Conv1dCh8::new(
                     &conv_w_f32_owned,
@@ -114,12 +121,14 @@ impl<const CH: usize> WaveNetA2<CH> {
                 None
             };
 
-            // 2c. Input mixin (no bias, f32).
+            // 2c. Input mixin: per-channel scalar weights (f32, no bias).
+            // Applied as `z[c] += mixin[c] * input` after the dilated conv.
             let mixin_w_f32 =
                 read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].mixin_w"))?;
             let mixin_w = AlignedVec::from(mixin_w_f32.to_vec());
 
-            // 2d. Layer1x1 weights (CH × CH, stored f32 col-major).
+            // 2d. Layer 1×1 projection: CH×CH dense matrix (f32, col-major).
+            // NAM JSON stores row-major; we transpose to col-major for SIMD dot products.
             let l1x1_w_f32 = read_slice(
                 weights,
                 &mut pos,
@@ -130,11 +139,12 @@ impl<const CH: usize> WaveNetA2<CH> {
             let mut l1x1_w = AlignedVec::new(CH * CH, 0.0f32);
             transpose_dense_f32(l1x1_w_f32, &mut l1x1_w, CH, CH);
 
-            // 2e. Layer1x1 bias.
+            // 2e. Layer 1×1 bias: one f32 per output channel.
             let l1x1_b_f32 =
                 read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].l1x1_b"))?;
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
+            // Assemble the layer: priority is ch3_conv > ch8_conv > scalar fallback.
             layers.push(match (ch3_conv, ch8_conv) {
                 (Some(ch3c), _) => A2Layer::new_with_ch3(conv, ch3c, mixin_w, l1x1_w, l1x1_b),
                 (_, Some(ch8c)) => A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b),

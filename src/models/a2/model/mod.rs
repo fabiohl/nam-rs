@@ -259,6 +259,8 @@ impl<const CH: usize> WaveNetA2<CH> {
         let nf = num_frames.min(self.max_buffer_size);
         let ch = CH;
 
+        // ── Phase 0: rechannel pre-scaling: input × rechannel_w → layer_in ──
+        // Each of the CH channels receives a scaled copy of the mono input.
         for (f, x) in input.iter().take(nf).enumerate() {
             let base = f * ch;
             for c in 0..ch {
@@ -269,6 +271,8 @@ impl<const CH: usize> WaveNetA2<CH> {
 
         let head_keep = A2_HEAD_KERNEL_SIZE - 1;
         let head_cap = self.head_ring_mask + 1;
+        // If the write position would overflow past the ring buffer end,
+        // memmove the last K-1 tail samples to position 0 before wrapping.
         if self.head_write_pos + nf > head_cap {
             let keep_start = self.head_write_pos - head_keep;
             let keep_bytes = head_keep * ch;
@@ -289,11 +293,14 @@ impl<const CH: usize> WaveNetA2<CH> {
             debug_assert!(bs >= lookback);
             debug_assert!(bs + nf * ch <= ring_size * 2);
 
+            // Write this block's input into the ring buffer at current start position.
             {
                 let buf = &mut self.layer_buffers[li];
                 buf[bs..bs + nf * ch].copy_from_slice(&self.layer_in[..nf * ch]);
             }
 
+            // Advance ring buffer start. If the next block would overflow the 2× virtual
+            // mapping, rewind by subtracting ring_size (branchless mirror access via MirroredBuffer).
             if bs + nf * ch + self.max_buffer_size * ch > ring_size * 2 {
                 self.layer_buffer_starts[li] = bs + nf * ch - ring_size;
             } else {
@@ -303,6 +310,14 @@ impl<const CH: usize> WaveNetA2<CH> {
             {
                 let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
                 let layer = &self.layers[li];
+
+                // Layer processing dispatch: CH=3 SIMD → CH=8 SIMD → scalar fallback.
+                // Each path performs the same logical steps:
+                // 1. Dilated conv (SIMD or scalar) over the receptive-field window
+                // 2. Input mixin: `z += mixin[c] * input`
+                // 3. Gated activation (leaky-ReLU with slope 0.01)
+                // 4. Head accumulation (first layer overwrites, subsequent add)
+                // 5. 1×1 projection for the next layer (unless this is the last layer)
 
                 if let Some(ch3_conv) = &layer.ch3_conv {
                     unsafe {
@@ -346,14 +361,17 @@ impl<const CH: usize> WaveNetA2<CH> {
                     continue;
                 }
 
+                // ── Scalar fallback: per-frame, per-layer ────────────────
                 for (f, x) in input.iter().take(nf).enumerate() {
                     let head_col = head_wp + f;
                     let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
                     let mut frame_z = [0.0f32; 8];
                     let z_slice = &mut frame_z[..ch];
 
+                    // Frame index into the history buffer: lookback offset + frame offset.
                     let frame_idx = max_lookback_cols + f;
 
+                    // ── Phase 1: dilated conv over receptive field ──────
                     unsafe {
                         layer
                             .conv
@@ -362,15 +380,20 @@ impl<const CH: usize> WaveNetA2<CH> {
                             );
                     }
 
+                    // ── Phase 2: input mixin (conditioning) ─────────────
                     let mixin: &[f32] = &layer.mixin_w;
                     for c in 0..ch {
                         z_slice[c] += mixin[c] * x;
                     }
+
+                    // ── Phase 3: gated activation (leaky-ReLU, slope 0.01) ──
                     for z in z_slice.iter_mut().take(ch) {
                         if *z < 0.0 {
                             *z *= 0.01;
                         }
                     }
+
+                    // ── Phase 4: head accumulation ─────────────────────
                     let head_off = head_col * ch;
                     if is_first {
                         self.head_accum[head_off..head_off + ch].copy_from_slice(z_slice);
@@ -379,6 +402,8 @@ impl<const CH: usize> WaveNetA2<CH> {
                             self.head_accum[head_off + c] += *z_val;
                         }
                     }
+
+                    // ── Phase 5: 1×1 projection to next layer ──────────
                     if !is_last {
                         let l1x1: &[f32] = &layer.l1x1_w;
                         let l1x1_b: &[f32] = &layer.l1x1_b;
@@ -394,8 +419,10 @@ impl<const CH: usize> WaveNetA2<CH> {
             }
         }
 
+        // Update head write position (masked to ring size).
         self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
 
+        // ── Final passthrough: head conv (K=16, CH→1) + head_scale → output ──
         if let Some(ref head) = self.head_conv {
             head.process(
                 &self.head_accum,

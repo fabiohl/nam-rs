@@ -47,6 +47,14 @@ impl GcItem {
     /// # Safety
     /// The pointer must have been generated via `Box::into_raw` of an object
     /// of the corresponding type, validated by the caller against type_id.
+    ///
+    /// ## Dispatch protocol
+    ///
+    /// Each variant is assigned a fixed `type_id` (1..=4, 255 for test).
+    /// The ID is validated before `Box::from_raw` — an unknown ID results in
+    /// `None`, and the caller must leak the raw pointer. This ensures that
+    /// even if the packed u64 is corrupted in the overflow buffer, the RT
+    /// thread never calls `Box::from_raw` with a mismatched layout.
     unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Option<Self> {
         match type_id {
             1 => Some(GcItem::Model(unsafe {
@@ -67,7 +75,7 @@ impl GcItem {
             255 => Some(GcItem::Test(unsafe {
                 Box::from_raw(ptr as *mut std::sync::Arc<std::sync::atomic::AtomicU32>)
             })),
-            _ => None,
+            _ => None, // unknown type_id → caller leaks pointer, avoids UB
         }
     }
 
@@ -78,6 +86,8 @@ impl GcItem {
     /// Bits 56-63: type ID.
     pub(crate) fn into_packed(self) -> u64 {
         let type_id = self.type_id();
+        // Box::into_raw converts the Box into a raw pointer without dropping.
+        // The pointee layout is erased to *mut c_void for uniform storage.
         let ptr = match self {
             GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
@@ -88,6 +98,9 @@ impl GcItem {
             #[cfg(test)]
             GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
         };
+        // Pack type_id into bits 56-63 and the pointer into bits 0-55.
+        // x86-64 Linux guarantees user-space pointers fit in ≤56 bits
+        // (canonical address range), so no information is lost.
         ((type_id as u64) << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF)
     }
 
@@ -102,11 +115,14 @@ impl GcItem {
         if packed == 0 {
             return None;
         }
+        // Extract type_id from bits 56-63 (upper byte).
+        // type_id 0 is reserved for "empty slot" — treat as None.
         let type_id = ((packed >> 56) & 0xFF) as u8;
-        let ptr = (packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
         if type_id == 0 {
             return None;
         }
+        // Extract the raw pointer from bits 0-55.
+        let ptr = (packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
         unsafe { Self::from_raw_parts(ptr, type_id) }
     }
 }

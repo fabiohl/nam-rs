@@ -474,7 +474,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** um dev novo consegue regenerar todos os goldens só lendo o README; versão do upstream
     usada fica registrada.
 
-- **[T10.8] Reforçar comentários inline em blocos longos.**
+- **[T10.8] Reforçar comentários inline em blocos longos.** [DONE]
 
   - Alvos com 50–200 linhas sem comentários estruturais: hot-path do resampler
     (`src/dsp/resampler.rs:250-470`), helpers internos do `GcOverflowBuffer` (`src/common/spsc/gc.rs:70-220` —
