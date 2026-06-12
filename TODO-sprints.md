@@ -220,7 +220,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 8.1 — Consolidação estrutural da suíte
 
-- **[T8.1] Quebrar `tests/nam_infer_test.rs` (2481 linhas) por responsabilidade.**
+- **[T8.1] Quebrar `tests/nam_infer_test.rs` (2481 linhas) por responsabilidade.** [DONE]
 
   - Dividir em: `golden_vectors.rs`, `self_consistency.rs`, `zero_alloc_infer.rs`, `container_slimmable.rs`,
     `spsc_pipeline.rs` (nomes finais a critério do implementador, 1 preocupação por binário).
