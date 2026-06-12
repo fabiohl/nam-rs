@@ -345,7 +345,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** `cargo build --release --no-default-features --features clap-plugin` não compila
     `src/testing/`; todas as lanes de teste/bins continuam verdes; tamanho do `.so` reduzido (registrar no PR).
 
-- **[T9.2] Tornar `clack-common` opcional.**
+- **[T9.2] Tornar `clack-common` opcional.** [DONE]
 
   - `Cargo.toml:32`: todos os usos estão sob `#[cfg(feature = "clap-plugin")]`. Mudar para
     `clack-common = { version = "0.1", optional = true }` e adicionar à lista da feature `clap-plugin`.

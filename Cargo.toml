@@ -29,7 +29,7 @@ env_logger = { version = "0.11.10", default-features = false }
 half = "2.7.1"
 minstant = "0.1.7"
 rustfft = { version = "6.4.1", default-features = false }
-clack-common = "0.1"
+clack-common = { version = "0.1", optional = true }
 clack-plugin = { version = "0.1", optional = true }
 clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info", "remote-controls", "param-indication", "clack-host", "preset-discovery", "render", "state-context"] }
 egui      = { version = "0.34.3",  optional = true }
@@ -56,7 +56,7 @@ harness = false
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]
-clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
+clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
 stereo = []
 testing = []
 heap-audit = []
