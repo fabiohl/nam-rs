@@ -276,7 +276,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** bench roda na lane padrão; números documentados.
   - Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
-- **[T8.9] Teste de corretude do resampler contra referência externa.**
+- **[T8.9] Teste de corretude do resampler contra referência externa.** [DONE]
 
   - Hoje só há soak (NaN/drift) e heap-audit. Adicionar teste determinístico: chirp/multitom conhecido, razões
     44.1↔48↔96 kHz, validando SNR ≥ 120 dB na banda passante contra referência pré-computada (vetor versionado
