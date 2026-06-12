@@ -240,7 +240,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `tests/a2_loader.rs` único (remover redundâncias; o nome "placeholder" é histórico e enganoso).
   - **Critério de aceite:** cobertura preservada; nomes de testes descritivos; ~1 binário a menos na suíte.
 
-- **[T8.4] Migrar testes inline de arquivos ≥ 300 linhas para `_test.rs`.**
+- **[T8.4] Migrar testes inline de arquivos ≥ 300 linhas para `_test.rs`.** [DONE]
 
   - Violações da regra: `src/models/a2/model.rs`, `a2/layer.rs`, `a2/head.rs`, `src/dsp/adaptive.rs`,
     `src/dsp/resampler.rs`, `src/dsp/gate.rs`, `src/dsp/cabsim/loader.rs`, `src/clap/plugin/shared.rs`.
