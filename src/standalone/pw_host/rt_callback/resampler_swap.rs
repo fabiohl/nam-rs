@@ -4,7 +4,7 @@
 //! 5.1.1. Resampler Draining (Zero-Alloc Swap)
 //! Replaces resamplers without using memory allocation in the critical path.
 
-use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
+use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags, gc_cascade};
 use crate::dsp::resampler::NamResampler;
 
 use rtrb::Consumer;
@@ -33,36 +33,12 @@ pub fn drain_resamplers(
 
         rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
 
-        let mut item = Some(GcItem::Resampler(old_rs));
-
-        if let Some(i) = item.take() {
-            if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(i) {
-                item = Some(returned);
-            } else {
-                continue;
-            }
-        }
-
-        if let Some(i) = item.take() {
-            let mut parked = false;
-            let mut i_opt = Some(i);
-            for slot in parking_lot.iter_mut() {
-                if slot.is_none() {
-                    *slot = i_opt.take();
-                    parked = true;
-                    break;
-                }
-            }
-            if !parked {
-                item = i_opt;
-            } else {
-                continue;
-            }
-        }
-
-        if let Some(i) = item.take() {
-            rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-            gc_overflow_for_process.push(i);
-        }
+        gc_cascade(
+            Some(GcItem::Resampler(old_rs)),
+            gc_producer,
+            parking_lot,
+            gc_overflow_for_process,
+            rt_status_for_process,
+        );
     }
 }

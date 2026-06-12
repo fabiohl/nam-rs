@@ -419,6 +419,51 @@ Model switching in the audio thread is RT-safe:
 3. `on_main_thread()` drains `gc_rx` and executes `drop()` on obsolete models.
 4. If the GC channel is full, it uses `GcOverflowBuffer` (overwrite ring buffer with `AtomicPtr`).
 
+### Decision: Reject `SwapStrategy<T>` for Standalone/CLAP Deduplication
+
+**Context:** Task T9.7 investigated unifying the object-swap + GC-cascade logic shared between
+`src/standalone/pw_host/rt_callback/{resampler_swap,commands,cabsim_swap}.rs` and
+`src/clap/processor/events.rs` into a common `SwapStrategy<T>` in `src/dsp/`.
+
+**Analysis:**
+
+| Duplication site                        | Inline SLOC | Fix                           | SLOC saved |
+| --------------------------------------- | ----------: | ----------------------------- | ---------: |
+| `resampler_swap.rs` inline GC cascade   |          20 | Replace with `gc_cascade()`   |         19 |
+| `commands.rs` model GC cascade          |          18 | Replace with `gc_cascade()`   |         17 |
+| `clap/processor/gc.rs` `push_to_gc()`   |          15 | Delegate to `gc_cascade()`    |         10 |
+| **Total** with `gc_cascade()` reuse     |             |                               |     **46** |
+
+A `SwapStrategy<T>` would encapsulate only the `std::mem::replace(active, new)` + GC cascade pair.
+Each drain site has unique logic interleaved with the swap (rate tracking in `drain_resamplers`,
+`inject_rt_status` in model swaps, `set_max_buffer_size` in CLAP), so the abstraction would not
+eliminate additional lines beyond what `gc_cascade()` already does.
+
+**Decision:** Reject `SwapStrategy<T>` in `src/dsp/`. Justification:
+
+1. **Net savings < 100 lines:** Even with `gc_cascade()` reuse, the total savings are ~46 SLOC —
+   well below the 100-line threshold. `SwapStrategy<T>` does not bridge the gap because the
+   interleaved mutation logic is type-specific and cannot be generically abstracted.
+2. **Layering violation:** Placing `SwapStrategy<T>` in `src/dsp/` would create a dependency from
+   the DSP layer on `common::spsc::gc` (GC infrastructure), breaking the current layering where
+   GC is a `common` concern, not a DSP concern.
+3. **No RT benefit:** The swap itself is `std::mem::replace` — zero-cost and proven RT-safe.
+   Adding an abstraction layer risks compiler optimization barriers without measurable gain.
+4. **Existing `gc_cascade()` suffices:** The free function in `src/common/spsc/gc.rs` already
+   abstracts the 3-tier cascade (SPSC → parking-lot → overflow). The residual inline copies
+   in `resampler_swap.rs` and `commands.rs` are fixed by adopting it, not by adding a new type.
+
+**Consequences:**
+- The standalone inline GC cascades in `resampler_swap.rs` and `commands.rs` are replaced with
+  direct `gc_cascade()` calls.
+- `push_to_gc()` in `clap/processor/gc.rs` delegates to `gc_cascade()` instead of duplicating it.
+- `drain_parking_lot()` remains a distinct concern (re-draining parked items on each audio block),
+  which `gc_cascade()` does not handle.
+
+**References:** [src/common/spsc/gc.rs](/src/common/spsc/gc.rs),
+[src/standalone/pw_host/rt_callback/resampler_swap.rs](/src/standalone/pw_host/rt_callback/resampler_swap.rs),
+[src/clap/processor/gc.rs](/src/clap/processor/gc.rs).
+
 ### CLAP Extensions and Graphical Interface
 
 The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.

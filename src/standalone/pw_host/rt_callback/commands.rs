@@ -4,7 +4,7 @@
 //! 5.1.2. COMMAND RECEPTION (SPSC Channel)
 //! Processes commands from the command-line interface or control system (volume, model, noise gate).
 
-use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags};
+use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, gc_cascade};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::GateParams;
 
@@ -70,36 +70,13 @@ pub fn receive_commands(
 
                 for m_opt in &mut old_models {
                     if let Some(m) = m_opt.take() {
-                        let mut item = Some(GcItem::Model(m));
-
-                        if let Some(v) = item.take() {
-                            if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(v) {
-                                item = Some(returned);
-                            } else {
-                                continue;
-                            }
-                        }
-
-                        if let Some(v) = item.take() {
-                            let mut parked = false;
-                            let mut v_opt = Some(v);
-                            for slot in parking_lot.iter_mut() {
-                                if slot.is_none() {
-                                    *slot = v_opt.take();
-                                    parked = true;
-                                    break;
-                                }
-                            }
-                            if !parked {
-                                item = v_opt;
-                            }
-                        }
-
-                        if let Some(v) = item.take() {
-                            rt_status_for_process
-                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                            gc_overflow_for_process.push(v);
-                        }
+                        gc_cascade(
+                            Some(GcItem::Model(m)),
+                            gc_producer,
+                            parking_lot,
+                            gc_overflow_for_process,
+                            rt_status_for_process,
+                        );
                     }
                 }
                 param_changed = true;

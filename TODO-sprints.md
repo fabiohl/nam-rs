@@ -385,7 +385,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** nenhum arquivo de produção > ~700 linhas sem justificativa documentada; goldens e benches
     bit-idênticos (asserção de não-regressão).
 
-- **[T9.7] Investigar deduplicação RT-swap standalone × CLAP.**
+- **[T9.7] Investigar deduplicação RT-swap standalone × CLAP.** [DONE]
 
   - A lógica de troca (modelo/resampler/cabsim) em `src/standalone/pw_host/rt_callback/{resampler_swap,cabsim_swap,
     commands}.rs` é estruturalmente paralela à de `src/clap/processor/events.rs`. **Tarefa de investigação**: propor
