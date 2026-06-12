@@ -691,7 +691,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 14.2 — Higiene de `#[allow]`
 
-- **[T14.3] Revisar `#[allow(...)]` residuais.**
+- **[T14.3] Revisar `#[allow(...)]` residuais.** [DONE]
 
   - `src/common/spsc/gc.rs:7` (`clippy::large_enum_variant`): todas as variantes de `GcItem` são `Box<…>`
     (8 bytes) — o lint provavelmente não dispara mais; **remover e confirmar** com `cargo clippy`.

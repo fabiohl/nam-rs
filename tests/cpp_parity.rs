@@ -144,7 +144,6 @@ fn ensure_render_compiled() -> bool {
     render_bin().exists()
 }
 
-#[allow(deprecated)]
 fn run_render_comparison(
     model_filename: &str,
     golden_name: &str,

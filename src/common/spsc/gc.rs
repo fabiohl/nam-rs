@@ -4,7 +4,6 @@
 use rtrb::Consumer;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[allow(clippy::large_enum_variant)]
 /// Represents an item that should be safely disposed outside the audio thread.
 /// Dropping these items may involve heavy memory deallocations.
 pub enum GcItem {

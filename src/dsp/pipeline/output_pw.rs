@@ -13,6 +13,8 @@ use minstant::Anchor;
 use pipewire as pw;
 
 /// Holds essential PipeWire instances (`StreamBox` and `Listener`).
+/// Fields exist solely to keep streams and listeners alive via RAII;
+/// they are never read directly — only held for their drop semantics.
 #[cfg(feature = "standalone")]
 #[allow(dead_code)]
 pub(crate) struct AppState<S1, L1, S2, L2> {
