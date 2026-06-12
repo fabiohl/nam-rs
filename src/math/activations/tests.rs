@@ -2,10 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Unit tests for SIMD activation functions.
-//! Migrated from `fastmath_test.rs` as part of Task 3.1 (Epic 3).
-//!
-//! Unit tests for SIMD activation functions.
-//! Migrated from `fastmath_test.rs` as part of Task 3.1 (Epic 3).
+//! Migrated from `fastmath_test.rs` for structural organization.
 //!
 //! Validates the precision of tanh/sigmoid approximations against
 //! the standard library scalar references.

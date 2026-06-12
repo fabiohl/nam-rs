@@ -638,7 +638,7 @@ Typed error codes for structured diagnostics. Defined in `src/common/diagnostics
 | `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND     |
 | `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*          |
 
-Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see [diagnostico.md](../.agents/workflows/diagnostico.md)).
+Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` skill (see [SKILL.md](../.agents/skills/diagnostico/SKILL.md)).
 
 ## 10. References
 

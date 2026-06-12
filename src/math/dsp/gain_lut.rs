@@ -4,7 +4,7 @@
 //! Look-Up Table (LUT) for ultra-fast dB to linear gain conversion.
 //!
 //! Designed to be instantiated via `OnceLock` and accessed in RT threads.
-//! Migrated from `math::fastmath` as part of Task 3.5 (Epic 3).
+//! Migrated from the fastmath module for structural organization.
 
 use crate::math::constants::*;
 use std::sync::OnceLock;

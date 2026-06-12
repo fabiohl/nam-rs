@@ -201,7 +201,7 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
 ///
 /// This validator **rejects** such models with a clear diagnostic, preventing
 /// silent misbehavior. If official models requiring these features are found in
-/// circulation (Tone3000/ToneHunt), they can be supported in a future sprint.
+/// circulation (Tone3000/ToneHunt), they can be supported in a future release.
 pub fn validate_wavenet_features(data: &NamModelData) -> Result<(), String> {
     // Check condition_size on all layers
     for (i, layer) in data.config.layers.iter().enumerate() {

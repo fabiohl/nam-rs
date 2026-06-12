@@ -62,7 +62,7 @@ impl A2Layer {
         }
     }
 
-    /// Creates a CH=3 layer with f32-native col-major-per-tap weights (ÉPICO 2 fix).
+    /// Creates a CH=3 layer with f32-native col-major-per-tap weights.
     pub fn new_with_ch3(
         conv: A2Conv1d,
         ch3_conv: A2Conv1dCh3,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
 use super::tests::run_pipeline_test;
 
 /// Ensures that, if no effects are active, the input sound is exactly equal to the output.

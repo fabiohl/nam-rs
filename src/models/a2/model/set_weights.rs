@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Weight loading for WaveNet A2 models.
 //!
@@ -96,7 +97,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                 prefetch_fn,
             );
 
-            // Optional CH=3 col-major-per-tap f32 conv (ÉPICO 2 fix).
+            // Optional CH=3 col-major-per-tap f32 conv.
             // Uses the original (non-interleaved) f32 weights for SIMD-friendly access.
             let ch3_conv = if CH == 3 {
                 Some(A2Conv1dCh3::new(
@@ -106,7 +107,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                 None
             };
 
-            // Optional CH=8 col-major-per-tap conv (T2.2/T2.4).
+            // Optional CH=8 col-major-per-tap conv.
             // Uses the owned f32 copy since conv_w_f32 reference may not outlive the scope.
             let ch8_conv = if CH == 8 {
                 Some(A2Conv1dCh8::new(

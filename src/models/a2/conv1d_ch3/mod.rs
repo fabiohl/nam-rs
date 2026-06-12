@@ -7,7 +7,7 @@
     clippy::too_many_arguments
 )]
 
-//! CH=3 A2 fast-path convolution with **f32 native weights** (T2.1 rev, ÉPICO 2 fix).
+//! CH=3 A2 fast-path convolution with **f32 native weights** for optimization.
 //!
 //! ## Problem solved
 //!

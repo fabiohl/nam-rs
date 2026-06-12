@@ -2,6 +2,10 @@
 name: debugger
 description: Triggered when something doesn't work as expected. Acts as a multi-disciplinary panel of senior analysts and engineers capable of solving the hardest problems.
 ---
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Skill: Debugger
 
@@ -9,7 +13,7 @@ description: Triggered when something doesn't work as expected. Acts as a multi-
 
 Use under active error, crash, non-linear DSP behavior, truncated audio, PipeWire xruns, or degradation in neural inference calculations in real-time.
 
-Also triggered by the `diagnostico` workflow when the user pastes a support block.
+Also triggered by the `diagnostico` skill when the user pastes a support block.
 
 ## Instructions
 

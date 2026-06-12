@@ -62,7 +62,7 @@ If you encounter issues and need support:
 
 1. Generate the diagnostic bundle using one of the methods above.
 2. **For GitHub Issues:** Copy and paste the entire block (including the `──── NAM-rs Diagnostic ...` headers) into your issue description.
-3. **For Automated Support (AI agents):** Copy and paste the support block into the chat to trigger the automated `diagnostico` triage skill (linked with `.agents/workflows/diagnostico.md`).
+3. **For Automated Support (AI agents):** Copy and paste the support block into the chat to trigger the automated `diagnostico` triage skill (linked with `.agents/skills/diagnostico/SKILL.md`).
 
 ---
 
