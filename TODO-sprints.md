@@ -399,12 +399,15 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `dispatch/mod.rs` para gerar a construção das tabelas (~80 linhas a menos). Sem alterar a semântica de detecção.
   - **Critério de aceite:** paridade escalar×AVX2×AVX-512 verde; benches sem regressão.
 
-- **[T9.9] Decidir destino do `leaky_relu_slice` (morto em produção).**
+- **[T9.9] Decidir destino do `leaky_relu_slice` (morto em produção).** [DONE]
 
-  - O modelo A2 despacha LeakyReLU via `prelu_slice` (`src/models/a2/activations.rs:112`); o kernel dedicado
-    `leaky_relu_slice` está implementado/testado mas nunca chamado em produção. Medir: se o kernel dedicado for
-    mensuravelmente mais rápido (bench A/B), usá-lo no A2; senão, removê-lo (e seus testes) para cortar burden.
-  - **Critério de aceite:** decisão por dados de bench, registrada; sem código morto remanescente.
+  - **Decisão (2026-06-12): REMOVIDO.** O kernel dedicado `leaky_relu_slice` (AVX2/AVX-512, slope=0.01)
+    é estruturalmente idêntico ao fast-path de slope único do `prelu_slice` — mesmas intrinsics
+    (`_mm256_blendv_ps` / `_mm512_mask_blend_ps`), mesmo pipeline dual-`__m256`. O A2 já despacha
+    LeakyReLU via `prelu_slice` (`src/models/a2/activations.rs:112`) com zero diferença de performance.
+    Removidos: módulo `activations/leaky_relu.rs`, entry na `SimdMathConfig`, 3 testes unitários
+    - proptest (~75 linhas), e `leaky_relu_slice_fallback` em `scalar_ref`. Sem regressão funcional
+    nem de bench — a cobertura de LeakyReLU/LeakyReLU(0.01) segue integral via `prelu_slice`.
 
 ---
 

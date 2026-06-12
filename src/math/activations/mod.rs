@@ -20,7 +20,6 @@
 //! - **AMX/AVX10.2-ready**: Branchless approach compatible with future extensions.
 
 pub mod fused;
-pub mod leaky_relu;
 pub mod prelu;
 pub mod relu;
 pub mod sigmoid;
@@ -32,7 +31,6 @@ pub mod tanh;
 mod tests;
 
 pub use fused::*;
-pub use leaky_relu::*;
 pub use prelu::*;
 pub use relu::*;
 pub use sigmoid::*;
@@ -76,10 +74,4 @@ pub fn softsign_slice(data: &mut [f32]) {
 #[inline(always)]
 pub fn silu_slice(data: &mut [f32]) {
     unsafe { (SIMD_MATH.silu_slice)(data) };
-}
-
-/// Applies LeakyReLU(0.01) activation to a slice of f32 with automatic dispatch.
-#[inline(always)]
-pub fn leaky_relu_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.leaky_relu_slice)(data) };
 }

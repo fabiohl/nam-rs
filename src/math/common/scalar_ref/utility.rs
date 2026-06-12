@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-/// Applies LeakyReLU(0.01) to a slice — scalar reference oracle for testing.
-// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-#[inline]
-pub unsafe fn leaky_relu_slice_fallback(slice: &mut [f32]) {
-    for v in slice.iter_mut() {
-        if *v < 0.0 {
-            *v *= 0.01;
-        }
-    }
-}
-
 /// Converts high-precision decimal numbers (f32) to the compact format (BF16).
 /// This saves a lot of memory and is used to store neural network "weights".
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.

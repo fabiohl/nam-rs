@@ -134,9 +134,6 @@ pub struct SimdMathConfig {
     /// Applies SiLU activation to a slice.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub silu_slice: unsafe fn(&mut [f32]),
-    /// Applies LeakyReLU(0.01) activation to a slice.
-    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
-    pub leaky_relu_slice: unsafe fn(&mut [f32]),
 }
 
 impl SimdMathConfig {
