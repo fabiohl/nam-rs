@@ -33,10 +33,9 @@ pub(crate) fn update_metadata_cache(state: &mut UiState, meta: &NamModelMetadata
         if meta.sample_rate > 0 {
             let mut buf = String::new();
             let _ = write!(buf, "SR: {} Hz", meta.sample_rate);
-            state.metadata_display.push((
-                buf,
-                "Native sample rate expected by the model".to_string(),
-            ));
+            state
+                .metadata_display
+                .push((buf, "Native sample rate expected by the model".to_string()));
         }
 
         if let Some(ref author) = meta.modeled_by {

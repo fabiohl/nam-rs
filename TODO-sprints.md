@@ -174,17 +174,22 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 7.3 — Golden vectors: cobertura total do catálogo
 
-- **[T7.6] Golden + cross-validation para WaveNet **Lite** (12ch).**
+- **[T7.6] Golden + cross-validation para WaveNet **Lite** (12ch).** ✅ [DONE]
 
   - Único A1 catalogado (`src/models/mod.rs:74`) **sem nenhum** golden nem cross-val viva. Estender
     `golden_gen_build.sh`, gerar `golden_wavenet_lite.bin` (v1 + v2 multi-SR), adicionar casos em
     `tests/nam_infer_test.rs` e `tests/cpp_parity.rs`.
   - **Critério de aceite:** golden verde nas duas lanes; `tests/fixtures/README.md` atualizado.
 
-- **[T7.7] Golden para a família LSTM completa.**
+- **[T7.7] Golden para a família LSTM completa.** ✅ [DONE]
 
   - Catalogados sem cobertura: 1×8, 1×12, 1×24, 1×40, 2×12, 2×16, 2×24; e 2×8 sem variante v2 multi-SR.
   - Gerar fixtures determinísticas + goldens para todos; adicionar 2×8 à suíte v2 em `tests/cpp_parity.rs:464`.
+  - Fixtures sintéticas geradas via `src/bin/gen_lstm_fixtures.rs` (pesos determinísticos sawtooth-modulo);
+    goldens v1 gerados via C++ render (NeuralAmpModelerCore). 7 modelos `.nam` + 7 goldens v1 adicionados.
+    Todas 9 variantes LSTM agora têm golden v1 em `tests/nam_infer_test.rs` + cross-val v1/v2 em
+    `tests/cpp_parity.rs`. `golden_gen_build.sh` atualizado com entrada para cada variante + step de
+    geração de fixtures. Suíte rápida: 46 testes em ~3.1s.
   - **Critério de aceite:** todo alias LSTM do catálogo tem ao menos golden v1 + um caso de cross-val viva; suíte
     rápida continua < 1,5 min (goldens grandes ficam na lane longa).
 

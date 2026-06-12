@@ -593,45 +593,70 @@ fn test_diagnostic_bundle_model_sample_rate_mismatch() {
 #[cfg(feature = "heap-audit")]
 mod heap_audit_tests {
     use nam_rs::common::spsc::RtStatusFlags;
-    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
-    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::Ordering;
 
-    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-    static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
+    // ── Path A: heap-audit only (no clap-plugin) — test owns the allocator ──
+    #[cfg(not(feature = "clap-plugin"))]
+    mod local_alloc {
+        use std::alloc::{GlobalAlloc, Layout, System};
+        use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
-    struct CountingAllocator;
+        pub(super) static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+        pub(super) static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
 
-    unsafe impl GlobalAlloc for CountingAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-                ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        struct CountingAllocator;
+
+        unsafe impl GlobalAlloc for CountingAllocator {
+            unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+                if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
+                    ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+                }
+                unsafe { System.alloc(layout) }
             }
-            unsafe { System.alloc(layout) }
+            unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+                unsafe { System.dealloc(ptr, layout) }
+            }
         }
-        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-            unsafe { System.dealloc(ptr, layout) }
+
+        #[global_allocator]
+        static GLOBAL: CountingAllocator = CountingAllocator;
+
+        pub(super) struct TrackingGuard;
+
+        impl TrackingGuard {
+            pub fn new() -> Self {
+                let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+                TRACKING_THREAD.store(tid, Ordering::Relaxed);
+                ALLOC_COUNT.store(0, Ordering::Relaxed);
+                Self {}
+            }
+        }
+
+        impl Drop for TrackingGuard {
+            fn drop(&mut self) {
+                TRACKING_THREAD.store(0, Ordering::Relaxed);
+            }
         }
     }
 
-    #[global_allocator]
-    static GLOBAL: CountingAllocator = CountingAllocator;
+    #[cfg(not(feature = "clap-plugin"))]
+    use local_alloc::{ALLOC_COUNT, TrackingGuard};
 
-    struct TrackingGuard;
-
-    impl TrackingGuard {
-        fn new() -> Self {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            TRACKING_THREAD.store(tid, Ordering::Relaxed);
-            ALLOC_COUNT.store(0, Ordering::Relaxed);
-            Self {}
-        }
+    // ── Path B: heap-audit + clap-plugin — library owns the allocator ──
+    #[cfg(feature = "clap-plugin")]
+    fn alloc_count() -> usize {
+        nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
     }
 
-    impl Drop for TrackingGuard {
-        fn drop(&mut self) {
-            TRACKING_THREAD.store(0, Ordering::Relaxed);
-        }
+    #[cfg(feature = "clap-plugin")]
+    fn tracking_guard_new() -> nam_rs::common::alloc_audit::TrackingGuard {
+        nam_rs::common::alloc_audit::TrackingGuard::new()
+    }
+
+    #[cfg(not(feature = "clap-plugin"))]
+    fn alloc_count() -> usize {
+        ALLOC_COUNT.load(Ordering::Relaxed)
     }
 
     #[test]
@@ -641,7 +666,11 @@ mod heap_audit_tests {
         rt_status.latency_hist.record(150);
 
         let allocs = {
+            #[cfg(not(feature = "clap-plugin"))]
             let _guard = TrackingGuard::new();
+            #[cfg(feature = "clap-plugin")]
+            let _guard = tracking_guard_new();
+
             rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
             rt_status.clear_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
             let _ = rt_status.check_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
@@ -649,9 +678,12 @@ mod heap_audit_tests {
             rt_status.latency_hist.record(500);
             rt_status.xruns.fetch_add(1, Ordering::Relaxed);
             rt_status.drains.fetch_add(1, Ordering::Relaxed);
-            ALLOC_COUNT.load(Ordering::Relaxed)
+            alloc_count()
         };
 
-        assert_eq!(allocs, 0, "RT status/telemetry operations triggered heap allocations!");
+        assert_eq!(
+            allocs, 0,
+            "RT status/telemetry operations triggered heap allocations!"
+        );
     }
 }

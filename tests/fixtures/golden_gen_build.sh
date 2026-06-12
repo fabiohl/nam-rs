@@ -15,8 +15,9 @@
 #   ./tests/fixtures/golden_gen_build.sh
 #
 # Output (tests/fixtures/):
-#   golden_wavenet_standard.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
-#   golden_lstm_1x16.bin, golden_lstm_2x8.bin
+#   golden_wavenet_standard.bin, golden_wavenet_lite.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
+#   golden_lstm_1x8.bin, golden_lstm_1x12.bin, golden_lstm_1x16.bin, golden_lstm_1x24.bin, golden_lstm_1x40.bin
+#   golden_lstm_2x8.bin, golden_lstm_2x12.bin, golden_lstm_2x16.bin, golden_lstm_2x24.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
@@ -114,14 +115,15 @@ fi
 echo "  Render: $RENDER_BIN"
 
 # =============================================================================
-# Build Rust tools (gen_stress + wav_to_golden)
+# Build Rust tools (gen_stress + wav_to_golden + gen_lstm_fixtures)
 # =============================================================================
 echo ""
-echo "[3/6] Building Rust tools (gen_stress + wav_to_golden)..."
+echo "[3/6] Building Rust tools (gen_stress + wav_to_golden + gen_lstm_fixtures)..."
 
-cargo build --release --bin gen_stress --bin wav_to_golden 2>&1 | tail -3
+cargo build --release --bin gen_stress --bin wav_to_golden --bin gen_lstm_fixtures 2>&1 | tail -3
 GEN_STRESS="$PROJECT_ROOT/target/release/gen_stress"
 WAV_TO_GOLDEN="$PROJECT_ROOT/target/release/wav_to_golden"
+GEN_LSTM_FIXTURES="$PROJECT_ROOT/target/release/gen_lstm_fixtures"
 
 if [ ! -f "$GEN_STRESS" ]; then
     echo "ERROR: Failed to build gen_stress binary."
@@ -153,13 +155,24 @@ done
 echo ""
 echo "[5/6] Running render for each model..."
 
+# Generate synthetic LSTM fixtures if not already present
+"$GEN_LSTM_FIXTURES" "$MODELS_DIR"
+
 # Models: (.nam file, golden name, label)
 MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard"
+    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano"
+    "BossLSTM-1x8.nam:golden_lstm_1x8:LSTM 1×8"
+    "BossLSTM-1x12.nam:golden_lstm_1x12:LSTM 1×12"
     "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16"
+    "BossLSTM-1x24.nam:golden_lstm_1x24:LSTM 1×24"
+    "BossLSTM-1x40.nam:golden_lstm_1x40:LSTM 1×40"
     "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
+    "BossLSTM-2x12.nam:golden_lstm_2x12:LSTM 2×12"
+    "BossLSTM-2x16.nam:golden_lstm_2x16:LSTM 2×16"
+    "BossLSTM-2x24.nam:golden_lstm_2x24:LSTM 2×24"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
     "linear_test.nam:golden_linear_test:Linear RF=4"
@@ -218,7 +231,7 @@ for SR in 44100 48000 88200 96000 192000; do
 
         echo "  Processing $label @ ${SR}Hz..."
 
-        "$RENDER_BIN" "$MODEL_PATH" "$V2_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
+        "$RENDER_BIN" "$MODEL_PATH" "$V2_WAV" "$OUTPUT_WAV" 2>&1 | tail -1 || true
 
         if [ ! -f "$OUTPUT_WAV" ]; then
             echo "  WARN: Render failed for $label @ ${SR}Hz"

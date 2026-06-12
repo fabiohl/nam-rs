@@ -750,6 +750,320 @@ fn test_golden_vectors_lstm_2x8() {
     );
 }
 
+/// Test 8d-L: Golden Vectors LSTM 1×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// Synthetic fixture: 1-layer LSTM (H=8), deterministic sawtooth-modulo weights.
+///
+/// ## Thresholds
+/// - MSE < 3e-3, SNR ≥ 15 dB
+/// - Stress signal: 2048 samples (multi-component).
+#[test]
+fn test_golden_vectors_lstm_1x8() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x8.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_1x8.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x8.bin");
+
+    let nam_path = model_path("BossLSTM-1x8.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x8.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 1x8 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 1x8 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-1x8",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8e-L: Golden Vectors LSTM 1×12 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_1x12() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x12.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_1x12.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x12.bin");
+
+    let nam_path = model_path("BossLSTM-1x12.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x12.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 1x12 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 1x12 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-1x12",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8f-L: Golden Vectors LSTM 1×24 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_1x24() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x24.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_1x24.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x24.bin");
+
+    let nam_path = model_path("BossLSTM-1x24.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x24.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 1x24 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 1x24 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-1x24",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8g-L: Golden Vectors LSTM 1×40 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_1x40() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x40.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_1x40.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x40.bin");
+
+    let nam_path = model_path("BossLSTM-1x40.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x40.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 1x40 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 1x40 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-1x40",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8h-L: Golden Vectors LSTM 2×12 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_2x12() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_2x12.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_2x12.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_2x12.bin");
+
+    let nam_path = model_path("BossLSTM-2x12.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-2x12.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 2x12 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 2x12 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-2x12",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8i-L: Golden Vectors LSTM 2×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_2x16() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_2x16.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_2x16.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_2x16.bin");
+
+    let nam_path = model_path("BossLSTM-2x16.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-2x16.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 2x16 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 2x16 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-2x16",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8j-L: Golden Vectors LSTM 2×24 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+#[test]
+fn test_golden_vectors_lstm_2x24() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_2x24.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_2x24.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_2x24.bin");
+
+    let nam_path = model_path("BossLSTM-2x24.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-2x24.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 2x24 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 2x24 for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-2x24",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
 /// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_wavenet_feather() {
@@ -834,6 +1148,61 @@ fn test_golden_vectors_wavenet_nano() {
         min_snr_db,
         None,
         "BossWN-nano",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8e: Golden Vectors WaveNet Lite — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// Reads `tests/fixtures/golden_wavenet_lite.bin`, builds the `StaticModel`
+/// from `BossWN-lite.nam`, runs prewarm + processing,
+/// and compares the output against the C++ reference (NeuralAmpModelerCore).
+///
+/// ## Thresholds
+/// - MSE < 5e-2, SNR ≥ 9 dB
+/// - Divergence dominated exclusively by FastMath Padé vs native `std::tanh`.
+/// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
+///
+/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
+#[test]
+fn test_golden_vectors_wavenet_lite() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_lite.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_lite.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_lite.bin");
+
+    let nam_path = model_path("BossWN-lite.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossWN-lite.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build WaveNet Lite for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossWN-lite",
         STRESS_SAMPLE_RATE,
     );
 }
