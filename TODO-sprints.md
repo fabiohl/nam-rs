@@ -352,7 +352,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** `cargo check --no-default-features` e `--features standalone` não compilam `clack-common`
     (verificar com `cargo tree`); lints verdes em toda a matriz.
 
-- **[T9.3] Auditar features `long_bench` e `pgo`.**
+- **[T9.3] Auditar features `long_bench` e `pgo`.** [DONE]
 
   - Declaradas no `Cargo.toml` sem uso aparente em `src/`. Confirmar consumo em `benches/` e `utils/build-release.sh`;
     remover se órfãs, ou documentar o consumidor num comentário do `Cargo.toml`.

@@ -60,8 +60,8 @@ clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "
 stereo = []
 testing = []
 heap-audit = []
-long_bench = []
-pgo = []
+long_bench = []                                       # → benches/inference_bench.rs, utils/tests-long.sh
+pgo = []                                              # → utils/build-release.sh (PGO build profile)
 
 [[bin]]
 name = "nam-rs"
