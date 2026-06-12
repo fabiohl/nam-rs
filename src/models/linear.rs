@@ -68,11 +68,12 @@ impl LinearModel {
         let receptive_field = weights.len();
         weights.reverse();
         let history = MirroredBuffer::<f32>::new(receptive_field)?;
+        let limit = history.size();
         Ok(Self {
             weights,
             bias,
             history,
-            write_pos: 0,
+            write_pos: limit,
             receptive_field,
         })
     }
@@ -80,28 +81,23 @@ impl LinearModel {
     /// Processes a single audio sample using the Linear model.
     ///
     /// 1. Writes the sample into the ring buffer (`history`).
-    /// 2. Advances the write pointer (modulo `receptive_field`).
-    /// 3. Computes `bias + dot(weights, window)` where the window is the last
-    ///    `receptive_field` samples in chronological order (oldest→newest).
-    ///    Because the weights are stored reversed and the window is
-    ///    oldest→newest, this yields the FIR convolution.
+    /// 2. Advances the write pointer in the mirrored area.
+    /// 3. Obtes a contiguous slice representing the receptive field window.
+    /// 4. Computes the dot product plus the scalar bias using an auto-vectorizable helper.
     #[inline(always)]
     fn process_sample(&mut self, input: f32) -> f32 {
         self.history[self.write_pos] = input;
 
         self.write_pos += 1;
-        if self.write_pos >= self.receptive_field {
-            self.write_pos = 0;
+        let limit = self.history.size();
+        if self.write_pos >= limit * 2 {
+            self.write_pos -= limit;
         }
 
-        let rf = self.receptive_field;
-        let pos = self.write_pos;
-        let mut dot = self.bias;
-        for i in 0..rf {
-            let idx = (pos + i) % rf;
-            dot += self.weights[i] * self.history[idx];
-        }
-        dot
+        let start = self.write_pos - self.receptive_field;
+        let window = &self.history[start..self.write_pos];
+        self.bias
+            + crate::math::common::scalar_ref::dot::dot_product_f32_native(window, &self.weights)
     }
 
     /// Processes a block of audio samples.
@@ -116,19 +112,21 @@ impl LinearModel {
     /// Fills the history buffer with zeros and resets the write pointer.
     #[cold]
     pub fn prewarm(&mut self, _num_samples: usize) {
-        for i in 0..self.receptive_field {
+        let size = self.history.size();
+        for i in 0..(size * 2) {
             self.history[i] = 0.0;
         }
-        self.write_pos = 0;
+        self.write_pos = size;
     }
 
     /// Resets internal state: zeroes the history buffer and write pointer.
     #[cold]
     pub fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
-        for i in 0..self.receptive_field {
+        let size = self.history.size();
+        for i in 0..(size * 2) {
             self.history[i] = 0.0;
         }
-        self.write_pos = 0;
+        self.write_pos = size;
     }
 }
 

@@ -114,7 +114,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 7 — Paridade 100% com Features Oficiais do NAMCore 🎯
+## ÉPICO 7 — Paridade 100% com Features Oficiais do NAMCore 🎯 [DONE]
 
 > Objetivo: nenhum arquivo `.nam` **oficial** deve ser rejeitado ou produzir saída incorreta. Fonte de verdade:
 > espelho local `tests/fixtures/NeuralAmpModelerCore/` (regenerável via `tests/fixtures/golden_gen_build.sh`).
