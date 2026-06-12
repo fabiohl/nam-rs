@@ -175,8 +175,8 @@ fn test_tanh_pade_nr2_sweep() {
         for (j, &input) in remainder.iter().enumerate() {
             batch[j] = input;
         }
-        for j in remainder.len()..8 {
-            batch[j] = 0.0_f32;
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
         }
         unsafe {
             let x = _mm256_loadu_ps(batch.as_ptr());
@@ -272,8 +272,8 @@ fn test_tanh_pade_nr2_sweep_avx512() {
         for (j, &input) in remainder.iter().enumerate() {
             batch[j] = input;
         }
-        for j in remainder.len()..16 {
-            batch[j] = 0.0_f32;
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
         }
         unsafe {
             let x = _mm512_loadu_ps(batch.as_ptr());

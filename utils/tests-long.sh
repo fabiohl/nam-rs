@@ -137,6 +137,8 @@ run_clap_audit_local() {
     cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture && \
       echo "  Executando teste de stress do GC com 1000 swaps..." && \
       cargo test --no-default-features --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps -- --ignored --nocapture && \
+      echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..." && \
+      cargo test --features standalone --test concurrency_stress -- --ignored --nocapture && \
       echo "  Executando testes unitários e de integração em modo Mono..." && \
       cargo test --no-default-features --features "clap-plugin" -- --test-threads=1
 }

@@ -226,11 +226,7 @@ mod tests {
     #[test]
     fn test_crc32_kat_empty() {
         // CRC32 of empty slice is 0x00000000 (property of the IEEE 802.3 algorithm)
-        assert_eq!(
-            crc32_ieee(b""),
-            0x00000000,
-            "CRC32 of empty slice != 0"
-        );
+        assert_eq!(crc32_ieee(b""), 0x00000000, "CRC32 of empty slice != 0");
     }
 
     #[test]
@@ -253,11 +249,7 @@ mod tests {
 
     #[test]
     fn test_crc32_kat_thirtytwo_zeros() {
-        assert_eq!(
-            crc32_ieee(&[0u8; 32]),
-            0x190A55AD,
-            "CRC32 of 32 zero bytes"
-        );
+        assert_eq!(crc32_ieee(&[0u8; 32]), 0x190A55AD, "CRC32 of 32 zero bytes");
     }
 
     #[test]
@@ -279,8 +271,7 @@ mod tests {
     #[test]
     fn test_crc32_kat_alternating() {
         // Alternating 0x55, 0xAA × 16 (32 bytes)
-        let pattern: Vec<u8> = std::iter::repeat([0x55u8, 0xAAu8])
-            .take(16)
+        let pattern: Vec<u8> = std::iter::repeat_n([0x55u8, 0xAAu8], 16)
             .flatten()
             .collect();
         assert_eq!(crc32_ieee(&pattern), 0x8BA7B8B6, "CRC32 of 0x55/0xAA ×16");

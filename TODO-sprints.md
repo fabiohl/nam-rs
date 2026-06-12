@@ -299,7 +299,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     original da task aplica-se a sigmoid initialization, não ao Padé NR2 (cujo erro máximo é ~2.32e-3).
   - **Critério de aceite:** sweep determinístico + proptest com teto de erro; documentos e teste coerentes.
 
-- **[T8.12] Testes de concorrência dedicados (fora do `--test-threads=1`).**
+- **[T8.12] Testes de concorrência dedicados (fora do `--test-threads=1`).** [DONE]
 
   - A suíte inteira roda serializada, mascarando corridas em SPSC/param-swap. Criar binário dedicado
     `tests/concurrency_stress.rs` com threads reais exercitando: SPSC GC push/drain, troca de modelo durante
@@ -309,6 +309,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 - **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`:**
   - Tanto do ponto de vista dos testes estarem corretamento configurados e calibrados, quanto do que os seus resultados em si dizem do estado do projeto.
+  - Anotar aqui um relatório dos achados, para referência futura.
 
 ---
 

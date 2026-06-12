@@ -1271,7 +1271,7 @@ fn bench_gate_fsm(c: &mut Criterion) {
     for &n_samples in &[64, 128, 256] {
         // Steady Open: volume well above threshold, gate stays open.
         // Exercised every callback while the musician is actively playing.
-        group.bench_function(&format!("Open_{}samp", n_samples), |b| {
+        group.bench_function(format!("Open_{}samp", n_samples), |b| {
             let mut gate = DynamicHysteresis::new();
             b.iter(|| {
                 gate.update(
@@ -1287,7 +1287,7 @@ fn bench_gate_fsm(c: &mut Criterion) {
 
         // Steady Closed: gate is already closed, volume stays below threshold.
         // Pre-condition: advance through hold + fade to reach Closed state.
-        group.bench_function(&format!("Closed_{}samp", n_samples), |b| {
+        group.bench_function(format!("Closed_{}samp", n_samples), |b| {
             let mut gate = DynamicHysteresis::new();
             // Two calls with large blocks: hold_frames=2048 → FadingOut, then fade_frames ≤ 256 → Closed
             gate.update(0.0, th_open, th_close, &params, 2048);
@@ -1306,7 +1306,7 @@ fn bench_gate_fsm(c: &mut Criterion) {
 
         // FadingOut: gate is actively ramping down.
         // Pre-condition: advance hold_counter to just below hold_frames, then trigger FadingOut.
-        group.bench_function(&format!("FadingOut_{}samp", n_samples), |b| {
+        group.bench_function(format!("FadingOut_{}samp", n_samples), |b| {
             b.iter_with_setup(
                 || {
                     let mut gate = DynamicHysteresis::new();

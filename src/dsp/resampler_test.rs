@@ -293,22 +293,27 @@ fn test_resampler_snr_against_reference() {
 
     for &(from_rate, to_rate) in rate_pairs {
         let input_path = fixture_dir.join(format!("resampler_input_{}.f32", from_rate));
-        let ref_path = fixture_dir
-            .join(format!("resampler_ref_{}_to_{}.f32", from_rate, to_rate));
-        assert!(input_path.exists(), "Missing: {}. Run generate_resampler_reference.py", input_path.display());
-        assert!(ref_path.exists(), "Missing: {}. Run generate_resampler_reference.py", ref_path.display());
+        let ref_path = fixture_dir.join(format!("resampler_ref_{}_to_{}.f32", from_rate, to_rate));
+        assert!(
+            input_path.exists(),
+            "Missing: {}. Run generate_resampler_reference.py",
+            input_path.display()
+        );
+        assert!(
+            ref_path.exists(),
+            "Missing: {}. Run generate_resampler_reference.py",
+            ref_path.display()
+        );
 
         let input = read_raw_f32(&input_path);
         let reference = read_raw_f32(&ref_path);
 
         let chunk_size = input.len().max(256);
-        let mut resampler =
-            NamResampler::new(from_rate, to_rate, chunk_size)
-                .expect("Failed to create NamResampler");
+        let mut resampler = NamResampler::new(from_rate, to_rate, chunk_size)
+            .expect("Failed to create NamResampler");
 
-        let output_capacity = ((input.len() as f64 * to_rate as f64 / from_rate as f64)
-            .ceil() as usize)
-            + 64;
+        let output_capacity =
+            ((input.len() as f64 * to_rate as f64 / from_rate as f64).ceil() as usize) + 64;
         let mut out_l = vec![0.0f32; output_capacity];
         let mut out_r = vec![0.0f32; output_capacity];
         let produced = resampler.process_input_mono(&input, &mut out_l, &mut out_r);
@@ -395,18 +400,14 @@ fn goertzel_magnitude(signal: &[f32], freq: f32, sample_rate: u32) -> f32 {
 
     // DFT magnitude at target frequency
     let mag_sq = s1.powi(2) + s0.powi(2) - coeff * s1 * s0;
-    if mag_sq < 0.0 {
-        0.0
-    } else {
-        mag_sq.sqrt()
-    }
+    if mag_sq < 0.0 { 0.0 } else { mag_sq.sqrt() }
 }
 
 /// Reads a raw f32 LE file into a Vec<f32>.
 fn read_raw_f32(path: &std::path::Path) -> Vec<f32> {
     let bytes = std::fs::read(path).expect("Failed to read fixture file");
     assert!(
-        bytes.len() % 4 == 0,
+        bytes.len().is_multiple_of(4),
         "Fixture {} has invalid size ({} bytes, not multiple of 4)",
         path.display(),
         bytes.len()
