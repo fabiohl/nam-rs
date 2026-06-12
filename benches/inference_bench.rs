@@ -1248,6 +1248,89 @@ fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
 #[cfg(not(feature = "clap-plugin"))]
 fn bench_clap_process_block_64samp(_c: &mut criterion::Criterion) {}
 
+// ── Gate FSM Benchmarks ──
+
+/// Benchmarks the Gate FSM (`DynamicHysteresis::update()` + `multiplier()`) across
+/// realistic DSP block sizes (64, 128, 256 samples). The gate is in the DSP hot-path
+/// — every audio callback runs `update()` to determine whether to open/close the gate
+/// based on the detected volume level.
+///
+/// Three steady-state scenarios are measured per block size:
+/// - **Open**: Gate stays open (volume above open threshold). Most common path.
+/// - **Closed**: Gate stays closed (volume below close threshold, post-hold+fade).
+/// - **FadingOut**: Gate is actively ramping the multiplier down toward silence.
+fn bench_gate_fsm(c: &mut Criterion) {
+    use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
+
+    let params = GateParams::default();
+    let th_open = 10.0f32.powf(params.threshold_open_db / 20.0);
+    let th_close = 10.0f32.powf(params.threshold_close_db / 20.0);
+
+    let mut group = c.benchmark_group("Gate_FSM");
+
+    for &n_samples in &[64, 128, 256] {
+        // Steady Open: volume well above threshold, gate stays open.
+        // Exercised every callback while the musician is actively playing.
+        group.bench_function(&format!("Open_{}samp", n_samples), |b| {
+            let mut gate = DynamicHysteresis::new();
+            b.iter(|| {
+                gate.update(
+                    std::hint::black_box(0.5),
+                    th_open,
+                    th_close,
+                    &params,
+                    n_samples,
+                );
+                std::hint::black_box(gate.multiplier());
+            });
+        });
+
+        // Steady Closed: gate is already closed, volume stays below threshold.
+        // Pre-condition: advance through hold + fade to reach Closed state.
+        group.bench_function(&format!("Closed_{}samp", n_samples), |b| {
+            let mut gate = DynamicHysteresis::new();
+            // Two calls with large blocks: hold_frames=2048 → FadingOut, then fade_frames ≤ 256 → Closed
+            gate.update(0.0, th_open, th_close, &params, 2048);
+            gate.update(0.0, th_open, th_close, &params, 256);
+            b.iter(|| {
+                gate.update(
+                    std::hint::black_box(0.0),
+                    th_open,
+                    th_close,
+                    &params,
+                    n_samples,
+                );
+                std::hint::black_box(gate.multiplier());
+            });
+        });
+
+        // FadingOut: gate is actively ramping down.
+        // Pre-condition: advance hold_counter to just below hold_frames, then trigger FadingOut.
+        group.bench_function(&format!("FadingOut_{}samp", n_samples), |b| {
+            b.iter_with_setup(
+                || {
+                    let mut gate = DynamicHysteresis::new();
+                    // Advance to edge of hold expiry
+                    gate.update(0.0, th_open, th_close, &params, params.hold_frames);
+                    gate
+                },
+                |mut gate| {
+                    gate.update(
+                        std::hint::black_box(0.0),
+                        th_open,
+                        th_close,
+                        &params,
+                        n_samples,
+                    );
+                    std::hint::black_box(gate.multiplier());
+                },
+            );
+        });
+    }
+
+    group.finish();
+}
+
 // ── IR Cabsim Convolution Benchmarks ──
 
 fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
@@ -1423,7 +1506,8 @@ criterion_group!(
     bench_cabsim_long_ir_64samp,
     bench_cabsim_256samp_block,
     bench_cabsim_engine_construction,
-    bench_cabsim_engine_construction_long
+    bench_cabsim_engine_construction_long,
+    bench_gate_fsm
 );
 
 // Long-running benchmark group definition (Soak Tests)

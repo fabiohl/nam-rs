@@ -269,11 +269,12 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 8.2 — Lacunas de cobertura (fechamento do "seguro")
 
-- **[T8.8] Bench Criterion do gate FSM.**
+- **[T8.8] Bench Criterion do gate FSM.** [DONE]
 
   - O gate (`src/dsp/gate.rs`) está no hot-path e não tem bench. Adicionar caso em `benches/inference_bench.rs`
     medindo `update()` + `multiplier()` por bloco (64/128/256 frames) e registrar baseline em `docs/benchmarks.md`.
   - **Critério de aceite:** bench roda na lane padrão; números documentados.
+  - Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
 - **[T8.9] Teste de corretude do resampler contra referência externa.**
 

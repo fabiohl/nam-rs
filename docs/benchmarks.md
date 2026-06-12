@@ -179,6 +179,31 @@ The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weight
 3. **Both variants stay well under the 1.33 ms real-time deadline** at 48 kHz with a 64-sample buffer, leaving ample headroom for other DSP processing.
 4. **Golden tests confirm zero regression** in A1 models (WaveNet Standard, Feather, Nano, LSTM) — all 34 integration tests pass.
 
+## Gate FSM (Dynamic Hysteresis)
+
+The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callback to decide whether to open or close the noise gate based on detected volume. The benchmark measures `update()` (state machine tick) + `multiplier()` (current gain read) across three steady-state scenarios at realistic DSP block sizes.
+
+### Results (64, 128, 256 samples — x86-64-v3 AVX2/FMA)
+
+| Scenario             | 64 samp  | 128 samp | 256 samp | Steady Path                                  |
+|:-------------------- |:-------- |:-------- |:-------- |:-------------------------------------------- |
+| **Open**             | ~2.11 ns | ~2.03 ns | ~1.89 ns | Volume above open threshold, gate stays open |
+| **Closed**           | ~1.66 ns | ~1.71 ns | ~1.70 ns | Gate already closed, volume stays below      |
+| **FadingOut (ramp)** | ~22.7 ns | ~22.8 ns | ~22.7 ns | Gate actively ramping multiplier toward zero |
+
+### Analysis
+
+* The gate FSM overhead is negligible — even the most expensive path (FadingOut at ~22.7 ns) represents **~0.0017%** of the 1.33 ms audio deadline at 48 kHz with 64-sample blocks.
+* Open and Closed steady states are essentially single-branch operations (~1.7–2.1 ns), confirming that the gate imposes no measurable latency in the hot-path.
+* FadingOut includes the ramp step arithmetic (`fade_counter -= n_samples`, `current_multiplier = fade_counter * inv_fade_frames`, `ramp_samples = n_samples`) and remains constant across block sizes because only the numeric subtraction and multiplication are block-size-independent.
+* The gate's actual computational cost is in `apply_gain_rt` / `apply_gain_rt_stereo` (SIMD gain application), not in the FSM decision logic measured here.
+
+### Running
+
+```sh
+cargo bench --bench inference_bench -- "Gate_FSM"
+```
+
 ## IR Cabsim Convolution (Epic 4)
 
 The cabsim engine uses UPOLS (Uniform-Partitioned Overlap-Save) frequency-domain convolution. All FFTs of the kernel partitions are pre-computed at construction time; the `ConvEngine::process()` hot-path performs zero allocations and operates on pre-allocated buffers exclusively.
