@@ -65,12 +65,26 @@ impl ContainerModel {
 
         submodels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
 
+        for (i, (max_value, _)) in submodels.iter().enumerate() {
+            if !max_value.is_finite() || *max_value < 0.0 {
+                anyhow::bail!(
+                    "ContainerModel: submodel[{}] has invalid max_value={} \
+                     (must be finite and >= 0.0)",
+                    i,
+                    max_value
+                );
+            }
+        }
+
         for w in submodels.windows(2) {
             if w[1].0 <= w[0].0 {
                 anyhow::bail!("ContainerModel: submodels must be sorted by ascending max_value");
             }
         }
-        if submodels.last().unwrap().0 < 1.0 {
+        let last = submodels
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("ContainerModel: submodels list is empty"))?;
+        if last.0 < 1.0 {
             anyhow::bail!("ContainerModel: last submodel max_value must be >= 1.0");
         }
 
@@ -234,3 +248,67 @@ impl SlimmableModel for ContainerModel {
 }
 
 impl super::sealed::Sealed for ContainerModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::StaticModel;
+
+    fn make_lstm() -> Box<StaticModel> {
+        Box::new(StaticModel::Lstm1x8(Box::default()))
+    }
+
+    #[test]
+    fn test_valid_max_value_passes() {
+        let submodels = vec![(0.5, make_lstm()), (1.0, make_lstm())];
+        assert!(ContainerModel::new(submodels, 48000).is_ok());
+    }
+
+    #[test]
+    fn test_reject_max_value_nan() {
+        let submodels = vec![(f32::NAN, make_lstm()), (1.0, make_lstm())];
+        match ContainerModel::new(submodels, 48000) {
+            Ok(_) => panic!("Expected NaN rejection"),
+            Err(e) => assert!(
+                e.to_string().contains("invalid max_value=NaN"),
+                "Expected NaN rejection, got: {e}"
+            ),
+        }
+    }
+
+    #[test]
+    fn test_reject_max_value_inf() {
+        let submodels = vec![(f32::INFINITY, make_lstm()), (1.0, make_lstm())];
+        match ContainerModel::new(submodels, 48000) {
+            Ok(_) => panic!("Expected Inf rejection"),
+            Err(e) => assert!(
+                e.to_string().contains("invalid max_value"),
+                "Expected Inf rejection, got: {e}"
+            ),
+        }
+    }
+
+    #[test]
+    fn test_reject_max_value_neg_inf() {
+        let submodels = vec![(f32::NEG_INFINITY, make_lstm()), (1.0, make_lstm())];
+        match ContainerModel::new(submodels, 48000) {
+            Ok(_) => panic!("Expected -Inf rejection"),
+            Err(e) => assert!(
+                e.to_string().contains("invalid max_value"),
+                "Expected -Inf rejection, got: {e}"
+            ),
+        }
+    }
+
+    #[test]
+    fn test_reject_max_value_negative() {
+        let submodels = vec![(-0.5, make_lstm()), (1.0, make_lstm())];
+        match ContainerModel::new(submodels, 48000) {
+            Ok(_) => panic!("Expected negative rejection"),
+            Err(e) => assert!(
+                e.to_string().contains("invalid max_value=-0.5"),
+                "Expected negative rejection, got: {e}"
+            ),
+        }
+    }
+}

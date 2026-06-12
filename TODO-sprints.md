@@ -665,7 +665,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 14.1 — Robustez
 
-- **[T14.1] Validar `max_value` finito e positivo no `ContainerModel`.**
+- **[T14.1] Validar `max_value` finito e positivo no `ContainerModel`.** [DONE]
 
   - `src/models/container.rs:66` ordena com `partial_cmp(...).unwrap_or(Ordering::Equal)`: um `max_value`
     `NaN`/`±Inf` (vindo do JSON via `src/loader/dispatcher/container/mod.rs`) passa pela validação de
@@ -733,15 +733,16 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
+Liberar v2.1 (A2 Beta):
+rm -rf target/
 utils/mod-update.sh
 utils/lints.sh
 tests/fixtures/golden_gen_build.sh
 utils/tests-cargo.sh
 utils/tests-long.sh
 utils/build-release.sh
-Rodada de testes no cli (utils/run-standalone.sh)
-Plugin CLAP. Bitwig e Reaper: ficar com os 2 ou apenas 1 deles?
-Liberar v2.1 (A2 Beta):
+Testes cli utils/run-standalone.sh
+Testes CLAP
 
 ---
 
