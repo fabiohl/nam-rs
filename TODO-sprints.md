@@ -734,8 +734,6 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 ---
 
 Liberar v2.1 (A2 Beta):
-tests/fixtures/golden_gen_build.sh
-utils/tests-cargo.sh
 utils/tests-long.sh
 utils/build-release.sh
 Testes cli utils/run-standalone.sh
