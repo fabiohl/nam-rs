@@ -179,7 +179,7 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 
 NAM-rs uses a native **Minimum-Phase Polyphase Sinc Resampler**, replacing external dependencies.
 
-- **Advantages:** Eliminates pre-ringing (energy concentrated at the start), reduces algorithmic latency from ~1.5ms to ~0.1ms, and offers ~9x superior performance via dedicated AVX2/AVX-512 convolution.
+- **Advantages:** Eliminates pre-ringing (energy concentrated at the start), reduces algorithmic latency from ~1.5ms (linear phase) to ~0.7ms, and offers ~9x superior performance via dedicated AVX2/AVX-512 convolution.
 - **Gate FSM:** Implements temporal and amplitude hysteresis (Schmitt Trigger) to prevent chattering at noise floor levels. Includes linear SIMD ramping for smooth transitions (fade-in/out), fused into a single stereo pass to optimize cache locality.
 
 ### Bidirectional DSP Flow

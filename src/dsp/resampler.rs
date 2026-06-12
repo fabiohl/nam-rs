@@ -11,7 +11,7 @@
 //! - **Pre-ringing elimination**: the minimum-phase transform via Real Cepstrum
 //!   concentrates all filter energy into the shortest possible delay, removing 100%
 //!   of the pre-echo artifacts on guitar transients.
-//! - **Algorithmic latency reduction**: from ~1.5 ms (linear phase) to ~0.1 ms.
+//! - **Algorithmic latency reduction**: from ~1.5 ms (linear phase) to ~0.7 ms.
 //! - **Vectorized convolution**: AVX2+FMA inner product with coefficients aligned
 //!   to 64 bytes, saturating the processor's FMA port throughput.
 //!
@@ -346,9 +346,8 @@ impl NamResampler {
 
     /// Computes the total latency (input + output) in host-rate samples.
     ///
-    /// Latency is deterministic and based on the minimum-phase FIR filter.
-    /// For minimum-phase filters, the latency is approximately half the order
-    /// of the prototype filter.
+    /// Latency is deterministic and uses a conservative estimate of
+    /// TAPS_PER_PHASE/2 per filter (32 taps → 16 sample group delay per stage).
     ///
     /// # Parameters
     /// - `host_rate`: host sample rate (e.g., 44100, 48000, 96000).

@@ -717,7 +717,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     substituídos pela ancoragem externa ao NeuralAmpModelerCore, como o próprio parágrafo narra). Remover os
     caminhos mortos ou anotá-los como `(removido)`.
 
-- **[T15.3] Corrigir a alegação de latência do resampler em `docs/architecture.md:183`.**
+- **[T15.3] Corrigir a alegação de latência do resampler em `docs/architecture.md:183`.** [DONE]
 
   - "reduz a latência de ~1.5ms para ~0.1ms" não bate com `latency_samples()`
     (`src/dsp/resampler.rs:358-376`): com `taps_half=16`, a latência real é ~24–33 amostras
