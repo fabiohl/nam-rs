@@ -284,7 +284,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** regressão de qualidade do polyphase passa a ser detectada pela lane rápida.
   - Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
-- **[T8.10] KAT (known-answer tests) do CRC32 e fuzz de truncamento `.namb`.**
+- **[T8.10] KAT (known-answer tests) do CRC32 e fuzz de truncamento `.namb`.** [DONE]
 
   - Adicionar em `src/loader/namb_test.rs`: `crc32_ieee(b"123456789") == 0xCBF43926` (vetor canônico) + casos de
     arquivo truncado em todos os offsets de fronteira do header (proptest já cobre parte — completar bordas exatas).
