@@ -622,7 +622,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 13.1 — Kernels de ativação e convolução
 
-- **[T13.1] `simd_sigmoid_dual_avx2`: compartilhar o broadcast de constantes entre as duas lanes.**
+- **[T13.1] `simd_sigmoid_dual_avx2`: compartilhar o broadcast de constantes entre as duas lanes.** [DONE]
 
   - `src/math/activations/sigmoid.rs:58-62` apenas chama `simd_sigmoid_avx2` **duas vezes**, rebroadcastando
     ~14 constantes (`c0..c8`, clamps, `half`, `zero`, `one`) por lane. O par `tanh` já faz o certo

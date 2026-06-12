@@ -51,14 +51,62 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(zero, _mm256_min_ps(one, result))
 }
 
-/// Direct minimax polynomial approximation of `sigmoid(x)` (Dual, 16 floats).
+/// Direct minimax polynomial approximation of `sigmoid(x)` — dual 16-float path (AVX2).
+///
+/// Evaluates two independent `__m256` registers. Coefficients are broadcast
+/// once and shared between both lanes, amortising setup cost.
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    unsafe { (simd_sigmoid_avx2(x1), simd_sigmoid_avx2(x2)) }
+    let clamp_lo = _mm256_set1_ps(-SIGMOID_MINIMAX_CLAMP);
+    let clamp_hi = _mm256_set1_ps(SIGMOID_MINIMAX_CLAMP);
+    let c0 = _mm256_set1_ps(SIGMOID_MINIMAX_C0);
+    let c1 = _mm256_set1_ps(SIGMOID_MINIMAX_C1);
+    let c2 = _mm256_set1_ps(SIGMOID_MINIMAX_C2);
+    let c3 = _mm256_set1_ps(SIGMOID_MINIMAX_C3);
+    let c4 = _mm256_set1_ps(SIGMOID_MINIMAX_C4);
+    let c5 = _mm256_set1_ps(SIGMOID_MINIMAX_C5);
+    let c6 = _mm256_set1_ps(SIGMOID_MINIMAX_C6);
+    let c7 = _mm256_set1_ps(SIGMOID_MINIMAX_C7);
+    let c8 = _mm256_set1_ps(SIGMOID_MINIMAX_C8);
+    let half = _mm256_set1_ps(0.5);
+    let zero = _mm256_set1_ps(0.0);
+    let one = _mm256_set1_ps(1.0);
+
+    let x1 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x1));
+    let x2 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x2));
+
+    let x2_1 = _mm256_mul_ps(x1, x1);
+    let x2_2 = _mm256_mul_ps(x2, x2);
+
+    let p1 = _mm256_fmadd_ps(c8, x2_1, c7);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c6);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c5);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c4);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c3);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c2);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c1);
+    let p1 = _mm256_fmadd_ps(p1, x2_1, c0);
+
+    let p2 = _mm256_fmadd_ps(c8, x2_2, c7);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c6);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c5);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c4);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c3);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c2);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c1);
+    let p2 = _mm256_fmadd_ps(p2, x2_2, c0);
+
+    let res1 = _mm256_fmadd_ps(x1, p1, half);
+    let res2 = _mm256_fmadd_ps(x2, p2, half);
+
+    (
+        _mm256_max_ps(zero, _mm256_min_ps(one, res1)),
+        _mm256_max_ps(zero, _mm256_min_ps(one, res2)),
+    )
 }
 
 /// Direct minimax polynomial approximation of `sigmoid(x)` (AVX-512).
