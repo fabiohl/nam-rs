@@ -227,7 +227,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** mesmos testes, mesma contagem de asserções (diff de `cargo test -- --list` antes/depois);
     `utils/tests-cargo.sh` verde e sem aumento perceptível de tempo.
 
-- **[T8.2] `CountingAllocator` compartilhado em `tests/common/`.**
+- **[T8.2] `CountingAllocator` compartilhado em `tests/common/`.**[DONE]
 
   - O boilerplate (~70 linhas) está copiado em `tests/nam_infer_test.rs:57`, `tests/resampler_heap_audit.rs:22`,
     `tests/cabsim_heap_audit.rs:22`, `tests/a2_heap_audit.rs:22`. Extrair struct + guard para

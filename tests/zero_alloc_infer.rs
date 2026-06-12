@@ -19,91 +19,15 @@ use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::models::NamModel;
 use std::fs;
 
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-use std::alloc::{GlobalAlloc, Layout, System};
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-
 mod common;
+#[cfg(not(feature = "clap-plugin"))]
+use common::alloc_audit::CountingAllocator;
+use common::alloc_audit::{TrackingGuard, get_alloc_count};
 use common::*;
 
-// =============================================================================
-// Counting Allocator for Zero-Allocation Verification
-// =============================================================================
-// Counts malloc/free during an interval. Active only when #[cfg(test)].
-// Used in `test_zero_alloc_process_*` tests to prove the hot-path is allocation-free.
-
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-static TRACKING_THREAD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-struct CountingAllocator;
-
-#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
-        }
-        unsafe { System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-#[cfg(all(test, any(not(feature = "heap-audit"), not(feature = "clap-plugin"))))]
+#[cfg(not(feature = "clap-plugin"))]
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
-
-// Guard to safely enable/disable counting (even in panics).
-struct TrackingGuard {
-    #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
-    _inner: nam_rs::common::alloc_audit::TrackingGuard,
-}
-
-impl TrackingGuard {
-    fn new() -> Self {
-        #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
-        {
-            Self {
-                _inner: nam_rs::common::alloc_audit::TrackingGuard::new(),
-            }
-        }
-        #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-        {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            TRACKING_THREAD.store(tid, Ordering::Relaxed);
-            ALLOC_COUNT.store(0, Ordering::Relaxed);
-            Self {}
-        }
-    }
-}
-
-impl Drop for TrackingGuard {
-    fn drop(&mut self) {
-        // Disable tracking when going out of scope
-        #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-        {
-            TRACKING_THREAD.store(0, Ordering::Relaxed);
-        }
-    }
-}
-
-fn get_alloc_count() -> usize {
-    #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
-    {
-        nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
-    }
-    #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
-    {
-        ALLOC_COUNT.load(Ordering::Relaxed)
-    }
-}
 
 // =============================================================================
 // Zero-Allocation Hot Path Tests

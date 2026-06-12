@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+pub mod alloc_audit;
 pub mod constants;
 pub mod conv_helpers;
 pub mod io_helpers;
