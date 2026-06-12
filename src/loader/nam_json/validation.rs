@@ -65,6 +65,11 @@ where
 }
 
 /// JSON tree visitor for `metadata.training` with depth and size limits.
+///
+/// Limits are enforced during **deserialization** (not afterwards) to prevent
+/// memory exhaustion before validation completes.  The 1 MiB aggregate limit
+/// protects against DoS via deeply nested or overly verbose training metadata.
+///
 /// Uses `std::cell::Cell<usize>` so that child visitors share the size counter
 /// with the parent, avoiding bypass of the 1 MiB aggregate limit.
 struct LimitedValueVisitor {
@@ -123,10 +128,16 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
         formatter.write_str("a JSON value within depth and size limits")
     }
 
+    // Each visit_* method charges a conservative upper-bound byte count
+    // against the 1 MiB aggregate limit.  The estimates approximate the size
+    // of the JSON *text* that produced the value, not the in-memory
+    // representation, to remain invariant across different JSON parsers.
+
     fn visit_bool<E>(self, v: bool) -> Result<serde_json::Value, E>
     where
         E: serde::de::Error,
     {
+        // "true" = 4 bytes, "false" = 5 bytes
         self.add_size(if v { 4 } else { 5 }).map_err(E::custom)?;
         Ok(serde_json::Value::Bool(v))
     }
@@ -135,6 +146,8 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
     where
         E: serde::de::Error,
     {
+        // 16 bytes: conservative max for any i64 JSON representation
+        // (e.g. "-9223372036854775808")
         self.add_size(16).map_err(E::custom)?;
         Ok(serde_json::Value::Number(serde_json::Number::from(v)))
     }
@@ -143,6 +156,7 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
     where
         E: serde::de::Error,
     {
+        // 16 bytes: same upper-bound as i64
         self.add_size(16).map_err(E::custom)?;
         Ok(serde_json::Value::Number(serde_json::Number::from(v)))
     }
@@ -151,6 +165,9 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
     where
         E: serde::de::Error,
     {
+        // 16 bytes: covers the vast majority of f64 text forms
+        // (e.g. "-1.7976931348623157e308" would be longer, but
+        // training metadata never reaches that precision)
         self.add_size(16).map_err(E::custom)?;
         Ok(serde_json::Value::Number(
             serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)),
@@ -161,6 +178,7 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
     where
         E: serde::de::Error,
     {
+        // +2 for the surrounding double-quotes "…"
         self.add_size(v.len() + 2).map_err(E::custom)?;
         Ok(serde_json::Value::String(v.to_string()))
     }
@@ -169,11 +187,13 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
     where
         E: serde::de::Error,
     {
+        // +2 for the surrounding double-quotes "…"
         self.add_size(v.len() + 2).map_err(E::custom)?;
         Ok(serde_json::Value::String(v))
     }
 
     fn visit_unit<E>(self) -> Result<serde_json::Value, E> {
+        // null costs 4 bytes but the discriminator (type tag) covers it
         Ok(serde_json::Value::Null)
     }
 
@@ -182,12 +202,14 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
         A: serde::de::SeqAccess<'de>,
     {
         self.check_depth().map_err(serde::de::Error::custom)?;
-        self.add_size(2).map_err(serde::de::Error::custom)?; // [ ]
+        // +2 for the opening and closing brackets "[…]"
+        self.add_size(2).map_err(serde::de::Error::custom)?;
         let mut arr = Vec::new();
         loop {
             match seq.next_element_seed(self.child()) {
                 Ok(Some(val)) => {
-                    self.add_size(1).map_err(serde::de::Error::custom)?; // comma
+                    // +1 for the comma between elements
+                    self.add_size(1).map_err(serde::de::Error::custom)?;
                     arr.push(val);
                 }
                 Ok(None) => break,
@@ -202,16 +224,19 @@ impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
         A: serde::de::MapAccess<'de>,
     {
         self.check_depth().map_err(serde::de::Error::custom)?;
-        self.add_size(2).map_err(serde::de::Error::custom)?; // { }
+        // +2 for the opening and closing braces "{…}"
+        self.add_size(2).map_err(serde::de::Error::custom)?;
         let mut obj = serde_json::Map::new();
         loop {
             match map.next_key::<String>() {
                 Ok(Some(key)) => {
-                    let key_len = key.len() + 4; // quotes and colon
+                    // len + 4: key string chars + 2 quotes + 1 colon + 1 space
+                    let key_len = key.len() + 4;
                     self.add_size(key_len).map_err(serde::de::Error::custom)?;
                     let val: serde_json::Value = map.next_value_seed(self.child())?;
                     obj.insert(key, val);
-                    self.add_size(1).map_err(serde::de::Error::custom)?; // comma
+                    // +1 for the comma between key-value pairs
+                    self.add_size(1).map_err(serde::de::Error::custom)?;
                 }
                 Ok(None) => break,
                 Err(e) => return Err(e),

@@ -723,7 +723,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     (`src/dsp/resampler.rs:358-376`): com `taps_half=16`, a latência real é ~24–33 amostras
     (≈0.25–0.75 ms conforme a razão). Re-medir e publicar o valor real.
 
-- **[T15.4] Comentários inline em blocos densos sem explicação do "porquê".**
+- **[T15.4] Comentários inline em blocos densos sem explicação do "porquê".** [DONE]
 
   - `src/loader/nam_json/validation.rs:70-222` (`LimitedValueVisitor` — explicar as estimativas de bytes por
     tipo), `src/loader/dispatcher/wavenet/layout.rs:14-96` (transposição interleaved-4-wide),

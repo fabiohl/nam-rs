@@ -29,8 +29,10 @@ fn dequantize_weight(w: u16, is_bf16: bool) -> f32 {
 ///   compensation[i] = Σⱼ (W_fp32[i,j] - W_quant[i,j])
 ///
 /// * `raw_f32` — original weights in post-cursor-read layout.
-/// * `quant_u16` — already quantized and transposed weights.
-/// * `is_interleaved` — if true, raw_f32 and quant_u16 are in the same interleaved layout.
+/// * `quant_u16` — already quantized and transposed (column-major) weights.
+/// * `is_interleaved` — if true, `raw_f32` and `quant_u16` share the same
+///   column-major layout; otherwise `raw_f32` is row-major and `quant_u16`
+///   is column-major (transposed).
 pub fn compute_dense_bias_compensation(
     raw_f32: &[f32],
     quant_u16: &[u16],
@@ -42,6 +44,8 @@ pub fn compute_dense_bias_compensation(
     let mut compensation = vec![0.0f32; out_size];
 
     if is_interleaved {
+        // Column-major: raw_f32[in_c * out_size + out_c]
+        // quant_u16 shares the same layout
         for (out_c, comp) in compensation.iter_mut().enumerate().take(out_size) {
             let mut sum_diff = 0.0f32;
             for in_c in 0..in_size {
@@ -51,6 +55,8 @@ pub fn compute_dense_bias_compensation(
             *comp = sum_diff;
         }
     } else {
+        // raw_f32 is row-major: raw_f32[out_c * in_size + in_c]
+        // quant_u16 is column-major (already transposed by the loader)
         for (out_c, comp) in compensation.iter_mut().enumerate().take(out_size) {
             let mut sum_diff = 0.0f32;
             for in_c in 0..in_size {
@@ -70,6 +76,10 @@ pub fn compute_dense_bias_compensation(
 /// Uses the premise of DC=1.0 signal on all input channels and taps.
 /// For each output channel `i`:
 ///   compensation[i] = Σ_{k,cin} (W_fp32[i,cin,k] - W_quant[i,cin,k])
+///
+/// Layout variants:
+///   `is_interleaved=true`  → raw_f32 and quant_u16 are both 4-wide interleaved
+///   `is_interleaved=false` → raw_f32 is standard (out_c*in_size+k_size), quant_u16 is 4-wide interleaved
 pub fn compute_conv1d_bias_compensation(
     raw_f32: &[f32],
     quant_u16: &[u16],
@@ -82,9 +92,9 @@ pub fn compute_conv1d_bias_compensation(
     let mut compensation = vec![0.0f32; out_size];
 
     if is_interleaved {
-        // Layout interleaved 4-wide:
-        // raw[b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane]
-        // quant mesmo layout
+        // 4-wide interleaved layout (both arrays):
+        //   idx = b*(k_size*in_size*4) + k*(in_size*4) + in_c*4 + lane
+        //   out_c = b*4 + lane
         let num_blocks = out_size.div_ceil(4);
         for b in 0..num_blocks {
             for k in 0..k_size {
@@ -102,8 +112,9 @@ pub fn compute_conv1d_bias_compensation(
             }
         }
     } else {
-        // raw: raw[(out_c * in_size + in_c) * k_size + k]
-        // quant: interleaved 4-wide
+        // raw_f32: standard (out_c, in_c, kernel) row-major
+        //   raw_idx = (out_c * in_size + in_c) * k_size + k
+        // quant_u16: 4-wide interleaved (already transposed by the loader)
         let num_blocks = out_size.div_ceil(4);
         for b in 0..num_blocks {
             for k in 0..k_size {

@@ -19,6 +19,8 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<T> {
+    // Padded to the nearest multiple of 4 output channels so that every
+    // SIMD lane has a defined weight (zero-padded lanes produce zero output).
     let num_blocks = out_size.div_ceil(4);
     let padded_total = num_blocks * 4 * in_size * k_size;
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
@@ -29,12 +31,17 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     let raw_f32_owned: Vec<f32>;
 
     if interleaved {
+        // File already stores weights in 4-wide interleaved order —
+        // no transposition required, just quantize in-place.
         let raw = cursor.read_slice(padded_total)?;
         raw_f32_owned = raw.to_vec();
         for i in 0..padded_total {
             weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
         }
     } else {
+        // Standard (in_ch, out_ch, kernel) layout in the file.
+        // Transpose into 4-wide interleaved order so the DSP kernel
+        // can process 4 output channels per SIMD operation.
         let total = out_size * in_size * k_size;
         let raw = cursor.read_slice(total)?;
         raw_f32_owned = raw.to_vec();
@@ -54,6 +61,8 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         AlignedVec::new(out_size, 0.0)
     };
 
+    // Bias-Tune: correct the per-channel rounding error that quantization
+    // introduces under a synthetic DC=1.0 signal, at zero RT cost.
     if do_bias && !raw_f32_owned.is_empty() {
         let compensation = bias_tune::compute_conv1d_bias_compensation(
             &raw_f32_owned,
@@ -77,6 +86,8 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         bias_tune::apply_bias_compensation(&mut bias, &compensation);
     }
 
+    // Large dilations need 2-stage prefetch: schedule the load two
+    // iterations ahead to hide the long-stride memory latency.
     let prefetch_fn = if dilation >= 128 {
         crate::math::common::prefetch_strategy_2stage
     } else {
