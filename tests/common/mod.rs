@@ -14,6 +14,7 @@ pub mod constants;
 pub mod conv_helpers;
 pub mod io_helpers;
 pub mod metrics;
+pub mod model_builders;
 pub mod mushra_primitives;
 pub mod perceptual;
 pub mod signals;

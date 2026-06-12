@@ -14,11 +14,13 @@
 
 use nam_rs::math::common::{AlignedVec, SimdMathConfig};
 use nam_rs::models::NamModel;
-use nam_rs::models::a2::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2};
 use nam_rs::models::wavenet::{
     Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
     WaveNetModel,
 };
+
+mod common;
+use common::model_builders::{a2_rf, build_k5_large_rf_wavenet, build_synth_a2};
 
 // =============================================================================
 // Helper: builds a WaveNetModel<4, 3, 2> with RF~=2046 (10 layers)
@@ -425,172 +427,6 @@ fn test_prewarm_zero_rf() {
 }
 
 // =============================================================================
-// Helper: builds a WaveNetModel<4, 5, 2> with K=5 and max dilation 512
-// =============================================================================
-
-fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
-    let is_bf16 = SimdMathConfig::get().instruction_set
-        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
-    let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 5> {
-        let raw_weights = vec![0.01f32; 4 * 5 * 4];
-        let mut weights = AlignedVec::new(5 * 4 * 4, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-            &raw_weights,
-            &mut weights,
-            4,
-            4,
-            5,
-            is_bf16,
-        );
-        WaveNetLayer {
-            conv1d: Conv1d {
-                weights,
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
-                do_bias: false,
-                dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
-            },
-            input_mixin: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
-                do_bias: false,
-            },
-            one_by_one: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
-                do_bias: false,
-            },
-        }
-    };
-
-    let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 5> {
-        let raw_weights = vec![0.01f32; 2 * 5 * 2];
-        let mut weights = AlignedVec::new(5 * 2 * 4, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-            &raw_weights,
-            &mut weights,
-            2,
-            2,
-            5,
-            is_bf16,
-        );
-        WaveNetLayer {
-            conv1d: Conv1d {
-                weights,
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
-                do_bias: false,
-                dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
-            },
-            input_mixin: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
-                do_bias: false,
-            },
-            one_by_one: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
-                do_bias: false,
-            },
-        }
-    };
-
-    // 10 dilations: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
-    // RF per array = sum((K-1) * d) = 4 * 1023 = 4092
-    let dilations_1 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let dilations_2 = [1, 2, 4, 8];
-
-    let rf1: usize = dilations_1.iter().map(|&d| (5 - 1) * d).sum();
-    let rf2: usize = dilations_2.iter().map(|&d| (5 - 1) * d).sum();
-
-    let layers_1: Vec<WaveNetLayer<1, 4, 5>> =
-        dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
-    let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| WaveNetLayerState::new(4, rf1, i).expect("Failed to create WaveNetLayerState"))
-        .collect();
-
-    let array1 = WaveNetLayerArray::<1, 1, 4, 5, 2> {
-        layers: layers_1,
-        states: states_1,
-        rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
-            bias: AlignedVec::from_vec(vec![0.0; 4]),
-            do_bias: false,
-        },
-        head_rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
-            do_bias: false,
-        },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        receptive_field_size: rf1,
-        block_size: 4,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
-        effective_layers: dilations_1.len(),
-    };
-
-    let layers_2: Vec<WaveNetLayer<1, 2, 5>> =
-        dilations_2.iter().map(|&d| make_layer_a2(d)).collect();
-    let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
-        .map(|i| WaveNetLayerState::new(2, rf2, i).expect("Failed to create WaveNetLayerState"))
-        .collect();
-
-    let array2 = WaveNetLayerArray::<4, 1, 2, 5, 1> {
-        layers: layers_2,
-        states: states_2,
-        rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
-            do_bias: false,
-        },
-        head_rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
-            bias: AlignedVec::from_vec(vec![0.0; 1]),
-            do_bias: true,
-        },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
-        receptive_field_size: rf2,
-        block_size: 2,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
-        effective_layers: dilations_2.len(),
-    };
-
-    WaveNetModel {
-        array1,
-        array2,
-        head_scale: 0.02,
-        receptive_field_size: rf1.max(rf2),
-    }
-}
-
-// =============================================================================
 // Tests K=5 (Kernel Size 5) — Edge: large RF, non-standard kernel
 // =============================================================================
 
@@ -726,66 +562,8 @@ fn test_prewarm_k5_large_rf_multiblock() {
 }
 
 // =============================================================================
-// A2 Architecture — WaveNetA2 prewarm edge tests
+// A2 Architecture — WaveNetA2 prewarm edge tests (builders in common::model_builders)
 // =============================================================================
-// A2 has 23 layers with fixed dilations (up to 239) and kernels (6 or 15).
-// Total RF ~6331 — the largest in the codebase.
-
-/// A2 receptive field from canonical constants (matching `a2_receptive_field()` in model.rs).
-fn a2_rf() -> usize {
-    let mut rf = 0usize;
-    for i in 0..23 {
-        rf += (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
-    }
-    rf + (A2_HEAD_KERNEL_SIZE - 1)
-}
-
-/// Computes total A2 weight count for a given CH (3 = Lite, 8 = Full).
-const fn a2_total_weights<const CH: usize>() -> usize {
-    let mut total = CH;
-    let mut layer_idx = 0;
-    while layer_idx < 23 {
-        let k = A2_KERNEL_SIZES[layer_idx];
-        total += CH * CH * k + CH + CH + CH * CH + CH;
-        layer_idx += 1;
-    }
-    total += 16 * CH + 2;
-    total
-}
-
-/// Assembles synthetic A2 weight stream with exact count.
-fn a2_synth_weights<const CH: usize>(weight_val: f32) -> Vec<f32> {
-    let num_weights = a2_total_weights::<CH>();
-    let mut w = Vec::with_capacity(num_weights);
-
-    w.extend(std::iter::repeat_n(weight_val, CH));
-
-    for &k in &A2_KERNEL_SIZES {
-        w.extend(std::iter::repeat_n(weight_val, CH * CH * k));
-        w.extend(std::iter::repeat_n(0.0f32, CH));
-        w.extend(std::iter::repeat_n(weight_val, CH));
-        w.extend(std::iter::repeat_n(weight_val, CH * CH));
-        w.extend(std::iter::repeat_n(0.0f32, CH));
-    }
-
-    w.extend(std::iter::repeat_n(weight_val, 16 * CH));
-    w.push(0.0);
-    w.push(0.02);
-
-    assert_eq!(w.len(), num_weights, "A2 weight count mismatch");
-    w
-}
-
-/// Builds a WaveNetA2<CH> with all weights set to `weight_val` and zero biases.
-/// Uses the exact weight count expected by `set_weights`.
-fn build_synth_a2<const CH: usize>(weight_val: f32) -> WaveNetA2<CH> {
-    let weights = a2_synth_weights::<CH>(weight_val);
-    let mut model = WaveNetA2::<CH>::new();
-    model
-        .set_weights(&weights)
-        .expect("Failed to set A2 synthetic weights");
-    model
-}
 
 /// A2-Full (CH=8): prewarm with RF~6331 must not cause underflow, segfault, or NaN.
 #[test]

@@ -261,12 +261,10 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `utils/tests-long.sh` (que é quem o popula) e nota no `tests/fixtures/README.md`.
   - **Critério de aceite:** diretório esvaziado a cada execução da lane longa; nada versionado por engano.
 
-- **[T8.7] Builders de modelos sintéticos compartilhados.**
+- **[T8.7] Builders de modelos sintéticos compartilhados.** [DONE]
 
-  - `build_synth_a2`, `build_soak_wavenet`, `build_k5_large_rf_wavenet` duplicados entre `tests/soak_test.rs` e
-    `tests/wavenet_prewarm_edge.rs` → extrair para `tests/common/model_builders.rs`.
-  - Corrigir de passagem: `build_soak_wavenet()` usa só 8 dilations (subamostra o modelo de 10 — soak menos
-    representativo); alinhar com a topologia Standard real.
+  - `build_synth_a2`, `build_soak_wavenet`, `build_k5_large_rf_wavenet` extraídos para `tests/common/model_builders.rs`.
+  - Corrigido: `build_soak_wavenet()` agora usa 10 dilations (`[1,2,4,8,16,32,64,128,256,512]`) alinhado com STD_DILATIONS.
   - **Critério de aceite:** uma única definição por builder; soak/edge verdes.
 
 ### Sprint 8.2 — Lacunas de cobertura (fechamento do "seguro")
@@ -305,7 +303,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     custo compensar — decisão do implementador, documentada).
   - **Critério de aceite:** corridas conhecidas (T6.3) cobertas por teste que falhava antes da correção e passa depois.
 
-- **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`**
+- **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`:** Tanto do ponto de vista dos testes estarem corretamento configurados e calibrado, quanto do que os seus resultados em si dizem do projeto.
 
 ---
 

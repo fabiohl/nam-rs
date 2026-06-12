@@ -15,11 +15,11 @@ use nam_rs::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
-use nam_rs::math::common::AlignedVec;
 use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2};
 use nam_rs::models::lstm::*;
-use nam_rs::models::wavenet::*;
-use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
+
+mod common;
+use common::model_builders::build_soak_wavenet;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -47,152 +47,6 @@ impl SimplePcg {
         let res = (xorshifted >> rot) | (xorshifted << ((!rot).wrapping_add(1) & 31));
         // Normalization to the floating-point audio range
         (res as f32 / u32::MAX as f32) * 2.0 - 1.0
-    }
-}
-
-/// Helper to build a synthetic WaveNetModel<16, 3, 8> for soak testing.
-///
-/// This model simulates the "Standard" topology (Array1 + Array2) with 10 million implicit
-/// parameters via constant weights. Initialization with small values (0.01) ensures
-/// that the audio does not explode immediately, allowing the FPU to process real values
-/// across all layers for millions of iterations.
-fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
-    // Inner layer of Array1: CH=16, K=3
-    let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
-        WaveNetLayer {
-            conv1d: Conv1d {
-                weights: AlignedVec::from_vec(vec![
-                    half::f16::from_f32(0.01).to_bits();
-                    16 * 3 * 16
-                ]),
-                bias: AlignedVec::from_vec(vec![0.001; 16]),
-                do_bias: true,
-                dilation,
-                // Prefetch strategy switches for larger dilations to test
-                // the engine's cache-miss handling.
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
-            },
-            input_mixin: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
-                bias: AlignedVec::from_vec(vec![0.0; 16]),
-                do_bias: false,
-            },
-            one_by_one: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 16]),
-                bias: AlignedVec::from_vec(vec![0.0; 16]),
-                do_bias: false,
-            },
-        }
-    };
-
-    // Default dilations for the Standard model (total RF = 2046 samples)
-    let dilations = [1, 2, 4, 8, 16, 32, 64, 128];
-    let rf = 128 * (3 - 1);
-
-    let layers_1: Vec<WaveNetLayer<1, 16, 3>> = dilations.iter().map(|&d| make_layer(d)).collect();
-    let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| WaveNetLayerState::new(16, rf, i).expect("Failed to create WaveNetLayerState"))
-        .collect();
-
-    // Array 1: Responsible for extracting deep temporal features
-    let array1 = WaveNetLayerArray::<1, 1, 16, 3, 8> {
-        layers: layers_1,
-        states: states_1,
-        rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
-            bias: AlignedVec::from_vec(vec![0.0; 16]),
-            do_bias: false,
-        },
-        head_rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 16]),
-            bias: AlignedVec::from_vec(vec![0.0; 8]),
-            do_bias: false,
-        },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        receptive_field_size: rf,
-        block_size: 16,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
-        effective_layers: dilations.len(),
-    };
-
-    // Array 2: Final spectral refinement (CH=8, K=3)
-    let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
-        WaveNetLayer {
-            conv1d: Conv1d {
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 3 * 8]),
-                bias: AlignedVec::from_vec(vec![0.001; 8]),
-                do_bias: true,
-                dilation,
-                prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
-            },
-            input_mixin: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
-                bias: AlignedVec::from_vec(vec![0.0; 8]),
-                do_bias: false,
-            },
-            one_by_one: DenseLayer {
-                f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 8]),
-                bias: AlignedVec::from_vec(vec![0.0; 8]),
-                do_bias: false,
-            },
-        }
-    };
-
-    let layers_2: Vec<WaveNetLayer<1, 8, 3>> = [1, 2].iter().map(|&d| make_layer_a2(d)).collect();
-    let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
-        .map(|i| {
-            WaveNetLayerState::new(8, 2 * (3 - 1), i).expect("Failed to create WaveNetLayerState")
-        })
-        .collect();
-
-    let layers_2_len = layers_2.len();
-    let array2 = WaveNetLayerArray::<16, 1, 8, 3, 1> {
-        layers: layers_2,
-        states: states_2,
-        rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 8]),
-            bias: AlignedVec::from_vec(vec![0.0; 8]),
-            do_bias: false,
-        },
-        head_rechannel: DenseLayer {
-            f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
-            bias: AlignedVec::from_vec(vec![0.0; 1]),
-            do_bias: true,
-        },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
-        receptive_field_size: 2,
-        block_size: 8,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
-        effective_layers: layers_2_len,
-    };
-
-    WaveNetModel {
-        array1,
-        array2,
-        head_scale: 0.1,
-        receptive_field_size: rf,
     }
 }
 
