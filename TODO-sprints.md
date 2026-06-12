@@ -734,9 +734,6 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 ---
 
 Liberar v2.1 (A2 Beta):
-rm -rf target/
-utils/mod-update.sh
-utils/lints.sh
 tests/fixtures/golden_gen_build.sh
 utils/tests-cargo.sh
 utils/tests-long.sh
