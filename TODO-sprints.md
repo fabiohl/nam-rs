@@ -451,13 +451,13 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     ("see Sprint 1.4" — arquivo será fundido em T8.3). Reescrever como comentários atemporais que expliquem o *porquê*.
   - **Critério de aceite:** `grep -rniE '(sprint|épico|epic) [0-9]' src/ tests/` limpo (exceto histórico em docs/).
 
-- **[T10.5] Documentar a exceção de licença do `mushra.rs`.**
+- **[T10.5] Documentar a exceção de licença do `mushra.rs`.** [DONE]
 
   - `src/testing/mushra.rs` tem cabeçalho `SPDX: MIT` (porte de t3k-mushra) — única exceção ao padrão Apache-2.0.
     Registrar a origem/justificativa no próprio cabeçalho do arquivo e no `NOTICE.txt`.
   - **Critério de aceite:** exceção rastreável; auditoria de cabeçalhos 100% explicada.
 
-- **[T10.6] Alinhar `.agents/` (skills × workflows).**
+- **[T10.6] Alinhar `.agents/` (skills × workflows).** [DONE]
 
   - `pesquisador-inovador` e `revisor-auditor` existem só como **workflows** mas são referenciados como **skills**
     (em `workflow-outro/SKILL.md:16` e docs). Padronizar: ou criar os diretórios de skill, ou corrigir as referências

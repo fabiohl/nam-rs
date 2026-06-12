@@ -1,8 +1,15 @@
 ---
+name: refatora-rust
 description: Refactor the structure (but not the logic and algorithms) of source code (rust)
 ---
 
-# The code tree must be clean, logical, and extremely well-structured
+# Skill: Refatora Rust
+
+## When to use this skill
+
+When the user requests structural refactoring of Rust source code without changing logic or algorithms.
+
+## Instructions
 
 * Ensure files are relatively small, atomic, modular, reusable, and easy to understand and maintain.
 * Folder and file tree must be organized in an extremely logical layout for the project's purposes.
