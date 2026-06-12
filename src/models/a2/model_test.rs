@@ -151,6 +151,7 @@ fn test_wavenet_a2_const_receptive_field_matches_runtime() {
 
 // ── set_weights tests (T1.6) ───────────────────────────────────────
 
+#[allow(dead_code)]
 fn expected_weight_count(ch: usize) -> usize {
     let mut count = ch; // rechannel_w
     for &k in &A2_KERNEL_SIZES {
@@ -166,6 +167,7 @@ fn expected_weight_count(ch: usize) -> usize {
     count
 }
 
+#[allow(dead_code)]
 fn make_test_weights(n: usize, seed: u32) -> Vec<f32> {
     let mut v = Vec::with_capacity(n);
     let mut state = seed;

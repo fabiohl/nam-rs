@@ -376,7 +376,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Avaliar `src/dsp/pipeline/test_util.rs` (7 linhas) → fundir nos helpers de teste do pipeline.
   - **Critério de aceite:** árvore sem arquivos-fantasma; imports atualizados; suíte verde.
 
-- **[T9.6] Dividir god-files (sem mudar lógica).**
+- **[T9.6] Dividir god-files (sem mudar lógica).** [DONE]
 
   - Prioridade: `src/clap/processor_test.rs` (2236 L — dividir por categoria: bypass/gain/params/state/preset),
     `src/models/a2/model.rs` (989 L — extrair `set_weights`/carga p/ submódulo), `src/models/a2/layer.rs` (842 L),
@@ -415,8 +415,8 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 - **[T10.1] Corrigir todos os links com barra inicial nos Markdown.**
 
   - `docs/architecture.md` (~10 ocorrências: linhas 42, 106, 112, 273, 307, 426, 513, 517, 552, 581, 595),
-    `docs/cpp_parity_map.md:123,237`, `docs/clap_integration.md:95`. Padrão do projeto: links relativos funcionais
-    (ou esquema `file://` absoluto quando indicado) — nunca `/src/...` cru.
+    `docs/cpp_parity_map.md:123,237`, `docs/clap_integration.md:95`. Padrão do projeto: links relativos funcionais.
+    Nunca `/src/...` cru ou esquema `file://` absoluto.
   - **Critério de aceite:** verificação automatizada simples (script ou grep) de que todo alvo de link existe.
 
 - **[T10.2] Eliminar referências ao inexistente `docs/wavenet_walkthrough.rst`.**
@@ -457,6 +457,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     (em `workflow-outro/SKILL.md:16` e docs). Padronizar: ou criar os diretórios de skill, ou corrigir as referências
     para "workflow" — manter a distinção clara.
   - **Critério de aceite:** toda referência cruzada em `.agents/` resolve para algo existente.
+  - Nota do PO: Transformar tudo em skills (na pasta skills). A pasta workflows é redundante, na prática. Remove-la.
 
 - **[T10.7] Documentar os espelhos locais não-versionados.**
 
