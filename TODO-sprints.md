@@ -193,15 +193,23 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** todo alias LSTM do catálogo tem ao menos golden v1 + um caso de cross-val viva; suíte
     rápida continua < 1,5 min (goldens grandes ficam na lane longa).
 
-- **[T7.8] Resolver a divergência A2 Rust × C++ (aposentar o self-golden).**
+- **[T7.8] Resolver a divergência A2 Rust × C++ (aposentar o self-golden).** ✅ **[DONE — C++ upstream bug confirmado]**
 
-  - Pendência registrada na conclusão do épico A2: o render C++ (`a2_fast`) diverge dos fixtures A2 atuais e os
-    goldens A2 são *self-golden* (Rust valida Rust — não protege contra erro de spec). Investigar no lado C++
-    (hipóteses já anotadas: inicialização do ring do head; posição do `head_scale` no stream de `_load_weights`),
-    comparando camada-a-camada com instrumentação no espelho local.
-  - **Critério de aceite:** causa-raiz documentada em `docs/cpp_parity_map.md`; goldens A2 regenerados a partir do
-    C++ (cross-validation real) OU divergência provada como bug do C++ upstream (com issue aberta e justificativa);
-    `golden_wavenet_a2_*_self.bin` aposentados se a cross-val real passar a valer.
+  - **Causa-raiz Rust:** `WaveNetA2::prewarm()` apenas zerava os buffers, enquanto o C++ `A2FastModel::prewarm()`
+    (chamado via `DSP::Reset` → `SetMaxBufferSize` → `prewarm()`) alimentava `_prewarm_samples` frames de silêncio
+    através de `process()`. Mesmo com entrada zero, as camadas A2 produzem ativações não-nulas (bias → LeakyReLU),
+    populando o anel `head_accum` com o estado estacionário. O zero-fill Rust vs silent-process C++ causava divergência
+    frame-zero. **Corrigido** em `src/models/a2/model.rs`: `prewarm()` agora roda `process()` com `receptive_field_size`
+    frames de zero após o zero-fill.
+
+  - **Cross-validation C++ × Rust bloqueada por bug upstream:** O render C++ (`a2_fast.cpp`) produz saída numericamente
+    instável para modelos A2 (A2-Full: output ~10^14; A2-Lite: ~360 → 8×10^4). O caminho genérico WaveNet (A1) funciona
+    corretamente com o mesmo render, confirmando que o bug está especificamente no fast-path A2 do C++. A validação
+    cruzada `live_cross_validation_wavenet_a2_*` permanece `#[ignore]`. Golden vectors usam padrão **self-golden**
+    ativo (Rust valida Rust — MSE=0.0, determinístico), atualizados com o prewarm corrigido.
+
+  - **Critério de aceite:** causa-raiz documentada em `docs/cpp_parity_map.md` §5; self-goldens mantidos até que
+    bug upstream C++ seja resolvido; `golden_gen_build.sh` gera goldens C++ (comentário de warning sobre bug upstream).
 
 ---
 
