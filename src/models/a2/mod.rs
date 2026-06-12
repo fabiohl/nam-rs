@@ -10,7 +10,7 @@
 //!
 //! O scaffolding existente inclui a definição completa de parâmetros e
 //! constantes arquiteturais (espelhando `a2_fast.h`). O fast-path
-//! A2-Full/Lite (`Épico 1`) utilizará um subconjunto destes structs;
+//! A2-Full/Lite (fast-path) utiliza um subconjunto destes structs;
 //! os campos de FiLM, gating (`Gated`/`Blended`), `head1x1`, `bottleneck ≠ channels`
 //! e ativações heterogêneas estão reservados para o motor A2 geral (futuro).
 

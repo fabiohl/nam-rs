@@ -444,7 +444,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 10.2 — Política, consistência e comentários
 
-- **[T10.4] Remover referências a sprints/épicos/datas em código e testes.**
+- **[T10.4] Remover referências a sprints/épicos/datas em código e testes.** [DONE]
 
   - `src/models/a2/mod.rs:13` ("Épico 1"), `src/models/slimmable.rs:16-17` ("Épico 3/6"),
     `src/math/common/dispatch/config.rs:42` ("Debt date: 2026-05-12..."), `tests/a2_placeholder_interface.rs:10`

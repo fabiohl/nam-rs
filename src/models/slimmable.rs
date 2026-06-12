@@ -13,8 +13,8 @@
 /// and `1.0` represents the maximum quality/full model.
 ///
 /// Implementors:
-/// - `ContainerModel` (Épico 3): selects between pre-built submodels by threshold.
-/// - `SlimmableWavenet` (Épico 6, future): channel-slices a single network.
+/// - `ContainerModel`: selects between pre-built submodels by threshold.
+/// - `SlimmableWavenet` (planned): channel-slices a single network.
 pub trait SlimmableModel {
     /// Sets the slimmable quality/size level.
     ///

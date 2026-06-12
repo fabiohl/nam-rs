@@ -39,7 +39,6 @@ use super::instruction_set::InstructionSet;
 //   - Keep `InstructionSet` for capability queries (e.g.: `is_avx512`)
 //   - This will eliminate ~50 lines of boilerplate in `detect_best_simd()`
 //
-// Debt date: 2026-05-12 (Epics 1-5 refactoring)
 // Priority: Medium (does not affect performance on hot paths,
 //             which already use Mechanism 1 with monomorphization)
 // ══════════════════════════════════════════════════════════════════════════════

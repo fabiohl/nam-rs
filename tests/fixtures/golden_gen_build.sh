@@ -25,7 +25,7 @@
 #   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
 #   golden_cabsim_cpp_long.bin, golden_cabsim_cpp_stress.bin
-#   (C++ dsp::ImpulseResponse reference for cabsim cross-validation, Sprint 5.3)
+#   (C++ dsp::ImpulseResponse reference for cabsim cross-validation)
 #
 # These files must be committed so that the Rust golden vector tests
 # run without C++ recompilation.
