@@ -275,3 +275,7 @@ The direct convolution reference eliminates the need for external golden vectors
 Source: `tests/cabsim_golden.rs` — 6 golden parity tests covering short, medium, long, stress, bitwise determinism, and empty-IR passthrough scenarios.
 
 > **C++ Cross-Validation:** C++ cross-validation golden files (`golden_cabsim_cpp_*.bin`) are generated from `AudioDSPTools/dsp/ImpulseResponse.h` (NeuralAmpModelerPlugin submodule) using a dedicated render tool (`tests/fixtures/render_ir.cpp`), enabling external cross-reference verification against the C++ `dsp::ImpulseResponse` implementation. Parity is validated in `tests/cabsim_cpp_parity.rs` (ESR < 1e-13).
+
+## `.temp_live/` (Auto-Cleaned Per Run)
+
+The `tests/fixtures/.temp_live/` directory holds live-generated WAV artifacts from `tests/cpp_parity.rs` during the long-duration audit suite. It is **automatically cleaned** by `utils/tests-long.sh` before each run and is **never committed** (listed in `.gitignore`). If you run `cargo test --ignored --test cpp_parity` outside the script, stale WAVs may accumulate — delete them with `rm -rf tests/fixtures/.temp_live/`.

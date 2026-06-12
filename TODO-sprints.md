@@ -255,7 +255,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Nota do PO: Geralmente os `utils/*.sh` vêm sendo rodados localmente na máquina desktop do dev - que tem pipewire.
     Poderia haver um mecanismo pra determinar esse contexto e rodar este teste.!
 
-- **[T8.6] Limpeza automática de `tests/fixtures/.temp_live/`.**
+- **[T8.6] Limpeza automática de `tests/fixtures/.temp_live/`.** [DONE]
 
   - 41 MB de WAVs gerados acumulando sem teardown. Adicionar `rm -rf` do conteúdo no preâmbulo de
     `utils/tests-long.sh` (que é quem o popula) e nota no `tests/fixtures/README.md`.
@@ -304,6 +304,8 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `process`, troca de IR cabsim, smoothing de params main↔RT. Rodar na lane longa (pode usar `loom` apenas se o
     custo compensar — decisão do implementador, documentada).
   - **Critério de aceite:** corridas conhecidas (T6.3) cobertas por teste que falhava antes da correção e passa depois.
+
+- **[T8.13] Rodar e avaliar os resultados de `utils/tests-long.sh`**
 
 ---
 

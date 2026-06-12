@@ -29,6 +29,9 @@ cd "$PROJECT_DIR"
 rm -rf target/logs/
 mkdir -p target/logs/
 
+# Cleanup accumulated live-test artifacts from previous runs (41+ MB WAVs)
+rm -rf tests/fixtures/.temp_live/
+
 # Auto-clone NeuralAmpModelerCore if not present (helps in fresh clones)
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     echo "🌐 Clonando NeuralAmpModelerCore para testes de paridade..."
