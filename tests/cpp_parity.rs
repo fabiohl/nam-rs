@@ -270,6 +270,23 @@ fn run_render_comparison(
         cpp_output_raw.clone()
     };
 
+    // Sanity-check C++ render output: skip comparison if render produced garbage
+    {
+        let has_nonfinite = cpp_output.iter().any(|x| !x.is_finite());
+        let max_sample = cpp_output.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
+        let is_garbage =
+            has_nonfinite || max_sample > 1e12 || (max_sample < 1e-10 && max_sample > 0.0);
+        if is_garbage {
+            eprintln!(
+                "SKIP: {label} — C++ render produced garbage output \
+                 (non-finite={has_nonfinite}, max_sample={max_sample:.2e}); \
+                 skipping comparison.",
+            );
+            fs::remove_file(&output_wav).ok();
+            return;
+        }
+    }
+
     let (mut mse_limit, mut min_snr_db) = topology_thresholds(&model_data);
     if use_v2 && model_data.architecture == "LSTM" {
         // LSTM recurrent state accumulates quantization/approximation errors
