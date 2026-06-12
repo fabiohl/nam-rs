@@ -711,7 +711,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `latency`, `track_info`, `remote_controls`, `param_indication`, `gui`, **`preset_load`**, **`render`**,
     **`state_context`** (ver `src/clap/extensions/`). Atualizar a contagem e a lista.
 
-- **[T15.2] Remover referências quebradas em `docs/architecture.md:309`.**
+- **[T15.2] Remover referências quebradas em `docs/architecture.md:309`.** [DONE]
 
   - O parágrafo cita `tests/regression_goldens.rs` e `tests/golden/`, **ambos inexistentes** (foram
     substituídos pela ancoragem externa ao NeuralAmpModelerCore, como o próprio parágrafo narra). Remover os
