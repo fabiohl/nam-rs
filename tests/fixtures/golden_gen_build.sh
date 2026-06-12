@@ -2,17 +2,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-# golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool and generates golden vectors
+# golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones 
+# NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
 #   - cargo (Rust; stress signal generation and WAV→golden conversion are now Rust native)
-#   - git (to clone NeuralAmpModelerCore if needed)
+#   - git (to clone NeuralAmpModelerCore and NeuralAmpModelerPlugin if needed)
+#
+# Reproducibility:
+#   Upstream commits are pinned in NAM_CORE_COMMIT and NAM_PLUGIN_COMMIT.
+#   Update these variables when regenerating goldens from a newer upstream version.
 #
 # Python is no longer required — gen_stress and wav_to_golden replace the inline Python blocks.
 #
 # Usage:
 #   ./tests/fixtures/golden_gen_build.sh
+#
+# Unversioned local mirrors created:
+#   tests/fixtures/NeuralAmpModelerCore/   (~143 MB) — C++ upstream render engine
+#   tests/fixtures/NeuralAmpModelerPlugin/  (~164 MB) — C++ upstream plugin (IR reference)
+#   build/namcore_render/                   (~6 MB)  — C++ build artifacts
+#   These directories are gitignored (see ../.gitignore).
 #
 # Output (tests/fixtures/):
 #   golden_wavenet_standard.bin, golden_wavenet_lite.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
@@ -35,9 +46,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NAM_CORE_DIR="$SCRIPT_DIR/NeuralAmpModelerCore"
+NAM_PLUGIN_DIR="$SCRIPT_DIR/NeuralAmpModelerPlugin"
 BUILD_DIR="$PROJECT_ROOT/build/namcore_render"
 MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
+
+# Pinned upstream commits for reproducibility.
+# Update these when regenerating goldens with a newer upstream version.
+NAM_CORE_COMMIT="e49c93e678549230d09efbb0beeb50511e387874"
+NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
 
 # =============================================================================
 # Prerequisite checks
@@ -72,8 +89,16 @@ echo ""
 echo "[1/6] Setting up NeuralAmpModelerCore..."
 if [ ! -d "$NAM_CORE_DIR" ]; then
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$NAM_CORE_DIR"
+    echo "  Checking out pinned commit $NAM_CORE_COMMIT..."
+    (cd "$NAM_CORE_DIR" && git fetch --depth 1 origin "$NAM_CORE_COMMIT" && git checkout "$NAM_CORE_COMMIT")
 else
-    echo "  NeuralAmpModelerCore already exists at $NAM_CORE_DIR"
+    CURRENT_CORE_SHA=$(cd "$NAM_CORE_DIR" && git rev-parse HEAD)
+    if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_COMMIT" ]; then
+        echo "  WARNING: NeuralAmpModelerCore at $CURRENT_CORE_SHA, pinned commit is $NAM_CORE_COMMIT"
+        echo "  Consider deleting the directory and re-running this script for reproducibility."
+    else
+        echo "  NeuralAmpModelerCore already exists at $NAM_CORE_DIR (pinned commit verified)"
+    fi
 fi
 
 # Initialize submodules
@@ -84,6 +109,23 @@ for sub in eigen AudioDSPTools; do
         (cd "$NAM_CORE_DIR" && git submodule update --init "Dependencies/$sub")
     fi
 done
+
+# Clone NeuralAmpModelerPlugin for cabsim IR reference (step 5b)
+echo ""
+echo "[1b/6] Setting up NeuralAmpModelerPlugin (C++ IR reference)..."
+if [ ! -d "$NAM_PLUGIN_DIR" ]; then
+    git clone https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$NAM_PLUGIN_DIR"
+    echo "  Checking out pinned commit $NAM_PLUGIN_COMMIT..."
+    (cd "$NAM_PLUGIN_DIR" && git checkout "$NAM_PLUGIN_COMMIT")
+else
+    CURRENT_PLUGIN_SHA=$(cd "$NAM_PLUGIN_DIR" && git rev-parse HEAD)
+    if [ "$CURRENT_PLUGIN_SHA" != "$NAM_PLUGIN_COMMIT" ]; then
+        echo "  WARNING: NeuralAmpModelerPlugin at $CURRENT_PLUGIN_SHA, pinned commit is $NAM_PLUGIN_COMMIT"
+        echo "  Consider deleting the directory and re-running this script for reproducibility."
+    else
+        echo "  NeuralAmpModelerPlugin already exists at $NAM_PLUGIN_DIR (pinned commit verified)"
+    fi
+fi
 
 # =============================================================================
 # Build render tool
@@ -254,13 +296,13 @@ done
 echo ""
 echo "[5b/6] Building C++ IR reference (dsp::ImpulseResponse)..."
 
-AUDIO_DSP_TOOLS_DIR="$FIXTURES_DIR/NeuralAmpModelerPlugin/AudioDSPTools"
+AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
 
 # Ensure AudioDSPTools submodule dependencies are present
 if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ]; then
     echo "  Initializing NeuralAmpModelerPlugin/AudioDSPTools submodules..."
-    (cd "$FIXTURES_DIR/NeuralAmpModelerPlugin" && git submodule update --init AudioDSPTools)
+    (cd "$NAM_PLUGIN_DIR" && git submodule update --init AudioDSPTools)
     (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
 fi
 

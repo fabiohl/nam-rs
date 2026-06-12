@@ -465,7 +465,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** toda referência cruzada em `.agents/` resolve para algo existente.
   - Nota do PO: Transformar tudo em skills (na pasta skills). A pasta workflows é redundante, na prática. Remove-la.
 
-- **[T10.7] Documentar os espelhos locais não-versionados.**
+- **[T10.7] Documentar os espelhos locais não-versionados.** [DONE]
 
   - `tests/fixtures/README.md`: explicar que `NeuralAmpModelerCore/` (143 MB), `NeuralAmpModelerPlugin/` (164 MB) e
     `build/namcore_render/` são clones/artefatos **locais** (gitignored), criados sob demanda por
