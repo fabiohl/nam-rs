@@ -393,7 +393,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     linhas sem custo RT.
   - **Critério de aceite:** ADR curto em `docs/architecture.md` com a decisão; se implementado, heap-audits e soak verdes.
 
-- **[T9.8] Reduzir boilerplate de dispatch ISA.**
+- **[T9.8] Reduzir boilerplate de dispatch ISA.** [DONE]
 
   - `src/math/common/dispatch/detect.rs` constrói `DispatchTable` quase idêntico por ISA. Estender o macro de
     `dispatch/mod.rs` para gerar a construção das tabelas (~80 linhas a menos). Sem alterar a semântica de detecção.
