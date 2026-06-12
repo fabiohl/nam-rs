@@ -42,9 +42,19 @@ fi
 
 # 3. CLAP integration and heap-audit tests
 echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditoria de heap...${NC}"
+set +e
 CLAP_PLUGIN_PATH="$CLAP_BIN" \
   NAM_HEAP_AUDIT=1 \
   cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test -- --test-threads=1
+
+test_exit_code=$?
+set -e
+if [ $test_exit_code -ne 0 ]; then
+    echo -e "\n${RED}${BOLD}================================================================${NC}"
+    echo -e "${RED}${BOLD}          Testes CLAP/heap-audit FALHARAM (código $test_exit_code)          ${NC}"
+    echo -e "${RED}${BOLD}================================================================${NC}"
+    exit $test_exit_code
+fi
 
 # 4. Run the official CLAP validator if available
 echo -e "\n${BLUE}${BOLD}[4/4] Executando validação via clap-validator...${NC}"

@@ -734,7 +734,15 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-Liberar v2.1 (A2 Beta): Rodada de testes no cli e no plugin CLAP. Bitwig e Reaper: ficar com os 2 ou apenas 1 deles?
+utils/mod-update.sh
+utils/lints.sh
+tests/fixtures/golden_gen_build.sh
+utils/tests-cargo.sh
+utils/tests-long.sh
+utils/build-release.sh
+Rodada de testes no cli (utils/run-standalone.sh)
+Plugin CLAP. Bitwig e Reaper: ficar com os 2 ou apenas 1 deles?
+Liberar v2.1 (A2 Beta):
 
 ---
 

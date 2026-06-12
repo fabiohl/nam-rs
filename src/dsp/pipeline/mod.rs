@@ -30,6 +30,9 @@ pub use bridge::{MAX_BRIDGE_BUF, MAX_RESAMP_BUF};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 pub use context::{DspBuffers, DspPipelineContext};
 
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[allow(unused_imports)]
+pub(crate) use stages::DENORMAL_DITHER_OFFSET;
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::apply_input_stage;
 #[cfg(feature = "clap-plugin")]
