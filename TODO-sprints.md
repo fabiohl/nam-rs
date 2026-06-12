@@ -281,13 +281,14 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     44.1↔48↔96 kHz, validando SNR ≥ 120 dB na banda passante contra referência pré-computada (vetor versionado
     pequeno em `tests/fixtures/`, gerado por script documentado).
   - **Critério de aceite:** regressão de qualidade do polyphase passa a ser detectada pela lane rápida.
+  - Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
 - **[T8.10] KAT (known-answer tests) do CRC32 e fuzz de truncamento `.namb`.**
 
   - Adicionar em `src/loader/namb_test.rs`: `crc32_ieee(b"123456789") == 0xCBF43926` (vetor canônico) + casos de
     arquivo truncado em todos os offsets de fronteira do header (proptest já cobre parte — completar bordas exatas).
   - **Critério de aceite:** qualquer alteração futura no CRC quebra o KAT imediatamente.
-  - Nota do PO: Se isto envolver usar o rust nightly, cancelar.
+  - Nota do PO: Se isto envolver usar o rust nightly, cancelar. Para não travar o desenvolvimento, não rodar o `utils/tests-long.sh` agora. Ele será validado na [T8.13].
 
 - **[T8.11] Teste de tolerância do FastMath tanh (PadeNR2).**
 
