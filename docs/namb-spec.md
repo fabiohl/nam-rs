@@ -351,7 +351,7 @@ Global limit: `MAX_MODEL_BYTES = 256 MiB`. Files larger than this limit are reje
 
 ### 9.1 Backward Compatibility
 
-- **v1**: maintained for reading legacy files. Optional CRC via sentinel `crc32 == 0`.
+- **v1**: maintained for reading legacy files. Optional CRC via sentinel `crc32 == 0`. In v1 headers, the byte at offset `0x07` is treated as reserved (part of `reserved_v2`) and must not be interpreted as feature flags (e.g. even if it is non-zero, it does not enable feature flags). This ensures forward-compatibility and prevents false interpretation of flags in legacy files.
 - **v2**: `FLAG_HAS_CRC32` mandatory. `layout_type` active.
 - **Interleaved-4 zero padding** (S3.T04): transparent change. NAMB v2 models produced before the fix remain valid (only affects geometries where `CO % 4 != 0`, which do not exist in the current catalog). Documented as an implicit bump without a version change.
 

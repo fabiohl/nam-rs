@@ -625,7 +625,69 @@ The graphical interface is decomposed from its original monolithic state into a 
 > - **Toast/Loading Animations:** Visual elements that animate or fade out cannot rely solely on the host scheduling frame ticks or on passive repaint flags. Instead, they must actively call `request_repaint()` on the `egui::Context` during their active duration.
 > - **Reduced Idle CPU:** CPU utilization drops to virtually 0% when the UI is open but static (no audio playing and no user interaction).
 >
-> **References:** [handler.rs](../src/clap/gui/window/handler.rs), [gui-architecture.md](gui-architecture.md#L154-L172).
+- **References:** [handler.rs](../src/clap/gui/window/handler.rs), [gui-architecture.md](gui-architecture.md#L154-L172).
+
+### 8.3.4 CLAP Mono Design and Stereophonic Discard
+
+> **Decision:** The CLAP plugin is strictly configured as mono-in/dup-out for its core DSP pipeline. When loading a model pair, `model_r` (the right-channel model) is immediately discarded to the real-time SPSC garbage collection channel at the time of preset swap.
+>
+> **Motivation:** Minimizes DSP overhead and matches the expected routing semantics of guitar processors in modern DAWs, which primarily process a single input channel. Running a dual-channel model when only the left channel is processed would double CPU utilization without providing any auditory benefit.
+>
+> **Implementation:**
+> Inside `cold_load_model` ([events.rs](../src/clap/processor/events.rs#L160)), the swap logic replaces the left-channel model with `model_l`. If `model_r` is present in the payload, it is sent straight to `push_to_gc()` to be dropped by the main thread.
+>
+> **References:** [events.rs](../src/clap/processor/events.rs), [channels.rs](../src/clap/processor/dsp/channels.rs).
+
+### 8.3.5 Gain Multiplier Fusion: Standalone vs. CLAP
+
+> **Decision:** Apply user gain controls and model calibration adjustments separately in the CLAP plugin pipeline, whereas the standalone client pre-fuses them into single input/output multipliers.
+>
+> **Motivation:** The CLAP plugin must support sample-accurate DAW parameter automation. Combining the static model adjustments (`input_level_dbu` and `loudness` calibration) with automated user parameters inside the real-time process loop would prevent efficient, isolated smoothing, causing computational overhead or audible artifacts (clicks/pops).
+>
+> **Implementation:**
+> Standalone computes a combined multiplier using `compute_gain_multipliers()` in [rt_setup/mod.rs](../src/standalone/rt_setup/mod.rs#L25). CLAP uses smoothers (`smoother_in`/`smoother_out`) on the user gains during `apply_input_gain`/`apply_output_gain`, applying model calibration multipliers separately via the `DspPipelineContext` [input_gain_mult](../src/clap/processor/dsp/orchestrator.rs#L70).
+>
+> **References:** [orchestrator.rs](../src/clap/processor/dsp/orchestrator.rs), [rt_setup/mod.rs](../src/standalone/rt_setup/mod.rs).
+
+### 8.3.6 Multi-Tiered Real-Time Garbage Collection Cascade
+
+> **Decision:** Implement a three-tiered fallback queue structure (SPSC Queue -> Parking Lot Array -> Ring Buffer Overflow) to manage the safe disposal of heap-allocated resources from the audio thread without blocking.
+>
+> **Motivation:** Dropping heavy structures (e.g. neural models, resamplers) is not real-time safe because it triggers system deallocations which can cause CPU spikes and audio dropouts. The audio thread must delegate deallocation to the main thread in a lock-free, zero-allocation manner.
+>
+> **Implementation:**
+>
+> 1. **Primary Queue:** A lock-free SPSC queue (`gc_tx`/`gc_rx` via `rtrb`) of capacity 32 handles normal swaps.
+> 2. **Parking Lot Array:** A 16-slot static array ([parking_lot](../src/clap/processor/state.rs#L79)) buffers items if the primary queue is temporarily full (e.g., during rapid parameter swaps). Drained at the start of every block.
+> 3. **Overflow Buffer:** A 64-capacity overwriting ring buffer (`GcOverflowBuffer`) handles overflow as a last resort, setting the `RT_STATUS_GC_OVERFLOW` flag if items are dropped.
+>
+> **References:** [gc.rs](../src/clap/processor/gc.rs), [gc.rs](../src/common/spsc/gc.rs).
+
+### 8.3.7 Neural Amp Model Testing and Fixture Policies
+
+> **Decision:** Establish a strict, multi-tiered hierarchy for fixture usage in testing (synthetic boundary tests, C++ validation goldens, and self-goldens) and mandate that mock fixtures must be complete if used in load-success verification.
+>
+> **Motivation:** Standardizes test verification to guarantee DSP correctness, prevent regression of mathematical parity with C++, and handle known upstream limitations (e.g., A2 rendering instabilities in the C++ library) without silently compromising test integrity.
+>
+> **Implementation:**
+>
+> - **Synthetic Fixtures:** Microscopic configurations (e.g., shape mismatches, custom activations) to test parser safety.
+> - **C++ Goldens:** Step-by-step parity fixtures compared in `cpp_parity.rs`.
+> - **Self-Goldens:** Used as a fallback regression shield when C++ is unstable, pinning the upstream reference commit.
+> - **Mock Rule:** Incomplete mock files must never be passed to tests assuming load success; they must assert failure, ensuring that tightened validation rules do not cause obscure failures elsewhere.
+>
+> **References:** [TODO-sprints.md](../TODO-sprints.md#L967), [tests-long.sh](../utils/tests-long.sh).
+
+### 8.3.8 WaveNet Heterogeneous Layer Array Skip-Connection Head Cascade
+
+> **Decision:** Seed the head accumulator of the second heterogeneous layer array (`array2`) in WaveNet models with the projected skip-connection head outputs from the first array (`array1`), aligning exactly with the reference NeuralAmpModeler C++ behavior.
+>
+> **Motivation:** Ensures mathematically identical inference parity with reference models. Previously, the Rust implementation processed the array head outputs independently and summed them at the end, leading to significant tonal/numerical divergence.
+>
+> **Implementation:**
+> The head output of `array1` is passed to the start of `array2` processing. Rather than initializing `head_accum` to zero at the beginning of `array2` layers, it is seeded with `array1`'s projected head outputs. The final output is then obtained exclusively by scaling the output of `array2`'s head projection by `head_scale`: `out = head_scale * array2.head_outputs`.
+>
+> **References:** [model.rs](../src/models/wavenet/model.rs#L90), [layer_array.rs](../src/models/wavenet/layer_array.rs).
 
 ## 9. Error Catalog (NamErrorCode)
 

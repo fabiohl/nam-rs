@@ -1022,7 +1022,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 20 — Documentação: Sincronização e Normatização 📚 [Lane C — fecha cada épico]
+## ÉPICO 20 — Documentação: Sincronização e Normatização 📚 [Lane C — fecha cada épico] [DONE 12/06/2026 22:42]
 
 ### Sprint 20.1 — Defasagens factuais (rápidas, fazer em 1 PR) [DONE]
 
@@ -1037,7 +1037,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   suportados), ao `docs/cpp_parity_map.md` (§1, §9) e atualizar "350+ checks" → "390+". Linkar o órfão
   `docs/functional-tests.md` na seção Documentation do README.
 
-### Sprint 20.2 — Normatizar políticas vivas (ADRs curtos no `architecture.md` §8)
+### Sprint 20.2 — Normatizar políticas vivas (ADRs curtos no `architecture.md` §8) [DONE]
 
 - **[T20.4] Registrar as decisões que hoje só existem no código** (cada uma 5–10 linhas, formato "Technical
   Decision"):
