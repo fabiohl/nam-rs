@@ -28,6 +28,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 - **Fused Tanh + Head Accumulate (WaveNet):** Native unification of the activation and skip-connection (head) phases into a single SIMD kernel (`tanh_and_accumulate_block`).
 - **Fused Residual GEMV with Frame Tiling (WaveNet):** The residual calculation is fused into the GEMV of the next layer, utilizing **4-frame tiling (AVX2)** or **8-frame tiling (AVX-512)** to maximize weight reuse in registers.
 - **Conv1D Tiling:** Block processing of multiple channels to maximize data reuse in SIMD registers and reduce cache latency in deep dilation models.
+- **Linear Model (FIR Filter):** A fast non-neural FIR filter architecture implementing convolved input history with weights and a bias.
 
 ### Technical Decision: FastMath Precision vs. Performance
 
@@ -308,7 +309,7 @@ Two validation layers capture **different classes of bug** and are deliberately 
 
 > **Why both?** A kernel bug small enough to stay inside the loose golden band but large enough to break the tight scalar parity is caught only by the scalar oracle. Conversely, a spec error shared by both scalar and SIMD implementations is caught only by the external golden. Removing either layer leaves a corresponding blind spot.
 >
-> **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](../tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](dependencies.md#6-dependencies-for-c-cross-validation-optional).
+> **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Lite/Feather/Nano), LSTM (1×8/1×12/1×16/1×24/1×40/2×8/2×12/2×16/2×24), and Linear (FIR-based models), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](../tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](dependencies.md#6-dependencies-for-c-cross-validation-optional).
 
 ### Benchmarks and Performance
 

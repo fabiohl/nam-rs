@@ -23,6 +23,7 @@ NAM-rs natively supports Neural Amp Modeler (A1 and A2 architectures) and Impuls
   * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4), and Nano (4×2)
   * **WaveNet A2:** Full (8 channels) and Lite (3 channels)
   * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 40: `1×8`, `1×12`, `1×16`, `1×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
+  * **Linear:** FIR-based model (dot product of input history with weights + bias)
   * Non-catalogued geometries fail to load with a clear diagnostic error.
 
 ---

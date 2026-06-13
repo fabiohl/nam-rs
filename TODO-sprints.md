@@ -1013,11 +1013,10 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     apenas anotar; se não, cobrir).
   - **Critério de aceite:** módulos listados com testes unitários ou justificativa documentada.
 
-- **[T19.7] Baseline tracking de benchmarks.**
+- **[T19.7] Baseline tracking de benchmarks.** [CANCELADO]
 
   - Phase 5 não compara com execuções anteriores — regressões de performance passam invisíveis. Adicionar
     `--save-baseline` com data + comparação via `critcmp` (ou `--baseline previous`) e warning para regressão
-
     > 5% no sumário do `tests-long.sh`.
   - **Critério de aceite:** rodada N+1 acusa regressões da rodada N automaticamente.
 
@@ -1025,7 +1024,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 20 — Documentação: Sincronização e Normatização 📚 [Lane C — fecha cada épico]
 
-### Sprint 20.1 — Defasagens factuais (rápidas, fazer em 1 PR)
+### Sprint 20.1 — Defasagens factuais (rápidas, fazer em 1 PR) [DONE]
 
 - **[T20.1] `docs/benchmarks.md` com números obsoletos (até 3× off).** Atualizar com `phase5-benchmarks.log`
   fresco: LSTM 2×16 64samp **~10.86 µs** (doc: 20.29), WaveNet Standard CH16 **~92.3 µs** (doc: 107),

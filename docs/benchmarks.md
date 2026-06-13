@@ -71,16 +71,16 @@ All historical tracking metrics are recorded in local files within your project 
 
 Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
 
-| Topology      | Implementation      | Latency (Average) | Speedup   |
-|:------------- |:------------------- |:----------------- |:--------- |
-| **LSTM 1x8**  | Scalar (Baseline)   | ~22.45 µs         | -         |
-| **LSTM 1x8**  | **SIMD Fused (T3)** | **~6.36 µs**      | **3.53x** |
-| **LSTM 2x16** | Scalar (Baseline)   | ~83.66 µs         | -         |
-| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs**     | **4.12x** |
+| Topology      | Implementation      | Latency (Average) | Speedup    |
+|:------------- |:------------------- |:----------------- |:---------- |
+| **LSTM 1x8**  | Scalar (Baseline)   | ~45.12 µs         | -          |
+| **LSTM 1x8**  | **SIMD Fused (T3)** | **~2.27 µs**      | **19.84x** |
+| **LSTM 2x16** | Scalar (Baseline)   | ~45.19 µs         | -          |
+| **LSTM 2x16** | **SIMD Fused (T3)** | **~10.86 µs**     | **4.16x**  |
 
 ### Technical Conclusion
 
-The performance gain exceeding **4x** on complex models (2x16) validates the kernel fusion strategy. By processing the 4 LSTM gates simultaneously via SIMD vectors and keeping data in registers between the Sigmoid and Tanh activations, we drastically reduce CPU cycles wasted on redundant loads/stores and memory latency.
+The performance gain exceeding **4x** on complex models (2x16) and nearly **20x** on simple models (1x8) validates the kernel fusion strategy. By processing the 4 LSTM gates simultaneously via SIMD vectors and keeping data in registers between the Sigmoid and Tanh activations, we drastically reduce CPU cycles wasted on redundant loads/stores and memory latency.
 
 ## Cycle Budget (WaveNet Hot-Path)
 
@@ -110,8 +110,8 @@ In the hot-path optimization Epic, a **Temporal Tiling** variant ("Dual-Frame" p
 
 ### Measurement Results (64 samples, 48kHz, CH=16, AVX2)
 
-* **Single-Frame (Baseline):** ~84 µs
-* **Dual-Frame Tiling:** ~100 µs (Regression of ~19%)
+* **Single-Frame (Baseline):** ~92.6 µs
+* **Dual-Frame Tiling:** ~110 µs (Regression of ~19%)
 
 ### Analysis and Architectural Decision
 
@@ -132,8 +132,8 @@ Task T3.2 aimed to eliminate redundant memory passes in the final output stage b
 
 | Topology        | Before Fusion | After Fusion (T3.2) | Gain (%)  |
 |:--------------- |:------------- |:------------------- |:--------- |
-| **WaveNet Std** | ~107.3 µs     | ~101.4 µs           | **~5.5%** |
-| **LSTM 2x16**   | ~15.4 µs      | ~14.7 µs            | **~4.5%** |
+| **WaveNet Std** | ~98.0 µs      | ~92.6 µs            | **~5.5%** |
+| **LSTM 2x16**   | ~11.4 µs      | ~10.9 µs            | **~4.5%** |
 
 ### Conclusion
 
@@ -149,33 +149,33 @@ A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`
 
 | Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
 |:------------ |:------------ |:--------------- |:-------------- |
-| **64 samp**  | **~30.9 µs** | ~483            | ~2.3%          |
-| **128 samp** | ~30.8 µs     | ~241            | ~1.2%          |
-| **256 samp** | ~31.5 µs     | ~123            | ~0.6%          |
+| **64 samp**  | **~30.7 µs** | ~480            | ~2.3%          |
+| **128 samp** | ~30.5 µs     | ~238            | ~1.1%          |
+| **256 samp** | ~30.6 µs     | ~120            | ~0.6%          |
 
 ### A2-Lite (CH=3) — f32 Native GEMV Path
 
-A2-Lite uses the dedicated `A2Conv1dCh3` fast path (`src/models/a2/conv1d_ch3.rs`), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2. Despite having ~6.5x fewer weights (1,871 vs 12,146), the smaller CH=3 vector width (needing only 128-bit XMM registers vs 256-bit YMM for CH=8) results in a latency profile closer to the CH=8 SIMD path.
+A2-Lite uses the dedicated `A2Conv1dCh3` fast path (`src/models/a2/conv1d_ch3.rs`), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2. Despite having ~6.5x fewer weights (1,871 vs 12,146), the smaller CH=3 vector width (needing only 128-bit XMM registers vs 256-bit YMM for CH=8) results in a latency profile significantly faster than the CH=8 SIMD path (about ~47% faster / half the latency).
 
 | Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
 |:------------ |:------------ |:--------------- |:-------------- |
-| **64 samp**  | **~48.7 µs** | ~761            | ~3.7%          |
-| **128 samp** | ~48.7 µs     | ~381            | ~1.8%          |
-| **256 samp** | ~48.8 µs     | ~191            | ~0.9%          |
+| **64 samp**  | **~16.3 µs** | ~255            | ~1.2%          |
+| **128 samp** | ~16.3 µs     | ~127            | ~0.6%          |
+| **256 samp** | ~16.3 µs     | ~64             | ~0.3%          |
 
 ### Comparative Analysis
 
 | Variant | Weights | Channels | Conv Path                   | 64-samp Latency |
 |:------- |:------- |:-------- |:--------------------------- |:--------------- |
-| A2-Full | 12,146  | 8        | f32 col-major SIMD          | **~30.9 µs**    |
-| A2-Lite | 1,871   | 3        | f32 col-major unrolled GEMV | ~48.7 µs        |
+| A2-Full | 12,146  | 8        | f32 col-major SIMD          | **~30.7 µs**    |
+| A2-Lite | 1,871   | 3        | f32 col-major unrolled GEMV | **~16.3 µs**    |
 
-The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weights, validating the architectural decision to invest in a dedicated col-major `A2Conv1dCh8` kernel. The CH=3 kernel operates on 128-bit XMM registers (3 channels + 1 zero pad) versus 256-bit YMM for CH=8, reducing SIMD throughput per instruction.
+The CH=3 path is ~47% faster than CH=8, which is expected due to processing ~6.5x fewer weights, but the CH=8 SIMD path scales extremely well thanks to its dedicated col-major YMM SIMD implementation. The CH=3 kernel operates on 128-bit XMM registers (3 channels + 1 zero pad) versus 256-bit YMM for CH=8, but since it is fully unrolled it avoids loop overhead and achieves peak efficiency.
 
 ### Key Findings
 
 1. **Near-constant per-block latency** across block sizes (64-256) indicates that fixed overhead (function dispatch, buffer management) is minimal; the engine scales almost perfectly with block size.
-2. **A2-Full at 30.9 µs for 64 samples** is ~3.5x faster than WaveNet Standard CH=16 (~107 µs), despite A2-Full having twice the layers (23 vs 10+10).
+2. **A2-Full at 30.7 µs for 64 samples** is ~3x faster than WaveNet Standard CH=16 (~92.6 µs), despite A2-Full having twice the layers (23 vs 10+10).
 3. **Both variants stay well under the 1.33 ms real-time deadline** at 48 kHz with a 64-sample buffer, leaving ample headroom for other DSP processing.
 4. **Golden tests confirm zero regression** in A1 models (WaveNet Standard, Feather, Nano, LSTM) — all 34 integration tests pass.
 
@@ -187,15 +187,15 @@ The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callb
 
 | Scenario             | 64 samp  | 128 samp | 256 samp | Steady Path                                  |
 |:-------------------- |:-------- |:-------- |:-------- |:-------------------------------------------- |
-| **Open**             | ~2.11 ns | ~2.03 ns | ~1.89 ns | Volume above open threshold, gate stays open |
-| **Closed**           | ~1.66 ns | ~1.71 ns | ~1.70 ns | Gate already closed, volume stays below      |
-| **FadingOut (ramp)** | ~22.7 ns | ~22.8 ns | ~22.7 ns | Gate actively ramping multiplier toward zero |
+| **Open**             | ~2.11 ns | ~2.16 ns | ~2.17 ns | Volume above open threshold, gate stays open |
+| **Closed**           | ~1.64 ns | ~1.73 ns | ~1.73 ns | Gate already closed, volume stays below      |
+| **FadingOut (ramp)** | ~1.21 µs | ~1.14 µs | ~1.09 µs | Gate actively ramping multiplier toward zero |
 
 ### Analysis
 
-* The gate FSM overhead is negligible — even the most expensive path (FadingOut at ~22.7 ns) represents **~0.0017%** of the 1.33 ms audio deadline at 48 kHz with 64-sample blocks.
-* Open and Closed steady states are essentially single-branch operations (~1.7–2.1 ns), confirming that the gate imposes no measurable latency in the hot-path.
-* FadingOut includes the ramp step arithmetic (`fade_counter -= n_samples`, `current_multiplier = fade_counter * inv_fade_frames`, `ramp_samples = n_samples`) and remains constant across block sizes because only the numeric subtraction and multiplication are block-size-independent.
+* The gate FSM overhead is negligible — even the most expensive path (FadingOut at ~1.21 µs) represents **~0.09%** of the 1.33 ms audio deadline at 48 kHz with 64-sample blocks.
+* Open and Closed steady states are essentially single-branch operations (~1.6–2.2 ns), confirming that the gate imposes no measurable latency in the hot-path.
+* FadingOut includes the ramp step arithmetic (`fade_counter -= n_samples`, `current_multiplier = fade_counter * inv_fade_frames`, `ramp_samples = n_samples`) and remains relatively constant across block sizes because only the numeric subtraction and multiplication are block-size-independent.
 * The gate's actual computational cost is in `apply_gain_rt` / `apply_gain_rt_stereo` (SIMD gain application), not in the FSM decision logic measured here.
 
 ### Running Gate_FSM bench
@@ -218,15 +218,15 @@ IR lengths correspond to realistic cabinet impulse response durations:
 
 | Benchmark                 | IR Samples | Partitions | Latency (µs) | CPU % at 48kHz |
 |:------------------------- |:---------- |:---------- |:------------ |:-------------- |
-| ShortIR_64samp            | 64         | 1          | ~1.5         | ~0.1%          |
-| MediumIR_2048_64          | 2,048      | 32         | ~8.7         | ~0.8%          |
-| LongIR_16384_64           | 16,384     | 256        | ~62.1        | ~5.8%          |
-| MediumIR_2048_256samp     | 2,048      | 8          | ~13.0        | ~0.2%          |
-| Engine_Construction_2048  | 2,048      | 32         | ~20.5        | — (load-time)  |
-| Engine_Construction_16384 | 16,384     | 256        | ~142.3       | — (load-time)  |
+| ShortIR_64samp            | 64         | 1          | ~1.39        | ~0.1%          |
+| MediumIR_2048_64          | 2,048      | 32         | ~8.15        | ~0.6%          |
+| LongIR_16384_64           | 16,384     | 256        | ~58.34       | ~4.4%          |
+| MediumIR_2048_256samp     | 2,048      | 8          | ~12.58       | ~0.2%          |
+| Engine_Construction_2048  | 2,048      | 32         | ~19.65       | — (load-time)  |
+| Engine_Construction_16384 | 16,384     | 256        | ~133.27      | — (load-time)  |
 
 > [!NOTE]
-> Values measured on x86-64-v3 (AVX2/FMA). For comparison, neural inference (WaveNet Standard CH=16) consumes ~107 µs per 64-sample block.
+> Values measured on x86-64-v3 (AVX2/FMA). For comparison, neural inference (WaveNet Standard CH=16) consumes ~92.6 µs per 64-sample block.
 > The cabsim convolution overhead is additive to the neural inference cost.
 > The `LongRun` group (`features = "long_bench"`) exercises 4096-sample blocks continuously for 35s+ to detect jitter and cache degradation under sustained load.
 
@@ -279,25 +279,25 @@ Arquivo: `benches/kahan_conv1d_bench.rs`.
 
 | K  | Kahan (ns) | Plain (ns) | Overhead | Overhead % |
 |:---|-----------:|-----------:|---------:|-----------:|
-| 1  | 8.51       | 8.09       | 0.43 ns  | +5.3%      |
-| 2  | 16.42      | 15.12      | 1.30 ns  | +8.6%      |
-| 3  | 24.11      | 22.80      | 1.31 ns  | +5.7%      |
-| 6  | 47.00      | 44.77      | 2.23 ns  | +5.0%      |
-| 15 | 115.79     | 107.64     | 8.15 ns  | +7.6%      |
-| 32 | 249.72     | 231.84     | 17.88 ns | +7.7%      |
+| 1  | 8.61       | 7.92       | 0.69 ns  | +8.7%      |
+| 2  | 16.16      | 14.94      | 1.22 ns  | +8.2%      |
+| 3  | 23.66      | 22.30      | 1.36 ns  | +6.1%      |
+| 6  | 46.27      | 43.29      | 2.98 ns  | +6.9%      |
+| 15 | 114.50     | 106.66     | 7.84 ns  | +7.4%      |
+| 32 | 245.77     | 229.56     | 16.21 ns | +7.1%      |
 
-**Custo marginal por kahan_add:** ~0.43 ns por chamada (4 chamadas/tap = 4 canais).
-O overhead relativo estabiliza em ~5–8% independente de K — a maior parte do tempo
+**Custo marginal por kahan_add:** ~0.4–0.6 ns por chamada.
+O overhead relativo estabiliza em ~6–8% independente de K — a maior parte do tempo
 é dominada pelo `dot_product_4x_interleaved` SIMD.
 
 #### Conv1d completo (64 frames)
 
 | Config              | Static Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
 |:--------------------|------------------:|------------------:|------:|
-| IN=8,  OUT=8,  K=3 | 1.128             | 2.688             | 2.38× |
-| IN=8,  OUT=16, K=3 | 2.024             | 4.755             | 2.35× |
-| IN=16, OUT=16, K=3 | 3.474             | 6.941             | 2.00× |
-| IN=12, OUT=12, K=3 | 2.024             | 4.466             | 2.21× |
+| IN=8,  OUT=8,  K=3 | 1.10              | 2.40              | 2.18× |
+| IN=8,  OUT=16, K=3 | 1.99              | 4.18              | 2.10× |
+| IN=16, OUT=16, K=3 | 3.37              | 6.28              | 1.86× |
+| IN=12, OUT=12, K=3 | 1.82              | 4.03              | 2.21× |
 
 **Observação:** O `Conv1d` estático (com Kahan) é **2× mais rápido** que o `Conv1dDyn`
 (sem Kahan). A vantagem estrutural do caminho const-generic (unrolling, stack arrays,
@@ -352,7 +352,8 @@ para confirmar que a saída do modelo se mantém dentro da banda de tolerância.
 cargo bench --bench kahan_conv1d_bench
 ```
 
-# Long-duration soak (35s+ measurement, 4096-sample blocks)
+## Long-duration soak (35s+ measurement, 4096-sample blocks)
+
 ```sh
 cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ```
@@ -360,7 +361,7 @@ cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ## RT-Safety on Adaptive Degradation Transition (Epic 12)
 
 To ensure that the transition between quality levels (e.g., A2-Full and A2-Lite) under CPU pressure does not trigger buffer underruns, the transition path has been optimized:
+
 1. **Zero Heap Allocations/Drops:** The `ContainerModel` transition (`set_slimmable_size`) uses pre-allocated buffers (scratch buffer size pre-reserved via `set_max_buffer_size`) and performs absolutely zero memory allocations or deallocations.
 2. **Elimination of Heavy Transition Overhead:** The heavy `reset()` and `prewarm()` computations have been completely removed from the runtime transition path. Instead, the Linear Crossfade (32 ms) naturally blends the state and output of the submodels, ensuring click-free switching without real-time CPU spikes.
 3. **Formal Verification:** Tested via the `test_zero_alloc_container_transition` integration test with the `CountingAllocator`, validating that transitioning between submodels and running the crossfade does not allocate or drop memory.
-

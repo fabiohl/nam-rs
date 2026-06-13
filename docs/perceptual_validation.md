@@ -81,7 +81,7 @@ major implementation regression.
 
 Expected actual ESR for nam-rs vs C++:
 
-- Simple models (LSTM 1×3): 1e-7 to 1e-6 (≈ −60 to −70 dB)
+- Simple models (LSTM 1×8): 1e-7 to 1e-6 (≈ −60 to −70 dB)
 - Complex models (WaveNet Standard): 1e-5 to 5e-5 (≈ −43 to −50 dB)
 
 ## References
