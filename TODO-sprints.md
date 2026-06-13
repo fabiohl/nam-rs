@@ -1112,11 +1112,11 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 21 — WaveNet Lite: Investigação de Paridade (CH=12) 🕵️ [Lane A]
+## ÉPICO 21 — WaveNet Lite: Investigação de Paridade (CH=12) 🕵️ [Lane A] [DONE]
 
 > Continuação do Épico 16 (Cascata de Heads). Durante a revisão do Épico 16, identificou-se que o modelo Lite (CH=12, HEAD=6) obteve melhora significativa (−12.8 dB → 0.9 dB), porém não atingiu a meta de paridade (SNR ≥ 40 dB) alcançada pelos modelos Standard, Feather e Nano.
 
-### Sprint 21.1 — Investigação e Correção da Divergência
+### Sprint 21.1 — Investigação e Correção da Divergência [DONE]
 
 - **[T21.1] Isolar o gap estrutural/numérico no WaveNet Lite (CH=12).** [DONE]
   - **Diagnóstico (2026-06-13):** Gap isolado — erro salta 96x entre amostras 63→64 (fronteira de bloco WAVENET_MAX_NUM_FRAMES=64), mas NÃO ocorre em CH=16/8/4. Inspeção de todos os kernels SIMD (conv1d, GEMV, GEMM, tanh), buffer alignment, `head_rechannel`, `head_accum`, e transposição de pesos não revelou bugs estruturais. Hipótese principal: drift numérico na acumulação de head para CH=12 (não-potência-de-2) que amplifica na fronteira de bloco. Prewarm de 1 frame com backfill vs C++ que processa `∑rf` frames organicamente. Verificações realizadas:
@@ -1152,7 +1152,8 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 ## ÉPICO 100 (FUTURO)
 
 > Faltam épicos 17 e 18 (completos)
-> Análise cuidadosa dos goldens, inclusive comparando com a última versão boa do NAM-rs e o estado do NAMcore. Plano para restaurar a plena confiabilidade neles.
+> Análise cuidadosa dos goldens, inclusive comparando com a última versão boa do NAM-rs e o estado do NAMcore. Não há nada mais urgente que restaurar a plena confiança neles.
+> Assegurar testes sem falhas vem em seguida.
 > Liberar v2.1 (A2 Beta)
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
