@@ -1120,10 +1120,20 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 21.1 — Investigação e Correção da Divergência
 
-- **[T21.1] Isolar o gap estrutural/numérico no WaveNet Lite (CH=12).**
-  - **Contexto:** Variantes com CH=16, CH=8 e CH=4 já atingem > 50 dB SNR. O caso CH=12 apresenta um SNR de apenas 0.9 dB, sugerindo falhas no manuseio de canais que não são potências de 2, paddings SIMD (`head_rechannel`), ou leitura/distribuição de pesos para esta topologia específica.
+- **[T21.1] Isolar o gap estrutural/numérico no WaveNet Lite (CH=12).** ✅ PARCIAL
+  - **Diagnóstico (2026-06-13):** Gap isolado — erro salta 96x entre amostras 63→64 (fronteira de bloco WAVENET_MAX_NUM_FRAMES=64), mas NÃO ocorre em CH=16/8/4. Inspeção de todos os kernels SIMD (conv1d, GEMV, GEMM, tanh), buffer alignment, `head_rechannel`, `head_accum`, e transposição de pesos não revelou bugs estruturais. Hipótese principal: drift numérico na acumulação de head para CH=12 (não-potência-de-2) que amplifica na fronteira de bloco. Prewarm de 1 frame com backfill vs C++ que processa `∑rf` frames organicamente. Verificações realizadas:
+    - Golden vectors regenerados via C++ render → idênticos aos armazenados (modelo e golden OK).
+    - Blocos de 1, 16, 64 → mesmo SNR (~0.9 dB); erro independe do tamanho de bloco.
+    - Sem prewarm → SNR piora (-0.8 dB); prewarm melhora parcialmente.
+    - `head_rechannel` f32 vs quantizado → igual (não é a causa).
+    - CH=12 weight stats: range [-0.50,0.50], max f16 err 0.000122 — MELHOR que Standard.
   - **Ação:** Realizar inspeção camada-a-camada (C++ vs Rust) e corrigir as premissas estruturais do layout de memória.
   - **Critério de aceite:** Modelos Lite atingem ≥ 40 dB SNR contra o C++. Restaurar limiares originais em `cpp_parity.rs` e `validation.rs`. Regenerar golden vectors (`tests/golden_vectors.rs`) para confirmar o reparo.
+
+- **[T21.2] Correção do drift numérico na acumulação de head para CH não-potência-de-2.**
+  - **Contexto:** T21.1 isolou o gap na fronteira de bloco. O drift provavelmente origina-se na acumulação `tanh_and_accumulate_block` para CH=12 onde o AVX2 processa 8 lanes + 4 scalar, introduzindo erro de arredondamento que amplifica via Kahan summation.
+  - **Ação:** Implementar acumulação do head em f64 (double precision) para o caminho de CH não-múltiplo de 8, ou adicionar passada de compensação Kahan global após cada bloco.
+  - **Critério de aceite:** SNR sobe de 0.9 dB para ≥ 40 dB.
 
 ---
 
