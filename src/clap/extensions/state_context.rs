@@ -11,13 +11,22 @@
 
 use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::NamClapMainThread;
+use crate::common::diagnostics::NamDiagnostic;
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
+use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::state_context::{
     PluginStateContext, PluginStateContextImpl, StateContextType,
 };
 use clack_plugin::prelude::*;
+use std::ffi::CString;
 use std::io::{Read, Write};
+
+#[derive(Debug, thiserror::Error)]
+enum StateContextError {
+    #[error("Failed to restore model from state: {0}")]
+    ModelRestore(#[source] NamDiagnostic),
+}
 
 /// Type alias for the CLAP state-context extension registration.
 pub type NamPluginStateContext = PluginStateContext;
@@ -83,22 +92,66 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                 if let Some(new_path) = found
                     && let Err(e) = self.load_model(&new_path)
                 {
-                    let msg = format!(
-                        "NAM-rs: Failed to restore model from preset ({:?}): {}",
-                        new_path, e
-                    );
-                    return Err(PluginError::Message(Box::leak(msg.into_boxed_str())));
+                    return Err(PluginError::Error(Box::new(
+                        StateContextError::ModelRestore(*e),
+                    )));
                 }
             }
         } else {
-            let model_path = self.params.model_path.clone();
             self.params = loaded_params;
-            if let Some(ref path) = model_path
-                && path.exists()
-                && let Err(e) = self.load_model(path)
-            {
-                let msg = format!("NAM-rs: Failed to restore model ({:?}): {}", path, e);
-                return Err(PluginError::Message(Box::leak(msg.into_boxed_str())));
+            if let Some(ref path) = self.params.model_path.clone() {
+                if path.exists() {
+                    if let Err(e) = self.load_model(path) {
+                        return Err(PluginError::Error(Box::new(
+                            StateContextError::ModelRestore(*e),
+                        )));
+                    }
+                } else {
+                    if let Some(ref basename) = self.params.model_basename {
+                        let found = self
+                            .params
+                            .model_search_paths
+                            .clone()
+                            .into_iter()
+                            .find_map(|dir| {
+                                let candidate = dir.join(basename);
+                                if candidate.exists() {
+                                    Some(candidate)
+                                } else {
+                                    None
+                                }
+                            });
+                        if let Some(new_path) = found {
+                            if let Some(log) = self.host.get_extension::<HostLog>() {
+                                let msg = format!(
+                                    "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
+                                    path, new_path
+                                );
+                                if let Ok(c_msg) = CString::new(msg) {
+                                    log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+                                }
+                            }
+                            if let Err(e) = self.load_model(&new_path) {
+                                return Err(PluginError::Error(Box::new(
+                                    StateContextError::ModelRestore(*e),
+                                )));
+                            }
+                        } else if let Some(log) = self.host.get_extension::<HostLog>() {
+                            let msg = format!(
+                                "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
+                                path, basename
+                            );
+                            if let Ok(c_msg) = CString::new(msg) {
+                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                            }
+                        }
+                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
+                        let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
+                        if let Ok(c_msg) = CString::new(msg) {
+                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                        }
+                    }
+                }
             }
         }
 

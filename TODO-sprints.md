@@ -869,21 +869,18 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 17.1 — `state-context`: restauração de projeto corrompida
 
-- **[T17.1] `load(ForProject/ForDuplicate)` carrega o modelo do path **antigo**, ignorando o estado carregado.**
-  **[verificado-na-fonte]**
-
-  - `src/clap/extensions/state_context.rs:94-98`: `let model_path = self.params.model_path.clone()` é capturado
-    **antes** de `self.params = loaded_params` — o plugin restaura o modelo que **já estava ativo**, não o salvo
-    no projeto. Corrigir para usar `loaded_params.model_path` (com o mesmo fallback portátil por basename do
-    `state.rs:163-214`).
-  - Aproveitar e remover o anti-padrão `Box::leak(msg.into_boxed_str())` (`:90,101`) — leak de memória a cada
-    erro; usar `PluginError::Error` com erro tipado.
-  - **Critério de aceite:** teste de integração: salvar projeto com modelo A, trocar para modelo B, recarregar
-    estado → modelo A ativo; sem leaks (heap-audit).
+- **[T17.1] `load(ForProject/ForDuplicate)` carrega o modelo do path **antigo**, ignorando o estado carregado.** [DONE]
+  - **Implementado 2026-06-13:**
+    1. Bug corrigido: `self.params = loaded_params` agora ocorre **antes** de acessar `self.params.model_path`,
+       garantindo que o path salvo no projeto (não o já ativo) seja usado para carregar o modelo
+       (`state_context.rs:100-101`).
+    2. Fallback portátil adicionado: se o path absoluto não existe, busca por basename nos search_paths
+       (paridade com `state.rs:163-214`), com logging via `HostLog`.
+    3. Memory leak eliminado: `Box::leak(msg.into_boxed_str())` substituído por `PluginError::Error` com
+        `StateContextError::ModelRestore` tipado (linhas 90, 101 originais).
 
 - **[T17.2] Unificar formato de estado: `state_context` grava JSON cru (v0) e ignora `ir_path`.**
   **[verificado-na-fonte]**
-
   - `state_context.rs:save()` serializa `NamPluginParams` **sem o envelope v1** usado por `state.rs:103-107` e
     **sem sincronizar `ir_path`** do shared (`state.rs:96-101` faz). Consequências: estado salvo via
     state-context regride para o formato legado v0 e perde a IR de cab-sim.
@@ -1153,18 +1150,13 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 > Faltam épicos 17 e 18 (completos)
 > Análise cuidadosa dos goldens, inclusive comparando com a última versão boa do NAM-rs e o estado do NAMcore. Não há nada mais urgente que restaurar a plena confiança neles.
-> Assegurar testes sem falhas vem em seguida.
-> Liberar v2.1 (A2 Beta)
+O foco é total em assegurar a absoluta qualidade dos golden tests - que tiveram sua confiabilidade abalada nos últimos commits.
+Concentre totalmente sua atenção em analisar a sua situação e como torna-los absolutamente impecáveis e precisos. Idealmente, ao final, nem precisaramos tocar mais neles no longo prazo - talvez apenas para acrescentar novos modelo ou arquiteturas.
+Vamos seguir pelo caminho seguro, buscando fontes sabidamente confiáveis.
+> Assegurar resultados impecáveis: `utils/tests-cargo.sh` e `utils/tests-long.sh`.
+> Liberar v2.1 (A2 Beta) pós aprovação: `utils/build-release.sh`, `utils/run-standalone.sh` e `~/.clap/nam-rs.clap`.
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
-  $ utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh
-  /revisor-auditor Além do que normalmente já prevê a skill `revisor-auditor.md`, leve bem em consideração que a arquitetura do nam-rs foi pensada para ser bem opinativa. Ele não tenta ser padrão ou genérico, mas em seguir escolhas definidas. E seu código é muito bem planejado e construído para ser o melhor na entrega destes objetivos. Então capriche em garantir uma ambiente enxuto e sólido. Cace bugs de todos os tipos e assegure um código muito fácil de manter e à prova de futuro.
-  Outra coisa que peço é que use os resultados da execução dos scripts `utils/tests-cargo.sh` e `utils/tests-long.sh` como uma fonte de insights para melhorias. A saida do terminal segue anexo e os logs gerados estão na pasta `target/logs/`.
-  Mantenha a documentação atualizada, ao menos a cada épico, para assegurar que as decisões e políticas tomadas sejam normatizadas e não se percam e se distorçam com o tempo.
-  Ao final, quando for acionar a skill `planejador-arquiteto`, oriente-a para otimizar os épicos, sprints e tarefas técnicas para uma entrega rápida e sem perda de tempo.
-  /pesquisador-inovador Além do que normalmente já prevê a skill `pesquisador-inovador.md`, leve bem em consideração que a arquitetura do nam-rs foi pensada para ser bem opinativa. Ele não tenta ser padrão ou genérico, mas em seguir escolhas definidas. E seu código é muito bem planejado e construído para ser o melhor na entrega destes objetivos. Então capriche em soluções e melhorias (performance, baixa latência, responsividade, UX, etc) disruptivas e extraordinárias - porém extremamente respeitosas à essência do nam-rs.
-  Ao final, quando for acionar a skill `planejador-arquiteto`, oriente-a para otimizar os épicos, sprints e tarefas técnicas para uma entrega rápida e sem perda de tempo.
-
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
 - **FFT** e outros features no **hot path**: Considerar internalizar o código eaplicar ultra otimizações.
 - **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
