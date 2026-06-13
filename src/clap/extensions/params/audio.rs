@@ -5,7 +5,7 @@
 
 use super::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    PARAM_SLIM_OVERRIDE, bypass_bool_to_u32, bypass_f32_to_bool, bypass_u32_to_bool,
+    PARAM_SLIM_OVERRIDE, bypass_u32_to_bool,
 };
 use crate::clap::processor::NamClapProcessor;
 use clack_extensions::params::PluginAudioProcessorParams;
@@ -34,6 +34,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
         self.shared.write_gui_events(output);
 
+        let mut param_changed = false;
         for event in input {
             let Some(param_event) = event.as_event::<ParamValueEvent>() else {
                 continue;
@@ -45,52 +46,19 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             let val = param_event.value() as f32;
 
             match id {
-                PARAM_INPUT_GAIN => {
-                    self.params.input_gain_db = val;
-                    self.shared
-                        .ui_to_rt
-                        .param_input_gain
-                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
-                }
-                PARAM_OUTPUT_GAIN => {
-                    self.params.output_gain_db = val;
-                    self.shared
-                        .ui_to_rt
-                        .param_output_gain
-                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
-                }
-                PARAM_GATE_THRESH => {
-                    self.params.gate_threshold_db = val;
-                    self.shared
-                        .ui_to_rt
-                        .param_gate_thresh
-                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
-                }
-                PARAM_BYPASS => {
-                    self.params.bypass = bypass_f32_to_bool(val);
-                    self.shared.ui_to_rt.param_bypass.store(
-                        bypass_bool_to_u32(self.params.bypass),
-                        std::sync::atomic::Ordering::Relaxed,
-                    );
-                }
-                PARAM_ADAPTIVE_COMPUTE => {
-                    let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
-                    self.params.adaptive_compute = mode;
-                    self.shared
-                        .ui_to_rt
-                        .param_adaptive_compute
-                        .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
-                }
-                PARAM_SLIM_OVERRIDE => {
-                    let ov = crate::dsp::adaptive::SlimOverride::from_f32(val);
-                    self.params.slim_override = ov;
-                    self.shared
-                        .ui_to_rt
-                        .param_slim_override
-                        .store(ov as u32, std::sync::atomic::Ordering::Relaxed);
-                }
+                PARAM_INPUT_GAIN => self.set_input_gain(val),
+                PARAM_OUTPUT_GAIN => self.set_output_gain(val),
+                PARAM_GATE_THRESH => self.set_gate_threshold(val),
+                PARAM_BYPASS => self.set_bypass(val),
+                PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
+                PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
                 _ => continue,
             }
+            param_changed = true;
+        }
+
+        if param_changed {
+            self.shared.bump_generation();
         }
 
         let generation = self

@@ -160,7 +160,7 @@ impl DspBridgeWriter {
             bridge.active_read_idx.store(back_idx, Ordering::Release);
 
             let current_gen = bridge.generation.load(Ordering::Relaxed);
-            let consumed_gen = bridge.consumed_gen.load(Ordering::Relaxed);
+            let consumed_gen = bridge.consumed_gen.load(Ordering::Acquire);
             if current_gen > consumed_gen {
                 let _ =
                     bridge
@@ -186,7 +186,7 @@ impl DspBridgeWriter {
             bridge.active_read_idx.store(back_idx, Ordering::Release);
 
             let current_gen = bridge.generation.load(Ordering::Relaxed);
-            let consumed_gen = bridge.consumed_gen.load(Ordering::Relaxed);
+            let consumed_gen = bridge.consumed_gen.load(Ordering::Acquire);
             if current_gen > consumed_gen {
                 let _ =
                     bridge

@@ -15,7 +15,7 @@ use std::sync::atomic::Ordering;
 impl<'a> NamClapProcessor<'a> {
     // ── Write helpers (Host Events path) ──────────────────────────
 
-    pub(super) fn set_input_gain(&mut self, db: f32) {
+    pub(crate) fn set_input_gain(&mut self, db: f32) {
         self.params.input_gain_db = db;
         self.shared
             .ui_to_rt
@@ -25,7 +25,7 @@ impl<'a> NamClapProcessor<'a> {
             .set_target(self.gain_lut.db_to_linear(db + self.mod_input_gain));
     }
 
-    pub(super) fn set_output_gain(&mut self, db: f32) {
+    pub(crate) fn set_output_gain(&mut self, db: f32) {
         self.params.output_gain_db = db;
         self.shared
             .ui_to_rt
@@ -35,7 +35,7 @@ impl<'a> NamClapProcessor<'a> {
             .set_target(self.gain_lut.db_to_linear(db + self.mod_output_gain));
     }
 
-    pub(super) fn set_gate_threshold(&mut self, db: f32) {
+    pub(crate) fn set_gate_threshold(&mut self, db: f32) {
         self.params.gate_threshold_db = db;
         self.shared
             .ui_to_rt
@@ -44,7 +44,7 @@ impl<'a> NamClapProcessor<'a> {
         self.gate_dirty = true;
     }
 
-    pub(super) fn set_bypass(&mut self, val: f32) {
+    pub(crate) fn set_bypass(&mut self, val: f32) {
         let bypass = bypass_f32_to_bool(val);
         self.params.bypass = bypass;
         self.shared
@@ -53,7 +53,7 @@ impl<'a> NamClapProcessor<'a> {
             .store(bypass_bool_to_u32(bypass), Ordering::Relaxed);
     }
 
-    pub(super) fn set_adaptive_compute(&mut self, val: f32) {
+    pub(crate) fn set_adaptive_compute(&mut self, val: f32) {
         let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
         self.params.adaptive_compute = mode;
         self.shared
@@ -63,7 +63,7 @@ impl<'a> NamClapProcessor<'a> {
         self.adaptive_compute.set_mode(mode, &self.rt_status);
     }
 
-    pub(super) fn set_slim_override(&mut self, val: f32) {
+    pub(crate) fn set_slim_override(&mut self, val: f32) {
         let ov = crate::dsp::adaptive::SlimOverride::from_f32(val);
         self.params.slim_override = ov;
         self.shared

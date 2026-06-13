@@ -867,7 +867,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 17 — Bugs Funcionais CLAP (Estado e Carregamento) 🐞 [release-blocker — Lane B]
 
-### Sprint 17.1 — `state-context`: restauração de projeto corrompida
+### Sprint 17.1 — `state-context`: restauração de projeto corrompida [DONE]
 
 - **[T17.1] `load(ForProject/ForDuplicate)` carrega o modelo do path **antigo**, ignorando o estado carregado.** [DONE]
   - **Implementado 2026-06-13:**
@@ -897,7 +897,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
        `processor_test::test_state_context_roundtrip` adaptada para formato envelope.
     - *Nota:* v0 legacy continua suportado em `load()` via `load_state()`, garantindo backward compat.
 
-### Sprint 17.2 — Carregamento de modelo: falha silenciosa e desperdício
+### Sprint 17.2 — Carregamento de modelo: falha silenciosa e desperdício [DONE]
 
 - **[T17.3] `load_model` CLAP retorna `Ok` com modelo morto (`model_l = None`).** **[verificado-na-fonte]** [DONE]
 
@@ -922,7 +922,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** tempo de load no CLAP ~50% menor (medível no log); contabilidade dos testes de GC
     coerente; payload `LoadModel` documentado.
 
-### Sprint 17.3 — Miudezas de robustez (baixo risco)
+### Sprint 17.3 — Miudezas de robustez (baixo risco) [DONE]
 
 - **[T17.5] `params::flush()` não atualiza smoothers/geração.** Em `src/clap/extensions/params/audio.rs`,
   após gravar os atômicos, fazer `bump_generation()` para o próximo `process()` ressincronizar smoothers e
