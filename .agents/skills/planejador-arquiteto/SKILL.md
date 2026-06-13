@@ -18,3 +18,4 @@ description: Transform plans into Sprints and Technical Tasks. Multi-disciplinar
 * Create the `TODO-sprints.md` file, if it doesn't already exist, with the execution plan.
 * This file must be written exclusively in pt-BR (Brazilian Portuguese).
 * Break larger deliveries into smaller, atomic, and detailed entities (epics, sprints, and technical tasks), directed at specialists capable of fulfilling them perfectly.
+* Identify those epics, sprints, and technical tasks who are most risky or critical that deserves more attention and caution.
