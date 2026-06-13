@@ -42,3 +42,125 @@ pub fn drain_resamplers(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING;
+    use std::sync::atomic::Ordering;
+
+    fn make_rs(pw: u32, nam: u32) -> Box<NamResampler> {
+        Box::new(NamResampler::new(pw, nam, 64).unwrap())
+    }
+
+    #[test]
+    fn empty_consumer_no_change() {
+        let (_prod, mut cons) = rtrb::RingBuffer::new(4);
+        let mut active = make_rs(48000, 48000);
+        let (mut gc_p, mut gc_c) = rtrb::RingBuffer::new(4);
+        let mut parking_lot: [Option<GcItem>; 16] = Default::default();
+        let gc_overflow = GcOverflowBuffer::default();
+        let flags = RtStatusFlags::new();
+
+        drain_resamplers(
+            &mut cons,
+            &mut active,
+            &mut gc_p,
+            &mut parking_lot,
+            &gc_overflow,
+            &flags,
+        );
+
+        assert_eq!(active.pw_rate(), 48000);
+        assert_eq!(active.nam_rate(), 48000);
+        assert!(gc_c.pop().is_err());
+    }
+
+    #[test]
+    fn single_swap_updates_active_and_clears_flag() {
+        let (mut prod, mut cons) = rtrb::RingBuffer::new(4);
+        let mut active = make_rs(48000, 48000);
+        let (mut gc_p, mut gc_c) = rtrb::RingBuffer::new(4);
+        let mut parking_lot: [Option<GcItem>; 16] = Default::default();
+        let gc_overflow = GcOverflowBuffer::default();
+        let flags = RtStatusFlags::new();
+
+        prod.push(make_rs(44100, 48000)).unwrap();
+
+        drain_resamplers(
+            &mut cons,
+            &mut active,
+            &mut gc_p,
+            &mut parking_lot,
+            &gc_overflow,
+            &flags,
+        );
+
+        assert_eq!(active.pw_rate(), 44100);
+        assert_eq!(active.nam_rate(), 48000);
+        assert_eq!(flags.active_rate.load(Ordering::Relaxed), 44100);
+        assert_eq!(flags.active_rate_changed.load(Ordering::Relaxed), 44100);
+        assert!(!flags.check_flag(RT_STATUS_RESAMP_SWAP_PENDING));
+
+        let old = gc_c.pop().unwrap();
+        assert!(matches!(old, GcItem::Resampler(_)));
+    }
+
+    #[test]
+    fn multiple_swaps_keep_last() {
+        let (mut prod, mut cons) = rtrb::RingBuffer::new(4);
+        let mut active = make_rs(48000, 48000);
+        let (mut gc_p, mut gc_c) = rtrb::RingBuffer::new(4);
+        let mut parking_lot: [Option<GcItem>; 16] = Default::default();
+        let gc_overflow = GcOverflowBuffer::default();
+        let flags = RtStatusFlags::new();
+
+        prod.push(make_rs(44100, 48000)).unwrap();
+        prod.push(make_rs(96000, 48000)).unwrap();
+
+        drain_resamplers(
+            &mut cons,
+            &mut active,
+            &mut gc_p,
+            &mut parking_lot,
+            &gc_overflow,
+            &flags,
+        );
+
+        assert_eq!(active.pw_rate(), 96000);
+        assert_eq!(flags.active_rate.load(Ordering::Relaxed), 96000);
+
+        let _first = gc_c.pop().unwrap();
+        let _second = gc_c.pop().unwrap();
+        assert!(gc_c.pop().is_err());
+    }
+
+    #[test]
+    fn swap_cascades_old_resampler_to_gc() {
+        let (mut prod, mut cons) = rtrb::RingBuffer::new(4);
+        let mut active = make_rs(48000, 48000);
+        let (mut gc_p, mut gc_c) = rtrb::RingBuffer::new(4);
+        let mut parking_lot: [Option<GcItem>; 16] = Default::default();
+        let gc_overflow = GcOverflowBuffer::default();
+        let flags = RtStatusFlags::new();
+
+        prod.push(make_rs(44100, 48000)).unwrap();
+
+        drain_resamplers(
+            &mut cons,
+            &mut active,
+            &mut gc_p,
+            &mut parking_lot,
+            &gc_overflow,
+            &flags,
+        );
+
+        let gc_item = gc_c.pop().unwrap();
+        match gc_item {
+            GcItem::Resampler(old_rs) => {
+                assert_eq!(old_rs.pw_rate(), 48000);
+            }
+            _ => panic!("Expected GcItem::Resampler"),
+        }
+    }
+}

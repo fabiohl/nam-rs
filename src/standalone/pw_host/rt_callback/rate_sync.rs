@@ -46,3 +46,103 @@ pub fn sync_rate(
 
     current_pw_rate
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::spsc::{RT_STATUS_NEEDS_RESAMPLER_REBUILD, RT_STATUS_RESAMP_SWAP_PENDING};
+    use std::sync::atomic::AtomicU32;
+
+    fn make_resampler(pw: u32, nam: u32) -> NamResampler {
+        NamResampler::new(pw, nam, 64).unwrap()
+    }
+
+    #[test]
+    fn no_rate_change_no_flags() {
+        let rate = AtomicU32::new(0);
+        let rs = make_resampler(48000, 48000);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 48000, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(!flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+        assert!(!flags.check_flag(RT_STATUS_RESAMP_SWAP_PENDING));
+    }
+
+    #[test]
+    fn pw_rate_change_sets_flags() {
+        let rate = AtomicU32::new(44100);
+        let rs = make_resampler(48000, 48000);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 48000, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+        assert!(flags.check_flag(RT_STATUS_RESAMP_SWAP_PENDING));
+        assert_eq!(flags.requested_pw_rate.load(Ordering::Relaxed), 44100);
+    }
+
+    #[test]
+    fn nam_rate_change_sets_flags() {
+        let rate = AtomicU32::new(0);
+        let rs = make_resampler(48000, 48000);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 44100, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+        assert!(flags.check_flag(RT_STATUS_RESAMP_SWAP_PENDING));
+    }
+
+    #[test]
+    fn zero_detected_rate_ignored() {
+        let rate = AtomicU32::new(0);
+        let rs = make_resampler(48000, 44100);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 44100, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(!flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+    }
+
+    #[test]
+    fn both_rates_unchanged_no_flags() {
+        let rate = AtomicU32::new(48000);
+        let rs = make_resampler(48000, 44100);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 44100, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(!flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+    }
+
+    #[test]
+    fn rate_sync_returns_current_pw_rate() {
+        let rate = AtomicU32::new(0);
+        let rs = make_resampler(96000, 48000);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 48000, &flags);
+
+        assert_eq!(result, 96000);
+    }
+
+    #[test]
+    fn nam_rate_mismatch_with_zero_detected_pw_rate_sets_flags() {
+        let rate = AtomicU32::new(0);
+        let rs = make_resampler(48000, 44100);
+        let flags = RtStatusFlags::new();
+
+        let result = sync_rate(&rate, &rs, 48000, &flags);
+
+        assert_eq!(result, 48000);
+        assert!(flags.check_flag(RT_STATUS_NEEDS_RESAMPLER_REBUILD));
+        assert!(flags.check_flag(RT_STATUS_RESAMP_SWAP_PENDING));
+        assert_eq!(flags.requested_nam_rate.load(Ordering::Relaxed), 48000);
+    }
+}

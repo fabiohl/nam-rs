@@ -7,7 +7,9 @@
 //! `soak_test.rs` and `wavenet_prewarm_edge.rs`.
 
 use nam_rs::math::common::{AlignedVec, SimdMathConfig};
-use nam_rs::models::a2::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
+use nam_rs::models::a2::{
+    A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2, a2_weight_count,
+};
 use nam_rs::models::wavenet::{
     Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
     WaveNetModel,

@@ -1013,7 +1013,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     (derivar de `fn lstm_weight_count(layers, hidden)`).
   - **Critério de aceite:** mudança de topologia exige atualização em **um** lugar.
 
-- **[T19.6] Cobertura faltante de módulos críticos.**
+- **[T19.6] Cobertura faltante de módulos críticos.** [DONE]
 
   - `src/standalone/pw_host/rt_callback/` (5 arquivos, zero testes): testar ao menos `drain_resamplers` e
     `rate_sync` (não exigem PipeWire). `src/common/alloc_audit.rs`: testes diretos do watchdog (conta/reseta/

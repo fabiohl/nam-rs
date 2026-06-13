@@ -311,4 +311,75 @@ mod tests {
             ),
         }
     }
+
+    #[test]
+    fn test_slimmable_size_zero_selects_first_submodel() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_slimmable_size(0.0);
+
+        assert_eq!(container.pending_index(), Some(0));
+    }
+
+    #[test]
+    fn test_slimmable_size_one_selects_last_submodel() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_active_index(0);
+
+        container.set_slimmable_size(1.0);
+
+        assert_eq!(container.pending_index(), Some(2));
+    }
+
+    #[test]
+    fn test_slimmable_size_between_thresholds() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_slimmable_size(0.5);
+
+        assert_eq!(container.pending_index(), Some(1));
+    }
+
+    #[test]
+    fn test_slimmable_size_same_value_noop() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_slimmable_size(0.5);
+        assert_eq!(container.pending_index(), Some(1));
+
+        container.set_slimmable_size(0.5);
+
+        assert_eq!(container.pending_index(), Some(1));
+    }
+
+    #[test]
+    fn test_slimmable_size_same_active_noop() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_active_index(0);
+
+        container.set_slimmable_size(0.2);
+
+        assert!(container.pending_index().is_none());
+    }
+
+    #[test]
+    fn test_slimmable_size_change_during_crossfade() {
+        let submodels = vec![(0.3, make_lstm()), (0.6, make_lstm()), (1.0, make_lstm())];
+        let mut container = ContainerModel::new(submodels, 48000).unwrap();
+
+        container.set_slimmable_size(0.2);
+        assert_eq!(container.pending_index(), Some(0));
+
+        container.set_slimmable_size(0.5);
+
+        assert_eq!(container.pending_index(), Some(1));
+        assert_eq!(container.active_index(), 0);
+    }
 }

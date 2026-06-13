@@ -83,3 +83,109 @@ impl Drop for TrackingGuard {
         TRACKING_THREAD.store(0, Ordering::Relaxed);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    fn fresh_state() {
+        TRACKING_THREAD.store(0, Ordering::Relaxed);
+        ALLOC_COUNT.store(0, Ordering::Relaxed);
+        AUDIT_THREAD.store(0, Ordering::Relaxed);
+        AUDIT_ENABLED.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn tracking_guard_new_stores_tid() {
+        fresh_state();
+        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+
+        let guard = TrackingGuard::new();
+
+        let tid = TRACKING_THREAD.load(Ordering::Relaxed);
+        assert_ne!(tid, 0);
+
+        drop(guard);
+    }
+
+    #[test]
+    fn tracking_guard_new_resets_alloc_count() {
+        ALLOC_COUNT.store(42, Ordering::Relaxed);
+
+        let guard = TrackingGuard::new();
+
+        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+
+        drop(guard);
+    }
+
+    #[test]
+    fn tracking_guard_drop_clears_tracking_thread() {
+        fresh_state();
+
+        let guard = TrackingGuard::new();
+        let tid = TRACKING_THREAD.load(Ordering::Relaxed);
+        assert_ne!(tid, 0);
+
+        drop(guard);
+
+        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn tracking_guard_default_works() {
+        fresh_state();
+
+        let guard = TrackingGuard;
+
+        assert_ne!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+
+        drop(guard);
+    }
+
+    #[test]
+    fn multiple_guards_work() {
+        fresh_state();
+
+        let g1 = TrackingGuard::new();
+        let tid1 = TRACKING_THREAD.load(Ordering::Relaxed);
+        assert_ne!(tid1, 0);
+
+        drop(g1);
+        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+
+        let g2 = TrackingGuard::new();
+        let tid2 = TRACKING_THREAD.load(Ordering::Relaxed);
+        assert_ne!(tid2, 0);
+
+        drop(g2);
+        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn alloc_count_is_zero_after_tracking_guard() {
+        fresh_state();
+
+        let _g = TrackingGuard::new();
+        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn audit_thread_isolation_baseline() {
+        fresh_state();
+
+        assert_eq!(AUDIT_THREAD.load(Ordering::Relaxed), 0);
+        assert!(!AUDIT_ENABLED.load(Ordering::Relaxed));
+
+        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+        AUDIT_THREAD.store(tid, Ordering::Relaxed);
+        AUDIT_ENABLED.store(true, Ordering::Relaxed);
+
+        assert_eq!(AUDIT_THREAD.load(Ordering::Relaxed), tid);
+        assert!(AUDIT_ENABLED.load(Ordering::Relaxed));
+
+        fresh_state();
+    }
+}
