@@ -51,6 +51,7 @@ macro_rules! config_table {
             apply_gain: <$type>::apply_gain,
             apply_ramp: <$type>::apply_ramp,
             apply_ramp_stereo: <$type>::apply_ramp_stereo,
+            crossfade_blend_mono: <$type>::crossfade_blend_mono,
             apply_dither_add: <$type>::apply_dither_add,
             convolve_stereo: <$type>::convolve_stereo,
             convolve_mono: <$type>::convolve_mono,

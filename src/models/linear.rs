@@ -128,7 +128,9 @@ impl LinearModel {
         let n = core::cmp::min(input.len(), output.len());
         for i in 0..n {
             // SAFETY: process_sample requires self.weights to be 64-byte aligned (guaranteed by AlignedVec).
-            unsafe { output[i] = self.process_sample(input[i]); }
+            unsafe {
+                output[i] = self.process_sample(input[i]);
+            }
         }
     }
 

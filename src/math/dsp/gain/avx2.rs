@@ -182,6 +182,27 @@ pub unsafe fn apply_dither_add_avx2(data: &mut [f32], offset: f32) {
     }
 }
 
+/// Crossfade blend (mono): `out[i] = fma(pending[i] - out[i], t, out[i])`.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn crossfade_blend_mono_avx2(out: &mut [f32], pending: &[f32], t: f32) {
+    let n = core::cmp::min(out.len(), pending.len());
+    let vt = _mm256_set1_ps(t);
+    let mut i = 0;
+    while i + 8 <= n {
+        let v_out = _mm256_loadu_ps(out.as_ptr().add(i));
+        let v_pending = _mm256_loadu_ps(pending.as_ptr().add(i));
+        let v_diff = _mm256_sub_ps(v_pending, v_out);
+        _mm256_storeu_ps(out.as_mut_ptr().add(i), _mm256_fmadd_ps(v_diff, vt, v_out));
+        i += 8;
+    }
+    let one_minus_t = 1.0 - t;
+    while i < n {
+        *out.get_unchecked_mut(i) =
+            *out.get_unchecked(i) * one_minus_t + *pending.get_unchecked(i) * t;
+        i += 1;
+    }
+}
+
 /// Applies linear gain ramp to a mono buffer via AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {

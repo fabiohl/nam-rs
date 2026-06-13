@@ -550,6 +550,13 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { super::super::dsp::gain::crossfade_blend_mono_avx2(out, pending, t) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],
         weights: &[u16],

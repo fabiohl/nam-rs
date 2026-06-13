@@ -113,5 +113,12 @@ macro_rules! impl_avx512_dsp {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { crate::math::dsp::gain::apply_dither_add_avx512(data, offset) }
         }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { crate::math::dsp::gain::crossfade_blend_mono_avx512(out, pending, t) }
+        }
     };
 }

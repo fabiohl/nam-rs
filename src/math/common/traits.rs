@@ -452,6 +452,13 @@ pub trait SimdMath {
     /// The buffer must be valid.
     unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32);
 
+    /// Crossfade blend: `out[i] = out[i] * (1-t) + pending[i] * t`.
+    /// Computed as `fma(pending[i] - out[i], t, out[i])` for single-rounding precision.
+    ///
+    /// # Safety
+    /// Buffers must be valid and have at least `min(out.len(), pending.len())` elements.
+    unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32);
+
     /// Applies a linear gain ramp in stereo.
     ///
     /// # Safety

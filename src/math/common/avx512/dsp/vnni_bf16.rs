@@ -92,5 +92,11 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
             Avx512Math::apply_dither_add(data, offset)
         }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
+            Avx512Math::crossfade_blend_mono(out, pending, t)
+        }
     };
 }

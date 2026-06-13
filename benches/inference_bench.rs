@@ -39,7 +39,9 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::NamModel;
+use nam_rs::models::container::ContainerModel;
 use nam_rs::models::lstm::lstm_weight_count;
+use nam_rs::models::slimmable::SlimmableModel;
 use nam_rs::models::wavenet::dense::DenseLayer;
 
 /// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
@@ -1348,7 +1350,9 @@ fn bench_linear_model_dot_product(c: &mut Criterion) {
     let mut model = LinearModel::new(weights, bias).unwrap();
     model.prewarm(0);
 
-    let input = (0..64).map(|i| (i as f32 * 0.05).sin()).collect::<Vec<f32>>();
+    let input = (0..64)
+        .map(|i| (i as f32 * 0.05).sin())
+        .collect::<Vec<f32>>();
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("LinearModel_RF256_64samp_SIMD", |b| {
@@ -1538,8 +1542,53 @@ criterion_group!(
     bench_cabsim_engine_construction,
     bench_cabsim_engine_construction_long,
     bench_gate_fsm,
-    bench_linear_model_dot_product
+    bench_linear_model_dot_product,
+    bench_container_crossfade_64samp
 );
+
+/// Measures the processing cost of a ContainerModel crossfade block
+/// (dual inference + SIMD blend via FMA), the worst-case per-block cost
+/// during slimmable submodel switching.
+fn bench_container_crossfade_64samp(c: &mut Criterion) {
+    let full_path = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("tests/fixtures/models/wavenet_a2_full.nam");
+        p
+    };
+    let lite_path = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("tests/fixtures/models/wavenet_a2_lite.nam");
+        p
+    };
+    if !full_path.exists() || !lite_path.exists() {
+        return;
+    }
+
+    let full_json = std::fs::read_to_string(&full_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed in JSON parser");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = std::fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed in JSON parser");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sr = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+    let mut container = ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sr)
+        .expect("Failed to create ContainerModel benchmark");
+
+    container.set_slimmable_size(0.25);
+    assert!(container.is_crossfading());
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    let mut model = nam_rs::models::StaticModel::Container(Box::new(container));
+    c.bench_function("Container_Crossfade_64samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
 
 // Long-running benchmark group definition (Soak Tests)
 #[cfg(feature = "long_bench")]

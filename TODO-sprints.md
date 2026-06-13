@@ -958,7 +958,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     executados automaticamente. As operações FMA do SIMD podem alterar a ordem de soma e quebrar bit-exactness
     com o C++. Se falharem, usar threshold 1e-7.
 
-- **[T18.3] Crossfade do `ContainerModel`: blend escalar + dupla inferência.**
+- **[T18.3] Crossfade do `ContainerModel`: blend escalar + dupla inferência.** [DONE]
 
   - `src/models/container.rs:157-183`: durante os ~32 ms de crossfade o custo dobra e o mix é escalar.
     Vetorizar o blend (FMA: `out = a·(1−t) + b·t` com rampa SIMD, kernel já existe em `math/dsp/gain.rs`)

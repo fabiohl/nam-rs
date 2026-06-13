@@ -96,6 +96,26 @@ pub unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
     crate::math::common::dispatch_simd!(apply_dither_add(data, offset))
 }
 
+/// Crossfade blend: `out[i] = fma(pending[i] - out[i], t, out[i])`.
+///
+/// # Safety
+/// Buffers must be valid and have at least `min(out.len(), pending.len())` elements.
+pub unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
+    crate::math::common::dispatch_simd!(crossfade_blend_mono(out, pending, t))
+}
+
+/// Safe wrapper for crossfade blend.
+#[inline]
+pub fn crossfade_blend_mono_simd(out: &mut [f32], pending: &[f32], t: f32) {
+    if out.len() != pending.len() {
+        let n = out.len().min(pending.len());
+        // SAFETY: n is safe intersection of both buffers.
+        unsafe { crossfade_blend_mono(&mut out[..n], &pending[..n], t) };
+        return;
+    }
+    // SAFETY: out and pending have the same length by the check above.
+    unsafe { crossfade_blend_mono(out, pending, t) };
+}
 /// Safe wrapper for dither offset addition via SIMD broadcast + vector add.
 pub fn apply_dither_add_simd(buffer: &mut [f32], offset: f32) {
     // SAFETY: `buffer` is a valid mutable reference provided by the caller;

@@ -229,3 +229,29 @@ pub unsafe fn apply_ramp_avx512(buffer: &mut [f32], start: f32, step: f32) {
         i += 1;
     }
 }
+
+/// Crossfade blend (mono): `out[i] = fma(pending[i] - out[i], t, out[i])`.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn crossfade_blend_mono_avx512(out: &mut [f32], pending: &[f32], t: f32) {
+    let n = core::cmp::min(out.len(), pending.len());
+    let vt = _mm512_set1_ps(t);
+    let mut i = 0;
+    while i + 16 <= n {
+        let v_out = _mm512_loadu_ps(out.as_ptr().add(i));
+        let v_pending = _mm512_loadu_ps(pending.as_ptr().add(i));
+        let v_diff = _mm512_sub_ps(v_pending, v_out);
+        _mm512_storeu_ps(out.as_mut_ptr().add(i), _mm512_fmadd_ps(v_diff, vt, v_out));
+        i += 16;
+    }
+    if i < n {
+        let mask = _cvtu32_mask16((1u32 << (n - i)) - 1);
+        let v_out = _mm512_maskz_loadu_ps(mask, out.as_ptr().add(i));
+        let v_pending = _mm512_maskz_loadu_ps(mask, pending.as_ptr().add(i));
+        let v_diff = _mm512_sub_ps(v_pending, v_out);
+        _mm512_mask_storeu_ps(
+            out.as_mut_ptr().add(i),
+            mask,
+            _mm512_fmadd_ps(v_diff, vt, v_out),
+        );
+    }
+}

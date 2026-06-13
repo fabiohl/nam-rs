@@ -155,3 +155,15 @@ pub unsafe fn compute_peak_abs_mono_fallback(data: &[f32]) -> f32 {
     }
     peak
 }
+
+/// Crossfade blend (scalar fallback): `out[i] = out[i] * (1-t) + pending[i] * t`.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
+pub unsafe fn crossfade_blend_mono_fallback(out: &mut [f32], pending: &[f32], t: f32) {
+    let one_minus_t = 1.0 - t;
+    let n = core::cmp::min(out.len(), pending.len());
+    for i in 0..n {
+        *out.get_unchecked_mut(i) =
+            *out.get_unchecked(i) * one_minus_t + *pending.get_unchecked(i) * t;
+    }
+}

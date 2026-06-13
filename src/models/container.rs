@@ -166,9 +166,9 @@ impl NamModel for ContainerModel {
             self.submodels[active_idx].1.process(input, output);
 
             let t = (self.crossfade_elapsed as f32 / self.crossfade_duration as f32).min(1.0);
-            let one_minus_t = 1.0 - t;
-            for (o, &s) in output.iter_mut().zip(self.scratch_buffer[..n].iter()) {
-                *o = *o * one_minus_t + s * t;
+            // SAFETY: scratch_buffer has the same length as output (both sized to n).
+            unsafe {
+                crate::math::dsp::gain::crossfade_blend_mono(output, &self.scratch_buffer[..n], t);
             }
 
             self.crossfade_elapsed += n;
