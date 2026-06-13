@@ -60,7 +60,9 @@ unsafe impl GlobalAlloc for CountingAllocator {
 }
 
 /// The "Switch": turns on the watchdog when created and turns it off when destroyed.
-pub struct TrackingGuard;
+pub struct TrackingGuard {
+    _private: (),
+}
 
 impl TrackingGuard {
     /// Starts watching the current thread.
@@ -68,7 +70,7 @@ impl TrackingGuard {
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
         TRACKING_THREAD.store(tid, Ordering::Relaxed);
         ALLOC_COUNT.store(0, Ordering::Relaxed);
-        Self
+        Self { _private: () }
     }
 }
 
@@ -137,7 +139,7 @@ mod tests {
     fn tracking_guard_default_works() {
         fresh_state();
 
-        let guard = TrackingGuard;
+        let guard = TrackingGuard::default();
 
         assert_ne!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
         assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);

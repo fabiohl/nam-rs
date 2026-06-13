@@ -988,7 +988,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** suíte longa com mesmas garantias em menos tempo; nenhuma fase capaz de mascarar
     falha.
 
-### Sprint 19.2 — Anti-fragilidade e dívidas de cobertura
+### Sprint 19.2 — Anti-fragilidade e dívidas de cobertura [DONE]
 
 - **[T19.4] Extrair helpers de teste CLAP (~700–1000 linhas de boilerplate).** [DONE]
   - **Status: DONE (12/06/2026 23:00).** `processor_test.rs`: 2433→1857 linhas (−23.7%).
