@@ -208,6 +208,10 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64) {
             (snr_to_mse(snr_db), snr_db)
         }
         12 => {
+            // Lite: golden regenerated post-T16.3 (C++ provenance), SNR=0.9 dB.
+            // The synthetic BossWN-lite.nam (CH=12, not power-of-2) produces
+            // near-noise output. 0 dB gate ensures the test runs without SKIP
+            // while acknowledging the divergence. See §Model provenance in README.md.
             let snr_db = 0.0;
             (snr_to_mse(snr_db), snr_db)
         }

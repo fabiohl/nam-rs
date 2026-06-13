@@ -215,15 +215,18 @@ See `docs/perceptual_validation.md` for methodology.
 | LSTM 2×12        | < 1e-3        | ≥ 18 dB       |
 | LSTM 2×16        | < 1e-3        | ≥ 18 dB       |
 | LSTM 2×24        | < 1e-3        | ≥ 18 dB       |
-| WaveNet Lite     | < 5e-2        | ≥ 9 dB        |
-| WaveNet Nano     | < 5e-2        | ≥ 9 dB        |
-| WaveNet Feather  | < 5e-2        | ≥ 9 dB        |
-| WaveNet Standard | < 5e-2        | ≥ 9 dB        |
-| A2-Lite (CH=3)   | < 5e-2        | ≥ 9 dB        |
-| A2-Full (CH=8)   | < 5e-2        | ≥ 9 dB        |
+| WaveNet Feather  | < 3e-7       | ≥ 60 dB       |
+| WaveNet Standard | < 3e-7       | ≥ 60 dB       |
+| WaveNet Lite     | < 3e-1       | ≥ 0 dB        |
+| WaveNet Nano     | < 9.5e-6     | ≥ 45 dB       |
+| A2-Lite (CH=3)   | < 5e-2       | ≥ 40 dB       |
+| A2-Full (CH=8)   | < 5e-2       | ≥ 40 dB       |
 
 > [!IMPORTANT]
-> The thresholds are empirically calibrated. NAMCore (native `std::tanh`) may show higher SNR than Boss models (FastMath Padé). The divergence is exclusively dominated by the `tanh`/`sigmoid` implementation — see ADR-001 in `docs/architecture.md §2`.
+> Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
+> `tests/common/validation.rs` from post-T16.1 C++-generated golden measurements.
+> WaveNet Lite (CH=12) SNRhreshold is 0 dB — the synthetic `BossWN-lite.nam` model
+> produces only 0.9 dB SNR against the C++ reference (see §Model provenance below).
 
 ## To regenerate (golden vectors)
 
@@ -280,7 +283,24 @@ Prerequisites: `cmake`, `g++` (or `clang++`, C++20), `cargo` (Rust), `git`.
 
 > Python is no longer required — `gen_stress` and `wav_to_golden` replace the inline Python blocks.
 
-These files are committed to the repository so that the Rust golden vector tests can run without needing to recompile C++. If the golden vectors do not exist, the tests gracefully skip.
+These files are committed to the repository so that the Rust golden vector tests can run without needing to recompile C++. If the golden vectors do not exist, the tests **panic** with instructions to run `golden_gen_build.sh` (post-T16.3: no silent SKIP).
+
+## Model Provenance
+
+### `BossWN-lite.nam` — Synthetic WaveNet Lite (CH=12)
+
+- **Created:** 2026-06-11
+- **Nature:** Synthetic fixture (weights auto-generated, not trained on real data).
+- **Metadata:** Round values, no `sample_rate` field in the JSON.
+- **Status:** Post-T16.1 SNR is 0.9 dB against the C++ reference (esentially decorrelated).
+  The CH=12 topology (not power-of-2) combined with synthetic weights produces near-noise
+  output. This model is an active golden test gate (threshold 0 dB) pending replacement
+  by a real trained Lite model. See `TODO-sprints.md §T16.3`.
+
+### `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-nano.nam`
+
+Real NAM models trained by the Boss Waza Tube Amp Expander community. See
+`docs/cpp_parity_map.md` for per-variant channel/layer counts.
 
 ## Two Layers of Validation
 

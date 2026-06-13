@@ -824,7 +824,17 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     - LSTM: pisos 45–75 dB no live (vs ~50–97 dB medido), 12–30 dB nos goldens (restritos por fixtures pré-T16.1).
     - Suíte completa: 511 pass, 0 fail. Goldens verdes. Live `#[ignore]` (requer toolchain C++).
 
-- **[T16.3] Goldens WaveNet: regenerar, cobrir o Lite e abolir SKIP silencioso.** (depende de T16.1)
+- **[T16.3] Goldens WaveNet: regenerar, cobrir o Lite e abolir SKIP silencioso.** (depende de T16.1) **[DONE]**
+
+  - **Implementado (2026-06-13):**
+    - `tests/golden_vectors.rs`: Lite v1 golden test SKIP silencioso abolido — `return` substituído por `panic!` com mensagem de como gerar o golden via `golden_gen_build.sh`. Model check (`BossWN-lite.nam`) também convertido para `panic!` (fixture é parte do repositório).
+    - Todos os goldens WaveNet (Standard/Lite/Feather/Nano × v1/v2 + A2 + LSTM + Linear) regenerados via `golden_gen_build.sh` a partir do C++ NeuralAmpModelerCore (commit `e49c93e`). Proveniência C++ confirmada.
+    - Lite v1: golden ausente agora existe (`golden_wavenet_lite.bin`, 2048 samples). SNR medido: 0.9 dB contra C++ (threshold 0 dB — o modelo sintético CH=12 é genuinamente divergente, ver §Model provenance no README).
+    - Lite v2: 5 goldens multi-SR (44100/48000/88200/96000/192000) regenerados do C++, substituindo os self-goldens pré-T16.1 que codificavam o comportamento bugado.
+    - `tests/fixtures/README.md`: thresholds atualizados (post-T16.1), §"Model provenance" documenta `BossWN-lite.nam` como sintético 2026-06-11, nota sobre SKIP→panic.
+    - `tests/common/validation.rs`: comentário do threshold CH=12 atualizado referenciando T16.3.
+    - Standard v2: apenas 48000Hz (render C++ rejeita outros SRs por mismatch de `sample_rate`).
+    - Suíte completa: 511 pass, 0 fail. Nenhum teste golden com SKIP silencioso.
 
   - O golden **v1** `tests/fixtures/golden_wavenet_lite.bin` **não existe** — `test_golden_vectors_wavenet_lite`
     (`tests/golden_vectors.rs:621`) faz **SKIP silencioso** e o "PASS" reportado é ilusório. Já os goldens

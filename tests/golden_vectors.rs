@@ -41,34 +41,31 @@ use common::*;
 /// computed in single-pass fusion — see `report_dsp_fidelity` in `tests/common/mod.rs`.
 ///
 /// ## Thresholds
-/// - MSE < 5e-2, SNR ≥ 9 dB
-/// - Divergence dominated exclusively by FastMath Padé vs native `std::tanh`.
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=16 → 60 dB post-T16.1).
 /// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
 ///
-/// If the golden file does not exist, the test prints SKIP and returns.
-/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_wavenet() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_standard.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_standard.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_standard.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_standard.bin");
 
     // Load and build the model
     let nam_path = model_path("BossWN-standard.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossWN-standard.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
@@ -518,27 +515,31 @@ fn test_golden_vectors_lstm_2x24() {
 }
 
 /// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// ## Thresholds
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=8 → 60 dB post-T16.1).
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_wavenet_feather() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_feather.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_feather.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_feather.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_feather.bin");
 
     let nam_path = model_path("BossWN-feather.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-feather.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossWN-feather.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Feather model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
@@ -562,27 +563,31 @@ fn test_golden_vectors_wavenet_feather() {
 }
 
 /// Test 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// ## Thresholds
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=4 → 45 dB post-T16.1).
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_wavenet_nano() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_nano.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_nano.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_nano.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_nano.bin");
 
     let nam_path = model_path("BossWN-nano.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-nano.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossWN-nano.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Nano model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
@@ -611,33 +616,38 @@ fn test_golden_vectors_wavenet_nano() {
 /// from `BossWN-lite.nam`, runs prewarm + processing,
 /// and compares the output against the C++ reference (NeuralAmpModelerCore).
 ///
-/// ## Thresholds
-/// - MSE < 5e-2, SNR ≥ 9 dB
-/// - Divergence dominated exclusively by FastMath Padé vs native `std::tanh`.
+/// ## Post-T16.1 thresholds (regenerated from C++, 2026-06-13)
 /// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
+/// - Thresholds auto-computed by `topology_thresholds()` based on CH=12.
 ///
-/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
+/// ## Fixture provenance
+/// - `golden_wavenet_lite.bin` is generated by `tests/fixtures/golden_gen_build.sh`
+///   from NeuralAmpModelerCore C++ render (pinned commit, see script).
+/// - `BossWN-lite.nam` is a synthetic model (2026-06-11, round metadata,
+///   no `sample_rate` field). See `tests/fixtures/README.md` §Model provenance.
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_wavenet_lite() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_lite.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_lite.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_lite.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++.\n\
+         This test cannot be skipped — the fixture is mandatory post-T16.1."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_lite.bin");
 
     let nam_path = model_path("BossWN-lite.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-lite.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossWN-lite.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Lite model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
