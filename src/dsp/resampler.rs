@@ -31,7 +31,9 @@
 use anyhow::{Result, bail};
 
 use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
-use crate::math::common::{AlignedVec, SimdMath, dispatch_simd};
+use crate::math::common::{
+    AlignedVec, Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SIMD_MATH, SimdMath,
+};
 
 /// Delay line size (double-buffer) to ensure contiguous access.
 /// Maintains 2 copies of history to avoid wrap logic in the hot-path SIMD.
@@ -100,6 +102,82 @@ struct ResamplerCore {
     phase_accum: u64,
     /// Phase increment per output sample = `from_rate / to_rate * NUM_PHASES` in 24.40 fixed point.
     phase_step: u64,
+    /// Cached ISA dispatch for the hot-path stereo method.
+    /// Set in `new()` to the monomorphized `process_internal::<Isa>`.
+    /// Eliminates the global `dispatch_simd!` match per call.
+    /// Micro-opt [T18.5c].
+    process_stereo: ProcessFn,
+    /// Cached ISA dispatch for the hot-path mono method.
+    /// Micro-opt [T18.5c].
+    process_mono: ProcessMonoFn,
+}
+
+/// Cached function pointer type for stereo resampling (hot path).
+type ProcessFn = fn(&mut ResamplerCore, &[f32], &[f32], &mut [f32], &mut [f32]) -> usize;
+/// Cached function pointer type for mono resampling (hot path).
+type ProcessMonoFn = fn(&mut ResamplerCore, &[f32], &mut [f32], &mut [f32]) -> usize;
+
+/// Trampoline: monomorphized `process_internal` for AVX2.
+fn process_internal_avx2(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    in_r: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal::<Avx2Math>(in_l, in_r, out_l, out_r)
+}
+
+/// Trampoline: monomorphized `process_internal` for AVX-512.
+fn process_internal_avx512(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    in_r: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal::<Avx512Math>(in_l, in_r, out_l, out_r)
+}
+
+/// Trampoline: monomorphized `process_internal` for AVX-512 VNNI BF16.
+fn process_internal_avx512bf16(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    in_r: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal::<Avx512VnniBf16Math>(in_l, in_r, out_l, out_r)
+}
+
+/// Trampoline: monomorphized `process_internal_mono` for AVX2.
+fn process_internal_mono_avx2(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal_mono::<Avx2Math>(in_l, out_l, out_r)
+}
+
+/// Trampoline: monomorphized `process_internal_mono` for AVX-512.
+fn process_internal_mono_avx512(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal_mono::<Avx512Math>(in_l, out_l, out_r)
+}
+
+/// Trampoline: monomorphized `process_internal_mono` for AVX-512 VNNI BF16.
+fn process_internal_mono_avx512bf16(
+    core: &mut ResamplerCore,
+    in_l: &[f32],
+    out_l: &mut [f32],
+    out_r: &mut [f32],
+) -> usize {
+    core.process_internal_mono::<Avx512VnniBf16Math>(in_l, out_l, out_r)
 }
 
 impl ResamplerCore {
@@ -110,12 +188,33 @@ impl ResamplerCore {
         // sample, filling the delay line before attempting to produce output.
         let phase_step_f = (from_rate as f64 / to_rate as f64) * NUM_PHASES as f64;
         let phase_step = (phase_step_f * ((1u64 << 40) as f64)).round() as u64;
+
+        // Cache the ISA-dispatched function pointers once, instead of
+        // matching on the global `SIMD_MATH` on every hot-path call.
+        // Micro-opt [T18.5c].
+        let (process_stereo, process_mono) = match SIMD_MATH.instruction_set {
+            InstructionSet::Avx2 => (
+                process_internal_avx2 as ProcessFn,
+                process_internal_mono_avx2 as ProcessMonoFn,
+            ),
+            InstructionSet::Avx512 => (
+                process_internal_avx512 as ProcessFn,
+                process_internal_mono_avx512 as ProcessMonoFn,
+            ),
+            InstructionSet::Avx512VnniBf16 => (
+                process_internal_avx512bf16 as ProcessFn,
+                process_internal_mono_avx512bf16 as ProcessMonoFn,
+            ),
+        };
+
         Self {
             bank,
             state_l: DelayLine::new(),
             state_r: DelayLine::new(),
             phase_accum: (NUM_PHASES as u64) << 40,
             phase_step,
+            process_stereo,
+            process_mono,
         }
     }
 
@@ -393,7 +492,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal, in_l, in_r, out_l, out_r)
+        (core.process_stereo)(core, in_l, in_r, out_l, out_r)
     }
 
     /// **Output resampling** (output path): `nam_rate → pw_rate`.
@@ -415,7 +514,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal, in_l, in_r, out_l, out_r)
+        (core.process_stereo)(core, in_l, in_r, out_l, out_r)
     }
 
     /// **Mono input resampling** (input path): `pw_rate → nam_rate`.
@@ -436,7 +535,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_l[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal_mono, in_l, out_l, out_r)
+        (core.process_mono)(core, in_l, out_l, out_r)
     }
 
     /// **Mono output resampling** (output path): `nam_rate → pw_rate`.
@@ -457,7 +556,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_l[..n]);
             return n;
         };
-        dispatch_simd!(core, process_internal_mono, in_l, out_l, out_r)
+        (core.process_mono)(core, in_l, out_l, out_r)
     }
 }
 

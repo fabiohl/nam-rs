@@ -57,6 +57,9 @@ pub fn capture_dsp_pipeline(
     // STAGE 3: CAB-SIM (OPTIONAL IR CONVOLUTION)
     // Post-inference speaker/cabinet simulation via impulse response.
     // When no IR is loaded (conv == None), this stage is a single branch — zero cost.
+    //
+    // Micro-opt [T18.5b]: removed dead copies to model_out_l/r in the
+    // n_pw != partition path — those buffers are never read after this stage.
     if let Some(ref mut conv) = ctx.conv {
         let partition = conv.partition_size();
         if n_pw == partition {
@@ -67,11 +70,6 @@ pub fn capture_dsp_pipeline(
                 bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.model_out_r[..n_pw]);
             } else {
                 bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
-            }
-        } else {
-            bufs.model_out_l[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
-            if !*ctx.process_mono {
-                bufs.model_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_r[..n_pw]);
             }
         }
     }

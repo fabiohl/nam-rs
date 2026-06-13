@@ -46,11 +46,24 @@ pub(crate) fn apply_output_stage(
     // 1. FINAL VOLUME ADJUSTMENT, CLIPPING PROTECTION, AND NOISE GATE (FUSED WHEN POSSIBLE)
     // When the gate is in a steady state (not actively fading), gain and gate
     // are applied in a single pass, halving L1 traffic in the output stage.
+    //
+    // Micro-opt [T18.5a]: when process_mono, skip R-channel work here — the
+    // L→R copy at line 89 handles it. Saves ~50% of the output stage.
     if silence_hysteresis.is_steady() {
         let gate_mult = silence_hysteresis.multiplier();
         if gate_mult == 0.0 {
             resamp_out_l[..n_pw].fill(0.0);
-            resamp_out_r[..n_pw].fill(0.0);
+            if !process_mono {
+                resamp_out_r[..n_pw].fill(0.0);
+            }
+        } else if process_mono {
+            let fused_gain = output_gain_mult * gate_mult;
+            let has_clipped = crate::math::common::dispatch_simd!(
+                apply_gain_and_detect_clipping_mono(&mut resamp_out_l[..n_pw], fused_gain)
+            );
+            if has_clipped {
+                rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+            }
         } else {
             let fused_gain = output_gain_mult * gate_mult;
             let has_clipped =
@@ -63,8 +76,18 @@ pub(crate) fn apply_output_stage(
                 rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
             }
         }
+    } else if process_mono {
+        // Gate is ramping — mono path.
+        let has_clipped = crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_mono(
+            &mut resamp_out_l[..n_pw],
+            output_gain_mult
+        ));
+        silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], n_pw);
+        if has_clipped {
+            rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+        }
     } else {
-        // Gate is ramping — two-pass fallback.
+        // Gate is ramping — stereo two-pass fallback.
         let has_clipped =
             crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
                 &mut resamp_out_l[..n_pw],

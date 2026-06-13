@@ -979,7 +979,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     norma dizer uma coisa e o código outra.
   - **Critério de aceite:** código, bench e doc coerentes entre si; goldens verdes.
 
-- **[T18.5] Lote de micro-otimizações de hot-path (agrupadas em 1 PR).**
+- **[T18.5] Lote de micro-otimizações de hot-path (agrupadas em 1 PR).** **[DONE]**
 
   - (a) *Output stage mono*: `src/dsp/pipeline/stages/output.rs:57-89` processa R inteiro e depois sobrescreve
     com L — quando `process_mono`, processar só L e copiar (≈50% do estágio).
