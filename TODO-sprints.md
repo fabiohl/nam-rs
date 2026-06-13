@@ -589,7 +589,6 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Todos os testes (384 unitários + 37 integration bins) passam sem regressões, incluindo
     `container_slimmable`, `golden_vectors` (container A2-Full/A2-Lite) e `soak_test`.
   - **Validação**: heap-audit formal de transição adaptativa adicionado em `tests/zero_alloc_infer.rs` (zero alloc verificado) e documentado em `docs/benchmarks.md` em 2026-06-12.
-
   - `src/models/container.rs:202-232`: na transição adaptativa (acionada pela FSM `AdaptiveCompute` **sob
     pressão de CPU**), `set_slimmable_size()` chama `self.submodels[next].1.reset(sr, max_buf)`
     (`container.rs:220-222`) e `self.scratch_buffer.resize(self.max_buffer_size, 0.0)` (`container.rs:224`)
@@ -732,13 +731,364 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     intenção; `#[warn(missing_docs)]` segue satisfeito.
 
 ---
+
+## 🔁 Rodada v2.3 — 3ª Passada da Auditoria Geral (`revisor-auditor`, 2026-06-12)
+
+> Resultado de nova rodada completa do `revisor-auditor`, alimentada pela execução real de `utils/tests-cargo.sh`
+> (verde) e `utils/tests-long.sh` (**Phase 4 FAILED** + **4 falhas de paridade C++ mascaradas por `|| true` na
+> Phase 3** — ver logs em `target/logs/`). Os achados marcados **[verificado-na-fonte]** foram lidos e confirmados
+> manualmente (`file:line`); os demais vieram do painel de auditoria e têm evidência citada.
+>
+> **Plano otimizado para entrega rápida:** os épicos estão ordenados por prioridade e divididos em 3 **lanes
+> paralelizáveis** (A = paridade/som, B = bugs funcionais, C = infra/docs). Dentro de cada sprint as tarefas são
+> atômicas (≤ ~meio dia cada) e só há dependência onde explicitamente indicado. **Política de documentação:** ao
+> fechar **cada épico**, acionar `documentador`/`refatora-doc` para normatizar as decisões tomadas (tarefas T20.x
+> já listam o destino de cada decisão) — nada de deixar para "depois do release".
+
+### ⚠️ Apêndice de verificação v2.3 (suspeitas investigadas e **descartadas** — NÃO "corrigir")
+
+| Suspeita levantada                                           | Veredito verificado                                                                                                                                                                                                   |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "GC cascade tem type-confusion/torn-read no overflow buffer" | **Falso.** `GcItem::from_raw_parts` valida `type_id` antes de `Box::from_raw`; slot é um único `AtomicU64` (ponteiro+tipo empacotados) — sem janela de torn-read (`src/common/spsc/gc.rs:57-126`). T6.3 segue válido. |
+| "`gui_param_generation` com `Relaxed` nos valores é race"    | **Falso.** O par Release (`bump_generation`) / Acquire (`events.rs:92-96`) estabelece happens-before; leituras `Relaxed` dos valores sob o guard são seguras.                                                         |
+| "`drain_parking_lot` pode girar (spin) com canal cheio"      | **Falso.** O loop faz `break` no primeiro `PushError::Full` (`src/clap/processor/gc.rs:17-25`).                                                                                                                       |
+| "`process()` CLAP tem alocação escondida"                    | **Falso.** Todas as alocações confinadas a `activate()`/Main Thread; confirmado por `test_zero_alloc_process_bypass` e heap-audit verde (Phase 3).                                                                    |
+| "A2 lê `head_scale` do stream de pesos errado"               | **Já descartado na v2.2** (comportamento idêntico ao C++ `model.cpp:632`).                                                                                                                                            |
+| "Sleeps em `pw_integration_test.rs` são flaky a corrigir"    | **Aceitável.** Teste `#[ignore]` de integração com daemon externo; sleeps documentados são o padrão prático.                                                                                                          |
+| "`dispatch_simd!` por bloco no WaveNet é gargalo"            | **Falso como gargalo.** Custo ~ns vs ~µs de inferência; ver porém T18.5 (caching no resampler, onde a frequência de chamada é maior).                                                                                 |
+
+---
+
+## ÉPICO 16 — Paridade WaveNet: Cascata de Heads 🎯 [release-blocker — Lane A]
+
+> **O achado mais importante da rodada.** A acumulação de heads do WaveNet Rust **diverge estruturalmente** da
+> referência NeuralAmpModelerCore — todos os modelos A1 WaveNet soam mensuravelmente diferentes do NAM oficial
+> (SNR live vs C++ de apenas 9.5–21 dB, enquanto o LSTM atinge 50–97 dB). No modelo **Lite** a divergência é
+> catastrófica (SNR **−12.8 dB**, saída quase não correlacionada) e estava **mascarada por `|| true`** na Phase 3.
+
+### Sprint 16.1 — Correção da cascata (fidelidade ao C++)
+
+- **[T16.1] Corrigir a acumulação de heads entre layer arrays.** **[verificado-na-fonte]**
+
+  - **C++ de referência** (`tests/fixtures/NeuralAmpModelerCore/NAM/wavenet/model.cpp`): o array *N* **semeia**
+    seu `_head_inputs` com o head output (pós-`head_rechannel`) do array *N−1* (`model.cpp:436-445`, chamada em
+    `:769-770`); cada camada **soma** seu head output nesse acumulador (`:492`); o `head_rechannel` do array
+    processa o acumulado (`:510`); a saída final é **apenas** o head output do **último** array × `head_scale`
+    (`:774-828`). Ou seja: `out = hs · W₂·(H₁ + Σ₂)`.
+  - **Rust atual** (`src/models/wavenet/model.rs:91-97` + `src/math/wavenet/head.rs`): array2 acumula **somente**
+    suas camadas (primeira camada faz *overwrite* do `head_accum` — `layer_array.rs:78`), e
+    `batch_wavenet_head_sum` soma horizontalmente `array1.head_outputs` (HEAD canais, **sem** passar pelos pesos
+    do `head_rechannel_2`) + head do array2. Ou seja: `out = hs · (sum(H₁) + W₂·Σ₂)` — só equivale ao C++ se
+    `W₂ = [1,…,1]`, o que nunca ocorre.
+  - **Implementação:** novo caminho em `layer_array.rs` que recebe `prev_head_outputs: &[f32]` e o **copia** para
+    `head_accum` antes do loop de camadas (as camadas passam a **acumular**, não sobrescrever, quando há seed);
+    `model.rs` passa `array1.head_outputs` para o array2 e a saída final vira
+    `output = head_scale × array2.head_outputs` (eliminar `batch_wavenet_head_sum` e seus kernels se ficarem
+    órfãos). Manter o layout zero-alloc (buffers já existem).
+  - **Atenção A2:** o caminho A2 (`src/models/a2/`) tem head próprio e **não** usa essa cascata — não tocar.
+  - **Critério de aceite:** `live_cross_validation_wavenet_{standard,lite,feather,nano}` (v1 e v2) com SNR
+    ≥ 40 dB (novo piso digno de port numérico — ver T16.2); goldens regenerados (T16.3); zero alloc; benches sem
+    regressão > 2%.
+
+- **[T16.2] Apertar os thresholds do `cpp_parity.rs` pós-correção.** (depende de T16.1)
+
+  - Os thresholds atuais (ex.: WaveNet Standard `SNR ≥ 9.4 dB`, passando com 9.5 dB) foram calibrados **para
+    tolerar a divergência estrutural** — após T16.1 são "seguro furado". Re-medir e fixar pisos rígidos por
+    família (sugestão: WaveNet ≥ 40 dB, LSTM ≥ 50 dB, Linear bit-exact), com margem documentada.
+  - **Critério de aceite:** thresholds novos comentados com a medição que os originou; suíte live verde sem
+    `|| true` (T19.1).
+
+- **[T16.3] Goldens WaveNet: regenerar, cobrir o Lite e abolir SKIP silencioso.** (depende de T16.1)
+
+  - O golden **v1** `tests/fixtures/golden_wavenet_lite.bin` **não existe** — `test_golden_vectors_wavenet_lite`
+    (`tests/golden_vectors.rs:621`) faz **SKIP silencioso** e o "PASS" reportado é ilusório. Já os goldens
+    **v2** do Lite (`golden_wavenet_lite_v2_{44100,48000,88200,96000,192000}k.bin`) **existem e passam** —
+    porém, como o cross-validation live v2 falha com SNR −12.8 dB, eles quase certamente foram **self-gerados
+    pelo Rust pré-T16.1** e codificam o comportamento divergente (são "seguro anti-regressão" do próprio bug).
+  - **Implementação:** após T16.1, regenerar **todos** os goldens do Lite (v1 ausente **+ os 5 v2 existentes**)
+    e, idealmente, o catálogo WaveNet completo via `golden_gen_build.sh`; **verificar a proveniência**: cada
+    golden regenerado deve **falhar** contra o código pré-T16.1 e **passar** pós-T16.1 (prova de que não é
+    self-referencial ao estado bugado). Transformar fixture obrigatório ausente em **falha de teste**
+    (`panic!` com mensagem de como gerar), não `return`.
+  - Avaliar substituir `BossWN-lite.nam` (sintético de 2026-06-11, metadados redondos, sem `sample_rate`) por
+    modelo treinado real ou, no mínimo, documentar sua proveniência em `tests/fixtures/README.md`.
+  - **Critério de aceite:** nenhum teste golden com SKIP silencioso; catálogo completo (Standard/Lite/Feather/
+    Nano × v1/v2) com golden versionado.
+
+### Sprint 16.2 — A2 live parity: escala e thresholds
+
+- **[T16.4] Tratar a falha live do A2-Lite (MSE ~10², SNR 51–57 dB) e o bug upstream do `a2_fast.cpp`.**
+
+  - Padrão clássico de **mismatch de escala**: forma de onda correlacionada (SNR alto), amplitude ~270× maior no
+    C++ (LUFS ~82). `docs/cpp_parity_map.md:125-126` já registra que o render C++ `a2_fast.cpp` é numericamente
+    instável para A2 (A2-Full produz `max_sample=1.38e16`, já auto-skipado no log). O A2-Lite produz lixo
+    *estável* (não dispara o guard de garbage).
+  - **Ações:** (1) estender o guard de garbage do `cpp_parity.rs` para detectar também amplitude absurda porém
+    finita (ex.: `max_sample > 10³` com modelo calibrado) e skipar **com aviso**, em vez de falhar com threshold
+    absoluto; (2) migrar os thresholds de MSE absoluto → **MSE relativo/ESR** (normalizado pela energia do
+    sinal), que é robusto a escala; (3) reportar o bug ao upstream e registrar o pin do commit testado.
+  - **Critério de aceite:** suíte live verde sem `|| true`, com skips explícitos e auditáveis no log; threshold
+    relativo documentado em `docs/perceptual_validation.md`.
+
+---
+
+## ÉPICO 17 — Bugs Funcionais CLAP (Estado e Carregamento) 🐞 [release-blocker — Lane B]
+
+### Sprint 17.1 — `state-context`: restauração de projeto corrompida
+
+- **[T17.1] `load(ForProject/ForDuplicate)` carrega o modelo do path **antigo**, ignorando o estado carregado.**
+  **[verificado-na-fonte]**
+
+  - `src/clap/extensions/state_context.rs:94-98`: `let model_path = self.params.model_path.clone()` é capturado
+    **antes** de `self.params = loaded_params` — o plugin restaura o modelo que **já estava ativo**, não o salvo
+    no projeto. Corrigir para usar `loaded_params.model_path` (com o mesmo fallback portátil por basename do
+    `state.rs:163-214`).
+  - Aproveitar e remover o anti-padrão `Box::leak(msg.into_boxed_str())` (`:90,101`) — leak de memória a cada
+    erro; usar `PluginError::Error` com erro tipado.
+  - **Critério de aceite:** teste de integração: salvar projeto com modelo A, trocar para modelo B, recarregar
+    estado → modelo A ativo; sem leaks (heap-audit).
+
+- **[T17.2] Unificar formato de estado: `state_context` grava JSON cru (v0) e ignora `ir_path`.**
+  **[verificado-na-fonte]**
+
+  - `state_context.rs:save()` serializa `NamPluginParams` **sem o envelope v1** usado por `state.rs:103-107` e
+    **sem sincronizar `ir_path`** do shared (`state.rs:96-101` faz). Consequências: estado salvo via
+    state-context regride para o formato legado v0 e perde a IR de cab-sim.
+  - **Implementação:** extrair um helper único (`fn snapshot_params(&mut self) -> NamPluginParams` +
+    `fn serialize_envelope(...)`) compartilhado por `state.rs` e `state_context.rs`; `load()` do state_context
+    deve aceitar envelope v1 e legado v0 via o mesmo `load_state()` de `state.rs:259-277`.
+  - **Critério de aceite:** roundtrip `state_context.save → state.load` (e vice-versa) preserva todos os campos,
+    incluindo `ir_path`; testes de `state_context.rs` atualizados.
+
+### Sprint 17.2 — Carregamento de modelo: falha silenciosa e desperdício
+
+- **[T17.3] `load_model` CLAP retorna `Ok` com modelo morto (`model_l = None`).** **[verificado-na-fonte]**
+
+  - `src/loader/build.rs:155-162` converte erro de build em `.ok()` → `LoadedModelPair{model_l: None}`;
+    `src/clap/plugin/main_thread/load.rs` não valida e publica o payload — o plugin fica **mudo sem feedback**
+    (o standalone ao menos seta `RT_STATUS_MODEL_LOAD_FAILED` na recepção, `commands.rs:47`).
+  - **Implementação:** em `load_model`, retornar `Err(NamDiagnostic::ModelBuildFailed)` quando
+    `model_pair.model_l.is_none()` (o diagnóstico de build já foi emitido); adicionalmente, no
+    `cold_load_model` do processor, setar `RT_STATUS_MODEL_LOAD_FAILED` quando o swap resultar em `None`
+    (paridade com o standalone).
+  - **Critério de aceite:** carregar `.nam` inválido via GUI/estado exibe erro (ui_load_error) e **não** troca o
+    modelo ativo; teste cobrindo o caminho.
+
+- **[T17.4] Parar de construir + prewarm o `model_r` descartado no CLAP (e no caminho mono em geral).**
+
+  - O loader sempre constrói e preaquece **dois** modelos (`build.rs:155-177`); o CLAP (mono por política) joga
+    `model_r` direto no GC (`src/clap/processor/events.rs:175-177`) — dobro do tempo de load e um item de GC
+    inútil por swap.
+  - **Implementação:** parâmetro `stereo: bool` em `load_and_build_model` (CLAP passa `false`; standalone decide
+    pelo nº de canais). Atualizar a contabilidade de GC esperada nos testes (ver T19.2 — fazer **junto** para não
+    quebrar duas vezes).
+  - **Critério de aceite:** tempo de load no CLAP ~50% menor (medível no log); contabilidade dos testes de GC
+    coerente; payload `LoadModel` documentado.
+
+### Sprint 17.3 — Miudezas de robustez (baixo risco)
+
+- **[T17.5] `params::flush()` não atualiza smoothers/geração.** Em `src/clap/extensions/params/audio.rs`,
+  após gravar os atômicos, fazer `bump_generation()` para o próximo `process()` ressincronizar smoothers e
+  `gate_dirty`. Teste: flush fora de process → próximo bloco aplica os valores.
+- **[T17.6] `DspBridge`: detecção de `dropped_frames` com `Relaxed` stale.** Em
+  `src/dsp/pipeline/bridge.rs:162-171,188-197`, ler `consumed_gen` com `Acquire` e revisar a condição
+  (`current_gen > consumed_gen` vs `+1`) — hoje a métrica de diagnóstico pode reportar falso positivo.
+  Apenas telemetria, mas é a métrica que o `diagnostico` usa.
+
+---
+
+## ÉPICO 18 — RT-Safety e Cycle Budget ⚡ [Lane A, após Épico 16]
+
+### Sprint 18.1 — Eliminação de pânico e SIMD faltante
+
+- **[T18.1] `assert!` de runtime no hot-path do WaveNet.** **[alta prioridade, 1 linha]**
+
+  - `src/models/wavenet/layer.rs:51-55`: `assert!` ativo em release, alcançável no callback RT (pânico derruba o
+    host de áudio). A invariante já é garantida por `const { assert!(…) }` em compile-time → rebaixar para
+    `debug_assert!`. Varredura adicional: `rg "assert!" src/{dsp,math,models}` para confirmar que não há outros
+    asserts de runtime em caminho RT (excluindo `debug_assert!`/`const`).
+  - **Critério de aceite:** zero `assert!`/`panic!` runtime alcançável do `process()`; goldens verdes.
+
+- **[T18.2] `LinearModel` sem SIMD (dot product escalar por amostra).**
+
+  - `src/models/linear.rs:94-115` usa `dot_product_f32_native` escalar; com RF 64–256 são até 16k FMAs escalares
+    por bloco. Reutilizar o kernel AVX2/FMA existente (`convolve_mono_avx2` ou `dot_product` de
+    `math/common`) com a janela do histórico. Ganho estimado 4–8×.
+  - **Critério de aceite:** golden `linear_test.nam` continua **bit-exact** vs C++ (cuidado: mudar ordem de soma
+    pode quebrar bit-exactness — se quebrar, validar com threshold 1e-7 e documentar); bench novo no Criterion.
+
+- **[T18.3] Crossfade do `ContainerModel`: blend escalar + dupla inferência.**
+
+  - `src/models/container.rs:157-183`: durante os ~32 ms de crossfade o custo dobra e o mix é escalar.
+    Vetorizar o blend (FMA: `out = a·(1−t) + b·t` com rampa SIMD, kernel já existe em `math/dsp/gain.rs`)
+    — exatamente no momento em que o adaptive FSM está fugindo de xrun.
+  - **Critério de aceite:** teste de continuidade do crossfade (`container_slimmable.rs`) verde; bench do
+    crossfade antes/depois no commit.
+
+### Sprint 18.2 — Coerência Kahan e micro-otimizações
+
+- **[T18.4] Resolver a contradição T13.2a: doc diz "Kahan removido", código ainda tem.** **[verificado-na-fonte]**
+
+  - `TODO-sprints.md` marca T13.2a [DONE] e `docs/benchmarks.md` (§T13.2) registra "Decisão: Remover Kahan do
+    caminho estático para K ≤ 3" — mas `src/models/wavenet/conv1d.rs:197-208` e `conv1d_dual.rs:202-208`
+    **ainda usam** `kahan_add` no laço por-tap. Ou a remoção foi revertida (por quê? goldens?) ou nunca aplicada.
+  - **Ações:** rodar `cargo bench --bench kahan_conv1d_bench` + goldens com/sem Kahan; **decidir uma vez**
+    (análise do auditor: para `K·IN ≤ 64` o erro sem Kahan é ~5.7e-6 — inaudível — e o ganho estimado é 8–12% do
+    conv1d); aplicar a decisão no código **e** alinhar `docs/benchmarks.md` + este arquivo. O que não pode é a
+    norma dizer uma coisa e o código outra.
+  - **Critério de aceite:** código, bench e doc coerentes entre si; goldens verdes.
+
+- **[T18.5] Lote de micro-otimizações de hot-path (agrupadas em 1 PR).**
+
+  - (a) *Output stage mono*: `src/dsp/pipeline/stages/output.rs:57-89` processa R inteiro e depois sobrescreve
+    com L — quando `process_mono`, processar só L e copiar (≈50% do estágio).
+  - (b) *Dead stores no cab-sim*: `src/dsp/pipeline/capture.rs:60-77` copia para `model_out_l/r` que ninguém lê
+    quando `n_pw != partition` — remover.
+  - (c) *Resampler*: cachear o function pointer do ISA na construção do `NamResampler`
+    (`src/dsp/resampler.rs:383-461`), eliminando `dispatch_simd!` por chamada.
+  - (d) `#[inline]` em `ParamSmoother::tick()` (`src/dsp/smoother.rs:54`).
+  - **Critério de aceite:** goldens + heap-audit verdes; benches sem regressão; cada item com comentário de
+    intenção.
+
+---
+
+## ÉPICO 19 — Infra de Testes: Verdade e Velocidade 🧪 [Lane C — paralelo desde o dia 1]
+
+### Sprint 19.1 — Parar de mentir (correções da suíte longa)
+
+- **[T19.1] Remover o `|| true` da Phase 3 do `utils/tests-long.sh`.** **[crítico, 1 linha]**
+
+  - `utils/tests-long.sh:97`: o `|| true` engoliu as 4 falhas reais de paridade (wavenet_lite/a2_lite, v1+v2).
+    O caso "toolchain C++ ausente" já é tratado pelo próprio teste (`ensure_render_compiled()` → `return`), logo
+    o `|| true` só esconde bug. Remover; adicionar `trap '…' ERR` defensivo no script.
+  - **Ordem de execução:** pode ser feito **já** — a suíte ficará vermelha até T16.1/T16.4 fecharem, o que é o
+    comportamento honesto desejado.
+
+- **[T19.2] Consertar `test_gc_stress_1000_swaps` (causa-raiz da Phase 4 FAILED).** **[verificado-na-fonte]**
+
+  - O teste (`src/clap/processor_test.rs:1918`) assume 3 itens de GC por swap, mas `mock_a2.nam` (1 peso,
+    deliberadamente incompleto) falha no build → swaps com 2 itens → 42 itens em 17 swaps < 48 → flag de
+    overflow nunca seta → assert da linha 2101 falha. **Confirmado por instrumentação.**
+  - **Implementação:** substituir `"mock_a2.nam"` por `"wavenet_a2_lite.nam"` (modelo real) no array de modelos
+    (linha ~1956) **e** no `test_model_switching_stress` (linha ~253); adicionar assert pós-load de que o modelo
+    carregou (via `model_load_counter`/`ui_load_error`) para o teste falhar com diagnóstico claro se um fixture
+    regredir; documentar no comentário a contabilidade (2 + 16×3 = 50 > 48). Se T17.4 mudar a contagem por swap
+    (sem `model_r`), atualizar a aritmética **na mesma tarefa**.
+  - No `test_heap_audit_trigger` (linha ~975), manter `mock_a2.nam` (uso intencional) mas **assertar** que o
+    load falhou como esperado, tornando o mock auto-documentado.
+  - **Critério de aceite:** Phase 4 do `tests-long.sh` verde; contabilidade GC explicada em comentário.
+
+- **[T19.3] Endurecimento do `tests-long.sh` (rapidez e diagnóstico).**
+
+  - Logs separados por sub-teste na Phase 3 (heap-audit ≠ cpp_parity); paralelizar fases independentes
+    (Phase 1 ∥ Phase 3; Phase 6 ∥ Phase 5) com `wait` — corte estimado de 6–10 min; `timeout` no auto-clone do
+    NeuralAmpModelerCore; `( run_clap_audit_local )` em subshell explícito.
+  - `utils/lints.sh`: trocar `cargo fmt --all` por `cargo fmt --all -- --check` (auditoria não deve modificar o
+    working tree).
+  - **Critério de aceite:** suíte longa com mesmas garantias em menos tempo; nenhuma fase capaz de mascarar
+    falha.
+
+### Sprint 19.2 — Anti-fragilidade e dívidas de cobertura
+
+- **[T19.4] Extrair helpers de teste CLAP (~700–1000 linhas de boilerplate).**
+
+  - `src/clap/processor_test.rs` (2375 linhas): 14 testes repetem ~60 linhas de setup (entry/instance/activate/
+    buffers/ports). Extrair `make_test_plugin()`, `make_stereo_buffers()`, `process_block()` em módulo
+    `#[cfg(test)]` compartilhado (reutilizável também pelo `inference_bench.rs:1091-1247`).
+  - **Critério de aceite:** nenhum teste perde cobertura; arquivo reduzido em ≥ 30%.
+
+- **[T19.5] Substituir números mágicos acoplados a internals por constantes derivadas.**
+
+  - Contagens de pesos A2 (1871/12146) duplicadas em `src/models/a2/model_test.rs:185,197` e
+    `tests/a2_loader.rs:772,787` → expor `expected_weight_count()` `pub(crate)` ou constantes nomeadas com a
+    decomposição comentada. Idem `total_weights` hardcoded do `benches/inference_bench.rs:56-77`
+    (derivar de `fn lstm_weight_count(layers, hidden)`).
+  - **Critério de aceite:** mudança de topologia exige atualização em **um** lugar.
+
+- **[T19.6] Cobertura faltante de módulos críticos.**
+
+  - `src/standalone/pw_host/rt_callback/` (5 arquivos, zero testes): testar ao menos `drain_resamplers` e
+    `rate_sync` (não exigem PipeWire). `src/common/alloc_audit.rs`: testes diretos do watchdog (conta/reseta/
+    isola por thread). Verificar se `src/models/slimmable.rs` é coberto por `container_slimmable.rs` (se sim,
+    apenas anotar; se não, cobrir).
+  - **Critério de aceite:** módulos listados com testes unitários ou justificativa documentada.
+
+- **[T19.7] Baseline tracking de benchmarks.**
+
+  - Phase 5 não compara com execuções anteriores — regressões de performance passam invisíveis. Adicionar
+    `--save-baseline` com data + comparação via `critcmp` (ou `--baseline previous`) e warning para regressão
+
+    > 5% no sumário do `tests-long.sh`.
+  - **Critério de aceite:** rodada N+1 acusa regressões da rodada N automaticamente.
+
+---
+
+## ÉPICO 20 — Documentação: Sincronização e Normatização 📚 [Lane C — fecha cada épico]
+
+### Sprint 20.1 — Defasagens factuais (rápidas, fazer em 1 PR)
+
+- **[T20.1] `docs/benchmarks.md` com números obsoletos (até 3× off).** Atualizar com `phase5-benchmarks.log`
+  fresco: LSTM 2×16 64samp **~10.86 µs** (doc: 20.29), WaveNet Standard CH16 **~92.3 µs** (doc: 107),
+  A2-Lite CH3 64samp **~16.38 µs** (doc: 48.7 — herdado do kernel u16) e revisar as análises comparativas
+  derivadas; re-medir ou marcar "a re-medir" as células 128/256samp ausentes do log.
+- **[T20.2] Topologias fantasma nos docs.** `docs/architecture.md:311` cita WaveNet "Micro" e LSTM "1×3"
+  (inexistentes — catálogo real em `src/models/mod.rs:70-106`); `docs/perceptual_validation.md:84` idem "1×3".
+  Corrigir para o catálogo real (incluindo as 9 variantes LSTM com golden).
+- **[T20.3] Arquitetura `Linear` invisível na documentação.** Adicionar ao `README.md` (lista de modelos
+  suportados), ao `docs/cpp_parity_map.md` (§1, §9) e atualizar "350+ checks" → "390+". Linkar o órfão
+  `docs/functional-tests.md` na seção Documentation do README.
+
+### Sprint 20.2 — Normatizar políticas vivas (ADRs curtos no `architecture.md` §8)
+
+- **[T20.4] Registrar as decisões que hoje só existem no código** (cada uma 5–10 linhas, formato "Technical
+  Decision"):
+  - (a) **CLAP mono por design** (mono-in/dup-out; difere do standalone stereo) — atualizar após T17.4;
+  - (b) **Fusão de ganho** standalone (`user × model` fundidos) vs CLAP (separados p/ automação sample-accurate);
+  - (c) **GC cascade completo**: SPSC 32 + parking lot **16** + overflow ring (overwrite) — capacidades e
+    porquês;
+  - (d) **Política de fixtures**: sintéticos (borda) vs goldens C++ (paridade) vs self-golden (fallback quando o
+    C++ upstream está quebrado, com pin de commit) — inclui a regra "mock incompleto nunca entra em teste que
+    asume load OK" (lição do T19.2);
+  - (e) **`.namb` v1**: byte `0x07` é reservado (não interpretado como `flags`) — nota de forward-compat no
+    `docs/namb-spec.md`;
+  - (f) **Cascata de heads WaveNet** (pós-T16.1): documentar a semântica correta com referência ao C++.
+- **Critério de aceite:** cada épico desta rodada fechado = seção correspondente dos docs atualizada na mesma
+  janela (política "doc a cada épico" do processo).
+
+---
+
+### 🚦 Sequenciamento sugerido (entrega rápida, 3 lanes paralelas)
+
+| Ordem | Lane A (som/paridade)    | Lane B (funcional)       | Lane C (infra/docs)     |
+| ----- | ------------------------ | ------------------------ | ----------------------- |
+| 1     | T18.1 (1 linha, urgente) | T17.1                    | T19.1 (1 linha) + T19.2 |
+| 2     | T16.1                    | T17.2                    | T20.1–T20.3 (1 PR)      |
+| 3     | T16.2 + T16.3            | T17.3 + T17.4 (c/ T19.2) | T19.3 + T19.7           |
+| 4     | T16.4                    | T17.5 + T17.6            | T19.4–T19.6             |
+| 5     | T18.2 + T18.3            | —                        | T20.4 (consolida ADRs)  |
+| 6     | T18.4 + T18.5            | —                        | —                       |
+
+> Regras de ouro: (1) T19.1 entra primeiro para a suíte voltar a dizer a verdade; (2) T16.1 é o release-blocker
+> nº 1 — nada de otimização (Épico 18, exceto T18.1) antes da paridade restaurada; (3) T17.4 e T19.2 andam
+> juntos (mexem na mesma contabilidade); (4) cada épico fechado dispara sua tarefa de doc (Épico 20).
+
+---
+
 ---
 
 ## ÉPICO 100 (FUTURO)
 
-> Liberar v2.1 (A2 Beta): utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh
+> Liberar v2.1 (A2 Beta)
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
+  $ utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh
+  /revisor-auditor Além do que normalmente já prevê a skill `revisor-auditor.md`, leve bem em consideração que a arquitetura do nam-rs foi pensada para ser bem opinativa. Ele não tenta ser padrão ou genérico, mas em seguir escolhas definidas. E seu código é muito bem planejado e construído para ser o melhor na entrega destes objetivos. Então capriche em garantir uma ambiente enxuto e sólido. Cace bugs de todos os tipos e assegure um código muito fácil de manter e à prova de futuro.
+  Outra coisa que peço é que use os resultados da execução dos scripts `utils/tests-cargo.sh` e `utils/tests-long.sh` como uma fonte de insights para melhorias. A saida do terminal segue anexo e os logs gerados estão na pasta `target/logs/`.
+  Mantenha a documentação atualizada, ao menos a cada épico, para assegurar que as decisões e políticas tomadas sejam normatizadas e não se percam e se distorçam com o tempo.
+  Ao final, quando for acionar a skill `planejador-arquiteto`, oriente-a para otimizar os épicos, sprints e tarefas técnicas para uma entrega rápida e sem perda de tempo.
+  /pesquisador-inovador Além do que normalmente já prevê a skill `pesquisador-inovador.md`, leve bem em consideração que a arquitetura do nam-rs foi pensada para ser bem opinativa. Ele não tenta ser padrão ou genérico, mas em seguir escolhas definidas. E seu código é muito bem planejado e construído para ser o melhor na entrega destes objetivos. Então capriche em soluções e melhorias (performance, baixa latência, responsividade, UX, etc) disruptivas e extraordinárias - porém extremamente respeitosas à essência do nam-rs.
+  Ao final, quando for acionar a skill `planejador-arquiteto`, oriente-a para otimizar os épicos, sprints e tarefas técnicas para uma entrega rápida e sem perda de tempo.
+
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
 - **FFT** e outros features no **hot path**: Considerar internalizar o código eaplicar ultra otimizações.
 - **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
