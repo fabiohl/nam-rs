@@ -47,6 +47,55 @@ pub struct NamClapMainThread<'a> {
     pub floating_close_signal: Option<Arc<AtomicBool>>,
 }
 
+impl<'a> NamClapMainThread<'a> {
+    /// Synchronises atomic values from the audio thread and cold state into `self.params`
+    /// before serialisation. Shared by `state.rs` and `state_context.rs`.
+    pub(crate) fn snapshot_params(&mut self) {
+        self.params.input_gain_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_input_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.output_gain_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_output_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.gate_threshold_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_gate_thresh
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.bypass = super::super::extensions::params::bypass_u32_to_bool(
+            self.shared
+                .ui_to_rt
+                .param_bypass
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.adaptive_compute = crate::common::params::AdaptiveComputeMode::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_adaptive_compute
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
+        self.params.slim_override = crate::dsp::adaptive::SlimOverride::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_slim_override
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Ok(ir_guard) = self.shared.cold.ir_path.lock() {
+                self.params.ir_path = ir_guard.as_ref().map(std::path::PathBuf::from);
+            }
+        }
+    }
+}
+
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Called periodically or in response to host events.
     /// Delegates to concern-specific sub-module methods.

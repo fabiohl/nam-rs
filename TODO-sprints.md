@@ -879,16 +879,23 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     3. Memory leak eliminado: `Box::leak(msg.into_boxed_str())` substituído por `PluginError::Error` com
         `StateContextError::ModelRestore` tipado (linhas 90, 101 originais).
 
-- **[T17.2] Unificar formato de estado: `state_context` grava JSON cru (v0) e ignora `ir_path`.**
-  **[verificado-na-fonte]**
-  - `state_context.rs:save()` serializa `NamPluginParams` **sem o envelope v1** usado por `state.rs:103-107` e
-    **sem sincronizar `ir_path`** do shared (`state.rs:96-101` faz). Consequências: estado salvo via
-    state-context regride para o formato legado v0 e perde a IR de cab-sim.
-  - **Implementação:** extrair um helper único (`fn snapshot_params(&mut self) -> NamPluginParams` +
-    `fn serialize_envelope(...)`) compartilhado por `state.rs` e `state_context.rs`; `load()` do state_context
-    deve aceitar envelope v1 e legado v0 via o mesmo `load_state()` de `state.rs:259-277`.
-  - **Critério de aceite:** roundtrip `state_context.save → state.load` (e vice-versa) preserva todos os campos,
-    incluindo `ir_path`; testes de `state_context.rs` atualizados.
+- **[T17.2] Unificar formato de estado: `state_context` grava JSON cru (v0) e ignora `ir_path`.** [DONE]
+  - **Implementado 2026-06-13:**
+    1. Extraído `snapshot_params()` — método em `NamClapMainThread` que sincroniza atomics da thread RT
+       (`ui_to_rt.*`) e `cold.ir_path` para `self.params`, compartilhado por `state.rs` e `state_context.rs`.
+    2. Extraída `serialize_envelope()` — helper `pub(crate)` que encapsula `NamPluginParams` em `StateEnvelope`
+       v1, compartilhado por ambas extensões.
+    3. `state_context.rs::save()` agora chama `self.snapshot_params()` e usa `serialize_envelope()` —
+       estado salvo via state-context está no formato envelope v1, com `ir_path` devidamente capturado.
+       Para `ForPreset`, `model_path` é removido após o snapshot (portabilidade mantida).
+    4. `state_context.rs::load()` agora usa `load_state()` — aceita tanto envelope v1 quanto legado v0,
+       com guarda de corrupção. Adicionada restauração de `ir_path` (load_cabsim / bypass),
+       em paridade com `state.rs`.
+    5. `state.rs::save()` refatorado para usar `self.snapshot_params()` + `serialize_envelope()`.
+    6. Testes atualizados: 19 testes unitários cobrindo round-trip v1 envelope, `ir_path`, v0 legacy
+       (state_context + state); integração `clap_state_migration` (3 testes); integração
+       `processor_test::test_state_context_roundtrip` adaptada para formato envelope.
+    - *Nota:* v0 legacy continua suportado em `load()` via `load_state()`, garantindo backward compat.
 
 ### Sprint 17.2 — Carregamento de modelo: falha silenciosa e desperdício
 

@@ -12,7 +12,7 @@
 use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::NamClapMainThread;
 use crate::common::diagnostics::NamDiagnostic;
-use crate::common::params::{NamPluginParams, RtPluginParams};
+use crate::common::params::RtPluginParams;
 use clack_common::stream::{InputStream, OutputStream};
 use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::state_context::{
@@ -37,6 +37,8 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         output: &mut OutputStream,
         context_type: StateContextType,
     ) -> Result<(), PluginError> {
+        self.snapshot_params();
+
         let save_params = if context_type == StateContextType::ForPreset {
             let mut preset_params = self.params.clone();
             preset_params.model_path = None;
@@ -45,8 +47,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             self.params.clone()
         };
 
-        let serialized = serde_json::to_vec(&save_params)
-            .map_err(|e| PluginError::Error(Box::new(std::io::Error::other(e))))?;
+        let serialized = super::state::serialize_envelope(&save_params)?;
 
         output
             .write_all(&serialized)
@@ -65,8 +66,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             .read_to_end(&mut buffer)
             .map_err(|e| PluginError::Error(Box::new(e)))?;
 
-        let loaded_params: NamPluginParams = serde_json::from_slice(&buffer)
-            .map_err(|e| PluginError::Error(Box::new(std::io::Error::other(e))))?;
+        let loaded_params = super::state::load_state(&buffer)?;
 
         if context_type == StateContextType::ForPreset {
             self.params.input_gain_db = loaded_params.input_gain_db;
@@ -108,19 +108,19 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                     }
                 } else {
                     if let Some(ref basename) = self.params.model_basename {
-                        let found = self
-                            .params
-                            .model_search_paths
-                            .clone()
-                            .into_iter()
-                            .find_map(|dir| {
-                                let candidate = dir.join(basename);
-                                if candidate.exists() {
-                                    Some(candidate)
-                                } else {
-                                    None
-                                }
-                            });
+                        let found =
+                            self.params
+                                .model_search_paths
+                                .clone()
+                                .into_iter()
+                                .find_map(|dir| {
+                                    let candidate = dir.join(basename);
+                                    if candidate.exists() {
+                                        Some(candidate)
+                                    } else {
+                                        None
+                                    }
+                                });
                         if let Some(new_path) = found {
                             if let Some(log) = self.host.get_extension::<HostLog>() {
                                 let msg = format!(
@@ -151,6 +151,36 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                             log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                         }
                     }
+                }
+            }
+
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            {
+                let ir_path_opt = self.params.ir_path.clone();
+                if let Some(ref ir_path) = ir_path_opt {
+                    if ir_path.exists() {
+                        if let Err(e) = self.load_cabsim(ir_path)
+                            && let Some(log) = self.host.get_extension::<HostLog>()
+                        {
+                            let msg = format!(
+                                "NAM-rs: Failed to restore saved IR ({:?}): {}",
+                                ir_path, e
+                            );
+                            if let Ok(c_msg) = CString::new(msg) {
+                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                            }
+                        }
+                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
+                        let msg = format!("NAM-rs: Saved IR not found at path: {:?}", ir_path);
+                        if let Ok(c_msg) = CString::new(msg) {
+                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                        }
+                    }
+                } else {
+                    use crate::clap::plugin::ClapParamPayload;
+                    let _ = self
+                        .param_tx
+                        .push(ClapParamPayload::LoadCabIr { engine: None });
                 }
             }
         }
@@ -202,8 +232,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::common::params::AdaptiveComputeMode;
+    use crate::common::params::{AdaptiveComputeMode, NamPluginParams};
     use std::path::PathBuf;
 
     fn make_test_params() -> NamPluginParams {
@@ -221,24 +250,33 @@ mod tests {
         }
     }
 
-    /// Helper: serializes params via save-like logic for a given context type.
-    fn serialize_for_context(params: &NamPluginParams, context_type: StateContextType) -> Vec<u8> {
-        let save_params = if context_type == StateContextType::ForPreset {
-            let mut preset_params = params.clone();
-            preset_params.model_path = None;
-            preset_params
-        } else {
-            params.clone()
-        };
-        serde_json::to_vec(&save_params).unwrap()
+    fn deserialize_from_context(buf: &[u8]) -> NamPluginParams {
+        crate::clap::extensions::state::load_state(buf).unwrap()
     }
 
     #[test]
-    fn test_preset_save_omits_model_path() {
+    fn test_serialized_format_is_v1_envelope() {
         let params = make_test_params();
-        let buf = serialize_for_context(&params, StateContextType::ForPreset);
+        let buf = crate::clap::extensions::state::serialize_envelope(&params).unwrap();
 
-        let loaded: NamPluginParams = serde_json::from_slice(&buf).expect("should deserialize");
+        let parsed: serde_json::Value = serde_json::from_slice(&buf).expect("should be valid JSON");
+        assert_eq!(parsed["version"], 1, "envelope should have version: 1");
+        assert!(
+            parsed["params"].is_object(),
+            "envelope should contain params object"
+        );
+        assert_eq!(parsed["params"]["model_basename"], "test.nam");
+    }
+
+    #[test]
+    fn test_preset_save_strips_model_path_from_envelope() {
+        let params = make_test_params();
+
+        let mut preset_params = params.clone();
+        preset_params.model_path = None;
+        let buf = crate::clap::extensions::state::serialize_envelope(&preset_params).unwrap();
+
+        let loaded = deserialize_from_context(&buf);
         assert_eq!(
             loaded.model_path, None,
             "preset should not contain model_path"
@@ -248,11 +286,11 @@ mod tests {
     }
 
     #[test]
-    fn test_project_save_preserves_model_path() {
+    fn test_project_save_preserves_model_path_in_envelope() {
         let params = make_test_params();
-        let buf = serialize_for_context(&params, StateContextType::ForProject);
+        let buf = crate::clap::extensions::state::serialize_envelope(&params).unwrap();
 
-        let loaded: NamPluginParams = serde_json::from_slice(&buf).expect("should deserialize");
+        let loaded = deserialize_from_context(&buf);
         assert_eq!(
             loaded.model_path,
             Some(PathBuf::from("/tmp/test.nam")),
@@ -261,11 +299,11 @@ mod tests {
     }
 
     #[test]
-    fn test_duplicate_save_preserves_model_path() {
+    fn test_duplicate_save_preserves_model_path_in_envelope() {
         let params = make_test_params();
-        let buf = serialize_for_context(&params, StateContextType::ForDuplicate);
+        let buf = crate::clap::extensions::state::serialize_envelope(&params).unwrap();
 
-        let loaded: NamPluginParams = serde_json::from_slice(&buf).expect("should deserialize");
+        let loaded = deserialize_from_context(&buf);
         assert_eq!(
             loaded.model_path,
             Some(PathBuf::from("/tmp/test.nam")),
@@ -276,8 +314,7 @@ mod tests {
     #[test]
     fn test_preset_load_without_model_path_restores_audio_params() {
         let preset_json = r#"{"input_gain_db":2.5,"output_gain_db":-3.0,"gate_threshold_db":-40.0,"model_path":null,"model_basename":"test.nam","model_search_paths":[],"bypass":false,"adaptive_compute":"Off"}"#;
-        let loaded: NamPluginParams =
-            serde_json::from_slice(preset_json.as_bytes()).expect("should deserialize");
+        let loaded = deserialize_from_context(preset_json.as_bytes());
 
         assert!((loaded.input_gain_db - 2.5).abs() < f32::EPSILON);
         assert!((loaded.output_gain_db - (-3.0)).abs() < f32::EPSILON);
@@ -287,15 +324,79 @@ mod tests {
     }
 
     #[test]
-    fn test_project_load_preserves_full_state() {
+    fn test_project_load_preserves_full_state_from_v0_legacy() {
         let project_json = r#"{"input_gain_db":2.5,"output_gain_db":-3.0,"gate_threshold_db":-40.0,"model_path":"/tmp/test.nam","model_basename":"test.nam","model_search_paths":[],"bypass":false,"adaptive_compute":"Off"}"#;
-        let loaded: NamPluginParams =
-            serde_json::from_slice(project_json.as_bytes()).expect("should deserialize");
+        let loaded = deserialize_from_context(project_json.as_bytes());
 
         assert_eq!(
             loaded.model_path,
             Some(PathBuf::from("/tmp/test.nam")),
-            "project load should preserve model_path"
+            "project load from v0 should preserve model_path"
         );
+    }
+
+    #[test]
+    fn test_v1_envelope_load_preserves_full_state() {
+        let project_json = serde_json::json!({
+            "version": 1,
+            "params": {
+                "input_gain_db": 2.5,
+                "output_gain_db": -3.0,
+                "gate_threshold_db": -40.0,
+                "model_path": "/tmp/test.nam",
+                "model_basename": "test.nam",
+                "model_search_paths": [],
+                "bypass": false,
+                "adaptive_compute": "Off"
+            }
+        })
+        .to_string();
+
+        let loaded = deserialize_from_context(project_json.as_bytes());
+
+        assert_eq!(
+            loaded.model_path,
+            Some(PathBuf::from("/tmp/test.nam")),
+            "v1 envelope load should preserve model_path"
+        );
+    }
+
+    #[test]
+    fn test_v1_envelope_round_trip_preserves_ir_path() {
+        let params = NamPluginParams {
+            ir_path: Some(PathBuf::from("/tmp/cab.wav")),
+            ..make_test_params()
+        };
+
+        let buf = crate::clap::extensions::state::serialize_envelope(&params).unwrap();
+        let loaded = deserialize_from_context(&buf);
+
+        assert_eq!(
+            loaded.ir_path,
+            Some(PathBuf::from("/tmp/cab.wav")),
+            "ir_path should be preserved in v1 envelope round-trip"
+        );
+    }
+
+    #[test]
+    fn test_v0_legacy_load_preserves_ir_path_null() {
+        let v0_json = r#"{"input_gain_db": 3.0, "output_gain_db": -6.0, "gate_threshold_db": -50.0, "model_path": null, "bypass": false}"#;
+        let loaded = deserialize_from_context(v0_json.as_bytes());
+        assert_eq!(
+            loaded.ir_path, None,
+            "v0 legacy ir_path should default to None"
+        );
+    }
+
+    #[test]
+    fn test_serialize_envelope_produces_valid_v1_json() {
+        let params = make_test_params();
+        let buf = crate::clap::extensions::state::serialize_envelope(&params).unwrap();
+
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&buf).expect("should deserialize as JSON value");
+        assert!(envelope.get("version").is_some());
+        assert!(envelope.get("params").is_some());
+        assert!(envelope.get("params").unwrap().get("ir_path").is_some());
     }
 }

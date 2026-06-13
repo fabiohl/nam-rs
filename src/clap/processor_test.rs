@@ -1226,18 +1226,26 @@ mod tests {
             .save(&mut handle, &mut preset_buffer, StateContextType::ForPreset)
             .expect("save ForPreset should succeed");
 
-        let preset_json: NamPluginParams =
+        let preset_json: serde_json::Value =
             serde_json::from_slice(&preset_buffer).expect("preset buffer should be valid JSON");
+        assert_eq!(
+            preset_json["version"], 1,
+            "ForPreset save should produce v1 envelope"
+        );
         assert!(
-            preset_json.model_path.is_none(),
+            preset_json["params"].is_object(),
+            "ForPreset envelope should contain params"
+        );
+        assert!(
+            preset_json["params"]["model_path"].is_null(),
             "ForPreset save should omit model_path"
         );
         assert!(
-            preset_json.model_basename.is_some(),
+            preset_json["params"]["model_basename"].is_string(),
             "ForPreset save should preserve model_basename"
         );
         assert!(
-            (preset_json.input_gain_db - 3.5).abs() < f32::EPSILON,
+            (preset_json["params"]["input_gain_db"].as_f64().unwrap() - 3.5).abs() < f64::EPSILON,
             "ForPreset save should preserve input_gain_db"
         );
 
@@ -1252,14 +1260,18 @@ mod tests {
             )
             .expect("save ForProject should succeed");
 
-        let project_json: NamPluginParams =
+        let project_json: serde_json::Value =
             serde_json::from_slice(&project_buffer).expect("project buffer should be valid JSON");
+        assert_eq!(
+            project_json["version"], 1,
+            "ForProject save should produce v1 envelope"
+        );
         assert!(
-            project_json.model_path.is_some(),
+            project_json["params"]["model_path"].is_string(),
             "ForProject save should preserve model_path"
         );
         assert!(
-            (project_json.input_gain_db - 3.5).abs() < f32::EPSILON,
+            (project_json["params"]["input_gain_db"].as_f64().unwrap() - 3.5).abs() < f64::EPSILON,
             "ForProject save should preserve input_gain_db"
         );
 

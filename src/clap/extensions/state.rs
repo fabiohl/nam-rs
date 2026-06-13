@@ -8,7 +8,7 @@
 //! - v0 (legacy, CLAP v1.5.x): plain JSON `NamPluginParams`, without a `version` field.
 //! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
-use crate::clap::extensions::params::{bypass_bool_to_u32, bypass_u32_to_bool};
+use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 use std::io::{Read, Write};
 
-const CURRENT_STATE_VERSION: u32 = 1;
+pub(crate) const CURRENT_STATE_VERSION: u32 = 1;
 
 #[derive(Debug, thiserror::Error)]
-enum StateError {
+pub(crate) enum StateError {
     #[error("Failed to serialize state: {0}")]
     Serialize(#[source] serde_json::Error),
 
@@ -41,9 +41,19 @@ enum StateError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StateEnvelope {
-    version: u32,
-    params: NamPluginParams,
+pub(crate) struct StateEnvelope {
+    pub(crate) version: u32,
+    pub(crate) params: NamPluginParams,
+}
+
+/// Shared helper: serialises `NamPluginParams` wrapped in a v1 `StateEnvelope`.
+pub(crate) fn serialize_envelope(params: &NamPluginParams) -> Result<Vec<u8>, PluginError> {
+    let envelope = StateEnvelope {
+        version: CURRENT_STATE_VERSION,
+        params: params.clone(),
+    };
+    serde_json::to_vec(&envelope)
+        .map_err(|e| PluginError::Error(Box::new(StateError::Serialize(e))))
 }
 
 fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
@@ -57,55 +67,9 @@ fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
 
 impl<'a> PluginStateImpl for NamClapMainThread<'a> {
     fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
-        self.params.input_gain_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_input_gain
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        self.params.output_gain_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_output_gain
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        self.params.gate_threshold_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_gate_thresh
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        self.params.bypass = bypass_u32_to_bool(
-            self.shared
-                .ui_to_rt
-                .param_bypass
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        self.params.adaptive_compute = crate::common::params::AdaptiveComputeMode::from_f32(
-            self.shared
-                .ui_to_rt
-                .param_adaptive_compute
-                .load(std::sync::atomic::Ordering::Relaxed) as f32,
-        );
-        self.params.slim_override = crate::dsp::adaptive::SlimOverride::from_f32(
-            self.shared
-                .ui_to_rt
-                .param_slim_override
-                .load(std::sync::atomic::Ordering::Relaxed) as f32,
-        );
-        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        {
-            if let Ok(ir_guard) = self.shared.cold.ir_path.lock() {
-                self.params.ir_path = ir_guard.as_ref().map(std::path::PathBuf::from);
-            }
-        }
+        self.snapshot_params();
 
-        let envelope = StateEnvelope {
-            version: CURRENT_STATE_VERSION,
-            params: self.params.clone(),
-        };
-        let serialized = serde_json::to_vec(&envelope)
-            .map_err(|e| PluginError::Error(Box::new(StateError::Serialize(e))))?;
+        let serialized = serialize_envelope(&self.params)?;
 
         output
             .write_all(&serialized)
@@ -256,7 +220,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
     }
 }
 
-fn load_state(buffer: &[u8]) -> Result<NamPluginParams, PluginError> {
+pub(crate) fn load_state(buffer: &[u8]) -> Result<NamPluginParams, PluginError> {
     if let Ok(envelope) = serde_json::from_slice::<StateEnvelope>(buffer) {
         return Ok(migrate(envelope.version, envelope.params));
     }
