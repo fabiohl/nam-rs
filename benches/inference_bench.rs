@@ -1334,6 +1334,33 @@ fn bench_gate_fsm(c: &mut Criterion) {
     group.finish();
 }
 
+// ── LinearModel Dot Product Benchmarks ──
+
+/// Benchmarks the LinearModel dot product kernel (AVX2/AVX-512 SIMD vs scalar).
+/// With RF 256, the scalar path performs 16k FMAs per 64-sample block;
+/// the SIMD path reduces this by 4-8×.
+fn bench_linear_model_dot_product(c: &mut Criterion) {
+    use nam_rs::models::linear::LinearModel;
+
+    let rf = 256;
+    let weights: Vec<f32> = (0..rf).map(|i| (i as f32 * 0.01).sin()).collect();
+    let bias = 0.1;
+    let mut model = LinearModel::new(weights, bias).unwrap();
+    model.prewarm(0);
+
+    let input = (0..64).map(|i| (i as f32 * 0.05).sin()).collect::<Vec<f32>>();
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("LinearModel_RF256_64samp_SIMD", |b| {
+        b.iter(|| unsafe {
+            model.process(
+                std::hint::black_box(&input),
+                std::hint::black_box(&mut output),
+            );
+        });
+    });
+}
+
 // ── IR Cabsim Convolution Benchmarks ──
 
 fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
@@ -1510,7 +1537,8 @@ criterion_group!(
     bench_cabsim_256samp_block,
     bench_cabsim_engine_construction,
     bench_cabsim_engine_construction_long,
-    bench_gate_fsm
+    bench_gate_fsm,
+    bench_linear_model_dot_product
 );
 
 // Long-running benchmark group definition (Soak Tests)

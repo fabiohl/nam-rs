@@ -154,7 +154,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.process(input, output),
             Self::Lstm1x40(m) => m.process(input, output),
             Self::Lstm2x24(m) => m.process(input, output),
-            Self::Linear(m) => m.process(input, output),
+            Self::Linear(m) => unsafe { m.process(input, output) },
         }
     }
 

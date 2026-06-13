@@ -25,6 +25,7 @@
 use super::NamModel;
 use super::sealed;
 use crate::dsp::mirror_buf::MirroredBuffer;
+use crate::math::common::AlignedVec;
 
 /// Linear Model — lightweight FIR-based neural model.
 ///
@@ -39,7 +40,8 @@ pub struct LinearModel {
     /// FIR filter weights stored in **reversed** order (matching C++ internal
     /// layout). JSON weights are reversed on construction, so that
     /// `dot(weights, oldest_to_newest_window)` produces the FIR convolution.
-    pub weights: Vec<f32>,
+    /// 64-byte aligned for AVX2/AVX-512 SIMD loads.
+    pub weights: AlignedVec<f32>,
     /// Scalar bias added after the dot product.
     pub bias: f32,
     /// Circular buffer of past input samples, backed by mirrored memory mapping
@@ -66,16 +68,17 @@ impl LinearModel {
     /// # Errors
     /// Returns `std::io::Error` if the `MirroredBuffer` allocation fails
     /// (e.g., out of memory or virtual address space).
-    pub fn new(mut weights: Vec<f32>, bias: f32) -> std::io::Result<Self> {
+    pub fn new(weights: Vec<f32>, bias: f32) -> std::io::Result<Self> {
         let receptive_field = weights.len();
-        weights.reverse();
+        let mut aligned = AlignedVec::from_vec(weights);
+        aligned.reverse();
         let history = MirroredBuffer::<f32>::new(receptive_field)?;
         let limit = history.size();
         let double_limit = limit.checked_mul(2).ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "Limit overflow")
         })?;
         Ok(Self {
-            weights,
+            weights: aligned,
             bias,
             history,
             write_pos: limit,
@@ -88,10 +91,13 @@ impl LinearModel {
     ///
     /// 1. Writes the sample into the ring buffer (`history`).
     /// 2. Advances the write pointer in the mirrored area.
-    /// 3. Obtes a contiguous slice representing the receptive field window.
-    /// 4. Computes the dot product plus the scalar bias using an auto-vectorizable helper.
+    /// 3. Obtains a contiguous slice representing the receptive field window.
+    /// 4. Computes the dot product plus the scalar bias via AVX2/AVX-512 SIMD.
+    ///
+    /// # Safety
+    /// `self.weights` must be 64-byte aligned (guaranteed by `AlignedVec`).
     #[inline(always)]
-    fn process_sample(&mut self, input: f32) -> f32 {
+    unsafe fn process_sample(&mut self, input: f32) -> f32 {
         self.history[self.write_pos] = input;
 
         self.write_pos += 1;
@@ -101,16 +107,28 @@ impl LinearModel {
 
         let start = self.write_pos - self.receptive_field;
         let window = &self.history[start..self.write_pos];
-        self.bias
-            + crate::math::common::scalar_ref::dot::dot_product_f32_native(window, &self.weights)
+        // SAFETY: weights are 64-byte aligned (AlignedVec), window is contiguous
+        // from MirroredBuffer (page-aligned), taps matches window/receptive_field.
+        let dot = unsafe {
+            crate::math::dsp::stereo::convolve_mono(
+                self.weights.as_ptr(),
+                window.as_ptr(),
+                self.receptive_field,
+            )
+        };
+        self.bias + dot
     }
 
     /// Processes a block of audio samples.
+    ///
+    /// # Safety
+    /// `self.weights` must be 64-byte aligned.
     #[inline(always)]
-    pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
+    pub unsafe fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let n = core::cmp::min(input.len(), output.len());
         for i in 0..n {
-            output[i] = self.process_sample(input[i]);
+            // SAFETY: process_sample requires self.weights to be 64-byte aligned (guaranteed by AlignedVec).
+            unsafe { output[i] = self.process_sample(input[i]); }
         }
     }
 
@@ -140,7 +158,8 @@ impl sealed::Sealed for LinearModel {}
 impl NamModel for LinearModel {
     #[inline(always)]
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        self.process(input, output);
+        // SAFETY: weights are 64-byte aligned (AlignedVec).
+        unsafe { self.process(input, output) };
     }
 
     #[cold]
@@ -179,7 +198,7 @@ mod tests {
         // After prewarm, history is all zeros. Stored weights are reversed: [0.5, 0.3, 0.2]
         // Feed [1.0]: window (oldest→newest) = [0, 0, 1.0]
         //   dot = 0.5*0 + 0.3*0 + 0.2*1.0 = 0.2 + bias=0.1 = 0.3
-        let out0 = model.process_sample(1.0);
+        let out0 = unsafe { model.process_sample(1.0) };
         let expected0 = 0.5 * 0.0 + 0.3 * 0.0 + 0.2 * 1.0 + 0.1;
         assert!(
             (out0 - expected0).abs() < 1e-6,
@@ -188,7 +207,7 @@ mod tests {
 
         // Feed [2.0]: window (oldest→newest) = [0, 1.0, 2.0]
         //   dot = 0.5*0 + 0.3*1.0 + 0.2*2.0 = 0.7 + bias=0.1 = 0.8
-        let out1 = model.process_sample(2.0);
+        let out1 = unsafe { model.process_sample(2.0) };
         let expected1 = 0.5 * 0.0 + 0.3 * 1.0 + 0.2 * 2.0 + 0.1;
         assert!(
             (out1 - expected1).abs() < 1e-6,
@@ -197,7 +216,7 @@ mod tests {
 
         // Feed [3.0]: window (oldest→newest) = [1.0, 2.0, 3.0]
         //   dot = 0.5*1.0 + 0.3*2.0 + 0.2*3.0 = 0.5+0.6+0.6 = 1.7 + bias=0.1 = 1.8
-        let out2 = model.process_sample(3.0);
+        let out2 = unsafe { model.process_sample(3.0) };
         let expected2 = 0.5 * 1.0 + 0.3 * 2.0 + 0.2 * 3.0 + 0.1;
         assert!(
             (out2 - expected2).abs() < 1e-6,
@@ -209,7 +228,7 @@ mod tests {
     fn test_linear_zero_output() {
         let mut model = LinearModel::new(vec![0.0, 0.0, 0.0], 0.0).unwrap();
         model.prewarm(0);
-        let out = model.process_sample(5.0);
+        let out = unsafe { model.process_sample(5.0) };
         assert!((out - 0.0).abs() < 1e-6);
     }
 
@@ -220,7 +239,7 @@ mod tests {
 
         let input = [0.1, 0.2, 0.3];
         let mut output = [0.0f32; 3];
-        model.process(&input, &mut output);
+        unsafe { model.process(&input, &mut output) };
 
         // With weight=1 (reversed), bias=0: output = input
         for i in 0..3 {
@@ -238,10 +257,10 @@ mod tests {
         let mut model = LinearModel::new(vec![0.5, 0.5], 0.0).unwrap();
         model.prewarm(0);
 
-        let out1 = model.process_sample(1.0);
+        let out1 = unsafe { model.process_sample(1.0) };
         model.reset(0, 0);
 
-        let out2 = model.process_sample(1.0);
+        let out2 = unsafe { model.process_sample(1.0) };
         assert!(
             (out1 - out2).abs() < 1e-6,
             "reset should reproduce the same output: {out1} != {out2}"
