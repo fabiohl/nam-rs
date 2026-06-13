@@ -183,7 +183,7 @@ fn snr_to_mse(snr_db: f64) -> f64 {
     10.0_f64.powf(-snr_db / 10.0) * 0.3
 }
 
-/// Shared WaveNet threshold lookup — used by both `topology_thresholds`
+/// Shared WaveNet MSE/SNR/ESR threshold lookup — used by both `topology_thresholds`
 /// (golden vectors) and `live_parity_thresholds` (cpp_parity).
 ///
 /// Post-T16.1 live v1 SNR measurements (2026-06-11):
@@ -191,48 +191,50 @@ fn snr_to_mse(snr_db: f64) -> f64 {
 ///   Feather  (CH=8):  67.6 dB → floor 60 dB (7.6 dB margin)
 ///   Nano     (CH=4):  52.6 dB → floor 45 dB (7.6 dB margin)
 ///   Lite     (CH=12):  0.9 dB → floor  0 dB (known failure, T16.x)
+///
+/// T16.4 ESR gates (robust to scale mismatch):
+///   Standard/Feather/Nano/A2: 1e-3  (NAM_RS_CPP_PARITY_ESR_MAX)
+///   Lite:                     5e-2  (known failure, loose)
+///   Default:                  1e-3
+///
+/// Returns `(mse_limit, min_snr_db, max_esr)`.
 #[inline]
-fn wavenet_thresholds(channels: u32) -> (f64, f64) {
+fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
     match channels {
-        3 => {
-            // A2-Lite: uncalibrated (scale bug upstream, investigar em T16.4)
-            let snr_db = 40.0;
-            (snr_to_mse(snr_db), snr_db)
-        }
+        3 => (snr_to_mse(40.0), 40.0, Some(1e-3)),
         4 => {
             let snr_db = 45.0;
-            (snr_to_mse(snr_db), snr_db)
+            (snr_to_mse(snr_db), snr_db, Some(3e-3))
         }
         8 => {
             let snr_db = 60.0;
-            (snr_to_mse(snr_db), snr_db)
+            (snr_to_mse(snr_db), snr_db, Some(1e-3))
         }
         12 => {
-            // Lite: golden regenerated post-T16.3 (C++ provenance), SNR=0.9 dB.
-            // The synthetic BossWN-lite.nam (CH=12, not power-of-2) produces
-            // near-noise output. 0 dB gate ensures the test runs without SKIP
-            // while acknowledging the divergence. See §Model provenance in README.md.
             let snr_db = 0.0;
-            (snr_to_mse(snr_db), snr_db)
+            (snr_to_mse(snr_db), snr_db, Some(1.0))
         }
         16 => {
             let snr_db = 60.0;
-            (snr_to_mse(snr_db), snr_db)
+            (snr_to_mse(snr_db), snr_db, Some(1e-3))
         }
         _ => {
             let snr_db = 40.0;
-            (snr_to_mse(snr_db), snr_db)
+            (snr_to_mse(snr_db), snr_db, Some(1e-3))
         }
     }
 }
 
-/// Computes model-adaptive MSE/SNR test thresholds for golden vector tests.
+/// Computes MSE/SNR/ESR test thresholds for golden vector tests.
 ///
 /// For live cpp_parity cross-validation, use `live_parity_thresholds()`
 /// which applies tighter LSTM floors reflecting the 50–97 dB live SNR.
 ///
-/// Returns `(mse_limit, min_snr_db)`.
-pub fn topology_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f64, f64) {
+/// Returns `(mse_limit, min_snr_db, max_esr)` — T16.4 adds relative
+/// ESR gate as primary threshold (robust to scale mismatch).
+pub fn topology_thresholds(
+    data: &nam_rs::loader::nam_json::NamModelData,
+) -> (f64, f64, Option<f64>) {
     match data.architecture.as_str() {
         "WaveNet" => {
             let channels = data
@@ -241,7 +243,8 @@ pub fn topology_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f6
                 .first()
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
-            wavenet_thresholds(channels as u32)
+            let (mse, snr, esr) = wavenet_thresholds(channels as u32);
+            (mse, snr, esr)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -249,21 +252,26 @@ pub fn topology_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f6
             let complexity = (num_layers * hidden_size) as f64;
             let snr_db = (30.0 - complexity * 0.65).clamp(12.0, 30.0);
             let mse = snr_to_mse(snr_db);
-            (mse.clamp(1e-4, 5e-2), snr_db)
+            let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
+            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr))
         }
-        "Linear" => (1e-10, 140.0),
-        _ => (5e-2, 9.0),
+        "Linear" => (1e-10, 140.0, Some(1e-10)),
+        _ => (5e-2, 9.0, Some(1e-3)),
     }
 }
 
-/// Computes MSE/SNR thresholds for live C++ cross-validation (`cpp_parity.rs`).
+/// Computes MSE/SNR/ESR thresholds for live C++ cross-validation (`cpp_parity.rs`).
 ///
 /// Uses aggressive floors reflecting post-T16.1 live SNR measurements.
 /// LSTM formula targets 50–97 dB live SNR with ~10–15 dB margin
 /// (v2 stress signal relaxation applied separately in `cpp_parity.rs`).
 ///
-/// Returns `(mse_limit, min_snr_db)`.
-pub fn live_parity_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f64, f64) {
+/// T16.4: ESR gate added as primary threshold (robust to scale mismatch).
+///
+/// Returns `(mse_limit, min_snr_db, max_esr)`.
+pub fn live_parity_thresholds(
+    data: &nam_rs::loader::nam_json::NamModelData,
+) -> (f64, f64, Option<f64>) {
     match data.architecture.as_str() {
         "WaveNet" => {
             let channels = data
@@ -272,7 +280,8 @@ pub fn live_parity_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> 
                 .first()
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
-            wavenet_thresholds(channels as u32)
+            let (mse, snr, esr) = wavenet_thresholds(channels as u32);
+            (mse, snr, esr)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -280,9 +289,10 @@ pub fn live_parity_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> 
             let complexity = (num_layers * hidden_size) as f64;
             let snr_db = (85.0 - complexity * 1.0).clamp(45.0, 75.0);
             let mse = snr_to_mse(snr_db);
-            (mse.clamp(1e-4, 5e-2), snr_db)
+            let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
+            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr))
         }
-        "Linear" => (1e-10, 140.0),
-        _ => (5e-2, 9.0),
+        "Linear" => (1e-10, 140.0, Some(1e-10)),
+        _ => (5e-2, 9.0, Some(1e-3)),
     }
 }

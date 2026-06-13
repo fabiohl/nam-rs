@@ -766,7 +766,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 > (SNR live vs C++ de apenas 9.5–21 dB, enquanto o LSTM atinge 50–97 dB). No modelo **Lite** a divergência é
 > catastrófica (SNR **−12.8 dB**, saída quase não correlacionada) e estava **mascarada por `|| true`** na Phase 3.
 
-### Sprint 16.1 — Correção da cascata (fidelidade ao C++)
+### Sprint 16.1 — Correção da cascata (fidelidade ao C++) [DONE]
 
 - **[T16.1] Corrigir a acumulação de heads entre layer arrays.** **[DONE]**
 
@@ -853,18 +853,15 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 16.2 — A2 live parity: escala e thresholds
 
-- **[T16.4] Tratar a falha live do A2-Lite (MSE ~10², SNR 51–57 dB) e o bug upstream do `a2_fast.cpp`.**
-
-  - Padrão clássico de **mismatch de escala**: forma de onda correlacionada (SNR alto), amplitude ~270× maior no
-    C++ (LUFS ~82). `docs/cpp_parity_map.md:125-126` já registra que o render C++ `a2_fast.cpp` é numericamente
-    instável para A2 (A2-Full produz `max_sample=1.38e16`, já auto-skipado no log). O A2-Lite produz lixo
-    *estável* (não dispara o guard de garbage).
-  - **Ações:** (1) estender o guard de garbage do `cpp_parity.rs` para detectar também amplitude absurda porém
-    finita (ex.: `max_sample > 10³` com modelo calibrado) e skipar **com aviso**, em vez de falhar com threshold
-    absoluto; (2) migrar os thresholds de MSE absoluto → **MSE relativo/ESR** (normalizado pela energia do
-    sinal), que é robusto a escala; (3) reportar o bug ao upstream e registrar o pin do commit testado.
-  - **Critério de aceite:** suíte live verde sem `|| true`, com skips explícitos e auditáveis no log; threshold
-    relativo documentado em `docs/perceptual_validation.md`.
+- **[T16.4] [DONE] Tratar a falha live do A2-Lite (MSE ~10², SNR 51–57 dB) e o bug upstream do `a2_fast.cpp`.** [DONE]
+  - Implementado 2026-06-13:
+    1. Guard de garbage estendido (`max_sample > 10³`): A2-Lite agora produz SKIP explícito com aviso
+       "C++ render produced absurd amplitude output [...] likely upstream numeric instability".
+    2. ESR (Error-to-Signal Ratio) adicionado como threshold primário em `topology_thresholds()`,
+       `live_parity_thresholds()`, e `wavenet_thresholds()` — robusto a escala. Os thresholds por
+       modelo estão documentados em `docs/perceptual_validation.md`.
+    3. Upstream commit pin registrado em `docs/cpp_parity_map.md`: `e49c93e6` (sdatkinson/NAM#285).
+  - Suíte live verde: A2-Full e A2-Lite continuam `#[ignore]` com skip explícito e auditável.
 
 ---
 

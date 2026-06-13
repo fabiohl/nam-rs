@@ -26,6 +26,8 @@
 //! | WaveNet | Feather  | 67.6 dB     | 60 dB     | 7.6 dB  |
 //! | WaveNet | Nano     | 52.6 dB     | 45 dB     | 7.6 dB  |
 //! | WaveNet | Lite     | 0.9 dB      | 0 dB      | —       |
+//! | WaveNet | A2-Full  | —           | —         | SKIP (garbage, upstream bug) |
+//! | WaveNet | A2-Lite  | —           | —         | SKIP (garbage, upstream bug) |
 //! | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //! | Linear  | —        | bit-exact   | 140 dB    | —       |
 //!
@@ -280,24 +282,42 @@ fn run_render_comparison(
         cpp_output_raw.clone()
     };
 
-    // Sanity-check C++ render output: skip comparison if render produced garbage
+    // Sanity-check C++ render output: skip comparison if render produced garbage.
+    //
+    // T16.4: Three-tier garbage detection:
+    //   1. Non-finite samples (NaN/Inf) — always garbage.
+    //   2. Amplitude > 1e12 — numeric explosion (A2-Full upstream bug).
+    //   3. Amplitude > 1e3  — absurd but finite; stable garbage that bypasses
+    //      absolute MSE thresholds with high false SNR (A2-Lite upstream bug,
+    //      MSE ~10², SNR 51–57 dB, LUFS ~82). Skipped with warning.
+    //   4. Max amplitude < 1e-10 — null/silent output.
     {
         let has_nonfinite = cpp_output.iter().any(|x| !x.is_finite());
         let max_sample = cpp_output.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-        let is_garbage =
-            has_nonfinite || max_sample > 1e12 || (max_sample < 1e-10 && max_sample > 0.0);
+        let is_garbage = has_nonfinite
+            || max_sample > 1e12
+            || max_sample > 1e3
+            || (max_sample < 1e-10 && max_sample > 0.0);
         if is_garbage {
-            eprintln!(
-                "SKIP: {label} — C++ render produced garbage output \
-                 (non-finite={has_nonfinite}, max_sample={max_sample:.2e}); \
-                 skipping comparison.",
-            );
+            if max_sample > 1e3 && max_sample <= 1e12 && !has_nonfinite {
+                eprintln!(
+                    "SKIP: {label} — C++ render produced absurd amplitude output \
+                     (max_sample={max_sample:.2e}); likely upstream numeric instability. \
+                     Skipping comparison.",
+                );
+            } else {
+                eprintln!(
+                    "SKIP: {label} — C++ render produced garbage output \
+                     (non-finite={has_nonfinite}, max_sample={max_sample:.2e}); \
+                     skipping comparison.",
+                );
+            }
             fs::remove_file(&output_wav).ok();
             return;
         }
     }
 
-    let (mut mse_limit, mut min_snr_db) = live_parity_thresholds(&model_data);
+    let (mut mse_limit, mut min_snr_db, max_esr) = live_parity_thresholds(&model_data);
     if use_v2 && model_data.architecture == "LSTM" {
         // LSTM recurrent state accumulates quantization/approximation errors
         // over the 100x longer v2 stress signal. The accumulation is proportional
@@ -347,7 +367,7 @@ fn run_render_comparison(
         &rust_output[..min_len],
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         label,
         actual_sr,
     );

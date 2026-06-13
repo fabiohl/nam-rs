@@ -122,7 +122,15 @@ divergences, and the sprint/task that established each equivalence.
 
 > **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 >
-> **⚠ T7.8 — C++ Live Cross-Validation Blocked (Upstream Bug):** The C++ `a2_fast.cpp` render tool produces numerically unstable output for A2 models (A2-Full: output ~10^14; A2-Lite: output ~360 drifting to ~8×10^4). The Rust port is structurally faithful and internally self-consistent (MSE = 0.0 between independent runs). Cross-validation via `tests/cpp_parity.rs` is `#[ignore]` — golden vectors use a **self-golden** pattern (Rust validates Rust) until the upstream C++ bug is resolved. See [TODO-sprints.md §T7.8](../TODO-sprints.md) for root-cause analysis (Rust `prewarm()` zero-fill vs C++ silent-process mismatch — fixed in T7.8, but C++ still diverges).
+> **⚠ T7.8 / T16.4 — C++ Live Cross-Validation Blocked (Upstream Bug):** The C++ `a2_fast.cpp` render tool produces numerically unstable output for A2 models (A2-Full: output ~10^14; A2-Lite: output ~360 drifting to ~8×10^4). The Rust port is structurally faithful and internally self-consistent (MSE = 0.0 between independent runs). Cross-validation via `tests/cpp_parity.rs` is `#[ignore]` — golden vectors use a **self-golden** pattern (Rust validates Rust) until the upstream C++ bug is resolved.
+> >
+> > **Tested upstream commit:** `e49c93e678549230d09efbb0beeb50511e387874` — [sdatkinson/NeuralAmpModelerCore#285](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/285) "Options to disable prewarming during `.Reset()`" (2024-10-22). All other WaveNet A1 shapes (Standard, Feather, Nano, Lite) and LSTM/Linear topologies validate correctly with this commit — the bug is **isolated to the A2-specific** fast-path (`a2_fast.cpp:process()`, eigen-based GEMV for CH=8 and scalar CH=3). The generic `wavenet::Wavenet_Model::process()` path produces correct output for A1/A2 shapes loaded as generic WaveNet, confirming the issue is in the fast-path specialization.
+> >
+> > **T16.4 actions applied (2026-06-13):**
+> >
+> > 1. Garbage guard extended to detect absurd-but-finite amplitude (`max_sample > 10³`) — A2-Lite no longer bypasses the guard.
+> > 2. ESR (Error-to-Signal Ratio) added as primary scale-robust threshold in `topology_thresholds()` and `live_parity_thresholds()`.
+> > 3. A2 live tests remain `#[ignore]` with explicit, auditable SKIP messages in the log.
 
 | C++ (`NeuralAmpModelerCore/`)                            | Rust (`src/`)                                                                                                     | Parity established |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |

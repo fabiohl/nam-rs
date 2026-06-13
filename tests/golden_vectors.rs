@@ -78,13 +78,13 @@ fn test_golden_vectors_wavenet() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossWN-standard",
         STRESS_SAMPLE_RATE,
     );
@@ -137,13 +137,13 @@ fn test_golden_vectors_lstm_1x16() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-1x16",
         STRESS_SAMPLE_RATE,
     );
@@ -188,13 +188,13 @@ fn test_golden_vectors_lstm_2x8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-2x8",
         STRESS_SAMPLE_RATE,
     );
@@ -238,13 +238,13 @@ fn test_golden_vectors_lstm_1x8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-1x8",
         STRESS_SAMPLE_RATE,
     );
@@ -282,13 +282,13 @@ fn test_golden_vectors_lstm_1x12() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-1x12",
         STRESS_SAMPLE_RATE,
     );
@@ -326,13 +326,13 @@ fn test_golden_vectors_lstm_1x24() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-1x24",
         STRESS_SAMPLE_RATE,
     );
@@ -370,13 +370,13 @@ fn test_golden_vectors_lstm_1x40() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-1x40",
         STRESS_SAMPLE_RATE,
     );
@@ -414,13 +414,13 @@ fn test_golden_vectors_lstm_2x12() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-2x12",
         STRESS_SAMPLE_RATE,
     );
@@ -458,13 +458,13 @@ fn test_golden_vectors_lstm_2x16() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-2x16",
         STRESS_SAMPLE_RATE,
     );
@@ -502,13 +502,13 @@ fn test_golden_vectors_lstm_2x24() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossLSTM-2x24",
         STRESS_SAMPLE_RATE,
     );
@@ -550,13 +550,13 @@ fn test_golden_vectors_wavenet_feather() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossWN-feather",
         STRESS_SAMPLE_RATE,
     );
@@ -598,13 +598,13 @@ fn test_golden_vectors_wavenet_nano() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossWN-nano",
         STRESS_SAMPLE_RATE,
     );
@@ -658,13 +658,13 @@ fn test_golden_vectors_wavenet_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "BossWN-lite",
         STRESS_SAMPLE_RATE,
     );
@@ -714,13 +714,13 @@ fn test_golden_vectors_wavenet_a2_full() {
     let (_, expected) =
         read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Full");
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "WaveNet A2-Full (CH=8) self-golden",
         STRESS_SAMPLE_RATE,
     );
@@ -763,13 +763,13 @@ fn test_golden_vectors_wavenet_a2_lite() {
     let (_, expected) =
         read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Lite");
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "WaveNet A2-Lite (CH=3) self-golden",
         STRESS_SAMPLE_RATE,
     );
@@ -834,13 +834,13 @@ fn test_golden_vectors_container_a2_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&full_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&full_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "Container A2-Full (CH=8) self-golden",
         STRESS_SAMPLE_RATE,
     );
@@ -902,13 +902,13 @@ fn test_golden_vectors_container_a2_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db) = topology_thresholds(&lite_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&lite_data);
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
-        None,
+        max_esr,
         "Container A2-Lite (CH=3) self-golden",
         STRESS_SAMPLE_RATE,
     );

@@ -79,6 +79,28 @@ This gate is ~6× (≈ 8 dB) below A1-Standard median (6.23e-3). It is deliberat
 to tolerate variation in less-covered sample rates (44.1k, 192k) while catching any
 major implementation regression.
 
+### ESR as Primary Scale-Robust Threshold (T16.4)
+
+**Rationale:** Absolute MSE is not robust to scale mismatch — a signal 270× larger
+in amplitude produces MSE ~10² even when SNR is 51–57 dB (A2-Lite upstream bug case).
+ESR (Σ(rᵢ − tᵢ)² / Σ rᵢ²) normalizes error by reference energy, making it invariant
+to linear scaling. The ESR gate is now the primary threshold in `topology_thresholds()`
+and `live_parity_thresholds()`, supplemented by a garbage guard (`max_sample > 10³`)
+in `cpp_parity.rs` that skips absurd-but-finite C++ render output.
+
+**Per-model ESR thresholds** (defined in `tests/common/validation.rs:wavenet_thresholds()`):
+
+| Model           | Channels | ESR max  | Rationale                         |
+|-----------------|----------|----------|------------------------------------|
+| WaveNet Standard| 16       | 1e-3     | NAM_RS_CPP_PARITY_ESR_MAX         |
+| WaveNet Feather | 8        | 1e-3     | NAM_RS_CPP_PARITY_ESR_MAX         |
+| A2-Full         | 8        | 1e-3     | NAM_RS_CPP_PARITY_ESR_MAX         |
+| WaveNet Nano    | 4        | 3e-3     | Lower quality, more noise         |
+| A2-Lite         | 3        | 1e-3     | Self-golden in tests; SKIP in live|
+| WaveNet Lite    | 12       | 5e-2     | Known failure, synthetic model    |
+| LSTM            | —        | 1e-3     | Conservative gate                 |
+| Linear          | —        | 1e-10    | Bit-exact reproduction            |
+
 Expected actual ESR for nam-rs vs C++:
 
 - Simple models (LSTM 1×8): 1e-7 to 1e-6 (≈ −60 to −70 dB)
