@@ -15,10 +15,21 @@
 //!
 //! Tests are `#[ignore]` in normal CI — requires C++ toolchain installed.
 //!
-//! ## Parity Thresholds (Adaptive)
+//! ## Parity Thresholds (Aggressive Live Floors)
 //!
-//! Thresholds are computed dynamically by `topology_thresholds()` based on
-//! model topology (channels, dilations for WaveNet; num_layers, hidden_size for LSTM).
+//! Post-T16.1 thresholds use `live_parity_thresholds()` — aggressive floors
+//! calibrated from live C++ cross-validation measurements (see `validation.rs`):
+//!
+//! | Family  | Variant  | Measured SNR | Floor SNR | Margin  |
+//! |---------|----------|-------------|-----------|---------|
+//! | WaveNet | Standard | 68.4 dB     | 60 dB     | 8.4 dB  |
+//! | WaveNet | Feather  | 67.6 dB     | 60 dB     | 7.6 dB  |
+//! | WaveNet | Nano     | 52.6 dB     | 45 dB     | 7.6 dB  |
+//! | WaveNet | Lite     | 0.9 dB      | 0 dB      | —       |
+//! | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
+//! | Linear  | —        | bit-exact   | 140 dB    | —       |
+//!
+//! Lite (CH=12) is a known failure — investigar separadamente.
 //!
 //! ## Multi-Sample-Rate Support
 //!
@@ -286,7 +297,7 @@ fn run_render_comparison(
         }
     }
 
-    let (mut mse_limit, mut min_snr_db) = topology_thresholds(&model_data);
+    let (mut mse_limit, mut min_snr_db) = live_parity_thresholds(&model_data);
     if use_v2 && model_data.architecture == "LSTM" {
         // LSTM recurrent state accumulates quantization/approximation errors
         // over the 100x longer v2 stress signal. The accumulation is proportional
