@@ -956,7 +956,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 19.1 — Parar de mentir (correções da suíte longa)
 
-- **[T19.1] Remover o `|| true` da Phase 3 do `utils/tests-long.sh`.** **[crítico, 1 linha]**
+- **[T19.1] Remover o `|| true` da Phase 3 do `utils/tests-long.sh`.** **[crítico, 1 linha]**  [DONE] [12/06/2026 22:13]
 
   - `utils/tests-long.sh:97`: o `|| true` engoliu as 4 falhas reais de paridade (wavenet_lite/a2_lite, v1+v2).
     O caso "toolchain C++ ausente" já é tratado pelo próprio teste (`ensure_render_compiled()` → `return`), logo

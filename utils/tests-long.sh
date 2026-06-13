@@ -16,6 +16,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# Setup defensive error trap
+trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
+
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
 echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 46 minutes - cold run)   ${NC}"
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
@@ -94,7 +97,7 @@ run_phase \
 # --- Phase 3: Resampler Heap-Audit and C++ Parity ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit, C++ Parity" \
-    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && (cargo test --release --test cpp_parity -- --ignored --nocapture || true) && (cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture || true)" \
+    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture && cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture" \
     "phase3-parity-audit.log"
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
