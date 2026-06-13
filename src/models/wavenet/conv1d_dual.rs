@@ -18,9 +18,9 @@
 //! structural benefit, as no sub-component is independently reusable or
 //! testable in isolation.
 
-use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_kahan_4_accums};
+use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_4_accums};
 use super::conv1d::{Conv1d, ConvInput};
-use crate::math::common::{SimdMath, kahan_add};
+use crate::math::common::SimdMath;
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Fused variant that processes two frames simultaneously, adding Mixin vectors (conditioning) directly to the accumulators.
@@ -176,15 +176,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let [mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1] =
                 unsafe { load_4_accums(out_frame_f1, out_c, OUT) };
 
-            let mut c0_f0 = 0.0f32;
-            let mut c1_f0 = 0.0f32;
-            let mut c2_f0 = 0.0f32;
-            let mut c3_f0 = 0.0f32;
-            let mut c0_f1 = 0.0f32;
-            let mut c1_f1 = 0.0f32;
-            let mut c2_f1 = 0.0f32;
-            let mut c3_f1 = 0.0f32;
-
             for k in 0..K {
                 let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -199,34 +190,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     T::dot_product_4x_interleaved_dual_frame::<M>(w_slice, in_slice_f0, in_slice_f1)
                 };
 
-                let (s, c) = kahan_add(r0_f0, c0_f0, t_f0[0]);
-                r0_f0 = s;
-                c0_f0 = c;
-                let (s, c) = kahan_add(r1_f0, c1_f0, t_f0[1]);
-                r1_f0 = s;
-                c1_f0 = c;
-                let (s, c) = kahan_add(r2_f0, c2_f0, t_f0[2]);
-                r2_f0 = s;
-                c2_f0 = c;
-                let (s, c) = kahan_add(r3_f0, c3_f0, t_f0[3]);
-                r3_f0 = s;
-                c3_f0 = c;
-                let (s, c) = kahan_add(r0_f1, c0_f1, t_f1[0]);
-                r0_f1 = s;
-                c0_f1 = c;
-                let (s, c) = kahan_add(r1_f1, c1_f1, t_f1[1]);
-                r1_f1 = s;
-                c1_f1 = c;
-                let (s, c) = kahan_add(r2_f1, c2_f1, t_f1[2]);
-                r2_f1 = s;
-                c2_f1 = c;
-                let (s, c) = kahan_add(r3_f1, c3_f1, t_f1[3]);
-                r3_f1 = s;
-                c3_f1 = c;
+                r0_f0 += t_f0[0];
+                r1_f0 += t_f0[1];
+                r2_f0 += t_f0[2];
+                r3_f0 += t_f0[3];
+                r0_f1 += t_f1[0];
+                r1_f1 += t_f1[1];
+                r2_f1 += t_f1[2];
+                r3_f1 += t_f1[3];
             }
 
-            unsafe { store_kahan_4_accums(out_frame_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], OUT) };
-            unsafe { store_kahan_4_accums(out_frame_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], OUT) };
+            unsafe { store_4_accums(out_frame_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], OUT) };
+            unsafe { store_4_accums(out_frame_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], OUT) };
             out_c += 4;
         }
     }

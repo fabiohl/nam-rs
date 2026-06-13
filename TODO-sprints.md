@@ -936,7 +936,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 18 — RT-Safety e Cycle Budget ⚡ [Lane A, após Épico 16]
 
-### Sprint 18.1 — Eliminação de pânico e SIMD faltante
+### Sprint 18.1 — Eliminação de pânico e SIMD faltante [DONE]
 
 - **[T18.1] `assert!` de runtime no hot-path do WaveNet.** **[alta prioridade, 1 linha]** [DONE] [12/06/2026 22:06]
 
@@ -968,7 +968,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 18.2 — Coerência Kahan e micro-otimizações
 
-- **[T18.4] Resolver a contradição T13.2a: doc diz "Kahan removido", código ainda tem.** **[verificado-na-fonte]**
+- **[T18.4] Resolver a contradição T13.2a: doc diz "Kahan removido", código ainda tem.** **[DONE]**
 
   - `TODO-sprints.md` marca T13.2a [DONE] e `docs/benchmarks.md` (§T13.2) registra "Decisão: Remover Kahan do
     caminho estático para K ≤ 3" — mas `src/models/wavenet/conv1d.rs:197-208` e `conv1d_dual.rs:202-208`

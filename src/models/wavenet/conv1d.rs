@@ -7,11 +7,11 @@
 //! `Conv1d` struct + single-frame kernel + mixin wrappers form a cohesive algorithmic unit.
 //! `ConvInput` was extracted to `conv_input.rs` (S2.T06). Further splitting the
 //! single-frame kernel would break the locality of `unsafe` aliasing contracts and
-//! Kahan accumulators.
+//! plain accumulators.
 
 pub(crate) use super::conv_input::ConvInput;
-use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_kahan_4_accums};
-use crate::math::common::{AlignedVec, PrefetchFn, SimdMath, kahan_add};
+use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_4_accums};
+use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
 #[derive(Clone)]
@@ -175,14 +175,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Load the 4 temporary accumulators from the current output frame.
             let [mut r0, mut r1, mut r2, mut r3] = unsafe { load_4_accums(out_frame, out_c, OUT) };
 
-            // Kahan compensation variables: track lost low-order bits per channel
-            // to bound the per-tap accumulation error to O(eps) instead of O(K·eps).
-            let mut c0 = 0.0f32;
-            let mut c1 = 0.0f32;
-            let mut c2 = 0.0f32;
-            let mut c3 = 0.0f32;
-
-            // For each tap (delay/offset in the circular audio buffer) of the convolution
             for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -193,23 +185,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 // Performs the 4-channel interleaved dot product at once.
                 let [t0, t1, t2, t3] =
                     unsafe { T::dot_product_4x_interleaved::<M>(w_slice, in_slice) };
-                // Kahan compensated accumulation per channel
-                let (s, c) = kahan_add(r0, c0, t0);
-                r0 = s;
-                c0 = c;
-                let (s, c) = kahan_add(r1, c1, t1);
-                r1 = s;
-                c1 = c;
-                let (s, c) = kahan_add(r2, c2, t2);
-                r2 = s;
-                c2 = c;
-                let (s, c) = kahan_add(r3, c3, t3);
-                r3 = s;
-                c3 = c;
+                r0 += t0;
+                r1 += t1;
+                r2 += t2;
+                r3 += t3;
             }
 
-            // Write back the 4 processed accumulators to the output buffer in-place.
-            unsafe { store_kahan_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT) };
+            unsafe { store_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT) };
             out_c += 4;
         }
     }

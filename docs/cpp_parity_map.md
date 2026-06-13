@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # C++ ↔ Rust Parity Map — NeuralAmpModelerCore × NAM-rs
@@ -123,7 +124,7 @@ divergences, and the sprint/task that established each equivalence.
 > **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 >
 > **⚠ T7.8 / T16.4 — C++ Live Cross-Validation Blocked (Upstream Bug):** The C++ `a2_fast.cpp` render tool produces numerically unstable output for A2 models (A2-Full: output ~10^14; A2-Lite: output ~360 drifting to ~8×10^4). The Rust port is structurally faithful and internally self-consistent (MSE = 0.0 between independent runs). Cross-validation via `tests/cpp_parity.rs` is `#[ignore]` — golden vectors use a **self-golden** pattern (Rust validates Rust) until the upstream C++ bug is resolved.
-> >
+>
 > > **Tested upstream commit:** `e49c93e678549230d09efbb0beeb50511e387874` — [sdatkinson/NeuralAmpModelerCore#285](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/285) "Options to disable prewarming during `.Reset()`" (2024-10-22). All other WaveNet A1 shapes (Standard, Feather, Nano, Lite) and LSTM/Linear topologies validate correctly with this commit — the bug is **isolated to the A2-specific** fast-path (`a2_fast.cpp:process()`, eigen-based GEMV for CH=8 and scalar CH=3). The generic `wavenet::Wavenet_Model::process()` path produces correct output for A1/A2 shapes loaded as generic WaveNet, confirming the issue is in the fast-path specialization.
 > >
 > > **T16.4 actions applied (2026-06-13):**
@@ -186,27 +187,27 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 7. Math / SIMD Kernels
 
-| C++ (`NeuralAmpModelerCore/`)                    | Rust (`src/`)                                                 | Parity established |
-| ------------------------------------------------ | ------------------------------------------------------------- | ------------------ |
-| Dot product (f32)                                | `math/gemm/dot.rs` — `dot_product`                            | S2.T03             |
-| Dot product (BF16 quantized weights)             | `math/gemm/dot_4x/` — `dot_product_bf16`                      | S3.T01             |
-| Dot product 4× interleaved (WaveNet Conv1D)      | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`            | S3.T04             |
-| Dot product 4× interleaved dual-frame            | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame` | S10b.T02           |
-| GEMV (fused add)                                 | `math/gemm/gemv.rs` — `fused_add_gemv`                        | S3.T01             |
-| GEMV (overwrite)                                 | `math/gemm/gemv.rs` — `gemv_overwrite`                        | S26.T03            |
-| GEMV 4-gate (LSTM)                               | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`            | S3.T01             |
-| GEMV BF16 (LSTM 4-gate)                          | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`        | S3.T01             |
-| Tanh activation (SIMD)                           | `math/activations/tanh.rs` — `tanh_slice`                     | S2.T03             |
-| Sigmoid activation (SIMD)                        | `math/activations/sigmoid.rs` — `sigmoid_slice`               | S2.T03             |
-| Fused Tanh + accumulate (WaveNet head)           | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | S3.T04             |
-| Fused Tanh + overwrite (first layer head)        | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | S25.T08            |
-| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation      | S16.1              |
-| Gain application (linear)                        | `math/dsp/gain.rs` — `apply_gain`                             | S2.T03             |
-| Gain LUT (dB → linear)                           | `math/dsp/gain_lut.rs` — `GainLut`                            | —                  |
-| Stereo convolution (resampler FIR)               | `math/dsp/stereo/` — `convolve_stereo`                        | S17.T01            |
-| Kahan compensated summation (Conv1D tail loops)  | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`             | E8.T06             |
-| BF16 quantization (f32 → u16)                    | `math/common/utility.rs` — `quantize_weight()`                | S3.T01             |
-| Scalar reference (definitive math specification) | `math/common/scalar_ref.rs` — all operations                  | —                  |
+| C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                 | Parity established |
+| --------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
+| Dot product (f32)                                   | `math/gemm/dot.rs` — `dot_product`                            | S2.T03             |
+| Dot product (BF16 quantized weights)                | `math/gemm/dot_4x/` — `dot_product_bf16`                      | S3.T01             |
+| Dot product 4× interleaved (WaveNet Conv1D)         | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`            | S3.T04             |
+| Dot product 4× interleaved dual-frame               | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame` | S10b.T02           |
+| GEMV (fused add)                                    | `math/gemm/gemv.rs` — `fused_add_gemv`                        | S3.T01             |
+| GEMV (overwrite)                                    | `math/gemm/gemv.rs` — `gemv_overwrite`                        | S26.T03            |
+| GEMV 4-gate (LSTM)                                  | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`            | S3.T01             |
+| GEMV BF16 (LSTM 4-gate)                             | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`        | S3.T01             |
+| Tanh activation (SIMD)                              | `math/activations/tanh.rs` — `tanh_slice`                     | S2.T03             |
+| Sigmoid activation (SIMD)                           | `math/activations/sigmoid.rs` — `sigmoid_slice`               | S2.T03             |
+| Fused Tanh + accumulate (WaveNet head)              | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | S3.T04             |
+| Fused Tanh + overwrite (first layer head)           | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | S25.T08            |
+| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation               | S16.1              |
+| Gain application (linear)                           | `math/dsp/gain.rs` — `apply_gain`                             | S2.T03             |
+| Gain LUT (dB → linear)                              | `math/dsp/gain_lut.rs` — `GainLut`                            | —                  |
+| Stereo convolution (resampler FIR)                  | `math/dsp/stereo/` — `convolve_stereo`                        | S17.T01            |
+| Kahan compensated summation (scalar fallback)       | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`             | E8.T06             |
+| BF16 quantization (f32 → u16)                       | `math/common/utility.rs` — `quantize_weight()`                | S3.T01             |
+| Scalar reference (definitive math specification)    | `math/common/scalar_ref.rs` — all operations                  | —                  |
 
 ---
 
@@ -276,7 +277,7 @@ divergences, and the sprint/task that established each equivalence.
 | **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2 × 10⁻⁵) — 10–20× throughput gain.                                                                                                      |
 | **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                            |
 | **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+. |
-| **Kahan compensated summation (Conv1D)**             | Applied in outer loops and scalar paths. C++ uses standard accumulation.                                                                                                                                               |
+| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation (T13.2/T18.4).                                                                 |
 | **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                  |
 | **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                    |
 

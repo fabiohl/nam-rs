@@ -99,11 +99,11 @@ graph TD
 
 To optimize the trade-off between computational latency and tonal accuracy, NAM-rs uses selective mixed precision (E8.T08). While the WaveNet backbone (including Conv1D convolutions, input_mixin, and one_by_one) is computed with weights compressed in F16 or BF16 to save cache bandwidth, the final output projection layer (`head_rechannel`) and the final projection in LSTMs use full floating-point precision (`f32`). Head inference executes a native f32 scalar GEMV (`process_block_f32_native`), ensuring 24-bit fidelity in the analytically most sensitive stage of the output.
 
-### 6.2 Numerical Stability (Kahan + Dither)
+### 6.2 Numerical Stability (Dither + Scalar-Fallback Kahan)
 
 To prevent the accumulation of numerical drift and mathematical instabilities in long-duration runs:
 
-- **Kahan Summation (E8.T06):** Employed in the outer accumulation loop of [conv1d.rs](../src/models/wavenet/conv1d.rs) convolutions and in the interleaved 4x scalar fallbacks. By maintaining an error compensation register for each channel, it reduces the relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$ in deep causal convolutions.
+- **Kahan Summation (E8.T06):** Employed in the interleaved 4x scalar fallback dot products (`scalar_ref/dot.rs`) to reduce relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$. The static conv1d paths (`conv1d.rs`, `conv1d_dual.rs`) use plain `+=` accumulation — error for K≤3 taps is below −129 dBFS per layer, inaudible (T13.2/T18.4).
 - **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L47) after gain) with corresponding compensatory subtraction at the output ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L21)). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
 
 ## 3. Time Management and Isolation (Strict RT)

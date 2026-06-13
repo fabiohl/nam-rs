@@ -68,7 +68,7 @@ pub(crate) unsafe fn load_4_accums(out: &[f32], out_c: usize, out_n: usize) -> [
     }
 }
 
-/// Stores 4 Kahan‑compensated accumulator values back to the output buffer with
+/// Stores 4 accumulator values back to the output buffer with
 /// bounds‑check elision for the hot path. Extracted verbatim from single‑frame
 /// convolution kernel.
 ///
@@ -76,12 +76,7 @@ pub(crate) unsafe fn load_4_accums(out: &[f32], out_c: usize, out_n: usize) -> [
 /// `out_c` must be < `out.len()`. On the fast path (`out_n` multiple of 4 or
 /// `out_c + 3 < out_n`), `out_c + 3` must be < `out.len()`.
 #[inline(always)]
-pub(crate) unsafe fn store_kahan_4_accums(
-    out: &mut [f32],
-    out_c: usize,
-    r: [f32; 4],
-    out_n: usize,
-) {
+pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], out_n: usize) {
     unsafe { *out.get_unchecked_mut(out_c) = r[0] };
     if out_n.is_multiple_of(4) || out_c + 3 < out_n {
         unsafe {
