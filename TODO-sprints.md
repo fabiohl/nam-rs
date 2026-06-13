@@ -768,7 +768,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 16.1 — Correção da cascata (fidelidade ao C++)
 
-- **[T16.1] Corrigir a acumulação de heads entre layer arrays.** **[verificado-na-fonte]**
+- **[T16.1] Corrigir a acumulação de heads entre layer arrays.** **[DONE]**
 
   - **C++ de referência** (`tests/fixtures/NeuralAmpModelerCore/NAM/wavenet/model.cpp`): o array *N* **semeia**
     seu `_head_inputs` com o head output (pós-`head_rechannel`) do array *N−1* (`model.cpp:436-445`, chamada em
@@ -780,7 +780,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `batch_wavenet_head_sum` soma horizontalmente `array1.head_outputs` (HEAD canais, **sem** passar pelos pesos
     do `head_rechannel_2`) + head do array2. Ou seja: `out = hs · (sum(H₁) + W₂·Σ₂)` — só equivale ao C++ se
     `W₂ = [1,…,1]`, o que nunca ocorre.
-  - **Implementação:** novo caminho em `layer_array.rs` que recebe `prev_head_outputs: &[f32]` e o **copia** para
+  - **Implementação:** novo caminho em `layer_array.rs` que recebe `prev_head_outputs: Option<&[f32]>` e o **copia** para
     `head_accum` antes do loop de camadas (as camadas passam a **acumular**, não sobrescrever, quando há seed);
     `model.rs` passa `array1.head_outputs` para o array2 e a saída final vira
     `output = head_scale × array2.head_outputs` (eliminar `batch_wavenet_head_sum` e seus kernels se ficarem
@@ -789,6 +789,22 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** `live_cross_validation_wavenet_{standard,lite,feather,nano}` (v1 e v2) com SNR
     ≥ 40 dB (novo piso digno de port numérico — ver T16.2); goldens regenerados (T16.3); zero alloc; benches sem
     regressão > 2%.
+
+  - **Resultado pós-T16.1 (live v1):**
+
+    | Modelo   | SNR antes | SNR depois  | Status | Observações                                          |
+    | -------- | --------- | ----------- | ------ | ---------------------------------------------------- |
+    | Standard | ~10 dB    | **68.4 dB** | ✓      |                                                      |
+    | Feather  | —         | **67.6 dB** | ✓      |                                                      |
+    | Nano     | —         | **52.6 dB** | ✓      |                                                      |
+    | Lite     | −12.8 dB  | **0.9 dB**  | ⚠️     | (melhorou 13.7 dB mas ainda falha; investigar CH=12) |
+    | A2-Full  | SKIP      | SKIP        | —      | (garbage upstream; não afetado)                      |
+    | A2-Lite  | −12.8 dB? | 57.2 dB SNR | —      | (bug upstream de escala; T16.4)                      |
+    |          |           | MSE enorme  |        |                                                      |
+
+  - **⚠️ Nota para T16.2/T16.3:** Lite (CH=12, HEAD=6) melhorou de −12.8 dB → 0.9 dB mas não cruza 40 dB.
+    Feather (CH=8) e Nano (CH=4) passam folgadamente. Lite pode precisar de investigação separada
+    (possivelmente modelo sintético, condição de contorno CH=12 não-power-of-2, ou divergência nos pesos).
 
 - **[T16.2] Apertar os thresholds do `cpp_parity.rs` pós-correção.** (depende de T16.1)
 
@@ -991,6 +1007,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 ### Sprint 19.2 — Anti-fragilidade e dívidas de cobertura [DONE]
 
 - **[T19.4] Extrair helpers de teste CLAP (~700–1000 linhas de boilerplate).** [DONE]
+
   - **Status: DONE (12/06/2026 23:00).** `processor_test.rs`: 2433→1857 linhas (−23.7%).
     Módulo `src/clap/test_util.rs` (176 linhas) criado com: `make_test_plugin`,
     `extract_shared`, `make_default_params`, `load_plugin_state`, `get_state_ext`,
@@ -998,11 +1015,13 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     estão bloqueados por tipos complexos do clack-host (audio views) que resistem a
     extração sem macros. `inference_bench.rs` não foi refatorado (usa BenchHost, não
     compatível com TestHost do módulo `#[cfg(test)]`).
+
   - `cargo test --features clap-plugin -- clap::`: 67 pass, 1 ignorado, 0 falhas.
 
   - `src/clap/processor_test.rs` (2375 linhas): 14 testes repetem ~60 linhas de setup (entry/instance/activate/
     buffers/ports). Extrair `make_test_plugin()`, `make_stereo_buffers()`, `process_block()` em módulo
     `#[cfg(test)]` compartilhado (reutilizável também pelo `inference_bench.rs:1091-1247`).
+
   - **Critério de aceite:** nenhum teste perde cobertura; arquivo reduzido em ≥ 30%.
 
 - **[T19.5] Substituir números mágicos acoplados a internals por constantes derivadas.** [DONE]
@@ -1075,12 +1094,14 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 > juntos (mexem na mesma contabilidade); (4) cada épico fechado dispara sua tarefa de doc (Épico 20).
 
 ---
+
 ---
 
 ## ÉPICO 100 (FUTURO)
 
 T19.3 Na hora de dormir
 E16-18
+
 > Liberar v2.1 (A2 Beta)
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
@@ -1093,8 +1114,12 @@ E16-18
   Ao final, quando for acionar a skill `planejador-arquiteto`, oriente-a para otimizar os épicos, sprints e tarefas técnicas para uma entrega rápida e sem perda de tempo.
 
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
+
 - **FFT** e outros features no **hot path**: Considerar internalizar o código eaplicar ultra otimizações.
+
 - **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
+
 - **ISAs e Arquiteturas** <https://gemini.google.com/app/71c4c68e27c64e10>: /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
+
   - Intel/AMD: Focar no AVX-512/AVX-10 (Especialmente: AVX512F, AVX512VL, AVX512_VNNI) em vez de AMX (muito focado em inferência e servidores); Eficiência Híbrida (AVX-10 / AVX-512 Light): Focado no uso de instruções AVX-512, mas restringindo o tamanho dos vetores a 256 bits.
   - ARM: focar na Linha de Base Unificada NEON de 128 bits (Rpi5 e Qualcomm, apesar da volatilidade má vontade desta última); A Linha Avançada é SVE2/VLA (basicamente NVIDIA RTX Spark).

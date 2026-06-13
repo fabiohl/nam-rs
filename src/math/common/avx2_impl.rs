@@ -536,22 +536,6 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
-        head1: &[f32],
-        head2: &[f32],
-        output: &mut [f32],
-        scale: f32,
-    ) {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe {
-            super::super::wavenet::head::batch_wavenet_head_sum_avx2::<HEAD>(
-                head1, head2, output, scale,
-            )
-        }
-    }
-
-    #[inline(always)]
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::gain::apply_ramp_stereo_avx2(left, right, start, step) }
@@ -637,24 +621,6 @@ impl SimdMath for Avx2Math {
         unsafe {
             super::super::gemm::gemv::gemv_no_bias_f32_avx2(
                 in_frames, weights, out_frames, num_frames,
-            )
-        }
-    }
-
-    // Final WaveNet processing stage: sums the outputs to generate the final audio.
-    #[inline(always)]
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn batch_wavenet_head_sum_dyn(
-        head1: &[f32],
-        head2: &[f32],
-        output: &mut [f32],
-        head: usize,
-        scale: f32,
-    ) {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe {
-            super::super::wavenet::head::batch_wavenet_head_sum_dyn_avx2(
-                head1, head2, output, head, scale,
             )
         }
     }

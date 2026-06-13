@@ -463,27 +463,4 @@ pub trait SimdMath {
     /// # Safety
     /// The buffer must be valid.
     unsafe fn apply_dither_add(data: &mut [f32], offset: f32);
-
-    /// Specialized kernel for WaveNet Head sum.
-    ///
-    /// # Safety
-    /// Buffers must be valid and have sizes compatible with HEAD and num_frames.
-    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
-        head1: &[f32],
-        head2: &[f32],
-        output: &mut [f32],
-        scale: f32,
-    );
-
-    /// Specialized kernel for WaveNet Head sum (dynamic version).
-    ///
-    /// # Safety
-    /// Buffers must be valid and have sizes compatible with head and num_frames.
-    unsafe fn batch_wavenet_head_sum_dyn(
-        head1: &[f32],
-        head2: &[f32],
-        output: &mut [f32],
-        head: usize,
-        scale: f32,
-    );
 }

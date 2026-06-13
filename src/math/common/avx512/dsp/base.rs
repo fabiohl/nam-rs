@@ -102,22 +102,6 @@ macro_rules! impl_avx512_dsp {
 
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
-            head1: &[f32],
-            head2: &[f32],
-            output: &mut [f32],
-            scale: f32,
-        ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-            unsafe {
-                crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
-                    head1, head2, output, scale,
-                )
-            }
-        }
-
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { crate::math::dsp::gain::apply_ramp_stereo_avx512(left, right, start, step) }
@@ -128,23 +112,6 @@ macro_rules! impl_avx512_dsp {
         unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { crate::math::dsp::gain::apply_dither_add_avx512(data, offset) }
-        }
-
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn batch_wavenet_head_sum_dyn(
-            head1: &[f32],
-            head2: &[f32],
-            output: &mut [f32],
-            head: usize,
-            scale: f32,
-        ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-            unsafe {
-                crate::math::wavenet::head::batch_wavenet_head_sum_dyn_avx512(
-                    head1, head2, output, head, scale,
-                )
-            }
         }
     };
 }

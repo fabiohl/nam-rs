@@ -73,28 +73,28 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
                 // (e.g., from 1 to 512, 1 to 512 successively) to capture amplifier sub-bass.
                 // Its output enters `array1.array_outputs` and the skips enter `array1.head_outputs`.
                 self.array1
-                    .process_block_internal::<M, false>(in_slice, in_slice, num_frames);
+                    .process_block_internal::<M, false>(in_slice, in_slice, num_frames, None);
 
-                // [STEP 2: Array2 Forward]
-                // The second array typically acts as a closure perceptron layer
-                // (smaller dimensions, dilations of only 1, processing the "mix" coming from Array1).
+                // [STEP 2: Array2 Forward (Cascaded Head)]
+                // C++ parity: array2 seeds its head_accum with array1's post-head_rechannel
+                // output — all layers then accumulate on top of this seed. The final output
+                // is head_scale × array2.head_outputs (only the last array's head).
+                let array1_head_out = &self.array1.head_outputs[0..num_frames * HEAD];
                 let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
                 self.array2.process_block_internal::<M, false>(
                     array1_outputs,
                     in_slice,
                     num_frames,
+                    Some(array1_head_out),
                 );
             }
 
-            // [STEP 3: Skip Sum + SIMD Final Scale]
-            // SIMD summation of the Head projections of both arrays and scaling by `head_scale`.
-            unsafe {
-                M::batch_wavenet_head_sum::<HEAD>(
-                    &self.array1.head_outputs[0..num_frames * HEAD],
-                    &self.array2.head_outputs[0..num_frames],
-                    &mut output[pos..pos + num_frames],
-                    self.head_scale,
-                );
+            // [STEP 3: Final Scale]
+            // C++ reference: output = head_scale × last_array.head_outputs
+            let array2_head = &self.array2.head_outputs[0..num_frames];
+            let out_slice = &mut output[pos..pos + num_frames];
+            for i in 0..num_frames {
+                out_slice[i] = array2_head[i] * self.head_scale;
             }
             pos += num_frames;
         }
@@ -142,12 +142,13 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
         unsafe {
             self.array1
-                .prewarm_internal::<M>(&layer_inputs_1, &condition);
+                .prewarm_internal::<M>(&layer_inputs_1, &condition, None);
         }
         let array1_outputs = &self.array1.array_outputs[0..CH];
+        let array1_head_out = &self.array1.head_outputs[0..HEAD];
         unsafe {
             self.array2
-                .prewarm_internal::<M>(array1_outputs, &condition);
+                .prewarm_internal::<M>(array1_outputs, &condition, Some(array1_head_out));
         }
     }
 }

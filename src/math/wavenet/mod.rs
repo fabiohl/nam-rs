@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! SIMD kernels for WaveNet architecture (Head Sum, Accumulate, Gated Activation).
+//! SIMD kernels for WaveNet architecture (Accumulate, Gated Activation).
 //!
 //! This module contains highly specialized kernels for the WaveNet layer cascade,
 //! focusing on minimizing memory accesses and maximizing arithmetic density.
@@ -13,7 +13,5 @@
 //!
 
 pub mod accumulate;
-pub mod head;
 
 pub use accumulate::*;
-pub use head::*;

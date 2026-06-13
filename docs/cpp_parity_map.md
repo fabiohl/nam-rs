@@ -192,7 +192,7 @@ divergences, and the sprint/task that established each equivalence.
 | Sigmoid activation (SIMD)                        | `math/activations/sigmoid.rs` — `sigmoid_slice`               | S2.T03             |
 | Fused Tanh + accumulate (WaveNet head)           | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | S3.T04             |
 | Fused Tanh + overwrite (first layer head)        | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | S25.T08            |
-| Batch WaveNet head sum (array1 + array2 + scale) | `math/wavenet/head.rs` — `batch_wavenet_head_sum`             | S3.T04             |
+| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation      | S16.1              |
 | Gain application (linear)                        | `math/dsp/gain.rs` — `apply_gain`                             | S2.T03             |
 | Gain LUT (dB → linear)                           | `math/dsp/gain_lut.rs` — `GainLut`                            | —                  |
 | Stereo convolution (resampler FIR)               | `math/dsp/stereo/` — `convolve_stereo`                        | S17.T01            |

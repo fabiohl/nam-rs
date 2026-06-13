@@ -60,6 +60,11 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
     /// Array's central processing. Fully shielded against allocations.
     ///
+    /// When `prev_head_outputs` is `Some`, it seeds `head_accum` before the layer
+    /// loop — all layers then accumulate on top of this seed instead of overwriting.
+    /// This implements the C++ cascaded head pattern (array N seeds its head
+    /// accumulator with the post-head_rechannel output of array N−1).
+    ///
     /// # Safety
     /// State pointers iterate internally without bounds checks.
     #[inline(always)]
@@ -68,14 +73,19 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         layer_inputs: &[f32],
         condition: &[f32],
         num_frames: usize,
+        prev_head_outputs: Option<&[f32]>,
     ) {
         debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
-        // [STEP 1: Zero-Accumulator]
-        // Zeros the "Skip Connections" output accumulator (Head) for this frame block.
-        // This is essential because each layer of the array will add its contribution here.
-        // (Eliminated: first layer overwrites head_accum directly)
+        // [STEP 1: Seed Head Accumulator from Previous Array]
+        // C++ reference: array N copies the post-head_rechannel output of
+        // array N−1 into its _head_inputs before the layer loop, so all
+        // layers (including the first) accumulate on top of this seed.
+        let head_seeded = prev_head_outputs.is_some();
+        if let Some(seed) = prev_head_outputs {
+            self.head_accum[0..num_frames * CH].copy_from_slice(seed);
+        }
 
         // [STEP 2: Lazy BF16 Conversion]
         if M::IS_BF16 {
@@ -168,7 +178,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0,
+                        is_first_layer: i == 0 && !head_seeded,
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
@@ -192,7 +202,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0,
+                        is_first_layer: i == 0 && !head_seeded,
                     });
                 }
 
@@ -240,11 +250,12 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
+        prev_head_outputs: Option<&[f32]>,
     ) {
         unsafe {
             // Unified via shared code: we process 1 frame with the prewarm flag active.
             // [STEP 4.1] inside `process_block_internal` handles the backfill.
-            self.process_block_internal::<M, true>(layer_inputs, condition, 1);
+            self.process_block_internal::<M, true>(layer_inputs, condition, 1, prev_head_outputs);
         }
     }
 }
