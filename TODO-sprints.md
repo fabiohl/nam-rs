@@ -865,7 +865,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ---
 
-## ÉPICO 17 — Bugs Funcionais CLAP (Estado e Carregamento) 🐞 [release-blocker — Lane B]
+## ÉPICO 17 — Bugs Funcionais CLAP (Estado e Carregamento) 🐞 [release-blocker — Lane B] [DONE]
 
 ### Sprint 17.1 — `state-context`: restauração de projeto corrompida [DONE]
 
@@ -924,10 +924,10 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 17.3 — Miudezas de robustez (baixo risco) [DONE]
 
-- **[T17.5] `params::flush()` não atualiza smoothers/geração.** Em `src/clap/extensions/params/audio.rs`,
+- **[T17.5] `params::flush()` não atualiza smoothers/geração.** [DONE] Em `src/clap/extensions/params/audio.rs`,
   após gravar os atômicos, fazer `bump_generation()` para o próximo `process()` ressincronizar smoothers e
   `gate_dirty`. Teste: flush fora de process → próximo bloco aplica os valores.
-- **[T17.6] `DspBridge`: detecção de `dropped_frames` com `Relaxed` stale.** Em
+- **[T17.6] `DspBridge`: detecção de `dropped_frames` com `Relaxed` stale.** [DONE] Em
   `src/dsp/pipeline/bridge.rs:162-171,188-197`, ler `consumed_gen` com `Acquire` e revisar a condição
   (`current_gen > consumed_gen` vs `+1`) — hoje a métrica de diagnóstico pode reportar falso positivo.
   Apenas telemetria, mas é a métrica que o `diagnostico` usa.
