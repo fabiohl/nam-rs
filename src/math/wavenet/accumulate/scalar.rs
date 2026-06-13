@@ -11,7 +11,8 @@ pub unsafe fn accumulate_head_fallback(dest: &mut [f32], src: &[f32]) {
     for i in 0..len {
         unsafe {
             // Sum the contents of 'src' into 'dest'.
-            *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+            let acc = *dest.get_unchecked_mut(i) as f64 + *src.get_unchecked(i) as f64;
+            *dest.get_unchecked_mut(i) = acc as f32;
         }
     }
 }
@@ -25,7 +26,8 @@ pub unsafe fn tanh_and_accumulate_block_fallback(head_input: &mut [f32], block: 
         let v = block[i];
         let activated = v.tanh(); // Apply the "squashing".
         block[i] = activated; // Save the squashed value in the block.
-        head_input[i] += activated; // Add the same value to the "head" accumulator.
+        let acc = head_input[i] as f64 + activated as f64;
+        head_input[i] = acc as f32; // Add the same value to the "head" accumulator.
     }
 }
 
@@ -53,7 +55,8 @@ pub unsafe fn gated_activation_and_accumulate_block_fallback(
             let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
 
             block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
+            let acc = head_input[head_offset + c] as f64 + activated as f64;
+            head_input[head_offset + c] = acc as f32;
         }
     }
 }

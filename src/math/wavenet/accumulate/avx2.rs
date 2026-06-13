@@ -17,7 +17,8 @@ pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
         i += 8;
     }
     while i < len {
-        dest[i] += src[i];
+        let acc = dest[i] as f64 + src[i] as f64;
+        dest[i] = acc as f32;
         i += 1;
     }
 }
@@ -39,7 +40,8 @@ pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut
     while i < len {
         let val = block[i].tanh();
         block[i] = val;
-        head_input[i] += val;
+        let acc = head_input[i] as f64 + val as f64;
+        head_input[i] = acc as f32;
         i += 1;
     }
 }
@@ -77,7 +79,8 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
             let z2 = block[block_offset + ch + c];
             let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
             block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
+            let acc = head_input[head_offset + c] as f64 + activated as f64;
+            head_input[head_offset + c] = acc as f32;
             c += 1;
         }
     }
