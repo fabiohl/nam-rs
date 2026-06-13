@@ -50,6 +50,9 @@ fuzz/Cargo.lock
 .out/
 mutants.out.old/
 
+# Github local clones
+/github.com
+
 # NeuralAmpModelerCore — clone local para cross-validation (não commitar)
 /tests/fixtures/NeuralAmpModelerCore/
 /tests/fixtures/NeuralAmpModelerPlugin/

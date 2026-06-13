@@ -1148,13 +1148,13 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 100 (FUTURO)
 
-> Faltam épicos 17 e 18 (completos)
-> Análise cuidadosa dos goldens, inclusive comparando com a última versão boa do NAM-rs e o estado do NAMcore. Não há nada mais urgente que restaurar a plena confiança neles.
-O foco é total em assegurar a absoluta qualidade dos golden tests - que tiveram sua confiabilidade abalada nos últimos commits.
-Concentre totalmente sua atenção em analisar a sua situação e como torna-los absolutamente impecáveis e precisos. Idealmente, ao final, nem precisaramos tocar mais neles no longo prazo - talvez apenas para acrescentar novos modelo ou arquiteturas.
-Vamos seguir pelo caminho seguro, buscando fontes sabidamente confiáveis.
-> Assegurar resultados impecáveis: `utils/tests-cargo.sh` e `utils/tests-long.sh`.
-> Liberar v2.1 (A2 Beta) pós aprovação: `utils/build-release.sh`, `utils/run-standalone.sh` e `~/.clap/nam-rs.clap`.
+- Faltam épicos 17 e 18 (completos)
+- O foco é total em assegurar a absoluta qualidade dos golden tests - que tiveram sua confiabilidade abalada nos últimos commits. Nada é mais urgente porque eles são os últimos bastiões de garantia de qualidade.
+Concentre totalmente sua atenção em analisar a sua situação atual e como torna-los absolutamente impecáveis e precisos. Idealmente, ao final, nem precisaremos tocar mais neles no longo prazo - talvez apenas para acrescentar novos modelo ou arquiteturas que surgirem.
+Vamos seguir pelo caminho seguro, buscando fontes sabidamente confiáveis: Os diretórios `/github.com/NeuralAmpModelerCore_v0.5.3` e `github.com/nam-rs_v2.0.0` são clones shallow de versões que sabidamente estavam em estado perfeito. Use-as como base de comparação.
+
+- Assegurar resultados impecáveis: `utils/tests-cargo.sh` e `utils/tests-long.sh`.
+- Liberar v2.1 (A2 Beta) pós aprovação: `utils/build-release.sh`, `utils/run-standalone.sh` e `~/.clap/nam-rs.clap`.
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
 - **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
