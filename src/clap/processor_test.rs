@@ -3,54 +3,14 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::clap::NamClapPlugin;
-
-    use crate::common::params::NamPluginParams;
-    use crate::dsp::pipeline::test_util::infra::{ALLOC_COUNT, TrackingGuard};
-    use clack_extensions::state::PluginState;
+    use crate::clap::test_util::{self, MonoTestBuffers, StereoTestBuffers};
     use clack_host::prelude::*;
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
-    #[allow(dead_code)]
-    struct TestHostShared;
-    impl<'a> SharedHandler<'a> for TestHostShared {
-        fn request_restart(&self) {}
-        fn request_process(&self) {}
-        fn request_callback(&self) {}
-    }
-
-    #[allow(dead_code)]
-    struct TestHost;
-    impl HostHandlers for TestHost {
-        type Shared<'a> = TestHostShared;
-        type MainThread<'a> = ();
-        type AudioProcessor<'a> = ();
-    }
-
     #[test]
     fn test_zero_alloc_process_bypass() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new(
-            "NAM-rs-Test",
-            "NAM",
-            "https://github.com/fabiohl/nam-rs",
-            "0.1.0",
-        )
-        .expect("Failed to create HostInfo");
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -61,94 +21,60 @@ mod tests {
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        let mut input_l = [0.1f32; 512];
-        let mut input_r = [0.2f32; 512];
-        let mut output_l = [0.0f32; 512];
-        let mut output_r = [0.0f32; 512];
+        let mut bufs = StereoTestBuffers::new(512, 0.1, 0.2);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-
-        let mut input_channels = [input_l.as_mut_slice(), input_r.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
 
-        let output_channels = [output_l.as_mut_slice(), output_r.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
 
         let input_events =
             InputEvents::from_buffer::<[clack_host::events::event_types::NoteOnEvent; 0]>(&[]);
-        let mut output_events_buffer = EventBuffer::new();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
-        let _guard = TrackingGuard::new();
-        let before = ALLOC_COUNT.load(Ordering::Relaxed);
-
-        started_processor
-            .process(
-                &input_audio,
-                &mut output_audio,
-                &input_events,
-                &mut output_events,
-                None,
-                None,
-            )
-            .expect("Failure in process()");
-
-        let after = ALLOC_COUNT.load(Ordering::Relaxed);
-        let diff = after - before;
-
-        println!(
-            "[CLAP Zero-Alloc Test] Allocations detected in process(): {}",
-            diff
-        );
-        assert_eq!(
-            diff, 0,
-            "Allocations detected in CLAP hot-path via clack-host!"
-        );
+        test_util::assert_zero_alloc("CLAP process bypass", || {
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Failure in process()");
+        });
 
         for i in 0..512 {
             assert!(
-                (output_l[i] - input_l[i]).abs() < 1e-4,
+                (bufs.out_l[i] - bufs.in_l[i]).abs() < 1e-4,
                 "Bypass failure Channel L sample {}: {} vs {}",
                 i,
-                output_l[i],
-                input_l[i]
+                bufs.out_l[i],
+                bufs.in_l[i]
             );
             assert!(
-                (output_r[i] - input_l[i]).abs() < 1e-4,
+                (bufs.out_r[i] - bufs.in_l[i]).abs() < 1e-4,
                 "Bypass failure Channel R sample {}: {} vs {}",
                 i,
-                output_r[i],
-                input_l[i]
+                bufs.out_r[i],
+                bufs.in_l[i]
             );
         }
     }
 
     #[test]
     fn test_irregular_block_sizes_stress() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -159,7 +85,6 @@ mod tests {
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        // Expanded sequence as per Task 3.2.2
         let sizes = [1, 7, 17, 33, 53, 128, 256, 512, 1, 1];
 
         let mut input_ports = AudioPorts::with_capacity(2, 1);
@@ -217,26 +142,7 @@ mod tests {
 
     #[test]
     fn test_model_switching_stress() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("State extension not found");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -247,15 +153,7 @@ mod tests {
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_dir.push("tests/fixtures/models");
@@ -268,35 +166,16 @@ mod tests {
         ];
 
         let n = 64;
-        let mut in_l = vec![0.0f32; n];
-        let mut in_r = vec![0.0f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
+        let mut bufs = StereoTestBuffers::new(n, 0.0, 0.0);
+        let state_ext = test_util::get_state_ext(&mut plugin_instance);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_events_buffer = EventBuffer::new();
-
-        // 1000 process() cycles
         for i in 0..1000 {
-            // Model switch every 50 cycles
             if i % 50 == 0 {
                 let model_name = models[(i / 50) % models.len()];
                 let mut path = model_dir.clone();
                 path.push(model_name);
 
-                let params = NamPluginParams {
-                    model_path: Some(path),
-                    input_gain_db: 0.0,
-                    output_gain_db: 0.0,
-                    gate_threshold_db: -70.0,
-                    model_basename: None,
-                    model_search_paths: Vec::new(),
-                    bypass: false,
-                    adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-                    slim_override: Default::default(),
-                    ir_path: None,
-                };
+                let params = test_util::make_default_params(Some(path));
                 let state_bytes = serde_json::to_vec(&params).unwrap();
                 let mut handle = plugin_instance.plugin_handle();
                 let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
@@ -312,65 +191,41 @@ mod tests {
                 );
             }
 
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
 
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
-            // Zero-Alloc check during model switch (on hot-path)
-            let _guard = TrackingGuard::new();
-            let before = ALLOC_COUNT.load(Ordering::Relaxed);
-
-            started_processor
-                .process(
-                    &input_audio,
-                    &mut output_audio,
-                    &input_events,
-                    &mut output_events,
-                    None,
-                    None,
-                )
-                .unwrap();
-
-            let after = ALLOC_COUNT.load(Ordering::Relaxed);
-            assert_eq!(
-                after - before,
-                0,
-                "Allocation detected in process() during cycle {}",
-                i
-            );
+            test_util::assert_zero_alloc(&format!("process cycle {}", i), || {
+                started_processor
+                    .process(
+                        &input_audio,
+                        &mut output_audio,
+                        &input_events,
+                        &mut output_events,
+                        None,
+                        None,
+                    )
+                    .unwrap();
+            });
         }
     }
 
     #[test]
     fn test_parameter_modulation_stress() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -382,18 +237,12 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         let n = 512;
-        let mut in_l = vec![0.5f32; n];
-        let mut in_r = vec![0.5f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
-
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
+        let mut bufs = StereoTestBuffers::new(n, 0.5, 0.5);
 
         // Pre-warm the resampler with the DC signal to avoid step response ringing
         {
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
@@ -403,7 +252,7 @@ mod tests {
             let mut out_l_pre = vec![0.0f32; n];
             let mut out_r_pre = vec![0.0f32; n];
             let output_channels = [out_l_pre.as_mut_slice(), out_r_pre.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
@@ -431,10 +280,8 @@ mod tests {
         use clack_common::events::event_types::ParamValueEvent;
         use clack_common::utils::{ClapId, Cookie};
 
-        // Creates intense modulation events (one per sample)
         let mut input_events_buffer = EventBuffer::new();
         for i in 0..n {
-            // Modulates gain from -20dB to +20dB linearly
             let val = -20.0 + (i as f32 / n as f32) * 40.0;
             let event = ParamValueEvent::new(
                 i as u32,
@@ -448,47 +295,38 @@ mod tests {
 
         let input_events = InputEvents::from_buffer(&input_events_buffer);
 
-        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
 
-        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
 
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-        let _guard = TrackingGuard::new();
-        let before = ALLOC_COUNT.load(Ordering::Relaxed);
+        test_util::assert_zero_alloc("intense modulation", || {
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Failure in process() with intense modulation");
+        });
 
-        started_processor
-            .process(
-                &input_audio,
-                &mut output_audio,
-                &input_events,
-                &mut output_events,
-                None,
-                None,
-            )
-            .expect("Failure in process() with intense modulation");
-
-        let after = ALLOC_COUNT.load(Ordering::Relaxed);
-        assert_eq!(
-            after - before,
-            0,
-            "Allocation detected in process() during modulation"
-        );
-
-        // "Zipper Noise" check (continuity)
         for i in 1..n {
-            let diff_l = (out_l[i] - out_l[i - 1]).abs();
-            let diff_r = (out_r[i] - out_r[i - 1]).abs();
+            let diff_l = (bufs.out_l[i] - bufs.out_l[i - 1]).abs();
+            let diff_r = (bufs.out_r[i] - bufs.out_r[i - 1]).abs();
             assert!(
                 diff_l < 0.05,
                 "Possible zipper noise detected in channel L sample {}",
@@ -507,21 +345,7 @@ mod tests {
     fn test_gui_extension_x11() {
         use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGui};
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let gui_ext = plugin_instance
             .plugin_handle()
@@ -588,21 +412,7 @@ mod tests {
 
     #[test]
     fn test_ui_telemetry() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -610,43 +420,13 @@ mod tests {
             max_frames_count: 512,
         };
 
-        // 1. Check basename update on load_model
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_dir.push("tests/fixtures/models/BossWN-nano.nam");
 
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("PluginState extension not found");
+        let params = test_util::make_default_params(Some(model_dir));
+        test_util::load_plugin_state(&mut plugin_instance, &params);
 
-        let params = NamPluginParams {
-            model_path: Some(model_dir),
-            input_gain_db: 0.0,
-            output_gain_db: 0.0,
-            gate_threshold_db: -70.0,
-            model_basename: None,
-            model_search_paths: Vec::new(),
-            bypass: false,
-            adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-            slim_override: Default::default(),
-            ir_path: None,
-        };
-        let state_bytes = serde_json::to_vec(&params).unwrap();
-        let mut handle = plugin_instance.plugin_handle();
-        state_ext
-            .load(&mut handle, &mut state_bytes.as_slice())
-            .expect("Failed to load state");
-
-        // Obtain shared instance
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         // Check model name basename was updated
         {
@@ -654,11 +434,9 @@ mod tests {
             assert_eq!(*name_guard, "BossWN-nano.nam");
         }
 
-        // 2. Activate and process to check peak and clipping telemetry
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        // Let's reset the peaks
         shared
             .rt_to_ui
             .ui_peak_l
@@ -670,32 +448,24 @@ mod tests {
         shared.rt_to_ui.ui_clipped.store(false, Ordering::Relaxed);
 
         let n = 512;
-        // Signal with peaks at 1.5 (left - clipping) and 0.5 (right)
-        let mut in_l = vec![1.5f32; n];
-        let mut in_r = vec![0.5f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
+        let mut bufs = StereoTestBuffers::new(n, 1.5, 0.5);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_events_buffer = EventBuffer::new();
-
-        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
 
-        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
 
         let input_events = InputEvents::empty();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
         started_processor
             .process(
@@ -724,21 +494,7 @@ mod tests {
 
     #[test]
     fn test_monophonic_parameter_modulation() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -750,24 +506,16 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         let n = 512;
-        // Constant 0.5 signal (DC)
-        let mut in_l = vec![0.5f32; n];
-        let mut in_r = vec![0.5f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
-
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
+        let mut bufs = StereoTestBuffers::new(n, 0.5, 0.5);
 
         use crate::clap::extensions::params::{PARAM_GATE_THRESH, PARAM_INPUT_GAIN};
         use clack_common::events::Pckn;
         use clack_common::events::event_types::{ParamModEvent, ParamValueEvent};
         use clack_common::utils::{ClapId, Cookie};
 
-        // 1. Base case: No modulation, base gain = 0dB. Output should equal input (or close).
+        // 1. Base case: No modulation, base gain = 0dB.
         {
             let mut input_events_buffer = EventBuffer::new();
-            // Ensures base input gain is at 0.0 dB
             let val_event = ParamValueEvent::new(
                 0,
                 ClapId::new(PARAM_INPUT_GAIN),
@@ -777,7 +525,6 @@ mod tests {
             );
             input_events_buffer.push(&val_event);
 
-            // Ensures gate threshold is at -90.0 dB (fully open)
             let gate_event = ParamValueEvent::new(
                 0,
                 ClapId::new(PARAM_GATE_THRESH),
@@ -788,16 +535,16 @@ mod tests {
             input_events_buffer.push(&gate_event);
 
             let input_events = InputEvents::from_buffer(&input_events_buffer);
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
@@ -816,12 +563,7 @@ mod tests {
                 )
                 .expect("Failure in base case process");
 
-            // The output should have processed the signal (since no model is loaded, it bypasses the pipeline's
-            // internal model, but applies the gains).
-            // We expect the gain to be 1.0 (0dB) after smoother convergence.
-            // The smoother converges from the initial value 1.0 over the first samples.
-            // So all samples should be approximately 0.5.
-            for (i, &val) in out_l.iter().enumerate().take(n) {
+            for (i, &val) in bufs.out_l.iter().enumerate().take(n) {
                 assert!(
                     (val - 0.5).abs() < 1e-4,
                     "Base case L sample {}: {}",
@@ -831,11 +573,9 @@ mod tests {
             }
         }
 
-        // 2. Modulation: Apply +6dB modulation to Input Gain.
-        // The smoother should ramp up towards 6dB (linear ~1.995).
+        // 2. Modulation
         {
             let mut input_events_buffer = EventBuffer::new();
-            // Modulates input gain by +6.0 dB at sample 0
             let mod_event = ParamModEvent::new(
                 0,
                 ClapId::new(PARAM_INPUT_GAIN),
@@ -846,16 +586,16 @@ mod tests {
             input_events_buffer.push(&mod_event);
 
             let input_events = InputEvents::from_buffer(&input_events_buffer);
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
@@ -863,38 +603,27 @@ mod tests {
             let mut output_events_buffer = EventBuffer::new();
             let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-            let _guard = TrackingGuard::new();
-            let before = ALLOC_COUNT.load(Ordering::Relaxed);
+            test_util::assert_zero_alloc("process with modulation", || {
+                started_processor
+                    .process(
+                        &input_audio,
+                        &mut output_audio,
+                        &input_events,
+                        &mut output_events,
+                        None,
+                        None,
+                    )
+                    .expect("Failure in process with modulation");
+            });
 
-            started_processor
-                .process(
-                    &input_audio,
-                    &mut output_audio,
-                    &input_events,
-                    &mut output_events,
-                    None,
-                    None,
-                )
-                .expect("Failure in process with modulation");
-
-            let after = ALLOC_COUNT.load(Ordering::Relaxed);
-            assert_eq!(
-                after - before,
-                0,
-                "Allocation detected in process with modulation"
-            );
-
-            // The smoother should converge towards 1.995 * 0.5 = 0.9975.
-            // At the end of the block (sample 511), the value should have increased significantly relative to 0.5.
             assert!(
-                out_l[n - 1] > 0.6,
+                bufs.out_l[n - 1] > 0.6,
                 "Modulation not applied, last sample: {}",
-                out_l[n - 1]
+                bufs.out_l[n - 1]
             );
         }
 
-        // 3. Gate Modulation: Modulate gate threshold to an extremely high value, like +90dB (making -90 + 90 = 0dB),
-        // the -6dB input signal will be below the threshold (0dB), silencing the output.
+        // 3. Gate Modulation
         {
             let mut input_events_buffer = EventBuffer::new();
             // Modulates gate threshold by +120dB (bringing effective threshold to +30dB)
@@ -908,19 +637,18 @@ mod tests {
             input_events_buffer.push(&mod_event);
 
             let input_events = InputEvents::from_buffer(&input_events_buffer);
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            // Resets output to ensure no leftover values
             let mut out_l_gate = vec![0.0f32; n];
             let mut out_r_gate = vec![0.0f32; n];
             let output_channels = [out_l_gate.as_mut_slice(), out_r_gate.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
@@ -947,8 +675,8 @@ mod tests {
                 out_l_gate.fill(0.0);
                 out_r_gate.fill(0.0);
 
-                let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-                let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+                let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                     latency: 0,
                     channels: AudioPortBufferType::f32_input_only(
                         input_channels.iter_mut().map(InputChannel::constant),
@@ -956,7 +684,7 @@ mod tests {
                 }]);
 
                 let output_channels = [out_l_gate.as_mut_slice(), out_r_gate.as_mut_slice()];
-                let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                     latency: 0,
                     channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
                 }]);
@@ -989,59 +717,15 @@ mod tests {
     #[cfg(feature = "heap-audit")]
     #[test]
     fn test_heap_audit_trigger() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        // Loads the A2 model to trigger the simulated allocation increment during process()
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_dir.push("tests/fixtures/models/mock_a2.nam");
 
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("PluginState extension not found");
+        let params = test_util::make_default_params(Some(model_dir));
+        test_util::load_plugin_state(&mut plugin_instance, &params);
 
-        let params = NamPluginParams {
-            model_path: Some(model_dir),
-            input_gain_db: 0.0,
-            output_gain_db: 0.0,
-            gate_threshold_db: -70.0,
-            model_basename: None,
-            model_search_paths: Vec::new(),
-            bypass: false,
-            adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-            slim_override: Default::default(),
-            ir_path: None,
-        };
-        let state_bytes = serde_json::to_vec(&params).unwrap();
-        let mut handle = plugin_instance.plugin_handle();
-        state_ext
-            .load(&mut handle, &mut state_bytes.as_slice())
-            .expect("Failed to load state");
-
-        // Obtain shared instance
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         // The JSON state loaded successfully (counter increments), but the DSP model built to None
         assert_eq!(
@@ -1060,31 +744,24 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         let n = 512;
-        let mut in_l = vec![0.1f32; n];
-        let mut in_r = vec![0.2f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
+        let mut bufs = StereoTestBuffers::new(n, 0.1, 0.2);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_events_buffer = EventBuffer::new();
-
-        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
 
-        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
 
         let input_events = InputEvents::empty();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
         // Activates heap audit for the current thread
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
@@ -1140,31 +817,9 @@ mod tests {
 
     #[test]
     fn test_gui_load_error_null_byte_safety() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let path_with_null = PathBuf::from("invalid_model\0name.nam");
         if let Ok(mut pending_guard) = shared.cold.ui_pending_model.lock() {
@@ -1197,31 +852,9 @@ mod tests {
         use clack_extensions::preset_discovery::prelude::*;
         use std::ffi::CString;
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let preset_load_ext = plugin_instance
             .plugin_handle()
@@ -1262,31 +895,9 @@ mod tests {
     fn test_render_mode_transitions() {
         use clack_extensions::render::{PluginRender, RenderMode};
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let render_ext = plugin_instance
             .plugin_handle()
@@ -1327,25 +938,21 @@ mod tests {
         );
 
         let n = 512;
-        let mut in_l = vec![0.1f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut input_ports = AudioPorts::with_capacity(1, 1);
-        let mut output_ports = AudioPorts::with_capacity(1, 1);
-        let mut input_channels = [in_l.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut bufs = MonoTestBuffers::new(n, 0.1);
+        let mut input_channels = [bufs.in_buf.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
-        let output_channels = [out_l.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_buf.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
         let input_events = InputEvents::empty();
-        let mut output_events_buffer = EventBuffer::new();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
         // Process a few blocks in offline mode — degradation flags should stay clear
         for _ in 0..4 {
@@ -1404,7 +1011,7 @@ mod tests {
 
         // Verify output is not silent (bypass off by default)
         assert!(
-            out_l.iter().any(|s| *s != 0.0),
+            bufs.out_buf.iter().any(|s| *s != 0.0),
             "Output should not be silent (bypass is off)"
         );
     }
@@ -1413,31 +1020,9 @@ mod tests {
     fn test_offline_mode_forces_adaptive_off() {
         use clack_extensions::render::{PluginRender, RenderMode};
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let render_ext = plugin_instance
             .plugin_handle()
@@ -1460,32 +1045,27 @@ mod tests {
         );
         shared.bump_generation();
 
-        // Let's set some dummy active channels to make sure the dsp path is executed
         shared
             .rt_to_ui
             .active_channel_count
             .store(1, Ordering::Relaxed);
 
         let n = 512;
-        let mut in_l = vec![0.1f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut input_ports = AudioPorts::with_capacity(1, 1);
-        let mut output_ports = AudioPorts::with_capacity(1, 1);
-        let mut input_channels = [in_l.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut bufs = MonoTestBuffers::new(n, 0.1);
+        let mut input_channels = [bufs.in_buf.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
-        let output_channels = [out_l.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_buf.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
         let input_events = InputEvents::empty();
-        let mut output_events_buffer = EventBuffer::new();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
         // Process a block to apply/sync parameter changes
         started_processor
@@ -1602,48 +1182,22 @@ mod tests {
 
     #[test]
     fn test_state_context_roundtrip() {
-        use clack_extensions::state::PluginState;
         use clack_extensions::state_context::{PluginStateContext, StateContextType};
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("PluginState extension not found");
-
+        let state_ext = test_util::get_state_ext(&mut plugin_instance);
         let state_ctx_ext = plugin_instance
             .plugin_handle()
             .get_extension::<PluginStateContext>()
             .expect("PluginStateContext extension not found");
 
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let mut model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_path.push("tests/fixtures/models/BossWN-nano.nam");
 
+        use crate::common::params::NamPluginParams;
         let params = NamPluginParams {
             model_path: Some(model_path.clone()),
             input_gain_db: 3.5,
@@ -1765,21 +1319,7 @@ mod tests {
     #[cfg(not(feature = "stereo"))]
     #[test]
     fn test_mono_clipping_detection() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
-
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -1787,16 +1327,7 @@ mod tests {
             max_frames_count: 512,
         };
 
-        // Obtain shared instance
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
@@ -1950,26 +1481,9 @@ mod tests {
     #[test]
     #[ignore]
     fn test_gc_stress_1000_swaps() {
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("State extension not found");
+        let state_ext = test_util::get_state_ext(&mut plugin_instance);
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -1991,25 +1505,9 @@ mod tests {
         ];
 
         let n = 64;
-        let mut in_l = vec![0.0f32; n];
-        let mut in_r = vec![0.0f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
+        let mut bufs = StereoTestBuffers::new(n, 0.0, 0.0);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_events_buffer = EventBuffer::new();
-
-        // Obtain shared instance
-        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
-        let shared_ptr = unsafe {
-            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
-                raw_plugin_ptr,
-                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
-            )
-            .expect("Failed to get plugin wrapper")
-        };
-        let shared = unsafe { &*shared_ptr };
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         let rt_status = &shared.cold.rt_status;
 
@@ -2022,18 +1520,7 @@ mod tests {
             let mut path = model_dir.clone();
             path.push(model_name);
 
-            let params = NamPluginParams {
-                model_path: Some(path),
-                input_gain_db: 0.0,
-                output_gain_db: 0.0,
-                gate_threshold_db: -70.0,
-                model_basename: None,
-                model_search_paths: Vec::new(),
-                bypass: false,
-                adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-                slim_override: Default::default(),
-                ir_path: None,
-            };
+            let params = test_util::make_default_params(Some(path));
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
             let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
@@ -2048,22 +1535,22 @@ mod tests {
                 model_name
             );
 
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
 
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
             started_processor
                 .process(
@@ -2092,18 +1579,7 @@ mod tests {
             let mut path = model_dir.clone();
             path.push(model_name);
 
-            let params = NamPluginParams {
-                model_path: Some(path),
-                input_gain_db: 0.0,
-                output_gain_db: 0.0,
-                gate_threshold_db: -70.0,
-                model_basename: None,
-                model_search_paths: Vec::new(),
-                bypass: false,
-                adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-                slim_override: Default::default(),
-                ir_path: None,
-            };
+            let params = test_util::make_default_params(Some(path));
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
             let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
@@ -2118,22 +1594,22 @@ mod tests {
                 model_name
             );
 
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
 
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
             started_processor
                 .process(
@@ -2157,20 +1633,20 @@ mod tests {
         plugin_instance.call_on_main_thread_callback();
         // One process cycle to move items from the parking lot (16 items) to the now empty SPSC channel
         {
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
             started_processor
                 .process(
                     &input_audio,
@@ -2195,18 +1671,7 @@ mod tests {
             let mut path = model_dir.clone();
             path.push(model_name);
 
-            let params = NamPluginParams {
-                model_path: Some(path),
-                input_gain_db: 0.0,
-                output_gain_db: 0.0,
-                gate_threshold_db: -70.0,
-                model_basename: None,
-                model_search_paths: Vec::new(),
-                bypass: false,
-                adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-                slim_override: Default::default(),
-                ir_path: None,
-            };
+            let params = test_util::make_default_params(Some(path));
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
             let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
@@ -2221,22 +1686,22 @@ mod tests {
                 model_name
             );
 
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
 
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
 
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
             started_processor
                 .process(
@@ -2258,20 +1723,20 @@ mod tests {
         // Final cleanup and drainage of any leftover items
         for _ in 0..5 {
             plugin_instance.call_on_main_thread_callback();
-            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_input_only(
                     input_channels.iter_mut().map(InputChannel::constant),
                 ),
             }]);
-            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
             }]);
             let input_events = InputEvents::empty();
-            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
             started_processor
                 .process(
                     &input_audio,
@@ -2297,44 +1762,10 @@ mod tests {
         let mut model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_path.push("tests/fixtures/models/BossWN-nano.nam");
 
-        let entry = PluginEntry::load_from_clack::<
-            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
-        >(c"/test")
-        .expect("Failed to load PluginEntry");
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
-        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
-
-        let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
-            |_| (),
-            &entry,
-            c"br.eti.fabiolima.nam-rs",
-            &host_info,
-        )
-        .expect("Failed to instantiate plugin");
-
-        let state_ext = plugin_instance
-            .plugin_handle()
-            .get_extension::<PluginState>()
-            .expect("State extension not found");
-
-        let params = NamPluginParams {
-            model_path: Some(model_path.clone()),
-            input_gain_db: 0.0,
-            output_gain_db: 0.0,
-            gate_threshold_db: -70.0,
-            model_basename: None,
-            model_search_paths: Vec::new(),
-            bypass: false,
-            adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
-            slim_override: Default::default(),
-            ir_path: None,
-        };
-        let state_bytes = serde_json::to_vec(&params).unwrap();
-        let mut handle = plugin_instance.plugin_handle();
-        state_ext
-            .load(&mut handle, &mut state_bytes.as_slice())
-            .expect("Failed to load state");
+        let params = test_util::make_default_params(Some(model_path.clone()));
+        test_util::load_plugin_state(&mut plugin_instance, &params);
 
         plugin_instance.call_on_main_thread_callback();
 
@@ -2348,31 +1779,24 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         let n = 512;
-        let mut in_l = vec![0.5f32; n];
-        let mut in_r = vec![0.5f32; n];
-        let mut out_l = vec![0.0f32; n];
-        let mut out_r = vec![0.0f32; n];
+        let mut bufs = StereoTestBuffers::new(n, 0.5, 0.5);
 
-        let mut input_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_ports = AudioPorts::with_capacity(2, 1);
-        let mut output_events_buffer = EventBuffer::new();
-
-        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
-        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+        let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+        let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_input_only(
                 input_channels.iter_mut().map(InputChannel::constant),
             ),
         }]);
 
-        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
-        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+        let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+        let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
             latency: 0,
             channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
         }]);
 
         let input_events = InputEvents::empty();
-        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+        let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
         started_processor
             .process(
@@ -2386,7 +1810,7 @@ mod tests {
             .unwrap();
 
         // ── Verify CLAP output is a processed signal (not silence, not passthrough) ──
-        let clap_rms: f32 = (out_l.iter().map(|x| x * x).sum::<f32>() / n as f32).sqrt();
+        let clap_rms: f32 = (bufs.out_l.iter().map(|x| x * x).sum::<f32>() / n as f32).sqrt();
         assert!(
             clap_rms > 0.001,
             "CLAP output RMS too low ({:.6}) — model may not have been loaded",

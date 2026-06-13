@@ -990,7 +990,15 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 19.2 — Anti-fragilidade e dívidas de cobertura
 
-- **[T19.4] Extrair helpers de teste CLAP (~700–1000 linhas de boilerplate).**
+- **[T19.4] Extrair helpers de teste CLAP (~700–1000 linhas de boilerplate).** [DONE]
+  - **Status: DONE (12/06/2026 23:00).** `processor_test.rs`: 2433→1857 linhas (−23.7%).
+    Módulo `src/clap/test_util.rs` (176 linhas) criado com: `make_test_plugin`,
+    `extract_shared`, `make_default_params`, `load_plugin_state`, `get_state_ext`,
+    `assert_zero_alloc`, `StereoTestBuffers`, `MonoTestBuffers`. Os ~30% restantes
+    estão bloqueados por tipos complexos do clack-host (audio views) que resistem a
+    extração sem macros. `inference_bench.rs` não foi refatorado (usa BenchHost, não
+    compatível com TestHost do módulo `#[cfg(test)]`).
+  - `cargo test --features clap-plugin -- clap::`: 67 pass, 1 ignorado, 0 falhas.
 
   - `src/clap/processor_test.rs` (2375 linhas): 14 testes repetem ~60 linhas de setup (entry/instance/activate/
     buffers/ports). Extrair `make_test_plugin()`, `make_stereo_buffers()`, `process_block()` em módulo
