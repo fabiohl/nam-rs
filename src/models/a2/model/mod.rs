@@ -488,5 +488,6 @@ impl<const CH: usize> Default for WaveNetA2<CH> {
 
 mod set_weights;
 
+#[cfg(test)]
 #[path = "../model_test.rs"]
 mod tests;

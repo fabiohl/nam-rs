@@ -18,6 +18,8 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
+use nam_rs::models::lstm::lstm_weight_count;
+
 struct LstmVariant {
     num_layers: usize,
     hidden_size: usize,
@@ -70,17 +72,8 @@ const VARIANTS: &[LstmVariant] = &[
     },
 ];
 
-fn total_weights(num_layers: usize, hidden_size: usize) -> usize {
-    let h = hidden_size;
-    if num_layers == 1 {
-        4 * h * (1 + h) + 7 * h + 1
-    } else {
-        12 * h * h + 17 * h + 1
-    }
-}
-
 fn generate_weights(num_layers: usize, hidden_size: usize) -> Vec<f32> {
-    let n = total_weights(num_layers, hidden_size);
+    let n = lstm_weight_count(num_layers, hidden_size);
     let mut weights = Vec::with_capacity(n);
     let mut val = 0.05f32;
     let mut current_input_size = 1usize;

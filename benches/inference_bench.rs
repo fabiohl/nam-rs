@@ -39,6 +39,7 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::NamModel;
+use nam_rs::models::lstm::lstm_weight_count;
 use nam_rs::models::wavenet::dense::DenseLayer;
 
 /// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
@@ -53,7 +54,8 @@ fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
 /// Creates a synthetic `NamModelData` struct configured as an LSTM network.
 /// Allows testing different topologies (layers and hidden size) without depending
 /// on external files, easing raw performance validation of the inference engine.
-fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -> NamModelData {
+fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
+    let total_weights = lstm_weight_count(num_layers, hidden_size);
     NamModelData {
         version: Some("0.5.4".to_string()),
         architecture: "LSTM".to_string(),
@@ -114,7 +116,7 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
 /// LSTMs are known for their high sequential computational load,
 /// making them the ideal stress test to verify feedback loop latency.
 fn bench_lstm_2x16_process(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16, 3345);
+    let data = make_lstm_data(2, 16);
     let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
@@ -133,7 +135,7 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
 /// This benchmark validates the performance gain achieved with "T3: Fused Gates",
 /// where the 4 LSTM gates are computed simultaneously in AVX2 registers.
 fn bench_lstm_1x8_comparison(c: &mut Criterion) {
-    let data = make_lstm_data(1, 8, 345);
+    let data = make_lstm_data(1, 8);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 1x8 benchmark");
     let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 1x8 benchmark");
     model_simd.prewarm(1024);
@@ -164,7 +166,7 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
 
 /// Comparative Benchmark (T15): LSTM 2x16 Scalar vs SIMD (Fused Gates T3).
 fn bench_lstm_2x16_comparison(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16, 3345);
+    let data = make_lstm_data(2, 16);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x16 benchmark");
     let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 2x16 benchmark");
     model_simd.prewarm(1024);
@@ -291,7 +293,7 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
 /// Unlike WaveNet, the LSTM is purely sequential (sample by sample),
 /// so per-sample overhead tends to be more constant regardless of block size.
 fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16, 3345);
+    let data = make_lstm_data(2, 16);
     let mut model = build_model(&data).expect("Dispatcher failed");
     model.prewarm(2048);
     for &size in &[32, 128, 256, 512] {
@@ -735,7 +737,7 @@ fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
 }
 
 fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16, 3345);
+    let data = make_lstm_data(2, 16);
     c.bench_function("Prewarm_LSTM_2x16_2048samp", |b| {
         b.iter_with_setup(
             || build_model(&data).expect("Dispatcher failed"),
@@ -779,7 +781,7 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
 
 #[cfg(feature = "long_bench")]
 fn bench_lstm_long_run(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16, 3345);
+    let data = make_lstm_data(2, 16);
     let mut model = build_model(&data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
@@ -819,7 +821,7 @@ fn bench_resampler_long_run(c: &mut Criterion) {
 }
 
 fn bench_lstm_1x40_process(c: &mut Criterion) {
-    let data = make_lstm_data(1, 40, 6841);
+    let data = make_lstm_data(1, 40);
     let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
@@ -834,7 +836,7 @@ fn bench_lstm_1x40_process(c: &mut Criterion) {
 }
 
 fn bench_lstm_2x24_process(c: &mut Criterion) {
-    let data = make_lstm_data(2, 24, 7321);
+    let data = make_lstm_data(2, 24);
     let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
@@ -849,7 +851,7 @@ fn bench_lstm_2x24_process(c: &mut Criterion) {
 }
 
 fn bench_lstm_1x40_comparison(c: &mut Criterion) {
-    let data = make_lstm_data(1, 40, 6841);
+    let data = make_lstm_data(1, 40);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 1x40 benchmark");
     let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 1x40 benchmark");
     model_simd.prewarm(1024);
@@ -876,7 +878,7 @@ fn bench_lstm_1x40_comparison(c: &mut Criterion) {
 }
 
 fn bench_lstm_2x24_comparison(c: &mut Criterion) {
-    let data = make_lstm_data(2, 24, 7321);
+    let data = make_lstm_data(2, 24);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x24 benchmark");
     let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 2x24 benchmark");
     model_simd.prewarm(1024);

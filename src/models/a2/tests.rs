@@ -11,22 +11,9 @@
 mod tests_a2_real {
     use crate::models::NamModel;
     use crate::models::a2::WaveNetA2;
-    use crate::models::a2::params::A2_KERNEL_SIZES;
+    use crate::models::a2::a2_weight_count;
 
     // ─── Weight helpers ─────────────────────────────────────────────────────
-
-    /// Computes the total weight count for a given CH.
-    const fn expected_weight_count<const CH: usize>() -> usize {
-        let mut total = CH; // rechannel
-        let mut i = 0;
-        while i < 23 {
-            let k = A2_KERNEL_SIZES[i];
-            total += CH * CH * k + CH + CH + CH * CH + CH;
-            i += 1;
-        }
-        total += 16 * CH + 2; // head + [bias, head_scale]
-        total
-    }
 
     /// Generates a deterministic weight stream of length `n`.
     fn make_weights(n: usize, seed: u32) -> Vec<f32> {
@@ -74,7 +61,7 @@ mod tests_a2_real {
     #[test]
     fn test_a2_lite_via_nam_model_process() {
         let mut model = WaveNetA2::<3>::new();
-        let weights = make_weights(expected_weight_count::<3>(), 42);
+        let weights = make_weights(a2_weight_count::<3>(), 42);
         model
             .set_weights(&weights)
             .expect("A2-Lite set_weights failed");
@@ -101,7 +88,7 @@ mod tests_a2_real {
     #[test]
     fn test_a2_full_via_nam_model_process() {
         let mut model = WaveNetA2::<8>::new();
-        let weights = make_weights(expected_weight_count::<8>(), 77);
+        let weights = make_weights(a2_weight_count::<8>(), 77);
         model
             .set_weights(&weights)
             .expect("A2-Full set_weights failed");
@@ -159,7 +146,7 @@ mod tests_a2_real {
     #[test]
     fn test_a2_reset_determinism() {
         let mut model = WaveNetA2::<3>::new();
-        let weights = make_weights(expected_weight_count::<3>(), 123);
+        let weights = make_weights(a2_weight_count::<3>(), 123);
         model.set_weights(&weights).expect("set_weights failed");
         model.prewarm();
 

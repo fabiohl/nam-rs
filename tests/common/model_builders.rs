@@ -7,7 +7,7 @@
 //! `soak_test.rs` and `wavenet_prewarm_edge.rs`.
 
 use nam_rs::math::common::{AlignedVec, SimdMathConfig};
-use nam_rs::models::a2::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2};
+use nam_rs::models::a2::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
 use nam_rs::models::wavenet::{
     Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
     WaveNetModel,
@@ -342,22 +342,9 @@ pub fn a2_rf() -> usize {
     rf + (A2_HEAD_KERNEL_SIZE - 1)
 }
 
-/// Computes total A2 weight count for a given CH (3 = Lite, 8 = Full).
-pub const fn a2_total_weights<const CH: usize>() -> usize {
-    let mut total = CH;
-    let mut layer_idx = 0;
-    while layer_idx < 23 {
-        let k = A2_KERNEL_SIZES[layer_idx];
-        total += CH * CH * k + CH + CH + CH * CH + CH;
-        layer_idx += 1;
-    }
-    total += 16 * CH + 2;
-    total
-}
-
 /// Assembles synthetic A2 weight stream with exact count.
 pub fn a2_synth_weights<const CH: usize>(weight_val: f32) -> Vec<f32> {
-    let num_weights = a2_total_weights::<CH>();
+    let num_weights = a2_weight_count::<CH>();
     let mut w = Vec::with_capacity(num_weights);
 
     w.extend(std::iter::repeat_n(weight_val, CH));

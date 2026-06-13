@@ -38,6 +38,28 @@ pub use params::{
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
 };
 
+/// Total weight count for WaveNetA2<CH>.
+///
+/// Formula: `rechannel(ch) + Σ(kernel sizes: ch²·k + ch + ch + ch² + ch) + head(16·ch + 2)`.
+/// This is the single canonical source — topology changes require updates here only.
+pub const fn a2_weight_count<const CH: usize>() -> usize {
+    let mut total = CH; // rechannel_w
+    let mut i = 0;
+    while i < A2_NUM_LAYERS {
+        let k = params::A2_KERNEL_SIZES[i];
+        total += CH * CH * k; // conv_w
+        total += CH; // conv_b
+        total += CH; // mixin_w
+        total += CH * CH; // l1x1_w
+        total += CH; // l1x1_b
+        i += 1;
+    }
+    total += A2_HEAD_KERNEL_SIZE * CH; // head_w
+    total += 1; // head_b
+    total += 1; // head_scale
+    total
+}
+
 use crate::models::NamModel;
 use crate::models::sealed;
 

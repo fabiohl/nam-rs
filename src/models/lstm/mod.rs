@@ -36,6 +36,23 @@ pub use layer::LstmLayer;
 pub use model1::LstmModel1;
 pub use model2::LstmModel2;
 
+/// Total serialized weight count for LSTM (num_layers, hidden_size).
+///
+/// This is the single canonical source for LSTM weight arithmetic.
+/// Derived from the per-layer layout: 4 gates × (input+hidden)×hidden weights,
+/// 4×hidden biases, hidden-state preload, cell-state preload.
+///
+/// 1-layer: 4h² + 11h + 1
+/// 2-layer: 12h² + 17h + 1
+pub const fn lstm_weight_count(num_layers: usize, hidden_size: usize) -> usize {
+    let h = hidden_size;
+    if num_layers == 1 {
+        4 * h * (1 + h) + 7 * h + 1
+    } else {
+        12 * h * h + 17 * h + 1
+    }
+}
+
 // =============================================================================
 // Type Aliases — Common NAM LSTM Profiles
 // =============================================================================

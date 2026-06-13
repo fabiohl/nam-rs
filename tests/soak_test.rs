@@ -15,7 +15,7 @@ use nam_rs::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
-use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2};
+use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
 use nam_rs::models::lstm::*;
 
 mod common;
@@ -409,22 +409,9 @@ fn test_gate_fsm_endurance() {
 // A2 Architecture Soak Tests — WaveNetA2 numerical stability
 // =============================================================================
 
-/// Computes total A2 weight count.
-const fn a2_total_weights<const CH: usize>() -> usize {
-    let mut total = CH;
-    let mut i = 0;
-    while i < 23 {
-        let k = A2_KERNEL_SIZES[i];
-        total += CH * CH * k + CH + CH + CH * CH + CH;
-        i += 1;
-    }
-    total += 16 * CH + 2;
-    total
-}
-
 /// Assembles synthetic A2 weight stream.
 fn a2_synth_weights<const CH: usize>(weight_val: f32) -> Vec<f32> {
-    let num = a2_total_weights::<CH>();
+    let num = a2_weight_count::<CH>();
     let mut w = Vec::with_capacity(num);
     w.extend(std::iter::repeat_n(weight_val, CH));
     for &k in &A2_KERNEL_SIZES {

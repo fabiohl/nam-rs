@@ -15,7 +15,7 @@ use nam_rs::loader::nam_json::{
 use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
-    A2_VALID_CHANNELS,
+    A2_VALID_CHANNELS, a2_weight_count,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -769,7 +769,7 @@ fn test_a2_full_fixture_loads() {
         .expect("Failed to parse wavenet_a2_full.nam");
 
     assert_eq!(data.architecture, "WaveNet");
-    assert_eq!(data.weights.len(), 12146);
+    assert_eq!(data.weights.len(), a2_weight_count::<8>());
 
     let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
     assert_eq!(ch, 8);
@@ -784,7 +784,7 @@ fn test_a2_lite_fixture_loads() {
         .expect("Failed to parse wavenet_a2_lite.nam");
 
     assert_eq!(data.architecture, "WaveNet");
-    assert_eq!(data.weights.len(), 1871);
+    assert_eq!(data.weights.len(), a2_weight_count::<3>());
 
     let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
     assert_eq!(ch, 3);

@@ -1005,7 +1005,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `#[cfg(test)]` compartilhado (reutilizável também pelo `inference_bench.rs:1091-1247`).
   - **Critério de aceite:** nenhum teste perde cobertura; arquivo reduzido em ≥ 30%.
 
-- **[T19.5] Substituir números mágicos acoplados a internals por constantes derivadas.**
+- **[T19.5] Substituir números mágicos acoplados a internals por constantes derivadas.** [DONE]
 
   - Contagens de pesos A2 (1871/12146) duplicadas em `src/models/a2/model_test.rs:185,197` e
     `tests/a2_loader.rs:772,787` → expor `expected_weight_count()` `pub(crate)` ou constantes nomeadas com a

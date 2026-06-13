@@ -2,6 +2,18 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::models::a2::a2_weight_count;
+
+/// Generates a deterministic weight stream of length `n`.
+fn make_test_weights(n: usize, seed: u32) -> Vec<f32> {
+    let mut state = seed;
+    let mut v = Vec::with_capacity(n);
+    for _ in 0..n {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        v.push(((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25);
+    }
+    v
+}
 
 #[test]
 fn test_wavenet_a2_receptive_field_ch3() {
@@ -151,37 +163,10 @@ fn test_wavenet_a2_const_receptive_field_matches_runtime() {
 
 // ── set_weights tests (T1.6) ───────────────────────────────────────
 
-#[allow(dead_code)]
-fn expected_weight_count(ch: usize) -> usize {
-    let mut count = ch; // rechannel_w
-    for &k in &A2_KERNEL_SIZES {
-        count += ch * ch * k; // conv_w
-        count += ch; // conv_b
-        count += ch; // mixin_w
-        count += ch * ch; // l1x1_w
-        count += ch; // l1x1_b
-    }
-    count += A2_HEAD_KERNEL_SIZE * ch; // head_w
-    count += 1; // head_b
-    count += 1; // head_scale
-    count
-}
-
-#[allow(dead_code)]
-fn make_test_weights(n: usize, seed: u32) -> Vec<f32> {
-    let mut v = Vec::with_capacity(n);
-    let mut state = seed;
-    for _ in 0..n {
-        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-        v.push(((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25);
-    }
-    v
-}
-
 #[test]
 fn test_set_weights_exact_count_ch3() {
     let mut model = WaveNetA2::<3>::new();
-    let count = expected_weight_count(3);
+    let count = a2_weight_count::<3>();
     assert_eq!(count, 1871); // sanity-check known count
     let weights = make_test_weights(count, 42);
     assert!(model.set_weights(&weights).is_ok());
@@ -193,7 +178,7 @@ fn test_set_weights_exact_count_ch3() {
 #[test]
 fn test_set_weights_exact_count_ch8() {
     let mut model = WaveNetA2::<8>::new();
-    let count = expected_weight_count(8);
+    let count = a2_weight_count::<8>();
     assert_eq!(count, 12146); // sanity-check known count
     let weights = make_test_weights(count, 77);
     assert!(model.set_weights(&weights).is_ok());
@@ -203,9 +188,9 @@ fn test_set_weights_exact_count_ch8() {
 }
 
 #[test]
-fn test_set_weights_too_few_ch3() {
+fn test_set_weights_wrong_count_ch3_too_few() {
     let mut model = WaveNetA2::<3>::new();
-    let count = expected_weight_count(3);
+    let count = a2_weight_count::<3>();
     let weights = make_test_weights(count - 10, 42);
     let err = model.set_weights(&weights);
     assert!(err.is_err(), "expected error with too few weights");
@@ -220,7 +205,7 @@ fn test_set_weights_too_few_ch3() {
 #[test]
 fn test_set_weights_too_many_ch3() {
     let mut model = WaveNetA2::<3>::new();
-    let count = expected_weight_count(3);
+    let count = a2_weight_count::<3>();
     let weights = make_test_weights(count + 5, 42);
     let err = model.set_weights(&weights);
     assert!(err.is_err(), "expected error with too many weights");
@@ -234,7 +219,7 @@ fn test_set_weights_too_many_ch3() {
 #[test]
 fn test_set_weights_too_few_ch8() {
     let mut model = WaveNetA2::<8>::new();
-    let count = expected_weight_count(8);
+    let count = a2_weight_count::<8>();
     let weights = make_test_weights(count - 1, 99);
     let err = model.set_weights(&weights);
     assert!(err.is_err(), "expected error with too few weights");
@@ -248,7 +233,7 @@ fn test_set_weights_too_few_ch8() {
 #[test]
 fn test_set_weights_too_many_ch8() {
     let mut model = WaveNetA2::<8>::new();
-    let count = expected_weight_count(8);
+    let count = a2_weight_count::<8>();
     let weights = make_test_weights(count + 1, 88);
     let err = model.set_weights(&weights);
     assert!(err.is_err(), "expected error with too many weights");
@@ -263,7 +248,7 @@ fn test_set_weights_too_many_ch8() {
 fn test_set_weights_has_weights_flag_ch3() {
     let mut model = WaveNetA2::<3>::new();
     assert!(!model.has_weights());
-    let count = expected_weight_count(3);
+    let count = a2_weight_count::<3>();
     let weights = make_test_weights(count, 123);
     model.set_weights(&weights).unwrap();
     assert!(model.has_weights());
@@ -274,7 +259,7 @@ fn test_set_weights_has_weights_flag_ch3() {
 #[test]
 fn test_set_weights_process_smoke_ch3() {
     let mut model = WaveNetA2::<3>::new();
-    let count = expected_weight_count(3);
+    let count = a2_weight_count::<3>();
     let weights = make_test_weights(count, 42);
     model.set_weights(&weights).unwrap();
     model.prewarm();
@@ -294,7 +279,7 @@ fn test_set_weights_process_smoke_ch3() {
 #[test]
 fn test_set_weights_process_smoke_ch8() {
     let mut model = WaveNetA2::<8>::new();
-    let count = expected_weight_count(8);
+    let count = a2_weight_count::<8>();
     let weights = make_test_weights(count, 77);
     model.set_weights(&weights).unwrap();
     model.prewarm();
