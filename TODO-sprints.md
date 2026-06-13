@@ -964,7 +964,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Ordem de execução:** pode ser feito **já** — a suíte ficará vermelha até T16.1/T16.4 fecharem, o que é o
     comportamento honesto desejado.
 
-- **[T19.2] Consertar `test_gc_stress_1000_swaps` (causa-raiz da Phase 4 FAILED).** **[verificado-na-fonte]**
+- **[T19.2] Consertar `test_gc_stress_1000_swaps` (causa-raiz da Phase 4 FAILED).** **[verificado-na-fonte]** [DONE] [12/06/2026 22:25]
 
   - O teste (`src/clap/processor_test.rs:1918`) assume 3 itens de GC por swap, mas `mock_a2.nam` (1 peso,
     deliberadamente incompleto) falha no build → swaps com 2 itens → 42 itens em 17 swaps < 48 → flag de
@@ -1073,12 +1073,12 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 > juntos (mexem na mesma contabilidade); (4) cada épico fechado dispara sua tarefa de doc (Épico 20).
 
 ---
-
 ---
 
 ## ÉPICO 100 (FUTURO)
 
 > Liberar v2.1 (A2 Beta)
+T19.3 Na hora de dormir
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
   $ utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh

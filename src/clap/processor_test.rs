@@ -240,12 +240,22 @@ mod tests {
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
-            min_frames_count: 512,
-            max_frames_count: 512,
+            min_frames_count: 64,
+            max_frames_count: 64,
         };
 
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Failed to get plugin wrapper")
+        };
+        let shared = unsafe { &*shared_ptr };
 
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_dir.push("tests/fixtures/models");
@@ -254,10 +264,10 @@ mod tests {
             "BossWN-nano.nam",
             "BossWN-feather.nam",
             "BossWN-standard.nam",
-            "mock_a2.nam",
+            "wavenet_a2_lite.nam",
         ];
 
-        let n = 512;
+        let n = 64;
         let mut in_l = vec![0.0f32; n];
         let mut in_r = vec![0.0f32; n];
         let mut out_l = vec![0.0f32; n];
@@ -289,9 +299,17 @@ mod tests {
                 };
                 let state_bytes = serde_json::to_vec(&params).unwrap();
                 let mut handle = plugin_instance.plugin_handle();
+                let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
                 state_ext
                     .load(&mut handle, &mut state_bytes.as_slice())
                     .expect("Failed to load state");
+
+                let current_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
+                assert!(
+                    current_counter > prev_counter,
+                    "Model load counter did not increment after loading {}, indicating the load failed.",
+                    model_name
+                );
             }
 
             let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
@@ -1014,12 +1032,6 @@ mod tests {
             .load(&mut handle, &mut state_bytes.as_slice())
             .expect("Failed to load state");
 
-        let audio_config = PluginAudioConfiguration {
-            sample_rate: 48000.0,
-            min_frames_count: 512,
-            max_frames_count: 512,
-        };
-
         // Obtain shared instance
         let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
         let shared_ptr = unsafe {
@@ -1030,6 +1042,19 @@ mod tests {
             .expect("Failed to get plugin wrapper")
         };
         let shared = unsafe { &*shared_ptr };
+
+        // The JSON state loaded successfully (counter increments), but the DSP model built to None
+        assert_eq!(
+            shared.cold.model_load_counter.load(Ordering::Relaxed),
+            1,
+            "JSON state load should succeed"
+        );
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 512,
+            max_frames_count: 512,
+        };
 
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
@@ -1101,6 +1126,15 @@ mod tests {
                 .cold
                 .rt_status
                 .check_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
+        );
+
+        // Verifies the RT_STATUS_MODEL_LOAD_FAILED flag was set (as mock_a2.nam fails to build)
+        assert!(
+            shared
+                .cold
+                .rt_status
+                .check_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED),
+            "Expected RT_STATUS_MODEL_LOAD_FAILED to be set because mock_a2.nam fails to build"
         );
     }
 
@@ -1939,8 +1973,8 @@ mod tests {
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
-            min_frames_count: 512,
-            max_frames_count: 512,
+            min_frames_count: 64,
+            max_frames_count: 64,
         };
 
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
@@ -1953,10 +1987,10 @@ mod tests {
             "BossWN-nano.nam",
             "BossWN-feather.nam",
             "BossWN-standard.nam",
-            "mock_a2.nam",
+            "wavenet_a2_lite.nam",
         ];
 
-        let n = 512;
+        let n = 64;
         let mut in_l = vec![0.0f32; n];
         let mut in_r = vec![0.0f32; n];
         let mut out_l = vec![0.0f32; n];
@@ -2002,9 +2036,17 @@ mod tests {
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
+            let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
             state_ext
                 .load(&mut handle, &mut state_bytes.as_slice())
                 .expect("Failed to load state");
+
+            let current_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
+            assert!(
+                current_counter > prev_counter,
+                "Model load counter did not increment after loading {}, indicating the load failed.",
+                model_name
+            );
 
             let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
             let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
@@ -2064,9 +2106,17 @@ mod tests {
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
+            let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
             state_ext
                 .load(&mut handle, &mut state_bytes.as_slice())
                 .expect("Failed to load state");
+
+            let current_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
+            assert!(
+                current_counter > prev_counter,
+                "Model load counter did not increment after loading {}, indicating the load failed.",
+                model_name
+            );
 
             let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
             let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
@@ -2159,9 +2209,17 @@ mod tests {
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
+            let prev_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
             state_ext
                 .load(&mut handle, &mut state_bytes.as_slice())
                 .expect("Failed to load state");
+
+            let current_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
+            assert!(
+                current_counter > prev_counter,
+                "Model load counter did not increment after loading {}, indicating the load failed.",
+                model_name
+            );
 
             let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
             let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
