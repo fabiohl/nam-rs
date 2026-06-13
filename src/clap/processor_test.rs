@@ -1554,11 +1554,12 @@ mod tests {
 
         let rt_status = &shared.cold.rt_status;
 
-        // Perform exactly 16 model swaps first to test limit of SPSC + parking lot (48 slots).
-        // 1st swap pushes 2 items (new_model_r + old_resampler, since model_l is initially None).
-        // Subsequent swaps push 3 items each (old_model_l + new_model_r + old_resampler).
-        // Total items pushed for 16 swaps (i = 0 to 15) is exactly 2 + 15 * 3 = 47 items.
-        for i in 0..16 {
+        // Perform exactly 24 model swaps first to test limit of SPSC + parking lot (48 slots).
+        // CLAP is mono so model_r is never built (T17.4); cold_load_model no longer discards it.
+        // 1st swap pushes 1 item (old_resampler, since model_l is initially None and model_r is None).
+        // Subsequent swaps push 2 items each (old_model_l + old_resampler).
+        // Total items pushed for 24 swaps (i = 0 to 23) is exactly 1 + 23 * 2 = 47 items.
+        for i in 0..24 {
             let model_name = models[i % models.len()];
             let mut path = model_dir.clone();
             path.push(model_name);
@@ -1613,12 +1614,12 @@ mod tests {
             "GC overflow flag was set prematurely!"
         );
 
-        // Perform 1 more swap (the 17th swap). This pushes 3 more items.
-        // Total items pushed = 47 + 3 = 50 items.
-        // This exceeds SPSC + parking lot limit of 48 items, so 2 items must spill into the overflow buffer,
+        // Perform 1 more swap (the 25th swap). This pushes 2 more items.
+        // Total items pushed = 47 + 2 = 49 items.
+        // This exceeds SPSC + parking lot limit of 48 items, so 1 item must spill into the overflow buffer,
         // which triggers the RT_STATUS_GC_OVERFLOW flag.
         {
-            let model_name = models[16 % models.len()];
+            let model_name = models[24 % models.len()];
             let mut path = model_dir.clone();
             path.push(model_name);
 
@@ -1672,9 +1673,9 @@ mod tests {
             "Expected GC overflow flag to be set after exceeding SPSC + parking lot capacity"
         );
 
-        // Perform a complete drain to reclaim all 50 items from the channels and overflow buffer
+        // Perform a complete drain to reclaim all 49 items from the channels and overflow buffer
         plugin_instance.call_on_main_thread_callback();
-        // One process cycle to move items from the parking lot (16 items) to the now empty SPSC channel
+        // One process cycle to move items from the parking lot to the now empty SPSC channel
         {
             let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
             let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
@@ -1706,10 +1707,10 @@ mod tests {
         // Clear the overflow flag manually now that the system is fully drained and clean
         rt_status.clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
 
-        // Perform the remaining 983 model swaps to reach 1000 model swaps in total.
-        // We will drain every 10 swaps (30 items), which fits comfortably within the 32-capacity SPSC channel,
+        // Perform the remaining 975 model swaps to reach 1000 model swaps in total.
+        // We will drain every 10 swaps (20 items), which fits comfortably within the 32-capacity SPSC channel,
         // so no overflow should occur during this loop.
-        for i in 17..1000 {
+        for i in 25..1000 {
             let model_name = models[i % models.len()];
             let mut path = model_dir.clone();
             path.push(model_name);
@@ -1868,7 +1869,7 @@ mod tests {
         // ── Load model directly and verify calibration multipliers ──
         use crate::models::NamModel;
         let sys = crate::common::diagnostics::SystemSnapshot::capture();
-        let model_pair = crate::loader::build::load_and_build_model(&model_path, &sys)
+        let model_pair = crate::loader::build::load_and_build_model(&model_path, &sys, true)
             .expect("Failed to load model directly");
         let mut direct_model = model_pair.model_l.expect("Failed to build direct model");
         let input_mult = model_pair.input_mult_adj;

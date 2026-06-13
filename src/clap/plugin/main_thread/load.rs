@@ -25,7 +25,7 @@ impl<'a> NamClapMainThread<'a> {
     /// only on the main thread. The loaded model is sent to the RT thread
     /// via a lock-free channel.
     pub fn load_model(&mut self, path: &Path) -> Result<(), Box<NamDiagnostic>> {
-        let model_pair = load_and_build_model(path, &self.sys).map_err(|e| {
+        let model_pair = load_and_build_model(path, &self.sys, false).map_err(|e| {
             Box::new(
                 NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
                     .message(format!("Failed to load model: {:?}", path))

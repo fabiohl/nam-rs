@@ -136,7 +136,7 @@ fn main() -> anyhow::Result<()> {
     }
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
-        match loader::load_and_build_model(path, &sys) {
+        match loader::load_and_build_model(path, &sys, true) {
             Ok(loaded) => {
                 // Populate active model path and sample rate
                 if let Ok(mut name) = nam_rs::diagnostics::ACTIVE_MODEL_NAME.write() {

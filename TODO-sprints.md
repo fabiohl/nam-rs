@@ -911,7 +911,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** carregar `.nam` inválido via GUI/estado exibe erro (ui_load_error) e **não** troca o
     modelo ativo; teste cobrindo o caminho.
 
-- **[T17.4] Parar de construir + prewarm o `model_r` descartado no CLAP (e no caminho mono em geral).**
+- **[T17.4] Parar de construir + prewarm o `model_r` descartado no CLAP (e no caminho mono em geral).** **[DONE] [13/06/2026 15:48]**
 
   - O loader sempre constrói e preaquece **dois** modelos (`build.rs:155-177`); o CLAP (mono por política) joga
     `model_r` direto no GC (`src/clap/processor/events.rs:175-177`) — dobro do tempo de load e um item de GC

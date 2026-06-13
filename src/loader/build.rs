@@ -14,8 +14,15 @@ use super::loaded_model_pair::{
     MAX_MODEL_BYTES,
 };
 
-/// Loads and builds a pair of models (L+R) from a file.
-pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result<LoadedModelPair> {
+/// Loads and builds a model pair from a file.
+///
+/// When `stereo` is `false` only the left-channel model is built;
+/// `model_r` is left as `None`, avoiding wasted build time and prewarming.
+pub fn load_and_build_model(
+    path: &Path,
+    sys: &SystemSnapshot,
+    stereo: bool,
+) -> anyhow::Result<LoadedModelPair> {
     let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let ext_lower = ext.to_lowercase();
@@ -164,17 +171,22 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         m.prewarm(m.prewarm_samples().max(2048));
     }
 
-    let mut model_r = dispatcher::build_model(&model_data)
-        .inspect_err(|e| {
-            NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
-                .message(format!("Failed to build model (R): {}", path_str))
-                .param("detail", e.to_string())
-                .emit();
-        })
-        .ok();
-    if let Some(ref mut m) = model_r {
-        m.prewarm(m.prewarm_samples().max(2048));
-    }
+    let model_r = if stereo {
+        let mut m = dispatcher::build_model(&model_data)
+            .inspect_err(|e| {
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                    .message(format!("Failed to build model (R): {}", path_str))
+                    .param("detail", e.to_string())
+                    .emit();
+            })
+            .ok();
+        if let Some(ref mut model) = m {
+            model.prewarm(model.prewarm_samples().max(2048));
+        }
+        m
+    } else {
+        None
+    };
 
     let architecture = model_data.architecture.clone();
     let topology = if architecture == "WaveNet" {
