@@ -48,7 +48,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                     "topology CH exceeds stack buffer (1024)"
                 );
             }
-            assert!(
+            debug_assert!(
                 num_frames * CH <= 1024,
                 "process_block_internal: num_frames*CH ({}) exceeds stack buffer (1024)",
                 num_frames * CH,

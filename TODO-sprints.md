@@ -901,7 +901,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 18.1 — Eliminação de pânico e SIMD faltante
 
-- **[T18.1] `assert!` de runtime no hot-path do WaveNet.** **[alta prioridade, 1 linha]**
+- **[T18.1] `assert!` de runtime no hot-path do WaveNet.** **[alta prioridade, 1 linha]** [DONE] [12/06/2026 22:06]
 
   - `src/models/wavenet/layer.rs:51-55`: `assert!` ativo em release, alcançável no callback RT (pânico derruba o
     host de áudio). A invariante já é garantida por `const { assert!(…) }` em compile-time → rebaixar para
