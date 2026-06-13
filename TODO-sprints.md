@@ -851,7 +851,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** nenhum teste golden com SKIP silencioso; catálogo completo (Standard/Lite/Feather/
     Nano × v1/v2) com golden versionado.
 
-### Sprint 16.2 — A2 live parity: escala e thresholds
+### Sprint 16.2 — A2 live parity: escala e thresholds [DONE]
 
 - **[T16.4] [DONE] Tratar a falha live do A2-Lite (MSE ~10², SNR 51–57 dB) e o bug upstream do `a2_fast.cpp`.** [DONE]
   - Implementado 2026-06-13:
@@ -1111,6 +1111,19 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 > juntos (mexem na mesma contabilidade); (4) cada épico fechado dispara sua tarefa de doc (Épico 20).
 
 ---
+
+---
+
+## ÉPICO 21 — WaveNet Lite: Investigação de Paridade (CH=12) 🕵️ [Lane A]
+
+> Continuação do Épico 16 (Cascata de Heads). Durante a revisão do Épico 16, identificou-se que o modelo Lite (CH=12, HEAD=6) obteve melhora significativa (−12.8 dB → 0.9 dB), porém não atingiu a meta de paridade (SNR ≥ 40 dB) alcançada pelos modelos Standard, Feather e Nano.
+
+### Sprint 21.1 — Investigação e Correção da Divergência
+
+- **[T21.1] Isolar o gap estrutural/numérico no WaveNet Lite (CH=12).**
+  - **Contexto:** Variantes com CH=16, CH=8 e CH=4 já atingem > 50 dB SNR. O caso CH=12 apresenta um SNR de apenas 0.9 dB, sugerindo falhas no manuseio de canais que não são potências de 2, paddings SIMD (`head_rechannel`), ou leitura/distribuição de pesos para esta topologia específica.
+  - **Ação:** Realizar inspeção camada-a-camada (C++ vs Rust) e corrigir as premissas estruturais do layout de memória.
+  - **Critério de aceite:** Modelos Lite atingem ≥ 40 dB SNR contra o C++. Restaurar limiares originais em `cpp_parity.rs` e `validation.rs`. Regenerar golden vectors (`tests/golden_vectors.rs`) para confirmar o reparo.
 
 ---
 
