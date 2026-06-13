@@ -954,7 +954,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 19 — Infra de Testes: Verdade e Velocidade 🧪 [Lane C — paralelo desde o dia 1]
 
-### Sprint 19.1 — Parar de mentir (correções da suíte longa)
+### Sprint 19.1 — Parar de mentir (correções da suíte longa) [DONE]
 
 - **[T19.1] Remover o `|| true` da Phase 3 do `utils/tests-long.sh`.** **[crítico, 1 linha]**  [DONE] [12/06/2026 22:13]
 
@@ -1015,11 +1015,6 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 - **[T19.7] Baseline tracking de benchmarks.** [CANCELADO]
 
-  - Phase 5 não compara com execuções anteriores — regressões de performance passam invisíveis. Adicionar
-    `--save-baseline` com data + comparação via `critcmp` (ou `--baseline previous`) e warning para regressão
-    > 5% no sumário do `tests-long.sh`.
-  - **Critério de aceite:** rodada N+1 acusa regressões da rodada N automaticamente.
-
 ---
 
 ## ÉPICO 20 — Documentação: Sincronização e Normatização 📚 [Lane C — fecha cada épico] [DONE 12/06/2026 22:42]
@@ -1076,8 +1071,9 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ## ÉPICO 100 (FUTURO)
 
-> Liberar v2.1 (A2 Beta)
 T19.3 Na hora de dormir
+E16-18
+> Liberar v2.1 (A2 Beta)
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
   $ utils/tests-long.sh utils/build-release.sh utils/run-standalone.sh
