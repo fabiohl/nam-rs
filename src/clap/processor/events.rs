@@ -175,6 +175,11 @@ impl<'a> NamClapProcessor<'a> {
         if let Some(model_r) = model_r {
             self.push_to_gc(GcItem::Model(model_r));
         }
+        if self.model_l.is_none() {
+            self.rt_status
+                .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
+        }
+
         let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
         self.push_to_gc(GcItem::Resampler(old_resampler));
 

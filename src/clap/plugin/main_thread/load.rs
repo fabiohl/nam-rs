@@ -33,6 +33,13 @@ impl<'a> NamClapMainThread<'a> {
             )
         })?;
 
+        if model_pair.model_l.is_none() {
+            return Err(Box::new(
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                    .message(format!("Failed to build model: {:?}", path)),
+            ));
+        }
+
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let model_rate = model_pair.sample_rate;

@@ -899,7 +899,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 17.2 — Carregamento de modelo: falha silenciosa e desperdício
 
-- **[T17.3] `load_model` CLAP retorna `Ok` com modelo morto (`model_l = None`).** **[verificado-na-fonte]**
+- **[T17.3] `load_model` CLAP retorna `Ok` com modelo morto (`model_l = None`).** **[verificado-na-fonte]** [DONE]
 
   - `src/loader/build.rs:155-162` converte erro de build em `.ok()` → `LoadedModelPair{model_l: None}`;
     `src/clap/plugin/main_thread/load.rs` não valida e publica o payload — o plugin fica **mudo sem feedback**
@@ -1156,11 +1156,11 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 ## ÉPICO 100 (FUTURO)
 
 - Faltam épicos 17 e 18 (completos)
-- O foco é total em assegurar a absoluta qualidade dos golden tests - que tiveram sua confiabilidade abalada nos últimos commits. Nada é mais urgente porque eles são os últimos bastiões de garantia de qualidade.
-Concentre totalmente sua atenção em analisar a sua situação atual e como torna-los absolutamente impecáveis e precisos. Idealmente, ao final, nem precisaremos tocar mais neles no longo prazo - talvez apenas para acrescentar novos modelo ou arquiteturas que surgirem.
-Vamos seguir pelo caminho seguro, buscando fontes sabidamente confiáveis: Os diretórios `/github.com/NeuralAmpModelerCore_v0.5.3` e `github.com/nam-rs_v2.0.0` são clones shallow de versões que sabidamente estavam em estado perfeito. Use-as como base de comparação.
-
+- Goldens
 - Assegurar resultados impecáveis: `utils/tests-cargo.sh` e `utils/tests-long.sh`.
+O foco total é analisar os resultados do comando `` e meticulosamente analisar melhorias para um motor de testes seguro, estável, agil e informativo para manter o manter o nam-rs sempre em guard rails seguros que permitam ele "voar alto" em seguraça e com agilidade.
+Importante destacar que o primeiro épico será destinado ao script em si e em sua infraestrutura.
+A correção dos problemas encontrados podem ficar para o(s) épico(s) seguinte(s).
 - Liberar v2.1 (A2 Beta) pós aprovação: `utils/build-release.sh`, `utils/run-standalone.sh` e `~/.clap/nam-rs.clap`.
 
 - **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.

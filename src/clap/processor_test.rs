@@ -727,11 +727,12 @@ mod tests {
 
         let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
-        // The JSON state loaded successfully (counter increments), but the DSP model built to None
+        // mock_a2.nam fails to build (model_l = None post-build).
+        // load_model now rejects this — counter stays at 0.
         assert_eq!(
             shared.cold.model_load_counter.load(Ordering::Relaxed),
-            1,
-            "JSON state load should succeed"
+            0,
+            "model_load_counter should not increment when model build fails"
         );
 
         let audio_config = PluginAudioConfiguration {
@@ -841,6 +842,36 @@ mod tests {
         let sanitized_err = err_str.replace('\0', " ");
         let msg = CString::new(sanitized_err);
         assert!(msg.is_ok(), "Sanitized CString creation should succeed");
+    }
+
+    /// T17.3 — Loading a .nam file that fails to build should:
+    /// 1. Show an error to the user (ui_load_error = true)
+    /// 2. NOT swap the active model (model_load_counter unchanged)
+    #[test]
+    fn test_gui_load_model_build_failed() {
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
+
+        let mut model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_path.push("tests/fixtures/models/mock_a2.nam");
+
+        if let Ok(mut pending_guard) = shared.cold.ui_pending_model.lock() {
+            *pending_guard = Some(model_path);
+        }
+        shared.cold.ui_loading.store(true, Ordering::Relaxed);
+
+        plugin_instance.call_on_main_thread_callback();
+
+        assert!(!shared.cold.ui_loading.load(Ordering::Relaxed));
+        assert!(
+            shared.cold.ui_load_error.load(Ordering::Relaxed),
+            "Expected ui_load_error to be set when model build fails"
+        );
+        assert_eq!(
+            shared.cold.model_load_counter.load(Ordering::Relaxed),
+            0,
+            "model_load_counter should not increment for failed model build"
+        );
     }
 
     // ---------------------------------------------------------------------------
