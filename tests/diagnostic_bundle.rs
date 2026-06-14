@@ -14,7 +14,6 @@ use std::sync::atomic::Ordering;
 
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-
 struct MockSnapshotProvider {
     model: Option<ModelInfo>,
     audio: AudioInfo,

@@ -182,7 +182,7 @@ testes que **já passaram** na fase 1.
 `test_mulberry32_parity_with_ts` e `test_mr_stft_parity_with_python` rodaram **38× cada**
 (76 execuções no total) — em uma máquina de 16 núcleos, em série.
 
-- [ ] **T1.3.1 — Mover os `#[test]` de paridade para um único binário dedicado.**
+- [x] **T1.3.1 — Mover os `#[test]` de paridade para um único binário dedicado.**
   Criar `tests/parity_primitives.rs` (ou similar) contendo **apenas** esses dois testes,
   e remover os `#[test]` de `tests/common/mushra_primitives.rs` e
   `tests/common/perceptual.rs` (mantendo as funções utilitárias reutilizáveis).
