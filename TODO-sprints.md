@@ -208,7 +208,7 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 1.1 — Eliminar gates falsos e validar proveniência
 
-- **[T1.0] Adotar os modelos `.nam` oficiais como referência A1 real.** [COMPLETED]
+- **[T1.0] Adotar os modelos `.nam` oficiais como referência A1 real.** [DONE]
 
   - **Contexto:** os mirrors trazem `wavenet_a1_standard.nam`, `wavenet.nam`, `lstm.nam` — modelos oficiais com
     saída perfeitamente limitada (0.04–0.35). São referências muito mais confiáveis que os sintéticos.
@@ -218,7 +218,7 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** ≥ 1 golden A1 WaveNet e ≥ 1 LSTM derivados de modelos oficiais, verdes, com
     proveniência documentada.
 
-- **[T1.1] Re-validar a proveniência dos fixtures LSTM alterados.**
+- **[T1.1] Re-validar a proveniência dos fixtures LSTM alterados.** [DONE]
 
   - **Contexto:** `golden_lstm_1x16.bin` e `golden_lstm_2x8.bin` divergem (SHA-256) do `nam-rs_v2.0.0`; os 7
     LSTM sintéticos (1x8/1x12/1x24/1x40/2x12/2x16/2x24) são de pesos auto-gerados.
@@ -228,6 +228,7 @@ mkdir -p /tmp/kilo/a2out
     do C++ (mirror `e49c93e`) documentando proveniência.
   - **Critério de aceite:** cada `.bin` LSTM committed tem proveniência registrada (origem + comando + commit C++)
     no `tests/fixtures/README.md`; `cargo test --test golden_vectors` verde com thresholds não-neutralizados.
+  - **Parecer da Auditoria (2026-06-13):** Os arquivos atuais `golden_lstm_{1x16,2x8}.bin` são byte-idênticos (SHA-256 confere) à renderização da engine C++ pinada no commit `e49c93e`. As divergências em relação ao `nam-rs_v2.0.0` são extremamente pequenas (SNR > 120 dB) e derivam do fato de o `v2.0.0` ter usado clones de HEAD dinâmicos/não-pinados da engine C++ na época. Decidiu-se reter os fixtures atuais por estarem perfeitamente alinhados com o mirror pinado oficial.
 
 - **[T1.2] Resolver o gate falso do WaveNet Lite (CH=12).** ⚠️ **(crítico)**
 

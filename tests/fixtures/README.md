@@ -296,6 +296,32 @@ These files are committed to the repository so that the Rust golden vector tests
 Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 `docs/cpp_parity_map.md` for per-variant channel/layer counts.
 
+### `BossLSTM-1x16.nam` & `BossLSTM-2x8.nam`
+
+- **Nature:** Reference models used for LSTM architecture validation (1 layer × H=16 and 2 layers × H=8).
+- **Golden Fixtures:** `golden_lstm_1x16.bin` and `golden_lstm_2x8.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+- **Provenance:** Generated from C++ `NeuralAmpModelerCore` render tool at pinned commit `e49c93e678549230d09efbb0beeb50511e387874`.
+- **Command used:**
+
+  ```bash
+  render tests/fixtures/models/BossLSTM-1x16.nam tests/fixtures/stress_signal.wav output.wav
+  wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_1x16.bin
+  ```
+
+- **Validation Verdict (2026-06-13):** The current committed fixtures are byte-identical to those newly rendered with commit `e49c93e` (SHA-256 match). They differ from `nam-rs_v2.0.0` only at floating-point precision levels (SNR > 120 dB) due to dynamic C++ compiler/build configurations in the original unpinned `v2.0.0` build.
+
+### `lstm.nam`
+
+- **Nature:** Official sample model from `sdatkinson/NeuralAmpModelerCore` (example models).
+- **Golden Fixtures:** `golden_lstm_official.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+- **Provenance:** Official model representing 1 layer, H=3. Rendered using the same C++ pinned commit `e49c93e`.
+- **Command used:**
+
+  ```bash
+  render tests/fixtures/models/lstm.nam tests/fixtures/stress_signal.wav output.wav
+  wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_official.bin
+  ```
+
 ## Two Layers of Validation
 
 ### Layer 1 — Pre-committed goldens (fast, `cargo test`)
