@@ -33,7 +33,7 @@
 #   (A2 goldens are cross-reference Rust↔C++ v0.5.3 via ESR/SNR scale-invariant
 #    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
-#   golden_cabsim_cpp_long.bin, golden_cabsim_cpp_stress.bin
+#   golden_cabsim_cpp_long.bin
 #   (C++ dsp::ImpulseResponse reference for cabsim cross-validation)
 #
 # These files must be committed so that the Rust golden vector tests
@@ -287,7 +287,6 @@ MODELS=(
     "lstm.nam:golden_lstm_official:LSTM Official:standard"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):v0.5.3"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):v0.5.3"
-    "linear_test.nam:golden_linear_test:Linear RF=4:standard"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
@@ -379,7 +378,7 @@ for entry in "${MODELS[@]}"; do
     [ -f "$FIXTURES_DIR/${golden_name}.bin" ] && echo "    ${golden_name}.bin"
 done
 for cpp_file in golden_cabsim_cpp_short.bin golden_cabsim_cpp_medium.bin \
-                 golden_cabsim_cpp_long.bin golden_cabsim_cpp_stress.bin; do
+                 golden_cabsim_cpp_long.bin; do
     [ -f "$FIXTURES_DIR/$cpp_file" ] && echo "    $cpp_file"
 done
 echo ""

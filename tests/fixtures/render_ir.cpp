@@ -153,9 +153,6 @@ int main() {
                fixtures_dir + "/golden_cabsim_cpp_medium.bin");
   run_scenario(31337, 8192, 16384, 200.0f, 2.0f,
                fixtures_dir + "/golden_cabsim_cpp_long.bin");
-  run_scenario(999983, 32768, 65536, 150.0f, 1.5f,
-               fixtures_dir + "/golden_cabsim_cpp_stress.bin");
-
   std::cout << "=== Done ===" << std::endl;
   return 0;
 }

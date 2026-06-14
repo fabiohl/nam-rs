@@ -367,7 +367,7 @@ mkdir -p /tmp/kilo/a2out
 > **Meta:** melhorias óbvias, seguras e imediatas que tornam a infra de goldens enxuta, auto-documentada e
 > resistente a regressões silenciosas — para "nunca mais precisar tocar nos goldens" salvo para adicionar modelos.
 
-### Sprint 3.1 — Remover peso morto e ambiguidades
+### Sprint 3.1 — Remover peso morto e ambiguidades ✅ [DONE]
 
 - [T3.1] Eliminar (ou conectar) os 72 fixtures `_v2_*k.bin` órfãos. ✅ [DONE]
   — 43 arquivos removidos via `git rm`, seção `[5a/6]` e sumário v2 removidos do `golden_gen_build.sh`, referências no `README.md` limpas.
@@ -385,7 +385,7 @@ mkdir -p /tmp/kilo/a2out
     `./tests/fixtures/golden_gen_build.sh` roda sem gerar artefatos inertes.
   - **Critério de aceite:** nenhum fixture committed que nenhum teste lê; `README.md` (seção de fixtures) reflete a realidade.
 
-- **[T3.2] Garantir "zero fixtures órfãos" (verificação final).**
+- **[T3.2] Garantir "zero fixtures órfãos" (verificação final).** ✅ **[DONE]**
   - **Contexto:** T2.6 já remove os `golden_wavenet_a2_*_self.bin`. Esta tarefa é a **varredura final** de
     qualquer `.bin` não referenciado.
   - **Ação (passo a passo):**

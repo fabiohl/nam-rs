@@ -78,7 +78,6 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 | `golden_cabsim_cpp_short.bin`    | N/A (Synthetic)           | C++    | Cabsim Short IR (64 samples) C++ reference                                                             |
 | `golden_cabsim_cpp_medium.bin`   | N/A (Synthetic)           | C++    | Cabsim Medium IR (512 samples) C++ reference                                                           |
 | `golden_cabsim_cpp_long.bin`     | N/A (Synthetic)           | C++    | Cabsim Long IR (8192 samples) C++ reference                                                            |
-| `golden_cabsim_cpp_stress.bin`   | N/A (Synthetic)           | C++    | Cabsim Stress IR (32768 samples) C++ reference                                                         |
 
 **v2 files** (`golden_<model_id>_<tone_id>_<sr>.bin`): Multi-sample-rate, multi-stimulus goldens using Stress Signal v2 (5 seconds, multi-component). Naming schema:
 
