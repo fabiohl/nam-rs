@@ -6,7 +6,7 @@
 //! These tests prove that the inference hot path (`process()`) and the full DSP
 //! pipeline (`capture_dsp_pipeline()`) perform zero heap allocations during
 //! real-time audio processing. The `CountingAllocator` tracks `malloc` calls
-//! per-thread via `libc::syscall(SYS_gettid)` and a `TrackingGuard` RAII gate.
+//! per-thread via thread-local storage (TLS) and a `TrackingGuard` RAII gate.
 //!
 //! When the `heap-audit` + `clap-plugin` features are active, the guard delegates
 //! to `nam_rs::common::alloc_audit::TrackingGuard`. Otherwise, it uses the local

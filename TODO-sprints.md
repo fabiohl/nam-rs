@@ -100,7 +100,7 @@ de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o me
     `thread_local!`; usar `try_with` e tratar o caso `AccessError` como "não rastreando"
     para evitar recursão/_panic_ durante a destruição de TLS.
 
-- [ ] **T1.1.2 — Adequar todos os consumidores de `TrackingGuard`/`ALLOC_COUNT`.**
+- [DONE] **T1.1.2 — Adequar todos os consumidores de `TrackingGuard`/`ALLOC_COUNT`.**
   Revisar usos em `src/clap/processor_test.rs:717-790`, `tests/zero_alloc_infer.rs`,
   `tests/*_heap_audit.rs`, `src/dsp/pipeline/*_test.rs` e demais, ajustando a leitura do
   contador para a API _thread-local_.
