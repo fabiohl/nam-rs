@@ -147,7 +147,7 @@ configurações — apenas para exercitar o delta real: módulos `clap::*`, os t
 (linhas 643-657, gated pela feature). Conclusão: a fase 3 paga o custo de rodar ~470
 testes que **já passaram** na fase 1.
 
-- [ ] **T1.2.1 — Restringir a fase 3 ao delta CLAP + heap-audit.**
+- [x] **T1.2.1 — Restringir a fase 3 ao delta CLAP + heap-audit.**
   Trocar o `cargo test --features clap-plugin,heap-audit` amplo por execução dirigida:
   testes da lib `clap::` + binários de integração relevantes
   (`a2_heap_audit`, `cabsim_heap_audit`, `resampler_heap_audit`, `diagnostic_bundle`

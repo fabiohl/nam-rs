@@ -43,12 +43,30 @@ fi
 # 3. CLAP integration and heap-audit tests
 echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditoria de heap...${NC}"
 set +e
-CLAP_PLUGIN_PATH="$CLAP_BIN" \
-  NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test
+test_exit_code=0
 
+# A) CLAP Library tests
+CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
+  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test --lib clap::
+test_exit_code=$((test_exit_code + $?))
 
-test_exit_code=$?
+# B) Targeted integration tests
+CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
+  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test \
+  --test a2_heap_audit \
+  --test cabsim_heap_audit \
+  --test resampler_heap_audit \
+  --test clap_lifecycle_test \
+  --test clap_state_migration \
+  --test clap_multi_instance
+test_exit_code=$((test_exit_code + $?))
+
+# C) Diagnostic bundle heap variant test
+CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
+  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test \
+  --test diagnostic_bundle heap_audit
+test_exit_code=$((test_exit_code + $?))
+
 set -e
 if [ $test_exit_code -ne 0 ]; then
     echo -e "\n${RED}${BOLD}================================================================${NC}"
