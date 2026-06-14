@@ -208,7 +208,7 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 1.1 — Eliminar gates falsos e validar proveniência
 
-- **[T1.0] (novo) Adotar os modelos `.nam` oficiais como referência A1 real.**
+- **[T1.0] Adotar os modelos `.nam` oficiais como referência A1 real.** [COMPLETED]
 
   - **Contexto:** os mirrors trazem `wavenet_a1_standard.nam`, `wavenet.nam`, `lstm.nam` — modelos oficiais com
     saída perfeitamente limitada (0.04–0.35). São referências muito mais confiáveis que os sintéticos.

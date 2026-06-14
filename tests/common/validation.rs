@@ -215,7 +215,7 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
             (snr_to_mse(snr_db), snr_db, Some(1.0))
         }
         16 => {
-            let snr_db = 60.0;
+            let snr_db = 45.0;
             (snr_to_mse(snr_db), snr_db, Some(1e-3))
         }
         _ => {

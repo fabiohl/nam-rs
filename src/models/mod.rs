@@ -82,6 +82,8 @@ pub enum StaticModel {
     WavenetA2Full(Box<a2::WaveNetA2<8>>),
     /// WaveNet A2 Lite (3 channels, real inference).
     WavenetA2Lite(Box<a2::WaveNetA2<3>>),
+    /// LSTM 1 Layer × 3 hidden units.
+    Lstm1x3(Box<lstm::Lstm1x3>),
     /// LSTM 1 Layer × 8 hidden units.
     Lstm1x8(Box<lstm::Lstm1x8>),
     /// LSTM 1 Layer × 12 hidden units.

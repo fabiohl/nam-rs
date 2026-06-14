@@ -11,6 +11,10 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<StaticModel>
         .context("LSTM geometry not detectable (check num_layers and hidden_size)")?;
 
     match (num_layers, hidden_size) {
+        (1, 3) => {
+            let model = build_lstm_1layer::<3, 4, 12>(data, hidden_size)?;
+            Ok(Box::new(StaticModel::Lstm1x3(Box::new(model))))
+        }
         (1, 8) => {
             let model = build_lstm_1layer::<8, 9, 32>(data, hidden_size)?;
             Ok(Box::new(StaticModel::Lstm1x8(Box::new(model))))

@@ -57,6 +57,9 @@ pub const fn lstm_weight_count(num_layers: usize, hidden_size: usize) -> usize {
 // Type Aliases — Common NAM LSTM Profiles
 // =============================================================================
 
+/// LSTM 1 layer × 3 hidden units (Official example model).
+pub type Lstm1x3 = LstmModel1<3, 4, 12>;
+
 /// LSTM 1 layer × 8 hidden units (Nano/Feather).
 pub type Lstm1x8 = LstmModel1<8, 9, 32>;
 /// LSTM 1 layer × 12 hidden units (Lite).

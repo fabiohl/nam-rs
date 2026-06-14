@@ -160,15 +160,14 @@ fi
 echo "  Render: $RENDER_BIN"
 
 # =============================================================================
-# Build Rust tools (gen_stress + wav_to_golden + gen_lstm_fixtures)
+# Build Rust tools (gen_stress + wav_to_golden)
 # =============================================================================
 echo ""
-echo "[3/6] Building Rust tools (gen_stress + wav_to_golden + gen_lstm_fixtures)..."
+echo "[3/6] Building Rust tools (gen_stress + wav_to_golden)..."
 
-cargo build --release --bin gen_stress --bin wav_to_golden --bin gen_lstm_fixtures 2>&1 | tail -3
+cargo build --release --bin gen_stress --bin wav_to_golden 2>&1 | tail -3
 GEN_STRESS="$PROJECT_ROOT/target/release/gen_stress"
 WAV_TO_GOLDEN="$PROJECT_ROOT/target/release/wav_to_golden"
-GEN_LSTM_FIXTURES="$PROJECT_ROOT/target/release/gen_lstm_fixtures"
 
 if [ ! -f "$GEN_STRESS" ]; then
     echo "ERROR: Failed to build gen_stress binary."
@@ -200,24 +199,16 @@ done
 echo ""
 echo "[5/6] Running render for each model..."
 
-# Generate synthetic LSTM fixtures if not already present
-"$GEN_LSTM_FIXTURES" "$MODELS_DIR"
-
 # Models: (.nam file, golden name, label)
 MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard"
     "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano"
-    "BossLSTM-1x8.nam:golden_lstm_1x8:LSTM 1×8"
-    "BossLSTM-1x12.nam:golden_lstm_1x12:LSTM 1×12"
+    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
     "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16"
-    "BossLSTM-1x24.nam:golden_lstm_1x24:LSTM 1×24"
-    "BossLSTM-1x40.nam:golden_lstm_1x40:LSTM 1×40"
     "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
-    "BossLSTM-2x12.nam:golden_lstm_2x12:LSTM 2×12"
-    "BossLSTM-2x16.nam:golden_lstm_2x16:LSTM 2×16"
-    "BossLSTM-2x24.nam:golden_lstm_2x24:LSTM 2×24"
+    "lstm.nam:golden_lstm_official:LSTM Official"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
     "linear_test.nam:golden_linear_test:Linear RF=4"

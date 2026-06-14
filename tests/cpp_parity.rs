@@ -465,44 +465,24 @@ fn live_cross_validation_lstm_2x8() {
 
 #[test]
 #[ignore]
-fn live_cross_validation_lstm_1x8() {
-    run_v1("BossLSTM-1x8.nam", "lstm_1x8", "Live LSTM 1×8");
+fn live_cross_validation_wavenet_a1_standard() {
+    run_v1(
+        "wavenet_a1_standard.nam",
+        "wavenet_a1_standard",
+        "Live WaveNet A1 Standard (Official)",
+    );
 }
+
+
 
 #[test]
 #[ignore]
-fn live_cross_validation_lstm_1x12() {
-    run_v1("BossLSTM-1x12.nam", "lstm_1x12", "Live LSTM 1×12");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_lstm_1x24() {
-    run_v1("BossLSTM-1x24.nam", "lstm_1x24", "Live LSTM 1×24");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_lstm_1x40() {
-    run_v1("BossLSTM-1x40.nam", "lstm_1x40", "Live LSTM 1×40");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_lstm_2x12() {
-    run_v1("BossLSTM-2x12.nam", "lstm_2x12", "Live LSTM 2×12");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_lstm_2x16() {
-    run_v1("BossLSTM-2x16.nam", "lstm_2x16", "Live LSTM 2×16");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_lstm_2x24() {
-    run_v1("BossLSTM-2x24.nam", "lstm_2x24", "Live LSTM 2×24");
+fn live_cross_validation_lstm_official() {
+    run_v1(
+        "lstm.nam",
+        "lstm_official",
+        "Live LSTM Official",
+    );
 }
 
 #[test]
@@ -573,44 +553,24 @@ fn live_cross_validation_v2_lstm_2x8() {
 
 #[test]
 #[ignore]
-fn live_cross_validation_v2_lstm_1x8() {
-    run_v2_multi_sr("BossLSTM-1x8.nam", "lstm_1x8", "Live LSTM 1×8 (v2)");
+fn live_cross_validation_v2_wavenet_a1_standard() {
+    run_v2_multi_sr(
+        "wavenet_a1_standard.nam",
+        "wavenet_a1_standard",
+        "Live WaveNet A1 Standard (Official) (v2)",
+    );
 }
+
+
 
 #[test]
 #[ignore]
-fn live_cross_validation_v2_lstm_1x12() {
-    run_v2_multi_sr("BossLSTM-1x12.nam", "lstm_1x12", "Live LSTM 1×12 (v2)");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_v2_lstm_1x24() {
-    run_v2_multi_sr("BossLSTM-1x24.nam", "lstm_1x24", "Live LSTM 1×24 (v2)");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_v2_lstm_1x40() {
-    run_v2_multi_sr("BossLSTM-1x40.nam", "lstm_1x40", "Live LSTM 1×40 (v2)");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_v2_lstm_2x12() {
-    run_v2_multi_sr("BossLSTM-2x12.nam", "lstm_2x12", "Live LSTM 2×12 (v2)");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_v2_lstm_2x16() {
-    run_v2_multi_sr("BossLSTM-2x16.nam", "lstm_2x16", "Live LSTM 2×16 (v2)");
-}
-
-#[test]
-#[ignore]
-fn live_cross_validation_v2_lstm_2x24() {
-    run_v2_multi_sr("BossLSTM-2x24.nam", "lstm_2x24", "Live LSTM 2×24 (v2)");
+fn live_cross_validation_v2_lstm_official() {
+    run_v2_multi_sr(
+        "lstm.nam",
+        "lstm_official",
+        "Live LSTM Official (v2)",
+    );
 }
 
 #[test]

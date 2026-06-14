@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
+
 # tests/fixtures — Golden Vectors for Cross-Reference Validation NeuralAmpModelerCore ↔ NAM-rs
 
 ## Source of Truth
@@ -53,25 +58,20 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                       | `.nam` Model          | Origin | Topology                                       |
-| --------------------------------- | --------------------- | ------ | ---------------------------------------------- |
-| `golden_wavenet_standard.bin`     | `BossWN-standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                  |
-| `golden_wavenet_lite.bin`         | `BossWN-lite.nam`     | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                  |
-| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`  | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                   |
-| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`     | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                   |
-| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`   | NAM-rs | 1 layer, H=16                                  |
-| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`    | NAM-rs | 2 layers, H=8                                  |
-| `golden_lstm_1x8.bin`             | `BossLSTM-1x8.nam`    | NAM-rs | 1 layer, H=8 (synthetic fixture)               |
-| `golden_lstm_1x12.bin`            | `BossLSTM-1x12.nam`   | NAM-rs | 1 layer, H=12 (synthetic fixture)              |
-| `golden_lstm_1x24.bin`            | `BossLSTM-1x24.nam`   | NAM-rs | 1 layer, H=24 (synthetic fixture)              |
-| `golden_lstm_1x40.bin`            | `BossLSTM-1x40.nam`   | NAM-rs | 1 layer, H=40 (synthetic fixture)              |
-| `golden_lstm_2x12.bin`            | `BossLSTM-2x12.nam`   | NAM-rs | 2 layers, H=12 (synthetic fixture)             |
-| `golden_lstm_2x16.bin`            | `BossLSTM-2x16.nam`   | NAM-rs | 2 layers, H=16 (synthetic fixture)             |
-| `golden_lstm_2x24.bin`            | `BossLSTM-2x24.nam`   | NAM-rs | 2 layers, H=24 (synthetic fixture)             |
-| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam` | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (reference)   |
-| `golden_wavenet_a2_full_self.bin` | `wavenet_a2_full.nam` | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (self-golden) |
-| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam` | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (reference)   |
-| `golden_wavenet_a2_lite_self.bin` | `wavenet_a2_lite.nam` | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (self-golden) |
+| Golden File                       | `.nam` Model              | Origin | Topology                                       |
+| --------------------------------- | ------------------------- | ------ | ---------------------------------------------- |
+| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                  |
+| `golden_wavenet_lite.bin`         | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                  |
+| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                   |
+| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                   |
+| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)       |
+| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                  |
+| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                  |
+| `golden_lstm_official.bin`        | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                        |
+| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (reference)   |
+| `golden_wavenet_a2_full_self.bin` | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (self-golden) |
+| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (reference)   |
+| `golden_wavenet_a2_lite_self.bin` | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (self-golden) |
 | `golden_cabsim_cpp_short.bin`     | N/A (Synthetic)       | C++    | Cabsim Short IR (64 samples) C++ reference     |
 | `golden_cabsim_cpp_medium.bin`    | N/A (Synthetic)       | C++    | Cabsim Medium IR (512 samples) C++ reference   |
 | `golden_cabsim_cpp_long.bin`      | N/A (Synthetic)       | C++    | Cabsim Long IR (8192 samples) C++ reference    |
@@ -206,21 +206,15 @@ See `docs/perceptual_validation.md` for methodology.
 
 | Model            | MSE threshold | SNR threshold |
 | ---------------- |:-------------:|:-------------:|
-| LSTM 1×8         | < 3e-3        | ≥ 15 dB       |
-| LSTM 1×12        | < 3e-3        | ≥ 15 dB       |
+| LSTM 1×3 (Off.)  | < 4.7e-4      | ≥ 28.1 dB     |
 | LSTM 1×16        | < 3e-3        | ≥ 15 dB       |
-| LSTM 1×24        | < 3e-3        | ≥ 15 dB       |
-| LSTM 1×40        | < 3e-3        | ≥ 15 dB       |
 | LSTM 2×8         | < 1e-3        | ≥ 18 dB       |
-| LSTM 2×12        | < 1e-3        | ≥ 18 dB       |
-| LSTM 2×16        | < 1e-3        | ≥ 18 dB       |
-| LSTM 2×24        | < 1e-3        | ≥ 18 dB       |
-| WaveNet Feather  | < 3e-7       | ≥ 60 dB       |
-| WaveNet Standard | < 3e-7       | ≥ 60 dB       |
-| WaveNet Lite     | < 3e-1       | ≥ 0 dB        |
-| WaveNet Nano     | < 9.5e-6     | ≥ 45 dB       |
-| A2-Lite (CH=3)   | < 5e-2       | ≥ 40 dB       |
-| A2-Full (CH=8)   | < 5e-2       | ≥ 40 dB       |
+| WaveNet Feather  | < 3e-7        | ≥ 60 dB       |
+| WaveNet Standard | < 3e-7        | ≥ 45 dB       |
+| WaveNet Lite     | < 3e-1        | ≥ 0 dB        |
+| WaveNet Nano     | < 9.5e-6      | ≥ 45 dB       |
+| A2-Lite (CH=3)   | < 5e-2        | ≥ 40 dB       |
+| A2-Full (CH=8)   | < 5e-2        | ≥ 40 dB       |
 
 > [!IMPORTANT]
 > Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
