@@ -154,7 +154,7 @@ The `tone_id` naming scheme mirrors the category taxonomy of `a2-mushra-data` (t
 ### Mapping Strategy
 
 - **`N` (variation index):** Labeled as `1`, `2`, … to distinguish different signals within the same category (e.g., `P-1` for palm-mute, `P-2` for pinch harmonic train).
-- **Backwards compatibility:** v1 goldens (`golden_<model>.bin`) use Stress Signal v1 (full-signal, single-stimulus) and are maintained as-is. v2 goldens adopt the `<model_id>_<tone_id>_<sr>` schema and are per-segment, per-stimulus.
+- **Backwards compatibility:** v1 goldens (`golden_<model>.bin`) use Stress Signal v1 (full-signal, single-stimulus) and are maintained as-is.
 - **Cross-project alignment:** The `GA`/`FRG`/`P`/`BA`/`PA` prefixes match the category codes used in `a2-mushra-data` (`tone-3000/a2-mushra-data`), enabling direct mapping to MUSHRA categories in `t3k-mushra` tests.
 
 ## t3k-mushra Primitives (Ported, MIT-licensed)
@@ -303,7 +303,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 - **Nature:** Reference models used for LSTM architecture validation (1 layer × H=16 and 2 layers × H=8).
 
-- **Golden Fixtures:** `golden_lstm_1x16.bin` and `golden_lstm_2x8.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+- **Golden Fixtures:** `golden_lstm_1x16.bin` and `golden_lstm_2x8.bin`.
 
 - **Provenance:** Generated from C++ `NeuralAmpModelerCore` render tool at pinned commit `e49c93e678549230d09efbb0beeb50511e387874`.
 
@@ -320,7 +320,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 - **Nature:** Official sample model from `sdatkinson/NeuralAmpModelerCore` (example models).
 
-- **Golden Fixtures:** `golden_lstm_official.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+- **Golden Fixtures:** `golden_lstm_official.bin`.
 
 - **Provenance:** Official model representing 1 layer, H=3. Rendered using the same C++ pinned commit `e49c93e`.
 

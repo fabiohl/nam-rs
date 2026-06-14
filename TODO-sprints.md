@@ -291,7 +291,7 @@ mkdir -p /tmp/kilo/a2out
     e passam por ESR/SNR; container goldens (`test_golden_vectors_container_a2_*`, incl. caminho `--slim`)
     revalidados.
 
-### Sprint 2.2 — Correções pós-auditoria dos Épicos 1 e 2 🩺 [TODO]
+### Sprint 2.2 — Correções pós-auditoria dos Épicos 1 e 2 🩺 [DONE]
 
 > **Parecer da auditoria (`revisor-auditor`, 2026-06-14):** Épicos 1 e 2 foram executados com **boa fidelidade
 > ao espírito** e **documentação honesta**. `cargo test --test golden_vectors` = **18 passed, 1 ignored** (Lite,
@@ -369,8 +369,8 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 3.1 — Remover peso morto e ambiguidades
 
-- **[T3.1] Eliminar (ou conectar) os 72 fixtures `_v2_*k.bin` órfãos.**
-
+- [T3.1] Eliminar (ou conectar) os 72 fixtures `_v2_*k.bin` órfãos. ✅ [DONE]
+  — 43 arquivos removidos via `git rm`, seção `[5a/6]` e sumário v2 removidos do `golden_gen_build.sh`, referências no `README.md` limpas.
   - **Contexto factual (não re-investigar):** existem 72 arquivos `tests/fixtures/golden_*_v2_*k.bin`. **Nenhum
     teste Rust os lê** — confirmado por `grep -rn "_v2_" tests/*.rs` (só aparecem em `cpp_parity.rs` como
     *nome de WAV temporário*, gerado e renderizado ao vivo, nunca lido do disco). O sufixo `k`
@@ -386,7 +386,6 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** nenhum fixture committed que nenhum teste lê; `README.md` (seção de fixtures) reflete a realidade.
 
 - **[T3.2] Garantir "zero fixtures órfãos" (verificação final).**
-
   - **Contexto:** T2.6 já remove os `golden_wavenet_a2_*_self.bin`. Esta tarefa é a **varredura final** de
     qualquer `.bin` não referenciado.
   - **Ação (passo a passo):**
@@ -399,7 +398,6 @@ mkdir -p /tmp/kilo/a2out
 ### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo)
 
 - **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).**
-
   - **Estado atual (verificado):** a calibração por medição real **já existe**, porém **em código**:
     `tests/common/validation.rs::get_calibrated_threshold(model_name)` mapeia cada modelo committed para
     `(mse_limit, min_snr_db, max_esr)` com comentário documentando `SNR_medido`/`ESR_medido` e a margem. Isto
@@ -415,7 +413,6 @@ mkdir -p /tmp/kilo/a2out
     rastreável a uma medição documentada; suíte verde.
 
 - **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".**
-
   - **Ação (passo a passo):**
     1. Criar um teste (ex.: em `tests/golden_vectors.rs` ou `tests/common`) que **itere sobre todos os modelos
        com golden committed** e **falhe** se algum threshold estiver neutralizado — i.e., `min_snr_db <= 0.0`

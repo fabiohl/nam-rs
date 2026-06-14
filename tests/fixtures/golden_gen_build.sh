@@ -32,7 +32,6 @@
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (A2 goldens are cross-reference Rust↔C++ v0.5.3 via ESR/SNR scale-invariant
 #    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
-#   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
 #   golden_cabsim_cpp_long.bin, golden_cabsim_cpp_stress.bin
 #   (C++ dsp::ImpulseResponse reference for cabsim cross-validation)
@@ -330,53 +329,10 @@ for entry in "${MODELS[@]}"; do
 done
 
 # =============================================================================
-# Generate v2 goldens for all SRs × models
-# =============================================================================
-echo ""
-echo "[5a/6] Generating v2 golden vectors (multi-SR)..."
-
-for SR in 44100 48000 88200 96000 192000; do
-    V2_WAV="$FIXTURES_DIR/stress_signal_v2_${SR}.wav"
-
-    for entry in "${MODELS[@]}"; do
-        IFS=':' read -r nam_file golden_name label render_type <<< "$entry"
-        MODEL_PATH="$MODELS_DIR/$nam_file"
-        GOLDEN_NAME_V2="${golden_name}_v2_${SR}k"
-        OUTPUT_WAV="$TEMP_DIR/${GOLDEN_NAME_V2}.wav"
-        GOLDEN_BIN="$FIXTURES_DIR/${GOLDEN_NAME_V2}.bin"
-
-        if [ ! -f "$MODEL_PATH" ]; then
-            continue
-        fi
-
-        # Determine render binary to use
-        if [ "$render_type" = "v0.5.3" ]; then
-            ACTIVE_RENDER="$RENDER_V053_BIN"
-        else
-            ACTIVE_RENDER="$RENDER_BIN"
-        fi
-
-        echo "  Processing $label @ ${SR}Hz using $render_type render..."
-
-        "$ACTIVE_RENDER" "$MODEL_PATH" "$V2_WAV" "$OUTPUT_WAV" 2>&1 | tail -1 || true
-
-        if [ ! -f "$OUTPUT_WAV" ]; then
-            echo "  WARN: Render failed for $label @ ${SR}Hz"
-            continue
-        fi
-
-        "$WAV_TO_GOLDEN" \
-            --input "$OUTPUT_WAV" \
-            --reference "$V2_WAV" \
-            --output "$GOLDEN_BIN" 2>&1
-    done
-done
-
-# =============================================================================
 # Build and run C++ IR reference (dsp::ImpulseResponse) → golden_cabsim_cpp_*.bin
 # =============================================================================
 echo ""
-echo "[5b/6] Building C++ IR reference (dsp::ImpulseResponse)..."
+echo "[5/5] Building C++ IR reference (dsp::ImpulseResponse)..."
 
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
@@ -412,7 +368,7 @@ echo "  Running render_ir to generate C++ IR golden vectors..."
 # Cleanup
 # =============================================================================
 echo ""
-echo "[6/6] Cleaning up temporary files..."
+echo "[5/5] Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
@@ -421,13 +377,6 @@ echo "  Files at $FIXTURES_DIR/:"
 for entry in "${MODELS[@]}"; do
     IFS=':' read -r _ golden_name _ <<< "$entry"
     [ -f "$FIXTURES_DIR/${golden_name}.bin" ] && echo "    ${golden_name}.bin"
-done
-for SR in 44100 48000 88200 96000 192000; do
-    for entry in "${MODELS[@]}"; do
-        IFS=':' read -r _ golden_name _ <<< "$entry"
-        GF="$FIXTURES_DIR/${golden_name}_v2_${SR}k.bin"
-        [ -f "$GF" ] && echo "    ${golden_name}_v2_${SR}k.bin"
-    done
 done
 for cpp_file in golden_cabsim_cpp_short.bin golden_cabsim_cpp_medium.bin \
                  golden_cabsim_cpp_long.bin golden_cabsim_cpp_stress.bin; do
