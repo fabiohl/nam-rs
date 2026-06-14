@@ -52,11 +52,8 @@ use std::process::Command;
 const NAM_CORE_DIR: &str = "tests/fixtures/NeuralAmpModelerCore";
 const BUILD_DIR: &str = "build/namcore_render";
 
-const NAM_CORE_V053_DIR: &str = "tests/fixtures/NeuralAmpModelerCore_v0.5.3";
-const BUILD_V053_DIR: &str = "build/namcore_render_v053";
-
-fn render_bin(is_a2: bool) -> PathBuf {
-    let build_dir = if is_a2 { BUILD_V053_DIR } else { BUILD_DIR };
+fn render_bin() -> PathBuf {
+    let build_dir = BUILD_DIR;
     let mut bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     bin.push(build_dir);
     bin.push("Release/render");
@@ -85,85 +82,48 @@ fn render_bin(is_a2: bool) -> PathBuf {
     bin
 }
 
-fn ensure_render_compiled(is_a2: bool) -> bool {
-    let bin = render_bin(is_a2);
+fn ensure_render_compiled() -> bool {
+    let bin = render_bin();
     if bin.exists() {
         return true;
     }
 
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let core_dir = if is_a2 {
-        NAM_CORE_V053_DIR
-    } else {
-        NAM_CORE_DIR
-    };
-    let nam_core = project_root.join(core_dir);
+    let nam_core = project_root.join(NAM_CORE_DIR);
 
     if !nam_core.exists() {
-        if is_a2 {
-            eprintln!("NeuralAmpModelerCore v0.5.3 not found at {nam_core:?}");
-            eprintln!("Please run tests/fixtures/golden_gen_build.sh to set up the mirrors.");
-        } else {
-            eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
-            eprintln!(
-                "Run: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
-            );
-        }
+        eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
+        eprintln!("Please run tests/fixtures/golden_gen_build.sh to set up the mirrors.");
         return false;
     }
 
-    if is_a2 {
-        let plugin_dsp = project_root.join("tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools");
-        let eigen_dest = nam_core.join("Dependencies/eigen");
-        if !eigen_dest.exists() {
-            let eigen_src = plugin_dsp.join("Dependencies/eigen");
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(eigen_src, eigen_dest).ok();
-        }
-        let dsp_dest = nam_core.join("Dependencies/AudioDSPTools");
-        if !dsp_dest.exists() {
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(&plugin_dsp, dsp_dest).ok();
-        }
-    } else {
-        for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
-            let sub_path = nam_core.join(sub);
-            if sub_path.exists() && fs::read_dir(&sub_path).map_or(true, |mut d| d.next().is_none())
-            {
-                let status = Command::new("git")
-                    .args(["submodule", "update", "--init", sub])
-                    .current_dir(&nam_core)
-                    .status();
-                if status.is_ok_and(|s| !s.success()) {
-                    eprintln!("WARN: failed to initialize submodule {sub}");
-                }
+    for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
+        let sub_path = nam_core.join(sub);
+        if sub_path.exists() && fs::read_dir(&sub_path).map_or(true, |mut d| d.next().is_none()) {
+            let status = Command::new("git")
+                .args(["submodule", "update", "--init", sub])
+                .current_dir(&nam_core)
+                .status();
+            if status.is_ok_and(|s| !s.success()) {
+                eprintln!("WARN: failed to initialize submodule {sub}");
             }
         }
     }
 
-    let build_dir = project_root.join(if is_a2 { BUILD_V053_DIR } else { BUILD_DIR });
+    let build_dir = project_root.join(BUILD_DIR);
     fs::create_dir_all(&build_dir).ok();
 
-    eprintln!(
-        "Compiling render tool ({})...",
-        if is_a2 {
-            "NeuralAmpModelerCore v0.5.3 A2"
-        } else {
-            "NeuralAmpModelerCore standard"
-        }
-    );
+    eprintln!("Compiling render tool (v0.5.3 + A2-fast)...");
 
-    let mut cmake_args = vec![
+    let cmake_args = vec![
         "-S",
         nam_core.to_str().unwrap(),
         "-B",
         build_dir.to_str().unwrap(),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_CXX_STANDARD=20",
+        "-DNAM_ENABLE_A2_FAST=ON",
     ];
-    if is_a2 {
-        cmake_args.push("-DNAM_ENABLE_A2_FAST=ON");
-    }
 
     let cmake_status = Command::new("cmake").args(&cmake_args).status();
 
@@ -194,7 +154,7 @@ fn ensure_render_compiled(is_a2: bool) -> bool {
         }
     }
 
-    render_bin(is_a2).exists()
+    render_bin().exists()
 }
 
 fn run_render_comparison(
@@ -218,9 +178,7 @@ fn run_render_comparison(
     let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    let is_a2 = nam_rs::loader::nam_json::is_a2_shape(&model_data).is_some();
-
-    if !ensure_render_compiled(is_a2) {
+    if !ensure_render_compiled() {
         eprintln!("SKIP: {label} — render tool not available.");
         return;
     }
@@ -284,7 +242,7 @@ fn run_render_comparison(
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
 
     // Execute render tool
-    let bin = render_bin(is_a2);
+    let bin = render_bin();
     let status = Command::new(&bin)
         .arg(model_path.to_str().unwrap())
         .arg(stress_wav.to_str().unwrap())

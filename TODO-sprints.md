@@ -529,7 +529,7 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 5.1 — Higiene de repositório (rápido, alto valor) 🧹
 
-- **[T5.1] ✅ Remover binário compilado e symlink absoluto committados.** ⚠️ **(correção — viola o próprio `.gitignore`)**
+- **[T5.1] ✅ Remover binário compilado e symlink absoluto committados.** ⚠️ **(correção — viola o próprio `.gitignore`)** [DONE]
   - **Problema verificado:**
     1. `tests/fixtures/render_ir` é um **executável ELF x86-64 de 72 KB committado** (build artifact, não-stripped,
        com BuildID específico de máquina). É regenerável de `render_ir.cpp` via `golden_gen_build.sh`.
@@ -549,23 +549,9 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 5.2 — Consistência da referência canônica 📌
 
-- **[T5.2] Unificar/documentar a referência canônica (split e49c93e × v0.5.3).**
-  - **Achado verificado (não é bug):** os goldens A1/LSTM estão pinados em `e49c93e` (main HEAD, não-released) e
-    os A2 em `9c7b185` (tag v0.5.3). Verificou-se empiricamente que **A1/LSTM/Standard são byte-idênticos**
-    (SNR = ∞) renderizados em **ambos** os commits — o diff entre eles é **só nos caminhos A2** (a2_fast/
-    slimmable/container). Portanto o split é **numericamente inócuo**, mas **confunde** a narrativa de "referência
-    canônica oficial = v0.5.3".
-  - **Ação (escolher (a), recomendado):**
-    - **(a)** Re-renderizar A1/LSTM com o `render` do **v0.5.3** (`9c7b185`) e re-commitar (serão idênticos, prova
-      de invariância); passar a **citar um único commit canônico (v0.5.3 `9c7b185`)** em todo o `README.md`.
-    - **(b)** Se preferir manter `e49c93e`, **documentar explicitamente** no `README.md` por que A1/LSTM usam o
-      HEAD (recursos mais novos) e provar a invariância A1/LSTM entre os dois commits.
-  - **Critério de aceite:** `README.md` cita uma referência canônica coerente; proveniência de **todos** os
-    goldens rastreável a um commit declarado; suíte verde (deve ser idêntica).
-  - Nota do PO: Assegurar (inclusive no script `utils/mod-update.sh`) que sempre teremos uma referência de git tag canônico para os espelhos de git de referência:
-    - tests/fixtures/NeuralAmpModelerCore/        tag v0.5.3
-    - tests/fixtures/NeuralAmpModelerPlugin/      tag v0.7.15
-      Dado que o `utils/mod-update.sh` é o local que mantem este diretório atualizado, lá pode ser o local para fazer essa gestão de git tags canônicas.
+- **[T5.2] ✅ Unificar/documentar a referência canônica (split e49c93e × v0.5.3).** ✅ **DONE (2026-06-14)**
+  - **Resolução:** Commit canônico único `9c7b185` (v0.5.3) adotado para todos os goldens. `golden_gen_build.sh` unificado: um clone, um build (com `-DNAM_ENABLE_A2_FAST=ON`), um render binário. `tests/fixtures/README.md` atualizado com tabela de versão única e nota de unificação T5.2. `utils/mod-update.sh` agora faz `git checkout` com SHA pinado (`9c7b185`) para garantir reprodutibilidade. `tests/cpp_parity.rs` simplificado para usar clone único com build sempre A2_FAST. `README.md` cita referência canônica explícita (v0.5.3, `9c7b185`). `docs/cpp_parity_map.md` atualizado. Suítes passando: golden 18/18 (0 falhas, 11 ignored por design — v2 soak e Lite CH=12), self_consistency 14/14, threshold_calibration 5/5.
+  - **Proveniência:** Todos os goldens rastreáveis ao commit canônico v0.5.3 `9c7b185`.
 
 ### Sprint 5.3 — Clareza/proveniência e divergências conhecidas (qualidade de goldens) 📋
 

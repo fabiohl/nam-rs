@@ -49,24 +49,34 @@ cargo update --verbose
 # 4. Sync upstream C++ fixtures
 echo -e "\n${BLUE}${BOLD}[4.1/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
+
+# Canonical tag and pinned SHA (T5.2 — single reference for all goldens)
+NAM_CORE_TAG="v0.5.3"
+NAM_CORE_SHA="9c7b185de346fe0725dea537bcee4bc38b5bb6d6"
+
 if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
-    (cd "$FIXTURE_DIR" && git fetch --depth 1 && git reset --hard FETCH_HEAD && git clean -df)
-    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas."
+    (cd "$FIXTURE_DIR" && git fetch --depth 1 origin tag "$NAM_CORE_TAG" && git checkout "$NAM_CORE_SHA" && git clean -df)
+    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_CORE_TAG @ $NAM_CORE_SHA)."
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 --branch v0.5.3 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
+    git clone --depth 1 --branch "$NAM_CORE_TAG" https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 echo -e "\n${BLUE}${BOLD}[4.2/4] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerPlugin"
+
+# Canonical tag and pinned SHA for plugin
+NAM_PLUGIN_TAG="v0.7.15"
+NAM_PLUGIN_SHA="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
+
 if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
-    (cd "$FIXTURE_DIR" && git fetch --depth 1 && git reset --hard FETCH_HEAD && git clean -df)
-    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas."
+    (cd "$FIXTURE_DIR" && git fetch --depth 1 origin tag "$NAM_PLUGIN_TAG" && git checkout "$NAM_PLUGIN_SHA" && git clean -df)
+    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_PLUGIN_TAG @ $NAM_PLUGIN_SHA)."
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 --branch v0.7.15 https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
+    git clone --depth 1 --branch "$NAM_PLUGIN_TAG" https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 

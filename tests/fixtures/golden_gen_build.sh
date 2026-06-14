@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-# golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones 
+# golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones
 # NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
+#
+# Canonical reference: NeuralAmpModelerCore v0.5.3 (tag), pinned at commit
+# 9c7b185de346fe0725dea537bcee4bc38b5bb6d6. All goldens (A1/LSTM/WaveNet/A2)
+# are rendered from this single commit.
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
@@ -44,17 +48,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NAM_CORE_DIR="$SCRIPT_DIR/NeuralAmpModelerCore"
-NAM_CORE_V053_DIR="$SCRIPT_DIR/NeuralAmpModelerCore_v0.5.3"
 NAM_PLUGIN_DIR="$SCRIPT_DIR/NeuralAmpModelerPlugin"
 BUILD_DIR="$PROJECT_ROOT/build/namcore_render"
-BUILD_V053_DIR="$PROJECT_ROOT/build/namcore_render_v053"
 MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
 
 # Pinned upstream commits for reproducibility.
 # Update these when regenerating goldens with a newer upstream version.
-NAM_CORE_COMMIT="e49c93e678549230d09efbb0beeb50511e387874"
-NAM_CORE_V053_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3
+NAM_CORE_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3 (canonical)
 NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
 
 # =============================================================================
@@ -142,36 +143,8 @@ for sub in eigen AudioDSPTools; do
     fi
 done
 
-# =============================================================================
-# Clone/update NeuralAmpModelerCore v0.5.3 (A2 Reference)
-# =============================================================================
-echo ""
-echo "[1c/6] Setting up NeuralAmpModelerCore v0.5.3..."
-if [ -d "$PROJECT_ROOT/github.com/NeuralAmpModelerCore_v0.5.3" ]; then
-    echo "  Using local mirror of NeuralAmpModelerCore v0.5.3 from github.com/..."
-    ln -sfn "$PROJECT_ROOT/github.com/NeuralAmpModelerCore_v0.5.3" "$NAM_CORE_V053_DIR"
-elif [ ! -d "$NAM_CORE_V053_DIR" ]; then
-    git clone https://github.com/sdatkinson/NeuralAmpModelerCore.git "$NAM_CORE_V053_DIR"
-    echo "  Checking out pinned commit $NAM_CORE_V053_COMMIT..."
-    (cd "$NAM_CORE_V053_DIR" && git fetch origin "$NAM_CORE_V053_COMMIT" && git checkout "$NAM_CORE_V053_COMMIT")
-else
-    CURRENT_CORE_V053_SHA=$(cd "$NAM_CORE_V053_DIR" && git rev-parse HEAD)
-    if [ "$CURRENT_CORE_V053_SHA" != "$NAM_CORE_V053_COMMIT" ]; then
-        echo "  WARNING: NeuralAmpModelerCore v0.5.3 at $CURRENT_CORE_V053_SHA, pinned commit is $NAM_CORE_V053_COMMIT"
-    else
-        echo "  NeuralAmpModelerCore v0.5.3 already exists (pinned commit verified)"
-    fi
-fi
-
-# Supply dependencies (Eigen and AudioDSPTools) via symlinks
-PLUGIN_DSP="$NAM_PLUGIN_DIR/AudioDSPTools"
-echo "  Symlinking dependencies (Eigen and AudioDSPTools) into v0.5.3..."
-rm -rf "$NAM_CORE_V053_DIR/Dependencies/eigen"
-ln -sfn "$PLUGIN_DSP/Dependencies/eigen" "$NAM_CORE_V053_DIR/Dependencies/eigen"
-rm -rf "$NAM_CORE_V053_DIR/Dependencies/AudioDSPTools"
-ln -sfn "$PLUGIN_DSP" "$NAM_CORE_V053_DIR/Dependencies/AudioDSPTools"
-
 # Copy official models from standard core clone for test and provenance
+echo ""
 echo "  Copying official example models from mirror for testing..."
 cp "$NAM_CORE_DIR/example_models/wavenet_a2_max.nam" "$MODELS_DIR/"
 cp "$NAM_CORE_DIR/example_models/slimmable_wavenet.nam" "$MODELS_DIR/"
@@ -179,25 +152,23 @@ cp "$NAM_CORE_DIR/example_models/slimmable_container.nam" "$MODELS_DIR/"
 cp "$NAM_CORE_DIR/example_models/wavenet_condition_dsp.nam" "$MODELS_DIR/"
 
 # =============================================================================
-# Build render tools (standard and v0.5.3 A2-fast)
+# Build render tool (single unified binary at v0.5.3 with A2-fast)
 # =============================================================================
 echo ""
-echo "[2/6] Building render tools..."
-
+echo "[2/5] Building render tool..."
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
-RENDER_V053_BIN="$BUILD_V053_DIR/$BUILD_TYPE/render"
 
-# 1) Build standard render
 if [ -f "$RENDER_BIN" ]; then
-    echo "  Standard render binary already exists: $RENDER_BIN"
+    echo "  Render binary already exists: $RENDER_BIN"
 else
-    echo "  Building standard render tool..."
+    echo "  Building render tool (v0.5.3 + A2-fast)..."
     mkdir -p "$BUILD_DIR"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_CXX_STANDARD=20 \
+        -DNAM_ENABLE_A2_FAST=ON \
         2>&1 | tail -5
     cmake --build "$BUILD_DIR" --target render -j"$(nproc)" 2>&1 | tail -5
 
@@ -209,37 +180,13 @@ else
         fi
     fi
 fi
-echo "  Standard Render: $RENDER_BIN"
-
-# 2) Build v0.5.3 render with A2-fast
-if [ -f "$RENDER_V053_BIN" ]; then
-    echo "  v0.5.3 render binary already exists: $RENDER_V053_BIN"
-else
-    echo "  Building v0.5.3 render tool (with A2-fast)..."
-    mkdir -p "$BUILD_V053_DIR"
-    cmake -S "$NAM_CORE_V053_DIR" -B "$BUILD_V053_DIR" \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_CXX_COMPILER="$CXX" \
-        -DCMAKE_CXX_STANDARD=20 \
-        -DNAM_ENABLE_A2_FAST=ON \
-        2>&1 | tail -5
-    cmake --build "$BUILD_V053_DIR" --target render -j"$(nproc)" 2>&1 | tail -5
-
-    if [ ! -f "$RENDER_V053_BIN" ]; then
-        RENDER_V053_BIN=$(find "$BUILD_V053_DIR" -name render -type f -executable | head -1)
-        if [ -z "$RENDER_V053_BIN" ]; then
-            echo "ERROR: Failed to build v0.5.3 render tool."
-            exit 1
-        fi
-    fi
-fi
-echo "  v0.5.3 Render: $RENDER_V053_BIN"
+echo "  Render: $RENDER_BIN"
 
 # =============================================================================
 # Build Rust tools (gen_stress + wav_to_golden)
 # =============================================================================
 echo ""
-echo "[3/6] Building Rust tools (gen_stress + wav_to_golden)..."
+echo "[3/5] Building Rust tools (gen_stress + wav_to_golden)..."
 
 cargo build --release --bin gen_stress --bin wav_to_golden 2>&1 | tail -3
 GEN_STRESS="$PROJECT_ROOT/target/release/gen_stress"
@@ -256,7 +203,7 @@ echo "  wav_to_golden: $WAV_TO_GOLDEN"
 # Generate stress WAV signals
 # =============================================================================
 echo ""
-echo "[4/6] Generating stress signals..."
+echo "[4/5] Generating stress signals..."
 
 STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 "$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
@@ -275,27 +222,27 @@ done
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================
 echo ""
-echo "[5/6] Running render for each model (v1)..."
+echo "[5/5] Running render for each model (v1)..."
 
-# Models: (.nam file : golden name : label : render_type)
+# Models: (.nam file : golden name : label)
 MODELS=(
-    "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard:standard"
-    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite:standard"
-    "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather:standard"
-    "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano:standard"
-    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official):standard"
-    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16:standard"
-    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8:standard"
-    "lstm.nam:golden_lstm_official:LSTM Official:standard"
-    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):v0.5.3"
-    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):v0.5.3"
+    "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard"
+    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite"
+    "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather"
+    "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano"
+    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
+    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16"
+    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
+    "lstm.nam:golden_lstm_official:LSTM Official"
+    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
+    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
 mkdir -p "$TEMP_DIR"
 
 for entry in "${MODELS[@]}"; do
-    IFS=':' read -r nam_file golden_name label render_type <<< "$entry"
+    IFS=':' read -r nam_file golden_name label <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
     OUTPUT_WAV="$TEMP_DIR/${golden_name}.wav"
     GOLDEN_BIN="$FIXTURES_DIR/${golden_name}.bin"
@@ -305,16 +252,9 @@ for entry in "${MODELS[@]}"; do
         continue
     fi
 
-    # Determine render binary to use
-    if [ "$render_type" = "v0.5.3" ]; then
-        ACTIVE_RENDER="$RENDER_V053_BIN"
-    else
-        ACTIVE_RENDER="$RENDER_BIN"
-    fi
+    echo "  Processing $label ($nam_file)..."
 
-    echo "  Processing $label ($nam_file) using $render_type render..."
-
-    "$ACTIVE_RENDER" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
+    "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
 
     if [ ! -f "$OUTPUT_WAV" ]; then
         echo "  ERROR: Render failed for $label"
@@ -333,36 +273,29 @@ done
 # Generate v2 multi-SR goldens (one per model × sample_rate)
 # =============================================================================
 echo ""
-echo "[5b/6] Generating v2 multi-SR golden vectors..."
+echo "[5b/5] Generating v2 multi-SR golden vectors..."
 
 # Models eligible for v2 multi-SR (subset exercising all architectures)
 V2_MODELS=(
-    "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16):standard"
-    "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8):standard"
-    "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4):standard"
-    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12):standard"
-    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official):standard"
-    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16:standard"
-    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8:standard"
-    "lstm.nam:golden_lstm_official:LSTM Official:standard"
-    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):v0.5.3"
-    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):v0.5.3"
+    "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16)"
+    "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8)"
+    "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4)"
+    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12)"
+    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
+    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16"
+    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
+    "lstm.nam:golden_lstm_official:LSTM Official"
+    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
+    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
 )
 
 for entry in "${V2_MODELS[@]}"; do
-    IFS=':' read -r nam_file golden_name label render_type <<< "$entry"
+    IFS=':' read -r nam_file golden_name label <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
 
     if [ ! -f "$MODEL_PATH" ]; then
         echo "  SKIP v2: $nam_file not found at $MODELS_DIR"
         continue
-    fi
-
-    # Determine render binary
-    if [ "$render_type" = "v0.5.3" ]; then
-        ACTIVE_RENDER="$RENDER_V053_BIN"
-    else
-        ACTIVE_RENDER="$RENDER_BIN"
     fi
 
     for sr_entry in "${V2_STRESS_WAVS[@]}"; do
@@ -372,7 +305,7 @@ for entry in "${V2_MODELS[@]}"; do
 
         echo "    $label @ ${sr} Hz (v2)..."
 
-        (set +o pipefail; "$ACTIVE_RENDER" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" 2>&1 | tail -1)
+        (set +o pipefail; "$RENDER_BIN" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" 2>&1 | tail -1)
 
         if [ ! -f "$v2_out_wav" ]; then
             echo "    SKIP: render failed for $label @ ${sr} Hz (likely SR mismatch in C++ tool)"

@@ -59,8 +59,7 @@ mutants.out.old/
 
 # Build artifacts do render tool C++
 /tests/fixtures/render_ir
-/build/namcore_render/
-/build/namcore_render_v053/
+/build/
 
 # Arquivos temporários dos scripts de geração de golden vectors
 /tests/fixtures/.temp_golden/
