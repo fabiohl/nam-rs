@@ -34,11 +34,18 @@ echo -e "\n${BLUE}${BOLD}[2/4] Compilando plugin CLAP (Debug + heap-audit)...${N
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   cargo build --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
 
-CLAP_BIN="target/clap-test/debug/libnam_rs.so"
-if [ ! -f "$CLAP_BIN" ]; then
-    echo -e "${RED}Erro: Falha ao encontrar a biblioteca do CLAP em $CLAP_BIN!${NC}"
+CLAP_BIN_RAW="target/clap-test/debug/libnam_rs.so"
+if [ ! -f "$CLAP_BIN_RAW" ]; then
+    echo -e "${RED}Erro: Falha ao encontrar a biblioteca do CLAP em $CLAP_BIN_RAW!${NC}"
     exit 1
 fi
+
+# Preservar o binário compilado em um local estável para evitar modificações por etapas subsequentes
+CLAP_BIN="target/clap-test/debug/libnam_rs_validated.so"
+cp "$CLAP_BIN_RAW" "$CLAP_BIN"
+HASH_PHASE2=$(sha256sum "$CLAP_BIN" | cut -d' ' -f1)
+echo -e "  Preservado binário da fase 2: $CLAP_BIN"
+echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE2}${NC}"
 
 # 3. CLAP integration and heap-audit tests
 echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditoria de heap...${NC}"
@@ -78,6 +85,17 @@ fi
 # 4. Run the official CLAP validator if available
 echo -e "\n${BLUE}${BOLD}[4/4] Executando validação via clap-validator...${NC}"
 if command -v clap-validator >/dev/null 2>&1; then
+  # Validar que o binário a ser testado pelo clap-validator é rigorosamente o da fase 2
+  HASH_PHASE4=$(sha256sum "$CLAP_BIN" | cut -d' ' -f1)
+  echo -e "  SHA256 do binário na fase 2: ${GREEN}${HASH_PHASE2}${NC}"
+  echo -e "  SHA256 do binário na fase 4: ${GREEN}${HASH_PHASE4}${NC}"
+  if [ "$HASH_PHASE2" != "$HASH_PHASE4" ]; then
+    echo -e "${RED}Erro: O checksum do binário mudou entre as fases 2 e 4!${NC}"
+    exit 1
+  else
+    echo -e "  ${GREEN}✓${NC} Checksum correspondente comprovado."
+  fi
+
   CLAP_PLUGIN_PATH="$CLAP_BIN" \
     NAM_HEAP_AUDIT=1 \
     clap-validator validate "$CLAP_BIN"

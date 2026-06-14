@@ -164,7 +164,7 @@ testes que **já passaram** na fase 1.
 
   - _Critério de aceite_: tabela versionada (ex.: em `docs/testing.md`).
 
-- [ ] **T1.2.3 — Confirmar que o `.so` validado é o correto.**
+- [x] **T1.2.3 — Confirmar que o `.so` validado é o correto.**
   A fase 2 compila o `.so` (cdylib) e a fase 3 reusa `target/clap-test` para `cargo test`.
   Garantir que o `cargo test` da fase 3 não sobrescreva/invalide o `.so` consumido pelo
   `clap-validator` na fase 4 (hoje funciona, mas é frágil/implícito).
