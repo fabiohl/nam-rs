@@ -113,7 +113,10 @@ fn test_container_switch_rt_safety() {
         }
     }
 
-    eprintln!("Container switch RT-safety OK — {} cycles, no NaN/Inf.", cycles);
+    eprintln!(
+        "Container switch RT-safety OK — {} cycles, no NaN/Inf.",
+        cycles
+    );
 }
 
 // =============================================================================

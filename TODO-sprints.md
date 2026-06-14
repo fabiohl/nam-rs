@@ -298,7 +298,7 @@ testes lentos/_flaky_.
 
   - _Critério de aceite_: matriz "teste → suíte (padrão/longa) → frequência" documentada.
 
-- [ ] **T1.6.3 — Avaliar fail-fast vs. visão completa.**
+- [x] **T1.6.3 — Avaliar fail-fast vs. visão completa.**
   Decidir se a suíte padrão deve parar no 1º erro (feedback rápido) ou usar
   `--no-fail-fast` (visão completa). Recomendado: fail-fast no padrão, completo no long.
 

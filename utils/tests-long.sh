@@ -85,20 +85,20 @@ run_phase() {
 # --- Phase 1: Soak/Stress tests (Numerical Stability) ---
 run_phase \
     "Soak Tests (Numerical Stability)" \
-    "cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 && cargo test --release --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1" \
-    "phase1-soak.log"
+    'status=0; cargo test --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 || status=1; cargo test --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
+    "phase1-soak.log" || true
 
 # --- Phase 2: Property-Based and Parity Tests in Release ---
 run_phase \
     "Property-Based & Parity Tests in Release" \
-    "cargo test --release --test proptest_parsers -- --ignored && cargo test --release --test proptest_math -- --ignored && cargo test --release --test lstm_gate_bf16_parity -- --ignored && cargo test --release --test lstm_scalar_bf16_parity -- --ignored && cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored && cargo test --release --test gate_fsm_proptest -- --ignored && cargo test --release --test adaptive_fsm_proptest -- --ignored" \
-    "phase2-proptests.log"
+    'status=0; cargo test --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; cargo test --release --no-fail-fast --test proptest_math -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; cargo test --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; [ $status -eq 0 ]' \
+    "phase2-proptests.log" || true
 
 # --- Phase 3: Resampler Heap-Audit and C++ Parity ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit, C++ Parity" \
-    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture && cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture && cargo test --release --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture" \
-    "phase3-parity-audit.log"
+    'status=0; cargo test --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; cargo test --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    "phase3-parity-audit.log" || true
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
 run_clap_audit_local() {
@@ -125,44 +125,51 @@ run_clap_audit_local() {
         return 1
     fi
 
+    local audit_status=0
+
     if command -v clap-validator >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
         echo "  Executando clap-validator estrito..."
         NAM_HEAP_AUDIT=1 clap-validator validate "$RELEASE_CLAP_BIN" --json > target/logs/release-validation.json 2> target/logs/release-validation.stderr
         if ! jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json >/dev/null; then
             echo "Erro: Falha ou avisos detectados pelo clap-validator!" >&2
-            return 1
+            audit_status=1
         fi
     else
         echo "  Aviso: clap-validator ou jq indisponíveis. Pulando auditoria externa."
     fi
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture && \
-      echo "  Executando teste de stress do GC com 1000 swaps..." && \
-      cargo test --no-default-features --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture && \
-      echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..." && \
-      cargo test --features standalone --test concurrency_stress -- --ignored --nocapture && \
-      echo "  Executando testes unitários e de integração em modo Mono..." && \
-      cargo test --no-default-features --features "clap-plugin,testing"
+    cargo test --no-default-features --no-fail-fast --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
+    
+    echo "  Executando teste de stress do GC com 1000 swaps..."
+    cargo test --no-default-features --no-fail-fast --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
+    
+    echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
+    cargo test --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
+    
+    echo "  Executando testes unitários e de integração em modo Mono..."
+    cargo test --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
+
+    return $audit_status
 }
 
 run_phase \
     "CLAP Release Validation & Concurrency" \
     "run_clap_audit_local" \
-    "phase4-clap-validation.log"
+    "phase4-clap-validation.log" || true
 
 # --- Phase 5: Long Benchmarks (Performance) ---
 run_phase \
     "Long Performance Benchmarks" \
-    "cargo bench && cargo bench --features standalone,long_bench --bench inference_bench" \
-    "phase5-benchmarks.log"
+    'status=0; cargo bench --no-fail-fast || status=1; cargo bench --no-fail-fast --features standalone,long_bench --bench inference_bench || status=1; [ $status -eq 0 ]' \
+    "phase5-benchmarks.log" || true
 
 # --- Phase 6: PipeWire Integration Test (optional – skipped when daemon is absent) ---
 run_pipewire_phase() {
     echo "  Verificando daemon PipeWire..."
     if pw-cli info >/dev/null 2>&1; then
         echo "  PipeWire detectado. Executando teste de integração..."
-        cargo test --release --features standalone --test pw_integration_test -- --ignored --nocapture
+        cargo test --release --no-fail-fast --features standalone --test pw_integration_test -- --ignored --nocapture
     else
         echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
         return 0
@@ -172,7 +179,7 @@ run_pipewire_phase() {
 run_phase \
     "PipeWire Integration Test" \
     "run_pipewire_phase" \
-    "phase6-pipewire.log"
+    "phase6-pipewire.log" || true
 
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"

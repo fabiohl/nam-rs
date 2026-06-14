@@ -139,3 +139,27 @@ The following table documents all ignored tests in the repository, explaining wh
 | **`src/clap/processor_test.rs`** | `test_gc_stress_1000_swaps` | Heavy GC swap test (1000 iterations) exceeding standard SPSC channel limits. | Long Suite (Phase 4) | Pre-release / Nightly |
 | **`tests/concurrency_stress.rs`** | `test_*_concurrent_*`, `test_t6_3_*` | Heavy multi-reader lock-free param contention sweeps. | Long Suite (Phase 4) | Pre-release / Nightly |
 | **`tests/pw_integration_test.rs`** | `test_pipewire_host_loop` | Requires a running PipeWire daemon environment (session/system level). | Long Suite (Phase 6) | Pre-release / Nightly |
+
+---
+
+## 6. Fail-Fast vs. Complete View Policy
+
+To align test execution with developer workflows and integration schedules, the test suites implement two different error-handling strategies:
+
+### 6.1. Fail-Fast (Standard QA Suite)
+- **Script**: [tests-cargo.sh](file:///home/fabio/nam-rs/utils/tests-cargo.sh)
+- **Goal**: Minimize the feedback loop during local iterations and pre-commit checks.
+- **Behavior**: If any test target compilation, test execution, or validation step fails, the script immediately terminates. It does not attempt to execute subsequent phases or steps.
+- **Configuration**: Managed using `set -e` in the bash runner. Cargo commands execute default target-level fail-fast behavior.
+
+### 6.2. Complete View (Long-Duration Audit Suite)
+- **Script**: [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)
+- **Goal**: Provide a complete, comprehensive report of all test, parity, and performance outcomes for nightlies or release gates.
+- **Behavior**: Even if a test command or phase fails, execution continues. All phases are executed, and all logs are collected.
+- **Configuration**:
+  - Phase wrappers execute with `|| true` to prevent shell-level aborts.
+  - Cargo test targets within a phase run with `--no-fail-fast` to guarantee that all test targets run regardless of individual failure.
+  - Sub-commands are chained using a custom tracking variable (`status=0; cmd1 || status=1; cmd2 || status=1; [ $status -eq 0 ]`) to capture failures without aborting the sequence early.
+  - A beautiful audit summary table is compiled and printed at the end.
+  - If any phase failed, the script exits with a non-zero code (`1`) at the very end.
+

@@ -69,7 +69,8 @@ fn run_v2_golden_test(
         let mut output = vec![0.0f32; num_samples];
         process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
 
-        let (mut mse_limit, mut min_snr_db, mut max_esr) = topology_thresholds(&model_data, model_name);
+        let (mut mse_limit, mut min_snr_db, mut max_esr) =
+            topology_thresholds(&model_data, model_name);
 
         if model_data.architecture == "LSTM" {
             // LSTM recurrent state accumulates quantization/approximation errors

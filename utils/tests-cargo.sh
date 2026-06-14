@@ -17,7 +17,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}         nam-rs Standard QA & Test Suite (± 2 minutos)         ${NC}"
+echo -e "${BLUE}${BOLD}         nam-rs Standard QA & Test Suite (± 54 second)         ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory
@@ -49,14 +49,11 @@ echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE2}${NC}"
 
 # 3. CLAP integration and heap-audit tests
 echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditoria de heap...${NC}"
-set +e
-test_exit_code=0
 
 # A) CLAP Library tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" --lib clap::
-test_exit_code=$((test_exit_code + $?))
 
 # B) Targeted integration tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
@@ -68,22 +65,13 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   --test clap_lifecycle_test \
   --test clap_state_migration \
   --test clap_multi_instance
-test_exit_code=$((test_exit_code + $?))
 
 # C) Diagnostic bundle heap variant test
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" \
   --test diagnostic_bundle heap_audit
-test_exit_code=$((test_exit_code + $?))
 
-set -e
-if [ $test_exit_code -ne 0 ]; then
-    echo -e "\n${RED}${BOLD}================================================================${NC}"
-    echo -e "${RED}${BOLD}          Testes CLAP/heap-audit FALHARAM (código $test_exit_code)          ${NC}"
-    echo -e "${RED}${BOLD}================================================================${NC}"
-    exit $test_exit_code
-fi
 
 # 4. Run the official CLAP validator if available
 echo -e "\n${BLUE}${BOLD}[4/4] Executando validação via clap-validator...${NC}"
