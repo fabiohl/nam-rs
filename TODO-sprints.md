@@ -115,7 +115,7 @@ de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o me
   - _Critério de aceite_: o teste falha com a implementação global antiga e passa com a
     _thread-local_.
 
-- [ ] **T1.1.4 — Remover `--test-threads=1` da auditoria de heap.**
+- [x] **T1.1.4 — Remover `--test-threads=1` da auditoria de heap.**
   Após T1.1.1–T1.1.3, confirmar que os testes de heap-audit toleram paralelismo.
 
   - _Critério de aceite_: `cargo test --features clap-plugin,heap-audit` passa **sem**

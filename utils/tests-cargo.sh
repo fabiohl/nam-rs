@@ -45,7 +45,8 @@ echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditori
 set +e
 CLAP_PLUGIN_PATH="$CLAP_BIN" \
   NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test -- --test-threads=1
+  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test
+
 
 test_exit_code=$?
 set -e
