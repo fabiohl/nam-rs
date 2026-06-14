@@ -311,6 +311,30 @@ Two validation layers capture **different classes of bug** and are deliberately 
 >
 > **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Lite/Feather/Nano), LSTM (1×8/1×12/1×16/1×24/1×40/2×8/2×12/2×16/2×24), and Linear (FIR-based models), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](../tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](dependencies.md#6-dependencies-for-c-cross-validation-optional).
 
+### Principle: "Todo Golden Deve Poder Falhar" (Every Golden Must Be Able to Fail)
+
+A golden test is a **gate** — it must be capable of catching regressions. Three pitfalls
+turn goldens into placebos that grant false confidence:
+
+1. **Self-golden:** Validating output against itself. Passes by definition; catches nothing.
+2. **Neutralized threshold:** `SNR ≤ 0 dB`, `ESR ≥ 1.0`, or `MSE ≥ 1e29` without rigid
+   SNR+ESR compensation. Metrics that can never fire.
+3. **Silent heuristic fallback:** Models without a calibrated entry falling back to
+   `topology_thresholds()` with undocumented, untraceable thresholds.
+
+**Meta-test enforcement** (`tests/threshold_calibration.rs`, part of T3.3/T3.4):
+
+- `test_all_golden_models_have_calibrated_thresholds` — Every committed golden `.bin` MUST
+  have an explicit calibrated entry. No silent fallback.
+- `test_all_calibrated_entries_have_measurement_comments` — Every entry MUST document its
+  provenance with `// Measured: SNR=…, ESR=…`.
+- `test_all_thresholds_anti_placebo` — Each threshold dimension is independently checked:
+  SNR ≤ 0, ESR ≥ 1, and MSE ≥ 1e29 without rigid SNR+ESR all fail individually.
+
+> **A2 Exception:** A2 Full/Lite intentionally use `mse_limit = 1e30` because their ESR
+> gates are ultra-strict (≤ 8e-8) and SNR ≥ 70 dB. The anti-placebo test accepts
+> `mse_limit ≥ 1e29` only when SNR ≥ 40 dB and ESR < 0.1. Total neutralization still fails.
+
 ### Benchmarks and Performance
 
 - **Criterion Benches:** `benches/inference_bench.rs` measures inference latency per model and SIMD architecture.

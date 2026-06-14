@@ -362,7 +362,7 @@ mkdir -p /tmp/kilo/a2out
 
 ---
 
-## ÉPICO 3 — Infra de Goldens: Higiene, Verdade e Estabilidade 🧹 [TODO]
+## ÉPICO 3 — Infra de Goldens: Higiene, Verdade e Estabilidade 🧹 [DONE]
 
 > **Meta:** melhorias óbvias, seguras e imediatas que tornam a infra de goldens enxuta, auto-documentada e
 > resistente a regressões silenciosas — para "nunca mais precisar tocar nos goldens" salvo para adicionar modelos.
@@ -432,7 +432,7 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** `golden_gen_build.sh` não gera nenhum artefato que nenhum teste/etapa consome;
     `cargo build` verde sem o binário; `cargo test` verde.
 
-### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo)
+### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo) [DONE]
 
 - **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).** ✅ **[DONE]**
   - **Decisão:** Opção (a) — manter em código, blindar com meta-testes.
@@ -449,7 +449,7 @@ mkdir -p /tmp/kilo/a2out
     3. Comentário do Lite padronizado para seguir o mesmo formato `// Measured:` dos demais.
   - **Critério de aceite:** Cumprido. 4/4 meta-testes verdes; `golden_vectors` 18 passed / 1 ignored; suíte completa (`utils/tests-cargo.sh`) 100% verde.
 
-- **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".**
+- **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".** ✅ **[DONE]**
   - **Ação (passo a passo):**
     1. Criar um teste (ex.: em `tests/golden_vectors.rs` ou `tests/common`) que **itere sobre todos os modelos
        com golden committed** e **falhe** se algum threshold estiver neutralizado — i.e., `min_snr_db <= 0.0`

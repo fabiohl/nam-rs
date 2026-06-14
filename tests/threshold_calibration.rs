@@ -42,8 +42,7 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
 /// prevents silent fallback to heuristic thresholds.
 #[test]
 fn test_all_golden_models_have_calibrated_thresholds() {
-    let fixtures_dir =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
 
     let mut tested_count = 0;
 
@@ -103,8 +102,8 @@ fn test_all_calibrated_entries_have_measurement_comments() {
     let validation_src =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/common/validation.rs");
 
-    let source = fs::read_to_string(&validation_src)
-        .expect("Failed to read tests/common/validation.rs");
+    let source =
+        fs::read_to_string(&validation_src).expect("Failed to read tests/common/validation.rs");
 
     let models = [
         "BossWN-standard",
@@ -125,9 +124,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         let model_line = source
             .lines()
             .enumerate()
-            .find(|(_, l)| {
-                l.trim().starts_with('"') && l.contains(model) && l.contains("=>")
-            })
+            .find(|(_, l)| l.trim().starts_with('"') && l.contains(model) && l.contains("=>"))
             .map(|(i, _)| i)
             .unwrap_or_else(|| {
                 panic!(
@@ -156,4 +153,96 @@ fn test_all_calibrated_entries_have_measurement_comments() {
             model_line + 1,
         );
     }
+}
+
+/// Every model with a committed golden `.bin` MUST NOT have any
+/// placebo (neutralized) threshold component. Unlike T3.3's basic
+/// check (which only rejects when `SNR ≤ 0 AND ESR ≥ 1`), this test
+/// treats each dimension independently — any single neutralized
+/// component makes the gate a placebo.
+///
+/// ## What constitutes a placebo threshold:
+///
+/// 1. `snr_db ≤ 0.0` → SNR gate is neutralized (never catches
+///    regressions). Fails regardless of ESR or MSE values.
+/// 2. `max_esr ≥ 1.0` → ESR gate is neutralized (never catches
+///    regressions). Fails regardless of SNR or MSE values.
+/// 3. `mse_limit ≥ 1e29` → MSE gate is effectively infinite.
+///    This is acceptable ONLY if the remaining SNR and ESR gates
+///    are "rigid" enough to compensate (SNR ≥ 40 dB AND ESR < 0.1).
+///    The A2 Full/Lite models intentionally set `mse_limit = 1e30`
+///    because their ESR gates are ultra-strict (≤ 8e-8), making
+///    MSE redundant.
+///
+/// ## Principle: "todo golden pode falhar"
+///
+/// A golden test **must** be able to fail — that is the whole point
+/// of a gate. A self-golden (output validated against itself) and a
+/// neutralized threshold (SNR ≤ 0, ESR ≥ 1, or MSE ≥ 1e29 without
+/// rigid SNR+ESR) are **not gates** — they are placebos that grant
+/// a false sense of confidence.
+///
+/// Part of T3.4: anti-placebo meta-test.
+#[test]
+fn test_all_thresholds_anti_placebo() {
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+
+    let mut tested_count = 0;
+
+    for entry in fs::read_dir(&fixtures_dir).expect("Failed to read fixtures directory") {
+        let entry = entry.expect("Failed to read fixture entry");
+        let filename = entry.file_name();
+        let filename_str = filename.to_string_lossy();
+
+        if !filename_str.ends_with(".bin") {
+            continue;
+        }
+
+        if let Some(model_name) = golden_bin_to_model_name(&filename_str) {
+            let threshold = get_calibrated_threshold(model_name);
+            assert!(
+                threshold.is_some(),
+                "Model '{model_name}' has NO calibrated entry for anti-placebo check."
+            );
+
+            let (mse_limit, snr_db, esr_opt) = threshold.unwrap();
+
+            // Rule 1: SNR ≤ 0 → placebo, regardless of other gates.
+            assert!(
+                snr_db > 0.0,
+                "Model '{model_name}' has SNR = {snr_db} dB ≤ 0 — \
+                 placebo gate. SNR must be > 0 to catch regressions."
+            );
+
+            // Rule 2: ESR ≥ 1.0 → placebo, regardless of other gates.
+            if let Some(esr) = esr_opt {
+                assert!(
+                    esr < 1.0,
+                    "Model '{model_name}' has ESR = {esr} ≥ 1.0 — \
+                     placebo gate. ESR must be < 1.0 to catch regressions."
+                );
+            }
+
+            // Rule 3: MSE ≥ 1e29 without rigid SNR+ESR → placebo.
+            if mse_limit >= 1e29 {
+                let esr_rigid = esr_opt.is_some() && esr_opt.unwrap() < 0.1;
+                assert!(
+                    snr_db >= 40.0 && esr_rigid,
+                    "Model '{model_name}' has mse_limit = {mse_limit} ≥ 1e29 \
+                     (effectively infinite MSE gate) but lacks rigid SNR/ESR \
+                     compensation (SNR = {snr_db} dB, ESR = {esr_opt:?}). \
+                     A2 Full/Lite intentionally use mse_limit = 1e30 because \
+                     their ESR gates are ultra-strict (≤ 8e-8). \
+                     To bypass MSE, SNR must be ≥ 40 dB and ESR must be < 0.1."
+                );
+            }
+
+            tested_count += 1;
+        }
+    }
+
+    assert!(
+        tested_count >= 10,
+        "Expected ≥ 10 golden models in anti-placebo check, found {tested_count}"
+    );
 }

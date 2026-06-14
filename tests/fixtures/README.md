@@ -224,6 +224,30 @@ See `docs/perceptual_validation.md` for methodology.
 > WaveNet Lite (CH=12) SNRhreshold is 0 dB — the synthetic `BossWN-lite.nam` model
 > produces only 0.9 dB SNR against the C++ reference (see §Model provenance below).
 
+### Principle: "Todo Golden Deve Poder Falhar" (Every Golden Must Be Able to Fail)
+
+A golden test is a **gate** — it exists to catch regressions. Three patterns defeat this purpose:
+
+| Placebo pattern            | Why it's not a gate                                                                                                                      |
+|:-------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Self-golden**            | Output validated against itself. Passes by definition, catches nothing.                                                                  |
+| **Threshold neutralizado** | SNR ≤ 0 dB, ESR ≥ 1.0, or MSE ≥ 1e29 without rigid SNR+ESR compensation. Metrics that can never fire create a false sense of confidence. |
+| **Fallback heurístico**    | Silent fallback to `topology_thresholds()` when no calibrated entry exists.                                                              |
+
+**Meta-tests enforce this principle** in `tests/threshold_calibration.rs`:
+
+| Meta-teste (T3.3/T3.4)                                  | What it catches                                                                                |
+|:------------------------------------------------------- |:---------------------------------------------------------------------------------------------- |
+| `test_all_golden_models_have_calibrated_thresholds`     | Models without explicit calibrated entry (T3.3)                                                |
+| `test_all_calibrated_entries_have_measurement_comments` | Entries without `// Measured: SNR=..., ESR=...` provenance (T3.3)                              |
+| `test_all_thresholds_anti_placebo`                      | Any single neutralized component: SNR ≤ 0, ESR ≥ 1, or MSE ≥ 1e29 without rigid SNR+ESR (T3.4) |
+
+> [!IMPORTANT]
+> **A2 Exception:** The A2 Full/Lite models intentionally use `mse_limit = 1e30` (MSE effectively disabled)
+> because their ESR gates are ultra-strict (≤ 8e-8) and SNR gates are ≥ 70 dB. The anti-placebo test
+> accepts `mse_limit ≥ 1e29` only when SNR ≥ 40 dB and ESR < 0.1 — ensuring the bypass is compensated
+> by rigid remaining gates. A total neutralization (SNR ≤ 0 or ESR ≥ 1) would still fail.
+
 ## To regenerate (golden vectors)
 
 See [Unversioned Local Mirrors](#unversioned-local-mirrors) for the pinned upstream commits and
