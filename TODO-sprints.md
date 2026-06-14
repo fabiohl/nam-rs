@@ -570,14 +570,10 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** `README.md` deixa explícito quais goldens são de **modelo oficial real** (A1/LSTM)
     vs **sintético calibrado** (A2); nenhuma ambiguidade sobre a natureza de cada fixture.
 
-- **[T5.4] Manter rastreado o WaveNet Lite CH=12 (divergência conhecida).**
-
-  - **Estado:** `test_golden_vectors_wavenet_lite` segue `#[ignore]` (`known-divergent`, SNR 0.9 dB). Bug de
-    engine isolado na fronteira de bloco (frame 64) para CH não-potência-de-2. Manter rastreado; ao corrigir
-    (trabalho de engine, fora do escopo de goldens), restaurar o gate rígido (SNR ≥ 40 dB) já preparado em
-    `get_calibrated_threshold`.
-  - **Critério de aceite:** o teste permanece honestamente sinalizado (nunca como falso-verde); o gate-alvo
-    fica pronto para reativação imediata pós-correção.
+- **[T5.4] ✅ Manter rastreado o WaveNet Lite CH=12 (divergência conhecida).** ✅ **VERIFIED (2026-06-14)**
+  - **Estado verificado:** `test_golden_vectors_wavenet_lite` segue `#[ignore = "known-divergent: WaveNet Lite (CH=12) exhibits numerical drift (SNR = 0.9 dB vs C++)"]`. Live cross-validation em `cpp_parity.rs` (v1 e v2) imprime `SKIP` explícito. Bug de engine isolado na fronteira de bloco (frame 64) para CH não-potência-de-2 permanece em aberto como feature à parte.
+  - **Gate-alvo pronto:** `get_calibrated_threshold` (`tests/common/validation.rs:335-340`) para `BossWN-lite`/`wavenet_lite`: SNR=40.0 dB, ESR=1e-3. `wavenet_thresholds(12)`: SNR=40.0 dB, ESR=1e-3. Anti-placebo meta-test (regras 1-3) passa para `BossWN-lite`. Self-consistency OK (determinístico). Threshold calibration meta-tests (3/3) passam.
+  - **Para reativação pós-correção:** remover `#[ignore]` em `golden_vectors.rs:465` e trocar `eprintln!/return` por `run_v1/run_v2_multi_sr` em `cpp_parity.rs:448-451,532-534`.](
 
 ### Sprint 5.4 — Qualidade das medições (observação) 📊
 
