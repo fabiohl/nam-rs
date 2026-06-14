@@ -262,13 +262,6 @@ STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 "$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
 echo "  v1: $STRESS_WAV"
 
-# Generate v2 signals for all supported sample rates
-for SR in 44100 48000 88200 96000 192000; do
-    V2_WAV="$FIXTURES_DIR/stress_signal_v2_${SR}.wav"
-    "$GEN_STRESS" --version v2 --sample-rate "$SR" --output "$V2_WAV" 2>&1
-    echo "  v2 ${SR}Hz: $V2_WAV"
-done
-
 # =============================================================================
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================

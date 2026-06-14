@@ -412,7 +412,7 @@ mkdir -p /tmp/kilo/a2out
 > ⚠️ **Pendência (T3.5, abaixo): peso morto residual de *build* (não-`.bin`).** A meta de T3.1 inclui
 > "`golden_gen_build.sh` não gera artefatos inertes" — ainda há 2 resíduos.
 
-- **[T3.5] (corretiva — higiene de build) Eliminar geração inerte residual.**
+- **[T3.5] (corretiva — higiene de build) Eliminar geração inerte residual.** [DONE]
   - **Problema verificado:**
     1. **Loop v2 WAV inerte** em `tests/fixtures/golden_gen_build.sh` (seção "[4/6]", aprox. linhas 265–271):
        gera `stress_signal_v2_{44100,48000,88200,96000,192000}.wav` (5 arquivos), mas **nenhum teste os lê** —
