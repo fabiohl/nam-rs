@@ -32,16 +32,16 @@ cargo test
 # 2. Build CLAP plugin debug binary with heap-audit
 echo -e "\n${BLUE}${BOLD}[2/4] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo build --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
+  cargo build --no-default-features --features "clap-plugin,heap-audit" --lib
 
-CLAP_BIN_RAW="target/clap-test/debug/libnam_rs.so"
+CLAP_BIN_RAW="target/debug/libnam_rs.so"
 if [ ! -f "$CLAP_BIN_RAW" ]; then
     echo -e "${RED}Erro: Falha ao encontrar a biblioteca do CLAP em $CLAP_BIN_RAW!${NC}"
     exit 1
 fi
 
 # Preservar o binário compilado em um local estável para evitar modificações por etapas subsequentes
-CLAP_BIN="target/clap-test/debug/libnam_rs_validated.so"
+CLAP_BIN="target/debug/libnam_rs_validated.so"
 cp "$CLAP_BIN_RAW" "$CLAP_BIN"
 HASH_PHASE2=$(sha256sum "$CLAP_BIN" | cut -d' ' -f1)
 echo -e "  Preservado binário da fase 2: $CLAP_BIN"
@@ -54,12 +54,12 @@ test_exit_code=0
 
 # A) CLAP Library tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test --lib clap::
+  cargo test --features "clap-plugin,heap-audit" --lib clap::
 test_exit_code=$((test_exit_code + $?))
 
 # B) Targeted integration tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test \
+  cargo test --features "clap-plugin,heap-audit" \
   --test a2_heap_audit \
   --test cabsim_heap_audit \
   --test resampler_heap_audit \
@@ -70,7 +70,7 @@ test_exit_code=$((test_exit_code + $?))
 
 # C) Diagnostic bundle heap variant test
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test \
+  cargo test --features "clap-plugin,heap-audit" \
   --test diagnostic_bundle heap_audit
 test_exit_code=$((test_exit_code + $?))
 

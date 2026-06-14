@@ -35,13 +35,16 @@ fn test_clap_lifecycle() {
             let current_dir = env::current_dir().expect("Failed to get current dir");
             p = current_dir.join("target/release/libnam_rs.so");
             if !p.exists() {
-                p = current_dir.join("target/clap/release/libnam_rs.so");
+                p = current_dir.join("target/debug/libnam_rs.so");
                 if !p.exists() {
-                    p = current_dir.join("target/clap/debug/libnam_rs.so");
+                    p = current_dir.join("target/clap/release/libnam_rs.so");
                     if !p.exists() {
-                        p = current_dir.join("target/clap-test/release/libnam_rs.so");
+                        p = current_dir.join("target/clap/debug/libnam_rs.so");
                         if !p.exists() {
-                            p = current_dir.join("target/clap-test/debug/libnam_rs.so");
+                            p = current_dir.join("target/clap-test/release/libnam_rs.so");
+                            if !p.exists() {
+                                p = current_dir.join("target/clap-test/debug/libnam_rs.so");
+                            }
                         }
                     }
                 }

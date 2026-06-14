@@ -102,14 +102,14 @@ run_phase \
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
 run_clap_audit_local() {
-    echo "  Limpando diretório target do CLAP..."
-    cargo clean --target-dir target/clap-test
+    echo "  Limpando binário CLAP anterior..."
+    rm -f target/release/libnam_rs.so
 
     echo "  Compilando CLAP Plugin em modo Release..."
     RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap" \
-      cargo build --release --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
+      cargo build --release --no-default-features --features "clap-plugin,heap-audit" --lib
 
-    local RELEASE_CLAP_BIN="target/clap-test/release/libnam_rs.so"
+    local RELEASE_CLAP_BIN="target/release/libnam_rs.so"
     if [ ! -f "$RELEASE_CLAP_BIN" ]; then
         echo "Erro: libnam_rs.so de release não encontrado." >&2
         return 1

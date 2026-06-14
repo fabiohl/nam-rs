@@ -86,7 +86,7 @@ Esta é a razão real do `--test-threads=1` global em `tests-cargo.sh:30` e `:48
 é um **paliativo** que sacrifica a agilidade da suíte inteira para proteger um punhado
 de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o mesmo padrão.
 
-- [DONE] **T1.1.1 — Tornar a contabilidade de alocação _thread-local_.**
+- [x] **T1.1.1 — Tornar a contabilidade de alocação _thread-local_.**
   Substituir os estáticos globais por contadores _thread-local_ (`thread_local!` com
   `Cell<usize>` / `Cell<bool>`), de modo que cada thread de teste rastreie suas próprias
   alocações de forma isolada. O `CountingAllocator::alloc` incrementa o contador da
@@ -100,7 +100,7 @@ de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o me
     `thread_local!`; usar `try_with` e tratar o caso `AccessError` como "não rastreando"
     para evitar recursão/_panic_ durante a destruição de TLS.
 
-- [DONE] **T1.1.2 — Adequar todos os consumidores de `TrackingGuard`/`ALLOC_COUNT`.**
+- [x] **T1.1.2 — Adequar todos os consumidores de `TrackingGuard`/`ALLOC_COUNT`.**
   Revisar usos em `src/clap/processor_test.rs:717-790`, `tests/zero_alloc_infer.rs`,
   `tests/*_heap_audit.rs`, `src/dsp/pipeline/*_test.rs` e demais, ajustando a leitura do
   contador para a API _thread-local_.
@@ -207,7 +207,7 @@ testes que **já passaram** na fase 1.
 separado existe deliberadamente para **não** thrashar o `target/` principal entre
 builds de features diferentes (`lints.sh` usa default features) — é um _trade-off_.
 
-- [ ] **T1.4.1 — Medir e decidir a estratégia de _target dir_.**
+- [x] **T1.4.1 — Medir e decidir a estratégia de _target dir_.**
   Comparar três cenários e cronometrar (cold/warm): (a) status quo (target separado);
   (b) target único compartilhado entre fases; (c) target separado **persistente** porém
   com cache (sccache/`CARGO_INCREMENTAL`).
@@ -373,6 +373,3 @@ testes lentos/_flaky_.
 - **Estabilidade**: 0 _flakes_ em ≥ 5 execuções consecutivas pós-paralelização.
 - **Informatividade**: sumário com timing por fase + lista dos testes mais lentos.
 - **Cobertura**: nenhuma perda de teste exclusivo de configuração (T1.2.2 / T1.6.2).
-
-  </content>
-  </invoke>
