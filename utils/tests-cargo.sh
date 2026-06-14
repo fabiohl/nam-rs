@@ -27,7 +27,7 @@ cd "$PROJECT_DIR"
 
 # 1. Standard tests
 echo -e "\n${BLUE}${BOLD}[1/4] Executando testes unitários e de integração...${NC}"
-cargo test -- --test-threads=1
+cargo test
 
 # 2. Build CLAP plugin debug binary with heap-audit
 echo -e "\n${BLUE}${BOLD}[2/4] Compilando plugin CLAP (Debug + heap-audit)...${NC}"

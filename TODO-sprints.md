@@ -121,7 +121,7 @@ de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o me
   - _Critério de aceite_: `cargo test --features clap-plugin,heap-audit` passa **sem**
     `--test-threads=1`, de forma determinística em ≥ 5 execuções consecutivas.
 
-- [ ] **T1.1.5 — Serializar apenas os testes que mutam estado de processo.**
+- [x] **T1.1.5 — Serializar apenas os testes que mutam estado de processo.**
   `tests/diagnostic_bundle.rs:297-302` faz `std::env::set_var("HOME"/"XDG_RUNTIME_DIR")`
   (global, _racy_). Em vez do flag global, isolar esses testes (ex.: `serial_test`, ou
   um _mutex_ de teste, ou execução em processo próprio — ver Sprint 1.5/nextest).

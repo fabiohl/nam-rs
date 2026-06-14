@@ -13,43 +13,43 @@
 
 use std::sync::atomic::Ordering;
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 use std::alloc::{GlobalAlloc, Layout, System};
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 use std::cell::Cell;
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 thread_local! {
     static TRACKING_ACTIVE: Cell<bool> = const { Cell::new(false) };
     static ALLOC_COUNT_TLS: Cell<usize> = const { Cell::new(0) };
 }
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 fn is_tracking_active() -> bool {
     TRACKING_ACTIVE
         .try_with(|active| active.get())
         .unwrap_or(false)
 }
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 fn set_tracking_active(active: bool) {
     let _ = TRACKING_ACTIVE.try_with(|a| a.set(active));
 }
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 fn get_local_alloc_count() -> usize {
     ALLOC_COUNT_TLS.try_with(|count| count.get()).unwrap_or(0)
 }
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 fn set_local_alloc_count(val: usize) {
     let _ = ALLOC_COUNT_TLS.try_with(|count| count.set(val));
 }
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 pub struct CountingAllocator;
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if is_tracking_active() {
@@ -65,19 +65,19 @@ unsafe impl GlobalAlloc for CountingAllocator {
 }
 
 pub struct TrackingGuard {
-    #[cfg(feature = "clap-plugin")]
+    #[cfg(all(feature = "clap-plugin", feature = "heap-audit"))]
     _inner: nam_rs::common::alloc_audit::TrackingGuard,
 }
 
 impl TrackingGuard {
     pub fn new() -> Self {
-        #[cfg(feature = "clap-plugin")]
+        #[cfg(all(feature = "clap-plugin", feature = "heap-audit"))]
         {
             Self {
                 _inner: nam_rs::common::alloc_audit::TrackingGuard::new(),
             }
         }
-        #[cfg(not(feature = "clap-plugin"))]
+        #[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
         {
             set_tracking_active(true);
             set_local_alloc_count(0);
@@ -88,7 +88,7 @@ impl TrackingGuard {
 
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
-        #[cfg(not(feature = "clap-plugin"))]
+        #[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
         {
             set_tracking_active(false);
         }
@@ -96,11 +96,11 @@ impl Drop for TrackingGuard {
 }
 
 pub fn get_alloc_count() -> usize {
-    #[cfg(feature = "clap-plugin")]
+    #[cfg(all(feature = "clap-plugin", feature = "heap-audit"))]
     {
         nam_rs::common::alloc_audit::get_alloc_count()
     }
-    #[cfg(not(feature = "clap-plugin"))]
+    #[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
     {
         get_local_alloc_count()
     }

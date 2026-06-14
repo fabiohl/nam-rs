@@ -12,6 +12,9 @@ use nam_rs::common::diagnostics::{
 use nam_rs::common::spsc::RtStatusFlags;
 use std::sync::atomic::Ordering;
 
+static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+
 struct MockSnapshotProvider {
     model: Option<ModelInfo>,
     audio: AudioInfo,
@@ -44,6 +47,7 @@ impl HasRuntimeSnapshot for MockSnapshotProvider {
 
 #[test]
 fn test_diagnostic_bundle_with_mock_provider() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "WaveNet".to_string(),
@@ -116,6 +120,7 @@ fn test_diagnostic_bundle_with_mock_provider() {
 
 #[test]
 fn test_rt_status_flags_provider_defaults() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let rt_status = RtStatusFlags::new();
     let snapshot = RuntimeSnapshot::capture(&rt_status);
 
@@ -133,6 +138,7 @@ fn test_rt_status_flags_provider_defaults() {
 
 #[test]
 fn test_rt_status_flags_provider_populated() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let rt_status = RtStatusFlags::new();
     rt_status.active_rate.store(44100, Ordering::Relaxed);
     rt_status.last_n_samples.store(512, Ordering::Relaxed);
@@ -159,6 +165,7 @@ fn test_rt_status_flags_provider_populated() {
 
 #[test]
 fn test_panic_hook_behavior() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     use std::fs;
     use std::path::PathBuf;
 
@@ -287,6 +294,7 @@ fn test_panic_hook_behavior() {
 
 #[test]
 fn test_diagnostic_bundle_path_redaction() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     // Save current env vars to restore later if modified, or just use them.
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/mockuser".to_string());
     let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
@@ -391,6 +399,7 @@ fn test_diagnostic_bundle_path_redaction() {
 
 #[test]
 fn test_diagnostic_bundle_capture_nominal() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let bundle = DiagnosticBundle::capture();
     let rendered = bundle.render();
 
@@ -412,6 +421,7 @@ fn test_diagnostic_bundle_capture_nominal() {
 
 #[test]
 fn test_diagnostic_bundle_mandatory_fields() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let params = vec![("test_key", "test_value".to_string())];
     let bundle = DiagnosticBundle::capture_with_error(
         nam_rs::common::diagnostics::NamErrorCode::ModelBuildFailed,
@@ -434,6 +444,7 @@ fn test_diagnostic_bundle_mandatory_fields() {
 
 #[test]
 fn test_diagnostic_bundle_regex_roundtrip() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "LSTM".to_string(),
@@ -554,6 +565,7 @@ fn test_diagnostic_bundle_regex_roundtrip() {
 
 #[test]
 fn test_diagnostic_bundle_model_sample_rate_mismatch() {
+    let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "WaveNet".to_string(),
@@ -605,6 +617,7 @@ mod heap_audit_tests {
 
     #[test]
     fn test_diagnostic_bundle_heap_audit() {
+        let _guard = super::TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let rt_status = RtStatusFlags::new();
         rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
         rt_status.latency_hist.record(150);

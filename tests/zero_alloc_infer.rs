@@ -20,12 +20,12 @@ use nam_rs::models::NamModel;
 use std::fs;
 
 mod common;
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 use common::alloc_audit::CountingAllocator;
 use common::alloc_audit::{TrackingGuard, get_alloc_count};
 use common::*;
 
-#[cfg(not(feature = "clap-plugin"))]
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 

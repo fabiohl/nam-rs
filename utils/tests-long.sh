@@ -143,7 +143,7 @@ run_clap_audit_local() {
       echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..." && \
       cargo test --features standalone --test concurrency_stress -- --ignored --nocapture && \
       echo "  Executando testes unitários e de integração em modo Mono..." && \
-      cargo test --no-default-features --features "clap-plugin,testing" -- --test-threads=1
+      cargo test --no-default-features --features "clap-plugin,testing"
 }
 
 run_phase \
