@@ -6,9 +6,8 @@ use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::RtStatusFlags;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
-use crate::dsp::pipeline::test_util::infra::{ALLOC_COUNT, TrackingGuard};
+use crate::dsp::pipeline::test_util::infra::{get_alloc_count, TrackingGuard};
 use crate::dsp::resampler::NamResampler;
-use std::sync::atomic::Ordering;
 
 #[test]
 fn test_denormal_dither_mono_symmetry() {
@@ -109,7 +108,7 @@ fn test_dither_simd_vs_scalar_bit_exact() {
 
             // Track allocations to ensure RT-safety of dither operations.
             let _guard = TrackingGuard::new();
-            let start_allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+            let start_allocs = get_alloc_count();
 
             // Apply SIMD-dispatched dither.
             apply_dither_add_simd(&mut buf_simd, offset);
@@ -120,7 +119,7 @@ fn test_dither_simd_vs_scalar_bit_exact() {
                 apply_dither_add_fallback(&mut buf_scalar, offset);
             }
 
-            let end_allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+            let end_allocs = get_alloc_count();
             drop(_guard);
 
             assert_eq!(

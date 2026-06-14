@@ -764,9 +764,7 @@ mod tests {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
-        // Activates heap audit for the current thread
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        crate::common::alloc_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
+        // Activates heap audit globally
         crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
 
         // Resets the status flag to ensure it is clean before
@@ -789,8 +787,6 @@ mod tests {
 
         // Disables heap audit to avoid interfering with other tests
         crate::common::alloc_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
-        crate::common::alloc_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
-        crate::common::alloc_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
 
         // Verifies that the returned status is Continue (zero-alloc path)
         assert!(

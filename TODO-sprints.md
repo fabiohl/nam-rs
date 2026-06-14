@@ -86,7 +86,7 @@ Esta é a razão real do `--test-threads=1` global em `tests-cargo.sh:30` e `:48
 é um **paliativo** que sacrifica a agilidade da suíte inteira para proteger um punhado
 de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o mesmo padrão.
 
-- [ ] **T1.1.1 — Tornar a contabilidade de alocação _thread-local_.**
+- [DONE] **T1.1.1 — Tornar a contabilidade de alocação _thread-local_.**
   Substituir os estáticos globais por contadores _thread-local_ (`thread_local!` com
   `Cell<usize>` / `Cell<bool>`), de modo que cada thread de teste rastreie suas próprias
   alocações de forma isolada. O `CountingAllocator::alloc` incrementa o contador da

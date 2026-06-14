@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_util::infra::{ALLOC_COUNT, TrackingGuard};
+    use super::super::test_util::infra::{get_alloc_count, TrackingGuard};
     use super::super::*;
     use crate::common::params::AdaptiveComputeMode;
     use crate::common::spsc::RtStatusFlags;
@@ -95,7 +95,7 @@ mod tests {
 
         let _guard = TrackingGuard::new();
         capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
-        let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+        let allocs = get_alloc_count();
         drop(_guard);
 
         assert_eq!(

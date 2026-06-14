@@ -8,11 +8,10 @@
 
 use crate::clap::NamClapPlugin;
 use crate::common::params::NamPluginParams;
-use crate::dsp::pipeline::test_util::infra::{ALLOC_COUNT, TrackingGuard};
+use crate::dsp::pipeline::test_util::infra::{get_alloc_count, TrackingGuard};
 use clack_extensions::state::PluginState;
 use clack_host::prelude::*;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 
 // ── Test host mocks ──
 
@@ -114,9 +113,9 @@ pub fn load_plugin_state(instance: &mut PluginInstance<TestHost>, params: &NamPl
 /// `label` identifies the test context in the failure message.
 pub fn assert_zero_alloc<F: FnOnce()>(label: &str, f: F) {
     let _guard = TrackingGuard::new();
-    let before = ALLOC_COUNT.load(Ordering::Relaxed);
+    let before = get_alloc_count();
     f();
-    let after = ALLOC_COUNT.load(Ordering::Relaxed);
+    let after = get_alloc_count();
     assert_eq!(
         after - before,
         0,

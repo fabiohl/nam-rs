@@ -219,15 +219,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     ) -> Result<ProcessStatus, PluginError> {
         #[cfg(feature = "heap-audit")]
         let _guard = if crate::common::alloc_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
-            // SAFETY: `SYS_gettid` is a POSIX syscall that reads the kernel
-            // thread ID — it has no memory safety preconditions.
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            let audit_thread = crate::common::alloc_audit::AUDIT_THREAD.load(Ordering::Relaxed);
-            if audit_thread == 0 || audit_thread == tid {
-                Some(crate::common::alloc_audit::TrackingGuard::new())
-            } else {
-                None
-            }
+            Some(crate::common::alloc_audit::TrackingGuard::new())
         } else {
             None
         };

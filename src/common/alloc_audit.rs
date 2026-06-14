@@ -7,16 +7,36 @@
 //! used to prove that hot-path DSP code performs zero heap allocations.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
+use std::cell::Cell;
+use std::sync::atomic::AtomicBool;
 
 /// Flag controlling whether heap allocation tracking is enabled.
 pub static AUDIT_ENABLED: AtomicBool = AtomicBool::new(false);
-/// Global counter of allocations performed on the watched thread.
-pub static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-/// ID of the thread (tid) we are watching.
-pub static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
-/// ID of the thread authorized to perform the audit (used to isolate parallel tests).
-pub static AUDIT_THREAD: AtomicI32 = AtomicI32::new(0);
+
+thread_local! {
+    static TRACKING_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static ALLOC_COUNT_TLS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Returns the current thread's heap allocation count.
+pub fn get_alloc_count() -> usize {
+    ALLOC_COUNT_TLS.try_with(|count| count.get()).unwrap_or(0)
+}
+
+/// Sets the current thread's heap allocation count.
+pub fn set_alloc_count(val: usize) {
+    let _ = ALLOC_COUNT_TLS.try_with(|count| count.set(val));
+}
+
+/// Checks if heap allocation tracking is active on the current thread.
+pub fn is_tracking_active() -> bool {
+    TRACKING_ACTIVE.try_with(|active| active.get()).unwrap_or(false)
+}
+
+/// Sets heap allocation tracking active on the current thread.
+pub fn set_tracking_active(active: bool) {
+    let _ = TRACKING_ACTIVE.try_with(|a| a.set(active));
+}
 
 /// The "Memory Watchdog": intercepts all memory requests from the program.
 ///
@@ -32,9 +52,10 @@ impl CountingAllocator {
     /// The caller must ensure `layout` is valid (non-zero size, non-ZST
     /// with alignment ≤ size). This delegates to the system allocator.
     pub unsafe fn alloc(layout: Layout) -> *mut u8 {
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        if is_tracking_active() {
+            let _ = ALLOC_COUNT_TLS.try_with(|count| {
+                count.set(count.get() + 1);
+            });
         }
         unsafe { System.alloc(layout) }
     }
@@ -67,9 +88,8 @@ pub struct TrackingGuard {
 impl TrackingGuard {
     /// Starts watching the current thread.
     pub fn new() -> Self {
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        TRACKING_THREAD.store(tid, Ordering::Relaxed);
-        ALLOC_COUNT.store(0, Ordering::Relaxed);
+        set_tracking_active(true);
+        set_alloc_count(0);
         Self { _private: () }
     }
 }
@@ -82,7 +102,7 @@ impl Default for TrackingGuard {
 
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
-        TRACKING_THREAD.store(0, Ordering::Relaxed);
+        set_tracking_active(false);
     }
 }
 
@@ -92,47 +112,44 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     fn fresh_state() {
-        TRACKING_THREAD.store(0, Ordering::Relaxed);
-        ALLOC_COUNT.store(0, Ordering::Relaxed);
-        AUDIT_THREAD.store(0, Ordering::Relaxed);
+        set_tracking_active(false);
+        set_alloc_count(0);
         AUDIT_ENABLED.store(false, Ordering::Relaxed);
     }
 
     #[test]
-    fn tracking_guard_new_stores_tid() {
+    fn tracking_guard_new_sets_active() {
         fresh_state();
-        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+        assert!(!is_tracking_active());
 
         let guard = TrackingGuard::new();
 
-        let tid = TRACKING_THREAD.load(Ordering::Relaxed);
-        assert_ne!(tid, 0);
+        assert!(is_tracking_active());
 
         drop(guard);
     }
 
     #[test]
     fn tracking_guard_new_resets_alloc_count() {
-        ALLOC_COUNT.store(42, Ordering::Relaxed);
+        set_alloc_count(42);
 
         let guard = TrackingGuard::new();
 
-        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+        assert_eq!(get_alloc_count(), 0);
 
         drop(guard);
     }
 
     #[test]
-    fn tracking_guard_drop_clears_tracking_thread() {
+    fn tracking_guard_drop_clears_tracking_active() {
         fresh_state();
 
         let guard = TrackingGuard::new();
-        let tid = TRACKING_THREAD.load(Ordering::Relaxed);
-        assert_ne!(tid, 0);
+        assert!(is_tracking_active());
 
         drop(guard);
 
-        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+        assert!(!is_tracking_active());
     }
 
     #[test]
@@ -141,8 +158,8 @@ mod tests {
 
         let guard = TrackingGuard::default();
 
-        assert_ne!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
-        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+        assert!(is_tracking_active());
+        assert_eq!(get_alloc_count(), 0);
 
         drop(guard);
     }
@@ -152,18 +169,16 @@ mod tests {
         fresh_state();
 
         let g1 = TrackingGuard::new();
-        let tid1 = TRACKING_THREAD.load(Ordering::Relaxed);
-        assert_ne!(tid1, 0);
+        assert!(is_tracking_active());
 
         drop(g1);
-        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+        assert!(!is_tracking_active());
 
         let g2 = TrackingGuard::new();
-        let tid2 = TRACKING_THREAD.load(Ordering::Relaxed);
-        assert_ne!(tid2, 0);
+        assert!(is_tracking_active());
 
         drop(g2);
-        assert_eq!(TRACKING_THREAD.load(Ordering::Relaxed), 0);
+        assert!(!is_tracking_active());
     }
 
     #[test]
@@ -171,23 +186,46 @@ mod tests {
         fresh_state();
 
         let _g = TrackingGuard::new();
-        assert_eq!(ALLOC_COUNT.load(Ordering::Relaxed), 0);
+        assert_eq!(get_alloc_count(), 0);
     }
 
     #[test]
-    fn audit_thread_isolation_baseline() {
-        fresh_state();
-
-        assert_eq!(AUDIT_THREAD.load(Ordering::Relaxed), 0);
-        assert!(!AUDIT_ENABLED.load(Ordering::Relaxed));
-
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        AUDIT_THREAD.store(tid, Ordering::Relaxed);
-        AUDIT_ENABLED.store(true, Ordering::Relaxed);
-
-        assert_eq!(AUDIT_THREAD.load(Ordering::Relaxed), tid);
-        assert!(AUDIT_ENABLED.load(Ordering::Relaxed));
+    fn parallel_allocation_tracking_isolation() {
+        use std::thread;
 
         fresh_state();
+
+        let num_threads = 8;
+        let mut handles = Vec::new();
+
+        for i in 0..num_threads {
+            handles.push(thread::spawn(move || {
+                // Each thread starts its own TrackingGuard
+                let _guard = TrackingGuard::new();
+
+                // Allocate some boxes to trigger allocations
+                let mut v = Vec::new();
+                for j in 0..(i + 1) * 10 {
+                    v.push(Box::new(j));
+                }
+
+                // Read local alloc count
+                let count = get_alloc_count();
+                // Ensure at least some allocations were captured
+                assert!(count >= (i + 1) * 10, "Thread {} should have detected allocations, got {}", i, count);
+                count
+            }));
+        }
+
+        let mut results = Vec::new();
+        for handle in handles {
+            results.push(handle.join().unwrap());
+        }
+
+        // Ensure different threads saw different allocation counts corresponding to their patterns,
+        // and did not corrupt each other.
+        for i in 1..num_threads {
+            assert!(results[i] > results[i - 1], "Thread allocation counts should be isolated and distinct, got: {:?}", results);
+        }
     }
 }

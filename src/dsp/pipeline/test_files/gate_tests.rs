@@ -6,7 +6,7 @@ use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::RtStatusFlags;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
-use crate::dsp::pipeline::test_util::infra::{ALLOC_COUNT, TrackingGuard};
+use crate::dsp::pipeline::test_util::infra::{get_alloc_count, TrackingGuard};
 use crate::dsp::resampler::NamResampler;
 use std::sync::atomic::Ordering;
 
@@ -95,7 +95,7 @@ fn test_hotpath_gate_closed_and_silence() {
     let _guard = TrackingGuard::new();
     // We run the audio orchestra (Pipeline).
     capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
-    let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+    let allocs = get_alloc_count();
     drop(_guard);
 
     // Verification: Allocating memory in the middle of audio is forbidden (causes pops).
@@ -201,7 +201,7 @@ fn test_hotpath_gate_fading() {
 
     let _guard = TrackingGuard::new();
     capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
-    let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+    let allocs = get_alloc_count();
     drop(_guard);
 
     // Checks: No allocation and must indicate the "FADING" state.
@@ -291,7 +291,7 @@ fn test_hotpath_clipping_detection() {
 
     let _guard = TrackingGuard::new();
     capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
-    let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+    let allocs = get_alloc_count();
     drop(_guard);
 
     // Verification: Must detect the Clipping flag (RT_STATUS_HAS_CLIPPED).
@@ -410,7 +410,7 @@ fn test_hotpath_dropped_frames() {
     let _guard = TrackingGuard::new();
     // Here the system should be forced to discard this new sound packet.
     capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2, bufs2, 48000);
-    let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+    let allocs = get_alloc_count();
     drop(_guard);
 
     assert_eq!(allocs, 0);

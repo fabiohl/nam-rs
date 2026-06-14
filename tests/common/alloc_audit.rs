@@ -16,12 +16,33 @@ use std::sync::atomic::Ordering;
 #[cfg(not(feature = "clap-plugin"))]
 use std::alloc::{GlobalAlloc, Layout, System};
 #[cfg(not(feature = "clap-plugin"))]
-use std::sync::atomic::{AtomicI32, AtomicUsize};
+use std::cell::Cell;
 
 #[cfg(not(feature = "clap-plugin"))]
-pub static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    static TRACKING_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static ALLOC_COUNT_TLS: Cell<usize> = const { Cell::new(0) };
+}
+
 #[cfg(not(feature = "clap-plugin"))]
-pub static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
+fn is_tracking_active() -> bool {
+    TRACKING_ACTIVE.try_with(|active| active.get()).unwrap_or(false)
+}
+
+#[cfg(not(feature = "clap-plugin"))]
+fn set_tracking_active(active: bool) {
+    let _ = TRACKING_ACTIVE.try_with(|a| a.set(active));
+}
+
+#[cfg(not(feature = "clap-plugin"))]
+fn get_local_alloc_count() -> usize {
+    ALLOC_COUNT_TLS.try_with(|count| count.get()).unwrap_or(0)
+}
+
+#[cfg(not(feature = "clap-plugin"))]
+fn set_local_alloc_count(val: usize) {
+    let _ = ALLOC_COUNT_TLS.try_with(|count| count.set(val));
+}
 
 #[cfg(not(feature = "clap-plugin"))]
 pub struct CountingAllocator;
@@ -29,9 +50,10 @@ pub struct CountingAllocator;
 #[cfg(not(feature = "clap-plugin"))]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+        if is_tracking_active() {
+            let _ = ALLOC_COUNT_TLS.try_with(|count| {
+                count.set(count.get() + 1);
+            });
         }
         unsafe { System.alloc(layout) }
     }
@@ -55,9 +77,8 @@ impl TrackingGuard {
         }
         #[cfg(not(feature = "clap-plugin"))]
         {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            TRACKING_THREAD.store(tid, Ordering::Relaxed);
-            ALLOC_COUNT.store(0, Ordering::Relaxed);
+            set_tracking_active(true);
+            set_local_alloc_count(0);
             Self {}
         }
     }
@@ -67,7 +88,7 @@ impl Drop for TrackingGuard {
     fn drop(&mut self) {
         #[cfg(not(feature = "clap-plugin"))]
         {
-            TRACKING_THREAD.store(0, Ordering::Relaxed);
+            set_tracking_active(false);
         }
     }
 }
@@ -75,10 +96,10 @@ impl Drop for TrackingGuard {
 pub fn get_alloc_count() -> usize {
     #[cfg(feature = "clap-plugin")]
     {
-        nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
+        nam_rs::common::alloc_audit::get_alloc_count()
     }
     #[cfg(not(feature = "clap-plugin"))]
     {
-        ALLOC_COUNT.load(Ordering::Relaxed)
+        get_local_alloc_count()
     }
 }
