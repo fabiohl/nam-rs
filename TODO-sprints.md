@@ -158,7 +158,7 @@ testes que **já passaram** na fase 1.
   - _Risco_: garantir que nenhum teste exclusivo da config clap/heap-audit seja perdido.
     Mapear explicitamente (ver T1.2.2).
 
-- [ ] **T1.2.2 — Inventário de cobertura por configuração de feature.**
+- [x] **T1.2.2 — Inventário de cobertura por configuração de feature.**
   Documentar (tabela) quais testes só passam/existem em cada combinação de features,
   para justificar o que roda em qual fase e evitar lacunas.
 
