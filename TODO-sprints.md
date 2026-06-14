@@ -291,6 +291,74 @@ mkdir -p /tmp/kilo/a2out
     e passam por ESR/SNR; container goldens (`test_golden_vectors_container_a2_*`, incl. caminho `--slim`)
     revalidados.
 
+### Sprint 2.2 — Correções pós-auditoria dos Épicos 1 e 2 🩺 [TODO]
+
+> **Parecer da auditoria (`revisor-auditor`, 2026-06-14):** Épicos 1 e 2 foram executados com **boa fidelidade
+> ao espírito** e **documentação honesta**. `cargo test --test golden_vectors` = **18 passed, 1 ignored** (Lite,
+> rotulado `known-divergent`). Pontos verificados na fonte:
+>
+> - ✅ **Self-goldens A2 eliminados de fato.** Os testes leem `golden_wavenet_a2_{full,lite}.bin` (render C++
+>   `v0.5.3`) e comparam Rust↔C++; nenhum `write_golden_bin`/tautologia restante nos testes. SNR **97.8/97.4 dB**.
+> - ✅ **Gate falso do Lite removido** (`#[ignore]` + skip dinâmico no `cpp_parity`); **thresholds A1 calibrados**
+>   por medição real, com comentário por modelo em `tests/common/validation.rs::get_calibrated_threshold`.
+> - ✅ **Lacunas de engine documentadas honestamente** (`test_loader_gap_*` afirmam a rejeição com mensagem
+>   específica) e registradas no Épico 100.
+>
+> **Porém**, três achados exigem correção (abaixo). O mais importante (T2.5) é **substantivo**.
+
+- **[T2.5] (corretiva — substantiva) Regime de amplitude realista para os goldens A2.** ⚠️ **(prioridade alta)**
+  - **Problema verificado:** o objetivo original de T2.3 (usar modelos A2 **oficiais reais**) **não foi atingido**
+    — os oficiais não carregam (lacunas de FiLM/topologia, ver Épico 100). O fallback adotado foi um **modelo
+    sintético reescalado de forma agressiva** (`0.05` em pesos, `0.01` em bias). Consequência medida:
+    `golden_wavenet_a2_full.bin` tem **pico de saída ≈ 2.0e-3 (−54 dBFS), LUFS ≈ −67.8** (quase-silêncio).
+    A entrada é normal (`input_max ≈ 0.85`). Ou seja: o cross-reference é **legítimo**, mas valida o motor num
+    **ponto de operação irreal** (quase-silêncio), longe do regime de áudio real (≈ −20 LUFS, pico ≈ 0.3).
+    Risco: comportamento de denormais/FTZ, saturação e acumulação **não** são exercitados no regime que importa.
+  - **Ação (passo a passo):**
+    1. Editar o gerador de fixtures A2 (`tests/fixtures/generate_a2_fixtures.py`) para escolher a escala de pesos
+       de modo que a **saída** fique com pico ≈ `0.3` e **LUFS ≈ −18 a −23** (regime de áudio real), em vez de
+       quase-silêncio. Ajustar empiricamente (provavelmente escala de peso entre `0.05` e `0.3`); a escala não
+       precisa ser "bonita", precisa **landar a saída na faixa-alvo**.
+    2. Regenerar os modelos `tests/fixtures/models/wavenet_a2_{full,lite}.nam` e o container
+       `wavenet_a2_container.nam` com a nova escala.
+    3. Regenerar os goldens cross-reference rodando o render C++ `v0.5.3` (ver comandos do **Épico 0**) e o
+       conversor `wav_to_golden`; commitar `golden_wavenet_a2_{full,lite}.bin`.
+    4. Re-medir SNR/ESR (`cargo test --test golden_vectors test_golden_vectors_wavenet_a2 -- --nocapture`) e
+       **recalibrar** os pisos em `get_calibrated_threshold` para `SNR_medido − 8 dB` e `ESR_medido × ~6`,
+       atualizando os comentários com os novos números.
+  - **Critério de aceite:** `golden_wavenet_a2_{full,lite}.bin` com **pico de saída na faixa `[0.1, 0.5]`** e
+    **LUFS entre −24 e −16**; SNR Rust↔C++ ≥ piso calibrado (margem ≥ 8 dB); suíte `golden_vectors` verde.
+    Registrar a medição final no `README.md`.
+
+- **[T2.6] (corretiva — documentação/higiene) Sincronizar docs e remover órfãos do Épico 2.**
+  - **Problema verificado:**
+    - Os arquivos `tests/fixtures/golden_wavenet_a2_full_self.bin` e `..._lite_self.bin` **ainda existem** e
+      **ainda são listados** em `tests/fixtures/README.md` (linhas ~77 e ~79), apesar de **nenhum teste** os ler
+      (T2.2 trocou para cross-reference). São órfãos.
+    - A tabela de fixtures no `README.md` (linhas ~76–79) descreve os A2 como "reference" CH=8/CH=3 sem mencionar
+      que são **sintéticos reescalados** nem a proveniência **v0.5.3 (`9c7b185`)** do golden A2 (a seção de
+      proveniência cita `e49c93e`, que vale para A1/LSTM, não para A2).
+    - O cabeçalho de `tests/cpp_parity.rs` (linhas ~29–30) ainda afirma A2 = "SKIP (garbage, upstream bug)",
+      **desatualizado** após a reativação em T2.4.
+  - **Ação (passo a passo):**
+    1. Remover os 2 arquivos `tests/fixtures/golden_wavenet_a2_*_self.bin` (`git rm`).
+    2. Atualizar a tabela do `README.md`: remover as linhas dos `_self.bin`; anotar os A2 como
+       "sintético reescalado (T2.5) — cross-reference vs C++ v0.5.3 `9c7b185`".
+    3. Corrigir o cabeçalho de `tests/cpp_parity.rs` (linhas ~29–30) para refletir que A2-Full/Lite agora rodam
+       cross-validation real por ESR/SNR (T2.4), não SKIP.
+  - **Critério de aceite:** `ls tests/fixtures/*_self.bin` retorna vazio; `grep -n "_self" tests/fixtures/README.md`
+    retorna vazio; cabeçalho do `cpp_parity.rs` coerente com o estado atual; suíte verde.
+
+> **Avaliação de rumo dos épicos seguintes (resultado da auditoria):**
+>
+> - **Épico 3 (T3.2)** permanece válido e parcialmente **antecipado por T2.6** (remoção dos `_self.bin`). Mantê-lo
+>   como verificação final de "zero fixtures órfãos".
+> - **Épico 3 (T3.3, manifesto de thresholds)** precisa de **ajuste de rumo**: a equipe **já** implementou
+>   thresholds calibrados por modelo, mas **em código** (`get_calibrated_threshold` em `validation.rs`), não num
+>   manifesto. Reescrever T3.3 para **formalizar o que já existe** (ver redação detalhada abaixo), não recomeçar.
+> - **Épico 4 (T4.1/T4.3)** já foram **parcialmente realizados** para A2 (cross-reference + ESR scale-invariant).
+>   Reorientar para as arquiteturas restantes (Linear, e A1 que ainda usa fallback heurístico em alguns casos).
+
 ---
 
 ## ÉPICO 3 — Infra de Goldens: Higiene, Verdade e Estabilidade 🧹 [TODO]
@@ -302,39 +370,61 @@ mkdir -p /tmp/kilo/a2out
 
 - **[T3.1] Eliminar (ou conectar) os 72 fixtures `_v2_*k.bin` órfãos.**
 
-  - **Ação:** decidir entre **(a)** remover os 72 `golden_*_v2_*k.bin` + os geradores correspondentes em
-    `golden_gen_build.sh` (linhas ~258–293) — já que o `cpp_parity` v2 re-renderiza ao vivo e nunca os lê; ou
-    **(b)** transformar o `cpp_parity` v2 em um Layer-1 real que **lê** esses `.bin` (com naming consistente, sem o
-    sufixo `k` espúrio). Recomendação: **(a)** (alinha com "verdade" — sem fixtures que não validam nada), salvo
-    se o offline-determinístico v2 for desejado, então **(b)**.
-  - **Critério de aceite:** não existem fixtures committed que nenhum teste lê; `golden_gen_build.sh` não gera
-    artefatos inertes; `README.md` reflete a realidade.
+  - **Contexto factual (não re-investigar):** existem 72 arquivos `tests/fixtures/golden_*_v2_*k.bin`. **Nenhum
+    teste Rust os lê** — confirmado por `grep -rn "_v2_" tests/*.rs` (só aparecem em `cpp_parity.rs` como
+    *nome de WAV temporário*, gerado e renderizado ao vivo, nunca lido do disco). O sufixo `k`
+    (`_v2_48000k.bin`) nem corresponde ao que o código geraria.
+  - **Ação (escolher (a), recomendado):**
+    1. **(a) Remover** (recomendado): `git rm tests/fixtures/golden_*_v2_*k.bin`. Em seguida, no
+       `tests/fixtures/golden_gen_build.sh`, **apagar o bloco que os gera** (a seção "[5a/6] Generating v2 golden
+       vectors (multi-SR)", aprox. linhas 258–291) e as linhas do sumário final que os listam (aprox. 355–361).
+    2. **(b) Alternativa (só se quiser v2 determinístico offline):** criar testes Layer-1 que **leiam** esses
+       `.bin`; nesse caso, renomear sem o `k` e padronizar o esquema. **Não fazer (a) e (b) juntos.**
+  - **Verificação:** `ls tests/fixtures/*_v2_*k.bin 2>/dev/null` retorna vazio (se (a)); `cargo test` verde;
+    `./tests/fixtures/golden_gen_build.sh` roda sem gerar artefatos inertes.
+  - **Critério de aceite:** nenhum fixture committed que nenhum teste lê; `README.md` (seção de fixtures) reflete a realidade.
 
-- **[T3.2] Remover os goldens A2 não-`self` órfãos.**
+- **[T3.2] Garantir "zero fixtures órfãos" (verificação final).**
 
-  - **Ação:** após o Épico 2 reintroduzir os A2 cross-reference legítimos, remover qualquer `.bin` A2 duplicado
-    que não seja lido. Garantir 1 fonte por modelo.
-  - **Critério de aceite:** sem `.bin` A2 órfão; tabela do `README.md` lista apenas fixtures vivos.
+  - **Contexto:** T2.6 já remove os `golden_wavenet_a2_*_self.bin`. Esta tarefa é a **varredura final** de
+    qualquer `.bin` não referenciado.
+  - **Ação (passo a passo):**
+    1. Listar todos os `.bin`: `ls tests/fixtures/*.bin`.
+    2. Para cada um, conferir se algum teste o referencia: `grep -rn "<nome_sem_extensao>" tests/`.
+    3. Remover (`git rm`) os que não tiverem nenhuma referência; atualizar a tabela do `README.md`.
+  - **Critério de aceite:** **todo** `.bin` committed é lido por ≥ 1 teste; tabela do `README.md` lista apenas
+    fixtures vivos (1 fonte por modelo).
 
 ### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo)
 
-- **[T3.3] Migrar de thresholds heurísticos para thresholds gravados na geração.**
+- **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).**
 
-  - **Ação:** introduzir um manifesto versionado (ex.: `tests/fixtures/golden_manifest.toml`) que, por fixture,
-    registre: origem (C++ commit/Rust), SNR/ESR/MSE medidos na geração, e margem aplicada. `golden_vectors` lê o
-    manifesto e gateia em `medido − margem`. Mantém a derivação heurística apenas como **fallback** para modelos
-    sem golden committed.
-  - **Benefício:** o gate deixa de "flutuar" com a topologia; qualquer regressão futura do motor é detectada com
-    margem fixa e auditável. Cada número no gate é rastreável à sua origem.
-  - **Critério de aceite:** thresholds dos goldens vêm do manifesto; documentação atualizada; suíte verde.
+  - **Estado atual (verificado):** a calibração por medição real **já existe**, porém **em código**:
+    `tests/common/validation.rs::get_calibrated_threshold(model_name)` mapeia cada modelo committed para
+    `(mse_limit, min_snr_db, max_esr)` com comentário documentando `SNR_medido`/`ESR_medido` e a margem. Isto
+    **já cumpre o espírito** de T3.3 — **não recomeçar do zero**.
+  - **Ação (escolher 1, documentar a decisão):**
+    - **(a) Manter em código, mas blindar (recomendado, menor risco):** adicionar um teste que **garanta** que
+      todo modelo com golden committed tenha entrada em `get_calibrated_threshold` (i.e., não caia no fallback
+      heurístico silenciosamente). Garantir que cada entrada tenha o comentário `// Measured: SNR=…, ESR=…`.
+    - **(b) Externalizar para manifesto:** mover os números para `tests/fixtures/golden_manifest.toml` (campos:
+      `origin`, `cpp_commit`, `snr_measured`, `esr_measured`, `snr_floor`, `esr_max`) e fazer `validation.rs`
+      ler o manifesto. Só vale a pena se a manutenção em código se tornar pesada.
+  - **Critério de aceite:** nenhum modelo com golden committed usa threshold heurístico por engano; cada piso é
+    rastreável a uma medição documentada; suíte verde.
 
-- **[T3.4] Padronizar a estrutura dos goldens pelo modelo exemplar (cabsim).**
+- **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".**
 
-  - **Ação:** documentar no `README.md`/`architecture.md` o princípio "todo golden deve poder falhar" e o padrão
-    de oráculo (cabsim = convolução direta; A1/A2 = cross-reference C++ pinado). Adicionar um **meta-teste** que
-    falha se qualquer threshold de golden estiver neutralizado (SNR ≤ 0 dB ou ESR ≥ 1.0) — guarda contra
-    reintrodução de gates falsos.
-  - **Critério de aceite:** meta-teste anti-placebo verde; políticas documentadas (acionar `documentador`).
+  - **Ação (passo a passo):**
+    1. Criar um teste (ex.: em `tests/golden_vectors.rs` ou `tests/common`) que **itere sobre todos os modelos
+       com golden committed** e **falhe** se algum threshold estiver neutralizado — i.e., `min_snr_db <= 0.0`
+       **ou** `max_esr >= 1.0` **ou** `mse_limit >= 1e29` **sem** estar acompanhado de SNR/ESR rígidos. (Atenção:
+       o A2 usa `mse_limit = 1e30` de propósito, mas com `SNR ≥ 80` e `ESR < 1e-8` — o meta-teste deve aceitar
+       esse caso e rejeitar apenas a neutralização **total**.)
+    2. Documentar em `tests/fixtures/README.md` e `docs/architecture.md` (acionar skill `documentador`) o
+       princípio: "todo golden deve poder falhar; self-golden e threshold neutralizado **não** são gate".
+  - **Critério de aceite:** meta-teste anti-placebo verde e capaz de pegar um gate neutralizado proposital;
+    princípio documentado.
 
 ---
 
@@ -345,15 +435,20 @@ mkdir -p /tmp/kilo/a2out
 > piso de qualidade de tudo o que passa por eles — sem tocar no hot-path. As ações abaixo são derivadas
 > diretamente desta rodada e têm efeito universal, mantendo-se **estritamente no escopo de testes/infra**.
 
-- **[T4.1] Oráculo de referência por arquitetura (não auto-referencial).** Generalizar o padrão exemplar do
-  cabsim (oráculo matemático/cross-reference) para **toda** arquitetura: A1/A2 ⇄ C++ pinado; Linear ⇄ convolução
-  direta. Efeito universal: qualquer regressão numérica em qualquer kernel é capturada por um gate que **pode falhar**.
+- **[T4.1] Oráculo de referência por arquitetura (não auto-referencial).** ✅ **A2 já feito (Épico 2)** —
+  reorientar para o que falta. Generalizar o padrão exemplar do cabsim (oráculo matemático/cross-reference)
+  para as arquiteturas restantes: **Linear ⇄ convolução direta** (oráculo matemático, sem C++), e revisar se
+  algum modelo A1 ainda cai no fallback heurístico de `topology_thresholds` (deveria estar todo em
+  `get_calibrated_threshold`). Efeito universal: qualquer regressão numérica em qualquer kernel cai num gate que
+  **pode falhar**.
 - **[T4.2] Cobertura de sinal multi-estímulo/multi-SR como gate real.** Hoje os v2 multi-SR são órfãos (Épico 3).
   Transformá-los em gate Layer-1 (ou consolidá-los) exercita o motor em 44.1/48/88.2/96/192 kHz e em 5 categorias
   de estímulo (GA/FRG/P/BA/PA). Efeito universal: cobre resampler, fronteiras de bloco e estados recorrentes.
-- **[T4.3] Métricas perceptuais como guard-rail (ESR/MR-STFT/LUFS), não só MSE.** Padronizar ESR como gate
-  primário scale-invariant (já iniciado em T16.4) e MR-STFT/LUFS como diagnósticos. Efeito universal: gates
-  robustos a escala/ganho, válidos mesmo para modelos com amplitude atípica.
+- **[T4.3] Métricas perceptuais como guard-rail (ESR/MR-STFT/LUFS), não só MSE.** ✅ **Parcialmente feito**
+  (ESR scale-invariant já é o gate primário do A2; T16.4). Reorientar para: tornar o **LUFS** um gate leve de
+  sanidade (avisar/falhar se a saída do golden estiver fora de uma faixa de áudio plausível — ver a lição de
+  T2.5, em que LUFS −67 passou despercebido). Efeito universal: gates robustos a escala/ganho **e** a regimes
+  de amplitude irreais.
 - **[T4.4] Meta-teste anti-placebo + manifesto de thresholds (ver T3.3/T3.4).** Impede a reintrodução de gates
   neutralizados (SNR ≤ 0 / ESR ≥ 1) e torna cada limiar rastreável a uma medição. Efeito universal: a suíte
   **nunca mais mente** — base de confiança para otimizações agressivas futuras (FFT, AVX-512, ARM SVE2).
