@@ -63,24 +63,22 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                       | `.nam` Model              | Origin | Topology                                                        |
-| --------------------------------- | ------------------------- | ------ | --------------------------------------------------------------- |
-| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                                   |
-| `golden_wavenet_lite.bin`         | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                                   |
-| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                                    |
-| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                                    |
-| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)                        |
-| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                                   |
-| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                                   |
-| `golden_lstm_official.bin`        | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                                         |
-| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (synth, real-amp, v0.5.3 xref) |
-| `golden_wavenet_a2_full_self.bin` | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (self-golden)                  |
-| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (synth, real-amp, v0.5.3 xref) |
-| `golden_wavenet_a2_lite_self.bin` | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (self-golden)                  |
-| `golden_cabsim_cpp_short.bin`     | N/A (Synthetic)           | C++    | Cabsim Short IR (64 samples) C++ reference                      |
-| `golden_cabsim_cpp_medium.bin`    | N/A (Synthetic)           | C++    | Cabsim Medium IR (512 samples) C++ reference                    |
-| `golden_cabsim_cpp_long.bin`      | N/A (Synthetic)           | C++    | Cabsim Long IR (8192 samples) C++ reference                     |
-| `golden_cabsim_cpp_stress.bin`    | N/A (Synthetic)           | C++    | Cabsim Stress IR (32768 samples) C++ reference                  |
+| Golden File                      | `.nam` Model              | Origin | Topology                                                                                               |
+| -------------------------------- | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `golden_wavenet_standard.bin`    | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                                                                          |
+| `golden_wavenet_lite.bin`        | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                                                                          |
+| `golden_wavenet_feather.bin`     | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                                                                           |
+| `golden_wavenet_nano.bin`        | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                                                                           |
+| `golden_wavenet_a1_standard.bin` | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)                                                               |
+| `golden_lstm_1x16.bin`           | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                                                                          |
+| `golden_lstm_2x8.bin`            | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                                                                          |
+| `golden_lstm_official.bin`       | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                                                                                |
+| `golden_wavenet_a2_full.bin`     | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (sintético reescalado T2.5 — cross-reference vs C++ v0.5.3 `9c7b185`) |
+| `golden_wavenet_a2_lite.bin`     | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (sintético reescalado T2.5 — cross-reference vs C++ v0.5.3 `9c7b185`) |
+| `golden_cabsim_cpp_short.bin`    | N/A (Synthetic)           | C++    | Cabsim Short IR (64 samples) C++ reference                                                             |
+| `golden_cabsim_cpp_medium.bin`   | N/A (Synthetic)           | C++    | Cabsim Medium IR (512 samples) C++ reference                                                           |
+| `golden_cabsim_cpp_long.bin`     | N/A (Synthetic)           | C++    | Cabsim Long IR (8192 samples) C++ reference                                                            |
+| `golden_cabsim_cpp_stress.bin`   | N/A (Synthetic)           | C++    | Cabsim Stress IR (32768 samples) C++ reference                                                         |
 
 **v2 files** (`golden_<model_id>_<tone_id>_<sr>.bin`): Multi-sample-rate, multi-stimulus goldens using Stress Signal v2 (5 seconds, multi-component). Naming schema:
 

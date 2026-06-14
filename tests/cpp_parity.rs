@@ -26,8 +26,8 @@
 //! | WaveNet | Feather  | 67.6 dB     | 60 dB     | 7.6 dB  |
 //! | WaveNet | Nano     | 52.6 dB     | 45 dB     | 7.6 dB  |
 //! | WaveNet | Lite     | 0.9 dB      | 0 dB      | —       |
-//! | WaveNet | A2-Full  | —           | —         | SKIP (garbage, upstream bug) |
-//! | WaveNet | A2-Lite  | —           | —         | SKIP (garbage, upstream bug) |
+//! | WaveNet | A2-Full  | 79.2 dB     | 70.0 dB    | 9.2 dB (ESR scale-invariant, T2.5) |
+//! | WaveNet | A2-Lite  | 90.7 dB     | 80.0 dB    | 10.7 dB (ESR scale-invariant, T2.5) |
 //! | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //! | Linear  | —        | bit-exact   | 140 dB    | —       |
 //!

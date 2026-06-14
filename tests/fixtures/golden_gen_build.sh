@@ -30,9 +30,8 @@
 #   golden_lstm_1x8.bin, golden_lstm_1x12.bin, golden_lstm_1x16.bin, golden_lstm_1x24.bin, golden_lstm_1x40.bin
 #   golden_lstm_2x8.bin, golden_lstm_2x12.bin, golden_lstm_2x16.bin, golden_lstm_2x24.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
-#   (⚠ C++ upstream bug — a2_fast.cpp produces numerically unstable output;
-#    these goldens are NOT used by any test. Self-goldens (_self.bin) provide
-#    Rust determinism validation instead. See TODO-sprints.md §T7.8.)
+#   (A2 goldens are cross-reference Rust↔C++ v0.5.3 via ESR/SNR scale-invariant
+#    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
 #   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
 #   golden_cabsim_cpp_long.bin, golden_cabsim_cpp_stress.bin

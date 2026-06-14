@@ -331,7 +331,7 @@ mkdir -p /tmp/kilo/a2out
     **LUFS entre −24 e −16**; SNR Rust↔C++ ≥ piso calibrado (margem ≥ 8 dB); suíte `golden_vectors` verde.
     Registrar a medição final no `README.md`.
 
-- **[T2.6] (corretiva — documentação/higiene) Sincronizar docs e remover órfãos do Épico 2.**
+- **[T2.6] (corretiva — documentação/higiene) Sincronizar docs e remover órfãos do Épico 2.** ✅ **[DONE]**
   - **Problema verificado:**
     - Os arquivos `tests/fixtures/golden_wavenet_a2_full_self.bin` e `..._lite_self.bin` **ainda existem** e
       **ainda são listados** em `tests/fixtures/README.md` (linhas ~77 e ~79), apesar de **nenhum teste** os ler
