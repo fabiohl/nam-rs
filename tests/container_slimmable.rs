@@ -88,7 +88,8 @@ fn test_container_switch_rt_safety() {
     let input = generate_stress_signal_v1();
     let mut output = vec![0.0f32; input.len()];
 
-    for _ in 0..10 {
+    let cycles = if cfg!(debug_assertions) { 2 } else { 10 };
+    for _ in 0..cycles {
         if let StaticModel::Container(ref mut c) = model {
             c.set_slimmable_size(0.25);
         }
@@ -112,7 +113,7 @@ fn test_container_switch_rt_safety() {
         }
     }
 
-    eprintln!("Container switch RT-safety OK — 10 cycles, no NaN/Inf.");
+    eprintln!("Container switch RT-safety OK — {} cycles, no NaN/Inf.", cycles);
 }
 
 // =============================================================================
@@ -154,12 +155,8 @@ fn test_container_crossfade_continuity() {
     .expect("Failed to create ContainerModel 1");
 
     // Rebuild models for second container (models are consumed by ContainerModel::new)
-    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full");
-    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    // Reuse already parsed full_data and lite_data structures to avoid duplicate disk reading and parsing
     let full_model2 = build_model(&full_data).expect("Dispatcher failed for A2-Full");
-
-    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite");
-    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
     let lite_model2 = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
 
     let container2 = nam_rs::models::container::ContainerModel::new(

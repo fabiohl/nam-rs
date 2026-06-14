@@ -43,7 +43,7 @@ mod audit_tests {
 
         let mut engine = ConvEngine::new(&ir, partition_size);
 
-        let iters = 2000;
+        let iters = if cfg!(debug_assertions) { 100 } else { 2000 };
         let mut input = vec![0.0f32; partition_size];
         let mut output = vec![0.0f32; partition_size];
 
@@ -95,7 +95,7 @@ mod audit_tests {
         let mut engine = ConvEngine::new(&[], 64);
         assert!(engine.is_passthrough());
 
-        let iters = 2000;
+        let iters = if cfg!(debug_assertions) { 100 } else { 2000 };
         let mut input = vec![0.0f32; 64];
         let mut output = vec![0.0f32; 64];
 

@@ -77,7 +77,7 @@ mod audit_tests {
         }
 
         // Audit — must have zero allocations on hot-path
-        let iters = 1000;
+        let iters = if cfg!(debug_assertions) { 50 } else { 1000 };
         let count = {
             let _guard = TrackingGuard::new();
             for _ in 0..iters {

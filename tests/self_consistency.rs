@@ -65,9 +65,11 @@ fn assert_model_determinism(path: &Path, label: &str) {
     model_a.prewarm(2048);
     model_b.prewarm(2048);
 
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let num_samples = if cfg!(debug_assertions) { 512 } else { GOLDEN_NUM_SAMPLES };
+
+    let input = generate_sine_440hz(num_samples);
+    let mut out_a = vec![0.0f32; num_samples];
+    let mut out_b = vec![0.0f32; num_samples];
 
     process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
     process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);

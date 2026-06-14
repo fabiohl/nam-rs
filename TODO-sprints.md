@@ -282,7 +282,7 @@ testes lentos/_flaky_.
 > incentivo a pular — então a suíte padrão deve conter **somente** o que precisa rodar a
 > cada commit.
 
-- [ ] **T1.6.1 — Auditar os binários de teste mais lentos da suíte padrão.**
+- [x] **T1.6.1 — Auditar os binários de teste mais lentos da suíte padrão.**
   Da medição: `a2_heap_audit` (9,20 s, fase 3), `nam_infer_test` (5,05 s),
   `self_consistency` (3,87 s), `container_slimmable` (3,61 s — só 2 testes "reais",
   investigar _sleeps_/crossfade), `golden_vectors` (3,08 s). Decidir caso a caso:
