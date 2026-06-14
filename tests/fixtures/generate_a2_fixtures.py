@@ -35,8 +35,8 @@ SEED = 42
 NUM_LAYERS = 23
 
 
-def gen_weights(n: int, rng: random.Random) -> List[float]:
-    return [rng.uniform(-1.0, 1.0) for _ in range(n)]
+def gen_weights(n: int, rng: random.Random, scale: float = 0.05) -> List[float]:
+    return [rng.uniform(-1.0, 1.0) * scale for _ in range(n)]
 
 
 def count_weights(ch: int) -> int:
@@ -58,27 +58,27 @@ def generate_weights(ch: int, rng: random.Random) -> List[float]:
     weights: List[float] = []
 
     # 1. Rechannel: weights (CH) — no bias (matches C++ A2FastModel)
-    weights.extend(gen_weights(ch, rng))
+    weights.extend(gen_weights(ch, rng, scale=0.05))
 
     # 2. Per-layer
     for k in KERNEL_SIZES:
         # conv_w: CH × CH × K
-        weights.extend(gen_weights(ch * ch * k, rng))
+        weights.extend(gen_weights(ch * ch * k, rng, scale=0.05))
         # conv_b: CH
-        weights.extend(gen_weights(ch, rng))
+        weights.extend(gen_weights(ch, rng, scale=0.01))
         # mixin_w: CH
-        weights.extend(gen_weights(ch, rng))
+        weights.extend(gen_weights(ch, rng, scale=0.05))
         # l1x1_w: CH × CH
-        weights.extend(gen_weights(ch * ch, rng))
+        weights.extend(gen_weights(ch * ch, rng, scale=0.05))
         # l1x1_b: CH
-        weights.extend(gen_weights(ch, rng))
+        weights.extend(gen_weights(ch, rng, scale=0.01))
 
     # 3. Head rechannel: 16*CH weights + 1 bias
-    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng))
-    weights.extend(gen_weights(1, rng))
+    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=0.05))
+    weights.extend(gen_weights(1, rng, scale=0.01))
 
-    # 4. Head scale: 1 float
-    weights.extend(gen_weights(1, rng))
+    # 4. Head scale: 1 float (should be positive and small, like 0.02)
+    weights.extend([0.02])
 
     return weights
 
@@ -120,11 +120,13 @@ def build_nam(ch: int, weights: List[float], label: str) -> dict:
             "name": f"A2-{label} Fixture (CH={ch})",
             "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
         },
+        "sample_rate": 48000,
     }
 
 
 def main() -> None:
     rng = random.Random(SEED)
+    models = {}
 
     for ch, label, fname in [
         (3, "Lite", "wavenet_a2_lite.nam"),
@@ -136,11 +138,40 @@ def main() -> None:
             f"CH={ch}: got {len(weights)} weights, expected {expected}"
         )
         doc = build_nam(ch, weights, label)
+        models[label] = doc
         out_path = OUTPUT_DIR / fname
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w") as f:
             json.dump(doc, f, indent=2)
         print(f"Written {out_path}  ({len(weights)} weights)")
+
+    # Generate the container model
+    container_doc = {
+        "version": "0.7.0",
+        "architecture": "SlimmableContainer",
+        "config": {
+            "submodels": [
+                {
+                    "max_value": 0.5,
+                    "model": models["Lite"]
+                },
+                {
+                    "max_value": 1.0,
+                    "model": models["Full"]
+                }
+            ]
+        },
+        "weights": [],
+        "sample_rate": 48000,
+        "metadata": {
+            "name": "A2-Container Fixture",
+            "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
+        }
+    }
+    out_path = OUTPUT_DIR / "wavenet_a2_container.nam"
+    with open(out_path, "w") as f:
+        json.dump(container_doc, f, indent=2)
+    print(f"Written {out_path} (Container)")
 
     print("Done.")
 

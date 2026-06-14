@@ -173,6 +173,13 @@ ln -sfn "$PLUGIN_DSP/Dependencies/eigen" "$NAM_CORE_V053_DIR/Dependencies/eigen"
 rm -rf "$NAM_CORE_V053_DIR/Dependencies/AudioDSPTools"
 ln -sfn "$PLUGIN_DSP" "$NAM_CORE_V053_DIR/Dependencies/AudioDSPTools"
 
+# Copy official models from standard core clone for test and provenance
+echo "  Copying official example models from mirror for testing..."
+cp "$NAM_CORE_DIR/example_models/wavenet_a2_max.nam" "$MODELS_DIR/"
+cp "$NAM_CORE_DIR/example_models/slimmable_wavenet.nam" "$MODELS_DIR/"
+cp "$NAM_CORE_DIR/example_models/slimmable_container.nam" "$MODELS_DIR/"
+cp "$NAM_CORE_DIR/example_models/wavenet_condition_dsp.nam" "$MODELS_DIR/"
+
 # =============================================================================
 # Build render tools (standard and v0.5.3 A2-fast)
 # =============================================================================

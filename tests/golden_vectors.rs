@@ -675,3 +675,148 @@ fn test_golden_vectors_container_a2_lite() {
         STRESS_SAMPLE_RATE,
     );
 }
+
+/// Test 8j-F: Container Golden loaded from file — A2 submodels match C++ reference.
+///
+/// Loads `wavenet_a2_container.nam` from file, runs it first for Lite submodel (slim=0.25),
+/// then for Full submodel (slim=0.75), verifying both outputs match C++ standalones.
+#[test]
+fn test_golden_vectors_wavenet_a2_container() {
+    let container_path = model_path("wavenet_a2_container.nam");
+    if !container_path.exists() {
+        eprintln!("SKIP: wavenet_a2_container.nam not found. Container golden test impossible.");
+        return;
+    }
+
+    let container_json = fs::read_to_string(&container_path).expect("Failed to read container model");
+    let container_data = parse_nam_json(&container_json).expect("Failed to parse container");
+
+    let sample_rate = container_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    // 1) Test Lite submodel selection
+    {
+        let mut model = build_model(&container_data).expect("Dispatcher failed for container");
+        let lite_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/golden_wavenet_a2_lite.bin");
+        let (input, expected) =
+            read_golden_bin(&lite_golden_path).expect("Failed to read golden_wavenet_a2_lite.bin");
+
+        if let StaticModel::Container(ref mut c) = *model {
+            c.submodels_mut()[0].1.reset(sample_rate, GOLDEN_BLOCK_SIZE);
+            c.set_active_index(0);
+        } else {
+            unreachable!("Expected Container variant");
+        }
+
+        let mut output = vec![0.0f32; input.len()];
+        process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+        let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&container_data, "wavenet_a2_lite");
+        report_dsp_fidelity(
+            &expected,
+            &output,
+            mse_limit,
+            min_snr_db,
+            max_esr,
+            "Container File A2-Lite (CH=3) C++ cross-reference",
+            STRESS_SAMPLE_RATE,
+        );
+    }
+
+    // 2) Test Full submodel selection
+    {
+        let mut model = build_model(&container_data).expect("Dispatcher failed for container");
+        let full_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/golden_wavenet_a2_full.bin");
+        let (input, expected) =
+            read_golden_bin(&full_golden_path).expect("Failed to read golden_wavenet_a2_full.bin");
+
+        if let StaticModel::Container(ref mut c) = *model {
+            c.set_slimmable_size(0.75);
+        } else {
+            unreachable!("Expected Container variant");
+        }
+
+        let mut output = vec![0.0f32; input.len()];
+        process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+        let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&container_data, "wavenet_a2_full");
+        report_dsp_fidelity(
+            &expected,
+            &output,
+            mse_limit,
+            min_snr_db,
+            max_esr,
+            "Container File A2-Full (CH=8) C++ cross-reference",
+            STRESS_SAMPLE_RATE,
+        );
+    }
+}
+
+/// Test 8k: Loader Gap WaveNet A2 Max — verifies condition_size=8 is rejected.
+#[test]
+fn test_loader_gap_wavenet_a2_max() {
+    let path = model_path("wavenet_a2_max.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read wavenet_a2_max.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse wavenet_a2_max.nam");
+    let model = build_model(&data);
+    assert!(model.is_err());
+    let err_msg = format!("{}", model.err().unwrap());
+    assert!(
+        err_msg.contains("condition_size=8"),
+        "Expected condition_size error, got: {}",
+        err_msg
+    );
+}
+
+/// Test 8l: Loader Gap WaveNet Condition DSP — verifies condition_size=3 is rejected.
+#[test]
+fn test_loader_gap_wavenet_condition_dsp() {
+    let path = model_path("wavenet_condition_dsp.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_dsp.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_dsp.nam");
+    let model = build_model(&data);
+    assert!(model.is_err());
+    let err_msg = format!("{}", model.err().unwrap());
+    assert!(
+        err_msg.contains("condition_size=3"),
+        "Expected condition_size error, got: {}",
+        err_msg
+    );
+}
+
+/// Test 8m: Loader Gap Slimmable WaveNet — verifies unsupported shape is rejected.
+#[test]
+fn test_loader_gap_slimmable_wavenet() {
+    let path = model_path("slimmable_wavenet.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read slimmable_wavenet.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse slimmable_wavenet.nam");
+    let model = build_model(&data);
+    assert!(model.is_err());
+    let err_msg = format!("{}", model.err().unwrap());
+    assert!(
+        err_msg.contains("shape not recognized") || err_msg.contains("topology not in catalog"),
+        "Expected shape/topology error, got: {}",
+        err_msg
+    );
+}
+
+/// Test 8n: Loader Gap Slimmable Container — verifies container with unsupported submodel is rejected.
+#[test]
+fn test_loader_gap_slimmable_container() {
+    let path = model_path("slimmable_container.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read slimmable_container.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse slimmable_container.nam");
+    let model = build_model(&data);
+    assert!(model.is_err());
+    let err_msg = format!("{}", model.err().unwrap());
+    assert!(
+        err_msg.contains("build failed"),
+        "Expected submodel build failure error, got: {}",
+        err_msg
+    );
+}
