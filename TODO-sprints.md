@@ -529,7 +529,7 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 5.1 — Higiene de repositório (rápido, alto valor) 🧹
 
-- **[T5.1] Remover binário compilado e symlink absoluto committados.** ⚠️ **(correção — viola o próprio `.gitignore`)**
+- **[T5.1] ✅ Remover binário compilado e symlink absoluto committados.** ⚠️ **(correção — viola o próprio `.gitignore`)**
   - **Problema verificado:**
     1. `tests/fixtures/render_ir` é um **executável ELF x86-64 de 72 KB committado** (build artifact, não-stripped,
        com BuildID específico de máquina). É regenerável de `render_ir.cpp` via `golden_gen_build.sh`.
@@ -544,7 +544,8 @@ mkdir -p /tmp/kilo/a2out
     3. Confirmar que `golden_gen_build.sh` recria ambos sob demanda (já recria o symlink via `ln -sfn`; compila o
        `render_ir` a partir do `.cpp`).
   - **Critério de aceite:** `git ls-files tests/fixtures/ | grep -E 'render_ir$|NeuralAmpModelerCore_v0.5.3$'`
-    retorna vazio; `git status` limpo; `golden_gen_build.sh` roda do zero e recria os artefatos.
+     retorna vazio; `git status` limpo; `golden_gen_build.sh` roda do zero e recria os artefatos.
+  - **Resolução (2026-06-14):** `render_ir` removido do índice (`git rm --cached`) e adicionado ao `.gitignore` junto com `NeuralAmpModelerCore_v0.5.3`. O symlink `NeuralAmpModelerCore_v0.5.3` já havia sido removido do índice em commit anterior — não estava presente no HEAD atual — então apenas a cobertura do `.gitignore` foi estendida. `render_ir` mantido local em disco (regenerável via `golden_gen_build.sh`). Cargo check e testes cabsim (21/21) passando limpos.
 
 ### Sprint 5.2 — Consistência da referência canônica 📌
 

@@ -58,6 +58,7 @@ mutants.out.old/
 /tests/fixtures/NeuralAmpModelerPlugin/
 
 # Build artifacts do render tool C++
+/tests/fixtures/render_ir
 /build/namcore_render/
 /build/namcore_render_v053/
 
