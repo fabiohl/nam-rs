@@ -78,7 +78,7 @@ fn test_golden_vectors_wavenet() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-standard");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -137,7 +137,7 @@ fn test_golden_vectors_lstm_1x16() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossLSTM-1x16");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -188,7 +188,7 @@ fn test_golden_vectors_lstm_2x8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossLSTM-2x8");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -230,7 +230,7 @@ fn test_golden_vectors_wavenet_a1_standard() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a1_standard");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -272,7 +272,7 @@ fn test_golden_vectors_lstm_official() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "lstm (Official)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -320,7 +320,7 @@ fn test_golden_vectors_wavenet_feather() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-feather");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -368,7 +368,7 @@ fn test_golden_vectors_wavenet_nano() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-nano");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -429,7 +429,7 @@ fn test_golden_vectors_wavenet_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-lite");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -485,7 +485,7 @@ fn test_golden_vectors_wavenet_a2_full() {
     let (_, expected) =
         read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Full");
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_full");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -534,7 +534,7 @@ fn test_golden_vectors_wavenet_a2_lite() {
     let (_, expected) =
         read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Lite");
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_lite");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -605,7 +605,7 @@ fn test_golden_vectors_container_a2_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&full_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&full_data, "wavenet_a2_full");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -673,7 +673,7 @@ fn test_golden_vectors_container_a2_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&lite_data);
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&lite_data, "wavenet_a2_lite");
     report_dsp_fidelity(
         &expected,
         &output,

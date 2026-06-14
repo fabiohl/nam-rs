@@ -234,14 +234,12 @@ mkdir -p /tmp/kilo/a2out
   - **Decisão arquitetural adotada (ADR):** Adotada a **Opção (c)**. O teste `test_golden_vectors_wavenet_lite` foi movido para a suíte `#[ignore]` com rótulo explicativo `known-divergent` e reconfigurado com thresholds de destino honestos (`SNR >= 40.0 dB`, `ESR < 1e-3`), removendo o falso gate da suíte rápida de CI. Os testes de cross-validation ao vivo em `tests/cpp_parity.rs` foram programados para pular a execução dinamicamente a fim de não quebrar as suítes longas de auditoria.
   - **Critério de aceite:** Cumprido. O teste não passa mais silenciosamente com thresholds de 0 dB SNR / 1.0 ESR; a divergência está honestamente sinalizada.
 
-- **[T1.3] Calibrar thresholds A1 rígidos a partir da medição real.**
-
+- **[T1.3] Calibrar thresholds A1 rígidos a partir da medição real.** ✅ **[DONE]**
   - **Ação:** com os fixtures A1 validados (T1.1) e o resultado C++ `v0.5.3` (Épico 0), fixar os pisos por modelo
     como `SNR_medido − margem` (ex.: margem 6–8 dB) e `ESR_medido × fator`, **comentando a medição que originou
     cada piso** (padrão já usado em T16.2). Eliminar a derivação puramente heurística para os modelos com golden
     committed (ver Épico 3.2 para a infra que torna isso sistemático).
-  - **Critério de aceite:** cada threshold A1 rastreia uma medição documentada; `golden_vectors` verde; um
-    experimento de regressão proposital (ex.: desligar o fix de cascata) **faz o teste falhar** (prova de gate vivo).
+  - **Critério de aceite:** Cumprido. Cada threshold A1 rastreia uma medição real documentada com comentários específicos no código (`tests/common/validation.rs`). A suíte `golden_vectors` está verde, e um experimento de regressão proposital (desativando a conexão head cascade em `src/models/wavenet/model.rs`) demonstrou que o gate é vivo, fazendo as validações falharem com precisão.
 
 ---
 

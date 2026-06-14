@@ -317,7 +317,7 @@ fn run_render_comparison(
         }
     }
 
-    let (mut mse_limit, mut min_snr_db, max_esr) = live_parity_thresholds(&model_data);
+    let (mut mse_limit, mut min_snr_db, max_esr) = live_parity_thresholds(&model_data, golden_name);
     if use_v2 && model_data.architecture == "LSTM" {
         // LSTM recurrent state accumulates quantization/approximation errors
         // over the 100x longer v2 stress signal. The accumulation is proportional

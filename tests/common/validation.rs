@@ -184,7 +184,7 @@ fn snr_to_mse(snr_db: f64) -> f64 {
 }
 
 /// Shared WaveNet MSE/SNR/ESR threshold lookup — used by both `topology_thresholds`
-/// (golden vectors) and `live_parity_thresholds` (cpp_parity).
+/// (golden vectors) and `live_parity_thresholds` (cpp_parity) as a fallback.
 ///
 /// Post-T16.1 live v1 SNR measurements (2026-06-11):
 ///   Standard (CH=16): 68.4 dB → floor 60 dB (8.4 dB margin)
@@ -227,6 +227,69 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
     }
 }
 
+/// Lookup for calibrated thresholds of committed models based on real measurements.
+/// Sets the floors as `SNR_medido - margem` and `ESR_medido * fator`.
+fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)> {
+    match model_name {
+        // --- WaveNet Standard (CH=16) ---
+        // Measured: SNR = 68.4 dB, ESR = 1.43e-7 (post-T16.1 head cascade fix)
+        // Margin: SNR - 8.4 dB, ESR factor ~7.0x
+        "BossWN-standard" | "wavenet_standard" => {
+            let snr_db = 60.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-6)))
+        }
+        // --- WaveNet Feather (CH=8) ---
+        // Measured: SNR = 67.6 dB, ESR = 1.72e-7
+        // Margin: SNR - 7.6 dB, ESR factor ~5.8x
+        "BossWN-feather" | "wavenet_feather" => {
+            let snr_db = 60.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-6)))
+        }
+        // --- WaveNet Nano (CH=4) ---
+        // Measured: SNR = 52.6 dB, ESR = 5.52e-6
+        // Margin: SNR - 7.6 dB, ESR factor ~5.4x
+        "BossWN-nano" | "wavenet_nano" => {
+            let snr_db = 45.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-5)))
+        }
+        // --- WaveNet A1 Standard (Official) (CH=16) ---
+        // Measured: SNR = 48.8 dB, ESR = 1.33e-5
+        // Margin: SNR - 8.8 dB, ESR factor ~7.5x
+        "wavenet_a1_standard" => {
+            let snr_db = 40.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4)))
+        }
+        // --- LSTM 1x16 ---
+        // Measured: SNR = 19.8 dB, ESR = 1.04e-2
+        // Margin: SNR - 6.8 dB, ESR factor ~4.8x
+        "BossLSTM-1x16" | "lstm_1x16" => {
+            let snr_db = 13.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-2)))
+        }
+        // --- LSTM 2x8 ---
+        // Measured: SNR = 25.7 dB, ESR = 2.69e-3
+        // Margin: SNR - 6.7 dB, ESR factor ~5.5x
+        "BossLSTM-2x8" | "lstm_2x8" => {
+            let snr_db = 19.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.5e-2)))
+        }
+        // --- LSTM Official (H=3) ---
+        // Measured: SNR = 29.7 dB, ESR = 1.08e-3
+        // Margin: SNR - 7.7 dB, ESR factor ~5.5x
+        "lstm (Official)" | "lstm_official" => {
+            let snr_db = 22.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
+        }
+        // --- WaveNet Lite (CH=12) ---
+        // Target thresholds if corrected. Under current drift, SNR is 0.9 dB, ESR = 8.15e-1.
+        "BossWN-lite" | "wavenet_lite" => {
+            let snr_db = 40.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-3)))
+        }
+        _ => None,
+    }
+}
+
 /// Computes MSE/SNR/ESR test thresholds for golden vector tests.
 ///
 /// For live cpp_parity cross-validation, use `live_parity_thresholds()`
@@ -236,7 +299,11 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 /// ESR gate as primary threshold (robust to scale mismatch).
 pub fn topology_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
+    model_name: &str,
 ) -> (f64, f64, Option<f64>) {
+    if let Some(thresholds) = get_calibrated_threshold(model_name) {
+        return thresholds;
+    }
     match data.architecture.as_str() {
         "WaveNet" => {
             let channels = data
@@ -273,7 +340,11 @@ pub fn topology_thresholds(
 /// Returns `(mse_limit, min_snr_db, max_esr)`.
 pub fn live_parity_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
+    model_name: &str,
 ) -> (f64, f64, Option<f64>) {
+    if let Some(thresholds) = get_calibrated_threshold(model_name) {
+        return thresholds;
+    }
     match data.architecture.as_str() {
         "WaveNet" => {
             let channels = data
