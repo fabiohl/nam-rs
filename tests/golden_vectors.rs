@@ -441,50 +441,44 @@ fn test_golden_vectors_wavenet_lite() {
     );
 }
 
-/// Test 8g: Self-Golden WaveNet A2-Full (CH=8) — regression guard for Rust A2 fast path.
+/// Test 8g: Golden Vectors WaveNet A2-Full (CH=8) — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Generates expected output from the Rust A2 engine on first run (self-golden pattern),
-/// then verifies bitwise identical output on subsequent runs. This catches regressions
-/// in the Rust A2 implementation independent of the C++ render tool.
-///
-/// The C++ NeuralAmpModelerCore `render` tool's A2 fast path currently produces
-/// divergent output (numeric instability in the C++ weight interpretation).
-/// Once the C++ A2 path is stabilized, the self-golden can be replaced with
-/// a cross-reference against the C++ render output.
+/// Reads `tests/fixtures/golden_wavenet_a2_full.bin`, builds the `StaticModel`
+/// from `wavenet_a2_full.nam`, runs prewarm + processing,
+/// and compares the output against the C++ reference (NeuralAmpModelerCore v0.5.3).
 #[test]
 fn test_golden_vectors_wavenet_a2_full() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_full.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_full.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_full.bin");
+
+    // Load and build the model
     let nam_path = model_path("wavenet_a2_full.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: wavenet_a2_full.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "wavenet_a2_full.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-Full model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model =
         build_model(&model_data).expect("Dispatcher failed to build A2-Full for golden test");
 
+    // Prewarm + Processing
     model.prewarm(2048);
-
-    let input = generate_stress_signal_v1();
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let self_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_full_self.bin");
-
-    if !self_golden_path.exists() {
-        write_golden_bin(&self_golden_path, &input, &output)
-            .expect("Failed to write self-golden for A2-Full");
-        eprintln!(
-            "Generated self-golden: {self_golden_path:?} — commit this file for regression testing."
-        );
-        return;
-    }
-
-    let (_, expected) =
-        read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Full");
-
+    // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_full");
     report_dsp_fidelity(
         &expected,
@@ -492,48 +486,49 @@ fn test_golden_vectors_wavenet_a2_full() {
         mse_limit,
         min_snr_db,
         max_esr,
-        "WaveNet A2-Full (CH=8) self-golden",
+        "WaveNet A2-Full (CH=8) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }
 
-/// Test 8h: Self-Golden WaveNet A2-Lite (CH=3) — regression guard for Rust A2 fast path.
+/// Test 8h: Golden Vectors WaveNet A2-Lite (CH=3) — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Same self-golden pattern as A2-Full.
+/// Reads `tests/fixtures/golden_wavenet_a2_lite.bin`, builds the `StaticModel`
+/// from `wavenet_a2_lite.nam`, runs prewarm + processing,
+/// and compares the output against the C++ reference (NeuralAmpModelerCore v0.5.3).
 #[test]
 fn test_golden_vectors_wavenet_a2_lite() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_lite.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_lite.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_lite.bin");
+
+    // Load and build the model
     let nam_path = model_path("wavenet_a2_lite.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: wavenet_a2_lite.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "wavenet_a2_lite.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-Lite model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model =
         build_model(&model_data).expect("Dispatcher failed to build A2-Lite for golden test");
 
+    // Prewarm + Processing
     model.prewarm(2048);
-
-    let input = generate_stress_signal_v1();
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let self_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_lite_self.bin");
-
-    if !self_golden_path.exists() {
-        write_golden_bin(&self_golden_path, &input, &output)
-            .expect("Failed to write self-golden for A2-Lite");
-        eprintln!(
-            "Generated self-golden: {self_golden_path:?} — commit this file for regression testing."
-        );
-        return;
-    }
-
-    let (_, expected) =
-        read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Lite");
-
+    // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_lite");
     report_dsp_fidelity(
         &expected,
@@ -541,7 +536,7 @@ fn test_golden_vectors_wavenet_a2_lite() {
         mse_limit,
         min_snr_db,
         max_esr,
-        "WaveNet A2-Lite (CH=3) self-golden",
+        "WaveNet A2-Lite (CH=3) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }
@@ -550,11 +545,11 @@ fn test_golden_vectors_wavenet_a2_lite() {
 // ContainerModel Golden Tests — T3.2
 // =============================================================================
 
-/// Test 8i: Container Golden — A2-Full submodel matches standalone self-golden.
+/// Test 8i: Container Golden — A2-Full submodel matches C++ reference.
 ///
 /// Builds a `ContainerModel` with A2-Full and A2-Lite as submodels,
 /// selects the A2-Full submodel via `set_slimmable_size(0.75)`,
-/// and verifies the output matches the standalone A2-Full self-golden.
+/// and verifies the output matches the standalone A2-Full C++ reference.
 #[test]
 fn test_golden_vectors_container_a2_full() {
     let full_nam_path = model_path("wavenet_a2_full.nam");
@@ -583,17 +578,15 @@ fn test_golden_vectors_container_a2_full() {
     let mut model = StaticModel::Container(Box::new(container));
 
     let full_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_full_self.bin");
+        .join("tests/fixtures/golden_wavenet_a2_full.bin");
 
-    if !full_golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_a2_full_self.bin not found. Run A2-Full golden test first."
-        );
-        return;
-    }
+    assert!(
+        full_golden_path.exists(),
+        "golden_wavenet_a2_full.bin not found at {full_golden_path:?}."
+    );
 
     let (input, expected) =
-        read_golden_bin(&full_golden_path).expect("Failed to read self-golden for A2-Full");
+        read_golden_bin(&full_golden_path).expect("Failed to read golden_wavenet_a2_full.bin");
 
     if let StaticModel::Container(ref mut c) = model {
         // Use set_active_index to skip crossfade and match existing golden
@@ -612,16 +605,16 @@ fn test_golden_vectors_container_a2_full() {
         mse_limit,
         min_snr_db,
         max_esr,
-        "Container A2-Full (CH=8) self-golden",
+        "Container A2-Full (CH=8) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }
 
-/// Test 8j: Container Golden — A2-Lite submodel matches standalone self-golden.
+/// Test 8j: Container Golden — A2-Lite submodel matches C++ reference.
 ///
 /// Builds a `ContainerModel` with A2-Full and A2-Lite as submodels,
 /// selects the A2-Lite submodel via `set_slimmable_size(0.25)`,
-/// and verifies the output matches the standalone A2-Lite self-golden.
+/// and verifies the output matches the standalone A2-Lite C++ reference.
 #[test]
 fn test_golden_vectors_container_a2_lite() {
     let full_nam_path = model_path("wavenet_a2_full.nam");
@@ -650,17 +643,15 @@ fn test_golden_vectors_container_a2_lite() {
     let mut model = StaticModel::Container(Box::new(container));
 
     let lite_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_lite_self.bin");
+        .join("tests/fixtures/golden_wavenet_a2_lite.bin");
 
-    if !lite_golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_a2_lite_self.bin not found. Run A2-Lite golden test first."
-        );
-        return;
-    }
+    assert!(
+        lite_golden_path.exists(),
+        "golden_wavenet_a2_lite.bin not found at {lite_golden_path:?}."
+    );
 
     let (input, expected) =
-        read_golden_bin(&lite_golden_path).expect("Failed to read self-golden for A2-Lite");
+        read_golden_bin(&lite_golden_path).expect("Failed to read golden_wavenet_a2_lite.bin");
 
     if let StaticModel::Container(ref mut c) = model {
         // Switch to Lite submodel directly (bypass crossfade) to match existing golden
@@ -680,7 +671,7 @@ fn test_golden_vectors_container_a2_lite() {
         mse_limit,
         min_snr_db,
         max_esr,
-        "Container A2-Lite (CH=3) self-golden",
+        "Container A2-Lite (CH=3) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }

@@ -260,8 +260,7 @@ mkdir -p /tmp/kilo/a2out
     0.01) — **já confirmado**; `head_scale` lido do stream — **já confirmado** no apêndice de verificação.
   - **Critério de aceite:** o script gera, de forma reprodutível, as saídas A2 do C++ `v0.5.3`.
 
-- **[T2.2] Reescrever os goldens A2 como cross-reference Rust ↔ C++ com gate ESR/SNR.**
-
+- **[T2.2] Reescrever os goldens A2 como cross-reference Rust ↔ C++ com gate ESR/SNR.** ✅ **[DONE]**
   - **Ação:** gravar `golden_wavenet_a2_{full,lite}.bin` a partir do render C++ `v0.5.3`; reescrever
     `test_golden_vectors_wavenet_a2_{full,lite}` para comparar **Rust ↔ C++** (remover o `write_golden_bin`
     self-golden). **Gate por ESR/SNR** (scale-invariant), pois MSE absoluto é inútil a `~1e15`. Pisos calibrados
