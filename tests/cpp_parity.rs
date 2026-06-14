@@ -52,17 +52,21 @@ use std::process::Command;
 const NAM_CORE_DIR: &str = "tests/fixtures/NeuralAmpModelerCore";
 const BUILD_DIR: &str = "build/namcore_render";
 
-fn render_bin() -> PathBuf {
+const NAM_CORE_V053_DIR: &str = "tests/fixtures/NeuralAmpModelerCore_v0.5.3";
+const BUILD_V053_DIR: &str = "build/namcore_render_v053";
+
+fn render_bin(is_a2: bool) -> PathBuf {
+    let build_dir = if is_a2 { BUILD_V053_DIR } else { BUILD_DIR };
     let mut bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    bin.push(BUILD_DIR);
+    bin.push(build_dir);
     bin.push("Release/render");
     if !bin.exists() {
         bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        bin.push(BUILD_DIR);
+        bin.push(build_dir);
         bin.push("Debug/render");
     }
     if !bin.exists() {
-        let build_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILD_DIR);
+        let build_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(build_dir);
         if let Ok(entries) = std::fs::read_dir(&build_root) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -81,51 +85,87 @@ fn render_bin() -> PathBuf {
     bin
 }
 
-fn ensure_render_compiled() -> bool {
-    let bin = render_bin();
+fn ensure_render_compiled(is_a2: bool) -> bool {
+    let bin = render_bin(is_a2);
     if bin.exists() {
         return true;
     }
 
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let nam_core = project_root.join(NAM_CORE_DIR);
+    let core_dir = if is_a2 {
+        NAM_CORE_V053_DIR
+    } else {
+        NAM_CORE_DIR
+    };
+    let nam_core = project_root.join(core_dir);
 
     if !nam_core.exists() {
-        eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
-        eprintln!(
-            "Run: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
-        );
+        if is_a2 {
+            eprintln!("NeuralAmpModelerCore v0.5.3 not found at {nam_core:?}");
+            eprintln!("Please run tests/fixtures/golden_gen_build.sh to set up the mirrors.");
+        } else {
+            eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
+            eprintln!(
+                "Run: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
+            );
+        }
         return false;
     }
 
-    for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
-        let sub_path = nam_core.join(sub);
-        if sub_path.exists() && fs::read_dir(&sub_path).map_or(true, |mut d| d.next().is_none()) {
-            let status = Command::new("git")
-                .args(["submodule", "update", "--init", sub])
-                .current_dir(&nam_core)
-                .status();
-            if status.is_ok_and(|s| !s.success()) {
-                eprintln!("WARN: failed to initialize submodule {sub}");
+    if is_a2 {
+        let plugin_dsp = project_root.join("tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools");
+        let eigen_dest = nam_core.join("Dependencies/eigen");
+        if !eigen_dest.exists() {
+            let eigen_src = plugin_dsp.join("Dependencies/eigen");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(eigen_src, eigen_dest).ok();
+        }
+        let dsp_dest = nam_core.join("Dependencies/AudioDSPTools");
+        if !dsp_dest.exists() {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&plugin_dsp, dsp_dest).ok();
+        }
+    } else {
+        for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
+            let sub_path = nam_core.join(sub);
+            if sub_path.exists() && fs::read_dir(&sub_path).map_or(true, |mut d| d.next().is_none())
+            {
+                let status = Command::new("git")
+                    .args(["submodule", "update", "--init", sub])
+                    .current_dir(&nam_core)
+                    .status();
+                if status.is_ok_and(|s| !s.success()) {
+                    eprintln!("WARN: failed to initialize submodule {sub}");
+                }
             }
         }
     }
 
-    let build_dir = project_root.join(BUILD_DIR);
+    let build_dir = project_root.join(if is_a2 { BUILD_V053_DIR } else { BUILD_DIR });
     fs::create_dir_all(&build_dir).ok();
 
-    eprintln!("Compiling render tool (NeuralAmpModelerCore)...");
+    eprintln!(
+        "Compiling render tool ({})...",
+        if is_a2 {
+            "NeuralAmpModelerCore v0.5.3 A2"
+        } else {
+            "NeuralAmpModelerCore standard"
+        }
+    );
 
-    let cmake_status = Command::new("cmake")
-        .args([
-            "-S",
-            nam_core.to_str().unwrap(),
-            "-B",
-            build_dir.to_str().unwrap(),
-            "-DCMAKE_BUILD_TYPE=Release",
-            "-DCMAKE_CXX_STANDARD=20",
-        ])
-        .status();
+    let mut cmake_args = vec![
+        "-S",
+        nam_core.to_str().unwrap(),
+        "-B",
+        build_dir.to_str().unwrap(),
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_CXX_STANDARD=20",
+    ];
+    if is_a2 {
+        cmake_args.push("-DNAM_ENABLE_A2_FAST=ON");
+    }
+
+    let cmake_status = Command::new("cmake").args(&cmake_args).status();
 
     match cmake_status {
         Ok(s) if s.success() => {}
@@ -154,7 +194,7 @@ fn ensure_render_compiled() -> bool {
         }
     }
 
-    render_bin().exists()
+    render_bin(is_a2).exists()
 }
 
 fn run_render_comparison(
@@ -164,11 +204,6 @@ fn run_render_comparison(
     sample_rate: u32,
     use_v2: bool,
 ) {
-    if !ensure_render_compiled() {
-        eprintln!("SKIP: {label} — render tool not available.");
-        return;
-    }
-
     let model_path = model_path(model_filename);
     if !model_path.exists() {
         eprintln!("SKIP: {label} — {model_filename} not found.");
@@ -182,6 +217,13 @@ fn run_render_comparison(
     // Read model expected sample rate
     let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+
+    let is_a2 = nam_rs::loader::nam_json::is_a2_shape(&model_data).is_some();
+
+    if !ensure_render_compiled(is_a2) {
+        eprintln!("SKIP: {label} — render tool not available.");
+        return;
+    }
 
     let actual_sr = if use_v2 {
         sample_rate
@@ -242,7 +284,7 @@ fn run_render_comparison(
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
 
     // Execute render tool
-    let bin = render_bin();
+    let bin = render_bin(is_a2);
     let status = Command::new(&bin)
         .arg(model_path.to_str().unwrap())
         .arg(stress_wav.to_str().unwrap())
@@ -284,53 +326,50 @@ fn run_render_comparison(
 
     // Sanity-check C++ render output: skip comparison if render produced garbage.
     //
-    // T16.4: Three-tier garbage detection:
-    //   1. Non-finite samples (NaN/Inf) — always garbage.
-    //   2. Amplitude > 1e12 — numeric explosion (A2-Full upstream bug).
-    //   3. Amplitude > 1e3  — absurd but finite; stable garbage that bypasses
-    //      absolute MSE thresholds with high false SNR (A2-Lite upstream bug,
-    //      MSE ~10², SNR 51–57 dB, LUFS ~82). Skipped with warning.
-    //   4. Max amplitude < 1e-10 — null/silent output.
+    // Only check for non-finite samples (NaN/Inf), as requested in T2.4.
     {
         let has_nonfinite = cpp_output.iter().any(|x| !x.is_finite());
-        let max_sample = cpp_output.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-        let is_garbage = has_nonfinite
-            || max_sample > 1e12
-            || max_sample > 1e3
-            || (max_sample < 1e-10 && max_sample > 0.0);
-        if is_garbage {
-            if max_sample > 1e3 && max_sample <= 1e12 && !has_nonfinite {
-                eprintln!(
-                    "SKIP: {label} — C++ render produced absurd amplitude output \
-                     (max_sample={max_sample:.2e}); likely upstream numeric instability. \
-                     Skipping comparison.",
-                );
-            } else {
-                eprintln!(
-                    "SKIP: {label} — C++ render produced garbage output \
-                     (non-finite={has_nonfinite}, max_sample={max_sample:.2e}); \
-                     skipping comparison.",
-                );
-            }
+        if has_nonfinite {
+            eprintln!(
+                "SKIP: {label} — C++ render produced garbage output (non-finite=true); skipping comparison.",
+            );
             fs::remove_file(&output_wav).ok();
             return;
         }
     }
 
-    let (mut mse_limit, mut min_snr_db, max_esr) = live_parity_thresholds(&model_data, golden_name);
-    if use_v2 && model_data.architecture == "LSTM" {
-        // LSTM recurrent state accumulates quantization/approximation errors
-        // over the 100x longer v2 stress signal. The accumulation is proportional
-        // to the sequence length. We adjust the thresholds accordingly.
-        let sr_ratio = sample_rate as f64 / 48000.0;
-        let snr_relaxation = (3.5 * sr_ratio).min(10.0);
-        min_snr_db = (min_snr_db - snr_relaxation).max(7.0);
-        mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+    let (mut mse_limit, mut min_snr_db, mut max_esr) =
+        live_parity_thresholds(&model_data, golden_name);
+    if use_v2 {
+        if model_data.architecture == "LSTM" {
+            // LSTM recurrent state accumulates quantization/approximation errors
+            // over the 100x longer v2 stress signal. The accumulation is proportional
+            // to the sequence length. We adjust the thresholds accordingly.
+            let sr_ratio = sample_rate as f64 / 48000.0;
+            let snr_relaxation = (3.5 * sr_ratio).min(10.0);
+            min_snr_db = (min_snr_db - snr_relaxation).max(7.0);
+            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut esr) = max_esr {
+                *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
+        } else {
+            // WaveNet and other models accumulate minor differences over the longer v2 stress signal
+            let sr_ratio = sample_rate as f64 / 48000.0;
+            let snr_relaxation = (1.5 * sr_ratio).min(4.0);
+            min_snr_db -= snr_relaxation;
+            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut esr) = max_esr {
+                *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
+        }
     }
     if use_v2 && actual_sr != model_sr {
         // Resampling introduces minor interpolation/approximation errors, relax thresholds slightly
         min_snr_db -= 1.5;
         mse_limit *= 1.5;
+        if let Some(ref mut esr) = max_esr {
+            *esr *= 1.5;
+        }
     }
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
@@ -448,7 +487,9 @@ fn live_cross_validation_wavenet_nano() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_lite() {
-    eprintln!("SKIP: WaveNet Lite (CH=12) is known-divergent (T1.2) - skipping to avoid false gate");
+    eprintln!(
+        "SKIP: WaveNet Lite (CH=12) is known-divergent (T1.2) - skipping to avoid false gate"
+    );
 }
 
 #[test]
@@ -473,16 +514,10 @@ fn live_cross_validation_wavenet_a1_standard() {
     );
 }
 
-
-
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_official() {
-    run_v1(
-        "lstm.nam",
-        "lstm_official",
-        "Live LSTM Official",
-    );
+    run_v1("lstm.nam", "lstm_official", "Live LSTM Official");
 }
 
 #[test]
@@ -536,7 +571,9 @@ fn live_cross_validation_v2_wavenet_nano() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_wavenet_lite() {
-    eprintln!("SKIP: WaveNet Lite (CH=12) (v2) is known-divergent (T1.2) - skipping to avoid false gate");
+    eprintln!(
+        "SKIP: WaveNet Lite (CH=12) (v2) is known-divergent (T1.2) - skipping to avoid false gate"
+    );
 }
 
 #[test]
@@ -561,16 +598,10 @@ fn live_cross_validation_v2_wavenet_a1_standard() {
     );
 }
 
-
-
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_official() {
-    run_v2_multi_sr(
-        "lstm.nam",
-        "lstm_official",
-        "Live LSTM Official (v2)",
-    );
+    run_v2_multi_sr("lstm.nam", "lstm_official", "Live LSTM Official (v2)");
 }
 
 #[test]

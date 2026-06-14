@@ -221,10 +221,11 @@ fn test_golden_vectors_wavenet_a1_standard() {
         "wavenet_a1_standard.nam not found at {nam_path:?}."
     );
 
-    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A1 Standard model");
+    let json_data =
+        fs::read_to_string(&nam_path).expect("Failed to read WaveNet A1 Standard model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model =
-        build_model(&model_data).expect("Dispatcher failed to build WaveNet A1 Standard for golden test");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet A1 Standard for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -245,8 +246,8 @@ fn test_golden_vectors_wavenet_a1_standard() {
 /// Test 8f-L: Golden Vectors LSTM Official — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_lstm_official() {
-    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_lstm_official.bin");
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_official.bin");
 
     assert!(
         golden_path.exists(),
@@ -258,10 +259,7 @@ fn test_golden_vectors_lstm_official() {
         read_golden_bin(&golden_path).expect("Failed to read golden_lstm_official.bin");
 
     let nam_path = model_path("lstm.nam");
-    assert!(
-        nam_path.exists(),
-        "lstm.nam not found at {nam_path:?}."
-    );
+    assert!(nam_path.exists(), "lstm.nam not found at {nam_path:?}.");
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM Official model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
@@ -448,8 +446,8 @@ fn test_golden_vectors_wavenet_lite() {
 /// and compares the output against the C++ reference (NeuralAmpModelerCore v0.5.3).
 #[test]
 fn test_golden_vectors_wavenet_a2_full() {
-    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_full.bin");
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_full.bin");
 
     assert!(
         golden_path.exists(),
@@ -498,8 +496,8 @@ fn test_golden_vectors_wavenet_a2_full() {
 /// and compares the output against the C++ reference (NeuralAmpModelerCore v0.5.3).
 #[test]
 fn test_golden_vectors_wavenet_a2_lite() {
-    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_lite.bin");
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_lite.bin");
 
     assert!(
         golden_path.exists(),
@@ -577,8 +575,8 @@ fn test_golden_vectors_container_a2_full() {
 
     let mut model = StaticModel::Container(Box::new(container));
 
-    let full_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_full.bin");
+    let full_golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_full.bin");
 
     assert!(
         full_golden_path.exists(),
@@ -642,8 +640,8 @@ fn test_golden_vectors_container_a2_lite() {
 
     let mut model = StaticModel::Container(Box::new(container));
 
-    let lite_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_a2_lite.bin");
+    let lite_golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_lite.bin");
 
     assert!(
         lite_golden_path.exists(),
@@ -688,10 +686,14 @@ fn test_golden_vectors_wavenet_a2_container() {
         return;
     }
 
-    let container_json = fs::read_to_string(&container_path).expect("Failed to read container model");
+    let container_json =
+        fs::read_to_string(&container_path).expect("Failed to read container model");
     let container_data = parse_nam_json(&container_json).expect("Failed to parse container");
 
-    let sample_rate = container_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+    let sample_rate = container_data
+        .sample_rate
+        .map(|s| s as u32)
+        .unwrap_or(48000);
 
     // 1) Test Lite submodel selection
     {
@@ -711,7 +713,8 @@ fn test_golden_vectors_wavenet_a2_container() {
         let mut output = vec![0.0f32; input.len()];
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-        let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&container_data, "wavenet_a2_lite");
+        let (mse_limit, min_snr_db, max_esr) =
+            topology_thresholds(&container_data, "wavenet_a2_lite");
         report_dsp_fidelity(
             &expected,
             &output,
@@ -740,7 +743,8 @@ fn test_golden_vectors_wavenet_a2_container() {
         let mut output = vec![0.0f32; input.len()];
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-        let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&container_data, "wavenet_a2_full");
+        let (mse_limit, min_snr_db, max_esr) =
+            topology_thresholds(&container_data, "wavenet_a2_full");
         report_dsp_fidelity(
             &expected,
             &output,

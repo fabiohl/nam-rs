@@ -243,7 +243,7 @@ mkdir -p /tmp/kilo/a2out
 
 ---
 
-## ÉPICO 2 — Cross-Reference C++ A2 via NeuralAmpModelerCore v0.5.3 🎯 [release-blocker] [TODO]
+## ÉPICO 2 — Cross-Reference C++ A2 via NeuralAmpModelerCore v0.5.3 🎯 [release-blocker] [DONE]
 
 > **Meta:** eliminar os self-goldens A2 tautológicos, substituindo-os por **cross-reference Rust ↔ C++ real**
 > contra o `a2_fast` do `v0.5.3`. A auditoria (Épico 0) **provou que Rust e C++ concordam (57–70 dB SNR)** — o
@@ -284,7 +284,7 @@ mkdir -p /tmp/kilo/a2out
   - **Atenção:** Testes de lacunas (`test_loader_gap_*`) foram criados em `tests/golden_vectors.rs` para documentar que esses modelos oficiais não carregam atualmente. As lacunas foram devidamente anotadas no ÉPICO 100 como tarefas futuras para o motor.
   - **Critério de aceite:** Cumprido. Os testes de goldens A2-Full e A2-Lite rodam com faixas de saída sãs (redimensionadas) e SNR calibrado (Full = 97.8 dB, Lite = 97.4 dB, validados contra piso SNR >= 80 dB / ESR < 1e-8).
 
-- **[T2.4] Reativar o A2 no cross-validation live (`cpp_parity.rs`) e enxugar o garbage guard.**
+- **[T2.4] Reativar o A2 no cross-validation live (`cpp_parity.rs`) e enxugar o garbage guard.** ✅ **[DONE]**
   - **Ação:** apontar o `cpp_parity` A2 para o binário `v0.5.3` e **remover o tier de SKIP por "amplitude
     absurda"** (`> 1e3`), que mascarava a concordância real; manter o guard apenas para **NaN/Inf** legítimos.
   - **Critério de aceite:** `live_cross_validation_wavenet_a2_{full,lite}` (v1) executam comparação real (não SKIP)

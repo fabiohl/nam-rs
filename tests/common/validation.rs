@@ -230,7 +230,12 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 /// Lookup for calibrated thresholds of committed models based on real measurements.
 /// Sets the floors as `SNR_medido - margem` and `ESR_medido * fator`.
 fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)> {
-    match model_name {
+    let base_name = if let Some(idx) = model_name.find("_v2_") {
+        &model_name[..idx]
+    } else {
+        model_name
+    };
+    match base_name {
         // --- WaveNet Standard (CH=16) ---
         // Measured: SNR = 68.4 dB, ESR = 1.43e-7 (post-T16.1 head cascade fix)
         // Margin: SNR - 8.4 dB, ESR factor ~7.0x
