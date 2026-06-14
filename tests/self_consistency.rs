@@ -1,20 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Rust self-consistency (determinism) tests.
+//! Rust self-consistency (determinism) tests — universal gate.
 //!
 //! # Objective
+//!
 //! Validate that the Rust inference engine produces bitwise-identical results
-//! across independent runs with the same model weights and inputs.
+//! across independent runs with the same model weights and inputs. This is the
+//! **determinism invariant**: every architecture MUST produce identical output
+//! from two independently-built instances processing the same signal.
+//!
+//! # Pattern
 //!
 //! Each test loads the same `.nam` model twice, builds two independent
-//! `StaticModel` instances, runs prewarm and processes the same 440 Hz sine
-//! test signal, and asserts that the MSE between the two output buffers is
-//! exactly 0.0 (no floating-point divergence).
+//! `StaticModel` instances, runs prewarm, processes the same 440 Hz sine
+//! test signal through both, and asserts that the MSE between the two output
+//! buffers is exactly 0.0 (bitwise-identical). This generalizes the
+//! `test_cabsim_bitwise_determinism` pattern to every supported architecture.
+//!
+//! # Coverage
+//!
+//! | Architecture            | Models tested                                      |
+//! | ----------------------- | -------------------------------------------------- |
+//! | WaveNet A1              | Standard (CH=16), Feather (CH=8), Nano (CH=4),     |
+//! |                         | Lite (CH=12, known-divergent output but engine     |
+//! |                         | deterministic), A1 Standard Official               |
+//! | WaveNet A2              | Full (CH=8), Lite (CH=3), Container (both)         |
+//! | LSTM                    | 1×16, 2×8, Official                                |
+//! | Linear                  | linear_test (RF=16)                                |
+//! | CabSim (UPOLS)          | `tests/cabsim_golden.rs::test_cabsim_bitwise_determinism` |
 //!
 //! These tests do not depend on C++ golden vectors.
 
 use std::fs;
+use std::path::Path;
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
@@ -23,206 +42,25 @@ use nam_rs::models::NamModel;
 mod common;
 use common::*;
 
-/// Test 5: WaveNet self-consistency — absolute determinism.
+/// Shared determinism assertion for any `.nam` model.
 ///
-/// Loads `BossWN-standard.nam` twice, builds two identical `StaticModel`s,
-/// runs prewarm and processes the same 440 Hz sine signal (512 samples).
-/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
+/// Loads the model twice from the same file, builds two independent
+/// `StaticModel` instances, prewarms both, processes a 440 Hz sine signal
+/// through each, and asserts `MSE == 0.0` (nothing less — determinism must
+/// be absolute).
 ///
-/// This test does not depend on C++ golden vectors and validates that the Rust engine
-/// is deterministic across independent runs with the same weights and inputs.
-#[test]
-fn test_auto_consistency_wavenet() {
-    let path = model_path("BossWN-standard.nam");
+/// Returns silently on success; panics with diagnostic information on failure.
+fn assert_model_determinism(path: &Path, label: &str) {
+    let json_data =
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("[{label}] Failed to read model: {e}"));
 
-    if !path.exists() {
-        eprintln!(
-            "SKIP: BossWN-standard.nam not found at {path:?}. Skipping WaveNet self-consistency."
-        );
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    let mut model_a =
-        build_model(&model_data).expect("Dispatcher failed (model_a) for self-consistency");
-    let mut model_b =
-        build_model(&model_data).expect("Dispatcher failed (model_b) for self-consistency");
-
-    model_a.prewarm(2048);
-    model_b.prewarm(2048);
-
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-
-    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
-    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
-
-    let mse = compute_mse(&out_a, &out_b);
-    let mae = compute_max_abs_error(&out_a, &out_b);
-
-    println!("[WaveNet Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
-
-    assert!(
-        mse == 0.0,
-        "Rust WaveNet engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
-    );
-}
-
-/// Test 5b: WaveNet A2-Full self-consistency — absolute determinism.
-///
-/// Loads `wavenet_a2_full.nam` twice, builds two identical `StaticModel`s,
-/// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
-/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
-#[test]
-fn test_auto_consistency_wavenet_a2_full() {
-    let path = model_path("wavenet_a2_full.nam");
-
-    if !path.exists() {
-        eprintln!(
-            "SKIP: wavenet_a2_full.nam not found at {path:?}. Skipping A2-Full self-consistency."
-        );
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Full model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    let mut model_a =
-        build_model(&model_data).expect("Dispatcher failed (model_a) for A2-Full self-consistency");
-    let mut model_b =
-        build_model(&model_data).expect("Dispatcher failed (model_b) for A2-Full self-consistency");
-
-    model_a.prewarm(2048);
-    model_b.prewarm(2048);
-
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-
-    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
-    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
-
-    let mse = compute_mse(&out_a, &out_b);
-    let mae = compute_max_abs_error(&out_a, &out_b);
-
-    println!("[WaveNet A2-Full Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
-
-    assert!(
-        mse == 0.0,
-        "Rust WaveNet A2-Full engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
-    );
-}
-
-/// Test 5c: WaveNet A2-Lite self-consistency — absolute determinism.
-///
-/// Loads `wavenet_a2_lite.nam` twice, builds two identical `StaticModel`s,
-/// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
-/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
-#[test]
-fn test_auto_consistency_wavenet_a2_lite() {
-    let path = model_path("wavenet_a2_lite.nam");
-
-    if !path.exists() {
-        eprintln!(
-            "SKIP: wavenet_a2_lite.nam not found at {path:?}. Skipping A2-Lite self-consistency."
-        );
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Lite model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    let mut model_a =
-        build_model(&model_data).expect("Dispatcher failed (model_a) for A2-Lite self-consistency");
-    let mut model_b =
-        build_model(&model_data).expect("Dispatcher failed (model_b) for A2-Lite self-consistency");
-
-    model_a.prewarm(2048);
-    model_b.prewarm(2048);
-
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-
-    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
-    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
-
-    let mse = compute_mse(&out_a, &out_b);
-    let mae = compute_max_abs_error(&out_a, &out_b);
-
-    println!("[WaveNet A2-Lite Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
-
-    assert!(
-        mse == 0.0,
-        "Rust WaveNet A2-Lite engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
-    );
-}
-
-/// Test 6: LSTM self-consistency — absolute determinism.
-///
-/// Loads `BossLSTM-1x16.nam` twice, builds two identical `StaticModel`s,
-/// runs prewarm and processes the same 440 Hz sine signal (512 samples).
-/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
-#[test]
-fn test_auto_consistency_lstm() {
-    let path = model_path("BossLSTM-1x16.nam");
-
-    if !path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam not found at {path:?}. Skipping LSTM self-consistency.");
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    let mut model_a =
-        build_model(&model_data).expect("Dispatcher failed (model_a) for LSTM self-consistency");
-    let mut model_b =
-        build_model(&model_data).expect("Dispatcher failed (model_b) for LSTM self-consistency");
-
-    model_a.prewarm(2048);
-    model_b.prewarm(2048);
-
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-
-    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
-    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
-
-    let mse = compute_mse(&out_a, &out_b);
-    let mae = compute_max_abs_error(&out_a, &out_b);
-
-    println!("[LSTM Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
-
-    assert!(
-        mse == 0.0,
-        "Rust LSTM engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
-    );
-}
-
-/// Test 16: LSTM 2x8 self-consistency — absolute determinism.
-#[test]
-fn test_auto_consistency_lstm_2x8() {
-    let path = model_path("BossLSTM-2x8.nam");
-
-    if !path.exists() {
-        eprintln!(
-            "SKIP: BossLSTM-2x8.nam not found at {path:?}. Skipping LSTM 2x8 self-consistency."
-        );
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM 2x8 model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let model_data = parse_nam_json(&json_data)
+        .unwrap_or_else(|e| panic!("[{label}] Failed in JSON parser: {e}"));
 
     let mut model_a = build_model(&model_data)
-        .expect("Dispatcher failed (model_a) for LSTM 2x8 self-consistency");
+        .unwrap_or_else(|e| panic!("[{label}] Dispatcher failed (model_a): {e}"));
     let mut model_b = build_model(&model_data)
-        .expect("Dispatcher failed (model_b) for LSTM 2x8 self-consistency");
+        .unwrap_or_else(|e| panic!("[{label}] Dispatcher failed (model_b): {e}"));
 
     model_a.prewarm(2048);
     model_b.prewarm(2048);
@@ -237,10 +75,138 @@ fn test_auto_consistency_lstm_2x8() {
     let mse = compute_mse(&out_a, &out_b);
     let mae = compute_max_abs_error(&out_a, &out_b);
 
-    println!("[LSTM 2x8 Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[{label}] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse == 0.0,
-        "Rust LSTM 2x8 engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "Rust engine non-deterministic [{label}]! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
+}
+
+/// Helper: returns `true` if the model file exists, prints a SKIP message otherwise.
+fn model_exists(filename: &str) -> bool {
+    let path = model_path(filename);
+    if !path.exists() {
+        eprintln!("SKIP: {filename} not found at {path:?}. Skipping self-consistency.");
+        return false;
+    }
+    true
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WaveNet A1 — Standard, Feather, Nano, Lite, Official
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_auto_consistency_wavenet() {
+    if !model_exists("BossWN-standard.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossWN-standard.nam"), "WaveNet Standard CH=16");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_feather() {
+    if !model_exists("BossWN-feather.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossWN-feather.nam"), "WaveNet Feather CH=8");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_nano() {
+    if !model_exists("BossWN-nano.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossWN-nano.nam"), "WaveNet Nano CH=4");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_lite() {
+    if !model_exists("BossWN-lite.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossWN-lite.nam"), "WaveNet Lite CH=12");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_a1_standard() {
+    if !model_exists("wavenet_a1_standard.nam") {
+        return;
+    }
+    assert_model_determinism(
+        &model_path("wavenet_a1_standard.nam"),
+        "WaveNet A1 Standard Official",
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WaveNet A2 — Full, Lite, Container
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_auto_consistency_wavenet_a2_full() {
+    if !model_exists("wavenet_a2_full.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("wavenet_a2_full.nam"), "WaveNet A2-Full CH=8");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_a2_lite() {
+    if !model_exists("wavenet_a2_lite.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("wavenet_a2_lite.nam"), "WaveNet A2-Lite CH=3");
+}
+
+#[test]
+fn test_auto_consistency_wavenet_a2_container() {
+    if !model_exists("wavenet_a2_container.nam") {
+        return;
+    }
+    assert_model_determinism(
+        &model_path("wavenet_a2_container.nam"),
+        "WaveNet A2 Container",
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LSTM — 1×16, 2×8, Official
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_auto_consistency_lstm() {
+    if !model_exists("BossLSTM-1x16.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossLSTM-1x16.nam"), "LSTM 1×16");
+}
+
+#[test]
+fn test_auto_consistency_lstm_2x8() {
+    if !model_exists("BossLSTM-2x8.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("BossLSTM-2x8.nam"), "LSTM 2×8");
+}
+
+#[test]
+fn test_auto_consistency_lstm_official() {
+    if !model_exists("lstm.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("lstm.nam"), "LSTM Official");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Linear — FIR feedforward
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_auto_consistency_linear() {
+    if !model_exists("linear_test.nam") {
+        return;
+    }
+    assert_model_determinism(&model_path("linear_test.nam"), "Linear RF=16");
 }

@@ -493,12 +493,12 @@ mkdir -p /tmp/kilo/a2out
   [−50, +10] LUFS. Captura defeitos de geração de golden como escala errada ou near-silence (lição
   T2.5: LUFS −67 passou despercebido sem este gate). Constantes universais, sem thresholds por modelo.
   Cobertura: todos os 18 testes ativos de golden vectors, `cpp_parity.rs` e `cabsim_cpp_parity.rs`.
-- **[T4.4] Meta-teste anti-placebo + manifesto de thresholds (ver T3.3/T3.4).** Impede a reintrodução de gates
-  neutralizados (SNR ≤ 0 / ESR ≥ 1) e torna cada limiar rastreável a uma medição. Efeito universal: a suíte
-  **nunca mais mente** — base de confiança para otimizações agressivas futuras (FFT, AVX-512, ARM SVE2).
-- **[T4.5] Determinismo bit-exato como invariante.** Generalizar o `test_cabsim_bitwise_determinism` (ESR < 1e-10)
-  para um gate de **determinismo run-a-run** por arquitetura. Efeito universal: garante reprodutibilidade
-  (pré-requisito de RT-safety e de qualquer golden estável).
+- **[T4.4] Meta-teste anti-placebo + manifesto de thresholds (ver T3.3/T3.4).** ✅ **DONE (via T3.3/T3.4)** —
+  3 meta-tests em `tests/threshold_calibration.rs` (`test_all_golden_models_have_calibrated_thresholds`,
+  `test_all_calibrated_entries_have_measurement_comments`, `test_all_thresholds_anti_placebo`) impedem
+  reintrodução de gates neutralizados (SNR ≤ 0 / ESR ≥ 1). Princípio "Todo Golden Deve Poder Falhar"
+  documentado em `tests/fixtures/README.md` e `docs/architecture.md`. 5/5 meta-testes verdes.
+- **[T4.5] Determinismo bit-exato como invariante.** ✅ **DONE (2026-06-14)** — Generalizado o `test_cabsim_bitwise_determinism` (ESR < 1e-10) para um gate universal de determinismo run-a-run por arquitetura. `tests/self_consistency.rs` refatorado com helper `assert_model_determinism()` e cobertura sistemática de 12 modelos: WaveNet Standard/Feather/Nano/Lite/A1-Standard-Official, A2-Full/Lite/Container, LSTM 1×16/2×8/Official, Linear RF=16. 14/14 testes verdes. Determinismo = MSE == 0.0 (bitwise-identical) para cada arquitetura — invariante de RT-safety e pré-requisito de qualquer golden estável.
 
 > **Limite honesto do escopo:** estas ações elevam a **detecção** e a **confiança** universalmente. A **correção**
 > de defeitos numéricos que elas venham a expor (ex.: drift CH=12, precisão de ativações) é trabalho de engine e
