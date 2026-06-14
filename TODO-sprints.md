@@ -231,10 +231,12 @@ mkdir -p /tmp/kilo/a2out
   - **Parecer da Auditoria (2026-06-13):** Os arquivos atuais `golden_lstm_{1x16,2x8}.bin` são byte-idênticos (SHA-256 confere) à renderização da engine C++ pinada no commit `e49c93e`. As divergências em relação ao `nam-rs_v2.0.0` são extremamente pequenas (SNR > 120 dB) e derivam do fato de o `v2.0.0` ter usado clones de HEAD dinâmicos/não-pinados da engine C++ na época. Decidiu-se reter os fixtures atuais por estarem perfeitamente alinhados com o mirror pinado oficial.
 
 - **[T1.2] Resolver o gate falso do WaveNet Lite (CH=12).** ✅ **[DONE]**
+
   - **Decisão arquitetural adotada (ADR):** Adotada a **Opção (c)**. O teste `test_golden_vectors_wavenet_lite` foi movido para a suíte `#[ignore]` com rótulo explicativo `known-divergent` e reconfigurado com thresholds de destino honestos (`SNR >= 40.0 dB`, `ESR < 1e-3`), removendo o falso gate da suíte rápida de CI. Os testes de cross-validation ao vivo em `tests/cpp_parity.rs` foram programados para pular a execução dinamicamente a fim de não quebrar as suítes longas de auditoria.
   - **Critério de aceite:** Cumprido. O teste não passa mais silenciosamente com thresholds de 0 dB SNR / 1.0 ESR; a divergência está honestamente sinalizada.
 
 - **[T1.3] Calibrar thresholds A1 rígidos a partir da medição real.** ✅ **[DONE]**
+
   - **Ação:** com os fixtures A1 validados (T1.1) e o resultado C++ `v0.5.3` (Épico 0), fixar os pisos por modelo
     como `SNR_medido − margem` (ex.: margem 6–8 dB) e `ESR_medido × fator`, **comentando a medição que originou
     cada piso** (padrão já usado em T16.2). Eliminar a derivação puramente heurística para os modelos com golden
@@ -253,6 +255,7 @@ mkdir -p /tmp/kilo/a2out
 ### Sprint 2.1 — Substituir self-golden por cross-reference scale-invariant
 
 - **[T2.1] Integrar o render do `v0.5.3` ao `golden_gen_build.sh` (pinar SHA, A2 fast).** ✅ **[DONE]**
+
   - **Ação:** adicionar um caminho no script para compilar o render do `v0.5.3` (comandos verificados no Épico 0;
     `NAM_ENABLE_A2_FAST=ON`), pinando o commit/snapshot e suprindo `eigen`/`AudioDSPTools` (symlink do mirror do
     Plugin). Registrar a proveniência em `tests/fixtures/README.md`.
@@ -261,6 +264,7 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** o script gera, de forma reprodutível, as saídas A2 do C++ `v0.5.3`.
 
 - **[T2.2] Reescrever os goldens A2 como cross-reference Rust ↔ C++ com gate ESR/SNR.** ✅ **[DONE]**
+
   - **Ação:** gravar `golden_wavenet_a2_{full,lite}.bin` a partir do render C++ `v0.5.3`; reescrever
     `test_golden_vectors_wavenet_a2_{full,lite}` para comparar **Rust ↔ C++** (remover o `write_golden_bin`
     self-golden). **Gate por ESR/SNR** (scale-invariant), pois MSE absoluto é inútil a `~1e15`. Pisos calibrados
@@ -269,6 +273,7 @@ mkdir -p /tmp/kilo/a2out
     documentados; um experimento de regressão proposital os faz falhar.
 
 - **[T2.3] Substituir fixtures A2 sintéticos pelos modelos A2 oficiais dos mirrors.** ⚠️ **(qualidade — alto impacto)** [DONE]
+
   - **Contexto:** `generate_a2_fixtures.py` usa pesos aleatórios → saída explode a `1e15` (A2-Full) / `8e4`
     (A2-Lite) **em ambos os engines**. Os mirrors já trazem A2 oficiais **com saída limitada**:
     `wavenet_a2_max.nam` (max 10.3, inclui `condition_dsp`/FiLM), `slimmable_wavenet.nam` (max 15) e
@@ -281,10 +286,11 @@ mkdir -p /tmp/kilo/a2out
     - `slimmable_wavenet.nam` tem 1 camada, 3 canais e dilatações de tamanho 10, o que não coincide com as geometrias rígidas otimizadas de fast-path (A2-Full 8ch/A2-Lite 3ch com 23 camadas). O `nam-rs` carece de fallback dinâmico para WaveNet genérico.
     - `slimmable_container.nam` falha por envelopar `slimmable_wavenet.nam`.
     - Para contornar e validar a infra de `SlimmableContainer`, geramos um container calibrado `wavenet_a2_container.nam` encapsulando as topologias suportadas (Full e Lite), com pesos redimensionados (0.05 para pesos, 0.01 para bias) a fim de evitar explosão de saída.
-  - **Atenção:** Testes de lacunas (`test_loader_gap_*`) foram criados em `tests/golden_vectors.rs` para documentar que esses modelos oficiais não carregam atualmente. As lacunas foram devidamente anotadas no ÉPICO 100 como tarefas futuras para o motor.
+  - **Atenção:** Testes de lacunas (`test_loader_gap_*`) foram criados em `tests/golden_vectors.rs` para documentar que esses modelos oficiais não carregam atualmente. As lacunas estão descritas na seção "Feature à parte" ao final deste documento (WaveNet genérico + FiLM/multi-condição) para tratamento à parte.
   - **Critério de aceite:** Cumprido. Os testes de goldens A2-Full e A2-Lite rodam com faixas de saída sãs (redimensionadas) e SNR calibrado (Full = 97.8 dB, Lite = 97.4 dB, validados contra piso SNR >= 80 dB / ESR < 1e-8).
 
 - **[T2.4] Reativar o A2 no cross-validation live (`cpp_parity.rs`) e enxugar o garbage guard.** ✅ **[DONE]**
+
   - **Ação:** apontar o `cpp_parity` A2 para o binário `v0.5.3` e **remover o tier de SKIP por "amplitude
     absurda"** (`> 1e3`), que mascarava a concordância real; manter o guard apenas para **NaN/Inf** legítimos.
   - **Critério de aceite:** `live_cross_validation_wavenet_a2_{full,lite}` (v1) executam comparação real (não SKIP)
@@ -307,6 +313,7 @@ mkdir -p /tmp/kilo/a2out
 > **Porém**, três achados exigem correção (abaixo). O mais importante (T2.5) é **substantivo**.
 
 - **[T2.5] (corretiva — substantiva) Regime de amplitude realista para os goldens A2.** ⚠️ **(prioridade alta)** ✅ **[DONE]**
+
   - **Resultado (2026-06-14):** Escalas de peso ajustadas por canal (Full CH=8: weight=0.28, bias=0.065; Lite CH=3: weight=0.45, bias=0.09). Saída C++ realista — Full: peak≈0.15, LUFS≈−22.6; Lite: peak≈0.19, LUFS≈−20.0. Goldens regenerados via v0.5.3 (`9c7b185`). SNR/ESR re-medidos (Full: 79.2 dB / 1.21e−8; Lite: 90.7 dB / 8.58e−10), thresholds recalibrados (SNR − 9/11 dB, ESR × 6–7). Suíte `golden_vectors`: 18 passed, 1 ignored. Documentação atualizada em `README.md`.
   - **Problema verificado:** o objetivo original de T2.3 (usar modelos A2 **oficiais reais**) **não foi atingido**
     — os oficiais não carregam (lacunas de FiLM/topologia, ver Épico 100). O fallback adotado foi um **modelo
@@ -332,6 +339,7 @@ mkdir -p /tmp/kilo/a2out
     Registrar a medição final no `README.md`.
 
 - **[T2.6] (corretiva — documentação/higiene) Sincronizar docs e remover órfãos do Épico 2.** ✅ **[DONE]**
+
   - **Problema verificado:**
     - Os arquivos `tests/fixtures/golden_wavenet_a2_full_self.bin` e `..._lite_self.bin` **ainda existem** e
       **ainda são listados** em `tests/fixtures/README.md` (linhas ~77 e ~79), apesar de **nenhum teste** os ler
@@ -371,6 +379,7 @@ mkdir -p /tmp/kilo/a2out
 
 - [T3.1] Eliminar (ou conectar) os 72 fixtures `_v2_*k.bin` órfãos. ✅ [DONE]
   — 43 arquivos removidos via `git rm`, seção `[5a/6]` e sumário v2 removidos do `golden_gen_build.sh`, referências no `README.md` limpas.
+
   - **Contexto factual (não re-investigar):** existem 72 arquivos `tests/fixtures/golden_*_v2_*k.bin`. **Nenhum
     teste Rust os lê** — confirmado por `grep -rn "_v2_" tests/*.rs` (só aparecem em `cpp_parity.rs` como
     *nome de WAV temporário*, gerado e renderizado ao vivo, nunca lido do disco). O sufixo `k`
@@ -386,6 +395,7 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** nenhum fixture committed que nenhum teste lê; `README.md` (seção de fixtures) reflete a realidade.
 
 - **[T3.2] Garantir "zero fixtures órfãos" (verificação final).** ✅ **[DONE]**
+
   - **Contexto:** T2.6 já remove os `golden_wavenet_a2_*_self.bin`. Esta tarefa é a **varredura final** de
     qualquer `.bin` não referenciado.
   - **Ação (passo a passo):**
@@ -435,6 +445,7 @@ mkdir -p /tmp/kilo/a2out
 ### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo) [DONE]
 
 - **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).** ✅ **[DONE]**
+
   - **Decisão:** Opção (a) — manter em código, blindar com meta-testes.
   - **Ação:**
     1. `get_calibrated_threshold()` tornada pública com docstring descrevendo o contrato.
@@ -450,6 +461,7 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** Cumprido. 4/4 meta-testes verdes; `golden_vectors` 18 passed / 1 ignored; suíte completa (`utils/tests-cargo.sh`) 100% verde.
 
 - **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".** ✅ **[DONE]**
+
   - **Ação (passo a passo):**
     1. Criar um teste (ex.: em `tests/golden_vectors.rs` ou `tests/common`) que **itere sobre todos os modelos
        com golden committed** e **falhe** se algum threshold estiver neutralizado — i.e., `min_snr_db <= 0.0`
@@ -463,7 +475,7 @@ mkdir -p /tmp/kilo/a2out
 
 ---
 
-## ÉPICO 4 — Alavancagem de Qualidade Universal a partir dos Goldens 🌐 [TODO]
+## ÉPICO 4 — Alavancagem de Qualidade Universal a partir dos Goldens 🌐 [DONE]
 
 > **Resposta à pergunta "há espaço para melhorias universais de qualidade a partir das ações aqui?": SIM.**
 > Os goldens são o **gate transversal** de todo o motor (DSP, SIMD, loaders, RT-safety). Endurecê-los eleva o
@@ -503,3 +515,162 @@ mkdir -p /tmp/kilo/a2out
 > **Limite honesto do escopo:** estas ações elevam a **detecção** e a **confiança** universalmente. A **correção**
 > de defeitos numéricos que elas venham a expor (ex.: drift CH=12, precisão de ativações) é trabalho de engine e
 > deve ser planejada em épicos próprios (ex.: Épico 1.2 para o Lite), não embutida na infra de testes.
+
+---
+
+## ÉPICO 5 — Auditoria "Grande Cenário" dos Golden Vectors 🔭 [TODO]
+
+> **Parecer da auditoria geral (`revisor-auditor`, 2026-06-14).** Após os Épicos 1–4, os goldens do nam-rs estão
+> em estado **muito bom e exemplar nos mecanismos**: cross-reference C++ real, gates scale-invariant (ESR),
+> calibração por medição documentada, meta-testes anti-placebo, determinismo bitwise por arquitetura, oráculo
+> matemático (cabsim/Linear) e gate de plausibilidade LUFS. Suítes verdes (golden 18✓/1-ignored; linear 9✓;
+> self_consistency 14✓; threshold_calibration 5✓). **Porém, "olhando o grande cenário", restam achados
+> estruturais** — alguns de higiene (rápidos), outros de cobertura/engine (estratégicos). Esta é a lista honesta.
+
+### Sprint 5.1 — Higiene de repositório (rápido, alto valor) 🧹
+
+- **[T5.1] Remover binário compilado e symlink absoluto committados.** ⚠️ **(correção — viola o próprio `.gitignore`)**
+  - **Problema verificado:**
+    1. `tests/fixtures/render_ir` é um **executável ELF x86-64 de 72 KB committado** (build artifact, não-stripped,
+       com BuildID específico de máquina). É regenerável de `render_ir.cpp` via `golden_gen_build.sh`.
+    2. `tests/fixtures/NeuralAmpModelerCore_v0.5.3` é um **symlink committado (modo 120000)** apontando para o
+       caminho **absoluto** `/home/fabio/nam-rs/github.com/...` — quebrado para qualquer outra máquina/clone.
+       O `.gitignore` (linha 58) **já pretende** ignorá-lo, mas ele foi committado antes/forçado.
+  - **Ação (passo a passo):**
+    1. `git rm --cached tests/fixtures/render_ir` (remover do índice; manter local opcional) e adicionar
+       `tests/fixtures/render_ir` ao `.gitignore`.
+    2. `git rm --cached tests/fixtures/NeuralAmpModelerCore_v0.5.3` (remover o symlink do índice; o `.gitignore`
+       já o cobre).
+    3. Confirmar que `golden_gen_build.sh` recria ambos sob demanda (já recria o symlink via `ln -sfn`; compila o
+       `render_ir` a partir do `.cpp`).
+  - **Critério de aceite:** `git ls-files tests/fixtures/ | grep -E 'render_ir$|NeuralAmpModelerCore_v0.5.3$'`
+    retorna vazio; `git status` limpo; `golden_gen_build.sh` roda do zero e recria os artefatos.
+
+### Sprint 5.2 — Consistência da referência canônica 📌
+
+- **[T5.2] Unificar/documentar a referência canônica (split e49c93e × v0.5.3).**
+  - **Achado verificado (não é bug):** os goldens A1/LSTM estão pinados em `e49c93e` (main HEAD, não-released) e
+    os A2 em `9c7b185` (tag v0.5.3). Verificou-se empiricamente que **A1/LSTM/Standard são byte-idênticos**
+    (SNR = ∞) renderizados em **ambos** os commits — o diff entre eles é **só nos caminhos A2** (a2_fast/
+    slimmable/container). Portanto o split é **numericamente inócuo**, mas **confunde** a narrativa de "referência
+    canônica oficial = v0.5.3".
+  - **Ação (escolher (a), recomendado):**
+    - **(a)** Re-renderizar A1/LSTM com o `render` do **v0.5.3** (`9c7b185`) e re-commitar (serão idênticos, prova
+      de invariância); passar a **citar um único commit canônico (v0.5.3 `9c7b185`)** em todo o `README.md`.
+    - **(b)** Se preferir manter `e49c93e`, **documentar explicitamente** no `README.md` por que A1/LSTM usam o
+      HEAD (recursos mais novos) e provar a invariância A1/LSTM entre os dois commits.
+  - **Critério de aceite:** `README.md` cita uma referência canônica coerente; proveniência de **todos** os
+    goldens rastreável a um commit declarado; suíte verde (deve ser idêntica).
+  - Nota do PO: Assegurar (inclusive no script `utils/mod-update.sh`) que sempre teremos uma referência de git tag canônico para os espelhos de git de referência:
+    - tests/fixtures/NeuralAmpModelerCore/        tag v0.5.3
+    - tests/fixtures/NeuralAmpModelerPlugin/      tag v0.7.15
+      Dado que o `utils/mod-update.sh` é o local que mantem este diretório atualizado, lá pode ser o local para fazer essa gestão de git tags canônicas.
+
+### Sprint 5.3 — Clareza/proveniência e divergências conhecidas (qualidade de goldens) 📋
+
+> **Escopo:** itens de **qualidade/clareza dos goldens** (documentação e rastreio). As lacunas de **engine**
+> (WaveNet genérico, FiLM, A2 sintético→oficial) **foram retiradas deste épico** por serem questão de **feature**,
+> não de qualidade de golden — estão descritas em separado ao final do documento ("Feature à parte").
+
+- **[T5.3] Documentar com clareza a natureza de cada golden (modelo oficial real vs sintético calibrado).**
+
+  - **Estado verificado:** `wavenet_a1_standard.nam` (== `my_model.nam`, md5 `1c540f40…`, modelo real treinado de
+    407 KB) **já é golden oficial** (`golden_wavenet_a1_standard.bin`, cross-reference C++). ✅ O `lstm.nam`
+    oficial idem. ✅
+  - **Lacuna a documentar (não corrigir aqui):** os goldens **A2-Full/A2-Lite são modelos SINTÉTICOS reescalados**,
+    não oficiais — porque os A2 oficiais usam FiLM/multi-condição não suportado (ver "Feature à parte"). Anotar no
+    `README.md`: "os A2 goldens validam paridade numérica Rust↔C++ do **fast-path** A2, mas **não** usam pesos de
+    modelo oficial".
+  - **Critério de aceite:** `README.md` deixa explícito quais goldens são de **modelo oficial real** (A1/LSTM)
+    vs **sintético calibrado** (A2); nenhuma ambiguidade sobre a natureza de cada fixture.
+
+- **[T5.4] Manter rastreado o WaveNet Lite CH=12 (divergência conhecida).**
+
+  - **Estado:** `test_golden_vectors_wavenet_lite` segue `#[ignore]` (`known-divergent`, SNR 0.9 dB). Bug de
+    engine isolado na fronteira de bloco (frame 64) para CH não-potência-de-2. Manter rastreado; ao corrigir
+    (trabalho de engine, fora do escopo de goldens), restaurar o gate rígido (SNR ≥ 40 dB) já preparado em
+    `get_calibrated_threshold`.
+  - **Critério de aceite:** o teste permanece honestamente sinalizado (nunca como falso-verde); o gate-alvo
+    fica pronto para reativação imediata pós-correção.
+
+### Sprint 5.4 — Qualidade das medições (observação) 📊
+
+- **[T5.5] (investigação) SNR baixo dos goldens LSTM (precisão de ativações).**
+  - **Achado verificado:** os goldens LSTM passam, mas em SNR Rust↔C++ **relativamente baixo**: 1×16 ≈ 19.8 dB,
+    2×8 ≈ 25.7 dB, official ≈ 29.7 dB — vs WaveNet 52–68 dB e A2 79–90 dB. A causa provável é a aproximação
+    FastMath de `tanh`/`sigmoid` (usadas intensamente por timestep no LSTM, acumulando erro vs `std::tanh` do C++).
+    Não é gate falso (os pisos têm margem documentada), mas é o **ponto mais fraco** das medições.
+  - **Ação:** medir o ganho de SNR ao usar `tanh`/`sigmoid` de maior precisão **apenas** no caminho LSTM (ou
+    avaliar um polinômio de ordem maior); decidir custo/benefício (perf vs fidelidade) com benchmark. Documentar
+    como tradeoff **aceito** se o custo de perf for proibitivo.
+  - **Critério de aceite:** decisão fundamentada em medição (SNR antes/depois + impacto de perf no
+    `inference_bench`); `README.md`/ADR atualizado.
+
+> **Veredito final da auditoria geral:** os **mecanismos** de golden do nam-rs são **exemplares**. Dentro do
+> escopo de **qualidade de golden**, restam apenas itens de higiene/clareza (Sprint 5.1 higiene, Sprint 5.2
+> referência canônica, Sprint 5.3 documentação) e dois pontos de medição/divergência (Lite CH=12 e precisão
+> LSTM). Recomenda-se executar **Sprint 5.1 imediatamente**. A única limitação **estrutural** — rodar modelos
+> oficiais reais (WaveNet genérico + FiLM) e elevar o A2 de sintético→oficial — é **questão de feature, não de
+> qualidade de golden**, e está descrita em separado abaixo para tratamento em outro momento.
+
+---
+---
+
+## Feature à parte (fora do escopo de qualidade de goldens) — WaveNet genérico + FiLM/multi-condição 🧩
+
+> **Por que está aqui e não num épico de goldens:** durante a auditoria do "grande cenário" (Épico 5) ficou claro
+> que a infraestrutura de goldens já está pronta e exemplar; a única coisa que a impede de validar **modelos NAM
+> oficiais reais em toda a sua extensão** é uma **lacuna de engine** (features de inferência ainda não
+> implementadas). Como isso é desenvolvimento de **feature** — não calibração/correção de golden — registra-se
+> aqui de forma detalhada para ser investigado e planejado **à parte, em outro momento**. Os goldens existentes
+> não dependem disto; esta feature **amplia a cobertura**, não conserta nada quebrado.
+
+### Diagnóstico verificado (probe de carga em 2026-06-14)
+
+O dispatcher do nam-rs aceita hoje **apenas um catálogo fixo** de topologias WaveNet e **rejeita** o resto.
+Testando os modelos **oficiais** do `NeuralAmpModelerCore_v0.5.3/example_models/`:
+
+| Modelo oficial              | Geometria                               | Resultado no nam-rs                                              |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------------------- |
+| `wavenet_a1_standard.nam`   | WaveNet ch=16, cond=1 (real, 407 KB)    | ✅ **Carrega** (já é golden oficial)                             |
+| `my_model.nam`              | == `wavenet_a1_standard` (md5 idêntico) | ✅ Carrega (redundante)                                          |
+| `lstm.nam`                  | LSTM H=3, L=1                           | ✅ **Carrega** (já é golden oficial)                             |
+| `wavenet.nam`               | WaveNet ch=3, cond=1, `[(3,2),(2,1)]`   | ❌ "topology not in catalog / dynamic fallback no longer avail." |
+| `slimmable_wavenet.nam`     | WaveNet ch=3, cond=1, geometria livre   | ❌ "A2 shape not recognized"                                     |
+| `wavenet_a2_max.nam`        | WaveNet ch=4, **cond=8** (FiLM)         | ❌ "only condition_size=1 is supported"                          |
+| `wavenet_condition_dsp.nam` | WaveNet ch=3, **cond=3** (FiLM)         | ❌ "only condition_size=1 is supported"                          |
+| `slimmable_container.nam`   | SlimmableContainer (3 submodelos)       | ❌ "submodel build failed" (depende dos acima)                   |
+
+São **duas features distintas**, ambas recursos oficiais do NAMCore:
+
+1. **WaveNet genérico (dispatcher dinâmico).** Suportar **qualquer** nº de camadas/canais/dilatações, não só o
+   catálogo rígido (Standard/Lite/Feather/Nano/A2-Full/A2-Lite). Hoje o fallback dinâmico foi **removido** — então
+   nam-rs não roda modelos NAM treinados arbitrariamente, que é o **caso de uso central** do ecossistema NAM.
+   Risco/atenção: preservar RT-safety — toda alocação deve ocorrer **no load** (fora da audio-thread), mantendo o
+   hot-path zero-alloc; o fast-path estático atual deve continuar sendo escolhido quando a geometria casar.
+2. **Multi-condição / FiLM (`condition_size > 1`).** Implementar conditioning arbitrário + FiLM
+   (refs C++: `NAM/wavenet/film.h`, `NAM/wavenet/gating_activations.h`). É o que destrava os A2 oficiais
+   (`wavenet_a2_max`, `wavenet_condition_dsp`) e permitiria **elevar os goldens A2 de sintético→oficial**.
+
+> Nota lateral (baixa prioridade): o NAMCore também tem a arquitetura **ConvNet** (`NAM/convnet.{cpp,h}`), não
+> suportada pelo nam-rs e **sem** modelo oficial entre os `example_models`. Decidir em produto se entra no escopo.
+
+### Recomendações para gerar bons goldens **destas** features (quando forem implementadas)
+
+Para manter o padrão exemplar já estabelecido, os goldens das novas features devem seguir as mesmas regras:
+
+- **Modelo oficial real, não sintético.** Usar diretamente os `.nam` oficiais que hoje falham —
+  `wavenet.nam` (WaveNet genérico) e `wavenet_a2_max.nam` (FiLM) — como fonte. Isso **promove o A2 de
+  sintético→oficial** e elimina a única ressalva de proveniência que resta nos goldens.
+- **Cross-reference C++ pinado, gate scale-invariant.** Gerar a referência com o `render` do **v0.5.3** (mesmo
+  pipeline do `golden_gen_build.sh`); validar Rust↔C++ por **ESR/SNR** (não MSE absoluto), como no A2 atual.
+- **Conversão de `test_loader_gap_*` → golden positivo.** Cada modelo que hoje tem um teste de "rejeição"
+  (`test_loader_gap_wavenet_a2_max`, `_condition_dsp`, `_slimmable_wavenet`, `_slimmable_container`) deve, ao
+  ganhar suporte, **migrar** de "afirmo que rejeita" para "afirmo que casa com o C++" — sem deixar buraco de cobertura.
+- **Calibração por medição documentada.** Registrar a entrada em `get_calibrated_threshold` com
+  `// Measured: SNR=…, ESR=…` e margem (6–10 dB), como exige o meta-teste anti-placebo (T4.4).
+- **Regime de amplitude realista.** Como os modelos oficiais são treinados, a saída já fica em faixa de áudio sã
+  (pico ~0.1–0.5, LUFS ~−20) — o gate de plausibilidade LUFS (T4.3) passa naturalmente, **sem** o reescalonamento
+  artificial que o A2 sintético exigiu (T2.5).
+- **Cobertura multi-SR e determinismo.** Acrescentar os novos modelos aos gates v2 multi-SR (T4.2) e ao gate de
+  determinismo bitwise por arquitetura (T4.5), fechando a malha de cobertura universal.

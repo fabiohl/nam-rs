@@ -55,7 +55,7 @@ if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas."
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
+    git clone --depth 1 --branch v0.5.3 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 echo -e "\n${BLUE}${BOLD}[4.2/4] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
@@ -66,7 +66,7 @@ if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas."
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
+    git clone --depth 1 --branch v0.7.15 https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 
