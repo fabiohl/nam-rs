@@ -190,7 +190,7 @@ testes que **já passaram** na fase 1.
   - _Critério de aceite_: cada teste de paridade roda **1× por suíte**; saída do log sem
     repetição; helpers continuam disponíveis para os demais testes.
 
-- [ ] **T1.3.2 — Lint/guarda contra regressão do anti-padrão.**
+- [x] **T1.3.2 — Lint/guarda contra regressão do anti-padrão.**
   Adicionar verificação (script ou teste meta) que falha se `#[test]` reaparecer em
   qualquer arquivo sob `tests/common/`.
 

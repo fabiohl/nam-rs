@@ -25,11 +25,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # 1. Format Check
-echo -e "\n${BLUE}${BOLD}[1/3] Verificando e aplicando formatação de código...${NC}"
+echo -e "\n${BLUE}${BOLD}[1/4] Verificando e aplicando formatação de código...${NC}"
 cargo fmt --all
 
 # 2. Cargo Checks
-echo -e "\n${BLUE}${BOLD}[2/3] Executando verificações de compilação (cargo check)...${NC}"
+echo -e "\n${BLUE}${BOLD}[2/4] Executando verificações de compilação (cargo check)...${NC}"
 
 echo -e "  Checking: Standalone..."
 cargo check --features standalone
@@ -44,7 +44,7 @@ echo -e "  Checking: All Features..."
 cargo check --all-features --all-targets
 
 # 3. Cargo Clippy
-echo -e "\n${BLUE}${BOLD}[3/3] Executando análise estática estrita (cargo clippy)...${NC}"
+echo -e "\n${BLUE}${BOLD}[3/4] Executando análise estática estrita (cargo clippy)...${NC}"
 
 echo -e "  Clippy: Standalone..."
 cargo clippy --all-targets --features standalone -- -D warnings
@@ -57,6 +57,17 @@ cargo clippy --all-targets --no-default-features --features clap-plugin,testing 
 
 echo -e "  Clippy: All Features..."
 cargo clippy --all-targets --all-features -- -D warnings
+
+# 4. Anti-pattern Check
+echo -e "\n${BLUE}${BOLD}[4/4] Verificando anti-padrão de #[test] em tests/common/...${NC}"
+if grep -rnF "#[test]" tests/common/ >/dev/null 2>&1; then
+  echo -e "${RED}${BOLD}ERRO: Encontrado '#[test]' no diretório tests/common/!${NC}"
+  echo -e "Testes não devem ser colocados no módulo compartilhado 'tests/common/' para evitar execuções redundantes."
+  echo -e "Ocorrências encontradas:${NC}"
+  grep -rnF "#[test]" tests/common/
+  exit 1
+fi
+echo -e "  ${GREEN}✓${NC} Nenhum '#[test]' encontrado em tests/common/."
 
 echo -e "\n${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}             Suíte de qualidade concluída com sucesso!           ${NC}"
