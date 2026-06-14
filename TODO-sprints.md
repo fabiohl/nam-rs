@@ -395,6 +395,43 @@ mkdir -p /tmp/kilo/a2out
   - **Critério de aceite:** **todo** `.bin` committed é lido por ≥ 1 teste; tabela do `README.md` lista apenas
     fixtures vivos (1 fonte por modelo).
 
+> **Parecer da auditoria (`revisor-auditor`, 2026-06-14) — Sprint 3.1 APROVADA, com 1 pendência menor.**
+> Verificado na fonte:
+>
+> - ✅ **Zero `.bin` órfãos.** Sobraram **13 fixtures** (de 94); cada um é lido por exatamente 1 teste
+>   (`grep` confirma). Os `_v2_*k.bin` (43 presentes) e os `_self.bin` (2) foram removidos; sem refs penduradas.
+> - ✅ **Remoções coerentes.** `golden_linear_test.bin` e `golden_cabsim_cpp_stress.bin` removidos com
+>   justificativa válida (o cabsim stress é validado por convolução direta em `cabsim_golden.rs`, não por C++ —
+>   o IR de 32768 amostras excede o `mMaxLength` do C++; o teste C++ já era `_skipped`).
+> - ✅ **Suítes verdes:** `golden_vectors` 18 passed / 1 ignored; `cabsim_golden` 6 passed / 2 ignored.
+> - ✅ **Recalibração A2 (T2.5) confirmada:** A2-Full peak 0.15 (−22.6 dBFS RMS), A2-Lite peak 0.19 (−20.0 dBFS).
+>   Thresholds atualizados com margem documentada (Full SNR≥70/ESR<8e-8; Lite SNR≥80/ESR<6e-9). Regime realista. ✓
+> - ✅ **T2.6 confirmado:** cabeçalho do `cpp_parity.rs` agora mostra A2 com SNR real (não "garbage SKIP");
+>   `README.md` sem `_self.bin`, A2 marcado "sintético reescalado T2.5 / cross-reference v0.5.3 `9c7b185`".
+>
+> ⚠️ **Pendência (T3.5, abaixo): peso morto residual de *build* (não-`.bin`).** A meta de T3.1 inclui
+> "`golden_gen_build.sh` não gera artefatos inertes" — ainda há 2 resíduos.
+
+- **[T3.5] (corretiva — higiene de build) Eliminar geração inerte residual.**
+  - **Problema verificado:**
+    1. **Loop v2 WAV inerte** em `tests/fixtures/golden_gen_build.sh` (seção "[4/6]", aprox. linhas 265–271):
+       gera `stress_signal_v2_{44100,48000,88200,96000,192000}.wav` (5 arquivos), mas **nenhum teste os lê** —
+       `cpp_parity.rs` gera o sinal v2 **em memória** (`generate_stress_signal_v2(sample_rate)`) e escreve seu
+       próprio WAV temporário. Os WAVs v2 são `gitignored` (não são órfãos commitados), mas o loop é **trabalho
+       de build inerte** que produz artefatos que ninguém consome.
+    2. **Binário órfão** `src/bin/gen_lstm_fixtures.rs`: gerava os LSTM sintéticos (1x8/1x12/1x24/1x40/2x12/2x16/
+       2x24) **já aposentados no Épico 1** (substituídos por `lstm.nam` oficial + `BossLSTM-1x16`/`2x8`). Não é
+       mais chamado por `golden_gen_build.sh` nem listado em `Cargo.toml`, mas o arquivo persiste e o Cargo o
+       descobre como `[[bin]]` via autobins (compila à toa).
+  - **Ação (passo a passo):**
+    1. Em `tests/fixtures/golden_gen_build.sh`, remover o loop `for SR in … ; do … stress_signal_v2_${SR}.wav …`
+       (a geração v2 WAV); manter apenas a geração v1 (`stress_signal.wav`), que é usada como input do render.
+    2. `git rm src/bin/gen_lstm_fixtures.rs`.
+    3. Rodar `cargo build` (confirmar que nada referencia o binário removido) e
+       `./tests/fixtures/golden_gen_build.sh` (confirmar que roda e **não** cria WAVs v2 inertes).
+  - **Critério de aceite:** `golden_gen_build.sh` não gera nenhum artefato que nenhum teste/etapa consome;
+    `cargo build` verde sem o binário; `cargo test` verde.
+
 ### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo)
 
 - **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).**
@@ -459,7 +496,6 @@ mkdir -p /tmp/kilo/a2out
 > deve ser planejada em épicos próprios (ex.: Épico 1.2 para o Lite), não embutida na infra de testes.
 
 ---
-
 ---
 
 ## ÉPICO 100 (FUTURO)
