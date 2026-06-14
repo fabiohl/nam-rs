@@ -470,12 +470,13 @@ mkdir -p /tmp/kilo/a2out
 > piso de qualidade de tudo o que passa por eles — sem tocar no hot-path. As ações abaixo são derivadas
 > diretamente desta rodada e têm efeito universal, mantendo-se **estritamente no escopo de testes/infra**.
 
-- **[T4.1] Oráculo de referência por arquitetura (não auto-referencial).** ✅ **A2 já feito (Épico 2)** —
-  reorientar para o que falta. Generalizar o padrão exemplar do cabsim (oráculo matemático/cross-reference)
-  para as arquiteturas restantes: **Linear ⇄ convolução direta** (oráculo matemático, sem C++), e revisar se
-  algum modelo A1 ainda cai no fallback heurístico de `topology_thresholds` (deveria estar todo em
-  `get_calibrated_threshold`). Efeito universal: qualquer regressão numérica em qualquer kernel cai num gate que
-  **pode falhar**.
+- **[T4.1] Oráculo de referência por arquitetura (não auto-referencial).** ✅ **DONE (2026-06-14)** —
+  Linear ⇄ convolução direta implementado em `tests/linear_golden.rs` (9 ativos/2 ignorados).
+  Oráculo matemático `linear_reference()` (FIR direta) contra LinearModel SIMD; ESR < 1e-12.
+  Cobre RF={1,3,4,8,16}, bias-only, identidade, determinismo bit-a-bit, reset-reproduz.
+  Segundo proof-point: meta-teste `tests/threshold_calibration.rs` confirma que **zero** modelos
+  A1 caem no fallback heurístico de `topology_thresholds()` — todos com entrada calibrada em
+  `get_calibrated_threshold()`, incluindo `wavenet_a1_standard` (SNR ≥ 40 dB, ESR < 1e-4).
 - **[T4.2] Cobertura de sinal multi-estímulo/multi-SR como gate real.** Hoje os v2 multi-SR são órfãos (Épico 3).
   Transformá-los em gate Layer-1 (ou consolidá-los) exercita o motor em 44.1/48/88.2/96/192 kHz e em 5 categorias
   de estímulo (GA/FRG/P/BA/PA). Efeito universal: cobre resampler, fronteiras de bloco e estados recorrentes.
