@@ -824,17 +824,22 @@ fn test_community_models_inference() {
 /// Legacy Format (Keras/H5) Rejection Test.
 ///
 /// The NAM-rs engine focuses on the modern JSON-based format (v0.5+) and NAMB (v1/v2).
-/// Old Keras/TensorFlow H5 models should be gracefully rejected
-/// by the dispatcher, avoiding crashes due to missing weights.
+/// Old Keras/TensorFlow H5 models must be gracefully rejected by the dispatcher.
+///
+/// Fixture: `tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json`
+/// (159 KB real-world Keras-legacy export; committed to the repo — must never be removed
+/// without updating this test. No silent SKIP allowed: missing fixture = test failure.)
 #[test]
 fn test_reject_keras_legacy_format() {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json");
 
-    if !path.exists() {
-        eprintln!("SKIP: Keras model not found at {:?}", path);
-        return;
-    }
+    assert!(
+        path.exists(),
+        "Keras-legacy fixture not found at {path:?}. \
+         This is a committed fixture — do not remove it without updating this test. \
+         If deliberately retired, convert this test to an inline JSON stub or delete the test explicitly."
+    );
 
     let json_data = fs::read_to_string(&path).expect("Failed to read Keras JSON");
 
@@ -843,20 +848,19 @@ fn test_reject_keras_legacy_format() {
     let model_data = match parse_nam_json(&json_data) {
         Ok(data) => data,
         Err(e) => {
-            println!("parse_nam_json correctly rejected: {}", e);
+            println!("parse_nam_json correctly rejected Keras-legacy format: {e}");
             return;
         }
     };
 
-    // If the parser passed (because it is valid JSON and has some architecture),
-    // the dispatcher MUST fail.
+    // If the parser passed, the dispatcher MUST reject it.
     let build_result = build_model(&model_data);
     assert!(
         build_result.is_err(),
-        "build_model() accepted a Keras Legacy format that should have been rejected!"
+        "build_model() accepted a Keras-legacy format — it must be rejected."
     );
 
-    println!("Keras Legacy format correctly rejected via build_model().");
+    println!("Keras-legacy format correctly rejected via build_model().");
 }
 
 /// Architectural Validation: Non-Tanh Activation in WaveNet with unrecognized shape.
