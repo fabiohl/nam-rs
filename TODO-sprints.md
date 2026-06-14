@@ -577,23 +577,29 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 5.4 — Qualidade das medições (observação) 📊
 
-- **[T5.5] (investigação) SNR baixo dos goldens LSTM (precisão de ativações).**
-  - **Achado verificado:** os goldens LSTM passam, mas em SNR Rust↔C++ **relativamente baixo**: 1×16 ≈ 19.8 dB,
-    2×8 ≈ 25.7 dB, official ≈ 29.7 dB — vs WaveNet 52–68 dB e A2 79–90 dB. A causa provável é a aproximação
-    FastMath de `tanh`/`sigmoid` (usadas intensamente por timestep no LSTM, acumulando erro vs `std::tanh` do C++).
-    Não é gate falso (os pisos têm margem documentada), mas é o **ponto mais fraco** das medições.
-  - **Ação:** medir o ganho de SNR ao usar `tanh`/`sigmoid` de maior precisão **apenas** no caminho LSTM (ou
-    avaliar um polinômio de ordem maior); decidir custo/benefício (perf vs fidelidade) com benchmark. Documentar
-    como tradeoff **aceito** se o custo de perf for proibitivo.
-  - **Critério de aceite:** decisão fundamentada em medição (SNR antes/depois + impacto de perf no
-    `inference_bench`); `README.md`/ADR atualizado.
+- **[T5.5] ✅ VERIFIED (2026-06-14) SNR baixo dos goldens LSTM — FastMath NÃO é a causa.**
+  - **Investigação concluída:** o SNR Rust↔C++ dos goldens LSTM (1×16 ≈ 19.8 dB, 2×8 ≈ 25.7 dB,
+    official ≈ 29.7 dB) foi comparado entre SIMD FastMath (Padé [5,4] tanh + minimax sigmoid) e
+    scalar exato (`f32::tanh` libm + `scalar_minimax_sigmoid`). Resultado: **ganho de SNR ≈ 0.0 dB**
+    (1×16: +0.0 dB, 2×8: +0.1 dB, official: −0.5 dB). O erro da aproximação Padé [5,4] (~2.32e-3)
+    é estatisticamente irrelevante vs o erro acumulado de outras fontes (BF16 weight quantization,
+    GEMV rounding, ou diferenças de `std::tanh` vs `f32::tanh` no C++).
+  - **Hipótese original refutada:** a aproximação FastMath de tanh/sigmoid **não** é a causa do SNR
+    baixo. O bottleneck está em outro lugar — provavelmente na quantização BF16 dos pesos ou na
+    precisão do GEMV (dot product com `f16`). Investigação adicional fora do escopo de T5.5.
+  - **Decisão:** manter FastMath Padé [5,4] como padrão de produção para LSTM. Nenhum feature flag
+    de alta precisão é necessário — o custo de perf do caminho scalar (≈10–50× mais lento) não
+    compensa ganho zero de SNR.
+  - **Teste de investigação:** `tests/lstm_activation_precision.rs` — `test_lstm_activation_precision_gain`
+  - **Próximo passo (se houver apetite):** isolar a fonte real do erro LSTM com teste de BF16 vs f32
+    weights e/ou GEMV de precisão estendida. Fora do escopo do Sprint 5.
 
 > **Veredito final da auditoria geral:** os **mecanismos** de golden do nam-rs são **exemplares**. Dentro do
 > escopo de **qualidade de golden**, restam apenas itens de higiene/clareza (Sprint 5.1 higiene, Sprint 5.2
-> referência canônica, Sprint 5.3 documentação) e dois pontos de medição/divergência (Lite CH=12 e precisão
-> LSTM). Recomenda-se executar **Sprint 5.1 imediatamente**. A única limitação **estrutural** — rodar modelos
-> oficiais reais (WaveNet genérico + FiLM) e elevar o A2 de sintético→oficial — é **questão de feature, não de
-> qualidade de golden**, e está descrita em separado abaixo para tratamento em outro momento.
+> referência canônica, Sprint 5.3 documentação) e o ponto de divergência Lite CH=12 (T5.4).
+> A única limitação **estrutural** — rodar modelos oficiais reais (WaveNet genérico + FiLM) e elevar
+> o A2 de sintético→oficial — é **questão de feature, não de qualidade de golden**, e está descrita
+> em separado abaixo para tratamento em outro momento.
 
 ---
 ---

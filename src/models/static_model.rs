@@ -10,6 +10,27 @@ impl StaticModel {
     /// to the UI via atomic flags.
     pub fn inject_rt_status(&mut self, _rt_status: Arc<crate::common::spsc::RtStatusFlags>) {}
 
+    /// Scalar processing path for LSTM models (exact tanh/sigmoid via libm).
+    ///
+    /// Only available under `#[cfg(test)]` or `#[cfg(feature = "testing")]`.
+    /// For non-LSTM models, delegates to `process()`.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        match self {
+            Self::Lstm1x3(m) => m.process_scalar(input, output),
+            Self::Lstm1x8(m) => m.process_scalar(input, output),
+            Self::Lstm1x12(m) => m.process_scalar(input, output),
+            Self::Lstm1x16(m) => m.process_scalar(input, output),
+            Self::Lstm1x24(m) => m.process_scalar(input, output),
+            Self::Lstm2x8(m) => m.process_scalar(input, output),
+            Self::Lstm2x12(m) => m.process_scalar(input, output),
+            Self::Lstm2x16(m) => m.process_scalar(input, output),
+            Self::Lstm1x40(m) => m.process_scalar(input, output),
+            Self::Lstm2x24(m) => m.process_scalar(input, output),
+            other => other.process(input, output),
+        }
+    }
+
     /// Sets the effective number of layers for soft-degrade.
     /// Only applies to WaveNet variants. LSTM handles reduction at the pipeline level.
     #[inline(always)]
