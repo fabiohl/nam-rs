@@ -434,20 +434,20 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 3.2 — Thresholds gravados e auto-documentados (estabilidade de longo prazo)
 
-- **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).**
-  - **Estado atual (verificado):** a calibração por medição real **já existe**, porém **em código**:
-    `tests/common/validation.rs::get_calibrated_threshold(model_name)` mapeia cada modelo committed para
-    `(mse_limit, min_snr_db, max_esr)` com comentário documentando `SNR_medido`/`ESR_medido` e a margem. Isto
-    **já cumpre o espírito** de T3.3 — **não recomeçar do zero**.
-  - **Ação (escolher 1, documentar a decisão):**
-    - **(a) Manter em código, mas blindar (recomendado, menor risco):** adicionar um teste que **garanta** que
-      todo modelo com golden committed tenha entrada em `get_calibrated_threshold` (i.e., não caia no fallback
-      heurístico silenciosamente). Garantir que cada entrada tenha o comentário `// Measured: SNR=…, ESR=…`.
-    - **(b) Externalizar para manifesto:** mover os números para `tests/fixtures/golden_manifest.toml` (campos:
-      `origin`, `cpp_commit`, `snr_measured`, `esr_measured`, `snr_floor`, `esr_max`) e fazer `validation.rs`
-      ler o manifesto. Só vale a pena se a manutenção em código se tornar pesada.
-  - **Critério de aceite:** nenhum modelo com golden committed usa threshold heurístico por engano; cada piso é
-    rastreável a uma medição documentada; suíte verde.
+- **[T3.3] Formalizar a calibração de thresholds já existente (ajuste de rumo).** ✅ **[DONE]**
+  - **Decisão:** Opção (a) — manter em código, blindar com meta-testes.
+  - **Ação:**
+    1. `get_calibrated_threshold()` tornada pública com docstring descrevendo o contrato.
+    2. Criado `tests/threshold_calibration.rs` com dois meta-testes:
+       - `test_all_golden_models_have_calibrated_thresholds`: itera sobre todos os `.bin` da
+         pasta `tests/fixtures/` e verifica que cada modelo com golden committed tem entrada em
+         `get_calibrated_threshold()` — sem fallback heurístico silencioso. Também rejeita
+         thresholds completamente neutralizados (SNR ≤ 0 sem ESR gate).
+       - `test_all_calibrated_entries_have_measurement_comments`: faz parse do fonte de
+         `validation.rs` e confirma que toda entrada em `get_calibrated_threshold` tem o
+         comentário `// Measured: SNR=…, ESR=…` nas 3 linhas acima do match arm.
+    3. Comentário do Lite padronizado para seguir o mesmo formato `// Measured:` dos demais.
+  - **Critério de aceite:** Cumprido. 4/4 meta-testes verdes; `golden_vectors` 18 passed / 1 ignored; suíte completa (`utils/tests-cargo.sh`) 100% verde.
 
 - **[T3.4] Meta-teste anti-placebo + documentação do princípio "todo golden pode falhar".**
   - **Ação (passo a passo):**

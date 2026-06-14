@@ -229,7 +229,13 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 
 /// Lookup for calibrated thresholds of committed models based on real measurements.
 /// Sets the floors as `SNR_medido - margem` and `ESR_medido * fator`.
-fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)> {
+///
+/// Returns `None` if the model has no calibrated entry, falling back to
+/// heuristic thresholds (`wavenet_thresholds` or LSTM formula).
+///
+/// Every model with a committed golden `.bin` fixture MUST have an entry here.
+/// The meta-test `tests/threshold_calibration.rs` enforces this invariant.
+pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)> {
     let base_name = if let Some(idx) = model_name.find("_v2_") {
         &model_name[..idx]
     } else {
@@ -286,7 +292,8 @@ fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)>
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
         }
         // --- WaveNet Lite (CH=12) ---
-        // Target thresholds if corrected. Under current drift, SNR is 0.9 dB, ESR = 8.15e-1.
+        // Measured: SNR = 0.9 dB, ESR = 8.15e-1 (known divergent, CH=12)
+        // Target thresholds if corrected — currently #[ignore].
         "BossWN-lite" | "wavenet_lite" => {
             let snr_db = 40.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-3)))
