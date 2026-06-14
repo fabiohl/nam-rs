@@ -59,22 +59,35 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                      | `.nam` Model              | Origin | Topology                                                                                               |
-| -------------------------------- | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
-| `golden_wavenet_standard.bin`    | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                                                                          |
-| `golden_wavenet_lite.bin`        | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                                                                          |
-| `golden_wavenet_feather.bin`     | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                                                                           |
-| `golden_wavenet_nano.bin`        | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                                                                           |
-| `golden_wavenet_a1_standard.bin` | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)                                                               |
-| `golden_lstm_1x16.bin`           | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                                                                          |
-| `golden_lstm_2x8.bin`            | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                                                                          |
-| `golden_lstm_official.bin`       | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                                                                                |
-| `golden_wavenet_a2_full.bin`     | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (sintético reescalado T2.5 — cross-reference vs C++ v0.5.3 `9c7b185`) |
-| `golden_wavenet_a2_lite.bin`     | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (sintético reescalado T2.5 — cross-reference vs C++ v0.5.3 `9c7b185`) |
-| `golden_cabsim_cpp_short.bin`    | N/A (Synthetic)           | C++    | Cabsim Short IR (64 samples) C++ reference                                                             |
-| `golden_cabsim_cpp_medium.bin`   | N/A (Synthetic)           | C++    | Cabsim Medium IR (512 samples) C++ reference                                                           |
-| `golden_cabsim_cpp_long.bin`     | N/A (Synthetic)           | C++    | Cabsim Long IR (8192 samples) C++ reference                                                            |
-| `golden_cabsim_cpp_stress.bin`   | N/A (Synthetic)           | C++    | Cabsim Stress IR (65536 samples) C++ reference                                                         |
+| Golden File                      | `.nam` Model              | Nature                                                                     | Topology                                                          |
+| -------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `golden_wavenet_standard.bin`    | `BossWN-standard.nam`     | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                     |
+| `golden_wavenet_lite.bin`        | `BossWN-lite.nam`         | **Synthetic** (CH=12 weights auto-generated, non-power-of-2 topology)      | CH=12, K=3, HEAD=6, 20 layers                                     |
+| `golden_wavenet_feather.bin`     | `BossWN-feather.nam`      | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                      |
+| `golden_wavenet_nano.bin`        | `BossWN-nano.nam`         | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                      |
+| `golden_wavenet_a1_standard.bin` | `wavenet_a1_standard.nam` | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                     |
+| `golden_lstm_1x16.bin`           | `BossLSTM-1x16.nam`       | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                     |
+| `golden_lstm_2x8.bin`            | `BossLSTM-2x8.nam`        | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                     |
+| `golden_lstm_official.bin`       | `lstm.nam`                | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                      |
+| `golden_wavenet_a2_full.bin`     | `wavenet_a2_full.nam`     | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185` |
+| `golden_wavenet_a2_lite.bin`     | `wavenet_a2_lite.nam`     | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185` |
+| `golden_cabsim_cpp_short.bin`    | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse             |
+| `golden_cabsim_cpp_medium.bin`   | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse           |
+| `golden_cabsim_cpp_long.bin`     | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse            |
+| `golden_cabsim_cpp_stress.bin`   | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Stress IR (65536 samples) C++ dsp::ImpulseResponse         |
+
+> **Nature classification:**
+>
+> - **Official real** — modelo `.nam` com pesos treinados, publicado pelo projeto NAM oficial (`sdatkinson/NeuralAmpModelerCore`).
+> - **Community real** — modelo `.nam` com pesos treinados, publicado pela comunidade (Boss Waza Tube Amp Expander).
+> - **Synthetic** — pesos auto-gerados/calibrados para fins de validação; **não** representam timbres de amplificador reais.
+> - **C++ reference** — vetores de referência gerados pelo C++ upstream (`dsp::ImpulseResponse`); não são modelos NAM.
+> [!NOTE]
+> **Resumo rápido:** 2 goldens são **oficial real** (A1-Standard, LSTM Official).
+> 5 são **community real** (WaveNet Standard/Feather/Nano + LSTM 1×16/2×8, todos Boss Waza).
+> 3 são **synthetic** (WaveNet Lite CH=12, A2-Full, A2-Lite — este último grupo é o único que
+> valida apenas paridade numérica de fast-path, não timbres reais).
+> Os 4 goldens C++ cabsim são vetores de referência do upstream.
 
 **v2 multi-SR files** (`golden_<model_id>_v2_<sr>.bin`): Stress Signal v2 (5s, 5 categories), generated by `golden_gen_build.sh`. See table below for SR coverage per model.
 
@@ -327,14 +340,14 @@ These files are committed to the repository so that the Rust golden vector tests
   output. This model is an active golden test gate (threshold 0 dB) pending replacement
   by a real trained Lite model. See `TODO-sprints.md §T16.3`.
 
-### `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-nano.nam`
+### `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-nano.nam` — Community real (Boss Waza, trained)
 
 Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 `docs/cpp_parity_map.md` for per-variant channel/layer counts.
 
-### `BossLSTM-1x16.nam` & `BossLSTM-2x8.nam`
+### `BossLSTM-1x16.nam` & `BossLSTM-2x8.nam` — Community real (Boss Waza, trained)
 
-- **Nature:** Reference models used for LSTM architecture validation (1 layer × H=16 and 2 layers × H=8).
+- **Nature:** Real NAM models trained by the Boss Waza Tube Amp Expander community. Validam a arquitetura LSTM com pesos de amplificador reais (1 layer × H=16 e 2 layers × H=8).
 
 - **Golden Fixtures:** `golden_lstm_1x16.bin` and `golden_lstm_2x8.bin`.
 
@@ -364,7 +377,21 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
   wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_official.bin
   ```
 
-### `wavenet_a2_full.nam` & `wavenet_a2_lite.nam` (T2.5)
+### `wavenet_a2_full.nam` & `wavenet_a2_lite.nam` (T2.5) — **Synthetic, NOT official FiLM models**
+
+> [!IMPORTANT]
+> **Estes goldens A2 usam pesos sintéticos, NÃO pesos de modelo oficial.** Os modelos A2 oficiais
+> (`wavenet_a2_max.nam`, `slimmable_wavenet.nam`, `slimmable_container.nam`) usam
+> condicionamento FiLM / multi-condição, que o nam-rs **ainda não suporta** (feature futura —
+> ver `TODO-sprints.md §Feature à parte — WaveNet genérico + FiLM/multi-condição`).
+>
+> **O que estes goldens validam:** paridade numérica Rust↔C++ do **fast-path** da arquitetura A2
+> (23 camadas, K=6/15, LeakyReLU, head_scale=0.02). **O que NÃO validam:** timbres de amplificador
+> reais ou fidelidade perceptual de modelos A2 treinados.
+>
+> **Elevação para oficial:** será possível quando o engine suportar FiLM e modelos A2 genéricos
+> (WaveNet com qualquer configuração de channels/heads/layers). Nesse momento, estes goldens
+> sintéticos serão substituídos por goldens de modelos A2 oficiais reais.
 
 - **Nature:** Synthetic fixtures generated by `tests/fixtures/generate_a2_fixtures.py` using the canonical A2 skeleton (23 layers, K=6/15, LeakyReLU, head_scale=0.02).
 

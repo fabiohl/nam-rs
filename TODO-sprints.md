@@ -559,8 +559,7 @@ mkdir -p /tmp/kilo/a2out
 > (WaveNet genérico, FiLM, A2 sintético→oficial) **foram retiradas deste épico** por serem questão de **feature**,
 > não de qualidade de golden — estão descritas em separado ao final do documento ("Feature à parte").
 
-- **[T5.3] Documentar com clareza a natureza de cada golden (modelo oficial real vs sintético calibrado).**
-
+- **[T5.3] Documentar com clareza a natureza de cada golden (modelo oficial real vs sintético calibrado).** [DONE]
   - **Estado verificado:** `wavenet_a1_standard.nam` (== `my_model.nam`, md5 `1c540f40…`, modelo real treinado de
     407 KB) **já é golden oficial** (`golden_wavenet_a1_standard.bin`, cross-reference C++). ✅ O `lstm.nam`
     oficial idem. ✅
