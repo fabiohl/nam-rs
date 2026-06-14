@@ -15,11 +15,13 @@ The following directories are **local-only, gitignored** artifacts created on de
 `golden_gen_build.sh` for cross-reference validation against the upstream C++
 implementations:
 
-| Directory                                | Size    | Purpose                                                |
-| ---------------------------------------- | ------- | ------------------------------------------------------ |
-| `tests/fixtures/NeuralAmpModelerCore/`   | ~143 MB | Upstream C++ reference (`render` tool for golden vecs) |
-| `tests/fixtures/NeuralAmpModelerPlugin/` | ~164 MB | Upstream C++ plugin (`AudioDSPTools` for cabsim IRs)   |
-| `build/namcore_render/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore        |
+| Directory                                       | Size    | Purpose                                                    |
+| ----------------------------------------------- | ------- | ---------------------------------------------------------- |
+| `tests/fixtures/NeuralAmpModelerCore/`          | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A1)  |
+| `tests/fixtures/NeuralAmpModelerCore_v0.5.3/`   | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A2)  |
+| `tests/fixtures/NeuralAmpModelerPlugin/`        | ~164 MB | Upstream C++ plugin (`AudioDSPTools` for cabsim IRs)       |
+| `build/namcore_render/`                         | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore            |
+| `build/namcore_render_v053/`                    | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore v0.5.3     |
 
 > [!NOTE]
 > Entries in `.gitignore` (lines 54–55, 58) prevent accidental commits. The golden
@@ -34,6 +36,7 @@ reproducibility. The pinned SHAs are declared at the top of `golden_gen_build.sh
 | Repository                          | Pinned Commit                                     |
 | ----------------------------------- | ------------------------------------------------- |
 | `sdatkinson/NeuralAmpModelerCore`   | `e49c93e678549230d09efbb0beeb50511e387874` (main) |
+| `sdatkinson/NeuralAmpModelerCore`   | `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` (v0.5.3)|
 | `sdatkinson/NeuralAmpModelerPlugin` | `96337e9ab6e3beb619459779bbb5c47e1b04d8c4` (main) |
 
 To regenerate all fixtures from scratch:
@@ -41,8 +44,10 @@ To regenerate all fixtures from scratch:
 ```bash
 # Remove existing mirrors (optional but recommended for clean regeneration)
 rm -rf tests/fixtures/NeuralAmpModelerCore \
+       tests/fixtures/NeuralAmpModelerCore_v0.5.3 \
        tests/fixtures/NeuralAmpModelerPlugin \
-       build/namcore_render
+       build/namcore_render \
+       build/namcore_render_v053
 
 # Run full regeneration (clones, builds, generates all goldens)
 ./tests/fixtures/golden_gen_build.sh

@@ -201,7 +201,7 @@ mkdir -p /tmp/kilo/a2out
 
 ---
 
-## ÉPICO 1 — Retorno ao Estado Seguro dos Goldens A1 🛡️ [release-blocker] [TODO]
+## ÉPICO 1 — Retorno ao Estado Seguro dos Goldens A1 🛡️ [release-blocker] [DONE]
 
 > **Meta:** restaurar a confiabilidade dos goldens A1 ao padrão seguro do `nam-rs_v2.0.0`, eliminando todo gate
 > falso e re-validando a proveniência dos fixtures alterados. Ao final, **nenhum golden A1 passa com ruído**.
@@ -252,8 +252,7 @@ mkdir -p /tmp/kilo/a2out
 
 ### Sprint 2.1 — Substituir self-golden por cross-reference scale-invariant
 
-- **[T2.1] Integrar o render do `v0.5.3` ao `golden_gen_build.sh` (pinar SHA, A2 fast).**
-
+- **[T2.1] Integrar o render do `v0.5.3` ao `golden_gen_build.sh` (pinar SHA, A2 fast).** ✅ **[DONE]**
   - **Ação:** adicionar um caminho no script para compilar o render do `v0.5.3` (comandos verificados no Épico 0;
     `NAM_ENABLE_A2_FAST=ON`), pinando o commit/snapshot e suprindo `eigen`/`AudioDSPTools` (symlink do mirror do
     Plugin). Registrar a proveniência em `tests/fixtures/README.md`.
