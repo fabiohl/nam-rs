@@ -215,14 +215,14 @@ builds de features diferentes (`lints.sh` usa default features) — é um _trade
   - _Critério de aceite_: decisão documentada com números; escolher a que minimiza o
     tempo total **sem** reintroduzir thrash com `lints.sh`.
 
-- [ ] **T1.4.2 — Avaliar `sccache` para a stack de testes.**
+- [CANCELADO] **T1.4.2 — Avaliar `sccache` para a stack de testes.**
   A árvore GUI é estável (raramente muda); um cache de compilação cortaria o cold run
   da fase 3 drasticamente.
-
+  > Nota do PO: Não necessariamente. Ele vai ser mexido em breve. Não vamos complicar!
   - _Critério de aceite_: PoC com ganho ≥ 50% no cold compile da fase 3, ou justificativa
     documentada para não adotar.
 
-- [ ] **T1.4.3 — Reaproveitar artefatos entre fase 2 e fase 3.**
+- [x] **T1.4.3 — Reaproveitar artefatos entre fase 2 e fase 3.**
   Investigar se a fase 2 (build `--lib` cdylib) pode compartilhar dependências com a
   fase 3 (test harness) no mesmo target, evitando recompilar a árvore comum duas vezes.
 

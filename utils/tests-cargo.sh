@@ -32,7 +32,7 @@ cargo test
 # 2. Build CLAP plugin debug binary with heap-audit
 echo -e "\n${BLUE}${BOLD}[2/4] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo build --no-default-features --features "clap-plugin,heap-audit" --lib
+  cargo build --profile test --no-default-features --features "clap-plugin,heap-audit,testing" --lib
 
 CLAP_BIN_RAW="target/debug/libnam_rs.so"
 if [ ! -f "$CLAP_BIN_RAW" ]; then
@@ -54,12 +54,14 @@ test_exit_code=0
 
 # A) CLAP Library tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" --lib clap::
+RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
+  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" --lib clap::
 test_exit_code=$((test_exit_code + $?))
 
 # B) Targeted integration tests
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" \
+RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
+  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" \
   --test a2_heap_audit \
   --test cabsim_heap_audit \
   --test resampler_heap_audit \
@@ -70,7 +72,8 @@ test_exit_code=$((test_exit_code + $?))
 
 # C) Diagnostic bundle heap variant test
 CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-  cargo test --features "clap-plugin,heap-audit" \
+RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
+  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" \
   --test diagnostic_bundle heap_audit
 test_exit_code=$((test_exit_code + $?))
 
