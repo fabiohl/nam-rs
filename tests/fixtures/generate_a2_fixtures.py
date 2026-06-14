@@ -35,7 +35,17 @@ SEED = 42
 NUM_LAYERS = 23
 
 
-def gen_weights(n: int, rng: random.Random, scale: float = 0.05) -> List[float]:
+# T2.5: Weight scales tuned so that A2 output lands in realistic audio regime
+# (pico ≈ 0.3, LUFS ≈ −18 to −23) instead of near-silence (pico ≈ 2e-3, LUFS ≈ −68).
+# Output grows super-linearly with CH count (more internal channels = more gain
+# accumulation across 23 layers). Lite (CH=3) needs higher scale than Full (CH=8).
+SCALES = {
+    3: {"weight": 0.45, "bias": 0.09},
+    8: {"weight": 0.28, "bias": 0.065},
+}
+
+
+def gen_weights(n: int, rng: random.Random, scale: float) -> List[float]:
     return [rng.uniform(-1.0, 1.0) * scale for _ in range(n)]
 
 
@@ -55,27 +65,30 @@ def count_weights(ch: int) -> int:
 
 
 def generate_weights(ch: int, rng: random.Random) -> List[float]:
+    scales = SCALES[ch]
+    ws = scales["weight"]
+    bs = scales["bias"]
     weights: List[float] = []
 
     # 1. Rechannel: weights (CH) — no bias (matches C++ A2FastModel)
-    weights.extend(gen_weights(ch, rng, scale=0.05))
+    weights.extend(gen_weights(ch, rng, scale=ws))
 
     # 2. Per-layer
     for k in KERNEL_SIZES:
         # conv_w: CH × CH × K
-        weights.extend(gen_weights(ch * ch * k, rng, scale=0.05))
+        weights.extend(gen_weights(ch * ch * k, rng, scale=ws))
         # conv_b: CH
-        weights.extend(gen_weights(ch, rng, scale=0.01))
+        weights.extend(gen_weights(ch, rng, scale=bs))
         # mixin_w: CH
-        weights.extend(gen_weights(ch, rng, scale=0.05))
+        weights.extend(gen_weights(ch, rng, scale=ws))
         # l1x1_w: CH × CH
-        weights.extend(gen_weights(ch * ch, rng, scale=0.05))
+        weights.extend(gen_weights(ch * ch, rng, scale=ws))
         # l1x1_b: CH
-        weights.extend(gen_weights(ch, rng, scale=0.01))
+        weights.extend(gen_weights(ch, rng, scale=bs))
 
     # 3. Head rechannel: 16*CH weights + 1 bias
-    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=0.05))
-    weights.extend(gen_weights(1, rng, scale=0.01))
+    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=ws))
+    weights.extend(gen_weights(1, rng, scale=bs))
 
     # 4. Head scale: 1 float (should be positive and small, like 0.02)
     weights.extend([0.02])

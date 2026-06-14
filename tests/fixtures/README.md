@@ -15,13 +15,13 @@ The following directories are **local-only, gitignored** artifacts created on de
 `golden_gen_build.sh` for cross-reference validation against the upstream C++
 implementations:
 
-| Directory                                       | Size    | Purpose                                                    |
-| ----------------------------------------------- | ------- | ---------------------------------------------------------- |
-| `tests/fixtures/NeuralAmpModelerCore/`          | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A1)  |
-| `tests/fixtures/NeuralAmpModelerCore_v0.5.3/`   | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A2)  |
-| `tests/fixtures/NeuralAmpModelerPlugin/`        | ~164 MB | Upstream C++ plugin (`AudioDSPTools` for cabsim IRs)       |
-| `build/namcore_render/`                         | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore            |
-| `build/namcore_render_v053/`                    | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore v0.5.3     |
+| Directory                                     | Size    | Purpose                                                   |
+| --------------------------------------------- | ------- | --------------------------------------------------------- |
+| `tests/fixtures/NeuralAmpModelerCore/`        | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A1) |
+| `tests/fixtures/NeuralAmpModelerCore_v0.5.3/` | ~143 MB | Upstream C++ reference (`render` tool for golden vecs A2) |
+| `tests/fixtures/NeuralAmpModelerPlugin/`      | ~164 MB | Upstream C++ plugin (`AudioDSPTools` for cabsim IRs)      |
+| `build/namcore_render/`                       | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore           |
+| `build/namcore_render_v053/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore v0.5.3    |
 
 > [!NOTE]
 > Entries in `.gitignore` (lines 54–55, 58) prevent accidental commits. The golden
@@ -33,11 +33,11 @@ implementations:
 Golden vectors are validated against **pinned upstream commits** to ensure
 reproducibility. The pinned SHAs are declared at the top of `golden_gen_build.sh`:
 
-| Repository                          | Pinned Commit                                     |
-| ----------------------------------- | ------------------------------------------------- |
-| `sdatkinson/NeuralAmpModelerCore`   | `e49c93e678549230d09efbb0beeb50511e387874` (main) |
-| `sdatkinson/NeuralAmpModelerCore`   | `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` (v0.5.3)|
-| `sdatkinson/NeuralAmpModelerPlugin` | `96337e9ab6e3beb619459779bbb5c47e1b04d8c4` (main) |
+| Repository                          | Pinned Commit                                       |
+| ----------------------------------- | --------------------------------------------------- |
+| `sdatkinson/NeuralAmpModelerCore`   | `e49c93e678549230d09efbb0beeb50511e387874` (main)   |
+| `sdatkinson/NeuralAmpModelerCore`   | `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` (v0.5.3) |
+| `sdatkinson/NeuralAmpModelerPlugin` | `96337e9ab6e3beb619459779bbb5c47e1b04d8c4` (main)   |
 
 To regenerate all fixtures from scratch:
 
@@ -63,24 +63,24 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                       | `.nam` Model              | Origin | Topology                                       |
-| --------------------------------- | ------------------------- | ------ | ---------------------------------------------- |
-| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                  |
-| `golden_wavenet_lite.bin`         | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                  |
-| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                   |
-| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                   |
-| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)       |
-| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                  |
-| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                  |
-| `golden_lstm_official.bin`        | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                        |
-| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (reference)   |
-| `golden_wavenet_a2_full_self.bin` | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (self-golden) |
-| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (reference)   |
-| `golden_wavenet_a2_lite_self.bin` | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (self-golden) |
-| `golden_cabsim_cpp_short.bin`     | N/A (Synthetic)       | C++    | Cabsim Short IR (64 samples) C++ reference     |
-| `golden_cabsim_cpp_medium.bin`    | N/A (Synthetic)       | C++    | Cabsim Medium IR (512 samples) C++ reference   |
-| `golden_cabsim_cpp_long.bin`      | N/A (Synthetic)       | C++    | Cabsim Long IR (8192 samples) C++ reference    |
-| `golden_cabsim_cpp_stress.bin`    | N/A (Synthetic)       | C++    | Cabsim Stress IR (32768 samples) C++ reference |
+| Golden File                       | `.nam` Model              | Origin | Topology                                                        |
+| --------------------------------- | ------------------------- | ------ | --------------------------------------------------------------- |
+| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`     | NAM-rs | CH=16, K=3, HEAD=8, 20 layers                                   |
+| `golden_wavenet_lite.bin`         | `BossWN-lite.nam`         | NAM-rs | CH=12, K=3, HEAD=6, 20 layers                                   |
+| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`      | NAM-rs | CH=8, K=3, HEAD=4, 20 layers                                    |
+| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`         | NAM-rs | CH=4, K=3, HEAD=2, 20 layers                                    |
+| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers (Official)                        |
+| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`       | NAM-rs | 1 layer, H=16                                                   |
+| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`        | NAM-rs | 2 layers, H=8                                                   |
+| `golden_lstm_official.bin`        | `lstm.nam`                | NAM-rs | 1 layer, H=3 (Official)                                         |
+| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (synth, real-amp, v0.5.3 xref) |
+| `golden_wavenet_a2_full_self.bin` | `wavenet_a2_full.nam`     | NAM-rs | CH=8, K=6/15, 23 layers, A2-Full (self-golden)                  |
+| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (synth, real-amp, v0.5.3 xref) |
+| `golden_wavenet_a2_lite_self.bin` | `wavenet_a2_lite.nam`     | NAM-rs | CH=3, K=6/15, 23 layers, A2-Lite (self-golden)                  |
+| `golden_cabsim_cpp_short.bin`     | N/A (Synthetic)           | C++    | Cabsim Short IR (64 samples) C++ reference                      |
+| `golden_cabsim_cpp_medium.bin`    | N/A (Synthetic)           | C++    | Cabsim Medium IR (512 samples) C++ reference                    |
+| `golden_cabsim_cpp_long.bin`      | N/A (Synthetic)           | C++    | Cabsim Long IR (8192 samples) C++ reference                     |
+| `golden_cabsim_cpp_stress.bin`    | N/A (Synthetic)           | C++    | Cabsim Stress IR (32768 samples) C++ reference                  |
 
 **v2 files** (`golden_<model_id>_<tone_id>_<sr>.bin`): Multi-sample-rate, multi-stimulus goldens using Stress Signal v2 (5 seconds, multi-component). Naming schema:
 
@@ -209,17 +209,17 @@ See `docs/perceptual_validation.md` for methodology.
 
 ## Parity Thresholds
 
-| Model            | MSE threshold | SNR threshold |
-| ---------------- |:-------------:|:-------------:|
-| LSTM 1×3 (Off.)  | < 4.7e-4      | ≥ 28.1 dB     |
-| LSTM 1×16        | < 3e-3        | ≥ 15 dB       |
-| LSTM 2×8         | < 1e-3        | ≥ 18 dB       |
-| WaveNet Feather  | < 3e-7        | ≥ 60 dB       |
-| WaveNet Standard | < 3e-7        | ≥ 45 dB       |
-| WaveNet Lite     | < 3e-1        | ≥ 0 dB        |
-| WaveNet Nano     | < 9.5e-6      | ≥ 45 dB       |
-| A2-Lite (CH=3)   | < 5e-2        | ≥ 40 dB       |
-| A2-Full (CH=8)   | < 5e-2        | ≥ 40 dB       |
+| Model            | MSE threshold | SNR threshold | ESR threshold |
+| ---------------- |:-------------:|:-------------:|:-------------:|
+| LSTM 1×3 (Off.)  | < 4.7e-4      | ≥ 28.1 dB     |               |
+| LSTM 1×16        | < 3e-3        | ≥ 15 dB       |               |
+| LSTM 2×8         | < 1e-3        | ≥ 18 dB       |               |
+| WaveNet Feather  | < 3e-7        | ≥ 60 dB       |               |
+| WaveNet Standard | < 3e-7        | ≥ 45 dB       |               |
+| WaveNet Lite     | < 3e-1        | ≥ 0 dB        |               |
+| WaveNet Nano     | < 9.5e-6      | ≥ 45 dB       |               |
+| A2-Lite (CH=3)   | < 1e30        | ≥ 80 dB       | < 6.0e-9      |
+| A2-Full (CH=8)   | < 1e30        | ≥ 70 dB       | < 8.0e-8      |
 
 > [!IMPORTANT]
 > Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
@@ -304,8 +304,11 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 ### `BossLSTM-1x16.nam` & `BossLSTM-2x8.nam`
 
 - **Nature:** Reference models used for LSTM architecture validation (1 layer × H=16 and 2 layers × H=8).
+
 - **Golden Fixtures:** `golden_lstm_1x16.bin` and `golden_lstm_2x8.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+
 - **Provenance:** Generated from C++ `NeuralAmpModelerCore` render tool at pinned commit `e49c93e678549230d09efbb0beeb50511e387874`.
+
 - **Command used:**
 
   ```bash
@@ -318,13 +321,41 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 ### `lstm.nam`
 
 - **Nature:** Official sample model from `sdatkinson/NeuralAmpModelerCore` (example models).
+
 - **Golden Fixtures:** `golden_lstm_official.bin` (and corresponding `_v2_*k.bin` multi-SR files).
+
 - **Provenance:** Official model representing 1 layer, H=3. Rendered using the same C++ pinned commit `e49c93e`.
+
 - **Command used:**
 
   ```bash
   render tests/fixtures/models/lstm.nam tests/fixtures/stress_signal.wav output.wav
   wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_official.bin
+  ```
+
+### `wavenet_a2_full.nam` & `wavenet_a2_lite.nam` (T2.5)
+
+- **Nature:** Synthetic fixtures generated by `tests/fixtures/generate_a2_fixtures.py` using the canonical A2 skeleton (23 layers, K=6/15, LeakyReLU, head_scale=0.02).
+
+- **Amplitude regime (T2.5 correction):** Weights scaled per-channel (Full CH=8: weight=0.28, bias=0.065; Lite CH=3: weight=0.45, bias=0.09) to produce C++ output in the realistic audio regime (Full: peak≈0.15, LUFS≈−22.6; Lite: peak≈0.19, LUFS≈−20.0), replacing the previous near-silence regime (peak≈2e−3, LUFS≈−68). This ensures denormals/FTZ, saturation, and accumulation paths are exercised at meaningful levels.
+
+- **Golden Fixtures:** `golden_wavenet_a2_full.bin`, `golden_wavenet_a2_lite.bin` — cross-reference Rust↔C++ rendered using NeuralAmpModelerCore v0.5.3 at pinned commit `9c7b185de346fe0725dea537bcee4bc38b5bb6d6`.
+
+- **SNR/ESR (2026-06-14):** Full = 79.2 dB / 1.21e−8; Lite = 90.7 dB / 8.58e−10. Thresholds calibrated with ≥8 dB SNR margin and ~6–7× ESR multiplier.
+
+- **Command used:**
+
+  ```bash
+  # Generate .nam models
+  python3 tests/fixtures/generate_a2_fixtures.py
+
+  # Render with C++ v0.5.3
+  render tests/fixtures/models/wavenet_a2_full.nam tests/fixtures/stress_signal.wav full.wav
+  render tests/fixtures/models/wavenet_a2_lite.nam tests/fixtures/stress_signal.wav lite.wav
+
+  # Convert to golden
+  wav_to_golden --input full.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_full.bin
+  wav_to_golden --input lite.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_lite.bin
   ```
 
 ## Two Layers of Validation

@@ -306,7 +306,8 @@ mkdir -p /tmp/kilo/a2out
 >
 > **Porém**, três achados exigem correção (abaixo). O mais importante (T2.5) é **substantivo**.
 
-- **[T2.5] (corretiva — substantiva) Regime de amplitude realista para os goldens A2.** ⚠️ **(prioridade alta)**
+- **[T2.5] (corretiva — substantiva) Regime de amplitude realista para os goldens A2.** ⚠️ **(prioridade alta)** ✅ **[DONE]**
+  - **Resultado (2026-06-14):** Escalas de peso ajustadas por canal (Full CH=8: weight=0.28, bias=0.065; Lite CH=3: weight=0.45, bias=0.09). Saída C++ realista — Full: peak≈0.15, LUFS≈−22.6; Lite: peak≈0.19, LUFS≈−20.0. Goldens regenerados via v0.5.3 (`9c7b185`). SNR/ESR re-medidos (Full: 79.2 dB / 1.21e−8; Lite: 90.7 dB / 8.58e−10), thresholds recalibrados (SNR − 9/11 dB, ESR × 6–7). Suíte `golden_vectors`: 18 passed, 1 ignored. Documentação atualizada em `README.md`.
   - **Problema verificado:** o objetivo original de T2.3 (usar modelos A2 **oficiais reais**) **não foi atingido**
     — os oficiais não carregam (lacunas de FiLM/topologia, ver Épico 100). O fallback adotado foi um **modelo
     sintético reescalado de forma agressiva** (`0.05` em pesos, `0.01` em bias). Consequência medida:

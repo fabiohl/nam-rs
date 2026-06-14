@@ -292,18 +292,18 @@ fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)>
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-3)))
         }
         // --- WaveNet A2 Full (CH=8) ---
-        // Measured: SNR = 97.8 dB, ESR = 1.65e-10 (stable scaled-weights fixture against C++ v0.5.3 render)
-        // Margin: SNR >= 80.0 dB, ESR < 1.0e-8
+        // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5)
+        // Margin: SNR - 9.2 dB, ESR factor ~6.6x
         "wavenet_a2_full" => {
-            let snr_db = 80.0;
-            Some((1e30, snr_db, Some(1.0e-8)))
+            let snr_db = 70.0;
+            Some((1e30, snr_db, Some(8.0e-8)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
-        // Measured: SNR = 97.4 dB, ESR = 1.83e-10 (stable scaled-weights fixture against C++ v0.5.3 render)
-        // Margin: SNR >= 80.0 dB, ESR < 1.0e-8
+        // Measured: SNR = 90.7 dB, ESR = 8.58e-10 (realistic-amplitude fixture, T2.5)
+        // Margin: SNR - 10.7 dB, ESR factor ~7.0x
         "wavenet_a2_lite" => {
             let snr_db = 80.0;
-            Some((1e30, snr_db, Some(1.0e-8)))
+            Some((1e30, snr_db, Some(6.0e-9)))
         }
         _ => None,
     }
