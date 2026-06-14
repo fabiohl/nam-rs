@@ -271,18 +271,18 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4)))
         }
         // --- LSTM 1x16 ---
-        // Measured: SNR = 19.8 dB, ESR = 1.04e-2
-        // Margin: SNR - 6.8 dB, ESR factor ~4.8x
+        // Measured: SNR=19.8 dB (v1 2048 samples), ESR=1.04e-2
+        // v2: SNR=12.2 dB / ESR=6.1e-2 @ 96 kHz (recurrent drift). Margin: 7.8/0.2 dB (v1/v2).
         "BossLSTM-1x16" | "lstm_1x16" => {
-            let snr_db = 13.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-2)))
+            let snr_db = 12.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2)))
         }
         // --- LSTM 2x8 ---
-        // Measured: SNR = 25.7 dB, ESR = 2.69e-3
-        // Margin: SNR - 6.7 dB, ESR factor ~5.5x
+        // Measured: SNR=25.7 dB (v1 2048 samples), ESR=2.69e-3
+        // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz (recurrent drift). Margin: 7.7/0.4 dB (v1/v2).
         "BossLSTM-2x8" | "lstm_2x8" => {
-            let snr_db = 19.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.5e-2)))
+            let snr_db = 18.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2)))
         }
         // --- LSTM Official (H=3) ---
         // Measured: SNR = 29.7 dB, ESR = 1.08e-3

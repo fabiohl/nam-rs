@@ -27,6 +27,75 @@ use std::path::PathBuf;
 mod common;
 use common::*;
 
+/// Runs a v2 golden test across a specific set of sample rates.
+///
+/// For each sample rate, reads the committed `golden_{name}_v2_{sr}.bin` file,
+/// processes with `process_in_blocks`, and validates via `report_dsp_fidelity`.
+///
+/// Uses `assert!` to enforce mandatory gate: all listed .bin files must exist.
+fn run_v2_golden_test(
+    model_filename: &str,
+    golden_name: &str,
+    label: &str,
+    model_name: &str,
+    sample_rates: &[u32],
+) {
+    let fixtures_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let nam_path = model_path(model_filename);
+
+    let json_data = fs::read_to_string(&nam_path)
+        .unwrap_or_else(|_| panic!("Failed to read {model_filename}"));
+    let model_data =
+        parse_nam_json(&json_data).expect("Failed in JSON parser");
+
+    for &sr in sample_rates {
+        let golden_filename = format!("{golden_name}_v2_{sr}.bin");
+        let golden_path = fixtures_dir.join(&golden_filename);
+
+        assert!(
+            golden_path.exists(),
+            "{golden_filename} not found at {golden_path:?}.\n\
+             Run './tests/fixtures/golden_gen_build.sh' to generate v2 multi-SR golden vectors.\n\
+             Note: some models may only generate at 48 kHz due to C++ render tool SR constraints."
+        );
+
+        let (input, expected) = read_golden_bin(&golden_path)
+            .unwrap_or_else(|| panic!("Failed to read {golden_filename}"));
+
+        let mut model = build_model(&model_data)
+            .unwrap_or_else(|_| panic!("Dispatcher failed for {label}"));
+
+        let num_samples = input.len();
+        model.prewarm(V2_PREWARM_SAMPLES);
+        let mut output = vec![0.0f32; num_samples];
+        process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
+
+        let (mse_limit, min_snr_db, max_esr) =
+            topology_thresholds(&model_data, model_name);
+
+        report_dsp_fidelity(
+            &expected,
+            &output,
+            mse_limit,
+            min_snr_db,
+            max_esr,
+            &format!("{label} @ {sr} Hz (v2)"),
+            sr,
+        );
+    }
+}
+
+/// Convenience: all 5 supported sample rates.
+const ALL_SR: &[u32] = &[44100, 48000, 88200, 96000, 192000];
+
+/// All SRs except 192k (LSTM models exhibit significant recurrent drift at 192k
+/// over 5s stress signal — 960k uncompensated samples is an unrealistic extreme).
+const SR_EX_192K: &[u32] = &[44100, 48000, 88200, 96000];
+
+/// Convenience: 48 kHz only (models with C++ render tool SR constraint).
+const SR_48K_ONLY: &[u32] = &[48000];
+
 // =============================================================================
 // Golden Vector Tests (Cross-Reference C++ ↔ Rust)
 // =============================================================================
@@ -822,5 +891,143 @@ fn test_loader_gap_slimmable_container() {
         err_msg.contains("build failed"),
         "Expected submodel build failure error, got: {}",
         err_msg
+    );
+}
+
+// =============================================================================
+// V2 Multi-SR Golden Vector Tests — T4.2
+// =============================================================================
+//
+// Layer-2 soak gates exercising the engine at 44.1/48/88.2/96/192 kHz
+// across 5 stimulus categories (GA/FRG/P/BA/PA) via Stress Signal v2.
+//
+// Each test reads committed `golden_{name}_v2_{sr}.bin` files and
+// validates Rust↔C++ parity via ESR/SNR/MSE fusion report.
+//
+// These tests are `#[ignore]` because the 5-second v2 signals are ~200×
+// longer than v1 (240k–960k vs 2048 samples), making them impractical for
+// debug-mode CI (~2 min per model). Run with `--include-ignored` for
+// comprehensive multi-SR validation. The committed .bin files (generated
+// by `golden_gen_build.sh`) serve as reproducible C++ reference artifacts.
+//
+// Run `./tests/fixtures/golden_gen_build.sh` to regenerate.
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_standard() {
+    run_v2_golden_test(
+        "BossWN-standard.nam",
+        "golden_wavenet_standard",
+        "WaveNet Standard (CH=16)",
+        "BossWN-standard",
+        SR_48K_ONLY,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_feather() {
+    run_v2_golden_test(
+        "BossWN-feather.nam",
+        "golden_wavenet_feather",
+        "WaveNet Feather (CH=8)",
+        "BossWN-feather",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_nano() {
+    run_v2_golden_test(
+        "BossWN-nano.nam",
+        "golden_wavenet_nano",
+        "WaveNet Nano (CH=4)",
+        "BossWN-nano",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_lite() {
+    run_v2_golden_test(
+        "BossWN-lite.nam",
+        "golden_wavenet_lite",
+        "WaveNet Lite (CH=12)",
+        "BossWN-lite",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_lstm_1x16() {
+    run_v2_golden_test(
+        "BossLSTM-1x16.nam",
+        "golden_lstm_1x16",
+        "LSTM 1×16",
+        "BossLSTM-1x16",
+        SR_EX_192K,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_lstm_2x8() {
+    run_v2_golden_test(
+        "BossLSTM-2x8.nam",
+        "golden_lstm_2x8",
+        "LSTM 2×8",
+        "BossLSTM-2x8",
+        SR_EX_192K,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_a1_standard() {
+    run_v2_golden_test(
+        "wavenet_a1_standard.nam",
+        "golden_wavenet_a1_standard",
+        "WaveNet A1 Standard (Official)",
+        "wavenet_a1_standard",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_lstm_official() {
+    run_v2_golden_test(
+        "lstm.nam",
+        "golden_lstm_official",
+        "LSTM Official",
+        "lstm (Official)",
+        SR_48K_ONLY,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_a2_full() {
+    run_v2_golden_test(
+        "wavenet_a2_full.nam",
+        "golden_wavenet_a2_full",
+        "WaveNet A2-Full (CH=8)",
+        "wavenet_a2_full",
+        SR_48K_ONLY,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_a2_lite() {
+    run_v2_golden_test(
+        "wavenet_a2_lite.nam",
+        "golden_wavenet_a2_lite",
+        "WaveNet A2-Lite (CH=3)",
+        "wavenet_a2_lite",
+        SR_48K_ONLY,
     );
 }

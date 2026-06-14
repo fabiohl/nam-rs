@@ -262,11 +262,20 @@ STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 "$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
 echo "  v1: $STRESS_WAV"
 
+echo "  Generating v2 multi-SR stress signals..."
+V2_STRESS_WAVS=()
+for sr in 44100 48000 88200 96000 192000; do
+    v2_wav="$FIXTURES_DIR/stress_signal_v2_${sr}.wav"
+    "$GEN_STRESS" --version v2 --sample-rate "$sr" --output "$v2_wav" 2>&1
+    echo "    v2 @ ${sr} Hz: $v2_wav"
+    V2_STRESS_WAVS+=("$sr:$v2_wav")
+done
+
 # =============================================================================
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================
 echo ""
-echo "[5/6] Running render for each model..."
+echo "[5/6] Running render for each model (v1)..."
 
 # Models: (.nam file : golden name : label : render_type)
 MODELS=(
@@ -321,10 +330,67 @@ for entry in "${MODELS[@]}"; do
 done
 
 # =============================================================================
+# Generate v2 multi-SR goldens (one per model × sample_rate)
+# =============================================================================
+echo ""
+echo "[5b/6] Generating v2 multi-SR golden vectors..."
+
+# Models eligible for v2 multi-SR (subset exercising all architectures)
+V2_MODELS=(
+    "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16):standard"
+    "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8):standard"
+    "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4):standard"
+    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12):standard"
+    "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official):standard"
+    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16:standard"
+    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8:standard"
+    "lstm.nam:golden_lstm_official:LSTM Official:standard"
+    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):v0.5.3"
+    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):v0.5.3"
+)
+
+for entry in "${V2_MODELS[@]}"; do
+    IFS=':' read -r nam_file golden_name label render_type <<< "$entry"
+    MODEL_PATH="$MODELS_DIR/$nam_file"
+
+    if [ ! -f "$MODEL_PATH" ]; then
+        echo "  SKIP v2: $nam_file not found at $MODELS_DIR"
+        continue
+    fi
+
+    # Determine render binary
+    if [ "$render_type" = "v0.5.3" ]; then
+        ACTIVE_RENDER="$RENDER_V053_BIN"
+    else
+        ACTIVE_RENDER="$RENDER_BIN"
+    fi
+
+    for sr_entry in "${V2_STRESS_WAVS[@]}"; do
+        IFS=':' read -r sr v2_wav <<< "$sr_entry"
+        v2_golden="$FIXTURES_DIR/${golden_name}_v2_${sr}.bin"
+        v2_out_wav="$TEMP_DIR/${golden_name}_v2_${sr}.wav"
+
+        echo "    $label @ ${sr} Hz (v2)..."
+
+        (set +o pipefail; "$ACTIVE_RENDER" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" 2>&1 | tail -1)
+
+        if [ ! -f "$v2_out_wav" ]; then
+            echo "    SKIP: render failed for $label @ ${sr} Hz (likely SR mismatch in C++ tool)"
+            continue
+        fi
+
+        "$WAV_TO_GOLDEN" \
+            --input "$v2_out_wav" \
+            --reference "$v2_wav" \
+            --output "$v2_golden" 2>&1
+    done
+done
+
+# =============================================================================
 # Build and run C++ IR reference (dsp::ImpulseResponse) → golden_cabsim_cpp_*.bin
 # =============================================================================
 echo ""
-echo "[5/5] Building C++ IR reference (dsp::ImpulseResponse)..."
+echo "[6/6] Building C++ IR reference (dsp::ImpulseResponse)..."
 
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
@@ -360,12 +426,12 @@ echo "  Running render_ir to generate C++ IR golden vectors..."
 # Cleanup
 # =============================================================================
 echo ""
-echo "[5/5] Cleaning up temporary files..."
+echo "[6/6] Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
 echo "=== Golden vectors generated successfully ==="
-echo "  Files at $FIXTURES_DIR/:"
+echo "  v1 files at $FIXTURES_DIR/:"
 for entry in "${MODELS[@]}"; do
     IFS=':' read -r _ golden_name _ <<< "$entry"
     [ -f "$FIXTURES_DIR/${golden_name}.bin" ] && echo "    ${golden_name}.bin"
@@ -374,5 +440,22 @@ for cpp_file in golden_cabsim_cpp_short.bin golden_cabsim_cpp_medium.bin \
                  golden_cabsim_cpp_long.bin; do
     [ -f "$FIXTURES_DIR/$cpp_file" ] && echo "    $cpp_file"
 done
+echo "  v2 multi-SR files at $FIXTURES_DIR/:"
+for entry in "${V2_MODELS[@]}"; do
+    IFS=':' read -r _ golden_name label __ <<< "$entry"
+    count=0
+    for sr_entry in "${V2_STRESS_WAVS[@]}"; do
+        IFS=':' read -r sr _ <<< "$sr_entry"
+        v2_file="$FIXTURES_DIR/${golden_name}_v2_${sr}.bin"
+        if [ -f "$v2_file" ]; then
+            count=$((count + 1))
+        fi
+    done
+    if [ "$count" -gt 0 ]; then
+        echo "    ${golden_name}_v2_*.bin  ($count sample rates) — $label"
+    fi
+done
 echo ""
 echo "Commit these files so that the Rust golden vector tests work."
+echo "v2 files are large (~18 MB per model across 5 SRs). Git LFS or strategic" 
+echo "subset selection is recommended for repo size management."

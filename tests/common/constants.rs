@@ -8,3 +8,7 @@ pub const GOLDEN_BLOCK_SIZE: usize = 64;
 pub const TEST_BLOCK_SIZE: usize = 64;
 pub const TEST_NUM_BLOCKS: usize = 4096;
 pub const STRESS_SAMPLE_RATE: u32 = 48000;
+
+pub const V2_PREWARM_SAMPLES: usize = 2048;
+pub const V2_TEST_BLOCK_SIZE: usize = 64;
+pub const V2_STRESS_DURATION_SECS: f64 = 5.0;

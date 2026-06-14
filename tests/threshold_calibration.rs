@@ -19,18 +19,30 @@ use common::validation::get_calibrated_threshold;
 /// used in `get_calibrated_threshold()`. Returns `None` for `.bin`
 /// files that don't participate in DSP fidelity validation (e.g.
 /// cabsim goldens use their own oracles).
+///
+/// For v2 multi-SR files (`golden_{name}_v2_{sr}.bin`), the suffix
+/// is stripped to resolve the base model name.
 fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
-    match filename {
-        "golden_wavenet_standard.bin" => Some("BossWN-standard"),
-        "golden_lstm_1x16.bin" => Some("BossLSTM-1x16"),
-        "golden_lstm_2x8.bin" => Some("BossLSTM-2x8"),
-        "golden_wavenet_a1_standard.bin" => Some("wavenet_a1_standard"),
-        "golden_lstm_official.bin" => Some("lstm (Official)"),
-        "golden_wavenet_feather.bin" => Some("BossWN-feather"),
-        "golden_wavenet_nano.bin" => Some("BossWN-nano"),
-        "golden_wavenet_lite.bin" => Some("BossWN-lite"),
-        "golden_wavenet_a2_full.bin" => Some("wavenet_a2_full"),
-        "golden_wavenet_a2_lite.bin" => Some("wavenet_a2_lite"),
+    // Strip v2 multi-SR suffix: `golden_X_v2_44100.bin` → `golden_X`
+    let base = if let Some(suffix_start) = filename.find("_v2_") {
+        &filename[..suffix_start]
+    } else {
+        filename.strip_suffix(".bin").unwrap_or(filename)
+    };
+    // Handle `.bin` extension removal if not already stripped
+    let base = base.strip_suffix(".bin").unwrap_or(base);
+
+    match base {
+        "golden_wavenet_standard" => Some("BossWN-standard"),
+        "golden_lstm_1x16" => Some("BossLSTM-1x16"),
+        "golden_lstm_2x8" => Some("BossLSTM-2x8"),
+        "golden_wavenet_a1_standard" => Some("wavenet_a1_standard"),
+        "golden_lstm_official" => Some("lstm (Official)"),
+        "golden_wavenet_feather" => Some("BossWN-feather"),
+        "golden_wavenet_nano" => Some("BossWN-nano"),
+        "golden_wavenet_lite" => Some("BossWN-lite"),
+        "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
+        "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
         // cabsim goldens use their own oracle (convolution / C++ parity),
         // not topology_thresholds.
         _ => None,
