@@ -40,14 +40,12 @@ fn run_v2_golden_test(
     model_name: &str,
     sample_rates: &[u32],
 ) {
-    let fixtures_dir =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let nam_path = model_path(model_filename);
 
-    let json_data = fs::read_to_string(&nam_path)
-        .unwrap_or_else(|_| panic!("Failed to read {model_filename}"));
-    let model_data =
-        parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let json_data =
+        fs::read_to_string(&nam_path).unwrap_or_else(|_| panic!("Failed to read {model_filename}"));
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
     for &sr in sample_rates {
         let golden_filename = format!("{golden_name}_v2_{sr}.bin");
@@ -63,16 +61,15 @@ fn run_v2_golden_test(
         let (input, expected) = read_golden_bin(&golden_path)
             .unwrap_or_else(|| panic!("Failed to read {golden_filename}"));
 
-        let mut model = build_model(&model_data)
-            .unwrap_or_else(|_| panic!("Dispatcher failed for {label}"));
+        let mut model =
+            build_model(&model_data).unwrap_or_else(|_| panic!("Dispatcher failed for {label}"));
 
         let num_samples = input.len();
         model.prewarm(V2_PREWARM_SAMPLES);
         let mut output = vec![0.0f32; num_samples];
         process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
 
-        let (mse_limit, min_snr_db, max_esr) =
-            topology_thresholds(&model_data, model_name);
+        let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, model_name);
 
         report_dsp_fidelity(
             &expected,

@@ -487,11 +487,12 @@ mkdir -p /tmp/kilo/a2out
   Limitação: modelos com `sample_rate` explícito (Standard, Official, A2) só renderizam a 48 kHz
   no C++ render tool; demais modelos cobrem todos os 5 SRs. Testes são `#[ignore]` pois sinais de
   5s são ~200× mais longos que v1 (inviáveis em CI debug mode).
-- **[T4.3] Métricas perceptuais como guard-rail (ESR/MR-STFT/LUFS), não só MSE.** ✅ **Parcialmente feito**
-  (ESR scale-invariant já é o gate primário do A2; T16.4). Reorientar para: tornar o **LUFS** um gate leve de
-  sanidade (avisar/falhar se a saída do golden estiver fora de uma faixa de áudio plausível — ver a lição de
-  T2.5, em que LUFS −67 passou despercebido). Efeito universal: gates robustos a escala/ganho **e** a regimes
-  de amplitude irreais.
+- **[T4.3] Métricas perceptuais como guard-rail (ESR/MR-STFT/LUFS), não só MSE.** ✅ **DONE (2026-06-14)** —
+  ESR scale-invariant já era o gate primário do A2 (T16.4). LUFS agora é gate universal de sanidade
+  em `report_dsp_fidelity()`: computa LUFS do golden de referência e falha se fora da faixa plausível
+  [−50, +10] LUFS. Captura defeitos de geração de golden como escala errada ou near-silence (lição
+  T2.5: LUFS −67 passou despercebido sem este gate). Constantes universais, sem thresholds por modelo.
+  Cobertura: todos os 18 testes ativos de golden vectors, `cpp_parity.rs` e `cabsim_cpp_parity.rs`.
 - **[T4.4] Meta-teste anti-placebo + manifesto de thresholds (ver T3.3/T3.4).** Impede a reintrodução de gates
   neutralizados (SNR ≤ 0 / ESR ≥ 1) e torna cada limiar rastreável a uma medição. Efeito universal: a suíte
   **nunca mais mente** — base de confiança para otimizações agressivas futuras (FFT, AVX-512, ARM SVE2).
@@ -502,30 +503,3 @@ mkdir -p /tmp/kilo/a2out
 > **Limite honesto do escopo:** estas ações elevam a **detecção** e a **confiança** universalmente. A **correção**
 > de defeitos numéricos que elas venham a expor (ex.: drift CH=12, precisão de ativações) é trabalho de engine e
 > deve ser planejada em épicos próprios (ex.: Épico 1.2 para o Lite), não embutida na infra de testes.
-
----
----
-
-## ÉPICO 100 (FUTURO)
-
-- Assegurar resultados impecáveis: `utils/tests-cargo.sh` e `utils/tests-long.sh`.
-  O foco total é analisar os resultados do comando `` e meticulosamente analisar melhorias para um motor de testes seguro, estável, agil e informativo para manter o manter o nam-rs sempre em guard rails seguros que permitam ele "voar alto" em seguraça e com agilidade.
-  Importante destacar que o primeiro épico será destinado ao script em si e em sua infraestrutura.
-  A correção dos problemas encontrados podem ficar para o(s) épico(s) seguinte(s).
-
-- Liberar v2.1 (A2 Beta) pós aprovação: `utils/build-release.sh`, `utils/run-standalone.sh` e `~/.clap/nam-rs.clap`.
-
-- Suporte a multi-condition / FiLM WaveNet (`condition_dsp`):
-  - **Contexto:** Modelos oficiais do mirror como `wavenet_a2_max.nam` (condition_size=8) e `wavenet_condition_dsp.nam` (condition_size=3) exigem multi-condicionamento. Atualmente, o nam-rs assume `condition_size=1` de forma estática no hot-path.
-  - **Ação:** Implementar o suporte a condicionamento arbitrário e FiLM no motor DSP WaveNet. Os modelos oficiais de exemplo já estão disponíveis em `tests/fixtures/models/` para validação futura, mas atualmente não rodam e falham no carregamento por falta de suporte no engine nam-rs.
-- Suporte a topologias WaveNet dinâmicas / Fallback genérico:
-  - **Contexto:** O modelo oficial do mirror `slimmable_wavenet.nam` (e por consequência `slimmable_container.nam`) usa geometrias não padronizadas (1 camada, 3 canais, dilatações tamanho 10). O nam-rs hoje possui fast-paths rígidos (A2-Full com 8 canais, A2-Lite com 3 canais e 23 camadas).
-  - **Ação:** Implementar um fallback dinâmico genérico para executar WaveNet com qualquer número de camadas, canais e dilatações quando o modelo não casar com as geometrias otimizadas (fast-paths) compiladas estaticamente. Os modelos oficiais estão em `tests/fixtures/models/` mas não têm suporte para rodar no motor.
-
-- **Rodadas de burilamento**: `revisor-auditor.md`, `pesquisador-inovador.md`, `refatora-rust.md` e `refatora-doc.md`.
-- **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
-- **FFT** e outros features no **hot path**: Considerar internalizar o código eaplicar ultra otimizações.
-- **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
-- **ISAs e Arquiteturas** <https://gemini.google.com/app/71c4c68e27c64e10>: /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
-  - Intel/AMD: Focar no AVX-512/AVX-10 (Especialmente: AVX512F, AVX512VL, AVX512_VNNI) em vez de AMX (muito focado em inferência e servidores); Eficiência Híbrida (AVX-10 / AVX-512 Light): Focado no uso de instruções AVX-512, mas restringindo o tamanho dos vetores a 256 bits.
-  - ARM: focar na Linha de Base Unificada NEON de 128 bits (Rpi5 e Qualcomm, apesar da volatilidade má vontade desta última); A Linha Avançada é SVE2/VLA (basicamente NVIDIA RTX Spark).

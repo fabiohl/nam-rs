@@ -3,6 +3,18 @@
 
 #![allow(dead_code)]
 
+/// Plausible LUFS range for golden reference output (lightweight sanity gate).
+///
+/// Guitar/amp model output at typical stress-signal levels falls between −35 and 0 LUFS.
+/// The lower bound of −50 LUFS is intentionally generous — it only catches egregious
+/// errors (e.g., T2.5 where LUFS −67 near-silence went undetected in a validly passing test).
+/// The upper bound of +10 LUFS guards against output saturation/clipping that would also
+/// indicate a defective golden.
+///
+/// Part of T4.3: metrics perceptuais como guard-rail.
+const LUFS_PLAUSIBLE_MIN: f64 = -50.0;
+const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
+
 /// Validates DSP fidelity in a single pass, computing MSE, MAE, SNR, PSNR,
 /// equivalent bits, ESR, and LUFS simultaneously.
 ///
@@ -15,6 +27,13 @@
 /// - `label`     — label for identification in diagnostic messages
 /// - `sample_rate` — sample rate in Hz (used for LUFS and anchor SNR diagnostics)
 ///
+/// # Gates
+/// - **MSE** — absolute error gate (fail if exceeded)
+/// - **SNR** — signal-to-noise ratio gate (fail if below minimum)
+/// - **ESR** — scale-invariant error gate (fail if exceeded; primary gate for A2)
+/// - **LUFS plausibility** — lightweight sanity gate on reference output (T4.3);
+///   fails if reference LUFS is outside `[{LUFS_PLAUSIBLE_MIN}, {LUFS_PLAUSIBLE_MAX}]`
+///
 /// # Output format
 /// ```text
 /// [NeuralAmpModelerCore × NAM-rs — label]
@@ -25,7 +44,7 @@
 ///   Bits    = 2.5 bits equiv.
 ///   ESR     = 1.23e-05       (−49.1 dB)   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
 ///   MR-STFT = 0.0042         (relative)
-///   LUFS    = −23.4 LUFS
+///   LUFS    = −23.4 LUFS    (reference)   [plausible: −50.0..+10.0]  ✓
 ///   Samples = 2048 @ 48 kHz (stress signal)
 /// ```
 #[track_caller]
@@ -95,8 +114,11 @@ pub fn report_dsp_fidelity(
     };
     let esr_db = nam_rs::testing::perceptual::esr_to_db(esr_linear);
 
-    // LUFS
-    let lufs = nam_rs::testing::perceptual::compute_lufs(test, sr);
+    // LUFS — reference (golden) for plausibility sanity gate (T4.3)
+    let lufs_ref = nam_rs::testing::perceptual::compute_lufs(reference, sr);
+    let lufs_test = nam_rs::testing::perceptual::compute_lufs(test, sr);
+    let lufs_plausible =
+        lufs_ref.is_finite() && (LUFS_PLAUSIBLE_MIN..=LUFS_PLAUSIBLE_MAX).contains(&lufs_ref);
 
     // SNR(reference, anchor) sanity: compute SNR of test against a low-pass 3.5 kHz anchor
     let anchor_snr_db = {
@@ -144,8 +166,19 @@ pub fn report_dsp_fidelity(
     let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(reference, test);
     println!("  MR-STFT = {mr_stft:.4e}      (relative)");
 
-    if lufs.is_finite() {
-        println!("  LUFS    = {lufs:.1} LUFS");
+    if lufs_test.is_finite() {
+        if lufs_ref.is_finite() {
+            println!(
+                "  LUFS    = {lufs_ref:.1} LUFS    (reference)   [plausible: {LUFS_PLAUSIBLE_MIN:.0}..{LUFS_PLAUSIBLE_MAX:.0}]  {}",
+                if lufs_plausible {
+                    "✓"
+                } else {
+                    "✗ — GOLDEN DEFECT (T2.5 lesson)"
+                }
+            );
+        } else {
+            println!("  LUFS    = {lufs_test:.1} LUFS    (test — reference silent)");
+        }
         if anchor_snr_db.is_finite() {
             let delta_snr = snr - anchor_snr_db;
             let is_satisfactory = delta_snr > 8.0 || snr >= min_snr_db;
@@ -172,6 +205,14 @@ pub fn report_dsp_fidelity(
             "[{label}] ESR={esr_linear:.6e} exceeds threshold {limit:.1e} (ESR dB={esr_db:.1})"
         );
     }
+    // T4.3 LUFS plausibility sanity gate — catch near-silence / implausible golden output
+    assert!(
+        lufs_plausible,
+        "[{label}] Reference LUFS={lufs_ref:.1} is outside plausible audio range \
+         [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}]. \
+         The golden output may be defective (near-silence, clipping, or wrong scaling). \
+         See T2.5 lesson: LUFS −67 went undetected without this gate."
+    );
 }
 
 /// Converts SNR (dB) to a conservative MSE upper-bound estimate.
