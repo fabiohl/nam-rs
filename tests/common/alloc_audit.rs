@@ -26,7 +26,9 @@ thread_local! {
 
 #[cfg(not(feature = "clap-plugin"))]
 fn is_tracking_active() -> bool {
-    TRACKING_ACTIVE.try_with(|active| active.get()).unwrap_or(false)
+    TRACKING_ACTIVE
+        .try_with(|active| active.get())
+        .unwrap_or(false)
 }
 
 #[cfg(not(feature = "clap-plugin"))]

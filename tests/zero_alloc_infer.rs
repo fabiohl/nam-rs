@@ -295,3 +295,54 @@ fn test_zero_alloc_container_transition() {
         count
     );
 }
+
+/// Test parallel allocation tracking isolation (T1.1.3).
+///
+/// Verifies that multiple threads running concurrently with their own `TrackingGuard`s
+/// do not corrupt each other's allocation count and correctly isolate tracking state.
+#[test]
+fn test_parallel_allocation_tracking_isolation() {
+    use std::thread;
+
+    let num_threads = 8;
+    let mut handles = Vec::new();
+
+    for i in 0..num_threads {
+        handles.push(thread::spawn(move || {
+            // Each thread starts its own TrackingGuard
+            let _guard = TrackingGuard::new();
+
+            // Allocate some boxes to trigger allocations
+            let mut v = Vec::new();
+            for j in 0..(i + 1) * 10 {
+                v.push(Box::new(j));
+            }
+
+            // Read local alloc count
+            let count = get_alloc_count();
+            // Ensure at least some allocations were captured
+            assert!(
+                count >= (i + 1) * 10,
+                "Thread {} should have detected allocations, got {}",
+                i,
+                count
+            );
+            count
+        }));
+    }
+
+    let mut results = Vec::new();
+    for handle in handles {
+        results.push(handle.join().unwrap());
+    }
+
+    // Ensure different threads saw different allocation counts corresponding to their patterns,
+    // and did not corrupt each other.
+    for i in 1..num_threads {
+        assert!(
+            results[i] > results[i - 1],
+            "Thread allocation counts should be isolated and distinct, got: {:?}",
+            results
+        );
+    }
+}

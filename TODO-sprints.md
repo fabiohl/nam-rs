@@ -107,7 +107,7 @@ de testes. A cópia de integração (`tests/common/alloc_audit.rs`) replica o me
 
   - _Critério de aceite_: `cargo test` (todas as features) compila e passa.
 
-- [ ] **T1.1.3 — Teste de regressão de isolamento paralelo.**
+- [x] **T1.1.3 — Teste de regressão de isolamento paralelo.**
   Adicionar teste que dispara N threads, cada uma com `TrackingGuard`, executando
   padrões de alocação distintos simultaneamente, e valida que cada contador reflete
   **apenas** sua própria thread (detecta corrupção cruzada).

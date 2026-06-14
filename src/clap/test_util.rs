@@ -8,7 +8,7 @@
 
 use crate::clap::NamClapPlugin;
 use crate::common::params::NamPluginParams;
-use crate::dsp::pipeline::test_util::infra::{get_alloc_count, TrackingGuard};
+use crate::dsp::pipeline::test_util::infra::{TrackingGuard, get_alloc_count};
 use clack_extensions::state::PluginState;
 use clack_host::prelude::*;
 use std::path::PathBuf;

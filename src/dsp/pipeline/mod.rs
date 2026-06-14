@@ -57,7 +57,7 @@ pub(crate) use output_pw::{build_spa_format_pod, playback_dsp_cycle};
 #[cfg(test)]
 pub(crate) mod test_util {
     pub mod infra {
-        pub use crate::common::alloc_audit::{get_alloc_count, CountingAllocator, TrackingGuard};
+        pub use crate::common::alloc_audit::{CountingAllocator, TrackingGuard, get_alloc_count};
     }
 }
 

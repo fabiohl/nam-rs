@@ -6,7 +6,7 @@ use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::RtStatusFlags;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
-use crate::dsp::pipeline::test_util::infra::{get_alloc_count, TrackingGuard};
+use crate::dsp::pipeline::test_util::infra::{TrackingGuard, get_alloc_count};
 use crate::dsp::resampler::NamResampler;
 use std::sync::atomic::Ordering;
 

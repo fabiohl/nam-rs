@@ -30,7 +30,9 @@ pub fn set_alloc_count(val: usize) {
 
 /// Checks if heap allocation tracking is active on the current thread.
 pub fn is_tracking_active() -> bool {
-    TRACKING_ACTIVE.try_with(|active| active.get()).unwrap_or(false)
+    TRACKING_ACTIVE
+        .try_with(|active| active.get())
+        .unwrap_or(false)
 }
 
 /// Sets heap allocation tracking active on the current thread.
@@ -212,7 +214,12 @@ mod tests {
                 // Read local alloc count
                 let count = get_alloc_count();
                 // Ensure at least some allocations were captured
-                assert!(count >= (i + 1) * 10, "Thread {} should have detected allocations, got {}", i, count);
+                assert!(
+                    count >= (i + 1) * 10,
+                    "Thread {} should have detected allocations, got {}",
+                    i,
+                    count
+                );
                 count
             }));
         }
@@ -225,7 +232,11 @@ mod tests {
         // Ensure different threads saw different allocation counts corresponding to their patterns,
         // and did not corrupt each other.
         for i in 1..num_threads {
-            assert!(results[i] > results[i - 1], "Thread allocation counts should be isolated and distinct, got: {:?}", results);
+            assert!(
+                results[i] > results[i - 1],
+                "Thread allocation counts should be isolated and distinct, got: {:?}",
+                results
+            );
         }
     }
 }

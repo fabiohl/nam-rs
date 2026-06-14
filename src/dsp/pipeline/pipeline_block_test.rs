@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod block_tests {
-    use super::super::test_util::infra::{get_alloc_count, TrackingGuard};
+    use super::super::test_util::infra::{TrackingGuard, get_alloc_count};
     use super::super::*;
     use crate::common::params::AdaptiveComputeMode;
     use crate::common::spsc::RtStatusFlags;
