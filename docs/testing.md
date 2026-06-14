@@ -104,10 +104,38 @@ The following table maps every test suite, target, or binary to the features it 
 
 ## 4. Summary of Decoupled Sprints (Long Audits)
 
-Certain tests are marked as `#[ignore]` in the standard suite to keep execution times fast (under 1.5 minutes). These tests are deferred to the nightly/pre-release auditing script ([tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)) and run in 5 phases:
+Certain tests are marked as `#[ignore]` in the standard suite to keep execution times fast (under 1.5 minutes). These tests are deferred to the nightly/pre-release auditing script ([tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)) and run in 6 phases:
 
 1. **Soak Testing**: Long endurance runs (1+ hours) of DSP/model inference under continuous feed to identify leaks or buffer drifts (`tests/soak_test.rs`, `tests/pipeline_soak.rs`).
-2. **Property-Based Parser Sweeps**: Extensive proptests and fuzzing checks on file loaders to catch security vulnerabilities (`tests/proptest_parsers.rs`).
-3. **C++ Parity Validation**: Detailed comparison sweeps against official C++ NAM binaries (`tests/cpp_parity.rs`, `tests/cabsim_cpp_parity.rs`).
-4. **Release-Mode CLAP Auditing**: Validator audits on the final highly-optimized release `.so` plugin.
+2. **Property-Based and FSM Sweeps**: Extensive proptests, FSM transition validations, and fuzzing checks (`tests/proptest_parsers.rs`, `tests/proptest_math.rs`, `tests/lstm_gate_bf16_parity.rs`, `tests/lstm_scalar_bf16_parity.rs`, `tests/gate_fsm_proptest.rs`, `tests/adaptive_fsm_proptest.rs`, `src/dsp/pipeline/pipeline_block_test.rs`).
+3. **C++ Parity and Golden Validation**: Detailed comparison sweeps against official C++ NAM binaries and long v2 multi-SR golden comparison files (`tests/cpp_parity.rs`, `tests/cabsim_cpp_parity.rs`, `tests/golden_vectors.rs`).
+4. **Release-Mode CLAP Auditing & Concurrency**: Validator audits and heavy concurrency/swap stress testing on the final highly-optimized release `.so` plugin (`tests/clap_multi_instance.rs`, `src/clap/processor_test.rs`, `tests/concurrency_stress.rs`).
 5. **Criterion Performance Benchmarks**: Measurement of DSP block runtime budgets and throughput limits (`benches/`).
+6. **PipeWire Integration Test**: Live integration testing of the standalone host running against a PipeWire daemon (`tests/pw_integration_test.rs`).
+
+---
+
+## 5. Ignored Tests Mapping Matrix
+
+The following table documents all ignored tests in the repository, explaining why they are gated from standard CI, where they run, and their execution frequency:
+
+| Test/Suite Target | Ignored Tests / Scope | Reason for `#[ignore]` | Suite Execution | Frequency |
+| :--- | :--- | :--- | :--- | :--- |
+| **`tests/soak_test.rs`** | `test_*_soak`, `test_*_endurance` | Extended duration execution (>1 hour) to find memory leaks or buffer drift. | Long Suite (Phase 1) | Pre-release / Nightly |
+| **`tests/pipeline_soak.rs`** | `test_pipeline_soak_*` | Endurance testing of full audio thread capture-DSP-bridge-playback pipeline. | Long Suite (Phase 1) | Pre-release / Nightly |
+| **`tests/proptest_parsers.rs`** | `prop_fuzz_*` | Adversarial fuzz testing of JSON and binary model parsers with up to 100k test cases. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/proptest_math.rs`** | `prop_*` | Mathematical invariant fuzz testing for AVX2/AVX512 SIMD kernels. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/lstm_gate_bf16_parity.rs`** | `prop_*` | Fuzz testing of SIMD gate bf16 calculations. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/lstm_scalar_bf16_parity.rs`** | `prop_*` | Fuzz testing of scalar vs SIMD bf16 calculations. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/gate_fsm_proptest.rs`** | `prop_*` | Fuzz testing of Gate FSM states under varying loads and jitter. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/adaptive_fsm_proptest.rs`** | `test_adaptive_fsm_*` | Property-based sweeps verifying the Adaptive Compute FSM transitions under jitter and overload. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`src/dsp/pipeline/pipeline_block_test.rs`**| `test_random_block_sizes_proptest` | Proptest sweeping random buffer block sizes to find potential out-of-bounds/resampling issues. | Long Suite (Phase 2) | Pre-release / Nightly |
+| **`tests/cpp_parity.rs`** | `live_cross_validation_*` (except lite) | Compiles and runs live comparisons against C++ toolchain (requires C++ compiler). | Long Suite (Phase 3) | Pre-release / Nightly |
+| **`tests/cpp_parity.rs`** | `live_cross_validation_*_lite` | **Skipped (Known Divergent)**: WaveNet Lite (CH=12) exhibits numerical drift against C++. | Skipped | Defer to T2.2.1 |
+| **`tests/cabsim_cpp_parity.rs`** | `test_cabsim_golden_*` | Live convolution validation against NeuralAmpModelerCore C++ convolution engine. | Long Suite (Phase 3) | Pre-release / Nightly |
+| **`tests/golden_vectors.rs`** | `test_golden_vectors_v2_*` (except lite) | Long 5-second multi-SR golden comparison files (up to 960k samples per test). | Long Suite (Phase 3) | Pre-release / Nightly |
+| **`tests/golden_vectors.rs`** | `test_golden_vectors_wavenet_lite`, `test_golden_vectors_v2_wavenet_lite` | **Ignored (Known Divergent)**: A1 WaveNet Lite (CH=12) exhibits drift (SNR = 0.9 dB) against C++. | None | Defer to T2.2.1 |
+| **`tests/clap_multi_instance.rs`** | `test_multi_instance_stress` | Concurrency swap stress test to ensure parallel instances don't corrupt SPSC state. | Long Suite (Phase 4) | Pre-release / Nightly |
+| **`src/clap/processor_test.rs`** | `test_gc_stress_1000_swaps` | Heavy GC swap test (1000 iterations) exceeding standard SPSC channel limits. | Long Suite (Phase 4) | Pre-release / Nightly |
+| **`tests/concurrency_stress.rs`** | `test_*_concurrent_*`, `test_t6_3_*` | Heavy multi-reader lock-free param contention sweeps. | Long Suite (Phase 4) | Pre-release / Nightly |
+| **`tests/pw_integration_test.rs`** | `test_pipewire_host_loop` | Requires a running PipeWire daemon environment (session/system level). | Long Suite (Phase 6) | Pre-release / Nightly |

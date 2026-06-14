@@ -291,7 +291,7 @@ testes lentos/_flaky_.
   - _Critério de aceite_: cada teste > 1 s justificado como "essencial para detecção
     rápida de regressão" ou rebaixado para a suíte longa.
 
-- [ ] **T1.6.2 — Confirmar que nada essencial está erroneamente `#[ignore]`.**
+- [x] **T1.6.2 — Confirmar que nada essencial está erroneamente `#[ignore]`.**
   Revisar os _ignored_ do log (proptests, soak, cpp_parity live, golden v2_*,
   `wavenet_lite` divergente) para garantir que a suíte longa de fato os cobre e que
   nenhum _gate_ rápido foi perdido.

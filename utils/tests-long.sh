@@ -91,13 +91,13 @@ run_phase \
 # --- Phase 2: Property-Based and Parity Tests in Release ---
 run_phase \
     "Property-Based & Parity Tests in Release" \
-    "cargo test --release --test proptest_parsers -- --ignored && cargo test --release --test proptest_math -- --ignored && cargo test --release --test lstm_gate_bf16_parity -- --ignored && cargo test --release --test lstm_scalar_bf16_parity -- --ignored && cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored && cargo test --release --test gate_fsm_proptest -- --ignored" \
+    "cargo test --release --test proptest_parsers -- --ignored && cargo test --release --test proptest_math -- --ignored && cargo test --release --test lstm_gate_bf16_parity -- --ignored && cargo test --release --test lstm_scalar_bf16_parity -- --ignored && cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored && cargo test --release --test gate_fsm_proptest -- --ignored && cargo test --release --test adaptive_fsm_proptest -- --ignored" \
     "phase2-proptests.log"
 
 # --- Phase 3: Resampler Heap-Audit and C++ Parity ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit, C++ Parity" \
-    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture && cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture" \
+    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture && cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture && cargo test --release --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture" \
     "phase3-parity-audit.log"
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
