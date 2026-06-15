@@ -57,7 +57,16 @@ pub fn report_dsp_fidelity(
     label: &str,
     sample_rate: u32,
 ) {
-    report_dsp_fidelity_impl(reference, test, mse_limit, min_snr_db, max_esr, label, sample_rate, true)
+    report_dsp_fidelity_impl(
+        reference,
+        test,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        label,
+        sample_rate,
+        true,
+    )
 }
 
 /// Like [`report_dsp_fidelity`] but skips the LUFS plausibility gate.
@@ -75,7 +84,16 @@ pub fn report_dsp_fidelity_no_lufs(
     label: &str,
     sample_rate: u32,
 ) {
-    report_dsp_fidelity_impl(reference, test, mse_limit, min_snr_db, max_esr, label, sample_rate, false)
+    report_dsp_fidelity_impl(
+        reference,
+        test,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        label,
+        sample_rate,
+        false,
+    )
 }
 
 #[track_caller]

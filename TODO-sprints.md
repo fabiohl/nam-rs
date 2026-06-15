@@ -505,12 +505,17 @@ testes lentos/_flaky_.
      para máxima reutilização de artefatos. Verificação de compilação OK nos 4
      targets (`clap_multi_instance`, `gc_stress`, `concurrency_stress`, mono tests).
 
-- [ ] **T2.2.3 — Dedup de benches (Phase 5).**
+- [x] **T2.2.3 — Dedup de benches (Phase 5).**
   `cargo bench` (default) roda `inference_bench` (parte curta) e depois
   `cargo bench --features standalone,long_bench --bench inference_bench` recompila e
   **re-roda** as partes curtas do mesmo bench. Separar curto vs. longo sem recompilar/repetir.
 
   - _Critério de aceite_: cada bench roda o necessário **uma vez**; sem rebuild redundante.
+
+  - ✅ **Feito**: benches longos extraídos para `benches/long_inference_bench.rs` (target
+     separado). Phase 5 agora roda `cargo bench` (partes curtas de `inference_bench`) e
+     `cargo bench --features standalone,long_bench --bench long_inference_bench` (soaks)
+     sem recompilar/repetir nenhum benchmark. Ambos compilam em check separado sem erros.
 
 - [ ] **T2.2.4 — Reavaliar `--test-threads=1` nos soak (Phase 1).**
   Com a auditoria de alocação agora TLS (Épico 1), avaliar se `soak_test`/`pipeline_soak`

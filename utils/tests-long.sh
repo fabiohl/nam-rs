@@ -177,7 +177,7 @@ run_phase \
 # --- Phase 5: Long Benchmarks (Performance) ---
 run_phase \
     "Long Performance Benchmarks" \
-    'status=0; cargo bench --no-fail-fast || status=1; cargo bench --no-fail-fast --features standalone,long_bench --bench inference_bench || status=1; [ $status -eq 0 ]' \
+    'status=0; cargo bench --no-fail-fast || status=1; cargo bench --no-fail-fast --features standalone,long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
     "phase5-benchmarks.log" || true
 
 # --- Print beautifully structured summary ---

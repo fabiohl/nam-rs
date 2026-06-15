@@ -156,7 +156,7 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     });
 
     // Explicit scalar path to measure theoretical speedup
-    #[cfg(any(test, feature = "long_bench"))]
+    #[cfg(test)]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::StaticModel::Lstm1x8(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
@@ -184,7 +184,7 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
         });
     });
 
-    #[cfg(any(test, feature = "long_bench"))]
+    #[cfg(test)]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::StaticModel::Lstm2x16(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
@@ -665,57 +665,7 @@ fn bench_prewarm_a2_lite(c: &mut Criterion) {
     });
 }
 
-// ── A2 long-run soak benchmarks ──
-
-#[cfg(feature = "long_bench")]
-fn bench_a2_full_long_run(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_full.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(4096);
-    let size = 4096;
-    let input = generate_sine_440hz(size);
-    let mut output = vec![0.0f32; size];
-    let mut group = c.benchmark_group("Long_Run_A2Full");
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.sample_size(100);
-    group.bench_function("Long_A2Full_CH8_4096samp", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-    group.finish();
-}
-
-#[cfg(feature = "long_bench")]
-fn bench_a2_lite_long_run(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(4096);
-    let size = 4096;
-    let input = generate_sine_440hz(size);
-    let mut output = vec![0.0f32; size];
-    let mut group = c.benchmark_group("Long_Run_A2Lite");
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.sample_size(100);
-    group.bench_function("Long_A2Lite_CH3_4096samp", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-    group.finish();
-}
+// ── A2 long-run soak benches → moved to benches/long_inference_bench.rs (T2.2.3) ──
 
 /// Measures the time spent in the `prewarm` function.
 /// Although prewarm runs outside the audio thread, it must be fast enough
@@ -750,77 +700,7 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
     });
 }
 
-// --- Long Benchmarks (Soak Testing) ---
-// These benchmarks only run if the "long_bench" feature is enabled.
-// They are intended to validate CPU thermal stability and detect performance
-// variations over time (jitters, throttling).
-
-#[cfg(feature = "long_bench")]
-fn bench_wavenet_long_run(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(4096);
-    let size = 4096;
-    let input = generate_sine_440hz(size);
-    let mut output = vec![0.0f32; size];
-    let mut group = c.benchmark_group("Long_Run_WaveNet");
-    // Extended run (35 seconds) to ensure statistical convergence and avoid timeout warnings
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.sample_size(100);
-    group.bench_function("Long_WaveNet_Standard_CH16_4096samp", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-    group.finish();
-}
-
-#[cfg(feature = "long_bench")]
-fn bench_lstm_long_run(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16);
-    let mut model = build_model(&data).expect("Dispatcher failed");
-    model.prewarm(4096);
-    let size = 4096;
-    let input = generate_sine_440hz(size);
-    let mut output = vec![0.0f32; size];
-    let mut group = c.benchmark_group("Long_Run_LSTM");
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.sample_size(100);
-    group.bench_function("Long_LSTM_2x16_4096samp", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-    group.finish();
-}
-
-#[cfg(feature = "long_bench")]
-fn bench_resampler_long_run(c: &mut Criterion) {
-    use nam_rs::dsp::resampler::NamResampler;
-    let size = 4096;
-    let mut rs = NamResampler::new(44_100, 48_000, size).unwrap();
-    let in_l = vec![0.0f32; size];
-    let in_r = vec![0.0f32; size];
-    let mut out_l = vec![0.0f32; size * 2];
-    let mut out_r = vec![0.0f32; size * 2];
-    let mut group = c.benchmark_group("Long_Run_Resampler");
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.sample_size(100);
-    group.bench_function("Long_Resampler_44100_to_48000_4096samp", |b| {
-        b.iter(|| {
-            // Validate that the resampler maintains stability and does not accumulate
-            // phase errors or variable latency over long periods.
-            rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
-        });
-    });
-    group.finish();
-}
+// --- Long Benchmarks (Soak Testing) → moved to benches/long_inference_bench.rs (T2.2.3) ---
 
 fn bench_lstm_1x40_process(c: &mut Criterion) {
     let data = make_lstm_data(1, 40);
@@ -869,7 +749,7 @@ fn bench_lstm_1x40_comparison(c: &mut Criterion) {
         });
     });
 
-    #[cfg(any(test, feature = "long_bench"))]
+    #[cfg(test)]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::StaticModel::Lstm1x40(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
@@ -896,7 +776,7 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
         });
     });
 
-    #[cfg(any(test, feature = "long_bench"))]
+    #[cfg(test)]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::StaticModel::Lstm2x24(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
@@ -1455,46 +1335,7 @@ fn bench_cabsim_engine_construction_long(c: &mut criterion::Criterion) {
     });
 }
 
-#[cfg(feature = "long_bench")]
-fn bench_cabsim_long_run(c: &mut criterion::Criterion) {
-    use nam_rs::dsp::cabsim::conv::ConvEngine;
-
-    let ir = synth_ir(16384, 440.0, 10.0);
-    let mut engine = ConvEngine::new(&ir, 64);
-    let mut input = vec![0.0f32; 4096];
-    let mut output = vec![0.0f32; 4096];
-
-    // Warm-up
-    for i in 0..engine.num_partitions().max(1) {
-        let mut buf_in = vec![0.0f32; 64];
-        let mut buf_out = vec![0.0f32; 64];
-        for (j, v) in buf_in.iter_mut().enumerate() {
-            *v = ((i * 64 + j) as f32 * 0.01).sin();
-        }
-        engine.process(&buf_in, &mut buf_out);
-        output[..64].copy_from_slice(&buf_out);
-    }
-
-    let mut group = c.benchmark_group("Cabsim_LongRun");
-    group.sample_size(100);
-    group.measurement_time(std::time::Duration::from_secs(35));
-    group.bench_function("4096samp_block", |b| {
-        b.iter(|| {
-            for (j, v) in input.iter_mut().enumerate() {
-                *v = (j as f32 * 0.01).sin();
-            }
-            for chunk in 0..(4096 / 64) {
-                let start = chunk * 64;
-                engine.process(
-                    std::hint::black_box(&input[start..start + 64]),
-                    std::hint::black_box(&mut output[start..start + 64]),
-                );
-            }
-            std::hint::black_box(&output);
-        });
-    });
-    group.finish();
-}
+// cabsim_long_run → moved to benches/long_inference_bench.rs (T2.2.3)
 
 // Main benchmark group definition (inference latency and DSP kernels)
 criterion_group!(
@@ -1590,17 +1431,4 @@ fn bench_container_crossfade_64samp(c: &mut Criterion) {
     });
 }
 
-// Long-running benchmark group definition (Soak Tests)
-#[cfg(feature = "long_bench")]
-criterion_group!(
-    name = long_benches;
-    config = Criterion::default();
-    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run, bench_a2_full_long_run, bench_a2_lite_long_run, bench_cabsim_long_run
-);
-
-// Conditional entry point depending on stress feature activation
-#[cfg(not(feature = "long_bench"))]
 criterion_main!(benches);
-
-#[cfg(feature = "long_bench")]
-criterion_main!(benches, long_benches);
