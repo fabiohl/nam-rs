@@ -58,6 +58,32 @@ desencorajam a execução frequente — exatamente o anti-padrão que o projeto 
 > ⚠️ **Épico mais crítico do documento.** A Sprint 1.1 (F1) toca código de produção
 > (`src/common/alloc_audit.rs`) que é a base das garantias de RT-Safety. Qualquer erro
 > aqui pode mascarar regressões de alocação na thread de áudio. Exige revisão rigorosa.
+>
+> ### ✅ Resultado do Épico 1 (CONCLUÍDO — auditado em 2026-06-14)
+>
+> **Métricas (cold run com `rm -rf target/`, vide `tests-cargo.log`):**
+>
+> | Métrica           | Baseline  | Pós-Épico 1           | Meta    | Veredito           |
+> | ----------------- |:---------:|:---------------------:|:-------:|:------------------:|
+> | Cold (frio)       | ≈4m40s    | **2m17,9s**           | < 2 min | 🟡 Quase (−51%)    |
+> | Warm (morno)      | ≈2m00s    | **0m58,3s**           | < 60 s  | ✅ Atingido (−51%) |
+> | Lib tests (par.)  | 33,4s/1t  | **22,2s**             | —       | ✅ Paralelizado    |
+> | Parity redundante | 38×/teste | **1×/run**            | 1×      | ✅ Resolvido (F3)  |
+> | clap-validator    | 19/21     | **19/21, 0 warnings** | —       | ✅ Mantido         |
+>
+> **Decisões registradas:**
+>
+> - **F1** resolvido via TLS (Sprint 1.1); caminho RT do CLAP validado (guard armado na thread de áudio).
+> - **nextest REJEITADO** (T1.5.1): ~2× mais lento nesta suíte (testes <0,05s, custo de processo domina). Artefatos removidos.
+> - **sccache CANCELADO** (T1.4.2) por decisão de PO (infra será mexida em breve).
+> - **T1.5.3/1.5.4/1.5.5 CANCELADOS**: saída informativa via tabela de fase abandonada em favor de `cargo test` enxuto + fail-fast (T1.6.3).
+> - **F4** resolvido unificando `target/` + profile `test` nas fases 2-3 (T1.4.3).
+>
+> **Achados residuais (carregados para Épico 3 / acompanhamento):**
+>
+> - 🟡 **`diagnostic_bundle` custa 10,28s no cold run** (era 0,01s) — `test_panic_hook_behavior` paga simbolização de _backtrace_ em cache de disco frio (warm = 0,02s). Cold-only, baixa prioridade. Ver T3.3.1.
+> - 🟢 **`AUDIT_ENABLED` global** ainda é mutado por `test_heap_audit_trigger` sem isolamento RAII (0 flakes em 6 runs, mas frágil). Ver T3.3.2.
+> - 🟢 Header "± 54 second" reflete só o warm; cold é 2m18s (sem distinção honesta cold/warm).
 
 ---
 
@@ -218,7 +244,9 @@ builds de features diferentes (`lints.sh` usa default features) — é um _trade
 - [CANCELADO] **T1.4.2 — Avaliar `sccache` para a stack de testes.**
   A árvore GUI é estável (raramente muda); um cache de compilação cortaria o cold run
   da fase 3 drasticamente.
+
   > Nota do PO: Não necessariamente. Ele vai ser mexido em breve. Não vamos complicar!
+
   - _Critério de aceite_: PoC com ganho ≥ 50% no cold compile da fase 3, ou justificativa
     documentada para não adotar.
 
@@ -252,15 +280,17 @@ testes lentos/_flaky_.
   - **Resultado do PoC (2026-06-14):** nextest NÃO atinge o critério de ≥50% de redução.
     Em execução morna (pré-compilada) em 16 núcleos:
 
-    | Fase   | `cargo test` | `cargo nextest` | Delta    |
-    |--------|--------------|-----------------|----------|
-    | 1      | ~32,1s       | ~62,8s          | **+96%** |
-    | 3      | ~3,5s        | ~6,7s           | **+91%** |
+    | Fase | `cargo test` | `cargo nextest` | Delta    |
+    | ---- | ------------ | --------------- | -------- |
+    | 1    | ~32,1s       | ~62,8s          | **+96%** |
+    | 3    | ~3,5s        | ~6,7s           | **+91%** |
 
     > A maioria dos testes é muito rápida (<0,05s) → o custo de criação de processo por
     > teste domina o runtime. O `cargo test` já roda em paralelo (Sprint 1.1 eliminou
     > `--test-threads=1`), anulando o principal ganho esperado com nextest.
+
   - **Achados positivos:**
+
     1. nextest expôs _falso-positivo_ no `test_rdtsc_nanos_significant`: passa no
        `cargo test` (processo aquecido por outros testes) mas falha em isolamento
        (nextest) — o teste depende de tempo de execução acumulado do processo.
@@ -268,9 +298,11 @@ testes lentos/_flaky_.
     3. Sumário conciso e _timing por teste_ → valor informativo (coberto por T1.5.3).
     4. `.config/nextest.toml` criado com configuração base. Script PoC em
        `utils/tests-cargo-nextest-poc.sh`.
+
   - **Recomendação:** não adotar `cargo-nextest` como runner padrão (perda de ~2× em
     velocidade). Manter instalado para diagnóstico pontual de testes _flaky_ e para o
     perfil `serial`/`heavy` (T1.5.2).
+
   - **Nota do PO:** Artefatos deletados. Não vamos continuar avaliando o nextest.
     Ele deveria ter trazido benefícios mais óbvios, que não melhorarão adiante
 
@@ -334,47 +366,180 @@ testes lentos/_flaky_.
 
 ---
 
-## ÉPICO 2 — Correções funcionais e de ruído reveladas pela suíte (pós-infra)
+## ÉPICO 2 — Suíte Longa (`utils/tests-long.sh`): auditoria, otimização e protocolo de execução
 
-> Itens funcionais do nam-rs detectados durante a auditoria. **Não bloqueiam** o Épico 1;
-> devem ser tratados após estabilizar a infraestrutura.
+> **Objetivo**: aplicar à suíte longa os aprendizados do Épico 1 — **eliminar desperdício
+> de recompilação** e tornar a execução **organizada e diagnosticável** — SEM reduzir a
+> profundidade do estresse. A suíte longa é **deliberadamente pesada** (caça profunda,
+> cenários extremos); o alvo não é "rápida", é **"sem desperdício e executável em lote"**.
+> Hoje consome ≈ 46 min (cold). Boa parte é **recompilação por troca de profile/feature**,
+> não estresse real.
+>
+> ### ⚠️ PROTOCOLO DE EXECUÇÃO EM LOTE (LER ANTES DE EXECUTAR TAREFAS)
+>
+> A suíte longa **NÃO deve ser executada dentro de uma tarefa técnica**. Para não travar o
+> progresso das sprints com esperas de ~46 min:
+>
+> 1. **Tarefas técnicas** fazem apenas edições + validações **rápidas e pontuais**:
+>    `cargo build/test ... --no-run` (só compila), ou a execução de **uma única fase curta**
+>    quando isolável. **Nunca** a suíte completa.
+> 2. **As execuções completas acontecem em GATES explícitos** (marcados `🚦 GATE Lx`),
+>    quando o usuário puder deixar rodando e voltar depois. O agente **avisa** que um gate
+>    chegou, agrupa **todas** as mudanças pendentes que tocam a suíte longa, e o usuário roda
+>    **uma vez**, trazendo `target/logs/*.log` + a tabela de sumário final.
+> 3. **Meta de no máximo 2 execuções completas no épico**: `🚦 GATE L0` (baseline) e
+>    `🚦 GATE L1` (validação final pós-otimização). Toda tarefa de implementação fica
+>    **entre** L0 e L1 e é validada por compilação/raciocínio, colhendo resultado só no L1.
 
-### Sprint 2.1 — Ruído e fidelidade do `clap-validator`
+### Sprint 2.1 — Baseline e diagnóstico (🚦 GATE L0)
 
-- [ ] **T2.1.1 — Rebaixar o nível de log do _state-invalid_.**
-  `tests-cargo.log:2306`:
-  `[CLAP_PLUGIN_ERROR] Failed to deserialize state (v0 legacy): EOF ... line 1 column 0`.
-  Ocorre no teste `state-invalid` (carregar estado **vazio**), condição **esperada** em
-  que o plugin corretamente retorna `false` (teste PASSED). Logar como `ERROR` polui a
-  saída e pode alarmar. Rebaixar para `debug`/`trace` quando a entrada for vazia.
+- [ ] **T2.1.1 — 🚦 GATE L0: medir baseline completo.**
+  Execução **completa** da `tests-long.sh` atual (cold), preservando `target/logs/` e a
+  tabela de sumário. **Único momento de execução completa desta sprint.**
+
+  - _Critério de aceite_: baseline com duração **por fase** e status registrados no épico.
+  - _Quando_: o usuário roda quando puder ausentar-se (~46 min) e traz os logs.
+
+- [ ] **T2.1.2 — Quantificar build vs. estresse real (a partir dos logs do L0).**
+  Contar nos `target/logs/phase*.log` quantas vezes `nam-rs` é recompilado e quanto tempo
+  é build vs execução de teste/bench. Mapear cada fase → (profile, feature-set).
+
+  - _Critério de aceite_: tabela "fase → profile/features → nº de rebuilds → s de build".
+
+- [ ] **T2.1.3 — Verificar cobertura real (anti silent-skip).**
+  Confirmar, nos logs do L0, se `cpp_parity` (LSTM/WaveNet _live_) e `cabsim_cpp_parity`
+  **de fato executam** ou se caem em _skip_ por ausência dos goldens C++. `tests-long.sh`
+  **não** invoca `tests/fixtures/golden_gen_build.sh` — os goldens `cabsim` existem
+  (estáticos), mas os _live_ de `cpp_parity` podem estar em silent-skip mesmo na longa.
+
+  - _Critério de aceite_: lista do que roda de fato vs. o que é pulado, por fase.
+
+### Sprint 2.2 — Eliminar desperdício de compilação (espelho de F4/F2 do Épico 1)
+
+> Todas as tarefas abaixo são **edições de script + `--no-run` para validar compilação**.
+> Resultado de tempo só é colhido no 🚦 GATE L1 (Sprint 2.4).
+
+- [ ] **T2.2.1 — Reagrupar comandos por (profile, feature-set).**
+  Hoje as fases alternam `release+standalone`, `release` (default), `release+heap-audit`,
+  `release+clap-plugin`, `debug+clap-plugin`, `debug+standalone` — cada troca dispara
+  recompilação (em release com `lto=fat`, custo enorme). Reordenar para **clusterizar**
+  execuções de mesma configuração e minimizar trocas.
+
+  - _Critério de aceite_: ordem das fases agrupada por config; nº de rebuilds da árvore
+    cai mensuravelmente (validar no L1). Cobertura idêntica.
+
+- [ ] **T2.2.2 — Unificar profile da Phase 4 (CLAP).**
+  A Phase 4 compila a árvore GUI em **release** (build do `.so`) **e em debug**
+  (`cargo test` de `clap_multi_instance`, `gc_stress`, mono — `tests-long.sh:142-151`).
+  Rodar esses testes em **release** reaproveita o build do `.so` e evita compilar todo o
+  egui/baseview/wayland duas vezes.
+
+  - _Critério de aceite_: Phase 4 não recompila a árvore CLAP em dois profiles; testes de
+    concorrência/mono continuam passando.
+
+- [ ] **T2.2.3 — Dedup de benches (Phase 5).**
+  `cargo bench` (default) roda `inference_bench` (parte curta) e depois
+  `cargo bench --features standalone,long_bench --bench inference_bench` recompila e
+  **re-roda** as partes curtas do mesmo bench. Separar curto vs. longo sem recompilar/repetir.
+
+  - _Critério de aceite_: cada bench roda o necessário **uma vez**; sem rebuild redundante.
+
+- [ ] **T2.2.4 — Reavaliar `--test-threads=1` nos soak (Phase 1).**
+  Com a auditoria de alocação agora TLS (Épico 1), avaliar se `soak_test`/`pipeline_soak`
+  ainda precisam de serialização ou podem paralelizar (mantendo determinismo numérico).
+
+  - _Critério de aceite_: flag removido **ou** justificativa técnica documentada; soak
+    determinístico em ≥ 2 execuções (colhido no L1).
+
+### Sprint 2.3 — Cobertura, profundidade e informatividade (sem perder estresse)
+
+- [ ] **T2.3.1 — Garantir geração dos goldens C++ (fechar gap de T2.1.3).**
+  Invocar `tests/fixtures/golden_gen_build.sh` (ou documentar pré-requisito) no início da
+  suíte longa, para que `cpp_parity`/`cabsim_cpp_parity` rodem de verdade — não _skip_.
+
+  - _Critério de aceite_: paridade C++ executa com goldens presentes; ausência vira **erro
+    explícito**, não _skip_ silencioso.
+
+- [ ] **T2.3.2 — Relatório de testes/benches mais lentos por fase.**
+  Acrescentar ao sumário (que já tem duração por fase) o **top-N mais lento** dentro das
+  fases pesadas, para guiar otimizações futuras.
+
+  - _Critério de aceite_: sumário lista os maiores ofensores de tempo.
+
+- [ ] **T2.3.3 — Revisar profundidade de estresse (proptest/soak).**
+  Confirmar que as contagens de casos (proptest) e iterações (soak) maximizam estresse
+  onde é barato; aumentar onde o custo marginal for baixo. **Não reduzir** cobertura.
+
+  - _Critério de aceite_: parâmetros de estresse revisados e justificados.
+
+### Sprint 2.4 — Validação final (🚦 GATE L1)
+
+- [ ] **T2.4.1 — 🚦 GATE L1: execução completa pós-otimização.**
+  Após **todas** as tarefas 2.2/2.3 mescladas, **uma** execução completa para: (a) comparar
+  tempo total e por-fase vs. baseline L0; (b) confirmar **0 regressões**; (c) confirmar
+  cobertura (goldens C++, soak, paridade).
+  - _Critério de aceite_: tempo total reduzido (sem perda de cobertura); tabela L0→L1
+    registrada; suíte verde.
+  - _Quando_: agrupar aqui o resultado de tudo entre L0 e L1; **última** execução completa.
+
+---
+
+## ÉPICO 3 — Correções funcionais e de ruído reveladas pelas suítes (pós-infra)
+
+> Itens funcionais do nam-rs detectados durante as auditorias. **Não bloqueiam** os
+> Épicos 1-2; validados majoritariamente pela suíte padrão (rápida) e por execuções
+> dirigidas — **sem** depender dos gates da suíte longa, salvo onde indicado.
+
+### Sprint 3.1 — Ruído e fidelidade do `clap-validator`
+
+- [ ] **T3.1.1 — Rebaixar o nível de log do _state-invalid_.**
+  No baseline antigo, `state-invalid` (estado **vazio**) emitia
+  `[CLAP_PLUGIN_ERROR] Failed to deserialize state (v0 legacy): EOF`, condição esperada em
+  que o plugin retorna `false` (teste PASSED). **Nota da auditoria:** no log mais recente
+  (`tests-cargo.log`, pós-Épico 1) essa linha **não aparece** — reconfirmar se ainda
+  reproduz antes de mexer. Se reproduzir, rebaixar para `debug`/`trace` em entrada vazia.
 
   - _Arquivos_: `src/clap/extensions/state.rs` (caminho de `Deserialize`, ~`:238`).
-  - _Critério de aceite_: estado vazio não emite `[CLAP_PLUGIN_ERROR]`; comportamento
-    de retorno inalterado; teste do validator continua PASSED.
+  - _Critério de aceite_: estado vazio não emite `[CLAP_PLUGIN_ERROR]`; retorno inalterado.
 
-- [ ] **T2.1.2 — Decidir sobre `clap.note-ports` (2 testes SKIPPED).**
-  `process-note-*` são pulados por o plugin não implementar `note-ports` (linhas 2373/2377).
-  Confirmar se é intencional (plugin de efeito sem MIDI) e documentar para não parecer
-  lacuna.
+- [ ] **T3.1.2 — Decidir sobre `clap.note-ports` (2 testes SKIPPED).**
+  `process-note-*` pulados por não implementar `note-ports`. Confirmar se é intencional
+  (efeito sem MIDI) e documentar para não parecer lacuna.
 
   - _Critério de aceite_: decisão registrada em `docs/` (intencional) ou tarefa criada.
 
-- [ ] **T2.1.3 — (Opcional) validação estrita em debug na suíte padrão.**
-  A suíte padrão roda `clap-validator validate` (exit code) no `.so` **debug**; a longa
-  usa `--json` + `jq` para falhar em _warnings_ (`tests-long.sh:128-137`). Avaliar trazer
-  a checagem de _warnings_ via `--json` para a suíte padrão (barata, ~3 s).
+- [ ] **T3.1.3 — (Opcional) validação estrita por `--json` na suíte padrão.**
+  A suíte padrão valida por exit code; a longa usa `--json`+`jq` para falhar em _warnings_.
+  Avaliar trazer a checagem de _warnings_ para a padrão (barata, ~3 s).
 
   - _Critério de aceite_: _warnings_ do validator falham a suíte padrão, ou justificativa.
 
-### Sprint 2.2 — Divergência numérica conhecida (registrada, não regressão nova)
+### Sprint 3.2 — Divergência numérica conhecida (registrada, não regressão nova)
 
-- [ ] **T2.2.1 — Investigar WaveNet Lite (CH=12) vs C++.**
-  `golden_vectors`: `test_golden_vectors_wavenet_lite` está `ignored` como
-  "known-divergent ... SNR = 0,9 dB vs C++" (linhas 764/2046). SNR de 0,9 dB é
-  perceptualmente relevante. Investigar a fonte da deriva (acúmulo, ordem de redução,
-  bf16) e definir plano de correção ou aceitação formal.
+- [ ] **T3.2.1 — Investigar WaveNet Lite (CH=12) vs C++.**
+  `test_golden_vectors_wavenet_lite` está `ignored` como "known-divergent ... SNR = 0,9 dB
+  vs C++". SNR de 0,9 dB é perceptualmente relevante. Investigar a deriva (acúmulo, ordem
+  de redução, bf16) e definir correção ou aceitação formal.
   - _Critério de aceite_: causa-raiz documentada; teste reabilitado **ou** divergência
     formalmente aceita com justificativa numérica (skill `pesquisador-inovador`).
+
+### Sprint 3.3 — Resíduos da infraestrutura do Épico 1
+
+- [ ] **T3.3.1 — `diagnostic_bundle` lento no cold run (10,28s).**
+  `test_panic_hook_behavior` paga simbolização de _backtrace_ em cache de disco frio
+  (warm = 0,02s). Avaliar: tornar o _backtrace_ mais leve, marcar a variante pesada como
+  `#[ignore]` (movendo-a para a longa), ou aceitar como custo cold-only documentado.
+
+  - _Critério de aceite_: decisão registrada; se mantido, justificado como aceitável.
+
+- [ ] **T3.3.2 — Endurecer `AUDIT_ENABLED` global em `test_heap_audit_trigger`.**
+  `src/clap/processor_test.rs:768` liga/desliga `AUDIT_ENABLED` (atômico **de processo**)
+  sem RAII; se o `process()` entrar em pânico antes do reset (linha 789), a flag fica
+  ligada para o resto da suíte. Envolver set/reset em guard RAII (reset no `Drop`) e
+  serializar com o padrão `TEST_MUTEX`.
+
+  - _Critério de aceite_: flag sempre restaurada mesmo sob pânico; sem corrida com testes
+    `clap::` paralelos.
 
 ---
 
@@ -394,10 +559,19 @@ testes lentos/_flaky_.
 | Ruído `[CLAP_PLUGIN_ERROR]`         | `tests-cargo.log:2306`; `src/clap/extensions/state.rs:238`              |
 | WaveNet Lite divergente             | `tests-cargo.log:764`, `:2046`                                          |
 
-## Apêndice B — Metas de aceite do Épico 1
+## Apêndice B — Metas de aceite
 
-- **Agilidade**: suíte padrão **< 60 s** (build morno) e **< 2 min** (frio) em 16 núcleos.
-- **Segurança**: auditoria de alocação **sem falso-negativo** sob paralelismo (T1.1.3).
-- **Estabilidade**: 0 _flakes_ em ≥ 5 execuções consecutivas pós-paralelização.
-- **Informatividade**: sumário com timing por fase + lista dos testes mais lentos.
-- **Cobertura**: nenhuma perda de teste exclusivo de configuração (T1.2.2 / T1.6.2).
+### Épico 1 (CONCLUÍDO)
+
+- **Agilidade**: ✅ warm **58,3s** (< 60 s); 🟡 cold **2m17,9s** (meta < 2 min, −51% vs baseline).
+- **Segurança**: ✅ auditoria de alocação TLS sem falso-negativo (T1.1.3).
+- **Estabilidade**: ✅ 0 _flakes_ (Phase 3-A: 6 runs verdes; cold+warm completos verdes).
+- **Informatividade**: ⚠️ tabela de fase **abandonada** (T1.5.3 cancelado); mantido `cargo test` enxuto + fail-fast.
+- **Cobertura**: ✅ nenhuma perda de teste por configuração (T1.2.2 / T1.6.2).
+
+### Épico 2 (suíte longa — alvos)
+
+- **Sem desperdício**: redução mensurável de rebuilds da árvore (agrupamento por config); tempo total cai **sem** perder cobertura.
+- **Cobertura honesta**: 0 _silent-skips_ — paridade C++ roda de verdade ou falha explicitamente.
+- **Execução em lote**: ≤ 2 execuções completas no épico (🚦 L0 baseline, 🚦 L1 validação).
+- **Informatividade**: sumário com duração por fase + top-N mais lentos.
