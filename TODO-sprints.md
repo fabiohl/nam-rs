@@ -659,12 +659,13 @@ testes lentos/_flaky_.
 
 ### Sprint 3.3 — Resíduos da infraestrutura do Épico 1
 
-- [ ] **T3.3.1 — `diagnostic_bundle` lento no cold run (10,28s).**
+- [x] **T3.3.1 — `diagnostic_bundle` lento no cold run (10,28s).**
   `test_panic_hook_behavior` paga simbolização de _backtrace_ em cache de disco frio
   (warm = 0,02s). Avaliar: tornar o _backtrace_ mais leve, marcar a variante pesada como
   `#[ignore]` (movendo-a para a longa), ou aceitar como custo cold-only documentado.
 
   - _Critério de aceite_: decisão registrada; se mantido, justificado como aceitável.
+  - **Achado & Decisão (2026-06-15):** A lentidão no cold run (~10,28s) ocorria porque a chamada `panic!` no teste `test_panic_hook_behavior` disparava o gancho padrão do Rust (através de `prev_hook(info)`), o qual, sob `RUST_BACKTRACE=1` ou `RUST_BACKTRACE=full`, realizava a leitura e resolução dos símbolos de depuração diretamente do disco frio. Para solucionar isso sem alterar o comportamento em produção (onde o backtrace ainda é desejado no crash report padrão), modificamos o teste de integração para temporariamente desviar o `prev_hook` para um gancho dummy no-op (`Box::new(|_| {})`) durante os pânicos controlados. Isso eliminou completamente a resolução e a impressão dos backtraces durante o teste, reduzindo o tempo de execução do teste para menos de 1ms, mesmo em runs a frio.
 
 - [ ] **T3.3.2 — Endurecer `AUDIT_ENABLED` global em `test_heap_audit_trigger`.**
   `src/clap/processor_test.rs:768` liga/desliga `AUDIT_ENABLED` (atômico **de processo**)

@@ -194,7 +194,8 @@ fn test_panic_hook_behavior() {
         }
     }
 
-    let prev_hook = std::panic::take_hook();
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     nam_rs::common::panic_hook::install_panic_hook(component_name);
 
     let result = std::panic::catch_unwind(|| {
@@ -202,7 +203,7 @@ fn test_panic_hook_behavior() {
     });
     assert!(result.is_err());
 
-    std::panic::set_hook(prev_hook);
+    std::panic::set_hook(original_hook);
 
     // Verify report
     let mut found_report = None;
@@ -257,7 +258,8 @@ fn test_panic_hook_behavior() {
     nam_rs::common::panic_hook::set_shutdown_in_progress();
     assert!(nam_rs::common::panic_hook::is_shutdown_in_progress());
 
-    let prev_hook = std::panic::take_hook();
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     nam_rs::common::panic_hook::install_panic_hook(component_bypass);
 
     let result = std::panic::catch_unwind(|| {
@@ -265,7 +267,7 @@ fn test_panic_hook_behavior() {
     });
     assert!(result.is_err());
 
-    std::panic::set_hook(prev_hook);
+    std::panic::set_hook(original_hook);
 
     // Verify NO report was created
     let mut found_bypass_report = false;
