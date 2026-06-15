@@ -155,16 +155,16 @@ run_clap_audit_local() {
     fi
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    cargo test --no-default-features --no-fail-fast --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
+    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
     
     echo "  Executando teste de stress do GC com 1000 swaps..."
-    cargo test --no-default-features --no-fail-fast --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
+    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
     
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
-    cargo test --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
+    cargo test --release --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
     
     echo "  Executando testes unitários e de integração em modo Mono..."
-    cargo test --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
+    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
 
     return $audit_status
 }

@@ -491,14 +491,19 @@ testes lentos/_flaky_.
     (release+default) movidos da Phase 3 para Phase 2, eliminando rebuild duplicado.
     `default = ["standalone", "testing"]` → Phases 1 e 2 compartilham mesmos artefatos.
 
-- [ ] **T2.2.2 — Unificar profile da Phase 4 (CLAP).**
-  A Phase 4 compila a árvore GUI em **release** (build do `.so`) **e em debug**
-  (`cargo test` de `clap_multi_instance`, `gc_stress`, mono — `tests-long.sh:142-151`).
-  Rodar esses testes em **release** reaproveita o build do `.so` e evita compilar todo o
-  egui/baseview/wayland duas vezes.
+- [x] **T2.2.2 — Unificar profile da Phase 4 (CLAP).**
+   A Phase 4 compila a árvore GUI em **release** (build do `.so`) **e em debug**
+   (`cargo test` de `clap_multi_instance`, `gc_stress`, mono — `tests-long.sh:142-151`).
+   Rodar esses testes em **release** reaproveita o build do `.so` e evita compilar todo o
+   egui/baseview/wayland duas vezes.
 
   - _Critério de aceite_: Phase 4 não recompila a árvore CLAP em dois profiles; testes de
-    concorrência/mono continuam passando.
+     concorrência/mono continuam passando.
+
+  - ✅ **Feito**: 4 comandos de `cargo test` na Phase 4 agora usam `--release`.
+     Linhas 158/161 também alinham `heap-audit` com o build do `.so` (linha 126)
+     para máxima reutilização de artefatos. Verificação de compilação OK nos 4
+     targets (`clap_multi_instance`, `gc_stress`, `concurrency_stress`, mono tests).
 
 - [ ] **T2.2.3 — Dedup de benches (Phase 5).**
   `cargo bench` (default) roda `inference_bench` (parte curta) e depois
