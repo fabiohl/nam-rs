@@ -29,6 +29,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## 3. SIMD & Auto-Vectorization (target: x86-64-v3)
 
+* Nam-rs is x86-64-v3 first: *Alway* try to optimize to use modern ISA instructions.
 * **Loops:** Use `.chunks_exact(N)` / `.chunks_exact_mut(N)` + `zip`. Bodies free of complex branches — prefer branchless (SIMD masks).
 * **Alignment:** Always `AlignedVec<T>` (64 bytes) for buffers, coefficients, and tensors. Prevents unaligned load/store penalties.
 

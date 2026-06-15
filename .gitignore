@@ -66,3 +66,7 @@ mutants.out.old/
 /tests/fixtures/.temp_live/
 /tests/fixtures/stress_signal.wav
 /tests/fixtures/stress_signal_v2_*.wav
+
+# Artefatos de bytecode Python (scripts de fixtures/utilitários)
+__pycache__/
+*.pyc
