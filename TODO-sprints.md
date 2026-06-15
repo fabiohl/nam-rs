@@ -396,8 +396,11 @@ testes lentos/_flaky_.
 - [x] **T2.1.1 — 🚦 GATE L0: medir baseline completo.**
   Execução **completa** da `tests-long.sh` atual (cold), preservando `target/logs/` e a
   tabela de sumário. **Único momento de execução completa desta sprint.**
+
   - _Critério de aceite_: baseline com duração **por fase** e status registrados no épico.
+
   - _Quando_: o usuário roda quando puder ausentar-se (~46 min) e traz os logs.
+
   - _Resultado (2026-06-14, 48m41s total)_:
 
     | Fase                                          | Duração | Status     |
@@ -416,11 +419,29 @@ testes lentos/_flaky_.
     by adding `report_dsp_fidelity_no_lufs()` in `tests/common/validation.rs` and using
     it in `cabsim_cpp_parity.rs`. All 3 tests now pass. See Phase 3 log for details.
 
-- [ ] **T2.1.2 — Quantificar build vs. estresse real (a partir dos logs do L0).**
+- [x] **T2.1.2 — Quantificar build vs. estresse real (a partir dos logs do L0).**
   Contar nos `target/logs/phase*.log` quantas vezes `nam-rs` é recompilado e quanto tempo
   é build vs execução de teste/bench. Mapear cada fase → (profile, feature-set).
-
   - _Critério de aceite_: tabela "fase → profile/features → nº de rebuilds → s de build".
+  - _Resultado (2026-06-14, analisado dos logs do 🚦 GATE L0)_:
+
+    | Fase                    | Profile(s)      | Features                                                              | Builds | Build (s) | Exec (s) | Total (s) | % Build  |
+    | ----------------------- | --------------- | --------------------------------------------------------------------- | ------ | --------- | -------- | --------- | -------- |
+    | 1 — Soak Tests          | release         | standalone                                                            | 2      | 93        | 46       | 139       | **67%**  |
+    | 2 — Property/Parity     | release         | (default)                                                             | 7      | 115       | 22       | 137       | **84%**  |
+    | 3 — Heap-Audit + Parity | release         | heap-audit → default                                                  | 6      | 139       | 13       | 152       | **91%**  |
+    | 4 — CLAP Validation     | release → debug | clap-plugin+heap-audit → clap-plugin, standalone, clap-plugin+testing | 5      | 155       | 68       | 223       | **70%**  |
+    | 5 — Long Benchmarks     | bench           | (default) → standalone+long_bench                                     | 2      | 144       | 2078     | 2222      | **6%**   |
+    | 6 — PipeWire            | release         | standalone                                                            | 1      | 49        | 0        | 49        | **100%** |
+
+    **Total**: **695s build** (11.6 min, 24%) + **2227s exec** (37.1 min, 76%) = 2922s (48.7 min).
+    **Principais desperdícios de recompilação identificados nas trocas de config:**
+    - P2 interna: `--test` → `--lib` força rebuild completo do crate (58s)
+    - P3: `heap-audit` → default features (~45s + 46s)
+    - P4: `release` (79s) + debug dos mesmos deps GUI (25+9+40=74s) — **recompilação em dois profiles**
+    - P5: features default → `standalone,long_bench` (70s)
+    - P6: mudança de profile `bench` → `release` (49s)
+    - Troca de `standalone` (P1) → default (P2) → `heap-audit` (P3) → `clap-plugin` (P4) → `bench` (P5) → `standalone` (P6): **5 mudanças de feature-set** + **2 mudanças de profile** (release↔debug, release↔bench) em 48 min de execução.
 
 - [x] **T2.1.3 — Verificar cobertura real (anti silent-skip).**
   Confirmar, nos logs do L0, se `cpp_parity` (LSTM/WaveNet _live_) e `cabsim_cpp_parity`
@@ -454,8 +475,9 @@ testes lentos/_flaky_.
 
 > Todas as tarefas abaixo são **edições de script + `--no-run` para validar compilação**.
 > Resultado de tempo só é colhido no 🚦 GATE L1 (Sprint 2.4).
+> Sempre consulte os achados registrados nas tarefas anteriores.
 
-- [ ] **T2.2.1 — Reagrupar comandos por (profile, feature-set).**
+- [x] **T2.2.1 — Reagrupar comandos por (profile, feature-set).**
   Hoje as fases alternam `release+standalone`, `release` (default), `release+heap-audit`,
   `release+clap-plugin`, `debug+clap-plugin`, `debug+standalone` — cada troca dispara
   recompilação (em release com `lto=fat`, custo enorme). Reordenar para **clusterizar**
@@ -463,6 +485,11 @@ testes lentos/_flaky_.
 
   - _Critério de aceite_: ordem das fases agrupada por config; nº de rebuilds da árvore
     cai mensuravelmente (validar no L1). Cobertura idêntica.
+
+  - ✅ **Feito**: Release rebuilds reduzidos de 5 → 3. Phase 6 (pw_integration,
+    release+standalone) fundida na Phase 1. Testes cpp_parity/cabsim_cpp_parity/golden_vectors
+    (release+default) movidos da Phase 3 para Phase 2, eliminando rebuild duplicado.
+    `default = ["standalone", "testing"]` → Phases 1 e 2 compartilham mesmos artefatos.
 
 - [ ] **T2.2.2 — Unificar profile da Phase 4 (CLAP).**
   A Phase 4 compila a árvore GUI em **release** (build do `.so`) **e em debug**

@@ -82,23 +82,39 @@ run_phase() {
     return $status
 }
 
-# --- Phase 1: Soak/Stress tests (Numerical Stability) ---
+# --- Phase 1: Soak/Stress tests + PipeWire Integration (release, standalone) ---
 run_phase \
     "Soak Tests (Numerical Stability)" \
     'status=0; cargo test --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 || status=1; cargo test --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
     "phase1-soak.log" || true
 
-# --- Phase 2: Property-Based and Parity Tests in Release ---
-run_phase \
-    "Property-Based & Parity Tests in Release" \
-    'status=0; cargo test --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; cargo test --release --no-fail-fast --test proptest_math -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; cargo test --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; [ $status -eq 0 ]' \
-    "phase2-proptests.log" || true
+run_pipewire_phase() {
+    echo "  Verificando daemon PipeWire..."
+    if pw-cli info >/dev/null 2>&1; then
+        echo "  PipeWire detectado. Executando teste de integração..."
+        cargo test --release --no-fail-fast --features standalone --test pw_integration_test -- --ignored --nocapture
+    else
+        echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
+        return 0
+    fi
+}
 
-# --- Phase 3: Resampler Heap-Audit and C++ Parity ---
 run_phase \
-    "Resampler, Cabsim & A2 Heap-Audit, C++ Parity" \
-    'status=0; cargo test --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; cargo test --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
-    "phase3-parity-audit.log" || true
+    "PipeWire Integration Test" \
+    "run_pipewire_phase" \
+    "phase1-pipewire.log" || true
+
+# --- Phase 2: Property-Based, Parity, C++ Parity, Golden Vectors (release, default) ---
+run_phase \
+    "Property-Based, Parity & Golden Vectors in Release" \
+    'status=0; cargo test --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; cargo test --release --no-fail-fast --test proptest_math -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; cargo test --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    "phase2-proptests-parity.log" || true
+
+# --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
+run_phase \
+    "Resampler, Cabsim & A2 Heap-Audit" \
+    'status=0; cargo test --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; [ $status -eq 0 ]' \
+    "phase3-heap-audit.log" || true
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
 run_clap_audit_local() {
@@ -163,23 +179,6 @@ run_phase \
     "Long Performance Benchmarks" \
     'status=0; cargo bench --no-fail-fast || status=1; cargo bench --no-fail-fast --features standalone,long_bench --bench inference_bench || status=1; [ $status -eq 0 ]' \
     "phase5-benchmarks.log" || true
-
-# --- Phase 6: PipeWire Integration Test (optional – skipped when daemon is absent) ---
-run_pipewire_phase() {
-    echo "  Verificando daemon PipeWire..."
-    if pw-cli info >/dev/null 2>&1; then
-        echo "  PipeWire detectado. Executando teste de integração..."
-        cargo test --release --no-fail-fast --features standalone --test pw_integration_test -- --ignored --nocapture
-    else
-        echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
-        return 0
-    fi
-}
-
-run_phase \
-    "PipeWire Integration Test" \
-    "run_pipewire_phase" \
-    "phase6-pipewire.log" || true
 
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"
