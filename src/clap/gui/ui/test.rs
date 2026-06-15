@@ -7,29 +7,32 @@ use super::*;
 use crate::clap::plugin::make_test_shared;
 use std::sync::atomic::Ordering;
 
+struct SafeClapHost(clap_sys::host::clap_host);
+unsafe impl Sync for SafeClapHost {}
+
+static DUMMY_CLAP_HOST: SafeClapHost = SafeClapHost(clap_sys::host::clap_host {
+    clap_version: clap_sys::version::clap_version {
+        major: 0,
+        minor: 0,
+        revision: 0,
+    },
+    host_data: std::ptr::null_mut(),
+    name: std::ptr::null(),
+    vendor: std::ptr::null(),
+    url: std::ptr::null(),
+    version: std::ptr::null(),
+    get_extension: None,
+    request_restart: None,
+    request_process: None,
+    request_callback: None,
+});
+
 /// Returns a zero-initialized `HostSharedHandle` for GUI tests that don't need
 /// real host interaction. Calls to `get_extension` return `None` safely (all
 /// function pointers are null).
 fn make_dummy_host() -> HostSharedHandle<'static> {
-    let host_box = Box::new(clap_sys::host::clap_host {
-        clap_version: clap_sys::version::clap_version {
-            major: 0,
-            minor: 0,
-            revision: 0,
-        },
-        host_data: std::ptr::null_mut(),
-        name: std::ptr::null(),
-        vendor: std::ptr::null(),
-        url: std::ptr::null(),
-        version: std::ptr::null(),
-        get_extension: None,
-        request_restart: None,
-        request_process: None,
-        request_callback: None,
-    });
-    let leaked: &'static clap_sys::host::clap_host = Box::leak(host_box);
-    // SAFETY: the leaked host is valid for the 'static lifetime.
-    unsafe { HostSharedHandle::from_raw(std::ptr::NonNull::from(leaked)) }
+    // SAFETY: DUMMY_CLAP_HOST is static and lives for 'static.
+    unsafe { HostSharedHandle::from_raw(std::ptr::NonNull::from(&DUMMY_CLAP_HOST.0)) }
 }
 
 #[test]

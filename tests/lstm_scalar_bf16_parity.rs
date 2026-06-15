@@ -26,7 +26,7 @@ prop_compose! {
 
 prop_compose! {
     fn lstm_1x40_parity_strategy()(
-        inputs in prop::collection::vec(-1.0f32..1.0f32, 5000),
+        inputs in prop::collection::vec(-1.0f32..1.0f32, 256),
         weights in prop::collection::vec(-1.5f32..1.5f32, 6560),
         bias in prop::collection::vec(-1.5f32..1.5f32, 160),
         head_weights in prop::collection::vec(-1.5f32..1.5f32, 40),
@@ -38,7 +38,7 @@ prop_compose! {
 
 prop_compose! {
     fn lstm_2x24_parity_strategy()(
-        inputs in prop::collection::vec(-1.0f32..1.0f32, 5000),
+        inputs in prop::collection::vec(-1.0f32..1.0f32, 256),
         w1 in prop::collection::vec(-1.5f32..1.5f32, 2400),
         w2 in prop::collection::vec(-1.5f32..1.5f32, 4608),
         b1 in prop::collection::vec(-1.5f32..1.5f32, 96),
@@ -53,7 +53,7 @@ prop_compose! {
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
-        .. ProptestConfig::with_cases(5_000)
+        .. ProptestConfig::with_cases(1_000)
     })]
 
     #[test]

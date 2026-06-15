@@ -214,6 +214,7 @@ N_TOP_SLOWEST=5
 # Usage: timed_cargo_test <label> <cargo_test_args...>
 # Appends per-invocation "TIMED: <seconds> <label>" lines to a temp tracker.
 TIMED_TRACKER=$(mktemp)
+trap 'rm -f "$TIMED_TRACKER"' EXIT
 timed_cargo_test() {
     local label="$1"
     shift
@@ -254,8 +255,6 @@ extract_top_benches() {
     awk '
     BEGIN { bench = "" }
     /^Benchmarking/  { bench = "" }                          # new benchmark start — discard
-    /^Found/         { bench = "" }                          # outlier lines — discard
-    /^change:/       { bench = "" }                          # change line — discard
     /^[A-Za-z]/ && !/:/ && !/^Found/ && !/^change:/ { bench = $1 }  # capture bench result name
     /time:.*\[/ && bench != "" {
         split($0, a, /[\[\]]/)
@@ -463,8 +462,8 @@ for ((i=0; i<PHASE_COUNT; i++)); do
         rank=1
         while IFS= read -r line; do
             if [ -n "$line" ]; then
-                t=$(echo "$line" | awk '{print $1}')
-                lbl=$(echo "$line" | cut -d' ' -f2-)
+                t="${line%% *}"
+                lbl="${line#* }"
                 printf "    %2d. %8ss  %s\n" "$rank" "$t" "$lbl"
                 rank=$((rank + 1))
             fi

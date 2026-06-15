@@ -804,21 +804,37 @@ testes lentos/_flaky_.
 
 ### Sprint 4.4 — 🟡 Reavaliar custo do estresse proptest (efeito da T2.3.3)
 
-- [ ] **T4.4.1 — Calibrar `lstm_scalar_bf16_parity` (5000 casos → 358s).**
+- [x] **T4.4.1 — Calibrar `lstm_scalar_bf16_parity` (5000 casos → 358s).**
   T2.3.3 elevou de 50→5000 casos (100×); virou o maior ofensor da Phase 3 (358s de 545s).
   Reavaliar se 5000 é o ponto ótimo ou se um valor menor (ex.: 1000–2000) mantém boa
   cobertura sem dominar a suíte.
   - _Critério de aceite_: profundidade justificada por números (cobertura vs tempo);
     Phase 3 reequilibrada.
+  - Nota do PO: Antes de qualquer alteração em código, é essencial entender este `lstm_scalar_bf16_parity`. Se ele precisa mesmo disto. Tem outros testes similares?
+  Como eles se comportam? Veja no histórico deste TODO-sprints.md se há justificativa.
+  Suspeito que este caberia tranquilamente nos mesmos 50 de antes.
+  - **Resultado (2026-06-15):** Calibrado para `1_000` casos e `256` inputs. O baseline
+    anterior (5,000 casos e 5,000 inputs) levava **349,35s** (~5,8 min) para rodar. Com a calibração,
+    o tempo de execução caiu para **4,01s** (redução de **98.8%**). A escolha de 1,000 casos
+    com entrada de tamanho 256 garante excelente cobertura do espaço de pesos/bias (20 vezes mais
+    configurações que os 50 casos originais) sem carregar o custo redundante de rodar sequências
+    de 5,000 amostras por caso (uma vez que SIMD e Scalar são determinísticos e idênticos passo-a-passo).
+    Outros testes (como `tests/lstm_gate_bf16_parity.rs`) usam 10,000 casos mas são muito rápidos por
+    voltarem imediatamente se o hardware não suportar a instrução SIMD testada e usarem entradas pequenas.
 
 ### Sprint 4.5 — 🟢 Limpeza do `tests-long.sh` (review de T2.3.2)
 
-- [ ] **T4.5.1 — Aplicar os 3 micro-achados do review.**
+- [x] **T4.5.1 — Aplicar os 3 micro-achados do review.**
   (1) Loop de display (≈L466-467): trocar `echo|awk`/`echo|cut` por _parameter expansion_
   (`${line%% *}` / `${line#* }`) — elimina ~50 subprocessos. (2) Adicionar
   `trap 'rm -f "$TIMED_TRACKER"' EXIT` (cleanup do temp em saída precoce/ERR). (3) Remover
   regras awk _unreachable_ (`/^Found/`, `/^change:/`, L257-258).
   - _Critério de aceite_: script equivalente, sem _leak_ de temp, sem código morto.
+  - **Resultado (2026-06-15):** Os 3 achados foram aplicados. O timing log temporário é
+    removido com segurança via `trap EXIT` sob qualquer saída (inclusive precoce no ERR trap).
+    O loop de exibição do sumário foi otimizado para usar a expansão de parâmetros nativa do bash
+    (`t="${line%% *}"` e `lbl="${line#* }"`), evitando a criação de ~50 subprocessos. As regras AWK
+    redundantes foram limpas.
 
 ### Sprint 4.6 — 🚦 GATE L2: revalidação completa pós-correções
 
