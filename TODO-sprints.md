@@ -759,7 +759,7 @@ testes lentos/_flaky_.
 
 ### Sprint 4.2 — 🟠 Fragilidade: gate de tempo wall-clock
 
-- [ ] **T4.2.1 — Endurecer `test_denormal_stability_silence` (gate de tempo).**
+- [x] **T4.2.1 — Endurecer `test_denormal_stability_silence` (gate de tempo).**
   Falhou com `block=677μs > 500μs` (`nam_infer_test.rs:537`) **sob carga** da suíte de
   50 min — porém o output era numericamente correto (sem denormais). Limiar de _wall-clock_
   em teste funcional é intrinsecamente _flaky_.
@@ -768,6 +768,11 @@ testes lentos/_flaky_.
     sensível a carga (`#[ignore]` na longa concorrente ou rodar isolado).
   - _Critério de aceite_: teste robusto sob carga, mantendo detecção real de penalidade de
     denormal; 0 _flakes_ em ≥ 3 execuções da fase.
+  - **Resultado (2026-06-15):** **Opção (b)**: os `assert!` de wall-clock (WaveNet e LSTM)
+    foram substituídos por `eprintln!` de warning. A detecção real de denormais permanece
+    intacta via checks de valor (subnormais via `is_normal()`, finitude via `is_finite()`,
+    estabilidade via `abs() < 1.0`). O gate de tempo agora é puramente informativo —
+    reporta anomalias de latência mas não causa falsos positivos sob carga do sistema.
 
 ### Sprint 4.3 — 🟠 Regressão de tempo: Phase 5 (CLAP) explodiu (223s→794s)
 
