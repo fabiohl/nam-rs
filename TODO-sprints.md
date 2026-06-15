@@ -524,18 +524,17 @@ testes lentos/_flaky_.
   - _Critério de aceite_: flag removido **ou** justificativa técnica documentada; soak
     determinístico em ≥ 2 execuções (colhido no L1).
 
-  - ✅ **Feito**: `--test-threads=1` removido de `utils/tests-long.sh:88` (Phase 1).
-     Justificativa: (1) soak tests nunca usaram `CountingAllocator`/`TrackingGuard` — o
-     motivo original do `--test-threads=1` era a auditoria de alocação global, já resolvida
-     com TLS no Épico 1; (2) cada test function em `soak_test.rs` e `pipeline_soak.rs` é
+  - ✅ **Feito**: `--test-threads=1` removido de `soak_test` em `utils/tests-long.sh:88`.
+     **Mantido** para `pipeline_soak` (RSS measurement: 3 tests compartilham `/proc/self/status`
+     no mesmo processo — medição de VmRSS cross-test contaminaria a assertiva de memory leak
+     `rss_diff < 10MB`). Justificativa do `soak_test`: (1) soak tests nunca usaram
+     `CountingAllocator`/`TrackingGuard` — o motivo original do `--test-threads=1` era a
+     auditoria de alocação global, já resolvida com TLS no Épico 1; (2) cada test function é
      autocontida (modelos, buffers, PRNG com seed fixo próprios), sem estado mutável
      compartilhado entre threads; (3) `RtStatusFlags.degrade_transitions_total` é
-     per-instance `AtomicU32`; (4) verificação de determinismo: `test_gate_fsm_endurance`,
-     `test_adaptive_fsm_endurance`, `test_adaptive_fsm_transition_cycles`,
-     `test_a2_lite_silence_soak`, `test_resampler_drift_soak`, `test_lstm_noise_soak`
-     executados 2× cada sem `--test-threads=1` — todos passaram com outputs idênticos
-     (transitions, sample counts, min/max values). Referência stale removida de
-     `.agents/rules/testing.md:54`.
+     per-instance `AtomicU32`; (4) verificação de determinismo: 6 soak tests executados 2×
+     sem `--test-threads=1` — todos passaram com outputs idênticos. Referência stale removida
+     de `.agents/rules/testing.md:54`.
 
 ### Sprint 2.3 — Cobertura, profundidade e informatividade (sem perder estresse)
 
