@@ -360,7 +360,7 @@ run_clap_audit_local() {
 
     echo "  Compilando CLAP Plugin em modo Release..."
     RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap" \
-      cargo build --release --no-default-features --features "clap-plugin,heap-audit" --lib
+      cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
 
     local RELEASE_CLAP_BIN="target/release/libnam_rs.so"
     if [ ! -f "$RELEASE_CLAP_BIN" ]; then
@@ -392,16 +392,16 @@ run_clap_audit_local() {
     fi
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
     
     echo "  Executando teste de stress do GC com 1000 swaps..."
-    timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
+    timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
     
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
-    timed_cargo_test "concurrency_stress" --release --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test concurrency_stress -- --ignored --nocapture || audit_status=1
     
     echo "  Executando testes unitários e de integração em modo Mono..."
-    timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
+    timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
 
     return $audit_status
 }

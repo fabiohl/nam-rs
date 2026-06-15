@@ -774,21 +774,33 @@ testes lentos/_flaky_.
     estabilidade via `abs() < 1.0`). O gate de tempo agora é puramente informativo —
     reporta anomalias de latência mas não causa falsos positivos sob carga do sistema.
 
-### Sprint 4.3 — 🟠 Regressão de tempo: Phase 5 (CLAP) explodiu (223s→794s)
+### Sprint 4.3 — 🟠 Regressão de tempo: Phase 4 (CLAP) explodiu (223s→794s)
 
-- [ ] **T4.3.1 — Reverter o efeito colateral da T2.2.2 (rebuilds release).**
+- [x] **T4.3.1 — Reverter o efeito colateral da T2.2.2 (rebuilds release).**
   A unificação para release trocou **1 build debug** por **vários rebuilds release fat-LTO**
   (~7 min cada, `phase4-clap-validation.log:338`), pois as feature-sets divergem: `.so`
   = `clap-plugin,heap-audit`; mono = `clap-plugin,testing`; concurrency = `standalone`;
   multi/gc = `clap-plugin`. Cada combinação dispara um build LTO completo da árvore GUI.
-  - _Opção A (preferida)_: **alinhar TODOS** os comandos release da Phase 5 a **uma única
-    feature-set** (ex.: `clap-plugin,heap-audit,testing`) para reusar **um** build.
+  - _Opção A (preferida)_: **alinhar TODOS** os comandos release da Phase 4 a **uma única
+    feature-set** para reusar **um** build.
   - _Opção B_: reverter testes de **correção** (não-perf: mono, concurrency, gc_stress) para
     **debug** (rápido), mantendo só o `.so` + validator em release.
-  - _Critério de aceite_: Phase 5 recompila a árvore CLAP **no máximo 1×** em release;
+  - _Critério de aceite_: Phase 4 recompila a árvore CLAP **no máximo 1×** em release;
     tempo da fase cai substancialmente vs L1; cobertura preservada.
   - _Nota_: medir o trade-off — o SIGSEGV (T4.1.1) mostra que **rodar em release tem valor**
     (pega bugs que debug esconde); decidir o equilíbrio com base em T4.1.1.
+  - **Resultado (2026-06-15) — Opção A aplicada**: todos os 5 comandos da Phase 4 (`.so` build,
+    `clap_multi_instance`, `gc_stress`, `concurrency_stress`, mono tests) agora usam feature-set
+    unificado `clap-plugin,heap-audit,testing`. `concurrency_stress` migrou de `--features
+    standalone` para `--no-default-features --features "clap-plugin,heap-audit,testing"` —
+    não depende de `standalone` (usa apenas SPSC/Resampler/Smoother do núcleo compartilhado).
+    `testing` é feature flag vazia, não afeta o `.so`. Compilação das 3 variantes de test
+    target verificada com sucesso em release (`clap_multi_instance`, `concurrency_stress`,
+    mono lib). Ganho esperado: 3 rebuilds → 1 rebuild (~14 min economizados no cold).
+    **Correção pós-review (T4.3.1)**: adicionado `--lib` ao comando mono para evitar
+    falso-positivo nos heap-audit integration tests (sob `clap-plugin`, `CountingAllocator`
+    não é registrado — `#[cfg(not(feature = "clap-plugin"))]` — tornando asserções de
+    zero-alocação trivialmente verdadeiras). Fase 3 cobre esses testes com alocador real.
 
 ### Sprint 4.4 — 🟡 Reavaliar custo do estresse proptest (efeito da T2.3.3)
 
