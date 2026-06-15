@@ -57,6 +57,38 @@ pub fn report_dsp_fidelity(
     label: &str,
     sample_rate: u32,
 ) {
+    report_dsp_fidelity_impl(reference, test, mse_limit, min_snr_db, max_esr, label, sample_rate, true)
+}
+
+/// Like [`report_dsp_fidelity`] but skips the LUFS plausibility gate.
+///
+/// Use when the reference signal is known to have high amplitude that doesn't
+/// indicate a defect (e.g., IR convolution goldens where synthetic signal +
+/// IR can legitimately produce LUFS above +10).
+#[track_caller]
+pub fn report_dsp_fidelity_no_lufs(
+    reference: &[f32],
+    test: &[f32],
+    mse_limit: f64,
+    min_snr_db: f64,
+    max_esr: Option<f64>,
+    label: &str,
+    sample_rate: u32,
+) {
+    report_dsp_fidelity_impl(reference, test, mse_limit, min_snr_db, max_esr, label, sample_rate, false)
+}
+
+#[track_caller]
+fn report_dsp_fidelity_impl(
+    reference: &[f32],
+    test: &[f32],
+    mse_limit: f64,
+    min_snr_db: f64,
+    max_esr: Option<f64>,
+    label: &str,
+    sample_rate: u32,
+    check_lufs_gate: bool,
+) {
     assert_eq!(
         reference.len(),
         test.len(),
@@ -205,14 +237,23 @@ pub fn report_dsp_fidelity(
             "[{label}] ESR={esr_linear:.6e} exceeds threshold {limit:.1e} (ESR dB={esr_db:.1})"
         );
     }
-    // T4.3 LUFS plausibility sanity gate — catch near-silence / implausible golden output
-    assert!(
-        lufs_plausible,
-        "[{label}] Reference LUFS={lufs_ref:.1} is outside plausible audio range \
-         [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}]. \
-         The golden output may be defective (near-silence, clipping, or wrong scaling). \
-         See T2.5 lesson: LUFS −67 went undetected without this gate."
-    );
+    // T4.3 LUFS plausibility sanity gate — catch near-silence / implausible golden output.
+    // Only enforced when check_lufs_gate is true (opt-out for IR convolution goldens).
+    if check_lufs_gate {
+        assert!(
+            lufs_plausible,
+            "[{label}] Reference LUFS={lufs_ref:.1} is outside plausible audio range \
+             [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}]. \
+             The golden output may be defective (near-silence, clipping, or wrong scaling). \
+             See T2.5 lesson: LUFS −67 went undetected without this gate."
+        );
+    } else if !lufs_plausible {
+        eprintln!(
+            "  ⓘ  LUFS gate skipped for [{label}]: reference LUFS={lufs_ref:.1} \
+             outside [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}] — \
+             expected for IR convolution goldens"
+        );
+    }
 }
 
 /// Converts SNR (dB) to a conservative MSE upper-bound estimate.

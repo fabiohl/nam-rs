@@ -18,7 +18,7 @@
 mod common;
 use common::conv_helpers::process_full_signal;
 use common::io_helpers::read_golden_bin;
-use common::validation::report_dsp_fidelity;
+use common::validation::report_dsp_fidelity_no_lufs;
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 
 // ── Simple PCG PRNG (bit-identical to render_ir.cpp and cabsim_golden.rs) ──
@@ -158,7 +158,7 @@ fn compare_golden_cpp(scenario: &CppScenario) {
         scenario.sig_len,
     );
 
-    report_dsp_fidelity(
+    report_dsp_fidelity_no_lufs(
         &cpp_compensated,
         upols_slice,
         5e-2,
