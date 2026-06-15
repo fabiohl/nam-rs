@@ -624,7 +624,7 @@ testes lentos/_flaky_.
 
 ### Sprint 3.1 — Ruído e fidelidade do `clap-validator`
 
-- [ ] **T3.1.1 — Rebaixar o nível de log do _state-invalid_.**
+- [x] **T3.1.1 — Rebaixar o nível de log do _state-invalid_.**
   No baseline antigo, `state-invalid` (estado **vazio**) emitia
   `[CLAP_PLUGIN_ERROR] Failed to deserialize state (v0 legacy): EOF`, condição esperada em
   que o plugin retorna `false` (teste PASSED). **Nota da auditoria:** no log mais recente
@@ -633,6 +633,7 @@ testes lentos/_flaky_.
 
   - _Arquivos_: `src/clap/extensions/state.rs` (caminho de `Deserialize`, ~`:238`).
   - _Critério de aceite_: estado vazio não emite `[CLAP_PLUGIN_ERROR]`; retorno inalterado.
+  - **Resultado (2026-06-15)**: O comportamento foi reproduzido no `clap-validator` (emitia o erro `EOF` devido ao buffer vazio). Como a biblioteca Clack mapeia de forma rígida qualquer retorno de erro de `load()` com a severidade `CLAP_LOG_ERROR`, a solução intercepta buffers vazios no início, registra um log de nível `Debug` via extensão `HostLog`, e retorna uma mensagem de erro `\r\x1b[K` (Carriage Return + ANSI clear line) para retornar `false` ao host e simultaneamente limpar o cabeçalho `[CLAP_PLUGIN_ERROR]` impresso por padrão pelo Clack, mantendo a saída de terminal limpa.
 
 - [CANCELADO] **T3.1.2 — Decidir sobre `clap.note-ports` (2 testes SKIPPED).**
   `process-note-*` pulados por não implementar `note-ports`. Confirmar se é intencional

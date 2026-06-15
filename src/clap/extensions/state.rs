@@ -84,6 +84,14 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             .read_to_end(&mut buffer)
             .map_err(|e| PluginError::Error(Box::new(StateError::ReadStream(e))))?;
 
+        if buffer.is_empty() {
+            if let Some(log) = self.host.get_extension::<HostLog>() {
+                let msg = CString::new("NAM-rs: Empty state buffer, returning false").unwrap();
+                log.log(&self.host.shared(), LogSeverity::Debug, &msg);
+            }
+            return Err(PluginError::Message("\r\x1b[K"));
+        }
+
         let new_params = load_state(&buffer)?;
 
         self.params = new_params;
