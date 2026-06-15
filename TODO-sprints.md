@@ -63,13 +63,13 @@ desencorajam a execução frequente — exatamente o anti-padrão que o projeto 
 >
 > **Métricas (cold run com `rm -rf target/`, vide `tests-cargo.log`):**
 >
-> | Métrica           | Baseline  | Pós-Épico 1           | Meta    | Veredito           |
-> | ----------------- |:---------:|:---------------------:|:-------:|:------------------:|
-> | Cold (frio)       | ≈4m40s    | **2m17,9s**           | < 2 min | 🟡 Quase (−51%)    |
-> | Warm (morno)      | ≈2m00s    | **0m58,3s**           | < 60 s  | ✅ Atingido (−51%) |
-> | Lib tests (par.)  | 33,4s/1t  | **22,2s**             | —       | ✅ Paralelizado    |
-> | Parity redundante | 38×/teste | **1×/run**            | 1×      | ✅ Resolvido (F3)  |
-> | clap-validator    | 19/21     | **19/21, 0 warnings** | —       | ✅ Mantido         |
+> | Métrica           | Baseline  | Pós-Épico 1           | Meta    | Veredito          |
+> | ----------------- |:---------:|:---------------------:|:-------:|:-----------------:|
+> | Cold (frio)       | ≈4m40s    | **2m17,9s**           | < 2 min | 🟡 Quase (−51%)   |
+> | Warm (morno)      | ≈2m00s    | **0m58,3s**           | < 60 s  | ✅ Atingido (−51%)|
+> | Lib tests (par.)  | 33,4s/1t  | **22,2s**             | —       | ✅ Paralelizado   |
+> | Parity redundante | 38×/teste | **1×/run**            | 1×      | ✅ Resolvido (F3) |
+> | clap-validator    | 19/21     | **19/21, 0 warnings** | —       | ✅ Mantido        |
 >
 > **Decisões registradas:**
 >
@@ -619,15 +619,15 @@ testes lentos/_flaky_.
     Execução completa registrada (real **50m27s**). **Phase 5 (CLAP) FALHOU.** Análise (T2.4.1):
     **Comparativo L0 → L1 por fase** (renumeradas após T2.2.1; Phase 0 pre-flight nova):
 
-    | Fase (L1)                                 | L0     | L1          | Δ         | Nota                                                               |
-    | ----------------------------------------- |:------:|:-----------:|:---------:| ------------------------------------------------------------------ |
-    | Soak (Numerical Stability)                | 139s   | **109s**    | −30s ✅   | T2.2.4 (soak paralelo)                                             |
-    | PipeWire Integration                      | 49s    | **17s**     | −32s ✅   | fundida/reuso (T2.2.1)                                             |
-    | Property/Parity/Golden (Release)          | 137s   | **545s**    | +408s ⚠️  | **+358s** de `lstm_scalar_bf16_parity` (T2.3.3, 50→5000 casos)     |
-    | Resampler/Cabsim/A2 Heap-Audit            | 152s   | **62s**     | −90s ✅   | paridade movida p/ Phase 3 (T2.2.1)                                |
-    | **CLAP Release Validation & Concurrency** | 223s   | **794s** ❌ | +571s 🔴  | **rebuilds release fat-LTO** + **SIGSEGV** + flake                 |
-    | Long Benchmarks                           | 2222s  | **1500s**   | −722s ✅  | dedup de benches (T2.2.3)                                          |
-    | **Total**                                 | 48m41s | **50m27s**  | +1m46s    | ganho de build mascarado por (a) estresse↑ e (b) regressão Phase 5 |
+    | Fase (L1)                                 | L0     | L1         | Δ        | Nota                                                               |
+    | ----------------------------------------- |:------:|:----------:|:--------:| ------------------------------------------------------------------ |
+    | Soak (Numerical Stability)                | 139s   | **109s**   | −30s ✅  | T2.2.4 (soak paralelo)                                             |
+    | PipeWire Integration                      | 49s    | **17s**    | −32s ✅  | fundida/reuso (T2.2.1)                                             |
+    | Property/Parity/Golden (Release)          | 137s   | **545s**   | +408s ⚠️ | **+358s** de `lstm_scalar_bf16_parity` (T2.3.3, 50→5000 casos)     |
+    | Resampler/Cabsim/A2 Heap-Audit            | 152s   | **62s**    | −90s ✅  | paridade movida p/ Phase 3 (T2.2.1)                                |
+    | **CLAP Release Validation & Concurrency** | 223s   | **794s**❌ | +571s 🔴 | **rebuilds release fat-LTO** + **SIGSEGV** + flake                 |
+    | Long Benchmarks                           | 2222s  | **1500s**  | −722s ✅ | dedup de benches (T2.2.3)                                          |
+    | **Total**                                 | 48m41s | **50m27s** | +1m46s   | ganho de build mascarado por (a) estresse↑ e (b) regressão Phase 5 |
 
     **Veredito:** As otimizações de **desperdício de compilação funcionaram** (benches −722s,
     soak −30s, heap-audit −90s). Porém o ganho líquido foi **anulado** por: (1) aumento
@@ -811,8 +811,8 @@ testes lentos/_flaky_.
   - _Critério de aceite_: profundidade justificada por números (cobertura vs tempo);
     Phase 3 reequilibrada.
   - Nota do PO: Antes de qualquer alteração em código, é essencial entender este `lstm_scalar_bf16_parity`. Se ele precisa mesmo disto. Tem outros testes similares?
-  Como eles se comportam? Veja no histórico deste TODO-sprints.md se há justificativa.
-  Suspeito que este caberia tranquilamente nos mesmos 50 de antes.
+    Como eles se comportam? Veja no histórico deste TODO-sprints.md se há justificativa.
+    Suspeito que este caberia tranquilamente nos mesmos 50 de antes.
   - **Resultado (2026-06-15):** Calibrado para `1_000` casos e `256` inputs. O baseline
     anterior (5,000 casos e 5,000 inputs) levava **349,35s** (~5,8 min) para rodar. Com a calibração,
     o tempo de execução caiu para **4,01s** (redução de **98.8%**). A escolha de 1,000 casos
@@ -838,12 +838,28 @@ testes lentos/_flaky_.
 
 ### Sprint 4.6 — 🚦 GATE L2: revalidação completa pós-correções
 
-- [ ] **T4.6.1 — 🚦 GATE L2: execução completa após Sprints 4.1–4.5.**
+- [x] **T4.6.1 — 🚦 GATE L2: execução completa após Sprints 4.1–4.5.**
   Agregar **todas** as correções do Épico 4 numa **única** execução completa da
   `tests-long.sh`. Confirmar: suíte **100% verde**, Phase 5 sem SIGSEGV/flake e com tempo
   reduzido, total < L1.
   - _Critério de aceite_: tabela L1→L2 registrada; 0 falhas; ganho de tempo real consolidado.
   - _Quando_: **última** execução completa do ciclo; o usuário roda quando puder ausentar-se.
+
+  - ### 🚦 RESULTADO GATE L2 (2026-06-15, `tests-cargo.log:1401-1484`) — ✅ **SUÍTE 100% VERDE**
+
+    | Fase                                  | L0     | L1       | **L2**       | L1→L2                           |
+    | ------------------------------------- |:------:|:--------:|:------------:|:-------------------------------:|
+    | Soak (Numerical Stability)            | 139s   | 109s     | **109s**     | =                               |
+    | PipeWire Integration                  | 49s    | 17s      | **16s**      | =                               |
+    | Property/Parity/Golden (Release)      | 137s   | 545s     | **203s**     | −342s ✅ (T4.4.1)               |
+    | Resampler/Cabsim/A2 Heap-Audit        | 152s   | 62s      | **63s**      | =                               |
+    | CLAP Release Validation & Concurrency | 223s   | 794s ❌  | **394s** ✅  | −400s + verde ✅ (T4.1.1/T4.3.1)|
+    | Long Benchmarks                       | 2222s  | 1500s    | **1499s**    | =                               |
+    | **Total**                             | 48m41s | 50m27s❌ | **38m03s**✅ | **−12m24s (−24%)**              |
+
+    **Veredito:** ✅ Todas as 6 fases PASSED. SIGSEGV eliminado (`clap_plugin_testing` mono:
+    422s→**0,51s** — sem rebuild redundante nem crash). Tempo total **abaixo do L0 e do L1**,
+    com cobertura preservada e estresse calibrado. **Épico 2 + 4 consolidados.**
 
 ---
 
