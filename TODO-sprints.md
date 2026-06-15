@@ -603,7 +603,7 @@ testes lentos/_flaky_.
 
 ### Sprint 2.4 — Validação final (🚦 GATE L1)
 
-- [ ] **T2.4.1 — 🚦 GATE L1: execução completa pós-otimização.**
+- [x] **T2.4.1 — 🚦 GATE L1: execução completa pós-otimização.**
   Após **todas** as tarefas 2.2/2.3 mescladas, **uma** execução completa para: (a) comparar
   tempo total e por-fase vs. baseline L0; (b) confirmar **0 regressões**; (c) confirmar
   cobertura (goldens C++, soak, paridade).
@@ -613,6 +613,45 @@ testes lentos/_flaky_.
   - **Nota do PO:** O /tests-cargo.log contém a saida de terminal de vários comandos úteis.
     Já busque ter uma panorama geral se tudo está como deveria ou se precisa de ajustes.
     Use o Épico 4 (ou posteriores) para dar direcionamento aos achados.
+
+  - ### 🚦 RESULTADO GATE L1 (2026-06-15, `tests-cargo.log:2511-2598`) — ❌ **SUÍTE VERMELHA**
+
+    Execução completa registrada (real **50m27s**). **Phase 5 (CLAP) FALHOU.** Análise (T2.4.1):
+    **Comparativo L0 → L1 por fase** (renumeradas após T2.2.1; Phase 0 pre-flight nova):
+
+    | Fase (L1)                                 | L0     | L1          | Δ         | Nota                                                               |
+    | ----------------------------------------- |:------:|:-----------:|:---------:| ------------------------------------------------------------------ |
+    | Soak (Numerical Stability)                | 139s   | **109s**    | −30s ✅   | T2.2.4 (soak paralelo)                                             |
+    | PipeWire Integration                      | 49s    | **17s**     | −32s ✅   | fundida/reuso (T2.2.1)                                             |
+    | Property/Parity/Golden (Release)          | 137s   | **545s**    | +408s ⚠️  | **+358s** de `lstm_scalar_bf16_parity` (T2.3.3, 50→5000 casos)     |
+    | Resampler/Cabsim/A2 Heap-Audit            | 152s   | **62s**     | −90s ✅   | paridade movida p/ Phase 3 (T2.2.1)                                |
+    | **CLAP Release Validation & Concurrency** | 223s   | **794s** ❌ | +571s 🔴  | **rebuilds release fat-LTO** + **SIGSEGV** + flake                 |
+    | Long Benchmarks                           | 2222s  | **1500s**   | −722s ✅  | dedup de benches (T2.2.3)                                          |
+    | **Total**                                 | 48m41s | **50m27s**  | +1m46s    | ganho de build mascarado por (a) estresse↑ e (b) regressão Phase 5 |
+
+    **Veredito:** As otimizações de **desperdício de compilação funcionaram** (benches −722s,
+    soak −30s, heap-audit −90s). Porém o ganho líquido foi **anulado** por: (1) aumento
+    **intencional** de estresse (T2.3.3: `lstm_scalar_bf16_parity` +358s) e (2) **regressão
+    da Phase 5** introduzida pela T2.2.2.
+
+    **Falhas/achados (roteados ao Épico 4 conforme nota do PO):**
+
+    1. 🔴 **SIGSEGV (signal 11) em release** — unittests da lib em `--no-default-features
+       --features clap-plugin,testing` (modo Mono, release) crasham após
+       `test_metadata_extraction_from_nam_file` (`phase4-clap-validation.log:399-402`).
+       Em L0 (debug) passava; a T2.2.2 (migração p/ release) **expôs** o crash. → **T4.1.1**.
+    2. 🟠 **Flake de wall-clock** — `test_denormal_stability_silence`
+       (`nam_infer_test.rs:537`) falhou com `block=677μs > 500μs` sob carga da suíte
+       (output numérico **correto**, sem denormais). Gate de tempo frágil. → **T4.2.1**.
+    3. 🟠 **Regressão de tempo Phase 5** — T2.2.2 trocou 1 build debug por **vários
+       rebuilds release fat-LTO** (~7min cada, `phase4-clap-validation.log:338`) por
+       feature-sets divergirem. → **T4.3.1**.
+    4. 🟡 **Estresse caro** — `lstm_scalar_bf16_parity` a 358s domina a Phase 3;
+       reavaliar custo/benefício dos 5000 casos. → **T4.4.1**.
+    5. 🟢 **Limpeza** — 3 micro-achados do review de T2.3.2 (linhas 572-579). → **T4.5.1**.
+
+    > **Nota:** Ambas as falhas são **exclusivas da config Mono+Release da suíte longa**;
+    > a suíte padrão (`tests-cargo.sh`, runs cold+warm no mesmo log) passou **100% verde**.
 
 ---
 
@@ -679,6 +718,91 @@ testes lentos/_flaky_.
 
 ---
 
+## ÉPICO 4 — Regressões e fragilidades reveladas pelo 🚦 GATE L1 (suíte longa)
+
+> Achados da execução completa da `tests-long.sh` pós-otimização (T2.4.1). Direcionamento
+> solicitado pelo PO. **Prioridade**: a Sprint 4.1 é potencialmente um **bug real de
+> produção** (UB em release) — tratar antes das demais. As Sprints 4.3/4.4 fecham o ganho
+> de tempo que a Phase 5 anulou.
+>
+> ⚠️ **As Sprints 4.1–4.4 são validáveis SEM a suíte longa completa** — cada uma roda
+> apenas o comando/fase específico envolvido (release mono lib, um teste, uma fase). A
+> **revalidação completa** fica para um novo gate **🚦 GATE L2** (Sprint 4.6), agregando
+> todas as correções numa única execução.
+
+### Sprint 4.1 — 🔴 CRÍTICO: SIGSEGV em release (config Mono CLAP)
+
+- [ ] **T4.1.1 — Diagnosticar e corrigir o SIGSEGV em release.**
+  O binário de unittests da lib crasha com `signal 11 (SIGSEGV)` em
+  `cargo test --release --no-default-features --features clap-plugin,testing --lib`
+  (`phase4-clap-validation.log:399-402`), após `test_metadata_extraction_from_nam_file`.
+  Em **debug** (baseline L0) passava — a otimização release expôs o problema (provável **UB
+  latente** mascarada por debug, ou bug de codegen/harness). Usar skill **`debugger`**.
+  - _Repro_: `cargo test --release --no-default-features --features clap-plugin,testing --lib`.
+  - _Pistas_: rodar com `RUST_BACKTRACE=1`; isolar o teste seguinte ao
+    `test_metadata_extraction_from_nam_file`; considerar `--test-threads=1` para localizar;
+    inspecionar `unsafe`/FFI no caminho de `preset_discovery`/`gui`/`processor`.
+  - _Critério de aceite_: causa-raiz documentada; crash eliminado; mono-release **verde
+    determinístico** (≥ 3 execuções). Se for UB de RT-safety, abrir correção prioritária.
+  - _Risco_: ALTO — pode indicar bug real de memória em produção (release é o profile de _ship_).
+
+### Sprint 4.2 — 🟠 Fragilidade: gate de tempo wall-clock
+
+- [ ] **T4.2.1 — Endurecer `test_denormal_stability_silence` (gate de tempo).**
+  Falhou com `block=677μs > 500μs` (`nam_infer_test.rs:537`) **sob carga** da suíte de
+  50 min — porém o output era numericamente correto (sem denormais). Limiar de _wall-clock_
+  em teste funcional é intrinsecamente _flaky_.
+  - _Opções_: (a) detectar denormal por **valor/contagem** (não por tempo); (b) tornar o
+    limiar **informativo** (warn, não fail) ou com _retry_; (c) relaxar margem e marcar como
+    sensível a carga (`#[ignore]` na longa concorrente ou rodar isolado).
+  - _Critério de aceite_: teste robusto sob carga, mantendo detecção real de penalidade de
+    denormal; 0 _flakes_ em ≥ 3 execuções da fase.
+
+### Sprint 4.3 — 🟠 Regressão de tempo: Phase 5 (CLAP) explodiu (223s→794s)
+
+- [ ] **T4.3.1 — Reverter o efeito colateral da T2.2.2 (rebuilds release).**
+  A unificação para release trocou **1 build debug** por **vários rebuilds release fat-LTO**
+  (~7 min cada, `phase4-clap-validation.log:338`), pois as feature-sets divergem: `.so`
+  = `clap-plugin,heap-audit`; mono = `clap-plugin,testing`; concurrency = `standalone`;
+  multi/gc = `clap-plugin`. Cada combinação dispara um build LTO completo da árvore GUI.
+  - _Opção A (preferida)_: **alinhar TODOS** os comandos release da Phase 5 a **uma única
+    feature-set** (ex.: `clap-plugin,heap-audit,testing`) para reusar **um** build.
+  - _Opção B_: reverter testes de **correção** (não-perf: mono, concurrency, gc_stress) para
+    **debug** (rápido), mantendo só o `.so` + validator em release.
+  - _Critério de aceite_: Phase 5 recompila a árvore CLAP **no máximo 1×** em release;
+    tempo da fase cai substancialmente vs L1; cobertura preservada.
+  - _Nota_: medir o trade-off — o SIGSEGV (T4.1.1) mostra que **rodar em release tem valor**
+    (pega bugs que debug esconde); decidir o equilíbrio com base em T4.1.1.
+
+### Sprint 4.4 — 🟡 Reavaliar custo do estresse proptest (efeito da T2.3.3)
+
+- [ ] **T4.4.1 — Calibrar `lstm_scalar_bf16_parity` (5000 casos → 358s).**
+  T2.3.3 elevou de 50→5000 casos (100×); virou o maior ofensor da Phase 3 (358s de 545s).
+  Reavaliar se 5000 é o ponto ótimo ou se um valor menor (ex.: 1000–2000) mantém boa
+  cobertura sem dominar a suíte.
+  - _Critério de aceite_: profundidade justificada por números (cobertura vs tempo);
+    Phase 3 reequilibrada.
+
+### Sprint 4.5 — 🟢 Limpeza do `tests-long.sh` (review de T2.3.2)
+
+- [ ] **T4.5.1 — Aplicar os 3 micro-achados do review.**
+  (1) Loop de display (≈L466-467): trocar `echo|awk`/`echo|cut` por _parameter expansion_
+  (`${line%% *}` / `${line#* }`) — elimina ~50 subprocessos. (2) Adicionar
+  `trap 'rm -f "$TIMED_TRACKER"' EXIT` (cleanup do temp em saída precoce/ERR). (3) Remover
+  regras awk _unreachable_ (`/^Found/`, `/^change:/`, L257-258).
+  - _Critério de aceite_: script equivalente, sem _leak_ de temp, sem código morto.
+
+### Sprint 4.6 — 🚦 GATE L2: revalidação completa pós-correções
+
+- [ ] **T4.6.1 — 🚦 GATE L2: execução completa após Sprints 4.1–4.5.**
+  Agregar **todas** as correções do Épico 4 numa **única** execução completa da
+  `tests-long.sh`. Confirmar: suíte **100% verde**, Phase 5 sem SIGSEGV/flake e com tempo
+  reduzido, total < L1.
+  - _Critério de aceite_: tabela L1→L2 registrada; 0 falhas; ganho de tempo real consolidado.
+  - _Quando_: **última** execução completa do ciclo; o usuário roda quando puder ausentar-se.
+
+---
+
 ## Apêndice A — Mapa de evidências (arquivo:linha)
 
 | Evidência                           | Localização                                                             |
@@ -705,9 +829,16 @@ testes lentos/_flaky_.
 - **Informatividade**: ⚠️ tabela de fase **abandonada** (T1.5.3 cancelado); mantido `cargo test` enxuto + fail-fast.
 - **Cobertura**: ✅ nenhuma perda de teste por configuração (T1.2.2 / T1.6.2).
 
-### Épico 2 (suíte longa — alvos)
+### Épico 2 (suíte longa — CONCLUÍDO com ressalvas; saldo no Épico 4)
 
-- **Sem desperdício**: redução mensurável de rebuilds da árvore (agrupamento por config); tempo total cai **sem** perder cobertura.
-- **Cobertura honesta**: 0 _silent-skips_ — paridade C++ roda de verdade ou falha explicitamente.
-- **Execução em lote**: ≤ 2 execuções completas no épico (🚦 L0 baseline, 🚦 L1 validação).
-- **Informatividade**: sumário com duração por fase + top-N mais lentos.
+- **Sem desperdício**: ✅ otimizações de build funcionaram (benches −722s, soak −30s, heap-audit −90s); 🟡 ganho líquido mascarado por estresse↑ (T2.3.3) e regressão Phase 5 (T2.2.2) — saldo real fica no 🚦 GATE L2 (T4.6.1).
+- **Cobertura honesta**: ✅ 0 _silent-skips_ — Phase 0 pre-flight + erros explícitos (T2.1.3/T2.3.1).
+- **Execução em lote**: ✅ exatamente 2 execuções completas (🚦 L0, 🚦 L1); protocolo respeitado.
+- **Informatividade**: ✅ sumário com duração por fase + top-5 mais lentos (T2.3.2).
+- **Estabilidade**: ❌ 🚦 GATE L1 **vermelho** (Phase 5: SIGSEGV release + flake) → Épico 4.
+
+### Épico 4 (pós-L1 — alvos)
+
+- **Correção crítica**: SIGSEGV em release (mono CLAP) eliminado (T4.1.1).
+- **Estabilidade**: 0 _flakes_ de wall-clock (T4.2.1); 🚦 GATE L2 100% verde (T4.6.1).
+- **Tempo**: Phase 5 sem rebuilds redundantes; total L2 < L1, consolidando o ganho de build.
