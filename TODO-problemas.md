@@ -18,6 +18,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **Macro-objetivo de referência**: "suíte perfeita, cobrindo todos os casos críticos,
 > ignorando os irrelevantes". À luz disso, alguns achados são sobre **o nam-rs**; outros
 > são sobre **onde os guardiões ainda estão fracos** (gates frouxos).
+>
+> **Documentos irmãos**: para **lacunas de funcionalidade** vs NeuralAmpModelerCore consulte
+> **`TODO-features.md`** (achados "F"); para **otimização estrutural via internalização de
+> dependências** consulte **`TODO-optimize.md`** (achados "O"). Em particular, **§P5/§P6**
+> (picos de latência e telemetria quantizada) conectam-se a **`TODO-optimize.md §O2`**
+> (clock TSC unificado).
 
 ---
 

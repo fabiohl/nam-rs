@@ -9,7 +9,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > implementação de referência **NeuralAmpModelerCore** — o que já existe, o que falta,
 > importância, público real e diretrizes de implementação. Para **problemas/estranhezas de
 > produto** (fidelidade, latência, denormais, gates frouxos), consulte **`TODO-problemas.md`**
-> (achados "P").
+> (achados "P"); para **otimização estrutural via internalização de dependências**
+> ("hot-path": `half`, `rustfft`, `minstant`, `rtrb`), consulte **`TODO-optimize.md`**
+> (achados "O").
 >
 > **Origem**: auditoria de aderência arquitetural do `nam-rs` contra a referência
 > **NeuralAmpModelerCore v0.5.3** (commit pinado `9c7b185`, em
@@ -104,6 +106,15 @@ ao A2). Hoje, milhares de tones A1 no TONE3000.
 - Validar Rust↔C++ por **ESR/SNR** (não MSE absoluto) com `render` v0.5.3.
 - Goldens conforme §Recomendações para gerar bons goldens (abaixo).
 
+**🔧 Oportunidade de otimização (x86-64-v3) — ver `TODO-optimize.md §O5`.** Ao reintroduzir o
+caminho dinâmico, o motor genérico deve usar os kernels `SimdMath` em **todo** passo
+por-amostra/por-bloco e **não regredir para escalar** em operações element-wise (baseline é
+x86-64-v3 → AVX2/FMA/F16C garantidos). O caminho WaveNet atual já tem uma lacuna a corrigir
+junto: o ganho final `head_scale` é aplicado em laço escalar
+(`src/models/wavenet/model.rs:96-98`) **dentro** de uma função `process_internal::<M: SimdMath>`
+— deveria ser `M::apply_gain(out_slice, head_scale)` (kernel já existente). É evidente e
+praticamente grátis.
+
 ---
 
 ## F2 — 🔴 Multi-condição / FiLM (`condition_size > 1`)
@@ -157,6 +168,22 @@ da fast-path canônica. Médio prazo.
 **Diretrizes.** Construir um motor A2 _dinâmico_ (alocação no load) que detecte a fast-path e
 faça downcast para o caminho const-generic SIMD; caso contrário, execute o caminho geral.
 Reaproveitar F2 (FiLM/gating) e F8/F9 (ativações/grouped conv).
+
+**🔧 Oportunidade de otimização (x86-64-v3) — ver `TODO-optimize.md §O5`.** Ao generalizar o motor
+A2, vetorizar dois pontos hoje **escalares** na própria fast-path (baseline é x86-64-v3 → AVX2/FMA/
+F16C garantidos; reduções FP **não** autovetorizam em Rust safe, logo continuam escalares no
+binário):
+
+- **Head conv** (`src/models/a2/head.rs:96-118`): laço aninhado `frames × 16 taps × CH`
+  **totalmente escalar**, no caminho de **produção** de todo modelo A2, a cada bloco (para CH=8
+  são 128 FMAs escalares por frame; `head.rs` não tem nenhum `_mm`/`target_feature`). Vetorizar
+  AVX2/FMA: dot sobre os CH canais acumulado nos 16 taps, ou vetorização across-frames.
+- **Rechannel Phase 0** (`src/models/a2/model/mod.rs:264-270`): broadcast-multiply escalar **e**
+  redecodifica os mesmos `CH` pesos f16 **a cada frame** (são constantes). Decodificar uma única
+  vez no load e usar broadcast-multiply AVX2 (sinergia com `TODO-optimize.md §O1` — internalização
+  de `half`/F16C, que remove a chamada opaca que hoje **bloqueia** a autovetorização deste laço).
+
+O motor A2 geral deve **nascer SIMD** nesses pontos, em vez de herdar o padrão escalar da fast-path.
 
 ---
 
