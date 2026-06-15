@@ -538,12 +538,21 @@ testes lentos/_flaky_.
 
 ### Sprint 2.3 — Cobertura, profundidade e informatividade (sem perder estresse)
 
-- [ ] **T2.3.1 — Garantir geração dos goldens C++ (fechar gap de T2.1.3).**
+- [x] **T2.3.1 — Garantir geração dos goldens C++ (fechar gap de T2.1.3).**
   Invocar `tests/fixtures/golden_gen_build.sh` (ou documentar pré-requisito) no início da
   suíte longa, para que `cpp_parity`/`cabsim_cpp_parity` rodem de verdade — não _skip_.
 
   - _Critério de aceite_: paridade C++ executa com goldens presentes; ausência vira **erro
     explícito**, não _skip_ silencioso.
+
+  - ✅ **Feito**: (1) `tests-long.sh` Phase 0 verifica todos os goldens v1, v2 (multi-SR,
+    por grupo de modelo) e cabsim — ausência é `exit 1` explícito (nunca skip).
+    (2) `NAM_AUTO_BUILD_GOLDENS=1` invoca `golden_gen_build.sh` automaticamente no
+    pre-flight, com revalidação pós-geração. (3) Auto-clone do NeuralAmpModelerCore
+    usa commit pinado (`9c7b185`) + init de submodules (`eigen`, `AudioDSPTools`),
+    idêntico ao `golden_gen_build.sh`. (4) `ensure_render_compiled()` (cpp_parity.rs)
+    e `compare_golden_cpp()` (cabsim_cpp_parity.rs) já tinham panics explícitos para
+    ausência de diretório/binário/golden.
 
 - [ ] **T2.3.2 — Relatório de testes/benches mais lentos por fase.**
   Acrescentar ao sumário (que já tem duração por fase) o **top-N mais lento** dentro das
@@ -567,7 +576,7 @@ testes lentos/_flaky_.
     registrada; suíte verde.
   - _Quando_: agrupar aqui o resultado de tudo entre L0 e L1; **última** execução completa.
   - **Nota do PO:** O /tests-cargo.log contém a saida de terminal de vários comandos úteis.
-    Use-o como insumo.
+    Já busque ter uma panorama geral se tudo está como deveria ou se precisa de ajustes.
 
 ---
 

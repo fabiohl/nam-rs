@@ -35,11 +35,29 @@ mkdir -p target/logs/
 # Cleanup accumulated live-test artifacts from previous runs (41+ MB WAVs)
 rm -rf tests/fixtures/.temp_live/
 
-# Auto-clone NeuralAmpModelerCore if not present (helps in fresh clones)
+# Auto-clone NeuralAmpModelerCore if not present (helps in fresh clones).
+# Uses the same pinned commit as golden_gen_build.sh for reproducibility.
+NAM_CORE_PINNED_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3 (canonical)
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
-    echo "🌐 Clonando NeuralAmpModelerCore para testes de paridade..."
-    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
+    echo "🌐 Clonando NeuralAmpModelerCore para testes de paridade (commit $NAM_CORE_PINNED_COMMIT)..."
+    git clone https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
+    (cd tests/fixtures/NeuralAmpModelerCore && git checkout "$NAM_CORE_PINNED_COMMIT")
+else
+    CURRENT_CORE_SHA=$(cd tests/fixtures/NeuralAmpModelerCore && git rev-parse HEAD 2>/dev/null || echo "unknown")
+    if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_PINNED_COMMIT" ]; then
+        echo -e "  ${YELLOW}⚠ NeuralAmpModelerCore em $CURRENT_CORE_SHA (esperado: $NAM_CORE_PINNED_COMMIT)${NC}"
+        echo -e "  ${YELLOW}  Considere deletar o diretório e reexecutar para reprodutibilidade.${NC}"
+    fi
 fi
+
+# Init submodules for the auto-cloned core (required for render tool compilation)
+for sub in "eigen" "AudioDSPTools"; do
+    sub_path="tests/fixtures/NeuralAmpModelerCore/Dependencies/$sub"
+    if [ -d "$sub_path" ] && [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
+        echo "  Inicializando submodule $sub..."
+        (cd tests/fixtures/NeuralAmpModelerCore && git submodule update --init "Dependencies/$sub")
+    fi
+done
 
 # ── Phase 0: Pre-flight check — C++ toolchain & golden files ──
 echo -e "\n${BLUE}${BOLD}[Phase 0] Pre-flight: verificando pré-requisitos C++ e golden vectors...${NC}"
@@ -116,21 +134,68 @@ if [ ${#MISSING_GOLDENS[@]} -gt 0 ] || [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
         for g in "${MISSING_GOLDENS[@]}"; do
             echo "    - $g"
         done
-        echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
     fi
     if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
         echo -e "  ${YELLOW}Ferramentas C++ faltando:${NC}"
         for t in "${MISSING_TOOLS[@]}"; do
             echo "    - $t"
         done
-        echo -e "  ${YELLOW}→ Instale as dependências do golden_gen_build.sh (cmake >= 3.10, g++/clang++ com C++20)${NC}"
     fi
-    exit 1
+
+    if [ "${NAM_AUTO_BUILD_GOLDENS:-0}" = "1" ]; then
+        echo -e "\n${YELLOW}${BOLD}→ NAM_AUTO_BUILD_GOLDENS=1 — invocando golden_gen_build.sh automaticamente...${NC}"
+        if ! bash tests/fixtures/golden_gen_build.sh; then
+            echo -e "${RED}${BOLD}❌ golden_gen_build.sh falhou. Corrija as dependências e tente novamente.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✓ Golden vectors regenerados com sucesso.${NC}"
+        # Re-validate golden files after generation
+        MISSING_GOLDENS=()
+        for g in "${REQUIRED_CABSIM_GOLDENS[@]}"; do
+            [ ! -f "$g" ] && MISSING_GOLDENS+=("$g")
+        done
+        for m in "${REQUIRED_GOLDEN_MODELS[@]}"; do
+            g="tests/fixtures/golden_${m}.bin"
+            [ ! -f "$g" ] && MISSING_GOLDENS+=("$g")
+        done
+        for m in "${V2_ALL_SR_MODELS[@]}"; do
+            for sr in "${V2_ALL_SR[@]}"; do
+                g="tests/fixtures/golden_${m}_v2_${sr}.bin"
+                [ ! -f "$g" ] && MISSING_GOLDENS+=("$g")
+            done
+        done
+        for m in "${V2_EX_192K_MODELS[@]}"; do
+            for sr in "${V2_EX_192K[@]}"; do
+                g="tests/fixtures/golden_${m}_v2_${sr}.bin"
+                [ ! -f "$g" ] && MISSING_GOLDENS+=("$g")
+            done
+        done
+        for m in "${V2_48K_MODELS[@]}"; do
+            g="tests/fixtures/golden_${m}_v2_48000.bin"
+            [ ! -f "$g" ] && MISSING_GOLDENS+=("$g")
+        done
+        if [ ${#MISSING_GOLDENS[@]} -gt 0 ]; then
+            echo -e "${RED}${BOLD}❌ Ainda faltam goldens após golden_gen_build.sh:${NC}"
+            for g in "${MISSING_GOLDENS[@]}"; do
+                echo "    - $g"
+            done
+            echo -e "  ${YELLOW}V2 goldens podem não ser gerados para todos os SRs (restrição do C++ render tool).${NC}"
+            exit 1
+        fi
+    else
+        echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
+        if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+            echo -e "  ${YELLOW}→ Instale: cmake >= 3.10, g++/clang++ com C++20${NC}"
+        fi
+        echo -e "  ${YELLOW}→ Ou defina NAM_AUTO_BUILD_GOLDENS=1 para geração automática.${NC}"
+        exit 1
+    fi
 fi
 
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     echo -e "${RED}${BOLD}❌ NeuralAmpModelerCore não encontrado.${NC}"
     echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
+    echo -e "  ${YELLOW}→ Ou defina NAM_AUTO_BUILD_GOLDENS=1 para geração automática.${NC}"
     exit 1
 fi
 
