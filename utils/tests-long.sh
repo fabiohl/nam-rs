@@ -206,7 +206,78 @@ declare -a PHASE_NAMES
 declare -a PHASE_COMMANDS
 declare -a PHASE_STATUS
 declare -a PHASE_DURATIONS
+declare -a PHASE_SUB_TIMINGS
 PHASE_COUNT=0
+N_TOP_SLOWEST=5
+
+# timed_cargo_test — runs a cargo test invocation, captures timing.
+# Usage: timed_cargo_test <label> <cargo_test_args...>
+# Appends per-invocation "TIMED: <seconds> <label>" lines to a temp tracker.
+TIMED_TRACKER=$(mktemp)
+timed_cargo_test() {
+    local label="$1"
+    shift
+    local start_t
+    start_t=$(date +%s%N)
+    cargo test "$@"
+    local status=$?
+    local end_t
+    end_t=$(date +%s%N)
+    local duration_ns=$((end_t - start_t))
+    local duration_s
+    duration_s=$(LC_NUMERIC=C awk -v ns="$duration_ns" 'BEGIN { printf "%.3f", ns / 1000000000 }')
+    echo "TIMED: $duration_s $label" >> "$TIMED_TRACKER"
+    return $status
+}
+
+# extract_sub_timings: reads the timed tracker, returns top-N slowest entries.
+extract_sub_timings() {
+    if [ ! -f "$TIMED_TRACKER" ] || [ ! -s "$TIMED_TRACKER" ]; then
+        return
+    fi
+    grep '^TIMED:' "$TIMED_TRACKER" | \
+        sed 's/^TIMED: //' | \
+        sort -rn | \
+        head -n "$N_TOP_SLOWEST"
+}
+
+# extract_top_benches: parse criterion bench output for top-N slowest by median time.
+# Usage: extract_top_benches <log_file> <n>
+extract_top_benches() {
+    local log="$1"
+    local n="${2:-$N_TOP_SLOWEST}"
+    if [ ! -f "$log" ]; then
+        return
+    fi
+    # Criterion output: bench name on a line, then "time: [1.2345 ms 1.2500 ms 1.2750 ms]" on the next.
+    # We capture bench name from unindented lines and match it with the following time: line.
+    awk '
+    BEGIN { bench = "" }
+    /^Benchmarking/  { bench = "" }                          # new benchmark start — discard
+    /^Found/         { bench = "" }                          # outlier lines — discard
+    /^change:/       { bench = "" }                          # change line — discard
+    /^[A-Za-z]/ && !/:/ && !/^Found/ && !/^change:/ { bench = $1 }  # capture bench result name
+    /time:.*\[/ && bench != "" {
+        split($0, a, /[\[\]]/)
+        if (length(a) >= 2) {
+            split(a[2], b, /[[:space:]]+/)
+            # b: [val1, unit, val2, unit, val3, unit]  — median is b[3] with unit b[4]
+            median_val  = b[3]
+            median_unit = b[4]
+            # Convert to nanoseconds for sorting
+            if (median_unit == "ns")        ns = median_val
+            else if (median_unit == "µs")   ns = median_val * 1000
+            else if (median_unit == "ms")   ns = median_val * 1000000
+            else if (median_unit == "s")    ns = median_val * 1000000000
+            else                            ns = median_val
+            printf "%.0f %s %s %s\n", ns, median_val, median_unit, bench
+        }
+        bench = ""
+    }
+    ' "$log" | sort -rn | head -n "$n" | while read -r ns val unit bench; do
+        printf "  %s %s  %s\n" "$val" "$unit" "$bench"
+    done
+}
 
 run_phase() {
     local name="$1"
@@ -219,6 +290,9 @@ run_phase() {
 
     local start_time=$(date +%s)
 
+    # Reset timed tracker for this phase
+    : > "$TIMED_TRACKER"
+
     # Run command and capture output/status
     eval "$cmd" > "target/logs/$log_file" 2>&1
     local status=$?
@@ -229,6 +303,9 @@ run_phase() {
     PHASE_NAMES[$PHASE_COUNT]="$name"
     PHASE_COMMANDS[$PHASE_COUNT]="$cmd"
     PHASE_DURATIONS[$PHASE_COUNT]="$duration"
+
+    # Capture sub-timings for this phase
+    PHASE_SUB_TIMINGS[$PHASE_COUNT]="$(extract_sub_timings)"
 
     if [ $status -eq 0 ]; then
         echo -e "${GREEN}✓ Sucesso (${duration}s)${NC}"
@@ -245,7 +322,7 @@ run_phase() {
 # --- Phase 1: Soak/Stress tests + PipeWire Integration (release, standalone) ---
 run_phase \
     "Soak Tests (Numerical Stability)" \
-    'status=0; cargo test --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "soak_test" --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1; timed_cargo_test "pipeline_soak" --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
     "phase1-soak.log" || true
 
 run_pipewire_phase() {
@@ -267,13 +344,13 @@ run_phase \
 # --- Phase 2: Property-Based, Parity, C++ Parity, Golden Vectors (release, default) ---
 run_phase \
     "Property-Based, Parity & Golden Vectors in Release" \
-    'status=0; cargo test --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; cargo test --release --no-fail-fast --test proptest_math -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; cargo test --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; cargo test --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; cargo test --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
     "phase2-proptests-parity.log" || true
 
 # --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit" \
-    'status=0; cargo test --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; cargo test --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; [ $status -eq 0 ]' \
     "phase3-heap-audit.log" || true
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
@@ -315,16 +392,16 @@ run_clap_audit_local() {
     fi
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
     
     echo "  Executando teste de stress do GC com 1000 swaps..."
-    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
+    timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
     
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
-    cargo test --release --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "concurrency_stress" --release --no-fail-fast --features standalone --test concurrency_stress -- --ignored --nocapture || audit_status=1
     
     echo "  Executando testes unitários e de integração em modo Mono..."
-    cargo test --release --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
+    timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,testing" || audit_status=1
 
     return $audit_status
 }
@@ -361,7 +438,44 @@ for ((i=0; i<PHASE_COUNT; i++)); do
     fi
     printf " | %-45s | %-10s | %-19b |\n" "$name" "$duration" "$status_colored"
 done
-echo -e "${BLUE}${BOLD}================================================================${NC}"
+
+# --- Top-N slowest sub-timings per heavy phase ---
+echo -e "\n${BLUE}${BOLD}  Top-$N_TOP_SLOWEST Items Mais Lentos por Fase Pesada${NC}"
+echo -e "${BLUE}${BOLD}  $(printf '━%.0s' {1..60})${NC}"
+
+for ((i=0; i<PHASE_COUNT; i++)); do
+    name="${PHASE_NAMES[$i]}"
+    sub_timings="${PHASE_SUB_TIMINGS[$i]}"
+
+    # Phase 5 (benchmarks) uses criterion — parse bench log separately
+    if [[ "$name" == *"Benchmark"* ]]; then
+        bench_log="phase5-benchmarks.log"
+        top_benches=$(extract_top_benches "target/logs/$bench_log" "$N_TOP_SLOWEST" 2>/dev/null)
+        if [ -n "$top_benches" ]; then
+            echo -e "\n  ${YELLOW}${BOLD}[$name]${NC}"
+            echo "$top_benches"
+        fi
+        continue
+    fi
+
+    if [ -n "$sub_timings" ]; then
+        echo -e "\n  ${YELLOW}${BOLD}[$name]${NC}"
+        rank=1
+        while IFS= read -r line; do
+            if [ -n "$line" ]; then
+                t=$(echo "$line" | awk '{print $1}')
+                lbl=$(echo "$line" | cut -d' ' -f2-)
+                printf "    %2d. %8ss  %s\n" "$rank" "$t" "$lbl"
+                rank=$((rank + 1))
+            fi
+        done <<< "$sub_timings"
+    fi
+done
+
+echo -e "\n${BLUE}${BOLD}================================================================${NC}"
+
+# Cleanup timed tracker temp file
+rm -f "$TIMED_TRACKER"
 
 if [ $ANY_FAILED -eq 0 ]; then
     echo -e "${GREEN}${BOLD}✓ Todos os estágios da auditoria passaram com sucesso!${NC}"

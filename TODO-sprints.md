@@ -554,11 +554,29 @@ testes lentos/_flaky_.
     e `compare_golden_cpp()` (cabsim_cpp_parity.rs) já tinham panics explícitos para
     ausência de diretório/binário/golden.
 
-- [ ] **T2.3.2 — Relatório de testes/benches mais lentos por fase.**
+- [x] **T2.3.2 — Relatório de testes/benches mais lentos por fase.**
   Acrescentar ao sumário (que já tem duração por fase) o **top-N mais lento** dentro das
   fases pesadas, para guiar otimizações futuras.
 
   - _Critério de aceite_: sumário lista os maiores ofensores de tempo.
+
+  - ✅ **Feito**: (1) `timed_cargo_test()` captura tempo de cada invocação via `date +%s%N`
+    com precisão de ms, escrevendo entradas `TIMED: <s> <label>` em tracker temporário.
+    (2) `extract_sub_timings()` ordena e seleciona top-5 por fase — aplicado às fases
+    1-4 (Soak, Proptest/Parity, Heap-Audit, CLAP). (3) `extract_top_benches()` faz parse
+    do output do Criterion (bench name + `time:` multi-linha) com awk, extrai mediana e
+    unidade, converte para ns e ranqueia top-5 para Phase 5. (4) Sumário ganha seção
+    "Top-N Items Mais Lentos por Fase Pesada" após tabela principal. PipeWire phase
+    (leve) não reporta sub-timings (tracker vazio).
+
+  - **Review (2026-06-15):** 3 achados menores identificados no `tests-long.sh`:
+    (1) **WARNING** — loop de display (L466-467) usa `echo|awk`+`echo|cut` por linha;
+    substituir por _bash parameter expansion_ (`${line%% *}` / `${line#* }`) elimina
+    ~50 subprocessos. (2) **SUGGESTION** — `$TIMED_TRACKER` (L216) só é limpo no caminho
+    normal (L478); ERR-trap (L20) não faz cleanup → leak de temp file em saída precoce
+    (conteúdo não sensível). Adicionar `trap 'rm -f "$TIMED_TRACKER"' EXIT`.
+    (3) **SUGGESTION** — regras `bench = ""` em `/^Found/` e `/^change:/` no awk (L257-258)
+    são unreachable (bench já foi limpo pela regra `time:`); remover.
 
 - [ ] **T2.3.3 — Revisar profundidade de estresse (proptest/soak).**
   Confirmar que as contagens de casos (proptest) e iterações (soak) maximizam estresse
