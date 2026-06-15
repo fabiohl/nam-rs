@@ -7,6 +7,31 @@ use super::*;
 use crate::clap::plugin::make_test_shared;
 use std::sync::atomic::Ordering;
 
+/// Returns a zero-initialized `HostSharedHandle` for GUI tests that don't need
+/// real host interaction. Calls to `get_extension` return `None` safely (all
+/// function pointers are null).
+fn make_dummy_host() -> HostSharedHandle<'static> {
+    let host_box = Box::new(clap_sys::host::clap_host {
+        clap_version: clap_sys::version::clap_version {
+            major: 0,
+            minor: 0,
+            revision: 0,
+        },
+        host_data: std::ptr::null_mut(),
+        name: std::ptr::null(),
+        vendor: std::ptr::null(),
+        url: std::ptr::null(),
+        version: std::ptr::null(),
+        get_extension: None,
+        request_restart: None,
+        request_process: None,
+        request_callback: None,
+    });
+    let leaked: &'static clap_sys::host::clap_host = Box::leak(host_box);
+    // SAFETY: the leaked host is valid for the 'static lifetime.
+    unsafe { HostSharedHandle::from_raw(std::ptr::NonNull::from(leaked)) }
+}
+
 #[test]
 fn test_track_color_conversion_and_fallback() {
     // 1. Fallback (alpha == 0)
@@ -103,9 +128,7 @@ fn test_ui_load_error_visual_feedback() {
     assert!(state.error_msg.is_empty());
 
     let ctx = egui::Context::default();
-    let dummy = 42i32;
-    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+    let host = make_dummy_host();
 
     let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
         egui::CentralPanel::default().show_inside(ui, |ui| {
@@ -325,9 +348,7 @@ fn test_bypass_keyboard_trigger() {
     let atomic_val = std::sync::atomic::AtomicU32::new(0); // initial: bypass off
     let gesture_flags = std::sync::atomic::AtomicU32::new(0);
     let gui_param_generation = std::sync::atomic::AtomicU32::new(0);
-    let dummy = 42i32;
-    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+    let host = make_dummy_host();
 
     const BYPASS_INDEX: usize = 3; // PARAM_BYPASS = 3
     const BITS_PER_PARAM: u32 = 3;
@@ -394,9 +415,7 @@ fn test_tab_order_navigation() {
     let shared = make_test_shared();
     shared.cold.track_accent_color.store(0, Ordering::Relaxed);
     let mut state = UiState::default();
-    let dummy = 42i32;
-    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+    let host = make_dummy_host();
 
     // Frame 1: Initial render, no focus
     let _ = ctx.run_ui(egui::RawInput::default(), |ui| {

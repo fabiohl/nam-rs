@@ -732,7 +732,7 @@ testes lentos/_flaky_.
 
 ### Sprint 4.1 — 🔴 CRÍTICO: SIGSEGV em release (config Mono CLAP)
 
-- [ ] **T4.1.1 — Diagnosticar e corrigir o SIGSEGV em release.**
+- [x] **T4.1.1 — Diagnosticar e corrigir o SIGSEGV em release.**
   O binário de unittests da lib crasha com `signal 11 (SIGSEGV)` em
   `cargo test --release --no-default-features --features clap-plugin,testing --lib`
   (`phase4-clap-validation.log:399-402`), após `test_metadata_extraction_from_nam_file`.
@@ -745,6 +745,17 @@ testes lentos/_flaky_.
   - _Critério de aceite_: causa-raiz documentada; crash eliminado; mono-release **verde
     determinístico** (≥ 3 execuções). Se for UB de RT-safety, abrir correção prioritária.
   - _Risco_: ALTO — pode indicar bug real de memória em produção (release é o profile de _ship_).
+  - **Resultado (2026-06-15):** **Causa-raiz**: 3 testes GUI (`test_ui_load_error_visual_feedback`,
+    `test_bypass_keyboard_trigger`, `test_tab_order_navigation` em `src/clap/gui/ui/test.rs`)
+    faziam `transmute(&dummy as *const i32)` onde `dummy` era um `i32` de stack, para produzir um
+    `HostSharedHandle`. `HostSharedHandle` é `#[repr(transparent)]` sobre `NonNull<clap_host>`. Em
+    release, o `get_extension::<HostParams>()` invocado por `handle_bypass` dereferenciava o
+    ponteiro inválido como `&clap_host` (struct FFI com function pointers), causando `SIGSEGV`.
+    **Correção**: substituímos o `transmute` por `make_dummy_host()`, que aloca um `clap_host`
+    zerado (com `get_extension: None`) via `Box::leak` e o converte em `HostSharedHandle<'static>`
+    via `from_raw(NonNull::from(...))`. Isso é seguro porque todos os function pointers são nulos,
+    fazendo `get_extension` retornar `None` sem dereferenciar memória inválida. 3 execuções
+    release consecutivas passaram (466 passed, 0 failed).
 
 ### Sprint 4.2 — 🟠 Fragilidade: gate de tempo wall-clock
 
