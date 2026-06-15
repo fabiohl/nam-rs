@@ -85,7 +85,7 @@ run_phase() {
 # --- Phase 1: Soak/Stress tests + PipeWire Integration (release, standalone) ---
 run_phase \
     "Soak Tests (Numerical Stability)" \
-    'status=0; cargo test --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 || status=1; cargo test --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
+    'status=0; cargo test --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1; cargo test --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture || status=1; [ $status -eq 0 ]' \
     "phase1-soak.log" || true
 
 run_pipewire_phase() {

@@ -51,7 +51,7 @@ Performance benchmarks using the `criterion` framework should be placed in the r
 
 Developers should use the following scripts under `utils/` before pushing commits:
 
-- `utils/tests-cargo.sh`: Runs the standard unit and integration tests (with `--test-threads=1`), builds the debug CLAP library with heap audits, and performs strict validation.
+- `utils/tests-cargo.sh`: Runs the standard unit and integration tests, builds the debug CLAP library with heap audits, and performs strict validation.
 - `utils/tests-long.sh`: Runs the decoupled 5-phase long-duration audit (Soak, Proptests, Parity/Heap-Audits, Release CLAP Validation, and Long Benchmarks), logging execution output to `target/logs/`.
 
 ## 5. Code Requirements
