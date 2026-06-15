@@ -8,6 +8,8 @@ use crate::clap::plugin::make_test_shared;
 use std::sync::atomic::Ordering;
 
 struct SafeClapHost(clap_sys::host::clap_host);
+// SAFETY: SafeClapHost is a read-only static dummy host used exclusively in tests.
+// The pointers are never mutated or dereferenced, making it safe to share across threads.
 unsafe impl Sync for SafeClapHost {}
 
 static DUMMY_CLAP_HOST: SafeClapHost = SafeClapHost(clap_sys::host::clap_host {
