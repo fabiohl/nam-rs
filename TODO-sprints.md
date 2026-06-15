@@ -239,14 +239,42 @@ resolve (a)–(d): processo por teste (isolamento → cobre F1 sem mexer no cód
 paralelismo agressivo, sumário conciso, _timeouts_ por teste, _retries_ e detecção de
 testes lentos/_flaky_.
 
-- [ ] **T1.5.1 — PoC `cargo-nextest` na fase 1 e 3.**
+> **Atualização T1.5.1:** o PoC mostrou que nextest é ~2× mais lento que `cargo test`
+> para esta suíte (testes muito rápidos, custo de processo domina). A Sprint 1.1 já
+> removeu a serialização, anulando o ganho principal esperado. O foco do sprint agora
+> é: (a) adotar nextest para **perfis pontuais** (`serial`/`heavy` — T1.5.2) e
+> (b) portar a melhoria de saída informativa para `cargo test` (T1.5.3—T1.5.5).
+
+- [x] **T1.5.1 — PoC `cargo-nextest` na fase 1 e 3.**
   Substituir `cargo test` por `cargo nextest run` (mantendo `cargo test --doc` à parte —
   o projeto tem 0 doctests hoje, então sem impacto). Medir wall-clock vs baseline.
 
-  - _Critério de aceite_: redução ≥ 50% no tempo de execução (não-compilação) das fases
-    1 e 3 em 16 núcleos, com 0 falhas/_flakes_ em ≥ 5 execuções.
+  - **Resultado do PoC (2026-06-14):** nextest NÃO atinge o critério de ≥50% de redução.
+    Em execução morna (pré-compilada) em 16 núcleos:
 
-- [ ] **T1.5.2 — Perfis nextest com `serial`/`heavy`.**
+    | Fase   | `cargo test` | `cargo nextest` | Delta    |
+    |--------|--------------|-----------------|----------|
+    | 1      | ~32,1s       | ~62,8s          | **+96%** |
+    | 3      | ~3,5s        | ~6,7s           | **+91%** |
+
+    > A maioria dos testes é muito rápida (<0,05s) → o custo de criação de processo por
+    > teste domina o runtime. O `cargo test` já roda em paralelo (Sprint 1.1 eliminou
+    > `--test-threads=1`), anulando o principal ganho esperado com nextest.
+  - **Achados positivos:**
+    1. nextest expôs _falso-positivo_ no `test_rdtsc_nanos_significant`: passa no
+       `cargo test` (processo aquecido por outros testes) mas falha em isolamento
+       (nextest) — o teste depende de tempo de execução acumulado do processo.
+    2. Isolamento por processo cobre F1 sem alterações de código (defesa em profundidade).
+    3. Sumário conciso e _timing por teste_ → valor informativo (coberto por T1.5.3).
+    4. `.config/nextest.toml` criado com configuração base. Script PoC em
+       `utils/tests-cargo-nextest-poc.sh`.
+  - **Recomendação:** não adotar `cargo-nextest` como runner padrão (perda de ~2× em
+    velocidade). Manter instalado para diagnóstico pontual de testes _flaky_ e para o
+    perfil `serial`/`heavy` (T1.5.2).
+  - **Nota do PO:** Artefatos deletados. Não vamos continuar avaliando o nextest.
+    Ele deveria ter trazido benefícios mais óbvios, que não melhorarão adiante
+
+- [CANCELADO] **T1.5.2 — Perfis nextest com `serial`/`heavy`.**
   Configurar `.config/nextest.toml` com grupos: testes que mutam estado de processo
   (`diagnostic_bundle` env vars) em grupo serial; demais paralelos; _slow-timeout_ para
   flagrar testes que estouram orçamento de tempo.
@@ -254,19 +282,19 @@ testes lentos/_flaky_.
   - _Critério de aceite_: testes serializáveis identificados e isolados; sumário lista
     os N testes mais lentos.
 
-- [ ] **T1.5.3 — Timing por fase + tabela de sumário (estilo `tests-long.sh`).**
+- [CANCELADO] **T1.5.3 — Timing por fase + tabela de sumário (estilo `tests-long.sh`).**
   Portar para `tests-cargo.sh` o padrão de `run_phase`/sumário de `utils/tests-long.sh:51-83,177-206`:
   duração por fase, status colorido e tabela final.
 
   - _Critério de aceite_: ao fim da suíte, tabela com `Fase | Duração | Status`.
 
-- [ ] **T1.5.4 — Mensagem de duração honesta + modo cold/warm.**
+- [CANCELADO] **T1.5.4 — Mensagem de duração honesta + modo cold/warm.**
   Corrigir o cabeçalho "± 2 minutos" para refletir cold (~4-5 min) vs warm (~1-2 min),
   ou medir e exibir dinamicamente.
 
   - _Critério de aceite_: cabeçalho não engana o desenvolvedor.
 
-- [ ] **T1.5.5 — Padronizar tratamento de erro entre fases.**
+- [CANCELADO] **T1.5.5 — Padronizar tratamento de erro entre fases.**
   Hoje a fase 3 usa `set +e`/banner manual (`tests-cargo.sh:45-57`) e as demais confiam
   em `set -e`. Unificar (idealmente via função `run_phase` comum, igual ao long).
 
