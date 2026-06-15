@@ -578,11 +578,28 @@ testes lentos/_flaky_.
     (3) **SUGGESTION** — regras `bench = ""` em `/^Found/` e `/^change:/` no awk (L257-258)
     são unreachable (bench já foi limpo pela regra `time:`); remover.
 
-- [ ] **T2.3.3 — Revisar profundidade de estresse (proptest/soak).**
+- [x] **T2.3.3 — Revisar profundidade de estresse (proptest/soak).**
   Confirmar que as contagens de casos (proptest) e iterações (soak) maximizam estresse
   onde é barato; aumentar onde o custo marginal for baixo. **Não reduzir** cobertura.
 
   - _Critério de aceite_: parâmetros de estresse revisados e justificados.
+
+  - ✅ **Feito**: 4 ajustes aplicados (sem redução de cobertura):
+    **(1) `src/math/activations/tests.rs`** — 5 proptests tinham nomes aspiracionais
+    ("100k", "50k") mas usavam default ~256 casos. Adicionado `ProptestConfig::with_cases(10_000)`
+    nos 5: `test_tanh_pade_proptest_100k`, `test_tanh_piecewise_proptest_50k`,
+    `test_tanh_pade_nr2_proptest_100k`, `test_tanh_pade_nr2_proptest_100k_avx512`,
+    `test_sigmoid_pade_proptest_100k`. CI (~0.00s, custo trivial — single f32 op por caso).
+    **(2) `tests/lstm_scalar_bf16_parity.rs`** — 50→5,000 casos (100×). Era o proptest de
+    menor profundidade de todo o projeto. 3 testes `#[ignore]` (longa: ~348s somados).
+    Estratégias geram vetores de até ~12k f32s + instanciam LstmModel1 e comparam SIMD vs
+    scalar — aceitável para suíte longa. **(3) `src/dsp/pipeline/pipeline_block_test.rs`** —
+    500→2,000 casos (4×). `#[ignore]`, longa (~4.4s). Modelo real (BossWN-nano) com blocos
+    aleatórios 1..8192 — custo modesto para cobertura 4× maior.
+    **(4) `src/dsp/resampler_test.rs`** — `test_resampler_micro_soak`: 2000→5000 iterações
+    (2.5×, ~2.5M samples/pair × 5 rate pairs). CI (~0.26s).
+    **Soak tests**: já saturados (10M frames na maioria, 50M resampler, 100M mirror_buf).
+    Sem alterações — custo marginal de aumentar é alto e estresse já máximo.
 
 ### Sprint 2.4 — Validação final (🚦 GATE L1)
 
@@ -595,6 +612,7 @@ testes lentos/_flaky_.
   - _Quando_: agrupar aqui o resultado de tudo entre L0 e L1; **última** execução completa.
   - **Nota do PO:** O /tests-cargo.log contém a saida de terminal de vários comandos úteis.
     Já busque ter uma panorama geral se tudo está como deveria ou se precisa de ajustes.
+    Use o Épico 3 (ou posteriores) para dar direcionamento aos achados.
 
 ---
 
@@ -616,26 +634,27 @@ testes lentos/_flaky_.
   - _Arquivos_: `src/clap/extensions/state.rs` (caminho de `Deserialize`, ~`:238`).
   - _Critério de aceite_: estado vazio não emite `[CLAP_PLUGIN_ERROR]`; retorno inalterado.
 
-- [ ] **T3.1.2 — Decidir sobre `clap.note-ports` (2 testes SKIPPED).**
+- [CANCELADO] **T3.1.2 — Decidir sobre `clap.note-ports` (2 testes SKIPPED).**
   `process-note-*` pulados por não implementar `note-ports`. Confirmar se é intencional
   (efeito sem MIDI) e documentar para não parecer lacuna.
-
   - _Critério de aceite_: decisão registrada em `docs/` (intencional) ou tarefa criada.
+  - Nota do PO: É intencional.
 
-- [ ] **T3.1.3 — (Opcional) validação estrita por `--json` na suíte padrão.**
+- [CANCELADO] **T3.1.3 — (Opcional) validação estrita por `--json` na suíte padrão.**
   A suíte padrão valida por exit code; a longa usa `--json`+`jq` para falhar em _warnings_.
   Avaliar trazer a checagem de _warnings_ para a padrão (barata, ~3 s).
-
   - _Critério de aceite_: _warnings_ do validator falham a suíte padrão, ou justificativa.
+  - Nota do PO: É intencional.
 
 ### Sprint 3.2 — Divergência numérica conhecida (registrada, não regressão nova)
 
-- [ ] **T3.2.1 — Investigar WaveNet Lite (CH=12) vs C++.**
+- [CANCELADO] **T3.2.1 — Investigar WaveNet Lite (CH=12) vs C++.**
   `test_golden_vectors_wavenet_lite` está `ignored` como "known-divergent ... SNR = 0,9 dB
   vs C++". SNR de 0,9 dB é perceptualmente relevante. Investigar a deriva (acúmulo, ordem
   de redução, bf16) e definir correção ou aceitação formal.
   - _Critério de aceite_: causa-raiz documentada; teste reabilitado **ou** divergência
     formalmente aceita com justificativa numérica (skill `pesquisador-inovador`).
+  - Nota do PO: Será avalidado oportunamente no futuro.
 
 ### Sprint 3.3 — Resíduos da infraestrutura do Épico 1
 

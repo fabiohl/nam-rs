@@ -236,7 +236,7 @@ fn test_resampler_micro_soak() {
     ];
 
     let chunk_size = 512;
-    let n_iterations = 2000; // Total ~1M samples per pair
+    let n_iterations = 5_000; // Total ~2.5M samples per pair
 
     let in_l = vec![0.1f32; chunk_size];
     let in_r = vec![0.1f32; chunk_size];

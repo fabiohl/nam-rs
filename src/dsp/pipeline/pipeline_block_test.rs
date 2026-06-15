@@ -216,7 +216,7 @@ mod block_tests {
     proptest! {
         #![proptest_config(ProptestConfig {
             failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::SourceParallel("tests/proptest-regressions"))),
-            .. ProptestConfig::with_cases(500)
+            .. ProptestConfig::with_cases(2_000)
         })]
         #[test]
         #[ignore]

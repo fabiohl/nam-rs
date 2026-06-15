@@ -53,7 +53,7 @@ prop_compose! {
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
-        .. ProptestConfig::with_cases(50)
+        .. ProptestConfig::with_cases(5_000)
     })]
 
     #[test]
