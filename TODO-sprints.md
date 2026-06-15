@@ -566,6 +566,8 @@ testes lentos/_flaky_.
   - _Critério de aceite_: tempo total reduzido (sem perda de cobertura); tabela L0→L1
     registrada; suíte verde.
   - _Quando_: agrupar aqui o resultado de tudo entre L0 e L1; **última** execução completa.
+  - **Nota do PO:** O /tests-cargo.log contém a saida de terminal de vários comandos úteis.
+    Use-o como insumo.
 
 ---
 

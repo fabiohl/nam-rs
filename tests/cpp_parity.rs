@@ -82,19 +82,20 @@ fn render_bin() -> PathBuf {
     bin
 }
 
-fn ensure_render_compiled() -> bool {
+fn ensure_render_compiled() {
     let bin = render_bin();
     if bin.exists() {
-        return true;
+        return;
     }
 
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let nam_core = project_root.join(NAM_CORE_DIR);
 
     if !nam_core.exists() {
-        eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
-        eprintln!("Please run tests/fixtures/golden_gen_build.sh to set up the mirrors.");
-        return false;
+        panic!(
+            "NeuralAmpModelerCore not found at {nam_core:?}.\n\
+             Run './tests/fixtures/golden_gen_build.sh' to set up mirrors and generate golden vectors."
+        );
     }
 
     for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
@@ -130,8 +131,10 @@ fn ensure_render_compiled() -> bool {
     match cmake_status {
         Ok(s) if s.success() => {}
         _ => {
-            eprintln!("CMake failed — C++ dependencies may be missing.");
-            return false;
+            panic!(
+                "CMake failed — C++ build dependencies missing.\n\
+                 Install cmake and a C++20 compiler (g++ or clang++), then re-run."
+            );
         }
     }
 
@@ -149,12 +152,14 @@ fn ensure_render_compiled() -> bool {
     match build_status {
         Ok(s) if s.success() => {}
         _ => {
-            eprintln!("Render build failed.");
-            return false;
+            panic!("Render build failed — check build logs in {build_dir:?}.");
         }
     }
 
-    render_bin().exists()
+    assert!(
+        render_bin().exists(),
+        "Render binary not found after successful build — expected at {bin:?}"
+    );
 }
 
 fn run_render_comparison(
@@ -165,10 +170,11 @@ fn run_render_comparison(
     use_v2: bool,
 ) {
     let model_path = model_path(model_filename);
-    if !model_path.exists() {
-        eprintln!("SKIP: {label} — {model_filename} not found.");
-        return;
-    }
+    assert!(
+        model_path.exists(),
+        "{label} — model file {model_filename} not found at {model_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to set up mirrors and golden vectors."
+    );
 
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let temp_dir = project_root.join("tests/fixtures/.temp_live");
@@ -178,10 +184,7 @@ fn run_render_comparison(
     let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    if !ensure_render_compiled() {
-        eprintln!("SKIP: {label} — render tool not available.");
-        return;
-    }
+    ensure_render_compiled();
 
     let actual_sr = if use_v2 {
         sample_rate

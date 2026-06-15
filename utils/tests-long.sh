@@ -41,6 +41,101 @@ if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
 fi
 
+# ── Phase 0: Pre-flight check — C++ toolchain & golden files ──
+echo -e "\n${BLUE}${BOLD}[Phase 0] Pre-flight: verificando pré-requisitos C++ e golden vectors...${NC}"
+
+MISSING_GOLDENS=()
+REQUIRED_CABSIM_GOLDENS=(
+    "tests/fixtures/golden_cabsim_cpp_short.bin"
+    "tests/fixtures/golden_cabsim_cpp_medium.bin"
+    "tests/fixtures/golden_cabsim_cpp_long.bin"
+)
+# v1 golden vectors (48 kHz only)
+REQUIRED_GOLDEN_MODELS=(
+    "wavenet_standard" "wavenet_feather" "wavenet_nano" "wavenet_lite"
+    "wavenet_a1_standard" "wavenet_a2_full" "wavenet_a2_lite"
+    "lstm_1x16" "lstm_2x8" "lstm_official"
+)
+# v2 ALL_SR: 44100, 48000, 88200, 96000, 192000
+V2_ALL_SR_MODELS=("wavenet_feather" "wavenet_nano" "wavenet_lite" "wavenet_a1_standard")
+V2_ALL_SR=(44100 48000 88200 96000 192000)
+# v2 SR_EX_192K: 44100, 48000, 88200, 96000
+V2_EX_192K_MODELS=("lstm_1x16" "lstm_2x8")
+V2_EX_192K=(44100 48000 88200 96000)
+# v2 SR_48K_ONLY: 48000
+V2_48K_MODELS=("wavenet_standard" "lstm_official" "wavenet_a2_full" "wavenet_a2_lite")
+
+# Check cabsim goldens
+for g in "${REQUIRED_CABSIM_GOLDENS[@]}"; do
+    if [ ! -f "$g" ]; then
+        MISSING_GOLDENS+=("$g")
+    fi
+done
+
+# Check v1 goldens
+for m in "${REQUIRED_GOLDEN_MODELS[@]}"; do
+    g="tests/fixtures/golden_${m}.bin"
+    if [ ! -f "$g" ]; then
+        MISSING_GOLDENS+=("$g")
+    fi
+done
+
+# Check v2 golden files per model-specific SR groups (matching golden_vectors.rs constants)
+for m in "${V2_ALL_SR_MODELS[@]}"; do
+    for sr in "${V2_ALL_SR[@]}"; do
+        g="tests/fixtures/golden_${m}_v2_${sr}.bin"
+        if [ ! -f "$g" ]; then
+            MISSING_GOLDENS+=("$g")
+        fi
+    done
+done
+for m in "${V2_EX_192K_MODELS[@]}"; do
+    for sr in "${V2_EX_192K[@]}"; do
+        g="tests/fixtures/golden_${m}_v2_${sr}.bin"
+        if [ ! -f "$g" ]; then
+            MISSING_GOLDENS+=("$g")
+        fi
+    done
+done
+for m in "${V2_48K_MODELS[@]}"; do
+    g="tests/fixtures/golden_${m}_v2_48000.bin"
+    if [ ! -f "$g" ]; then
+        MISSING_GOLDENS+=("$g")
+    fi
+done
+
+# Check C++ toolchain availability
+MISSING_TOOLS=()
+command -v cmake >/dev/null 2>&1 || MISSING_TOOLS+=("cmake")
+command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || MISSING_TOOLS+=("g++/clang++ (C++20)")
+
+if [ ${#MISSING_GOLDENS[@]} -gt 0 ] || [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+    echo -e "${RED}${BOLD}❌ Pre-flight falhou — pré-requisitos ausentes:${NC}"
+    if [ ${#MISSING_GOLDENS[@]} -gt 0 ]; then
+        echo -e "  ${YELLOW}Golden vectors faltando (${#MISSING_GOLDENS[@]} arquivo(s)):${NC}"
+        for g in "${MISSING_GOLDENS[@]}"; do
+            echo "    - $g"
+        done
+        echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
+    fi
+    if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+        echo -e "  ${YELLOW}Ferramentas C++ faltando:${NC}"
+        for t in "${MISSING_TOOLS[@]}"; do
+            echo "    - $t"
+        done
+        echo -e "  ${YELLOW}→ Instale as dependências do golden_gen_build.sh (cmake >= 3.10, g++/clang++ com C++20)${NC}"
+    fi
+    exit 1
+fi
+
+if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
+    echo -e "${RED}${BOLD}❌ NeuralAmpModelerCore não encontrado.${NC}"
+    echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Pré-requisitos C++ e golden vectors verificados.${NC}"
+
 # Trackers for the final summary
 declare -a PHASE_NAMES
 declare -a PHASE_COMMANDS

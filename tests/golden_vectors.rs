@@ -190,30 +190,28 @@ fn test_golden_vectors_wavenet() {
 /// - LSTM converges better than WaveNet (no FastMath Padé accumulation between layers).
 /// - Stress signal: 2048 samples (multi-component).
 ///
-/// If the golden file does not exist, the test prints SKIP and returns.
-/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
+/// If the golden file does not exist, the test fails with an explicit error
+/// directing the user to run `tests/fixtures/golden_gen_build.sh`.
 #[test]
 fn test_golden_vectors_lstm_1x16() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x16.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_lstm_1x16.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_lstm_1x16.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x16.bin");
 
     // Load and build the model
     let nam_path = model_path("BossLSTM-1x16.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossLSTM-1x16.nam not found at {nam_path:?}. Run golden_gen_build.sh to fetch models."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
@@ -251,22 +249,20 @@ fn test_golden_vectors_lstm_2x8() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_2x8.bin");
 
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_lstm_2x8.bin not found at {golden_path:?}. \
-             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
-        );
-        return;
-    }
+    assert!(
+        golden_path.exists(),
+        "golden_lstm_2x8.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
 
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Failed to read golden_lstm_2x8.bin");
 
     let nam_path = model_path("BossLSTM-2x8.nam");
-    if !nam_path.exists() {
-        eprintln!("SKIP: BossLSTM-2x8.nam not found. Golden test impossible.");
-        return;
-    }
+    assert!(
+        nam_path.exists(),
+        "BossLSTM-2x8.nam not found at {nam_path:?}. Run golden_gen_build.sh to fetch models."
+    );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 2x8 model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
