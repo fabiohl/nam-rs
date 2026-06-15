@@ -8,8 +8,11 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_zero_alloc_process_bypass() {
+        let _mutex_guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
@@ -142,6 +145,7 @@ mod tests {
 
     #[test]
     fn test_model_switching_stress() {
+        let _mutex_guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
@@ -225,6 +229,7 @@ mod tests {
 
     #[test]
     fn test_parameter_modulation_stress() {
+        let _mutex_guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
@@ -494,6 +499,7 @@ mod tests {
 
     #[test]
     fn test_monophonic_parameter_modulation() {
+        let _mutex_guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let audio_config = PluginAudioConfiguration {
@@ -715,8 +721,27 @@ mod tests {
     }
 
     #[cfg(feature = "heap-audit")]
+    struct AuditEnabledGuard;
+
+    #[cfg(feature = "heap-audit")]
+    impl AuditEnabledGuard {
+        fn new() -> Self {
+            crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+            Self
+        }
+    }
+
+    #[cfg(feature = "heap-audit")]
+    impl Drop for AuditEnabledGuard {
+        fn drop(&mut self) {
+            crate::common::alloc_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
+        }
+    }
+
+    #[cfg(feature = "heap-audit")]
     #[test]
     fn test_heap_audit_trigger() {
+        let _mutex_guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -764,8 +789,8 @@ mod tests {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
 
-        // Activates heap audit globally
-        crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+        // Activates heap audit globally using RAII guard
+        let _audit_guard = AuditEnabledGuard::new();
 
         // Resets the status flag to ensure it is clean before
         shared
@@ -784,9 +809,6 @@ mod tests {
                 None,
             )
             .expect("process failed in heap audit test");
-
-        // Disables heap audit to avoid interfering with other tests
-        crate::common::alloc_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
 
         // Verifies that the returned status is Continue (zero-alloc path)
         assert!(

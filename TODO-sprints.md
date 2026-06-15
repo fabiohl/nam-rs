@@ -612,7 +612,7 @@ testes lentos/_flaky_.
   - _Quando_: agrupar aqui o resultado de tudo entre L0 e L1; **última** execução completa.
   - **Nota do PO:** O /tests-cargo.log contém a saida de terminal de vários comandos úteis.
     Já busque ter uma panorama geral se tudo está como deveria ou se precisa de ajustes.
-    Use o Épico 3 (ou posteriores) para dar direcionamento aos achados.
+    Use o Épico 4 (ou posteriores) para dar direcionamento aos achados.
 
 ---
 
@@ -667,7 +667,7 @@ testes lentos/_flaky_.
   - _Critério de aceite_: decisão registrada; se mantido, justificado como aceitável.
   - **Achado & Decisão (2026-06-15):** A lentidão no cold run (~10,28s) ocorria porque a chamada `panic!` no teste `test_panic_hook_behavior` disparava o gancho padrão do Rust (através de `prev_hook(info)`), o qual, sob `RUST_BACKTRACE=1` ou `RUST_BACKTRACE=full`, realizava a leitura e resolução dos símbolos de depuração diretamente do disco frio. Para solucionar isso sem alterar o comportamento em produção (onde o backtrace ainda é desejado no crash report padrão), modificamos o teste de integração para temporariamente desviar o `prev_hook` para um gancho dummy no-op (`Box::new(|_| {})`) durante os pânicos controlados. Isso eliminou completamente a resolução e a impressão dos backtraces durante o teste, reduzindo o tempo de execução do teste para menos de 1ms, mesmo em runs a frio.
 
-- [ ] **T3.3.2 — Endurecer `AUDIT_ENABLED` global em `test_heap_audit_trigger`.**
+- [x] **T3.3.2 — Endurecer `AUDIT_ENABLED` global em `test_heap_audit_trigger`.**
   `src/clap/processor_test.rs:768` liga/desliga `AUDIT_ENABLED` (atômico **de processo**)
   sem RAII; se o `process()` entrar em pânico antes do reset (linha 789), a flag fica
   ligada para o resto da suíte. Envolver set/reset em guard RAII (reset no `Drop`) e
@@ -675,6 +675,7 @@ testes lentos/_flaky_.
 
   - _Critério de aceite_: flag sempre restaurada mesmo sob pânico; sem corrida com testes
     `clap::` paralelos.
+  - **Resultado (2026-06-15):** Criamos a estrutura RAII `AuditEnabledGuard` que ativa a auditoria global no `new()` e restaura `AUDIT_ENABLED` para `false` no `drop()`. Para prevenir interferência com os outros testes concorrentes da biblioteca (onde `process()` ativa o `TrackingGuard` sob auditoria ativa, o que resetaria o estado atômico `TRACKING_ACTIVE` local de outra thread e silenciaria suas asserções de zero alocações), introduzimos um `TEST_MUTEX` e serializamos o `test_heap_audit_trigger` com os 4 testes de zero alocação (`test_zero_alloc_process_bypass`, `test_model_switching_stress`, `test_parameter_modulation_stress` e `test_monophonic_parameter_modulation`), garantindo isolamento total e determinismo em paralelismo sem regressão no tempo de teste.
 
 ---
 
