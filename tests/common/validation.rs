@@ -97,6 +97,7 @@ pub fn report_dsp_fidelity_no_lufs(
 }
 
 #[track_caller]
+#[allow(clippy::too_many_arguments)]
 fn report_dsp_fidelity_impl(
     reference: &[f32],
     test: &[f32],
