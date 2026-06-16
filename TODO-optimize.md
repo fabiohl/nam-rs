@@ -308,6 +308,17 @@ ganho **já SIMD**; `wavenet/accumulate` já é AVX2/AVX-512.
 aritmética/redução f32/f16 por-amostra/por-bloco** deve permanecer escalar. Ao implementar qualquer
 F que toque inferência, usar os kernels `SimdMath` (ou intrínsecos `core::arch`) desde o início.
 
+**📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).** Roteamento
+confirmado e refinado: **S3** (`head_scale` escalar, `model.rs:96-98`) é a fração de O5 que cabe ao
+WaveNet — vira quick-win bit-exato `M::apply_gain` em **`S1.T1.1`** (kernel já existe,
+`src/math/common/traits.rs:447`). A **limpeza BF16 morta** (`avx2_impl.rs:42-99`) é micro-tarefa
+autônoma em **`S1.T1.2`** (código inalcançável, zero impacto numérico). O **guard-rail** ("nada escalar
+no hot-spot") foi promovido a **regra de revisão** das sprints de motor dinâmico (**S2/S3**): o motor
+genérico **nasce SIMD** (`S2.T2.2`). **Fora do escopo desta rodada**: S1 (head conv A2, `head.rs`) e S2
+(rechannel A2, `model/mod.rs`) pertencem ao **motor A2/F3** — permanecem roteados a `TODO-features.md §F3`,
+não às sprints WaveNet. Sprints WaveNet: **S1.T1.1** (head_scale), **S1.T1.2** (limpeza BF16),
+**S2.T2.2** (born-SIMD do caminho dinâmico).
+
 ---
 
 ## Plano de PoC (resumo executável)

@@ -114,6 +114,18 @@ junto: o ganho final `head_scale` é aplicado em laço escalar
 — deveria ser `M::apply_gain(out_slice, head_scale)` (kernel já existente). É evidente e
 praticamente grátis.
 
+**📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).** Causa-raiz
+confirmada: catálogo fechado (`mod.rs:133`, braço `None` em `mod.rs:108-142`), detecção rígida
+(`topology.rs:84-119`) e remoção do caminho dinâmico no commit `d683b6e` (~1497 linhas). **`Conv1dDyn`
+foi retido** (`src/models/wavenet/conv1d_dyn.rs`) e é a fundação reutilizável. O bloqueio estrutural é
+`CH/K/HEAD` const-generic + scratch stack `[f32;1024]` que limita **CH≤16** (`layer.rs:45-56`); o motor
+dinâmico precisa de **scratch em `AlignedVec` dimensionado no load**. Plano: **dispatch híbrido**
+(fast-path const-generic para os SKUs + dinâmico para o resto), **nascendo SIMD** (guard-rail O5), com
+paridade ESR/SNR vs C++ v0.5.3 (`model.cpp:828` aceita geometria livre/N arrays). **Escopo desta
+rodada**: A1 geometria livre, **COND=1** (multi-cond é F2), **sem head pós-stack** (F6). A correção
+O5/S3 do `head_scale` entra como quick-win. Sprints: **S2** (fundação dinâmica, 🔴 crítica), **S3**
+(dispatch híbrido + goldens), **S1.T1.1** (`head_scale`→`M::apply_gain`).
+
 ---
 
 ## F2 — 🔴 Multi-condição / FiLM (`condition_size > 1`)
@@ -379,6 +391,45 @@ F1/F2/F3 e o corpus de F12) devem seguir as mesmas regras:
 - **Cobertura multi-SR e determinismo.** Acrescentar os novos modelos aos gates v2 multi-SR
   (T4.2) e ao gate de determinismo bitwise por arquitetura (T4.5), fechando a malha de
   cobertura universal.
+
+---
+
+## Modelo de encomenda ao Claude
+
+/revisor-auditor Vamos agora atacar os problemas identificados nos nossos arquivos "TODO". Começando por este aqui:
+TODO-features.md:82-82
+
+```cite
+F1 — 🔴 WaveNet genérico (dispatcher dinâmico)
+```
+
+Transversalmente vamos pegar conhecimentos também destes achados aqui:
+TODO-problemas.md:75-75
+
+```cite
+P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear
+```
+
+TODO-problemas.md:101-101
+
+```cite
+P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa)
+```
+
+TODO-problemas.md:127-127
+
+```cite
+P4 — 🟡 WaveNet não é "silencioso no silêncio"
+```
+
+TODO-optimize.md:264-264
+
+```cite
+O5 — 🟢 Auditoria de cobertura SIMD x86-64-v3 no hot-spot (índice + guard-rail)
+```
+
+Pesquise a fundo estes achados e entenda a situação. Use o NAMcore como a "bíblia de correção", mas já vá buscando otimizações e SIMD/ISAs modernos seguros on-the-fly.
+Ao final acione a skill "planejador-arquiteto" para organizar isto em tarefas seguras e rápidas para entregar valor.
 
 ---
 

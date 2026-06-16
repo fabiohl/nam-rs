@@ -96,6 +96,16 @@ latência.
 Quantificar perceptualmente (MUSHRA/ESR já disponíveis) o impacto do FastMath na WaveNet e
 registrar a política de fidelidade. Conectar com P1 (Lite é o caso extremo dessa família).
 
+**📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).** Decomposição
+das fontes de drift (via `docs/fastmath-approximations.md` + código): a **quantização de pesos
+BF16/F16** (~3,9e-3 por elemento, `src/math/common/ops.rs:16`) é a fonte **dominante**, **maior** que o
+tanh Padé [5,4] (~2,3e-3, `src/math/activations/tanh/production.rs`). **Não existe modo "exato"** no
+projeto. Recomendação: (1) **medir e isolar** cada fonte primeiro (quick-win, baixo risco — `S1.T1.4`);
+(2) oferecer um **modo alta-fidelidade opcional** (pesos f32 + tanh exato, **off por padrão**, sem
+afetar produção) — `S4.T4.1`; (3) **documentar a política** de fidelidade (`S4.T4.2`). **Constraint
+para F1**: o motor genérico **não pode piorar** o ESR atual. Sprints: **S1** (medição), **S4**
+(modo exato + doc, opcional/deferida).
+
 ---
 
 ## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa)
@@ -122,6 +132,16 @@ documentar; (b) se há espaço de melhoria no engine (resampler, FastMath em alt
 frequência), abrir investigação; (c) avaliar gates perceptuais (MR-STFT/LUFS) como
 complemento ao SNR cru nesses casos.
 
+**📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).** Os gates são
+**honestos** (calibrados com medição + meta-teste anti-placebo, `tests/threshold_calibration.rs:199`),
+mas a chegada de **novas geometrias** via F1 amplia a superfície de risco. Endurecimento **conduzido
+por triagem** (`S3.T3.3`): manter onde a divergência é inerente (estímulo/SR/reamostragem) com
+justificativa documentada; recalibrar com margem honesta onde houver regressão evitável do engine
+(inclusive o dinâmico); avaliar gates perceptuais (MR-STFT/LUFS) como complemento. **Cautela do
+auditor**: **não** apertar gate sem entender a origem da divergência — geraria flakiness de CI. Regra
+de ouro mantida: _"todo golden deve poder falhar"_. Sprints: **S3** (T3.2 goldens de paridade C++ +
+T3.3 endurecimento dos gates).
+
 ---
 
 ## P4 — 🟡 WaveNet não é "silencioso no silêncio"
@@ -145,6 +165,19 @@ não converge exatamente a zero.
 **Sugestão de condução**
 Verificar se é o termo de _bias_ do head/dense ou flush de denormais (DAZ/FTZ). Decidir se
 deve ser zerado no caminho de silêncio (consistência com A2) ou aceito/documentado.
+
+**📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).**
+**Não é bug — é comportamento fiel ao NAMCore.** Os biases das camadas (conv/mixin/1x1/rechannel)
+tornam `tanh(bias) ≠ 0`, e o próprio C++ documenta _"don't expect the model to be outputting zeroes
+after this"_ (`tests/fixtures/NeuralAmpModelerCore/NAM/dsp.h:67`). A A2 só zera por usar **LeakyReLU(0)=0**
+
+- pesos sintéticos — não é o caso da WaveNet A1 real. **Cautela crítica do auditor: NÃO zerar o
+silêncio à força** — isso **divergiria da bíblia** (C++) e quebraria a paridade. Encaminhamento:
+diagnosticar a origem do resíduo (bias propagado vs quantização vs denormal), **confirmar paridade**
+gerando o mesmo silêncio no `render` v0.5.3, e **documentar** que −89 dBFS é fiel. DAZ/FTZ já está
+ativo (`src/math/common/ops.rs:163`, reasserção em `src/clap/processor/mod.rs:268`); a interação com
+noise-gate/true-bypass é responsabilidade da camada de gate, não do modelo. Liga-se a **P5**
+(penalidade de denormal). Sprint: **S1.T1.3** (diagnóstico + política documentada, 🟢 baixo risco).
 
 ---
 
