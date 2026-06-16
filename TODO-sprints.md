@@ -108,7 +108,7 @@ referência e validar por ESR/SNR.
 > prepara o terreno (instrumentação de fidelidade, política de silêncio) para julgar o motor dinâmico
 > de S2/S3. Todas as tarefas são bit-exatas ou puramente diagnósticas/documentais.
 
-#### T1.1 — [O5/S3] Vetorizar `head_scale` (laço escalar → `M::apply_gain`) 🟢
+#### T1.1 — [O5/S3] Vetorizar `head_scale` (laço escalar → `M::apply_gain`) 🟢[DONE]
 
 - **Onde**: `src/models/wavenet/model.rs:96-98` (laço escalar `out_slice[i] = array2_head[i] * head_scale`),
   dentro de `process_internal::<M: SimdMath>`.

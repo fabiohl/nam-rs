@@ -93,8 +93,9 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             // C++ reference: output = head_scale × last_array.head_outputs
             let array2_head = &self.array2.head_outputs[0..num_frames];
             let out_slice = &mut output[pos..pos + num_frames];
-            for i in 0..num_frames {
-                out_slice[i] = array2_head[i] * self.head_scale;
+            out_slice.copy_from_slice(array2_head);
+            unsafe {
+                M::apply_gain(out_slice, self.head_scale);
             }
             pos += num_frames;
         }
