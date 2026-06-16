@@ -55,6 +55,19 @@ impl SimplePcg {
 /// The goal is to verify whether error accumulation in feedback models (if any)
 /// or f16 precision instability in SIMD kernels causes NaNs or audio
 /// "blow-ups" after millions of iterations.
+///
+/// // Measured: WaveNet silence residue is ~3.58e-5 (−89 dBFS) — NOT a bug.
+/// // Origin: conv1d biases (0.001 F32 → tanh(0.001) ≈ 0.001) propagate through
+/// // 10+2 layers of one_by_one/rechannel dense projections and accumulate in the
+/// // head. F16/BF16 weight quantization contributes a secondary drift (scales
+/// // the bias propagation slightly). No denormal involvement — DAZ/FTZ is active
+/// // (src/math/common/ops.rs:163, src/clap/processor/mod.rs:268).
+/// //
+/// // This is faithful to NAMCore C++ v0.5.3 (NAM/dsp.h:67: "don't expect the
+/// // model to be outputting zeroes after this"). Biases make tanh(bias) ≠ 0 by
+/// // design. Forcing silence to zero would diverge from the C++ bible and break
+/// // parity. The interaction with noise-gate/true-bypass belongs to the gate
+/// // layer (src/dsp/gate.rs), not the model.
 #[test]
 #[ignore] // Run manually via --ignored
 fn test_wavenet_silence_soak() {
@@ -100,6 +113,119 @@ fn test_wavenet_silence_soak() {
     println!("Frames processed: {}", processed);
     println!("Min output: {}", min_val);
     println!("Max output: {}", max_val);
+
+    assert!(
+        max_val.abs() < 5e-5,
+        "Silence residue drifted above expected ceiling (5e-5): max={}",
+        max_val
+    );
+    assert!(
+        max_val.abs() > 1e-6,
+        "Silence residue unexpectedly near-zero ({}): possible unintended zeroing", max_val
+    );
+}
+
+/// Decomposition Test: isolates the sources of the ~3.6e-5 silence residue.
+///
+/// Strategy:
+/// 1. Run soak wavenet with silence → measure total residue
+/// 2. Zero out conv1d biases → re-measure (quantization-only residue)
+/// 3. Report the conv1d-bias vs quantization decomposition
+///
+/// // Measured: conv1d biases dominate 100% of the residue.
+/// // With synthetic model (weights=0.01, conv1d_bias=0.001, head_scale=0.1,
+/// // 10 layers array1 + 2 layers array2):
+/// //   Total residue:        3.58e-5  (−89 dBFS)
+/// //   Conv1D bias contrib:  3.58e-5  (−89 dBFS) ← 100% of total
+/// //   Quantization drift:   0.00     (zero — 0×weight = 0 regardless of F16 error)
+/// // Confirms TODO-sprints.md P4 diagnosis: tanh(bias) propagation, not bug.
+#[test]
+fn test_wavenet_silence_decomposition() {
+    let input = vec![0.0f32; 64];
+
+    // ── Phase 1: measure total residue ────────────────────────────
+    let mut model = build_soak_wavenet();
+    model.prewarm();
+    let mut output = vec![0.0f32; 64];
+    model.process(&input, &mut output);
+
+    let mut total_max = 0.0f32;
+    let mut total_sum = 0.0f64;
+    for &v in &output {
+        total_max = total_max.max(v.abs());
+        total_sum += v.abs() as f64;
+    }
+    let total_mean = total_sum / output.len() as f64;
+
+    println!("--- WaveNet Silence Decomposition ---");
+    println!(
+        "Phase 1 — Total residue: max={:.6e}, mean={:.6e} ({} dBFS)",
+        total_max,
+        total_mean,
+        if total_max > 0.0 { 20.0 * (total_max as f64).log10() } else { f64::NEG_INFINITY }
+    );
+
+    // Sanity: residue must be in expected range (not zero, not blown)
+    assert!(
+        total_max > 1e-6,
+        "Total residue unexpectedly near-zero ({:.6e})", total_max
+    );
+    assert!(
+        total_max < 1e-3,
+        "Total residue unexpectedly large ({:.6e})", total_max
+    );
+
+    // ── Phase 2: zero out conv1d biases → isolate quantization ────
+    let mut model_clean = build_soak_wavenet();
+    for layer in &mut model_clean.array1.layers {
+        for v in &mut *layer.conv1d.bias {
+            *v = 0.0;
+        }
+    }
+    for layer in &mut model_clean.array2.layers {
+        for v in &mut *layer.conv1d.bias {
+            *v = 0.0;
+        }
+    }
+    model_clean.prewarm();
+
+    let mut output_clean = vec![0.0f32; 64];
+    model_clean.process(&input, &mut output_clean);
+
+    let mut quant_max = 0.0f32;
+    for &v in &output_clean {
+        quant_max = quant_max.max(v.abs());
+    }
+
+    let bias_contrib = total_max - quant_max;
+    let bias_pct = if total_max > 0.0 {
+        (bias_contrib / total_max) * 100.0
+    } else {
+        0.0
+    };
+
+    println!(
+        "Phase 2 — Quantization-only residue: max={:.6e} ({} dBFS)",
+        quant_max,
+        if quant_max > 0.0 {
+            20.0 * (quant_max as f64).log10()
+        } else {
+            f64::NEG_INFINITY
+        }
+    );
+    println!("Conv1D bias contribution (diff): {:.6e} ({:.0}% of total)", bias_contrib, bias_pct);
+
+    // Acceptance: conv1d biases must dominate (>50% of total)
+    assert!(
+        bias_pct > 50.0,
+        "Expected conv1d biases to dominate residue, but they account for only {:.0}% (bias={:.6e}, quant={:.6e})",
+        bias_pct,
+        bias_contrib,
+        quant_max
+    );
+
+    println!("Diagnosis confirmed: conv1d biases → tanh(bias) ≠ 0 → head accumulation.");
+    println!("This is faithful to NAMCore C++ (dsp.h:67). No action required.");
 }
 
 /// Soak Test: White Noise Processing via WaveNet.

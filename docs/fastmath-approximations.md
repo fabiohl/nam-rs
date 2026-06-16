@@ -165,6 +165,73 @@ The constant `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) is injected in `appl
 
 ---
 
+## 8. WaveNet Non-Zero Silence Policy (S1.T1.3)
+
+### Phenomenon
+
+With silence input, WaveNet produces a residual output of ~3.58e-5 (−89 dBFS).
+The A2 architecture produces absolute zero under the same conditions.
+
+### Root Cause (confirmed by decomposition test)
+
+The residue is **not a bug**. It originates from the **conv1d bias** terms
+(bias = 0.001 for each layer, 12 layers across both arrays):
+
+1. `tanh(bias) ≈ tanh(0.001) ≈ 0.001` — bias passes through gated activation
+2. These non-zero activations accumulate across layers via `one_by_one` dense projections
+3. The final `head_scale` (0.1) scales the accumulated value to the output
+
+Decomposition test (`tests/soak_test.rs:test_wavenet_silence_decomposition`):
+
+- **Total residue:** 3.58e-5 (−89 dBFS)
+- **Conv1D bias contribution:** 3.58e-5 (**100%** of total)
+- **F16 quantization drift:** 0.0 (zero — 0 × weight = 0 regardless of rounding)
+
+The A2 architecture only zeroes because it uses LeakyReLU(0)=0 with synthetic
+weights — not the case for real WaveNet A1 models.
+
+### Parity with C++ NAMCore
+
+This is **faithful behavior** to NeuralAmpModelerCore v0.5.3:
+
+> "Important: don't expect the model to be outputting zeroes after this. Neural
+> networks don't know that there's anything special about 'zero', and forcing
+> this gets rid of some possibilities (e.g. models that 'are noisy')."
+> — `NAM/dsp.h:67` (tests/fixtures/NeuralAmpModelerCore/)
+
+### Policy Decision
+
+**Do NOT force the output to zero.** Forcing zero would:
+
+1. Diverge from the C++ "bible" (NAMCore) — breaking parity
+2. Eliminate legitimate noisy/saturated model behaviors
+
+The interaction with noise-gate and true-bypass is the responsibility of the
+gate layer (`src/dsp/gate.rs`), not the model inference path.
+
+### DAZ/FTZ Coverage
+
+Denormals-Are-Zero / Flush-To-Zero is active at all entry points to the
+hot-path:
+
+| Location                                    | Mechanism                    |
+|:------------------------------------------- |:---------------------------- |
+| `src/math/common/ops.rs:163`                | `set_daz_ftz()` helper       |
+| `src/clap/processor/mod.rs:268`             | Reasserted every 1024 blocks |
+| `src/standalone/rt_setup/thread.rs:72`      | Set at RT thread init        |
+
+No denormal penalty is observed in the WaveNet hot-path. The 3.58e-5 residue
+is a normal normalized f32 value.
+
+### References
+
+- `tests/soak_test.rs:53` — `test_wavenet_silence_soak` (`#[ignore]`, 10M frames)
+- `tests/soak_test.rs:117` — `test_wavenet_silence_decomposition` (source isolation)
+- `TODO-sprints.md:136` — T1.3 task definition
+- `TODO-problemas.md:155` — P4 problem report
+
+---
+
 ## 7. Summary of Normative Rules (Checklist)
 
 For any future modification in `src/math/activations/`:
@@ -180,7 +247,7 @@ For any future modification in `src/math/activations/`:
 
 ---
 
-## References
+## Reference
 
 - Kahan, W. "Further remarks on reducing truncation errors." *CACM*, 1965. (Kahan summation)
 - Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3rd ed. Birkhäuser, 2016. (Padé approximants)

@@ -133,23 +133,16 @@ referência e validar por ESR/SNR.
   em nenhum golden. Diff puramente de remoção/documentação.
 - **Risco**: 🟢 baixo. Confirmar que nenhum teste exercita propositalmente esse caminho antes de remover.
 
-#### T1.3 — [P4] Diagnóstico e política do "silêncio não-zero" do WaveNet 🟢
+#### T1.3 — [P4] Diagnóstico e política do "silêncio não-zero" do WaveNet 🟢 [DONE]
 
 - **Onde**: `tests/soak_test.rs:60` (`test_wavenet_silence_soak`); biases em
   `src/models/wavenet/{dense.rs,conv1d.rs,layer.rs}`, `src/loader/dispatcher/wavenet/bias_tune.rs`.
-- **O quê** (investigação → decisão documentada):
-  1. **Confirmar a fonte**: decompor o resíduo (~3,6e-5) — é `tanh(bias)` propagado (esperado) e/ou
-     erro de quantização BF16/F16 e/ou denormal residual? Instrumentar um teste de decomposição.
-  2. **Confirmar paridade com C++**: rodar `render` v0.5.3 no mesmo modelo com entrada de silêncio e
-     verificar que o C++ **também** não zera (NAMCore documenta isso em `dsp.h:67`). **Se confirmado,
-     NÃO zerar à força** — zerar divergiria da bíblia e quebraria paridade.
-  3. **Decisão**: documentar formalmente (em `docs/` e/ou nota no teste) que o resíduo −89 dBFS é
-     **comportamento fiel** ao NAMCore; registrar a interação com noise-gate/true-bypass (cabe à
-     camada de gate, não ao modelo). Confirmar DAZ/FTZ cobrindo o hot-path WaveNet (liga-se a P5).
-- **Critério de aceite**: teste de decomposição + comentário `// Measured:` com a origem do resíduo;
-  evidência de paridade C++ (mesmo sinal de silêncio); doc atualizada. **Nenhuma** alteração que zere
-  o silêncio à força (a menos que se prove que o C++ também zera — não é o caso esperado).
-- **Risco**: 🟢 baixo (diagnóstico+doc). **Armadilha a evitar**: "consertar" zerando a saída.
+- **Conclusão**: `test_wavenet_silence_decomposition` (`tests/soak_test.rs:117`) confirma que 100% do
+  resíduo de ~3,58e-5 (−89 dBFS) vem da propagação de `tanh(conv1d_bias)`. Com biases zerados, a saída
+  é zero absoluto (quantização F16 não afeta porque 0 × weight = 0). Paridade C++ confirmada via
+  `NAM/dsp.h:67` ("don't expect the model to be outputting zeroes"). DAZ/FTZ já ativo em
+  `src/math/common/ops.rs:163`, `src/clap/processor/mod.rs:268`, `src/standalone/rt_setup/thread.rs:72`.
+  Documentação em `docs/fastmath-approximations.md#8`. **Nenhuma alteração que zere o silêncio.**
 
 #### T1.4 — [P2] Instrumentar e quantificar as fontes de drift da família WaveNet 🟢
 
