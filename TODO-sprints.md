@@ -173,7 +173,7 @@ referência e validar por ESR/SNR.
 > alocação **no load**; hot-path zero-alloc/zero-lock/zero-panic (auditável com `heap-audit`). O motor
 > genérico **nasce SIMD** (guard-rail O5) — proibido laço element-wise escalar.
 
-#### T2.1 — Tipos dinâmicos do WaveNet (alloc no load, scratch em heap) 🔴
+#### T2.1 — Tipos dinâmicos do WaveNet (alloc no load, scratch em heap) 🔴 [DONE]
 
 - **Onde**: `src/models/wavenet/` (reintroduzir, modernizados: `dense_dyn.rs`, `layer_dyn.rs`,
   `layer_array_dyn.rs`, `model_dyn.rs`); reaproveitar `conv1d_dyn.rs` (já existe, +`_dual`/`_kernels`).
@@ -188,6 +188,14 @@ referência e validar por ESR/SNR.
   (`model.cpp:623-644` — `head_scale` é o **último** f32); preservar o caminho **f32-native** do
   `head_rechannel` (fidelidade — `layer_array.rs:220`); ring-buffer/receptive-field por camada
   (`WaveNetLayerState`).
+- **Resultado (2026-06-16)**: 4 arquivos criados com scratch `AlignedVec<f32>` (CH×64, suporte
+  CH>16). `WaveNetLayerDyn` single-frame loop (dual-frame dual é T2.2). 6 testes de paridade:
+  Standard(16/3/8), Lite(12/3/6), Feather(8/3/4), Nano(4/3/2), determinismo, no-NaN. 418/418
+  testes passam (0 warnings). Hot-path auditado: zero heap-alloc (scratch pré-alocado no
+  construtor; DenseLayerDyn/Conv1dDyn delegam a SimdMath; layer_array_dyn usa `iter_mut`
+  e slices de `AlignedVec`; sem `Vec`, `Box`, `format!`). `is_first_layer` propagado via
+  `ctx` (sem destructure parcial, evita o possível bug em `layer.rs:135`). Headers SPDX
+  em todos os arquivos.
 
 #### T2.2 — Vetorização born-SIMD do caminho dinâmico (guard-rail O5) 🔴
 
@@ -201,6 +209,11 @@ referência e validar por ESR/SNR.
   (aceita-se overhead pequeno do dinâmico, mas **não** regressão escalar grosseira). `cargo bench`
   registrado.
 - **Risco**: 🔴 alto (correção SIMD + RT). **Atenção**: `K` em runtime impede o array de taps
+- **Nota T2.1→T2.2**: `layer_dyn.rs:76-91` contém laço `for i in 0..num_frames` (single-frame)
+  que deve ser convertido para dual-frame tiling como no `layer.rs:75-107`. Métodos
+  `process_dual_frame_generic`/`process_block_generic` em `conv1d_dyn_dual.rs`/`conv1d_dyn_kernels.rs`
+  já existem mas estão sob `#[cfg(test)]` — remover o gate para uso em produção. `DenseLayerDyn`
+  já usa SIMD batch (`gemv_overwrite_batch`/`fused_gemm_residual_batch`).
   compile-time — usar layout interleaved-4-wide do `Conv1dDyn` já existente; cuidar tail handling.
 
 #### T2.3 — Generalizar a detecção/validação de topologia (sem regredir o catálogo) 🟠
