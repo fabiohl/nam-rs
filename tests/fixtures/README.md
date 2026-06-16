@@ -91,28 +91,53 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ### Model Files and Trust Levels Registry (`tests/fixtures/models/`)
 
-Todas as capturas e modelos em formato `.nam` e `.json` localizados sob [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) são auditados para verificar qualidade, procedência jurídica e utilidade nos testes de integração. Não há arquivos órfãos, redundantes ou considerados "lixo" no diretório:
+All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests. There are no orphan, redundant, or garbage files in the directory.
 
-| Modelo / Fixture            | Natureza         | Arquitetura                             | Qualidade & Confiança                             | Licença & Procedência                                       | Finalidade nos Testes                                                                                    |
-| --------------------------- | ---------------- | --------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `BossLSTM-1x16.nam`         | Community Real   | LSTM (1 layer, H=16)                    | **Alta** (Comprovada)                             | Boss Waza TAE Community. Licença compatível.                | Golden vectors v1, v2 multi-SR e zero-allocation checks.                                                 |
-| `BossLSTM-2x8.nam`          | Community Real   | LSTM (2 layers, H=8)                    | **Alta** (Comprovada)                             | Boss Waza TAE Community. Licença compatível.                | Golden vectors v1, v2 multi-SR e roundtrip do layout de pesos.                                           |
-| `BossWN-standard.nam`       | Community Real   | WaveNet (CH=16, K=3, 20 layers)         | **Alta** (Comprovada)                             | Boss Waza TAE Community. Licença compatível.                | E2E SPSC pipeline, golden vectors v1/v2, zero-allocation.                                                |
-| `BossWN-feather.nam`        | Community Real   | WaveNet (CH=8, K=3, 20 layers)          | **Alta** (Comprovada)                             | Boss Waza TAE Community. Licença compatível.                | Golden vectors v1/v2, zero-allocation tests.                                                             |
-| `BossWN-nano.nam`           | Community Real   | WaveNet (CH=4, K=3, 20 layers)          | **Alta** (Comprovada)                             | Boss Waza TAE Community. Licença compatível.                | Golden vectors v1/v2, multi-SR checks.                                                                   |
-| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)         | **Baixa** (Known-divergent, drift de ~0.9 dB SNR) | Gerado artificialmente (2026-06-11).                        | Testes de regressão sob `#[ignore]`. Aguarda substituição por modelo real (ver `TODO-features.md §F12`). |
-| `wavenet_a1_standard.nam`   | Official Real    | WaveNet (CH=16, K=3, 20 layers)         | **Alta** (Excelente / Steve Atkinson)             | Pinned `sdatkinson/NeuralAmpModelerCore` exemplo. CC0.      | Golden vectors v1/v2.                                                                                    |
-| `lstm.nam`                  | Official Real    | LSTM (1 layer, H=3)                     | **Alta** (Excelente / Steve Atkinson)             | Pinned `sdatkinson/NeuralAmpModelerCore` exemplo. CC0.      | Golden vectors v1/v2, C++ live parity.                                                                   |
-| `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                 | **Alta** (Paridade funcional)                     | Pesos simples definidos para teste. Apache-2.0.             | Parity linear e linear_golden.                                                                           |
-| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)    | **Alta** (Paridade fast-path)                     | Pesos calibrados (T2.5, peak ~0.15). Apache-2.0.            | Parity A2 fast-path (Full), container submodel.                                                          |
-| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)    | **Alta** (Paridade fast-path)                     | Pesos calibrados (T2.5, peak ~0.19). Apache-2.0.            | Parity A2 fast-path (Lite), container submodel.                                                          |
-| `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)     | **Alta** (Paridade funcional)                     | Contêiner unindo os dois submodelos acima. Apache-2.0.      | Golden vectors container (A2 Lite e A2 Full submodel swaps).                                             |
-| `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)           | N/A (Mock negativo)                               | Estrutura limpa sem pesos (mitigação jurídica). Apache-2.0. | Testa rejeição graciosa de formato Keras legado (F13).                                                   |
-| `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)     | N/A (Mock negativo)                               | Modelo vazio para teste de falha. Apache-2.0.               | Testa transição de falha na audio-thread (`RT_STATUS_MODEL_LOAD_FAILED`).                                |
-| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (unsupported shapes) | N/A (Mock negativo)                               | Contêiner com geometrias livres rejeitadas. Apache-2.0.     | Testa detecção e rejeição de submodelos inválidos.                                                       |
-| `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)               | N/A (Mock negativo)                               | Modelo com dilatações e dilhas customizadas. Apache-2.0.    | Testa detecção e rejeição de WaveNet dinâmica inválida (F1/F5).                                          |
-| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)             | N/A (Foco em F2 / Rejeitado)                      | Steve Atkinson exemplo oficial. CC0.                        | Testa se o loader recusa FiLM com `condition_size=8` por enquanto.                                       |
-| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)             | N/A (Foco em F2 / Rejeitado)                      | Steve Atkinson exemplo oficial. CC0.                        | Testa se o loader recusa FiLM com `condition_size=3` por enquanto.                                       |
+#### 1. High-Quality Real Models (Git Versioned)
+
+These models have real trained weights, excellent fidelity, and are certified for authorship/permissive licensing compatible with `nam-rs` distribution:
+
+| Model / Fixture           | Nature         | Architecture                    | Quality & Confidence                  | License & Provenance                                   | Purpose in Tests                                            |
+| ------------------------- | -------------- | ------------------------------- | ------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------- |
+| `BossLSTM-1x16.nam`       | Community Real | LSTM (1 layer, H=16)            | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1, v2 multi-SR and zero-allocation checks.  |
+| `BossLSTM-2x8.nam`        | Community Real | LSTM (2 layers, H=8)            | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1, v2 multi-SR and weight layout roundtrip. |
+| `BossWN-standard.nam`     | Community Real | WaveNet (CH=16, K=3, 20 layers) | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | E2E SPSC pipeline, golden vectors v1/v2, zero-allocation.   |
+| `BossWN-feather.nam`      | Community Real | WaveNet (CH=8, K=3, 20 layers)  | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1/v2, zero-allocation tests.                |
+| `BossWN-nano.nam`         | Community Real | WaveNet (CH=4, K=3, 20 layers)  | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1/v2, multi-SR checks.                      |
+| `wavenet_a1_standard.nam` | Official Real  | WaveNet (CH=16, K=3, 20 layers) | **High** (Excellent / Steve Atkinson) | Pinned `sdatkinson/NeuralAmpModelerCore` example. CC0. | Golden vectors v1/v2.                                       |
+| `lstm.nam`                | Official Real  | LSTM (1 layer, H=3)             | **High** (Excellent / Steve Atkinson) | Pinned `sdatkinson/NeuralAmpModelerCore` example. CC0. | Golden vectors v1/v2, C++ live parity.                      |
+
+#### 2. Synthetic Models and Mocks (Targets for Progressive Replacement)
+
+These files contain synthetic weights or partial/invalid structures. They exist exclusively to validate boundary limits, error detection, and specific numerical regressions, with the goal of being progressively replaced by real, licensed models as they become available:
+
+| Model / Fixture             | Nature           | Architecture                            | Quality & Confidence                         | License & Provenance                                            | Purpose in Tests                                                                                        |
+| --------------------------- | ---------------- | --------------------------------------- | -------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)         | **Low** (Known-divergent, ~0.9 dB SNR drift) | Artificially generated (2026-06-11).                            | Regression tests under `#[ignore]`. Awaiting replacement by a real model (see `TODO-features.md §F12`). |
+| `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                 | **High** (Functional parity)                 | Simple weights defined for testing. Apache-2.0.                 | Linear parity and linear_golden.                                                                        |
+| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)    | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.15). Apache-2.0.              | Parity A2 fast-path (Full), container submodel.                                                         |
+| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)    | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.19). Apache-2.0.              | Parity A2 fast-path (Lite), container submodel.                                                         |
+| `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)     | **High** (Functional parity)                 | Container joining the two submodels above. Apache-2.0.          | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                          |
+| `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)           | N/A (Negative mock)                          | Clean structure without weights (legal mitigation). Apache-2.0. | Tests graceful rejection of legacy Keras format (F13).                                                  |
+| `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)     | N/A (Negative mock)                          | Empty model for failure testing. Apache-2.0.                    | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                           |
+| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (unsupported shapes) | N/A (Negative mock)                          | Container with rejected free geometries. Apache-2.0.            | Tests detection and rejection of invalid submodels.                                                     |
+| `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)               | N/A (Negative mock)                          | Model with custom dilations and channels. Apache-2.0.           | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                       |
+| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)             | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                           | Tests if loader rejects FiLM with `condition_size=8` for now.                                           |
+| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)             | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                           | Tests if loader rejects FiLM with `condition_size=3` for now.                                           |
+
+#### 3. Workaround for Non-Distributable Models (`tests/fixtures/models-nondist/`)
+
+Due to the legal redistribution restriction of the default `t3k` license in the project's Git, `nam-rs` tests can be run locally against protected captures using a local mirror folder:
+
+- Create a folder on your machine with your high-quality `t3k` models and similar.
+- Mount a local symbolic link pointing to that folder:
+
+  ```bash
+  ln -s /path/to/my/t3k/models tests/fixtures/models-nondist
+  ```
+
+- The symbolic link file and the folder under `tests/fixtures/models-nondist` are explicitly ignored by `.gitignore`.
+- The integration test suite (`tests/nondist_validation.rs`) will automatically detect this folder and run a comprehensive verification battery (parsing, determinism, block size invariance, and denormal silence stability) on all captures found, skipping validation without failure if the directory is not present.
 
 **v2 multi-SR files** (`golden_<model_id>_v2_<sr>.bin`): Stress Signal v2 (5s, 5 categories), generated by `golden_gen_build.sh`. See table below for SR coverage per model.
 

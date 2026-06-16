@@ -56,6 +56,7 @@ mutants.out.old/
 # NeuralAmpModelerCore — clone local para cross-validation (não commitar)
 /tests/fixtures/NeuralAmpModelerCore/
 /tests/fixtures/NeuralAmpModelerPlugin/
+/tests/fixtures/models-nondist
 
 # Build artifacts do render tool C++
 /tests/fixtures/render_ir

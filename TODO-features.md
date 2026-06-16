@@ -327,24 +327,17 @@ oficial** (via F12 + F1/F5) para validar o caminho com modelo real.
 
 ## F12 — 🔴 (Habilitador) TONE3000 e expansão de `tests/fixtures/models/`
 
-**O que é.** **Pesquisar o TONE3000** e compor um diretório `tests/fixtures/models/`
-completo, variado e documentado (origem + finalidade), com ênfase em **A2**.
-
-> Objetivo do corpus: ≥1 modelo **real** por SKU A1 (eliminar o sintético Lite CH=12 — ver
-> `TODO-problemas.md §P1`), ≥1 A2 clean + ≥1 A2 high-gain reais, e ≥1 `custom` por classe de
-> geometria não suportada (fixture negativa que vira positiva quando F1/F3/F7 entrarem). Tudo
-> com proveniência (tone_id, autor, licença, downloads/favorites, finalidade) no `README.md`
-> dos fixtures.
+**O que:** **Pesquisar o TONE3000** e carregar o diretório
+`/home/fabio/Cloud/Guias/Softwares/nam_t3k/` com modelos válidos faltantes.
 
 **Por que é habilitador.** É **pré-requisito de evidência** para F1–F11: hoje a auditoria de
 aderência depende de modelos sintéticos (A2-Full/Lite, Lite CH=12) e de poucos modelos reais.
 Sem um corpus real e variado, não há como (a) **medir** a aderência ao NAMCore, (b) resolver
 a **incerteza de F2** (produção A2 usa FiLM?), nem (c) **promover goldens sintéticos→oficiais**.
 
-**⚠️ Restrição de LICENÇA (bloqueante para commit).** Cada tone tem licença
-(`t3k`, `cc-by`, `cc-by-sa`, `cc0`, …). A **licença padrão `T3K` proíbe redistribuir** o
-arquivo sem permissão do autor. **Só podem ser versionados** em `tests/fixtures/models/`
-modelos **CC0/CC-BY(-SA)** ou com permissão explícita.
+**Arquiteturas mais urgentes:**
+
+> Use utils/check-model.py para testar arquivos de downloads
 
 | Perfil do Modelo              | Feature/Problema Alvo               | Critérios de Busca (Campos JSON do `.nam`)                                                                                   | Finalidade nos Testes                                                                                                          |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |

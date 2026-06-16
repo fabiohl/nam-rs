@@ -1384,7 +1384,8 @@ criterion_group!(
     bench_cabsim_engine_construction_long,
     bench_gate_fsm,
     bench_linear_model_dot_product,
-    bench_container_crossfade_64samp
+    bench_container_crossfade_64samp,
+    bench_nondist_models
 );
 
 /// Measures the processing cost of a ContainerModel crossfade block
@@ -1429,6 +1430,61 @@ fn bench_container_crossfade_64samp(c: &mut Criterion) {
             model.process(&input, &mut output);
         });
     });
+}
+
+/// Measures inference latency for any present non-distributable models.
+fn bench_nondist_models(c: &mut Criterion) {
+    let mut nondist_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    nondist_path.push("tests/fixtures/models-nondist");
+
+    if !nondist_path.exists() {
+        return;
+    }
+
+    let mut models = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&nondist_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext == "nam" || ext == "json")
+            {
+                models.push(path);
+            }
+        }
+    }
+
+    for model_path in models {
+        let filename = model_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let json_data = match std::fs::read_to_string(&model_path) {
+            Ok(data) => data,
+            Err(_) => continue,
+        };
+        let model_data = match parse_nam_json(&json_data) {
+            Ok(data) => data,
+            Err(_) => continue,
+        };
+        let mut model = match build_model(&model_data) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        model.prewarm(2048);
+
+        // Run with standard 64 sample block size at 48kHz
+        let input = generate_sine_440hz(64);
+        let mut output = vec![0.0f32; 64];
+
+        c.bench_function(&format!("NonDist_Model_{}_64samp", filename), |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
 }
 
 criterion_main!(benches);

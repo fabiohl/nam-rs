@@ -15,7 +15,7 @@
 use nam_rs::common::params::AdaptiveComputeMode;
 use nam_rs::dsp::adaptive::AdaptiveCompute;
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::parse_nam_json;
+use nam_rs::loader::nam_json::{get_wavenet_topology, parse_nam_json};
 use nam_rs::models::NamModel;
 use std::fs;
 
@@ -343,6 +343,84 @@ fn test_parallel_allocation_tracking_isolation() {
             results[i] > results[i - 1],
             "Thread allocation counts should be isolated and distinct, got: {:?}",
             results
+        );
+    }
+}
+
+/// Zero-Allocation Verification Test for Nondist Models
+#[test]
+fn test_zero_alloc_nondist_models() {
+    let mut nondist_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    nondist_path.push("tests/fixtures/models-nondist");
+
+    if !nondist_path.exists() {
+        println!("SKIP: Non-distributable models directory not found.");
+        return;
+    }
+
+    let mut models = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&nondist_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext == "nam" || ext == "json")
+            {
+                models.push(path);
+            }
+        }
+    }
+
+    if models.is_empty() {
+        println!("SKIP: No nondist models found.");
+        return;
+    }
+
+    for model_path in models {
+        let filename = model_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let json_data = fs::read_to_string(&model_path).expect("Failed to read model file");
+        let model_data = parse_nam_json(&json_data).expect("Failed to parse model JSON");
+        let mut model = build_model(&model_data).expect("Failed to build model");
+
+        model.prewarm(2048);
+
+        let input = generate_sine_440hz(64);
+        let mut output = vec![0.0f32; 64];
+
+        let is_wavenet = model_data.architecture == "WaveNet";
+        let is_a2 = model_data.is_wavenet_a2();
+
+        let count = {
+            let _guard = TrackingGuard::new();
+            model.process(&input, &mut output);
+            get_alloc_count()
+        };
+
+        println!(
+            "Nondist model {} allocations in hot-path: {}",
+            filename, count
+        );
+
+        // Standard/A2 fast paths and LSTMs must be zero-alloc.
+        // Dynamic WaveNet/LSTM fallback might allocate.
+        if is_wavenet && !is_a2 {
+            let topo = get_wavenet_topology(&model_data);
+            if topo.is_none() {
+                // Dynamic/Generic WaveNet fallback (F1 features or dynamic shapes)
+                // Might allocate. Warn but do not fail.
+                continue;
+            }
+        }
+
+        assert_eq!(
+            count, 0,
+            "Allocations detected in hot-path for nondist model: {}!",
+            filename
         );
     }
 }

@@ -598,3 +598,76 @@ fn live_cross_validation_linear() {
 fn live_cross_validation_v2_linear() {
     run_v2_multi_sr("linear_test.nam", "linear_test", "Live Linear RF=4 (v2)");
 }
+
+#[test]
+#[ignore]
+fn live_cross_validation_nondist_models() {
+    let mut nondist_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    nondist_path.push("tests/fixtures/models-nondist");
+
+    if !nondist_path.exists() {
+        println!(
+            "SKIP: Non-distributable models directory {:?} not found.",
+            nondist_path
+        );
+        return;
+    }
+
+    let mut models = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&nondist_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext == "nam" || ext == "json")
+            {
+                models.push(path);
+            }
+        }
+    }
+
+    if models.is_empty() {
+        println!("SKIP: No models found in {:?}", nondist_path);
+        return;
+    }
+
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let temp_dir = project_root.join("tests/fixtures/.temp_live");
+    fs::create_dir_all(&temp_dir).ok();
+    ensure_render_compiled();
+
+    for model_path in models {
+        let filename = model_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        println!("Live C++ cross-validating nondist model: {}", filename);
+
+        let mut dest_path = project_root.join("tests/fixtures/models");
+        dest_path.push(&filename);
+
+        let copied = if !dest_path.exists() {
+            fs::copy(&model_path, &dest_path).is_ok()
+        } else {
+            false
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_v1(
+                &filename,
+                &format!("nondist_{}", filename.replace('.', "_")),
+                &format!("Live Nondist {}", filename),
+            );
+        }));
+
+        if copied {
+            fs::remove_file(&dest_path).ok();
+        }
+
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+}
