@@ -167,7 +167,7 @@ referência e validar por ESR/SNR.
 
 ---
 
-### 🔴 Sprint S2 — Fundação do motor WaveNet dinâmico (RT-safe, born-SIMD)
+### 🔴 Sprint S2 — Fundação do motor WaveNet dinâmico (RT-safe, born-SIMD) [DONE]
 
 > **CRÍTICA / ALTO RISCO**: é o coração de F1 e reintroduz código removido em `d683b6e`. Toda
 > alocação **no load**; hot-path zero-alloc/zero-lock/zero-panic (auditável com `heap-audit`). O motor
@@ -220,7 +220,7 @@ referência e validar por ESR/SNR.
   verificado: zero laços escalares element-wise/redução — todo o caminho usa SIMD
   (GEMV/dot-product/tanh/apply_gain via `SimdMath`). 418/418 testes passam (0 warnings).
 
-#### T2.3 — Generalizar a detecção/validação de topologia (sem regredir o catálogo) 🟠
+#### T2.3 — Generalizar a detecção/validação de topologia (sem regredir o catálogo) 🟠[DONE]
 
 - **Onde**: `src/loader/nam_json/topology.rs` (`get_wavenet_topology:84`,
   `validate_wavenet_features:444`).

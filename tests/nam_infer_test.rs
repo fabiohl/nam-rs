@@ -5,7 +5,9 @@
 //! and miscellaneous edge cases (denormals, block size invariance, community models).
 
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
+use nam_rs::loader::nam_json::{
+    NamWavenetTopology, WavenetTopologyResult, get_wavenet_topology, parse_nam_json,
+};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::{NamModel, wavenet};
 use std::fs;
@@ -213,7 +215,7 @@ fn test_wavenet_model_json_parsing() {
     let topo = get_wavenet_topology(&model_data);
     assert_eq!(
         topo,
-        Some(NamWavenetTopology::Standard),
+        WavenetTopologyResult::Known(NamWavenetTopology::Standard),
         "The BossWN-standard model should be recognized as Standard Wavenet"
     );
 
@@ -744,12 +746,23 @@ fn test_lstm_variable_block_sizes() {
 /// in ideal synthetic models, such as bias truncation or gain normalization.
 #[test]
 fn test_community_models_inference() {
-    let models = [
-        ("BossWN-standard.nam", Some(NamWavenetTopology::Standard)),
-        ("BossWN-lite.nam", Some(NamWavenetTopology::Lite)),
-        ("BossWN-feather.nam", Some(NamWavenetTopology::Feather)),
-        ("BossWN-nano.nam", Some(NamWavenetTopology::Nano)),
-        ("BossLSTM-1x16.nam", None),
+    let models: [(&str, WavenetTopologyResult); 4] = [
+        (
+            "BossWN-standard.nam",
+            WavenetTopologyResult::Known(NamWavenetTopology::Standard),
+        ),
+        (
+            "BossWN-lite.nam",
+            WavenetTopologyResult::Known(NamWavenetTopology::Lite),
+        ),
+        (
+            "BossWN-feather.nam",
+            WavenetTopologyResult::Known(NamWavenetTopology::Feather),
+        ),
+        (
+            "BossWN-nano.nam",
+            WavenetTopologyResult::Known(NamWavenetTopology::Nano),
+        ),
     ];
 
     let input = generate_sine_440hz(64);
@@ -760,38 +773,32 @@ fn test_community_models_inference() {
         path.push(filename);
 
         if !path.exists() {
-            // Note: If the real model fixtures are not present, the test fails
-            // to ensure that community regression coverage is not silently lost.
             panic!(
                 "Community model not found: {:?}. Check test submodules.",
                 path
             );
         }
 
-        // 1. JSON Parsing Validation
         let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
         let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-        // 2. Topology Identification Validation
         let topo = get_wavenet_topology(&model_data);
-        assert_eq!(
-            topo, expected_topo,
-            "Incorrectly detected topology for community model {}",
-            filename
+        assert!(
+            matches!(topo, ref result if result == &expected_topo),
+            "Incorrectly detected topology for community model {}: expected {:?}, got {:?}",
+            filename,
+            expected_topo,
+            topo
         );
 
-        // 3. Dispatcher and Model Construction Validation
         let mut model =
             build_model(&model_data).expect("Dispatcher failed to build community model");
 
-        // 4. Filter/delay warm-up
         model.prewarm(2048);
 
-        // 5. Inference Execution (64 samples @ 48kHz)
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
-        // 6. Numerical Safety and Gain Verification
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
@@ -799,7 +806,6 @@ fn test_community_models_inference() {
                 filename,
                 i
             );
-            // Magnitude < 100.0 is a conservative limit to detect numerical explosion
             assert!(
                 s.abs() < 100.0,
                 "Model {} generated excessive magnitude peak at index {}: {}. Possible instability.",

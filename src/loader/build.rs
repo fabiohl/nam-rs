@@ -191,11 +191,20 @@ pub fn load_and_build_model(
     let architecture = model_data.architecture.clone();
     let topology = if architecture == "WaveNet" {
         match nam_json::get_wavenet_topology(&model_data) {
-            Some(nam_json::NamWavenetTopology::Standard) => "Standard".to_string(),
-            Some(nam_json::NamWavenetTopology::Lite) => "Lite".to_string(),
-            Some(nam_json::NamWavenetTopology::Feather) => "Feather".to_string(),
-            Some(nam_json::NamWavenetTopology::Nano) => "Nano".to_string(),
-            None => {
+            nam_json::WavenetTopologyResult::Known(nam_json::NamWavenetTopology::Standard) => {
+                "Standard".to_string()
+            }
+            nam_json::WavenetTopologyResult::Known(nam_json::NamWavenetTopology::Lite) => {
+                "Lite".to_string()
+            }
+            nam_json::WavenetTopologyResult::Known(nam_json::NamWavenetTopology::Feather) => {
+                "Feather".to_string()
+            }
+            nam_json::WavenetTopologyResult::Known(nam_json::NamWavenetTopology::Nano) => {
+                "Nano".to_string()
+            }
+            nam_json::WavenetTopologyResult::Free(_) => "WaveNet-Dynamic".to_string(),
+            _ => {
                 if let Some(ch) = nam_json::is_a2_shape(&model_data) {
                     match ch {
                         3 => "A2-Lite".to_string(),

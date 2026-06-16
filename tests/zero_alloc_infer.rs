@@ -15,7 +15,7 @@
 use nam_rs::common::params::AdaptiveComputeMode;
 use nam_rs::dsp::adaptive::AdaptiveCompute;
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::{get_wavenet_topology, parse_nam_json};
+use nam_rs::loader::nam_json::{WavenetTopologyResult, get_wavenet_topology, parse_nam_json};
 use nam_rs::models::NamModel;
 use std::fs;
 
@@ -410,7 +410,7 @@ fn test_zero_alloc_nondist_models() {
         // Dynamic WaveNet/LSTM fallback might allocate.
         if is_wavenet && !is_a2 {
             let topo = get_wavenet_topology(&model_data);
-            if topo.is_none() {
+            if matches!(topo, WavenetTopologyResult::Free(_)) {
                 // Dynamic/Generic WaveNet fallback (F1 features or dynamic shapes)
                 // Might allocate. Warn but do not fail.
                 continue;

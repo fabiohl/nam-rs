@@ -9,8 +9,8 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
-    NamConfig, NamLayerConfig, NamModelData, WeightsLayout, get_wavenet_topology, is_a2_shape,
-    parse_nam_json,
+    NamConfig, NamLayerConfig, NamModelData, WavenetTopologyResult, WeightsLayout,
+    get_wavenet_topology, is_a2_shape, parse_nam_json,
 };
 use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
@@ -342,7 +342,7 @@ fn test_a2_shape_does_not_match_standard_wavenet() {
         "Standard WaveNet topology should not match A2 shape"
     );
     assert!(
-        get_wavenet_topology(&data).is_some(),
+        matches!(get_wavenet_topology(&data), WavenetTopologyResult::Known(_)),
         "Standard WaveNet should still be detected by get_wavenet_topology"
     );
 }

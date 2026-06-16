@@ -64,7 +64,10 @@ fn test_parse_feather_wavenet() {
     // The topology defines the "shape" of the brain. Here we test if it recognizes
     // the model as the 'Feather' type (a lightweight and fast version).
     let topo = get_wavenet_topology(&parsed);
-    assert_eq!(topo, Some(NamWavenetTopology::Feather));
+    assert_eq!(
+        topo,
+        WavenetTopologyResult::Known(NamWavenetTopology::Feather)
+    );
 }
 
 #[test]
@@ -90,8 +93,13 @@ fn test_parse_lstm() {
     assert_eq!(topo, Some((2, 16)));
 }
 
-/// Helper: generates minimal WaveNet JSON with provided channels and dilations.
-fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> String {
+/// Helper: generates minimal WaveNet JSON with provided channels, dilations, and head_size.
+fn make_wavenet_json(
+    channels: usize,
+    dils_0: &[usize],
+    dils_1: &[usize],
+    head_size: usize,
+) -> String {
     let d0: Vec<String> = dils_0.iter().map(|d| d.to_string()).collect();
     let d1: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
     format!(
@@ -100,12 +108,12 @@ fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> Str
             "config": {{
                 "layers": [
                     {{
-                        "channels": {channels}, "kernel_size": 3,
+                        "channels": {channels}, "kernel_size": 3, "head_size": {head_size},
                         "dilations": [{}],
                         "gated": false, "head_bias": false
                     }},
                     {{
-                        "channels": {channels}, "kernel_size": 3,
+                        "channels": {channels}, "kernel_size": 3, "head_size": {head_size},
                         "dilations": [{}],
                         "gated": false, "head_bias": true
                     }}
@@ -121,58 +129,230 @@ fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> Str
 
 #[test]
 fn test_topology_standard() {
-    // The "Standard" topology is the full digital brain.
-    // It offers maximum fidelity, but demands more from the processor.
     let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let json = make_wavenet_json(16, &std_d, &std_d);
+    let json = make_wavenet_json(16, &std_d, &std_d, 8);
     let parsed = parse_nam_json(&json).unwrap();
     assert_eq!(
         get_wavenet_topology(&parsed),
-        Some(NamWavenetTopology::Standard)
+        WavenetTopologyResult::Known(NamWavenetTopology::Standard)
     );
 }
 
 #[test]
 fn test_topology_lite() {
-    // The "Lite" topology is a middle ground.
-    // It slightly reduces complexity to run better on simpler computers
-    // while maintaining excellent sound quality.
     let d0 = [1, 2, 4, 8, 16, 32, 64];
     let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let json = make_wavenet_json(12, &d0, &d1);
+    let json = make_wavenet_json(12, &d0, &d1, 6);
     let parsed = parse_nam_json(&json).unwrap();
     assert_eq!(
         get_wavenet_topology(&parsed),
-        Some(NamWavenetTopology::Lite)
+        WavenetTopologyResult::Known(NamWavenetTopology::Lite)
     );
 }
 
 #[test]
 fn test_topology_nano() {
-    // The "Nano" topology is the lightest of all.
-    // It is optimized for extreme performance (minimum latency), ideal for situations
-    // where processing power is very limited.
     let d0 = [1, 2, 4, 8, 16, 32, 64];
     let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let json = make_wavenet_json(4, &d0, &d1);
+    let json = make_wavenet_json(4, &d0, &d1, 2);
     let parsed = parse_nam_json(&json).unwrap();
     assert_eq!(
         get_wavenet_topology(&parsed),
-        Some(NamWavenetTopology::Nano)
+        WavenetTopologyResult::Known(NamWavenetTopology::Nano)
     );
 }
 
 #[test]
 fn test_topology_invalid_channels() {
-    // Here we test if the program correctly identifies when someone tries
-    // to load a model with a "brain" size we do not support.
+    // 10-channel WaveNet is not a catalog SKU but is a valid free geometry
     let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let json = make_wavenet_json(10, &std_d, &std_d);
+    let json = make_wavenet_json(10, &std_d, &std_d, 5);
     let parsed = parse_nam_json(&json).unwrap();
-    assert_eq!(
-        get_wavenet_topology(&parsed),
-        None,
-        "10 channels is not a supported topology"
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Free(_)),
+        "10-channel WaveNet should be Free (valid A1, not in catalog), got: {:?}",
+        result
+    );
+    if let WavenetTopologyResult::Free(ref geom) = result {
+        assert_eq!(geom.channels, 10);
+        assert_eq!(geom.kernel_size, 3);
+        assert_eq!(geom.head_size, 5);
+        assert_eq!(geom.num_arrays, 2);
+    }
+}
+
+/// Free geometry: channels=14, valid A1 with non-catalog dilations — returns `Free`.
+#[test]
+fn test_topology_free_geometry() {
+    let dils = [1, 2, 4, 8, 16, 32];
+    let json = make_wavenet_json(14, &dils, &dils, 7);
+    let parsed = parse_nam_json(&json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Free(_)),
+        "14-channel WaveNet with custom dilations should be Free, got: {:?}",
+        result
+    );
+    if let WavenetTopologyResult::Free(ref geom) = result {
+        assert_eq!(geom.channels, 14);
+        assert_eq!(geom.kernel_size, 3);
+        assert_eq!(geom.head_size, 7);
+        assert_eq!(geom.num_arrays, 2);
+        assert_eq!(geom.dilations.len(), 2);
+    }
+}
+
+/// F2 rejection: condition_size ≠ 1 returns `Rejected` with F2 reference.
+#[test]
+fn test_topology_rejected_f2_multi_condition() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "condition_size": 2,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": false
+                },
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("F2")),
+        "condition_size=2 should be Rejected with F2 reference, got: {:?}",
+        result
+    );
+}
+
+/// F6 rejection: non-null head returns `Rejected` with F6 reference.
+#[test]
+fn test_topology_rejected_f6_post_stack_head() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": false
+                },
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": "PostStackHead",
+            "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("F6")),
+        "non-null head should be Rejected with F6 reference, got: {:?}",
+        result
+    );
+}
+
+/// Missing head_size returns `Rejected`.
+#[test]
+fn test_topology_rejected_missing_head_size() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": false
+                },
+                {
+                    "channels": 8, "kernel_size": 3,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("head_size")),
+        "missing head_size should be Rejected, got: {:?}",
+        result
+    );
+}
+
+/// Different channels across layer arrays is valid WaveNet (array N+1 uses head_size
+/// of array N as its channel count). Should return `Free` geometry.
+#[test]
+fn test_topology_free_different_channels_per_array() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": false
+                },
+                {
+                    "channels": 4, "kernel_size": 3, "head_size": 1,
+                    "dilations": [1,2,4,8],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Free(_)),
+        "different channels per layer array is valid WaveNet cascading, got: {:?}",
+        result
+    );
+    if let WavenetTopologyResult::Free(ref geom) = result {
+        assert_eq!(geom.channels, 8);
+        assert_eq!(geom.head_size, 4);
+    }
+}
+
+/// Non-WaveNet architecture returns `Rejected`.
+#[test]
+fn test_topology_rejected_non_wavenet() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "LSTM",
+        "config": { "num_layers": 2, "hidden_size": 16, "layers": [] },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).unwrap();
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(_)),
+        "non-WaveNet should be Rejected, got: {:?}",
+        result
     );
 }
 
