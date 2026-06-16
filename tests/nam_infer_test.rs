@@ -745,17 +745,11 @@ fn test_lstm_variable_block_sizes() {
 #[test]
 fn test_community_models_inference() {
     let models = [
-        (
-            "BossWN-standard.nam",
-            Some(NamWavenetTopology::Standard),
-        ),
+        ("BossWN-standard.nam", Some(NamWavenetTopology::Standard)),
         ("BossWN-lite.nam", Some(NamWavenetTopology::Lite)),
         ("BossWN-feather.nam", Some(NamWavenetTopology::Feather)),
         ("BossWN-nano.nam", Some(NamWavenetTopology::Nano)),
-        (
-            "BossLSTM-1x16.nam",
-            None,
-        ),
+        ("BossLSTM-1x16.nam", None),
     ];
 
     let input = generate_sine_440hz(64);

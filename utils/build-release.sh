@@ -20,9 +20,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}${BOLD}========================================================================${NC}"
-echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 6 minutes)   ${NC}"
-echo -e "${BLUE}${BOLD}========================================================================${NC}"
+echo -e "${BLUE}${BOLD}===================================================================================${NC}"
+echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 9 minutes - cold run)   ${NC}"
+echo -e "${BLUE}${BOLD}===================================================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
