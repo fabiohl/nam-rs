@@ -11,19 +11,11 @@ NAM-rs provides multiple ways to capture a **Diagnostic Support Bundle** dependi
 
 ### 1. Standalone Mode (PipeWire)
 
-- **Immediate Command Line Flag:**
+- **Command Line Flag:**
   Run the binary with the `--diagnose` or `--diagnose-full` flags. This prints the diagnostic support block immediately to `stdout` and exits:
 
   ```bash
   target/release/nam-rs --diagnose
-  ```
-
-- **Interactive Shell Session:**
-  If you are running an active audio session, type `:diag` (or alias `:support`) in the interactive console. To print raw absolute paths, type `:diag --full` (or `:support --full`):
-
-  ```text
-  💡 Interactive console started. Type ':diag' or ':support' for diagnostics.
-  :diag
   ```
 
 ### 2. CLAP Plugin Mode (DAW)
@@ -50,7 +42,7 @@ To protect your privacy when sharing logs publicly (such as on GitHub Issues), N
 - Model file paths are shortened to their filename basename only (e.g., `/home/user/my_secret_path/model.nam` becomes `model.nam`).
 - No audio content, neural network weights, or system user/hostnames are ever recorded.
 
-### What is UNREDACTED (using `--diagnose-full` or `:diag --full`)
+### What is UNREDACTED (using `--diagnose-full`)
 
 - Full absolute file paths for models and environment directories are printed without replacements. Useful for resolving complex path/permission issues.
 

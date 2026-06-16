@@ -183,10 +183,6 @@ fn main() -> anyhow::Result<()> {
     // syscalls that would cause jitter at the critical moment of the first audio delivery.
     rt_setup::configure_process_wide();
 
-    // Spawn interactive CLI command thread
-    let rt_status_cli = rt_status.clone();
-    std::thread::spawn(move || cli_loop(rt_status_cli));
-
     // Run the PipeWire host (blocking)
     let res = pw_host::run_pipewire_host(
         consumer,
@@ -214,52 +210,4 @@ fn main() -> anyhow::Result<()> {
     }
     res?;
     Ok(())
-}
-
-/// Interactive CLI loop that runs in a background thread.
-/// It reads commands from stdin and prints the diagnostic bundle to stdout.
-fn cli_loop(rt_status: std::sync::Arc<nam_rs::common::spsc::RtStatusFlags>) {
-    use std::io::{self, BufRead};
-
-    let stdin = io::stdin();
-    let mut reader = stdin.lock();
-    let mut line = String::new();
-
-    // Visual helper/prompt
-    println!(
-        "{}",
-        "💡 Interactive console started. Type ':diag' or ':support' for diagnostics.".cyan()
-    );
-
-    loop {
-        line.clear();
-        if reader.read_line(&mut line).is_err() {
-            break;
-        }
-
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if trimmed == ":diag" || trimmed == ":support" {
-            let bundle =
-                nam_rs::diagnostics::DiagnosticBundle::capture_with_runtime(rt_status.as_ref());
-            println!("{}", bundle.render());
-        } else if trimmed == ":diag --full" || trimmed == ":support --full" {
-            let bundle =
-                nam_rs::diagnostics::DiagnosticBundle::capture_with_runtime(rt_status.as_ref())
-                    .with_full(true);
-            println!("{}", bundle.render());
-        } else if trimmed.starts_with(':') {
-            println!(
-                "{}",
-                format!(
-                    "Unknown command: '{}'. Try ':diag' or ':diag --full'.",
-                    trimmed
-                )
-                .red()
-            );
-        }
-    }
 }
