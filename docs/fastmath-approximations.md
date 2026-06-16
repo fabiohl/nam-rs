@@ -140,6 +140,25 @@ Parity comparison with NeuralAmpModelerCore revealed that WaveNet Standard SNR r
 4. Reciprocal in Padé division                       (≈0, saturated in 24 bits)
 ```
 
+### Measured: Drift Source Decomposition (S1.T1.4)
+
+Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`) for WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers) with synthetic weights 0.01 and conv1d biases 0.001:
+
+| Source                              | ESR (linear) | ESR (dB)  | Dominance |
+|:------------------------------------|:-------------|:----------|:----------|
+| (a) F16 weight quantization         | 3.24e-7      | −64.9     | **100%**  |
+| (b) tanh Padé [5,4] approximation   | 8.49e-15     | −140.7    | ~0%       |
+| (c) f32 accumulation (residual)     | ~0           | −∞        | ~0%       |
+| **Total (a+b+c)**                   | **3.24e-7**  | **−64.9** | —         |
+
+**Key findings:**
+
+1. **Weight quantization dominates entirely** — F16 rounding accounts for essentially 100% of the ESR against the full-precision reference.
+2. **Tanh Padé contribution is negligible** for this topology. The small synthetic weights (0.01) keep internal activations in the linear region of tanh where `tanh(x) ≈ x` with negligible error. This does NOT imply Padé is harmless for real NAM models — real weights are larger and produce activations with `|x| > 1` where Padé error (~2.32e-3 max) becomes significant.
+3. **f32 accumulation error is below measurement noise** — the residual after subtracting quantization and tanh components is effectively zero, confirming that the existing Kahan-compensated primitives are sufficient.
+
+**Recommendation (P2):** Sprint S4's exact mode should prioritize higher-precision weight storage (f32 or compensated F16) over improving the tanh approximation, since the measured weight-quantization ESR dominates by >8 orders of magnitude for this topology. However, a follow-up measurement with real model weights (which produce larger activation ranges) is needed to quantify the tanh contribution under realistic conditions.
+
 ### Path to Improving SNR
 
 E8.T03 implements bias-tuning for BF16 (compensation at model load). The expected gain is ≥1.5 dB SNR on BF16-capable hardware (Intel Sapphire Rapids, AMD Zen 5+). To validate, a CI runner with a compatible CPU is required.

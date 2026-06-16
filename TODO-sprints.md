@@ -102,7 +102,7 @@ referência e validar por ESR/SNR.
 
 ---
 
-### 🟢 Sprint S1 — Quick-wins de hot-path e auditoria de fidelidade
+### 🟢 Sprint S1 — Quick-wins de hot-path e auditoria de fidelidade [DONE]
 
 > **Por quê primeiro**: entrega valor **imediato** e de **baixo risco**, sem tocar na topologia, e
 > prepara o terreno (instrumentação de fidelidade, política de silêncio) para julgar o motor dinâmico
@@ -144,7 +144,7 @@ referência e validar por ESR/SNR.
   `src/math/common/ops.rs:163`, `src/clap/processor/mod.rs:268`, `src/standalone/rt_setup/thread.rs:72`.
   Documentação em `docs/fastmath-approximations.md#8`. **Nenhuma alteração que zere o silêncio.**
 
-#### T1.4 — [P2] Instrumentar e quantificar as fontes de drift da família WaveNet 🟢
+#### T1.4 — [P2] Instrumentar e quantificar as fontes de drift da família WaveNet 🟢 [DONE]
 
 - **Onde**: `docs/fastmath-approximations.md`; `src/math/activations/tanh/production.rs` (Padé [5,4]);
   caminho de quantização (`src/math/common/ops.rs:16` `quantize_weight`).
@@ -156,6 +156,14 @@ referência e validar por ESR/SNR.
   `docs/fastmath-approximations.md` atualizada com a tabela e a recomendação (P2). Não altera números
   de produção.
 - **Risco**: 🟢 baixo (medição). Conecta com S4 (modo exato opcional).
+- **Resultado**: Motor de referência escalar auto-contido em `tests/soak_test.rs`; teste
+  `test_wavenet_drift_decomposition` (`#[ignore]`) mede ESR para 4 variantes de precisão
+  (f32/F16 × exact/Padé). Tabela `// Measured:` documentada em `docs/fastmath-approximations.md#5`.
+  **Medido (Standard, CH=16)**: quantização F16 = 3.24e-7 (−64.9 dB ESR) domina 100%; tanh Padé =
+  8.49e-15 (−140.7 dB, desprezível para pesos sintéticos 0.01); acumulação f32 = ~0.
+  **Recomendação**: S4 deve priorizar armazenamento de pesos em maior precisão (f32 ou F16 compensado)
+  sobre melhoria da tanh. Nota: medição com pesos reais de modelo (que produzem ativações maiores) é
+  necessária para quantificar o componente tanh sob condições realistas.
 
 ---
 

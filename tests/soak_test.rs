@@ -121,7 +121,8 @@ fn test_wavenet_silence_soak() {
     );
     assert!(
         max_val.abs() > 1e-6,
-        "Silence residue unexpectedly near-zero ({}): possible unintended zeroing", max_val
+        "Silence residue unexpectedly near-zero ({}): possible unintended zeroing",
+        max_val
     );
 }
 
@@ -162,17 +163,23 @@ fn test_wavenet_silence_decomposition() {
         "Phase 1 — Total residue: max={:.6e}, mean={:.6e} ({} dBFS)",
         total_max,
         total_mean,
-        if total_max > 0.0 { 20.0 * (total_max as f64).log10() } else { f64::NEG_INFINITY }
+        if total_max > 0.0 {
+            20.0 * (total_max as f64).log10()
+        } else {
+            f64::NEG_INFINITY
+        }
     );
 
     // Sanity: residue must be in expected range (not zero, not blown)
     assert!(
         total_max > 1e-6,
-        "Total residue unexpectedly near-zero ({:.6e})", total_max
+        "Total residue unexpectedly near-zero ({:.6e})",
+        total_max
     );
     assert!(
         total_max < 1e-3,
-        "Total residue unexpectedly large ({:.6e})", total_max
+        "Total residue unexpectedly large ({:.6e})",
+        total_max
     );
 
     // ── Phase 2: zero out conv1d biases → isolate quantization ────
@@ -213,7 +220,10 @@ fn test_wavenet_silence_decomposition() {
             f64::NEG_INFINITY
         }
     );
-    println!("Conv1D bias contribution (diff): {:.6e} ({:.0}% of total)", bias_contrib, bias_pct);
+    println!(
+        "Conv1D bias contribution (diff): {:.6e} ({:.0}% of total)",
+        bias_contrib, bias_pct
+    );
 
     // Acceptance: conv1d biases must dominate (>50% of total)
     assert!(
@@ -993,4 +1003,612 @@ fn test_adaptive_fsm_transition_cycles() {
         println!("Cycles: {}", CYCLES);
         println!("Transitions: {} (expected {})", transitions, expected);
     }
+}
+
+// =============================================================================
+// T1.4 — WaveNet Drift Source Decomposition
+// =============================================================================
+
+/// Padé [5,4] scalar approximation of tanh. Max error ~2.32e-3.
+fn pade_tanh_scalar(x: f32) -> f32 {
+    let x = x.clamp(-4.0, 4.0);
+    let x2 = x * x;
+    let num = x * ((x2 + 105.0) * x2 + 945.0);
+    let den = (15.0 * x2 + 420.0) * x2 + 945.0;
+    (num / den).clamp(-1.0, 1.0)
+}
+
+/// Applies tanh to a slice. Uses Padé [5,4] or exact `f32::tanh`.
+fn apply_tanh_scalar(slice: &mut [f32], use_exact: bool) {
+    if use_exact {
+        for v in slice {
+            *v = v.tanh();
+        }
+    } else {
+        for v in slice {
+            *v = pade_tanh_scalar(*v);
+        }
+    }
+}
+
+/// Scalar Dense (GEMV): output = weights * input + bias (+ optional residual).
+#[allow(clippy::too_many_arguments)]
+fn dense_scalar(
+    w: &[f32],
+    bias: &[f32],
+    do_bias: bool,
+    in_ch: usize,
+    out_ch: usize,
+    input: &[f32],
+    residual: Option<&[f32]>,
+    output: &mut [f32],
+    nf: usize,
+) {
+    for f in 0..nf {
+        let o = f * out_ch;
+        let i = f * in_ch;
+        for oc in 0..out_ch {
+            let mut s = if do_bias && oc < bias.len() {
+                bias[oc]
+            } else {
+                0.0
+            };
+            for ic in 0..in_ch {
+                s += input[i + ic] * w[oc * in_ch + ic];
+            }
+            if let Some(r) = residual {
+                s += r[o + oc];
+            }
+            output[o + oc] = s;
+        }
+    }
+}
+
+/// Scalar Dense with F16 (u16) weights.
+#[allow(clippy::too_many_arguments)]
+fn dense_scalar_f16(
+    w: &[u16],
+    bias: &[f32],
+    do_bias: bool,
+    in_ch: usize,
+    out_ch: usize,
+    input: &[f32],
+    residual: Option<&[f32]>,
+    output: &mut [f32],
+    nf: usize,
+) {
+    for f in 0..nf {
+        let o = f * out_ch;
+        let i = f * in_ch;
+        for oc in 0..out_ch {
+            let mut s = if do_bias && oc < bias.len() {
+                bias[oc]
+            } else {
+                0.0
+            };
+            for ic in 0..in_ch {
+                s += input[i + ic] * half::f16::from_bits(w[oc * in_ch + ic]).to_f32();
+            }
+            if let Some(r) = residual {
+                s += r[o + oc];
+            }
+            output[o + oc] = s;
+        }
+    }
+}
+
+/// Scalar dilated causal Conv1D with f32 weights.
+#[allow(clippy::too_many_arguments)]
+fn conv1d_scalar(
+    w: &[f32],
+    bias: &[f32],
+    do_bias: bool,
+    dilation: usize,
+    in_ch: usize,
+    out_ch: usize,
+    k: usize,
+    ring_buf: &[f32],
+    buf_pos: usize,
+    mixin: Option<&[f32]>,
+    output: &mut [f32],
+    nf: usize,
+) {
+    for f in 0..nf {
+        let fi = buf_pos + f;
+        let o = f * out_ch;
+        for oc in 0..out_ch {
+            let mut s = if do_bias && oc < bias.len() {
+                bias[oc]
+            } else {
+                0.0
+            };
+            if let Some(m) = mixin
+                && f * out_ch + oc < m.len()
+            {
+                s += m[f * out_ch + oc];
+            }
+            output[o + oc] = s;
+        }
+        for tk in 0..k {
+            let off = (dilation as isize) * ((tk as isize) + 1 - (k as isize));
+            let pos = ((fi as isize) + off) as usize * in_ch;
+            for oc in 0..out_ch {
+                let mut s = 0.0f32;
+                for ic in 0..in_ch {
+                    s += ring_buf[pos + ic] * w[oc * k * in_ch + tk * in_ch + ic];
+                }
+                output[o + oc] += s;
+            }
+        }
+    }
+}
+
+/// Scalar dilated causal Conv1D with F16 (u16) weights.
+#[allow(clippy::too_many_arguments)]
+fn conv1d_scalar_f16(
+    w: &[u16],
+    bias: &[f32],
+    do_bias: bool,
+    dilation: usize,
+    in_ch: usize,
+    out_ch: usize,
+    k: usize,
+    ring_buf: &[f32],
+    buf_pos: usize,
+    mixin: Option<&[f32]>,
+    output: &mut [f32],
+    nf: usize,
+) {
+    for f in 0..nf {
+        let fi = buf_pos + f;
+        let o = f * out_ch;
+        for oc in 0..out_ch {
+            let mut s = if do_bias && oc < bias.len() {
+                bias[oc]
+            } else {
+                0.0
+            };
+            if let Some(m) = mixin
+                && f * out_ch + oc < m.len()
+            {
+                s += m[f * out_ch + oc];
+            }
+            output[o + oc] = s;
+        }
+        for tk in 0..k {
+            let off = (dilation as isize) * ((tk as isize) + 1 - (k as isize));
+            let pos = ((fi as isize) + off) as usize * in_ch;
+            for oc in 0..out_ch {
+                let mut s = 0.0f32;
+                for ic in 0..in_ch {
+                    s += ring_buf[pos + ic]
+                        * half::f16::from_bits(w[oc * k * in_ch + tk * in_ch + ic]).to_f32();
+                }
+                output[o + oc] += s;
+            }
+        }
+    }
+}
+
+/// Scalar reference engine for WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers).
+///
+/// Mirrors `build_soak_wavenet()` topology with configurable precision:
+/// - `use_f32` → f32 weights, else F16 (u16→f32 decoded)
+/// - `use_exact` → `f32::tanh()`, else Padé [5,4]
+///
+/// Ring buffers are pre-filled with zeros (equivalent to silence prewarm).
+#[allow(clippy::too_many_arguments)]
+fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: usize) -> Vec<f32> {
+    let fw = 0.01f32;
+    let uw = half::f16::from_f32(fw).to_bits();
+
+    // ── Topology ─────────────────────────────────────────────
+    let dil_a1: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+    let dil_a2: [usize; 2] = [1, 2];
+    let rf_a1: usize = dil_a1.iter().map(|&d| 2 * d).sum();
+    let rf_a2: usize = dil_a2.iter().map(|&d| 2 * d).sum();
+
+    // ── Weights: Array1 layers ────────────────────────────────
+    let a1_mix_f32: Vec<f32> = vec![fw; 16];
+    let a1_mix_u16: Vec<u16> = vec![uw; 16];
+    let a1_o2o_f32: Vec<f32> = vec![fw; 16 * 16];
+    let a1_o2o_u16: Vec<u16> = vec![uw; 16 * 16];
+    let a1_cb: Vec<f32> = vec![0.001; 16];
+    let a1_cw_f32: Vec<f32> = vec![fw; 16 * 3 * 16];
+    let a1_cw_u16: Vec<u16> = vec![uw; 16 * 3 * 16];
+
+    // ── Weights: Array1 head ──────────────────────────────────
+    let a1_rec_f32: Vec<f32> = vec![fw; 16];
+    let a1_rec_u16: Vec<u16> = vec![uw; 16];
+    let a1_hd_f32: Vec<f32> = vec![fw; 8 * 16];
+    let a1_hd_u16: Vec<u16> = vec![uw; 8 * 16];
+
+    // ── Weights: Array2 layers ────────────────────────────────
+    let a2_mix_f32: Vec<f32> = vec![fw; 8];
+    let a2_mix_u16: Vec<u16> = vec![uw; 8];
+    let a2_o2o_f32: Vec<f32> = vec![fw; 8 * 8];
+    let a2_o2o_u16: Vec<u16> = vec![uw; 8 * 8];
+    let a2_cb: Vec<f32> = vec![0.001; 8];
+    let a2_cw_f32: Vec<f32> = vec![fw; 8 * 3 * 8];
+    let a2_cw_u16: Vec<u16> = vec![uw; 8 * 3 * 8];
+
+    // ── Weights: Array2 head ──────────────────────────────────
+    let a2_rec_f32: Vec<f32> = vec![fw; 8 * 16];
+    let a2_rec_u16: Vec<u16> = vec![uw; 8 * 16];
+    let a2_hd_f32: Vec<f32> = vec![fw; 8];
+    let a2_hd_u16: Vec<u16> = vec![uw; 8];
+
+    // ── Ring buffers ──────────────────────────────────────────
+    let make_bufs = |n: usize, ch: usize, rf: usize| -> Vec<Vec<f32>> {
+        (0..n).map(|_| vec![0.0f32; (rf + nf) * ch]).collect()
+    };
+    let mut a1b: Vec<Vec<f32>> = make_bufs(11, 16, rf_a1);
+    let mut a2b: Vec<Vec<f32>> = make_bufs(3, 8, rf_a2);
+
+    let mut a1h = vec![0.0f32; nf * 16];
+    let mut a2h = vec![0.0f32; nf * 8];
+    let mut a1ho = vec![0.0f32; nf * 8];
+
+    // helper: select f32 or u16 reference
+    macro_rules! dsel {
+        ($fw:expr, $uw:expr, $bias:expr, $db:expr, $in:expr, $out:expr, $src:expr, $res:expr, $dst:expr) => {
+            if use_f32 {
+                dense_scalar($fw, $bias, $db, $in, $out, $src, $res, $dst, nf);
+            } else {
+                dense_scalar_f16($uw, $bias, $db, $in, $out, $src, $res, $dst, nf);
+            }
+        };
+    }
+
+    // ── Array1 rechannel ─────────────────────────────────────
+    let rf0 = 2 * dil_a1[0];
+    dsel!(
+        &a1_rec_f32,
+        &a1_rec_u16,
+        &[0.0f32; 16],
+        false,
+        1,
+        16,
+        input,
+        None,
+        &mut a1b[0][rf0 * 16..(rf0 + nf) * 16]
+    );
+
+    // ── Array1 layers ─────────────────────────────────────────
+    for li in 0..10 {
+        let dil = dil_a1[li];
+        let rfi = 2 * dil;
+        let rfo = if li < 9 { 2 * dil_a1[li + 1] } else { rfi };
+        let (l, r) = a1b.split_at_mut(li + 1);
+        let ib = &l[li];
+        let ob = &mut r[0];
+
+        // Per-frame mixin: COND=1 × CH
+        let mut mixin = vec![0.0f32; nf * 16];
+        for ff in 0..nf {
+            let cv = input[ff];
+            for oc in 0..16 {
+                let mw = if use_f32 {
+                    a1_mix_f32[oc]
+                } else {
+                    half::f16::from_bits(a1_mix_u16[oc]).to_f32()
+                };
+                mixin[ff * 16 + oc] = mw * cv;
+            }
+        }
+        let mut co = vec![0.0f32; nf * 16];
+        if use_f32 {
+            conv1d_scalar(
+                &a1_cw_f32,
+                &a1_cb,
+                true,
+                dil,
+                16,
+                16,
+                3,
+                ib,
+                rfi,
+                Some(&mixin),
+                &mut co,
+                nf,
+            );
+        } else {
+            conv1d_scalar_f16(
+                &a1_cw_u16,
+                &a1_cb,
+                true,
+                dil,
+                16,
+                16,
+                3,
+                ib,
+                rfi,
+                Some(&mixin),
+                &mut co,
+                nf,
+            );
+        }
+        apply_tanh_scalar(&mut co, use_exact);
+
+        let res = &ib[rfi * 16..(rfi + nf) * 16];
+        dsel!(
+            &a1_o2o_f32,
+            &a1_o2o_u16,
+            &[0.0f32; 16],
+            false,
+            16,
+            16,
+            &co,
+            Some(res),
+            &mut ob[rfo * 16..(rfo + nf) * 16]
+        );
+
+        if li == 0 {
+            a1h.copy_from_slice(&co);
+        } else {
+            for (h, c) in a1h.iter_mut().zip(co.iter()) {
+                *h += c;
+            }
+        }
+    }
+
+    // ── Array1 head ──────────────────────────────────────────
+    dsel!(
+        &a1_hd_f32,
+        &a1_hd_u16,
+        &[0.0f32; 8],
+        false,
+        16,
+        8,
+        &a1h,
+        None,
+        &mut a1ho
+    );
+
+    // ── Array1 output ────────────────────────────────────────
+    let a1o_rf = 2 * dil_a1[9];
+    let a1o = &a1b[10][a1o_rf * 16..(a1o_rf + nf) * 16];
+
+    // ── Array2 ───────────────────────────────────────────────
+    a2h.copy_from_slice(&a1ho);
+
+    let rf2_0 = 2 * dil_a2[0];
+    dsel!(
+        &a2_rec_f32,
+        &a2_rec_u16,
+        &[0.0f32; 8],
+        false,
+        16,
+        8,
+        a1o,
+        None,
+        &mut a2b[0][rf2_0 * 8..(rf2_0 + nf) * 8]
+    );
+
+    for li in 0..2 {
+        let dil = dil_a2[li];
+        let rfi = 2 * dil;
+        let rfo = if li < 1 { 2 * dil_a2[li + 1] } else { rfi };
+        let (l, r) = a2b.split_at_mut(li + 1);
+        let ib = &l[li];
+        let ob = &mut r[0];
+
+        let mut mixin = vec![0.0f32; nf * 8];
+        for ff in 0..nf {
+            let cv = input[ff];
+            for oc in 0..8 {
+                let mw = if use_f32 {
+                    a2_mix_f32[oc]
+                } else {
+                    half::f16::from_bits(a2_mix_u16[oc]).to_f32()
+                };
+                mixin[ff * 8 + oc] = mw * cv;
+            }
+        }
+        let mut co = vec![0.0f32; nf * 8];
+        if use_f32 {
+            conv1d_scalar(
+                &a2_cw_f32,
+                &a2_cb,
+                true,
+                dil,
+                8,
+                8,
+                3,
+                ib,
+                rfi,
+                Some(&mixin),
+                &mut co,
+                nf,
+            );
+        } else {
+            conv1d_scalar_f16(
+                &a2_cw_u16,
+                &a2_cb,
+                true,
+                dil,
+                8,
+                8,
+                3,
+                ib,
+                rfi,
+                Some(&mixin),
+                &mut co,
+                nf,
+            );
+        }
+        apply_tanh_scalar(&mut co, use_exact);
+
+        let res = &ib[rfi * 8..(rfi + nf) * 8];
+        dsel!(
+            &a2_o2o_f32,
+            &a2_o2o_u16,
+            &[0.0f32; 8],
+            false,
+            8,
+            8,
+            &co,
+            Some(res),
+            &mut ob[rfo * 8..(rfo + nf) * 8]
+        );
+
+        for (h, c) in a2h.iter_mut().zip(co.iter()) {
+            *h += c;
+        }
+    }
+
+    // ── Array2 head → output ─────────────────────────────────
+    let mut out = vec![0.0f32; nf];
+    dsel!(
+        &a2_hd_f32,
+        &a2_hd_u16,
+        &[0.0f32; 1],
+        true,
+        8,
+        1,
+        &a2h,
+        None,
+        &mut out
+    );
+
+    for v in &mut out {
+        *v *= 0.1;
+    }
+    out
+}
+
+/// Computes Error-to-Signal Ratio (linear).
+fn compute_esr(reference: &[f32], test: &[f32]) -> f64 {
+    let sig: f64 = reference.iter().map(|&x| (x as f64).powi(2)).sum();
+    let noise: f64 = reference
+        .iter()
+        .zip(test.iter())
+        .map(|(r, t)| ((r - t) as f64).powi(2))
+        .sum();
+    if sig <= f64::EPSILON {
+        if noise <= f64::EPSILON {
+            0.0
+        } else {
+            f64::INFINITY
+        }
+    } else {
+        noise / sig
+    }
+}
+
+fn esr_to_db(esr: f64) -> f64 {
+    if esr <= 0.0 {
+        f64::INFINITY
+    } else {
+        10.0 * esr.log10()
+    }
+}
+
+/// T1.4 — Drift Source Decomposition for WaveNet Standard (CH=16).
+///
+/// Measures the contribution of each precision-loss source to the total
+/// ESR against a full-precision (f32 weights + exact tanh) scalar reference:
+///   (a) F16 weight quantization
+///   (b) tanh Padé [5,4] approximation
+///   (c) f32 accumulation (residual)
+///
+/// Does NOT alter the production engine — all measurement is via a
+/// self-contained scalar reference engine in this test file.
+#[test]
+#[ignore]
+fn test_wavenet_drift_decomposition() {
+    const NF: usize = 64;
+    let mut input = vec![0.0f32; NF];
+    for (i, item) in input.iter_mut().enumerate() {
+        let t = i as f32 / 48000.0;
+        let freq = 200.0 + (8000.0 - 200.0) * (i as f32 / NF as f32);
+        *item = (2.0 * std::f32::consts::PI * freq * t).sin() * 0.5;
+    }
+
+    // 1. Reference: f32 weights + exact tanh
+    let r_ref = wavenet_standard_scalar(true, true, &input, NF);
+    // 2. F16 weights + exact tanh → isolates weight quantization
+    let r_quant = wavenet_standard_scalar(false, true, &input, NF);
+    // 3. F32 weights + Padé tanh → isolates tanh approximation
+    let r_tanh = wavenet_standard_scalar(true, false, &input, NF);
+    // 4. F16 weights + Padé tanh → production-equivalent
+    let r_prod = wavenet_standard_scalar(false, false, &input, NF);
+
+    let e_quant = compute_esr(&r_ref, &r_quant);
+    let e_tanh = compute_esr(&r_ref, &r_tanh);
+    let e_total = compute_esr(&r_ref, &r_prod);
+    let e_resid = e_total - e_quant - e_tanh;
+
+    println!();
+    println!("╔══════════════════════════════════════════════════════════╗");
+    println!("║  T1.4 — WaveNet Drift Decomposition (Standard, CH=16)  ║");
+    println!("╠══════════════════════════════════════════════════════════╣");
+    println!("║  Source                                  ESR       dB   ║");
+    println!("╠══════════════════════════════════════════════════════════╣");
+    println!(
+        "║  (a) F16 weight quantization     {:.4e}  {:6.1}  ║",
+        e_quant,
+        esr_to_db(e_quant)
+    );
+    println!(
+        "║  (b) tanh Padé [5,4] approx      {:.4e}  {:6.1}  ║",
+        e_tanh,
+        esr_to_db(e_tanh)
+    );
+    println!(
+        "║  (c) f32 accumulation (residual) {:.4e}  {:6.1}  ║",
+        e_resid,
+        if e_resid > 0.0 {
+            esr_to_db(e_resid)
+        } else {
+            f64::NEG_INFINITY
+        }
+    );
+    println!("╠══════════════════════════════════════════════════════════╣");
+    println!(
+        "║  Total (a+b+c)                   {:.4e}  {:6.1}  ║",
+        e_total,
+        esr_to_db(e_total)
+    );
+    println!("╚══════════════════════════════════════════════════════════╝");
+
+    // Sanity checks
+    assert!(e_quant > 0.0, "Quantization ESR should be positive");
+    assert!(e_total > 0.0, "Total ESR should be positive");
+    assert!(
+        e_total < 1e-5,
+        "Total ESR ({:.4e}) unexpectedly large — possible scalar engine bug",
+        e_total
+    );
+
+    println!();
+    println!("// Measured: WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers)");
+    println!(
+        "//   weight_quant_esr={:.4e} ({:.1} dB)",
+        e_quant,
+        esr_to_db(e_quant)
+    );
+    println!(
+        "//   tanh_approx_esr= {:.4e} ({:.1} dB)",
+        e_tanh,
+        esr_to_db(e_tanh)
+    );
+    println!(
+        "//   accum_residual=  {:.4e} ({:.1} dB)",
+        e_resid,
+        if e_resid > 0.0 {
+            esr_to_db(e_resid)
+        } else {
+            f64::NEG_INFINITY
+        }
+    );
+    println!(
+        "//   total_esr=       {:.4e} ({:.1} dB)",
+        e_total,
+        esr_to_db(e_total)
+    );
+    println!("//   Recommendation: P2 — weight quantization dominates; S4 exact mode");
+    println!("//   should prioritize higher-precision weight storage.");
+    println!("//   Tanh Padé contribution is negligible for this topology (small");
+    println!("//   weights keep activations in the linear tanh region).");
 }
