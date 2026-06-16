@@ -331,6 +331,12 @@ oficial** (via F12 + F1/F5) para validar o caminho com modelo real.
 **O que é.** **Pesquisar o TONE3000** e compor um diretório `tests/fixtures/models/`
 completo, variado e documentado (origem + finalidade), com ênfase em **A2**.
 
+> Objetivo do corpus: ≥1 modelo **real** por SKU A1 (eliminar o sintético Lite CH=12 — ver
+> `TODO-problemas.md §P1`), ≥1 A2 clean + ≥1 A2 high-gain reais, e ≥1 `custom` por classe de
+> geometria não suportada (fixture negativa que vira positiva quando F1/F3/F7 entrarem). Tudo
+> com proveniência (tone_id, autor, licença, downloads/favorites, finalidade) no `README.md`
+> dos fixtures.
+
 **Por que é habilitador.** É **pré-requisito de evidência** para F1–F11: hoje a auditoria de
 aderência depende de modelos sintéticos (A2-Full/Lite, Lite CH=12) e de poucos modelos reais.
 Sem um corpus real e variado, não há como (a) **medir** a aderência ao NAMCore, (b) resolver
@@ -340,28 +346,6 @@ a **incerteza de F2** (produção A2 usa FiLM?), nem (c) **promover goldens sint
 (`t3k`, `cc-by`, `cc-by-sa`, `cc0`, …). A **licença padrão `T3K` proíbe redistribuir** o
 arquivo sem permissão do autor. **Só podem ser versionados** em `tests/fixtures/models/`
 modelos **CC0/CC-BY(-SA)** ou com permissão explícita.
-
-**Sugestão de 1 modelo por arquitetura (metodologia + candidatos a verificar).**
-Como guia, candidatos de **alta tração** observados publicamente no TONE3000 (verificar downloads,
-favorites e **licença** antes de vendorizar):
-
-| Arquitetura (filtro)               | Critério                                 | Candidato observado (verificar licença/números) |
-| ---------------------------------- | ---------------------------------------- | ----------------------------------------------- |
-| **A2** (`architecture=2`)          | Maior tração + ESR baixo + clean de refª | _"Fender Deluxe Reverb (A2)"_ (~10k downloads)  |
-| **A2** high-gain                   | Cobrir regime saturado/transientes       | _"Bogner Uberschall MKII Ultra High Gain A2"_   |
-| **A1 Standard** (`size=standard`)  | Capturas A1 clássicas de alto download   | _"1980 Marshall JMP 2204 (EL34)" pack_          |
-| **A1 Lite/Feather/Nano**           | Validar SKUs menores com modelo **real** | (resolver via `survey --architecture 1`)        |
-| **custom** (`architecture=custom`) | Geometria fora do catálogo (F1/F3/F7)    | (resolver via `survey --architecture custom`)   |
-
-> Objetivo do corpus: ≥1 modelo **real** por SKU A1 (eliminar o sintético Lite CH=12 — ver
-> `TODO-problemas.md §P1`), ≥1 A2 clean + ≥1 A2 high-gain reais, e ≥1 `custom` por classe de
-> geometria não suportada (fixture negativa que vira positiva quando F1/F3/F7 entrarem). Tudo
-> com proveniência (tone_id, autor, licença, downloads/favorites, finalidade) no `README.md`
-> dos fixtures.
-
-**O que fazer:**
-
-Mapear e pesquisar no catálogo do **TONE3000** modelos reais que atendam aos seguintes critérios de alta prioridade para resolver as lacunas de features (`TODO-features.md`) e os problemas de fidelidade (`TODO-problemas.md`), garantindo conformidade de licença (CC0 ou CC-BY):
 
 | Perfil do Modelo              | Feature/Problema Alvo               | Critérios de Busca (Campos JSON do `.nam`)                                                                                   | Finalidade nos Testes                                                                                                          |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
