@@ -14,7 +14,6 @@
 //! Methods delegate to kernel functions in `math::gemm`, `math::wavenet`,
 //! `math::lstm`, `math::dsp`, and `math::common::utility`.
 
-use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
 use core::arch::x86_64::*;
 
@@ -39,10 +38,8 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-        // Since pure AVX2 has no native acceleration for BF16 (Brain Float), we use the common fallback version.
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { dot_product_bf16_fallback(a, b) }
+    unsafe fn dot_product_bf16(_a: &[u16], _b: &[u16]) -> f32 {
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]
@@ -54,9 +51,8 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
+    unsafe fn dot_product_4x_interleaved_bf16(_weights: &[[u16; 4]], _state: &[u16]) -> [f32; 4] {
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]
@@ -77,25 +73,23 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
-        weights: &[[u16; 4]],
-        state_f0: &[u16],
-        state_f1: &[u16],
+        _weights: &[[u16; 4]],
+        _state_f0: &[u16],
+        _state_f1: &[u16],
     ) -> ([f32; 4], [f32; 4]) {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1) }
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_bf16_4x(
-        w0: &[u16],
-        w1: &[u16],
-        w2: &[u16],
-        w3: &[u16],
-        in_frame: &[u16],
+        _w0: &[u16],
+        _w1: &[u16],
+        _w2: &[u16],
+        _w3: &[u16],
+        _in_frame: &[u16],
     ) -> [f32; 4] {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { dot_product_bf16_4x_fallback(w0, w1, w2, w3, in_frame) }
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     // GEMV Operations: Matrix-Vector multiplication, used in almost all model layers.
@@ -186,16 +180,13 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_bf16(
-        in_frame: &[u16],
-        weights: &[u16],
-        bias: &[f32],
-        out_frame: &mut [f32],
-        do_bias: bool,
+        _in_frame: &[u16],
+        _weights: &[u16],
+        _bias: &[f32],
+        _out_frame: &mut [f32],
+        _do_bias: bool,
     ) {
-        // Since the classic AVX2 architecture has no native support for BF16 dot-product instructions,
-        // we fall back to a runtime conversion to f32.
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     // LSTM Gates (4-gate): Simultaneously computes the 4 memory controls of the LSTM network.
@@ -238,29 +229,14 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_bf16_4gate(
-        in_frame: &[u16],
-        weights: &[u16],
-        bias: &[f32],
-        out_gates: &mut [f32],
-        hidden_size: usize,
-        do_bias: bool,
+        _in_frame: &[u16],
+        _weights: &[u16],
+        _bias: &[f32],
+        _out_gates: &mut [f32],
+        _hidden_size: usize,
+        _do_bias: bool,
     ) {
-        let ih = in_frame.len();
-        let stride = ih * hidden_size;
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe {
-            // Since AVX2 does not have native VNNI/BF16 with direct CPU accumulation, we use fallback.
-            gemv_4gate_bf16_fallback(
-                in_frame,
-                &weights[0..stride],
-                &weights[stride..2 * stride],
-                &weights[2 * stride..3 * stride],
-                &weights[3 * stride..4 * stride],
-                bias,
-                out_gates,
-                do_bias,
-            )
-        }
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]
@@ -320,9 +296,8 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe { f32_to_bf16_fallback(src, dest) }
+    unsafe fn f32_to_bf16(_src: &[f32], _dest: &mut [u16]) {
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     /// Converts a register containing 8 32-bit floats (Self::V) to the compact BF16 (16-bit)
@@ -582,21 +557,14 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_batch_bf16(
-        in_frames: &[u16],
-        weights: &[u16],
-        bias: &[f32],
-        out_frames: &mut [f32],
-        num_frames: usize,
-        do_bias: bool,
+        _in_frames: &[u16],
+        _weights: &[u16],
+        _bias: &[f32],
+        _out_frames: &mut [f32],
+        _num_frames: usize,
+        _do_bias: bool,
     ) {
-        let in_len = in_frames.len() / num_frames;
-        let out_len = out_frames.len() / num_frames;
-        for i in 0..num_frames {
-            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
-            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-            unsafe { gemv_overwrite_bf16_fallback(in_slice, weights, bias, out_slice, do_bias) };
-        }
+        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]

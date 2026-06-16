@@ -121,7 +121,7 @@ referência e validar por ESR/SNR.
 - **Risco**: 🟢 trivial. **Atenção**: garantir semântica idêntica quando `num_frames` não é múltiplo
   do width SIMD (tail handling já é responsabilidade do kernel).
 
-#### T1.2 — [O5 limpeza] Remover cabeamento BF16 escalar morto no AVX2 🟢
+#### T1.2 — [O5 limpeza] Remover cabeamento BF16 escalar morto no AVX2 🟢 [DONE]
 
 - **Onde**: `src/math/common/avx2_impl.rs:42-99` (`dot_product_bf16*`/`gemv_*_bf16` cabeados a
   fallbacks escalares).

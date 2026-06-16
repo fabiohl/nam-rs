@@ -192,28 +192,6 @@ fn test_accumulate_head() {
     }
 }
 
-/// Verifies that the conversion from full-precision numbers (f32) to the compact format (bfloat16)
-/// maintains strict mathematical parity.
-#[test]
-fn test_f32_to_bf16_avx2_parity() {
-    if !is_x86_feature_detected!("avx2") {
-        return;
-    }
-    let src: Vec<f32> = (0..64).map(|i| i as f32 * 0.123).collect();
-    let mut dest_simd = vec![0u16; 64];
-    let mut dest_ref = vec![0u16; 64];
-
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe {
-        Avx2Math::f32_to_bf16(&src, &mut dest_simd);
-        for i in 0..64 {
-            dest_ref[i] = (src[i].to_bits() >> 16) as u16;
-        }
-    }
-
-    assert_eq!(dest_simd, dest_ref);
-}
-
 /// Ensures that saving compact data (bfloat16) to memory is done
 /// without data loss or corruption.
 #[test]
