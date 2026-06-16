@@ -62,16 +62,16 @@ Evidência empírica compartilhada por F1/F2/F3/F4/F6/F11. O dispatcher do `nam-
 **apenas um catálogo fixo** de topologias e **rejeita** o resto. Testando os modelos
 **oficiais** do `NeuralAmpModelerCore_v0.5.3/example_models/`:
 
-| Modelo oficial              | Geometria                               | Resultado no nam-rs                                              | Feature que destrava |
-| --------------------------- | --------------------------------------- | ---------------------------------------------------------------- | -------------------- |
-| `wavenet_a1_standard.nam`   | WaveNet ch=16, cond=1 (real, 407 KB)    | ✅ **Carrega** (já é golden oficial)                             | —                    |
-| `my_model.nam`              | == `wavenet_a1_standard` (md5 idêntico) | ✅ Carrega (redundante)                                          | —                    |
-| `lstm.nam`                  | LSTM H=3, L=1                           | ✅ **Carrega** (já é golden oficial)                             | —                    |
-| `wavenet.nam`               | WaveNet ch=3, cond=1, `[(3,2),(2,1)]`   | ❌ "topology not in catalog / dynamic fallback no longer avail." | **F1**               |
-| `slimmable_wavenet.nam`     | WaveNet ch=3, cond=1, geometria livre   | ❌ "A2 shape not recognized"                                     | **F1 / F5**          |
-| `wavenet_a2_max.nam`        | WaveNet ch=4, **cond=8** (FiLM)         | ❌ "only condition_size=1 is supported"                          | **F2 / F3**          |
-| `wavenet_condition_dsp.nam` | WaveNet ch=3, **cond=3** (FiLM)         | ❌ "only condition_size=1 is supported"                          | **F2 / F3**          |
-| `slimmable_container.nam`   | SlimmableContainer (3 submodelos)       | ❌ "submodel build failed" (depende dos acima)                   | **F5 / F11**         |
+| Modelo oficial              | Geometria                               | Resultado no nam-rs                                             | Feature que destrava |
+| --------------------------- | --------------------------------------- | --------------------------------------------------------------- | -------------------- |
+| `wavenet_a1_standard.nam`   | WaveNet ch=16, cond=1 (real, 407 KB)    | ✅ **Carrega** (já é golden oficial)                            | —                    |
+| `my_model.nam`              | == `wavenet_a1_standard` (md5 idêntico) | ✅ Carrega (redundante)                                         | —                    |
+| `lstm.nam`                  | LSTM H=3, L=1                           | ✅ **Carrega** (já é golden oficial)                            | —                    |
+| `wavenet.nam`               | WaveNet ch=3, cond=1, `[(3,2),(2,1)]`   | ❌ "topology not in catalog / dynamic fallback no longer avail."| **F1**               |
+| `slimmable_wavenet.nam`     | WaveNet ch=3, cond=1, geometria livre   | ❌ "A2 shape not recognized"                                    | **F1 / F5**          |
+| `wavenet_a2_max.nam`        | WaveNet ch=4, **cond=8** (FiLM)         | ❌ "only condition_size=1 is supported"                         | **F2 / F3**          |
+| `wavenet_condition_dsp.nam` | WaveNet ch=3, **cond=3** (FiLM)         | ❌ "only condition_size=1 is supported"                         | **F2 / F3**          |
+| `slimmable_container.nam`   | SlimmableContainer (3 submodelos)       | ❌ "submodel build failed" (depende dos acima)                  | **F5 / F11**         |
 
 > **Leitura**: o engine de `SlimmableContainer` em si **já existe** (F11); `slimmable_container.nam`
 > falha porque seus submodelos são `slimmable_wavenet` de geometria livre (F1/F5). Ou seja, as
@@ -326,47 +326,23 @@ oficial** (via F12 + F1/F5) para validar o caminho com modelo real.
 
 ---
 
-## F12 — 🔴 (Habilitador) Tooling de pesquisa TONE3000 + expansão de `tests/fixtures/models/`
+## F12 — 🔴 (Habilitador) TONE3000 e expansão de `tests/fixtures/models/`
 
-**O que é.** Mecanismo para **pesquisar o TONE3000 via API oficial** e compor um diretório
-`tests/fixtures/models/` **completo, variado e documentado** (origem + finalidade), com
-ênfase em **A2**. Entregue nesta auditoria: **`tests/fixtures/tone3000_research.py`** — CLI
-(`survey`/`acquire`) que consulta a API v1, ranqueia candidatos por arquitetura/tamanho e
-baixa fixtures redistribuíveis com manifesto de proveniência.
+**O que é.** **Pesquisar o TONE3000** e compor um diretório `tests/fixtures/models/`
+completo, variado e documentado (origem + finalidade), com ênfase em **A2**.
 
 **Por que é habilitador.** É **pré-requisito de evidência** para F1–F11: hoje a auditoria de
 aderência depende de modelos sintéticos (A2-Full/Lite, Lite CH=12) e de poucos modelos reais.
 Sem um corpus real e variado, não há como (a) **medir** a aderência ao NAMCore, (b) resolver
 a **incerteza de F2** (produção A2 usa FiLM?), nem (c) **promover goldens sintéticos→oficiais**.
 
-**Realidade da API TONE3000 (apurada).**
-
-- REST v1, **OAuth 2.0 + PKCE**, **autenticado** (chave `t3k_pub_…` + token de usuário). **Não
-  há crawl anônimo nem dump público.** Rate limit 100 req/min; `/tones/search` é _fortemente_
-  limitado (o próprio TONE3000 recomenda o fluxo `Select` para navegação).
-- Endpoints úteis: `GET /tones/search?platform=nam&architecture={1|2|custom}&sizes=…&sort=downloads-all-time`,
-  `GET /tones/{id}`, `GET /models?tone_id=…&architecture=…` (cada modelo traz `model_url`
-  pré-assinado, `size` e `architecture_version`).
-- **Não existe campo de "avaliação" (estrelas).** Métricas expostas: `downloads_count` e
-  `favorites_count`. Usamos **favorites como proxy de aprovação** e ranqueamos por
-  `score = downloads + 25·favorites` (transparente, auditável, **não** é métrica oficial).
-  ESR por modelo aparece na página web do tone (ex.: A2-Full ESR 0.0005) — útil como sinal
-  de qualidade de captura.
-- **Mapeamento arquitetura.** `1`=A1 (WaveNet clássico + LSTM/Linear; sizes
-  standard/lite/feather/nano ↔ CH=16/12/8/4), `2`=A2 (um único `.nam` roda como A2-Full **ou**
-  A2-Lite), `custom`=geometrias arbitrárias (fixtures negativas para F1/F3/F7).
-
 **⚠️ Restrição de LICENÇA (bloqueante para commit).** Cada tone tem licença
 (`t3k`, `cc-by`, `cc-by-sa`, `cc0`, …). A **licença padrão `T3K` proíbe redistribuir** o
 arquivo sem permissão do autor. **Só podem ser versionados** em `tests/fixtures/models/`
-modelos **CC0/CC-BY(-SA)** ou com permissão explícita. O script aplica
-`--redistributable-only` para nunca propor um fixture que não possamos vendorizar legalmente.
-Alternativa: documentar o `tone_id` + comando de download (modelo **não** commitado), como já
-se faz com mirrors gitignored.
+modelos **CC0/CC-BY(-SA)** ou com permissão explícita.
 
 **Sugestão de 1 modelo por arquitetura (metodologia + candidatos a verificar).**
-A seleção final exige rodar o `survey` autenticado (números ao vivo + licença). Como guia,
-candidatos de **alta tração** observados publicamente no TONE3000 (verificar downloads,
+Como guia, candidatos de **alta tração** observados publicamente no TONE3000 (verificar downloads,
 favorites e **licença** antes de vendorizar):
 
 | Arquitetura (filtro)               | Critério                                 | Candidato observado (verificar licença/números) |
@@ -383,14 +359,17 @@ favorites e **licença** antes de vendorizar):
 > com proveniência (tone_id, autor, licença, downloads/favorites, finalidade) no `README.md`
 > dos fixtures.
 
-**Diretrizes.**
+**O que fazer:**
 
-1. Gerar token OAuth (PKCE) com uma conta TONE3000; rodar `survey` por arquitetura.
-2. Filtrar por licença redistribuível; baixar via `acquire` + manifesto de proveniência.
-3. **Probe-load** cada `.nam` no `nam-rs` para classificar: _carrega_ (fast-path/catálogo) vs
-   _rejeitado_ (qual feature destrava: F1/F2/F3/F6/F7/F9). Isso **quantifica** o gap real.
-4. Para os que carregam, gerar golden via `render` v0.5.3 e adicionar aos gates multi-SR.
-5. Documentar tudo em `tests/fixtures/README.md` (origem + finalidade + licença).
+Mapear e pesquisar no catálogo do **TONE3000** modelos reais que atendam aos seguintes critérios de alta prioridade para resolver as lacunas de features (`TODO-features.md`) e os problemas de fidelidade (`TODO-problemas.md`), garantindo conformidade de licença (CC0 ou CC-BY):
+
+| Perfil do Modelo              | Feature/Problema Alvo               | Critérios de Busca (Campos JSON do `.nam`)                                                                                   | Finalidade nos Testes                                                                                                          |
+| ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Real WaveNet Lite (CH=12)** | **P1** (Divergência Lite) / **F12** | `architecture: "WaveNet"`, `channels: 12`, `sample_rate` presente, pesos reais treinados.                                    | Substituir o modelo sintético `BossWN-lite.nam` e validar a arquitetura Lite com um sinal de áudio real sem o drift de 0.9 dB. |
+| **A1 Custom Geometry**        | **F1** (WaveNet Genérico)           | `architecture: "WaveNet"`, com canais diferentes de {4, 8, 12, 16} ou com arrays de dilatação customizados.                  | Testar o dispatcher dinâmico de geometrias WaveNet livres quando F1 for implementada (fixture negativa que vira positiva).     |
+| **A2 FiLM / Multi-Condição**  | **F2** (FiLM) / **F3** (A2 Geral)   | `architecture: "WaveNet"`, A2-shape, com `condition_size > 1` (ex: 3 ou 8) e/ou `gating_mode` diferente de `"none"`.         | Validar suporte a FiLM e gating de multi-condição do motor A2. Promover `wavenet_a2_max.nam` de fixture de erro para positiva. |
+| **LSTM Custom Shape**         | **F7** (LSTM arbitrário)            | `architecture: "LSTM"`, com dimensões diferentes do catálogo estático de 10 perfis (ex: `hidden_size: 20`, `num_layers: 3`). | Validar o loader dinâmico de LSTM genérico com dimensões customizadas.                                                         |
+| **Real Slimmable Container**  | **F5** (Slimmable) / **F11**        | `architecture: "SlimmableContainer"`, contendo submodelos reais funcionais.                                                  | Validar a transição CPU-degradada A2-Full -> A2-Lite em produção real com pesos reais de amplificador.                         |
 
 ---
 

@@ -85,71 +85,58 @@ fi
 echo "  C++ Compiler: $CXX"
 
 # =============================================================================
-# Clone/update NeuralAmpModelerPlugin and dependencies
+# Verify NeuralAmpModelerPlugin and dependencies
 # =============================================================================
 echo ""
-echo "[1/6] Setting up NeuralAmpModelerPlugin (C++ IR reference)..."
+echo "[1/6] Verifying NeuralAmpModelerPlugin (C++ IR reference)..."
 if [ ! -d "$NAM_PLUGIN_DIR" ]; then
-    git clone https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$NAM_PLUGIN_DIR"
-    echo "  Checking out pinned commit $NAM_PLUGIN_COMMIT..."
-    (cd "$NAM_PLUGIN_DIR" && git checkout "$NAM_PLUGIN_COMMIT")
-else
-    CURRENT_PLUGIN_SHA=$(cd "$NAM_PLUGIN_DIR" && git rev-parse HEAD)
-    if [ "$CURRENT_PLUGIN_SHA" != "$NAM_PLUGIN_COMMIT" ]; then
-        echo "  WARNING: NeuralAmpModelerPlugin at $CURRENT_PLUGIN_SHA, pinned commit is $NAM_PLUGIN_COMMIT"
-        echo "  Consider deleting the directory and re-running this script for reproducibility."
-    else
-        echo "  NeuralAmpModelerPlugin already exists at $NAM_PLUGIN_DIR (pinned commit verified)"
-    fi
+    echo "ERROR: NeuralAmpModelerPlugin not found at $NAM_PLUGIN_DIR."
+    echo "Please run './utils/mod-update.sh' to download and setup dependencies."
+    exit 1
 fi
 
-# Ensure AudioDSPTools submodule dependencies are present
+CURRENT_PLUGIN_SHA=$(cd "$NAM_PLUGIN_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+if [ "$CURRENT_PLUGIN_SHA" != "$NAM_PLUGIN_COMMIT" ]; then
+    echo "ERROR: NeuralAmpModelerPlugin version mismatch (installed: $CURRENT_PLUGIN_SHA, expected: $NAM_PLUGIN_COMMIT)."
+    echo "Please run './utils/mod-update.sh' to synchronize dependencies."
+    exit 1
+fi
+
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
-if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ]; then
-    echo "  Initializing NeuralAmpModelerPlugin/AudioDSPTools submodules..."
-    (cd "$NAM_PLUGIN_DIR" && git submodule update --init AudioDSPTools)
+if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ] || [ ! -d "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen/Eigen" ]; then
+    echo "ERROR: Submodules for NeuralAmpModelerPlugin are missing."
+    echo "Please run './utils/mod-update.sh' to initialize submodules."
+    exit 1
 fi
-
-if [ ! -d "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen/Eigen" ]; then
-    echo "  Initializing eigen submodule for AudioDSPTools..."
-    (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
-fi
+echo "  NeuralAmpModelerPlugin verified (pinned commit and submodules present)"
 
 # =============================================================================
-# Clone/update NeuralAmpModelerCore (standard)
+# Verify NeuralAmpModelerCore (standard)
 # =============================================================================
 echo ""
-echo "[1b/6] Setting up NeuralAmpModelerCore..."
+echo "[1b/6] Verifying NeuralAmpModelerCore..."
 if [ ! -d "$NAM_CORE_DIR" ]; then
-    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$NAM_CORE_DIR"
-    echo "  Checking out pinned commit $NAM_CORE_COMMIT..."
-    (cd "$NAM_CORE_DIR" && git fetch --depth 1 origin "$NAM_CORE_COMMIT" && git checkout "$NAM_CORE_COMMIT")
-else
-    CURRENT_CORE_SHA=$(cd "$NAM_CORE_DIR" && git rev-parse HEAD)
-    if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_COMMIT" ]; then
-        echo "  WARNING: NeuralAmpModelerCore at $CURRENT_CORE_SHA, pinned commit is $NAM_CORE_COMMIT"
-        echo "  Consider deleting the directory and re-running this script for reproducibility."
-    else
-        echo "  NeuralAmpModelerCore already exists at $NAM_CORE_DIR (pinned commit verified)"
-    fi
+    echo "ERROR: NeuralAmpModelerCore not found at $NAM_CORE_DIR."
+    echo "Please run './utils/mod-update.sh' to download and setup dependencies."
+    exit 1
 fi
 
-# Initialize submodules for standard core
+CURRENT_CORE_SHA=$(cd "$NAM_CORE_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_COMMIT" ]; then
+    echo "ERROR: NeuralAmpModelerCore version mismatch (installed: $CURRENT_CORE_SHA, expected: $NAM_CORE_COMMIT)."
+    echo "Please run './utils/mod-update.sh' to synchronize dependencies."
+    exit 1
+fi
+
 for sub in eigen AudioDSPTools; do
     sub_path="$NAM_CORE_DIR/Dependencies/$sub"
-    if [ -d "$sub_path" ] && [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
-        echo "  Initializing submodule $sub..."
-        (cd "$NAM_CORE_DIR" && git submodule update --init "Dependencies/$sub")
+    if [ ! -d "$sub_path" ] || [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
+        echo "ERROR: Submodule $sub is missing in NeuralAmpModelerCore."
+        echo "Please run './utils/mod-update.sh' to initialize submodules."
+        exit 1
     fi
 done
-
-# Copy official models from standard core clone for test and provenance
-echo ""
-echo "  Copying official example models from mirror for testing..."
-cp "$NAM_CORE_DIR/example_models/wavenet_a2_max.nam" "$MODELS_DIR/"
-cp "$NAM_CORE_DIR/example_models/slimmable_wavenet.nam" "$MODELS_DIR/"
-cp "$NAM_CORE_DIR/example_models/slimmable_container.nam" "$MODELS_DIR/"
-cp "$NAM_CORE_DIR/example_models/wavenet_condition_dsp.nam" "$MODELS_DIR/"
+echo "  NeuralAmpModelerCore verified (pinned commit and submodules present)"
 
 # =============================================================================
 # Build render tool (single unified binary at v0.5.3 with A2-fast)

@@ -35,29 +35,21 @@ mkdir -p target/logs/
 # Cleanup accumulated live-test artifacts from previous runs (41+ MB WAVs)
 rm -rf tests/fixtures/.temp_live/
 
-# Auto-clone NeuralAmpModelerCore if not present (helps in fresh clones).
-# Uses the same pinned commit as golden_gen_build.sh for reproducibility.
+# Verify NeuralAmpModelerCore presence and version (pinned commit).
+# Version pinned commit is defined in mod-update.sh as source of truth.
 NAM_CORE_PINNED_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3 (canonical)
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
-    echo "🌐 Clonando NeuralAmpModelerCore para testes de paridade (commit $NAM_CORE_PINNED_COMMIT)..."
-    git clone https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
-    (cd tests/fixtures/NeuralAmpModelerCore && git checkout "$NAM_CORE_PINNED_COMMIT")
-else
-    CURRENT_CORE_SHA=$(cd tests/fixtures/NeuralAmpModelerCore && git rev-parse HEAD 2>/dev/null || echo "unknown")
-    if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_PINNED_COMMIT" ]; then
-        echo -e "  ${YELLOW}⚠ NeuralAmpModelerCore em $CURRENT_CORE_SHA (esperado: $NAM_CORE_PINNED_COMMIT)${NC}"
-        echo -e "  ${YELLOW}  Considere deletar o diretório e reexecutar para reprodutibilidade.${NC}"
-    fi
+    echo -e "${RED}${BOLD}❌ NeuralAmpModelerCore não encontrado em tests/fixtures/NeuralAmpModelerCore.${NC}"
+    echo -e "${YELLOW}Por favor, execute './utils/mod-update.sh' para clonar e configurar as dependências.${NC}"
+    exit 1
 fi
 
-# Init submodules for the auto-cloned core (required for render tool compilation)
-for sub in "eigen" "AudioDSPTools"; do
-    sub_path="tests/fixtures/NeuralAmpModelerCore/Dependencies/$sub"
-    if [ -d "$sub_path" ] && [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
-        echo "  Inicializando submodule $sub..."
-        (cd tests/fixtures/NeuralAmpModelerCore && git submodule update --init "Dependencies/$sub")
-    fi
-done
+CURRENT_CORE_SHA=$(cd tests/fixtures/NeuralAmpModelerCore && git rev-parse HEAD 2>/dev/null || echo "unknown")
+if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_PINNED_COMMIT" ]; then
+    echo -e "${RED}${BOLD}❌ Versão incorreta do NeuralAmpModelerCore (instalado: $CURRENT_CORE_SHA, esperado: $NAM_CORE_PINNED_COMMIT).${NC}"
+    echo -e "${YELLOW}Por favor, execute './utils/mod-update.sh' para ressincronizar as dependências.${NC}"
+    exit 1
+fi
 
 # ── Phase 0: Pre-flight check — C++ toolchain & golden files ──
 echo -e "\n${BLUE}${BOLD}[Phase 0] Pre-flight: verificando pré-requisitos C++ e golden vectors...${NC}"
@@ -194,8 +186,7 @@ fi
 
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     echo -e "${RED}${BOLD}❌ NeuralAmpModelerCore não encontrado.${NC}"
-    echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
-    echo -e "  ${YELLOW}→ Ou defina NAM_AUTO_BUILD_GOLDENS=1 para geração automática.${NC}"
+    echo -e "  ${YELLOW}→ Execute: ./utils/mod-update.sh${NC}"
     exit 1
 fi
 

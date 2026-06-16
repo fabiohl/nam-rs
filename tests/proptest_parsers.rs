@@ -84,7 +84,7 @@ proptest! {
     #[ignore]
     fn prop_fuzz_nam_json_truncated(cut_idx in 0usize..400_000) {
         // Uses a real fixture as the base for truncation
-        let fixture_content = fs::read_to_string("tests/nam_files/EVH-5150-Lite.nam")
+        let fixture_content = fs::read_to_string("tests/fixtures/models/BossWN-lite.nam")
             .unwrap_or_else(|_| "{}".to_string());
 
         let mut idx = cut_idx;

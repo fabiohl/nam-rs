@@ -10,7 +10,7 @@ This documentation lists and explains system and software dependencies configure
 The following packages should be installed on the system to develop and build NAM-rs. The consolidated command for Debian/Ubuntu systems is:
 
 ```bash
-sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find
+sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find
 ```
 
 ### Detailing by Role
@@ -50,11 +50,14 @@ sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-
 * **Compiler-Grade Optimization (PGO + BOLT) (Optional)**:
 
   * `bolt-22`: LLVM BOLT post-link optimizer. The version must match the LLVM backend version of the installed Rust compiler (LLVM 22 for `rustc 1.96`).
+  * `sudo` privileges: Required by `utils/build-release.sh` to temporarily adjust kernel `perf_event_paranoid` to cycle profile execution with `perf` for layout optimization.
 
-* **Audio Backend and Tests (PipeWire)**:
+* **Audio Backend, Test Utilities and Fixtures**:
 
   * `pipewire` and `libpipewire-0.3-dev`: Core processing headers. Only required for the `standalone` feature.
   * `qpwgraph`: Recommended utility for visual routing of the audio graph (optional but highly suggested for users).
+  * `vlc`: Utilized as an audio loop source in the manual standalone check script.
+  * `ffmpeg`: Relied upon with `libsoxr` support to generate reference files for the resampler validation suite.
 
 * **Graphical Interface and Windowing**:
 
@@ -130,3 +133,12 @@ sudo apt install cmake g++
 >
 > * Regenerate goldens: `./tests/fixtures/golden_gen_build.sh`
 > * Perform live cross-validation: `./utils/tests-long.sh`
+
+### Upstream Third-Party Fixture Synchronization
+
+The long-duration suite (`utils/tests-long.sh`) and the golden generator script (`golden_gen_build.sh`) need to clone and build external resources (`NeuralAmpModelerCore` and `NeuralAmpModelerPlugin`).
+To simplify this process, developers can use the following automated command to synchronize all third-party repositories to their pinned commits:
+
+```bash
+utils/mod-update.sh
+```

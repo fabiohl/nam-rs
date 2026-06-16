@@ -50,7 +50,11 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 * A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
 
 * Development packages:
-  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find`
+  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find`
+
+  > [!NOTE]
+  > * `ffmpeg` is required to generate the resampler reference vectors via Python scripts.
+  > * `vlc` is utilized as an audio playback generator in the manual standalone run script.
 
 * Cargo utilities & Rustup components (required for QA & optimizations):
 
@@ -59,6 +63,13 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
   * `cargo install cargo-pgo`
   * `cargo install cargo-show-asm`
   * `rustup component add llvm-tools-preview`
+
+* **Third-Party Upstream Fixtures (C++ Parity)**:
+  To run the intensive audit suite (`utils/tests-long.sh`), you must clone the upstream C++ projects (`NeuralAmpModelerCore` and `NeuralAmpModelerPlugin`) and build the reference tools. You can synchronize them easily by running:
+
+  ```bash
+  utils/mod-update.sh
+  ```
 
 * To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
 
@@ -95,6 +106,10 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 ### Build, install and run
 
 *Note: `.cargo/config.toml` allows configuring a build optimized specifically for your current CPU ("march=native").*
+
+> [!IMPORTANT]
+> **Sudo Privilege Requirement:**
+> Running `utils/build-release.sh` requires `sudo` privileges to temporarily adjust the kernel's `perf_event_paranoid` to `1` or lower. This is mandatory for CPU cycle profiling using `perf` to generate optimized LLVM BOLT layouts. If you want to bypass this interactivity, configure it persistently beforehand as detailed in [System Dependencies](docs/dependencies.md).
 
 ```bash
 utils/build-release.sh

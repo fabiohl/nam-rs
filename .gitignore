@@ -70,3 +70,6 @@ mutants.out.old/
 # Artefatos de bytecode Python (scripts de fixtures/utilitários)
 __pycache__/
 *.pyc
+
+# Artefatos de ferramentas locais de IDE:
+/.kilo/

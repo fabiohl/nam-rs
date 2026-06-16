@@ -746,18 +746,15 @@ fn test_lstm_variable_block_sizes() {
 fn test_community_models_inference() {
     let models = [
         (
-            "ChandlerRedd47-Gain34-Standard.nam",
+            "BossWN-standard.nam",
             Some(NamWavenetTopology::Standard),
         ),
-        ("EVH-5150-Lite.nam", Some(NamWavenetTopology::Lite)),
-        ("NEVE1073-Standard.nam", Some(NamWavenetTopology::Standard)),
+        ("BossWN-lite.nam", Some(NamWavenetTopology::Lite)),
+        ("BossWN-feather.nam", Some(NamWavenetTopology::Feather)),
+        ("BossWN-nano.nam", Some(NamWavenetTopology::Nano)),
         (
-            "UA610B-Gain+10-Standard.nam",
-            Some(NamWavenetTopology::Standard),
-        ),
-        (
-            "little-bear-t7_phono-aux-tube-preamp_line-in_Standard.nam",
-            Some(NamWavenetTopology::Standard),
+            "BossLSTM-1x16.nam",
+            None,
         ),
     ];
 
@@ -765,7 +762,7 @@ fn test_community_models_inference() {
 
     for (filename, expected_topo) in models {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("tests/nam_files");
+        path.push("tests/fixtures/models");
         path.push(filename);
 
         if !path.exists() {
@@ -826,13 +823,13 @@ fn test_community_models_inference() {
 /// The NAM-rs engine focuses on the modern JSON-based format (v0.5+) and NAMB (v1/v2).
 /// Old Keras/TensorFlow H5 models must be gracefully rejected by the dispatcher.
 ///
-/// Fixture: `tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json`
-/// (159 KB real-world Keras-legacy export; committed to the repo — must never be removed
-/// without updating this test. No silent SKIP allowed: missing fixture = test failure.)
+/// Fixture: `tests/fixtures/models/keras_unsupported.json`
+/// (Synthetic Keras-legacy dummy export lacking required "architecture" field;
+/// committed to the repo — must never be removed without updating this test.)
 #[test]
 fn test_reject_keras_legacy_format() {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json");
+    path.push("tests/fixtures/models/keras_unsupported.json");
 
     assert!(
         path.exists(),

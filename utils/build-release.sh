@@ -253,10 +253,10 @@ if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
     # Find a representative .nam model for profiling
     MODEL_FILE=""
     for candidate in \
-        "tests/nam_files/EVH-5150-Lite.nam" \
-        "tests/nam_files/ChandlerRedd47-Gain34-Standard.nam" \
-        "tests/nam_files/NEVE1073-Standard.nam" \
-        "tests/nam_files/MRSH-JM50LD-Crunch2_FAT_CAB.nam"; do
+        "tests/fixtures/models/BossWN-standard.nam" \
+        "tests/fixtures/models/BossWN-feather.nam" \
+        "tests/fixtures/models/wavenet_a1_standard.nam" \
+        "tests/fixtures/models/BossLSTM-1x16.nam"; do
         if [ -f "$candidate" ]; then
             MODEL_FILE="$candidate"
             break

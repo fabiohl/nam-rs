@@ -61,8 +61,19 @@ if [ -d "$FIXTURE_DIR" ]; then
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
     git clone --depth 1 --branch "$NAM_CORE_TAG" https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
+    (cd "$FIXTURE_DIR" && git checkout "$NAM_CORE_SHA")
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
+
+# Initialize submodules for NeuralAmpModelerCore
+for sub in eigen AudioDSPTools; do
+    sub_path="$FIXTURE_DIR/Dependencies/$sub"
+    if [ ! -d "$sub_path" ] || [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
+        echo "  Initializing submodule $sub for NeuralAmpModelerCore..."
+        (cd "$FIXTURE_DIR" && git submodule update --init "Dependencies/$sub")
+    fi
+done
+
 echo -e "\n${BLUE}${BOLD}[4.2/4] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerPlugin"
 
@@ -77,10 +88,23 @@ if [ -d "$FIXTURE_DIR" ]; then
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
     git clone --depth 1 --branch "$NAM_PLUGIN_TAG" https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
+    (cd "$FIXTURE_DIR" && git checkout "$NAM_PLUGIN_SHA")
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 
+# Ensure AudioDSPTools submodule dependencies are present for NeuralAmpModelerPlugin
+AUDIO_DSP_TOOLS_DIR="$FIXTURE_DIR/AudioDSPTools"
+if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ]; then
+    echo "  Initializing NeuralAmpModelerPlugin/AudioDSPTools submodules..."
+    (cd "$FIXTURE_DIR" && git submodule update --init AudioDSPTools)
+fi
 
-echo -e "\n${GREEN}${BOLD}================================================================${NC}"
+if [ ! -d "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen/Eigen" ]; then
+    echo "  Initializing eigen submodule for AudioDSPTools..."
+    (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
+fi
+
+
+echo -e "${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}          Toda a cadeia de suprimentos foi atualizada!          ${NC}"
 echo -e "${GREEN}${BOLD}================================================================${NC}"

@@ -30,6 +30,6 @@ fi
 
 echo "🚀 Iniciando executável standalone..."
 "$NAM_RS_BIN" \
-  --model tests/nam_files/ChandlerRedd47-Gain34-Standard.nam \
+  --model tests/fixtures/models/BossWN-standard.nam \
   --input-gain 2.0 \
   --output-gain 5.0

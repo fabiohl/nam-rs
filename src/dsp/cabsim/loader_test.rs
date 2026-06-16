@@ -3,13 +3,29 @@
 
 use super::*;
 
-/// Loads the FAT_CAB WAV (PCM24 mono 48kHz) and verifies all metadata.
+/// Helper function to create a programmatically generated mock Cab IR WAV file for testing.
+fn create_temp_cab_ir_wav(name: &str) -> std::path::PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!("nam_rs_test_fat_cab_{}.wav", name));
+
+    // Generate some mock IR samples (exponential decay sine wave)
+    let samples: Vec<f32> = (0..512)
+        .map(|i| {
+            let t = i as f32 / 48_000.0;
+            (2.0 * std::f32::consts::PI * 1000.0 * t).sin() * (-100.0 * t).exp()
+        })
+        .collect();
+
+    // Write PCM16 mono WAV (which is standard and supported by CabSimIr::load)
+    write_pcm16_wav(&path, &samples, 48_000).expect("failed to write mock IR WAV");
+    path
+}
+
+/// Loads the mock Cab IR WAV and verifies all metadata.
 #[test]
 fn test_load_fat_cab_wav() {
-    let path = std::path::Path::new("tests/amostra-guitarra-MRSH-JM50LD-Crunch2_FAT_CAB.wav");
-    assert!(path.exists(), "FAT_CAB WAV test file not found");
-
-    let ir = CabSimIr::load(path, 0, false).expect("failed to load FAT_CAB WAV");
+    let path = create_temp_cab_ir_wav("fat_cab");
+    let ir = CabSimIr::load(&path, 0, false).expect("failed to load mock Cab IR WAV");
 
     assert_eq!(ir.sample_rate, 48_000, "expected 48 kHz effective rate");
     assert_eq!(ir.original_rate, 48_000, "expected 48 kHz original rate");
@@ -19,27 +35,25 @@ fn test_load_fat_cab_wav() {
         ir.samples.iter().any(|&s| s.abs() > 0.0),
         "IR must contain non-zero samples"
     );
+    std::fs::remove_file(path).ok();
 }
 
 /// Loads with resampling to 44.1 kHz.
 #[test]
 fn test_load_with_resample() {
-    let path = std::path::Path::new("tests/amostra-guitarra-MRSH-JM50LD-Crunch2_FAT_CAB.wav");
-    assert!(path.exists());
-
-    let ir = CabSimIr::load(path, 44_100, false).expect("failed to load with resample");
+    let path = create_temp_cab_ir_wav("resample");
+    let ir = CabSimIr::load(&path, 44_100, false).expect("failed to load with resample");
     assert_eq!(ir.sample_rate, 44_100, "effective rate should be target");
     assert_eq!(ir.original_rate, 48_000);
     assert!(!ir.samples.is_empty());
+    std::fs::remove_file(path).ok();
 }
 
 /// Loads with normalization enabled.
 #[test]
 fn test_load_with_normalize() {
-    let path = std::path::Path::new("tests/amostra-guitarra-MRSH-JM50LD-Crunch2_FAT_CAB.wav");
-    assert!(path.exists());
-
-    let ir = CabSimIr::load(path, 0, true).expect("failed to load with normalize");
+    let path = create_temp_cab_ir_wav("normalize");
+    let ir = CabSimIr::load(&path, 0, true).expect("failed to load with normalize");
     assert!(ir.normalized, "normalization flag should be true");
     assert!(!ir.samples.is_empty());
 
@@ -49,6 +63,7 @@ fn test_load_with_normalize() {
         "normalized peak should be ~1.0, got {}",
         peak
     );
+    std::fs::remove_file(path).ok();
 }
 
 /// Loading a non-existent file must return an error, never panic.
