@@ -325,7 +325,7 @@ oficial** (via F12 + F1/F5) para validar o caminho com modelo real.
 
 ---
 
-## F12 — 🔴 (Habilitador) TONE3000 e expansão de `tests/fixtures/models/`
+## F12 — 🔴 (Habilitador) TONE3000 e expansão de `tests/fixtures/models/` [DONE]
 
 **O que:** **Pesquisar o TONE3000** e carregar o diretório
 `/home/fabio/Cloud/Guias/Softwares/nam_t3k/` com modelos válidos faltantes.
@@ -338,6 +338,7 @@ a **incerteza de F2** (produção A2 usa FiLM?), nem (c) **promover goldens sint
 **Arquiteturas mais urgentes:**
 
 > Use utils/check-model.py para testar arquivos de downloads
+> Devido à falta de suporte, alguns estão apaarecendo como "Unknown (SlimmableContainer)", "Unsupported architecture". Isto deve se resolver progressivamente.
 
 | Perfil do Modelo              | Feature/Problema Alvo               | Critérios de Busca (Campos JSON do `.nam`)                                                                                   | Finalidade nos Testes                                                                                                          |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -346,6 +347,12 @@ a **incerteza de F2** (produção A2 usa FiLM?), nem (c) **promover goldens sint
 | **A2 FiLM / Multi-Condição**  | **F2** (FiLM) / **F3** (A2 Geral)   | `architecture: "WaveNet"`, A2-shape, com `condition_size > 1` (ex: 3 ou 8) e/ou `gating_mode` diferente de `"none"`.         | Validar suporte a FiLM e gating de multi-condição do motor A2. Promover `wavenet_a2_max.nam` de fixture de erro para positiva. |
 | **LSTM Custom Shape**         | **F7** (LSTM arbitrário)            | `architecture: "LSTM"`, com dimensões diferentes do catálogo estático de 10 perfis (ex: `hidden_size: 20`, `num_layers: 3`). | Validar o loader dinâmico de LSTM genérico com dimensões customizadas.                                                         |
 | **Real Slimmable Container**  | **F5** (Slimmable) / **F11**        | `architecture: "SlimmableContainer"`, contendo submodelos reais funcionais.                                                  | Validar a transição CPU-degradada A2-Full -> A2-Lite em produção real com pesos reais de amplificador.                         |
+
+**Nota de encerramento pelo PO**: Estamos bem cobertos de modelos A2 (que declaram se Full/Lite em um mesmo arquivo, que imagino atender o **Real Slimmable Container**) de qualidade em `tests/fixtures/models-nondist`, que é o que a comunidadevem disponibilizando no Tone3000.
+Além dos já tradicionais e confiáveis catalogados em `tests/fixtures/README.md` (seção "Model Files and Trust Levels Registry").
+Por enquanto está inviável encontrar topologias mais customizadas, já que a busca do tone3000 inviabiliza isto.
+Já encontramos uma A1 Lite e mais alguns customizados - o que pode ser considerado uma vitória.
+Vamos ter de ir nos virando com o que temos.
 
 ---
 

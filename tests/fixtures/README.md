@@ -89,7 +89,7 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 >   valida apenas paridade numérica de fast-path, não timbres reais).
 >   Os 4 goldens C++ cabsim são vetores de referência do upstream.
 
-### Model Files and Trust Levels Registry (`tests/fixtures/models/`)
+### Model Files and Trust Levels Registry
 
 All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests. There are no orphan, redundant, or garbage files in the directory.
 
@@ -125,7 +125,7 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 | `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)             | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                           | Tests if loader rejects FiLM with `condition_size=8` for now.                                           |
 | `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)             | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                           | Tests if loader rejects FiLM with `condition_size=3` for now.                                           |
 
-#### 3. Workaround for Non-Distributable Models (`tests/fixtures/models-nondist/`)
+#### 3. Workaround for Non-Distributable Models (`tests/fixtures/models-nondist`)
 
 Due to the legal redistribution restriction of the default `t3k` license in the project's Git, `nam-rs` tests can be run locally against protected captures using a local mirror folder:
 
