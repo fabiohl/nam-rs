@@ -197,7 +197,7 @@ referência e validar por ESR/SNR.
   `ctx` (sem destructure parcial, evita o possível bug em `layer.rs:135`). Headers SPDX
   em todos os arquivos.
 
-#### T2.2 — Vetorização born-SIMD do caminho dinâmico (guard-rail O5) 🔴
+#### T2.2 — Vetorização born-SIMD do caminho dinâmico (guard-rail O5) 🔴 [DONE]
 
 - **Onde**: kernels de `conv1d_dyn*`, `dense_dyn`, e o laço de ativação do `layer_dyn`.
 - **O quê**: usar `SimdMath` (`M::tanh_and_overwrite_block`/`tanh_and_accumulate_block`, GEMV/dot
@@ -209,12 +209,16 @@ referência e validar por ESR/SNR.
   (aceita-se overhead pequeno do dinâmico, mas **não** regressão escalar grosseira). `cargo bench`
   registrado.
 - **Risco**: 🔴 alto (correção SIMD + RT). **Atenção**: `K` em runtime impede o array de taps
-- **Nota T2.1→T2.2**: `layer_dyn.rs:76-91` contém laço `for i in 0..num_frames` (single-frame)
-  que deve ser convertido para dual-frame tiling como no `layer.rs:75-107`. Métodos
-  `process_dual_frame_generic`/`process_block_generic` em `conv1d_dyn_dual.rs`/`conv1d_dyn_kernels.rs`
-  já existem mas estão sob `#[cfg(test)]` — remover o gate para uso em produção. `DenseLayerDyn`
-  já usa SIMD batch (`gemv_overwrite_batch`/`fused_gemm_residual_batch`).
   compile-time — usar layout interleaved-4-wide do `Conv1dDyn` já existente; cuidar tail handling.
+- **Resultado (2026-06-16)**: laço `for i in 0..num_frames` (single-frame) em `layer_dyn.rs:83-102`
+  substituído por chamada a `conv1d.process_block::<M>` / `process_block_bf16::<M>`, que internamente
+  faz dual-frame tiling via `process_block_generic` → `process_dual_frame_generic` usando
+  `dot_product_4x_interleaved_dual_frame` (SIMD). Removido `#[cfg(test)]` de 6 métodos:
+  `process_dual_frame`, `process_dual_frame_bf16`, `process_block`, `process_block_bf16`
+  (`conv1d_dyn.rs`), `process_dual_frame_generic` (`conv1d_dyn_dual.rs`), `process_block_generic`
+  (`conv1d_dyn_kernels.rs`). Ungate do módulo `conv1d_dyn_dual` em `mod.rs:30`. Hot-path O5
+  verificado: zero laços escalares element-wise/redução — todo o caminho usa SIMD
+  (GEMV/dot-product/tanh/apply_gain via `SimdMath`). 418/418 testes passam (0 warnings).
 
 #### T2.3 — Generalizar a detecção/validação de topologia (sem regredir o catálogo) 🟠
 

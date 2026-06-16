@@ -27,7 +27,6 @@ pub mod conv1d;
 pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Dual-frame kernel for Conv1dDyn (Temporal-Tiling dual-frame processing).
-#[cfg(test)]
 pub mod conv1d_dyn_dual;
 /// Kernel implementations for Conv1dDyn (single-frame and block processing loops).
 pub mod conv1d_dyn_kernels;

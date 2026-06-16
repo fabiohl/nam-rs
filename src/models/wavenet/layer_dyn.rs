@@ -47,10 +47,9 @@ impl WaveNetLayerDyn {
 
     /// Processes a full WaveNet layer with runtime-dimensional scratch buffers.
     ///
-    /// Uses single-frame Conv1D processing (dual-frame tiling to be added in
-    /// T2.2/SIMD vectorization). Scratch buffers are pre-allocated `AlignedVec<f32>`
-    /// on the heap, replacing the const-generic stack buffer `[f32; 1024]` to
-    /// support CH > 16.
+    /// Uses dual-frame Conv1D tiling (process_block) for SIMD amortization.
+    /// Scratch buffers are pre-allocated `AlignedVec<f32>` on the heap,
+    /// replacing the const-generic stack buffer `[f32; 1024]` to support CH > 16.
     ///
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
@@ -79,34 +78,36 @@ impl WaveNetLayerDyn {
                     .process_block::<M>(ctx.condition, mixin_out, ctx.num_frames);
             }
 
+            // [PHASE 1: Linear - Conv1D + Mixin]
+            // Dual-Frame Tiling: process_block internally pairs frames for weight reuse.
             let conv_slice = &mut self.scratch_conv[..scratch_len];
-            for i in 0..ctx.num_frames {
-                let mixin_slice = &mixin_out[i * ch..(i + 1) * ch];
-                let out_slice = &mut conv_slice[i * ch..(i + 1) * ch];
 
-                if M::IS_BF16 {
-                    self.conv1d.process_single_frame_bf16::<M>(
-                        ctx.layer_buffer_bf16,
-                        out_slice,
-                        ctx.buffer_start + i,
-                        Some(mixin_slice),
-                    );
-                } else {
-                    self.conv1d.process_single_frame::<M>(
-                        ctx.layer_buffer,
-                        out_slice,
-                        ctx.buffer_start + i,
-                        Some(mixin_slice),
-                    );
-                }
+            if M::IS_BF16 {
+                self.conv1d.process_block_bf16::<M>(
+                    ctx.layer_buffer_bf16,
+                    conv_slice,
+                    ctx.buffer_start,
+                    ctx.num_frames,
+                    Some(mixin_out),
+                );
+            } else {
+                self.conv1d.process_block::<M>(
+                    ctx.layer_buffer,
+                    conv_slice,
+                    ctx.buffer_start,
+                    ctx.num_frames,
+                    Some(mixin_out),
+                );
             }
 
+            // [PHASE 2 & 3: Fused Activation and Head Update]
             if ctx.is_first_layer {
                 M::tanh_and_overwrite_block(ctx.head_input, conv_slice);
             } else {
                 M::tanh_and_accumulate_block(ctx.head_input, conv_slice);
             }
 
+            // [PHASE 4: Output - 1x1 Residual]
             let lb_offset = ctx.buffer_start * ch;
             let residual_slice = ctx
                 .layer_buffer

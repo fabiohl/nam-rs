@@ -58,7 +58,6 @@ impl Conv1dDyn {
     ///   `idx_f0` and `idx_f1`.
     /// - Pointers derived from `layer_buffer` must not violate Rust's aliasing rules (they should be
     ///   disjoint or read-only).
-    #[cfg(test)]
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame<M: SimdMath>(
@@ -111,7 +110,6 @@ impl Conv1dDyn {
     ///   `idx_f0` and `idx_f1`.
     /// - Pointers derived from `layer_buffer` must not violate Rust's aliasing rules (they should be
     ///   disjoint or read-only).
-    #[cfg(test)]
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_bf16<M: SimdMath>(
@@ -141,7 +139,6 @@ impl Conv1dDyn {
     ///
     /// # Safety
     /// `block` must have size at least `num_frames * self.out_ch`.
-    #[cfg(test)]
     #[inline(always)]
     pub unsafe fn process_block<M: SimdMath>(
         &self,
@@ -166,7 +163,6 @@ impl Conv1dDyn {
     ///
     /// # Safety
     /// `block` must have size at least `num_frames * self.out_ch`.
-    #[cfg(test)]
     #[inline(always)]
     pub unsafe fn process_block_bf16<M: SimdMath>(
         &self,

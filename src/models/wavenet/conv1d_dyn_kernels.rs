@@ -111,7 +111,6 @@ impl Conv1dDyn {
         }
     }
 
-    #[cfg(test)]
     #[inline(always)]
     pub(crate) unsafe fn process_block_generic<M: SimdMath, T: ConvInput>(
         &self,
