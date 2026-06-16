@@ -47,7 +47,6 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | **F10** | **Modelos multi-canal** (`in_channels`/`out_channels > 1`)                              | 🟢 Baixo           | Estéreo/experimental  | Médio   |
 | **F11** | **Container aninhado** + cobertura `SlimmableContainer` real (modelo oficial)           | 🟢 Baixo           | Quality-scaling       | Baixo   |
 | **F12** | **Tooling de pesquisa TONE3000 + expansão de `tests/fixtures/models/`** (panorama real) | 🔴 Habilitador     | Auditoria/golden      | Médio   |
-| **F13** | **Migração de formato legado** (Keras `.json`, faixa de versão `.nam` 0.5.0–0.7.0)      | 🟢 Baixo           | Modelos antigos       | Médio   |
 
 > **Dependências**: F2 ⊃ F3 ⊃ {F8, F9} (FiLM destrava o motor A2 geral, que por sua vez
 > exige gating + ativações + grouped conv). F1 é ortogonal e habilita o grosso do catálogo
@@ -354,24 +353,6 @@ modelos **CC0/CC-BY(-SA)** ou com permissão explícita.
 | **A2 FiLM / Multi-Condição**  | **F2** (FiLM) / **F3** (A2 Geral)   | `architecture: "WaveNet"`, A2-shape, com `condition_size > 1` (ex: 3 ou 8) e/ou `gating_mode` diferente de `"none"`.         | Validar suporte a FiLM e gating de multi-condição do motor A2. Promover `wavenet_a2_max.nam` de fixture de erro para positiva. |
 | **LSTM Custom Shape**         | **F7** (LSTM arbitrário)            | `architecture: "LSTM"`, com dimensões diferentes do catálogo estático de 10 perfis (ex: `hidden_size: 20`, `num_layers: 3`). | Validar o loader dinâmico de LSTM genérico com dimensões customizadas.                                                         |
 | **Real Slimmable Container**  | **F5** (Slimmable) / **F11**        | `architecture: "SlimmableContainer"`, contendo submodelos reais funcionais.                                                  | Validar a transição CPU-degradada A2-Full -> A2-Lite em produção real com pesos reais de amplificador.                         |
-
----
-
-## F13 — 🟢 Migração de formato legado / faixa de versão `.nam`
-
-**O que é.** (a) Formato **Keras legado** (`.json` com `in_shape`/`layers`, ex.
-`tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json`) — não digerido pelo
-`nam-rs`. (b) O NAMCore declara suporte à **faixa de versão de arquivo** 0.5.0–0.7.0
-(`get_dsp.h`); convém confirmar que a cobertura de versão do `nam-rs` acompanha (incl.
-campos de metadata: `loudness`, `input_level_dbu`, `output_level_dbu`).
-
-**Importância.** Baixa — formato legado é raro; a maioria já está em `.nam` moderno.
-
-**Público real.** Donos de exports antigos (pré-`.nam`). Marginal.
-
-**Diretrizes.** Decidir se um conversor de formato entra no escopo (provável **fora**, salvo
-demanda). Quanto à faixa de versão: adicionar testes de carga cobrindo 0.5.0…0.7.0 e os
-campos de metadata, garantindo paridade de calibração (input/output level, loudness).
 
 ---
 
