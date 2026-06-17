@@ -167,6 +167,7 @@ impl SimdMath for Avx2Math {
         num_frames: usize,
         do_bias: bool,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::gemm::gemm_batch::fused_gemm_residual_batch_f32_avx2(
                 in_frames, weights, bias, residual, out_frames, num_frames, do_bias,

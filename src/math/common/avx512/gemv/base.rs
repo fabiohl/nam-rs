@@ -117,6 +117,7 @@ macro_rules! impl_avx512_gemv {
             num_frames: usize,
             do_bias: bool,
         ) {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_avx512(
                     in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
