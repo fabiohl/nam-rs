@@ -252,7 +252,7 @@ estável para atribuir o ganho do Conv1D).
   dinâmico lo-fi (mesma semântica de invariância de bloco — cruzar com `TODO-problemas.md §P1`).
 * **Aceite**: bit-exato vs escalar; invariância single-frame vs dual-frame (MSE ≈ 0) verificada.
 
-### T-HF2.3 — Variante AVX-512 do Conv1D f32 (quando detectado)
+### T-HF2.3 — Variante AVX-512 do Conv1D f32 (quando detectado) [DONE]
 
 * **Descrição**: variante `__m512` (`_mm512_fmadd_ps`), processando 4 blocos (16 canais) por
   iteração. Despachar via o mesmo mecanismo CPUID já usado (`src/math/common/dispatch/`). Espelhar

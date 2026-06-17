@@ -341,3 +341,194 @@ fn test_dot_4x_f32_dual_avx2_stress() {
         }
     }
 }
+
+// ── F32-native dot_4x AVX-512 tests (hi‑fi mode) ─────────────────────────
+
+#[test]
+fn test_dot_4x_f32_avx512_vs_scalar() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state) = make_f32_data(len);
+        let expected = unsafe { scalar_ref::dot_product_4x_f32_scalar(&weights, &state) };
+        let result = unsafe { dot_product_4x_f32_avx512(&weights, &state) };
+        for j in 0..4 {
+            assert_eq!(
+                result[j], expected[j],
+                "len={} channel={}: avx512={}, scalar={}",
+                len, j, result[j], expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_avx512_vs_avx2() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state) = make_f32_data(len);
+        let avx2_result = unsafe { dot_product_4x_f32_avx2(&weights, &state) };
+        let avx512_result = unsafe { dot_product_4x_f32_avx512(&weights, &state) };
+        for j in 0..4 {
+            assert_eq!(
+                avx512_result[j], avx2_result[j],
+                "len={} channel={}: avx512={}, avx2={}",
+                len, j, avx512_result[j], avx2_result[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_avx512_stress() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let lengths = [1024, 2048, 4096, 8192];
+    for &len in &lengths {
+        let (weights, state) = make_f32_data(len);
+        let expected = unsafe { scalar_ref::dot_product_4x_f32_scalar(&weights, &state) };
+        let result = unsafe { dot_product_4x_f32_avx512(&weights, &state) };
+        for j in 0..4 {
+            assert_eq!(
+                result[j], expected[j],
+                "stress len={} channel={}: avx512={}, scalar={}",
+                len, j, result[j], expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_dual_avx512_vs_scalar() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0) = make_f32_data(len);
+        let state_f1: Vec<f32> = state_f0.iter().map(|&s| s * 0.8 + 0.1).collect();
+
+        let expected =
+            unsafe { scalar_ref::dot_product_4x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_4x_f32_dual_avx512(&weights, &state_f0, &state_f1) };
+        for j in 0..4 {
+            assert_eq!(
+                result.0[j], expected.0[j],
+                "len={} f0 ch={}: avx512={}, scalar={}",
+                len, j, result.0[j], expected.0[j]
+            );
+            assert_eq!(
+                result.1[j], expected.1[j],
+                "len={} f1 ch={}: avx512={}, scalar={}",
+                len, j, result.1[j], expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_dual_avx512_vs_avx2() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0) = make_f32_data(len);
+        let state_f1: Vec<f32> = state_f0.iter().map(|&s| s * 0.8 + 0.1).collect();
+
+        let avx2_result = unsafe { dot_product_4x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        let avx512_result =
+            unsafe { dot_product_4x_f32_dual_avx512(&weights, &state_f0, &state_f1) };
+        for j in 0..4 {
+            assert_eq!(
+                avx512_result.0[j], avx2_result.0[j],
+                "len={} f0 ch={}: avx512={}, avx2={}",
+                len, j, avx512_result.0[j], avx2_result.0[j]
+            );
+            assert_eq!(
+                avx512_result.1[j], avx2_result.1[j],
+                "len={} f1 ch={}: avx512={}, avx2={}",
+                len, j, avx512_result.1[j], avx2_result.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_dual_avx512_single_vs_dual_invariance() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0) = make_f32_data(len);
+        let state_f1: Vec<f32> = state_f0.iter().map(|&s| s * 0.8 + 0.1).collect();
+
+        let single_f0 = unsafe { dot_product_4x_f32_avx512(&weights, &state_f0) };
+        let single_f1 = unsafe { dot_product_4x_f32_avx512(&weights, &state_f1) };
+        let dual = unsafe { dot_product_4x_f32_dual_avx512(&weights, &state_f0, &state_f1) };
+        for j in 0..4 {
+            assert_eq!(
+                dual.0[j], single_f0[j],
+                "len={} f0 ch={}: dual={}, single={}",
+                len, j, dual.0[j], single_f0[j]
+            );
+            assert_eq!(
+                dual.1[j], single_f1[j],
+                "len={} f1 ch={}: dual={}, single={}",
+                len, j, dual.1[j], single_f1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_4x_f32_dual_avx512_stress() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let lengths = [1024, 2048, 4096, 8192];
+    for &len in &lengths {
+        let (weights, state_f0) = make_f32_data(len);
+        let state_f1: Vec<f32> = state_f0.iter().map(|&s| s * 0.8 + 0.1).collect();
+
+        let expected =
+            unsafe { scalar_ref::dot_product_4x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_4x_f32_dual_avx512(&weights, &state_f0, &state_f1) };
+        for j in 0..4 {
+            assert_eq!(
+                result.0[j], expected.0[j],
+                "stress len={} f0 ch={}: avx512={}, scalar={}",
+                len, j, result.0[j], expected.0[j]
+            );
+            assert_eq!(
+                result.1[j], expected.1[j],
+                "stress len={} f1 ch={}: avx512={}, scalar={}",
+                len, j, result.1[j], expected.1[j]
+            );
+        }
+    }
+}

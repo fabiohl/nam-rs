@@ -169,36 +169,40 @@ impl ConvInput for u16 {
     }
 }
 
-/// F32-native 4-lane interleaved dot product (AVX2/FMA kernel).
+/// F32-native 4-lane interleaved dot product (AVX2/FMA or AVX-512 kernel).
 ///
 /// Used by the high-fidelity mode to compute Conv1D output directly from
 /// full-precision f32 weights, avoiding F16/BF16 quantization drift entirely.
 ///
-/// Delegates to `dot_product_4x_f32_avx2` which processes 2 weight rows
-/// (8 f32 values) per `__m256` iteration using `_mm256_fmadd_ps`.
+/// Dispatches to `dot_product_4x_f32_avx512` when AVX-512F is detected
+/// at runtime; otherwise falls back to `dot_product_4x_f32_avx2`.
 ///
 /// # Bit‑exactness guarantee
-/// Both the scalar reference (`mul_add`) and the SIMD kernel (`_mm_fmadd_ps`)
-/// use the same FMA3 fused multiply‑add → bit‑identical result on any x86‑64‑v3
-/// CPU.
+/// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
+/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
+/// result on any x86‑64‑v3 CPU.
 #[cfg(feature = "high-fidelity")]
 #[inline(always)]
 pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
-    unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(weights, state) }
+    if is_x86_feature_detected!("avx512f") {
+        unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx512(weights, state) }
+    } else {
+        unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(weights, state) }
+    }
 }
 
-/// F32-native 4-lane interleaved dual-frame dot product (AVX2/FMA kernel).
+/// F32-native 4-lane interleaved dual-frame dot product
+/// (AVX2/FMA or AVX-512 kernel).
 ///
 /// Processes two independent state vectors against the same weight slice
-/// simultaneously via `__m256`/double-accumulator strategy: the weight is
-/// broadcast to both halves of a YMM, state scalars are packed into a
-/// `_mm256_set_m128` blend, and a single `_mm256_fmadd_ps` accumulates
-/// both frames.
+/// simultaneously. Dispatches to `dot_product_4x_f32_dual_avx512` when
+/// AVX-512F is detected at runtime; otherwise falls back to
+/// `dot_product_4x_f32_dual_avx2`.
 ///
 /// # Bit‑exactness guarantee
-/// Both the scalar reference (`mul_add`) and the SIMD kernel (`_mm_fmadd_ps`)
-/// use the same FMA3 fused multiply‑add → bit‑identical result on any
-/// x86‑64‑v3 CPU.
+/// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
+/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
+/// result on any x86‑64‑v3 CPU.
 #[cfg(feature = "high-fidelity")]
 #[inline(always)]
 pub(crate) fn dot_product_4x_f32_dual(
@@ -206,5 +210,13 @@ pub(crate) fn dot_product_4x_f32_dual(
     state_f0: &[f32],
     state_f1: &[f32],
 ) -> ([f32; 4], [f32; 4]) {
-    unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx2(weights, state_f0, state_f1) }
+    if is_x86_feature_detected!("avx512f") {
+        unsafe {
+            crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx512(weights, state_f0, state_f1)
+        }
+    } else {
+        unsafe {
+            crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx2(weights, state_f0, state_f1)
+        }
+    }
 }

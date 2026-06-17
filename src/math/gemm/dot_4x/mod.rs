@@ -15,6 +15,7 @@ pub mod avx512;
 pub mod avx512_bf16;
 pub mod avx512_dual;
 pub mod dot_f32_avx2;
+pub mod dot_f32_avx512;
 pub mod scalar;
 
 pub use avx2::*;
@@ -23,6 +24,7 @@ pub use avx512::*;
 pub use avx512_bf16::*;
 pub use avx512_dual::*;
 pub use dot_f32_avx2::*;
+pub use dot_f32_avx512::*;
 pub use scalar::*;
 
 #[cfg(test)]
