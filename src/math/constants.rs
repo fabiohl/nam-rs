@@ -59,3 +59,29 @@ pub const SIGMOID_MINIMAX_C6: f32 = 9.6897239158e-10;
 pub const SIGMOID_MINIMAX_C7: f32 = -7.6498626314e-12;
 /// Minimax coefficient for x^17 term.
 pub const SIGMOID_MINIMAX_C8: f32 = 2.5585471676e-14;
+
+// --- High-Fidelity exp/activation constants (mode hi-fi) ---
+// Used by `simd_exp_hifi_*` and `simd_tanh_hifi_*`/`simd_sigmoid_hifi_*`.
+
+/// ln(2) for range reduction in `simd_exp_hifi`.
+#[allow(clippy::approx_constant)]
+pub const HIFI_LN2: f32 = 0.6931471805599453;
+/// 1 / ln(2) for range reduction in `simd_exp_hifi`.
+#[allow(clippy::approx_constant)]
+pub const HIFI_LOG2_E: f32 = 1.4426950408889634;
+/// Taylor coefficient for x^6/720 in exp polynomial (degree 6).
+pub const HIFI_EXP_C6: f32 = 1.3888889220953e-03;
+/// Taylor coefficient for x^5/120 in exp polynomial.
+pub const HIFI_EXP_C5: f32 = 8.3333337679505e-03;
+/// Taylor coefficient for x^4/24 in exp polynomial.
+pub const HIFI_EXP_C4: f32 = 4.1666667908430e-02;
+/// Taylor coefficient for x^3/6 in exp polynomial.
+pub const HIFI_EXP_C3: f32 = 1.6666667163372e-01;
+/// Taylor coefficient for x^2/2 in exp polynomial.
+pub const HIFI_EXP_C2: f32 = 0.5;
+/// Domain clamp for hi-fi activation inputs (prevents exp overflow).
+pub const HIFI_ACTIVATION_CLAMP: f32 = 20.0;
+
+// --- Hi-Fi Tanh Rational [11,10] (path b — exp-based high precision) ---
+// tanh(x) = (e^x − e^{-x}) / (e^x + e^{-x}) evaluated via the hi-fi exp kernel.
+// Max absolute error: ≤ 2.4e-7 vs f32::tanh on [-20, 20].  Throughput: ~19 SIMD ops.

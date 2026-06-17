@@ -1,0 +1,258 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! High-fidelity Tanh / Sigmoid activation kernels (mode hi-fi), AVX2/FMA.
+//!
+//! Uses an exp-based formula with a degree-6 Taylor minimax polynomial
+//! and integer range-reduction (`k = round(x·log₂e)`, `r = x − k·ln 2`).
+//!
+//! ```text
+//! tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)    (exp-based, branchless)
+//! σ(x)    = 1 / (1 + e⁻ˣ)
+//! ```
+//!
+//! - Max absolute error (tanh): ≤ 2.4e-7 vs `f32::tanh` on [-20, 20].
+//! - Max absolute error (sigmoid): ≤ 2.1e-7 vs `f32::exp` reference on [-20, 20].
+//! - Throughput (tanh): ~19 SIMD ops (1 exp + 2 div + add/sub + clamp).
+//! - Throughput (sigmoid): ~17 SIMD ops (1 exp + 1 div + add + clamp).
+//!
+//! Coefficients in `crate::math::constants` (`HIFI_*`).
+
+use crate::math::constants::*;
+use core::arch::x86_64::*;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Internal — high-fidelity SIMD exp kernel (degree-6 Taylor, range reduction)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Hi-fi `exp(x)` for `__m256` — degree-6 Taylor polynomial with integer
+/// range reduction `x = k·ln2 + r`.
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.  Input clamped to
+/// [-20, 20] to prevent overflow (`k ∈ [-29, 29]`, poses no int32 overflow).
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn simd_exp_hifi_avx2(x: __m256) -> __m256 {
+    let log2e = _mm256_set1_ps(HIFI_LOG2_E);
+    let ln2 = _mm256_set1_ps(HIFI_LN2);
+    let c6 = _mm256_set1_ps(HIFI_EXP_C6);
+    let c5 = _mm256_set1_ps(HIFI_EXP_C5);
+    let c4 = _mm256_set1_ps(HIFI_EXP_C4);
+    let c3 = _mm256_set1_ps(HIFI_EXP_C3);
+    let c2 = _mm256_set1_ps(HIFI_EXP_C2);
+    let one = _mm256_set1_ps(1.0f32);
+    let bias = _mm256_set1_epi32(127);
+
+    // k = round(x * log₂e),  r = x − k·ln2  (∈ [-ln2/2, ln2/2])
+    let k_f = _mm256_round_ps(
+        _mm256_mul_ps(x, log2e),
+        _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC,
+    );
+    let r = _mm256_fnmadd_ps(k_f, ln2, x);
+
+    // P(r) = (((((c6·r + c5)·r + c4)·r + c3)·r + c2)·r + 1)·r + 1
+    let p = _mm256_fmadd_ps(c6, r, c5);
+    let p = _mm256_fmadd_ps(p, r, c4);
+    let p = _mm256_fmadd_ps(p, r, c3);
+    let p = _mm256_fmadd_ps(p, r, c2);
+    let p = _mm256_fmadd_ps(p, r, one); // c₁ = 1
+    let p = _mm256_fmadd_ps(p, r, one); // c₀ = 1
+
+    // Scale by 2ᵏ: reinterpret ((k+127) << 23) as f32 and multiply
+    let k_i = _mm256_cvtps_epi32(k_f);
+    let exp_bits = _mm256_slli_epi32(_mm256_add_epi32(k_i, bias), 23);
+    let scale = _mm256_castsi256_ps(exp_bits);
+    _mm256_mul_ps(p, scale)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Public — high-fidelity Tanh kernels
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Hi-fi `tanh(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
+///
+/// Formula: `tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)`.
+/// Input clamped to [-20, 20] for overflow safety, then clamped to [-1, 1].
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_hifi_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+    let one = _mm256_set1_ps(1.0f32);
+    let neg_one = _mm256_set1_ps(-1.0f32);
+
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
+
+    let exp_x = unsafe { simd_exp_hifi_avx2(x) };
+    let inv_exp_x = _mm256_div_ps(one, exp_x); // 1 / eˣ = e⁻ˣ
+    let num = _mm256_sub_ps(exp_x, inv_exp_x); // eˣ − e⁻ˣ
+    let den = _mm256_add_ps(exp_x, inv_exp_x); // eˣ + e⁻ˣ
+    let tanh_val = _mm256_div_ps(num, den);
+    _mm256_max_ps(neg_one, _mm256_min_ps(one, tanh_val))
+}
+
+/// Hi-fi `tanh(x)` — dual 16-float path (AVX2/FMA).
+///
+/// Evaluates two independent `__m256` registers sharing constant broadcasts.
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_hifi_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+    let one = _mm256_set1_ps(1.0f32);
+    let neg_one = _mm256_set1_ps(-1.0f32);
+
+    let x1 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x1));
+    let x2 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x2));
+
+    let exp1 = unsafe { simd_exp_hifi_avx2(x1) };
+    let exp2 = unsafe { simd_exp_hifi_avx2(x2) };
+
+    let inv1 = _mm256_div_ps(one, exp1);
+    let inv2 = _mm256_div_ps(one, exp2);
+
+    let num1 = _mm256_sub_ps(exp1, inv1);
+    let den1 = _mm256_add_ps(exp1, inv1);
+    let num2 = _mm256_sub_ps(exp2, inv2);
+    let den2 = _mm256_add_ps(exp2, inv2);
+
+    let res1 = _mm256_div_ps(num1, den1);
+    let res2 = _mm256_div_ps(num2, den2);
+
+    (
+        _mm256_max_ps(neg_one, _mm256_min_ps(one, res1)),
+        _mm256_max_ps(neg_one, _mm256_min_ps(one, res2)),
+    )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Public — high-fidelity Sigmoid kernels
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Hi-fi `sigmoid(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
+///
+/// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
+/// Input clamped to [-20, 20] for overflow safety, output clamped to [0, 1].
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_sigmoid_hifi_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+    let one = _mm256_set1_ps(1.0f32);
+    let zero = _mm256_set1_ps(0.0f32);
+
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
+    let neg_x = _mm256_sub_ps(zero, x);
+    let exp_neg_x = unsafe { simd_exp_hifi_avx2(neg_x) };
+    let den = _mm256_add_ps(one, exp_neg_x);
+    let sig = _mm256_div_ps(one, den);
+    _mm256_max_ps(zero, _mm256_min_ps(one, sig))
+}
+
+/// Hi-fi `(tanh(x1), sigmoid(x2))` — dual gate (AVX2/FMA).
+///
+/// Used in WaveNet gated activation: `tanh(zf) * sigmoid(zg)`.
+/// Evaluates both lanes independently via the hi-fi exp kernel.
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_sigmoid_dual_hifi_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let t1 = unsafe { simd_tanh_hifi_avx2(x1) };
+    let s2 = unsafe { simd_sigmoid_hifi_avx2(x2) };
+    (t1, s2)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Slice-level functions
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Applies hi-fi Tanh activation to a slice of f32 using AVX2.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn tanh_hifi_slice_avx2(slice: &mut [f32]) {
+    let mut i = 0;
+    let len = slice.len();
+
+    while i + 16 <= len {
+        unsafe {
+            let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+            let (y1, y2) = simd_tanh_hifi_dual_avx2(x1, x2);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
+        }
+        i += 16;
+    }
+
+    while i + 8 <= len {
+        unsafe {
+            let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let y = simd_tanh_hifi_avx2(x);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
+        }
+        i += 8;
+    }
+
+    for item in slice.iter_mut().skip(i) {
+        *item = scalar_tanh_hifi(*item);
+    }
+}
+
+/// Applies hi-fi Sigmoid activation to a slice of f32 using AVX2.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn sigmoid_hifi_slice_avx2(slice: &mut [f32]) {
+    let mut i = 0;
+    let len = slice.len();
+
+    while i + 8 <= len {
+        unsafe {
+            let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let y = simd_sigmoid_hifi_avx2(x);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
+        }
+        i += 8;
+    }
+
+    for item in slice.iter_mut().skip(i) {
+        *item = scalar_sigmoid_hifi(*item);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Scalar reference implementations (for testing / fallback)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Scalar hi-fi `tanh(x)` — delegates to `f32::tanh`.
+#[inline]
+pub fn scalar_tanh_hifi(x: f32) -> f32 {
+    x.tanh()
+}
+
+/// Scalar hi-fi `sigmoid(x)`: `1 / (1 + exp(-x))`.
+#[inline]
+pub fn scalar_sigmoid_hifi(x: f32) -> f32 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+#[cfg(test)]
+#[path = "high_fidelity_test.rs"]
+mod high_fidelity_test;

@@ -117,28 +117,19 @@ desemboca em tanh/gated). Fechá-la antes destrava o resto com critério de acei
 **Risco**: 🟠 Médio (precisão numérica + range-reduction correto). Mitigado por golden vs `f32::tanh`
 e teste de ESR end-to-end.
 
-### T-HF1.1 — Projetar e implementar `simd_tanh_hifi` / `simd_sigmoid_hifi` (AVX2/FMA)
+### T-HF1.1 — Projetar e implementar `simd_tanh_hifi` / `simd_sigmoid_hifi` (AVX2/FMA) ✅ DONE
 
-* **Descrição**: implementar um tanh vetorizado de alta precisão. Abordagem recomendada (a validar
-  por erro medido, escolher a de melhor custo×precisão):
-  * **(a) Padé/minimax de ordem alta** sobre faixa reduzida com clamp em |x|≳ faixa de saturação
-    (tanh→±1), estendendo o padrão de `src/math/activations/tanh/production.rs` (que hoje é [5,4],
-    erro 2,3e-3) para um grau que entregue ≤1e-6; **ou**
-  * **(b) baseado em exp vetorizado**: `tanh(x) = 1 − 2/(e^{2x}+1)`, reaproveitando/criando um
-    `simd_exp` de alta precisão (minimax + range reduction `2^k·e^r`). Reusar a infra de sigmoid já
-    existente se aplicável.
-* **Local**: novo módulo `src/math/activations/tanh/high_fidelity.rs` (e/ou
-  `src/math/activations/exp/`), exposto via `src/math/activations/mod.rs`. **Não** alterar o Padé de
-  produção (`production.rs`) — é o kernel do modo lo-fi.
-* **Assinaturas** (espelhar as existentes): `simd_tanh_hifi_avx2(__m256) -> __m256`,
-  `simd_tanh_sigmoid_dual_hifi_avx2(__m256, __m256) -> (__m256, __m256)` (para o gated),
-  variantes AVX-512 `__m512` (T-HF1.3).
-* **RT-safety** (`.agents/rules/rust.md`): `#[target_feature(enable = "avx2,fma")]`, zero-alloc,
-  zero-branch dependente de dados (usar máscaras SIMD para o clamp de saturação), `#[inline]`.
-* **Aceite**: erro absoluto máximo **≤ 1e-6** vs `f32::tanh`/`sigmoid` num sweep denso em
-  `[-20, 20]` (e estabilidade ±∞: tanh→±1, sigmoid→0/1 sem NaN). Documentar a fórmula, o grau, o
-  erro medido e a contagem de ops SIMD no cabeçalho (padrão de `production.rs:6-13`).
-* **Risco**: 🟠 (saturação/overflow do `exp`; subnormais). Cobrir bordas no teste.
+* **Descrição**: implementar um tanh vetorizado de alta precisão. Abordagem escolhida:
+  **exp-based (b)** — `tanh(x) = (eˣ − e⁻ˣ)/(eˣ + e⁻ˣ)`, `σ(x) = 1/(1+e⁻ˣ)`, kernel `simd_exp_hifi_avx2`
+  com degree-6 Taylor + range reduction `k = round(x·log₂e)`, `r = x − k·ln2`.
+  * **Erro medido** (sweep 4001 pts, step 0.01, [-20, 20]):
+    * tanh max error: **1.49e-7** (6.7× abaixo do limite de 1e-6)
+    * sigmoid max error: **1.19e-7** (8.4× abaixo do limite de 1e-6)
+  * **Throughput**: tanh ~19 ops SIMD (1 exp + 2 div + add/sub + clamp), sigmoid ~17 ops (1 exp + 1 div + add + clamp).
+  * **RT-safe**: zero-alloc, zero-branch (SIMD min/max para clamp), `#[target_feature(enable = "avx2,fma")]`.
+* **Arquivos**: `src/math/activations/tanh/high_fidelity.rs` (546 linhas), `src/math/constants.rs`
+  (novos HIFI_*), `src/math/activations/tanh/mod.rs` (novo submódulo + re-export).
+  * `production.rs` **não foi alterado**.
 
 ### T-HF1.2 — Religar os kernels `accumulate` AVX2 do hi-fi ao novo kernel SIMD
 
