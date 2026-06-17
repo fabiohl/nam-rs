@@ -215,7 +215,7 @@ e teste de ESR end-to-end.
 
 ---
 
-## Sprint S-HF2 — Vetorização do Conv1D f32 e da soma residual (modo hi-fi)
+## Sprint S-HF2 — Vetorização do Conv1D f32 e da soma residual (modo hi-fi) [DONE]
 
 **Objetivo**: substituir o dot-product escalar f32 do Conv1D hi-fi
 (`src/models/wavenet/conv_input.rs:178-189` e `:197-216`) por kernels AVX2/FMA (AVX-512 quando
@@ -275,7 +275,7 @@ estável para atribuir o ganho do Conv1D).
   que funde GEMV+bias+residual em um único passe SIMD, eliminando o laço escalar `output[j] += residual[j]`.
   Oracle de referência escalar em `scalar_ref/gemm.rs` (`fused_gemm_residual_batch_f32_fallback`).
 
-### T-HF2.5 — Auditoria final "nada escalar no hot-path hi-fi" (guard-rail O5)
+### T-HF2.5 — Auditoria final "nada escalar no hot-path hi-fi" (guard-rail O5) [DONE]
 
 * **Descrição**: aplicar o **guard-rail** de `TODO-optimize.md §O5` ao caminho hi-fi inteiro:
   varredura (grep + leitura) confirmando que **nenhum** laço de aritmética/redução f32 por
@@ -300,7 +300,7 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
 
 **Risco**: 🟢 Baixo (espaço de entrada é finito: 65.536 padrões → teste **exaustivo** bit-exato).
 
-### T-HF3.1 — Implementar `src/math/common/half.rs` (software, bit-exato)
+### T-HF3.1 — Implementar `src/math/common/half.rs` (software, bit-exato) [DONE]
 
 * **Descrição**: módulo com `f16_bits_to_f32(u16) -> f32` (decode IEEE-754 binary16: normais,
   subnormais, ±0, ±Inf, NaN) e `f32_to_f16_bits(f32) -> u16` (encode com **round-to-nearest-even**,

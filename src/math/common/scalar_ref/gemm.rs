@@ -269,8 +269,7 @@ pub fn fused_gemm_residual_batch_f32_fallback(
                 sum += bias[out_c];
             }
             for in_c in 0..in_len {
-                sum += in_frames[frame_idx * in_len + in_c]
-                    * weights[in_c * out_len + out_c];
+                sum += in_frames[frame_idx * in_len + in_c] * weights[in_c * out_len + out_c];
             }
             out_frames[frame_idx * out_len + out_c] = sum;
         }
