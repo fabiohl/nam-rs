@@ -260,7 +260,7 @@ estável para atribuir o ganho do Conv1D).
 * **Aceite**: bit-exato vs AVX2 (dentro da semântica FMA); fallback AVX2 quando AVX-512 ausente.
 * **Risco**: 🟠 — validação requer hardware AVX-512.
 
-### T-HF2.4 — Vetorizar a soma residual do 1x1 (hi-fi)
+### T-HF2.4 — Vetorizar a soma residual do 1x1 (hi-fi) [DONE]
 
 * **Descrição**: o caminho hi-fi separa GEMV e residual e faz `for j .. output[j] += residual[j]`
   escalar (`src/models/wavenet/layer.rs:248-251`). Vetorizar com `_mm256_add_ps`
@@ -268,6 +268,12 @@ estável para atribuir o ganho do Conv1D).
   `process_residual_batch` que o lo-fi usa, criando uma variante f32-nativa
   (`process_residual_batch_f32`) que funde GEMV+residual num só passe SIMD.
 * **Aceite**: bit-exato; remove o laço escalar; `cargo test --features high-fidelity` verde.
+* **Implementação**: criado `fused_gemm_residual_batch_f32` (AVX2/AVX512) como variante nativa
+  f32 do kernel fundido existente. Novo trait method `SimdMath::fused_gemm_residual_batch_f32`,
+  método `DenseLayer::process_residual_batch_f32`, e wiredispatch em Avx2Math/Avx512Math.
+  O hot-path hi-fi em `layer.rs` e `layer_dyn.rs` agora chama `process_residual_batch_f32`
+  que funde GEMV+bias+residual em um único passe SIMD, eliminando o laço escalar `output[j] += residual[j]`.
+  Oracle de referência escalar em `scalar_ref/gemm.rs` (`fused_gemm_residual_batch_f32_fallback`).
 
 ### T-HF2.5 — Auditoria final "nada escalar no hot-path hi-fi" (guard-rail O5)
 

@@ -242,13 +242,11 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             }
 
             let lb_offset = buffer_start * CH;
-            let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
+            let residual_slice =
+                layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
 
             self.one_by_one
-                .process_block_f32_native::<M>(conv_slice, output, num_frames);
-            for j in 0..num_frames * CH {
-                output[j] += residual_slice[j];
-            }
+                .process_residual_batch_f32::<M>(conv_slice, residual_slice, output, num_frames);
         }
     }
 }

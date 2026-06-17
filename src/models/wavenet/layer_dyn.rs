@@ -173,14 +173,12 @@ impl WaveNetLayerDyn {
                 .layer_buffer
                 .get_unchecked(lb_offset..lb_offset + scratch_len);
 
-            self.one_by_one
-                .process_block_f32_native::<M>(conv_slice, ctx.output, ctx.num_frames);
-            for (out, &res) in ctx.output[..scratch_len]
-                .iter_mut()
-                .zip(residual_slice.iter())
-            {
-                *out += res;
-            }
+            self.one_by_one.process_residual_batch_f32::<M>(
+                conv_slice,
+                residual_slice,
+                ctx.output,
+                ctx.num_frames,
+            );
         }
     }
 }

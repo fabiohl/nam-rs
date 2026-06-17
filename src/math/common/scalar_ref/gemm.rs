@@ -240,3 +240,39 @@ pub fn gemv_no_bias_f32_fallback(
         }
     }
 }
+
+/// Fused residual batch GEMM with native f32 weights — scalar reference oracle.
+///
+/// Computes `output = residual + bias + weights * input` in a single pass,
+/// matching the operational semantics of `fused_gemm_residual_batch_f32_avx2`
+/// and `fused_gemm_residual_batch_f32_avx512`.
+#[inline]
+pub fn fused_gemm_residual_batch_f32_fallback(
+    in_frames: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    residual: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    for frame_idx in 0..num_frames {
+        for out_c in 0..out_len {
+            let mut sum = residual[frame_idx * out_len + out_c];
+            if do_bias {
+                sum += bias[out_c];
+            }
+            for in_c in 0..in_len {
+                sum += in_frames[frame_idx * in_len + in_c]
+                    * weights[in_c * out_len + out_c];
+            }
+            out_frames[frame_idx * out_len + out_c] = sum;
+        }
+    }
+}

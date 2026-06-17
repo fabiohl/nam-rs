@@ -156,6 +156,24 @@ impl SimdMath for Avx2Math {
         }
     }
 
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn fused_gemm_residual_batch_f32(
+        in_frames: &[f32],
+        weights: &[f32],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            super::super::gemm::gemm_batch::fused_gemm_residual_batch_f32_avx2(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
     /// Version that overwrites the output buffer directly with the matrix-vector multiplication result,
     /// without accumulating with pre-existing values in the buffer.
     #[inline(always)]

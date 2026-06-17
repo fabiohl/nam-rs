@@ -99,6 +99,21 @@ macro_rules! impl_avx512vnni_bf16_gemv {
         }
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn fused_gemm_residual_batch_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            bias: &[f32],
+            residual: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+            do_bias: bool,
+        ) {
+            Avx512Math::fused_gemm_residual_batch_f32(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn gemv_overwrite(
             in_frame: &[f32],
             weights: &[u16],

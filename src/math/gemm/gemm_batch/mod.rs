@@ -8,5 +8,11 @@
 mod avx2;
 mod avx512;
 
-pub use avx2::{fused_add_gemm_batch_avx2, fused_gemm_residual_batch_avx2};
-pub use avx512::{fused_add_gemm_batch_avx512, fused_gemm_residual_batch_avx512};
+pub use avx2::{
+    fused_add_gemm_batch_avx2, fused_gemm_residual_batch_avx2,
+    fused_gemm_residual_batch_f32_avx2,
+};
+pub use avx512::{
+    fused_add_gemm_batch_avx512, fused_gemm_residual_batch_avx512,
+    fused_gemm_residual_batch_f32_avx512,
+};
