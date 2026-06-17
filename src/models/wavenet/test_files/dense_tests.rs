@@ -2,22 +2,21 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::half::f32_to_f16_bits;
 
 /// Verifies the basic "Identity" functionality of a Dense layer
 /// (Fully Connected). This is used extensively in the *1x1* connections and
 /// WaveNet output channel aggregations (*Skip Connections*).
 #[test]
 fn test_dense_layer_identity() {
-    // 4x4 Identity weight matrix.
-    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 16]); // OUT=4 * IN=4
+    // 4x4 Identity weight matrix (f32).
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16]);
     for out_c in 0..4 {
-        weights[out_c * 4 + out_c] = f32_to_f16_bits(1.0);
+        f32_weights[out_c * 4 + out_c] = 1.0;
     }
 
     let dense = DenseLayer::<4, 4> {
-        f32_weights: None,
-        weights,
+        f32_weights,
+        weights: AlignedVec::new(0, 0u16),
         bias: AlignedVec::from_vec(vec![0.0; 4]),
         do_bias: false,
     };
@@ -37,15 +36,15 @@ fn test_dense_layer_identity() {
 /// via SIMD pointers, ensuring the final Output's linear alteration.
 #[test]
 fn test_dense_layer_with_bias() {
-    // Identity weights + Bias of 1.0.
-    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 16]);
+    // Identity f32 weights + Bias of 1.0.
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16]);
     for out_c in 0..4 {
-        weights[out_c * 4 + out_c] = f32_to_f16_bits(1.0);
+        f32_weights[out_c * 4 + out_c] = 1.0;
     }
 
     let dense = DenseLayer::<4, 4> {
-        f32_weights: None,
-        weights,
+        f32_weights,
+        weights: AlignedVec::new(0, 0u16),
         bias: AlignedVec::from_vec(vec![1.0; 4]),
         do_bias: true,
     };
@@ -69,27 +68,18 @@ fn test_dense_layer_with_bias() {
 /// nested FMA loop stops compute correctly up to the exact allocation limit.
 #[test]
 fn test_dense_layer_rectangular() {
-    // Asymmetric Matrix: IN=8, OUT=4.
-    // In real models, this happens when projecting CH (e.g., 16) to HEAD (e.g., 8).
-    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 32]); // 4 * 8
-    // out_c = 0: Soma ponderada de in[0] e in[1]
-    // [IN][OUT] -> in_c * OUT + out_c
-    weights[0] = f32_to_f16_bits(1.0); // in0, out0
-    weights[4] = f32_to_f16_bits(2.0); // in1, out0
-
-    // out_c = 1: Soma ponderada de in[2] e in[3]
-    weights[9] = f32_to_f16_bits(3.0); // in2, out1
-    weights[13] = f32_to_f16_bits(4.0); // in3, out1
-
-    // out_c = 2: Escala simples de in[4]
-    weights[18] = f32_to_f16_bits(0.5); // in4, out2
-
-    // out_c = 3: Phase inversion of in[7]
-    weights[31] = f32_to_f16_bits(-1.0); // in7, out3
+    // Asymmetric Matrix: IN=8, OUT=4 (f32, row-major: in_c * out_ch + out_c).
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 32]); // 8 * 4
+    f32_weights[0] = 1.0; // in_c=0, out_c=0 → 0*4+0
+    f32_weights[4] = 2.0; // in_c=1, out_c=0 → 1*4+0
+    f32_weights[9] = 3.0; // in_c=2, out_c=1 → 2*4+1
+    f32_weights[13] = 4.0; // in_c=3, out_c=1 → 3*4+1
+    f32_weights[18] = 0.5; // in_c=4, out_c=2 → 4*4+2
+    f32_weights[31] = -1.0; // in_c=7, out_c=3 → 7*4+3
 
     let dense = DenseLayer::<8, 4> {
-        f32_weights: None,
-        weights,
+        f32_weights,
+        weights: AlignedVec::new(0, 0u16),
         bias: AlignedVec::from_vec(vec![0.5, -0.5, 1.0, -1.0]),
         do_bias: true,
     };

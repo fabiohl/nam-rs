@@ -74,8 +74,7 @@ fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<u16> {
     AlignedVec::from_vec(vec![f32_to_f16_bits(SYNTHETIC_WEIGHT); out_ch * in_ch])
 }
 
-/// Helper: create f32-native dense weights for high-fidelity mode.
-#[cfg(feature = "high-fidelity")]
+/// Helper: create f32-native dense weights.
 fn make_dense_f32_weights(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![SYNTHETIC_WEIGHT; out_ch * in_ch])
 }
@@ -110,19 +109,13 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(make_dense_f32_weights(1, CH)),
+                f32_weights: make_dense_f32_weights(1, CH),
                 weights: make_dense_weights(1, CH),
                 bias: make_bias(CH),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(make_dense_f32_weights(CH, CH)),
+                f32_weights: make_dense_f32_weights(CH, CH),
                 weights: make_dense_weights(CH, CH),
                 bias: make_bias(CH),
                 do_bias: false,
@@ -142,19 +135,13 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         states: states_1,
         effective_layers: num_layers_1,
         rechannel: DenseLayer {
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(make_dense_f32_weights(1, CH)),
+            f32_weights: make_dense_f32_weights(1, CH),
             weights: make_dense_weights(1, CH),
             bias: make_bias(CH),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(make_dense_f32_weights(CH, HEAD)),
+            f32_weights: make_dense_f32_weights(CH, HEAD),
             weights: make_dense_weights(CH, HEAD),
             bias: make_bias(HEAD),
             do_bias: false,
@@ -180,19 +167,13 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(make_dense_f32_weights(1, HEAD)),
+                f32_weights: make_dense_f32_weights(1, HEAD),
                 weights: make_dense_weights(1, HEAD),
                 bias: make_bias(HEAD),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(make_dense_f32_weights(HEAD, HEAD)),
+                f32_weights: make_dense_f32_weights(HEAD, HEAD),
                 weights: make_dense_weights(HEAD, HEAD),
                 bias: make_bias(HEAD),
                 do_bias: false,
@@ -212,19 +193,13 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         states: states_2,
         effective_layers: num_layers_2,
         rechannel: DenseLayer {
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(make_dense_f32_weights(CH, HEAD)),
+            f32_weights: make_dense_f32_weights(CH, HEAD),
             weights: make_dense_weights(CH, HEAD),
             bias: make_bias(HEAD),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(make_dense_f32_weights(HEAD, 1)),
+            f32_weights: make_dense_f32_weights(HEAD, 1),
             weights: make_dense_weights(HEAD, 1),
             bias: make_bias(1),
             do_bias: true,

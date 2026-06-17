@@ -715,7 +715,7 @@ cargo test --quiet -- wavenet 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.4 — DenseLayer: remover Option, tornar f32 obrigatório
+### T-HF5.A.4 — DenseLayer: remover Option, tornar f32 obrigatório [DONE]
 
 **Arquivo**: `src/models/wavenet/dense.rs`
 
@@ -734,6 +734,12 @@ cargo test --quiet -- wavenet 2>&1 | tail -5
 cargo check 2>&1 | tail -3
 cargo test --quiet -- wavenet 2>&1 | tail -5
 ```
+
+**Nota pós T-HF5.A.4**: testes `golden_vectors_wavenet*` falham (esperado).
+DenseLayers não-head carregados de `.nam` recebem `f32_weights` zero-inicializados
+em `traits.rs` — o loader ainda não converte u16→f32. T-HF5.A.7 tratará a remoção
+da quantização u16 e unificação do loader, após a qual os golden vectors devem ser
+regenerados.
 
 ---
 

@@ -828,7 +828,7 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-/// Measures the processing time of `process_block_f32_native` (head_rechannel FP32)
+/// Measures the processing time of `process_block` (head_rechannel FP32)
 /// for three representative shapes, verifying the SIMD vectorization speedup.
 ///
 /// Tested shapes:
@@ -852,14 +852,14 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             weights: AlignedVec::new(0, 0u16),
             bias,
             do_bias: true,
-            f32_weights: Some(weights),
+            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
         group.bench_function("DenseLayer_16x8_64f_AVX2", |b| {
             b.iter(|| unsafe {
-                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                layer.process_block::<nam_rs::math::common::Avx2Math>(
                     &input,
                     &mut output,
                     num_frames,
@@ -870,7 +870,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         if avx512_supported {
             group.bench_function("DenseLayer_16x8_64f_AVX512", |b| {
                 b.iter(|| unsafe {
-                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                    layer.process_block::<nam_rs::math::common::Avx512Math>(
                         &input,
                         &mut output,
                         num_frames,
@@ -883,7 +883,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.f32_weights,
                     &layer.bias,
                     &mut output,
                     num_frames,
@@ -902,14 +902,14 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             weights: AlignedVec::new(0, 0u16),
             bias,
             do_bias: true,
-            f32_weights: Some(weights),
+            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
         group.bench_function("DenseLayer_8x1_64f_AVX2", |b| {
             b.iter(|| unsafe {
-                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                layer.process_block::<nam_rs::math::common::Avx2Math>(
                     &input,
                     &mut output,
                     num_frames,
@@ -920,7 +920,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         if avx512_supported {
             group.bench_function("DenseLayer_8x1_64f_AVX512", |b| {
                 b.iter(|| unsafe {
-                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                    layer.process_block::<nam_rs::math::common::Avx512Math>(
                         &input,
                         &mut output,
                         num_frames,
@@ -933,7 +933,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.f32_weights,
                     &layer.bias,
                     &mut output,
                     num_frames,
@@ -952,14 +952,14 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             weights: AlignedVec::new(0, 0u16),
             bias,
             do_bias: true,
-            f32_weights: Some(weights),
+            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
         group.bench_function("DenseLayer_16x1_64f_AVX2", |b| {
             b.iter(|| unsafe {
-                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                layer.process_block::<nam_rs::math::common::Avx2Math>(
                     &input,
                     &mut output,
                     num_frames,
@@ -970,7 +970,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         if avx512_supported {
             group.bench_function("DenseLayer_16x1_64f_AVX512", |b| {
                 b.iter(|| unsafe {
-                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                    layer.process_block::<nam_rs::math::common::Avx512Math>(
                         &input,
                         &mut output,
                         num_frames,
@@ -983,7 +983,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.f32_weights,
                     &layer.bias,
                     &mut output,
                     num_frames,

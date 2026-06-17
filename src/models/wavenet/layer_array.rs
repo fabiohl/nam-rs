@@ -106,7 +106,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             let start = state_0.buffer_start * CH;
             #[cfg(feature = "high-fidelity")]
             {
-                self.rechannel.process_block_f32_native::<M>(
+                self.rechannel.process_block::<M>(
                     layer_inputs,
                     &mut state_0.layer_buffer[start..start + num_frames * CH],
                     num_frames,
@@ -226,22 +226,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             // [STEP 5: Dimensional Closure (Head Rechannel)]
             // The dense matrix funnels the accumulator (sum of skip-connections from all layers,
             // of size `CH`) into a smaller `HEAD` dimension (e.g., 16 -> 8 or 16 -> 1).
-            // Mixed-Precision Selective: when `f32_weights` is available, use full FP32
-            // precision for this critical final projection (tonal fidelity),
+            // Uses f32 native precision for this critical final projection (tonal fidelity),
             // while the backbone runs quantized (BF16/F16) for performance.
-            if self.head_rechannel.f32_weights.is_some() {
-                self.head_rechannel.process_block_f32_native::<M>(
-                    &self.head_accum[0..num_frames * CH],
-                    &mut self.head_outputs[0..num_frames * HEAD],
-                    num_frames,
-                );
-            } else {
-                self.head_rechannel.process_block::<M>(
-                    &self.head_accum[0..num_frames * CH],
-                    &mut self.head_outputs[0..num_frames * HEAD],
-                    num_frames,
-                );
-            }
+            self.head_rechannel.process_block::<M>(
+                &self.head_accum[0..num_frames * CH],
+                &mut self.head_outputs[0..num_frames * HEAD],
+                num_frames,
+            );
         }
     }
 

@@ -14,10 +14,9 @@ pub struct DenseLayer<const IN: usize, const OUT: usize> {
     pub bias: AlignedVec<f32>,
     /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
-    /// Optional full-precision f32 weights for mixed-precision head projection.
-    /// When present, `process_block_f32_native` can be used instead of the
-    /// quantized SIMD path, preserving tonal fidelity in the critical final stage.
-    pub f32_weights: Option<AlignedVec<f32>>,
+    /// Full-precision f32 weights for head projection.
+    /// Used by `process_block` for the critical head/projection stage.
+    pub f32_weights: AlignedVec<f32>,
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
@@ -65,11 +64,10 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Full-precision f32 fused residual batch for high-fidelity mode.
+    /// Full-precision f32 fused residual batch.
     ///
     /// Fuses the 1x1 GEMV with bias and residual addition into a single SIMD
-    /// pass. Uses the native f32 weight tensor when available; falls back to
-    /// the quantized residual batch otherwise.
+    /// pass using the native f32 weight tensor.
     ///
     /// # Safety
     /// The caller must guarantee compatible sizes and buffer validity.
@@ -81,30 +79,30 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        if let Some(f32_w) = self.f32_weights.as_ref() {
-            unsafe {
-                M::fused_gemm_residual_batch_f32(
-                    input,
-                    f32_w,
-                    &self.bias,
-                    residual,
-                    output,
-                    num_frames,
-                    self.do_bias,
-                );
-            }
-        } else {
-            unsafe {
-                self.process_residual_batch::<M>(input, residual, output, num_frames);
-            }
+        unsafe {
+            M::fused_gemm_residual_batch_f32(
+                input,
+                &self.f32_weights,
+                &self.bias,
+                residual,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 
-    #[inline(always)]
-    /// Processes iterative block by replacing (OVERWRITE) the given values instead of accumulating.
+    /// Full-precision f32 head projection.
+    ///
+    /// Dispatches to the appropriate SIMD kernel via the `SimdMath` trait,
+    /// replacing the previous scalar triple-nested loop with shape-dependent
+    /// vectorization (frame-batching for OUT≤4, channel-batching for OUT≥8).
     ///
     /// # Safety
-    /// The caller must guarantee that `input` and `output` have sizes compatible with `IN`, `OUT`, and `num_frames`.
+    /// The caller must ensure that `in_frame` and `out_frame` have sizes
+    /// compatible with `IN`, `OUT`, and `num_frames`, and that the SIMD
+    /// instructions for `M` are available on the host CPU.
+    #[inline(always)]
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         input: &[f32],
@@ -112,14 +110,11 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         num_frames: usize,
     ) {
         unsafe {
-            M::gemv_overwrite_batch(
-                input,
-                &self.weights,
-                &self.bias,
-                output,
-                num_frames,
-                self.do_bias,
-            );
+            if self.do_bias {
+                M::gemv_with_bias_f32(input, &self.f32_weights, &self.bias, output, num_frames);
+            } else {
+                M::gemv_no_bias_f32(input, &self.f32_weights, output, num_frames);
+            }
         }
     }
 
@@ -139,38 +134,6 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
                 num_frames,
                 self.do_bias,
             );
-        }
-    }
-
-    /// Full-precision f32 head projection for mixed-precision inference.
-    ///
-    /// Dispatches to the appropriate SIMD kernel via the `SimdMath` trait,
-    /// replacing the previous scalar triple-nested loop with shape-dependent
-    /// vectorization (frame-batching for OUT≤4, channel-batching for OUT≥8).
-    ///
-    /// # Safety
-    /// The caller must ensure that `in_frame` and `out_frame` have sizes
-    /// compatible with `IN`, `OUT`, and `num_frames`, and that the SIMD
-    /// instructions for `M` are available on the host CPU.
-    #[inline(always)]
-    pub unsafe fn process_block_f32_native<M: SimdMath>(
-        &self,
-        input: &[f32],
-        output: &mut [f32],
-        num_frames: usize,
-    ) {
-        if let Some(f32_w) = self.f32_weights.as_ref() {
-            unsafe {
-                if self.do_bias {
-                    M::gemv_with_bias_f32(input, f32_w, &self.bias, output, num_frames);
-                } else {
-                    M::gemv_no_bias_f32(input, f32_w, output, num_frames);
-                }
-            }
-        } else {
-            unsafe {
-                self.process_block::<M>(input, output, num_frames);
-            }
         }
     }
 }

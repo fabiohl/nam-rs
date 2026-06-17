@@ -11,8 +11,7 @@ use crate::models::wavenet::layer::WaveNetLayer;
 use crate::models::wavenet::layer_array::WaveNetLayerArray;
 use crate::models::wavenet::model::*;
 
-/// Helper: create f32 synthetic dense weights for high-fidelity test models.
-#[cfg(feature = "high-fidelity")]
+/// Helper: create f32 synthetic dense weights for test models.
 fn test_dense_f32(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![0.01f32; out_ch * in_ch])
 }
@@ -52,10 +51,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             // input_mixin injects conditioning (e.g., timbre metadata) into the signal.
             // Dimensions: OUT * IN = 4 * 1.
             input_mixin: DenseLayer {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(test_dense_f32(1, 4)),
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
+                f32_weights: test_dense_f32(1, 4),
                 weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -63,10 +59,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             // The 1x1 projection (Dense) finalizes the cell, preparing the signal for the residual.
             // Dimensions: OUT * IN = 4 * 4.
             one_by_one: DenseLayer {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(test_dense_f32(4, 4)),
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
+                f32_weights: test_dense_f32(4, 4),
                 weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -101,20 +94,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 },
             },
             input_mixin: DenseLayer {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(test_dense_f32(1, 2)),
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
+                f32_weights: test_dense_f32(1, 2),
                 // Dimensions: OUT * IN = 2 * 1.
                 weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: Some(test_dense_f32(2, 2)),
-                #[cfg(not(feature = "high-fidelity"))]
-                f32_weights: None,
+                f32_weights: test_dense_f32(2, 2),
                 // Dimensions: OUT * IN = 2 * 2.
                 weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
@@ -149,20 +136,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         effective_layers: num_layers_1,
         // Rechannel: Projects raw input (Mono/Stereo) to the internal dimension (Channels).
         rechannel: DenseLayer {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(test_dense_f32(1, 4)),
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
+            f32_weights: test_dense_f32(1, 4),
             weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
         },
         // Head Rechannel: Aggregates "skip connections" from all layers for the array's output.
         head_rechannel: DenseLayer {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(test_dense_f32(4, 2)),
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
+            f32_weights: test_dense_f32(4, 2),
             weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 4]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
@@ -195,20 +176,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         effective_layers: num_layers_2,
         // Projects Array 1 output (HEAD1=2) to Array 2 dimension (CH2=2).
         rechannel: DenseLayer {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(test_dense_f32(4, 2)),
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
+            f32_weights: test_dense_f32(4, 2),
             weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 2]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
         // The final NAM model projection reduces everything to 1 channel (mono audio).
         head_rechannel: DenseLayer {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: Some(test_dense_f32(2, 1)),
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
+            f32_weights: test_dense_f32(2, 1),
             weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true, // Enable bias for final DC offset correction.

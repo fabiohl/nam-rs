@@ -108,7 +108,7 @@ impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OU
             weights,
             bias,
             do_bias,
-            f32_weights: None,
+            f32_weights: AlignedVec::new(IN * OUT, 0.0f32),
         }
     }
 
@@ -125,7 +125,7 @@ impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OU
             weights,
             bias,
             do_bias,
-            f32_weights: Some(f32_weights),
+            f32_weights,
         }
     }
 }
