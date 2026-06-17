@@ -104,7 +104,7 @@ gatilho de decisão e **não** deve ser iniciada antes de S-HF4 ter dados verdes
 
 ---
 
-## Sprint S-HF1 — Kernel SIMD de tanh/sigmoid de alta precisão (modo hi-fi) + fix AVX-512
+## Sprint S-HF1 — Kernel SIMD de tanh/sigmoid de alta precisão (modo hi-fi) + fix AVX-512 [DONE]
 
 **Objetivo**: criar uma ativação **vetorizada** (AVX2/FMA e AVX-512) com erro alvo **≤ 1e-6** vs
 `f32::tanh`/`sigmoid` exatos — substituindo os laços escalares `f32::tanh()`/`.exp()` do caminho
@@ -227,7 +227,7 @@ estável para atribuir o ganho do Conv1D).
 
 **Risco**: 🟠 Médio (layout 4-wide interleaved + FMA bit-exato vs o `mul_add` escalar atual).
 
-### T-HF2.1 — Kernel SIMD `dot_product_4x_f32` (AVX2/FMA)
+### T-HF2.1 — Kernel SIMD `dot_product_4x_f32` (AVX2/FMA) [DONE]
 
 * **Descrição**: vetorizar `dot_product_4x_f32` (`conv_input.rs:178-189`). O layout já é favorável:
   pesos em `[[f32; 4]]` (4 canais de saída interleaved) e o laço faz `r[j] = mul_add(w[j], state[i],

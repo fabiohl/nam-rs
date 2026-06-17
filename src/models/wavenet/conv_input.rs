@@ -169,22 +169,22 @@ impl ConvInput for u16 {
     }
 }
 
-/// F32-native 4-lane interleaved dot product (no dequantization).
+/// F32-native 4-lane interleaved dot product (AVX2/FMA kernel).
 ///
 /// Used by the high-fidelity mode to compute Conv1D output directly from
 /// full-precision f32 weights, avoiding F16/BF16 quantization drift entirely.
+///
+/// Delegates to `dot_product_4x_f32_avx2` which processes 2 weight rows
+/// (8 f32 values) per `__m256` iteration using `_mm256_fmadd_ps`.
+///
+/// # Bit‑exactness guarantee
+/// Both the scalar reference (`mul_add`) and the SIMD kernel (`_mm_fmadd_ps`)
+/// use the same FMA3 fused multiply‑add → bit‑identical result on any x86‑64‑v3
+/// CPU.
 #[cfg(feature = "high-fidelity")]
 #[inline(always)]
 pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
-    let mut r = [0.0f32; 4];
-    for i in 0..state.len() {
-        let w = weights[i];
-        r[0] = w[0].mul_add(state[i], r[0]);
-        r[1] = w[1].mul_add(state[i], r[1]);
-        r[2] = w[2].mul_add(state[i], r[2]);
-        r[3] = w[3].mul_add(state[i], r[3]);
-    }
-    r
+    unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(weights, state) }
 }
 
 /// F32-native 4-lane interleaved dual-frame dot product.

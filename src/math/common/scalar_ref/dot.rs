@@ -112,6 +112,28 @@ pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &
     sum
 }
 
+/// F32-native 4-lane interleaved dot product (scalar reference for SIMD validation).
+///
+/// Uses `mul_add` (FMA3 fused multiply-add) to match the rounding of the AVX2/FMA
+/// kernel (`dot_product_4x_f32_avx2`). Both paths produce bit‑identical results.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_4x_f32_scalar(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    let len = core::cmp::min(weights.len(), state.len());
+    let mut r = [0.0f32; 4];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s = state.get_unchecked(i);
+        r[0] = (*w.get_unchecked(0)).mul_add(*s, r[0]);
+        r[1] = (*w.get_unchecked(1)).mul_add(*s, r[1]);
+        r[2] = (*w.get_unchecked(2)).mul_add(*s, r[2]);
+        r[3] = (*w.get_unchecked(3)).mul_add(*s, r[3]);
+    }
+    r
+}
+
 /// Same logic as above (4 sums at once), but using the compact BF16 format.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]
