@@ -131,7 +131,7 @@ e teste de ESR end-to-end.
   (novos HIFI_*), `src/math/activations/tanh/mod.rs` (novo submódulo + re-export).
   * `production.rs` **não foi alterado**.
 
-### T-HF1.2 — Religar os kernels `accumulate` AVX2 do hi-fi ao novo kernel SIMD
+### T-HF1.2 — Religar os kernels `accumulate` AVX2 do hi-fi ao novo kernel SIMD [DONE]
 
 * **Descrição**: nos kernels `src/math/wavenet/accumulate/avx2.rs`, trocar os **laços escalares**
   `#[cfg(feature = "high-fidelity")]` (`.tanh()`, `.tanh()*sigmoid`) por SIMD usando
@@ -147,6 +147,11 @@ e teste de ESR end-to-end.
 * **Aceite**: `cargo build` e `cargo build --features high-fidelity` verdes; testes de paridade do
   WaveNet inalterados; **zero** `f32::tanh()`/`.exp()` por-amostra restantes no caminho hi-fi AVX2
   (grep limpo). Bit-exato vs T-HF1.1 (mesmo kernel).
+ **Nota (T-HF1.2)**: descoberta falha pré-existente em testes `test_prewarm_zero_rf`,
+  `test_prewarm_large_rf_*`, `test_wavenet_computational_stability` com `--features high-fidelity`
+  (SIGSEGV em modelos com `f32_weights` vazios em `wavenet_prewarm_edge.rs`). As causas-raiz
+  independem deste task. Os kernels de ativação hi-fi funcionam corretamente (A2 tests passam).
+  A correção deve ser incluída em T-HF1.4 (gate anti-regressão).
 
 ### T-HF1.3 — Variantes AVX-512 + **fix do bug de dupla computação**
 

@@ -28,9 +28,11 @@ pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
 pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    #[cfg(not(feature = "high-fidelity"))]
     while i + 8 <= len {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx2(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx2(vb);
         _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
 
@@ -59,11 +61,14 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        #[cfg(not(feature = "high-fidelity"))]
         while c + 8 <= ch {
             let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
+            #[cfg(feature = "high-fidelity")]
+            let (tanh_z1, sig_z2) =
+                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx2(z1, z2);
+            #[cfg(not(feature = "high-fidelity"))]
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx2(z1, z2);
             let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
@@ -93,9 +98,11 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
 pub unsafe fn tanh_and_overwrite_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    #[cfg(not(feature = "high-fidelity"))]
     while i + 8 <= len {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx2(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx2(vb);
         _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
         _mm256_storeu_ps(head_input.as_mut_ptr().add(i), vt);
@@ -121,11 +128,14 @@ pub unsafe fn gated_activation_and_overwrite_block_avx2(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        #[cfg(not(feature = "high-fidelity"))]
         while c + 8 <= ch {
             let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
+            #[cfg(feature = "high-fidelity")]
+            let (tanh_z1, sig_z2) =
+                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx2(z1, z2);
+            #[cfg(not(feature = "high-fidelity"))]
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx2(z1, z2);
             let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
