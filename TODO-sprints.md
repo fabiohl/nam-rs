@@ -288,7 +288,7 @@ referência e validar por ESR/SNR.
 
 ---
 
-### 🟡 Sprint S4 — (Opcional / deferida) Política de fidelidade WaveNet — modo "exato" (P2)
+### 🟡 Sprint S4 — (Opcional / deferida) Política de fidelidade WaveNet — modo "exato" (P2) [DONE]
 
 > **Opcional e de médio prazo.** Só faz sentido após S1.T1.4 (medição). Entrega um **diferencial**
 > (modo alta-fidelidade) sem afetar o caminho de produção padrão. Pode rodar em paralelo a outras
@@ -307,7 +307,7 @@ referência e validar por ESR/SNR.
 - **Risco**: 🟡 médio. **Atenção**: não vazar o caminho exato para o hot-path padrão; manter RT-safety
   no modo exato (alocação só no load).
 
-#### T4.2 — Documentar a política de fidelidade do produto 🟢
+#### T4.2 — Documentar a política de fidelidade do produto 🟢 [DONE]
 
 - **Onde**: `docs/fastmath-approximations.md` e/ou `docs/` (arquitetura).
 - **O quê**: registrar formalmente a barra de fidelidade (WaveNet ~0,3–1% por design vs LSTM/Linear

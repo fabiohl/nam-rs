@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # FastMath: Transcendental Function Approximations
@@ -144,12 +145,12 @@ Parity comparison with NeuralAmpModelerCore revealed that WaveNet Standard SNR r
 
 Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`) for WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers) with synthetic weights 0.01 and conv1d biases 0.001:
 
-| Source                              | ESR (linear) | ESR (dB)  | Dominance |
-|:------------------------------------|:-------------|:----------|:----------|
-| (a) F16 weight quantization         | 3.24e-7      | −64.9     | **100%**  |
-| (b) tanh Padé [5,4] approximation   | 8.49e-15     | −140.7    | ~0%       |
-| (c) f32 accumulation (residual)     | ~0           | −∞        | ~0%       |
-| **Total (a+b+c)**                   | **3.24e-7**  | **−64.9** | —         |
+| Source                            | ESR (linear) | ESR (dB)  | Dominance |
+|:--------------------------------- |:------------ |:--------- |:--------- |
+| (a) F16 weight quantization       | 3.24e-7      | −64.9     | **100%**  |
+| (b) tanh Padé [5,4] approximation | 8.49e-15     | −140.7    | ~0%       |
+| (c) f32 accumulation (residual)   | ~0           | −∞        | ~0%       |
+| **Total (a+b+c)**                 | **3.24e-7**  | **−64.9** | —         |
 
 **Key findings:**
 
@@ -233,11 +234,11 @@ gate layer (`src/dsp/gate.rs`), not the model inference path.
 Denormals-Are-Zero / Flush-To-Zero is active at all entry points to the
 hot-path:
 
-| Location                                    | Mechanism                    |
-|:------------------------------------------- |:---------------------------- |
-| `src/math/common/ops.rs:163`                | `set_daz_ftz()` helper       |
-| `src/clap/processor/mod.rs:268`             | Reasserted every 1024 blocks |
-| `src/standalone/rt_setup/thread.rs:72`      | Set at RT thread init        |
+| Location                               | Mechanism                    |
+|:-------------------------------------- |:---------------------------- |
+| `src/math/common/ops.rs:163`           | `set_daz_ftz()` helper       |
+| `src/clap/processor/mod.rs:268`        | Reasserted every 1024 blocks |
+| `src/standalone/rt_setup/thread.rs:72` | Set at RT thread init        |
 
 No denormal penalty is observed in the WaveNet hot-path. The 3.58e-5 residue
 is a normal normalized f32 value.
@@ -263,6 +264,145 @@ For any future modification in `src/math/activations/`:
 - [ ] **Verify symmetry** — tanh is an odd function. Any implementation must satisfy `f(-x) == -f(x)`.
 - [ ] **Maximum error tolerance:** ≤ 5e-3 (tanh/sigmoid in LSTM inference), ≤ 1e-4 (sigmoid in initialization).
 - [ ] **Run `cargo test --lib`** — all tests must pass without failure after any modification.
+
+---
+
+## 9. Product Fidelity Policy — WaveNet Family (S4.T4.2)
+
+### 9.1 The Fidelity Bar
+
+The WaveNet family trades numerical exactness for lower latency via FastMath
+approximations. This is a **conscious design decision**, not a bug. The
+result is a **fidelity asymmetry** across architectures:
+
+| Architecture            | ESR (linear) | ESR (dB) | Error (energy) | Precision class |
+|:----------------------- |:------------ |:-------- |:-------------- |:--------------- |
+| LSTM / Linear           | ~1e-7..1e-9  | −70..−90 | ≈0%            | **Bit-exact**   |
+| WaveNet A2-Full         | 3.34e-3      | −24.8    | ~0.33%         | FastMath        |
+| WaveNet A2-Lite         | 5.00e-3      | −23.0    | ~0.50%         | FastMath        |
+| WaveNet A1-Standard     | 6.23e-3      | −22.1    | ~0.62%         | FastMath        |
+| WaveNet A1-Feather/Nano | *comparable* | —        | ~0.3–1%        | FastMath        |
+
+> **Bar**: WaveNet ESR **3e-3 to 1e-2 (−25 to −20 dB)**, LSTM/Linear **≤ 1e-7 (−70 dB or better)**.
+> Fidelity for WaveNet is **~0.3–1% energy error by design** against the C++ reference (NAMCore v0.5.3).
+
+### 9.2 Root Cause of the Drift
+
+The decomposition measured in T1.4 (`docs/fastmath-approximations.md#5`) identifies
+two independent sources:
+
+| Source                        | Contribution (A1-Std, CH=16) | Dominance |
+|:----------------------------- |:---------------------------- |:--------- |
+| BF16/F16 weight quantization  | 3.24e-7 ESR (−64.9 dB)       | **100%**  |
+| Tanh Padé [5,4] approximation | 8.49e-15 ESR (−140.7 dB)     | ~0%       |
+| f32 accumulation (Kahan)      | ~0                           | ~0%       |
+
+> [!WARNING]
+> The tanh contribution was measured with synthetic weights (0.01) that keep
+> activations in the tanh linear regime where `tanh(x) ≈ x`. With real model
+> weights producing larger activations (`|x| > 1`), Padé error (~2.32e-3 max)
+> becomes significant. **This remains pending** — see §9.5.
+
+The hierarchy of drift sources (largest to smallest):
+
+```text
+1. BF16/F16 weight quantization   (~3.9e-3 per element)  — DOMINANT
+2. Tanh Padé [5,4] approximation  (~2.3e-3 max)          — secondary
+3. f32 accumulation                (O(N·ε), mitigated)    — negligible
+```
+
+### 9.3 High-Fidelity Mode (Opt-in, Off by Default)
+
+**Feature flag**: `high-fidelity` in `Cargo.toml:71` — compile-time, off by default.
+
+When enabled (`cargo build --features high-fidelity`):
+
+| Aspect           | Default (production)            | High-Fidelity mode                  |
+|:---------------- |:------------------------------- |:----------------------------------- |
+| Weight storage   | `u16` (BF16 or F16)             | `u16` + `AlignedVec<f32>` (dual)    |
+| Conv1D weights   | Quantized u16                   | Raw f32 via `f32_weights` field     |
+| Dense weights    | Quantized u16                   | Raw f32 via `from_parts_head`       |
+| Tanh activation  | Padé [5,4] SIMD (~2.3e-3 error) | Exact `f32::tanh()` IEEE 754        |
+| Expected ESR     | 3e-3 to 1e-2 (fast)             | < 1e-5 (comparable to LSTM/Linear)  |
+| Latency / memory | Baseline                        | Higher (all-f32 path, no SIMD tanh) |
+
+**Key implementation files** (see source for details):
+
+- `src/models/wavenet/conv1d.rs:25` — `f32_weights: AlignedVec<f32>` (feature-gated)
+- `src/models/wavenet/conv1d_dyn.rs:22` — same for dynamic path
+- `src/models/wavenet/layer.rs:169` — `process_block_internal` high-fidelity variant
+- `src/models/wavenet/layer_dyn.rs:136` — dynamic layer high-fidelity variant
+- `src/math/wavenet/accumulate/avx2.rs:31` — SIMD Padé bypass (compile-time)
+- `src/math/wavenet/accumulate/avx512.rs:110` — same for AVX-512
+- `src/loader/dispatcher/wavenet/layout.rs:30` — dual weight population on load
+
+> [!IMPORTANT]
+> The high-fidelity path is **zero-allocation in the hot-path** (f32 weights are
+> pre-loaded; exact `f32::tanh` uses no scratch). RT-safety is preserved. The
+> feature guard is **compile-time exclusive**: production and high-fidelity paths
+> cannot coexist in the same binary.
+
+### 9.4 Usage Recommendation
+
+| Use case                                   | Recommended mode                                |
+|:------------------------------------------ |:----------------------------------------------- |
+| Real-time plugin (CLAP, DAW)               | **Default** (Padé + quantized) — lowest latency |
+| Offline rendering / scientific measurement | **High-Fidelity** — exact, ESR < 1e-5           |
+| Live performance (lowest CPU)              | **Default**                                     |
+| Model validation / golden generation       | **High-Fidelity** — must match reference        |
+
+The default mode is the **production default** — the high-fidelity feature is an
+opt-in for users who prioritize numerical fidelity over latency.
+
+### 9.5 Lite Architectures — The Extreme Case (Connection to P1)
+
+The **P1 problem** (`TODO-problemas.md:46`) is the most visible manifestation of the
+fidelity asymmetry: WaveNet **Lite (CH=12)** diverges from the C++ reference with
+**SNR ≈ 0.9 dB** — the output is **almost fully decorrelated** from the expected
+signal. This is not a Lite-only issue; it is the same FastMath chain pushed to
+its quality limit by the CH=12 topology (smaller channel count amplifies rounding
+error relative to signal energy).
+
+Status of Lite models:
+
+| Model                   | Status                                     | SNR (vs C++) |
+|:----------------------- |:------------------------------------------ |:------------ |
+| BossWN-lite (synthetic) | `#[ignore]` — known-divergent              | ~0.9 dB      |
+| EVH-5150-Lite (real)    | WARN [P1] — block-size invariance violated | —            |
+
+> [!CAUTION]
+> Lite models should be treated with caution. Users loading a WaveNet Lite model
+> will hear output that differs from the canonical NAMCore render. The golden
+> vectors are self-consistent (deterministic) but not a reference match. Until
+> P1 is resolved, Lite is documented as a **known limitation**.
+
+### 9.6 Decision Pending: "Low-Fidelity" Mode Under Review
+
+> **PO note (jun/2026):** The current default ("low-fidelity") mode is **sub júdice**.
+
+The default production path (quantized weights + Padé tanh) exists for a reason —
+lower latency, lower memory. However, the actual quantitative gain in
+**performance, latency, and stability** from the low-fidelity path has not been
+rigorously measured against the high-fidelity path on a broad corpus of real-world
+models.
+
+If the comparison does not show a **strong and justifiable** performance advantage
+of the low-fidelity path, the project should consider **abandoning the default
+quantized/Padé path** in favor of the simpler high-fidelity (f32 + exact tanh)
+path — eliminating a class of fidelity issues entirely.
+
+A dedicated technical task for this comparison is planned in
+`TODO-sprints.md` — see `TODO-problemas.md#P2`, §"Nota do PO" (line 122–124).
+
+### 9.7 Cross-References
+
+| Item | Location                                          | Topic                    |
+|:---- |:------------------------------------------------- |:------------------------ |
+| P1   | `TODO-problemas.md:46`                            | Lite divergent (extreme) |
+| P2   | `TODO-problemas.md:85`, `TODO-sprints.md:291-319` | Fidelity asymmetry + S4  |
+| T1.4 | `TODO-sprints.md:147`, `#5` (this document)       | Drift decomposition      |
+| T4.1 | `TODO-sprints.md:297`, `Cargo.toml:71`            | High-fidelity mode impl  |
+| T4.2 | `TODO-sprints.md:310`                             | This document            |
 
 ---
 

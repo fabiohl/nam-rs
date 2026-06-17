@@ -436,7 +436,7 @@ O5 — 🟢 Auditoria de cobertura SIMD x86-64-v3 no hot-spot (índice + guard-r
 ```
 
 Pesquise a fundo estes achados e entenda a situação. Use o NAMcore como a "bíblia de correção", mas já vá buscando otimizações e SIMD/ISAs modernos seguros on-the-fly.
-Ao final acione a skill "planejador-arquiteto" para organizar isto em tarefas seguras e rápidas para entregar valor.
+Ao final acione a skill "planejador-arquiteto" para organizar isto em tarefas seguras e rápidas para entregar valor. Todas super detalhadas e precisas para uma execução segura.
 
 ---
 
