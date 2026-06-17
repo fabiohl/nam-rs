@@ -123,6 +123,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "BossLSTM-1x16",
         "BossLSTM-2x8",
         "wavenet_a1_standard",
+        "wavenet_official",
         "lstm (Official)",
         "lstm_official",
         "BossWN-feather",

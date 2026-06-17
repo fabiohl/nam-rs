@@ -6,8 +6,8 @@ use super::layout;
 use crate::loader::nam_json::{FreeWavenetGeometry, NamModelData};
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::{
-    DenseLayerDyn, WaveNetLayerDyn, WaveNetLayerArrayDyn, WaveNetLayerState, WaveNetModelDyn,
-    WAVENET_MAX_NUM_FRAMES,
+    DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
+    WaveNetLayerState, WaveNetModelDyn,
 };
 use log::info;
 
@@ -26,6 +26,7 @@ use log::info;
 ///     one_by_one.weights[CH*CH] + one_by_one.bias[CH]    (DoBias=true)
 /// head_rechannel.weights[CH*HEAD] + head_rechannel.bias[HEAD]? (HasHeadBias)
 /// ```
+#[allow(clippy::too_many_arguments)]
 fn build_wavenet_array_dyn(
     cursor: &mut WeightCursor<'_>,
     in_ch: usize,
@@ -37,9 +38,7 @@ fn build_wavenet_array_dyn(
     has_head_bias: bool,
     alloc_num: &mut usize,
 ) -> anyhow::Result<WaveNetLayerArrayDyn> {
-    let rechannel = layout::read_dense_weights_typed::<DenseLayerDyn>(
-        cursor, in_ch, ch, false,
-    )?;
+    let rechannel = layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, in_ch, ch, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
@@ -52,8 +51,7 @@ fn build_wavenet_array_dyn(
         let input_mixin =
             layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, cond, ch, false)?;
 
-        let one_by_one =
-            layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, ch, true)?;
+        let one_by_one = layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, ch, true)?;
 
         layers.push(WaveNetLayerDyn::new(ch, conv1d, input_mixin, one_by_one));
 
@@ -62,12 +60,8 @@ fn build_wavenet_array_dyn(
         *alloc_num += 1;
     }
 
-    let head_rechannel = layout::read_dense_head_weights_typed::<DenseLayerDyn>(
-        cursor,
-        ch,
-        head,
-        has_head_bias,
-    )?;
+    let head_rechannel =
+        layout::read_dense_head_weights_typed::<DenseLayerDyn>(cursor, ch, head, has_head_bias)?;
 
     let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
 
@@ -113,7 +107,7 @@ fn build_wavenet_array_dyn(
 /// [array2.rechannel] [array2.layers...] [array2.head_rechannel]
 /// [head_scale]
 /// ```
-    pub(crate) fn build_wavenet_dynamic(
+pub(crate) fn build_wavenet_dynamic(
     data: &NamModelData,
     geom: &FreeWavenetGeometry,
 ) -> anyhow::Result<WaveNetModelDyn> {
@@ -145,26 +139,26 @@ fn build_wavenet_array_dyn(
     // Array1: IN=1, COND=1, CH channels, HEAD outputs, no head bias
     let array1 = build_wavenet_array_dyn(
         &mut cursor,
-        1,       // in_ch
-        1,       // cond
-        ch,      // ch
-        k,       // k
-        head,    // head
+        1,    // in_ch
+        1,    // cond
+        ch,   // ch
+        k,    // k
+        head, // head
         dils_0,
-        false,   // has_head_bias
+        false, // has_head_bias
         &mut alloc_num,
     )?;
 
     // Array2: IN=ch, COND=1, CH=head, HEAD=1, with head bias
     let array2 = build_wavenet_array_dyn(
         &mut cursor,
-        ch,      // in_ch
-        1,       // cond
-        head,    // ch
-        k,       // k
-        1,       // head
+        ch,   // in_ch
+        1,    // cond
+        head, // ch
+        k,    // k
+        1,    // head
         dils_1,
-        true,    // has_head_bias
+        true, // has_head_bias
         &mut alloc_num,
     )?;
 

@@ -898,8 +898,8 @@ fn test_golden_vectors_wavenet_official() {
          Run './tests/fixtures/golden_gen_build.sh' to generate the golden vectors from C++."
     );
 
-    let (input, expected) = read_golden_bin(&golden_path)
-        .expect("Failed to read golden_wavenet_official.bin");
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_official.bin");
 
     let nam_path = model_path("wavenet_official.nam");
     assert!(
@@ -909,8 +909,7 @@ fn test_golden_vectors_wavenet_official() {
     );
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read wavenet_official.nam");
-    let model_data =
-        parse_nam_json(&json_data).expect("Failed to parse wavenet_official.nam JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed to parse wavenet_official.nam JSON");
     let mut model = build_model(&model_data)
         .expect("Dispatcher failed to build WaveNet Official for golden test");
 
@@ -918,8 +917,7 @@ fn test_golden_vectors_wavenet_official() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) =
-        topology_thresholds(&model_data, "wavenet_official");
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_official");
     report_dsp_fidelity(
         &expected,
         &output,

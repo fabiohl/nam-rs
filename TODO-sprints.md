@@ -274,7 +274,7 @@ referência e validar por ESR/SNR.
   threshold calibrado: SNR ≥ 14.0 dB, ESR < 3.5e-2 (margem 8.4 dB). Self-consistency bitwise OK.
   V2 multi-SR declarado via `#[ignore]` (golden_gen_build.sh atualizado para incluir o modelo).
 
-#### T3.3 — [P3] Endurecer gates frouxos onde a vigilância importa 🟠
+#### T3.3 — [P3] Endurecer gates frouxos onde a vigilância importa 🟠[DONE]
 
 - **Onde**: `tests/common/validation.rs:339` (tabela de thresholds);
   `tests/threshold_calibration.rs` (anti-placebo).

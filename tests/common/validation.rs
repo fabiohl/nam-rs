@@ -213,9 +213,16 @@ fn report_dsp_fidelity_impl(
         println!("  ESR     = ∞  (identical)");
     }
 
-    // MR-STFT
+    // MR-STFT — T3.3 perceptual complement for difficult cases (soft gate, informational)
     let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(reference, test);
     println!("  MR-STFT = {mr_stft:.4e}      (relative)");
+    const MRSTFT_SOFT_THRESHOLD: f64 = 0.15;
+    if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
+        println!(
+            "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds conservative threshold {MRSTFT_SOFT_THRESHOLD:.2e}"
+        );
+        println!("     (T3.3 perceptual complement — informational, not a hard assertion)");
+    }
 
     if lufs_test.is_finite() {
         if lufs_ref.is_finite() {
@@ -372,6 +379,9 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4)))
         }
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
+        // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
+        // code path with synthetic dilations [(1,2),(8)]. SNR 14.0 dB floor preserves
+        // 8.4 dB margin over measurement; no engine regression detected.
         // Measured: SNR = 22.4 dB, ESR = 5.78e-3 (T3.2 calibration)
         // Margin: SNR - 8.4 dB, ESR factor ~6.0x
         "wavenet_official" => {
@@ -379,6 +389,9 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2)))
         }
         // --- LSTM 1x16 ---
+        // T3.3 triage: (a) Inherent — LSTM recurrent state accumulates quantization error
+        // proportional to sequence length × sample rate. Not an engine regression.
+        // v2 relaxation formula (golden_vectors.rs:79-85) handles 96 kHz properly.
         // Measured: SNR=19.8 dB (v1 2048 samples), ESR=1.04e-2
         // v2: SNR=12.2 dB / ESR=6.1e-2 @ 96 kHz (recurrent drift). Margin: 7.8/0.2 dB (v1/v2).
         "BossLSTM-1x16" | "lstm_1x16" => {
@@ -386,6 +399,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2)))
         }
         // --- LSTM 2x8 ---
+        // T3.3 triage: (a) Inherent — same recurrent accumulation mechanism as LSTM 1x16.
+        // Margin at 96 kHz remains positive (0.4 dB) after v2 relaxation.
         // Measured: SNR=25.7 dB (v1 2048 samples), ESR=2.69e-3
         // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz (recurrent drift). Margin: 7.7/0.4 dB (v1/v2).
         "BossLSTM-2x8" | "lstm_2x8" => {
