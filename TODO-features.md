@@ -61,16 +61,16 @@ Evidência empírica compartilhada por F1/F2/F3/F4/F6/F11. O dispatcher do `nam-
 **apenas um catálogo fixo** de topologias e **rejeita** o resto. Testando os modelos
 **oficiais** do `NeuralAmpModelerCore_v0.5.3/example_models/`:
 
-| Modelo oficial              | Geometria                               | Resultado no nam-rs                                             | Feature que destrava |
-| --------------------------- | --------------------------------------- | --------------------------------------------------------------- | -------------------- |
-| `wavenet_a1_standard.nam`   | WaveNet ch=16, cond=1 (real, 407 KB)    | ✅ **Carrega** (já é golden oficial)                            | —                    |
-| `my_model.nam`              | == `wavenet_a1_standard` (md5 idêntico) | ✅ Carrega (redundante)                                         | —                    |
-| `lstm.nam`                  | LSTM H=3, L=1                           | ✅ **Carrega** (já é golden oficial)                            | —                    |
-| `wavenet.nam`               | WaveNet ch=3, cond=1, `[(3,2),(2,1)]`   | ❌ "topology not in catalog / dynamic fallback no longer avail."| **F1**               |
-| `slimmable_wavenet.nam`     | WaveNet ch=3, cond=1, geometria livre   | ❌ "A2 shape not recognized"                                    | **F1 / F5**          |
-| `wavenet_a2_max.nam`        | WaveNet ch=4, **cond=8** (FiLM)         | ❌ "only condition_size=1 is supported"                         | **F2 / F3**          |
-| `wavenet_condition_dsp.nam` | WaveNet ch=3, **cond=3** (FiLM)         | ❌ "only condition_size=1 is supported"                         | **F2 / F3**          |
-| `slimmable_container.nam`   | SlimmableContainer (3 submodelos)       | ❌ "submodel build failed" (depende dos acima)                  | **F5 / F11**         |
+| Modelo oficial              | Geometria                               | Resultado no nam-rs                                                 | Feature que destrava |
+| --------------------------- | --------------------------------------- | ------------------------------------------------------------------- | -------------------- |
+| `wavenet_a1_standard.nam`   | WaveNet ch=16, cond=1 (real, 407 KB)    | ✅ **Carrega** (já é golden oficial)                                | —                    |
+| `my_model.nam`              | == `wavenet_a1_standard` (md5 idêntico) | ✅ Carrega (redundante)                                             | —                    |
+| `lstm.nam`                  | LSTM H=3, L=1                           | ✅ **Carrega** (já é golden oficial)                                | —                    |
+| `wavenet.nam`               | WaveNet ch=3, cond=1, `[(3,2),(2,1)]`   | ✅ **Carrega** (motor dinâmico — F1 concluída, S3/commit `f231618`) | —                    |
+| `slimmable_wavenet.nam`     | WaveNet ch=3, cond=1, geometria livre   | ❌ "A2 shape not recognized"                                        | **F1 / F5**          |
+| `wavenet_a2_max.nam`        | WaveNet ch=4, **cond=8** (FiLM)         | ❌ "only condition_size=1 is supported"                             | **F2 / F3**          |
+| `wavenet_condition_dsp.nam` | WaveNet ch=3, **cond=3** (FiLM)         | ❌ "only condition_size=1 is supported"                             | **F2 / F3**          |
+| `slimmable_container.nam`   | SlimmableContainer (3 submodelos)       | ❌ "submodel build failed" (depende dos acima)                      | **F5 / F11**         |
 
 > **Leitura**: o engine de `SlimmableContainer` em si **já existe** (F11); `slimmable_container.nam`
 > falha porque seus submodelos são `slimmable_wavenet` de geometria livre (F1/F5). Ou seja, as
@@ -79,14 +79,16 @@ Evidência empírica compartilhada por F1/F2/F3/F4/F6/F11. O dispatcher do `nam-
 
 ---
 
-## F1 — 🔴 WaveNet genérico (dispatcher dinâmico) — 🟠 [EM ANDAMENTO]
+## F1 — 🔴 WaveNet genérico (dispatcher dinâmico) — ✅ [DONE] (escopo A1, COND=1)
 
-> **Status (jun/2026):** **motor dinâmico pronto e auditado** (S2: `WaveNetModelDyn` +
-> `layer_array_dyn`/`layer_dyn`/`dense_dyn`, scratch em heap suportando CH>16, born-SIMD;
-> paridade bit-exata vs const-generic nos 4 SKUs — commits `7416b49`/`9ee0145`). Topologia
-> generalizada para 3 vias `Known/Free/Rejected` (S2.T2.3, `e0e0685`). **Pendente o dispatch
-> híbrido no loader (T3.1/S3)**: hoje geometria `Free` é detectada e validada, mas o build ainda
-> a rejeita com mensagem clara ("pending T3.1"). `[DONE]` quando S3 fechar.
+> **Status final (jun/2026, Épico E-WN concluído):** despacho híbrido ativo — geometrias
+> conhecidas usam o fast-path const-generic; qualquer outra geometria A1 válida (COND=1, sem
+> head pós-stack) cai no motor dinâmico (`src/loader/dispatcher/wavenet/dynamic.rs`, commit
+> `f231618`). Paridade C++ validada por ESR/SNR via golden oficial `wavenet_official.nam` (CH=3,
+> geometria livre — SNR calibrado 14 dB, commit `29efadc`). A tabela "Diagnóstico verificado"
+> abaixo atualizada: `wavenet.nam` passa de ❌ → ✅. Mensagem de rejeição "fallback is no longer
+> available" removida. F2 (multi-condição/FiLM), F6 (head pós-stack), F9, F5, F7 permanecem com
+> mensagens de rejeição claras e referência à feature.
 
 **O que é.** O NAMCore aceita **qualquer** geometria WaveNet (nº de camadas, canais,
 dilatações, kernel, head) via `wavenet::create_config` (`wavenet/model.cpp:1239`,

@@ -29,17 +29,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sumário de severidade
 
-| ID     | Achado                                                                                                                                        | Severidade         | Eixo                 |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |:------------------:| -------------------- |
-| **P1** | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade                             | 🔴 Alta            | Fidelidade           |
-| **P2** | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%)                                       | 🟠 Média-Alta      | Fidelidade           |
-| **P3** | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel                    | 🟠 Média           | Cobertura/Fidelidade |
-| **P4** | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                      | 🟡 Média-Baixa     | Correção/DSP         |
-| **P5** | **Pico de latência** de bloco no WaveNet em silêncio (~**677 µs**) — possível penalidade de denormais                                         | 🟡 Média-Baixa     | RT/Performance       |
-| **P6** | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                                                 | 🟢 Baixa           | Observabilidade      |
-| **P7** | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                                         | 🟢 Baixa           | Portabilidade        |
-| **P8** | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                                              | 🟢 Informativo     | Cobertura            |
-| **P9** | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64 | 🟠 Média (latente) | RT-safety/Soundness  |
+| ID      | Achado                                                                                                                                                                                           | Severidade         | Eixo                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:------------------:| --------------------- |
+| **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade                                                                                | 🔴 Alta            | Fidelidade            |
+| **P2**  | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%)                                                                                          | 🟠 Média-Alta      | Fidelidade            |
+| **P3**  | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel                                                                       | 🟠 Média           | Cobertura/Fidelidade  |
+| **P4**  | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                                                                         | 🟡 Média-Baixa     | Correção/DSP          |
+| **P5**  | **Pico de latência** de bloco no WaveNet em silêncio (~**677 µs**) — possível penalidade de denormais                                                                                            | 🟡 Média-Baixa     | RT/Performance        |
+| **P6**  | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                                                                                                    | 🟢 Baixa           | Observabilidade       |
+| **P7**  | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                                                                                            | 🟢 Baixa           | Portabilidade         |
+| **P8**  | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                                                                                                 | 🟢 Informativo     | Cobertura             |
+| **P9**  | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64                                                    | 🟠 Média (latente) | RT-safety/Soundness   |
+| **P10** | **Modo "baixa fidelidade" (padrão) sob júdice** — ganho real de performance/latência vs modo exato ainda não medido; A2 já entregou qualidade E eficiência, questionando a premissa do trade-off | 🟠 Estratégico     | Arquitetura/Qualidade |
 
 ---
 
@@ -82,10 +83,14 @@ carregar um modelo Lite.
 
 ---
 
-## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear — 🟡 [PARCIAL]
+## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear — ✅ [DONE] (S4 concluída)
 
-> **Status (jun/2026):** **medição concluída** (S1.T1.4, commit `8d4ed17`: a quantização F16
-> domina o ESR; Padé tanh negligível para pesos sintéticos). **Modo exato pendente** (S4, opcional).
+> **Status final (jun/2026, Épico E-WN concluído):** medição concluída (S1.T1.4, commit
+> `8d4ed17`) + modo alta-fidelidade implementado como feature flag `high-fidelity` (S4.T4.1,
+> commit `64e2c7f`; f32 weights + `f32::tanh` exato, off por padrão, zero-alloc RT-safe) +
+> política de fidelidade documentada em `docs/fastmath-approximations.md` (S4.T4.2, commit
+> `a33988e`). **Aberto:** a questão do modo "baixa fidelidade" — ver §"Nota do PO" abaixo e
+> `TODO-sprints.md §P10` para a frente técnica planejada.
 
 **Evidência** (`tests-cargo.log`, Phase 3, baselines de ESR impressos):
 
@@ -123,9 +128,18 @@ para F1**: o motor genérico **não pode piorar** o ESR atual. Sprints: **S1** (
 modos de alta fidelidade e baixa fidelidade(atual). Afinal qual o ganho real em performance, latência e
 estabilidade que a baixa fidelidade traz? Porque se não houver uma justificativa muito forte, abandona-la!
 
+**→ Aberto como P10** (`TODO-problemas.md` abaixo) — ver também `TODO-sprints.md §Frente P10`.
+
 ---
 
-## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa)
+## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa) — ✅ [DONE] (no escopo F1/E-WN)
+
+> **Status final (jun/2026, Épico E-WN concluído):** triagem S3.T3.3 concluída (commit
+> `af90fd2`): comentários de triagem adicionados aos thresholds frouxos, gate perceptual
+> MR-STFT soft adicionado como complemento ao SNR cru, gap de comentário `// Measured:`
+> corrigido no `wavenet_official`. Golden novo `wavenet_official.nam` (geometria livre)
+> adicionado com threshold calibrado honesto (SNR 14 dB). Gates de cenários fora do escopo
+> WaveNet/F1 seguem seu próprio ciclo de triagem.
 
 **Evidência** (`tests-cargo.log`, Phase 3, goldens v2 multi-SR):
 
@@ -320,6 +334,70 @@ teste `nondist_validation` limita a varredura de tamanho de bloco a 64 (contrato
 
 ---
 
+## P10 — 🟠 Modo "baixa fidelidade" (padrão) sob júdice — ganho real não mensurado
+
+**Origem**: observação estratégica do PO (jun/2026) durante o fechamento do Épico E-WN.
+
+**Contexto**
+O Épico E-WN implementou dois modos para WaveNet:
+
+- **Padrão / "baixa fidelidade"**: pesos `u16` (BF16/F16) + tanh Padé [5,4]; ESR ~3e-3..1e-2 vs C++.
+- **Alta fidelidade** (`--features high-fidelity`): pesos `f32` + `f32::tanh` exato; ESR < 1e-5,
+  comparable ao LSTM/Linear. Implementado em `64e2c7f`.
+
+**A premissa do trade-off nunca foi medida com dados reais.**
+O modo padrão foi herdado como decisão histórica ("menor latência, menor memória"), mas:
+
+1. A **magnitude real** do ganho de performance em hardware x86-64-v3 moderno (com AVX2/FMA
+   disponíveis) nunca foi quantificada por benchmark reprodutível.
+2. A arquitetura **A2** já entregou **qualidade superior E melhor eficiência** simultaneamente
+   (via LeakyReLU + caminhos SIMD otimizados) — o que questiona a premissa de que qualidade
+   e performance são necessariamente contrapostos no WaveNet A1.
+3. O Padé [5,4] usa `_mm256_div_ps` (latência 10-14 ciclos em Ice Lake/Zen 3); `f32::tanh`
+   usa lib matemática (costuma ser mais lento, mas o impacto real no throughput do _sistema_
+   — que é dominado por memória/conv — é desconhecido). O modo f32 elimina a decode u16→f32
+   por amostra, o que pode **compensar** parcialmente.
+4. O modo padrão introduz ~1% de erro de energia **sem justificativa quantificada**. Se o
+   ganho de performance for marginal (ex: <5%), o custo de fidelidade pode não se pagar.
+
+### **O que precisamos medir: (critério de decisão)**
+
+| Métrica                         | Pergunta                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| Latência de inferência          | Quanto mais rápido é o modo padrão vs alta-fidelidade? (WaveNet A1 Std, bs=64) |
+| Uso de memória                  | Quanto maior é o footprint de memória no modo f32?                             |
+| Throughput (frames/s)           | O ganho é significativo sob carga contínua (soak 5M frames)?                   |
+| ESR com pesos reais             | Com modelos reais (não sintéticos 0.01), qual o ESR real de cada modo?         |
+| Perceptual (MUSHRA/AB informal) | A diferença de ~1% de energia é perceptível em material real?                  |
+
+**Hipótese do PO**
+O modo padrão pode não ter justificativa forte o suficiente. Se confirmado, o **caminho de
+menor resistência é abandonar o modo padrão quantizado e adotar f32 + tanh exato como único
+caminho**, eliminando toda uma classe de problemas de fidelidade (P2, fragmentos de P1) e
+simplificando o código (remove dualidade u16/f32, feature flag, bias-tune, etc.).
+
+**Por que importa ao PO**
+Simplificação radical do produto + resolução de P2 pela raiz + aproximação ao padrão de
+fidelidade do LSTM/Linear. Conexão direta com P1 (Lite): o modo exato pode (ou não) resolver
+a divergência CH=12, a ser verificado.
+
+**Sugestão de condução**
+Abrir frente técnica dedicada (`TODO-sprints.md §Frente P10`):
+
+1. Benchmark criterion: `bench_wavenet_standard_default` vs `bench_wavenet_standard_hifi`
+   em blocos de 1, 16, 64 frames — registrar throughput e latência de pico.
+2. Medição de ESR com pesos reais (usar `wavenet_official.nam` e modelos nondist).
+3. Perfil de memória: `AlignedVec<f32>` vs `AlignedVec<u16>` por modelo.
+4. Avaliação perceptual informal (AB em material high-gain).
+5. Decisão: manter dualidade / promover hi-fi a padrão / abandonar lo-fi.
+
+**Nota sobre A2**: a A2 já usa f32 nativo internamente (sem quantização de pesos, LeakyReLU
+exata) e é simultaneamente mais eficiente e mais fiel que WaveNet A1 padrão. Isso reforça
+empiricamente que qualidade e eficiência **não** são mutuamente exclusivos no contexto de
+inferência neural com SIMD moderno.
+
+---
+
 ## Não-achados (verificados e descartados)
 
 - **SIGSEGV em release (Mono CLAP)**: era **UB de código de teste** (`transmute` de `i32`
@@ -335,9 +413,15 @@ teste `nondist_validation` limita a varredura de tamanho de bloco a 64 (contrato
 
 ## Recomendação de priorização ao PO
 
-1. **P1** (WaveNet Lite divergente) — investigar/decidir: é o maior risco de credibilidade.
-2. **P2 + P3** (fidelidade WaveNet e gates frouxos) — definir a **política de fidelidade**
-   do produto (aceitar FastMath? modo exato? apertar gates?).
-3. **P4 + P5** (silêncio não-nulo + pico de latência) — provavelmente **mesma raiz**
-   (bias/denormal); tratar em conjunto, com olho em RT-safety.
-4. **P6, P7, P8** — observabilidade/portabilidade/cadência: acompanhar, baixa urgência.
+> **Atualização (jun/2026, pós-Épico E-WN):** P2 e P3 foram parcialmente resolvidos
+> (S4: modo hi-fi + doc; S3: golden oficial + gates triados). A frente agora aberta é P10.
+
+1. **P10** (modo baixa fidelidade sob júdice) — **próxima frente estratégica**. Medir antes de
+   decidir; potencial de simplificação radical e resolução pela raiz de P2 + fragmentos de P1.
+2. **P1** (WaveNet Lite divergente) — investigar/decidir após P10 (o modo hi-fi pode ou não
+   resolver; dados necessários).
+3. **P9** (A2 UB blocos >64) — corrigir antes de publicar suporte a blocos grandes;
+   opções documentadas em P9.
+4. **P4 + P5** (silêncio não-nulo + pico de latência) — P4 documentado/fiel C++; P5 pendente
+   de gate de latência percentil.
+5. **P6, P7, P8** — observabilidade/portabilidade/cadência: acompanhar, baixa urgência.
