@@ -152,9 +152,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         receptive_field_size: rf1,
         block_size: CH,
         block_buffer: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
     };
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, HEAD, K> {
@@ -210,9 +207,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         receptive_field_size: rf2,
         block_size: HEAD,
         block_buffer: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
     };
 
     WaveNetModel {

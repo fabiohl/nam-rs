@@ -158,9 +158,6 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         receptive_field_size: rf1,
         block_size: 16,
         block_buffer: AlignedVec::from_vec(vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_1.len(),
     };
 
@@ -201,9 +198,6 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         receptive_field_size: rf2,
         block_size: 8,
         block_buffer: AlignedVec::from_vec(vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_2.len(),
     };
 

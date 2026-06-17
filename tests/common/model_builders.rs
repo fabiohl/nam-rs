@@ -102,9 +102,6 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         receptive_field_size: rf,
         block_size: 16,
         block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: layers_1_len,
     };
 
@@ -174,9 +171,6 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         receptive_field_size: 2,
         block_size: 8,
         block_buffer: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: layers_2_len,
     };
 
@@ -301,9 +295,6 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         receptive_field_size: rf1,
         block_size: 4,
         block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_1.len(),
     };
 
@@ -334,9 +325,6 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         receptive_field_size: rf2,
         block_size: 2,
         block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_2.len(),
     };
 

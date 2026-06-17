@@ -743,7 +743,7 @@ regenerados.
 
 ---
 
-### T-HF5.A.5 — Layer e LayerArray estáticos: fundir os dois process_block_internal em um
+### T-HF5.A.5 — Layer e LayerArray estáticos: fundir os dois process_block_internal em um [DONE]
 
 **Arquivos**: `src/models/wavenet/layer.rs`, `src/models/wavenet/layer_array.rs`
 

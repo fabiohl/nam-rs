@@ -155,9 +155,6 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         receptive_field_size: rf1,
         block_size: 4,
         block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
     };
 
     // Array2 (Head Definition): The secondary array acts on refined final predictions.
@@ -194,9 +191,6 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         receptive_field_size: rf2,
         block_size: 2,
         block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
     };
 
     // WaveNetModel orchestrates the array cascade and applies the final gain.

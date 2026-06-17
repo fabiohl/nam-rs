@@ -175,9 +175,6 @@ pub(crate) fn build_wavenet_array<
         receptive_field_size,
         block_size,
         block_buffer,
-        last_condition: [0.0; COND],
-        last_condition_bf16: [0; COND],
-        condition_init: false,
         effective_layers: num_layers,
     })
 }

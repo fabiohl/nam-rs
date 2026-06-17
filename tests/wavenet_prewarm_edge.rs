@@ -145,9 +145,6 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         receptive_field_size: rf1,
         block_size: 4,
         block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_1.len(),
     };
 
@@ -178,9 +175,6 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         receptive_field_size: rf2,
         block_size: 2,
         block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: dilations_2.len(),
     };
 
@@ -375,9 +369,6 @@ fn test_prewarm_zero_rf() {
         receptive_field_size: rf,
         block_size: 1,
         block_buffer: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: 1,
     };
 
@@ -407,9 +398,6 @@ fn test_prewarm_zero_rf() {
         receptive_field_size: rf,
         block_size: 1,
         block_buffer: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
-        last_condition: [0.0; 1],
-        last_condition_bf16: [0; 1],
-        condition_init: false,
         effective_layers: 1,
     };
 
