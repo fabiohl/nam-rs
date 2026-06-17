@@ -17,6 +17,30 @@ fn generate_weights(in_ch: usize, out_ch: usize, k: usize) -> Vec<u16> {
         .collect()
 }
 
+fn generate_weights_f32(in_ch: usize, out_ch: usize, k: usize) -> Vec<f32> {
+    let raw: Vec<f32> = (0..out_ch * in_ch * k)
+        .map(|i| (i as f32 * 0.13).sin() * 0.25 + 0.15)
+        .collect();
+    let num_blocks = out_ch.div_ceil(4);
+    let total = num_blocks * k * in_ch * 4;
+    let mut weights = vec![0.0f32; total];
+    for b in 0..num_blocks {
+        for kt in 0..k {
+            for in_c in 0..in_ch {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let target_idx = b * (k * in_ch * 4) + kt * (in_ch * 4) + in_c * 4 + lane;
+                    if out_c < out_ch {
+                        let raw_idx = (out_c * in_ch + in_c) * k + kt;
+                        weights[target_idx] = raw[raw_idx];
+                    }
+                }
+            }
+        }
+    }
+    weights
+}
+
 fn generate_input(in_ch: usize, kernel: usize, n_frames: usize) -> Vec<f32> {
     let total = (n_frames + kernel - 1) * in_ch;
     (0..total)
@@ -93,12 +117,10 @@ fn bench_kahan_inner_loop_isolated(c: &mut Criterion) {
 
 #[allow(non_snake_case)]
 fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
-    raw: &[u16],
+    raw: &[f32],
 ) -> Conv1d<IN, OUT, K> {
     let weights = AlignedVec::from_vec(raw.to_vec());
     Conv1d {
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         weights,
         bias: AlignedVec::from_vec(vec![0.0; OUT]),
         do_bias: false,
@@ -134,7 +156,7 @@ macro_rules! bench_conv1d_config {
                 let mut out = [0.0f32; $out_ch];
                 for f in 0..$n_frames {
                     unsafe {
-                        static_conv.process_single_frame_with_mixin::<Avx2Math>(
+                        static_conv.process_single_frame_with_mixin(
                             $input,
                             &mut out,
                             start_frame + f,
@@ -161,18 +183,23 @@ fn bench_full_conv1d_kahan_vs_nokahan(c: &mut Criterion) {
 
     for &(in_ch, out_ch, k, label) in &configs {
         let raw = generate_weights(in_ch, out_ch, k);
+        let raw_f32 = generate_weights_f32(in_ch, out_ch, k);
         let input = generate_input(in_ch, k, n_frames + 64);
         let dyn_conv = conv1d_dyn_from_raw(&raw, in_ch, out_ch, k);
         let start_frame = k - 1;
 
         match (in_ch, out_ch, k) {
-            (8, 8, 3) => bench_conv1d_config!(&mut group, 8, 8, 3, label, &raw, &input, n_frames),
-            (8, 16, 3) => bench_conv1d_config!(&mut group, 8, 16, 3, label, &raw, &input, n_frames),
+            (8, 8, 3) => {
+                bench_conv1d_config!(&mut group, 8, 8, 3, label, &raw_f32, &input, n_frames)
+            }
+            (8, 16, 3) => {
+                bench_conv1d_config!(&mut group, 8, 16, 3, label, &raw_f32, &input, n_frames)
+            }
             (16, 16, 3) => {
-                bench_conv1d_config!(&mut group, 16, 16, 3, label, &raw, &input, n_frames)
+                bench_conv1d_config!(&mut group, 16, 16, 3, label, &raw_f32, &input, n_frames)
             }
             (12, 12, 3) => {
-                bench_conv1d_config!(&mut group, 12, 12, 3, label, &raw, &input, n_frames)
+                bench_conv1d_config!(&mut group, 12, 12, 3, label, &raw_f32, &input, n_frames)
             }
             _ => {}
         }

@@ -31,17 +31,16 @@ fn make_wavenet_layer(
     ch: usize,
 ) -> wavenet::WaveNetLayer<1, 16, 3> {
     let _raw_conv = vec![0.001f32; ch * 3 * ch];
+    let conv_weights = {
+        let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+            &_raw_conv, &mut fw, ch, ch, 3,
+        );
+        fw
+    };
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: {
-                let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
-                nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                    &_raw_conv, &mut fw, ch, ch, 3,
-                );
-                fw
-            },
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); ch * 3 * ch]),
+            weights: conv_weights,
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
             dilation,
@@ -69,17 +68,16 @@ fn make_wavenet_layer(
 /// Helper to simulate creation of a `WaveNetLayer` for Array2 (CH=8, =HEAD of Array1).
 fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     let _raw_conv = vec![0.001f32; 8 * 3 * 8];
+    let conv_weights = {
+        let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+            &_raw_conv, &mut fw, 8, 8, 3,
+        );
+        fw
+    };
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: {
-                let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
-                nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                    &_raw_conv, &mut fw, 8, 8, 3,
-                );
-                fw
-            },
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); 8 * 3 * 8]),
+            weights: conv_weights,
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
             dilation,

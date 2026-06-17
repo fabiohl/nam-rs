@@ -6,8 +6,8 @@
 //! Centralizes duplicated builder functions that were previously scattered across
 //! `soak_test.rs` and `wavenet_prewarm_edge.rs`.
 
+use nam_rs::math::common::AlignedVec;
 use nam_rs::math::common::half::f32_to_f16_bits;
-use nam_rs::math::common::{AlignedVec, SimdMathConfig};
 use nam_rs::models::a2::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, WaveNetA2, a2_weight_count,
 };
@@ -29,21 +29,20 @@ use nam_rs::models::wavenet::{
 pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
         let _raw_weights = vec![0.01f32; 16 * 3 * 16];
+        let conv_weights = {
+            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                &_raw_weights,
+                &mut fw,
+                16,
+                16,
+                3,
+            );
+            fw
+        };
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &_raw_weights,
-                        &mut fw,
-                        16,
-                        16,
-                        3,
-                    );
-                    fw
-                },
-                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 16 * 3 * 16]),
+                weights: conv_weights,
                 bias: AlignedVec::from_vec(vec![0.001; 16]),
                 do_bias: true,
                 dilation,
@@ -112,21 +111,20 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     // Array 2: Final spectral refinement (CH=8, K=3)
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
         let _raw_weights = vec![0.01f32; 8 * 3 * 8];
+        let conv_weights = {
+            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                &_raw_weights,
+                &mut fw,
+                8,
+                8,
+                3,
+            );
+            fw
+        };
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &_raw_weights,
-                        &mut fw,
-                        8,
-                        8,
-                        3,
-                    );
-                    fw
-                },
-                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 8 * 3 * 8]),
+                weights: conv_weights,
                 bias: AlignedVec::from_vec(vec![0.001; 8]),
                 do_bias: true,
                 dilation,
@@ -196,38 +194,18 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
 
 /// Builds a WaveNetModel<4, 5, 2> with K=5 and max dilation 512.
 pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
-    let is_bf16 = SimdMathConfig::get().instruction_set
-        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 5> {
         let raw_weights = vec![0.01f32; 4 * 5 * 4];
-        let mut weights = AlignedVec::new(5 * 4 * 4, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let mut weights = AlignedVec::new(5 * 4 * 4, 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
             4,
             4,
             5,
-            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let inner = 4usize;
-                    let outer = 4usize;
-                    let k = 5usize;
-                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
-                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &raw_weights,
-                        &mut fw,
-                        inner,
-                        outer,
-                        k,
-                    );
-                    fw
-                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -255,33 +233,16 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 5> {
         let raw_weights = vec![0.01f32; 2 * 5 * 2];
-        let mut weights = AlignedVec::new(5 * 2 * 4, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let mut weights = AlignedVec::new(5 * 2 * 4, 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
             2,
             2,
             5,
-            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let inner = 2usize;
-                    let outer = 2usize;
-                    let k = 5usize;
-                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
-                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &raw_weights,
-                        &mut fw,
-                        inner,
-                        outer,
-                        k,
-                    );
-                    fw
-                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,

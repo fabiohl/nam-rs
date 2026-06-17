@@ -17,29 +17,6 @@ fn test_dense_f32(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![0.01f32; out_ch * in_ch])
 }
 
-/// Helper: create f32 synthetic interleaved Conv1D weights for high-fidelity test models.
-#[cfg(feature = "high-fidelity")]
-fn test_conv1d_f32(raw: &[f32], in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32> {
-    let num_blocks = out_ch.div_ceil(4);
-    let interleaved_len = num_blocks * k * in_ch * 4;
-    let mut weights = AlignedVec::new(interleaved_len, 0.0f32);
-    for b in 0..num_blocks {
-        for ki in 0..k {
-            for in_c in 0..in_ch {
-                for lane in 0..4 {
-                    let out_c = b * 4 + lane;
-                    let target_idx = b * (k * in_ch * 4) + ki * (in_ch * 4) + in_c * 4 + lane;
-                    if out_c < out_ch {
-                        let raw_idx = (out_c * in_ch + in_c) * k + ki;
-                        weights[target_idx] = raw[raw_idx];
-                    }
-                }
-            }
-        }
-    }
-    weights
-}
-
 /// Builds a minimal WaveNetModel<4, 3, 2> for tests with static, controlled data.
 /// This function serves as a "mock" (simulated model) for unit tests.
 fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
@@ -48,16 +25,13 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // In WaveNet, each layer is a functional unit that processes the dilated signal.
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
-        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-            == crate::math::common::InstructionSet::Avx512VnniBf16;
-        let mut weights = AlignedVec::new(48, 0u16);
-        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let mut weights = AlignedVec::new(48, 0.0f32);
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
             4, // IN
             4, // OUT
             3, // K
-            is_bf16,
         );
         WaveNetLayer {
             // Dilated Causal Convolution enables capturing long temporal dependencies
@@ -66,8 +40,6 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 // Dimensions: OUT * K * IN = 4 * 3 * 4.
                 // Here, IN=CH because the layer receives the signal from previous layers.
                 weights,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: test_conv1d_f32(&raw_weights, 4, 4, 3),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
                 dilation,
@@ -108,22 +80,17 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // This array usually has fewer channels and focuses on final audio refinement.
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
-        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-            == crate::math::common::InstructionSet::Avx512VnniBf16;
-        let mut weights = AlignedVec::new(24, 0u16);
-        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let mut weights = AlignedVec::new(24, 0.0f32);
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
             2, // IN
             2, // OUT
             3, // K
-            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
                 weights,
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: test_conv1d_f32(&raw_weights, 2, 2, 3),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
                 dilation,

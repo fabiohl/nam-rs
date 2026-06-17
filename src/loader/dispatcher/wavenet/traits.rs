@@ -11,19 +11,6 @@ pub(crate) trait ConvWeightsOutput: Sized {
     #[allow(dead_code)]
     fn from_parts(
         weights: AlignedVec<u16>,
-        bias: AlignedVec<f32>,
-        do_bias: bool,
-        dilation: usize,
-        in_ch: usize,
-        out_ch: usize,
-        k_size: usize,
-        prefetch_fn: PrefetchFn,
-    ) -> Self;
-
-    #[cfg(feature = "high-fidelity")]
-    #[allow(clippy::too_many_arguments)]
-    fn from_parts_f32(
-        weights: AlignedVec<u16>,
         f32_weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
@@ -38,7 +25,8 @@ pub(crate) trait ConvWeightsOutput: Sized {
 impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Conv1d<IN, OUT, K> {
     #[inline(always)]
     fn from_parts(
-        weights: AlignedVec<u16>,
+        _weights: AlignedVec<u16>,
+        _f32_weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -48,32 +36,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
         prefetch_fn: PrefetchFn,
     ) -> Self {
         Conv1d {
-            weights,
-            bias,
-            do_bias,
-            dilation,
-            prefetch_fn,
-            #[cfg(feature = "high-fidelity")]
-            f32_weights: AlignedVec::new(0, 0.0f32),
-        }
-    }
-
-    #[cfg(feature = "high-fidelity")]
-    #[inline(always)]
-    fn from_parts_f32(
-        weights: AlignedVec<u16>,
-        f32_weights: AlignedVec<f32>,
-        bias: AlignedVec<f32>,
-        do_bias: bool,
-        dilation: usize,
-        _in_ch: usize,
-        _out_ch: usize,
-        _k_size: usize,
-        prefetch_fn: PrefetchFn,
-    ) -> Self {
-        Conv1d {
-            weights,
-            f32_weights,
+            weights: _f32_weights,
             bias,
             do_bias,
             dilation,
@@ -84,8 +47,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
 
 impl ConvWeightsOutput for Conv1dDyn {
     #[inline(always)]
+    #[allow(unused_variables)]
     fn from_parts(
         weights: AlignedVec<u16>,
+        f32_weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -105,34 +70,7 @@ impl ConvWeightsOutput for Conv1dDyn {
             kernel: k_size,
             prefetch_fn,
             #[cfg(feature = "high-fidelity")]
-            f32_weights: AlignedVec::new(0, 0.0f32),
-        }
-    }
-
-    #[cfg(feature = "high-fidelity")]
-    #[inline(always)]
-    fn from_parts_f32(
-        weights: AlignedVec<u16>,
-        f32_weights: AlignedVec<f32>,
-        bias: AlignedVec<f32>,
-        do_bias: bool,
-        dilation: usize,
-        in_ch: usize,
-        out_ch: usize,
-        k_size: usize,
-        prefetch_fn: PrefetchFn,
-    ) -> Self {
-        Conv1dDyn {
-            weights,
             f32_weights,
-            bias,
-            do_bias,
-            dilation,
-            in_ch,
-            out_ch,
-            num_blocks: out_ch.div_ceil(4),
-            kernel: k_size,
-            prefetch_fn,
         }
     }
 }

@@ -10,6 +10,7 @@ use crate::math::common::SimdMath;
 ///
 /// # Safety
 /// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
+#[cfg_attr(not(test), allow(dead_code))]
 #[inline(always)]
 pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(
     acc: &mut [f32; 4],
@@ -171,8 +172,7 @@ impl ConvInput for u16 {
 
 /// F32-native 4-lane interleaved dot product (AVX2/FMA or AVX-512 kernel).
 ///
-/// Used by the high-fidelity mode to compute Conv1D output directly from
-/// full-precision f32 weights, avoiding F16/BF16 quantization drift entirely.
+/// Computes Conv1D output directly from full-precision f32 weights.
 ///
 /// Dispatches to `dot_product_4x_f32_avx512` when AVX-512F is detected
 /// at runtime; otherwise falls back to `dot_product_4x_f32_avx2`.
@@ -181,9 +181,8 @@ impl ConvInput for u16 {
 /// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
 /// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
 /// result on any x86‑64‑v3 CPU.
-#[cfg(feature = "high-fidelity")]
 #[inline(always)]
-pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+pub(crate) fn dot_product_4x(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
     if is_x86_feature_detected!("avx512f") {
         unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx512(weights, state) }
     } else {
@@ -203,9 +202,8 @@ pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4
 /// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
 /// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
 /// result on any x86‑64‑v3 CPU.
-#[cfg(feature = "high-fidelity")]
 #[inline(always)]
-pub(crate) fn dot_product_4x_f32_dual(
+pub(crate) fn dot_product_4x_dual(
     weights: &[[f32; 4]],
     state_f0: &[f32],
     state_f1: &[f32],

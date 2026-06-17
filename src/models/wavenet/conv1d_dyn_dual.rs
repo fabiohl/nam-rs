@@ -184,7 +184,7 @@ impl Conv1dDyn {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
-        use crate::models::wavenet::conv_input::dot_product_4x_f32_dual;
+        use crate::models::wavenet::conv_input::dot_product_4x_dual;
 
         let num_blocks = self.num_blocks;
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
@@ -288,7 +288,7 @@ impl Conv1dDyn {
                     let in_f0 = core::slice::from_raw_parts(tap_f0, in_ch);
                     let in_f1 = core::slice::from_raw_parts(tap_f1, in_ch);
 
-                    let (t_f0, t_f1) = dot_product_4x_f32_dual(w_slice, in_f0, in_f1);
+                    let (t_f0, t_f1) = dot_product_4x_dual(w_slice, in_f0, in_f1);
 
                     r0_f0 += t_f0[0];
                     r1_f0 += t_f0[1];

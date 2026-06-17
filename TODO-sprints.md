@@ -657,7 +657,7 @@ cargo test --quiet 2>&1 | tail -5   # acumulação e ativações WaveNet
 
 ---
 
-### T-HF5.A.2 — Conv1D estático: remover buffer u16, tornar f32-only
+### T-HF5.A.2 — Conv1D estático: remover buffer u16, tornar f32-only [DONE]
 
 **Arquivos**: `src/models/wavenet/conv1d.rs`, `src/models/wavenet/conv1d_dual.rs`,
 `src/models/wavenet/conv_input.rs`

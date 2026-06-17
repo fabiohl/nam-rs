@@ -17,23 +17,18 @@ fn test_conv1d_identity_kernel() {
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
     }
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let mut weights = AlignedVec::new(16, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+    let mut weights = AlignedVec::new(16, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
         &raw_weights,
         &mut weights,
         4, // IN
         4, // OUT
         1, // K
-        is_bf16,
     );
 
     // Instantiate 1D Convolution without bias and with dilation 1 (linear processing).
     let conv = Conv1d::<4, 4, 1> {
         weights,
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 4]),
         do_bias: false,
         dilation: 1,
@@ -66,23 +61,18 @@ fn test_conv1d_with_bias() {
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
     }
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let mut weights = AlignedVec::new(16, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+    let mut weights = AlignedVec::new(16, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
         &raw_weights,
         &mut weights,
         4, // IN
         4, // OUT
         1, // K
-        is_bf16,
     );
 
     // Configure the layer with Bias of 0.5 on all output channels.
     let conv = Conv1d::<4, 4, 1> {
         weights,
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.5; 4]),
         do_bias: true, // Enable bias vector addition.
         dilation: 1,
@@ -112,23 +102,18 @@ fn test_conv1d_with_bias() {
 fn test_conv1d_dilation() {
     // Configure unit weights (1.0) to sum all inputs directly.
     let raw_weights = vec![1.0f32; 2 * 3 * 2];
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let mut weights = AlignedVec::new(24, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+    let mut weights = AlignedVec::new(24, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
         &raw_weights,
         &mut weights,
         2, // IN
         2, // OUT
         3, // K
-        is_bf16,
     );
 
     // Define dilation: 2. This will make the kernel "skip" one frame per tap.
     let conv = Conv1d::<2, 2, 3> {
         weights,
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 2]),
         do_bias: false,
         dilation: 2,
@@ -174,22 +159,17 @@ fn test_conv1d_dilation() {
 fn test_conv1d_zero_input() {
     // Extremely high weights to test if any residual noise is amplified.
     let raw_weights = vec![100.0f32; 2 * 3 * 2];
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let mut weights = AlignedVec::new(24, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+    let mut weights = AlignedVec::new(24, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
         &raw_weights,
         &mut weights,
         2, // IN
         2, // OUT
         3, // K
-        is_bf16,
     );
 
     let mut conv = Conv1d::<2, 2, 3> {
         weights: weights.clone(),
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 2]),
         do_bias: false,
         dilation: 1,
@@ -234,22 +214,17 @@ fn test_conv1d_known_output() {
         -0.5, -1.5, // out1, in0, k0 and k1
         -1.0, -2.0, // out1, in1, k0 and k1
     ];
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let mut weights = AlignedVec::new(16, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+    let mut weights = AlignedVec::new(16, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
         &raw_weights,
         &mut weights,
         2, // IN
         2, // OUT
         2, // K
-        is_bf16,
     );
 
     let conv = Conv1d::<2, 2, 2> {
         weights,
-        #[cfg(feature = "high-fidelity")]
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![1.0, -1.0]),
         do_bias: true,
         dilation: 1,

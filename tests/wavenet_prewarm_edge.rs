@@ -12,8 +12,8 @@
 //! 3. Dynamic model with RF=1024 (stress test with larger CH values).
 //! 4. Model with K=5 kernel, dilation=512, large total RF=4092.
 
+use nam_rs::math::common::AlignedVec;
 use nam_rs::math::common::half::f32_to_f16_bits;
-use nam_rs::math::common::{AlignedVec, SimdMathConfig};
 use nam_rs::models::NamModel;
 use nam_rs::models::wavenet::{
     Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
@@ -28,38 +28,22 @@ use common::model_builders::{a2_rf, build_k5_large_rf_wavenet, build_synth_a2};
 // =============================================================================
 
 fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
-    let is_bf16 = SimdMathConfig::get().instruction_set
-        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
-        let mut weights = AlignedVec::new(48, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let inner = 4usize;
+        let outer = 4usize;
+        let k = 3usize;
+        let padded_total = outer.div_ceil(4) * 4 * inner * k;
+        let mut weights = AlignedVec::new(padded_total, 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
-            4,
-            4,
-            3,
-            is_bf16,
+            inner,
+            outer,
+            k,
         );
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let inner = 4usize;
-                    let outer = 4usize;
-                    let k = 3usize;
-                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
-                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &raw_weights,
-                        &mut fw,
-                        inner,
-                        outer,
-                        k,
-                    );
-                    fw
-                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -87,33 +71,20 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
-        let mut weights = AlignedVec::new(24, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let inner = 2usize;
+        let outer = 2usize;
+        let k = 3;
+        let padded_total = outer.div_ceil(4) * 4 * inner * k;
+        let mut weights = AlignedVec::new(padded_total, 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
-            2,
-            2,
-            3,
-            is_bf16,
+            inner,
+            outer,
+            k,
         );
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let inner = 2usize;
-                    let outer = 2usize;
-                    let k = 3;
-                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
-                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &raw_weights,
-                        &mut fw,
-                        inner,
-                        outer,
-                        k,
-                    );
-                    fw
-                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
@@ -340,38 +311,22 @@ fn test_prewarm_large_rf_multiblock() {
 /// RF=0 edge case: model with no dilation layers (RF=0) — prewarm should be a no-op.
 #[test]
 fn test_prewarm_zero_rf() {
-    let is_bf16 = SimdMathConfig::get().instruction_set
-        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 1, 3> {
         let raw_weights = vec![0.01f32; 3];
-        let mut weights = AlignedVec::new(1usize.div_ceil(4) * 3 * 4, 0u16);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        let inner = 1usize;
+        let outer = 1usize;
+        let k = 3;
+        let padded_total = outer.div_ceil(4) * 4 * inner * k;
+        let mut weights = AlignedVec::new(padded_total, 0.0f32);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
             &raw_weights,
             &mut weights,
-            1,
-            1,
-            3,
-            is_bf16,
+            inner,
+            outer,
+            k,
         );
         WaveNetLayer {
             conv1d: Conv1d {
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: {
-                    let inner = 1usize;
-                    let outer = 1usize;
-                    let k = 3;
-                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
-                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
-                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
-                        &raw_weights,
-                        &mut fw,
-                        inner,
-                        outer,
-                        k,
-                    );
-                    fw
-                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 1]),
                 do_bias: false,

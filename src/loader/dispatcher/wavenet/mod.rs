@@ -20,7 +20,6 @@ pub(crate) mod standard;
 mod traits;
 
 pub use layout::transpose_conv1d_interleaved_4wide;
-#[cfg(feature = "high-fidelity")]
 pub use layout::transpose_conv1d_interleaved_4wide_f32;
 
 // =============================================================================

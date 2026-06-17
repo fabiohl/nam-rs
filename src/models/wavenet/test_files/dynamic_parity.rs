@@ -34,8 +34,24 @@ const SYNTHETIC_WEIGHT: f32 = 0.01;
 /// Dilations for the test models (3 layers).
 const TEST_DILATIONS: [usize; 3] = [1, 2, 4];
 
-/// Helper: interleave f32 weights into the `[OUT/4][K][IN][4]` layout used by Conv1d and Conv1dDyn.
-fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<u16> {
+/// Helper: interleave f32 weights into the `[OUT/4][K][IN][4]` layout used by Conv1d.
+fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32> {
+    let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
+    let num_blocks = out_ch.div_ceil(4);
+    let interleaved_len = num_blocks * k * in_ch * 4;
+    let mut weights = AlignedVec::new(interleaved_len, 0.0f32);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        &raw_weights,
+        &mut weights,
+        in_ch,
+        out_ch,
+        k,
+    );
+    weights
+}
+
+/// Helper: interleave u16 weights into the `[OUT/4][K][IN][4]` layout used by Conv1dDyn.
+fn make_conv1d_weights_u16(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<u16> {
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
     let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
@@ -50,30 +66,6 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<u16>
         k,
         is_bf16,
     );
-    weights
-}
-
-/// Helper: create f32-native interleaved Conv1D weights for high-fidelity mode.
-#[cfg(feature = "high-fidelity")]
-fn make_conv1d_f32_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32> {
-    let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
-    let num_blocks = out_ch.div_ceil(4);
-    let interleaved_len = num_blocks * k * in_ch * 4;
-    let mut weights = AlignedVec::new(interleaved_len, 0.0f32);
-    for b in 0..num_blocks {
-        for ki in 0..k {
-            for in_c in 0..in_ch {
-                for lane in 0..4 {
-                    let out_c = b * 4 + lane;
-                    let target_idx = b * (k * in_ch * 4) + ki * (in_ch * 4) + in_c * 4 + lane;
-                    if out_c < out_ch {
-                        let raw_idx = (out_c * in_ch + in_c) * k + ki;
-                        weights[target_idx] = raw_weights[raw_idx];
-                    }
-                }
-            }
-        }
-    }
     weights
 }
 
@@ -112,8 +104,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         WaveNetLayer {
             conv1d: Conv1d {
                 weights: make_conv1d_weights(CH, CH, K),
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: make_conv1d_f32_weights(CH, CH, K),
                 bias: make_bias(CH),
                 do_bias: false,
                 dilation,
@@ -184,8 +174,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         WaveNetLayer {
             conv1d: Conv1d {
                 weights: make_conv1d_weights(HEAD, HEAD, K),
-                #[cfg(feature = "high-fidelity")]
-                f32_weights: make_conv1d_f32_weights(HEAD, HEAD, K),
                 bias: make_bias(HEAD),
                 do_bias: false,
                 dilation,
@@ -267,9 +255,9 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
 
     let make_conv1d_dyn = |in_ch: usize, out_ch: usize, dilation: usize| -> Conv1dDyn {
         Conv1dDyn {
-            weights: make_conv1d_weights(in_ch, out_ch, k),
+            weights: make_conv1d_weights_u16(in_ch, out_ch, k),
             #[cfg(feature = "high-fidelity")]
-            f32_weights: make_conv1d_f32_weights(in_ch, out_ch, k),
+            f32_weights: make_conv1d_weights(in_ch, out_ch, k),
             bias: make_bias(out_ch),
             do_bias: false,
             dilation,

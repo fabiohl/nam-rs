@@ -19,35 +19,24 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<T> {
-    // Padded to the nearest multiple of 4 output channels so that every
-    // SIMD lane has a defined weight (zero-padded lanes produce zero output).
     let num_blocks = out_size.div_ceil(4);
     let padded_total = num_blocks * 4 * in_size * k_size;
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
-
-    let mut weights = AlignedVec::new(padded_total, 0u16);
-    #[cfg(feature = "high-fidelity")]
-    let mut f32_weights = AlignedVec::new(padded_total, 0.0f32);
     let interleaved = cursor.is_interleaved4();
     let raw_f32_owned: Vec<f32>;
 
+    let mut weights = AlignedVec::new(padded_total, 0u16);
+    let mut f32_weights = AlignedVec::new(padded_total, 0.0f32);
+
     if interleaved {
-        // File already stores weights in 4-wide interleaved order —
-        // no transposition required, just quantize in-place.
         let raw = cursor.read_slice(padded_total)?;
         raw_f32_owned = raw.to_vec();
         for i in 0..padded_total {
             weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
         }
-        #[cfg(feature = "high-fidelity")]
-        {
-            f32_weights.copy_from_slice(&raw_f32_owned);
-        }
+        f32_weights.copy_from_slice(&raw_f32_owned);
     } else {
-        // Standard (in_ch, out_ch, kernel) layout in the file.
-        // Transpose into 4-wide interleaved order so the DSP kernel
-        // can process 4 output channels per SIMD operation.
         let total = out_size * in_size * k_size;
         let raw = cursor.read_slice(total)?;
         raw_f32_owned = raw.to_vec();
@@ -59,7 +48,6 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
             k_size,
             is_bf16,
         );
-        #[cfg(feature = "high-fidelity")]
         transpose_conv1d_interleaved_4wide_f32(
             &raw_f32_owned,
             &mut f32_weights,
@@ -108,33 +96,17 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         crate::math::common::prefetch_strategy_simple
     };
 
-    #[cfg(feature = "high-fidelity")]
-    {
-        Ok(T::from_parts_f32(
-            weights,
-            f32_weights,
-            bias,
-            do_bias,
-            dilation,
-            in_size,
-            out_size,
-            k_size,
-            prefetch_fn,
-        ))
-    }
-    #[cfg(not(feature = "high-fidelity"))]
-    {
-        Ok(T::from_parts(
-            weights,
-            bias,
-            do_bias,
-            dilation,
-            in_size,
-            out_size,
-            k_size,
-            prefetch_fn,
-        ))
-    }
+    Ok(T::from_parts(
+        weights,
+        f32_weights,
+        bias,
+        do_bias,
+        dilation,
+        in_size,
+        out_size,
+        k_size,
+        prefetch_fn,
+    ))
 }
 
 pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
@@ -336,7 +308,6 @@ fn transpose_dense_layer_f32(raw: &[f32], weights: &mut [f32], in_size: usize, o
 /// Rearranges convolution layer weights into the "Interleaved 4-Wide" format
 /// preserving full f32 precision (no quantization).
 /// Same layout as `transpose_conv1d_interleaved_4wide`, but stores raw f32 values.
-#[cfg(feature = "high-fidelity")]
 pub fn transpose_conv1d_interleaved_4wide_f32(
     raw: &[f32],
     weights: &mut [f32],
