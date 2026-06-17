@@ -337,7 +337,7 @@ fn transpose_dense_layer_f32(raw: &[f32], weights: &mut [f32], in_size: usize, o
 /// preserving full f32 precision (no quantization).
 /// Same layout as `transpose_conv1d_interleaved_4wide`, but stores raw f32 values.
 #[cfg(feature = "high-fidelity")]
-fn transpose_conv1d_interleaved_4wide_f32(
+pub fn transpose_conv1d_interleaved_4wide_f32(
     raw: &[f32],
     weights: &mut [f32],
     in_ch: usize,

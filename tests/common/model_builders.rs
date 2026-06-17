@@ -27,10 +27,21 @@ use nam_rs::models::wavenet::{
 /// layers for millions of iterations.
 pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
+        let _raw_weights = vec![0.01f32; 16 * 3 * 16];
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &_raw_weights,
+                        &mut fw,
+                        16,
+                        16,
+                        3,
+                    );
+                    fw
+                },
                 weights: AlignedVec::from_vec(vec![
                     half::f16::from_f32(0.01).to_bits();
                     16 * 3 * 16
@@ -102,10 +113,21 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
 
     // Array 2: Final spectral refinement (CH=8, K=3)
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
+        let _raw_weights = vec![0.01f32; 8 * 3 * 8];
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &_raw_weights,
+                        &mut fw,
+                        8,
+                        8,
+                        3,
+                    );
+                    fw
+                },
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 3 * 8]),
                 bias: AlignedVec::from_vec(vec![0.001; 8]),
                 do_bias: true,
@@ -193,7 +215,21 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let inner = 4usize;
+                    let outer = 4usize;
+                    let k = 5usize;
+                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
+                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &raw_weights,
+                        &mut fw,
+                        inner,
+                        outer,
+                        k,
+                    );
+                    fw
+                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -233,7 +269,21 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let inner = 2usize;
+                    let outer = 2usize;
+                    let k = 5usize;
+                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
+                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &raw_weights,
+                        &mut fw,
+                        inner,
+                        outer,
+                        k,
+                    );
+                    fw
+                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,

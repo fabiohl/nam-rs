@@ -44,7 +44,21 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let inner = 4usize;
+                    let outer = 4usize;
+                    let k = 3usize;
+                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
+                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &raw_weights,
+                        &mut fw,
+                        inner,
+                        outer,
+                        k,
+                    );
+                    fw
+                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -84,7 +98,21 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let inner = 2usize;
+                    let outer = 2usize;
+                    let k = 3;
+                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
+                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &raw_weights,
+                        &mut fw,
+                        inner,
+                        outer,
+                        k,
+                    );
+                    fw
+                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
@@ -328,7 +356,21 @@ fn test_prewarm_zero_rf() {
         WaveNetLayer {
             conv1d: Conv1d {
                 #[cfg(feature = "high-fidelity")]
-                f32_weights: AlignedVec::new(0, 0.0f32),
+                f32_weights: {
+                    let inner = 1usize;
+                    let outer = 1usize;
+                    let k = 3;
+                    let padded_total = outer.div_ceil(4) * 4 * inner * k;
+                    let mut fw = AlignedVec::new(padded_total, 0.0f32);
+                    nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+                        &raw_weights,
+                        &mut fw,
+                        inner,
+                        outer,
+                        k,
+                    );
+                    fw
+                },
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 1]),
                 do_bias: false,
