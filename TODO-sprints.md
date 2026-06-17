@@ -153,7 +153,7 @@ e teste de ESR end-to-end.
   independem deste task. Os kernels de ativação hi-fi funcionam corretamente (A2 tests passam).
   A correção deve ser incluída em T-HF1.4 (gate anti-regressão).
 
-### T-HF1.3 — Variantes AVX-512 + **fix do bug de dupla computação**
+### T-HF1.3 — Variantes AVX-512 + **fix do bug de dupla computação** ✅ DONE
 
 * **Descrição**: implementar `simd_tanh_hifi_avx512` / `..._sigmoid_dual_hifi_avx512` e religar
   `src/math/wavenet/accumulate/avx512.rs`. **Corrigir o bug**: os blocos mascarados `if i < len`
@@ -164,6 +164,14 @@ e teste de ESR end-to-end.
   (uma vez); sem dupla aplicação. Verificar por inspeção + teste de paridade AVX-512 (se houver
   máquina; senão, marcar `#[ignore]` para a suíte longa). `cargo test` verde nos dois modos.
 * **Risco**: 🟠 — requer hardware AVX-512 para validação plena; documentar fallback de teste.
+  **Nota (T-HF1-3)**: implementados `simd_exp_hifi_avx512`, `simd_tanh_hifi_avx512`,
+  `simd_sigmoid_hifi_avx512`, `simd_tanh_sigmoid_dual_hifi_avx512` em `high_fidelity.rs`. Os 4
+  kernels de `avx512.rs` agora usam `cfg` unificado (mesmo padrão do AVX2 de T-HF1.2): laço SIMD
+  principal com `#[cfg(feature = "high-fidelity")]`/`#[cfg(not(...))]` selecionando hi-fi vs Padé;
+  cauda mascarada idem (onde aplicável); zero `f32::tanh()`/`.exp()` escalar no caminho hi-fi
+  AVX-512. Sem máquina AVX-512 local — os testes AVX-512 em `high_fidelity_test.rs` são
+  auto-skip quando `is_x86_feature_detected!("avx512f")` é falso. `cargo test` (434 tests) verde
+  nos dois modos.
 
 ### T-HF1.4 — Teste golden de fidelidade da ativação + gate anti-regressão
 

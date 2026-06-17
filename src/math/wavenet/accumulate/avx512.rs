@@ -19,11 +19,14 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        #[cfg(not(feature = "high-fidelity"))]
         while c + 16 <= ch {
             let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
+            #[cfg(feature = "high-fidelity")]
+            let (tanh_z1, sig_z2) =
+                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx512(z1, z2);
+            #[cfg(not(feature = "high-fidelity"))]
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
@@ -41,7 +44,8 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             let z2 = block[block_offset + ch + c];
             let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
             block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
+            let acc = head_input[head_offset + c] as f64 + activated as f64;
+            head_input[head_offset + c] = acc as f32;
             c += 1;
         }
     }
@@ -60,11 +64,14 @@ pub unsafe fn gated_activation_and_overwrite_block_avx512(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        #[cfg(not(feature = "high-fidelity"))]
         while c + 16 <= ch {
             let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
+            #[cfg(feature = "high-fidelity")]
+            let (tanh_z1, sig_z2) =
+                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx512(z1, z2);
+            #[cfg(not(feature = "high-fidelity"))]
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
@@ -107,9 +114,11 @@ pub unsafe fn accumulate_head_avx512(dest: &mut [f32], src: &[f32]) {
 pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    #[cfg(not(feature = "high-fidelity"))]
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx512(vb);
         _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
 
@@ -120,19 +129,14 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx512(vb);
         _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
 
         let vh = _mm512_maskz_loadu_ps(mask, head_input.as_ptr().add(i));
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, _mm512_add_ps(vh, vt));
-    }
-    #[cfg(feature = "high-fidelity")]
-    while i < len {
-        let val = block[i].tanh();
-        block[i] = val;
-        let acc = head_input[i] as f64 + val as f64;
-        head_input[i] = acc as f32;
-        i += 1;
     }
 }
 
@@ -141,9 +145,11 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
 pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    #[cfg(not(feature = "high-fidelity"))]
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx512(vb);
         _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
         _mm512_storeu_ps(head_input.as_mut_ptr().add(i), vt);
@@ -152,15 +158,11 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
+        #[cfg(feature = "high-fidelity")]
+        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        #[cfg(not(feature = "high-fidelity"))]
         let vt = crate::math::activations::simd_tanh_avx512(vb);
         _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
-    }
-    #[cfg(feature = "high-fidelity")]
-    while i < len {
-        let val = block[i].tanh();
-        block[i] = val;
-        head_input[i] = val;
-        i += 1;
     }
 }
