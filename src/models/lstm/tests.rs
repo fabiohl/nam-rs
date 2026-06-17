@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::math::common::half::f32_to_f16_bits;
     use crate::models::lstm::{LstmModel1, LstmModel2};
 
     // Verify that internal buffers (gates and state) are allocated with the correct
@@ -90,7 +91,7 @@ mod tests {
         for k in 0..4 {
             for j in 0..9 {
                 for i in 0..8 {
-                    model.layer.input_hidden_weights[k][j][i] = half::f16::from_f32(0.05).to_bits();
+                    model.layer.input_hidden_weights[k][j][i] = f32_to_f16_bits(0.05);
                 }
             }
         }
@@ -141,13 +142,12 @@ mod tests {
             for k in 0..4 {
                 for j in 0..9 {
                     for i in 0..8 {
-                        model.layer.input_hidden_weights[k][j][i] =
-                            half::f16::from_f32(0.05).to_bits();
+                        model.layer.input_hidden_weights[k][j][i] = f32_to_f16_bits(0.05);
                     }
                 }
             }
             for i in 0..8 {
-                model.head_weights[i] = half::f16::from_f32(0.5).to_bits();
+                model.head_weights[i] = f32_to_f16_bits(0.5);
             }
 
             let mut out = [0.0f32; 64];
@@ -228,7 +228,7 @@ mod tests {
         for k in 0..4 {
             for j in 0..17 {
                 for i in 0..8 {
-                    let w = half::f16::from_f32(0.01 * (i + j + k) as f32).to_bits();
+                    let w = f32_to_f16_bits(0.01 * (i + j + k) as f32);
                     if j < 9 {
                         model_simd.layer1.input_hidden_weights[k][j][i] = w;
                         model_scalar.layer1.input_hidden_weights[k][j][i] = w;
@@ -239,7 +239,7 @@ mod tests {
             }
         }
         for i in 0..8 {
-            let w = half::f16::from_f32(0.1 * i as f32).to_bits();
+            let w = f32_to_f16_bits(0.1 * i as f32);
             model_simd.head_weights[i] = w;
             model_scalar.head_weights[i] = w;
         }

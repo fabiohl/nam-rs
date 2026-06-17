@@ -10,6 +10,7 @@
 
 use nam_rs::math::activations::sigmoid::simd_sigmoid_avx2;
 use nam_rs::math::activations::tanh::simd_tanh_avx2;
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::gemm::dot::{dot_product_avx2, dot_product_avx512};
 use proptest::prelude::*;
 
@@ -132,7 +133,7 @@ proptest! {
     #[ignore]
     fn prop_dot_product_avx2_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
             // Convert f32 -> f16 weights (u16 bits)
-        let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| half::f16::from_f32(v).to_bits()).collect();
+        let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| f32_to_f16_bits(v)).collect();
         let simd_result = unsafe { dot_product_avx2(&vec_a, &vec_b_u16) };
 
             // Ground Truth in f64 to prevent test accumulation error from masking code error
@@ -161,7 +162,7 @@ proptest! {
     fn prop_dot_product_avx512_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
             // Mandatory runtime check to prevent SIGILL on older CPUs
         if std::is_x86_feature_detected!("avx512f") {
-            let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| half::f16::from_f32(v).to_bits()).collect();
+            let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| f32_to_f16_bits(v)).collect();
             let simd_result = unsafe { dot_product_avx512(&vec_a, &vec_b_u16) };
 
             let scalar_result: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| (x as f64) * (y as f64)).sum();

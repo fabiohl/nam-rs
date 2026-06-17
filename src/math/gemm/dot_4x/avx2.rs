@@ -8,6 +8,7 @@
 
 //! Dot Product 4x kernels — AVX2 (basic + interleaved).
 
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Computes 4 Dot Products simultaneously with maximum parallelism (ILP) via AVX2.
@@ -104,14 +105,10 @@ pub unsafe fn dot_product_4x_avx2(
 
         while i < len {
             let sw = state[i];
-            (s0, c0) =
-                crate::math::common::kahan_add(s0, c0, half::f16::from_bits(w0[i]).to_f32() * sw);
-            (s1, c1) =
-                crate::math::common::kahan_add(s1, c1, half::f16::from_bits(w1[i]).to_f32() * sw);
-            (s2, c2) =
-                crate::math::common::kahan_add(s2, c2, half::f16::from_bits(w2[i]).to_f32() * sw);
-            (s3, c3) =
-                crate::math::common::kahan_add(s3, c3, half::f16::from_bits(w3[i]).to_f32() * sw);
+            (s0, c0) = crate::math::common::kahan_add(s0, c0, f16_bits_to_f32_f16c(w0[i]) * sw);
+            (s1, c1) = crate::math::common::kahan_add(s1, c1, f16_bits_to_f32_f16c(w1[i]) * sw);
+            (s2, c2) = crate::math::common::kahan_add(s2, c2, f16_bits_to_f32_f16c(w2[i]) * sw);
+            (s3, c3) = crate::math::common::kahan_add(s3, c3, f16_bits_to_f32_f16c(w3[i]) * sw);
             i += 1;
         }
 

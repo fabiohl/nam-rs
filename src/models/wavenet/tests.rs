@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::math::common::AlignedVec;
+use crate::math::common::half::f32_to_f16_bits;
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
@@ -83,7 +84,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 f32_weights: Some(test_dense_f32(1, 4)),
                 #[cfg(not(feature = "high-fidelity"))]
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
             },
@@ -94,7 +95,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 f32_weights: Some(test_dense_f32(4, 4)),
                 #[cfg(not(feature = "high-fidelity"))]
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
             },
@@ -138,7 +139,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 #[cfg(not(feature = "high-fidelity"))]
                 f32_weights: None,
                 // Dimensions: OUT * IN = 2 * 1.
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
@@ -148,7 +149,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 #[cfg(not(feature = "high-fidelity"))]
                 f32_weights: None,
                 // Dimensions: OUT * IN = 2 * 2.
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
@@ -185,7 +186,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             f32_weights: Some(test_dense_f32(1, 4)),
             #[cfg(not(feature = "high-fidelity"))]
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
         },
@@ -195,7 +196,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             f32_weights: Some(test_dense_f32(4, 2)),
             #[cfg(not(feature = "high-fidelity"))]
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 4]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
@@ -231,7 +232,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             f32_weights: Some(test_dense_f32(4, 2)),
             #[cfg(not(feature = "high-fidelity"))]
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 2]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
@@ -241,7 +242,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             f32_weights: Some(test_dense_f32(2, 1)),
             #[cfg(not(feature = "high-fidelity"))]
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true, // Enable bias for final DC offset correction.
         },

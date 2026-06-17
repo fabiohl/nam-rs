@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::math::common::half::f32_to_f16_bits;
 
 /// Verifies the basic "Identity" functionality of a Dense layer
 /// (Fully Connected). This is used extensively in the *1x1* connections and
@@ -9,9 +10,9 @@ use super::*;
 #[test]
 fn test_dense_layer_identity() {
     // 4x4 Identity weight matrix.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]); // OUT=4 * IN=4
+    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 16]); // OUT=4 * IN=4
     for out_c in 0..4 {
-        weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
+        weights[out_c * 4 + out_c] = f32_to_f16_bits(1.0);
     }
 
     let dense = DenseLayer::<4, 4> {
@@ -37,9 +38,9 @@ fn test_dense_layer_identity() {
 #[test]
 fn test_dense_layer_with_bias() {
     // Identity weights + Bias of 1.0.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]);
+    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 16]);
     for out_c in 0..4 {
-        weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
+        weights[out_c * 4 + out_c] = f32_to_f16_bits(1.0);
     }
 
     let dense = DenseLayer::<4, 4> {
@@ -70,21 +71,21 @@ fn test_dense_layer_with_bias() {
 fn test_dense_layer_rectangular() {
     // Asymmetric Matrix: IN=8, OUT=4.
     // In real models, this happens when projecting CH (e.g., 16) to HEAD (e.g., 8).
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 32]); // 4 * 8
+    let mut weights = AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 32]); // 4 * 8
     // out_c = 0: Soma ponderada de in[0] e in[1]
     // [IN][OUT] -> in_c * OUT + out_c
-    weights[0] = half::f16::from_f32(1.0).to_bits(); // in0, out0
-    weights[4] = half::f16::from_f32(2.0).to_bits(); // in1, out0
+    weights[0] = f32_to_f16_bits(1.0); // in0, out0
+    weights[4] = f32_to_f16_bits(2.0); // in1, out0
 
     // out_c = 1: Soma ponderada de in[2] e in[3]
-    weights[9] = half::f16::from_f32(3.0).to_bits(); // in2, out1
-    weights[13] = half::f16::from_f32(4.0).to_bits(); // in3, out1
+    weights[9] = f32_to_f16_bits(3.0); // in2, out1
+    weights[13] = f32_to_f16_bits(4.0); // in3, out1
 
     // out_c = 2: Escala simples de in[4]
-    weights[18] = half::f16::from_f32(0.5).to_bits(); // in4, out2
+    weights[18] = f32_to_f16_bits(0.5); // in4, out2
 
     // out_c = 3: Phase inversion of in[7]
-    weights[31] = half::f16::from_f32(-1.0).to_bits(); // in7, out3
+    weights[31] = f32_to_f16_bits(-1.0); // in7, out3
 
     let dense = DenseLayer::<8, 4> {
         f32_weights: None,

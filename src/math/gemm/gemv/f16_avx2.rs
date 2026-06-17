@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::gemv_kernel;
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 // ── AVX2 ──────────────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ pub unsafe fn fused_add_gemv_avx2(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
+                let w = f16_bits_to_f32_f16c(weights[in_c * out_len + out_c]);
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) += sum;
@@ -103,8 +104,7 @@ pub unsafe fn gemv_overwrite_avx2(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w =
-                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) = sum;

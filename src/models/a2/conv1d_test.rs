@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::math::common::AlignedVec;
+use crate::math::common::half::f32_to_f16_bits;
 use crate::models::a2::A2_DILATIONS;
 use crate::models::a2::conv1d_fallback::a2_conv1d_single_frame_fallback;
 
@@ -20,7 +21,7 @@ fn make_test_weights(
     for i in 0..total_w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         let v = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-        weights[i] = half::f16::from_f32(v).to_bits();
+        weights[i] = f32_to_f16_bits(v);
     }
 
     let mut bias = AlignedVec::new(out_ch, 0.0f32);

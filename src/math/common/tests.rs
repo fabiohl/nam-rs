@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use super::half::f32_to_f16_bits;
 use super::ops::set_daz_ftz;
 use super::traits::SimdMath;
 use crate::math::common::{Avx2Math, Avx512Math};
@@ -13,10 +14,7 @@ fn test_dot_product_avx2_fma() {
     // This is the most frequent mathematical calculation inside neural networks.
     let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
     let vec_b = vec![2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0];
-    let vec_b_u16: Vec<u16> = vec_b
-        .iter()
-        .map(|&x| half::f16::from_f32(x).to_bits())
-        .collect();
+    let vec_b_u16: Vec<u16> = vec_b.iter().map(|&x| f32_to_f16_bits(x)).collect();
 
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let result = unsafe { dot_product_avx2(&vec_a, &vec_b_u16) };
@@ -47,10 +45,7 @@ fn test_dot_product_avx512() {
         let vec_b = vec![
             2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
         ];
-        let vec_b_u16: Vec<u16> = vec_b
-            .iter()
-            .map(|&x| half::f16::from_f32(x).to_bits())
-            .collect();
+        let vec_b_u16: Vec<u16> = vec_b.iter().map(|&x| f32_to_f16_bits(x)).collect();
 
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let result = unsafe { dot_product_avx512(&vec_a, &vec_b_u16) };

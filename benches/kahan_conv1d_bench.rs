@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::common::{AlignedVec, Avx2Math, SimdMath, kahan_add, prefetch_strategy_simple};
 use nam_rs::models::wavenet::{Conv1d, Conv1dDyn};
 use std::hint::black_box;
@@ -11,7 +12,7 @@ fn generate_weights(in_ch: usize, out_ch: usize, k: usize) -> Vec<u16> {
     (0..total)
         .map(|i| {
             let v = (i as f32 * 0.13).sin() * 0.25 + 0.15;
-            half::f16::from_f32(v).to_bits()
+            f32_to_f16_bits(v)
         })
         .collect()
 }

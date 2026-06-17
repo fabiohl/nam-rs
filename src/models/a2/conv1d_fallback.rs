@@ -9,6 +9,8 @@
 //! the same numerical result (within floating-point tolerance) as this
 //! unoptimized scalar computation.
 
+use crate::math::common::half::f16_bits_to_f32;
+
 /// Scalar reference for a single-frame A2 dilated causal Conv1D.
 ///
 /// Replicates the exact math of `Conv1dDyn::process_single_frame_generic`:
@@ -103,10 +105,10 @@ pub fn a2_conv1d_single_frame_fallback(
                 let w_idx = w_start + in_c * 4;
                 let input_val = layer_buffer[in_slice_start + in_c];
 
-                let w0 = half::f16::from_bits(weights[w_idx]).to_f32();
-                let w1 = half::f16::from_bits(weights[w_idx + 1]).to_f32();
-                let w2 = half::f16::from_bits(weights[w_idx + 2]).to_f32();
-                let w3 = half::f16::from_bits(weights[w_idx + 3]).to_f32();
+                let w0 = f16_bits_to_f32(weights[w_idx]);
+                let w1 = f16_bits_to_f32(weights[w_idx + 1]);
+                let w2 = f16_bits_to_f32(weights[w_idx + 2]);
+                let w3 = f16_bits_to_f32(weights[w_idx + 3]);
 
                 r0 += w0 * input_val;
                 r1 += w1 * input_val;

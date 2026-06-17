@@ -15,6 +15,7 @@
 //! 5. Asserts bit-exact output match
 
 use crate::math::common::AlignedVec;
+use crate::math::common::half::f32_to_f16_bits;
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
@@ -78,10 +79,7 @@ fn make_conv1d_f32_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<
 
 /// Helper: replicate a u16-quantized weight value into a dense layer weight matrix.
 fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<u16> {
-    AlignedVec::from_vec(vec![
-        half::f16::from_f32(SYNTHETIC_WEIGHT).to_bits();
-        out_ch * in_ch
-    ])
+    AlignedVec::from_vec(vec![f32_to_f16_bits(SYNTHETIC_WEIGHT); out_ch * in_ch])
 }
 
 /// Helper: create f32-native dense weights for high-fidelity mode.

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::math::common::half::f32_to_f16_bits;
 
 #[test]
 fn test_conv1d_dyn_padding_non_multiple_of_4() {
@@ -32,7 +33,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
                     let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
                     if out_c < out_ch {
                         let raw_idx = (out_c * in_ch + in_c) * kernel + k;
-                        weights[target_idx] = half::f16::from_f32(raw_weights[raw_idx]).to_bits();
+                        weights[target_idx] = f32_to_f16_bits(raw_weights[raw_idx]);
                     } else {
                         weights[target_idx] = 0;
                     }
@@ -85,7 +86,7 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
 
     let mut weights = AlignedVec::new(total_padded, 0u16);
     for i in 0..total_padded {
-        weights[i] = half::f16::from_f32(1.0).to_bits();
+        weights[i] = f32_to_f16_bits(1.0);
     }
 
     let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);

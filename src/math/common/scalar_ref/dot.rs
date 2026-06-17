@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use crate::math::common::half::f16_bits_to_f32;
 use crate::math::common::kahan_add;
 
 /// Computes the "Dot Product" between two sets of numbers.
@@ -21,7 +22,7 @@ pub unsafe fn dot_product_fallback(a: &[f32], b: &[u16]) -> f32 {
         unsafe {
             // The weight 'b' is "shrunken" (f16). Here we transform it back into
             // a normal decimal number (f32) so we can do the math.
-            let fb = half::f16::from_bits(*b.get_unchecked(i)).to_f32();
+            let fb = f16_bits_to_f32(*b.get_unchecked(i));
 
             // We multiply the input value 'a' by the weight 'fb' and add to the total.
             // `get_unchecked` is like telling the computer: "Go straight to this address,
@@ -90,10 +91,10 @@ pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &
             let s = *state.get_unchecked(i);
             let w = weights.get_unchecked(i);
 
-            let w0 = half::f16::from_bits(w[0]).to_f32();
-            let w1 = half::f16::from_bits(w[1]).to_f32();
-            let w2 = half::f16::from_bits(w[2]).to_f32();
-            let w3 = half::f16::from_bits(w[3]).to_f32();
+            let w0 = f16_bits_to_f32(w[0]);
+            let w1 = f16_bits_to_f32(w[1]);
+            let w2 = f16_bits_to_f32(w[2]);
+            let w3 = f16_bits_to_f32(w[3]);
 
             let (s0, c0) = kahan_add(sum[0], comp[0], w0 * s);
             sum[0] = s0;
@@ -237,10 +238,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
             let w = weights.get_unchecked(i);
 
             // We unpack the 4 weights just once to use in both frames.
-            let w0 = half::f16::from_bits(w[0]).to_f32();
-            let w1 = half::f16::from_bits(w[1]).to_f32();
-            let w2 = half::f16::from_bits(w[2]).to_f32();
-            let w3 = half::f16::from_bits(w[3]).to_f32();
+            let w0 = f16_bits_to_f32(w[0]);
+            let w1 = f16_bits_to_f32(w[1]);
+            let w2 = f16_bits_to_f32(w[2]);
+            let w3 = f16_bits_to_f32(w[3]);
 
             // Kahan-compensated accumulations for frame 0.
             let (s, c) = kahan_add(sum_f0[0], comp_f0[0], w0 * s0);

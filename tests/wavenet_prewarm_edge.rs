@@ -12,6 +12,7 @@
 //! 3. Dynamic model with RF=1024 (stress test with larger CH values).
 //! 4. Model with K=5 kernel, dilation=512, large total RF=4092.
 
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::common::{AlignedVec, SimdMathConfig};
 use nam_rs::models::NamModel;
 use nam_rs::models::wavenet::{
@@ -71,13 +72,13 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
             },
             input_mixin: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
             },
@@ -125,13 +126,13 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
             },
             input_mixin: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
@@ -157,13 +158,13 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         states: states_1,
         rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4]),
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2 * 4]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
@@ -190,13 +191,13 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         states: states_2,
         rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 4 * 2]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.01); 2]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
         },
@@ -379,13 +380,13 @@ fn test_prewarm_zero_rf() {
             },
             input_mixin: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
                 bias: AlignedVec::from_vec(vec![0.0; 1]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
                 f32_weights: None,
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+                weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
                 bias: AlignedVec::from_vec(vec![0.0; 1]),
                 do_bias: false,
             },
@@ -403,13 +404,13 @@ fn test_prewarm_zero_rf() {
         states: states1,
         rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },
@@ -435,13 +436,13 @@ fn test_prewarm_zero_rf() {
         states: states2,
         rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             f32_weights: None,
-            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 1]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },

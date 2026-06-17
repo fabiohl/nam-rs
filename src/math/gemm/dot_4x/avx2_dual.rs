@@ -8,6 +8,7 @@
 
 //! Dot Product 4x kernels — AVX2 (dual-frame + batch).
 
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Computes 4 Dot Products for two simultaneous audio frames (Dual Frame) via AVX2.
@@ -225,7 +226,7 @@ pub unsafe fn dot_product_batch_4x_avx2(
         let mut c3 = 0.0f32;
 
         while i < len {
-            let w = half::f16::from_bits(weights[i]).to_f32();
+            let w = f16_bits_to_f32_f16c(weights[i]);
             (s0, c0) = crate::math::common::kahan_add(s0, c0, w * h0[i]);
             (s1, c1) = crate::math::common::kahan_add(s1, c1, w * h1[i]);
             (s2, c2) = crate::math::common::kahan_add(s2, c2, w * h2[i]);

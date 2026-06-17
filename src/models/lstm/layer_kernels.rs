@@ -3,6 +3,7 @@
 
 //! LSTM layer kernel dispatch — SIMD processing paths and scalar fallback.
 
+use crate::math::common::half::f16_bits_to_f32;
 use core::arch::x86_64::*;
 
 use super::layer::LstmLayer;
@@ -235,7 +236,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
                     let w_f32 = if is_bf16 {
                         f32::from_bits((w as u32) << 16)
                     } else {
-                        half::f16::from_bits(w).to_f32()
+                        f16_bits_to_f32(w)
                     };
                     sum += w_f32 * s;
                 }

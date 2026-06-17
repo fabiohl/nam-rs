@@ -127,14 +127,19 @@ pub fn f32_to_f16_bits(f: f32) -> u16 {
 /// Decodes a binary16 bit-pattern to f32 using the F16C `VCVTPH2PS` instruction.
 ///
 /// `x86-64-v3` guarantees F16C availability (`.cargo/config.toml`).
+///
+/// # Safety
+///
+/// The caller must ensure the CPU supports the `f16c` target feature.
+/// This is guaranteed when compiling with `x86-64-v3` or higher.
 #[inline]
 #[target_feature(enable = "f16c")]
 pub unsafe fn f16_bits_to_f32_f16c(bits: u16) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         use std::arch::x86_64::_mm_cvtph_ps;
-        use std::arch::x86_64::_mm_cvtss_f32;
         use std::arch::x86_64::_mm_cvtsi32_si128;
+        use std::arch::x86_64::_mm_cvtss_f32;
         _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(bits as i32)))
     }
     #[cfg(not(target_arch = "x86_64"))]
@@ -145,16 +150,22 @@ pub unsafe fn f16_bits_to_f32_f16c(bits: u16) -> f32 {
 
 /// Encodes an f32 value to binary16 bits (u16) using the F16C `VCVTPS2PH`
 /// instruction with round-to-nearest-even.
+///
+/// # Safety
+///
+/// The caller must ensure the CPU supports the `f16c` target feature.
+/// This is guaranteed when compiling with `x86-64-v3` or higher.
 #[inline]
 #[target_feature(enable = "f16c")]
 pub unsafe fn f32_to_f16_bits_f16c(f: f32) -> u16 {
     #[cfg(target_arch = "x86_64")]
     {
         use std::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
-        use std::arch::x86_64::_mm_cvtsi128_si32;
         use std::arch::x86_64::_mm_cvtps_ph;
+        use std::arch::x86_64::_mm_cvtsi128_si32;
         use std::arch::x86_64::_mm_set_ss;
-        (_mm_cvtsi128_si32(_mm_cvtps_ph(_mm_set_ss(f), _MM_FROUND_TO_NEAREST_INT)) as u32 & 0xFFFF) as u16
+        (_mm_cvtsi128_si32(_mm_cvtps_ph(_mm_set_ss(f), _MM_FROUND_TO_NEAREST_INT)) as u32 & 0xFFFF)
+            as u16
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -203,37 +214,6 @@ mod tests {
         }
     }
 
-    /// Bit-exact decode against the `half` crate as golden reference.
-    #[test]
-    fn exhaustive_decode_vs_half() {
-        for bits in 0u16..=0xFFFFu16 {
-            let expected = half::f16::from_bits(bits).to_f32();
-            let got = f16_bits_to_f32(bits);
-            assert_eq!(
-                got.to_bits(),
-                expected.to_bits(),
-                "decode mismatch for bits=0x{:04X}",
-                bits
-            );
-        }
-    }
-
-    /// Bit-exact encode against the `half` crate for all possible f16 bit-patterns.
-    #[test]
-    fn exhaustive_encode_vs_half() {
-        // Reconstruct all f16 values via decode then re-encode, compare bits.
-        for bits in 0u16..=0xFFFFu16 {
-            let f = half::f16::from_bits(bits).to_f32();
-            let expected = half::f16::from_f32(f).to_bits();
-            let got = f32_to_f16_bits(f);
-            assert_eq!(
-                got, expected,
-                "encode mismatch for f={:e} (f16 bits 0x{:04X})",
-                f, bits
-            );
-        }
-    }
-
     /// ±0 must round-trip correctly.
     #[test]
     fn zero_roundtrip() {
@@ -268,6 +248,7 @@ mod tests {
     fn exhaustive_decode_f16c_vs_software() {
         for bits in 0u16..=0xFFFFu16 {
             let expected = f16_bits_to_f32(bits);
+            // SAFETY: exhaustive test on x86_64 with F16C (x86-64-v3 guarantees it).
             let got = unsafe { f16_bits_to_f32_f16c(bits) };
             assert_eq!(
                 got.to_bits(),
@@ -285,6 +266,7 @@ mod tests {
         for bits in 0u16..=0xFFFFu16 {
             let f = f16_bits_to_f32(bits);
             let expected = f32_to_f16_bits(f);
+            // SAFETY: exhaustive test on x86_64 with F16C (x86-64-v3 guarantees it).
             let got = unsafe { f32_to_f16_bits_f16c(f) };
             assert_eq!(
                 got, expected,

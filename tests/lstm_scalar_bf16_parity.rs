@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::lstm::LstmModel1;
 use proptest::prelude::*;
 
@@ -8,7 +9,7 @@ fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
     if is_bf16 {
         (f.to_bits() >> 16) as u16
     } else {
-        half::f16::from_f32(f).to_bits()
+        f32_to_f16_bits(f)
     }
 }
 

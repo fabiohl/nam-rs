@@ -1,6 +1,7 @@
 // Minimal test: CH=12 dense layer with known weights, compare SIMD vs scalar
 #[test]
 fn test_dense_ch12_scalar_vs_simd() {
+    use crate::math::common::half::f16_bits_to_f32;
     use crate::math::common::AlignedVec;
     
     // Create a 12x12 DenseLayer with known weights
@@ -39,7 +40,7 @@ fn test_dense_ch12_scalar_vs_simd() {
     for oc in 0..12 {
         let mut sum = bias[oc];
         for ic in 0..12 {
-            let w = half::f16::from_bits(dense.weights[ic * 12 + oc]).to_f32();
+            let w = f16_bits_to_f32(dense.weights[ic * 12 + oc]);
             sum += input[ic] * w;
         }
         scalar_out[oc] = sum;
@@ -53,6 +54,7 @@ fn test_dense_ch12_scalar_vs_simd() {
 
 #[test]
 fn test_conv1d_ch12_scalar_vs_simd() {
+    use crate::math::common::half::f16_bits_to_f32;
     use crate::math::common::AlignedVec;
     use crate::models::wavenet::Conv1d;
     use crate::models::wavenet::conv_input::ConvInput;
@@ -107,7 +109,7 @@ fn test_conv1d_ch12_scalar_vs_simd() {
                 let b = oc / 4;
                 let lane = oc % 4;
                 let w_idx = b * (K * CH * 4) + k * (CH * 4) + ic * 4 + lane;
-                let w = half::f16::from_bits(conv.weights[w_idx]).to_f32();
+                let w = f16_bits_to_f32(conv.weights[w_idx]);
                 sum += state[in_idx + ic] * w;
             }
         }

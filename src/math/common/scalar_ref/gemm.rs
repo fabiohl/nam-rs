@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use crate::math::common::half::f16_bits_to_f32;
+
 /// Batch Matrix Processing (GEMM).
 /// GEMM stands for "General Matrix Multiplication". It's the heart of neural networks.
 /// This function processes multiple audio "frames" at once.
@@ -61,8 +63,7 @@ pub unsafe fn fused_add_gemv_fallback(
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 // Gets the compressed weight and unpacks it.
-                let w =
-                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
                 // Multiplies the input by the weight and accumulates.
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
@@ -93,8 +94,7 @@ pub unsafe fn gemv_overwrite_fallback(
         for in_c in 0..in_len {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
-                let w =
-                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
         }
@@ -133,7 +133,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
                 let mut sum = if do_bias { b } else { 0.0 };
                 for in_c in 0..in_len {
                     let w_bits = *weights.get_unchecked(in_c * out_len + out_c);
-                    let w = half::f16::from_bits(w_bits).to_f32();
+                    let w = f16_bits_to_f32(w_bits);
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 // Final result = (Matrix Processing) + (Original Residual Signal).

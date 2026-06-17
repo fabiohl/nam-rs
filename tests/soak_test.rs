@@ -15,6 +15,7 @@ use nam_rs::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
+use nam_rs::math::common::half::{f16_bits_to_f32, f32_to_f16_bits};
 use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
 use nam_rs::models::lstm::*;
 
@@ -1087,7 +1088,7 @@ fn dense_scalar_f16(
                 0.0
             };
             for ic in 0..in_ch {
-                s += input[i + ic] * half::f16::from_bits(w[oc * in_ch + ic]).to_f32();
+                s += input[i + ic] * f16_bits_to_f32(w[oc * in_ch + ic]);
             }
             if let Some(r) = residual {
                 s += r[o + oc];
@@ -1181,8 +1182,7 @@ fn conv1d_scalar_f16(
             for oc in 0..out_ch {
                 let mut s = 0.0f32;
                 for ic in 0..in_ch {
-                    s += ring_buf[pos + ic]
-                        * half::f16::from_bits(w[oc * k * in_ch + tk * in_ch + ic]).to_f32();
+                    s += ring_buf[pos + ic] * f16_bits_to_f32(w[oc * k * in_ch + tk * in_ch + ic]);
                 }
                 output[o + oc] += s;
             }
@@ -1200,7 +1200,7 @@ fn conv1d_scalar_f16(
 #[allow(clippy::too_many_arguments)]
 fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: usize) -> Vec<f32> {
     let fw = 0.01f32;
-    let uw = half::f16::from_f32(fw).to_bits();
+    let uw = f32_to_f16_bits(fw);
 
     // ── Topology ─────────────────────────────────────────────
     let dil_a1: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
@@ -1291,7 +1291,7 @@ fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: us
                 let mw = if use_f32 {
                     a1_mix_f32[oc]
                 } else {
-                    half::f16::from_bits(a1_mix_u16[oc]).to_f32()
+                    f16_bits_to_f32(a1_mix_u16[oc])
                 };
                 mixin[ff * 16 + oc] = mw * cv;
             }
@@ -1400,7 +1400,7 @@ fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: us
                 let mw = if use_f32 {
                     a2_mix_f32[oc]
                 } else {
-                    half::f16::from_bits(a2_mix_u16[oc]).to_f32()
+                    f16_bits_to_f32(a2_mix_u16[oc])
                 };
                 mixin[ff * 8 + oc] = mw * cv;
             }

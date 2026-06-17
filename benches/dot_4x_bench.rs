@@ -7,6 +7,7 @@
 //! representative of LSTM and WaveNet topologies.
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::common::scalar_ref;
 use nam_rs::math::gemm::dot_4x;
 
@@ -14,7 +15,7 @@ fn generate_test_data(len: usize) -> (Vec<[u16; 4]>, Vec<f32>, Vec<f32>) {
     let weights: Vec<[u16; 4]> = (0..len)
         .map(|i| {
             let v = (i as f32 * 0.1).sin() * 0.5 + 0.5;
-            let bits = half::f16::from_f32(v).to_bits();
+            let bits = f32_to_f16_bits(v);
             [bits; 4]
         })
         .collect();

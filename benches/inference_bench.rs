@@ -38,6 +38,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
+use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::NamModel;
 use nam_rs::models::container::ContainerModel;
 use nam_rs::models::lstm::lstm_weight_count;
@@ -316,7 +317,7 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
     let vec_a = AlignedVec::from_vec((0..256).map(|i| (i as f32) * 0.1).collect());
     let vec_b = AlignedVec::from_vec(
         (0..256)
-            .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
+            .map(|i| f32_to_f16_bits((i as f32) * -0.1))
             .collect(),
     );
 
@@ -338,7 +339,7 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
     let vec_a = AlignedVec::from_vec((0..64).map(|i| (i as f32) * 0.1).collect());
     let vec_b = AlignedVec::from_vec(
         (0..64)
-            .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
+            .map(|i| f32_to_f16_bits((i as f32) * -0.1))
             .collect(),
     );
     c.bench_function("DotProduct_AVX2_64elem", |b| {

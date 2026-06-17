@@ -6,6 +6,7 @@
     clippy::too_many_arguments
 )]
 
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Performs the linear projection for the 4 "gates" of an LSTM cell simultaneously via AVX2.
@@ -110,14 +111,10 @@ pub unsafe fn gemv_4gate_avx2(
                 let s = *in_frame.get_unchecked(in_c);
                 // Converts the f16-compressed weights (packed as 16-bit u16) to f32
                 // at runtime using the `half` library before multiplying.
-                sum0 +=
-                    s * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
-                sum1 +=
-                    s * half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32();
-                sum2 +=
-                    s * half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32();
-                sum3 +=
-                    s * half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32();
+                sum0 += s * f16_bits_to_f32_f16c(*w0.get_unchecked(in_c * out_len + out_c));
+                sum1 += s * f16_bits_to_f32_f16c(*w1.get_unchecked(in_c * out_len + out_c));
+                sum2 += s * f16_bits_to_f32_f16c(*w2.get_unchecked(in_c * out_len + out_c));
+                sum3 += s * f16_bits_to_f32_f16c(*w3.get_unchecked(in_c * out_len + out_c));
             }
 
             // Write each gate's results contiguously into the output tensor.

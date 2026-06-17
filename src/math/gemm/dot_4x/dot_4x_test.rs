@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::math::common::half::f32_to_f16_bits;
 use crate::math::common::scalar_ref;
 
 /// Generates test data: weights `[[u16; 4]]` and state `[f32]`.
@@ -9,7 +10,7 @@ fn make_data(len: usize) -> (Vec<[u16; 4]>, Vec<f32>) {
     let weights: Vec<[u16; 4]> = (0..len)
         .map(|i| {
             let v = (i as f32 * 0.1).sin() * 0.5 + 0.5;
-            let bits = half::f16::from_f32(v).to_bits();
+            let bits = f32_to_f16_bits(v);
             [
                 bits,
                 bits.wrapping_mul(3),

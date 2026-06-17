@@ -3,6 +3,7 @@
 
 //! Basic mathematical operations and low-level SIMD utilities.
 
+use crate::math::common::half::f32_to_f16_bits;
 use core::arch::x86_64::*;
 
 /// Converts F32 to BF16 bits (simple truncation).
@@ -17,7 +18,7 @@ pub fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
     if is_bf16 {
         f32_to_bf16(f)
     } else {
-        half::f16::from_f32(f).to_bits()
+        f32_to_f16_bits(f)
     }
 }
 

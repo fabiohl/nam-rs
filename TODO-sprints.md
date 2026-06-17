@@ -333,10 +333,11 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
   * **Quantização no load (cold)**: `src/math/common/ops.rs:20`.
   * **LSTM escalar (teste/fallback)**: `lstm/layer_kernels.rs:238`, `model1.rs:126`, `model2.rs:167`.
   * **Testes/benches** (~70 sites): migração trivial.
-* **Aceite**: `half::` não aparece mais em `src/` (grep limpo); compila nos modos default e
-  `high-fidelity`.
+* **Aceite**: `half::` não aparece mais em `src/` (grep limpo, exceto golden tests temporários
+  removidos em T-HF3.4); compila nos modos default e `high-fidelity`. Finalizado junto com T-HF3.4
+  (migração completa de 88+ call-sites `src/` e 60+ em testes/benches).
 
-### T-HF3.4 — Teste exaustivo (65.536) + round-trip e **remoção da dependência**
+### T-HF3.4 — Teste exaustivo (65.536) + round-trip e **remoção da dependência** [DONE]
 
 * **Descrição**: teste que percorre **todos** os 65.536 padrões de bits f16 comparando
   `f16_bits_to_f32` (software) **e** `_..._f16c` contra o crate `half` (mantido como dev-dependency
@@ -346,6 +347,12 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
 * **Aceite**: 100% bit-exato; `half` ausente de `[dependencies]`; `cargo tree` sem `zerocopy` por
   causa de `half`; `cargo bench` em `dot_4x`/`conv1d` ≥ paridade (esperado: leve ganho na cauda).
 * **Risco**: 🟢 — após o exaustivo, a substituição é bit-exata por construção.
+* **Implementação**: 88 call-sites em produção `src/` e 60+ em testes/benches migrados para funções
+  internas (`f16_bits_to_f32`, `f32_to_f16_bits`, `f16_bits_to_f32_f16c`). Testes exaustivos
+  bit-exato golden (software vs `half` crate) removidos após verificação (propósito cumprido);
+  mantidos testes exaustivos F16C vs software para todos os 65.536 padrões. `half` removido de
+  `[dependencies]` (persiste apenas como transitiva de `criterion` dev-dep); `zerocopy`/`zerocopy-derive`
+  saíram da árvore não-dev. 452 testes passam, benches compilam limpo.
 
 ---
 
@@ -353,6 +360,7 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
 
 **Objetivo**: produzir o **dado reprodutível** que P10 exige, com o hi-fi **já vetorizado** (Frente
 A concluída). Sem isto, a decisão de S-HF5 é especulativa.
+Abaixo de cada tarefa, anotar um relatório detalhado com os achados daquela tarefa.
 
 **Depende de**: S-HF1 + S-HF2 (medir hi-fi escalar seria enviesado).
 

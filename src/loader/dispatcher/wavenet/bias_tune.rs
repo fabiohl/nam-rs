@@ -12,13 +12,15 @@
 #[cfg(test)]
 use crate::math::common::quantize_weight;
 
+use crate::math::common::half::f16_bits_to_f32;
+
 /// Reverses `quantize_weight`: reconstructs an approximate f32 from u16.
 #[inline(always)]
 fn dequantize_weight(w: u16, is_bf16: bool) -> f32 {
     if is_bf16 {
         f32::from_bits((w as u32) << 16)
     } else {
-        half::f16::from_bits(w).to_f32()
+        f16_bits_to_f32(w)
     }
 }
 

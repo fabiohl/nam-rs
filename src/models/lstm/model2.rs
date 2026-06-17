@@ -4,6 +4,7 @@
 //! 2-layer LSTM model with pipelining and SIMD dispatch.
 
 use super::layer::LstmLayer;
+use crate::math::common::half::f16_bits_to_f32;
 
 macro_rules! define_lstm2_process_pipelined {
     (
@@ -164,7 +165,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                     let w_f32 = if is_bf16 {
                         f32::from_bits((w as u32) << 16)
                     } else {
-                        half::f16::from_bits(w).to_f32()
+                        f16_bits_to_f32(w)
                     };
                     dot += h_val * w_f32;
                 }

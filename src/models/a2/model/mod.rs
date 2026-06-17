@@ -43,6 +43,7 @@ use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::AlignedVec;
+use crate::math::common::half::f16_bits_to_f32;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 
 /// Computes the receptive field size for the A2 architecture.
@@ -264,7 +265,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         for (f, x) in input.iter().take(nf).enumerate() {
             let base = f * ch;
             for c in 0..ch {
-                let rw = half::f16::from_bits(self.rechannel_w[c]).to_f32();
+                let rw = f16_bits_to_f32(self.rechannel_w[c]);
                 self.layer_in[base + c] = rw * x;
             }
         }

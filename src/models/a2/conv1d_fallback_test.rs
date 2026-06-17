@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::math::common::half::f32_to_f16_bits;
 
 #[test]
 fn test_a2_fallback_kernel6_all_ones() {
@@ -15,7 +16,7 @@ fn test_a2_fallback_kernel6_all_ones() {
 
     let mut weights = vec![0u16; total_padded];
     for w in weights.iter_mut().take(total_padded) {
-        *w = half::f16::from_f32(1.0).to_bits();
+        *w = f32_to_f16_bits(1.0);
     }
 
     let bias = vec![0.5f32; out_ch];
@@ -54,7 +55,7 @@ fn test_a2_fallback_kernel15_all_ones() {
 
     let mut weights = vec![0u16; total_padded];
     for w in weights.iter_mut().take(total_padded) {
-        *w = half::f16::from_f32(1.0).to_bits();
+        *w = f32_to_f16_bits(1.0);
     }
 
     let bias = vec![0.0f32; out_ch];
@@ -94,7 +95,7 @@ fn test_a2_fallback_dilated_tap_selection() {
 
     let mut weights = vec![0u16; total_padded];
     for w in weights.iter_mut().take(total_padded) {
-        *w = half::f16::from_f32(1.0).to_bits();
+        *w = f32_to_f16_bits(1.0);
     }
 
     let bias = vec![0.0f32; out_ch];

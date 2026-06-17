@@ -6,6 +6,7 @@
     clippy::too_many_arguments
 )]
 
+use crate::math::common::half::f16_bits_to_f32;
 use core::arch::x86_64::*;
 
 /// GEMV 4-gate kernel AVX-512 for LSTM.
@@ -100,10 +101,10 @@ pub unsafe fn gemv_4gate_avx512(
         for in_c in 0..in_len {
             let si = *in_frame.get_unchecked(in_c);
             // Weights are in packed f16 format and are decompressed on demand to f32.
-            s0 += si * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
-            s1 += si * half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32();
-            s2 += si * half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32();
-            s3 += si * half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32();
+            s0 += si * f16_bits_to_f32(*w0.get_unchecked(in_c * out_len + out_c));
+            s1 += si * f16_bits_to_f32(*w1.get_unchecked(in_c * out_len + out_c));
+            s2 += si * f16_bits_to_f32(*w2.get_unchecked(in_c * out_len + out_c));
+            s3 += si * f16_bits_to_f32(*w3.get_unchecked(in_c * out_len + out_c));
         }
         out[out_c] = s0;
         out[out_c + out_len] = s1;
