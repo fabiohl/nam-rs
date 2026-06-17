@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::gemv_kernel;
-use crate::math::common::half::f16_bits_to_f32;
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 // ── AVX-512 Small (CH=16 specialized) ──────────────────────────────────────
@@ -12,7 +12,7 @@ use core::arch::x86_64::*;
 /// Uses 8 independent ZMM accumulators (8×16 = 128 lanes) with an inner loop
 /// step of 8, breaking the FMA dependency chain and saturating the AVX-512
 /// execution ports.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn gemv_overwrite_avx512_small(
     in_frame: &[f32],
     weights: &[u16],
@@ -119,7 +119,7 @@ pub unsafe fn gemv_overwrite_avx512_small(
 /// Fused-Add-GEMV kernel AVX-512 specialized for Standard WaveNet (CH=16).
 ///
 /// 8 independent ZMM accumulators with step 8 in the inner loop.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_add_gemv_avx512_small(
     in_frame: &[f32],
     weights: &[u16],
@@ -155,7 +155,7 @@ pub unsafe fn fused_add_gemv_avx512_small(
 ///
 /// Uses 8 independent ZMM accumulators (8×16 = 128 lanes) with an inner loop
 /// step of 8 to break the FMA dependency chain.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn gemv_overwrite_avx512(
     in_frame: &[f32],
     weights: &[u16],
@@ -198,7 +198,7 @@ pub unsafe fn gemv_overwrite_avx512(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) = sum;
@@ -208,7 +208,7 @@ pub unsafe fn gemv_overwrite_avx512(
 }
 
 /// Batch version of gemv_overwrite via AVX-512.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn gemv_overwrite_batch_avx512(
     in_frames: &[f32],
     weights: &[u16],
@@ -232,7 +232,7 @@ pub unsafe fn gemv_overwrite_batch_avx512(
 /// Performs the fused operation Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX-512.
 ///
 /// 8 independent ZMM accumulators with step 8 in the inner loop.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_add_gemv_avx512(
     in_frame: &[f32],
     weights: &[u16],
@@ -275,7 +275,7 @@ pub unsafe fn fused_add_gemv_avx512(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) += sum;

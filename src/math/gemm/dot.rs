@@ -8,7 +8,7 @@
 
 //! Dot Product kernels — AVX2 and AVX-512.
 
-use crate::math::common::half::{f16_bits_to_f32, f16_bits_to_f32_f16c};
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Computes the Dot Product in a blazing-fast manner using hardware acceleration (AVX2).
@@ -97,7 +97,9 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
 /// Dot product f32 with u16 weights using AVX-512.
 /// Basically: (number_a1 * weight_b1) + (number_a2 * weight_b2) + ...
-#[target_feature(enable = "avx512f,avx512vl")]
+// f16c added so the scalar tail can use the hardware _mm_cvtph_ps intrinsic.
+// F16C is guaranteed by x86-64-v3 and present on all AVX-512 targets we support.
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
@@ -113,7 +115,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     let mut compensation = 0.0f32;
     while i < len {
-        let term = *a.get_unchecked(i) * f16_bits_to_f32(*b.get_unchecked(i));
+        let term = *a.get_unchecked(i) * f16_bits_to_f32_f16c(*b.get_unchecked(i));
         (sum, compensation) = crate::math::common::kahan_add(sum, compensation, term);
         i += 1;
     }

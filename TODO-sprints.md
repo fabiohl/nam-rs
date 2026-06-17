@@ -180,12 +180,15 @@ e teste de ESR end-to-end.
   escalares (erro ≤ 1e-6) e, end-to-end, contra a referência: o ESR do WaveNet hi-fi **não pode
   regredir** vs o hi-fi escalar atual (medir antes/depois). Reaproveitar `tests/golden_vectors.rs` e
   os utilitários de ESR.
+
 * **Arquivo**: inline se o módulo < 300 linhas; senão `high_fidelity_test.rs` (regra `testing.md`).
   Sweeps pesados → `#[ignore]` (suíte longa).
+
 * **Aceite**: ESR hi-fi-SIMD ≤ ESR hi-fi-escalar (dentro de tolerância documentada) e ambos ≪ lo-fi;
   cabeçalho SPDX presente.
 
   **Resultado (T-HF1.4)**:
+
   * **Fix do SIGSEGV**: `f32_weights` vazios nos builders sintéticos de `wavenet_prewarm_edge.rs`
     (3 instâncias) e `tests/common/model_builders.rs` (4 instâncias) causavam SIGSEGV com
     `--features high-fidelity`. Corrigidos populando `f32_weights` via
@@ -349,10 +352,42 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
 * **Risco**: 🟢 — após o exaustivo, a substituição é bit-exata por construção.
 * **Implementação**: 88 call-sites em produção `src/` e 60+ em testes/benches migrados para funções
   internas (`f16_bits_to_f32`, `f32_to_f16_bits`, `f16_bits_to_f32_f16c`). Testes exaustivos
-  bit-exato golden (software vs `half` crate) removidos após verificação (propósito cumprido);
-  mantidos testes exaustivos F16C vs software para todos os 65.536 padrões. `half` removido de
-  `[dependencies]` (persiste apenas como transitiva de `criterion` dev-dep); `zerocopy`/`zerocopy-derive`
-  saíram da árvore não-dev. 452 testes passam, benches compilam limpo.
+  bit-exato golden (software vs `half` crate) adicionados em `54bf169`, passaram, e foram removidos
+  em `b025f29` junto com a remoção da dependência (propósito cumprido); testes exaustivos F16C vs
+  software mantidos (65.536 padrões). `half` removido de `[dependencies]`; `zerocopy`/`zerocopy-derive`
+  saíram da árvore de produção. 452 testes passam, benches compilam limpo.
+
+---
+
+## Auditoria pós-sprint S-HF3 (jun/2026)
+
+> **Resultado**: **PASS** — todas as 4 tarefas concluídas com êxito. Dois residuais identificados:
+
+### R1 — Caudas AVX-512 usavam software em vez de F16C [CORRIGIDO]
+
+Kernels com `#[target_feature(enable = "avx512f,avx512vl")]` sem `f16c` não podiam chamar
+`f16_bits_to_f32_f16c` nos seus scalar tails (0-15 elementos). Corrigido adicionando `,f16c` à
+target_feature e substituindo pelo intrínseco hardware:
+
+* `src/math/gemm/dot.rs` — `dot_product_avx512`: `avx512f,avx512vl` → `avx512f,avx512vl,f16c`
+* `src/math/gemm/gemv_4gate/avx512.rs` — `gemv_4gate_avx512`: mesmo
+* `src/math/gemm/gemv/f16_avx512.rs` — todas as 5 funções: mesmo
+* `src/math/gemm/gemm_batch/avx512.rs` — todas as 3 funções: mesmo
+
+Impacto: mínimo (economiza ~4 instruções no tail de 0-15 elementos por chamada), mas consistência
+com o restante dos kernels AVX-512 e eliminação de risco de future-maintenance-drift.
+
+### R2 — Scalar tails do gated activation usam `.tanh()` + `.exp()` em ambos os modos [ACEITO]
+
+Os quatro kernels de gated activation (`avx2.rs:87,149`; `avx512.rs:45,85`) têm tails que chamam
+`z1.tanh() * (1.0 / (1.0 + (-z2).exp()))` sem `#[cfg]`. Para A1-Standard (CH=16): `16 % 8 = 0`
+→ **tail sempre vazia → zero impacto**. Para A1-Lite (CH=12): 4 elementos/frame via libm.
+
+Decisão: **aceitar como residual de baixo risco**. WaveNet Lite (CH=12) já tem P1 (divergência
+conhecida); A1-Standard (CH=16) não é afetado. A função `scalar_tanh_hifi` disponível delega para
+`f32::tanh()` (mesmo comportamento), então não há ganho de fidelidade em substituir. A correção
+completa exigiria um wrapper escalar do polinômio hi-fi — viável mas sem retorno claro enquanto P1
+(Lite) estiver aberto. **Rastreado como item futuro para quando P1 for resolvido.**
 
 ---
 
@@ -362,49 +397,190 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
 A concluída). Sem isto, a decisão de S-HF5 é especulativa.
 Abaixo de cada tarefa, anotar um relatório detalhado com os achados daquela tarefa.
 
-**Depende de**: S-HF1 + S-HF2 (medir hi-fi escalar seria enviesado).
+**Depende de**: S-HF1 + S-HF2 + S-HF3 concluídas (✅).
+
+**Pré-requisito imediato**: correr os comandos de validação abaixo antes de qualquer medição
+para garantir estado limpo de compilação e testes.
 
 **Risco**: 🟢 Baixo (instrumentação/medição; não altera produção).
 
-### T-HF4.1 — Benchmarks criterion lo-fi vs hi-fi
+---
 
-* **Descrição**: em `benches/inference_bench.rs`, adicionar par
-  `bench_wavenet_standard_lofi` vs `bench_wavenet_standard_hifi` (compilado com `--features
-  high-fidelity`), em blocos de **1, 16, 64** frames; registrar **latência de pico** e **throughput**
-  (frames/s). Cobrir A1-Std (CH=16) e, se viável, Lite (CH=12). Seguir `docs/benchmarks.md`.
-* **Aceite**: relatório criterion comparativo reprodutível; números por tamanho de bloco.
+### T-HF4.0 — Validação de estado (humano executa)
 
-### T-HF4.2 — ESR com pesos reais (não sintéticos)
+```bash
+# 1. Build limpo em ambos os modos
+cargo check
+cargo check --features high-fidelity
 
-* **Descrição**: medir ESR de cada modo vs C++ usando **modelos reais** (`wavenet_official.nam` e
-  modelos nondist), não os sintéticos 0.01. Reusar `tests/golden_vectors.rs` /
-  `tests/nondist_validation.rs` e a infra de paridade C++. Registrar ESR lo-fi vs hi-fi vs LSTM/Linear.
-* **Aceite**: tabela de ESR real por modo/modelo; confirmar que hi-fi ≈ paridade C++ (≪ 1e-5) e
-  lo-fi mantém ~3e-3..1e-2.
+# 2. Suíte completa em ambos os modos (espera-se: 0 falhas, 0 warnings)
+cargo test --quiet 2>&1 | tail -5
+cargo test --quiet --features high-fidelity 2>&1 | tail -5
+```
 
-### T-HF4.3 — Perfil de memória (footprint f32 vs u16)
+Resultado esperado: `test result: ok. N passed; 0 failed; N ignored` em ambos.
+Se houver falha: parar e investigar antes de prosseguir.
 
-* **Descrição**: medir o footprint por modelo: `AlignedVec<f32>` (hi-fi, 4 bytes) vs `AlignedVec<u16>`
-  (lo-fi, 2 bytes) — lembrando que o hi-fi atual mantém **ambos** (`conv1d.rs:22-26`,
-  `dense.rs:17-20`), ~3× memória de pesos. Avaliar **eliminar o buffer u16** no hi-fi puro (se lo-fi
-  for descontinuado em S-HF5) → footprint cairia para ~2× → 2 bytes vira 4 bytes (só f32). RSS via
-  soak (padrão `TODO-problemas.md:409`).
-* **Aceite**: tabela de footprint por modelo e por modo; estimativa do ganho de RAM ao remover u16.
+---
 
-### T-HF4.4 — Avaliação perceptual informal (AB / MR-STFT)
+### T-HF4.1 — Benchmarks criterion lo-fi vs hi-fi [AGUARDA EXECUÇÃO]
 
-* **Descrição**: AB informal em material high-gain (transientes) + métrica perceptual MR-STFT/LUFS
-  (`docs/perceptual_validation.md`) quantificando a diferença de ~1% de energia do lo-fi. Documentar
-  se é perceptível.
-* **Aceite**: parecer perceptual registrado (perceptível? sim/não/condicional).
+**Contexto**: a função `bench_wavenet_p10_lofi_vs_hifi` foi adicionada em
+`benches/inference_bench.rs` (tag `WaveNet_P10_Comparison_{LF|HF}_{size}`).
 
-### T-HF4.5 — Relatório de decisão consolidado
+```bash
+# Passo 1: compilar os benches (sem rodar — confirma que não há erros de compilação)
+cargo bench --bench inference_bench --no-run
+cargo bench --bench inference_bench --features high-fidelity --no-run
 
-* **Descrição**: consolidar T-HF4.1–4.4 numa tabela única (latência, throughput, memória, ESR,
-  perceptual) respondendo à matriz de critério de `TODO-problemas.md:365-371`. Entrada direta para
-  S-HF5.
-* **Aceite**: documento `docs/` (ou seção em `fastmath-approximations.md`) com a recomendação
-  fundamentada.
+# Passo 2: medir lo-fi — copiar a saída completa aqui como resultado desta tarefa
+cargo bench --bench inference_bench -- "WaveNet_P10_Comparison_LF" 2>&1 | tee bench_lofi_p10.txt
+
+# Passo 3: medir hi-fi — copiar a saída completa aqui
+cargo bench --bench inference_bench --features high-fidelity -- "WaveNet_P10_Comparison_HF"  2>&1 | tee bench_hifi_p10.txt
+
+# Passo 4: comparação rápida (registrar os números aqui)
+echo "=== LO-FI ===" && grep "time:" bench_lofi_p10.txt
+echo "=== HI-FI ===" && grep "time:" bench_hifi_p10.txt
+```
+
+Também rodar a série de tamanhos maiores para completar o perfil:
+
+```bash
+cargo bench --bench inference_bench -- "WaveNet_Standard_CH16" 2>&1 | tee bench_lofi_standard.txt
+cargo bench --bench inference_bench --features high-fidelity -- "WaveNet_Standard_CH16" 2>&1 | tee bench_hifi_standard.txt
+```
+
+**Tabela de resultados (preencher após execução):**
+
+| Tamanho | Lo-fi (ns/iter) | Hi-fi (ns/iter) | Δ (%) |
+| ------- | --------------- | --------------- | ----- |
+| 1 samp  | —               | —               | —     |
+| 16 samp | —               | —               | —     |
+| 64 samp | —               | —               | —     |
+
+**Aceite**: tabela preenchida; Δ % calculado; interpretação anotada.
+
+---
+
+### T-HF4.2 — ESR com pesos reais (humano executa) [AGUARDA EXECUÇÃO]
+
+**Contexto**: os goldens de paridade C++ medem ESR vs a referência. Rodar em ambos os modos e
+comparar.
+
+```bash
+# Golden vectors (paridade rápida, usa modelos pré-computados)
+cargo test --test golden_vectors -- --nocapture 2>&1 \
+  | grep -E "ESR|SNR|WaveNet|LSTM|Linear|PASS|FAIL" \
+  | tee /tmp/esr_lofi.txt
+
+cargo test --test golden_vectors --features high-fidelity -- --nocapture 2>&1 \
+  | grep -E "ESR|SNR|WaveNet|LSTM|Linear|PASS|FAIL" \
+  | tee /tmp/esr_hifi.txt
+
+# Comparação direta
+echo "=== LO-FI ===" && cat /tmp/esr_lofi.txt
+echo "=== HI-FI ===" && cat /tmp/esr_hifi.txt
+```
+
+Se os modelos nondist estiverem disponíveis em `tests/fixtures/models-nondist/`:
+
+```bash
+cargo test --test nondist_validation -- --nocapture 2>&1 | grep -E "ESR|SNR|PASS|FAIL|SKIP"
+cargo test --test nondist_validation --features high-fidelity -- --nocapture 2>&1 \
+  | grep -E "ESR|SNR|PASS|FAIL|SKIP"
+```
+
+**Tabela de resultados (preencher após execução):**
+
+| Modelo           | ESR lo-fi        | ESR hi-fi           | ESR LSTM/Linear |
+| ---------------- | ---------------- | ------------------- | --------------- |
+| WaveNet A1-Std   | ~6e-3 (esperado) | — (esperado < 1e-5) | —               |
+| WaveNet Official | —                | —                   | —               |
+| WaveNet A2-Full  | ~3e-3            | —                   | —               |
+
+**Aceite**: confirmar hi-fi ≈ paridade C++ (ESR < 1e-4); lo-fi mantém ~3e-3..1e-2.
+
+---
+
+### T-HF4.3 — Perfil de memória (humano executa) [AGUARDA EXECUÇÃO]
+
+**Contexto**: hi-fi mantém `f32_weights` + `u16 weights` simultaneamente → ~3× vs lo-fi puro.
+Medir RSS via soak já existente (o projeto tem medição em `soak_test.rs`).
+
+```bash
+# RSS lo-fi (release para refletir produção)
+cargo test --release --test soak_test -- --nocapture a2_lite_silence_soak 2>&1 \
+  | grep -E "RSS|bytes|MB|KB|memory"
+
+# RSS hi-fi
+cargo test --release --test soak_test --features high-fidelity -- --nocapture a2_lite_silence_soak 2>&1 \
+  | grep -E "RSS|bytes|MB|KB|memory"
+```
+
+Também útil medir o tamanho dos buffers de pesos diretamente via teste dedicado (a criar se
+necessário) ou via `size_of::<WaveNetModel>()` em ambos os modos.
+
+**Estimativa analítica** (pode ser calculada agora):
+
+* WaveNet Standard A1-Std (CH=16): ~284 KB u16. Em hi-fi: ~284 KB u16 + ~568 KB f32 = ~852 KB.
+* Se removermos u16 em hi-fi (S-HF5.A): ~568 KB f32 (2× lo-fi, não 3×).
+
+**Aceite**: RSS medido e confirmado coerente com a estimativa analítica.
+
+---
+
+### T-HF4.4 — Avaliação perceptual informal (AB / MR-STFT) [AGUARDA EXECUÇÃO — HUMANO]
+
+**Descrição**: AB informal em material high-gain (transientes) + métrica perceptual MR-STFT/LUFS
+(`docs/perceptual_validation.md`) quantificando a diferença de ~1% de energia do lo-fi.
+
+Não há comando automatizável — é avaliação auditiva do PO. Documentar:
+
+* Material testado (tipo: high-gain, clean, palm-mute...)
+* Diferença percebida: inaudível / sutil / claramente audível
+* Contexto: com IR/cab? sem processamento adicional?
+
+**Aceite**: parecer perceptual registrado (perceptível? sim/não/condicional).
+
+---
+
+### T-HF4.5 — Relatório de decisão consolidado [AGUARDA T-HF4.1–4.4]
+
+**Descrição**: consolidar T-HF4.1–4.4 numa tabela única respondendo à matriz de critério de
+`TODO-problemas.md:365-371`. Entrada direta para S-HF5.
+
+**Template do relatório** (preencher após T-HF4.1–4.4):
+
+```text
+## Relatório P10 — Dados para decisão lo-fi vs hi-fi
+
+### Performance (T-HF4.1)
+| Tamanho | Lo-fi (ns) | Hi-fi (ns) | Δ speedup |
+| ...     | ...        | ...        | ...       |
+
+**Conclusão performance**: o lo-fi é X% mais rápido / similar / mais lento.
+
+### Fidelidade ESR (T-HF4.2)
+| Modelo | ESR lo-fi | ESR hi-fi |
+| ...    | ...       | ...       |
+
+**Conclusão fidelidade**: hi-fi reproduz a bíblia (NAMCore) com ESR < ...
+
+### Memória (T-HF4.3)
+- Lo-fi RSS: ... MB
+- Hi-fi RSS atual (u16+f32): ... MB
+- Hi-fi RSS estimado pós-S-HF5.A (só f32): ... MB
+
+### Perceptual (T-HF4.4)
+- Diferença audível: sim/não — condições: ...
+
+### Recomendação ao PO para S-HF5:
+- [ ] Abandonar lo-fi, promover hi-fi a padrão (T-HF5.A)
+- [ ] Manter dualidade documentada (T-HF5.B)
+```
+
+**Aceite**: documento no `docs/` ou seção em `fastmath-approximations.md` com a recomendação fundamentada.
 
 ---
 

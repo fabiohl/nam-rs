@@ -6,13 +6,15 @@
     clippy::too_many_arguments
 )]
 
-use crate::math::common::half::f16_bits_to_f32;
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// GEMV 4-gate kernel AVX-512 for LSTM.
 /// Gates in an LSTM network control what should be remembered and what should be forgotten.
 /// This function processes the 4 main gates at once for a major speed boost.
-#[target_feature(enable = "avx512f,avx512vl")]
+// f16c added so the scalar tail can use the F16C hardware intrinsic.
+// F16C is guaranteed by x86-64-v3 and present on all AVX-512 targets we support.
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx512(
     in_frame: &[f32],
@@ -101,10 +103,10 @@ pub unsafe fn gemv_4gate_avx512(
         for in_c in 0..in_len {
             let si = *in_frame.get_unchecked(in_c);
             // Weights are in packed f16 format and are decompressed on demand to f32.
-            s0 += si * f16_bits_to_f32(*w0.get_unchecked(in_c * out_len + out_c));
-            s1 += si * f16_bits_to_f32(*w1.get_unchecked(in_c * out_len + out_c));
-            s2 += si * f16_bits_to_f32(*w2.get_unchecked(in_c * out_len + out_c));
-            s3 += si * f16_bits_to_f32(*w3.get_unchecked(in_c * out_len + out_c));
+            s0 += si * f16_bits_to_f32_f16c(*w0.get_unchecked(in_c * out_len + out_c));
+            s1 += si * f16_bits_to_f32_f16c(*w1.get_unchecked(in_c * out_len + out_c));
+            s2 += si * f16_bits_to_f32_f16c(*w2.get_unchecked(in_c * out_len + out_c));
+            s3 += si * f16_bits_to_f32_f16c(*w3.get_unchecked(in_c * out_len + out_c));
         }
         out[out_c] = s0;
         out[out_c + out_len] = s1;

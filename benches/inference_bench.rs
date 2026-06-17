@@ -266,6 +266,47 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
+/// Compares WaveNet Standard inference at small RT buffer sizes (1, 16, 64 samples)
+/// across lo-fi (default, u16 weights + Padé tanh) and hi-fi (f32 weights + high-acc
+/// tanh) modes. Run in both modes to populate T-HF4.1 of TODO-sprints.md:
+///
+/// ```
+/// cargo bench --bench inference_bench -- "WaveNet_P10_Comparison"
+/// cargo bench --bench inference_bench --features high-fidelity -- "WaveNet_P10_Comparison"
+/// ```
+///
+/// Record throughput (elem/s) and latency (ns) for each size and mode.
+fn bench_wavenet_p10_lofi_vs_hifi(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Dispatcher failed for P10 bench");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for P10 bench");
+    model.prewarm(2048);
+
+    // Sizes chosen to cover the full RT range: 1 (per-sample minimum), 16 (small plugin
+    // buffer), 64 (common CLAP/JACK buffer). Suffix "LF" / "HF" is determined at
+    // compile time by the `high-fidelity` feature flag.
+    #[cfg(not(feature = "high-fidelity"))]
+    let mode_tag = "LF";
+    #[cfg(feature = "high-fidelity")]
+    let mode_tag = "HF";
+
+    for &size in &[1usize, 16, 64] {
+        let input = generate_sine_440hz(size);
+        let mut output = vec![0.0f32; size];
+        c.bench_function(
+            &format!("WaveNet_P10_Comparison_{}_{}", mode_tag, size),
+            |b| {
+                b.iter(|| model.process(&input, &mut output));
+            },
+        );
+    }
+}
+
 /// Evaluates how WaveNet scales with different DSP buffer sizes.
 /// Larger buffers allow better cache utilization and prefetching,
 /// but increase the total latency perceived by the musician.
@@ -1344,6 +1385,7 @@ criterion_group!(
     // sample_size(50) is a balance between statistical accuracy and total runtime.
     config = criterion::Criterion::default().sample_size(50);
     targets = bench_wavenet_standard_process,
+    bench_wavenet_p10_lofi_vs_hifi,
     bench_wavenet_standard_block_sizes,
     bench_lstm_2x16_process,
     bench_lstm_2x16_block_sizes,

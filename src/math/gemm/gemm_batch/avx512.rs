@@ -13,13 +13,13 @@
 //! 128 calculations at once.
 
 use super::super::gemv::fused_add_gemv_avx512;
-use crate::math::common::half::f16_bits_to_f32;
+use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Batch version of the fused operation Y = X_res + Bias + W * Z via AVX-512.
 /// This function is the performance "monster". It processes 8 audio frames simultaneously,
 /// each with 16 channels, totaling 128 calculations at once!
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_add_gemm_batch_avx512(
     in_frames: &[f32],
     weights: &[u16],
@@ -111,7 +111,7 @@ pub unsafe fn fused_add_gemm_batch_avx512(
                 }
                 for in_c in 0..in_len {
                     let w_bits = *weights.get_unchecked(in_c * out_len + out_c);
-                    let w = f16_bits_to_f32(w_bits);
+                    let w = f16_bits_to_f32_f16c(w_bits);
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
@@ -136,7 +136,7 @@ pub unsafe fn fused_add_gemm_batch_avx512(
 
 /// Fused residual GEMM kernel AVX-512.
 /// Similar to the previous one, but the "residual" (original unprocessed audio) comes from a different location.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_gemm_residual_batch_avx512(
     in_frames: &[f32],
     weights: &[u16],
@@ -244,7 +244,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
                     sum += *bias.get_unchecked(out_c);
                 }
                 for in_c in 0..in_len {
-                    let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                    let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
@@ -282,7 +282,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             sum += res_frame[out_c];
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) = sum;
@@ -297,7 +297,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
 /// Identical to [`fused_gemm_residual_batch_avx512`] but accepts full-precision
 /// f32 weights instead of f16-quantized (u16) weights. Processes 8 audio frames
 /// simultaneously, each with 16 channels.
-#[target_feature(enable = "avx512f,avx512vl")]
+#[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx512(
     in_frames: &[f32],
     weights: &[f32],
