@@ -51,96 +51,17 @@ impl WaveNetLayerDyn {
     /// Scratch buffers are pre-allocated `AlignedVec<f32>` on the heap,
     /// replacing the const-generic stack buffer `[f32; 1024]` to support CH > 16.
     ///
-    /// # Safety
-    /// Math dispatch via pointer to inlined intrinsic functions.
-    #[inline(always)]
-    #[cfg(not(feature = "high-fidelity"))]
-    pub unsafe fn process_block_internal<M: SimdMath>(
-        &mut self,
-        mut ctx: WavenetProcessContext<'_>,
-    ) {
-        let ch = self.conv1d.in_ch;
-        let scratch_len = ctx.num_frames * ch;
-        debug_assert!(
-            scratch_len <= self.scratch_mixin.len(),
-            "process_block_internal: num_frames*ch ({}) exceeds scratch buffer ({})",
-            scratch_len,
-            self.scratch_mixin.len()
-        );
-
-        unsafe {
-            let mixin_out = &mut self.scratch_mixin[..scratch_len];
-
-            if M::IS_BF16 {
-                self.input_mixin
-                    .process_bf16::<M>(ctx.condition_bf16, mixin_out);
-            } else {
-                self.input_mixin
-                    .process_block::<M>(ctx.condition, mixin_out, ctx.num_frames);
-            }
-
-            // [PHASE 1: Linear - Conv1D + Mixin]
-            // Dual-Frame Tiling: process_block internally pairs frames for weight reuse.
-            let conv_slice = &mut self.scratch_conv[..scratch_len];
-
-            if M::IS_BF16 {
-                self.conv1d.process_block_bf16::<M>(
-                    ctx.layer_buffer_bf16,
-                    conv_slice,
-                    ctx.buffer_start,
-                    ctx.num_frames,
-                    Some(mixin_out),
-                );
-            } else {
-                self.conv1d.process_block::<M>(
-                    ctx.layer_buffer,
-                    conv_slice,
-                    ctx.buffer_start,
-                    ctx.num_frames,
-                    Some(mixin_out),
-                );
-            }
-
-            // [PHASE 2 & 3: Fused Activation and Head Update]
-            if ctx.is_first_layer {
-                M::tanh_and_overwrite_block(ctx.head_input, conv_slice);
-            } else {
-                M::tanh_and_accumulate_block(ctx.head_input, conv_slice);
-            }
-
-            // [PHASE 4: Output - 1x1 Residual]
-            let lb_offset = ctx.buffer_start * ch;
-            let residual_slice = ctx
-                .layer_buffer
-                .get_unchecked(lb_offset..lb_offset + scratch_len);
-
-            self.one_by_one.process_residual_batch::<M>(
-                conv_slice,
-                residual_slice,
-                ctx.output,
-                ctx.num_frames,
-            );
-
-            if let (true, Some(bf16_out)) = (M::IS_BF16, ctx.output_bf16.as_mut()) {
-                M::f32_to_bf16(ctx.output, bf16_out);
-            }
-        }
-    }
-
-    /// High-fidelity variant of process_block_internal.
-    ///
     /// Uses full-precision f32 weights (no quantization) and exact `f32::tanh`.
     ///
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
-    #[cfg(feature = "high-fidelity")]
     #[inline(always)]
     pub unsafe fn process_block_internal<M: SimdMath>(&mut self, ctx: WavenetProcessContext<'_>) {
         let ch = self.conv1d.in_ch;
         let scratch_len = ctx.num_frames * ch;
         debug_assert!(
             scratch_len <= self.scratch_mixin.len(),
-            "process_block_internal hf: num_frames*ch ({}) exceeds scratch buffer ({})",
+            "process_block_internal: num_frames*ch ({}) exceeds scratch buffer ({})",
             scratch_len,
             self.scratch_mixin.len()
         );

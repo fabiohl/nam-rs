@@ -773,7 +773,7 @@ cargo test --quiet 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.6 — Layer e LayerArray dinâmicos: idem para caminho dyn
+### T-HF5.A.6 — Layer e LayerArray dinâmicos: idem para caminho dyn [DO]
 
 **Arquivos**: `src/models/wavenet/layer_dyn.rs`, `src/models/wavenet/layer_array_dyn.rs`
 

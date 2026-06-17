@@ -40,12 +40,6 @@ pub struct WaveNetLayerArrayDyn {
     pub block_size: usize,
     /// Temporary accumulator for blocks (pre-allocated).
     pub block_buffer: AlignedVec<f32>,
-    /// Conditioning buffer cached in BF16.
-    pub last_condition_bf16: AlignedVec<u16>,
-    /// Copy of the last f32 conditioning for comparison.
-    pub last_condition: AlignedVec<f32>,
-    /// Flag for first cache initialization.
-    pub condition_init: bool,
     /// Active number of layers for soft-degrade. Set to `layers.len()` by default.
     pub effective_layers: usize,
 }
@@ -85,45 +79,14 @@ impl WaveNetLayerArrayDyn {
             self.head_accum[0..num_frames * ch].copy_from_slice(seed);
         }
 
-        if M::IS_BF16 {
-            let changed = PREWARM || !self.condition_init || condition != &self.last_condition[..];
-
-            if changed {
-                unsafe {
-                    M::f32_to_bf16(condition, &mut self.last_condition_bf16);
-                }
-                self.last_condition[..condition.len()].copy_from_slice(condition);
-                self.condition_init = true;
-            }
-        }
-
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
-            #[cfg(feature = "high-fidelity")]
-            {
-                self.rechannel.process_block_f32_native::<M>(
-                    layer_inputs,
-                    &mut state_0.layer_buffer[start..start + num_frames * ch],
-                    num_frames,
-                );
-            }
-            #[cfg(not(feature = "high-fidelity"))]
-            {
-                self.rechannel.process_block::<M>(
-                    layer_inputs,
-                    &mut state_0.layer_buffer[start..start + num_frames * ch],
-                    num_frames,
-                );
-            }
-
-            #[cfg(not(feature = "high-fidelity"))]
-            if M::IS_BF16 {
-                M::f32_to_bf16(
-                    &state_0.layer_buffer[start..start + num_frames * ch],
-                    &mut state_0.layer_buffer_bf16[start..start + num_frames * ch],
-                );
-            }
+            self.rechannel.process_block_f32_native::<M>(
+                layer_inputs,
+                &mut state_0.layer_buffer[start..start + num_frames * ch],
+                num_frames,
+            );
 
             let num_layers = self.effective_layers;
             let last_layer = num_layers - 1;
@@ -150,12 +113,6 @@ impl WaveNetLayerArrayDyn {
                         current_state
                             .layer_buffer
                             .copy_within(src_range.clone(), dst_idx);
-
-                        if M::IS_BF16 {
-                            current_state
-                                .layer_buffer_bf16
-                                .copy_within(src_range.clone(), dst_idx);
-                        }
                     }
                 }
 
@@ -169,7 +126,7 @@ impl WaveNetLayerArrayDyn {
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        condition_bf16: &self.last_condition_bf16,
+                        condition_bf16: &[],
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: &mut self.array_outputs[0..num_frames * ch],
                         output_bf16: None,
@@ -185,18 +142,13 @@ impl WaveNetLayerArrayDyn {
                     let n_start = next_state.buffer_start * ch;
                     let next_layer_buffer =
                         &mut next_state.layer_buffer[n_start..n_start + num_frames * ch];
-                    let next_layer_buffer_bf16 = if M::IS_BF16 {
-                        Some(&mut next_state.layer_buffer_bf16[n_start..n_start + num_frames * ch])
-                    } else {
-                        None
-                    };
 
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        condition_bf16: &self.last_condition_bf16,
+                        condition_bf16: &[],
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: next_layer_buffer,
-                        output_bf16: next_layer_buffer_bf16,
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer[..],
                         layer_buffer_bf16: &current_state.layer_buffer_bf16[..],
                         buffer_start: current_state.buffer_start,

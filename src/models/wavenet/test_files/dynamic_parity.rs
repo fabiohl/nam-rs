@@ -285,9 +285,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         receptive_field_size: rf,
         block_size: ch,
         block_buffer: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: AlignedVec::from_vec(vec![0.0; 1]),
-        last_condition_bf16: AlignedVec::from_vec(vec![0; 1]),
-        condition_init: false,
     };
 
     // Array 2 layers: COND=1, CH=head, K=k
@@ -324,9 +321,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         receptive_field_size: rf,
         block_size: head,
         block_buffer: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES]),
-        last_condition: AlignedVec::from_vec(vec![0.0; 1]),
-        last_condition_bf16: AlignedVec::from_vec(vec![0; 1]),
-        condition_init: false,
     };
 
     WaveNetModelDyn {

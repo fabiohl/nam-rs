@@ -85,9 +85,6 @@ fn build_wavenet_array_dyn(
         receptive_field_size,
         block_size,
         block_buffer,
-        last_condition_bf16: AlignedVec::new(cond, 0u16),
-        last_condition: AlignedVec::new(cond, 0.0f32),
-        condition_init: false,
         effective_layers: num_layers,
     })
 }
