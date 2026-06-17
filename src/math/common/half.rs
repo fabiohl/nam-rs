@@ -120,6 +120,48 @@ pub fn f32_to_f16_bits(f: f32) -> u16 {
     sign | e | m
 }
 
+// ---------------------------------------------------------------------------
+// F16C hardware-accelerated variants (scalar, single f16 ↔ f32)
+// ---------------------------------------------------------------------------
+
+/// Decodes a binary16 bit-pattern to f32 using the F16C `VCVTPH2PS` instruction.
+///
+/// `x86-64-v3` guarantees F16C availability (`.cargo/config.toml`).
+#[inline]
+#[target_feature(enable = "f16c")]
+pub unsafe fn f16_bits_to_f32_f16c(bits: u16) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::_mm_cvtph_ps;
+        use std::arch::x86_64::_mm_cvtss_f32;
+        use std::arch::x86_64::_mm_cvtsi32_si128;
+        _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(bits as i32)))
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        f16_bits_to_f32(bits) // fallback for non-x86_64 builds (tests, docs)
+    }
+}
+
+/// Encodes an f32 value to binary16 bits (u16) using the F16C `VCVTPS2PH`
+/// instruction with round-to-nearest-even.
+#[inline]
+#[target_feature(enable = "f16c")]
+pub unsafe fn f32_to_f16_bits_f16c(f: f32) -> u16 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+        use std::arch::x86_64::_mm_cvtsi128_si32;
+        use std::arch::x86_64::_mm_cvtps_ph;
+        use std::arch::x86_64::_mm_set_ss;
+        (_mm_cvtsi128_si32(_mm_cvtps_ph(_mm_set_ss(f), _MM_FROUND_TO_NEAREST_INT)) as u32 & 0xFFFF) as u16
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        f32_to_f16_bits(f) // fallback for non-x86_64 builds (tests, docs)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +260,37 @@ mod tests {
         // Encoding f32::NAN → f16 → f32 must still be NaN.
         let bits = f32_to_f16_bits(f32::NAN);
         assert!(f16_bits_to_f32(bits).is_nan());
+    }
+
+    /// Exhaustive decode: F16C variant must be bit-exact vs software for all
+    /// 65.536 binary16 patterns.
+    #[test]
+    fn exhaustive_decode_f16c_vs_software() {
+        for bits in 0u16..=0xFFFFu16 {
+            let expected = f16_bits_to_f32(bits);
+            let got = unsafe { f16_bits_to_f32_f16c(bits) };
+            assert_eq!(
+                got.to_bits(),
+                expected.to_bits(),
+                "F16C decode mismatch for bits=0x{:04X}",
+                bits
+            );
+        }
+    }
+
+    /// Exhaustive encode: F16C variant must be bit-exact vs software for all
+    /// f32 values derived from the 65.536 binary16 patterns.
+    #[test]
+    fn exhaustive_encode_f16c_vs_software() {
+        for bits in 0u16..=0xFFFFu16 {
+            let f = f16_bits_to_f32(bits);
+            let expected = f32_to_f16_bits(f);
+            let got = unsafe { f32_to_f16_bits_f16c(f) };
+            assert_eq!(
+                got, expected,
+                "F16C encode mismatch for f={:e} (f16 bits 0x{:04X})",
+                f, bits
+            );
+        }
     }
 }

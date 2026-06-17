@@ -307,14 +307,18 @@ abandonado** em S-HF5, pois a **A2 usa pesos F16** (`src/models/a2/conv1d_ch3/mo
   overflow→Inf, subnormais). ~40–60 linhas. Cabeçalho SPDX.
 * **Aceite**: documentação clara; sem `unsafe` desnecessário; sem alocação.
 
-### T-HF3.2 — Variante F16C escalar para as caudas (`_mm_cvtph_ps`)
+### T-HF3.2 — Variante F16C escalar para as caudas (`_mm_cvtph_ps`) [DONE]
 
 * **Descrição**: `f16_bits_to_f32_f16c(u16) -> f32` usando `_mm_cvtph_ps(_mm_cvtsi32_si128(bits as
   i32))` + `_mm_cvtss_f32`, sob `#[target_feature(enable = "f16c")]` (garantido por
   `x86-64-v3` em `.cargo/config.toml`). Opcional: encode `_mm_cvtps_ph` (RNE) para simetria.
 * **Aceite**: bit-exato vs `f16_bits_to_f32` software para os 65.536 valores.
+* **Implementação**: `src/math/common/half.rs:127-162` — `f16_bits_to_f32_f16c(u16) -> f32` via
+  `_mm_cvtph_ps(_mm_cvtsi32_si128) + _mm_cvtss_f32` e `f32_to_f16_bits_f16c(f32) -> u16` via
+  `_mm_cvtps_ph(_mm_set_ss, RNE)`, ambas sob `#[target_feature(enable = "f16c")]`.
+  Testes exaustivos bit-exato para todos os 65.536 padrões f16.
 
-### T-HF3.3 — Migrar todos os call-sites de `half::*`
+### T-HF3.3 — Migrar todos os call-sites de `half::*` [DONE]
 
 * **Descrição**: substituir `half::f16::from_bits(x).to_f32()` / `half::f16::from_f32(x).to_bits()`
   pelas funções internas. **Inventário completo** (a auditoria encontrou sites além dos listados no
