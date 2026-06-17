@@ -294,7 +294,7 @@ referência e validar por ESR/SNR.
 > (modo alta-fidelidade) sem afetar o caminho de produção padrão. Pode rodar em paralelo a outras
 > features. Decisão de produto: implementar ou apenas documentar a política.
 
-#### T4.1 — Modo "alta-fidelidade" opcional (sem FastMath / sem quantização) 🟡
+#### T4.1 — Modo "alta-fidelidade" opcional (sem FastMath / sem quantização) 🟡 [DONE]
 
 - **Onde**: caminho de ativação (`src/math/activations/tanh/`), quantização de pesos
   (`src/math/common/ops.rs:16`), seleção de caminho no load.
@@ -315,6 +315,7 @@ referência e validar por ESR/SNR.
   skill `documentador`.
 - **Critério de aceite**: doc clara, sincronizada com a implementação; referência cruzada P1/P2/T1.4.
 - **Risco**: 🟢 baixo.
+- **Nota do PO:** Deixar claro que o modo de "baixa fidelidade" está sub júdice e será avaliada em breve.
 
 ---
 

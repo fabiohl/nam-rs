@@ -44,6 +44,8 @@ fn make_ch3_conv_dyn(
     let out_ch = 3usize;
     Conv1dDyn {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias,
         dilation,

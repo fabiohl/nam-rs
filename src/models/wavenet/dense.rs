@@ -124,15 +124,17 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        let f32_w = self
-            .f32_weights
-            .as_ref()
-            .expect("process_block_f32_native requires f32_weights");
-        unsafe {
-            if self.do_bias {
-                M::gemv_with_bias_f32(input, f32_w, &self.bias, output, num_frames);
-            } else {
-                M::gemv_no_bias_f32(input, f32_w, output, num_frames);
+        if let Some(f32_w) = self.f32_weights.as_ref() {
+            unsafe {
+                if self.do_bias {
+                    M::gemv_with_bias_f32(input, f32_w, &self.bias, output, num_frames);
+                } else {
+                    M::gemv_no_bias_f32(input, f32_w, output, num_frames);
+                }
+            }
+        } else {
+            unsafe {
+                self.process_block::<M>(input, output, num_frames);
             }
         }
     }

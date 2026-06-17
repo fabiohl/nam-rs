@@ -262,4 +262,121 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             );
         }
     }
+
+    /// F32-native dual-frame convolution with mixin (high-fidelity mode).
+    ///
+    /// Uses `self.f32_weights` directly, bypassing F16/BF16 quantization drift.
+    /// Same Temporal Tiling strategy as the quantized path.
+    ///
+    /// # Safety
+    /// The caller must guarantee that `layer_buffer`, `mixin_f0`, `mixin_f1`,
+    /// `out_frame_f0`, and `out_frame_f1` have sizes compatible with the layer dimensions.
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn process_dual_frame_f32_native_with_mixin(
+        &self,
+        layer_buffer: &[f32],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: &[f32],
+        mixin_f1: &[f32],
+    ) {
+        use super::conv_input::dot_product_4x_f32_dual;
+
+        // --- 1. Setup (Bias and Mixin) ---
+        let full_blocks = OUT & !3;
+        for i in (0..full_blocks).step_by(4) {
+            let acc_f0: &mut [f32; 4] =
+                unsafe { &mut *(out_frame_f0.as_mut_ptr().add(i) as *mut [f32; 4]) };
+            let acc_f1: &mut [f32; 4] =
+                unsafe { &mut *(out_frame_f1.as_mut_ptr().add(i) as *mut [f32; 4]) };
+            if self.do_bias {
+                acc_f0.copy_from_slice(&self.bias[i..i + 4]);
+                acc_f1.copy_from_slice(&self.bias[i..i + 4]);
+                for j in 0..4 {
+                    acc_f0[j] += mixin_f0[i + j];
+                    acc_f1[j] += mixin_f1[i + j];
+                }
+            } else {
+                acc_f0.copy_from_slice(&mixin_f0[i..i + 4]);
+                acc_f1.copy_from_slice(&mixin_f1[i..i + 4]);
+            }
+        }
+        let rem = OUT & 3;
+        if rem > 0 {
+            let i = full_blocks;
+            let rem_f0 = &mut out_frame_f0[i..OUT];
+            let rem_f1 = &mut out_frame_f1[i..OUT];
+            if self.do_bias {
+                rem_f0.copy_from_slice(&self.bias[i..OUT]);
+                rem_f1.copy_from_slice(&self.bias[i..OUT]);
+                for j in 0..rem {
+                    rem_f0[j] += mixin_f0[i + j];
+                    rem_f1[j] += mixin_f1[i + j];
+                }
+            } else {
+                rem_f0.copy_from_slice(&mixin_f0[i..OUT]);
+                rem_f1.copy_from_slice(&mixin_f1[i..OUT]);
+            }
+        }
+
+        // --- 2. Preload taps ---
+        let mut in_taps_f0 = [[0.0f32; IN]; K];
+        let mut in_taps_f1 = [[0.0f32; IN]; K];
+        for k in 0..K {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
+            let in_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
+            unsafe {
+                in_taps_f0[k]
+                    .copy_from_slice(layer_buffer.get_unchecked(in_start_f0..in_start_f0 + IN));
+                in_taps_f1[k]
+                    .copy_from_slice(layer_buffer.get_unchecked(in_start_f1..in_start_f1 + IN));
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_start_f0),
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
+            }
+        }
+
+        // --- 3. Central loop with f32 weights ---
+        let num_blocks = OUT.div_ceil(4);
+        let mut out_c = 0;
+
+        for b in 0..num_blocks {
+            let [mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0] =
+                unsafe { load_4_accums(out_frame_f0, out_c, OUT) };
+            let [mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1] =
+                unsafe { load_4_accums(out_frame_f1, out_c, OUT) };
+
+            for k in 0..K {
+                let w_start = (b * K + k) * IN * 4;
+                let w_slice: &[[f32; 4]] = unsafe {
+                    let ptr = self.f32_weights.as_ptr().add(w_start) as *const [f32; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
+
+                let (t_f0, t_f1) = dot_product_4x_f32_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k]);
+
+                r0_f0 += t_f0[0];
+                r1_f0 += t_f0[1];
+                r2_f0 += t_f0[2];
+                r3_f0 += t_f0[3];
+                r0_f1 += t_f1[0];
+                r1_f1 += t_f1[1];
+                r2_f1 += t_f1[2];
+                r3_f1 += t_f1[3];
+            }
+
+            unsafe { store_4_accums(out_frame_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], OUT) };
+            unsafe { store_4_accums(out_frame_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], OUT) };
+            out_c += 4;
+        }
+    }
 }

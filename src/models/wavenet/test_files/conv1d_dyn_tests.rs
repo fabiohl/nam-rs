@@ -45,6 +45,8 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
 
     let conv = Conv1dDyn {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias: true,
         dilation,
@@ -90,6 +92,8 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
 
     let conv = Conv1dDyn {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias: true,
         dilation,

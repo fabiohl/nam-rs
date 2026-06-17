@@ -29,6 +29,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights: AlignedVec::from_vec(vec![
                     half::f16::from_f32(0.01).to_bits();
                     16 * 3 * 16
@@ -102,6 +104,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 3 * 8]),
                 bias: AlignedVec::from_vec(vec![0.001; 8]),
                 do_bias: true,
@@ -188,6 +192,8 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         );
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -226,6 +232,8 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         );
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,

@@ -9,12 +9,18 @@
 
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
+#[cfg(feature = "high-fidelity")]
+use super::common::MAX_KERNEL;
+
 /// Structure for causal 1D convolution with dynamic dimensions.
 #[derive(Clone)]
 #[repr(align(64))]
 pub struct Conv1dDyn {
     /// Convolution weights [OUT][KERNEL][IN] (quantized u16).
     pub weights: AlignedVec<u16>,
+    /// Optional full-precision f32 weights for high-fidelity mode.
+    #[cfg(feature = "high-fidelity")]
+    pub f32_weights: AlignedVec<f32>,
     /// Bias vector [OUT].
     pub bias: AlignedVec<f32>,
     /// Flag indicating whether bias should be applied.
@@ -225,6 +231,101 @@ impl Conv1dDyn {
     ) {
         unsafe {
             self.process_single_frame_generic::<M, u16>(layer_buffer, out_frame, frame_idx, mixin);
+        }
+    }
+
+    /// F32-native single-frame convolution (high-fidelity mode).
+    ///
+    /// Uses `self.f32_weights` directly, bypassing quantization drift.
+    ///
+    /// # Safety
+    /// The caller must guarantee that `layer_buffer` and `out_frame` have sizes
+    /// compatible with the layer dimensions.
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    pub unsafe fn process_single_frame_f32_native(
+        &self,
+        layer_buffer: &[f32],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: Option<&[f32]>,
+    ) {
+        use crate::models::wavenet::conv_input::dot_product_4x_f32;
+
+        let num_blocks = self.num_blocks;
+        let in_ch = self.in_ch;
+        let out_ch = self.out_ch;
+        let kernel = self.kernel;
+        let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
+        let k_limit = kernel.min(MAX_KERNEL);
+
+        for (k, tap) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (kernel as isize));
+            let in_start = ((frame_idx as isize) + offset) as usize * in_ch;
+            unsafe {
+                *tap = layer_buffer.as_ptr().add(in_start);
+                (self.prefetch_fn)(*tap, self.dilation * in_ch, k, kernel, self.dilation);
+            }
+        }
+
+        for b in 0..num_blocks {
+            let out_c = b * 4;
+            let (mu0, mu1, mu2, mu3) = unsafe { Self::load_mixin_4(mixin, out_c) };
+            let (mut r0, mut r1, mut r2, mut r3);
+            unsafe {
+                if self.do_bias {
+                    r0 = *self.bias.get_unchecked(out_c) + mu0;
+                    r1 = if out_c + 1 < out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mu1;
+                    r2 = if out_c + 2 < out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mu2;
+                    r3 = if out_c + 3 < out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mu3;
+                } else {
+                    r0 = mu0;
+                    r1 = mu1;
+                    r2 = mu2;
+                    r3 = mu3;
+                }
+
+                for k in 0..kernel {
+                    let tap = *tap_ptrs.get_unchecked(k);
+                    let w_start = (b * kernel + k) * in_ch * 4;
+                    let w_slice: &[[f32; 4]] = {
+                        let ptr = self.f32_weights.as_ptr().add(w_start) as *const [f32; 4];
+                        core::slice::from_raw_parts(ptr, in_ch)
+                    };
+                    let in_slice = core::slice::from_raw_parts(tap, in_ch);
+                    let [t0, t1, t2, t3] = dot_product_4x_f32(w_slice, in_slice);
+                    r0 += t0;
+                    r1 += t1;
+                    r2 += t2;
+                    r3 += t3;
+                }
+
+                if out_c + 3 < out_ch {
+                    *out_frame.get_unchecked_mut(out_c) = r0;
+                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                } else {
+                    let r = [r0, r1, r2, r3];
+                    for (lane, &val) in r.iter().enumerate() {
+                        if out_c + lane < out_ch {
+                            *out_frame.get_unchecked_mut(out_c + lane) = val;
+                        }
+                    }
+                }
+            }
         }
     }
 

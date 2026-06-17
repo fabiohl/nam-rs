@@ -32,6 +32,8 @@ fn test_conv1d_identity_kernel() {
     // Instantiate 1D Convolution without bias and with dilation 1 (linear processing).
     let conv = Conv1d::<4, 4, 1> {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 4]),
         do_bias: false,
         dilation: 1,
@@ -79,6 +81,8 @@ fn test_conv1d_with_bias() {
     // Configure the layer with Bias of 0.5 on all output channels.
     let conv = Conv1d::<4, 4, 1> {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.5; 4]),
         do_bias: true, // Enable bias vector addition.
         dilation: 1,
@@ -123,6 +127,8 @@ fn test_conv1d_dilation() {
     // Define dilation: 2. This will make the kernel "skip" one frame per tap.
     let conv = Conv1d::<2, 2, 3> {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 2]),
         do_bias: false,
         dilation: 2,
@@ -182,6 +188,8 @@ fn test_conv1d_zero_input() {
 
     let mut conv = Conv1d::<2, 2, 3> {
         weights: weights.clone(),
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![0.0; 2]),
         do_bias: false,
         dilation: 1,
@@ -240,6 +248,8 @@ fn test_conv1d_known_output() {
 
     let conv = Conv1d::<2, 2, 2> {
         weights,
+        #[cfg(feature = "high-fidelity")]
+        f32_weights: AlignedVec::new(0, 0.0f32),
         bias: AlignedVec::from_vec(vec![1.0, -1.0]),
         do_bias: true,
         dilation: 1,

@@ -170,4 +170,69 @@ impl Conv1dDyn {
             }
         }
     }
+
+    /// F32-native block processing (high-fidelity mode).
+    ///
+    /// Same dual-frame tiling as `process_block_generic`, but uses full-precision
+    /// f32 weights and scalar dot products, bypassing quantization drift.
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    pub(crate) unsafe fn process_block_f32_native(
+        &self,
+        layer_buffer: &[f32],
+        block: &mut [f32],
+        buffer_start: usize,
+        num_frames: usize,
+        mixin: Option<&[f32]>,
+    ) {
+        debug_assert_eq!(num_frames * self.out_ch, block.len());
+        let mut i = 0;
+
+        let mut chunks = block.chunks_exact_mut(2 * self.out_ch);
+        for chunk in chunks.by_ref() {
+            let (out_f0, out_f1) = chunk.split_at_mut(self.out_ch);
+
+            let (m_f0, m_f1) = if let Some(m) = mixin {
+                let start0 = i * self.out_ch;
+                let end0 = (start0 + self.out_ch).min(m.len());
+                let start1 = (i + 1) * self.out_ch;
+                let end1 = (start1 + self.out_ch).min(m.len());
+                (
+                    if start0 < m.len() {
+                        Some(&m[start0..end0])
+                    } else {
+                        None
+                    },
+                    if start1 < m.len() {
+                        Some(&m[start1..end1])
+                    } else {
+                        None
+                    },
+                )
+            } else {
+                (None, None)
+            };
+
+            unsafe {
+                self.process_dual_frame_f32_native_generic(
+                    layer_buffer,
+                    out_f0,
+                    out_f1,
+                    buffer_start + i,
+                    buffer_start + i + 1,
+                    m_f0,
+                    m_f1,
+                );
+            }
+            i += 2;
+        }
+
+        let rem = chunks.into_remainder();
+        if !rem.is_empty() {
+            let m = mixin.map(|m| &m[i * self.out_ch..(i + 1) * self.out_ch]);
+            unsafe {
+                self.process_single_frame_f32_native(layer_buffer, rem, buffer_start + i, m);
+            }
+        }
+    }
 }

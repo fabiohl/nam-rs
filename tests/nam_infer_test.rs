@@ -31,6 +31,8 @@ fn make_wavenet_layer(
 ) -> wavenet::WaveNetLayer<1, 16, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
+            #[cfg(feature = "high-fidelity")]
+            f32_weights: AlignedVec::new(0, 0.0f32),
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch * 3 * ch]),
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
@@ -60,6 +62,8 @@ fn make_wavenet_layer(
 fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
+            #[cfg(feature = "high-fidelity")]
+            f32_weights: AlignedVec::new(0, 0.0f32),
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 3 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,

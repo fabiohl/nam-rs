@@ -43,6 +43,8 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         );
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -81,6 +83,8 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         );
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
@@ -323,6 +327,8 @@ fn test_prewarm_zero_rf() {
         );
         WaveNetLayer {
             conv1d: Conv1d {
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 1]),
                 do_bias: false,

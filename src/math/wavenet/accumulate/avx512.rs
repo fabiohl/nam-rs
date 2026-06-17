@@ -19,12 +19,11 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        // Process 16 channels at a time.
+        #[cfg(not(feature = "high-fidelity"))]
         while c + 16 <= ch {
             let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
-            // Apply the complex mathematical functions in a blazing-fast manner.
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
@@ -37,7 +36,6 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             );
             c += 16;
         }
-        // Any leftover channels? Handle them one by one.
         while c < ch {
             let z1 = block[block_offset + c];
             let z2 = block[block_offset + ch + c];
@@ -62,6 +60,7 @@ pub unsafe fn gated_activation_and_overwrite_block_avx512(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
+        #[cfg(not(feature = "high-fidelity"))]
         while c + 16 <= ch {
             let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
@@ -108,6 +107,7 @@ pub unsafe fn accumulate_head_avx512(dest: &mut [f32], src: &[f32]) {
 pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
+    #[cfg(not(feature = "high-fidelity"))]
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
         let vt = crate::math::activations::simd_tanh_avx512(vb);
@@ -126,6 +126,14 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
         let vh = _mm512_maskz_loadu_ps(mask, head_input.as_ptr().add(i));
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, _mm512_add_ps(vh, vt));
     }
+    #[cfg(feature = "high-fidelity")]
+    while i < len {
+        let val = block[i].tanh();
+        block[i] = val;
+        let acc = head_input[i] as f64 + val as f64;
+        head_input[i] = acc as f32;
+        i += 1;
+    }
 }
 
 /// Applies tanh in-place on block and overwrites head_input using AVX-512.
@@ -133,6 +141,7 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
 pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
+    #[cfg(not(feature = "high-fidelity"))]
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
         let vt = crate::math::activations::simd_tanh_avx512(vb);
@@ -146,5 +155,12 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
         let vt = crate::math::activations::simd_tanh_avx512(vb);
         _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
+    }
+    #[cfg(feature = "high-fidelity")]
+    while i < len {
+        let val = block[i].tanh();
+        block[i] = val;
+        head_input[i] = val;
+        i += 1;
     }
 }

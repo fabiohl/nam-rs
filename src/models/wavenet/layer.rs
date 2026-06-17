@@ -23,6 +23,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
     #[inline(always)]
+    #[cfg(not(feature = "high-fidelity"))]
     pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,
@@ -154,6 +155,99 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             // 4. [T25] BF16 Fusion: Batch conversion if needed
             if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {
                 M::f32_to_bf16(output, bf16_out);
+            }
+        }
+    }
+
+    /// Processes a full WaveNet layer in high-fidelity mode.
+    ///
+    /// Uses full-precision f32 weights (no quantization) and exact `f32::tanh`.
+    /// Trade-off: higher latency/memory bandwidth for superior numerical fidelity.
+    ///
+    /// # Safety
+    /// Math dispatch via pointer to inlined intrinsic functions.
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
+        let WavenetProcessContext {
+            condition,
+            head_input,
+            output,
+            layer_buffer,
+            buffer_start,
+            num_frames,
+            ..
+        } = ctx;
+
+        unsafe {
+            const {
+                assert!(
+                    CH * WAVENET_MAX_NUM_FRAMES <= 1024,
+                    "topology CH exceeds stack buffer (1024)"
+                );
+            }
+            debug_assert!(
+                num_frames * CH <= 1024,
+                "process_block_internal hf: num_frames*CH ({}) exceeds stack buffer (1024)",
+                num_frames * CH,
+            );
+            let mut mixin_out = [0.0f32; 1024];
+            let mixin_out_slice = &mut mixin_out[..num_frames * CH];
+            self.input_mixin
+                .process_block_f32_native::<M>(condition, mixin_out_slice, num_frames);
+
+            let mut conv_plus_mixin = [0.0f32; 1024];
+            let conv_slice = &mut conv_plus_mixin[..num_frames * CH];
+
+            // Dual-Frame Tiling with f32-native path
+            let mut i = 0;
+            let mut chunks = conv_slice.chunks_exact_mut(2 * CH);
+            for chunk in chunks.by_ref() {
+                let (out_frame_f0, out_frame_f1) = chunk.split_at_mut(CH);
+
+                let mix_idx_f0 = i * CH;
+                let mix_idx_f1 = (i + 1) * CH;
+                let mixin_f0 = mixin_out.get_unchecked(mix_idx_f0..mix_idx_f0 + CH);
+                let mixin_f1 = mixin_out.get_unchecked(mix_idx_f1..mix_idx_f1 + CH);
+
+                self.conv1d.process_dual_frame_f32_native_with_mixin(
+                    layer_buffer,
+                    out_frame_f0,
+                    out_frame_f1,
+                    buffer_start + i,
+                    buffer_start + i + 1,
+                    mixin_f0,
+                    mixin_f1,
+                );
+                i += 2;
+            }
+
+            let rem = chunks.into_remainder();
+            if !rem.is_empty() {
+                let mix_idx = i * CH;
+                let mixin_slice = mixin_out.get_unchecked(mix_idx..mix_idx + CH);
+
+                self.conv1d.process_single_frame_f32_native_with_mixin(
+                    layer_buffer,
+                    rem,
+                    buffer_start + i,
+                    mixin_slice,
+                );
+            }
+
+            if ctx.is_first_layer {
+                M::tanh_and_overwrite_block(head_input, conv_slice);
+            } else {
+                M::tanh_and_accumulate_block(head_input, conv_slice);
+            }
+
+            let lb_offset = buffer_start * CH;
+            let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
+
+            self.one_by_one
+                .process_block_f32_native::<M>(conv_slice, output, num_frames);
+            for j in 0..num_frames * CH {
+                output[j] += residual_slice[j];
             }
         }
     }

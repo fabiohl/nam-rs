@@ -76,6 +76,8 @@ impl A2Conv1d {
                 num_blocks,
                 kernel: kernel_size,
                 prefetch_fn,
+                #[cfg(feature = "high-fidelity")]
+                f32_weights: AlignedVec::new(0, 0.0f32),
             },
         }
     }

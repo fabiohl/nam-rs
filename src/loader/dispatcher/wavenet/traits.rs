@@ -8,8 +8,23 @@ use crate::models::wavenet::{Conv1d, DenseLayer, DenseLayerDyn};
 /// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     fn from_parts(
         weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        in_ch: usize,
+        out_ch: usize,
+        k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self;
+
+    #[cfg(feature = "high-fidelity")]
+    #[allow(clippy::too_many_arguments)]
+    fn from_parts_f32(
+        weights: AlignedVec<u16>,
+        f32_weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -34,6 +49,31 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
     ) -> Self {
         Conv1d {
             weights,
+            bias,
+            do_bias,
+            dilation,
+            prefetch_fn,
+            #[cfg(feature = "high-fidelity")]
+            f32_weights: AlignedVec::new(0, 0.0f32),
+        }
+    }
+
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    fn from_parts_f32(
+        weights: AlignedVec<u16>,
+        f32_weights: AlignedVec<f32>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        _in_ch: usize,
+        _out_ch: usize,
+        _k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self {
+        Conv1d {
+            weights,
+            f32_weights,
             bias,
             do_bias,
             dilation,
@@ -64,12 +104,42 @@ impl ConvWeightsOutput for Conv1dDyn {
             num_blocks: out_ch.div_ceil(4),
             kernel: k_size,
             prefetch_fn,
+            #[cfg(feature = "high-fidelity")]
+            f32_weights: AlignedVec::new(0, 0.0f32),
+        }
+    }
+
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    fn from_parts_f32(
+        weights: AlignedVec<u16>,
+        f32_weights: AlignedVec<f32>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        in_ch: usize,
+        out_ch: usize,
+        k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self {
+        Conv1dDyn {
+            weights,
+            f32_weights,
+            bias,
+            do_bias,
+            dilation,
+            in_ch,
+            out_ch,
+            num_blocks: out_ch.div_ceil(4),
+            kernel: k_size,
+            prefetch_fn,
         }
     }
 }
 
 /// Output type for dense layer weights, unifying `DenseLayer<IN,OUT>`.
 pub(crate) trait DenseWeightsOutput: Sized {
+    #[allow(dead_code)]
     fn from_parts(
         weights: AlignedVec<u16>,
         bias: AlignedVec<f32>,

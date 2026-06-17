@@ -19,6 +19,11 @@ use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     /// Flattened weight matrix of size OUT * K * IN.
     pub weights: AlignedVec<u16>,
+    /// Optional full-precision f32 weights for high-fidelity mode.
+    /// When present, `process_*_f32_native` methods use these directly,
+    /// bypassing quantization drift entirely at the cost of 2× memory bandwidth.
+    #[cfg(feature = "high-fidelity")]
+    pub f32_weights: AlignedVec<f32>,
     /// Causal bias, applied if do_bias is true. Total: OUT.
     pub bias: AlignedVec<f32>,
     /// Determines if the bias array should be added.
@@ -271,6 +276,102 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             unsafe {
                 self.process_single_frame::<M>(layer_buffer, out_frame, buffer_start + i);
             }
+        }
+    }
+
+    /// F32-native single-frame convolution with mixin (high-fidelity mode).
+    ///
+    /// Uses `self.f32_weights` directly, bypassing F16/BF16 quantization drift.
+    /// Same layout and algorithm as the quantized path, but with full-precision weights.
+    ///
+    /// # Safety
+    /// The caller must guarantee that `frame_idx`, `mixin`, `layer_buffer`,
+    /// and `out_frame` have sizes compatible with the layer dimensions.
+    #[cfg(feature = "high-fidelity")]
+    #[inline(always)]
+    pub unsafe fn process_single_frame_f32_native_with_mixin(
+        &self,
+        layer_buffer: &[f32],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: &[f32],
+    ) {
+        use super::conv_input::dot_product_4x_f32;
+
+        // [STEP 1: Accumulator Initialization]
+        let full_blocks = OUT & !3;
+        for i in (0..full_blocks).step_by(4) {
+            let acc: &mut [f32; 4] =
+                unsafe { &mut *(out_frame.as_mut_ptr().add(i) as *mut [f32; 4]) };
+            if self.do_bias {
+                acc.copy_from_slice(&self.bias[i..i + 4]);
+                for j in 0..4 {
+                    acc[j] += mixin[i + j];
+                }
+            } else {
+                acc.copy_from_slice(&mixin[i..i + 4]);
+            }
+        }
+        let rem = OUT & 3;
+        if rem > 0 {
+            let i = full_blocks;
+            let rem_slice = &mut out_frame[i..OUT];
+            if self.do_bias {
+                rem_slice.copy_from_slice(&self.bias[i..OUT]);
+                for j in 0..rem {
+                    rem_slice[j] += mixin[i + j];
+                }
+            } else {
+                rem_slice.copy_from_slice(&mixin[i..OUT]);
+            }
+        }
+
+        // [STEP 2: Kernel Iteration with f32 weights]
+        let mut in_taps = [[0.0f32; IN]; K];
+        for (k, in_tap) in in_taps.iter_mut().enumerate() {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
+            unsafe {
+                in_tap.copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
+                );
+            }
+            unsafe {
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_slice_start),
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
+            }
+        }
+
+        let num_blocks = OUT.div_ceil(4);
+        let mut out_c = 0;
+
+        for b in 0..num_blocks {
+            let [mut r0, mut r1, mut r2, mut r3] =
+                unsafe { super::conv_input::load_4_accums(out_frame, out_c, OUT) };
+
+            for (k, in_slice) in in_taps.iter().enumerate() {
+                let w_start = (b * K + k) * IN * 4;
+                let w_slice: &[[f32; 4]] = unsafe {
+                    let ptr = self.f32_weights.as_ptr().add(w_start) as *const [f32; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
+
+                let [t0, t1, t2, t3] = dot_product_4x_f32(w_slice, in_slice);
+                r0 += t0;
+                r1 += t1;
+                r2 += t2;
+                r3 += t3;
+            }
+
+            unsafe {
+                super::conv_input::store_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT);
+            }
+            out_c += 4;
         }
     }
 }

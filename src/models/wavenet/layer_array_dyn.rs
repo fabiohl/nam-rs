@@ -100,12 +100,24 @@ impl WaveNetLayerArrayDyn {
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
-            self.rechannel.process_block::<M>(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + num_frames * ch],
-                num_frames,
-            );
+            #[cfg(feature = "high-fidelity")]
+            {
+                self.rechannel.process_block_f32_native::<M>(
+                    layer_inputs,
+                    &mut state_0.layer_buffer[start..start + num_frames * ch],
+                    num_frames,
+                );
+            }
+            #[cfg(not(feature = "high-fidelity"))]
+            {
+                self.rechannel.process_block::<M>(
+                    layer_inputs,
+                    &mut state_0.layer_buffer[start..start + num_frames * ch],
+                    num_frames,
+                );
+            }
 
+            #[cfg(not(feature = "high-fidelity"))]
             if M::IS_BF16 {
                 M::f32_to_bf16(
                     &state_0.layer_buffer[start..start + num_frames * ch],

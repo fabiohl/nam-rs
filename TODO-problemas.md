@@ -119,6 +119,10 @@ afetar produção) — `S4.T4.1`; (3) **documentar a política** de fidelidade (
 para F1**: o motor genérico **não pode piorar** o ESR atual. Sprints: **S1** (medição), **S4**
 (modo exato + doc, opcional/deferida).
 
+**Nota do PO:** Incluir uma sprint ou apenas tarefa-tecnica só para fazer uma comparação rigorosa entre os
+modos de alta fidelidade e baixa fidelidade(atual). Afinal qual o ganho real em performance, latência e
+estabilidade que a baixa fidelidade traz? Porque se não houver uma justificativa muito forte, abandona-la!
+
 ---
 
 ## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa)

@@ -27,6 +27,8 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     let mut weights = AlignedVec::new(padded_total, 0u16);
+    #[cfg(feature = "high-fidelity")]
+    let mut f32_weights = AlignedVec::new(padded_total, 0.0f32);
     let interleaved = cursor.is_interleaved4();
     let raw_f32_owned: Vec<f32>;
 
@@ -37,6 +39,10 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         raw_f32_owned = raw.to_vec();
         for i in 0..padded_total {
             weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
+        }
+        #[cfg(feature = "high-fidelity")]
+        {
+            f32_weights.copy_from_slice(&raw_f32_owned);
         }
     } else {
         // Standard (in_ch, out_ch, kernel) layout in the file.
@@ -52,6 +58,14 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
             out_size,
             k_size,
             is_bf16,
+        );
+        #[cfg(feature = "high-fidelity")]
+        transpose_conv1d_interleaved_4wide_f32(
+            &raw_f32_owned,
+            &mut f32_weights,
+            in_size,
+            out_size,
+            k_size,
         );
     }
 
@@ -94,16 +108,33 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         crate::math::common::prefetch_strategy_simple
     };
 
-    Ok(T::from_parts(
-        weights,
-        bias,
-        do_bias,
-        dilation,
-        in_size,
-        out_size,
-        k_size,
-        prefetch_fn,
-    ))
+    #[cfg(feature = "high-fidelity")]
+    {
+        Ok(T::from_parts_f32(
+            weights,
+            f32_weights,
+            bias,
+            do_bias,
+            dilation,
+            in_size,
+            out_size,
+            k_size,
+            prefetch_fn,
+        ))
+    }
+    #[cfg(not(feature = "high-fidelity"))]
+    {
+        Ok(T::from_parts(
+            weights,
+            bias,
+            do_bias,
+            dilation,
+            in_size,
+            out_size,
+            k_size,
+            prefetch_fn,
+        ))
+    }
 }
 
 pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
@@ -116,6 +147,8 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
     let raw = cursor.read_slice(total)?;
     let raw_f32_owned = raw.to_vec();
     let mut weights = AlignedVec::new(total, 0u16);
+    #[cfg(feature = "high-fidelity")]
+    let mut f32_weights = AlignedVec::new(total, 0.0f32);
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
     let interleaved = cursor.is_interleaved4();
@@ -124,8 +157,14 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
         for i in 0..total {
             weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
         }
+        #[cfg(feature = "high-fidelity")]
+        {
+            f32_weights.copy_from_slice(&raw_f32_owned);
+        }
     } else {
         transpose_dense_layer(&raw_f32_owned, &mut weights, in_size, out_size, is_bf16);
+        #[cfg(feature = "high-fidelity")]
+        transpose_dense_layer_f32(&raw_f32_owned, &mut f32_weights, in_size, out_size);
     }
 
     let mut bias = if do_bias {
@@ -154,7 +193,21 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
         bias_tune::apply_bias_compensation(&mut bias, &compensation);
     }
 
-    Ok(T::from_parts(weights, bias, do_bias, in_size, out_size))
+    #[cfg(feature = "high-fidelity")]
+    {
+        Ok(T::from_parts_head(
+            weights,
+            bias,
+            do_bias,
+            in_size,
+            out_size,
+            f32_weights,
+        ))
+    }
+    #[cfg(not(feature = "high-fidelity"))]
+    {
+        Ok(T::from_parts(weights, bias, do_bias, in_size, out_size))
+    }
 }
 
 pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
@@ -276,6 +329,36 @@ fn transpose_dense_layer_f32(raw: &[f32], weights: &mut [f32], in_size: usize, o
     for out_c in 0..out_size {
         for in_c in 0..in_size {
             weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c];
+        }
+    }
+}
+
+/// Rearranges convolution layer weights into the "Interleaved 4-Wide" format
+/// preserving full f32 precision (no quantization).
+/// Same layout as `transpose_conv1d_interleaved_4wide`, but stores raw f32 values.
+#[cfg(feature = "high-fidelity")]
+fn transpose_conv1d_interleaved_4wide_f32(
+    raw: &[f32],
+    weights: &mut [f32],
+    in_ch: usize,
+    out_ch: usize,
+    kernel: usize,
+) {
+    let num_blocks = out_ch.div_ceil(4);
+    for b in 0..num_blocks {
+        for k in 0..kernel {
+            for in_c in 0..in_ch {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
+                    if out_c < out_ch {
+                        let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                        weights[target_idx] = raw[raw_idx];
+                    } else {
+                        weights[target_idx] = 0.0;
+                    }
+                }
+            }
         }
     }
 }
