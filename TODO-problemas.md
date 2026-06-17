@@ -29,16 +29,17 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sumário de severidade
 
-| ID     | Achado                                                                                                                     | Severidade     | Eixo                 |
-| ------ | -------------------------------------------------------------------------------------------------------------------------- |:--------------:| -------------------- |
-| **P1** | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade          | 🔴 Alta        | Fidelidade           |
-| **P2** | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%)                    | 🟠 Média-Alta  | Fidelidade           |
-| **P3** | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel | 🟠 Média       | Cobertura/Fidelidade |
-| **P4** | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                   | 🟡 Média-Baixa | Correção/DSP         |
-| **P5** | **Pico de latência** de bloco no WaveNet em silêncio (~**677 µs**) — possível penalidade de denormais                      | 🟡 Média-Baixa | RT/Performance       |
-| **P6** | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                              | 🟢 Baixa       | Observabilidade      |
-| **P7** | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                      | 🟢 Baixa       | Portabilidade        |
-| **P8** | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                           | 🟢 Informativo | Cobertura            |
+| ID     | Achado                                                                                                                                        | Severidade         | Eixo                 |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |:------------------:| -------------------- |
+| **P1** | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade                             | 🔴 Alta            | Fidelidade           |
+| **P2** | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%)                                       | 🟠 Média-Alta      | Fidelidade           |
+| **P3** | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel                    | 🟠 Média           | Cobertura/Fidelidade |
+| **P4** | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                      | 🟡 Média-Baixa     | Correção/DSP         |
+| **P5** | **Pico de latência** de bloco no WaveNet em silêncio (~**677 µs**) — possível penalidade de denormais                                         | 🟡 Média-Baixa     | RT/Performance       |
+| **P6** | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                                                 | 🟢 Baixa           | Observabilidade      |
+| **P7** | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                                         | 🟢 Baixa           | Portabilidade        |
+| **P8** | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                                              | 🟢 Informativo     | Cobertura            |
+| **P9** | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64 | 🟠 Média (latente) | RT-safety/Soundness  |
 
 ---
 
@@ -58,6 +59,15 @@ diferente", é **outro som**. O engine é determinístico e auto-consistente (n�
 gera NaN), mas **um usuário que carregue um modelo "Lite" ouvirá algo diferente do NAM
 canônico**. Hoje isso está **mascarado por `#[ignore]`** para não derrubar o gate.
 
+**Nova manifestação (auditoria jun/2026 — S2).** O teste novo `tests/nondist_validation.rs`
+expôs que um modelo **Lite real** (`EVH-5150-Lite.nam`) também **viola invariância de tamanho de
+bloco**: processar o mesmo sinal em blocos de 1 vs 16 frames diverge (MSE ≈ 2,1e-2). Como o caminho
+Lite é const-generic (intocado pela S2), isto é a **mesma raiz P1** se manifestando como divergência
+**single-frame vs dual-frame tiling** no caminho **CH=12** — exatamente o suspeito apontado na
+condução abaixo ("ordem de interleaving 4-wide"). No teste, a verificação foi rebaixada a **warning
+visível** (`WARN [P1]`) para não derrubar a suíte por um problema já rastreado; restaurar o
+`assert` rígido quando P1 for resolvido.
+
 **Por que importa ao PO**
 É o achado de maior impacto de produto: uma classe inteira de modelos (WaveNet Lite,
 CH=12) está silenciosamente "errada" em relação à referência que o projeto promete
@@ -72,7 +82,10 @@ carregar um modelo Lite.
 
 ---
 
-## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear
+## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear — 🟡 [PARCIAL]
+
+> **Status (jun/2026):** **medição concluída** (S1.T1.4, commit `8d4ed17`: a quantização F16
+> domina o ESR; Padé tanh negligível para pesos sintéticos). **Modo exato pendente** (S4, opcional).
 
 **Evidência** (`tests-cargo.log`, Phase 3, baselines de ESR impressos):
 
@@ -144,7 +157,11 @@ T3.3 endurecimento dos gates).
 
 ---
 
-## P4 — 🟡 WaveNet não é "silencioso no silêncio"
+## P4 — 🟡 WaveNet não é "silencioso no silêncio" — ✅ [DONE]
+
+> **Status (jun/2026):** **diagnóstico concluído** (S1.T1.3, commit `a7df957`: o resíduo de 3,58e-5
+> origina-se 100% da propagação de `tanh(conv1d_bias)` — **fiel ao NAMCore C++** `dsp.h:67`).
+> Mantido por design (não zerar à força); documentado.
 
 **Evidência** (`target/logs/phase1-soak.log`):
 
@@ -172,12 +189,12 @@ tornam `tanh(bias) ≠ 0`, e o próprio C++ documenta _"don't expect the model t
 after this"_ (`tests/fixtures/NeuralAmpModelerCore/NAM/dsp.h:67`). A A2 só zera por usar **LeakyReLU(0)=0**
 
 - pesos sintéticos — não é o caso da WaveNet A1 real. **Cautela crítica do auditor: NÃO zerar o
-silêncio à força** — isso **divergiria da bíblia** (C++) e quebraria a paridade. Encaminhamento:
-diagnosticar a origem do resíduo (bias propagado vs quantização vs denormal), **confirmar paridade**
-gerando o mesmo silêncio no `render` v0.5.3, e **documentar** que −89 dBFS é fiel. DAZ/FTZ já está
-ativo (`src/math/common/ops.rs:163`, reasserção em `src/clap/processor/mod.rs:268`); a interação com
-noise-gate/true-bypass é responsabilidade da camada de gate, não do modelo. Liga-se a **P5**
-(penalidade de denormal). Sprint: **S1.T1.3** (diagnóstico + política documentada, 🟢 baixo risco).
+  silêncio à força** — isso **divergiria da bíblia** (C++) e quebraria a paridade. Encaminhamento:
+  diagnosticar a origem do resíduo (bias propagado vs quantização vs denormal), **confirmar paridade**
+  gerando o mesmo silêncio no `render` v0.5.3, e **documentar** que −89 dBFS é fiel. DAZ/FTZ já está
+  ativo (`src/math/common/ops.rs:163`, reasserção em `src/clap/processor/mod.rs:268`); a interação com
+  noise-gate/true-bypass é responsabilidade da camada de gate, não do modelo. Liga-se a **P5**
+  (penalidade de denormal). Sprint: **S1.T1.3** (diagnóstico + política documentada, 🟢 baixo risco).
 
 ---
 
@@ -261,6 +278,41 @@ NeuralAmpModelerCore (há indícios disso — commit pinado `9c7b185`).
 
 **Nota do PO**
 Sim, a suite longa é rodada frequentemente. Quanto aos goldens congelados, favor confirmar isto.
+
+---
+
+## P9 — 🟠 A2: `set_max_buffer_size` cresce além de 64, mas os conv kernels têm scratch fixo de 64 (potencial UB em release)
+
+**Origem**: auditoria da S2 (jun/2026), exposto pelo teste novo `tests/nondist_validation.rs`.
+**Evidências**
+
+- `src/models/a2/conv1d_ch8.rs:291-293` e `:387-389`: `let max_frames = 64;` +
+  `debug_assert!(num_frames <= max_frames);` + **scratch de stack `let mut z_buf = [0.0f32; 64 * 8];`**.
+- `src/models/a2/model/mod.rs:185-189`: `set_max_buffer_size` **cresce** `max_buffer_size` (e realoca
+  buffers de modelo) para valores > 64; `model_test.rs:120-124` confirma crescimento até 256.
+- `src/clap/processor/events.rs:173`: produção chama `model.set_max_buffer_size(max_frames_count)` na
+  ativação; `src/dsp/pipeline/stages/inference.rs:118` chama `model.process(model_in_l, …)` com o
+  **bloco inteiro** (sem rechunk a ≤64).
+
+**O que significa**
+A A2 **anuncia** suporte a blocos > 64 (via `set_max_buffer_size`), mas os kernels `conv1d_ch8`
+(e provavelmente `conv1d_ch3`) usam um buffer de stack **fixo em 64 frames**. Com `num_frames > 64`:
+em **debug** dá `panic` (o `debug_assert`); em **release** o `debug_assert` some e o kernel escreve
+`num_frames*8 > 512` elementos num array de 512 → **estouro de buffer de stack (UB)**. É alcançável em
+produção **se** um host negociar bloco > 64 com um modelo A2. Hoje o pico está em parte contido porque
+o WaveNet A1 re-chunka internamente a 64 e a maioria dos hosts usa blocos pequenos — mas o contrato A2
+é **inconsistente** (cresce o que não pode crescer).
+
+**Por que importa ao PO**
+RT-safety/soundness. Não é regressão da S2 (a A2 não foi tocada); é latente e foi **descoberto** pela
+nova cobertura. Risco real de UB sob host com bloco grande + modelo A2.
+
+**Sugestão de condução**
+Decidir entre: (a) **chunkar internamente** a A2 em sub-blocos de ≤64 no `process` (espelha o WaveNet
+A1; corrige a raiz); ou (b) tornar `set_max_buffer_size` **honesto** — clampar o teto efetivo da A2 a
+64 e documentar; ou (c) generalizar os kernels `conv1d_ch{3,8}` para scratch dimensionado no load
+(heap, alinhado) — sinergia com o motor A2 geral (`TODO-features.md §F3`). Enquanto não resolvido, o
+teste `nondist_validation` limita a varredura de tamanho de bloco a 64 (contrato universal seguro).
 
 ---
 

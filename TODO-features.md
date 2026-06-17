@@ -79,7 +79,14 @@ Evidência empírica compartilhada por F1/F2/F3/F4/F6/F11. O dispatcher do `nam-
 
 ---
 
-## F1 — 🔴 WaveNet genérico (dispatcher dinâmico)
+## F1 — 🔴 WaveNet genérico (dispatcher dinâmico) — 🟠 [EM ANDAMENTO]
+
+> **Status (jun/2026):** **motor dinâmico pronto e auditado** (S2: `WaveNetModelDyn` +
+> `layer_array_dyn`/`layer_dyn`/`dense_dyn`, scratch em heap suportando CH>16, born-SIMD;
+> paridade bit-exata vs const-generic nos 4 SKUs — commits `7416b49`/`9ee0145`). Topologia
+> generalizada para 3 vias `Known/Free/Rejected` (S2.T2.3, `e0e0685`). **Pendente o dispatch
+> híbrido no loader (T3.1/S3)**: hoje geometria `Free` é detectada e validada, mas o build ainda
+> a rejeita com mensagem clara ("pending T3.1"). `[DONE]` quando S3 fechar.
 
 **O que é.** O NAMCore aceita **qualquer** geometria WaveNet (nº de camadas, canais,
 dilatações, kernel, head) via `wavenet::create_config` (`wavenet/model.cpp:1239`,

@@ -276,12 +276,12 @@ escalar onde o v3 se aplica. Duas verdades guiaram a auditoria:
 
 **Resultado da auditoria (achados confirmados — sempre-ativos e alcançáveis):**
 
-| Achado | Local                                | Natureza                                                                                | Onde foi roteado             |
-| ------ | ------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------- |
-| **S1** | `src/models/a2/head.rs:96-118`       | Head conv da A2 **100% escalar** (produção, todo bloco; CH=8 → 128 FMA escalares/frame) | → **`TODO-features.md §F3`** |
-| **S2** | `src/models/a2/model/mod.rs:264-270` | Rechannel escalar **+ decode f16 redundante por frame**                                 | → **`TODO-features.md §F3`** |
-| **S3** | `src/models/wavenet/model.rs:96-98`  | `head_scale` escalar dentro de fn `::<M: SimdMath>` (trivial: `M::apply_gain`)          | → **`TODO-features.md §F1`** |
-| **S4** | `src/dsp/cabsim/conv.rs:259-292`     | MAC complexo escalar                                                                    | → já é **§O3a** (acima)      |
+| Achado              | Local                                | Natureza                                                                                                                  | Onde foi roteado             |
+| ------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **S1**              | `src/models/a2/head.rs:96-118`       | Head conv da A2 **100% escalar** (produção, todo bloco; CH=8 → 128 FMA escalares/frame)                                   | → **`TODO-features.md §F3`** |
+| **S2**              | `src/models/a2/model/mod.rs:264-270` | Rechannel escalar **+ decode f16 redundante por frame**                                                                   | → **`TODO-features.md §F3`** |
+| **S3** ✅ [DONE]    | `src/models/wavenet/model.rs:96-98`  | `head_scale` escalar dentro de fn `::<M: SimdMath>` (trivial: `M::apply_gain`) — vetorizado em S1.T1.1 (commit `adb4413`) | → **`TODO-features.md §F1`** |
+| **S4**              | `src/dsp/cabsim/conv.rs:259-292`     | MAC complexo escalar                                                                                                      | → já é **§O3a** (acima)      |
 
 > **Por que S1–S3 vivem em F1/F3 e não aqui (decisão do PO):** são otimizações de código que será
 > **expandido/generalizado** por essas features — anexá-las como _orientação de otimização_ no F
@@ -290,7 +290,8 @@ escalar onde o v3 se aplica. Duas verdades guiaram a auditoria:
 
 **Resíduo próprio de O5 (não cabe em nenhum F — fica aqui):**
 
-- **Limpeza de cabeamento BF16 morto no AVX2.** `Avx2Math` cabeia `dot_product_bf16*`/`gemv_*_bf16`
+- ✅ **[DONE]** (S1.T1.2, commit `f7bed2b`: fallbacks escalares substituídos por `unreachable!()`).
+  **Limpeza de cabeamento BF16 morto no AVX2.** `Avx2Math` cabeia `dot_product_bf16*`/`gemv_*_bf16`
   para fallbacks **escalares** (`src/math/common/avx2_impl.rs:42-99`), mas `is_bf16` só é `true` em
   `Avx512VnniBf16` (confirmado em `loader/dispatcher/lstm/static_builder.rs:28`,
   `wavenet/layout.rs:26`, `a2/model/set_weights.rs:41`) — no AVX2 os pesos são **F16** (com F16C
@@ -304,9 +305,11 @@ escalar onde o v3 se aplica. Duas verdades guiaram a auditoria:
 **recursivo** (vetorização não-trivial, médio prazo); `gate.rs` é FSM de controle com aplicação de
 ganho **já SIMD**; `wavenet/accumulate` já é AVX2/AVX-512.
 
-**Guard-rail (vale para todo trabalho no hot-spot):** com x86-64-v3 garantido, **nenhum laço de
-aritmética/redução f32/f16 por-amostra/por-bloco** deve permanecer escalar. Ao implementar qualquer
-F que toque inferência, usar os kernels `SimdMath` (ou intrínsecos `core::arch`) desde o início.
+**Guard-rail (vale para todo trabalho no hot-spot):** ✅ **[ATIVO]** (S2.T2.2: motor dinâmico nasceu
+SIMD — dual-frame tiling + dot 4-wide interleaved; auditado e verde). Com x86-64-v3 garantido,
+**nenhum laço de aritmética/redução f32/f16 por-amostra/por-bloco** deve permanecer escalar. Ao
+implementar qualquer F que toque inferência, usar os kernels `SimdMath` (ou intrínsecos `core::arch`)
+desde o início.
 
 **📋 Parecer revisor-auditor (jun/2026) — planejado em `TODO-sprints.md` (Épico E-WN).** Roteamento
 confirmado e refinado: **S3** (`head_scale` escalar, `model.rs:96-98`) é a fração de O5 que cabe ao

@@ -385,15 +385,27 @@ fn test_zero_alloc_nondist_models() {
             .into_owned();
         let json_data = fs::read_to_string(&model_path).expect("Failed to read model file");
         let model_data = parse_nam_json(&json_data).expect("Failed to parse model JSON");
+
+        // Skip free-geometry WaveNet A1 models: the dynamic engine exists (S2) but is
+        // not yet wired into the loader (pending T3.1/S3), so build_model() still rejects
+        // them. This skip must precede build_model() so the corpus does not fail the suite.
+        if model_data.architecture == "WaveNet"
+            && !model_data.is_wavenet_a2()
+            && matches!(
+                get_wavenet_topology(&model_data),
+                WavenetTopologyResult::Free(_)
+            )
+        {
+            println!("SKIP (free geometry, pending T3.1 dynamic wiring): {filename}");
+            continue;
+        }
+
         let mut model = build_model(&model_data).expect("Failed to build model");
 
         model.prewarm(2048);
 
         let input = generate_sine_440hz(64);
         let mut output = vec![0.0f32; 64];
-
-        let is_wavenet = model_data.architecture == "WaveNet";
-        let is_a2 = model_data.is_wavenet_a2();
 
         let count = {
             let _guard = TrackingGuard::new();
@@ -406,17 +418,9 @@ fn test_zero_alloc_nondist_models() {
             filename, count
         );
 
-        // Standard/A2 fast paths and LSTMs must be zero-alloc.
-        // Dynamic WaveNet/LSTM fallback might allocate.
-        if is_wavenet && !is_a2 {
-            let topo = get_wavenet_topology(&model_data);
-            if matches!(topo, WavenetTopologyResult::Free(_)) {
-                // Dynamic/Generic WaveNet fallback (F1 features or dynamic shapes)
-                // Might allocate. Warn but do not fail.
-                continue;
-            }
-        }
-
+        // Free-geometry WaveNet models are skipped before build (see above), so every
+        // model reaching this point is a supported fast-path (Known SKU / A2 / LSTM /
+        // Linear) and must be strictly zero-alloc in the hot-path.
         assert_eq!(
             count, 0,
             "Allocations detected in hot-path for nondist model: {}!",
