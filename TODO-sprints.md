@@ -611,7 +611,7 @@ tarefa antes de avançar.
 
 ---
 
-### T-HF5.A.0 — Pré-voo: verificar estado de partida
+### T-HF5.A.0 — Pré-voo: verificar estado de partida [DONE]
 
 ```bash
 cargo check --features high-fidelity 2>&1 | tail -3    # deve estar verde
@@ -622,7 +622,7 @@ Resultado esperado: zero warnings, zero falhas. Se falhar: parar.
 
 ---
 
-### T-HF5.A.1 — Kernels de ativação WaveNet: unificar e remover bifurcações
+### T-HF5.A.1 — Kernels de ativação WaveNet: unificar e remover bifurcações [DONE]
 
 **Arquivos**: `src/math/wavenet/accumulate/avx2.rs`, `avx512.rs`
 
