@@ -175,8 +175,8 @@ impl Conv1dDyn {
     ///
     /// Same dual-frame tiling as `process_block_generic`, but uses full-precision
     /// f32 weights and scalar dot products, bypassing quantization drift.
-    #[cfg(feature = "high-fidelity")]
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) unsafe fn process_block_f32_native(
         &self,
         layer_buffer: &[f32],

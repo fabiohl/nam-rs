@@ -692,7 +692,7 @@ cargo test --quiet -- wavenet 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.3 — Conv1D dinâmico: remover bifurcação f32/u16
+### T-HF5.A.3 — Conv1D dinâmico: remover bifurcação f32/u16 [DONE]
 
 **Arquivos**: `src/models/wavenet/conv1d_dyn.rs`, `conv1d_dyn_dual.rs`, `conv1d_dyn_kernels.rs`
 

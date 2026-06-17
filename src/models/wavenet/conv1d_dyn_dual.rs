@@ -170,10 +170,9 @@ impl Conv1dDyn {
     }
 }
 
-#[cfg(feature = "high-fidelity")]
 impl Conv1dDyn {
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub(crate) unsafe fn process_dual_frame_f32_native_generic(
         &self,
         layer_buffer: &[f32],

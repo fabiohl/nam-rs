@@ -256,7 +256,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
     let make_conv1d_dyn = |in_ch: usize, out_ch: usize, dilation: usize| -> Conv1dDyn {
         Conv1dDyn {
             weights: make_conv1d_weights_u16(in_ch, out_ch, k),
-            #[cfg(feature = "high-fidelity")]
             f32_weights: make_conv1d_weights(in_ch, out_ch, k),
             bias: make_bias(out_ch),
             do_bias: false,

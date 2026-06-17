@@ -131,7 +131,6 @@ fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
 
 fn conv1d_dyn_from_raw(raw: &[u16], in_ch: usize, out_ch: usize, kernel: usize) -> Conv1dDyn {
     Conv1dDyn {
-        #[cfg(feature = "high-fidelity")]
         f32_weights: AlignedVec::new(0, 0.0f32),
         weights: AlignedVec::from_vec(raw.to_vec()),
         bias: AlignedVec::from_vec(vec![0.0; out_ch]),

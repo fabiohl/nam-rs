@@ -9,7 +9,6 @@
 
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
-#[cfg(feature = "high-fidelity")]
 use super::common::MAX_KERNEL;
 
 /// Structure for causal 1D convolution with dynamic dimensions.
@@ -18,8 +17,7 @@ use super::common::MAX_KERNEL;
 pub struct Conv1dDyn {
     /// Convolution weights [OUT][KERNEL][IN] (quantized u16).
     pub weights: AlignedVec<u16>,
-    /// Optional full-precision f32 weights for high-fidelity mode.
-    #[cfg(feature = "high-fidelity")]
+    /// Full-precision f32 weights.
     pub f32_weights: AlignedVec<f32>,
     /// Bias vector [OUT].
     pub bias: AlignedVec<f32>,
@@ -241,7 +239,6 @@ impl Conv1dDyn {
     /// # Safety
     /// The caller must guarantee that `layer_buffer` and `out_frame` have sizes
     /// compatible with the layer dimensions.
-    #[cfg(feature = "high-fidelity")]
     #[inline(always)]
     pub unsafe fn process_single_frame_f32_native(
         &self,
