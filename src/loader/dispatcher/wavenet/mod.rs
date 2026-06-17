@@ -11,6 +11,7 @@ use anyhow::bail;
 use log::info;
 
 mod bias_tune;
+pub(crate) mod dynamic;
 pub(crate) mod feather;
 pub(crate) mod layout;
 pub(crate) mod lite;
@@ -129,27 +130,8 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
             Ok(Box::new(StaticModel::WavenetNano(Box::new(model))))
         }
         WavenetTopologyResult::Free(ref geom) => {
-            let layer_info: Vec<(usize, usize)> = data
-                .config
-                .layers
-                .iter()
-                .map(|l| {
-                    let ch = l.channels.unwrap_or(0);
-                    let k = l.kernel_size.unwrap_or(0);
-                    (ch, k)
-                })
-                .collect();
-            bail!(
-                "WaveNet A1 free geometry detected (valid, but dynamic engine not yet wired — \
-                 pending T3.1). \
-                 Geometry: CH={}, K={}, HEAD={}, arrays={}, dilations={:?}, layers={:?}",
-                geom.channels,
-                geom.kernel_size,
-                geom.head_size,
-                geom.num_arrays,
-                geom.dilations,
-                layer_info,
-            );
+            let model = dynamic::build_wavenet_dynamic(data, geom)?;
+            Ok(Box::new(StaticModel::WavenetDyn(Box::new(model))))
         }
         WavenetTopologyResult::Rejected(reason) => {
             let layer_info: Vec<(usize, usize)> = data

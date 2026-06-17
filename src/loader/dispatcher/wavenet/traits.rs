@@ -3,7 +3,7 @@
 
 use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::wavenet::Conv1dDyn;
-use crate::models::wavenet::{Conv1d, DenseLayer};
+use crate::models::wavenet::{Conv1d, DenseLayer, DenseLayerDyn};
 
 /// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
@@ -115,6 +115,45 @@ impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OU
         f32_weights: AlignedVec<f32>,
     ) -> Self {
         DenseLayer {
+            weights,
+            bias,
+            do_bias,
+            f32_weights: Some(f32_weights),
+        }
+    }
+}
+
+impl DenseWeightsOutput for DenseLayerDyn {
+    #[inline(always)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+    ) -> Self {
+        DenseLayerDyn {
+            in_ch: in_size,
+            out_ch: out_size,
+            weights,
+            bias,
+            do_bias,
+            f32_weights: None,
+        }
+    }
+
+    #[inline(always)]
+    fn from_parts_head(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+        f32_weights: AlignedVec<f32>,
+    ) -> Self {
+        DenseLayerDyn {
+            in_ch: in_size,
+            out_ch: out_size,
             weights,
             bias,
             do_bias,

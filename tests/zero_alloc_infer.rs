@@ -386,17 +386,17 @@ fn test_zero_alloc_nondist_models() {
         let json_data = fs::read_to_string(&model_path).expect("Failed to read model file");
         let model_data = parse_nam_json(&json_data).expect("Failed to parse model JSON");
 
-        // Skip free-geometry WaveNet A1 models: the dynamic engine exists (S2) but is
-        // not yet wired into the loader (pending T3.1/S3), so build_model() still rejects
-        // them. This skip must precede build_model() so the corpus does not fail the suite.
+        // Skip free-geometry WaveNet A1 models with >2 layer arrays — the dynamic
+        // engine (T3.1) currently supports exactly 2 arrays. Models with N≠2 arrays
+        // (edge geometry outside standard A1) are skipped gracefully.
         if model_data.architecture == "WaveNet"
             && !model_data.is_wavenet_a2()
             && matches!(
                 get_wavenet_topology(&model_data),
-                WavenetTopologyResult::Free(_)
+                WavenetTopologyResult::Free(ref g) if g.num_arrays != 2
             )
         {
-            println!("SKIP (free geometry, pending T3.1 dynamic wiring): {filename}");
+            println!("SKIP (free geometry, N≠2 arrays not yet supported): {filename}");
             continue;
         }
 

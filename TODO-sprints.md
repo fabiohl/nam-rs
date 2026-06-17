@@ -242,7 +242,7 @@ referência e validar por ESR/SNR.
 > testes de "rejeição" em goldens positivos e endurecendo os gates frouxos (P3). É a sprint que
 > **destrava F1 de fato** e entrega o valor ao usuário.
 
-#### T3.1 — Dispatch híbrido no loader (fast-path SKU + fallback dinâmico) 🟠
+#### T3.1 — Dispatch híbrido no loader (fast-path SKU + fallback dinâmico) 🟠 [DONE]
 
 - **Onde**: `src/loader/dispatcher/wavenet/mod.rs:108-142` (braço `None`); novo
   `dispatcher/wavenet/dynamic.rs`; `src/models/StaticModel` (variante para o modelo dinâmico).
