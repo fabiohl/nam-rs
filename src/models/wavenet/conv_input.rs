@@ -187,10 +187,18 @@ pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4
     unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(weights, state) }
 }
 
-/// F32-native 4-lane interleaved dual-frame dot product.
+/// F32-native 4-lane interleaved dual-frame dot product (AVX2/FMA kernel).
 ///
-/// Processes two independent state vectors against the same weight slice,
-/// used by the high-fidelity dual-frame Conv1D path.
+/// Processes two independent state vectors against the same weight slice
+/// simultaneously via `__m256`/double-accumulator strategy: the weight is
+/// broadcast to both halves of a YMM, state scalars are packed into a
+/// `_mm256_set_m128` blend, and a single `_mm256_fmadd_ps` accumulates
+/// both frames.
+///
+/// # Bit‑exactness guarantee
+/// Both the scalar reference (`mul_add`) and the SIMD kernel (`_mm_fmadd_ps`)
+/// use the same FMA3 fused multiply‑add → bit‑identical result on any
+/// x86‑64‑v3 CPU.
 #[cfg(feature = "high-fidelity")]
 #[inline(always)]
 pub(crate) fn dot_product_4x_f32_dual(
@@ -198,18 +206,5 @@ pub(crate) fn dot_product_4x_f32_dual(
     state_f0: &[f32],
     state_f1: &[f32],
 ) -> ([f32; 4], [f32; 4]) {
-    let mut r0 = [0.0f32; 4];
-    let mut r1 = [0.0f32; 4];
-    for i in 0..state_f0.len() {
-        let w = weights[i];
-        r0[0] = w[0].mul_add(state_f0[i], r0[0]);
-        r0[1] = w[1].mul_add(state_f0[i], r0[1]);
-        r0[2] = w[2].mul_add(state_f0[i], r0[2]);
-        r0[3] = w[3].mul_add(state_f0[i], r0[3]);
-        r1[0] = w[0].mul_add(state_f1[i], r1[0]);
-        r1[1] = w[1].mul_add(state_f1[i], r1[1]);
-        r1[2] = w[2].mul_add(state_f1[i], r1[2]);
-        r1[3] = w[3].mul_add(state_f1[i], r1[3]);
-    }
-    (r0, r1)
+    unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx2(weights, state_f0, state_f1) }
 }

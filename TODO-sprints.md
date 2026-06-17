@@ -244,7 +244,7 @@ estável para atribuir o ganho do Conv1D).
 * **Aceite**: bit-exato vs o escalar atual num conjunto de vetores aleatórios; `cargo test
   --features high-fidelity` verde.
 
-### T-HF2.2 — Kernel SIMD dual-frame `dot_product_4x_f32_dual` (AVX2/FMA)
+### T-HF2.2 — Kernel SIMD dual-frame `dot_product_4x_f32_dual` (AVX2/FMA) [DONE]
 
 * **Descrição**: idem T-HF2.1 para `dot_product_4x_f32_dual` (`conv_input.rs:197-216`), que processa
   dois estados (`state_f0`, `state_f1`) contra o mesmo peso — encaixa em

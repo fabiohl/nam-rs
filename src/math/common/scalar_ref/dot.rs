@@ -134,6 +134,42 @@ pub unsafe fn dot_product_4x_f32_scalar(weights: &[[f32; 4]], state: &[f32]) -> 
     r
 }
 
+/// F32-native 4-lane interleaved dual-frame dot product (scalar reference).
+///
+/// Processes two state vectors against the same weight slice using `mul_add`
+/// (FMA3) to match the rounding of the AVX2/FMA kernel.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_4x_f32_dual_scalar(
+    weights: &[[f32; 4]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 4], [f32; 4]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut r0 = [0.0f32; 4];
+    let mut r1 = [0.0f32; 4];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s0 = state_f0.get_unchecked(i);
+        let s1 = state_f1.get_unchecked(i);
+        r0[0] = (*w.get_unchecked(0)).mul_add(*s0, r0[0]);
+        r0[1] = (*w.get_unchecked(1)).mul_add(*s0, r0[1]);
+        r0[2] = (*w.get_unchecked(2)).mul_add(*s0, r0[2]);
+        r0[3] = (*w.get_unchecked(3)).mul_add(*s0, r0[3]);
+        r1[0] = (*w.get_unchecked(0)).mul_add(*s1, r1[0]);
+        r1[1] = (*w.get_unchecked(1)).mul_add(*s1, r1[1]);
+        r1[2] = (*w.get_unchecked(2)).mul_add(*s1, r1[2]);
+        r1[3] = (*w.get_unchecked(3)).mul_add(*s1, r1[3]);
+    }
+    (r0, r1)
+}
+
 /// Same logic as above (4 sums at once), but using the compact BF16 format.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]
