@@ -105,6 +105,7 @@ These models have real trained weights, excellent fidelity, and are certified fo
 | `BossWN-feather.nam`      | Community Real | WaveNet (CH=8, K=3, 20 layers)  | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1/v2, zero-allocation tests.                |
 | `BossWN-nano.nam`         | Community Real | WaveNet (CH=4, K=3, 20 layers)  | **High** (Proven)                     | Boss Waza TAE Community. Compatible license.           | Golden vectors v1/v2, multi-SR checks.                      |
 | `wavenet_a1_standard.nam` | Official Real  | WaveNet (CH=16, K=3, 20 layers) | **High** (Excellent / Steve Atkinson) | Pinned `sdatkinson/NeuralAmpModelerCore` example. CC0. | Golden vectors v1/v2.                                       |
+| `wavenet_official.nam`    | Official Real  | WaveNet (CH=3, K=3, free geom)  | **High** (Excellent / Steve Atkinson) | Pinned `sdatkinson/NeuralAmpModelerCore` example. CC0. | Golden vectors v1/v2, self-consistency (dynamic path).       |
 | `lstm.nam`                | Official Real  | LSTM (1 layer, H=3)             | **High** (Excellent / Steve Atkinson) | Pinned `sdatkinson/NeuralAmpModelerCore` example. CC0. | Golden vectors v1/v2, C++ live parity.                      |
 
 #### 2. Synthetic Models and Mocks (Targets for Progressive Replacement)

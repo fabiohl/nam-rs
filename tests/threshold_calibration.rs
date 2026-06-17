@@ -43,6 +43,7 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_wavenet_lite" => Some("BossWN-lite"),
         "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
         "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
+        "golden_wavenet_official" => Some("wavenet_official"),
         // cabsim goldens use their own oracle (convolution / C++ parity),
         // not topology_thresholds.
         _ => None,

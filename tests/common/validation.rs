@@ -371,6 +371,13 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 40.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4)))
         }
+        // --- WaveNet Official (CH=3 free geom, dynamic path) ---
+        // Measured: SNR = 22.4 dB, ESR = 5.78e-3 (T3.2 calibration)
+        // Margin: SNR - 8.4 dB, ESR factor ~6.0x
+        "wavenet_official" => {
+            let snr_db = 14.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2)))
+        }
         // --- LSTM 1x16 ---
         // Measured: SNR=19.8 dB (v1 2048 samples), ESR=1.04e-2
         // v2: SNR=12.2 dB / ESR=6.1e-2 @ 96 kHz (recurrent drift). Margin: 7.8/0.2 dB (v1/v2).

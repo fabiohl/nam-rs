@@ -256,7 +256,7 @@ referência e validar por ESR/SNR.
 - **Risco**: 🟠 médio. **Atenção**: enum `StaticModel` cresce — garantir que `process`/`prewarm`/
   `set_effective_layers` despachem corretamente para o caminho dinâmico.
 
-#### T3.2 — Goldens oficiais: converter `test_loader_gap_*` → paridade C++ 🟠
+#### T3.2 — Goldens oficiais: converter `test_loader_gap_*` → paridade C++ 🟠 [DONE]
 
 - **Onde**: testes de "rejeição" (`test_loader_gap_wavenet*`); geração de golden via `render` v0.5.3
   (mesmo pipeline de `golden_gen_build.sh`); `tests/golden_vectors.rs`, `tests/common/validation.rs`.
@@ -269,6 +269,10 @@ referência e validar por ESR/SNR.
   multi-SR (T4.2 em `tests/golden_vectors.rs`) cobrindo a nova geometria.
 - **Risco**: 🟠 médio. **Atenção**: respeitar a calibração anti-placebo
   (`tests/threshold_calibration.rs:199`); regime de amplitude realista (sem reescalonamento artificial).
+- **Resultado T3.2**: `wavenet_official.nam` (CC0, CH=3 free geom) adicionado a `tests/fixtures/models/`;
+  golden `golden_wavenet_official.bin` gerado via C++ render v0.5.3; SNR medido = 22.4 dB, ESR = 5.78e-3;
+  threshold calibrado: SNR ≥ 14.0 dB, ESR < 3.5e-2 (margem 8.4 dB). Self-consistency bitwise OK.
+  V2 multi-SR declarado via `#[ignore]` (golden_gen_build.sh atualizado para incluir o modelo).
 
 #### T3.3 — [P3] Endurecer gates frouxos onde a vigilância importa 🟠
 

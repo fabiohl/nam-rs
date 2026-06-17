@@ -24,7 +24,8 @@
 //! | ----------------------- | -------------------------------------------------- |
 //! | WaveNet A1              | Standard (CH=16), Feather (CH=8), Nano (CH=4),     |
 //! |                         | Lite (CH=12, known-divergent output but engine     |
-//! |                         | deterministic), A1 Standard Official               |
+//! |                         | deterministic), A1 Standard Official,              |
+//! |                         | Official (CH=3 free geom, dynamic path)            |
 //! | WaveNet A2              | Full (CH=8), Lite (CH=3), Container (both)         |
 //! | LSTM                    | 1×16, 2×8, Official                                |
 //! | Linear                  | linear_test (RF=16)                                |
@@ -143,6 +144,17 @@ fn test_auto_consistency_wavenet_a1_standard() {
     assert_model_determinism(
         &model_path("wavenet_a1_standard.nam"),
         "WaveNet A1 Standard Official",
+    );
+}
+
+#[test]
+fn test_auto_consistency_wavenet_official() {
+    if !model_exists("wavenet_official.nam") {
+        return;
+    }
+    assert_model_determinism(
+        &model_path("wavenet_official.nam"),
+        "WaveNet Official CH=3 (dynamic path)",
     );
 }
 

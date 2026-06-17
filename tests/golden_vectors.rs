@@ -842,7 +842,7 @@ fn test_golden_vectors_wavenet_a2_container() {
     }
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — verifies condition_size=8 is rejected.
+/// Test 8k: Loader Gap WaveNet A2 Max — verifies condition_size=8 is rejected (F2 unsupported).
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -859,7 +859,7 @@ fn test_loader_gap_wavenet_a2_max() {
     );
 }
 
-/// Test 8l: Loader Gap WaveNet Condition DSP — verifies condition_size=3 is rejected.
+/// Test 8l: Loader Gap WaveNet Condition DSP — verifies condition_size=3 is rejected (F2 unsupported).
 #[test]
 fn test_loader_gap_wavenet_condition_dsp() {
     let path = model_path("wavenet_condition_dsp.nam");
@@ -876,20 +876,58 @@ fn test_loader_gap_wavenet_condition_dsp() {
     );
 }
 
-/// Test 8m: Loader Gap Slimmable WaveNet — verifies unsupported shape is rejected.
+/// Test 8m: Golden Vectors WaveNet Official (dynamic path) — cross-reference C++ ↔ NAM-rs.
+///
+/// This replaces the pre-T3.1 gap test (`test_loader_gap_slimmable_wavenet`).
+/// With T3.1 (dispatch híbrido), free-geometry WaveNet A1 models now load via the
+/// dynamic engine. `wavenet_official.nam` (CH=3, 2 arrays, dilations [(1,2),(8)])
+/// exercises the dynamic path and is validated against a C++ reference golden.
+///
+/// Reads `tests/fixtures/golden_wavenet_official.bin`, builds the dynamic `StaticModel`
+/// from `wavenet_official.nam`, and compares via ESR/SNR/MSE fusion report.
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-fn test_loader_gap_slimmable_wavenet() {
-    let path = model_path("slimmable_wavenet.nam");
-    assert!(path.exists());
-    let json = fs::read_to_string(&path).expect("Failed to read slimmable_wavenet.nam");
-    let data = parse_nam_json(&json).expect("Failed to parse slimmable_wavenet.nam");
-    let model = build_model(&data);
-    assert!(model.is_err());
-    let err_msg = format!("{}", model.err().unwrap());
+fn test_golden_vectors_wavenet_official() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_official.bin");
+
     assert!(
-        err_msg.contains("shape not recognized") || err_msg.contains("topology not in catalog"),
-        "Expected shape/topology error, got: {}",
-        err_msg
+        golden_path.exists(),
+        "golden_wavenet_official.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate the golden vectors from C++."
+    );
+
+    let (input, expected) = read_golden_bin(&golden_path)
+        .expect("Failed to read golden_wavenet_official.bin");
+
+    let nam_path = model_path("wavenet_official.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_official.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read wavenet_official.nam");
+    let model_data =
+        parse_nam_json(&json_data).expect("Failed to parse wavenet_official.nam JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet Official for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) =
+        topology_thresholds(&model_data, "wavenet_official");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet Official (CH=3, dynamic path) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
     );
 }
 
@@ -1008,6 +1046,18 @@ fn test_golden_vectors_v2_wavenet_a1_standard() {
         "golden_wavenet_a1_standard",
         "WaveNet A1 Standard (Official)",
         "wavenet_a1_standard",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_official() {
+    run_v2_golden_test(
+        "wavenet_official.nam",
+        "golden_wavenet_official",
+        "WaveNet Official (CH=3, dynamic)",
+        "wavenet_official",
         ALL_SR,
     );
 }
