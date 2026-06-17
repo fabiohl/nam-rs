@@ -201,7 +201,7 @@ e teste de ESR end-to-end.
     funciona corretamente (SNR ≥ 65 dB). Marcados com `#[cfg_attr(feature = "high-fidelity",
     ignore)]`. Resolução em T-HF1.5 (abaixo).
 
-### T-HF1.5 — Correção do caminho hi-fi da arquitetura A1 (WaveNet Standard/Feather/Nano/Official)
+### T-HF1.5 — Correção do caminho hi-fi da arquitetura A1 (WaveNet Standard/Feather/Nano/Official) [DONE]
 
 * **Descrição**: investigar e corrigir o bug que faz os modelos WaveNet A1 produzirem saída
   espúria (SNR ≈ −1 dB vs C++) com `--features high-fidelity`. O caminho A2 funciona

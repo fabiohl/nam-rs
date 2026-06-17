@@ -135,10 +135,6 @@ const SR_48K_ONLY: &[u32] = &[48000];
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-#[cfg_attr(
-    feature = "high-fidelity",
-    ignore = "pre-existing A1-hifi bug (T-HF1.4): A1 WaveNet models produce wrong output with hi-fi; A2/LSTM pass. See TODO-sprints.md T-HF1.4."
-)]
 fn test_golden_vectors_wavenet() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_standard.bin");
@@ -291,10 +287,6 @@ fn test_golden_vectors_lstm_2x8() {
 
 /// Test 8d-L: Golden Vectors WaveNet A1 Standard (Official) — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
-#[cfg_attr(
-    feature = "high-fidelity",
-    ignore = "pre-existing A1-hifi bug (T-HF1.4)"
-)]
 fn test_golden_vectors_wavenet_a1_standard() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_a1_standard.bin");
@@ -382,10 +374,6 @@ fn test_golden_vectors_lstm_official() {
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-#[cfg_attr(
-    feature = "high-fidelity",
-    ignore = "pre-existing A1-hifi bug (T-HF1.4)"
-)]
 fn test_golden_vectors_wavenet_feather() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_feather.bin");
@@ -434,10 +422,6 @@ fn test_golden_vectors_wavenet_feather() {
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-#[cfg_attr(
-    feature = "high-fidelity",
-    ignore = "pre-existing A1-hifi bug (T-HF1.4)"
-)]
 fn test_golden_vectors_wavenet_nano() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_nano.bin");
@@ -904,10 +888,6 @@ fn test_loader_gap_wavenet_condition_dsp() {
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-#[cfg_attr(
-    feature = "high-fidelity",
-    ignore = "pre-existing A1-hifi bug (T-HF1.4)"
-)]
 fn test_golden_vectors_wavenet_official() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_official.bin");
@@ -1135,7 +1115,6 @@ fn test_golden_vectors_v2_wavenet_a2_lite() {
 /// This test is gated on `#[cfg(feature = "high-fidelity")]`.
 #[cfg(feature = "high-fidelity")]
 #[test]
-#[ignore = "pre-existing A1-hifi bug (T-HF1.4): A1 WaveNet models produce wrong output with hi-fi; this gate correctly detects the regression. See TODO-sprints.md T-HF1.4."]
 fn test_hifi_regression_gate_wavenet_standard() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_standard.bin");

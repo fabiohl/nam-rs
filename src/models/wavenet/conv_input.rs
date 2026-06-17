@@ -179,11 +179,10 @@ pub(crate) fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4
     let mut r = [0.0f32; 4];
     for i in 0..state.len() {
         let w = weights[i];
-        r[0] = r[0].mul_add(w[0], state[i]);
-        r[1] = r[1].mul_add(w[1], state[i]);
-        r[2] = r[2].mul_add(w[2], state[i]);
-        r[3] = r[3].mul_add(w[3], state[i]);
-        // Equivalent to: r[j] += w[j] * state[i], but with FMA
+        r[0] = w[0].mul_add(state[i], r[0]);
+        r[1] = w[1].mul_add(state[i], r[1]);
+        r[2] = w[2].mul_add(state[i], r[2]);
+        r[3] = w[3].mul_add(state[i], r[3]);
     }
     r
 }
@@ -203,14 +202,14 @@ pub(crate) fn dot_product_4x_f32_dual(
     let mut r1 = [0.0f32; 4];
     for i in 0..state_f0.len() {
         let w = weights[i];
-        r0[0] = r0[0].mul_add(w[0], state_f0[i]);
-        r0[1] = r0[1].mul_add(w[1], state_f0[i]);
-        r0[2] = r0[2].mul_add(w[2], state_f0[i]);
-        r0[3] = r0[3].mul_add(w[3], state_f0[i]);
-        r1[0] = r1[0].mul_add(w[0], state_f1[i]);
-        r1[1] = r1[1].mul_add(w[1], state_f1[i]);
-        r1[2] = r1[2].mul_add(w[2], state_f1[i]);
-        r1[3] = r1[3].mul_add(w[3], state_f1[i]);
+        r0[0] = w[0].mul_add(state_f0[i], r0[0]);
+        r0[1] = w[1].mul_add(state_f0[i], r0[1]);
+        r0[2] = w[2].mul_add(state_f0[i], r0[2]);
+        r0[3] = w[3].mul_add(state_f0[i], r0[3]);
+        r1[0] = w[0].mul_add(state_f1[i], r1[0]);
+        r1[1] = w[1].mul_add(state_f1[i], r1[1]);
+        r1[2] = w[2].mul_add(state_f1[i], r1[2]);
+        r1[3] = w[3].mul_add(state_f1[i], r1[3]);
     }
     (r0, r1)
 }
