@@ -60,7 +60,7 @@ elementos a cada wrap → desalinha **todo** o histórico de dilatação por uma
 corrupção acumulativa, dependente do tamanho de bloco. Lite (array1 CH=12, array2 CH=6) é o único
 SKU padrão com canais que não são potências de 2 dividindo a página.
 
-### T1.1 — 🟡 Harness de reprodução e localização (pré-fix, baixo risco)
+### T1.1 — 🟡 Harness de reprodução e localização (pré-fix, baixo risco) [DONE]
 
 **Por quê**: travar a evidência e a localização **antes** de mexer em memória virtual, garantindo
 que o fix de T1.2 seja medido contra um baseline reproduzível.
