@@ -1176,7 +1176,7 @@ cargo test --quiet -- wavenet 2>&1 | tail -5
 
 ---
 
-### T-HF6.4 — Varredura de código morto u16/bf16 remanescente no WaveNet
+### T-HF6.4 — Varredura de código morto u16/bf16 remanescente no WaveNet [DONE]
 
 **Objetivo**: garantir que não restou nenhum símbolo lo-fi morto no WaveNet A1.
 
@@ -1194,6 +1194,64 @@ ficaram sem callers **em todo o crate** (incluindo A2/LSTM), marcá-los para rem
 futura (não remover agora se A2/LSTM usam).
 
 **Aceite**: relatório do que é morto-WaveNet (removido) vs vivo-A2/LSTM (mantido, documentado).
+
+**Relatório T-HF6.4 (executado):**
+
+*Removidos (mortos no WaveNet):*
+
+* `conv_input.rs`: `impl ConvInput for u16` (BF16 turbo path — não havia callers).
+* `common.rs`: campos `condition_bf16`, `output_bf16`, `layer_buffer_bf16` do `WavenetProcessContext`.
+* `common.rs`: campo `layer_buffer_bf16` do `WaveNetLayerState` e alocação `MirroredBuffer<u16>`.
+* `layer_array.rs`: 6 atribuições de BF16 (`condition_bf16: &[]`, `output_bf16: None`, `layer_buffer_bf16: &[]`).
+* `layer_array_dyn.rs`: 6 atribuições de BF16, incluindo `layer_buffer_bf16: &current_state.layer_buffer_bf16[..]`.
+
+*Vivos em A2/LSTM (mantidos — NÃO removidos):*
+
+* `AlignedVec<u16>`: usado em `src/models/a2/model/mod.rs:88` (A2 rechannel weights).
+* `f32_to_bf16`: usado em `src/models/lstm/layer_kernels.rs:45` (LSTM state quantization).
+* `quantize_weight`: compartilhado com A2/LSTM, NÃO presente no loader WaveNet (já limpo em T-HF6.1).
+* `dot_product_4x_interleaved` (SimdMath, `&[[u16;4]]` weights, `&[f32]` state): usado por `impl ConvInput for f32` no hot-path — vivo.
+* `dot_product_4x_interleaved_dual_frame` (SimdMath): idem — vivo.
+* `fused_gemm_residual_batch` (SimdMath, u16): usado em `dense.rs`/`dense_dyn.rs` via `_f32` variant. O u16 original vive no math layer.
+
+*SimdMath dead methods — marcados para remoção futura (NENHUM caller em todo o crate):*
+
+* `dot_product_4x_interleaved_bf16` — zero callers (após remoção do `impl ConvInput for u16`).
+* `dot_product_4x_interleaved_dual_frame_bf16` — zero callers.
+* `gemv_overwrite_batch_bf16` — zero callers.
+→ Ver T-HF6.A.1 abaixo.
+
+```bash
+cargo check 2>&1 | tail -3
+# Finished `dev` profile [unoptimized + debuginfo] target(s)
+cargo test --quiet -- wavenet 2>&1 | tail -3
+# test result: ok. 2 passed
+cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"
+# 0
+```
+
+### T-HF6.A.1 — Remover métodos mortos SimdMath u16/bf16 (identificados em T-HF6.4)
+
+**Origem**: T-HF6.4 identificou 3 métodos do trait `SimdMath` sem nenhum caller em todo o crate.
+
+**Métodos a remover** (zero callers após nuke u16/bf16 do WaveNet + verificação A2/LSTM):
+
+| Método                                          | Onde definido                       | Callers |
+| ----------------------------------------------- | ----------------------------------- | ------- |
+| `dot_product_4x_interleaved_bf16`               | `math/common/traits.rs:53`          | 0       |
+| `dot_product_4x_interleaved_dual_frame_bf16`    | `math/common/traits.rs:70`          | 0       |
+| `gemv_overwrite_batch_bf16`                     | `math/common/traits.rs:194`         | 0       |
+
+**Escopo da remoção** (cada método):
+
+* Declaração no trait `SimdMath` (`math/common/traits.rs`)
+* Implementações AVX2 (`avx2_impl.rs`), AVX-512 base (`gemv/base.rs`), VNNI-BF16 (`vnni_bf16.rs`)
+* Fallback scalar (`scalar_ref/dot.rs`, `scalar_ref/gemm.rs`)
+* Low-level kernels: `gemv_overwrite_batch_bf16_avx512` em `math/gemm/gemv_bf16.rs`,
+  `dot_product_4x_interleaved_bf16_fallback` e `_dual_frame_bf16_fallback` em `math/gemm/dot_4x/scalar.rs`
+* Dispatch table (`dispatch/mod.rs`, `dispatch/config.rs`) — remover slots BF16
+
+**Aceite**: `cargo check` + `cargo clippy` limpo após remoção; zero menção a esses símbolos em `src/`.
 
 ---
 

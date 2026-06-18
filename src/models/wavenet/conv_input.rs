@@ -145,32 +145,6 @@ impl ConvInput for f32 {
     }
 }
 
-// 2. 'Turbo' Mode (u16/BF16):
-// Used to gain speed. The BF16 format cuts the data size in half,
-// allowing the processor to compute much faster with a quality loss
-// imperceptible to the human ear.
-impl ConvInput for u16 {
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4] {
-        unsafe { M::dot_product_4x_interleaved_bf16(weights, state) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]) {
-        unsafe { M::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    fn cast_ptr(ptr: *const Self) -> *const f32 {
-        ptr as *const f32
-    }
-}
-
 /// F32-native 4-lane interleaved dot product (AVX2/FMA or AVX-512 kernel).
 ///
 /// Computes Conv1D output directly from full-precision f32 weights.

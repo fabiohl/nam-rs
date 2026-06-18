@@ -17,18 +17,12 @@ pub const MAX_KERNEL: usize = 16;
 pub struct WavenetProcessContext<'a> {
     /// Conditioning (sidechain) buffer.
     pub condition: &'a [f32],
-    /// Conditioning buffer pre-converted to BF16.
-    pub condition_bf16: &'a [u16],
     /// Head accumulator (Skip-Connection).
     pub head_input: &'a mut [f32],
     /// Layer output buffer (for the next layer or final output).
     pub output: &'a mut [f32],
-    /// Optional BF16 output buffer (for the next layer on BF16 CPUs).
-    pub output_bf16: Option<&'a mut [u16]>,
     /// Circular buffer of the current layer (delay line).
     pub layer_buffer: &'a [f32],
-    /// Circular buffer (delay tape) in BF16.
-    pub layer_buffer_bf16: &'a [u16],
     /// Starting index in the circular buffer.
     pub buffer_start: usize,
     /// Number of frames to process.
@@ -48,8 +42,6 @@ pub struct WavenetProcessContext<'a> {
 pub struct WaveNetLayerState {
     /// Mirrored Buffer (zero allocations in DSP context, rewind elimination).
     pub layer_buffer: MirroredBuffer<f32>,
-    /// Mirrored Buffer in BF16 for VNNI processing.
-    pub layer_buffer_bf16: MirroredBuffer<u16>,
     /// Numeric pointer of the current frame (advances with each processed frame).
     pub buffer_start: usize,
     /// Physical dimension of the receptive vector space (size of the dilation history).
@@ -70,7 +62,6 @@ impl WaveNetLayerState {
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
 
         let buffer = MirroredBuffer::<f32>::new(min_buffer_frames * channels)?;
-        let buffer_bf16 = MirroredBuffer::<u16>::new(min_buffer_frames * channels)?;
 
         let actual_buffer_frames = buffer.size() / channels;
 
@@ -93,7 +84,6 @@ impl WaveNetLayerState {
 
         Ok(Self {
             layer_buffer: buffer,
-            layer_buffer_bf16: buffer_bf16,
             buffer_start: start,
             receptive_field_size,
         })

@@ -137,12 +137,9 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        condition_bf16: &[],
                         head_input: &mut self.head_accum[0..num_frames * CH],
                         output: &mut self.array_outputs[0..num_frames * CH],
-                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer[..],
-                        layer_buffer_bf16: &[],
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
@@ -156,12 +153,9 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        condition_bf16: &[],
                         head_input: &mut self.head_accum[0..num_frames * CH],
                         output: next_layer_buffer,
-                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer[..],
-                        layer_buffer_bf16: &[],
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
