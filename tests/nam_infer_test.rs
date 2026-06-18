@@ -33,7 +33,7 @@ fn make_wavenet_layer(
     let _raw_conv = vec![0.001f32; ch * 3 * ch];
     let conv_weights = {
         let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &_raw_conv, &mut fw, ch, ch, 3,
         );
         fw
@@ -70,7 +70,7 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     let _raw_conv = vec![0.001f32; 8 * 3 * 8];
     let conv_weights = {
         let mut fw = AlignedVec::new(_raw_conv.len(), 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &_raw_conv, &mut fw, 8, 8, 3,
         );
         fw

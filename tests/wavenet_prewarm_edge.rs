@@ -35,7 +35,7 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         let k = 3usize;
         let padded_total = outer.div_ceil(4) * 4 * inner * k;
         let mut weights = AlignedVec::new(padded_total, 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             inner,
@@ -76,7 +76,7 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         let k = 3;
         let padded_total = outer.div_ceil(4) * 4 * inner * k;
         let mut weights = AlignedVec::new(padded_total, 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             inner,
@@ -312,7 +312,7 @@ fn test_prewarm_zero_rf() {
         let k = 3;
         let padded_total = outer.div_ceil(4) * 4 * inner * k;
         let mut weights = AlignedVec::new(padded_total, 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             inner,

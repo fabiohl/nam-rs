@@ -31,7 +31,7 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         let _raw_weights = vec![0.01f32; 16 * 3 * 16];
         let conv_weights = {
             let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
-            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
                 &_raw_weights,
                 &mut fw,
                 16,
@@ -110,7 +110,7 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         let _raw_weights = vec![0.01f32; 8 * 3 * 8];
         let conv_weights = {
             let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
-            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+            nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
                 &_raw_weights,
                 &mut fw,
                 8,
@@ -191,7 +191,7 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 5> {
         let raw_weights = vec![0.01f32; 4 * 5 * 4];
         let mut weights = AlignedVec::new(5 * 4 * 4, 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             4,
@@ -228,7 +228,7 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 5> {
         let raw_weights = vec![0.01f32; 2 * 5 * 2];
         let mut weights = AlignedVec::new(5 * 2 * 4, 0.0f32);
-        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             2,

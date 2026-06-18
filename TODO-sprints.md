@@ -773,7 +773,7 @@ cargo test --quiet 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.6 — Layer e LayerArray dinâmicos: idem para caminho dyn [DO]
+### T-HF5.A.6 — Layer e LayerArray dinâmicos: idem para caminho dyn [DONE]
 
 **Arquivos**: `src/models/wavenet/layer_dyn.rs`, `src/models/wavenet/layer_array_dyn.rs`
 
@@ -799,7 +799,7 @@ cargo test --quiet -- wavenet_dynamic 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.7 — Loader/Dispatcher: remover bias_tune e quantização WaveNet
+### T-HF5.A.7 — Loader/Dispatcher: remover bias_tune e quantização WaveNet [DONE]
 
 **Arquivos**: `src/loader/dispatcher/wavenet/layout.rs`, `mod.rs`, `traits.rs`,
 `bias_tune.rs`

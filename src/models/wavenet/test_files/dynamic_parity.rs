@@ -40,7 +40,7 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
     let num_blocks = out_ch.div_ceil(4);
     let interleaved_len = num_blocks * k * in_ch * 4;
     let mut weights = AlignedVec::new(interleaved_len, 0.0f32);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
         in_ch,
@@ -50,23 +50,11 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
     weights
 }
 
-/// Helper: interleave u16 weights into the `[OUT/4][K][IN][4]` layout used by Conv1dDyn.
+/// Helper: create zeroed u16 weights for Conv1dDyn (quantization removed — always f32-native now).
 fn make_conv1d_weights_u16(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<u16> {
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-    let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
     let num_blocks = out_ch.div_ceil(4);
     let interleaved_len = num_blocks * k * in_ch * 4;
-    let mut weights = AlignedVec::new(interleaved_len, 0u16);
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-        &raw_weights,
-        &mut weights,
-        in_ch,
-        out_ch,
-        k,
-        is_bf16,
-    );
-    weights
+    AlignedVec::new(interleaved_len, 0u16)
 }
 
 /// Helper: replicate a u16-quantized weight value into a dense layer weight matrix.
@@ -244,9 +232,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
             weights: make_dense_weights(in_ch, out_ch),
             bias: make_bias(out_ch),
             do_bias,
-            #[cfg(not(feature = "high-fidelity"))]
-            f32_weights: None,
-            #[cfg(feature = "high-fidelity")]
             f32_weights: Some(make_dense_f32_weights(in_ch, out_ch)),
         }
     };

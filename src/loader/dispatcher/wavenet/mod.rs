@@ -10,7 +10,6 @@ use crate::models::a2::WaveNetA2;
 use anyhow::bail;
 use log::info;
 
-mod bias_tune;
 pub(crate) mod dynamic;
 pub(crate) mod feather;
 pub(crate) mod layout;
@@ -20,7 +19,6 @@ pub(crate) mod standard;
 mod traits;
 
 pub use layout::transpose_conv1d_interleaved_4wide;
-pub use layout::transpose_conv1d_interleaved_4wide_f32;
 
 // =============================================================================
 // Validation

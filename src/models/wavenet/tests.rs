@@ -25,7 +25,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
         let mut weights = AlignedVec::new(48, 0.0f32);
-        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             4, // IN
@@ -74,7 +74,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
         let mut weights = AlignedVec::new(24, 0.0f32);
-        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide_f32(
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
             2, // IN
