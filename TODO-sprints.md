@@ -838,7 +838,7 @@ cargo test --quiet 2>&1 | tail -5   # loader + model loading completo
 
 ---
 
-### T-HF5.A.8 — A2: remover #[cfg] isolado (campo opcional)
+### T-HF5.A.8 — A2: remover #[cfg] isolado (campo opcional) [DONE]
 
 **Arquivo**: `src/models/a2/conv1d.rs:79`, `src/models/a2/conv1d_ch3_test.rs:48`
 
@@ -857,7 +857,7 @@ cargo test --quiet -- a2 2>&1 | tail -5
 
 ---
 
-### T-HF5.A.9 — Benches e testes: remover todos os #[cfg] restantes
+### T-HF5.A.9 — Benches e testes: remover todos os #[cfg] restantes [DONE]
 
 **Arquivos** (9+4 ocorrências):
 

@@ -1111,9 +1111,6 @@ fn test_golden_vectors_v2_wavenet_a2_lite() {
 ///
 /// **Gate**: ESR ≤ 1e-4  (100× tighter than lo-fi parity limit, 1e-2).
 ///           SNR ≥ 70 dB.
-///
-/// This test is gated on `#[cfg(feature = "high-fidelity")]`.
-#[cfg(feature = "high-fidelity")]
 #[test]
 fn test_hifi_regression_gate_wavenet_standard() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1168,7 +1165,6 @@ fn test_hifi_regression_gate_wavenet_standard() {
 ///
 /// Same gate as `test_hifi_regression_gate_wavenet_standard` for the
 /// A2 architecture (CH=8, 23 layers with variable kernel sizes).
-#[cfg(feature = "high-fidelity")]
 #[test]
 fn test_hifi_regression_gate_wavenet_a2_full() {
     let golden_path =
