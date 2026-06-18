@@ -46,12 +46,6 @@ pub trait SimdMath {
     /// Buffers must be valid.
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4];
 
-    /// Computes 4 simultaneous BF16 dot products (interleaved) with BF16 input.
-    ///
-    /// # Safety
-    /// Buffers must be valid.
-    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4];
-
     /// Computes 4 simultaneous BF16 dot products (interleaved) for 2 parallel frames.
     /// Returns a tuple with the 4 results of frame 0 and the 4 results of frame 1.
     ///
@@ -61,16 +55,6 @@ pub trait SimdMath {
         weights: &[[u16; 4]],
         state_f0: &[f32],
         state_f1: &[f32],
-    ) -> ([f32; 4], [f32; 4]);
-
-    /// Computes 4 simultaneous BF16 dot products (interleaved) for 2 parallel frames (BF16 input).
-    ///
-    /// # Safety
-    /// Buffers must be valid.
-    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
-        weights: &[[u16; 4]],
-        state_f0: &[u16],
-        state_f1: &[u16],
     ) -> ([f32; 4], [f32; 4]);
 
     /// Computes 4 simultaneous BF16 dot products.
@@ -184,19 +168,6 @@ pub trait SimdMath {
         weights: &[u16],
         bias: &[f32],
         out_frame: &mut [f32],
-        do_bias: bool,
-    );
-
-    /// GEMV kernel with overwrite in batch (BF16 input).
-    ///
-    /// # Safety
-    /// Buffers must be valid.
-    unsafe fn gemv_overwrite_batch_bf16(
-        in_frames: &[u16],
-        weights: &[u16],
-        bias: &[f32],
-        out_frames: &mut [f32],
-        num_frames: usize,
         do_bias: bool,
     );
 

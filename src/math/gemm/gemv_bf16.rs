@@ -132,25 +132,3 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
         out_c += 1;
     }
 }
-
-/// Batch version of GEMV BF16 via AVX-512.
-#[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
-pub unsafe fn gemv_overwrite_batch_bf16_avx512(
-    in_frames: &[u16],
-    weights: &[u16],
-    bias: &[f32],
-    out_frames: &mut [f32],
-    num_frames: usize,
-    do_bias: bool,
-) {
-    if num_frames == 0 {
-        return;
-    }
-    let in_len = in_frames.len() / num_frames;
-    let out_len = out_frames.len() / num_frames;
-    for i in 0..num_frames {
-        let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
-        let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
-        gemv_overwrite_bf16_avx512(in_slice, weights, bias, out_slice, do_bias);
-    }
-}

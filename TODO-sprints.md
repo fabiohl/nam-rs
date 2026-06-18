@@ -1230,7 +1230,7 @@ cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"
 # 0
 ```
 
-### T-HF6.A.1 — Remover métodos mortos SimdMath u16/bf16 (identificados em T-HF6.4)
+### T-HF6.A.1 — Remover métodos mortos SimdMath u16/bf16 (identificados em T-HF6.4) [DONE]
 
 **Origem**: T-HF6.4 identificou 3 métodos do trait `SimdMath` sem nenhum caller em todo o crate.
 

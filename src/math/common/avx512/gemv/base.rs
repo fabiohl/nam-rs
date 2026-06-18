@@ -20,11 +20,6 @@ macro_rules! impl_avx512_gemv {
         }
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
-            dot_product_4x_interleaved_bf16_fallback(weights, state)
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn dot_product_4x_interleaved_dual_frame(
             weights: &[[u16; 4]],
             state_f0: &[f32],
@@ -33,15 +28,6 @@ macro_rules! impl_avx512_gemv {
             crate::math::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx512(
                 weights, state_f0, state_f1,
             )
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
-            weights: &[[u16; 4]],
-            state_f0: &[u16],
-            state_f1: &[u16],
-        ) -> ([f32; 4], [f32; 4]) {
-            dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1)
         }
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
@@ -219,28 +205,6 @@ macro_rules! impl_avx512_gemv {
                 crate::math::gemm::gemv::gemv_overwrite_batch_avx512(
                     in_frames, weights, bias, out_frames, num_frames, do_bias,
                 )
-            }
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn gemv_overwrite_batch_bf16(
-            in_frames: &[u16],
-            weights: &[u16],
-            bias: &[f32],
-            out_frames: &mut [f32],
-            num_frames: usize,
-            do_bias: bool,
-        ) {
-            let in_len = in_frames.len() / num_frames;
-            let out_len = out_frames.len() / num_frames;
-            for i in 0..num_frames {
-                gemv_overwrite_bf16_fallback(
-                    &in_frames[i * in_len..(i + 1) * in_len],
-                    weights,
-                    bias,
-                    &mut out_frames[i * out_len..(i + 1) * out_len],
-                    do_bias,
-                );
             }
         }
         #[inline(always)]

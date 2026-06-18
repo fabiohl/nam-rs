@@ -51,12 +51,6 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn dot_product_4x_interleaved_bf16(_weights: &[[u16; 4]], _state: &[u16]) -> [f32; 4] {
-        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
-    }
-
-    #[inline(always)]
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved_dual_frame(
         weights: &[[u16; 4]],
         state_f0: &[f32],
@@ -68,16 +62,6 @@ impl SimdMath for Avx2Math {
                 weights, state_f0, state_f1,
             )
         }
-    }
-
-    #[inline(always)]
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
-        _weights: &[[u16; 4]],
-        _state_f0: &[u16],
-        _state_f1: &[u16],
-    ) -> ([f32; 4], [f32; 4]) {
-        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]
@@ -571,19 +555,6 @@ impl SimdMath for Avx2Math {
                 )
             };
         }
-    }
-
-    #[inline(always)]
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-    unsafe fn gemv_overwrite_batch_bf16(
-        _in_frames: &[u16],
-        _weights: &[u16],
-        _bias: &[f32],
-        _out_frames: &mut [f32],
-        _num_frames: usize,
-        _do_bias: bool,
-    ) {
-        unreachable!("AVX2 IS_BF16=false; BF16 paths are never reached at runtime")
     }
 
     #[inline(always)]

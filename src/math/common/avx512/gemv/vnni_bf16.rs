@@ -21,28 +21,12 @@ macro_rules! impl_avx512vnni_bf16_gemv {
         }
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
-            crate::math::gemm::dot_4x::dot_product_4x_interleaved_avx512_bf16(weights, state)
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn dot_product_4x_interleaved_dual_frame(
             weights: &[[u16; 4]],
             state_f0: &[f32],
             state_f1: &[f32],
         ) -> ([f32; 4], [f32; 4]) {
             crate::math::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx512(
-                weights, state_f0, state_f1,
-            )
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
-            weights: &[[u16; 4]],
-            state_f0: &[u16],
-            state_f1: &[u16],
-        ) -> ([f32; 4], [f32; 4]) {
-            crate::math::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx512_bf16(
                 weights, state_f0, state_f1,
             )
         }
@@ -191,20 +175,6 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             do_bias: bool,
         ) {
             Avx512Math::gemv_overwrite_batch(
-                in_frames, weights, bias, out_frames, num_frames, do_bias,
-            )
-        }
-        #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        unsafe fn gemv_overwrite_batch_bf16(
-            in_frames: &[u16],
-            weights: &[u16],
-            bias: &[f32],
-            out_frames: &mut [f32],
-            num_frames: usize,
-            do_bias: bool,
-        ) {
-            crate::math::gemm::gemv_bf16::gemv_overwrite_batch_bf16_avx512(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }

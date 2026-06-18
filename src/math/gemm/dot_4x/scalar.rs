@@ -7,6 +7,5 @@
 
 pub use crate::math::common::scalar_ref::{
     dot_product_4x_f32_dual_scalar, dot_product_4x_f32_scalar,
-    dot_product_4x_interleaved_bf16_fallback, dot_product_4x_interleaved_dual_frame_bf16_fallback,
     dot_product_4x_interleaved_dual_frame_fallback, dot_product_4x_interleaved_fallback,
 };
