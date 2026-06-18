@@ -238,7 +238,7 @@ literais `64` órfãos nos kernels (se a sub-tarefa opcional for feita).
 > `max_frames = 64` mágicos nos 4 kernels; (3) comentários nos `debug_assert!` dos kernels
 > documentam que `process()` garante `≤ MAX_KERNEL_FRAMES` via chunking (T2.1).
 
-### T2.3 — 🟢 Estender cobertura de invariância de bloco >64 + regressão de UB
+### T2.3 — 🟢 Estender cobertura de invariância de bloco >64 + regressão de UB — ✅ DONE
 
 **Por quê**: `tests/nondist_validation.rs:118` limita a varredura a `[1,16,32,64]` **por causa do
 P9**. Após T2.1, blocos grandes ficam seguros.

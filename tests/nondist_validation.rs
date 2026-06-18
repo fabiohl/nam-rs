@@ -109,13 +109,11 @@ fn test_nondist_models_validation() {
         );
 
         // 3. Block Size Invariance.
-        // Capped at 64 frames: that is the universal per-call processing contract
-        // (`WAVENET_MAX_NUM_FRAMES`). A2 conv kernels (`conv1d_ch8`/`ch3`) use a fixed
-        // 64-frame stack scratch, so feeding a single block > 64 is unsupported by A2
-        // regardless of `set_max_buffer_size` (see audit finding in TODO-problemas.md).
-        // WaveNet/LSTM re-chunk internally and are invariant for any size, so 1..=64
-        // fully exercises streaming invariance across all architectures.
-        let block_sizes = [1, 16, 32, 64];
+        // All architectures re-chunk internally in sub-blocks of ≤
+        // `WAVENET_MAX_NUM_FRAMES` (64 frames). A2 gained internal chunking in T2.1,
+        // so block sizes > 64 are safe across the board and fully exercise streaming
+        // invariance.
+        let block_sizes = [1, 16, 32, 64, 128, 256, 512];
         let mut ref_model = build_model(&model_data).unwrap();
         ref_model.prewarm(2048);
         let mut ref_output = vec![0.0f32; num_samples];

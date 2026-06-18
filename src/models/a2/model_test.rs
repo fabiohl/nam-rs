@@ -294,3 +294,166 @@ fn test_set_weights_process_smoke_ch8() {
         "process should produce non-zero output after weight loading"
     );
 }
+
+// ── Block invariance & negative tests (T2.3) ──────────────────────────
+
+/// Asserts that kernel frame capacity equals 64.
+#[test]
+fn test_wavenet_a2_max_kernel_frames_invariant() {
+    assert_eq!(
+        WAVENET_MAX_NUM_FRAMES, 64,
+        "WAVENET_MAX_NUM_FRAMES must be 64; change this test if the constant changes"
+    );
+}
+
+/// Block invariance: processing in 64-frame external chunks vs single-call
+/// (internal chunking) must be bit-identical for CH=3 (Lite).
+#[test]
+fn test_wavenet_a2_block_invariance_ch3() {
+    let count = a2_weight_count::<3>();
+    let weights = make_test_weights(count, 42);
+    let num_samples = 2048;
+    let input: Vec<f32> = (0..num_samples)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+        .collect();
+
+    // Single-call model: process() rechunks internally to ≤64.
+    let mut model_a = WaveNetA2::<3>::new();
+    model_a.set_weights(&weights).unwrap();
+    model_a.set_max_buffer_size(num_samples);
+    model_a.prewarm();
+    let mut out_a = vec![0.0f32; num_samples];
+    model_a.process(&input, &mut out_a);
+
+    // External 64-frame chunk model: same state, explicit sub-blocks.
+    let mut model_b = WaveNetA2::<3>::new();
+    model_b.set_weights(&weights).unwrap();
+    model_b.prewarm();
+    let mut out_b = vec![0.0f32; num_samples];
+    let mut pos = 0;
+    while pos < num_samples {
+        let end = (pos + 64).min(num_samples);
+        model_b.process(&input[pos..end], &mut out_b[pos..end]);
+        pos = end;
+    }
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert_eq!(
+            a.to_bits(),
+            b.to_bits(),
+            "A2 CH=3 block invariance: single-call vs 64-chunk diverges at sample {i}"
+        );
+    }
+}
+
+/// Block invariance: processing in 64-frame external chunks vs single-call
+/// (internal chunking) must be bit-identical for CH=8 (Full).
+#[test]
+fn test_wavenet_a2_block_invariance_ch8() {
+    let count = a2_weight_count::<8>();
+    let weights = make_test_weights(count, 77);
+    let num_samples = 2048;
+    let input: Vec<f32> = (0..num_samples)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+        .collect();
+
+    let mut model_a = WaveNetA2::<8>::new();
+    model_a.set_weights(&weights).unwrap();
+    model_a.set_max_buffer_size(num_samples);
+    model_a.prewarm();
+    let mut out_a = vec![0.0f32; num_samples];
+    model_a.process(&input, &mut out_a);
+
+    let mut model_b = WaveNetA2::<8>::new();
+    model_b.set_weights(&weights).unwrap();
+    model_b.prewarm();
+    let mut out_b = vec![0.0f32; num_samples];
+    let mut pos = 0;
+    while pos < num_samples {
+        let end = (pos + 64).min(num_samples);
+        model_b.process(&input[pos..end], &mut out_b[pos..end]);
+        pos = end;
+    }
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert_eq!(
+            a.to_bits(),
+            b.to_bits(),
+            "A2 CH=8 block invariance: single-call vs 64-chunk diverges at sample {i}"
+        );
+    }
+}
+
+/// Negative test: internal chunking of blocks >64 must never pass
+/// num_frames > 64 to kernels. Verify by processing a non-multiple (65)
+/// vs explicit 64+1 split — bit-identical output proves correct chunking. CH=3.
+#[test]
+fn test_wavenet_a2_neg_internal_chunking_ch3() {
+    let count = a2_weight_count::<3>();
+    let weights = make_test_weights(count, 42);
+    let num_samples = 65;
+    let input: Vec<f32> = (0..num_samples)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+        .collect();
+
+    let mut model_a = WaveNetA2::<3>::new();
+    model_a.set_weights(&weights).unwrap();
+    model_a.set_max_buffer_size(num_samples);
+    model_a.prewarm();
+    let mut out_a = vec![0.0f32; num_samples];
+    model_a.process(&input, &mut out_a);
+
+    let mut model_b = WaveNetA2::<3>::new();
+    model_b.set_weights(&weights).unwrap();
+    model_b.prewarm();
+    let mut out_b = vec![0.0f32; num_samples];
+    let end0 = 64.min(num_samples);
+    model_b.process(&input[..end0], &mut out_b[..end0]);
+    if num_samples > 64 {
+        model_b.process(&input[end0..], &mut out_b[end0..]);
+    }
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert_eq!(
+            a.to_bits(),
+            b.to_bits(),
+            "A2 CH=3 chunking negative test: sample {i} diverges"
+        );
+    }
+}
+
+/// Negative test: same as above for CH=8.
+#[test]
+fn test_wavenet_a2_neg_internal_chunking_ch8() {
+    let count = a2_weight_count::<8>();
+    let weights = make_test_weights(count, 77);
+    let num_samples = 65;
+    let input: Vec<f32> = (0..num_samples)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+        .collect();
+
+    let mut model_a = WaveNetA2::<8>::new();
+    model_a.set_weights(&weights).unwrap();
+    model_a.set_max_buffer_size(num_samples);
+    model_a.prewarm();
+    let mut out_a = vec![0.0f32; num_samples];
+    model_a.process(&input, &mut out_a);
+
+    let mut model_b = WaveNetA2::<8>::new();
+    model_b.set_weights(&weights).unwrap();
+    model_b.prewarm();
+    let mut out_b = vec![0.0f32; num_samples];
+    let end0 = 64.min(num_samples);
+    model_b.process(&input[..end0], &mut out_b[..end0]);
+    if num_samples > 64 {
+        model_b.process(&input[end0..], &mut out_b[end0..]);
+    }
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert_eq!(
+            a.to_bits(),
+            b.to_bits(),
+            "A2 CH=8 chunking negative test: sample {i} diverges"
+        );
+    }
+}

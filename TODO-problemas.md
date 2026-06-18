@@ -41,7 +41,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | **P6**  | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                                                                                                                                                                                        | 🟢 Baixa                        | Observabilidade       |
 | **P7**  | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                                                                                                                                                                                | 🟢 Baixa                        | Portabilidade         |
 | **P8**  | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                                                                                                                                                                                     | 🟢 Informativo                  | Cobertura             |
-| **P9**  | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64                                                                                                                                        | 🟠 Média (latente)              | RT-safety/Soundness   |
+| **P9**  | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64                                                                                                                                        | 🟠 Média (latente, ✅ RESOLVIDO) | RT-safety/Soundness   |
 | **P10** | **Modo "baixa fidelidade" (padrão) sob júdice** — ganho real nunca mensurado; simplificação radical do produto                                                                                                                                                                       | 🟠 Estratégico (✅ RESOLVIDO)   | Arquitetura/Qualidade |
 | **P11** | **Encoder f16 de software (`f32_to_f16_bits`) erra carry na borda de mantissa** — valores logo abaixo de potência de 2 com expoente ímpar (≈8, 2, 0,5, 32) eram codificados pela **metade**; afeta quantização de pesos LSTM/A2 via `quantize_weight` — ✅ [RESOLVIDO] (half.rs:117) | 🔴 Alta (latente, ✅ RESOLVIDO) | Soundness/Fidelidade  |
 | **P12** | **Corrida de CMake em `cpp_parity`** — `ensure_render_compiled` sem serialização; em cold run os 21 testes paralelos corrompem o cache CMake (`CXX_COMPILER not set`) → falha espúria — ✅ [RESOLVIDO] (serialização por `Mutex`)                                                    | 🟡 Média-Baixa (✅ RESOLVIDO)   | Infra de testes       |
@@ -403,7 +403,7 @@ Sim, a suite longa é rodada frequentemente. Quanto aos goldens congelados, favo
 
 ---
 
-## P9 — 🟠 A2: `set_max_buffer_size` cresce além de 64, mas os conv kernels têm scratch fixo de 64 (potencial UB em release)
+## P9 — 🟠 A2: `set_max_buffer_size` cresce além de 64, mas os conv kernels têm scratch fixo de 64 (potencial UB em release) — ✅ RESOLVIDO (S2/T2.1+T2.2+T2.3, jun/2026)
 
 **Origem**: auditoria da S2 (jun/2026), exposto pelo teste novo `tests/nondist_validation.rs`.
 **Evidências**
@@ -648,8 +648,13 @@ A2-Full, A2-Lite) só geram golden a 48 kHz; tratados pelo SKIP. Não é falha.
    quando `channels ∤ página`. Fix: `MirroredBuffer::new_aligned` garante divisibilidade por `channels`.
    Validado: Lite (CH=12/6) e Official (CH=3, free-geom) bit-exatos contra C++. `#[ignore]` e `--skip`
    removidos de ambos.
-6. **P9** (A2 UB blocos >64) — corrigir antes de publicar suporte a blocos grandes;
-   opções documentadas em P9.
+6. **P9** (A2 UB blocos >64) — ✅ **RESOLVIDO (T2.1+T2.2+T2.3, jun/2026).** Root cause:
+   `process()` passava o bloco inteiro para kernels com scratch de stack fixo de 64. Fix
+   (opção a do auditor): re-chunk interno em `A2::process` a ≤64 frames (idêntico ao WaveNet
+   A1). `set_max_buffer_size` documentado como contrato de qualquer bloco seguro; kernels 
+   com `const MAX_KERNEL_FRAMES = WAVENET_MAX_NUM_FRAMES` unificado. `nondist_validation`
+   varredura de bloco estendida a [1,16,32,64,128,256,512]; testes de regressão de UB e
+   invariância de bloco (CH=3/8, MSE==0) em release.
 7. **P4 + P5** (silêncio não-nulo + pico de latência) — P4 documentado/fiel C++; P5 pendente
    de gate de latência percentil.
 8. **P6, P7, P8** — observabilidade/portabilidade/cadência: acompanhar, baixa urgência.
