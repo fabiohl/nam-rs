@@ -9,7 +9,6 @@ use nam_rs::loader::nam_json::{
     NamWavenetTopology, WavenetTopologyResult, get_wavenet_topology, parse_nam_json,
 };
 use nam_rs::math::common::AlignedVec;
-use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::{NamModel, wavenet};
 use std::fs;
 use std::path::PathBuf;
@@ -51,14 +50,12 @@ fn make_wavenet_layer(
             },
         },
         input_mixin: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); ch]),
+            weights: AlignedVec::from_vec(vec![0.001f32; ch]),
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); ch * ch]),
+            weights: AlignedVec::from_vec(vec![0.001f32; ch * ch]),
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
         },
@@ -88,14 +85,12 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
             },
         },
         input_mixin: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); 8]),
+            weights: AlignedVec::from_vec(vec![0.001f32; 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); 8 * 8]),
+            weights: AlignedVec::from_vec(vec![0.001f32; 8 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
@@ -141,14 +136,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_1,
         states: states_1,
         rechannel: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); 16]),
+            weights: AlignedVec::from_vec(vec![0.001f32; 16]),
             bias: AlignedVec::from_vec(vec![0.0; 16]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.001); 8 * 16]),
+            weights: AlignedVec::from_vec(vec![0.001f32; 8 * 16]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
@@ -181,14 +174,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_2,
         states: states_2,
         rechannel: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 16 * 8]),
+            weights: AlignedVec::from_vec(vec![0.0f32; 16 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            f32_weights: AlignedVec::new(0, 0.0f32),
-            weights: AlignedVec::from_vec(vec![f32_to_f16_bits(0.0); 8]),
+            weights: AlignedVec::from_vec(vec![0.0f32; 8]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
         },

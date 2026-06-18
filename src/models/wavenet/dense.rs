@@ -9,37 +9,18 @@ use crate::math::common::{AlignedVec, SimdMath};
 #[derive(Clone)]
 pub struct DenseLayer<const IN: usize, const OUT: usize> {
     /// Weight matrix: Defines 'how much' of each channel goes into the mix.
-    pub weights: AlignedVec<u16>,
+    pub weights: AlignedVec<f32>,
     /// Bias: A basic 'volume' adjustment for each output channel.
     pub bias: AlignedVec<f32>,
     /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
-    /// Full-precision f32 weights for head projection.
-    /// Used by `process_block` for the critical head/projection stage.
-    pub f32_weights: AlignedVec<f32>,
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
-    /// Overwrite Processing (single-frame):
-    /// Multiplies and applies bias, replacing the output buffer content
-    /// instead of accumulating into the existing value.
+    /// Full-precision f32 fused residual batch.
     ///
-    /// # Safety
-    /// The caller must guarantee that `in_frame` and `out_frame` have sizes compatible with `IN` and `OUT`.
-    #[inline(always)]
-    pub unsafe fn process_single_frame<M: SimdMath>(
-        &self,
-        in_frame: &[f32],
-        out_frame: &mut [f32],
-    ) {
-        unsafe {
-            M::gemv_overwrite(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
-        }
-    }
-
-    /// Residual Sum (The Final 'Shortcut'):
-    /// This function does something amazing: it mixes channels AND adds the original sound
-    /// (residual) to the result, all without needing to copy extra data in memory.
+    /// Fuses the 1x1 GEMV with bias and residual addition into a single SIMD
+    /// pass using the native f32 weight tensor.
     ///
     /// # Safety
     /// The caller must guarantee compatible sizes and buffer validity.
@@ -52,37 +33,9 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         num_frames: usize,
     ) {
         unsafe {
-            M::fused_gemm_residual_batch(
-                input,
-                &self.weights,
-                &self.bias,
-                residual,
-                output,
-                num_frames,
-                self.do_bias,
-            );
-        }
-    }
-
-    /// Full-precision f32 fused residual batch.
-    ///
-    /// Fuses the 1x1 GEMV with bias and residual addition into a single SIMD
-    /// pass using the native f32 weight tensor.
-    ///
-    /// # Safety
-    /// The caller must guarantee compatible sizes and buffer validity.
-    #[inline(always)]
-    pub unsafe fn process_residual_batch_f32<M: SimdMath>(
-        &self,
-        input: &[f32],
-        residual: &[f32],
-        output: &mut [f32],
-        num_frames: usize,
-    ) {
-        unsafe {
             M::fused_gemm_residual_batch_f32(
                 input,
-                &self.f32_weights,
+                &self.weights,
                 &self.bias,
                 residual,
                 output,
@@ -111,29 +64,10 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     ) {
         unsafe {
             if self.do_bias {
-                M::gemv_with_bias_f32(input, &self.f32_weights, &self.bias, output, num_frames);
+                M::gemv_with_bias_f32(input, &self.weights, &self.bias, output, num_frames);
             } else {
-                M::gemv_no_bias_f32(input, &self.f32_weights, output, num_frames);
+                M::gemv_no_bias_f32(input, &self.weights, output, num_frames);
             }
-        }
-    }
-
-    ///
-    /// # Safety
-    /// The caller must guarantee that `input` and `output` have sizes
-    /// compatible with the layer's `IN` and `OUT` dimensions, and that the
-    /// SIMD instructions requested by the dispatcher `M` are available.
-    pub unsafe fn process_bf16<M: SimdMath>(&self, input: &[u16], output: &mut [f32]) {
-        let num_frames = output.len() / OUT;
-        unsafe {
-            M::gemv_overwrite_batch_bf16(
-                input,
-                &self.weights,
-                &self.bias,
-                output,
-                num_frames,
-                self.do_bias,
-            );
         }
     }
 }

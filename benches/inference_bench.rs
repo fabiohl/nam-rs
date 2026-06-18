@@ -833,10 +833,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
         let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
         let layer = DenseLayer::<16, 8> {
-            weights: AlignedVec::new(0, 0u16),
+            weights,
             bias,
             do_bias: true,
-            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
@@ -867,7 +866,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    &layer.f32_weights,
+                    &layer.weights,
                     &layer.bias,
                     &mut output,
                     num_frames,
@@ -883,10 +882,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
         let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
         let layer = DenseLayer::<8, 1> {
-            weights: AlignedVec::new(0, 0u16),
+            weights,
             bias,
             do_bias: true,
-            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
@@ -917,7 +915,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    &layer.f32_weights,
+                    &layer.weights,
                     &layer.bias,
                     &mut output,
                     num_frames,
@@ -933,10 +931,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
         let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
         let layer = DenseLayer::<16, 1> {
-            weights: AlignedVec::new(0, 0u16),
+            weights,
             bias,
             do_bias: true,
-            f32_weights: weights,
         };
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
@@ -967,7 +964,7 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
             b.iter(|| {
                 nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
                     &input,
-                    &layer.f32_weights,
+                    &layer.weights,
                     &layer.bias,
                     &mut output,
                     num_frames,

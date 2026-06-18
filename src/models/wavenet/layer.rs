@@ -101,7 +101,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             let lb_offset = buffer_start * CH;
             let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
 
-            self.one_by_one.process_residual_batch_f32::<M>(
+            self.one_by_one.process_residual_batch::<M>(
                 conv_slice,
                 residual_slice,
                 output,

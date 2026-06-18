@@ -1084,7 +1084,7 @@ símbolo não é usado por A2/LSTM.
 
 ---
 
-### T-HF6.1 — Corrigir o SIGSEGV: unificar `DenseLayer` estático em f32-only
+### T-HF6.1 — Corrigir o SIGSEGV: unificar `DenseLayer` estático em f32-only [DONE]
 
 **Arquivo**: `src/models/wavenet/dense.rs`
 

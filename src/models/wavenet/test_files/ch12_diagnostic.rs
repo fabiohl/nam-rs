@@ -14,10 +14,9 @@ fn test_dense_ch12_scalar_vs_simd() {
     let bias = AlignedVec::from_vec(vec![0.1f32; 12]);
     
     let dense = crate::models::wavenet::DenseLayer::<12, 12> {
-        weights: AlignedVec::new(0, 0u16),
         bias: bias.clone(),
         do_bias: true,
-        f32_weights: AlignedVec::from_vec(raw.clone()),
+        weights: AlignedVec::from_vec(raw.clone()),
     };
     
     let input: Vec<f32> = (0..12).map(|i| (i as f32 - 6.0) * 0.2).collect();
@@ -31,7 +30,7 @@ fn test_dense_ch12_scalar_vs_simd() {
     for oc in 0..12 {
         let mut sum = bias[oc];
         for ic in 0..12 {
-            let w = dense.f32_weights[ic * 12 + oc];
+            let w = dense.weights[ic * 12 + oc];
             sum += input[ic] * w;
         }
         scalar_out[oc] = sum;

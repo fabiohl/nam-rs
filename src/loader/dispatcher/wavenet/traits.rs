@@ -98,34 +98,32 @@ pub(crate) trait DenseWeightsOutput: Sized {
 impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OUT> {
     #[inline(always)]
     fn from_parts(
-        weights: AlignedVec<u16>,
+        _weights: AlignedVec<u16>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         _in_size: usize,
         _out_size: usize,
     ) -> Self {
         DenseLayer {
-            weights,
+            weights: AlignedVec::new(IN * OUT, 0.0f32),
             bias,
             do_bias,
-            f32_weights: AlignedVec::new(IN * OUT, 0.0f32),
         }
     }
 
     #[inline(always)]
     fn from_parts_head(
-        weights: AlignedVec<u16>,
+        _weights: AlignedVec<u16>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         _in_size: usize,
         _out_size: usize,
-        f32_weights: AlignedVec<f32>,
+        weights: AlignedVec<f32>,
     ) -> Self {
         DenseLayer {
             weights,
             bias,
             do_bias,
-            f32_weights,
         }
     }
 }

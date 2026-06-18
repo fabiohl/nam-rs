@@ -15,8 +15,7 @@ fn test_dense_layer_identity() {
     }
 
     let dense = DenseLayer::<4, 4> {
-        f32_weights,
-        weights: AlignedVec::new(0, 0u16),
+        weights: f32_weights,
         bias: AlignedVec::from_vec(vec![0.0; 4]),
         do_bias: false,
     };
@@ -43,8 +42,7 @@ fn test_dense_layer_with_bias() {
     }
 
     let dense = DenseLayer::<4, 4> {
-        f32_weights,
-        weights: AlignedVec::new(0, 0u16),
+        weights: f32_weights,
         bias: AlignedVec::from_vec(vec![1.0; 4]),
         do_bias: true,
     };
@@ -78,8 +76,7 @@ fn test_dense_layer_rectangular() {
     f32_weights[31] = -1.0; // in_c=7, out_c=3 → 7*4+3
 
     let dense = DenseLayer::<8, 4> {
-        f32_weights,
-        weights: AlignedVec::new(0, 0u16),
+        weights: f32_weights,
         bias: AlignedVec::from_vec(vec![0.5, -0.5, 1.0, -1.0]),
         do_bias: true,
     };
