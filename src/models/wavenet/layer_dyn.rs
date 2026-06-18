@@ -68,11 +68,8 @@ impl WaveNetLayerDyn {
 
         unsafe {
             let mixin_out = &mut self.scratch_mixin[..scratch_len];
-            self.input_mixin.process_block_f32_native::<M>(
-                ctx.condition,
-                mixin_out,
-                ctx.num_frames,
-            );
+            self.input_mixin
+                .process_block::<M>(ctx.condition, mixin_out, ctx.num_frames);
 
             let conv_slice = &mut self.scratch_conv[..scratch_len];
             self.conv1d.process_block(
@@ -94,7 +91,7 @@ impl WaveNetLayerDyn {
                 .layer_buffer
                 .get_unchecked(lb_offset..lb_offset + scratch_len);
 
-            self.one_by_one.process_residual_batch_f32::<M>(
+            self.one_by_one.process_residual_batch::<M>(
                 conv_slice,
                 residual_slice,
                 ctx.output,

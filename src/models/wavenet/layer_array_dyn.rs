@@ -82,7 +82,7 @@ impl WaveNetLayerArrayDyn {
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
-            self.rechannel.process_block_f32_native::<M>(
+            self.rechannel.process_block::<M>(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + num_frames * ch],
                 num_frames,
@@ -163,19 +163,11 @@ impl WaveNetLayerArrayDyn {
                 }
             }
 
-            if self.head_rechannel.f32_weights.is_some() {
-                self.head_rechannel.process_block_f32_native::<M>(
-                    &self.head_accum[0..num_frames * ch],
-                    &mut self.head_outputs[0..num_frames * head],
-                    num_frames,
-                );
-            } else {
-                self.head_rechannel.process_block::<M>(
-                    &self.head_accum[0..num_frames * ch],
-                    &mut self.head_outputs[0..num_frames * head],
-                    num_frames,
-                );
-            }
+            self.head_rechannel.process_block::<M>(
+                &self.head_accum[0..num_frames * ch],
+                &mut self.head_outputs[0..num_frames * head],
+                num_frames,
+            );
         }
     }
 

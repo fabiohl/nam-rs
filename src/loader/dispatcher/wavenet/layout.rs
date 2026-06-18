@@ -82,15 +82,7 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
         AlignedVec::new(out_size, 0.0)
     };
 
-    let dummy_u16 = AlignedVec::new(total, 0u16);
-    Ok(T::from_parts_head(
-        dummy_u16,
-        bias,
-        do_bias,
-        in_size,
-        out_size,
-        f32_weights,
-    ))
+    Ok(T::from_parts(f32_weights, bias, do_bias, in_size, out_size))
 }
 
 pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
@@ -116,15 +108,7 @@ pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
         AlignedVec::new(out_size, 0.0)
     };
 
-    let dummy_u16 = AlignedVec::new(total, 0u16);
-    Ok(T::from_parts_head(
-        dummy_u16,
-        bias,
-        do_bias,
-        in_size,
-        out_size,
-        f32_weights,
-    ))
+    Ok(T::from_parts(f32_weights, bias, do_bias, in_size, out_size))
 }
 
 // =============================================================================

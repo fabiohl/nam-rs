@@ -15,7 +15,6 @@
 //! 5. Asserts bit-exact output match
 
 use crate::math::common::AlignedVec;
-use crate::math::common::half::f32_to_f16_bits;
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
@@ -50,13 +49,8 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
     weights
 }
 
-/// Helper: replicate a u16-quantized weight value into a dense layer weight matrix.
-fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<u16> {
-    AlignedVec::from_vec(vec![f32_to_f16_bits(SYNTHETIC_WEIGHT); out_ch * in_ch])
-}
-
-/// Helper: create f32-native dense weights.
-fn make_dense_f32_weights(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
+/// Helper: create f32 dense weights.
+fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![SYNTHETIC_WEIGHT; out_ch * in_ch])
 }
 
@@ -90,12 +84,12 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
-                weights: make_dense_f32_weights(1, CH),
+                weights: make_dense_weights(1, CH),
                 bias: make_bias(CH),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: make_dense_f32_weights(CH, CH),
+                weights: make_dense_weights(CH, CH),
                 bias: make_bias(CH),
                 do_bias: false,
             },
@@ -114,12 +108,12 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         states: states_1,
         effective_layers: num_layers_1,
         rechannel: DenseLayer {
-            weights: make_dense_f32_weights(1, CH),
+            weights: make_dense_weights(1, CH),
             bias: make_bias(CH),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: make_dense_f32_weights(CH, HEAD),
+            weights: make_dense_weights(CH, HEAD),
             bias: make_bias(HEAD),
             do_bias: false,
         },
@@ -141,12 +135,12 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
-                weights: make_dense_f32_weights(1, HEAD),
+                weights: make_dense_weights(1, HEAD),
                 bias: make_bias(HEAD),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: make_dense_f32_weights(HEAD, HEAD),
+                weights: make_dense_weights(HEAD, HEAD),
                 bias: make_bias(HEAD),
                 do_bias: false,
             },
@@ -165,12 +159,12 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         states: states_2,
         effective_layers: num_layers_2,
         rechannel: DenseLayer {
-            weights: make_dense_f32_weights(CH, HEAD),
+            weights: make_dense_weights(CH, HEAD),
             bias: make_bias(HEAD),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: make_dense_f32_weights(HEAD, 1),
+            weights: make_dense_weights(HEAD, 1),
             bias: make_bias(1),
             do_bias: true,
         },
@@ -216,7 +210,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
             weights: make_dense_weights(in_ch, out_ch),
             bias: make_bias(out_ch),
             do_bias,
-            f32_weights: Some(make_dense_f32_weights(in_ch, out_ch)),
         }
     };
 

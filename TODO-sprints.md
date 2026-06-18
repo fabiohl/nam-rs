@@ -1148,7 +1148,7 @@ cargo test --quiet --test golden_vectors 2>&1 | grep -E "dynamic|PASS|FAIL"
 
 ---
 
-### T-HF6.3 — Unificar `DenseLayerDyn` em f32-only (remover Option + u16)
+### T-HF6.3 — Unificar `DenseLayerDyn` em f32-only [remover Option + u16] (DONE)
 
 **Arquivos**: `src/models/wavenet/dense_dyn.rs`, `src/models/wavenet/layer_array_dyn.rs`
 
