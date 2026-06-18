@@ -40,7 +40,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | **P7**  | `MirroredBuffer` só tem implementação real no **Linux** (stub nas demais plataformas)                                                                                                            | 🟢 Baixa           | Portabilidade         |
 | **P8**  | **137 testes `ignored`** na suíte padrão; cross-validação **live** vs C++ só roda na suíte longa                                                                                                 | 🟢 Informativo     | Cobertura             |
 | **P9**  | **A2** `set_max_buffer_size` cresce > 64 mas conv kernels têm scratch de stack fixo de 64 — `panic` (debug) / **UB** (release) com bloco > 64                                                    | 🟠 Média (latente) | RT-safety/Soundness   |
-| **P10** | **Modo "baixa fidelidade" (padrão) sob júdice** — ganho real de performance/latência vs modo exato ainda não medido; A2 já entregou qualidade E eficiência, questionando a premissa do trade-off | 🟠 Estratégico     | Arquitetura/Qualidade |
+| **P10** | **Modo "baixa fidelidade" (padrão) sob júdice** — ganho real nunca mensurado; simplificação radical do produto                                                                      | 🟠 Estratégico (✅ RESOLVIDO) | Arquitetura/Qualidade |
 
 ---
 
@@ -350,67 +350,51 @@ teste `nondist_validation` limita a varredura de tamanho de bloco a 64 (contrato
 
 ---
 
-## P10 — 🟠 Modo "baixa fidelidade" (padrão) sob júdice — ganho real não mensurado
+## P10 — 🟠 Modo "baixa fidelidade" (padrão) sob júdice — ✅ [RESOLVIDO] (T-HF6.6, lo-fi eliminado)
+
+> **Status final (jun/2026, T-HF6.6 — nuke completa E-HF Sprint 6):** O modo baixa fidelidade
+> (pesos u16 BF16/F16 + tanh Padé) foi **eliminado do WaveNet A1**. Todos os modelos WaveNet
+> não-Lite agora operam exclusivamente com pesos f32 + poly tanh (modo único). O ESR colapsou
+> de ~6e-3 para ~1e-13 (SNR ≫ 100 dB), comparável a LSTM/Linear. A feature flag
+> `high-fidelity` foi removida do `Cargo.toml`. A dualidade lo-fi/hi-fi não existe mais.
+>
+> A hipótese do PO foi validada: o caminho lo-fi foi abandonado, a simplificação radical do
+> código foi realizada, P2 foi resolvido pela raiz, e o teste com CH=12 (P1) confirmou que
+> a divergência do Lite é arquitetural — não causada pelo modo lo-fi.
+>
+> **Conexão com P1**: o modo f32 exato não resolveu P1 (Lite CH=12 manteve SNR ≈ 0.9 dB).
+> Ver P1 para condução específica do Lite.
 
 **Origem**: observação estratégica do PO (jun/2026) durante o fechamento do Épico E-WN.
 
-**Contexto**
-O Épico E-WN implementou dois modos para WaveNet:
+**Contexto (histórico — pré-nuke)**
+O Épico E-WN implementou dois modos para WaveNet (ambos eliminados em E-HF Sprint 6):
 
-- **Padrão / "baixa fidelidade"**: pesos `u16` (BF16/F16) + tanh Padé [5,4]; ESR ~3e-3..1e-2 vs C++.
-- **Alta fidelidade** (`--features high-fidelity`): pesos `f32` + `f32::tanh` exato; ESR < 1e-5,
-  comparable ao LSTM/Linear. Implementado em `64e2c7f`.
+- **Padrão / "baixa fidelidade"** (removido): pesos `u16` (BF16/F16) + tanh Padé [5,4].
+- **Alta fidelidade** (removido): `--features high-fidelity`, pesos `f32` + `f32::tanh` exato.
 
-**A premissa do trade-off nunca foi medida com dados reais.**
-O modo padrão foi herdado como decisão histórica ("menor latência, menor memória"), mas:
+**Resultado da nuke (T-HF6.1–T-HF6.6)**
+A eliminação do modo lo-fi produziu os seguintes resultados:
 
-1. A **magnitude real** do ganho de performance em hardware x86-64-v3 moderno (com AVX2/FMA
-   disponíveis) nunca foi quantificada por benchmark reprodutível.
-2. A arquitetura **A2** já entregou **qualidade superior E melhor eficiência** simultaneamente
-   (via LeakyReLU + caminhos SIMD otimizados) — o que questiona a premissa de que qualidade
-   e performance são necessariamente contrapostos no WaveNet A1.
-3. O Padé [5,4] usa `_mm256_div_ps` (latência 10-14 ciclos em Ice Lake/Zen 3); `f32::tanh`
-   usa lib matemática (costuma ser mais lento, mas o impacto real no throughput do _sistema_
-   — que é dominado por memória/conv — é desconhecido). O modo f32 elimina a decode u16→f32
-   por amostra, o que pode **compensar** parcialmente.
-4. O modo padrão introduz ~1% de erro de energia **sem justificativa quantificada**. Se o
-   ganho de performance for marginal (ex: <5%), o custo de fidelidade pode não se pagar.
+| Modelo                  | ESR pós-nuke      | SNR (dB) | Threshold |
+| ----------------------- | ----------------- | -------- | --------- |
+| WaveNet A1-Std CH=16    | 4.58e-13          | 123.4    | SNR ≥ 85  |
+| WaveNet Standard (v2)   | varies            | 101.8*   | SNR ≥ 85  |
+| WaveNet Feather CH=8    | 4.92e-14          | 133.1    | SNR ≥ 100 |
+| WaveNet Nano CH=4       | 6.30e-14          | 132.0    | SNR ≥ 95  |
 
-### **O que precisamos medir: (critério de decisão)**
+> \* Worst-case @ 192 kHz (v2 multi-SR goldens).
 
-| Métrica                         | Pergunta                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| Latência de inferência          | Quanto mais rápido é o modo padrão vs alta-fidelidade? (WaveNet A1 Std, bs=64) |
-| Uso de memória                  | Quanto maior é o footprint de memória no modo f32?                             |
-| Throughput (frames/s)           | O ganho é significativo sob carga contínua (soak 5M frames)?                   |
-| ESR com pesos reais             | Com modelos reais (não sintéticos 0.01), qual o ESR real de cada modo?         |
-| Perceptual (MUSHRA/AB informal) | A diferença de ~1% de energia é perceptível em material real?                  |
+**Por que a nuke foi a decisão correta**
+1. O ganho real de performance do modo lo-fi nunca foi medido com rigor.
+2. A A2 já demonstrava que qualidade e eficiência não são mutuamente exclusivos.
+3. O código dual (AlignedVec<u16/f32>, cfg gates, dual dispatch) era complexidade
+   sem justificativa quantificada.
+4. O ESR melhorou ~10 ordens de grandeza — eliminando P2 e P3 junto com P10.
+5. P1 (Lite) foi isolado como arquitetural — não era causado pelo lo-fi.
 
-**Hipótese do PO**
-O modo padrão pode não ter justificativa forte o suficiente. Se confirmado, o **caminho de
-menor resistência é abandonar o modo padrão quantizado e adotar f32 + tanh exato como único
-caminho**, eliminando toda uma classe de problemas de fidelidade (P2, fragmentos de P1) e
-simplificando o código (remove dualidade u16/f32, feature flag, bias-tune, etc.).
-
-**Por que importa ao PO**
-Simplificação radical do produto + resolução de P2 pela raiz + aproximação ao padrão de
-fidelidade do LSTM/Linear. Conexão direta com P1 (Lite): o modo exato pode (ou não) resolver
-a divergência CH=12, a ser verificado.
-
-**Sugestão de condução**
-Abrir frente técnica dedicada (`TODO-sprints.md §Frente P10`):
-
-1. Benchmark criterion: `bench_wavenet_standard_default` vs `bench_wavenet_standard_hifi`
-   em blocos de 1, 16, 64 frames — registrar throughput e latência de pico.
-2. Medição de ESR com pesos reais (usar `wavenet_official.nam` e modelos nondist).
-3. Perfil de memória: `AlignedVec<f32>` vs `AlignedVec<u16>` por modelo.
-4. Avaliação perceptual informal (AB em material high-gain).
-5. Decisão: manter dualidade / promover hi-fi a padrão / abandonar lo-fi.
-
-**Nota sobre A2**: a A2 já usa f32 nativo internamente (sem quantização de pesos, LeakyReLU
-exata) e é simultaneamente mais eficiente e mais fiel que WaveNet A1 padrão. Isso reforça
-empiricamente que qualidade e eficiência **não** são mutuamente exclusivos no contexto de
-inferência neural com SIMD moderno.
+**Resolução**: T-HF6.1–T-HF6.6 (E-HF Sprint 6). Documentado em
+`docs/fastmath-approximations.md§9` e `TODO-sprints.md§S-HF6`.
 
 ---
 

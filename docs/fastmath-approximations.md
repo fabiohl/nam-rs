@@ -267,103 +267,72 @@ For any future modification in `src/math/activations/`:
 
 ---
 
-## 9. Product Fidelity Policy — WaveNet Family (S4.T4.2)
+## 9. Product Fidelity Policy — WaveNet Family (post-T-HF6.6)
 
-### 9.1 The Fidelity Bar
+### 9.1 Current State: Single Mode (f32 + Poly Tanh)
 
-The WaveNet family trades numerical exactness for lower latency via FastMath
-approximations. This is a **conscious design decision**, not a bug. The
-result is a **fidelity asymmetry** across architectures:
+As of Epic E-HF Sprint 6 (T-HF6.1–T-HF6.6, jun/2026), WaveNet A1 operates
+exclusively in a **single mode**:
 
-| Architecture            | ESR (linear) | ESR (dB) | Error (energy) | Precision class |
-|:----------------------- |:------------ |:-------- |:-------------- |:--------------- |
-| LSTM / Linear           | ~1e-7..1e-9  | −70..−90 | ≈0%            | **Bit-exact**   |
-| WaveNet A2-Full         | 3.34e-3      | −24.8    | ~0.33%         | FastMath        |
-| WaveNet A2-Lite         | 5.00e-3      | −23.0    | ~0.50%         | FastMath        |
-| WaveNet A1-Standard     | 6.23e-3      | −22.1    | ~0.62%         | FastMath        |
-| WaveNet A1-Feather/Nano | *comparable* | —        | ~0.3–1%        | FastMath        |
+- **Weights**: `f32` native — no quantization, no dual storage, no
+  `AlignedVec<u16>` or BF16/F16 paths in WaveNet inference
+- **Tanh activation**: Padé [5,4] polynomial (SIMD AVX2/AVX-512, ~2.32e-3
+  max error, ~54 ns throughput)
+- **Feature flag `high-fidelity`**: **removed** from `Cargo.toml` (T-HF6.5)
+- **No cfg gates**: zero `#[cfg(feature = "high-fidelity")]` in WaveNet code
+- **No `AlignedVec<u16>`** in any WaveNet model, layer, or conv1d component
 
-> **Bar**: WaveNet ESR **3e-3 to 1e-2 (−25 to −20 dB)**, LSTM/Linear **≤ 1e-7 (−70 dB or better)**.
-> Fidelity for WaveNet is **~0.3–1% energy error by design** against the C++ reference (NAMCore v0.5.3).
+This single-mode architecture eliminates the entire low-fidelity/high-fidelity
+duality that existed prior to E-HF Sprint 6. The ESR vs C++ reference improved
+by ~10 orders of magnitude:
 
-### 9.2 Root Cause of the Drift
+| Architecture          | ESR (linear) | ESR (dB)  | SNR (dB) | Precision class |
+|:--------------------- |:------------ |:--------- |:-------- |:--------------- |
+| LSTM / Linear         | ~1e-7..1e-9  | −70..−90  | 67–91    | **Bit-exact**   |
+| WaveNet A1-Std CH=16  | 4.58e-13     | −123.4    | 123.4    | f32 + poly tanh |
+| WaveNet A1-Std (v2)   | *varies*     | *varies*  | 101.8*   | f32 + poly tanh |
+| WaveNet Feather CH=8  | 4.92e-14     | −133.1    | 133.1    | f32 + poly tanh |
+| WaveNet Nano CH=4     | 6.30e-14     | −132.0    | 132.0    | f32 + poly tanh |
 
-The decomposition measured in T1.4 (`docs/fastmath-approximations.md#5`) identifies
-two independent sources:
+> \* Worst-case across multi-SR v2 goldens @ 192 kHz.
+> ESR measured against NeuralAmpModelerCore v0.5.3 reference (commit `9c7b185`).
+> All non-Lite WaveNet models now achieve SNR ≫ 100 dB — comparable to LSTM/Linear.
 
-| Source                        | Contribution (A1-Std, CH=16) | Dominance |
-|:----------------------------- |:---------------------------- |:--------- |
-| BF16/F16 weight quantization  | 3.24e-7 ESR (−64.9 dB)       | **100%**  |
-| Tanh Padé [5,4] approximation | 8.49e-15 ESR (−140.7 dB)     | ~0%       |
-| f32 accumulation (Kahan)      | ~0                           | ~0%       |
+### 9.2 What Changed (E-HF Sprint 6)
 
-> [!WARNING]
-> The tanh contribution was measured with synthetic weights (0.01) that keep
-> activations in the tanh linear regime where `tanh(x) ≈ x`. With real model
-> weights producing larger activations (`|x| > 1`), Padé error (~2.32e-3 max)
-> becomes significant. **This remains pending** — see §9.5.
+| Prior state (pre-HF6)              | Current state (post-HF6)                             | Sprint/task |
+|:---------------------------------- |:---------------------------------------------------- | ----------- |
+| Dual weight storage (u16 + f32)    | Single f32 storage, no `AlignedVec<u16>` in WaveNet  | T-HF6.1–6.3 |
+| `#[cfg(feature = "high-fidelity")]`| No cfg gates in WaveNet — removed                    | T-HF6.4      |
+| `high-fidelity = []` in Cargo.toml | Feature flag removed                                 | T-HF6.5      |
+| ESR ~3e-3 to 1e-2 (−25 to −20 dB)  | ESR ~1e-13 (−123 dB) — ~10 orders improvement        | T-HF6.6      |
+| Golden thresholds SNR ≥ 7 dB       | Thresholds SNR 85–105 dB (16-37 dB margin)           | T-HF6.6      |
+| BF16/F16 weight quantization       | Eliminated for WaveNet (zero u16 in hot-path)        | T-HF6.1–6.3  |
 
-The hierarchy of drift sources (largest to smallest):
+### 9.3 Tanh Poly Approximation — Remaining Divergence from C++
 
-```text
-1. BF16/F16 weight quantization   (~3.9e-3 per element)  — DOMINANT
-2. Tanh Padé [5,4] approximation  (~2.3e-3 max)          — secondary
-3. f32 accumulation                (O(N·ε), mitigated)    — negligible
-```
+The Padé [5,4] tanh approximation is the **sole remaining** divergence from the
+IEEE-754 `std::tanh` used by C++ NAMCore. Its contribution to total ESR was
+measured at 8.49e-15 ESR (−140.7 dB) for synthetic weights — negligible. With
+real model weights, the Padé error (< 2.32e-3 max) is the only remaining
+non-exact component, but still yields SNR ≫ 100 dB across all non-Lite models.
 
-### 9.3 High-Fidelity Mode (Opt-in, Off by Default)
+> The decision to retain Padé [5,4] tanh (vs fully exact `f32::tanh`) is
+> performance-driven: Padé achieves ~54 ns vs ~163 ns for exact tanh, with
+> the trade-off being < 2.32e-3 local error — well below the 24-bit DAC
+> quantization floor in practice.
 
-**Feature flag**: `high-fidelity` in `Cargo.toml:71` — compile-time, off by default.
+### 9.4 Lite Architectures — P1 Remains (Architectural)
 
-When enabled (`cargo build --features high-fidelity`):
+WaveNet **Lite (CH=12)** is the only WaveNet SKU that diverges from C++:
+**SNR ≈ 0.9 dB** — the output is almost fully decorrelated from the reference.
 
-| Aspect           | Default (production)            | High-Fidelity mode                  |
-|:---------------- |:------------------------------- |:----------------------------------- |
-| Weight storage   | `u16` (BF16 or F16)             | `u16` + `AlignedVec<f32>` (dual)    |
-| Conv1D weights   | Quantized u16                   | Raw f32 via `f32_weights` field     |
-| Dense weights    | Quantized u16                   | Raw f32 via `from_parts_head`       |
-| Tanh activation  | Padé [5,4] SIMD (~2.3e-3 error) | Exact `f32::tanh()` IEEE 754        |
-| Expected ESR     | 3e-3 to 1e-2 (fast)             | < 1e-5 (comparable to LSTM/Linear)  |
-| Latency / memory | Baseline                        | Higher (all-f32 path, no SIMD tanh) |
-
-**Key implementation files** (see source for details):
-
-- `src/models/wavenet/conv1d.rs:25` — `f32_weights: AlignedVec<f32>` (feature-gated)
-- `src/models/wavenet/conv1d_dyn.rs:22` — same for dynamic path
-- `src/models/wavenet/layer.rs:169` — `process_block_internal` high-fidelity variant
-- `src/models/wavenet/layer_dyn.rs:136` — dynamic layer high-fidelity variant
-- `src/math/wavenet/accumulate/avx2.rs:31` — SIMD Padé bypass (compile-time)
-- `src/math/wavenet/accumulate/avx512.rs:110` — same for AVX-512
-- `src/loader/dispatcher/wavenet/layout.rs:30` — dual weight population on load
-
-> [!IMPORTANT]
-> The high-fidelity path is **zero-allocation in the hot-path** (f32 weights are
-> pre-loaded; exact `f32::tanh` uses no scratch). RT-safety is preserved. The
-> feature guard is **compile-time exclusive**: production and high-fidelity paths
-> cannot coexist in the same binary.
-
-### 9.4 Usage Recommendation
-
-| Use case                                   | Recommended mode                                |
-|:------------------------------------------ |:----------------------------------------------- |
-| Real-time plugin (CLAP, DAW)               | **Default** (Padé + quantized) — lowest latency |
-| Offline rendering / scientific measurement | **High-Fidelity** — exact, ESR < 1e-5           |
-| Live performance (lowest CPU)              | **Default**                                     |
-| Model validation / golden generation       | **High-Fidelity** — must match reference        |
-
-The default mode is the **production default** — the high-fidelity feature is an
-opt-in for users who prioritize numerical fidelity over latency.
-
-### 9.5 Lite Architectures — The Extreme Case (Connection to P1)
-
-The **P1 problem** (`TODO-problemas.md:46`) is the most visible manifestation of the
-fidelity asymmetry: WaveNet **Lite (CH=12)** diverges from the C++ reference with
-**SNR ≈ 0.9 dB** — the output is **almost fully decorrelated** from the expected
-signal. This is not a Lite-only issue; it is the same FastMath chain pushed to
-its quality limit by the CH=12 topology (smaller channel count amplifies rounding
-error relative to signal energy).
-
-Status of Lite models:
+> **Verdict T-HF6.6 (jun/2026):** The f32 exact path (weights + tanh poly,
+> identical to all other WaveNet models) **did not** resolve P1. Lite CH=12
+> maintained SNR ≈ 0.9 dB with no quantization in the path. This confirms
+> P1 is **architectural/implementational** — not a drift accumulation from
+> FastMath or quantization. Suspected causes: bias-tuning, 4-wide interleaving
+> order, or the CH=12 static engine path itself.
 
 | Model                   | Status                                     | SNR (vs C++) |
 |:----------------------- |:------------------------------------------ |:------------ |
@@ -372,37 +341,43 @@ Status of Lite models:
 
 > [!CAUTION]
 > Lite models should be treated with caution. Users loading a WaveNet Lite model
-> will hear output that differs from the canonical NAMCore render. The golden
-> vectors are self-consistent (deterministic) but not a reference match. Until
-> P1 is resolved, Lite is documented as a **known limitation**.
+> will hear output that differs from the canonical NAMCore render. Until P1 is
+> resolved, Lite is documented as a **known limitation** (see
+> `TODO-problemas.md#P1`).
 
-### 9.6 Decision Pending: "Low-Fidelity" Mode Under Review
+### 9.5 Historical Context: The Lo-Fi/Hi-Fi Duality (Removed)
 
-> **PO note (jun/2026):** The current default ("low-fidelity") mode is **sub júdice**.
+The dual-mode architecture (low-fidelity default + high-fidelity opt-in) existed
+from S4 to E-HF Sprint 5. It was eliminated in T-HF6.1–T-HF6.6 (E-HF Sprint 6)
+because:
 
-The default production path (quantized weights + Padé tanh) exists for a reason —
-lower latency, lower memory. However, the actual quantitative gain in
-**performance, latency, and stability** from the low-fidelity path has not been
-rigorously measured against the high-fidelity path on a broad corpus of real-world
-models.
+1. The quantitative performance advantage of low-fidelity over exact f32 was
+   **never rigorously measured** with real-world models on modern x86-64-v3
+   hardware (P10, `TODO-problemas.md:353`)
+2. A2 architecture demonstrated that quality and efficiency are **not**
+   mutually exclusive — A2 uses native f32 + LeakyReLU and is simultaneously
+   more efficient and more faithful than WaveNet A1
+3. The dual path introduced complexity (dual `AlignedVec<u16/f32>` storage,
+   compile-time cfg gates, dual weight dispatch) for unquantified benefit
+4. The nuke (T-HF6.1–6.3) simplified WaveNet to a single f32 path, and the
+   resulting ESR improvement (~10 orders of magnitude) validated the decision
 
-If the comparison does not show a **strong and justifiable** performance advantage
-of the low-fidelity path, the project should consider **abandoning the default
-quantized/Padé path** in favor of the simpler high-fidelity (f32 + exact tanh)
-path — eliminating a class of fidelity issues entirely.
+> [!NOTE]
+> Sections 2–8 of this document remain current and authoritative for tanh
+> (Padé [5,4]), sigmoid (minimax degree-17), anti-subnormal dither, and
+> WaveNet non-zero silence policy. Sections §5 (BF16 quantization drift) is
+> historical data — BF16/F16 paths no longer exist in WaveNet A1 inference,
+> though they remain active in LSTM state quantization and A2 rechannel weights.
 
-A dedicated technical task for this comparison is planned in
-`TODO-sprints.md` — see `TODO-problemas.md#P2`, §"Nota do PO" (line 122–124).
+### 9.6 Cross-References
 
-### 9.7 Cross-References
-
-| Item | Location                                          | Topic                    |
-|:---- |:------------------------------------------------- |:------------------------ |
-| P1   | `TODO-problemas.md:46`                            | Lite divergent (extreme) |
-| P2   | `TODO-problemas.md:85`, `TODO-sprints.md:291-319` | Fidelity asymmetry + S4  |
-| T1.4 | `TODO-sprints.md:147`, `#5` (this document)       | Drift decomposition      |
-| T4.1 | `TODO-sprints.md:297`, `Cargo.toml:71`            | High-fidelity mode impl  |
-| T4.2 | `TODO-sprints.md:310`                             | This document            |
+| Item     | Location                                 | Topic                              |
+|:-------- |:---------------------------------------- |:---------------------------------- |
+| P1       | `TODO-problemas.md:47`                   | Lite divergent (architectural)     |
+| P2       | `TODO-problemas.md:92`                   | Fidelity asymmetry — RESOLVED      |
+| P10      | `TODO-problemas.md:353`                  | Lo-fi mode review — RESOLVED       |
+| T-HF6.6  | `TODO-sprints.md:1277`                   | Golden recalibration post-nuke     |
+| T-HF6.5  | `TODO-sprints.md:1258`                   | Feature flag removal               |
 
 ---
 
@@ -413,3 +388,4 @@ A dedicated technical task for this comparison is planned in
 - Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput per microarchitecture.
 - [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
 - `TODO-sprints.md` §Epic 8 — complete history of decisions and benchmark data.
+- `TODO-sprints.md` §E-HF Sprint 6 — T-HF6.1–T-HF6.7 (nuke + recalibration + docs).

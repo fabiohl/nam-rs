@@ -1308,7 +1308,7 @@ cargo test --release --test golden_vectors -- --ignored --nocapture \
 
 ---
 
-### T-HF6.7 — Documentação e fechamento (skill `documentador`)
+### T-HF6.7 — Documentação e fechamento (skill `documentador`) [DONE]
 
 * Atualizar `docs/fastmath-approximations.md`: WaveNet A1 agora é f32 exato + poly tanh (modo único)
 * Atualizar `docs/cpp_parity_map.md`: nova tabela de ESR pós-nuke
@@ -1318,6 +1318,15 @@ cargo test --release --test golden_vectors -- --ignored --nocapture \
   movê-los para `target/logs/` (não versionar lixo na raiz)
 
 **Aceite**: docs sincronizadas; raiz do repo limpa; TODO-problemas atualizado.
+
+> ✅ **T-HF6.7 CONCLUÍDO (jun/2026).** `docs/fastmath-approximations.md§9` reescrita — WaveNet A1
+> agora documentado como modo único f32 + poly tanh (dualidade lo-fi/hi-fi removida). Seções 9.2–9.5
+> documentam o delta pré/pós-nuke, P1 Lite como arquitetural e contexto histórico da nuke.
+> `docs/cpp_parity_map.md§8.1` adicionada tabela de ESR pós-nuke (SNR 101.8–133.1 dB para não-Lite).
+> `docs/cpp_parity_map.md§10.2` atualizado — BF16/F16 não mais no caminho WaveNet A1.
+> `docs/architecture.md` já limpa (zero menções a lo-fi/hi-fi). `TODO-problemas.md`: P10 marcado
+> [RESOLVIDO] com descrição da nuke e tabela de ESR; tabela de severidade atualizada.
+> Raiz do repo limpa (zero `bench_*.txt`/`esr_*.txt`/`rss_*.txt`).
 
 ---
 

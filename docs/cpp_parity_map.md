@@ -221,6 +221,32 @@ divergences, and the sprint/task that established each equivalence.
 | `test_slimmable_wavenet.cpp` (official WaveNet test) | `tests/fixtures/` — shared models               | S13a.T01           |
 | SNR thresholds (C++ → Rust comparison)               | `tests/cpp_parity.rs` — per-model SNR passes    | —                  |
 
+### 8.1 Post-Nuke ESR Measurements (T-HF6.6, jun/2026)
+
+After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet A1
+(E-HF Sprint 6), the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
+was recalibrated:
+
+| Model                  | ESR (linear)     | ESR (dB)  | SNR (dB) | Notes                     |
+|:---------------------- |:---------------- |:--------- |:-------- |:------------------------- |
+| WaveNet A1-Std CH=16   | 4.58e-13         | −123.4    | 123.4    | Live v1, f32 + poly tanh  |
+| WaveNet Standard v2    | *varies*         | *varies*  | 101.8*   | Multi-SR v2 worst @ 192k  |
+| WaveNet Standard (v2)  | *varies*         | *varies*  | 123.0**  | v2 best @ 48kHz           |
+| WaveNet Feather CH=8   | 4.92e-14         | −133.1    | 133.1    | Live v1                   |
+| WaveNet Feather (v2)   | *varies*         | *varies*  | 117.6*   | v2 worst @ 192kHz         |
+| WaveNet Nano CH=4      | 6.30e-14         | −132.0    | 132.0    | Live v1                   |
+| WaveNet Nano (v2)      | *varies*         | *varies*  | 114.6*   | v2 worst @ 192kHz         |
+| WaveNet Lite CH=12     | —                | —         | 0.9      | P1 — architectural, `#[ignore]` |
+
+> \* Worst-case across v2 multi-SR golden vectors.
+> \*\* Best-case v2 (48 kHz native).
+> All non-Lite models now achieve SNR ≫ 100 dB, comparable to LSTM/Linear (67–91 dB).
+> Thresholds calibrated: Standard ≥ 85 dB SNR, Feather ≥ 100 dB, Nano ≥ 95 dB.
+
+These measurements replace the pre-nuke ESR of ~3e-3 to 1e-2 (−25 to −20 dB).
+The ~10 order-of-magnitude improvement comes from eliminating BF16/F16 weight
+quantization (previously the dominant drift source at ~3.9e-3 per element).
+
 ---
 
 ## 9. A1 Topology Table
@@ -274,7 +300,7 @@ divergences, and the sprint/task that established each equivalence.
 
 | Divergence                                           | Rationale                                                                                                                                                                                                              |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2 × 10⁻⁵) — 10–20× throughput gain.                                                                                                      |
+| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. Post-T-HF6.6, this is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated). |
 | **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                            |
 | **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+. |
 | **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation (T13.2/T18.4).                                                                 |
@@ -394,6 +420,7 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 
 | Date       | Change                                                                                                                                                                                                                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§8.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §10.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                         |
 | 2026-06-12 | [T11.2] `is_a2_shape()` now matches C++ `is_a2_shape()` exactly (20 criteria from `a2_fast.cpp:875-908`). Added `bottleneck`, `kernel_sizes`, `in_channels` to typed config structs; raw JSON capture via `layer_raw` for complex checks (activation arrays, FiLM, gating_mode, head sub-objects, groups,      |
 |            | slimmable). Strict rejection with clear diagnostics prevents silent fast-path misroute for models with `bottleneck≠channels`, gated/blended activation, or active FiLM conditioning. Full parity map entry updated with correct line range.                                                                    |
 | 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm. |
