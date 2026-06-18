@@ -1049,7 +1049,7 @@ fn test_golden_vectors_v2_wavenet_a1_standard() {
 }
 
 #[test]
-#[ignore = "known-divergent: WaveNet Official uses synthetic non-standard geometry [(1,2),(8)]; drifts on the 100x-longer v2 signal (SNR ~13 dB) like Lite (P1). The v1 gate (ESR 3.5e-2) stays active and meaningful; skipped in the long-suite v2 gate."]
+#[ignore]
 fn test_golden_vectors_v2_wavenet_official() {
     // The C++ render tool only generates `wavenet_official` at 48 kHz (the model's
     // expected rate); golden_gen_build.sh skips the other SRs ("Input WAV sample

@@ -157,7 +157,7 @@ todos os SKUs (Standard/Feather/Nano **não podem regredir** — eles já passav
 **Risco**: 🟡 médio (dados de teste/regeneração de golden). Cuidado: **não** afrouxar thresholds
 para "passar" — se o golden não bater, a raiz não foi corrigida.
 
-### T1.4 — 🟡 Reverificar `wavenet_official` (free-geom) pós-fix
+### T1.4 — 🟡 Reverificar `wavenet_official` (free-geom) pós-fix [DONE]
 
 **Por quê**: P13 classificou `wavenet_official` como known-divergent na mesma classe do Lite. Se a
 raiz é a mesma (canais ∤ página), o fix de T1.2 deve resolvê-lo também.

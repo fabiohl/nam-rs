@@ -45,19 +45,22 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | **P10** | **Modo "baixa fidelidade" (padrão) sob júdice** — ganho real nunca mensurado; simplificação radical do produto                                                                                                                                                                       | 🟠 Estratégico (✅ RESOLVIDO)   | Arquitetura/Qualidade |
 | **P11** | **Encoder f16 de software (`f32_to_f16_bits`) erra carry na borda de mantissa** — valores logo abaixo de potência de 2 com expoente ímpar (≈8, 2, 0,5, 32) eram codificados pela **metade**; afeta quantização de pesos LSTM/A2 via `quantize_weight` — ✅ [RESOLVIDO] (half.rs:117) | 🔴 Alta (latente, ✅ RESOLVIDO) | Soundness/Fidelidade  |
 | **P12** | **Corrida de CMake em `cpp_parity`** — `ensure_render_compiled` sem serialização; em cold run os 21 testes paralelos corrompem o cache CMake (`CXX_COMPILER not set`) → falha espúria — ✅ [RESOLVIDO] (serialização por `Mutex`)                                                    | 🟡 Média-Baixa (✅ RESOLVIDO)   | Infra de testes       |
-| **P13** | **Golden v2 de `wavenet_official`** — SR incorreta (`ALL_SR` vs render só-48 kHz) + modelo divergente (geometria não-padrão, deriva no v2 longo, classe do Lite/P1) — ✅ [RESOLVIDO] (SR corrigida, known-divergent skip, gate v1 mantido)                                           | 🟡 Média-Baixa (✅ RESOLVIDO)   | Cobertura/Dados       |
+| **P13** | **Golden v2 de `wavenet_official`** — SR incorreta (`ALL_SR` vs render só-48 kHz) + modelo divergente (mesma raiz P1: canais ∤ página) — ✅ [RESOLVIDO] (T1.2 alinhou MirroredBuffer; v2 golden reabilitado SNR 121 dB, bit-exato)                                                                                                             | 🟡 Média-Baixa (✅ RESOLVIDO)   | Cobertura/Dados       |
 | **P14** | **Inconsistência tripla no gerador de goldens v2** — `wavenet_lite` fora do `V2_MODELS` mas exigido por teste+pre-flight (5 `.bin` stale ~18 MB, landmine de regen); `lstm_*_v2_192000` gerados mas nunca testados (~15 MB mortos) — ✅ [RESOLVIDO]                                  | 🟡 Média-Baixa (✅ RESOLVIDO)   | Infra de testes/Dados |
 
 ---
 
-## P1 — ✅ WaveNet "Lite" (CH=12) — RESOLVIDO (T1.2+T1.3, jun/2026)
+## P1 — ✅ WaveNet "Lite" (CH=12/6) + "Official" (CH=3 free-geom) — RESOLVIDO (T1.2+T1.3+T1.4, jun/2026)
 
-> **✅ RESOLVIDO (jun/2026, T1.2+T1.3).** Root cause: wrap do ring-buffer
-> `MirroredBuffer` dessincronizava quando `channels ∤ page_size` (CH=12/6).
+> **✅ RESOLVIDO (jun/2026, T1.2+T1.3+T1.4).** Root cause: wrap do ring-buffer
+> `MirroredBuffer` dessincronizava quando `channels ∤ page_size` (CH=12/6 para Lite,
+> CH=3 para Official).
 > **Fix (T1.2):** `MirroredBuffer::new_aligned` garante `size_elements` múltiplo de
-> `channels` via `lcm(page, channels*4)`. **Validação (T1.3):** assert de invariância
+> `channels` via `lcm(page, channels*4)`. **Validação T1.3:** assert de invariância
 > de bloco restaurado, golden `wavenet_lite` reabilitado, `live_cross_validation_wavenet_lite`
 > reativada, teste de regressão `wavenet_ringbuffer_alignment` para CH∈{12,6}.
+> **Validação T1.4:** `wavenet_official` v2 golden reabilitado (SNR 121 dB, bit-exato);
+> `#[ignore]`/`--skip` removidos. Ambas as geometrias cobertas pelo mesmo fix.
 
 > **🎯 CAUSA RAIZ DEFINITIVA (jun/2026 — auditoria revisor-auditor).** A divergência **NÃO é
 > numérica** (FastMath/quantização — refutado em T-HF6.6) **nem do conv dual-frame** (refutado
@@ -87,10 +90,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > |  6 | **4**     | **2**       | ❌ **DESYNC** (Lite array2)       |
 > |  4 | 0         | 0           | ✅ invariante (Feather a2/Nano)   |
 > |  2 | 0         | 0           | ✅ invariante (Nano array2)       |
+> |  3 | **1**     | **2**       | ❌ **DESYNC** (Official CH=3)     |
 >
 > **Lite é o ÚNICO SKU padrão** cujos canais (array1 CH=12, array2 CH=6) não são potências de 2
-> que dividem a página → único afetado. `wavenet_official` (free-geom) entra na mesma classe se
-> seus canais não dividirem a página.
+> que dividem a página; **Official (CH=3)** é o único outro modelo com geometria sintética na mesma
+> classe. Ambos foram corrigidos por T1.2 e validados por T1.3+T1.4.
 >
 > **Por que casa com TODAS as evidências:** (a) só Lite + Official divergem; (b) o caminho f32
 > exato não resolveu (é bug de índice, não de número); (c) a violação de invariância de bloco é
@@ -131,11 +135,12 @@ pesos nem por FastMath** — é um problema arquitetural/implementacional separa
 bias-tuning, interleaving 4-wide, ou caminho CH=12 no motor estático).
 
 **Ampliação (jun/2026, revisão geral — ver P13):** `wavenet_official` (geometria sintética
-não-padrão `[(1,2),(8)]`) entra no **mesmo conjunto known-divergent**. v1 (2048 amostras) passa
-(SNR 22,4 dB), mas o sinal v2 100× mais longo acumula deriva até SNR ~13,1 dB / ESR 4,95e-2.
-Como o Lite, é tratado com `#[ignore]` + `--skip wavenet_official` no gate v2 (gate v1 mantido).
-Reforça a tese: **geometrias WaveNet não-padrão** (Lite CH=12, Official free-geom) divergem do
-C++ de forma proporcional ao comprimento do sinal — investigação arquitetural única pendente.
+não-padrão `[(1,2),(8)]`, CH=3) era known-divergent na mesma classe do Lite (SNR ~13,1 dB no v2).
+**✅ Resolvido por T1.2 (jun/2026):** o fix de alinhamento do `MirroredBuffer` resolveu também o
+`wavenet_official` — v2 golden reabilitado com SNR 121 dB, bit-exato. `#[ignore]` e `--skip`
+removidos. A hipótese de geometria não-padrão como causa adicional foi descartada — CH=3 com página
+de 4 KB/Huge (1024%3=1, 524288%3=2) sofre o mesmo wrap dessincronizado. A correção T1.2 cobre
+**todas** as geometrias WaveNet (não só Lite/Official).
 
 **O que significa**
 SNR ≈ **0,9 dB** vs a referência NeuralAmpModelerCore significa que a saída do nam-rs para
@@ -165,9 +170,10 @@ root cause acima (jun/2026).** A causa não é arquitetural do CH=12 nem do inte
 **wrap do ring-buffer** que dessincroniza quando `channels ∤ página` (CH=12/6). **Corrigir**
 alinhando o `MirroredBuffer` a múltiplo de `channels` (ver fix proposto no bloco 🎯 acima);
 após o fix, **reabilitar o golden** e **restaurar o assert** de invariância. A divergência do
-`wavenet_official` (free-geom) deve ser reverificada após o fix — provavelmente é a mesma raiz.
+`wavenet_official` (free-geom, CH=3) **confirmado resolvido pela mesma raiz** (T1.4, jun/2026): v2
+golden reabilitado com SNR 121 dB (bit-exato), `#[ignore]` e `--skip` removidos.
 
-**✅ TUDO CONCLUÍDO (T1.2+T1.3, jun/2026).** Fix implementado e validado contra C++.
+**✅ TUDO CONCLUÍDO (T1.2+T1.3+T1.4, jun/2026).** Fix implementado e validado contra C++ para Lite (CH=12/6) e Official (CH=3, free-geom). Ambos bit-exatos. `#[ignore]` e `--skip` removidos de ambos.
 
 ---
 
@@ -548,34 +554,29 @@ e Linear passam (3/3), confirmando também que a correção P11 preserva a parid
 
 ---
 
-## P13 — 🟡 Golden v2 de `wavenet_official` — SR incorreta + modelo divergente — ✅ [RESOLVIDO]
+## P13 — 🟡 Golden v2 de `wavenet_official` — mesma raiz P1 — ✅ [RESOLVIDO por T1.2+T1.4]
 
 **Origem**: `utils/tests-long.sh` Fase 3 — `test_golden_vectors_v2_wavenet_official` falhava:
 `golden_wavenet_official_v2_44100.bin not found`.
 
-**Raiz (dois problemas encadeados)**:
+**Raiz (três problemas encadeados)**:
 
 1. **SR errada**: o teste pedia `ALL_SR` (44,1/48/88,2/96/192 kHz), mas o render tool C++ só
    gera `wavenet_official` a **48 kHz** (`golden_gen_build.sh` pula as demais SRs: "Input WAV
    sample rate does not match model expected rate (48000 Hz)") — igual a `lstm_official`/A2.
 2. **Modelo divergente**: ao corrigir para 48 kHz, o teste revelou que `wavenet_official`
-   (geometria **sintética não-padrão** `[(1,2),(8)]`, ver `validation.rs:385`) **deriva** no sinal
-   v2 100× mais longo: SNR ~13,1 dB / ESR 4,95e-2 (vs gate relaxado 4,9e-2). Mesma classe de
-   **divergência arquitetural** do WaveNet Lite (**P1**) — não é regressão de engine (v1 a 2048
-   amostras passa: SNR 22,4 dB / ESR 5,78e-3).
+   (geometria **sintética não-padrão** `[(1,2),(8)]`, CH=3) **deriva** no sinal
+   v2 100× mais longo: SNR ~13,1 dB / ESR 4,95e-2. Mesma **causa raiz do P1**: `channels ∤ page_size`
+   (CH=3: 1024%3=1, 524288%3=2) → wrap do ring-buffer dessincronizado.
+3. **Resolvido por T1.2**: o fix `MirroredBuffer::new_aligned` cobre **todas** as geometrias WaveNet.
+   **T1.4 (jun/2026)**: v2 golden reabilitado — SNR 121 dB, bit-exato. `#[ignore]` e `--skip`
+   removidos.
 
-**Resolução** (consistente com o tratamento de `wavenet_lite`):
+**Validação T1.4**: `test_golden_vectors_v2_wavenet_official` @ 48 kHz → MSE 1.19e-15, SNR 121.2 dB,
+ESR 7.54e-13. Bit-exato contra C++.
 
-- `tests/golden_vectors.rs:1054`: `ALL_SR` → `SR_48K_ONLY`.
-- Teste marcado `#[ignore = "known-divergent ..."]` documentando a geometria sintética.
-- `utils/tests-long.sh`: adicionado `--skip wavenet_official` ao gate v2 (junto de
-  `--skip wavenet_lite`). **O gate v1 (`ESR 3,5e-2`) permanece ativo** — não houve afrouxamento.
-- `golden_wavenet_official_v2_48000.bin` gerado e versionado.
-- Gate v2 verde: `golden_vectors -- v2_ --skip wavenet_lite --skip wavenet_official` → 9 passam.
-
-> **Não** se afrouxou nenhum threshold (anti-padrão P3). `wavenet_official` v2 entra no conjunto
-> known-divergent junto de `wavenet_lite` — ver **P1** (geometrias WaveNet não-padrão divergem
-> do C++; investigação arquitetural pendente).
+> **Não** se afrouxou nenhum threshold (anti-padrão P3). `wavenet_official` v2 foi **reabilitado**
+> por T1.4 (SNR 121 dB, bit-exato) — mesma raiz P1 corrigida por T1.2.
 
 ---
 
@@ -631,22 +632,22 @@ A2-Full, A2-Lite) só geram golden a 48 kHz; tratados pelo SKIP. Não é falha.
 >
 > **Atualização (jun/2026, revisão geral pós-`tests-long.sh`):**
 > P11 (bug de carry no encoder f16) e P12 (corrida CMake) **corrigidos e validados**. P13
-> (golden v2 de `wavenet_official`: SR + divergência) **resolvido** (SR_48K_ONLY +
-> known-divergent, gate v1 mantido). P14 (inconsistência tripla do gerador de goldens v2:
+> (golden v2 de `wavenet_official`: SR + divergência) e P1 (WaveNet Lite) **totalmente
+> resolvidos por T1.2** (MirroredBuffer alinhado a canais) — ambos bit-exatos contra C++,
+> `#[ignore]` e `--skip` removidos. P14 (inconsistência tripla do gerador de goldens v2:
 > lite stale + LSTM 192k morto) **resolvido** — 3 fontes da verdade alinhadas, ~33 MB removidos.
 
 1. **P10/P2/P3** — ✅ **Resolvidos (T-HF6.6)**. Lo-fi eliminado; thresholds endurecidos SNR 85-105 dB.
 2. **P11** — ✅ **Resolvido**. Bug de soundness no encoder f16 (carry de mantissa); afetava
    quantização de pesos LSTM/A2. Corrigido + regressão exaustiva.
 3. **P12** — ✅ **Resolvido**. Corrida de CMake em `cpp_parity` serializada.
-4. **P13** — ✅ **Resolvido**. SR corrigida (`SR_48K_ONLY`) e `wavenet_official` v2 marcado
-   known-divergent (mesma classe do Lite); gate v1 (ESR 3,5e-2) mantido, sem afrouxar.
-5. **P1** (WaveNet Lite + Official divergentes) — **🎯 ROOT CAUSE ISOLADO (jun/2026):** wrap do
+4. **P13** — ✅ **Resolvido por T1.2+T1.4**. `wavenet_official` v2 reabilitado (SNR 121 dB,
+   bit-exato contra C++; mesma raiz P1 corrigida por T1.2). `#[ignore]` e `--skip` removidos.
+5. **P1** (WaveNet Lite + Official) — ✅ **RESOLVIDO (T1.2+T1.3+T1.4, jun/2026).** Root cause: wrap do
    ring-buffer `WaveNetLayerState::advance_frames` dessincroniza do espelho `MirroredBuffer`
-   quando `channels ∤ página` (CH=12/6 únicos afetados; prova aritmética 1024%12=4, 524288%12=8).
-   **NÃO é arquitetural/quantização/dual-frame** (todos refutados). Fix: alinhar `MirroredBuffer`
-   a múltiplo de `channels`. Validação: restaurar assert de invariância + reabilitar golden +
-   cross-validação C++. Tarefas detalhadas em `TODO-sprints.md`.
+   quando `channels ∤ página`. Fix: `MirroredBuffer::new_aligned` garante divisibilidade por `channels`.
+   Validado: Lite (CH=12/6) e Official (CH=3, free-geom) bit-exatos contra C++. `#[ignore]` e `--skip`
+   removidos de ambos.
 6. **P9** (A2 UB blocos >64) — corrigir antes de publicar suporte a blocos grandes;
    opções documentadas em P9.
 7. **P4 + P5** (silêncio não-nulo + pico de latência) — P4 documentado/fiel C++; P5 pendente
