@@ -263,22 +263,37 @@ done
 echo ""
 echo "[5b/5] Generating v2 multi-SR golden vectors..."
 
-# Models eligible for v2 multi-SR (subset exercising all architectures)
+# Models eligible for v2 multi-SR (subset exercising all architectures).
+#
+# Entry format: nam_file:golden_name:label[:skip_srs]
+#   skip_srs (optional, comma-separated) — sample rates NOT to generate for this
+#   model, kept in sync with the test SR sets in tests/golden_vectors.rs:
+#     - LSTM 1x16 / 2x8 skip 192000: the recurrent state's quantization drift at
+#       192 kHz makes the golden untestable (tests use SR_EX_192K), so emitting it
+#       would only commit dead, never-validated fixtures (~7.3 MB each).
+#
+# NOTE ON SAMPLE-RATE SKIPS DURING RENDER: models whose .nam declares
+# `expected_sample_rate` (e.g. WaveNet Standard CH=16, Official, LSTM Official,
+# A2-Full, A2-Lite — all 48 kHz) make the C++ render tool reject other SRs with
+# "Input WAV sample rate (X) does not match model expected rate (48000 Hz)". That
+# error is EXPECTED and handled by the SKIP path below; those models legitimately
+# produce only the 48 kHz golden (tests use SR_48K_ONLY). It is not a failure.
+# `wavenet_lite` is intentionally absent (known-divergent, P1 — no v2 coverage).
 V2_MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16)"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8)"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4)"
     "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
     "wavenet_official.nam:golden_wavenet_official:WaveNet Official (CH=3 free geom)"
-    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16"
-    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
+    "BossLSTM-1x16.nam:golden_lstm_1x16:LSTM 1×16:192000"
+    "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8:192000"
     "lstm.nam:golden_lstm_official:LSTM Official"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
 )
 
 for entry in "${V2_MODELS[@]}"; do
-    IFS=':' read -r nam_file golden_name label <<< "$entry"
+    IFS=':' read -r nam_file golden_name label skip_srs <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
 
     if [ ! -f "$MODEL_PATH" ]; then
@@ -288,6 +303,14 @@ for entry in "${V2_MODELS[@]}"; do
 
     for sr_entry in "${V2_STRESS_WAVS[@]}"; do
         IFS=':' read -r sr v2_wav <<< "$sr_entry"
+
+        # Skip sample rates explicitly excluded for this model (kept in sync with
+        # the test SR sets, e.g. LSTM skips 192000 — see V2_MODELS header).
+        if [ -n "$skip_srs" ] && [[ ",${skip_srs}," == *",${sr},"* ]]; then
+            echo "    $label @ ${sr} Hz (v2)... SKIP (excluded SR for this model)"
+            continue
+        fi
+
         v2_golden="$FIXTURES_DIR/${golden_name}_v2_${sr}.bin"
         v2_out_wav="$TEMP_DIR/${golden_name}_v2_${sr}.wav"
 

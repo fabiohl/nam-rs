@@ -1,0 +1,19 @@
+# Git LFS tracking for large binary golden vectors.
+#
+# The v2 multi-sample-rate golden fixtures are large (~1.8-7.3 MB each, ~18 MB
+# per model across 5 sample rates) and are regenerated from the C++ reference
+# via tests/fixtures/golden_gen_build.sh. Storing them as plain git blobs bloats
+# repository history. They are declared as LFS objects here.
+#
+# REQUIRED ONE-TIME SETUP (per clone/machine), since git-lfs is not yet installed:
+#   1. Install git-lfs (e.g. `apt install git-lfs` / `brew install git-lfs`).
+#   2. Run `git lfs install` once to register the clean/smudge filters.
+#   3. To convert the EXISTING committed blobs to LFS (history rewrite, do this
+#      deliberately and coordinate with the team):
+#        git lfs migrate import --include="tests/fixtures/*_v2_*.bin" --everything
+#
+# Until git-lfs is installed these patterns are inert and files are stored as
+# normal blobs. The small v1 fixtures (~16 KB) are intentionally NOT tracked by
+# LFS — the overhead is not worth it for tiny files.
+
+tests/fixtures/*_v2_*.bin filter=lfs diff=lfs merge=lfs -text

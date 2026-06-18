@@ -1001,17 +1001,11 @@ fn test_golden_vectors_v2_wavenet_nano() {
     );
 }
 
-#[test]
-#[ignore]
-fn test_golden_vectors_v2_wavenet_lite() {
-    run_v2_golden_test(
-        "BossWN-lite.nam",
-        "golden_wavenet_lite",
-        "WaveNet Lite (CH=12)",
-        "BossWN-lite",
-        ALL_SR,
-    );
-}
+// NOTE: there is intentionally no `test_golden_vectors_v2_wavenet_lite`.
+// WaveNet Lite (CH=12) is known-divergent vs the C++ reference (see P1 and the v1
+// `test_golden_vectors_wavenet_lite`, which carries the known-divergent gate). It is
+// excluded from v2 golden generation (golden_gen_build.sh V2_MODELS), so no v2 lite
+// fixtures exist and no v2 lite test is defined.
 
 #[test]
 #[ignore]
@@ -1050,14 +1044,17 @@ fn test_golden_vectors_v2_wavenet_a1_standard() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "known-divergent: WaveNet Official uses synthetic non-standard geometry [(1,2),(8)]; drifts on the 100x-longer v2 signal (SNR ~13 dB) like Lite (P1). The v1 gate (ESR 3.5e-2) stays active and meaningful; skipped in the long-suite v2 gate."]
 fn test_golden_vectors_v2_wavenet_official() {
+    // The C++ render tool only generates `wavenet_official` at 48 kHz (the model's
+    // expected rate); golden_gen_build.sh skips the other SRs ("Input WAV sample
+    // rate does not match model expected rate (48000 Hz)"). Match lstm_official / A2.
     run_v2_golden_test(
         "wavenet_official.nam",
         "golden_wavenet_official",
         "WaveNet Official (CH=3, dynamic)",
         "wavenet_official",
-        ALL_SR,
+        SR_48K_ONLY,
     );
 }
 

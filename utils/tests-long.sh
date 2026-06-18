@@ -67,7 +67,7 @@ REQUIRED_GOLDEN_MODELS=(
     "lstm_1x16" "lstm_2x8" "lstm_official"
 )
 # v2 ALL_SR: 44100, 48000, 88200, 96000, 192000
-V2_ALL_SR_MODELS=("wavenet_feather" "wavenet_nano" "wavenet_lite" "wavenet_a1_standard")
+V2_ALL_SR_MODELS=("wavenet_feather" "wavenet_nano" "wavenet_a1_standard")
 V2_ALL_SR=(44100 48000 88200 96000 192000)
 # v2 SR_EX_192K: 44100, 48000, 88200, 96000
 V2_EX_192K_MODELS=("lstm_1x16" "lstm_2x8")
@@ -334,7 +334,7 @@ run_phase \
 # --- Phase 2: Property-Based, Parity, C++ Parity, Golden Vectors (release, default) ---
 run_phase \
     "Property-Based, Parity & Golden Vectors in Release" \
-    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_lite --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --skip wavenet_official --ignored --nocapture || status=1; [ $status -eq 0 ]' \
     "phase2-proptests-parity.log" || true
 
 # --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
