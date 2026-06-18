@@ -12,18 +12,49 @@ use libc::{
 use std::marker::PhantomData;
 use std::ptr;
 
+const fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+const fn lcm(a: usize, b: usize) -> Option<usize> {
+    let g = gcd(a, b);
+    let a_div_g = a / g;
+    a_div_g.checked_mul(b)
+}
+
 impl<T> MirroredBuffer<T> {
     /// Creates a new mirrored buffer with huge-page preference.
     ///
     /// The `requested_size` (in elements) will be rounded up to the next
     /// multiple of the system page size (2 MB for huge pages, 4 KB for standard).
+    /// Equivalent to `new_aligned(requested_size, 1)`.
     #[cold]
     pub fn new(requested_size: usize) -> std::io::Result<Self> {
+        Self::new_aligned(requested_size, 1)
+    }
+
+    /// Creates a mirrored buffer guaranteeing `size_elements % elem_multiple == 0`.
+    ///
+    /// Rounds `size_bytes` up to the least common multiple of the system page
+    /// size and `elem_multiple * size_of::<T>()`. This ensures both the mmap
+    /// mirror invariant (size is page-aligned) and divisibility by `elem_multiple`
+    /// — essential for ring-buffer wrap arithmetic in multi-channel DSP.
+    ///
+    /// For huge-page path, rounds to `lcm(2 MiB, elem_multiple * size_of::<T>())`.
+    ///
+    /// Cost is negligible: e.g. CH=12 (48 B stride) adds at most 12 KiB on 4 KB
+    /// pages, or up to 6 MiB on huge pages — all cold, during model load.
+    #[cold]
+    pub fn new_aligned(requested_size: usize, elem_multiple: usize) -> std::io::Result<Self> {
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let page_size = unsafe { sysconf(libc::_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();
 
-        // Ensure the element size is not zero (e.g., ZST)
         if element_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -38,6 +69,13 @@ impl<T> MirroredBuffer<T> {
             ));
         }
 
+        if elem_multiple == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "elem_multiple must be greater than zero",
+            ));
+        }
+
         let requested_bytes = match requested_size.checked_mul(element_size) {
             Some(val) => val,
             None => {
@@ -48,7 +86,6 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
-        // Try huge-page path if the total size (2x) is at least 2 MB.
         let total_chunk = match requested_bytes.checked_mul(2) {
             Some(val) => val,
             None => {
@@ -59,18 +96,36 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
+        let elem_stride = match elem_multiple.checked_mul(element_size) {
+            Some(val) => val,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "elem_multiple * element_size overflowed",
+                ));
+            }
+        };
+
         if total_chunk >= HUGE_PAGE_2M {
-            let huge_res = Self::try_new_huge(requested_bytes, HUGE_PAGE_2M);
+            let huge_res = Self::try_new_huge_aligned(requested_bytes, HUGE_PAGE_2M, elem_stride);
             if let Ok(buf) = huge_res {
                 MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
                 return Ok(buf);
             }
         }
 
-        // Standard path (4 KB pages)
-        let page_mask = page_size - 1;
-        let size_bytes = match requested_bytes.checked_add(page_mask) {
-            Some(val) => val & !page_mask,
+        let align_bytes = match lcm(page_size, elem_stride) {
+            Some(val) => val,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "lcm(page_size, elem_stride) overflowed",
+                ));
+            }
+        };
+        let align_mask = align_bytes - 1;
+        let size_bytes = match requested_bytes.checked_add(align_mask) {
+            Some(val) => val & !align_mask,
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -79,6 +134,11 @@ impl<T> MirroredBuffer<T> {
             }
         };
         let size_elements = size_bytes / element_size;
+
+        assert!(
+            requested_size > 0,
+            "requested_size must be greater than zero"
+        );
 
         // 1. Create backing store (memfd on Linux, stub fallback on other platforms)
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
@@ -95,12 +155,6 @@ impl<T> MirroredBuffer<T> {
 
         // 2. Reserve contiguous virtual space (2x size)
         let total_size = size_bytes * 2;
-
-        // Ensure required invariant before mmap
-        assert!(
-            requested_size > 0,
-            "requested_size must be greater than zero"
-        );
 
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let base_ptr = unsafe {
@@ -170,7 +224,6 @@ impl<T> MirroredBuffer<T> {
         }
         MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
 
-        // The FD is no longer needed after mmap (it holds a reference to the file)
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { libc::close(fd) };
 
@@ -181,13 +234,34 @@ impl<T> MirroredBuffer<T> {
         })
     }
 
-    /// Attempts creation with explicit 2 MB huge pages.
+    /// Attempts creation with explicit 2 MB huge pages, honouring element alignment.
     #[cold]
-    fn try_new_huge(requested_bytes: usize, huge_page_size: usize) -> std::io::Result<Self> {
+    fn try_new_huge_aligned(
+        requested_bytes: usize,
+        huge_page_size: usize,
+        elem_stride: usize,
+    ) -> std::io::Result<Self> {
         let element_size = std::mem::size_of::<T>();
 
-        let huge_mask = huge_page_size - 1;
-        let size_bytes = (requested_bytes + huge_mask) & !huge_mask;
+        let align_bytes = match lcm(huge_page_size, elem_stride) {
+            Some(val) => val,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "lcm(huge_page_size, elem_stride) overflowed",
+                ));
+            }
+        };
+        let align_mask = align_bytes - 1;
+        let size_bytes = match requested_bytes.checked_add(align_mask) {
+            Some(val) => val & !align_mask,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "size_bytes calculation overflowed",
+                ));
+            }
+        };
         let size_elements = size_bytes / element_size;
 
         // 1. Create HugeTLB-backed memfd (falls back to regular memfd)

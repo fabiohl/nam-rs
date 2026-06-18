@@ -61,7 +61,7 @@ impl WaveNetLayerState {
         let min_buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
 
-        let buffer = MirroredBuffer::<f32>::new(min_buffer_frames * channels)?;
+        let buffer = MirroredBuffer::<f32>::new_aligned(min_buffer_frames * channels, channels)?;
 
         let actual_buffer_frames = buffer.size() / channels;
 

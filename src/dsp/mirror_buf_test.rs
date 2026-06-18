@@ -102,29 +102,19 @@ fn test_mirror_buf_debug() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_mirror_buf_channel_alignment() -> Result<(), Box<dyn std::error::Error>> {
-    // Typical WaveNet Lite receptive field: RF=2048, buffer padding
-    // LAYER_ARRAY_BUFFER_PADDING=24, WAVENET_MAX_NUM_FRAMES=64.
-    // min_buffer_frames = 2048 + (24 + 1) * 64 = 3648.
+    // T1.2 fix: MirroredBuffer::new_aligned guarantees size_elements % channels == 0
+    // for all channel counts, including non-power-of-two channels (6, 12 — Lite).
     let min_buffer_frames = 3648usize;
 
     for &ch in &[4usize, 6, 8, 12, 16] {
         let min_elems = min_buffer_frames * ch;
-        let buf = MirroredBuffer::<f32>::new(min_elems)?;
-        let rem = buf.size() % ch;
-
-        // Powers of 2 (4, 8, 16) divide page-aligned buffers by construction.
-        // Non-powers of 2 (6, 12) do NOT — this is the P1 root cause.
-        if rem == 0 {
-            // CH∈{4,8,16} — invariant holds (1024 % ch == 0).
-            // After T1.2 fix, CH∈{6,12} will also land here.
-        } else {
-            // CH∈{6,12} — P1 bug: buffer.size() % channels != 0.
-            // This causes advance_frames wrap to undershoot by {rem} elements per cycle.
-            eprintln!(
-                "WARN [P1] MirroredBuffer alignment: size={} not divisible by channels={ch} (remainder={rem})",
-                buf.size()
-            );
-        }
+        let buf = MirroredBuffer::<f32>::new_aligned(min_elems, ch)?;
+        assert_eq!(
+            buf.size() % ch,
+            0,
+            "MirroredBuffer size_elements={} must be divisible by channels={ch}",
+            buf.size()
+        );
     }
 
     Ok(())

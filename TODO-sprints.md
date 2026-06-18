@@ -88,7 +88,7 @@ invariância de bloco do Lite (MSE ~1–2e-2, consistente com a evidência
 
 **Risco**: 🟢 baixo (só leitura/medição). **Sem** alocação no hot-path.
 
-### T1.2 — 🔴 `MirroredBuffer` alinhado a canais + `WaveNetLayerState` usa-o (FIX DE RAIZ — máxima atenção)
+### T1.2 — 🔴 `MirroredBuffer` alinhado a canais + `WaveNetLayerState` usa-o (FIX DE RAIZ — máxima atenção) [DONE]
 
 **Por quê**: é a correção da causa raiz. Mexe em `mmap`/espelho de páginas — errar quebra **toda**
 a inferência WaveNet (não só Lite). Exige revisão cuidadosa e golden C++ antes/depois.
