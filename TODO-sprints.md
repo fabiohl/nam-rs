@@ -90,17 +90,21 @@ sobrescreve), mas há **trabalho duplicado** e — pior — o caminho AVX-512 hi
 
 ## Visão geral das sprints
 
-| Sprint      | Tema                                                       | Risco      | Status          |
-| ----------- | ---------------------------------------------------------- |:----------:| --------------- |
-| **S-HF1**   | Kernel SIMD de tanh/sigmoid de alta precisão + fix AVX-512 | 🟠 Médio   | ✅ DONE         |
-| **S-HF2**   | Vetorização do Conv1D f32 + soma residual (hi-fi)          | 🟠 Médio   | ✅ DONE         |
-| **S-HF3**   | O1 — internalizar `half` + F16C nas caudas                 | 🟢 Baixo   | ✅ DONE         |
-| **S-HF4**   | Infra de medição rigorosa (bench/ESR/memória/perceptual)   | 🟢 Baixo   | ✅ DONE         |
-| **S-HF5.A** | Nukar lo-fi: modo único, sem switches, sem menções         | 🔴 Crítico | 🟡 EM ANDAMENTO |
+| Sprint      | Tema                                                       | Risco      | Status                    |
+| ----------- | ---------------------------------------------------------- |:----------:| ------------------------- |
+| **S-HF1**   | Kernel SIMD de tanh/sigmoid de alta precisão + fix AVX-512 | 🟠 Médio   | ✅ DONE                   |
+| **S-HF2**   | Vetorização do Conv1D f32 + soma residual (hi-fi)          | 🟠 Médio   | ✅ DONE                   |
+| **S-HF3**   | O1 — internalizar `half` + F16C nas caudas                 | 🟢 Baixo   | ✅ DONE                   |
+| **S-HF4**   | Infra de medição rigorosa (bench/ESR/memória/perceptual)   | 🟢 Baixo   | ✅ DONE                   |
+| **S-HF5.A** | Nukar lo-fi: modo único, sem switches, sem menções         | 🔴 Crítico | 🟡 PARCIAL (hot-paths ok) |
+| **S-HF6**   | Saneamento estrutural + SIGSEGV + recalibração goldens     | 🔴 Crítico | 🟡 EM ANDAMENTO           |
 
 **Status S-HF4**: ✅ completa (T-HF4.1–T-HF4.5 concluídos).
 **Decisão S-HF5**: **S-HF5.A — nukar lo-fi completamente**. Dados confirmam hi-fi domina em
 todos os eixos. T-HF5.B cancelado.
+**Status S-HF5.A**: hot-paths convertidos a f32 (T-HF5.A.0–.9, .11), mas a auditoria pós-T-HF5.A.11
+revelou código morto u16 residual + SIGSEGV + flag não removida + goldens não recalibrados.
+**S-HF6** criada para sanear e fechar (ver Checkpoint de Auditoria Crítica abaixo).
 
 ---
 
@@ -999,53 +1003,305 @@ cargo bench --bench inference_bench -- "WaveNet_Standard_CH16_64samp_48kHz" \
 
 ---
 
-**Objetivo**: tornar `high-fidelity` a feature default SEM remover código lo-fi ainda.
-O lo-fi vira código morto (compilável mas inacessível). A suíte de testes valida o resultado.
+## Checkpoint de Auditoria Crítica — pós T-HF5.A.11 (jun/2026)
 
-**⚡ Interrupção — ação da IA (código):**
+> **Veredicto**: a "nuke" do lo-fi está **funcionalmente correta nos hot-paths** (todos os
+> hot-paths estáticos e dinâmicos usam f32/poly), **MAS está estruturalmente incompleta**:
+> sobrou código morto u16/bf16 espalhado, structs híbridas, e — criticamente — um **SIGSEGV**
+> causado por structs que ainda carregam o campo u16 legado. T-HF5.A.10/.12/.13 **não** foram
+> executadas. **A sprint não pode ser dada como concluída.**
 
-```toml
-# Cargo.toml: adicionar high-fidelity ao default
-[features]
-default = ["standalone", "testing", "high-fidelity"]   # ← adicionar high-fidelity
-high-fidelity = []
-```
+### Estado de adesão aos objetivos originadores
 
-**⚡ Interrupção — humano executa:**
+| Objetivo                          | Origem                   | Status           | Observação                                  |
+| --------------------------------- | ------------------------ | ---------------- | ------------------------------------------- |
+| **P10** (medir + decidir lo-fi)   | `TODO-problemas.md §P10` | ✅ **ATINGIDO**  | Decisão S-HF5.A com dados; hi-fi domina     |
+| **P10** (hi-fi escalar → SIMD)    | —                        | ✅ **ATINGIDO**  | Hot-paths f32 SIMD (S-HF1/S-HF2)            |
+| **O1** (`half` + F16C)            | `TODO-optimize.md §O1`   | ✅ **ATINGIDO**  | `half` removido; R1 corrigido               |
+| **O5** (cobertura SIMD)           | `TODO-optimize.md §O5`   | ✅ **ATINGIDO**  | Hot-paths sem escalar; guard-rail ok        |
+| **Adoção hi-fi único**            | PO                       | 🟡 **PARCIAL**   | Hot-paths sim; **resta código morto lo-fi** |
+| **`high-fidelity` flag removida** | T-HF5.A.10               | ❌ **NÃO FEITO** | Flag ainda no `Cargo.toml`                  |
+| **Goldens recalibrados**          | T-HF5.A.12               | ❌ **NÃO FEITO** | Thresholds ainda em ~22 dB (lo-fi)          |
+| **Validação final verde**         | T-HF5.A.13               | ❌ **BLOQUEADO** | SIGSEGV em `nam_infer_test`                 |
+
+### Achados da auditoria (file:line)
+
+**A1 — SIGSEGV (CRÍTICO)** — `tests/nam_infer_test.rs::test_wavenet_computational_stability`
+(signal 11). **Raiz**: o struct estático `DenseLayer` (`src/models/wavenet/dense.rs:10-19`)
+**ainda tem o campo u16 `weights`** além do `f32_weights`. O builder sintético
+(`nam_infer_test.rs:53-58,90-101,143-194`) preenche o campo `weights` (u16) com dados e deixa
+`f32_weights: AlignedVec::new(0, 0.0f32)` **vazio**. O hot-path ativo `process_block`
+(`dense.rs:106-118`) lê `f32_weights` (capacidade 0) → leitura SIMD fora dos limites → SIGSEGV.
+Produção não crasha (o loader popula `f32_weights`); só os builders sintéticos preenchem o
+campo errado.
+
+**A2 — `DenseLayer` estático híbrido** — `src/models/wavenet/dense.rs`:
+
+* Campo morto `pub weights: AlignedVec<u16>` (`:11`)
+* Métodos mortos (sem callers de produção): `process_single_frame` (`:30`, u16),
+  `process_residual_batch` (`:47`, u16), `process_bf16` (`:126`, u16)
+* Vivos (f32): `process_block` (`:106`), `process_residual_batch_f32` (`:75`)
+
+**A3 — `Conv1dDyn` dinâmico híbrido** — `src/models/wavenet/conv1d_dyn.rs`:
+
+* Campo morto `pub weights: AlignedVec<u16>` (`:19`) coexistindo com `f32_weights` (`:21`)
+* 6 métodos mortos u16/bf16 (`:67,119,147,171,195,223`); vivo é `*_f32_native` (`layer_dyn.rs:78`)
+* Kernels mortos: `conv1d_dyn_kernels.rs` (inteiro, u16) e metades u16 de `conv1d_dyn_dual.rs:128`
+
+**A4 — `DenseLayerDyn` dinâmico (pior caso)** — `src/models/wavenet/dense_dyn.rs:11-25`:
+
+* Ainda usa `Option<AlignedVec<f32>>` (`:25`) + u16 `weights` (`:17`)
+* Dualismo vivo em `layer_array_dyn.rs:165-178`: `if head_rechannel.f32_weights.is_some() {
+  process_block_f32_native } else { process_block (u16) }` — a bifurcação que deveria ter sumido
+
+**A5 — Goldens não recalibrados (T-HF5.A.12 pendente)**: `esr_post_nuke.txt` não existe.
+Os thresholds de WaveNet A1 em `tests/golden_vectors.rs` / `tests/cpp_parity.rs` continuam
+calibrados para o ESR lo-fi (~6e-3, SNR ~22 dB). Com f32 exato, o ESR deve cair para ~1e-6..1e-8
+e os gates ficaram **frouxos** (P3 reaberto para WaveNet). P2 não foi formalmente fechado.
+
+**A6 — Terminologia residual**: confirmar varredura de "hi-fi/lo-fi/high-fidelity" remanescente
+em comentários (T-HF5.A.11 marcada DONE, mas validar com a nova sprint).
+
+**Nota tranquilizadora**: `golden_vectors` (18 passam) e `dynamic_parity` (todos passam) **estão
+verdes** — os hot-paths de produção usam f32 corretamente. O problema é **higiene estrutural** e
+o **SIGSEGV em builders de teste sintéticos**, não erro de inferência em produção.
+
+---
+
+## Sprint S-HF6 — Saneamento estrutural, correção do SIGSEGV e fechamento
+
+**Objetivo**: levar o codebase de "funcionalmente hi-fi com lixo lo-fi" para "estruturalmente
+hi-fi puro": eliminar todo campo/método/kernel u16/bf16 morto do WaveNet, corrigir o SIGSEGV,
+recalibrar os goldens e remover a feature flag. Fim do épico E-HF.
+
+**Risco**: 🔴 Crítico — mexe em structs centrais (Conv1dDyn, DenseLayer, DenseLayerDyn) e nos
+thresholds de teste. **Mitigação**: ordem estrita; `cargo test` verde após cada tarefa.
+
+**Invariante A2/LSTM** (reforçado): A2 e LSTM têm suas **próprias** estruturas e usam
+`quantize_weight`/F16/Padé legitimamente. A varredura desta sprint é **exclusiva do WaveNet A1**
+(`src/models/wavenet/`, exceto onde compartilhado com A2). Confirmar antes de cada remoção que o
+símbolo não é usado por A2/LSTM.
+
+---
+
+### T-HF6.1 — Corrigir o SIGSEGV: unificar `DenseLayer` estático em f32-only
+
+**Arquivo**: `src/models/wavenet/dense.rs`
+
+**Mudanças**:
+
+1. Remover o campo `pub weights: AlignedVec<u16>` (`:11`). O campo f32 passa a se chamar `weights`
+   (renomear `f32_weights` → `weights`, tipo `AlignedVec<f32>`).
+2. Remover os 3 métodos mortos u16: `process_single_frame` (`:30`), `process_residual_batch`
+   (`:47`), `process_bf16` (`:126`). **Antes**: confirmar zero callers de produção
+   (`grep -rn "rechannel.process_single_frame\|\.process_bf16" src/ | grep -v test` → vazio).
+3. Renomear `process_block` (f32, `:106`) — manter o nome `process_block` (já é o único).
+4. Renomear `process_residual_batch_f32` → `process_residual_batch` (`:75`) e atualizar callers
+   (`layer.rs`, `dense_dyn.rs`).
+5. Atualizar **todos** os builders sintéticos que preenchem `DenseLayer`:
+   * `tests/nam_infer_test.rs:53-58,90-101,143-194` — trocar `weights: from_vec(f16...)` +
+     `f32_weights: empty` por um único `weights: AlignedVec::from_vec(vec![0.001f32; N])`
+   * `tests/common/model_builders.rs`, `tests/wavenet_prewarm_edge.rs`,
+     `src/models/wavenet/tests.rs`, `test_files/*.rs` — idem
+   * `benches/kahan_conv1d_bench.rs`, `benches/inference_bench.rs` — idem
+
+**Após**:
 
 ```bash
-# 1. Compilar em modo default (agora hi-fi por padrão)
 cargo check 2>&1 | tail -3
-cargo check --no-default-features --features standalone,testing 2>&1 | tail -3  # lo-fi ainda compilável
-
-# 2. Suíte completa — threshold dos goldens deve continuar passando
+cargo test --release --test nam_infer_test -- --test-threads=1 2>&1 | tail -8  # SIGSEGV deve sumir
 cargo test --quiet 2>&1 | tail -5
-
-# 3. Garantir que lo-fi ainda compila (código morto mas válido)
-cargo test --quiet --no-default-features --features standalone,testing 2>&1 | tail -5
-
-# 4. Suíte longa (cpp_parity) — medir paridade C++ do A1-Std CH=16 em hi-fi
-#    ESTE É O TESTE DEFINITIVO de fidelidade hi-fi vs C++ para o modelo padrão.
-#    Rodar no pipeline CI ou manualmente (±38 min):
-# cargo test --release --ignored --nocapture --test cpp_parity -- wavenet 2>&1 | grep -E "ESR|SNR|PASS|FAIL"
 ```
 
-**Aceite T-HF5.A.1**: — (esta tarefa foi absorvida pela nova estrutura T-HF5.A.0–T-HF5.A.13 acima)
+**Aceite**: `test_wavenet_computational_stability` passa; zero `AlignedVec<u16>` em `dense.rs`;
+zero campo `f32_weights` (renomeado para `weights`).
+
+---
+
+### T-HF6.2 — Unificar `Conv1dDyn` em f32-only (remover u16/bf16)
+
+**Arquivos**: `src/models/wavenet/conv1d_dyn.rs`, `conv1d_dyn_kernels.rs`, `conv1d_dyn_dual.rs`
+
+**Mudanças**:
+
+1. `conv1d_dyn.rs:19`: remover campo `pub weights: AlignedVec<u16>`; renomear `f32_weights` →
+   `weights` (`:21`).
+2. Remover os 6 métodos mortos u16/bf16 (`:67,119,147,171,195,223`): `process_dual_frame`,
+   `process_dual_frame_bf16`, `process_block`, `process_block_bf16`, `process_single_frame`,
+   `process_single_frame_bf16`. Renomear os `*_f32_native` correspondentes para os nomes limpos.
+3. **Deletar `conv1d_dyn_kernels.rs` inteiro** (kernel u16) — confirmar que só os métodos removidos
+   o usavam.
+4. `conv1d_dyn_dual.rs`: remover a metade u16 (`:24-136`, `dot_product_4x_interleaved_dual_frame`);
+   manter só a f32 (`:186+`, `dot_product_4x_dual`).
+5. Atualizar callers em `layer_dyn.rs` (`:78` já usa `*_f32_native` → renomear para nome limpo).
+
+**Após**:
+
+```bash
+cargo check 2>&1 | tail -3
+cargo test --quiet -- wavenet_dynamic 2>&1 | tail -5
+cargo test --quiet --test golden_vectors 2>&1 | grep -E "dynamic|PASS|FAIL"
+```
+
+**Aceite**: zero `AlignedVec<u16>` em `conv1d_dyn*.rs`; `conv1d_dyn_kernels.rs` deletado;
+`dynamic_parity` verde.
+
+---
+
+### T-HF6.3 — Unificar `DenseLayerDyn` em f32-only (remover Option + u16)
+
+**Arquivos**: `src/models/wavenet/dense_dyn.rs`, `src/models/wavenet/layer_array_dyn.rs`
+
+**Mudanças**:
+
+1. `dense_dyn.rs:25`: `pub f32_weights: Option<AlignedVec<f32>>` → `pub weights: AlignedVec<f32>`
+   (remover `Option`).
+2. `dense_dyn.rs:17`: remover campo u16 `weights`.
+3. Remover métodos u16 (`process_residual_batch` u16 `:36`, `process_block` u16 `:164`);
+   renomear `process_block_f32_native` → `process_block`, `process_residual_batch_f32` →
+   `process_residual_batch`.
+4. `layer_array_dyn.rs:165-178`: **eliminar a bifurcação** `if head_rechannel.f32_weights.is_some()`
+   — chamar diretamente `process_block` (agora sempre f32).
+5. Idem para qualquer `is_some()` no rechannel (`:85` já usa `_f32_native`).
+
+**Após**:
+
+```bash
+cargo check 2>&1 | tail -3
+cargo test --quiet -- wavenet 2>&1 | tail -5
+```
+
+**Aceite**: zero `Option<AlignedVec<f32>>` e zero `AlignedVec<u16>` em `dense_dyn.rs`; zero
+`f32_weights.is_some()` em `layer_array_dyn.rs`.
+
+---
+
+### T-HF6.4 — Varredura de código morto u16/bf16 remanescente no WaveNet
+
+**Objetivo**: garantir que não restou nenhum símbolo lo-fi morto no WaveNet A1.
+
+```bash
+# Não deve haver u16 weights no WaveNet (exceto onde compartilhado c/ A2 — verificar caso a caso)
+grep -rn "AlignedVec<u16>\|process_bf16\|_bf16\|f32_to_bf16\|last_condition_bf16" src/models/wavenet/
+
+# Confirmar que quantize_weight não é mais chamado pelo loader WaveNet (só A2/LSTM)
+grep -rn "quantize_weight\|transpose_dense_layer\b\|is_bf16" src/loader/dispatcher/wavenet/
+```
+
+**Ação**: remover quaisquer remanescentes. Verificar `SimdMath` trait — se métodos como
+`gemv_overwrite_batch_bf16`, `fused_gemm_residual_batch` (u16), `dot_product_4x_interleaved` (u16)
+ficaram sem callers **em todo o crate** (incluindo A2/LSTM), marcá-los para remoção numa tarefa
+futura (não remover agora se A2/LSTM usam).
+
+**Aceite**: relatório do que é morto-WaveNet (removido) vs vivo-A2/LSTM (mantido, documentado).
+
+---
+
+### T-HF6.5 — Remover a feature flag `high-fidelity` do Cargo.toml (T-HF5.A.10 refeita)
+
+```bash
+# Confirmar zero cfg restante
+grep -rn "high-fidelity" src/ tests/ benches/ | grep -v "//.*SPDX"
+```
+
+Se zero: remover `high-fidelity = []` do `Cargo.toml` e qualquer menção em `default`.
+
+```bash
+cargo check 2>&1 | tail -3
+cargo test --quiet 2>&1 | tail -5
+cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"   # deve ser 0
+```
+
+**Aceite**: `high-fidelity` ausente do `Cargo.toml`; clippy limpo em todos os targets.
+
+---
+
+### T-HF6.6 — Recalibração de goldens WaveNet (T-HF5.A.12, fecha P2/P3)
+
+**⚡ Interrupção — humano executa (medir ESR real pós-nuke):**
+
+```bash
+# Suíte longa de paridade C++ (±15-38 min):
+cargo test --release --test cpp_parity -- --ignored --nocapture \
+  2>&1 | grep -E "WaveNet|ESR|SNR|PASS|FAIL" | tee esr_post_nuke.txt
+
+# Goldens v2 (multi-SR), atualmente #[ignore]:
+cargo test --release --test golden_vectors -- --ignored --nocapture \
+  2>&1 | grep -E "WaveNet|ESR|SNR" | tee golden_v2_post_nuke.txt
+```
+
+**Ação da IA (após os resultados):**
+
+* Apertar thresholds de WaveNet A1 em `tests/golden_vectors.rs` e `tests/cpp_parity.rs` para
+  refletir o ESR f32 real (esperado SNR ≫ 22 dB; alvo coerente com LSTM/Linear)
+* Reavaliar `test_golden_vectors_wavenet_lite` (CH=12, P1): verificar se o caminho f32 exato
+  corrige a divergência (SNR 0.9 dB) ou se P1 persiste como achado de arquitetura separado
+* Fechar formalmente **P2** e recalibrar **P3** em `TODO-problemas.md`
+
+**Aceite**: thresholds WaveNet endurecidos com base em medição; P2 fechado; P1 reavaliado com veredicto.
+
+---
+
+### T-HF6.7 — Documentação e fechamento (skill `documentador`)
+
+* Atualizar `docs/fastmath-approximations.md`: WaveNet A1 agora é f32 exato + poly tanh (modo único)
+* Atualizar `docs/cpp_parity_map.md`: nova tabela de ESR pós-nuke
+* Atualizar `docs/architecture.md` se descrever a dualidade lo-fi/hi-fi
+* Fechar P2/P10 em `TODO-problemas.md`; anotar P1 (Lite) com o veredicto de T-HF6.6
+* Remover arquivos de bench temporários da raiz (`bench_*.txt`, `esr_*.txt`, `rss_*.txt`) ou
+  movê-los para `target/logs/` (não versionar lixo na raiz)
+
+**Aceite**: docs sincronizadas; raiz do repo limpa; TODO-problemas atualizado.
+
+---
+
+### T-HF6.8 — Validação final do épico E-HF
+
+```bash
+# 1. Zero lo-fi/cfg/u16 morto no WaveNet
+grep -rn "high-fidelity\|hi.fi\|lo.fi" src/ benches/ tests/ | grep -v "//.*SPDX\|\.md"   # vazio
+grep -rn "AlignedVec<u16>" src/models/wavenet/                                            # vazio
+
+# 2. Suíte completa (debug + release, single-thread para pegar SIGSEGV)
+utils/tests-cargo.sh
+cargo test --release -- --test-threads=1 2>&1 | tail -8
+
+# 3. Clippy limpo
+cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"   # 0
+
+# 4. Suíte longa
+utils/tests-long.sh
+
+# 5. Bench de não-regressão vs T-HF4.1
+cargo bench --bench inference_bench -- "WaveNet_Standard_CH16_64samp_48kHz" 2>&1 | grep "time:"
+```
+
+**Aceite final do épico E-HF**:
+
+* `utils/tests-cargo.sh` 100% verde (sem SIGSEGV)
+* `utils/tests-long.sh` verde
+* Zero `AlignedVec<u16>` / `Option<f32_weights>` no WaveNet A1
+* `high-fidelity` ausente do `Cargo.toml`
+* Goldens WaveNet recalibrados; P2 fechado
+* Docs sincronizadas; raiz limpa
+* Performance WaveNet ≈ T-HF4.1 (sem regressão)
 
 ---
 
 ## Rastreabilidade (achados → sprints)
 
-| Achado / origem                                  | Sprint(s)                           |
-| ------------------------------------------------ | ----------------------------------- |
-| `TODO-problemas.md §P10` (medir lo-fi)           | S-HF4, S-HF5                        |
-| `TODO-problemas.md §P10` (hi-fi escalar → SIMD)  | S-HF1, S-HF2                        |
-| `TODO-problemas.md §P2/§P3` (fidelidade WaveNet) | S-HF5.A (resolução)                 |
-| `TODO-problemas.md §P1` (Lite divergente)        | S-HF2.2, S-HF5 (reavaliar)          |
-| `TODO-problemas.md §P5` (pico latência/denormal) | S-HF1 (remove libm tanh)            |
-| `TODO-optimize.md §O1` (`half` + F16C)           | S-HF3                               |
-| `TODO-optimize.md §O5` (cobertura SIMD hot-spot) | S-HF1.3 (bug), S-HF2.5 (guard-rail) |
-| `.agents/rules/rust.md:25` (proibir libm RT)     | S-HF1 (conformidade)                |
+| Achado / origem                                   | Sprint(s)                            |
+| ------------------------------------------------- | ------------------------------------ |
+| `TODO-problemas.md §P10` (medir lo-fi)            | S-HF4, S-HF5                         |
+| `TODO-problemas.md §P10` (hi-fi escalar → SIMD)   | S-HF1, S-HF2                         |
+| `TODO-problemas.md §P2/§P3` (fidelidade WaveNet)  | S-HF5.A → **S-HF6.6** (recalibração) |
+| `TODO-problemas.md §P1` (Lite divergente)         | S-HF2.2, **S-HF6.6** (reavaliar f32) |
+| `TODO-problemas.md §P5` (pico latência/denormal)  | S-HF1 (remove libm tanh)             |
+| `TODO-optimize.md §O1` (`half` + F16C)            | S-HF3                                |
+| `TODO-optimize.md §O5` (cobertura SIMD hot-spot)  | S-HF1.3 (bug), S-HF2.5 (guard-rail)  |
+| `.agents/rules/rust.md:25` (proibir libm RT)      | S-HF1 (conformidade)                 |
+| **SIGSEGV `nam_infer_test`** (auditoria jun/2026) | **S-HF6.1** (DenseLayer f32-only)    |
+| **Código morto u16/bf16 (nuke incompleta)**       | **S-HF6.1–6.5**                      |
 
 ## Regras de fechamento (todas as sprints)
 
