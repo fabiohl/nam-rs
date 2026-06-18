@@ -155,7 +155,9 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
 }
 
 #[test]
-#[ignore = "P1: block invariance synthetic harness — currently MSE~1e-15 (uniform small-weights model). T1.2 fix + real Lite model in T1.3 will harden this to assert! < 1e-7."]
+// T1.2 fix: MirroredBuffer::new_aligned guarantees size_elements % channels == 0,
+// so the ring-buffer wrap period aligns exactly with the mirror period.
+// T1.3: hardened to assert! < 1e-7 (synthetic model gives MSE~1e-20 post-fix).
 fn test_wavenet_lite_block_invariance() {
     let num_samples = 16384;
     let input = generate_sine_440hz(num_samples);
@@ -177,8 +179,10 @@ fn test_wavenet_lite_block_invariance() {
 
         eprintln!("P1 block invariance: Lite CH=12 bs=1 vs bs={bs} MSE={test_mse:.6e}");
 
-        // After T1.2 fix, this will be a hard assert: test_mse == 0.0
-        assert!(test_mse < 0.1, "MSE unreasonably high: {test_mse:.6e}");
+        assert!(
+            test_mse < 1e-7,
+            "Block invariance violated (CH=12 ring-buffer desync): bs={bs} MSE={test_mse:.6e}"
+        );
     }
 }
 

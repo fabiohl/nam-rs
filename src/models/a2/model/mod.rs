@@ -281,7 +281,9 @@ impl<const CH: usize> WaveNetA2<CH> {
             if CH == 8 {
                 #[cfg(target_arch = "x86_64")]
                 {
-                    use core::arch::x86_64::{_mm256_load_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_store_ps};
+                    use core::arch::x86_64::{
+                        _mm256_load_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_store_ps,
+                    };
                     unsafe {
                         let rw_vec = _mm256_load_ps(self.rechannel_w_f32.as_ptr());
                         for (f, &x) in input[pos..pos + nf].iter().enumerate() {
