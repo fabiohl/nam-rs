@@ -2,19 +2,18 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::half::f32_to_f16_bits;
 use crate::math::common::prefetch_strategy_simple;
 use crate::models::a2::A2_DILATIONS;
 
-fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<u16>, AlignedVec<f32>) {
+fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0u16);
+    let mut weights = AlignedVec::new(total_w, 0.0f32);
     let mut state = seed;
     for i in 0..total_w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         let v = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-        weights[i] = f32_to_f16_bits(v);
+        weights[i] = v;
     }
     let mut bias = AlignedVec::new(ch, 0.0f32);
     for i in 0..ch {
@@ -420,7 +419,7 @@ fn test_a2_layer_mixin_contribution() {
     // Zero conv weights and bias to isolate mixin.
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let conv_w = AlignedVec::new(total_w, 0u16);
+    let conv_w = AlignedVec::new(total_w, 0.0f32);
     let conv_bias = AlignedVec::new(ch, 0.0f32);
     let conv = A2Conv1d::new(
         conv_w,
@@ -484,7 +483,7 @@ fn test_a2_layer_zero_weights_deterministic() {
 
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let conv_w = AlignedVec::new(total_w, 0u16);
+    let conv_w = AlignedVec::new(total_w, 0.0f32);
     let conv_bias = AlignedVec::new(ch, 0.0f32);
     let conv = A2Conv1d::new(
         conv_w,

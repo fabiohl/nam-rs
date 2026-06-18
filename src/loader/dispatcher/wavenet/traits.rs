@@ -10,8 +10,7 @@ pub(crate) trait ConvWeightsOutput: Sized {
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
     fn from_parts(
-        weights: AlignedVec<u16>,
-        f32_weights: AlignedVec<f32>,
+        weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -25,8 +24,7 @@ pub(crate) trait ConvWeightsOutput: Sized {
 impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Conv1d<IN, OUT, K> {
     #[inline(always)]
     fn from_parts(
-        _weights: AlignedVec<u16>,
-        _f32_weights: AlignedVec<f32>,
+        weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -36,7 +34,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
         prefetch_fn: PrefetchFn,
     ) -> Self {
         Conv1d {
-            weights: _f32_weights,
+            weights,
             bias,
             do_bias,
             dilation,
@@ -49,8 +47,7 @@ impl ConvWeightsOutput for Conv1dDyn {
     #[inline(always)]
     #[allow(unused_variables)]
     fn from_parts(
-        weights: AlignedVec<u16>,
-        f32_weights: AlignedVec<f32>,
+        weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -69,7 +66,6 @@ impl ConvWeightsOutput for Conv1dDyn {
             num_blocks: out_ch.div_ceil(4),
             kernel: k_size,
             prefetch_fn,
-            f32_weights,
         }
     }
 }

@@ -9,7 +9,6 @@
 //! single-frame kernel would break the locality of `unsafe` aliasing contracts and
 //! plain accumulators.
 
-pub(crate) use super::conv_input::ConvInput;
 #[cfg(test)]
 use super::conv_input::init_accum_with_bias_mixin;
 use super::conv_input::{dot_product_4x, load_4_accums, store_4_accums};

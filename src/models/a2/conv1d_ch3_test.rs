@@ -2,17 +2,16 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::math::common::AlignedVec;
-use crate::math::common::half::f32_to_f16_bits;
 use crate::models::a2::A2_DILATIONS;
 use crate::models::a2::conv1d_fallback::a2_conv1d_single_frame_fallback;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 
-fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<u16>, AlignedVec<f32>) {
+fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let in_ch = 3usize;
     let out_ch = 3usize;
     let num_blocks = 1; // out_ch.div_ceil(4) = 1 for CH=3
     let total_w = num_blocks * 4 * in_ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0u16);
+    let mut weights = AlignedVec::new(total_w, 0.0f32);
 
     let mut state = seed;
     for i in 0..total_w {
@@ -22,7 +21,7 @@ fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<u16>, AlignedV
         }
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         let v = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-        weights[i] = f32_to_f16_bits(v);
+        weights[i] = v;
     }
 
     let mut bias = AlignedVec::new(out_ch, 0.0f32);
@@ -35,7 +34,7 @@ fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<u16>, AlignedV
 }
 
 fn make_ch3_conv_dyn(
-    weights: AlignedVec<u16>,
+    weights: AlignedVec<f32>,
     bias: AlignedVec<f32>,
     do_bias: bool,
     dilation: usize,
@@ -45,7 +44,6 @@ fn make_ch3_conv_dyn(
     let out_ch = 3usize;
     Conv1dDyn {
         weights,
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias,
         dilation,
@@ -494,12 +492,7 @@ fn test_ch3_unrolled_k6_vs_generic() {
 
     unsafe {
         conv.process_single_ch3_unrolled(&layer_buffer, &mut ch3_out, frame_idx, None);
-        conv.process_single_frame_generic::<crate::math::common::Avx2Math, f32>(
-            &layer_buffer,
-            &mut generic_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut generic_out, frame_idx, None);
     }
 
     for c in 0..3 {
@@ -543,12 +536,7 @@ fn test_ch3_unrolled_k15_vs_generic() {
 
     unsafe {
         conv.process_single_ch3_unrolled(&layer_buffer, &mut ch3_out, frame_idx, None);
-        conv.process_single_frame_generic::<crate::math::common::Avx2Math, f32>(
-            &layer_buffer,
-            &mut generic_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut generic_out, frame_idx, None);
     }
 
     for c in 0..3 {

@@ -376,9 +376,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                     unsafe {
                         layer
                             .conv
-                            .process_single_frame::<crate::math::common::Avx2Math>(
-                                history, z_slice, frame_idx, None,
-                            );
+                            .process_single_frame(history, z_slice, frame_idx, None);
                     }
 
                     // ── Phase 2: input mixin (conditioning) ─────────────

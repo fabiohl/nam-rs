@@ -1118,7 +1118,7 @@ zero campo `f32_weights` (renomeado para `weights`).
 
 ---
 
-### T-HF6.2 — Unificar `Conv1dDyn` em f32-only (remover u16/bf16)
+### T-HF6.2 — Unificar `Conv1dDyn` em f32-only (remover u16/bf16) [DONE]
 
 **Arquivos**: `src/models/wavenet/conv1d_dyn.rs`, `conv1d_dyn_kernels.rs`, `conv1d_dyn_dual.rs`
 

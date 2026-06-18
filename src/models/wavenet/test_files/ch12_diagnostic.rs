@@ -84,7 +84,7 @@ fn test_conv1d_ch12_scalar_vs_simd() {
     let mut scalar_out = vec![0.0f32; CH];
     
     // SIMD path
-    unsafe { conv.process_single_frame::<crate::math::common::Avx2Math>(&state, &mut simd_out, frame_idx); }
+    unsafe { conv.process_single_frame(&state, &mut simd_out, frame_idx); }
     
     // Scalar reference with interleaved weights
     for oc in 0..CH {

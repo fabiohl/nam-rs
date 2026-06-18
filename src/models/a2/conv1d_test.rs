@@ -3,7 +3,6 @@
 
 use super::*;
 use crate::math::common::AlignedVec;
-use crate::math::common::half::f32_to_f16_bits;
 use crate::models::a2::A2_DILATIONS;
 use crate::models::a2::conv1d_fallback::a2_conv1d_single_frame_fallback;
 
@@ -12,16 +11,16 @@ fn make_test_weights(
     out_ch: usize,
     kernel: usize,
     seed: u32,
-) -> (AlignedVec<u16>, AlignedVec<f32>) {
+) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let num_blocks = out_ch.div_ceil(4);
     let total_w = num_blocks * 4 * in_ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0u16);
+    let mut weights = AlignedVec::new(total_w, 0.0f32);
 
     let mut state = seed;
     for i in 0..total_w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         let v = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-        weights[i] = f32_to_f16_bits(v);
+        weights[i] = v;
     }
 
     let mut bias = AlignedVec::new(out_ch, 0.0f32);
@@ -70,12 +69,7 @@ fn test_a2_conv1d_kernel6_parity_single_frame() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -142,12 +136,7 @@ fn test_a2_conv1d_kernel15_parity_single_frame() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -214,12 +203,7 @@ fn test_a2_conv1d_first_layer_in_ch_1() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -294,12 +278,7 @@ fn test_a2_conv1d_with_mixin_kernel6() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            frame_idx,
-            Some(&mixin),
-        );
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, Some(&mixin));
     }
 
     a2_conv1d_single_frame_fallback(
@@ -375,12 +354,7 @@ fn test_a2_conv1d_all_dilations_kernel6() {
         let mut scalar_out = vec![0.0f32; out_ch];
 
         unsafe {
-            conv.process_single_frame::<crate::math::common::Avx2Math>(
-                &layer_buffer,
-                &mut simd_out,
-                frame_idx,
-                None,
-            );
+            conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
         }
 
         a2_conv1d_single_frame_fallback(
@@ -449,7 +423,7 @@ fn test_a2_conv1d_block_processing_kernel15() {
         let mut scalar_block = vec![0.0f32; num_frames * out_ch];
 
         unsafe {
-            conv.process_block::<crate::math::common::Avx2Math>(
+            conv.process_block(
                 &layer_buffer,
                 &mut simd_block,
                 buffer_start,
@@ -525,12 +499,7 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            frame_idx,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(

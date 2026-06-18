@@ -75,7 +75,7 @@ impl WaveNetLayerDyn {
             );
 
             let conv_slice = &mut self.scratch_conv[..scratch_len];
-            self.conv1d.process_block_f32_native(
+            self.conv1d.process_block(
                 ctx.layer_buffer,
                 conv_slice,
                 ctx.buffer_start,

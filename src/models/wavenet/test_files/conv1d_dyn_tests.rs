@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::half::f32_to_f16_bits;
 
 #[test]
 fn test_conv1d_dyn_padding_non_multiple_of_4() {
@@ -24,7 +23,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         }
     }
 
-    let mut weights = AlignedVec::new(total_padded, 0u16);
+    let mut weights = AlignedVec::new(total_padded, 0.0f32);
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -33,9 +32,9 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
                     let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
                     if out_c < out_ch {
                         let raw_idx = (out_c * in_ch + in_c) * kernel + k;
-                        weights[target_idx] = f32_to_f16_bits(raw_weights[raw_idx]);
+                        weights[target_idx] = raw_weights[raw_idx];
                     } else {
-                        weights[target_idx] = 0;
+                        weights[target_idx] = 0.0;
                     }
                 }
             }
@@ -46,7 +45,6 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
 
     let conv = Conv1dDyn {
         weights,
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias: true,
         dilation,
@@ -61,12 +59,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
     let mut block = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut block,
-            4,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut block, 4, None);
     }
 
     let expected = vec![6.5, 12.5, 18.5, 24.5, 30.5, 36.5];
@@ -83,16 +76,15 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
     let num_blocks = out_ch.div_ceil(4);
     let total_padded = num_blocks * 4 * in_ch * kernel;
 
-    let mut weights = AlignedVec::new(total_padded, 0u16);
+    let mut weights = AlignedVec::new(total_padded, 0.0f32);
     for i in 0..total_padded {
-        weights[i] = f32_to_f16_bits(1.0);
+        weights[i] = 1.0;
     }
 
     let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);
 
     let conv = Conv1dDyn {
         weights,
-        f32_weights: AlignedVec::new(0, 0.0f32),
         bias,
         do_bias: true,
         dilation,
@@ -108,21 +100,8 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
     let mut out_f1 = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut out_f0,
-            9,
-            None,
-        );
-        conv.process_dual_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut out_f0,
-            &mut out_f1,
-            9,
-            10,
-            None,
-            None,
-        );
+        conv.process_single_frame(&layer_buffer, &mut out_f0, 9, None);
+        conv.process_dual_frame(&layer_buffer, &mut out_f0, &mut out_f1, 9, 10, None, None);
     }
 
     // Single frame calculation: bias (0.5) + 10 (taps) * 2 (channels) * 1.0 (input) * 1.0 (weight) = 20.5

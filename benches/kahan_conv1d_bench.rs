@@ -129,9 +129,8 @@ fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
     }
 }
 
-fn conv1d_dyn_from_raw(raw: &[u16], in_ch: usize, out_ch: usize, kernel: usize) -> Conv1dDyn {
+fn conv1d_dyn_from_raw(raw: &[f32], in_ch: usize, out_ch: usize, kernel: usize) -> Conv1dDyn {
     Conv1dDyn {
-        f32_weights: AlignedVec::new(0, 0.0f32),
         weights: AlignedVec::from_vec(raw.to_vec()),
         bias: AlignedVec::from_vec(vec![0.0; out_ch]),
         do_bias: false,
@@ -181,10 +180,9 @@ fn bench_full_conv1d_kahan_vs_nokahan(c: &mut Criterion) {
     let mut group = c.benchmark_group("conv1d_kahan_full");
 
     for &(in_ch, out_ch, k, label) in &configs {
-        let raw = generate_weights(in_ch, out_ch, k);
         let raw_f32 = generate_weights_f32(in_ch, out_ch, k);
         let input = generate_input(in_ch, k, n_frames + 64);
-        let dyn_conv = conv1d_dyn_from_raw(&raw, in_ch, out_ch, k);
+        let dyn_conv = conv1d_dyn_from_raw(&raw_f32, in_ch, out_ch, k);
         let start_frame = k - 1;
 
         match (in_ch, out_ch, k) {
@@ -209,12 +207,7 @@ fn bench_full_conv1d_kahan_vs_nokahan(c: &mut Criterion) {
             b.iter(|| {
                 for f in 0..n_frames {
                     unsafe {
-                        dyn_conv.process_single_frame::<Avx2Math>(
-                            &input,
-                            &mut out_dyn,
-                            start_frame + f,
-                            None,
-                        );
+                        dyn_conv.process_single_frame(&input, &mut out_dyn, start_frame + f, None);
                     }
                 }
                 black_box(out_dyn[0])

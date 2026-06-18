@@ -168,12 +168,7 @@ impl A2Layer {
         // 1. Dilated conv (no mixin — A2 adds mixin after conv).
         unsafe {
             self.conv
-                .process_single_frame::<crate::math::common::Avx2Math>(
-                    layer_history,
-                    z_buf,
-                    frame_idx,
-                    None,
-                );
+                .process_single_frame(layer_history, z_buf, frame_idx, None);
         }
 
         // 2. Input mixin: z_buf[c] += mixin_w[c] * input_cond.
@@ -226,7 +221,7 @@ impl A2Layer {
 /// Used as oracle in parity tests.
 #[allow(clippy::too_many_arguments)]
 pub fn a2_layer_single_frame_scalar_ref(
-    conv_weights: &[u16],
+    conv_weights: &[f32],
     conv_bias: &[f32],
     conv_do_bias: bool,
     dilation: usize,

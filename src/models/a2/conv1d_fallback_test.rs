@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::half::f32_to_f16_bits;
 
 #[test]
 fn test_a2_fallback_kernel6_all_ones() {
@@ -14,10 +13,7 @@ fn test_a2_fallback_kernel6_all_ones() {
     let num_blocks: usize = out_ch.div_ceil(4);
     let total_padded = num_blocks * 4 * in_ch * kernel;
 
-    let mut weights = vec![0u16; total_padded];
-    for w in weights.iter_mut().take(total_padded) {
-        *w = f32_to_f16_bits(1.0);
-    }
+    let weights = vec![1.0f32; total_padded];
 
     let bias = vec![0.5f32; out_ch];
     let layer_buffer = vec![1.0f32; 32];
@@ -53,10 +49,7 @@ fn test_a2_fallback_kernel15_all_ones() {
     let num_blocks: usize = out_ch.div_ceil(4);
     let total_padded = num_blocks * 4 * in_ch * kernel;
 
-    let mut weights = vec![0u16; total_padded];
-    for w in weights.iter_mut().take(total_padded) {
-        *w = f32_to_f16_bits(1.0);
-    }
+    let weights = vec![1.0f32; total_padded];
 
     let bias = vec![0.0f32; out_ch];
     let buf_frames = kernel * dilation + 1000 + 8;
@@ -93,10 +86,7 @@ fn test_a2_fallback_dilated_tap_selection() {
     let num_blocks: usize = out_ch.div_ceil(4);
     let total_padded = num_blocks * 4 * in_ch * kernel;
 
-    let mut weights = vec![0u16; total_padded];
-    for w in weights.iter_mut().take(total_padded) {
-        *w = f32_to_f16_bits(1.0);
-    }
+    let weights = vec![1.0f32; total_padded];
 
     let bias = vec![0.0f32; out_ch];
     let buf_size = 100 * in_ch;

@@ -102,6 +102,7 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
 /// This trait is a bridge that allows NAM-rs to use exactly the same code
 /// for two number types: regular floats (f32) and compact numbers (u16/BF16).
 /// This avoids duplicating complex logic and facilitates maintenance.
+#[allow(dead_code)]
 pub(crate) trait ConvInput: Copy + Default {
     /// 4x version: Computes 4 channels at once.
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(

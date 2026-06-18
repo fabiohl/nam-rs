@@ -28,8 +28,6 @@ pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Dual-frame kernel for Conv1dDyn (Temporal-Tiling dual-frame processing).
 pub mod conv1d_dyn_dual;
-/// Kernel implementations for Conv1dDyn (single-frame and block processing loops).
-pub mod conv1d_dyn_kernels;
 /// ConvInput trait shared by conv1d, conv1d_dual, and conv1d_dyn.
 pub mod conv_input;
 /// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).

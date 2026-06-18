@@ -57,7 +57,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             let num_blocks = CH.div_ceil(4);
             let conv_w_padded = num_blocks * 4 * CH * ksize;
 
-            // 2a. Dilated conv weights: read CH×CH×K, store padded interleaved 4-wide (quantized u16).
+            // 2a. Dilated conv weights: read CH×CH×K, store padded interleaved 4-wide.
             // For CH=8 we also keep a f32 copy for the col-major-per-tap path (T2.2/T2.4).
             let conv_w_f32 = read_slice(
                 weights,
@@ -68,9 +68,9 @@ impl<const CH: usize> WaveNetA2<CH> {
             )?;
             // Owned copy: needed for CH=8 col-major-per-tap (re-indexed, not interleaved-4-wide).
             let conv_w_f32_owned: Vec<f32> = conv_w_f32.to_vec();
-            // Interleave-4-wide + quantize u16 for the scalar/SIMD fallback path.
-            let mut conv_w = AlignedVec::new(conv_w_padded, 0u16);
-            transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize, is_bf16);
+            // Interleave-4-wide f32 for the fallback conv path.
+            let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
+            transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize);
 
             // 2b. Conv bias (f32, one per output channel).
             let conv_b_f32 =
@@ -85,7 +85,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                 crate::math::common::prefetch_strategy_simple
             };
 
-            // Build the scalar/SIMD fallback conv (interleaved-4-wide u16 weights).
+            // Build the scalar/SIMD fallback conv (interleaved-4-wide f32 weights).
             let conv = crate::models::a2::conv1d::A2Conv1d::new(
                 conv_w,
                 conv_b.clone(),
@@ -225,16 +225,15 @@ fn transpose_dense_f32(raw: &[f32], weights: &mut [f32], in_size: usize, out_siz
     }
 }
 
-/// Rearranges conv1d weights into "Interleaved 4-Wide" format and quantizes to u16.
+/// Rearranges conv1d weights into "Interleaved 4-Wide" format.
 ///
 /// Groups output channels in blocks of 4 for SIMD processing.
 fn transpose_conv1d_interleaved_4wide(
     raw: &[f32],
-    weights: &mut [u16],
+    weights: &mut [f32],
     in_ch: usize,
     out_ch: usize,
     kernel: usize,
-    is_bf16: bool,
 ) {
     let num_blocks = out_ch.div_ceil(4);
     for b in 0..num_blocks {
@@ -245,7 +244,7 @@ fn transpose_conv1d_interleaved_4wide(
                     let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
                     if out_c < out_ch {
                         let raw_idx = (out_c * in_ch + in_c) * kernel + k;
-                        weights[target_idx] = quantize_weight(raw[raw_idx], is_bf16);
+                        weights[target_idx] = raw[raw_idx];
                     }
                 }
             }

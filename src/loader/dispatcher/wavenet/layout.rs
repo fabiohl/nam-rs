@@ -47,9 +47,7 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         crate::math::common::prefetch_strategy_simple
     };
 
-    let dummy_u16 = AlignedVec::new(padded_total, 0u16);
     Ok(T::from_parts(
-        dummy_u16,
         f32_weights,
         bias,
         do_bias,

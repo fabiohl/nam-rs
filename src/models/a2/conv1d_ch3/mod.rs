@@ -134,13 +134,12 @@ pub use simd::*;
 // =============================================================================
 
 impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
-    /// Fully unrolled CH=3 GEMV — replaces `process_single_frame_generic` when `out_ch == 3`.
+    /// Fully unrolled CH=3 GEMV — f32-native path for CH=3 convolutions.
     ///
-    /// **Note:** This path (using u16/f16 weights) is the *legacy* fallback used by
-    /// `Conv1dDyn::process_single_frame` in non-A2 contexts and by unit tests.
-    /// In the A2 hot-path, `layer_forward_ch3_block` (f32 native) is used instead
-    /// via the `ch3_conv: Option<A2Conv1dCh3>` dispatch in `WaveNetA2::process()`.
+    /// Dispatches to `process_single_ch3_k6` or `process_single_ch3_k15`
+    /// depending on the kernel size.
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) unsafe fn process_single_ch3_unrolled(
         &self,
         layer_buffer: &[f32],
@@ -158,8 +157,9 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
         }
     }
 
-    /// Unrolled K=6 GEMV for 3-channel input/output (u16/f16 weights — legacy).
-    #[target_feature(enable = "f16c")]
+    /// Unrolled K=6 GEMV for 3-channel input/output (f32-native).
+    #[allow(dead_code)]
+    #[target_feature(enable = "avx")]
     unsafe fn process_single_ch3_k6(
         &self,
         layer_buffer: &[f32],
@@ -198,19 +198,19 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
         macro_rules! fma3_k6 {
             ($tap_base:ident, $k:expr) => {{
                 let wp = w_ptr.add(($k * in_ch + 0) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 0));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }
             {
                 let wp = w_ptr.add(($k * in_ch + 1) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 1));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }
             {
                 let wp = w_ptr.add(($k * in_ch + 2) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 2));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }};
@@ -226,8 +226,9 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
         _mm_storeu_ps(out_frame.as_mut_ptr(), acc);
     }
 
-    /// Unrolled K=15 GEMV for 3-channel input/output (u16/f16 weights — legacy).
-    #[target_feature(enable = "f16c")]
+    /// Unrolled K=15 GEMV for 3-channel input/output (f32-native).
+    #[allow(dead_code)]
+    #[target_feature(enable = "avx")]
     unsafe fn process_single_ch3_k15(
         &self,
         layer_buffer: &[f32],
@@ -281,19 +282,19 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
         macro_rules! fma3_k15 {
             ($tap_base:ident, $k:expr) => {{
                 let wp = w_ptr.add(($k * in_ch + 0) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 0));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }
             {
                 let wp = w_ptr.add(($k * in_ch + 1) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 1));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }
             {
                 let wp = w_ptr.add(($k * in_ch + 2) * 4);
-                let wv = _mm_cvtph_ps(_mm_loadl_epi64(wp as *const __m128i));
+                let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 2));
                 acc = _mm_fmadd_ps(wv, sv, acc);
             }};

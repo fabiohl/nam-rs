@@ -11,7 +11,7 @@
 //! access a contiguous virtual window where physical wrap is handled by the
 //! mirrored mapping, eliminating branch logic in the inner loop.
 
-use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
+use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 
 /// A2-specific dilated causal conv1d.
@@ -34,7 +34,7 @@ impl A2Conv1d {
     /// In release, the assert is compiled out for performance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        weights: AlignedVec<u16>,
+        weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
         do_bias: bool,
         dilation: usize,
@@ -76,7 +76,6 @@ impl A2Conv1d {
                 num_blocks,
                 kernel: kernel_size,
                 prefetch_fn,
-                f32_weights: AlignedVec::new(0, 0.0f32),
             },
         }
     }
@@ -114,7 +113,7 @@ impl A2Conv1d {
     /// `out_frame` must have length at least `self.out_ch`.
     /// `frame_idx` must allow `kernel` lookback taps within `layer_buffer`.
     #[inline(always)]
-    pub unsafe fn process_single_frame<M: SimdMath>(
+    pub unsafe fn process_single_frame(
         &self,
         layer_buffer: &[f32],
         out_frame: &mut [f32],
@@ -123,7 +122,7 @@ impl A2Conv1d {
     ) {
         unsafe {
             self.inner
-                .process_single_frame::<M>(layer_buffer, out_frame, frame_idx, mixin);
+                .process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
         }
     }
 
@@ -134,7 +133,7 @@ impl A2Conv1d {
     /// plus kernel*dilation lookback. `block` must have size at least `num_frames * out_ch`.
     #[cfg(test)]
     #[inline(always)]
-    pub unsafe fn process_block<M: SimdMath>(
+    pub unsafe fn process_block(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
@@ -144,7 +143,7 @@ impl A2Conv1d {
     ) {
         unsafe {
             self.inner
-                .process_block::<M>(layer_buffer, block, buffer_start, num_frames, mixin);
+                .process_block(layer_buffer, block, buffer_start, num_frames, mixin);
         }
     }
 }

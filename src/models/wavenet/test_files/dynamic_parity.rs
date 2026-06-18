@@ -50,13 +50,6 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
     weights
 }
 
-/// Helper: create zeroed u16 weights for Conv1dDyn (quantization removed — always f32-native now).
-fn make_conv1d_weights_u16(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<u16> {
-    let num_blocks = out_ch.div_ceil(4);
-    let interleaved_len = num_blocks * k * in_ch * 4;
-    AlignedVec::new(interleaved_len, 0u16)
-}
-
 /// Helper: replicate a u16-quantized weight value into a dense layer weight matrix.
 fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<u16> {
     AlignedVec::from_vec(vec![f32_to_f16_bits(SYNTHETIC_WEIGHT); out_ch * in_ch])
@@ -204,8 +197,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
 
     let make_conv1d_dyn = |in_ch: usize, out_ch: usize, dilation: usize| -> Conv1dDyn {
         Conv1dDyn {
-            weights: make_conv1d_weights_u16(in_ch, out_ch, k),
-            f32_weights: make_conv1d_weights(in_ch, out_ch, k),
+            weights: make_conv1d_weights(in_ch, out_ch, k),
             bias: make_bias(out_ch),
             do_bias: false,
             dilation,

@@ -9,11 +9,9 @@
 //! the same numerical result (within floating-point tolerance) as this
 //! unoptimized scalar computation.
 
-use crate::math::common::half::f16_bits_to_f32;
-
 /// Scalar reference for a single-frame A2 dilated causal Conv1D.
 ///
-/// Replicates the exact math of `Conv1dDyn::process_single_frame_generic`:
+/// Replicates the exact math of `Conv1dDyn::process_single_frame`:
 /// 1. Initialize accumulators with bias (and optional mixin).
 /// 2. For each output channel block of 4:
 ///    a. For each kernel tap k (dilated lookback):
@@ -25,7 +23,7 @@ use crate::math::common::half::f16_bits_to_f32;
 /// Weights are in `[OUT/4][KERNEL][IN][4]` interleaved layout (same as `Conv1dDyn`).
 ///
 /// # Parameters
-/// * `weights` — interleaved u16 weights in `[OUT/4][KERNEL][IN][4]` format.
+/// * `weights` — interleaved f32 weights in `[OUT/4][KERNEL][IN][4]` format.
 /// * `bias` — f32 bias vector of length `out_ch`.
 /// * `do_bias` — whether to add bias to the accumulator.
 /// * `dilation` — temporal dilation factor.
@@ -37,7 +35,7 @@ use crate::math::common::half::f16_bits_to_f32;
 /// * `mixin` — optional conditioning vector of length `out_ch`.
 #[allow(clippy::too_many_arguments)]
 pub fn a2_conv1d_single_frame_fallback(
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     do_bias: bool,
     dilation: usize,
@@ -105,10 +103,10 @@ pub fn a2_conv1d_single_frame_fallback(
                 let w_idx = w_start + in_c * 4;
                 let input_val = layer_buffer[in_slice_start + in_c];
 
-                let w0 = f16_bits_to_f32(weights[w_idx]);
-                let w1 = f16_bits_to_f32(weights[w_idx + 1]);
-                let w2 = f16_bits_to_f32(weights[w_idx + 2]);
-                let w3 = f16_bits_to_f32(weights[w_idx + 3]);
+                let w0 = weights[w_idx];
+                let w1 = weights[w_idx + 1];
+                let w2 = weights[w_idx + 2];
+                let w3 = weights[w_idx + 3];
 
                 r0 += w0 * input_val;
                 r1 += w1 * input_val;
@@ -144,7 +142,7 @@ pub fn a2_conv1d_single_frame_fallback(
 /// Iterates the single-frame fallback for each consecutive frame index.
 #[allow(clippy::too_many_arguments)]
 pub fn a2_conv1d_block_fallback(
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     do_bias: bool,
     dilation: usize,
