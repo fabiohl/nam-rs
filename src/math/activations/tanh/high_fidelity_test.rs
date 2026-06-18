@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Tests for high-fidelity tanh/sigmoid SIMD kernels (T-HF1.1, T-HF1.3).
+//! Tests for polynomial tanh/sigmoid SIMD kernels (T-HF1.1, T-HF1.3).
 //!
 //! Validates max absolute error ≤ 1e-6 vs `f32::tanh`/`f32::exp` references
 //! on [-20, 20] dense sweep, edge cases, and saturation at extremes.
@@ -17,7 +17,7 @@ const DENSE_SWEEP_POINTS: usize = 4001; // 0.01 step on [-20, 20]
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_tanh_hifi_avx2_sweep() {
+fn test_tanh_poly_avx2_sweep() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -30,7 +30,7 @@ fn test_tanh_hifi_avx2_sweep() {
     for chunk in sweep.chunks_exact(8) {
         unsafe {
             let x = _mm256_loadu_ps(chunk.as_ptr());
-            let y = simd_tanh_hifi_avx2(x);
+            let y = simd_tanh_poly_avx2(x);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), y);
 
@@ -40,7 +40,7 @@ fn test_tanh_hifi_avx2_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "tanh_hifi({input}) = {}, expected {expected}, delta {error}",
+                    "tanh_poly({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
@@ -58,7 +58,7 @@ fn test_tanh_hifi_avx2_sweep() {
         }
         unsafe {
             let x = _mm256_loadu_ps(batch.as_ptr());
-            let y = simd_tanh_hifi_avx2(x);
+            let y = simd_tanh_poly_avx2(x);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), y);
 
@@ -69,14 +69,14 @@ fn test_tanh_hifi_avx2_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "tanh_hifi({input}) = {}, expected {expected}, delta {error}",
+                    "tanh_poly({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
         }
     }
 
-    eprintln!("[T-HF1.1] tanh_hifi AVX2 sweep max error: {max_error:.4e} (limit 1e-6)");
+    eprintln!("[T-HF1.1] tanh_poly AVX2 sweep max error: {max_error:.4e} (limit 1e-6)");
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -84,7 +84,7 @@ fn test_tanh_hifi_avx2_sweep() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_sigmoid_hifi_avx2_sweep() {
+fn test_sigmoid_poly_avx2_sweep() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -97,7 +97,7 @@ fn test_sigmoid_hifi_avx2_sweep() {
     for chunk in sweep.chunks_exact(8) {
         unsafe {
             let x = _mm256_loadu_ps(chunk.as_ptr());
-            let y = simd_sigmoid_hifi_avx2(x);
+            let y = simd_sigmoid_poly_avx2(x);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), y);
 
@@ -107,7 +107,7 @@ fn test_sigmoid_hifi_avx2_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "sigmoid_hifi({input}) = {}, expected {expected}, delta {error}",
+                    "sigmoid_poly({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
@@ -125,7 +125,7 @@ fn test_sigmoid_hifi_avx2_sweep() {
         }
         unsafe {
             let x = _mm256_loadu_ps(batch.as_ptr());
-            let y = simd_sigmoid_hifi_avx2(x);
+            let y = simd_sigmoid_poly_avx2(x);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), y);
 
@@ -136,14 +136,14 @@ fn test_sigmoid_hifi_avx2_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "sigmoid_hifi({input}) = {}, expected {expected}, delta {error}",
+                    "sigmoid_poly({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
         }
     }
 
-    eprintln!("[T-HF1.1] sigmoid_hifi AVX2 sweep max error: {max_error:.4e} (limit 1e-6)");
+    eprintln!("[T-HF1.1] sigmoid_poly AVX2 sweep max error: {max_error:.4e} (limit 1e-6)");
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -151,7 +151,7 @@ fn test_sigmoid_hifi_avx2_sweep() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_tanh_hifi_edge_cases() {
+fn test_tanh_poly_edge_cases() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -161,17 +161,17 @@ fn test_tanh_hifi_edge_cases() {
     unsafe {
         for &x in &test_vals {
             let vx = _mm256_set1_ps(x);
-            let vy = simd_tanh_hifi_avx2(vx);
+            let vy = simd_tanh_poly_avx2(vx);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), vy);
             let y = result[0];
 
             if x.is_nan() {
-                assert!(y.is_nan(), "tanh_hifi(NaN) should be NaN, got {y}");
+                assert!(y.is_nan(), "tanh_poly(NaN) should be NaN, got {y}");
             } else {
                 assert!(
                     (-1.0..=1.0).contains(&y),
-                    "tanh_hifi({x}) = {y} out of [-1, 1]"
+                    "tanh_poly({x}) = {y} out of [-1, 1]"
                 );
             }
         }
@@ -179,7 +179,7 @@ fn test_tanh_hifi_edge_cases() {
 }
 
 #[test]
-fn test_sigmoid_hifi_edge_cases() {
+fn test_sigmoid_poly_edge_cases() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -189,17 +189,17 @@ fn test_sigmoid_hifi_edge_cases() {
     unsafe {
         for &x in &test_vals {
             let vx = _mm256_set1_ps(x);
-            let vy = simd_sigmoid_hifi_avx2(vx);
+            let vy = simd_sigmoid_poly_avx2(vx);
             let mut result = [0.0_f32; 8];
             _mm256_storeu_ps(result.as_mut_ptr(), vy);
             let y = result[0];
 
             if x.is_nan() {
-                assert!(y.is_nan(), "sigmoid_hifi(NaN) should be NaN, got {y}");
+                assert!(y.is_nan(), "sigmoid_poly(NaN) should be NaN, got {y}");
             } else {
                 assert!(
                     (0.0..=1.0).contains(&y),
-                    "sigmoid_hifi({x}) = {y} out of [0, 1]"
+                    "sigmoid_poly({x}) = {y} out of [0, 1]"
                 );
             }
         }
@@ -211,7 +211,7 @@ fn test_sigmoid_hifi_edge_cases() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_tanh_hifi_saturation() {
+fn test_tanh_poly_saturation() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -221,26 +221,26 @@ fn test_tanh_hifi_saturation() {
 
         // Large positive → 1
         let vx = _mm256_set1_ps(1000.0f32);
-        let vy = simd_tanh_hifi_avx2(vx);
+        let vy = simd_tanh_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert!((result[0] - 1.0).abs() < 1e-6, "tanh(+∞) should be 1");
 
         // Large negative → -1
         let vx = _mm256_set1_ps(-1000.0f32);
-        let vy = simd_tanh_hifi_avx2(vx);
+        let vy = simd_tanh_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert!((result[0] + 1.0).abs() < 1e-6, "tanh(-∞) should be -1");
 
         // Zero → 0
         let vx = _mm256_set1_ps(0.0f32);
-        let vy = simd_tanh_hifi_avx2(vx);
+        let vy = simd_tanh_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert_eq!(result[0], 0.0, "tanh(0) should be 0");
     }
 }
 
 #[test]
-fn test_sigmoid_hifi_saturation() {
+fn test_sigmoid_poly_saturation() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -250,19 +250,19 @@ fn test_sigmoid_hifi_saturation() {
 
         // Large positive → 1
         let vx = _mm256_set1_ps(1000.0f32);
-        let vy = simd_sigmoid_hifi_avx2(vx);
+        let vy = simd_sigmoid_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert!((result[0] - 1.0).abs() < 1e-6, "σ(+∞) should be 1");
 
         // Large negative → 0
         let vx = _mm256_set1_ps(-1000.0f32);
-        let vy = simd_sigmoid_hifi_avx2(vx);
+        let vy = simd_sigmoid_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert!((result[0]).abs() < 1e-6, "σ(-∞) should be 0");
 
         // Zero → 0.5
         let vx = _mm256_set1_ps(0.0f32);
-        let vy = simd_sigmoid_hifi_avx2(vx);
+        let vy = simd_sigmoid_poly_avx2(vx);
         _mm256_storeu_ps(result.as_mut_ptr(), vy);
         assert!((result[0] - 0.5).abs() < 1e-6, "σ(0) should be 0.5");
     }
@@ -273,7 +273,7 @@ fn test_sigmoid_hifi_saturation() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_tanh_sigmoid_dual_hifi_avx2() {
+fn test_tanh_sigmoid_dual_poly_avx2() {
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -285,7 +285,7 @@ fn test_tanh_sigmoid_dual_hifi_avx2() {
             for &x2_val in &test_vals {
                 let x1 = _mm256_set1_ps(x1_val);
                 let x2 = _mm256_set1_ps(x2_val);
-                let (t, s) = simd_tanh_sigmoid_dual_hifi_avx2(x1, x2);
+                let (t, s) = simd_tanh_sigmoid_dual_poly_avx2(x1, x2);
 
                 let mut t_arr = [0.0_f32; 8];
                 let mut s_arr = [0.0_f32; 8];
@@ -315,7 +315,7 @@ fn test_tanh_sigmoid_dual_hifi_avx2() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_tanh_hifi_avx512_sweep() {
+fn test_tanh_poly_avx512_sweep() {
     if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
         return;
     }
@@ -328,7 +328,7 @@ fn test_tanh_hifi_avx512_sweep() {
     for chunk in sweep.chunks_exact(16) {
         unsafe {
             let x = _mm512_loadu_ps(chunk.as_ptr());
-            let y = simd_tanh_hifi_avx512(x);
+            let y = simd_tanh_poly_avx512(x);
             let mut result = [0.0_f32; 16];
             _mm512_storeu_ps(result.as_mut_ptr(), y);
 
@@ -338,7 +338,7 @@ fn test_tanh_hifi_avx512_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "tanh_hifi_avx512({input}) = {}, expected {expected}, delta {error}",
+                    "tanh_poly_avx512({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
@@ -356,7 +356,7 @@ fn test_tanh_hifi_avx512_sweep() {
         }
         unsafe {
             let x = _mm512_loadu_ps(batch.as_ptr());
-            let y = simd_tanh_hifi_avx512(x);
+            let y = simd_tanh_poly_avx512(x);
             let mut result = [0.0_f32; 16];
             _mm512_storeu_ps(result.as_mut_ptr(), y);
 
@@ -367,18 +367,18 @@ fn test_tanh_hifi_avx512_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "tanh_hifi_avx512({input}) = {}, expected {expected}, delta {error}",
+                    "tanh_poly_avx512({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
         }
     }
 
-    eprintln!("[T-HF1.3] tanh_hifi AVX-512 sweep max error: {max_error:.4e} (limit 1e-6)");
+    eprintln!("[T-HF1.3] tanh_poly AVX-512 sweep max error: {max_error:.4e} (limit 1e-6)");
 }
 
 #[test]
-fn test_sigmoid_hifi_avx512_sweep() {
+fn test_sigmoid_poly_avx512_sweep() {
     if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
         return;
     }
@@ -391,7 +391,7 @@ fn test_sigmoid_hifi_avx512_sweep() {
     for chunk in sweep.chunks_exact(16) {
         unsafe {
             let x = _mm512_loadu_ps(chunk.as_ptr());
-            let y = simd_sigmoid_hifi_avx512(x);
+            let y = simd_sigmoid_poly_avx512(x);
             let mut result = [0.0_f32; 16];
             _mm512_storeu_ps(result.as_mut_ptr(), y);
 
@@ -401,7 +401,7 @@ fn test_sigmoid_hifi_avx512_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "sigmoid_hifi_avx512({input}) = {}, expected {expected}, delta {error}",
+                    "sigmoid_poly_avx512({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
@@ -419,7 +419,7 @@ fn test_sigmoid_hifi_avx512_sweep() {
         }
         unsafe {
             let x = _mm512_loadu_ps(batch.as_ptr());
-            let y = simd_sigmoid_hifi_avx512(x);
+            let y = simd_sigmoid_poly_avx512(x);
             let mut result = [0.0_f32; 16];
             _mm512_storeu_ps(result.as_mut_ptr(), y);
 
@@ -430,18 +430,18 @@ fn test_sigmoid_hifi_avx512_sweep() {
                 max_error = max_error.max(error);
                 assert!(
                     error <= 1e-6_f32,
-                    "sigmoid_hifi_avx512({input}) = {}, expected {expected}, delta {error}",
+                    "sigmoid_poly_avx512({input}) = {}, expected {expected}, delta {error}",
                     result[j],
                 );
             }
         }
     }
 
-    eprintln!("[T-HF1.3] sigmoid_hifi AVX-512 sweep max error: {max_error:.4e} (limit 1e-6)");
+    eprintln!("[T-HF1.3] sigmoid_poly AVX-512 sweep max error: {max_error:.4e} (limit 1e-6)");
 }
 
 #[test]
-fn test_tanh_sigmoid_dual_hifi_avx512() {
+fn test_tanh_sigmoid_dual_poly_avx512() {
     if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
         return;
     }
@@ -453,7 +453,7 @@ fn test_tanh_sigmoid_dual_hifi_avx512() {
             for &x2_val in &test_vals {
                 let x1 = _mm512_set1_ps(x1_val);
                 let x2 = _mm512_set1_ps(x2_val);
-                let (t, s) = simd_tanh_sigmoid_dual_hifi_avx512(x1, x2);
+                let (t, s) = simd_tanh_sigmoid_dual_poly_avx512(x1, x2);
 
                 let mut t_arr = [0.0_f32; 16];
                 let mut s_arr = [0.0_f32; 16];

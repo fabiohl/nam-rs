@@ -213,7 +213,7 @@ fn test_dot_4x_interleaved_dual_frame_avx512_vs_avx2() {
     }
 }
 
-// ── F32-native dot_4x tests (hi‑fi mode) ──────────────────────────────────
+// ── F32-native dot_4x tests (f32 weights, no quantization) ──────────────────
 
 fn make_f32_data(len: usize) -> (Vec<[f32; 4]>, Vec<f32>) {
     let weights: Vec<[f32; 4]> = (0..len)
@@ -262,7 +262,7 @@ fn test_dot_4x_f32_avx2_stress() {
     }
 }
 
-// ── F32-native dot_4x dual-frame tests (hi‑fi mode) ─────────────────────
+// ── F32-native dot_4x dual-frame tests (f32 weights, no quantization) ─────
 
 #[test]
 fn test_dot_4x_f32_dual_avx2_vs_scalar() {
@@ -343,7 +343,7 @@ fn test_dot_4x_f32_dual_avx2_stress() {
     }
 }
 
-// ── F32-native dot_4x AVX-512 tests (hi‑fi mode) ─────────────────────────
+// ── F32-native dot_4x AVX-512 tests (f32 weights, no quantization) ─────────
 
 #[test]
 fn test_dot_4x_f32_avx512_vs_scalar() {

@@ -554,7 +554,7 @@ fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
 // ── A2-Full (CH=8) inference benchmarks ──
 
 /// Measures the processing time of an A2-Full (CH=8) WaveNet model.
-/// A2-Full is the high-fidelity Criterion variant with 8 channels,
+/// A2-Full is the Criterion variant with 8 channels,
 /// using AVX2 T=4 broadcast-FMA convolution for maximum throughput.
 fn bench_a2_full_process(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));

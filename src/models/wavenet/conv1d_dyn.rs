@@ -232,7 +232,7 @@ impl Conv1dDyn {
         }
     }
 
-    /// F32-native single-frame convolution (high-fidelity mode).
+    /// F32-native single-frame convolution (full-precision f32 weights).
     ///
     /// Uses `self.f32_weights` directly, bypassing quantization drift.
     ///

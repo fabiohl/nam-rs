@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! High-fidelity Tanh / Sigmoid activation kernels (mode hi-fi), AVX2/FMA.
+//! Polynomial Tanh / Sigmoid activation kernels (f32 native weights + degree-6 Taylor exp), AVX2/FMA.
 //!
 //! Uses an exp-based formula with a degree-6 Taylor minimax polynomial
 //! and integer range-reduction (`k = round(x·log₂e)`, `r = x − k·ln 2`).
@@ -16,16 +16,16 @@
 //! - Throughput (tanh): ~19 SIMD ops (1 exp + 2 div + add/sub + clamp).
 //! - Throughput (sigmoid): ~17 SIMD ops (1 exp + 1 div + add + clamp).
 //!
-//! Coefficients in `crate::math::constants` (`HIFI_*`).
+//! Coefficients in `crate::math::constants` (`POLY_*`).
 
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Internal — high-fidelity SIMD exp kernel (degree-6 Taylor, range reduction)
+// Internal — polynomial SIMD exp kernel (degree-6 Taylor, range reduction)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Hi-fi `exp(x)` for `__m256` — degree-6 Taylor polynomial with integer
+/// Polynomial `exp(x)` for `__m256` — degree-6 Taylor polynomial with integer
 /// range reduction `x = k·ln2 + r`.
 ///
 /// # Safety
@@ -33,14 +33,14 @@ use core::arch::x86_64::*;
 /// [-20, 20] to prevent overflow (`k ∈ [-29, 29]`, poses no int32 overflow).
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-unsafe fn simd_exp_hifi_avx2(x: __m256) -> __m256 {
-    let log2e = _mm256_set1_ps(HIFI_LOG2_E);
-    let ln2 = _mm256_set1_ps(HIFI_LN2);
-    let c6 = _mm256_set1_ps(HIFI_EXP_C6);
-    let c5 = _mm256_set1_ps(HIFI_EXP_C5);
-    let c4 = _mm256_set1_ps(HIFI_EXP_C4);
-    let c3 = _mm256_set1_ps(HIFI_EXP_C3);
-    let c2 = _mm256_set1_ps(HIFI_EXP_C2);
+unsafe fn simd_exp_poly_avx2(x: __m256) -> __m256 {
+    let log2e = _mm256_set1_ps(POLY_LOG2_E);
+    let ln2 = _mm256_set1_ps(POLY_LN2);
+    let c6 = _mm256_set1_ps(POLY_EXP_C6);
+    let c5 = _mm256_set1_ps(POLY_EXP_C5);
+    let c4 = _mm256_set1_ps(POLY_EXP_C4);
+    let c3 = _mm256_set1_ps(POLY_EXP_C3);
+    let c2 = _mm256_set1_ps(POLY_EXP_C2);
     let one = _mm256_set1_ps(1.0f32);
     let bias = _mm256_set1_epi32(127);
 
@@ -67,10 +67,10 @@ unsafe fn simd_exp_hifi_avx2(x: __m256) -> __m256 {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Public — high-fidelity Tanh kernels
+// Public — polynomial Tanh kernels
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Hi-fi `tanh(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
+/// Polynomial `tanh(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
 ///
 /// Formula: `tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)`.
 /// Input clamped to [-20, 20] for overflow safety, then clamped to [-1, 1].
@@ -79,15 +79,15 @@ unsafe fn simd_exp_hifi_avx2(x: __m256) -> __m256 {
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_tanh_hifi_avx2(x: __m256) -> __m256 {
-    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
-    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+pub unsafe fn simd_tanh_poly_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
     let one = _mm256_set1_ps(1.0f32);
     let neg_one = _mm256_set1_ps(-1.0f32);
 
     let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
 
-    let exp_x = unsafe { simd_exp_hifi_avx2(x) };
+    let exp_x = unsafe { simd_exp_poly_avx2(x) };
     let inv_exp_x = _mm256_div_ps(one, exp_x); // 1 / eˣ = e⁻ˣ
     let num = _mm256_sub_ps(exp_x, inv_exp_x); // eˣ − e⁻ˣ
     let den = _mm256_add_ps(exp_x, inv_exp_x); // eˣ + e⁻ˣ
@@ -95,7 +95,7 @@ pub unsafe fn simd_tanh_hifi_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, tanh_val))
 }
 
-/// Hi-fi `tanh(x)` — dual 16-float path (AVX2/FMA).
+/// Polynomial `tanh(x)` — dual 16-float path (AVX2/FMA).
 ///
 /// Evaluates two independent `__m256` registers sharing constant broadcasts.
 ///
@@ -103,17 +103,17 @@ pub unsafe fn simd_tanh_hifi_avx2(x: __m256) -> __m256 {
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_tanh_hifi_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
-    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+pub unsafe fn simd_tanh_poly_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
     let one = _mm256_set1_ps(1.0f32);
     let neg_one = _mm256_set1_ps(-1.0f32);
 
     let x1 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x1));
     let x2 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x2));
 
-    let exp1 = unsafe { simd_exp_hifi_avx2(x1) };
-    let exp2 = unsafe { simd_exp_hifi_avx2(x2) };
+    let exp1 = unsafe { simd_exp_poly_avx2(x1) };
+    let exp2 = unsafe { simd_exp_poly_avx2(x2) };
 
     let inv1 = _mm256_div_ps(one, exp1);
     let inv2 = _mm256_div_ps(one, exp2);
@@ -133,10 +133,10 @@ pub unsafe fn simd_tanh_hifi_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m25
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Public — high-fidelity Sigmoid kernels
+// Public — polynomial Sigmoid kernels
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Hi-fi `sigmoid(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
+/// Polynomial `sigmoid(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
 ///
 /// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
 /// Input clamped to [-20, 20] for overflow safety, output clamped to [0, 1].
@@ -145,32 +145,32 @@ pub unsafe fn simd_tanh_hifi_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m25
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_sigmoid_hifi_avx2(x: __m256) -> __m256 {
-    let clamp_lo = _mm256_set1_ps(-HIFI_ACTIVATION_CLAMP);
-    let clamp_hi = _mm256_set1_ps(HIFI_ACTIVATION_CLAMP);
+pub unsafe fn simd_sigmoid_poly_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
     let one = _mm256_set1_ps(1.0f32);
     let zero = _mm256_set1_ps(0.0f32);
 
     let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
     let neg_x = _mm256_sub_ps(zero, x);
-    let exp_neg_x = unsafe { simd_exp_hifi_avx2(neg_x) };
+    let exp_neg_x = unsafe { simd_exp_poly_avx2(neg_x) };
     let den = _mm256_add_ps(one, exp_neg_x);
     let sig = _mm256_div_ps(one, den);
     _mm256_max_ps(zero, _mm256_min_ps(one, sig))
 }
 
-/// Hi-fi `(tanh(x1), sigmoid(x2))` — dual gate (AVX2/FMA).
+/// Polynomial `(tanh(x1), sigmoid(x2))` — dual gate (AVX2/FMA).
 ///
 /// Used in WaveNet gated activation: `tanh(zf) * sigmoid(zg)`.
-/// Evaluates both lanes independently via the hi-fi exp kernel.
+/// Evaluates both lanes independently via the polynomial exp kernel.
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_tanh_sigmoid_dual_hifi_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    let t1 = unsafe { simd_tanh_hifi_avx2(x1) };
-    let s2 = unsafe { simd_sigmoid_hifi_avx2(x2) };
+pub unsafe fn simd_tanh_sigmoid_dual_poly_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let t1 = unsafe { simd_tanh_poly_avx2(x1) };
+    let s2 = unsafe { simd_sigmoid_poly_avx2(x2) };
     (t1, s2)
 }
 
@@ -178,13 +178,13 @@ pub unsafe fn simd_tanh_sigmoid_dual_hifi_avx2(x1: __m256, x2: __m256) -> (__m25
 // Slice-level functions
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Applies hi-fi Tanh activation to a slice of f32 using AVX2.
+/// Applies polynomial Tanh activation to a slice of f32 using AVX2.
 ///
 /// # Safety
 /// Requires AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn tanh_hifi_slice_avx2(slice: &mut [f32]) {
+pub unsafe fn tanh_poly_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
     let len = slice.len();
 
@@ -192,7 +192,7 @@ pub unsafe fn tanh_hifi_slice_avx2(slice: &mut [f32]) {
         unsafe {
             let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
             let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
-            let (y1, y2) = simd_tanh_hifi_dual_avx2(x1, x2);
+            let (y1, y2) = simd_tanh_poly_dual_avx2(x1, x2);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
         }
@@ -202,38 +202,38 @@ pub unsafe fn tanh_hifi_slice_avx2(slice: &mut [f32]) {
     while i + 8 <= len {
         unsafe {
             let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_tanh_hifi_avx2(x);
+            let y = simd_tanh_poly_avx2(x);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
         }
         i += 8;
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = scalar_tanh_hifi(*item);
+        *item = scalar_tanh_poly(*item);
     }
 }
 
-/// Applies hi-fi Sigmoid activation to a slice of f32 using AVX2.
+/// Applies polynomial Sigmoid activation to a slice of f32 using AVX2.
 ///
 /// # Safety
 /// Requires AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn sigmoid_hifi_slice_avx2(slice: &mut [f32]) {
+pub unsafe fn sigmoid_poly_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
     let len = slice.len();
 
     while i + 8 <= len {
         unsafe {
             let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_sigmoid_hifi_avx2(x);
+            let y = simd_sigmoid_poly_avx2(x);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
         }
         i += 8;
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = scalar_sigmoid_hifi(*item);
+        *item = scalar_sigmoid_poly(*item);
     }
 }
 
@@ -241,38 +241,38 @@ pub unsafe fn sigmoid_hifi_slice_avx2(slice: &mut [f32]) {
 // Scalar reference implementations (for testing / fallback)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Scalar hi-fi `tanh(x)` — delegates to `f32::tanh`.
+/// Scalar polynomial `tanh(x)` — delegates to `f32::tanh`.
 #[inline]
-pub fn scalar_tanh_hifi(x: f32) -> f32 {
+pub fn scalar_tanh_poly(x: f32) -> f32 {
     x.tanh()
 }
 
-/// Scalar hi-fi `sigmoid(x)`: `1 / (1 + exp(-x))`.
+/// Scalar polynomial `sigmoid(x)`: `1 / (1 + exp(-x))`.
 #[inline]
-pub fn scalar_sigmoid_hifi(x: f32) -> f32 {
+pub fn scalar_sigmoid_poly(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AVX-512 hi-fi exp/tanh/sigmoid kernels
+// AVX-512 polynomial exp/tanh/sigmoid kernels
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Hi-fi `exp(x)` for `__m512` — degree-6 Taylor polynomial with integer
-/// range reduction `x = k·ln2 + r`.  AVX-512 counterpart of `simd_exp_hifi_avx2`.
+/// Polynomial `exp(x)` for `__m512` — degree-6 Taylor polynomial with integer
+/// range reduction `x = k·ln2 + r`.  AVX-512 counterpart of `simd_exp_poly_avx2`.
 ///
 /// # Safety
 /// The caller must guarantee AVX-512F and AVX-512VL support.  Input clamped to
 /// [-20, 20] to prevent overflow.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
-unsafe fn simd_exp_hifi_avx512(x: __m512) -> __m512 {
-    let log2e = _mm512_set1_ps(HIFI_LOG2_E);
-    let ln2 = _mm512_set1_ps(HIFI_LN2);
-    let c6 = _mm512_set1_ps(HIFI_EXP_C6);
-    let c5 = _mm512_set1_ps(HIFI_EXP_C5);
-    let c4 = _mm512_set1_ps(HIFI_EXP_C4);
-    let c3 = _mm512_set1_ps(HIFI_EXP_C3);
-    let c2 = _mm512_set1_ps(HIFI_EXP_C2);
+unsafe fn simd_exp_poly_avx512(x: __m512) -> __m512 {
+    let log2e = _mm512_set1_ps(POLY_LOG2_E);
+    let ln2 = _mm512_set1_ps(POLY_LN2);
+    let c6 = _mm512_set1_ps(POLY_EXP_C6);
+    let c5 = _mm512_set1_ps(POLY_EXP_C5);
+    let c4 = _mm512_set1_ps(POLY_EXP_C4);
+    let c3 = _mm512_set1_ps(POLY_EXP_C3);
+    let c2 = _mm512_set1_ps(POLY_EXP_C2);
     let one = _mm512_set1_ps(1.0f32);
     let bias = _mm512_set1_epi32(127);
 
@@ -298,7 +298,7 @@ unsafe fn simd_exp_hifi_avx512(x: __m512) -> __m512 {
     _mm512_mul_ps(p, scale)
 }
 
-/// Hi-fi `tanh(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
+/// Polynomial `tanh(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
 ///
 /// Formula: `tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)`.
 /// Input clamped to [-20, 20] for overflow safety, output clamped to [-1, 1].
@@ -307,15 +307,15 @@ unsafe fn simd_exp_hifi_avx512(x: __m512) -> __m512 {
 /// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn simd_tanh_hifi_avx512(x: __m512) -> __m512 {
-    let clamp_lo = _mm512_set1_ps(-HIFI_ACTIVATION_CLAMP);
-    let clamp_hi = _mm512_set1_ps(HIFI_ACTIVATION_CLAMP);
+pub unsafe fn simd_tanh_poly_avx512(x: __m512) -> __m512 {
+    let clamp_lo = _mm512_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm512_set1_ps(POLY_ACTIVATION_CLAMP);
     let one = _mm512_set1_ps(1.0f32);
     let neg_one = _mm512_set1_ps(-1.0f32);
 
     let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
 
-    let exp_x = unsafe { simd_exp_hifi_avx512(x) };
+    let exp_x = unsafe { simd_exp_poly_avx512(x) };
     let inv_exp_x = _mm512_div_ps(one, exp_x);
     let num = _mm512_sub_ps(exp_x, inv_exp_x);
     let den = _mm512_add_ps(exp_x, inv_exp_x);
@@ -323,7 +323,7 @@ pub unsafe fn simd_tanh_hifi_avx512(x: __m512) -> __m512 {
     _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
 }
 
-/// Hi-fi `sigmoid(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
+/// Polynomial `sigmoid(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
 ///
 /// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
 /// Input clamped to [-20, 20] for overflow safety, output clamped to [0, 1].
@@ -332,21 +332,21 @@ pub unsafe fn simd_tanh_hifi_avx512(x: __m512) -> __m512 {
 /// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn simd_sigmoid_hifi_avx512(x: __m512) -> __m512 {
-    let clamp_lo = _mm512_set1_ps(-HIFI_ACTIVATION_CLAMP);
-    let clamp_hi = _mm512_set1_ps(HIFI_ACTIVATION_CLAMP);
+pub unsafe fn simd_sigmoid_poly_avx512(x: __m512) -> __m512 {
+    let clamp_lo = _mm512_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm512_set1_ps(POLY_ACTIVATION_CLAMP);
     let one = _mm512_set1_ps(1.0f32);
     let zero = _mm512_set1_ps(0.0f32);
 
     let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
     let neg_x = _mm512_sub_ps(zero, x);
-    let exp_neg_x = unsafe { simd_exp_hifi_avx512(neg_x) };
+    let exp_neg_x = unsafe { simd_exp_poly_avx512(neg_x) };
     let den = _mm512_add_ps(one, exp_neg_x);
     let sig = _mm512_div_ps(one, den);
     _mm512_max_ps(zero, _mm512_min_ps(one, sig))
 }
 
-/// Hi-fi `(tanh(x1), sigmoid(x2))` — dual gate (AVX-512F/VL).
+/// Polynomial `(tanh(x1), sigmoid(x2))` — dual gate (AVX-512F/VL).
 ///
 /// Used in WaveNet gated activation: `tanh(zf) * sigmoid(zg)`.
 ///
@@ -354,9 +354,9 @@ pub unsafe fn simd_sigmoid_hifi_avx512(x: __m512) -> __m512 {
 /// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn simd_tanh_sigmoid_dual_hifi_avx512(x1: __m512, x2: __m512) -> (__m512, __m512) {
-    let t1 = unsafe { simd_tanh_hifi_avx512(x1) };
-    let s2 = unsafe { simd_sigmoid_hifi_avx512(x2) };
+pub unsafe fn simd_tanh_sigmoid_dual_poly_avx512(x1: __m512, x2: __m512) -> (__m512, __m512) {
+    let t1 = unsafe { simd_tanh_poly_avx512(x1) };
+    let s2 = unsafe { simd_sigmoid_poly_avx512(x2) };
     (t1, s2)
 }
 

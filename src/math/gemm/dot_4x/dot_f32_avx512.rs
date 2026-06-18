@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
-//! Dot Product 4x f32 — AVX‑512 kernel (hi‑fi mode).
+//! Dot Product 4x f32 — AVX‑512 kernel (f32 native weights).
 //!
 //! Processes 4 interleaved weight rows (16 f32 values) per `__m512` iteration,
 //! sharing the same FMA‑based rounding chain as the AVX2 kernel and the scalar

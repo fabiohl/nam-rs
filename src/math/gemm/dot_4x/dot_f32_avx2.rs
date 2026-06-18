@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
-//! Dot Product 4x f32 — AVX2/FMA kernel (hi‑fi mode).
+//! Dot Product 4x f32 — AVX2/FMA kernel (f32 native weights).
 //!
 //! Processes `state[i] · weights[i]` for 4 interleaved output channels.
 //!

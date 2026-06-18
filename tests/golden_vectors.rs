@@ -1097,22 +1097,22 @@ fn test_golden_vectors_v2_wavenet_a2_lite() {
 }
 
 // =============================================================================
-// Hi-fi Activation Regression Gate — T-HF1.4
+// Polynomial Activation Regression Gate — T-HF1.4
 // =============================================================================
 
-/// Hi-fi activation regression gate: WaveNet Standard golden fidelity.
+/// Activation regression gate: WaveNet Standard golden fidelity.
 ///
-/// Validates that the end-to-end WaveNet hi-fi-SIMD output does not regress
-/// against the C++ reference (NeuralAmpModelerCore). The hi-fi path uses
+/// Validates that the end-to-end WaveNet SIMD output does not regress
+/// against the C++ reference (NeuralAmpModelerCore). The polynomial path uses
 /// exact exp-based tanh/sigmoid with full-precision f32 weights — the same
 /// arithmetic as the C++ reference — so the ESR gate is tightened substantially
-/// relative to lo-fi mode (where weight quantization + Padé approximation
+/// relative to the quantized mode (where weight quantization + Padé approximation
 /// dominate the drift).
 ///
-/// **Gate**: ESR ≤ 1e-4  (100× tighter than lo-fi parity limit, 1e-2).
+/// **Gate**: ESR ≤ 1e-4  (100× tighter than quantized parity limit, 1e-2).
 ///           SNR ≥ 70 dB.
 #[test]
-fn test_hifi_regression_gate_wavenet_standard() {
+fn test_poly_regression_gate_wavenet_standard() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_standard.bin");
 
@@ -1136,37 +1136,37 @@ fn test_hifi_regression_gate_wavenet_standard() {
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Standard model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build WaveNet Standard for HF regression gate");
+        .expect("Dispatcher failed to build WaveNet Standard for poly regression gate");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Hi-fi gate: 100× tighter ESR than lo-fi parity limit.
-    // The hi-fi path uses exact exp-based tanh + full-precision f32 weights,
+    // Polynomial gate: 100× tighter ESR than quantized parity limit.
+    // The polynomial path uses exact exp-based tanh + full-precision f32 weights,
     // matching the C++ reference arithmetic. Floating-point ordering
     // differences (Rust vs Eigen/C++) dominate the residual ESR.
-    const HIFI_ESR_MAX: f64 = 1e-4;
-    const HIFI_SNR_MIN: f64 = 70.0;
-    const HIFI_MSE_MAX: f64 = 1e-5;
+    const POLY_ESR_MAX: f64 = 1e-4;
+    const POLY_SNR_MIN: f64 = 70.0;
+    const POLY_MSE_MAX: f64 = 1e-5;
 
     report_dsp_fidelity(
         &expected,
         &output,
-        HIFI_MSE_MAX,
-        HIFI_SNR_MIN,
-        Some(HIFI_ESR_MAX),
-        "T-HF1.4: WaveNet Standard hi-fi SIMD (regression gate)",
+        POLY_MSE_MAX,
+        POLY_SNR_MIN,
+        Some(POLY_ESR_MAX),
+        "T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
 }
 
-/// Hi-fi activation regression gate: WaveNet A2-Full golden fidelity.
+/// Activation regression gate: WaveNet A2-Full golden fidelity.
 ///
-/// Same gate as `test_hifi_regression_gate_wavenet_standard` for the
+/// Same gate as `test_poly_regression_gate_wavenet_standard` for the
 /// A2 architecture (CH=8, 23 layers with variable kernel sizes).
 #[test]
-fn test_hifi_regression_gate_wavenet_a2_full() {
+fn test_poly_regression_gate_wavenet_a2_full() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_full.bin");
 
@@ -1190,7 +1190,7 @@ fn test_hifi_regression_gate_wavenet_a2_full() {
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-Full model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build A2-Full for HF regression gate");
+        .expect("Dispatcher failed to build A2-Full for poly regression gate");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -1198,17 +1198,17 @@ fn test_hifi_regression_gate_wavenet_a2_full() {
 
     // A2 architecture has deeper layers → slightly higher ESR floor from
     // floating-point ordering drift. Gate relaxed proportionally.
-    const HIFI_A2_ESR_MAX: f64 = 2e-4;
-    const HIFI_A2_SNR_MIN: f64 = 65.0;
-    const HIFI_A2_MSE_MAX: f64 = 2e-5;
+    const POLY_A2_ESR_MAX: f64 = 2e-4;
+    const POLY_A2_SNR_MIN: f64 = 65.0;
+    const POLY_A2_MSE_MAX: f64 = 2e-5;
 
     report_dsp_fidelity(
         &expected,
         &output,
-        HIFI_A2_MSE_MAX,
-        HIFI_A2_SNR_MIN,
-        Some(HIFI_A2_ESR_MAX),
-        "T-HF1.4: WaveNet A2-Full hi-fi SIMD (regression gate)",
+        POLY_A2_MSE_MAX,
+        POLY_A2_SNR_MIN,
+        Some(POLY_A2_ESR_MAX),
+        "T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
 }

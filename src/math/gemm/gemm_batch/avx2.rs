@@ -249,8 +249,8 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
 /// Fused residual GEMM kernel via AVX2 with native f32 weights.
 ///
 /// Identical to [`fused_gemm_residual_batch_avx2`] but accepts full-precision
-/// f32 weights instead of f16-quantized (u16) weights. Used in the high-fidelity
-/// path where the 1x1 projection operates on native f32 weights and the residual
+/// f32 weights instead of f16-quantized (u16) weights. Used where the 1x1 projection
+/// operates on native f32 weights and the residual
 /// addition is fused into the same SIMD pass.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx2(

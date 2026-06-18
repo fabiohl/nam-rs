@@ -886,7 +886,7 @@ cargo test --quiet 2>&1 | tail -5   # todos os testes
 
 ---
 
-### T-HF5.A.10 — Cargo.toml: remover a feature flag
+### T-HF5.A.10 — Cargo.toml: remover a feature flag [DONE]
 
 **Arquivo**: `Cargo.toml`
 
@@ -915,7 +915,7 @@ cargo clippy 2>&1 | grep "^error\|^warning" | head -10
 
 ---
 
-### T-HF5.A.11 — Limpeza de nomenclatura e terminologia
+### T-HF5.A.11 — Limpeza de nomenclatura e terminologia [DONE]
 
 **Objetivo**: remover qualquer referência a "lo-fi", "hi-fi", "high-fidelity", "low-fidelity"
 em comentários de código ativo. Substituir por descrições técnicas do comportamento real.

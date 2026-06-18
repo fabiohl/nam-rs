@@ -53,7 +53,7 @@ impl DenseLayerDyn {
         }
     }
 
-    /// Full-precision f32 fused residual batch for high-fidelity mode.
+    /// Full-precision f32 fused residual batch.
     ///
     /// Fuses the 1x1 GEMV with bias and residual addition into a single SIMD
     /// pass. Uses the native f32 weight tensor when available; falls back to

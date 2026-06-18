@@ -134,7 +134,7 @@ pub trait SimdMath {
 
     /// Fused residual batch GEMM kernel with native f32 weights.
     ///
-    /// Used in the high-fidelity path where the 1x1 projection operates
+    /// Used where the 1x1 projection operates
     /// on full-precision f32 weights. Fuses GEMV + bias + residual addition
     /// into a single SIMD pass.
     ///

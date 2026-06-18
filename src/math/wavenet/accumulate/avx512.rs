@@ -24,7 +24,7 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
             let (tanh_z1, sig_z2) =
-                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx512(z1, z2);
+                crate::math::activations::simd_tanh_sigmoid_dual_poly_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
             _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
@@ -66,7 +66,7 @@ pub unsafe fn gated_activation_and_overwrite_block_avx512(
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
             let (tanh_z1, sig_z2) =
-                crate::math::activations::simd_tanh_sigmoid_dual_hifi_avx512(z1, z2);
+                crate::math::activations::simd_tanh_sigmoid_dual_poly_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
             _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
@@ -110,7 +110,7 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
     let mut i = 0;
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
         _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
 
         let vh = _mm512_loadu_ps(head_input.as_ptr().add(i));
@@ -120,7 +120,7 @@ pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &m
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
         _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
 
         let vh = _mm512_maskz_loadu_ps(mask, head_input.as_ptr().add(i));
@@ -135,7 +135,7 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
     let mut i = 0;
     while i + 16 <= len {
         let vb = _mm512_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
         _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
         _mm512_storeu_ps(head_input.as_mut_ptr().add(i), vt);
         i += 16;
@@ -143,7 +143,7 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_hifi_avx512(vb);
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
         _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
     }

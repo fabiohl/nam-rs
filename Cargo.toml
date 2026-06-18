@@ -67,7 +67,6 @@ clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "
 stereo = []
 testing = []
 heap-audit = []
-high-fidelity = []                                    # → T4.1: f32 weights + exact tanh (opt-in, off by default)
 long_bench = []                                       # → benches/long_inference_bench.rs, utils/tests-long.sh
 pgo = []                                              # → utils/build-release.sh (PGO build profile)
 

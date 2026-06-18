@@ -104,7 +104,7 @@ proptest! {
         let mut result = [0.0f32; 8];
         unsafe { _mm256_storeu_ps(result.as_mut_ptr(), result_vector) };
 
-            // High-fidelity scalar reference
+            // Scalar reference (f32::exp-based sigmoid)
         let std_sigmoid = |val: f32| -> f32 { 1.0 / (1.0 + (-val).exp()) };
 
         for i in 0..8 {

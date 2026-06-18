@@ -8,7 +8,7 @@
 //! - **Reference path:** Padé NR2 variants retained for benchmarking and
 //!   documentation (`simd_tanh_pade_nr2_avx2`, `simd_tanh_pade_nr2_avx512`).
 
-/// High-fidelity exp-based tanh/sigmoid kernels (mode hi-fi, ≤ 1e-6 error).
+/// Polynomial exp-based tanh/sigmoid kernels (degree-6 Taylor, ≤ 1e-6 error).
 pub mod high_fidelity;
 pub mod production;
 /// Experimental / reference Padé NR2 variants retained for benchmarking.

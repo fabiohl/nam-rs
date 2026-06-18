@@ -171,7 +171,7 @@ impl Conv1dDyn {
         }
     }
 
-    /// F32-native block processing (high-fidelity mode).
+    /// F32-native block processing (full-precision f32 weights).
     ///
     /// Same dual-frame tiling as `process_block_generic`, but uses full-precision
     /// f32 weights and scalar dot products, bypassing quantization drift.
