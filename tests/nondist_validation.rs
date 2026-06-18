@@ -121,6 +121,7 @@ fn test_nondist_models_validation() {
 
         for &bs in &block_sizes {
             let mut test_model = build_model(&model_data).unwrap();
+            test_model.set_max_buffer_size(bs);
             test_model.prewarm(2048);
             let mut test_output = vec![0.0f32; num_samples];
             process_in_blocks(&mut test_model, &input, &mut test_output, bs);

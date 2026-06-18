@@ -270,7 +270,7 @@ e pequeno ganho de hot-path.
 
 ## Sprint S3 — Fechamento O1 + decode f16 do A2 rechannel (O5/S2)
 
-### T3.1 — 🟢 Formalizar O1 como concluído (documentação)
+### T3.1 — 🟢 Formalizar O1 como concluído (documentação) [DONE]
 
 **Por quê**: a auditoria confirmou que O1 está **100% implementado** (`src/math/common/half.rs`
 completo, `half` removido do `Cargo.toml`, todas as 16 caudas SIMD usam `f16_bits_to_f32_f16c`,
@@ -290,7 +290,7 @@ testes exaustivos 65.536 presentes). Falta só fechar o registro.
 
 **Risco**: 🟢 trivial (doc).
 
-### T3.2 — 🟢 A2 rechannel: pré-decodar `rechannel_w` (f16→f32) no load + `mul` SIMD no hot-path
+### T3.2 — 🟢 A2 rechannel: pré-decodar `rechannel_w` (f16→f32) no load + `mul` SIMD no hot-path [DONE]
 
 **Por quê**: `src/models/a2/model/mod.rs:264-270` decodifica `f16_bits_to_f32(self.rechannel_w[c])`
 (versão **software**) **a cada frame**, embora as `CH` constantes nunca mudem (CH=8 × 64 frames =

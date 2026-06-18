@@ -43,7 +43,6 @@ use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::AlignedVec;
-use crate::math::common::half::f16_bits_to_f32;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 
 /// Computes the receptive field size for the A2 architecture.
@@ -86,6 +85,9 @@ pub struct WaveNetA2<const CH: usize> {
 
     /// Input rechannel weights: `Conv1x1(1 → CH)` (no bias), u16 quantized.
     pub rechannel_w: AlignedVec<u16>,
+
+    /// Input rechannel weights (pre-decoded f32).
+    pub rechannel_w_f32: AlignedVec<f32>,
 
     /// Head convolution (K=16 over skip-connection accumulator, bias, head_scale).
     pub head_conv: Option<A2HeadConv>,
@@ -156,6 +158,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         Self {
             layers: Vec::with_capacity(A2_NUM_LAYERS),
             rechannel_w: AlignedVec::new(CH, 0u16),
+            rechannel_w_f32: AlignedVec::new(CH, 0.0f32),
             head_conv: None,
             head_accum: AlignedVec::new(head_ring_size * CH, 0.0f32),
             head_write_pos: rf,
@@ -274,12 +277,35 @@ impl<const CH: usize> WaveNetA2<CH> {
             let nf = (nf_total - pos).min(WAVENET_MAX_NUM_FRAMES);
             let ch = CH;
 
-            // ── Phase 0: rechannel pre-scaling: input × rechannel_w → layer_in ──
-            for (f, x) in input[pos..pos + nf].iter().enumerate() {
-                let base = f * ch;
-                for c in 0..ch {
-                    let rw = f16_bits_to_f32(self.rechannel_w[c]);
-                    self.layer_in[base + c] = rw * x;
+            // ── Phase 0: rechannel pre-scaling: input × rechannel_w_f32 → layer_in ──
+            if CH == 8 {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    use core::arch::x86_64::{_mm256_load_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_store_ps};
+                    unsafe {
+                        let rw_vec = _mm256_load_ps(self.rechannel_w_f32.as_ptr());
+                        for (f, &x) in input[pos..pos + nf].iter().enumerate() {
+                            let x_vec = _mm256_set1_ps(x);
+                            let res = _mm256_mul_ps(rw_vec, x_vec);
+                            _mm256_store_ps(self.layer_in.as_mut_ptr().add(f * 8), res);
+                        }
+                    }
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    for (f, &x) in input[pos..pos + nf].iter().enumerate() {
+                        let base = f * 8;
+                        for c in 0..8 {
+                            self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+                        }
+                    }
+                }
+            } else {
+                for (f, &x) in input[pos..pos + nf].iter().enumerate() {
+                    let base = f * CH;
+                    for c in 0..CH {
+                        self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+                    }
                 }
             }
 

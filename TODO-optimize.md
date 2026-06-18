@@ -75,9 +75,9 @@ X └─────────────────────────
 🟢 = fazer já    ★ = PoC profunda faseada    ⚪ = opcional/deferido
 ```
 
-**Ordem recomendada**: O1 → O2 → O5 (lacunas escalares, baixo risco) → O3a (MAC SIMD) →
-O3b (RFFT interna) → (O4, opcional). _Nota: o grosso de O5 é executado via F1/F3 quando essas
-features forem implementadas; o resíduo próprio de O5 (limpeza) é trivial._
+**Ordem recomendada**: ~~O1~~ (✅ DONE jun/2026) → O2 → O5 (lacunas escalares, baixo risco) →
+O3a (MAC SIMD) → O3b (RFFT interna) → (O4, opcional). _Nota: o grosso de O5 é executado via F1/F3
+quando essas features forem implementadas; o resíduo próprio de O5 (limpeza) é trivial._
 
 ---
 
@@ -310,16 +310,7 @@ escalar onde o v3 se aplica. Duas verdades guiaram a auditoria:
 
 **Resíduo próprio de O5 (não cabe em nenhum F — fica aqui):**
 
-- 🟢 **[NOVO — auditoria jun/2026] S2 micro-otimização: A2 rechannel decodifica f16 em software,
-  redundante por frame.** `src/models/a2/model/mod.rs:264-270` faz, dentro do laço de frames,
-  `let rw = f16_bits_to_f32(self.rechannel_w[c])` — a versão **software** (`half.rs:18`), não a
-  `f16_bits_to_f32_f16c` (`_mm_cvtph_ps`). Pior: as `CH` constantes `rechannel_w` **nunca mudam**,
-  mas são re-decodadas a cada frame (CH=8 × 64 frames = 512 decodes/bloco; só 8 únicas). **Fix
-  trivial e seguro:** pré-decodar `rechannel_w` para f32 **uma vez no load** (cold path) e o laço
-  por frame vira um `mul` SIMD puro (ou `M::apply_gain`-like). Elimina ~504 decodes/bloco + tira
-  a conversão do hot-path. Zero impacto numérico (bit-exato: F16C ≡ software, provado em O1).
-  Conecta-se a **`TODO-features.md §F3`** (motor A2 geral), mas é autônomo o suficiente para uma
-  micro-tarefa de O5. Detalhamento em `TODO-sprints.md`.
+- ✅ **[DONE]** (S3.T3.2): A2 rechannel pré-decodificado (f16→f32) no load e vetorizado com AVX2 (multiplicação SIMD por frame). Eliminados 504 decodes escalares de software por bloco.
 
 - ✅ **[DONE]** (S1.T1.2, commit `f7bed2b`: fallbacks escalares substituídos por `unreachable!()`).
   **Limpeza de cabeamento BF16 morto no AVX2.** `Avx2Math` cabeia `dot_product_bf16*`/`gemv_*_bf16`

@@ -383,7 +383,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
         // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
         // WaveNet Official (free-geom CH=3): synthetic dilations [(1,2),(8)].
-        // Post-T1.2 (MirroredBuffer aligned to channels): SNR 130.4 dB v1, 121.2 dB v2 — bit-exact.
+        // Measured: SNR=130.4 dB, ESR=1.8e-12 (Post-T1.2 MirroredBuffer aligned to channels)
         // Thresholds preserved from pre-fix calibration; now provide ~116 dB margin.
         "wavenet_official" => {
             let snr_db = 14.0;
