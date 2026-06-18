@@ -39,7 +39,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 | ID     | Achado (dependência → ação)                                                        | Ganho esperado                             | Esforço   | Hot-path? | Decisão           |
 | ------ | ---------------------------------------------------------------------------------- | ------------------------------------------ |:---------:|:---------:| ----------------- |
-| **O1** | **`half`** → internalizar f16↔f32 + usar F16C escalar nas caudas SIMD              | Build mais enxuto + ganho em caudas        | Baixo     | Parcial   | 🟢 Fazer já       |
+| **O1** | **`half`** → internalizar f16↔f32 + usar F16C escalar nas caudas SIMD              | Build mais enxuto + ganho em caudas        | Baixo     | Parcial   | ✅ **DONE**       |
 | **O2** | **`minstant`** → unificar com o clock TSC interno (`RtClock`)                      | −1 proc-macro + −`syn` v1; 1 clock único   | Baixo-Méd | Morno     | 🟢 Fazer          |
 | **O3** | **`rustfft`** (cabsim UPOLS) → **RFFT real interna** + **MAC complexo SIMD**       | **~2× FFT + metade da memória** do cabsim  | Alto      | **Sim**   | ★ PoC faseada     |
 | **O4** | **`rtrb`** → fila SPSC interna com padding de cache-line                           | Marginal (crate é minúsculo/zero-dep)      | Médio     | Controle  | ⚪ Deferir        |
@@ -97,9 +97,29 @@ apenas de **build/manutenção**.
 
 ---
 
-## O1 — 🟢 `half`: internalizar f16↔f32 e usar F16C escalar nas caudas
+## O1 — ✅ `half`: internalizar f16↔f32 e usar F16C escalar nas caudas — [DONE] (verificado jun/2026)
 
-**O que é.** O crate `half` fornece o tipo IEEE-754 binary16. O `nam-rs` usa **apenas duas
+> **Status final (jun/2026, auditoria revisor-auditor):** **CONCLUÍDO.** A verificação encontrou
+> O1 inteiramente implementado:
+>
+> - **`src/math/common/half.rs`** (313 linhas) existe e contém: `f16_bits_to_f32` (software),
+>   `f32_to_f16_bits` (software RNE, com o fix de carry do **P11** em `:117`), e as variantes
+>   F16C de hardware `f16_bits_to_f32_f16c` (`_mm_cvtph_ps`, `:140`) e `f32_to_f16_bits_f16c`
+>   (`_mm_cvtps_ph`, `:163`).
+> - **`half` removido do `Cargo.toml`** — zero refs `half::` externas; 19 usos migrados para
+>   `crate::math::common::half::`. (Resíduo no `Cargo.lock` é **transitivo** via `ciborium` →
+>   `clack-*`, alheio ao f16 do nam-rs.)
+> - **Todas as 16 caudas escalares dos kernels SIMD usam `f16_bits_to_f32_f16c`** (F16C
+>   hardware) — nenhuma cauda usa software. O software só permanece (por design) em
+>   `scalar_ref/`, paths `*_scalar` de teste do LSTM e `quantize_weight` (cold).
+> - **Testes exaustivos** presentes: decode 65.536 padrões (software vs F16C bit-exato,
+>   `half.rs:251`), encode 65.536 (`:268`) e regressão do carry P11 (`:291`).
+>
+> **Única pendência relacionada (roteada para O5/S2):** o **A2 rechannel**
+> (`src/models/a2/model/mod.rs:268`) ainda usa `f16_bits_to_f32` **software** redundante por
+> frame em vez de pré-decodar com F16C — micro-otimização de hot-path, ver **§O5 (S2)** abaixo.
+
+**O que era.** O crate `half` fornecia o tipo IEEE-754 binary16. O `nam-rs` usava **apenas duas
 operações** dele: `half::f16::from_bits(u16).to_f32()` e `half::f16::from_f32(f32).to_bits()`.
 
 **Uso real (medido).** O loop SIMD quente **já não usa `half`** — usa o intrínseco de hardware
@@ -289,6 +309,17 @@ escalar onde o v3 se aplica. Duas verdades guiaram a auditoria:
 > O detalhe acionável (file:line + estratégia de vetorização) está nos respectivos F.
 
 **Resíduo próprio de O5 (não cabe em nenhum F — fica aqui):**
+
+- 🟢 **[NOVO — auditoria jun/2026] S2 micro-otimização: A2 rechannel decodifica f16 em software,
+  redundante por frame.** `src/models/a2/model/mod.rs:264-270` faz, dentro do laço de frames,
+  `let rw = f16_bits_to_f32(self.rechannel_w[c])` — a versão **software** (`half.rs:18`), não a
+  `f16_bits_to_f32_f16c` (`_mm_cvtph_ps`). Pior: as `CH` constantes `rechannel_w` **nunca mudam**,
+  mas são re-decodadas a cada frame (CH=8 × 64 frames = 512 decodes/bloco; só 8 únicas). **Fix
+  trivial e seguro:** pré-decodar `rechannel_w` para f32 **uma vez no load** (cold path) e o laço
+  por frame vira um `mul` SIMD puro (ou `M::apply_gain`-like). Elimina ~504 decodes/bloco + tira
+  a conversão do hot-path. Zero impacto numérico (bit-exato: F16C ≡ software, provado em O1).
+  Conecta-se a **`TODO-features.md §F3`** (motor A2 geral), mas é autônomo o suficiente para uma
+  micro-tarefa de O5. Detalhamento em `TODO-sprints.md`.
 
 - ✅ **[DONE]** (S1.T1.2, commit `f7bed2b`: fallbacks escalares substituídos por `unreachable!()`).
   **Limpeza de cabeamento BF16 morto no AVX2.** `Avx2Math` cabeia `dot_product_bf16*`/`gemv_*_bf16`

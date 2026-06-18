@@ -33,7 +33,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 | ID      | Achado                                                                                                                                                                                                                                                                               | Severidade                      | Eixo                  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:-------------------------------:| --------------------- |
-| **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade                                                                                                                                                                    | 🔴 Alta                         | Fidelidade            |
+| **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ (SNR ≈ **0,9 dB**) — **🎯 ROOT CAUSE ISOLADO (jun/2026):** wrap do ring-buffer `WaveNetLayerState` dessincroniza do espelho `MirroredBuffer` quando `channels` ∤ página (CH=12/6); corrompe histórico de dilatação                         | 🔴 Alta (🎯 root cause)         | Soundness/Fidelidade  |
 | **P2**  | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%) — ✅ [RESOLVIDO] (T-HF6.6, nuke completa)                                                                                                                                    | 🟠 Média-Alta                   | Fidelidade            |
 | **P3**  | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel — ✅ [RESOLVIDO] (T-HF6.6, thresholds SNR 85-105 dB)                                                                                                      | 🟠 Média                        | Cobertura/Fidelidade  |
 | **P4**  | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                                                                                                                                                             | 🟡 Média-Baixa                  | Correção/DSP          |
@@ -50,7 +50,65 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## P1 — 🔴 WaveNet "Lite" (CH=12) não bate com o C++ de referência
+## P1 — 🔴 WaveNet "Lite" (CH=12) não bate com o C++ de referência — 🎯 ROOT CAUSE ISOLADO (jun/2026, revisor-auditor)
+
+> **🎯 CAUSA RAIZ DEFINITIVA (jun/2026 — auditoria revisor-auditor).** A divergência **NÃO é
+> numérica** (FastMath/quantização — refutado em T-HF6.6) **nem do conv dual-frame** (refutado
+> nesta auditoria, ver abaixo). É um **bug de indexação do ring-buffer temporal** que corrompe
+> o histórico de dilatação **somente** quando `channels` não divide o tamanho da página de
+> memória.
+>
+> **Mecanismo.** Cada camada WaveNet mantém um `MirroredBuffer` (páginas espelhadas 2×N) como
+> delay-line. A `MirroredBuffer::new` (`src/dsp/mirror_buf/alloc.rs:71-81,190-191`) arredonda o
+> tamanho **para cima até a página** → `size_elements` é sempre múltiplo de **1024 f32** (página
+> 4 KB) ou **524288 f32** (huge-page 2 MB). O espelho aliasa posições com período
+> `size_elements` (em elementos). Mas o wrap do anel (`WaveNetLayerState::advance_frames`,
+> `src/models/wavenet/common.rs:93-104`) rebobina `buffer_start` em **frames**:
+> `buffer_start -= buffer.size() / channels`. Em elementos isso é
+> `(buffer.size() / channels) * channels = buffer.size() − (buffer.size() % channels)`.
+> **Quando `channels ∤ buffer.size()`, o rewind fica curto em `buffer.size() % channels`
+> elementos a cada wrap** — um deslocamento de fração de frame que desalinha **todos** os canais
+> de **todo** o histórico, corrompendo as leituras dilatadas subsequentes.
+>
+> **Prova aritmética** (`channels` dos SKUs padrão vs página):
+>
+> | CH | 1024 % CH | 524288 % CH | Resultado                         |
+> | -- |:---------:|:-----------:| --------------------------------- |
+> | 16 | 0         | 0           | ✅ invariante (Standard array1)   |
+> | 12 | **4**     | **8**       | ❌ **DESYNC** (Lite array1)       |
+> |  8 | 0         | 0           | ✅ invariante (Std array2/Feather)|
+> |  6 | **4**     | **2**       | ❌ **DESYNC** (Lite array2)       |
+> |  4 | 0         | 0           | ✅ invariante (Feather a2/Nano)   |
+> |  2 | 0         | 0           | ✅ invariante (Nano array2)       |
+>
+> **Lite é o ÚNICO SKU padrão** cujos canais (array1 CH=12, array2 CH=6) não são potências de 2
+> que dividem a página → único afetado. `wavenet_official` (free-geom) entra na mesma classe se
+> seus canais não dividirem a página.
+>
+> **Por que casa com TODAS as evidências:** (a) só Lite + Official divergem; (b) o caminho f32
+> exato não resolveu (é bug de índice, não de número); (c) a violação de invariância de bloco é
+> **contínua** (bs16≠bs32≠bs64 — wraps ocorrem em posições dependentes do bloco); (d) a
+> divergência é **proporcional ao comprimento do sinal** (corrupção acumula a cada wrap); (e)
+> determinismo/auto-consistência **passam** (mesmo bloco ⇒ mesmos wraps ⇒ determinístico).
+>
+> **Refutação do suspeito anterior (dual-frame conv):** nesta máquina (AVX2, sem AVX-512) os
+> kernels `dot_product_4x_f32_avx2` (single) e `dot_product_4x_f32_dual_avx2` (dual,
+> `src/math/gemm/dot_4x/dot_f32_avx2.rs:33,73`) usam a **mesma cadeia FMA** → **bit-idênticos**.
+> Os gemv/fused-residual reduzem OUT=6 a caminhos **escalares per-frame** (invariantes por
+> construção). Logo **nenhuma** computação per-frame é a fonte; a variância só pode vir do
+> plumbing temporal — confirmado como o wrap acima.
+>
+> **Evidência runtime concreta (jun/2026):** `cargo test --release --test nondist_validation`
+> → `EVH-5150-Lite.nam` (CH=12) viola invariância: **MSE 2,08e-2 (bs16) / 1,95e-2 (bs32) /
+> 1,32e-2 (bs64)**; todos os demais modelos (geometria padrão) **invariantes**.
+>
+> **🔧 Fix proposto (seguro, fiel ao NAMCore):** garantir que `size_elements` do `MirroredBuffer`
+> seja múltiplo exato de `channels` (ex.: `MirroredBuffer::new_frame_aligned(min_elems, channels)`
+> arredondando `size_bytes` para múltiplo de `lcm(page, channels*4)`), tornando o rewind do anel
+> **exatamente** igual ao período do espelho. Alocação só no load (RT-safe). Validação: restaurar
+> `assert` rígido de invariância em `nondist_validation.rs:138`, reabilitar golden
+> `wavenet_lite`, cross-validação live vs C++ e teste de regressão `buffer.size() % channels == 0`
+> para CH∈{12,6}. Detalhamento em `TODO-sprints.md`.
 
 **Evidência** (Wavenet)
 
@@ -94,11 +152,14 @@ CH=12) está silenciosamente "errada" em relação à referência que o projeto 
 espelhar. Afeta credibilidade ("é um NAM fiel?").
 
 **Sugestão de condução**
-A hipótese de que o caminho f32 exato resolveria P1 foi **refutada** (T-HF6.6). A divergência
+~~A hipótese de que o caminho f32 exato resolveria P1 foi **refutada** (T-HF6.6). A divergência
 é arquitetural/implementacional no caminho CH=12. Suspeitos remanescentes: _bias-tuning_,
-ordem de interleaving 4-wide, ou o próprio caminho `StaticModel` para CH=12. Decidir entre
-**corrigir** (reabilitar o golden) ou **documentar formalmente** a limitação e, idealmente,
-**avisar o usuário** ao carregar um modelo Lite.
+ordem de interleaving 4-wide, ou o próprio caminho `StaticModel` para CH=12.~~ **SUPERADO pelo
+root cause acima (jun/2026).** A causa não é arquitetural do CH=12 nem do interleaving — é o
+**wrap do ring-buffer** que dessincroniza quando `channels ∤ página` (CH=12/6). **Corrigir**
+alinhando o `MirroredBuffer` a múltiplo de `channels` (ver fix proposto no bloco 🎯 acima);
+após o fix, **reabilitar o golden** e **restaurar o assert** de invariância. A divergência do
+`wavenet_official` (free-geom) deve ser reverificada após o fix — provavelmente é a mesma raiz.
 
 ---
 
@@ -361,6 +422,21 @@ A1; corrige a raiz); ou (b) tornar `set_max_buffer_size` **honesto** — clampar
 (heap, alinhado) — sinergia com o motor A2 geral (`TODO-features.md §F3`). Enquanto não resolvido, o
 teste `nondist_validation` limita a varredura de tamanho de bloco a 64 (contrato universal seguro).
 
+**📋 Parecer revisor-auditor (jun/2026) — confirmado e planejado em `TODO-sprints.md`.** UB
+**confirmado** por leitura de código. Mecanismo exato: `new()` inicia `max_buffer_size=64`
+(`src/models/a2/model/mod.rs:134`); um host CLAP com bloco >64 chama `set_max_buffer_size(256)`
+(`events.rs:173`) que **aceita sem clamp** (`model/mod.rs:186-216`); `process()` faz
+`nf = num_frames.min(self.max_buffer_size)` (`:260`) = 256 e passa direto para
+`layer_forward_ch8_block(..., nf=256)` (**sem rechunk**); o kernel tem `let mut z_buf =
+[0.0f32; 64*8]` (`conv1d_ch8.rs:293`) e escreve `nf*8=2048` elementos → **overflow de stack
+(release)** / `panic` no `debug_assert!(num_frames<=64)` (debug). 4 locais idênticos:
+`conv1d_ch8.rs:293,389` (512 f32) e `conv1d_ch3/{simd.rs:252,scalar.rs:74}` (256 f32).
+**Recomendação do auditor: opção (a)** — chunk interno `while pos < nf { let sub =
+remaining.min(64); ... }`, idêntico ao `WaveNet A1` (`model.rs:65-101`) e ao próprio
+`A2::prewarm()` (`model/mod.rs:457-465`). É a correção da raiz, RT-safe, zero-alloc, com
+precedente direto no codebase. Após (a), o `nondist_validation` pode estender a varredura de
+blocos para >64. Detalhamento em `TODO-sprints.md`.
+
 ---
 
 ## P10 — 🟠 Modo "baixa fidelidade" (padrão) sob júdice — ✅ [RESOLVIDO] (T-HF6.6, lo-fi eliminado)
@@ -557,9 +633,12 @@ A2-Full, A2-Lite) só geram golden a 48 kHz; tratados pelo SKIP. Não é falha.
 3. **P12** — ✅ **Resolvido**. Corrida de CMake em `cpp_parity` serializada.
 4. **P13** — ✅ **Resolvido**. SR corrigida (`SR_48K_ONLY`) e `wavenet_official` v2 marcado
    known-divergent (mesma classe do Lite); gate v1 (ESR 3,5e-2) mantido, sem afrouxar.
-5. **P1** (WaveNet Lite + Official divergentes) — Confirmado como arquitetural (não quantização).
-   f32 path não resolveu. Investigar causa nas geometrias não-padrão (CH=12 Lite, free-geom
-   Official): bias-tuning, interleaving 4-wide, ou caminho dinâmico.
+5. **P1** (WaveNet Lite + Official divergentes) — **🎯 ROOT CAUSE ISOLADO (jun/2026):** wrap do
+   ring-buffer `WaveNetLayerState::advance_frames` dessincroniza do espelho `MirroredBuffer`
+   quando `channels ∤ página` (CH=12/6 únicos afetados; prova aritmética 1024%12=4, 524288%12=8).
+   **NÃO é arquitetural/quantização/dual-frame** (todos refutados). Fix: alinhar `MirroredBuffer`
+   a múltiplo de `channels`. Validação: restaurar assert de invariância + reabilitar golden +
+   cross-validação C++. Tarefas detalhadas em `TODO-sprints.md`.
 6. **P9** (A2 UB blocos >64) — corrigir antes de publicar suporte a blocos grandes;
    opções documentadas em P9.
 7. **P4 + P5** (silêncio não-nulo + pico de latência) — P4 documentado/fiel C++; P5 pendente

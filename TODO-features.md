@@ -403,45 +403,6 @@ F1/F2/F3 e o corpus de F12) devem seguir as mesmas regras:
 
 ---
 
-## Modelo de encomenda ao Claude
-
-/revisor-auditor Vamos agora atacar os problemas identificados nos nossos arquivos "TODO". Começando por este aqui:
-TODO-features.md:82-82
-
-```cite
-F1 — 🔴 WaveNet genérico (dispatcher dinâmico)
-```
-
-Transversalmente vamos pegar conhecimentos também destes achados aqui:
-TODO-problemas.md:75-75
-
-```cite
-P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear
-```
-
-TODO-problemas.md:101-101
-
-```cite
-P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa)
-```
-
-TODO-problemas.md:127-127
-
-```cite
-P4 — 🟡 WaveNet não é "silencioso no silêncio"
-```
-
-TODO-optimize.md:264-264
-
-```cite
-O5 — 🟢 Auditoria de cobertura SIMD x86-64-v3 no hot-spot (índice + guard-rail)
-```
-
-Pesquise a fundo estes achados e entenda a situação. Use o NAMcore como a "bíblia de correção", mas já vá buscando otimizações e SIMD/ISAs modernos seguros on-the-fly.
-Ao final acione a skill "planejador-arquiteto" para organizar isto em tarefas seguras e rápidas para entregar valor. Todas super detalhadas e precisas para uma execução segura.
-
----
-
 ## Nota de método (para o `planejador-arquiteto`, quando acionado)
 
 - **Não** transformar estes F em sprints ainda (instrução do PO). Este documento é o **insumo**.
