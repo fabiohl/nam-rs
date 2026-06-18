@@ -110,11 +110,14 @@ pub fn f32_to_f16_bits(f: f32) -> u16 {
     if dropped > 0x1000 || (dropped == 0x1000 && (m & 1) != 0) {
         m += 1;
         if m >= 0x400 {
-            // Mantissa overflow → bump exponent.
+            // Mantissa overflow → carry into the exponent (mantissa wraps to 0).
+            // Must ADD the carry (0x0400) to the exponent field, not OR it:
+            // when the exponent field is odd, bit 10 is already set and an OR
+            // would silently fail to increment the exponent (halving the value).
             if e + 0x0400 >= 0x7C00 {
                 return sign | 0x7C00; // Overflow to Inf
             }
-            return sign | e | 0x0400;
+            return sign | (e + 0x0400);
         }
     }
     sign | e | m
@@ -273,6 +276,38 @@ mod tests {
                 "F16C encode mismatch for f={:e} (f16 bits 0x{:04X})",
                 f, bits
             );
+        }
+    }
+
+    /// Regression for the mantissa-overflow carry bug (half.rs:117): values that
+    /// round UP into a mantissa overflow must carry into the exponent. The
+    /// previous code used `e | 0x0400`, which silently failed to increment the
+    /// exponent when the exponent field was odd (e.g. 7.9999 → 4.0 instead of
+    /// 8.0). `exhaustive_encode_f16c_vs_software` missed it because it only feeds
+    /// exact f16 values, which never trigger the rounding path. Here we sweep
+    /// the non-exact rounding windows just below each power-of-two boundary and
+    /// compare against the hardware F16C encoder (ground truth).
+    #[test]
+    fn encode_rounding_overflow_carry_vs_f16c() {
+        // Sweep the upper rounding window of every binary16 exponent octave,
+        // including the odd-exponent boundaries (±2, ±8, ±32, ±0.5, ...).
+        for exp in -14i32..=15 {
+            let boundary = 2.0f32.powi(exp + 1);
+            // Walk just below the boundary through the last few representable
+            // f16 steps, where rounding may overflow the mantissa.
+            for k in 1..=4096u32 {
+                let f = boundary * (1.0 - (k as f32) * 1e-7);
+                for &v in &[f, -f] {
+                    // SAFETY: exhaustive test on x86_64 with F16C (x86-64-v3 guarantees it).
+                    let expected = unsafe { f32_to_f16_bits_f16c(v) };
+                    let got = f32_to_f16_bits(v);
+                    assert_eq!(
+                        got, expected,
+                        "encoder carry mismatch for v={:e}: software=0x{:04X} hardware=0x{:04X}",
+                        v, got, expected
+                    );
+                }
+            }
         }
     }
 }
