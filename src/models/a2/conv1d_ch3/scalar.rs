@@ -6,6 +6,11 @@
 //! These functions are bit-exact with the SIMD kernels but use pure f32 scalar math.
 
 use crate::models::a2::params::A2_LEAKY_SLOPE;
+use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
+
+/// Maximum frames per kernel invocation.
+/// Guaranteed by `process()` internal chunking (T2.1).
+const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 
 // Scalar reference for A2Conv1dCh3 — oracle for parity tests
 // =============================================================================
@@ -71,7 +76,8 @@ pub fn layer_forward_ch3_scalar_ref(
 ) {
     const CH: usize = 3;
     const CH_PAD: usize = 4;
-    let mut z_buf = [0.0f32; 64 * CH_PAD];
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES); // process() guarantees ≤ MAX_KERNEL_FRAMES (T2.1)
+    let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * CH_PAD];
 
     for f in 0..num_frames {
         let frame_idx = frame_start + f;

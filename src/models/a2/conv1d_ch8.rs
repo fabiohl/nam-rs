@@ -30,7 +30,12 @@
 
 use crate::math::common::AlignedVec;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
+use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use core::arch::x86_64::*;
+
+/// Maximum frames per kernel invocation.
+/// Guaranteed by `process()` internal chunking (T2.1).
+const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 
 // =============================================================================
 // A2Conv1dCh8 — CH=8 convolution with col-major-per-tap f32 weights
@@ -288,9 +293,9 @@ pub unsafe fn layer_forward_ch8_block(
     debug_assert!(layer_in.len() >= num_frames * ch);
     debug_assert!(input_cond.len() >= num_frames);
 
-    let max_frames = 64;
-    debug_assert!(num_frames <= max_frames);
-    let mut z_buf = [0.0f32; 64 * 8];
+    // `process()` guarantees ≤ MAX_KERNEL_FRAMES via internal chunking (T2.1).
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES);
+    let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * 8];
 
     conv1d_ch8_t4_avx2(
         &conv.weights,
@@ -384,9 +389,9 @@ pub fn layer_forward_ch8_scalar_ref(
     is_last: bool,
 ) {
     let ch: usize = 8;
-    let max_frames = 64;
-    debug_assert!(num_frames <= max_frames);
-    let mut z_buf = [0.0f32; 64 * 8];
+    // `process()` guarantees ≤ MAX_KERNEL_FRAMES via internal chunking (T2.1).
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES);
+    let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * 8];
 
     conv1d_ch8_block_ref(
         conv_weights,

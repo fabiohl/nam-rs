@@ -7,7 +7,12 @@
 
 use super::A2Conv1dCh3;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
+use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use core::arch::x86_64::*;
+
+/// Maximum frames per kernel invocation.
+/// Guaranteed by `process()` internal chunking (T2.1).
+const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 
 // AVX2 kernels — unrolled CH=3, f32 native weights, no f16 decode
 // =============================================================================
@@ -243,13 +248,13 @@ pub unsafe fn layer_forward_ch3_block(
     debug_assert!(mixin_w.len() >= CH);
     debug_assert!(l1x1_w.len() >= CH * CH);
     debug_assert!(l1x1_b.len() >= CH);
-    debug_assert!(num_frames <= 64);
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES); // process() guarantees ≤ MAX_KERNEL_FRAMES (T2.1)
     debug_assert!(layer_in.len() >= num_frames * CH);
     debug_assert!(input_cond.len() >= num_frames);
 
     // ── 1. Conv: frame-by-frame unrolled f32-native kernel ─────────────────
     // z_buf stores conv output: [num_frames][4] (CH=3 + 1 pad lane)
-    let mut z_buf = [0.0f32; 64 * CH_PAD]; // 256 f32, stack-allocated
+    let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * CH_PAD]; // 256 f32, stack-allocated
 
     for f in 0..num_frames {
         let frame_idx = frame_start + f;

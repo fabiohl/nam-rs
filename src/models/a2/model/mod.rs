@@ -183,6 +183,14 @@ impl<const CH: usize> WaveNetA2<CH> {
     }
 
     /// Reallocates internal buffers to support the given maximum block size.
+    ///
+    /// Any block size is accepted: processing is internally chunked into
+    /// sub-blocks of ≤ `WAVENET_MAX_NUM_FRAMES` (64) by [`process`], matching
+    /// the kernel scratch buffer capacity (T2.1). Call this to inform the model
+    /// of the negotiated CLAP/audio host block size so that internal ring
+    /// buffers are sized correctly.
+    ///
+    /// If `max_buf` is smaller than or equal to the current capacity, this is a no-op.
     pub fn set_max_buffer_size(&mut self, max_buf: usize) {
         if max_buf <= self.max_buffer_size {
             return;

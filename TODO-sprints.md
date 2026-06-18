@@ -212,7 +212,7 @@ paridade C++ da A2 inalterada (golden A2-Full/A2-Lite).
 **Risco**: 🔴 alto (hot-path A2 + estado temporal). Mitigação: golden A2 vs C++ antes/depois,
 heap-audit, e o teste de varredura de bloco >64 de T2.3.
 
-### T2.2 — 🟢 Tornar `set_max_buffer_size` coerente + remover `debug_assert` enganoso
+### T2.2 — 🟢 Tornar `set_max_buffer_size` coerente + remover `debug_assert` enganoso [DONE]
 
 **Por quê**: após T2.1 o kernel nunca recebe >64, então o `debug_assert!(num_frames <= 64)` vira
 documentação interna correta; e `set_max_buffer_size` pode crescer com segurança.
@@ -231,6 +231,12 @@ documentação interna correta; e `set_max_buffer_size` pode crescer com seguran
 literais `64` órfãos nos kernels (se a sub-tarefa opcional for feita).
 
 **Risco**: 🟢 baixo.
+
+> **Implementado**: (1) doc-comment de `set_max_buffer_size` (`model/mod.rs:185`) explica o contrato
+> de chunk interno; (2) `const MAX_KERNEL_FRAMES: usize = 64` definida em `conv1d_ch8.rs:37`,
+> `conv1d_ch3/simd.rs:14` e `conv1d_ch3/scalar.rs:12`, substituindo todos os literais `64` e
+> `max_frames = 64` mágicos nos 4 kernels; (3) comentários nos `debug_assert!` dos kernels
+> documentam que `process()` garante `≤ MAX_KERNEL_FRAMES` via chunking (T2.1).
 
 ### T2.3 — 🟢 Estender cobertura de invariância de bloco >64 + regressão de UB
 
