@@ -186,7 +186,9 @@ clamp (`src/models/a2/model/mod.rs:186-216`); `process()` faz `nf = num_frames.m
 **fixo de 64 frames** (`conv1d_ch8.rs:293,389` = `[f32; 64*8]`; `conv1d_ch3/{simd.rs:252,
 scalar.rs:74}` = `[f32; 64*4]`). Com `nf>64` o kernel escreve `nf*ch` > capacidade → UB.
 
-### T2.1 — 🔴 Re-chunk interno em `A2::process` a ≤64 frames (FIX DE RAIZ — máxima atenção)
+### T2.1 — 🔴 Re-chunk interno em `A2::process` a ≤64 frames (FIX DE RAIZ — máxima atenção) [DONE]
+
+> **Implementado**: `src/models/a2/model/mod.rs:242` — `process()` agora executa um laço `while pos < nf_total` idêntico ao padrão WaveNet A1. Cada sub-bloco ≤64 frames alimenta os kernels existentes sem tocá-los. Golden vectors (A2-Full/A2-Lite), self-consistency, prewarm e smoke tests todos verdes. RT-safety: zero alocação, só fatiamento de slices.
 
 **Por quê**: corrige a raiz espelhando o padrão já consagrado do WaveNet A1; é a opção (a) do P9 e
 a recomendação do auditor.

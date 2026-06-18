@@ -235,201 +235,193 @@ impl<const CH: usize> WaveNetA2<CH> {
     ///
     /// # Block Size Contract
     ///
-    /// The caller **must** ensure `input.len() <= max_buffer_size`. Exceeding this limit
-    /// causes silent truncation: only the first `max_buffer_size` frames are processed
-    /// and the remaining are left as zeros. This matches the CLAP/audio host contract
-    /// which guarantees `block_size <= max_block_size` negotiated at activation.
+    /// Any input size ≤ `max_buffer_size` is safe: processing is internally chunked
+    /// into sub-blocks of ≤ `WAVENET_MAX_NUM_FRAMES` (64), matching the kernel scratch
+    /// buffer capacity. Exceeding `max_buffer_size` causes silent truncation: only the
+    /// first `max_buffer_size` frames are processed and the remaining are left as zeros.
+    /// This matches the CLAP/audio host contract which guarantees
+    /// `block_size <= max_block_size` negotiated at activation.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let num_frames = input.len();
-        if num_frames == 0 {
+        let total = input.len();
+        if total == 0 {
             return;
         }
 
-        output[..num_frames].fill(0.0);
+        output[..total].fill(0.0);
 
         if self.layers.is_empty() {
-            self.head_write_pos += num_frames;
+            self.head_write_pos += total;
             return;
         }
 
         debug_assert!(
-            num_frames <= self.max_buffer_size,
-            "process: input ({num_frames}) > max_buffer_size ({}) — host violated block-size contract",
+            total <= self.max_buffer_size,
+            "process: input ({total}) > max_buffer_size ({}) — host violated block-size contract",
             self.max_buffer_size
         );
-        let nf = num_frames.min(self.max_buffer_size);
-        let ch = CH;
+        let nf_total = total.min(self.max_buffer_size);
 
-        // ── Phase 0: rechannel pre-scaling: input × rechannel_w → layer_in ──
-        // Each of the CH channels receives a scaled copy of the mono input.
-        for (f, x) in input.iter().take(nf).enumerate() {
-            let base = f * ch;
-            for c in 0..ch {
-                let rw = f16_bits_to_f32(self.rechannel_w[c]);
-                self.layer_in[base + c] = rw * x;
-            }
-        }
+        let mut pos = 0;
+        while pos < nf_total {
+            let nf = (nf_total - pos).min(WAVENET_MAX_NUM_FRAMES);
+            let ch = CH;
 
-        let head_keep = A2_HEAD_KERNEL_SIZE - 1;
-        let head_cap = self.head_ring_mask + 1;
-        // If the write position would overflow past the ring buffer end,
-        // memmove the last K-1 tail samples to position 0 before wrapping.
-        if self.head_write_pos + nf > head_cap {
-            let keep_start = self.head_write_pos - head_keep;
-            let keep_bytes = head_keep * ch;
-            let src = keep_start * ch;
-            self.head_accum.copy_within(src..src + keep_bytes, 0);
-            self.head_write_pos = head_keep;
-        }
-        let head_wp = self.head_write_pos;
-
-        for li in 0..A2_NUM_LAYERS {
-            let is_first = li == 0;
-            let is_last = li == A2_NUM_LAYERS - 1;
-            let ring_size = self.layer_ring_sizes[li];
-            let lookback = self.layer_lookbacks[li];
-            let max_lookback_cols = lookback / ch;
-            let bs = self.layer_buffer_starts[li];
-
-            debug_assert!(bs >= lookback);
-            debug_assert!(bs + nf * ch <= ring_size * 2);
-
-            // Write this block's input into the ring buffer at current start position.
-            {
-                let buf = &mut self.layer_buffers[li];
-                buf[bs..bs + nf * ch].copy_from_slice(&self.layer_in[..nf * ch]);
+            // ── Phase 0: rechannel pre-scaling: input × rechannel_w → layer_in ──
+            for (f, x) in input[pos..pos + nf].iter().enumerate() {
+                let base = f * ch;
+                for c in 0..ch {
+                    let rw = f16_bits_to_f32(self.rechannel_w[c]);
+                    self.layer_in[base + c] = rw * x;
+                }
             }
 
-            // Advance ring buffer start. If the next block would overflow the 2× virtual
-            // mapping, rewind by subtracting ring_size (branchless mirror access via MirroredBuffer).
-            if bs + nf * ch + self.max_buffer_size * ch > ring_size * 2 {
-                self.layer_buffer_starts[li] = bs + nf * ch - ring_size;
-            } else {
-                self.layer_buffer_starts[li] = bs + nf * ch;
+            let head_keep = A2_HEAD_KERNEL_SIZE - 1;
+            let head_cap = self.head_ring_mask + 1;
+            if self.head_write_pos + nf > head_cap {
+                let keep_start = self.head_write_pos - head_keep;
+                let keep_bytes = head_keep * ch;
+                let src = keep_start * ch;
+                self.head_accum.copy_within(src..src + keep_bytes, 0);
+                self.head_write_pos = head_keep;
             }
+            let head_wp = self.head_write_pos;
 
-            {
-                let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
-                let layer = &self.layers[li];
+            for li in 0..A2_NUM_LAYERS {
+                let is_first = li == 0;
+                let is_last = li == A2_NUM_LAYERS - 1;
+                let ring_size = self.layer_ring_sizes[li];
+                let lookback = self.layer_lookbacks[li];
+                let max_lookback_cols = lookback / ch;
+                let bs = self.layer_buffer_starts[li];
 
-                // Layer processing dispatch: CH=3 SIMD → CH=8 SIMD → scalar fallback.
-                // Each path performs the same logical steps:
-                // 1. Dilated conv (SIMD or scalar) over the receptive-field window
-                // 2. Input mixin: `z += mixin[c] * input`
-                // 3. Gated activation (leaky-ReLU with slope 0.01)
-                // 4. Head accumulation (first layer overwrites, subsequent add)
-                // 5. 1×1 projection for the next layer (unless this is the last layer)
+                debug_assert!(bs >= lookback);
+                debug_assert!(bs + nf * ch <= ring_size * 2);
 
-                if let Some(ch3_conv) = &layer.ch3_conv {
-                    unsafe {
-                        super::conv1d_ch3::layer_forward_ch3_block(
-                            ch3_conv,
-                            &layer.mixin_w,
-                            &layer.l1x1_w,
-                            &layer.l1x1_b,
-                            history,
-                            max_lookback_cols,
-                            nf,
-                            &input[..nf],
-                            &mut self.head_accum,
-                            head_wp,
-                            &mut self.layer_in,
-                            is_first,
-                            is_last,
-                        );
-                    }
-                    continue;
+                {
+                    let buf = &mut self.layer_buffers[li];
+                    buf[bs..bs + nf * ch].copy_from_slice(&self.layer_in[..nf * ch]);
                 }
 
-                if let Some(ch8_conv) = &layer.ch8_conv {
-                    unsafe {
-                        super::conv1d_ch8::layer_forward_ch8_block(
-                            ch8_conv,
-                            &layer.mixin_w,
-                            &layer.l1x1_w,
-                            &layer.l1x1_b,
-                            history,
-                            max_lookback_cols,
-                            nf,
-                            &input[..nf],
-                            &mut self.head_accum,
-                            head_wp,
-                            &mut self.layer_in,
-                            is_first,
-                            is_last,
-                        );
-                    }
-                    continue;
+                if bs + nf * ch + self.max_buffer_size * ch > ring_size * 2 {
+                    self.layer_buffer_starts[li] = bs + nf * ch - ring_size;
+                } else {
+                    self.layer_buffer_starts[li] = bs + nf * ch;
                 }
 
-                // ── Scalar fallback: per-frame, per-layer ────────────────
-                for (f, x) in input.iter().take(nf).enumerate() {
-                    let head_col = head_wp + f;
-                    let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
-                    let mut frame_z = [0.0f32; 8];
-                    let z_slice = &mut frame_z[..ch];
+                {
+                    let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
+                    let layer = &self.layers[li];
 
-                    // Frame index into the history buffer: lookback offset + frame offset.
-                    let frame_idx = max_lookback_cols + f;
-
-                    // ── Phase 1: dilated conv over receptive field ──────
-                    unsafe {
-                        layer
-                            .conv
-                            .process_single_frame(history, z_slice, frame_idx, None);
-                    }
-
-                    // ── Phase 2: input mixin (conditioning) ─────────────
-                    let mixin: &[f32] = &layer.mixin_w;
-                    for c in 0..ch {
-                        z_slice[c] += mixin[c] * x;
-                    }
-
-                    // ── Phase 3: gated activation (leaky-ReLU, slope 0.01) ──
-                    for z in z_slice.iter_mut().take(ch) {
-                        if *z < 0.0 {
-                            *z *= 0.01;
+                    if let Some(ch3_conv) = &layer.ch3_conv {
+                        unsafe {
+                            super::conv1d_ch3::layer_forward_ch3_block(
+                                ch3_conv,
+                                &layer.mixin_w,
+                                &layer.l1x1_w,
+                                &layer.l1x1_b,
+                                history,
+                                max_lookback_cols,
+                                nf,
+                                &input[pos..pos + nf],
+                                &mut self.head_accum,
+                                head_wp,
+                                &mut self.layer_in,
+                                is_first,
+                                is_last,
+                            );
                         }
+                        continue;
                     }
 
-                    // ── Phase 4: head accumulation ─────────────────────
-                    let head_off = head_col * ch;
-                    if is_first {
-                        self.head_accum[head_off..head_off + ch].copy_from_slice(z_slice);
-                    } else {
-                        for (c, z_val) in z_slice.iter().enumerate().take(ch) {
-                            self.head_accum[head_off + c] += *z_val;
+                    if let Some(ch8_conv) = &layer.ch8_conv {
+                        unsafe {
+                            super::conv1d_ch8::layer_forward_ch8_block(
+                                ch8_conv,
+                                &layer.mixin_w,
+                                &layer.l1x1_w,
+                                &layer.l1x1_b,
+                                history,
+                                max_lookback_cols,
+                                nf,
+                                &input[pos..pos + nf],
+                                &mut self.head_accum,
+                                head_wp,
+                                &mut self.layer_in,
+                                is_first,
+                                is_last,
+                            );
                         }
+                        continue;
                     }
 
-                    // ── Phase 5: 1×1 projection to next layer ──────────
-                    if !is_last {
-                        let l1x1: &[f32] = &layer.l1x1_w;
-                        let l1x1_b: &[f32] = &layer.l1x1_b;
+                    // ── Scalar fallback: per-frame, per-layer ────────────────
+                    for (f, x) in input[pos..pos + nf].iter().enumerate() {
+                        let head_col = head_wp + f;
+                        let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
+                        let mut frame_z = [0.0f32; 8];
+                        let z_slice = &mut frame_z[..ch];
+
+                        let frame_idx = max_lookback_cols + f;
+
+                        // ── Phase 1: dilated conv over receptive field ──────
+                        unsafe {
+                            layer
+                                .conv
+                                .process_single_frame(history, z_slice, frame_idx, None);
+                        }
+
+                        // ── Phase 2: input mixin (conditioning) ─────────────
+                        let mixin: &[f32] = &layer.mixin_w;
                         for c in 0..ch {
-                            let mut sum = l1x1_b[c];
-                            for u in 0..ch {
-                                sum += l1x1[u * ch + c] * z_slice[u];
+                            z_slice[c] += mixin[c] * x;
+                        }
+
+                        // ── Phase 3: gated activation (leaky-ReLU, slope 0.01) ──
+                        for z in z_slice.iter_mut().take(ch) {
+                            if *z < 0.0 {
+                                *z *= 0.01;
                             }
-                            lin_slice[c] += sum;
+                        }
+
+                        // ── Phase 4: head accumulation ─────────────────────
+                        let head_off = head_col * ch;
+                        if is_first {
+                            self.head_accum[head_off..head_off + ch].copy_from_slice(z_slice);
+                        } else {
+                            for (c, z_val) in z_slice.iter().enumerate().take(ch) {
+                                self.head_accum[head_off + c] += *z_val;
+                            }
+                        }
+
+                        // ── Phase 5: 1×1 projection to next layer ──────────
+                        if !is_last {
+                            let l1x1: &[f32] = &layer.l1x1_w;
+                            let l1x1_b: &[f32] = &layer.l1x1_b;
+                            for c in 0..ch {
+                                let mut sum = l1x1_b[c];
+                                for u in 0..ch {
+                                    sum += l1x1[u * ch + c] * z_slice[u];
+                                }
+                                lin_slice[c] += sum;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Update head write position (masked to ring size).
-        self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
+            self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
 
-        // ── Final passthrough: head conv (K=16, CH→1) + head_scale → output ──
-        if let Some(ref head) = self.head_conv {
-            head.process(
-                &self.head_accum,
-                self.head_write_pos,
-                self.head_ring_mask,
-                nf,
-                &mut output[..nf],
-            );
+            if let Some(ref head) = self.head_conv {
+                head.process(
+                    &self.head_accum,
+                    self.head_write_pos,
+                    self.head_ring_mask,
+                    nf,
+                    &mut output[pos..pos + nf],
+                );
+            }
+
+            pos += nf;
         }
     }
 
