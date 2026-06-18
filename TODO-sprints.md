@@ -130,7 +130,7 @@ a inferência WaveNet (não só Lite). Exige revisão cuidadosa e golden C++ ant
 todos os SKUs (Standard/Feather/Nano **não podem regredir** — eles já passavam), e revisão do
 `lcm`/overflow.
 
-### T1.3 — 🟠 Validação contra C++, reabilitação do golden e endurecimento dos gates
+### T1.3 — 🟠 Validação contra C++, reabilitação do golden e endurecimento dos gates [DONE]
 
 **Por quê**: provar paridade com a bíblia (NAMCore) e **fechar a janela** que mascarava P1.
 

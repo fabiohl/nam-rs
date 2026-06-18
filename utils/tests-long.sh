@@ -67,7 +67,7 @@ REQUIRED_GOLDEN_MODELS=(
     "lstm_1x16" "lstm_2x8" "lstm_official"
 )
 # v2 ALL_SR: 44100, 48000, 88200, 96000, 192000
-V2_ALL_SR_MODELS=("wavenet_feather" "wavenet_nano" "wavenet_a1_standard")
+V2_ALL_SR_MODELS=("wavenet_feather" "wavenet_nano" "wavenet_a1_standard" "wavenet_lite")
 V2_ALL_SR=(44100 48000 88200 96000 192000)
 # v2 SR_EX_192K: 44100, 48000, 88200, 96000
 V2_EX_192K_MODELS=("lstm_1x16" "lstm_2x8")

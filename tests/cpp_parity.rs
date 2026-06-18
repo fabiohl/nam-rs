@@ -25,13 +25,13 @@
 //! | WaveNet | Standard | 134.6 dB    | 105 dB    | 29.6 dB |
 //! | WaveNet | Feather  | 133.1 dB    | 100 dB    | 33.1 dB |
 //! | WaveNet | Nano     | 132.0 dB    | 95 dB     | 37.0 dB |
-//! | WaveNet | Lite     | 0.9 dB      | 40 dB     | —       |
+//! | WaveNet | Lite     | 117.4 dB    | 100 dB    | 17.4 dB |
 //! | WaveNet | A2-Full  | 79.2 dB     | 70.0 dB   | 9.2 dB  |
 //! | WaveNet | A2-Lite  | 90.7 dB     | 80.0 dB   | 10.7 dB |
 //! | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //! | Linear  | —        | bit-exact   | 140 dB    | —       |
 //!
-//! Lite (CH=12) is a known failure — P1 persists post f32, investigar separadamente.
+//! Lite (CH=12) P1 resolved (T1.2 ringbuffer alignment fix) — now matches C++.
 //!
 //! ## Multi-Sample-Rate Support
 //!
@@ -458,9 +458,7 @@ fn live_cross_validation_wavenet_nano() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_lite() {
-    eprintln!(
-        "SKIP: WaveNet Lite (CH=12) is known-divergent (T1.2) - skipping to avoid false gate"
-    );
+    run_v1("BossWN-lite.nam", "wavenet_lite", "Live WaveNet Lite");
 }
 
 #[test]

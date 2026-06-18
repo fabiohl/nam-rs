@@ -27,6 +27,13 @@ const fn lcm(a: usize, b: usize) -> Option<usize> {
     a_div_g.checked_mul(b)
 }
 
+/// Rounds `value` up to the closest multiple of `align`.
+/// Panics if `align` is zero.
+fn round_up_to_multiple(value: usize, align: usize) -> Option<usize> {
+    let padded = value.checked_add(align - 1)?;
+    Some(padded - (padded % align))
+}
+
 impl<T> MirroredBuffer<T> {
     /// Creates a new mirrored buffer with huge-page preference.
     ///
@@ -123,9 +130,8 @@ impl<T> MirroredBuffer<T> {
                 ));
             }
         };
-        let align_mask = align_bytes - 1;
-        let size_bytes = match requested_bytes.checked_add(align_mask) {
-            Some(val) => val & !align_mask,
+        let size_bytes = match round_up_to_multiple(requested_bytes, align_bytes) {
+            Some(v) => v,
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -252,9 +258,8 @@ impl<T> MirroredBuffer<T> {
                 ));
             }
         };
-        let align_mask = align_bytes - 1;
-        let size_bytes = match requested_bytes.checked_add(align_mask) {
-            Some(val) => val & !align_mask,
+        let size_bytes = match round_up_to_multiple(requested_bytes, align_bytes) {
+            Some(v) => v,
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,

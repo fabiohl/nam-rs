@@ -200,3 +200,27 @@ mod dense_tests;
 mod dynamic_parity;
 #[path = "test_files/wavenet_tests.rs"]
 mod wavenet_tests;
+
+#[test]
+fn wavenet_ringbuffer_alignment() {
+    // T1.3 guard-rail: MirroredBuffer size MUST be multiple of channels
+    // for all SKU-relevant channel counts post-P1 fix (T1.2).
+    // CH=12 and CH=6 were the pre-fix offenders (1024%12=4, 1024%6=4).
+    let rf = 128;
+    for &ch in &[2, 3, 4, 6, 8, 12, 16] {
+        let state = WaveNetLayerState::new(ch, rf, 0)
+            .unwrap_or_else(|e| panic!("WaveNetLayerState::new failed for CH={ch}: {e}"));
+        let size = state.layer_buffer.size();
+        assert!(
+            size.is_multiple_of(ch),
+            "Ringbuffer size ({size}) not multiple of channels ({ch}); \
+             alignment guard-rail violated post-T1.2 fix"
+        );
+        assert!(
+            size >= rf
+                + crate::models::wavenet::common::LAYER_ARRAY_BUFFER_PADDING
+                    * crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES,
+            "Ringbuffer size ({size}) too small for RF={rf} with CH={ch}"
+        );
+    }
+}

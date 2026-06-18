@@ -23,8 +23,8 @@
 //! | Architecture            | Models tested                                      |
 //! | ----------------------- | -------------------------------------------------- |
 //! | WaveNet A1              | Standard (CH=16), Feather (CH=8), Nano (CH=4),     |
-//! |                         | Lite (CH=12, known-divergent output but engine     |
-//! |                         | deterministic), A1 Standard Official,              |
+//! |                         | Lite (CH=12, deterministic post-P1 fix),            |
+//! |                         | A1 Standard Official,                               |
 //! |                         | Official (CH=3 free geom, dynamic path)            |
 //! | WaveNet A2              | Full (CH=8), Lite (CH=3), Container (both)         |
 //! | LSTM                    | 1×16, 2×8, Official                                |

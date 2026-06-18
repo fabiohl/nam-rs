@@ -128,19 +128,11 @@ fn test_nondist_models_validation() {
             process_in_blocks(&mut test_model, &input, &mut test_output, bs);
 
             let test_mse = compute_mse(&ref_output, &test_output);
-            // NOTE (audit jun/2026): block-size invariance is a hard correctness goal, but
-            // real WaveNet Lite (CH=12) models violate it (single-frame vs dual-frame tiling
-            // divergence) — this is the pre-existing P1 finding (TODO-problemas.md §P1), tracked
-            // separately (its golden is already #[ignore]). To avoid a known-issue red while
-            // P1 is open, divergence is reported as a visible warning rather than a hard fail.
-            // All other architectures must stay invariant; revisit (restore hard assert) once P1
-            // is resolved.
-            if test_mse >= 1e-7 {
-                eprintln!(
-                    "WARN [P1] Block size invariance violated for {filename} at \
-                     block_size={bs} (MSE={test_mse:.6e}) — tracked under TODO-problemas.md §P1"
-                );
-            }
+            assert!(
+                test_mse < 1e-7,
+                "Block size invariance violated for {filename} at \
+                 block_size={bs} (MSE={test_mse:.6e})"
+            );
         }
 
         // 4. Stability / Finiteness Check

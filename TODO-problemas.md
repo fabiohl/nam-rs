@@ -33,7 +33,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 | ID      | Achado                                                                                                                                                                                                                                                                               | Severidade                      | Eixo                  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:-------------------------------:| --------------------- |
-| **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ (SNR ≈ **0,9 dB**) — **🎯 ROOT CAUSE ISOLADO (jun/2026):** wrap do ring-buffer `WaveNetLayerState` dessincroniza do espelho `MirroredBuffer` quando `channels` ∤ página (CH=12/6); corrompe histórico de dilatação                         | 🔴 Alta (🎯 root cause)         | Soundness/Fidelidade  |
+| **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ (SNR ≈ **0,9 dB**) — **✅ RESOLVIDO (jun/2026, T1.2+T1.3):** wrap do ring-buffer corrigido com `MirroredBuffer::new_aligned`; golden reabilitado, invariância de bloco restaurada, live cross-validation ativa | ✅ Resolvido                   | Soundness/Fidelidade  |
 | **P2**  | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%) — ✅ [RESOLVIDO] (T-HF6.6, nuke completa)                                                                                                                                    | 🟠 Média-Alta                   | Fidelidade            |
 | **P3**  | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel — ✅ [RESOLVIDO] (T-HF6.6, thresholds SNR 85-105 dB)                                                                                                      | 🟠 Média                        | Cobertura/Fidelidade  |
 | **P4**  | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                                                                                                                                                             | 🟡 Média-Baixa                  | Correção/DSP          |
@@ -50,7 +50,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## P1 — 🔴 WaveNet "Lite" (CH=12) não bate com o C++ de referência — 🎯 ROOT CAUSE ISOLADO (jun/2026, revisor-auditor)
+## P1 — ✅ WaveNet "Lite" (CH=12) — RESOLVIDO (T1.2+T1.3, jun/2026)
+
+> **✅ RESOLVIDO (jun/2026, T1.2+T1.3).** Root cause: wrap do ring-buffer
+> `MirroredBuffer` dessincronizava quando `channels ∤ page_size` (CH=12/6).
+> **Fix (T1.2):** `MirroredBuffer::new_aligned` garante `size_elements` múltiplo de
+> `channels` via `lcm(page, channels*4)`. **Validação (T1.3):** assert de invariância
+> de bloco restaurado, golden `wavenet_lite` reabilitado, `live_cross_validation_wavenet_lite`
+> reativada, teste de regressão `wavenet_ringbuffer_alignment` para CH∈{12,6}.
 
 > **🎯 CAUSA RAIZ DEFINITIVA (jun/2026 — auditoria revisor-auditor).** A divergência **NÃO é
 > numérica** (FastMath/quantização — refutado em T-HF6.6) **nem do conv dual-frame** (refutado
@@ -147,9 +154,8 @@ visível** (`WARN [P1]`) para não derrubar a suíte por um problema já rastrea
 `assert` rígido quando P1 for resolvido.
 
 **Por que importa ao PO**
-É o achado de maior impacto de produto: uma classe inteira de modelos (WaveNet Lite,
-CH=12) está silenciosamente "errada" em relação à referência que o projeto promete
-espelhar. Afeta credibilidade ("é um NAM fiel?").
+✅ RESOLVIDO. Era o achado de maior impacto de produto — corrigido com o fix de
+alinhamento do ring-buffer (T1.2) e validado contra C++ (T1.3).
 
 **Sugestão de condução**
 ~~A hipótese de que o caminho f32 exato resolveria P1 foi **refutada** (T-HF6.6). A divergência
@@ -160,6 +166,8 @@ root cause acima (jun/2026).** A causa não é arquitetural do CH=12 nem do inte
 alinhando o `MirroredBuffer` a múltiplo de `channels` (ver fix proposto no bloco 🎯 acima);
 após o fix, **reabilitar o golden** e **restaurar o assert** de invariância. A divergência do
 `wavenet_official` (free-geom) deve ser reverificada após o fix — provavelmente é a mesma raiz.
+
+**✅ TUDO CONCLUÍDO (T1.2+T1.3, jun/2026).** Fix implementado e validado contra C++.
 
 ---
 

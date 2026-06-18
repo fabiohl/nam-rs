@@ -279,8 +279,10 @@ echo "[5b/5] Generating v2 multi-SR golden vectors..."
 # error is EXPECTED and handled by the SKIP path below; those models legitimately
 # produce only the 48 kHz golden (tests use SR_48K_ONLY). It is not a failure.
 # `wavenet_lite` is intentionally absent (known-divergent, P1 — no v2 coverage).
+# P1 RESOLVIDO (T1.2): wavenet_lite re-added with full v2 multi-SR coverage.
 V2_MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16)"
+    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12)"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8)"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4)"
     "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"

@@ -298,13 +298,13 @@ fn snr_to_mse(snr_db: f64) -> f64 {
 ///   Standard (CH=16): 123-135 dB → floor 105 dB (18 dB margin)
 ///   Feather  (CH=8):  117-133 dB → floor 100 dB (17 dB margin)
 ///   Nano     (CH=4):  114-132 dB → floor  95 dB (19 dB margin)
-///   Lite     (CH=12):  0.9 dB   → floor  40 dB (P1 persists: f32 did not fix)
+///   Lite     (CH=12): 117.4 dB → floor 100 dB (17.4 dB margin, P1 ✅ T1.2+T1.3)
 ///
 /// Post-T-HF6.6 ESR gates (f32-exact):
 ///   Standard:             3e-11
 ///   Feather:              1e-10
 ///   Nano:                 3e-10
-///   Lite:                 1e-3  (P1 persists, known failure)
+///   Lite:                 1e-10 (P1 ✅ resolved T1.2+T1.3)
 ///   Default:              1e-3
 ///
 /// Returns `(mse_limit, min_snr_db, max_esr)`.
@@ -321,10 +321,10 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
             (snr_to_mse(snr_db), snr_db, Some(1e-10))
         }
         12 => {
-            // P1 persists post-f32: measured SNR=0.9 dB (BossWN-lite), SNR=-0.4 dB (v2 wavenet_lite).
-            // #[ignore] in golden_vectors to avoid a false gate.
-            let snr_db = 40.0;
-            (snr_to_mse(snr_db), snr_db, Some(1e-3))
+            // Post-P1 fix (T1.2+T1.3): measured SNR=117.4 dB, ESR=1.83e-12.
+            // Floor: 100 dB (17.4 dB margin, honest — on par with Feather CH=8).
+            let snr_db = 100.0;
+            (snr_to_mse(snr_db), snr_db, Some(1e-10))
         }
         16 => {
             let snr_db = 85.0;
@@ -416,13 +416,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 22.0;
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
         }
-        // --- WaveNet Lite (CH=12) — P1 persists ✗ ---
-        // Measured: SNR=0.9 dB (BossWN-lite v1), SNR=-0.4 dB (v2 @ 44.1 kHz), ESR=8.15e-1
-        // pós-nuke f32: path did NOT resolve P1 — divergence is architectural, not quantization.
-        // #[ignore] maintained; known-divergent.
+        // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
+        // Measured: SNR=117.4 dB, ESR=1.83e-12 (golden v1, post-T1.2+T1.3 fix).
+        // Floor: SNR - 17.4 dB margin, ESR factor ~55x
         "BossWN-lite" | "wavenet_lite" => {
-            let snr_db = 40.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-3)))
+            let snr_db = 100.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
         // --- WaveNet A2 Full (CH=8) ---
         // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5)
