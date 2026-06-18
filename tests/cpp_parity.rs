@@ -83,6 +83,16 @@ fn render_bin() -> PathBuf {
 }
 
 fn ensure_render_compiled() {
+    // Serialize the C++ render build across parallel test threads. All
+    // `live_cross_validation_*` tests share the same CMake build directory
+    // (`build/namcore_render`); on a cold run they would otherwise race to
+    // invoke `cmake` concurrently, corrupting the CMake cache and producing
+    // spurious "CMAKE_CXX_COMPILER not set" failures. The first thread builds;
+    // the rest wait and then find the binary already present.
+    use std::sync::Mutex;
+    static BUILD_LOCK: Mutex<()> = Mutex::new(());
+    let _guard = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
     let bin = render_bin();
     if bin.exists() {
         return;
