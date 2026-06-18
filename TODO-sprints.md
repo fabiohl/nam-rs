@@ -1255,7 +1255,7 @@ cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"
 
 ---
 
-### T-HF6.5 — Remover a feature flag `high-fidelity` do Cargo.toml (T-HF5.A.10 refeita)
+### T-HF6.5 — Remover a feature flag `high-fidelity` do Cargo.toml (T-HF5.A.10 refeita) [DONE]
 
 ```bash
 # Confirmar zero cfg restante
@@ -1274,7 +1274,7 @@ cargo clippy --all-targets 2>&1 | grep -cE "^warning|^error"   # deve ser 0
 
 ---
 
-### T-HF6.6 — Recalibração de goldens WaveNet (T-HF5.A.12, fecha P2/P3)
+### T-HF6.6 — Recalibração de goldens WaveNet (T-HF5.A.12, fecha P2/P3) [DONE]
 
 **⚡ Interrupção — humano executa (medir ESR real pós-nuke):**
 
@@ -1297,6 +1297,14 @@ cargo test --release --test golden_vectors -- --ignored --nocapture \
 * Fechar formalmente **P2** e recalibrar **P3** em `TODO-problemas.md`
 
 **Aceite**: thresholds WaveNet endurecidos com base em medição; P2 fechado; P1 reavaliado com veredicto.
+
+> ✅ **T-HF6.6 CONCLUÍDO (jun/2026).** Medição executada: WaveNet A1-Std SNR=123.4 dB, ESR=4.58e-13
+> (v1); SNR=101.8 dB @ 192kHz (v2 worst). Feather SNR=133.1 dB, Nano SNR=132.0 dB.
+> Thresholds recalibrados: A1-Std floor 85 dB/ESR 3e-9, Standard floor 105 dB/ESR 3e-11,
+> Feather floor 100 dB/ESR 1e-10, Nano floor 95 dB/ESR 3e-10. Heurísticas `wavenet_thresholds`
+> atualizadas para CH=4→95 dB, CH=8→100 dB, CH=16→85 dB.
+> **P1 persiste**: Lite CH=12 manteve SNR=0.9 dB com f32 — divergência é arquitetural, não quantização.
+> P2 fechado definitivamente; P3 recalibrado; `TODO-problemas.md` atualizado.
 
 ---
 

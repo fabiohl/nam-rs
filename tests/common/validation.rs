@@ -294,16 +294,18 @@ fn snr_to_mse(snr_db: f64) -> f64 {
 /// Shared WaveNet MSE/SNR/ESR threshold lookup — used by both `topology_thresholds`
 /// (golden vectors) and `live_parity_thresholds` (cpp_parity) as a fallback.
 ///
-/// Post-T16.1 live v1 SNR measurements (2026-06-11):
-///   Standard (CH=16): 68.4 dB → floor 60 dB (8.4 dB margin)
-///   Feather  (CH=8):  67.6 dB → floor 60 dB (7.6 dB margin)
-///   Nano     (CH=4):  52.6 dB → floor 45 dB (7.6 dB margin)
-///   Lite     (CH=12):  0.9 dB → floor  0 dB (known failure, T16.x)
+/// Post-T-HF6.6 live v1/v2 SNR measurements (f32-exact, 2026-06-18):
+///   Standard (CH=16): 123-135 dB → floor 105 dB (18 dB margin)
+///   Feather  (CH=8):  117-133 dB → floor 100 dB (17 dB margin)
+///   Nano     (CH=4):  114-132 dB → floor  95 dB (19 dB margin)
+///   Lite     (CH=12):  0.9 dB   → floor  40 dB (P1 persists: f32 did not fix)
 ///
-/// T16.4 ESR gates (robust to scale mismatch):
-///   Standard/Feather/Nano/A2: 1e-3  (NAM_RS_CPP_PARITY_ESR_MAX)
-///   Lite:                     5e-2  (known failure, loose)
-///   Default:                  1e-3
+/// Post-T-HF6.6 ESR gates (f32-exact):
+///   Standard:             3e-11
+///   Feather:              1e-10
+///   Nano:                 3e-10
+///   Lite:                 1e-3  (P1 persists, known failure)
+///   Default:              1e-3
 ///
 /// Returns `(mse_limit, min_snr_db, max_esr)`.
 #[inline]
@@ -311,22 +313,22 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
     match channels {
         3 => (snr_to_mse(40.0), 40.0, Some(1e-3)),
         4 => {
-            let snr_db = 45.0;
-            (snr_to_mse(snr_db), snr_db, Some(3e-3))
+            let snr_db = 95.0;
+            (snr_to_mse(snr_db), snr_db, Some(3e-10))
         }
         8 => {
-            let snr_db = 60.0;
-            (snr_to_mse(snr_db), snr_db, Some(1e-3))
+            let snr_db = 100.0;
+            (snr_to_mse(snr_db), snr_db, Some(1e-10))
         }
         12 => {
-            // Target thresholds if corrected. Under current drift, SNR is 0.9 dB.
-            // Marking this test as #[ignore] in golden_vectors to avoid a false gate.
+            // P1 persists post-f32: measured SNR=0.9 dB (BossWN-lite), SNR=-0.4 dB (v2 wavenet_lite).
+            // #[ignore] in golden_vectors to avoid a false gate.
             let snr_db = 40.0;
             (snr_to_mse(snr_db), snr_db, Some(1e-3))
         }
         16 => {
-            let snr_db = 45.0;
-            (snr_to_mse(snr_db), snr_db, Some(1e-3))
+            let snr_db = 85.0;
+            (snr_to_mse(snr_db), snr_db, Some(3e-9))
         }
         _ => {
             let snr_db = 40.0;
@@ -351,32 +353,32 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
     };
     match base_name {
         // --- WaveNet Standard (CH=16) ---
-        // Measured: SNR = 68.4 dB, ESR = 1.43e-7 (post-T16.1 head cascade fix)
-        // Margin: SNR - 8.4 dB, ESR factor ~7.0x
+        // Measured: SNR=134.6 dB (live v1), SNR=123.0 dB (v2 worst @ 88.2 kHz), ESR=4.99e-13
+        // pós-nuke f32. Floor: SNR - 18 dB margin from v2 worst, ESR factor ~60x
         "BossWN-standard" | "wavenet_standard" => {
-            let snr_db = 60.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-6)))
+            let snr_db = 105.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11)))
         }
         // --- WaveNet Feather (CH=8) ---
-        // Measured: SNR = 67.6 dB, ESR = 1.72e-7
-        // Margin: SNR - 7.6 dB, ESR factor ~5.8x
+        // Measured: SNR=133.1 dB (live v1), SNR=117.6 dB (v2 worst @ 192 kHz), ESR=1.74e-12
+        // pós-nuke f32. Floor: SNR - 17 dB margin from v2 worst, ESR factor ~57x
         "BossWN-feather" | "wavenet_feather" => {
-            let snr_db = 60.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-6)))
+            let snr_db = 100.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
         // --- WaveNet Nano (CH=4) ---
-        // Measured: SNR = 52.6 dB, ESR = 5.52e-6
-        // Margin: SNR - 7.6 dB, ESR factor ~5.4x
+        // Measured: SNR=132.0 dB (live v1), SNR=114.6 dB (v2 worst @ 192 kHz), ESR=3.46e-12
+        // pós-nuke f32. Floor: SNR - 19 dB margin from v2 worst, ESR factor ~87x
         "BossWN-nano" | "wavenet_nano" => {
-            let snr_db = 45.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-5)))
+            let snr_db = 95.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-10)))
         }
         // --- WaveNet A1 Standard (Official) (CH=16) ---
-        // Measured: SNR = 48.8 dB, ESR = 1.33e-5
-        // Margin: SNR - 8.8 dB, ESR factor ~7.5x
+        // Measured: SNR=123.4 dB (live v1), SNR=101.8 dB (v2 worst @ 192 kHz), ESR=6.62e-11
+        // pós-nuke f32. Floor: SNR - 16 dB margin from v2 worst, ESR factor ~45x
         "wavenet_a1_standard" => {
-            let snr_db = 40.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4)))
+            let snr_db = 85.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-9)))
         }
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
         // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
@@ -414,9 +416,10 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 22.0;
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
         }
-        // --- WaveNet Lite (CH=12) ---
-        // Measured: SNR = 0.9 dB, ESR = 8.15e-1 (known divergent, CH=12)
-        // Target thresholds if corrected — currently #[ignore].
+        // --- WaveNet Lite (CH=12) — P1 persists ✗ ---
+        // Measured: SNR=0.9 dB (BossWN-lite v1), SNR=-0.4 dB (v2 @ 44.1 kHz), ESR=8.15e-1
+        // pós-nuke f32: path did NOT resolve P1 — divergence is architectural, not quantization.
+        // #[ignore] maintained; known-divergent.
         "BossWN-lite" | "wavenet_lite" => {
             let snr_db = 40.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-3)))

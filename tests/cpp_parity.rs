@@ -17,21 +17,21 @@
 //!
 //! ## Parity Thresholds (Aggressive Live Floors)
 //!
-//! Post-T16.1 thresholds use `live_parity_thresholds()` — aggressive floors
-//! calibrated from live C++ cross-validation measurements (see `validation.rs`):
+//! Post-T-HF6.6 thresholds use `live_parity_thresholds()` — aggressive floors
+//! calibrated from live C++ cross-validation measurements (f32-exact, 2026-06-18):
 //!
 //! | Family  | Variant  | Measured SNR | Floor SNR | Margin  |
 //! |---------|----------|-------------|-----------|---------|
-//! | WaveNet | Standard | 68.4 dB     | 60 dB     | 8.4 dB  |
-//! | WaveNet | Feather  | 67.6 dB     | 60 dB     | 7.6 dB  |
-//! | WaveNet | Nano     | 52.6 dB     | 45 dB     | 7.6 dB  |
-//! | WaveNet | Lite     | 0.9 dB      | 0 dB      | —       |
-//! | WaveNet | A2-Full  | 79.2 dB     | 70.0 dB    | 9.2 dB (ESR scale-invariant, T2.5) |
-//! | WaveNet | A2-Lite  | 90.7 dB     | 80.0 dB    | 10.7 dB (ESR scale-invariant, T2.5) |
+//! | WaveNet | Standard | 134.6 dB    | 105 dB    | 29.6 dB |
+//! | WaveNet | Feather  | 133.1 dB    | 100 dB    | 33.1 dB |
+//! | WaveNet | Nano     | 132.0 dB    | 95 dB     | 37.0 dB |
+//! | WaveNet | Lite     | 0.9 dB      | 40 dB     | —       |
+//! | WaveNet | A2-Full  | 79.2 dB     | 70.0 dB   | 9.2 dB  |
+//! | WaveNet | A2-Lite  | 90.7 dB     | 80.0 dB   | 10.7 dB |
 //! | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //! | Linear  | —        | bit-exact   | 140 dB    | —       |
 //!
-//! Lite (CH=12) is a known failure — investigar separadamente.
+//! Lite (CH=12) is a known failure — P1 persists post f32, investigar separadamente.
 //!
 //! ## Multi-Sample-Rate Support
 //!

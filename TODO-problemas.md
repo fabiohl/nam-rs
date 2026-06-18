@@ -32,8 +32,8 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | ID      | Achado                                                                                                                                                                                           | Severidade         | Eixo                  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:------------------:| --------------------- |
 | **P1**  | WaveNet **"Lite" (CH=12)** diverge do C++ de referência (SNR ≈ **0,9 dB**) — arquitetura inteira fora de paridade                                                                                | 🔴 Alta            | Fidelidade            |
-| **P2**  | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%)                                                                                          | 🟠 Média-Alta      | Fidelidade            |
-| **P3**  | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel                                                                       | 🟠 Média           | Cobertura/Fidelidade  |
+| **P2**  | Família **WaveNet** tem fidelidade vs C++ muito inferior à LSTM/Linear (custo do FastMath: ESR ~0,3–1%) — ✅ [RESOLVIDO] (T-HF6.6, nuke completa) | 🟠 Média-Alta      | Fidelidade            |
+| **P3**  | **Gates de golden muito frouxos** em alguns cenários (SNR ≥ **7,0 / 8,5 dB**) — guardião fraco onde o produto é menos fiel — ✅ [RESOLVIDO] (T-HF6.6, thresholds SNR 85-105 dB) | 🟠 Média           | Cobertura/Fidelidade  |
 | **P4**  | WaveNet emite **saída não-nula no silêncio** (~3,6e-5; ≈ −89 dBFS); A2 emite **0 exato**                                                                                                         | 🟡 Média-Baixa     | Correção/DSP          |
 | **P5**  | **Pico de latência** de bloco no WaveNet em silêncio (~**677 µs**) — possível penalidade de denormais                                                                                            | 🟡 Média-Baixa     | RT/Performance        |
 | **P6**  | Telemetria de latência **quantizada em potências de 2** (65536/131072 ns) — leitura imprecisa                                                                                                    | 🟢 Baixa           | Observabilidade       |
@@ -52,6 +52,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   `#[ignore = "known-divergent: WaveNet Lite (CH=12) exhibits numerical drift (SNR = 0.9 dB vs C++)"]`
 - `tests-cargo.log` (Phase 3, `cpp_parity`): `SKIP: WaveNet Lite (CH=12) is known-divergent (T1.2) - skipping to avoid false gate` (v1 **e** v2).
 - `tests/self_consistency.rs:26`: documentado como "Lite (CH=12, known-divergent output but engine [estável])".
+
+**Verificação T-HF6.6 (jun/2026, pós-nuke lo-fi):** O caminho f32 exato (pesos f32 + tanh
+poly, sem quantização) **não** resolveu P1. BossWN-lite manteve SNR=0.9 dB; v2 wavenet_lite
+@ 44.1 kHz registrou SNR=-0.4 dB. A divergência do CH=12 **não é causada por quantização de
+pesos nem por FastMath** — é um problema arquitetural/implementacional separado (suspeitos:
+bias-tuning, interleaving 4-wide, ou caminho CH=12 no motor estático).
 
 **O que significa**
 SNR ≈ **0,9 dB** vs a referência NeuralAmpModelerCore significa que a saída do nam-rs para
@@ -75,22 +81,29 @@ CH=12) está silenciosamente "errada" em relação à referência que o projeto 
 espelhar. Afeta credibilidade ("é um NAM fiel?").
 
 **Sugestão de condução**
-Investigar a causa (skill `pesquisador-inovador`/`debugger`): suspeitos prováveis no
-caminho CH=12 — _bias-tuning_, ordem de interleaving 4-wide, ou a cadeia FastMath
-(tanh/sigmoid Padé) amplificada nessa topologia. Decidir entre **corrigir** (reabilitar o
-golden) ou **documentar formalmente** a limitação e, idealmente, **avisar o usuário** ao
-carregar um modelo Lite.
+A hipótese de que o caminho f32 exato resolveria P1 foi **refutada** (T-HF6.6). A divergência
+é arquitetural/implementacional no caminho CH=12. Suspeitos remanescentes: _bias-tuning_,
+ordem de interleaving 4-wide, ou o próprio caminho `StaticModel` para CH=12. Decidir entre
+**corrigir** (reabilitar o golden) ou **documentar formalmente** a limitação e, idealmente,
+**avisar o usuário** ao carregar um modelo Lite.
 
 ---
 
-## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear — ✅ [DONE] (S4 concluída)
+## P2 — 🟠 Fidelidade da família WaveNet vs C++ é muito inferior à de LSTM/Linear — ✅ [DONE] (T-HF6.6, nuke completa)
 
-> **Status final (jun/2026, Épico E-WN concluído):** medição concluída (S1.T1.4, commit
-> `8d4ed17`) + modo alta-fidelidade implementado como feature flag `high-fidelity` (S4.T4.1,
-> commit `64e2c7f`; f32 weights + `f32::tanh` exato, off por padrão, zero-alloc RT-safe) +
-> política de fidelidade documentada em `docs/fastmath-approximations.md` (S4.T4.2, commit
-> `a33988e`). **Aberto:** a questão do modo "baixa fidelidade" — ver §"Nota do PO" abaixo e
-> `TODO-sprints.md §P10` para a frente técnica planejada.
+> **Status final (jun/2026, T-HF6.6 — recalibração pós-nuke):** Com a eliminação completa do
+> modo lo-fi (S-HF6), todos os modelos WaveNet **não-Lite** agora operam exclusivamente com pesos
+> f32 + tanh poly, atingindo fidelidade comparável a LSTM/Linear:
+>
+> - **WaveNet A1 Standard**: SNR=123.4 dB, ESR=4.58e-13 (live v1); SNR=101.8 dB @ 192 kHz (v2)
+> - **WaveNet Standard CH=16**: SNR=134.6 dB, ESR=3.45e-14 (live v1); SNR=123.0 dB (v2 worst)
+> - **WaveNet Feather**: SNR=133.1 dB, ESR=4.92e-14; SNR=117.6 dB @ 192 kHz (v2 worst)
+> - **WaveNet Nano**: SNR=132.0 dB, ESR=6.30e-14; SNR=114.6 dB @ 192 kHz (v2 worst)
+>
+> A assimetria de fidelidade entre WaveNet e LSTM/Linear está **eliminada** para todos os SKUs
+> exceto Lite (CH=12, P1 permanece como achado arquitetural separado).
+> Thresholds recalibrados para SNR 85-105 dB (ver `tests/common/validation.rs`).
+> P10 (modo baixa fidelidade) também está resolvido: lo-fi já não existe.
 
 **Evidência** (`tests-cargo.log`, Phase 3, baselines de ESR impressos):
 
@@ -132,14 +145,17 @@ estabilidade que a baixa fidelidade traz? Porque se não houver uma justificativ
 
 ---
 
-## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa) — ✅ [DONE] (no escopo F1/E-WN)
+## P3 — 🟠 Gates de golden frouxos em alguns cenários (guardião fraco onde mais importa) — ✅ [DONE] (recalibrado T-HF6.6)
 
-> **Status final (jun/2026, Épico E-WN concluído):** triagem S3.T3.3 concluída (commit
-> `af90fd2`): comentários de triagem adicionados aos thresholds frouxos, gate perceptual
-> MR-STFT soft adicionado como complemento ao SNR cru, gap de comentário `// Measured:`
-> corrigido no `wavenet_official`. Golden novo `wavenet_official.nam` (geometria livre)
-> adicionado com threshold calibrado honesto (SNR 14 dB). Gates de cenários fora do escopo
-> WaveNet/F1 seguem seu próprio ciclo de triagem.
+> **Status final (jun/2026, T-HF6.6 — recalibração pós-nuke f32):** Thresholds de golden
+> **endurecidos** com base em medição real pós-nuke. Com o caminho f32 exato, o ESR dos modelos
+> WaveNet não-Lite colapsou de ~6e-3 (lo-fi) para ~1e-13 (≈ melhoria de 10 ordens de grandeza).
+> Os novos floors SNR 85-105 dB para WaveNet A1 Standard/Feather/Nano (com margem de 16-37 dB
+> sobre o worst-case multi-SR) garantem que **qualquer regressão genuína será detectada**.
+> Cenários de threshold baixo (nondist, estímulos difíceis) seguem seu ciclo de triagem
+> documentado.
+>
+> A regra de ouro mantida: _"todo golden deve poder falhar"_.
 
 **Evidência** (`tests-cargo.log`, Phase 3, goldens v2 multi-SR):
 
@@ -413,13 +429,13 @@ inferência neural com SIMD moderno.
 
 ## Recomendação de priorização ao PO
 
-> **Atualização (jun/2026, pós-Épico E-WN):** P2 e P3 foram parcialmente resolvidos
-> (S4: modo hi-fi + doc; S3: golden oficial + gates triados). A frente agora aberta é P10.
+> **Atualização (jun/2026, pós-T-HF6.6 — recalibração pós-nuke):**
+> P2 e P3 resolvidos definitivamente (nuke completa, thresholds endurecidos SNR 85-105 dB).
+> P10 resolvido pela raiz (lo-fi eliminado). P1 confirmado como arquitetural (não quantização).
 
-1. **P10** (modo baixa fidelidade sob júdice) — **próxima frente estratégica**. Medir antes de
-   decidir; potencial de simplificação radical e resolução pela raiz de P2 + fragmentos de P1.
-2. **P1** (WaveNet Lite divergente) — investigar/decidir após P10 (o modo hi-fi pode ou não
-   resolver; dados necessários).
+1. **P10/P2/P3** — ✅ **Resolvidos (T-HF6.6)**. Lo-fi eliminado; thresholds endurecidos SNR 85-105 dB.
+2. **P1** (WaveNet Lite divergente) — Confirmado como arquitetural (não quantização). f32 path
+   não resolveu. Investigar causa no caminho CH=12 (bias-tuning, interleaving, etc.).
 3. **P9** (A2 UB blocos >64) — corrigir antes de publicar suporte a blocos grandes;
    opções documentadas em P9.
 4. **P4 + P5** (silêncio não-nulo + pico de latência) — P4 documentado/fiel C++; P5 pendente
