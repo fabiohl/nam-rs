@@ -430,7 +430,7 @@ que falha** na suite `tests-long.sh`.
 
 ---
 
-### MT7 — 🟡 Otimizações Imediatas (fazer agora)
+### MT7 — 🟡 Otimizações Imediatas (fazer agora) ✅ Concluído (2026-06-19)
 
 **Pré-requisitos**: nenhum.
 **Desafio**: 🟢 Baixo-Médio.
