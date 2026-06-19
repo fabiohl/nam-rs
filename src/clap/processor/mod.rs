@@ -21,6 +21,8 @@ pub(crate) use state::NamClapProcessor;
 
 use crate::clap::plugin::{NamClapMainThread, NamClapShared};
 use crate::common::params::RtPluginParams;
+#[cfg(target_arch = "x86_64")]
+use crate::common::tsc::rdtsc_nanos;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
@@ -29,7 +31,6 @@ use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
 use crate::math::dsp::gain_lut::get_gain_lut;
 use clack_plugin::prelude::*;
-use minstant::Instant;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -226,10 +227,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         let should_measure = self.cycles_since_telemetry & 0xF == 0;
         self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
-        let start_time = if should_measure {
-            Some(Instant::now())
+        let start_nanos = if should_measure {
+            #[cfg(target_arch = "x86_64")]
+            {
+                rdtsc_nanos()
+            }
+            #[cfg(not(target_arch = "x86_64"))]
+            {
+                0
+            }
         } else {
-            None
+            0
         };
 
         // One-time thread priority query on the first processed block
@@ -276,7 +284,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         self.process_events(events);
 
         // DSP block (gate, inference, resampling, output, telemetry)
-        self.process_dsp_audio(&mut audio, start_time)
+        self.process_dsp_audio(&mut audio, start_nanos)
     }
 }
 

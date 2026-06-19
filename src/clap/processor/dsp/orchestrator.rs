@@ -9,7 +9,6 @@ use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
 };
 use clack_plugin::prelude::*;
-use minstant::Instant;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapProcessor<'a> {
@@ -17,7 +16,7 @@ impl<'a> NamClapProcessor<'a> {
     pub(crate) fn process_dsp_audio(
         &mut self,
         audio: &mut Audio,
-        start_time: Option<Instant>,
+        start_nanos: u64,
     ) -> Result<ProcessStatus, PluginError> {
         for mut port_pair in audio {
             let n_samples = port_pair.frames_count() as usize;
@@ -139,7 +138,7 @@ impl<'a> NamClapProcessor<'a> {
             peaks::store_peaks(self.shared, peak_l, peak_r);
         }
 
-        self.process_telemetry(start_time);
+        self.process_telemetry(start_nanos);
 
         #[cfg(feature = "heap-audit")]
         if crate::common::alloc_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {

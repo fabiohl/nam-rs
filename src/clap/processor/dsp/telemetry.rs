@@ -2,14 +2,19 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::super::NamClapProcessor;
-use minstant::Instant;
 use std::sync::atomic::Ordering;
+
+#[cfg(target_arch = "x86_64")]
+use crate::common::tsc::rdtsc_nanos;
 
 impl<'a> NamClapProcessor<'a> {
     #[inline(always)]
-    pub(super) fn process_telemetry(&mut self, start_time: Option<Instant>) {
-        if let Some(start_time) = start_time {
-            let elapsed_nanos = start_time.elapsed().as_nanos() as u64;
+    pub(super) fn process_telemetry(&mut self, start_nanos: u64) {
+        if start_nanos > 0 {
+            #[cfg(target_arch = "x86_64")]
+            let elapsed_nanos = rdtsc_nanos().wrapping_sub(start_nanos);
+            #[cfg(not(target_arch = "x86_64"))]
+            let elapsed_nanos = 0;
             self.rt_status
                 .dsp_cycle_time
                 .store(elapsed_nanos, Ordering::Relaxed);

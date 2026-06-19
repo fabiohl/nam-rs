@@ -65,7 +65,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T1.2 — Migrar CLAP processor de `minstant::Instant` → `rdtsc_nanos()`
+### T1.2 — Migrar CLAP processor de `minstant::Instant` → `rdtsc_nanos()` [DONE]
 
 **Objetivo**: Eliminar `minstant::Instant` no hot-path CLAP.
 
