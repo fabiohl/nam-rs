@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use rustfft::{FftPlanner, num_complex::Complex};
+use crate::math::dsp::fft::FftPlanner;
 
 // =============================================================================
 // Published Baselines (t3k-mushra / A2Esr.tsx:19-38)
@@ -111,7 +111,7 @@ pub const MRSTFT_WEIGHTS: [f64; 3] = [0.1, 0.3, 0.5];
 ///
 /// For each window size in `[256, 1024, 4096]` with hop = window/4:
 /// 1. Applies a Hann window
-/// 2. Computes STFT via `rustfft::FftPlanner`
+/// 2. Computes STFT via native `crate::math::dsp::fft::FftPlanner` (SoA)
 /// 3. Calculates L1 and L2 of log-magnitude differences per frame
 /// 4. Averages frame losses and weights by window size
 ///
@@ -133,7 +133,6 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
     }
 
     let eps = 1e-8f64;
-    let mut planner = FftPlanner::<f64>::new();
     let mut total_loss = 0.0f64;
 
     for (&ws, &weight) in MRSTFT_WINDOW_SIZES.iter().zip(MRSTFT_WEIGHTS.iter()) {
@@ -142,7 +141,7 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
             continue;
         }
 
-        let fft = planner.plan_fft_forward(ws);
+        let fft = FftPlanner::<f64>::new(ws);
 
         let window: Vec<f64> = (0..ws)
             .map(|n| 0.5 * (1.0 - (2.0 * std::f64::consts::PI * n as f64 / (ws - 1) as f64).cos()))
@@ -155,9 +154,11 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
 
         let num_bins = ws / 2 + 1;
 
-        // Reusable FFT scratch buffers
-        let mut buf_ref = vec![Complex::new(0.0, 0.0); ws];
-        let mut buf_test = vec![Complex::new(0.0, 0.0); ws];
+        // Reusable FFT scratch buffers (SoA)
+        let mut buf_ref_re = vec![0.0f64; ws];
+        let mut buf_ref_im = vec![0.0f64; ws];
+        let mut buf_test_re = vec![0.0f64; ws];
+        let mut buf_test_im = vec![0.0f64; ws];
         let mut mag_ref = vec![0.0f64; num_bins];
         let mut mag_test = vec![0.0f64; num_bins];
 
@@ -166,23 +167,23 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
         for frame in 0..num_frames {
             let offset = frame * hop;
 
-            // Fill FFT buffers with windowed samples
+            // Fill FFT SoA buffers with windowed samples
             for i in 0..ws {
-                let val_ref = reference[offset + i] as f64 * window[i];
-                let val_test = test[offset + i] as f64 * window[i];
-                buf_ref[i] = Complex::new(val_ref, 0.0);
-                buf_test[i] = Complex::new(val_test, 0.0);
+                buf_ref_re[i] = reference[offset + i] as f64 * window[i];
+                buf_test_re[i] = test[offset + i] as f64 * window[i];
+                buf_ref_im[i] = 0.0;
+                buf_test_im[i] = 0.0;
             }
 
-            fft.process(&mut buf_ref);
-            fft.process(&mut buf_test);
+            fft.process(&mut buf_ref_re, &mut buf_ref_im);
+            fft.process(&mut buf_test_re, &mut buf_test_im);
 
             for i in 0..num_bins {
-                mag_ref[i] = (buf_ref[i].re * buf_ref[i].re + buf_ref[i].im * buf_ref[i].im)
+                mag_ref[i] = (buf_ref_re[i] * buf_ref_re[i] + buf_ref_im[i] * buf_ref_im[i])
                     .sqrt()
                     .max(eps)
                     .ln();
-                mag_test[i] = (buf_test[i].re * buf_test[i].re + buf_test[i].im * buf_test[i].im)
+                mag_test[i] = (buf_test_re[i] * buf_test_re[i] + buf_test_im[i] * buf_test_im[i])
                     .sqrt()
                     .max(eps)
                     .ln();

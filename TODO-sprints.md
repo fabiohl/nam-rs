@@ -37,7 +37,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - [x] **Tarefa 2.3 (Alimentação RT do Forward)**: No `process()` (Passo 2), alimentar a convolução não mais empacotando structs nativas, mas injetando o frame em tempo real diretamente em `rfft.process_forward(input_slice, &mut self.fft_buf_re, &mut self.fft_buf_im)`.
 - [x] **Tarefa 2.4 (Reconstrução IFFT)**: No `process()` (Passo 5), passar o acumulador SoA (que processou o SIMD na Sprint 2) diretamente para `irfft.process_inverse(&mut acc_re, &mut acc_im, &mut output_slice)`. Remover o bypass temporário de mixagem. Executar os testes `conv_test`.
 
-## Sprint 3: Migração Offline e Métricas Perceptuais (`sinc_kernel` & `perceptual`)
+## Sprint 3: Migração Offline e Métricas Perceptuais (`sinc_kernel` & `perceptual`) [DONE]
 
 **Diretriz Central**: Substituir as ocorrências offline `f64` de rustfft por soluções internas SoA.
 
@@ -45,7 +45,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - Instanciar o novo `FftPlanner<f64>`.
   - Como a implementação nova recebe e emite vetores escalares desacoplados, alterar o payload que manipula `Vec<Complex<f64>>` por dois arrays `buf_re` e `buf_im`. Computar a raiz quadrada (log-magnitude) acessando iterativamente `buf_re[i]` e `buf_im[i]`.
 - [x] **Tarefa 3.2 (Causal Truncation Fix)**: Ajustar a indexação das cópias no truncate de cepstrum em `sinc_kernel.rs` e garantir que `im` é mantido zerado antes da segunda `process_forward`.
-- [ ] **Tarefa 3.3 (Migração STFT e LUFS)**: Em `src/testing/perceptual.rs`, na rotina `compute_mr_stft()`:
+- [x] **Tarefa 3.3 (Migração STFT e LUFS)**: Em `src/testing/perceptual.rs`, na rotina `compute_mr_stft()`:
   - Usar os métodos do `FftPlanner<f64>` interno.
   - Tratar a divisão de arrays SoA na extração do módulo L1 e L2 dentro das janelas (256, 1024, 4096).
   - Validar contra golden metrics via `cargo test` assegurando a integridade perante os hardcodes em `A2ESR_A2_FULL_MEDIAN`.
@@ -55,6 +55,5 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 **Diretriz Central**: Desacoplar oficialmente a crate legada, inspecionar a RT-Safety e avaliar ganhos.
 
 - [ ] **Tarefa 4.1 (Clean Cargo.toml)**: Remover `rustfft = ...` do arquivo `Cargo.toml`. Executar `cargo update` caso existam traços da dependência na lockfile.
-- [ ] **Tarefa 4.2 (Auditoria O3b)**: Rodar `utils/lints.sh`. Nenhum alerta de performance ou linter derivado da nova matemática em SoA deve subsistir.
-- [ ] **Tarefa 4.3 (Testes Anti-Alloc)**: Rodar a suíte `utils/tests-cargo.sh`. O rastreador de heap detectará imediatamente se o novo FFT tentar alocar qualquer `Vec` sob a thread do SPSC loop de processamento do áudio (`RT`).
-- [ ] **Tarefa 4.4 (Benchmarking Golden)**: Rodar o motor em modo `cargo bench` garantindo o cômputo `benchmark_convengine` com ganho perceptivo em nano-segundos, finalizando o selo arquitetural da Fase O3b.
+- [ ] **Tarefa 4.2 (Testes Anti-Alloc)**: Rodar a suíte `utils/tests-cargo.sh`. O rastreador de heap detectará imediatamente se o novo FFT tentar alocar qualquer `Vec` sob a thread do SPSC loop de processamento do áudio (`RT`).
+- [ ] **Tarefa 4.3 (Benchmarking Golden)**: Rodar o motor em modo `cargo bench` garantindo o cômputo `benchmark_convengine` com ganho perceptivo em nano-segundos, finalizando o selo arquitetural da Fase O3b.
