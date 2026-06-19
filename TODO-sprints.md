@@ -30,7 +30,7 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
     * `wavenet_condition_dsp.nam` (condition_size=3) agora carrega via engine dinâmico com `cond=3`. O sub-modelo `condition_dsp` aninhado ainda não é funcional — a ser abordado na Tarefa 3.1.
     * `wavenet_a2_max.nam` (condition_size=8, 1 layer-array A2) passa o gate de condition_size mas é rejeitado pelo dynamic engine A1 (requer 2 arrays). O engine dinâmico A2 será necessário para modelos A2 com `condition_size > 1` (Sprint 2).
 
-* **Tarefa 1.2: Implementação de Convolução Agrupada (`groups > 1`)**
+* **Tarefa 1.2: Implementação de Convolução Agrupada (`groups > 1`)** [DONE]
   * **Arquivo alvo**: `src/models/a2/conv1d.rs` ou afins.
   * **Ação**: A modulação FiLM depende de `_cond_to_scale_shift` que pode utilizar `groups > 1`. Adicionar uma via de execução parametrizada para convolutions agrupadas (depthwise).
   * **Critério de aceite**:

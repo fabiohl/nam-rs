@@ -21,6 +21,7 @@ pub mod conv1d_ch8;
 pub mod conv1d_fallback;
 pub mod film;
 pub mod gating;
+pub mod grouped_conv1d;
 pub mod head;
 pub mod layer;
 pub mod model;
@@ -30,6 +31,9 @@ pub use activations::{ActivationFn, ActivationType};
 pub use conv1d::A2Conv1d;
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
+pub use grouped_conv1d::{
+    A2GroupedConv1d, grouped_conv1d_block_ref, grouped_conv1d_single_frame_ref,
+};
 pub use head::{
     A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref, head_process_ch3_sse,
     head_process_ch8_avx2,
