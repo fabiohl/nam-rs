@@ -45,7 +45,7 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
   - **Ação:** O arquivo `src/models/a2/grouped_conv1d.rs` já possui a base vetorial AVX2 para `A2GroupedConv1d`. Conectá-la de forma fluida nas abstrações de camada (ou generalizar `src/models/a2/conv1d.rs`) para que a arquitetura instancie `Conv1dDyn` quando `groups == 1` ou `A2GroupedConv1d` quando `groups > 1`.
   - **Critério de Aceite:** Kernel depthwise (`groups == channels`) otimizado e ativado sob demanda.
 
-- [ ] **Tarefa 2.2: Implementação Real do Gating e Blending**
+- [x] **Tarefa 2.2: Implementação Real do Gating e Blending**
   - **Especialista:** `implementador`
   - **Ação:** Dar vida ao arquivo `src/models/a2/gating.rs`. Implementar os métodos de `apply_gating` ou `apply_blending` que operam em canais adjacentes.
   - **Requisito RT-Safety:** Pré-alocar os buffers auxiliares na inicialização. Escrever laços branchless auto-vetorizáveis ou usar intrinsics equivalentes aos que usamos em ativações inline. Paridade total com `NAM/gating_activations.h`.
