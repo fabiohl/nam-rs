@@ -110,8 +110,6 @@ impl WaveNetModelDyn {
             return;
         }
 
-        let ch = self.ch;
-        let head = self.head;
         let cond = self.arrays[0].cond;
         let mut pos = 0;
 
@@ -143,8 +141,8 @@ impl WaveNetModelDyn {
                 for i in 1..num_arrays {
                     let prev = &*arrays_ptr.add(i - 1);
                     let curr = &mut *arrays_ptr.add(i);
-                    let prev_head_out = &prev.head_outputs[0..num_frames * head];
-                    let prev_outputs = &prev.array_outputs[0..num_frames * ch];
+                    let prev_head_out = &prev.head_outputs[0..num_frames * prev.head];
+                    let prev_outputs = &prev.array_outputs[0..num_frames * prev.ch];
                     curr.process_block_internal::<M, false>(
                         prev_outputs,
                         condition_slice,
@@ -218,9 +216,6 @@ impl WaveNetModelDyn {
             &zero_input
         };
 
-        let ch = self.ch;
-        let head = self.head;
-
         unsafe {
             let num_arrays = self.arrays.len();
             let arrays_ptr = self.arrays.as_mut_ptr();
@@ -231,8 +226,8 @@ impl WaveNetModelDyn {
             for i in 1..num_arrays {
                 let prev = &*arrays_ptr.add(i - 1);
                 let curr = &mut *arrays_ptr.add(i);
-                let prev_outputs = &prev.array_outputs[0..ch];
-                let prev_head_out = &prev.head_outputs[0..head];
+                let prev_outputs = &prev.array_outputs[0..prev.ch];
+                let prev_head_out = &prev.head_outputs[0..prev.head];
                 curr.prewarm_internal::<M>(prev_outputs, condition, Some(prev_head_out));
             }
         }

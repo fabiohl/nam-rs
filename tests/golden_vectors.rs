@@ -866,8 +866,9 @@ fn test_loader_gap_wavenet_a2_max() {
     let err_msg = format!("{}", model.err().unwrap());
     assert!(
         err_msg.contains("A2 model detected but architecture shape not recognized")
-            || err_msg.contains("dynamic engine requires exactly 2 layer arrays"),
-        "Expected A2 shape rejection or array-count error, got: {}",
+            || err_msg.contains("dynamic engine requires exactly 2 layer arrays")
+            || err_msg.contains("Model with inconsistent weights"),
+        "Expected A2 rejection / array-count error / weight mismatch, got: {}",
         err_msg
     );
 }

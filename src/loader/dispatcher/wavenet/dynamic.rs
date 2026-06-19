@@ -147,13 +147,8 @@ fn build_wavenet_dynamic_inner(
 ) -> anyhow::Result<WaveNetModelDyn> {
     super::validate_layer_activations(data)?;
 
-    if geom.num_arrays != 2 {
-        anyhow::bail!(
-            "WaveNet A1 dynamic engine requires exactly 2 layer arrays (found {}). \
-             Models with {} arrays are not yet supported in NAM-rs.",
-            geom.num_arrays,
-            geom.num_arrays
-        );
+    if geom.num_arrays == 0 {
+        anyhow::bail!("WaveNet dynamic engine requires at least 1 layer array");
     }
 
     let ch = geom.channels[0];
@@ -163,39 +158,33 @@ fn build_wavenet_dynamic_inner(
 
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
-    debug_assert!(geom.num_arrays >= 2);
-    debug_assert!(geom.dilations.len() >= 2);
-
-    let dils_0 = &geom.dilations[0];
-    let dils_1 = &geom.dilations[1];
+    debug_assert_eq!(geom.channels.len(), geom.num_arrays);
+    debug_assert_eq!(geom.head_sizes.len(), geom.num_arrays);
+    debug_assert_eq!(geom.dilations.len(), geom.num_arrays);
 
     let mut alloc_num = 0usize;
 
-    // Array1: IN=1, COND=condition_size, CH channels[0], HEAD head_sizes[0], no head bias
-    let array1 = build_wavenet_array_dyn(
-        &mut cursor,
-        1,    // in_ch
-        cond, // cond
-        ch,   // ch
-        k,    // k
-        head, // head
-        dils_0,
-        false, // has_head_bias
-        &mut alloc_num,
-    )?;
+    let mut arrays = Vec::with_capacity(geom.num_arrays);
+    for i in 0..geom.num_arrays {
+        let in_ch = if i == 0 { 1 } else { geom.channels[i - 1] };
+        let array_ch = geom.channels[i];
+        let array_head = geom.head_sizes[i];
+        let dilations = &geom.dilations[i];
+        let has_head_bias = i == geom.num_arrays - 1;
 
-    // Array2: IN=ch, COND=condition_size, CH channels[1], HEAD head_sizes[1], with head bias
-    let array2 = build_wavenet_array_dyn(
-        &mut cursor,
-        ch,                 // in_ch (= array1 channels)
-        cond,               // cond
-        geom.channels[1],   // ch (= array2 channels)
-        k,                  // k
-        geom.head_sizes[1], // head (= array2 head_size)
-        dils_1,
-        true, // has_head_bias
-        &mut alloc_num,
-    )?;
+        let array = build_wavenet_array_dyn(
+            &mut cursor,
+            in_ch,
+            cond,
+            array_ch,
+            k,
+            array_head,
+            dilations,
+            has_head_bias,
+            &mut alloc_num,
+        )?;
+        arrays.push(array);
+    }
 
     let head_scale = cursor.read_f32()?;
 
@@ -250,13 +239,17 @@ fn build_wavenet_dynamic_inner(
 
     let cond_dsp_output_size = cond * WAVENET_MAX_NUM_FRAMES;
 
-    let rf = array1.receptive_field_size.max(array2.receptive_field_size);
+    let rf = arrays
+        .iter()
+        .map(|a| a.receptive_field_size)
+        .max()
+        .unwrap_or(0);
 
     let model = WaveNetModelDyn {
         ch,
         k,
         head,
-        arrays: vec![array1, array2],
+        arrays,
         head_scale,
         receptive_field_size: rf,
         condition_dsp,
@@ -265,13 +258,11 @@ fn build_wavenet_dynamic_inner(
 
     info!(
         "[Dispatcher] WaveNet Dynamic built — CH={}, K={}, HEAD={}, arrays={}, \
-         dilations0={:?}, dilations1={:?}, head_scale={:.6}, weights={}",
+         head_scale={:.6}, weights={}",
         ch,
         k,
         head,
         geom.num_arrays,
-        dils_0,
-        dils_1,
         head_scale,
         data.weights.len()
     );

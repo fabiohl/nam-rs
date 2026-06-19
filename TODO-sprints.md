@@ -27,7 +27,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
 
 ### Sprint 1.2: Loader Dinâmico e Validação
 
-* **Task 1.2.1 [ ] Modificar o construtor `build_wavenet_dynamic_inner`:**
+* **Task 1.2.1 [x] Modificar o construtor `build_wavenet_dynamic_inner`:**
   * Arquivo: `src/loader/dispatcher/wavenet/dynamic.rs`
   * Remover a restrição restritiva: `if geom.num_arrays != 2 { bail!(...) }`.
   * Instanciar `WaveNetLayerArrayDyn` dentro de um `for i in 0..geom.num_arrays`.
