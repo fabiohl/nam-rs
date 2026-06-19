@@ -29,7 +29,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Diretriz Central**: Conectar o novo motor RFFT ao Cabsim e eliminar a contaminação residual de `Complex<T>` intercalado.
 
-- [ ] **Tarefa 2.1 (Substituição de Estruturas)**: Em `conv.rs`:
+- [x] **Tarefa 2.1 (Substituição de Estruturas)**: Em `conv.rs`:
   - Apagar importações de `rustfft`.
   - Substituir `rustfft::FftPlanner` por `crate::math::dsp::fft::RfftPlanner<f32>`.
   - Instanciar a nova RFFT na função `ConvEngine::new()` com o tamanho `partition_size * 2`.

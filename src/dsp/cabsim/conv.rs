@@ -12,9 +12,9 @@
 //!   Latency is exactly `partition_size` samples.
 //! - **FFT size** is `2 × partition_size` (rounded up to next power of two).
 //! - **Kernel pre-FFT**: all IR partitions are transformed to the frequency domain
-//!   at construction time, outside the audio thread.
-//! - **FDL (Frequency Delay Line)** is pre-allocated as a contiguous buffer of
-//!   complex spectra, one per partition.
+//!   at construction time via native `RfftPlanner`, outside the audio thread.
+//! - **FDL (Frequency Delay Line)** is pre-allocated as contiguous SoA buffers
+//!   of real/imaginary spectra (size `fft_size/2 + 1` bins per partition).
 //! - **Zero-alloc hot-path**: `process()` only mutates pre-allocated buffers.
 //!   It never allocates, never blocks, and never panics.
 //!
@@ -24,8 +24,7 @@
 //! JAES Vol. 43, No. 3, 1995 March.
 
 use crate::math::common::AlignedVec;
-use rustfft::{Fft, FftPlanner, num_complex::Complex};
-use std::sync::Arc;
+use crate::math::dsp::fft::RfftPlanner;
 
 /// Uniform-Partitioned Overlap-Save convolution engine.
 ///
@@ -40,17 +39,19 @@ use std::sync::Arc;
 pub struct ConvEngine {
     /// FFT size (2 × partition_size rounded up to next power of two).
     fft_size: usize,
+    /// Number of frequency bins per partition (= fft_size / 2 + 1).
+    n_bins: usize,
     /// Number of samples per input/output block.
     partition_size: usize,
     /// Number of IR partitions.
     num_partitions: usize,
     /// Pre-FFT'd kernel partitions (real part).
-    /// Flat storage: `num_partitions × fft_size` f32 values.
+    /// Flat storage: `num_partitions × n_bins` f32 values.
     h_fdl_re: AlignedVec<f32>,
     /// Pre-FFT'd kernel partitions (imaginary part).
     h_fdl_im: AlignedVec<f32>,
     /// Frequency Delay Line (FDL): circular buffer of input spectra (real part).
-    /// Flat storage: `num_partitions × fft_size` f32 values.
+    /// Flat storage: `num_partitions × n_bins` f32 values.
     fdl_re: AlignedVec<f32>,
     /// FDL imaginary part.
     fdl_im: AlignedVec<f32>,
@@ -61,22 +62,18 @@ pub struct ConvEngine {
     /// offset `fft_size - partition_size`. After FFT and IFFT,
     /// the valid output starts at offset `fft_size - partition_size`.
     input_buf: AlignedVec<f32>,
-    /// Forward FFT scratch buffer.
-    fft_scratch: Vec<Complex<f32>>,
-    /// Inverse FFT scratch buffer.
-    ifft_scratch: Vec<Complex<f32>>,
-    /// Work buffer for forward FFT (length = fft_size).
-    fft_buf: Vec<Complex<f32>>,
-    /// Accumulation buffer in frequency domain, real part (length = fft_size).
+    /// Native RFFT planner (handles both forward RFFT and inverse IRFFT).
+    rfft: RfftPlanner<f32>,
+    /// Forward RFFT output: real part (length = `n_bins`).
+    fft_buf_re: AlignedVec<f32>,
+    /// Forward RFFT output: imaginary part (length = `n_bins`).
+    fft_buf_im: AlignedVec<f32>,
+    /// Accumulation buffer in frequency domain, real part (length = `n_bins`).
     acc_re: AlignedVec<f32>,
-    /// Accumulation buffer imaginary part.
+    /// Accumulation buffer imaginary part (length = `n_bins`).
     acc_im: AlignedVec<f32>,
-    /// Forward FFT plan.
-    fft: Arc<dyn Fft<f32>>,
-    /// Inverse FFT plan.
-    ifft: Arc<dyn Fft<f32>>,
-    /// IFFT scale factor = 1.0 / fft_size.
-    ifft_scale: f32,
+    /// Time-domain output buffer for IRFFT (length = `fft_size`).
+    output_buf: AlignedVec<f32>,
     /// Cached output start index (= fft_size - partition_size).
     output_start: usize,
 }
@@ -85,7 +82,7 @@ impl ConvEngine {
     /// Builds a UPOLS convolution engine for the given impulse response.
     ///
     /// The IR is partitioned into blocks of `partition_size` samples.
-    /// All FFTs of the kernel partitions are computed here — outside the
+    /// All RFFTs of the kernel partitions are computed here — outside the
     /// audio thread — so that [`process`](ConvEngine::process) is zero-alloc.
     ///
     /// # Parameters
@@ -99,6 +96,7 @@ impl ConvEngine {
         assert!(partition_size > 0, "partition_size must be positive");
 
         let fft_size = (2 * partition_size).next_power_of_two();
+        let n_bins = fft_size / 2 + 1;
         let output_start = fft_size - partition_size;
 
         // Partition IR: P = ceil(N / B)
@@ -108,59 +106,52 @@ impl ConvEngine {
             ir.len().div_ceil(partition_size)
         };
 
-        // Build FFT plans
-        let mut planner = FftPlanner::new();
-        let fft: Arc<dyn Fft<f32>> = planner.plan_fft_forward(fft_size);
-        let ifft: Arc<dyn Fft<f32>> = planner.plan_fft_inverse(fft_size);
-
-        let ifft_scale = 1.0 / fft_size as f32;
-
-        // Pre-allocate scratch buffers
-        let fft_scratch_len = fft.get_inplace_scratch_len();
-        let ifft_scratch_len = ifft.get_inplace_scratch_len();
-        let mut fft_scratch = vec![Complex::new(0.0_f32, 0.0_f32); fft_scratch_len];
-        let ifft_scratch = vec![Complex::new(0.0_f32, 0.0_f32); ifft_scratch_len];
+        // Build native RFFT plan (handles both forward RFFT and inverse IRFFT)
+        let mut rfft = RfftPlanner::<f32>::new(fft_size);
 
         // Pre-FFT each kernel partition
-        let h_fdl_part_len = num_partitions * fft_size;
+        let h_fdl_part_len = num_partitions * n_bins;
         let mut h_fdl_re = AlignedVec::new(h_fdl_part_len, 0.0_f32);
         let mut h_fdl_im = AlignedVec::new(h_fdl_part_len, 0.0_f32);
-        let mut fft_buf = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
+
+        let mut ir_buf = vec![0.0f32; fft_size];
+        let mut tmp_re = vec![0.0f32; n_bins];
+        let mut tmp_im = vec![0.0f32; n_bins];
 
         for p in 0..num_partitions {
             let ir_start = p * partition_size;
             let ir_end = (ir_start + partition_size).min(ir.len());
-            // Zero out the FFT buffer
-            fft_buf.fill(Complex::new(0.0, 0.0));
 
-            // Place partition samples at the beginning (causal convolution)
+            ir_buf.fill(0.0);
             for (i, &sample) in ir[ir_start..ir_end].iter().enumerate() {
-                fft_buf[i] = Complex::new(sample, 0.0);
+                ir_buf[i] = sample;
             }
 
-            fft.process_with_scratch(&mut fft_buf, &mut fft_scratch);
+            rfft.process_forward(&ir_buf, &mut tmp_re, &mut tmp_im);
 
-            // Store in h_fdl (separate re, im)
-            let base = p * fft_size;
-            for (k, c) in fft_buf.iter().enumerate() {
-                h_fdl_re[base + k] = c.re;
-                h_fdl_im[base + k] = c.im;
+            let base = p * n_bins;
+            for k in 0..n_bins {
+                h_fdl_re[base + k] = tmp_re[k];
+                h_fdl_im[base + k] = tmp_im[k];
             }
         }
 
         // Pre-allocate FDL (all zeros initially)
-        let fdl_part_len = num_partitions * fft_size;
+        let fdl_part_len = num_partitions * n_bins;
         let fdl_re = AlignedVec::new(fdl_part_len, 0.0_f32);
         let fdl_im = AlignedVec::new(fdl_part_len, 0.0_f32);
 
-        // Pre-allocate other buffers
+        // Pre-allocate runtime buffers
         let input_buf = AlignedVec::new(fft_size, 0.0_f32);
-        let fft_buf_final = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
-        let acc_re = AlignedVec::new(fft_size, 0.0_f32);
-        let acc_im = AlignedVec::new(fft_size, 0.0_f32);
+        let fft_buf_re = AlignedVec::new(n_bins, 0.0_f32);
+        let fft_buf_im = AlignedVec::new(n_bins, 0.0_f32);
+        let acc_re = AlignedVec::new(n_bins, 0.0_f32);
+        let acc_im = AlignedVec::new(n_bins, 0.0_f32);
+        let output_buf = AlignedVec::new(fft_size, 0.0_f32);
 
         Self {
             fft_size,
+            n_bins,
             partition_size,
             num_partitions,
             h_fdl_re,
@@ -169,14 +160,12 @@ impl ConvEngine {
             fdl_im,
             fdl_idx: 0,
             input_buf,
-            fft_scratch,
-            ifft_scratch,
-            fft_buf: fft_buf_final,
+            rfft,
+            fft_buf_re,
+            fft_buf_im,
             acc_re,
             acc_im,
-            fft,
-            ifft,
-            ifft_scale,
+            output_buf,
             output_start,
         }
     }
@@ -239,8 +228,6 @@ impl ConvEngine {
         }
 
         // ── Step 1: Shift input buffer (overlap-save) ──
-        // Discard the oldest `partition_size` samples and shift the tail forward.
-        // Then load `partition_size` new samples at the end.
         let in_len = self.fft_size;
         let out_start = self.output_start;
         self.input_buf.copy_within(self.partition_size..in_len, 0);
@@ -248,23 +235,20 @@ impl ConvEngine {
         // Load new samples at the end
         self.input_buf[out_start..in_len].copy_from_slice(input);
 
-        // ── Step 2: Forward FFT of input segment ──
-        for (i, &sample) in self.input_buf.iter().enumerate() {
-            self.fft_buf[i] = Complex::new(sample, 0.0);
-        }
-        self.fft
-            .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
+        // ── Step 2: Forward RFFT of input segment ──
+        self.rfft
+            .process_forward(&self.input_buf, &mut self.fft_buf_re, &mut self.fft_buf_im);
 
         // ── Step 3: Store in FDL (circular buffer) ──
-        let fdl_base = self.fdl_idx * self.fft_size;
-        for (k, c) in self.fft_buf.iter().enumerate() {
-            self.fdl_re[fdl_base + k] = c.re;
-            self.fdl_im[fdl_base + k] = c.im;
+        let fdl_base = self.fdl_idx * self.n_bins;
+        for k in 0..self.n_bins {
+            self.fdl_re[fdl_base + k] = self.fft_buf_re[k];
+            self.fdl_im[fdl_base + k] = self.fft_buf_im[k];
         }
 
         // ── Step 4: Frequency-domain MAC over all partitions ──
         let p_count = self.num_partitions;
-        let n_bins = self.fft_size;
+        let n_bins = self.n_bins;
 
         // Zero the accumulator
         self.acc_re.fill(0.0);
@@ -273,21 +257,24 @@ impl ConvEngine {
         #[cfg(target_arch = "x86_64")]
         {
             use core::arch::x86_64::{
-                _mm256_add_ps, _mm256_fmadd_ps, _mm256_fnmadd_ps, _mm256_load_ps, _mm256_mul_ps,
-                _mm256_store_ps,
+                _mm256_add_ps, _mm256_fmadd_ps, _mm256_fnmadd_ps, _mm256_loadu_ps, _mm256_mul_ps,
+                _mm256_storeu_ps,
             };
-            // SAFETY: AlignedVec guarantees 64-byte alignment, sufficient for
-            // _mm256_load_ps/_mm256_store_ps (32-byte). All indices are
-            // bounded by pre-allocated buffer sizes.
+            // SAFETY: AlignedVec guarantees 64-byte alignment. _mm256_loadu_ps
+            // has no alignment requirement. All indices are bounded by
+            // pre-allocated buffer sizes.
+            // Note: we use _mm256_loadu_ps/_mm256_storeu_ps (unaligned)
+            // because n_bins = fft_size/2 + 1 may not be a multiple of 8,
+            // so p * n_bins + k can be unaligned for odd p.
             unsafe {
                 if p_count == 1 {
-                    let fdl_start = self.fdl_idx * self.fft_size;
+                    let fdl_start = self.fdl_idx * self.n_bins;
                     let mut k = 0usize;
                     while k + 8 <= n_bins {
-                        let h_re = _mm256_load_ps(self.h_fdl_re.as_ptr().add(k));
-                        let h_im = _mm256_load_ps(self.h_fdl_im.as_ptr().add(k));
-                        let x_re = _mm256_load_ps(self.fdl_re.as_ptr().add(fdl_start + k));
-                        let x_im = _mm256_load_ps(self.fdl_im.as_ptr().add(fdl_start + k));
+                        let h_re = _mm256_loadu_ps(self.h_fdl_re.as_ptr().add(k));
+                        let h_im = _mm256_loadu_ps(self.h_fdl_im.as_ptr().add(k));
+                        let x_re = _mm256_loadu_ps(self.fdl_re.as_ptr().add(fdl_start + k));
+                        let x_im = _mm256_loadu_ps(self.fdl_im.as_ptr().add(fdl_start + k));
 
                         let re_prod = _mm256_mul_ps(h_re, x_re);
                         let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
@@ -295,8 +282,8 @@ impl ConvEngine {
                         let im_prod = _mm256_mul_ps(h_re, x_im);
                         let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
 
-                        _mm256_store_ps(self.acc_re.as_mut_ptr().add(k), re_res);
-                        _mm256_store_ps(self.acc_im.as_mut_ptr().add(k), im_res);
+                        _mm256_storeu_ps(self.acc_re.as_mut_ptr().add(k), re_res);
+                        _mm256_storeu_ps(self.acc_im.as_mut_ptr().add(k), im_res);
 
                         k += 8;
                     }
@@ -311,17 +298,17 @@ impl ConvEngine {
                 } else {
                     for p in 0..p_count {
                         let fdl_p = (self.fdl_idx + p_count - p) % p_count;
-                        let fdl_start = fdl_p * self.fft_size;
-                        let h_start = p * self.fft_size;
+                        let fdl_start = fdl_p * self.n_bins;
+                        let h_start = p * self.n_bins;
 
                         let mut k = 0usize;
                         while k + 8 <= n_bins {
-                            let h_re = _mm256_load_ps(self.h_fdl_re.as_ptr().add(h_start + k));
-                            let h_im = _mm256_load_ps(self.h_fdl_im.as_ptr().add(h_start + k));
-                            let x_re = _mm256_load_ps(self.fdl_re.as_ptr().add(fdl_start + k));
-                            let x_im = _mm256_load_ps(self.fdl_im.as_ptr().add(fdl_start + k));
-                            let acc_re_curr = _mm256_load_ps(self.acc_re.as_ptr().add(k));
-                            let acc_im_curr = _mm256_load_ps(self.acc_im.as_ptr().add(k));
+                            let h_re = _mm256_loadu_ps(self.h_fdl_re.as_ptr().add(h_start + k));
+                            let h_im = _mm256_loadu_ps(self.h_fdl_im.as_ptr().add(h_start + k));
+                            let x_re = _mm256_loadu_ps(self.fdl_re.as_ptr().add(fdl_start + k));
+                            let x_im = _mm256_loadu_ps(self.fdl_im.as_ptr().add(fdl_start + k));
+                            let acc_re_curr = _mm256_loadu_ps(self.acc_re.as_ptr().add(k));
+                            let acc_im_curr = _mm256_loadu_ps(self.acc_im.as_ptr().add(k));
 
                             let re_prod = _mm256_mul_ps(h_re, x_re);
                             let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
@@ -331,8 +318,8 @@ impl ConvEngine {
                             let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
                             let im_sum = _mm256_add_ps(acc_im_curr, im_res);
 
-                            _mm256_store_ps(self.acc_re.as_mut_ptr().add(k), re_sum);
-                            _mm256_store_ps(self.acc_im.as_mut_ptr().add(k), im_sum);
+                            _mm256_storeu_ps(self.acc_re.as_mut_ptr().add(k), re_sum);
+                            _mm256_storeu_ps(self.acc_im.as_mut_ptr().add(k), im_sum);
 
                             k += 8;
                         }
@@ -351,8 +338,7 @@ impl ConvEngine {
         #[cfg(not(target_arch = "x86_64"))]
         {
             if p_count == 1 {
-                // Fast path: single partition — no loop over p
-                let fdl_start = self.fdl_idx * self.fft_size;
+                let fdl_start = self.fdl_idx * self.n_bins;
                 for k in 0..n_bins {
                     let h_re = self.h_fdl_re[k];
                     let h_im = self.h_fdl_im[k];
@@ -364,8 +350,8 @@ impl ConvEngine {
             } else {
                 for p in 0..p_count {
                     let fdl_p = (self.fdl_idx + p_count - p) % p_count;
-                    let fdl_start = fdl_p * self.fft_size;
-                    let h_start = p * self.fft_size;
+                    let fdl_start = fdl_p * self.n_bins;
+                    let h_start = p * self.n_bins;
 
                     for k in 0..n_bins {
                         let h_re = self.h_fdl_re[h_start + k];
@@ -379,20 +365,15 @@ impl ConvEngine {
             }
         }
 
-        // ── Step 5: Merge acc_re/acc_im into fft_buf for IFFT (rustfft requires interleaved) ──
-        for k in 0..n_bins {
-            self.fft_buf[k] = Complex::new(self.acc_re[k], self.acc_im[k]);
-        }
-        self.ifft
-            .process_with_scratch(&mut self.fft_buf, &mut self.ifft_scratch);
+        // ── Step 5: Inverse RFFT (complex → real) ──
+        // process_inverse takes in_re/in_im of length N/2+1 (n_bins) and
+        // produces real output of length N (fft_size). The inverse scaling
+        // is handled internally by the IRFFT algorithm.
+        self.rfft
+            .process_inverse(&mut self.acc_re, &mut self.acc_im, &mut self.output_buf);
 
         // ── Step 6: Extract valid output (overlap-save discard) ──
-        for (i, c) in self.fft_buf[out_start..out_start + self.partition_size]
-            .iter()
-            .enumerate()
-        {
-            output[i] = c.re * self.ifft_scale;
-        }
+        output.copy_from_slice(&self.output_buf[out_start..out_start + self.partition_size]);
 
         // ── Step 7: Advance FDL write index ──
         self.fdl_idx += 1;
