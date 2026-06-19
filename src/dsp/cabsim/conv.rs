@@ -23,6 +23,7 @@
 //! Gardner, W. G. "Efficient Convolution without Input-Output Delay"
 //! JAES Vol. 43, No. 3, 1995 March.
 
+use crate::math::common::AlignedVec;
 use rustfft::{Fft, FftPlanner, num_complex::Complex};
 use std::sync::Arc;
 
@@ -45,17 +46,17 @@ pub struct ConvEngine {
     num_partitions: usize,
     /// Pre-FFT'd kernel partitions.
     /// Flat storage: `num_partitions × fft_size` complex values (re, im interleaved).
-    h_fdl: Vec<f32>,
+    h_fdl: AlignedVec<f32>,
     /// Frequency Delay Line (FDL): circular buffer of input spectra.
     /// Flat storage: `num_partitions × fft_size` complex values (re, im interleaved).
-    fdl: Vec<f32>,
+    fdl: AlignedVec<f32>,
     /// Write index into the FDL circular buffer.
     fdl_idx: usize,
     /// Input overlap buffer for overlap-save (length = `fft_size`).
     /// Layout: the most recent `partition_size` samples are loaded at
     /// offset `fft_size - partition_size`. After FFT and IFFT,
     /// the valid output starts at offset `fft_size - partition_size`.
-    input_buf: Vec<f32>,
+    input_buf: AlignedVec<f32>,
     /// Forward FFT scratch buffer.
     fft_scratch: Vec<Complex<f32>>,
     /// Inverse FFT scratch buffer.
@@ -63,7 +64,7 @@ pub struct ConvEngine {
     /// Work buffer for forward FFT (length = fft_size).
     fft_buf: Vec<Complex<f32>>,
     /// Accumulation buffer in frequency domain (length = fft_size).
-    acc: Vec<Complex<f32>>,
+    acc: AlignedVec<Complex<f32>>,
     /// Forward FFT plan.
     fft: Arc<dyn Fft<f32>>,
     /// Inverse FFT plan.
@@ -116,7 +117,7 @@ impl ConvEngine {
 
         // Pre-FFT each kernel partition
         let h_fdl_len = num_partitions * fft_size * 2;
-        let mut h_fdl = vec![0.0_f32; h_fdl_len];
+        let mut h_fdl = AlignedVec::new(h_fdl_len, 0.0_f32);
         let mut fft_buf = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
 
         for p in 0..num_partitions {
@@ -142,12 +143,12 @@ impl ConvEngine {
 
         // Pre-allocate FDL (all zeros initially)
         let fdl_len = num_partitions * fft_size * 2;
-        let fdl = vec![0.0_f32; fdl_len];
+        let fdl = AlignedVec::new(fdl_len, 0.0_f32);
 
         // Pre-allocate other buffers
-        let input_buf = vec![0.0_f32; fft_size];
+        let input_buf = AlignedVec::new(fft_size, 0.0_f32);
         let fft_buf_final = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
-        let acc = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
+        let acc = AlignedVec::new(fft_size, Complex::new(0.0_f32, 0.0_f32));
 
         Self {
             fft_size,

@@ -237,16 +237,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint 5 — Prep O3a: Cabsim SIMD Alignment (P18)
 
-### T5.1 — Alinhamento de buffers no `ConvEngine`
+### T5.1 — Alinhamento de buffers no `ConvEngine` [DONE]
 
 **Detalhes**:
 
-- [ ] Em `src/dsp/cabsim/conv.rs`, modificar as propriedades internas:
+- [x] Em `src/dsp/cabsim/conv.rs`, modificar as propriedades internas:
   - `h_fdl: AlignedVec<f32>`
   - `fdl: AlignedVec<f32>`
   - `input_buf: AlignedVec<f32>`
   - `acc: AlignedVec<Complex<f32>>` (opcional, ou manter dependente de rustfft).
-- [ ] Atualizar o método `new()` de `vec![0.0; N]` para `AlignedVec::from_vec(...)`.
+- [x] Atualizar o método `new()` de `vec![0.0; N]` para `AlignedVec::new(...)`.
 
 ---
 
