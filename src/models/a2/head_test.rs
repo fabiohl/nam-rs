@@ -448,3 +448,58 @@ fn test_a2_head_ch8_avx2_wraparound() {
         );
     }
 }
+
+#[test]
+fn test_a2_head_ch3_sse_parity_wraparound() {
+    if !is_x86_feature_detected!("fma") {
+        return;
+    }
+
+    let ch = 3;
+    let (w, bias, scale) = make_test_weights(ch);
+
+    let ring_size = 32;
+    let ring_mask = ring_size - 1;
+    let history = make_test_history(ch, ring_size);
+    let write_pos: usize = 3;
+    let num_frames = 16;
+
+    let mut output = vec![0.0f32; num_frames];
+    let mut scalar = vec![0.0f32; num_frames];
+
+    unsafe {
+        head_process_ch3_sse(
+            &w,
+            bias,
+            scale,
+            &history,
+            write_pos,
+            ring_mask,
+            num_frames,
+            &mut output,
+        );
+    }
+    a2_head_block_scalar_ref(
+        &w,
+        bias,
+        scale,
+        ch,
+        &history,
+        write_pos,
+        ring_mask,
+        num_frames,
+        &mut scalar,
+    );
+
+    for f in 0..num_frames {
+        let diff = (output[f] - scalar[f]).abs();
+        assert!(
+            diff < 1e-5,
+            "SSE CH=3 wrap frame {}: sse={}, ref={}, diff={}",
+            f,
+            output[f],
+            scalar[f],
+            diff
+        );
+    }
+}

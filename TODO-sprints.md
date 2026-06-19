@@ -290,7 +290,7 @@ Resultados (2026-06-19): CH=8 AVX2 ~14.7× sobre escalar (critério ≥2× OK), 
 
 ---
 
-#### T1.5 — Testes de paridade na `head_test.rs`
+#### T1.5 — Testes de paridade na `head_test.rs` [DONE]
 
 **Arquivo**: `src/models/a2/head_test.rs`
 
@@ -311,6 +311,13 @@ fn test_a2_head_ch8_avx2_parity_large_block() {
 fn test_a2_head_ch3_sse_parity_wraparound() {
     // write_pos = 3, num_frames = 16, K=16 → teste de wraparound severo
 }
+
+**Status**: Concluído (2026-06-19). Todos os testes de paridade SIMD implementados em `head_test.rs`:
+- `test_a2_head_ch8_avx2_parity` — AVX2 CH=8, 16 frames, ring_size=64
+- `test_a2_head_ch8_avx2_parity_large_block` — AVX2 CH=8, 128 frames, ring_size=256
+- `test_a2_head_ch8_avx2_wraparound` — AVX2 CH=8, write_pos=5, ring_size=32, wraparound severo
+- `test_a2_head_ch3_sse_parity_wraparound` — SSE CH=3, write_pos=3, num_frames=16, wraparound severo
+10/10 testes passando com diff < 1e-5.
 ```
 
 ---
