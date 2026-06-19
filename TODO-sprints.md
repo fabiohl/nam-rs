@@ -30,10 +30,11 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
   - **Ação:** Em `src/loader/nam_json/topology.rs`, a função `is_a2_shape` aplica regras severas (`check_groups_are_1`, `check_activations_are_leaky_relu`, etc.). Modificar esta lógica para retornar variantes (ex: `A2Topology::FastPath(u8)` vs `A2Topology::Dynamic`).
   - **Requisito:** Modelos que usam `head1x1`, `layer1x1` com `groups>1`, ativações heterogêneas ou gating devem ser aceitos como `Dynamic`.
 
-- [ ] **Tarefa 1.2: Parsing da Biblioteca de Ativações (F8) e Gating**
+- [x] **Tarefa 1.2: Parsing da Biblioteca de Ativações (F8) e Gating**
   - **Especialista:** `implementador`
   - **Ação:** Implementar a desserialização avançada de `ActivationConfig` no loader. Portar a lógica para ler arrays de ativações JSON, mapeando para o enum `ActivationType` em `src/models/a2/activations.rs`.
   - **Requisito:** Obter a lista completa de ativações por camada (23 elementos) para instanciar as funções corretamente.
+  - **Nota:** `NamLayerConfig::parse_activation_config()` é o ponto de entrada para o motor dinâmico (T3.1). Para usar, chamar com `num_layers=23` (ou usar `A2_NUM_LAYERS`). Retorna `LayerActivationConfig { activations, gating_modes, secondary_activations }`.
 
 ## Sprint 2: Fundações Numéricas e Gating/Blending (F8 + F9)
 

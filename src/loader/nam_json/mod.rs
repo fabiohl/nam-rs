@@ -5,6 +5,7 @@
 //!
 //! Loads tensors and metadata outside the RT path.
 
+pub mod activation_parser;
 pub mod data;
 pub mod error;
 pub mod model;
@@ -12,6 +13,10 @@ pub mod parse;
 pub mod topology;
 mod validation;
 
+pub use activation_parser::{
+    LayerActivationConfig, parse_activations_from_json, parse_gating_modes_from_json,
+    parse_layer_activations, parse_secondary_activations_from_json,
+};
 pub use data::{
     JsonError, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
 };

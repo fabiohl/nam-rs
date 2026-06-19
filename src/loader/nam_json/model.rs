@@ -105,6 +105,25 @@ pub struct NamLayerConfig {
     pub layer_raw: Option<serde_json::Value>,
 }
 
+impl NamLayerConfig {
+    /// Parses the activation configuration from the preserved raw JSON.
+    ///
+    /// Extracts per-layer `activation`, `gating_mode`, and `secondary_activation`
+    /// arrays for `num_layers` expected entries (23 for standard A2).
+    /// Returns `None` when `layer_raw` is absent or the `activation` array
+    /// is missing/invalid.
+    ///
+    /// This is the primary entry point for the dynamic A2 engine (Sprint 3)
+    /// to obtain the heterogeneous activation configuration at model build time.
+    pub fn parse_activation_config(
+        &self,
+        num_layers: usize,
+    ) -> Option<super::activation_parser::LayerActivationConfig> {
+        let raw = self.layer_raw.as_ref()?;
+        super::activation_parser::parse_layer_activations(raw, num_layers)
+    }
+}
+
 impl<'de> Deserialize<'de> for NamLayerConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
