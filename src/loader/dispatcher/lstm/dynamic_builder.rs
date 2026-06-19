@@ -24,7 +24,6 @@ use log::info;
 /// head_weights[H]
 /// head_bias
 /// ```
-#[allow(dead_code)]
 pub(crate) fn build_lstm_dynamic(
     data: &NamModelData,
     num_layers: usize,

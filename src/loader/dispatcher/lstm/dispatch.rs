@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use super::dynamic_builder::build_lstm_dynamic;
 use super::static_builder::{build_lstm_1layer, build_lstm_2layer};
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
 use crate::models::StaticModel;
-use anyhow::{Context, bail};
+use anyhow::Context;
 
 pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
     let (num_layers, hidden_size) = get_lstm_topology(data)
@@ -51,10 +52,9 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<StaticModel>
             let model = build_lstm_2layer::<24, 25, 48, 96>(data, num_layers, hidden_size)?;
             Ok(Box::new(StaticModel::Lstm2x24(Box::new(model))))
         }
-        _ => bail!(
-            "Unsupported LSTM topology: {} layers × {} hidden units. Static profiles are 1×8..1×40 and 2×8..2×24.",
-            num_layers,
-            hidden_size
-        ),
+        _ => {
+            let model = build_lstm_dynamic(data, num_layers, hidden_size)?;
+            Ok(Box::new(StaticModel::LstmDyn(Box::new(model))))
+        }
     }
 }

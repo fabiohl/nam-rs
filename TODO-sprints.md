@@ -65,7 +65,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
 * **Task 2.2.2 [x] Atualizar Parsing de Pesos:**
   * Criar ou adaptar módulo em `src/loader/dispatcher/lstm/weights.rs` para ler os tamanhos dinâmicos alocando buffers `AlignedVec`.
   * Cuidar com o layout dos pesos e *gate_major*.
-* **Task 2.2.3 [ ] Alterar o Dispatch Híbrido:**
+* **Task 2.2.3 [x] Alterar o Dispatch Híbrido:**
   * Arquivo: `src/loader/dispatcher/lstm/dispatch.rs`
   * Em vez de retornar um `bail!` ao encontrar topologia diferente das 10 estáticas, executar o `build_lstm_dynamic` e retornar a nova variação do `StaticModel::LstmDyn`.
   * *Ponto de Risco*: Inserir a nova variação na `enum StaticModel` (`src/models/mod.rs`) afeta o trait. Implementar todos os selos (Sealed trait) corretamente.

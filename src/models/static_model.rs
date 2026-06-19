@@ -27,6 +27,7 @@ impl StaticModel {
             Self::Lstm2x16(m) => m.process_scalar(input, output),
             Self::Lstm1x40(m) => m.process_scalar(input, output),
             Self::Lstm2x24(m) => m.process_scalar(input, output),
+            Self::LstmDyn(m) => m.process_scalar(input, output),
             other => other.process(input, output),
         }
     }
@@ -55,7 +56,8 @@ impl StaticModel {
             | Self::Lstm2x12(_)
             | Self::Lstm2x16(_)
             | Self::Lstm1x40(_)
-            | Self::Lstm2x24(_) => {}
+            | Self::Lstm2x24(_)
+            | Self::LstmDyn(_) => {}
             Self::Linear(_) => {}
         }
     }
@@ -85,6 +87,7 @@ impl StaticModel {
             }
             Self::Container(c) => c.active().layer_count(),
             Self::Lstm2x8(_) | Self::Lstm2x12(_) | Self::Lstm2x16(_) | Self::Lstm2x24(_) => 2,
+            Self::LstmDyn(m) => m.layers.len(),
             Self::Lstm1x3(_)
             | Self::Lstm1x8(_)
             | Self::Lstm1x12(_)
@@ -110,6 +113,7 @@ impl StaticModel {
                 | Self::Lstm2x16(_)
                 | Self::Lstm1x40(_)
                 | Self::Lstm2x24(_)
+                | Self::LstmDyn(_)
         )
     }
 
@@ -153,6 +157,7 @@ impl StaticModel {
             Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
             Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
             Self::Lstm1x40(_) => 40,
+            Self::LstmDyn(m) => m.head_weights.len(),
             Self::Linear(_) => 1,
         }
     }
@@ -191,6 +196,7 @@ impl StaticModel {
             Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
             Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
             Self::Lstm1x40(_) => 40,
+            Self::LstmDyn(m) => m.head_weights.len(),
             Self::Linear(_) => 1,
         }
     }
@@ -219,6 +225,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.process(input, output),
             Self::Lstm1x40(m) => m.process(input, output),
             Self::Lstm2x24(m) => m.process(input, output),
+            Self::LstmDyn(m) => m.process(input, output),
             Self::Linear(m) => unsafe { m.process(input, output) },
         }
     }
@@ -245,6 +252,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.prewarm(num_samples),
             Self::Lstm1x40(m) => m.prewarm(num_samples),
             Self::Lstm2x24(m) => m.prewarm(num_samples),
+            Self::LstmDyn(m) => m.prewarm(num_samples),
             Self::Linear(m) => m.prewarm(num_samples),
         }
     }
@@ -270,6 +278,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x40(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x24(m) => m.reset(sample_rate, max_buffer_size),
+            Self::LstmDyn(m) => m.reset(sample_rate, max_buffer_size),
             Self::Linear(m) => NamModel::reset(m.as_mut(), sample_rate, max_buffer_size),
         }
     }
@@ -295,6 +304,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x40(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm2x24(m) => m.set_max_buffer_size(max_buf),
+            Self::LstmDyn(m) => m.set_max_buffer_size(max_buf),
             Self::Linear(m) => NamModel::set_max_buffer_size(m.as_mut(), max_buf),
         }
     }
@@ -320,6 +330,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.prewarm_samples(),
             Self::Lstm1x40(m) => m.prewarm_samples(),
             Self::Lstm2x24(m) => m.prewarm_samples(),
+            Self::LstmDyn(m) => m.prewarm_samples(),
             Self::Linear(m) => m.prewarm_samples(),
         }
     }

@@ -109,6 +109,8 @@ pub enum StaticModel {
     Lstm1x40(Box<lstm::Lstm1x40>),
     /// LSTM 2 Layers × 24 hidden units.
     Lstm2x24(Box<lstm::Lstm2x24>),
+    /// LSTM Dynamic — runtime-dimensioned, free geometry (F7 fallback).
+    LstmDyn(Box<lstm::LstmModelDyn>),
     /// SlimmableContainer — bundle of submodels selected by quality threshold.
     Container(Box<container::ContainerModel>),
     /// Linear — FIR-based model (dot product of input history with weights + bias).
