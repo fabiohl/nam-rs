@@ -69,6 +69,12 @@ pub fn process_dsp_buffer(
                         0
                     };
 
+                    if (*frame_count & 0x3FF) == 0 {
+                        unsafe {
+                            crate::math::common::set_daz_ftz();
+                        }
+                    }
+
                     capture_dsp_pipeline(
                         samples_l,
                         samples_r,

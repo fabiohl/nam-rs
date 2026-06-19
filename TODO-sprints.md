@@ -226,12 +226,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - [x] Adicionar método `pub fn get_exact_max(&self) -> u64` retornando o `.load()`.
 - [x] Em `src/standalone/rt_setup/telemetry.rs:171`, ler o exato (`let exact = ... / 1000`) em vez de logar o `get_max()` log2. Exibir `p50`, `p99`, e `exact`.
 
-### T4.2 — P5: Proteção anti-denormal e percentis
+### T4.2 — P5: Proteção anti-denormal e percentis [DONE]
 
 **Detalhes**:
 
-- [ ] Em `src/standalone/pw_host/rt_callback/process.rs`, reassertear o DAZ/FTZ: `if (*frame_count & 0x3FF) == 0 { unsafe { crate::math::common::set_daz_ftz(); } }` antes de despachar o pipeline.
-- [ ] Em `tests/nam_infer_test.rs:496`, testar usando P99/histogramas em vez de `Instant::now()` se for viável, focar nas invariantes matemáticas de que o modelo não degenerou, tolerando pequenas variações de SO na medição _wall-clock_ para evitar _flakiness_.
+- [x] Em `src/standalone/pw_host/rt_callback/process.rs`, reassertear o DAZ/FTZ: `if (*frame_count & 0x3FF) == 0 { unsafe { crate::math::common::set_daz_ftz(); } }` antes de despachar o pipeline.
+- [x] Em `tests/nam_infer_test.rs:496`, testar usando P99/histogramas em vez de `Instant::now()` — substituído por `LatencyHistogram` com P50, P99 e exact_max; gate de warning usa P99 ao invés do max bruto, tolerando spikes de preempção do SO.
 
 ---
 

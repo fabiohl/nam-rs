@@ -4,6 +4,7 @@
 //! Integration Tests for topology validation, neural inference stability,
 //! and miscellaneous edge cases (denormals, block size invariance, community models).
 
+use nam_rs::dsp::telemetry::LatencyHistogram;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
     NamWavenetTopology, WavenetTopologyResult, get_wavenet_topology, parse_nam_json,
@@ -469,7 +470,7 @@ fn test_denormal_stability_silence() {
     #[cfg(not(debug_assertions))]
     const SILENCE_BLOCKS: usize = 4096;
     const BLOCK_SIZE: usize = 64;
-    const MAX_BLOCK_TIME_US: u128 = 500;
+    const MAX_BLOCK_TIME_US: u64 = 500;
 
     unsafe {
         nam_rs::math::common::set_daz_ftz();
@@ -490,16 +491,13 @@ fn test_denormal_stability_silence() {
 
         let silence = [0.0f32; BLOCK_SIZE];
         let mut output = [0.0f32; BLOCK_SIZE];
-        let mut max_block_time_us: u128 = 0;
+        let hist = LatencyHistogram::new();
 
         for block_idx in 0..SILENCE_BLOCKS {
             let start = std::time::Instant::now();
             model.process(&silence, &mut output);
-            let elapsed = start.elapsed().as_micros();
-
-            if block_idx > 100 && elapsed > max_block_time_us {
-                max_block_time_us = elapsed;
-            }
+            let elapsed_ns = start.elapsed().as_nanos() as u64;
+            hist.record(elapsed_ns);
 
             // Validate finiteness across all blocks
             for (i, &s) in output.iter().enumerate() {
@@ -530,18 +528,22 @@ fn test_denormal_stability_silence() {
             );
         }
 
+        let p50 = hist.get_percentile(0.50) / 1000;
+        let p99 = hist.get_percentile(0.99) / 1000;
+        let exact_max = hist.get_exact_max() / 1000;
         println!(
             "WaveNet denormal OK — {SILENCE_BLOCKS} silence blocks, \
-             max_block_time={max_block_time_us}μs, output[0]={:.6e}",
+             P50={p50}μs, P99={p99}μs, exact_max={exact_max}μs, output[0]={:.6e}",
             output[0]
         );
 
         // Timing gate: informative warning only — wall-clock is flaky under
         // system load and not a reliable denormal indicator. The value-based
         // checks above (subnormals, finiteness, stability) are the real gate.
-        if !cfg!(debug_assertions) && max_block_time_us >= MAX_BLOCK_TIME_US {
+        // Using P99 instead of raw max to tolerate sporadic OS preemption spikes.
+        if !cfg!(debug_assertions) && p99 >= MAX_BLOCK_TIME_US {
             eprintln!(
-                "WARN [Denormal WaveNet] Slowest block={max_block_time_us}μs exceeds \
+                "WARN [Denormal WaveNet] P99={p99}μs exceeds \
                  {MAX_BLOCK_TIME_US}μs — possible denormal penalty or system load"
             );
         }
@@ -561,16 +563,13 @@ fn test_denormal_stability_silence() {
 
         let silence = [0.0f32; BLOCK_SIZE];
         let mut output = [0.0f32; BLOCK_SIZE];
-        let mut max_block_time_us: u128 = 0;
+        let hist = LatencyHistogram::new();
 
         for block_idx in 0..SILENCE_BLOCKS {
             let start = std::time::Instant::now();
             model.process(&silence, &mut output);
-            let elapsed = start.elapsed().as_micros();
-
-            if block_idx > 100 && elapsed > max_block_time_us {
-                max_block_time_us = elapsed;
-            }
+            let elapsed_ns = start.elapsed().as_nanos() as u64;
+            hist.record(elapsed_ns);
 
             for (i, &s) in output.iter().enumerate() {
                 assert!(
@@ -601,15 +600,18 @@ fn test_denormal_stability_silence() {
             );
         }
 
+        let p50 = hist.get_percentile(0.50) / 1000;
+        let p99 = hist.get_percentile(0.99) / 1000;
+        let exact_max = hist.get_exact_max() / 1000;
         println!(
             "LSTM denormal OK — {SILENCE_BLOCKS} silence blocks, \
-             max_block_time={max_block_time_us}μs, output[0]={:.6e}",
+             P50={p50}μs, P99={p99}μs, exact_max={exact_max}μs, output[0]={:.6e}",
             output[0]
         );
 
-        if !cfg!(debug_assertions) && max_block_time_us >= MAX_BLOCK_TIME_US {
+        if !cfg!(debug_assertions) && p99 >= MAX_BLOCK_TIME_US {
             eprintln!(
-                "WARN [Denormal LSTM] Slowest block={max_block_time_us}μs exceeds \
+                "WARN [Denormal LSTM] P99={p99}μs exceeds \
                  {MAX_BLOCK_TIME_US}μs — possible denormal penalty or system load"
             );
         }
