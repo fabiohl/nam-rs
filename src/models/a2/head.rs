@@ -211,6 +211,76 @@ pub unsafe fn head_process_ch8_avx2(
 }
 
 // =============================================================================
+// SSE+FMA kernel for CH=3
+// =============================================================================
+
+/// Kernel SIMD SSE+FMA para A2 Head Conv com CH=3.
+///
+/// Processa `num_frames` frames, um por vez (sem frame-tiling),
+/// usando `_mm_setr_ps` para empacotar 3 pesos + 0 e 3 valores
+/// do histórico + 0 em registradores `__m128`, acumulando via
+/// `_mm_fmadd_ps` sobre K=16 taps.
+///
+/// A redução final usa `_mm_hadd_ps` × 2 + `_mm_cvtss_f32`,
+/// seguida de `(y + head_b) * head_scale`.
+///
+/// # Safety
+/// - Requer SSE+FMA (`target_feature`).
+/// - `head_w` deve ter pelo menos `K * 3` elementos.
+/// - `head_history` deve ter `(ring_mask + 1) * 3` elementos.
+/// - `output` deve ter pelo menos `num_frames` elementos.
+/// - `num_channels` implícito = 3 (chamador deve garantir).
+#[allow(clippy::too_many_arguments)]
+#[target_feature(enable = "fma")]
+pub unsafe fn head_process_ch3_sse(
+    head_w: &[f32],
+    head_b: f32,
+    head_scale: f32,
+    head_history: &[f32],
+    head_write_pos: usize,
+    ring_mask: usize,
+    num_frames: usize,
+    output: &mut [f32],
+) {
+    let k = A2HeadConv::HEAD_KERNEL_SIZE;
+    let base = head_write_pos.wrapping_sub(num_frames);
+    let w_ptr = head_w.as_ptr();
+    let h_ptr = head_history.as_ptr();
+
+    for (f, out_val) in output.iter_mut().take(num_frames).enumerate() {
+        let mut acc = _mm_setzero_ps();
+        let col_base = base.wrapping_add(f);
+
+        for t in 0..k {
+            let col = col_base.wrapping_sub(k - 1 - t) & ring_mask;
+            let src_off = col * 3;
+            let w_off = t * 3;
+
+            let w_v = _mm_setr_ps(
+                *w_ptr.add(w_off),
+                *w_ptr.add(w_off + 1),
+                *w_ptr.add(w_off + 2),
+                0.0,
+            );
+            let h_v = _mm_setr_ps(
+                *h_ptr.add(src_off),
+                *h_ptr.add(src_off + 1),
+                *h_ptr.add(src_off + 2),
+                0.0,
+            );
+
+            acc = _mm_fmadd_ps(w_v, h_v, acc);
+        }
+
+        let hadd1 = _mm_hadd_ps(acc, acc);
+        let hadd2 = _mm_hadd_ps(hadd1, hadd1);
+        let y = _mm_cvtss_f32(hadd2);
+
+        *out_val = (y + head_b) * head_scale;
+    }
+}
+
+// =============================================================================
 // Scalar reference for parity testing (oracle)
 // =============================================================================
 

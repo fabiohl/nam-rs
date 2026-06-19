@@ -171,7 +171,7 @@ Para `num_frames` típico de 64, o ganho é claro: 64×16 = 1024 FMAs escalares 
 
 ---
 
-#### T1.2 — Implementar `head_process_ch3_sse` (kernel CH=3)
+#### T1.2 — Implementar `head_process_ch3_sse` (kernel CH=3) [DONE]
 
 **Arquivo**: `src/models/a2/head.rs`
 
