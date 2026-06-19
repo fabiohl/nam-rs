@@ -69,5 +69,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
   * Arquivo: `src/loader/dispatcher/lstm/dispatch.rs`
   * Em vez de retornar um `bail!` ao encontrar topologia diferente das 10 estáticas, executar o `build_lstm_dynamic` e retornar a nova variação do `StaticModel::LstmDyn`.
   * *Ponto de Risco*: Inserir a nova variação na `enum StaticModel` (`src/models/mod.rs`) afeta o trait. Implementar todos os selos (Sealed trait) corretamente.
-* **Task 2.2.4 [ ] Validação Exaustiva:**
+* **Task 2.2.4 [x] Validação Exaustiva:**
   * Criar testes isolados para topologias pequenas/estranhas (ex: 3 layers, 10 hidden units) e avaliar parity com C++ se houver golden vector, ou no mínimo atestar panic-free execution.
+  * Arquivo: `tests/lstm_model_dyn_validation.rs`
+  * Cobre: 17 testes unitários + 2 proptests (#[ignore]) para geometrias (1..=8 layers) × (1..=128 hidden), parity SIMD vs scalar, determinismo, block-size invariance, reset de estados, zero-input, quantized-head path.
