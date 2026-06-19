@@ -29,6 +29,7 @@ pub mod layer_dyn_kernels;
 pub mod layer_kernels;
 pub mod model1;
 pub mod model2;
+pub mod model_dyn;
 pub mod prewarm;
 
 // =============================================================================
@@ -37,6 +38,7 @@ pub mod prewarm;
 
 pub use layer::LstmLayer;
 pub use layer_dyn::LstmLayerDyn;
+pub use model_dyn::LstmModelDyn;
 pub use model1::LstmModel1;
 pub use model2::LstmModel2;
 
@@ -96,6 +98,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     for LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
 }
+impl sealed::Sealed for LstmModelDyn {}
 
 // =============================================================================
 // NamModel for LSTM — 1 Layer
@@ -147,6 +150,29 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 
     /// Light reset for 2-layer LSTM: only zeros internal states without
     /// reprocessing the full prewarm with silence.
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
+        self.reset_states();
+        Ok(())
+    }
+}
+
+// =============================================================================
+// NamModel for LSTM — Dynamic (runtime-variable geometry)
+// =============================================================================
+
+impl NamModel for LstmModelDyn {
+    /// Executes LSTM audio processing through the dynamic layer chain.
+    fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        self.process(input, output);
+    }
+
+    /// Prewarm via zero-input processing to stabilize recurrent state.
+    #[cold]
+    fn prewarm(&mut self, num_samples: usize) {
+        lstm_prewarm_common(self, num_samples);
+    }
+
+    /// Light reset: zeros all layers' internal states.
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
         Ok(())

@@ -58,7 +58,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
 
 ### Sprint 2.2: Construção do Modelo e Dispatcher Híbrido
 
-* **Task 2.2.1 [ ] Construir o Modelo Dinâmico `LstmModelDyn`:**
+* **Task 2.2.1 [x] Construir o Modelo Dinâmico `LstmModelDyn`:**
   * Criar arquivo: `src/models/lstm/model_dyn.rs`
   * Compor uma struct com `layers: Vec<LstmLayerDyn>`.
   * Implementar o método genérico `process` que faz a cadeia completa de repasse entre as camadas e soma com `head_weights`.

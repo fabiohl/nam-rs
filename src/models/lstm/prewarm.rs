@@ -5,6 +5,7 @@
 
 use super::LstmModel1;
 use super::LstmModel2;
+use super::LstmModelDyn;
 use super::NamModel;
 
 /// Internal trait to unify models that have resettable LSTM state.
@@ -26,6 +27,12 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     fn reset_input_slots(&mut self) {
         self.layer1.reset_input_slot();
         self.layer2.reset_input_slot();
+    }
+}
+
+impl LstmLike for LstmModelDyn {
+    fn reset_input_slots(&mut self) {
+        self.reset_input_slots();
     }
 }
 
