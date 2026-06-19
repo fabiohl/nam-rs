@@ -129,18 +129,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T1.4 — Remover `minstant` do `Cargo.toml`
+### T1.4 — Remover `minstant` do `Cargo.toml` [DONE]
 
 **Objetivo**: Eliminar a dependência e confirmar build limpo.
 
 **Detalhes**:
 
-- [ ] Remover `minstant = "0.1.7"` da seção `[dependencies]` do `Cargo.toml`
-- [ ] `cargo check` (todos os features)
-- [ ] `cargo build --features standalone`
-- [ ] `cargo build --features clap-plugin`
-- [ ] Verificar: `grep -r minstant src/` → **zero matches**
-- [ ] Verificar: `cargo tree | grep minstant` → **nenhum resultado**
+- [x] Remover `minstant = "0.1.7"` da seção `[dependencies]` do `Cargo.toml`
+- [x] `cargo check` (todos os features)
+- [x] `cargo build --features standalone`
+- [x] `cargo build --features clap-plugin`
+- [x] Verificar: `grep -r minstant src/` → **zero matches**
+- [x] Verificar: `cargo tree | grep minstant` → **nenhum resultado**
 
 **Arquivos**:
 
