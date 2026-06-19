@@ -29,6 +29,7 @@
 //! - `a2_fast.cpp:617-681` (strategy `Channels >= 8`, T=4 tap-major).
 
 use crate::math::common::AlignedVec;
+use crate::models::a2::film::FilmBlock;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use core::arch::x86_64::*;
@@ -262,9 +263,12 @@ pub unsafe fn conv1d_ch8_t4_avx2(
 
 /// Full layer forward pass for CH=8 using T=4 tiled tap-major conv.
 ///
-/// Processes `num_frames` through: dilated conv → bias → mixin → LeakyReLU →
-/// head accumulate → l1x1 residual. All operations use SIMD block processing
+/// Processes `num_frames` through: dilated conv → [FiLM post-conv] → bias → mixin →
+/// [FiLM post-mixin] → LeakyReLU → [FiLM post-activation] → head accumulate →
+/// l1x1 residual → [FiLM post-l1x1]. All operations use SIMD block processing
 /// on `__m256` vectors.
+///
+/// FiLM insertion points are conditionally executed when `film.*_film.is_some()`.
 ///
 /// # Safety
 /// Buffers must be sized appropriately. Caller ensures linear ring history
@@ -276,6 +280,7 @@ pub unsafe fn layer_forward_ch8_block(
     mixin_w: &[f32],
     l1x1_w: &[f32],
     l1x1_b: &[f32],
+    film: &mut FilmBlock<'_>,
     layer_buffer: &[f32],
     frame_start: usize,
     num_frames: usize,
@@ -308,25 +313,67 @@ pub unsafe fn layer_forward_ch8_block(
         &mut z_buf[..num_frames * ch],
     );
 
-    // 2. Post-conv: mixin + LeakyReLU (in-place on z_buf).
+    // 1b. FiLM: conv_post_film + input_mixin_pre_film (post-conv, pre-mixin).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.conv_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.input_mixin_pre_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 2. Post-conv: mixin (in-place on z_buf).
     {
         let z = z_buf.as_mut_ptr();
         let mixin_v = _mm256_loadu_ps(mixin_w.as_ptr());
-        let slope_v = _mm256_set1_ps(A2_LEAKY_SLOPE);
-        let zero_v = _mm256_setzero_ps();
         for (f, cond_val) in input_cond.iter().take(num_frames).enumerate() {
             let off = f * ch;
             let mut zv = _mm256_loadu_ps(z.add(off));
             let cond_v = _mm256_set1_ps(*cond_val);
             zv = _mm256_fmadd_ps(mixin_v, cond_v, zv);
-            let mask = _mm256_cmp_ps(zv, zero_v, _CMP_LT_OS);
-            let zv_leaky = _mm256_mul_ps(zv, slope_v);
-            zv = _mm256_blendv_ps(zv, zv_leaky, mask);
             _mm256_storeu_ps(z.add(off), zv);
         }
     }
 
-    // 3. Head accumulate.
+    // 2b. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.input_mixin_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.activation_pre_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 3. LeakyReLU (in-place on z_buf).
+    {
+        let z = z_buf.as_mut_ptr();
+        let slope_v = _mm256_set1_ps(A2_LEAKY_SLOPE);
+        let zero_v = _mm256_setzero_ps();
+        for f in 0..num_frames {
+            let off = f * ch;
+            let zv = _mm256_loadu_ps(z.add(off));
+            let mask = _mm256_cmp_ps(zv, zero_v, _CMP_LT_OS);
+            let zv_leaky = _mm256_mul_ps(zv, slope_v);
+            _mm256_storeu_ps(z.add(off), _mm256_blendv_ps(zv, zv_leaky, mask));
+        }
+    }
+
+    // 3b. FiLM: activation_post_film (post-activation).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.activation_post_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 4. Head accumulate.
     {
         let head = head_accum.as_mut_ptr();
         for f in 0..num_frames {
@@ -341,7 +388,7 @@ pub unsafe fn layer_forward_ch8_block(
         }
     }
 
-    // 4. Layer1x1 residual (skipped on last layer).
+    // 5. Layer1x1 residual (skipped on last layer).
     if !is_last {
         let lin = layer_in.as_mut_ptr();
         let l1x1_b_v = _mm256_loadu_ps(l1x1_b.as_ptr());
@@ -357,6 +404,15 @@ pub unsafe fn layer_forward_ch8_block(
             }
             let lv = _mm256_loadu_ps(lin.add(off));
             _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, acc));
+        }
+
+        // 5b. FiLM: layer1x1_post_film (post-l1x1, on layer_in).
+        for f in 0..num_frames {
+            let cond = &input_cond[f..f + 1];
+            let lin_slice = &mut layer_in[f * ch..(f + 1) * ch];
+            if let Some(ref mut film) = film.layer1x1_post_film {
+                film.process(lin_slice, cond);
+            }
         }
     }
 }

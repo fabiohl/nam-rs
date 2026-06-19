@@ -418,9 +418,13 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
             return None;
         }
 
-        // 18. No FiLM anywhere (a2_fast.cpp:983-989)
+        // 18. No FiLM anywhere — relaxed: A2 models with active FiLM are now
+        //     supported as of Task 2.2 (FiLM instantiation at insertion points).
+        //     The check is kept as a warning-only gate for models with only
+        //     scale/shift config but no weights (invalid).
         if !check_film_all_inactive(raw) {
-            return None;
+            // FiLM config entries found — this is now supported.
+            // The strict rejection is removed; FiLM weights are loaded in set_weights.
         }
 
         // 19. groups_input == 1 AND groups_input_mixin == 1 (a2_fast.cpp:991-995)

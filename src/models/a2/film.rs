@@ -190,6 +190,66 @@ impl FiLMLayer {
     }
 }
 
+// ── FilmBlock: mutable FiLM references for block-level dispatch ──────────
+
+/// Bundle of mutable references to the 8 FiLM insertion points in an A2 layer.
+///
+/// Used by `layer_forward_ch{3,8}_block` to conditionally apply FiLM
+/// at the correct positions in the signal chain without per-point parameter
+/// explosion.
+pub struct FilmBlock<'a> {
+    /// FiLM before dilated convolution.
+    pub conv_pre_film: Option<&'a mut FiLMLayer>,
+    /// FiLM after dilated convolution.
+    pub conv_post_film: Option<&'a mut FiLMLayer>,
+    /// FiLM before input mixin (same insertion point as conv_post_film).
+    pub input_mixin_pre_film: Option<&'a mut FiLMLayer>,
+    /// FiLM after input mixin, before activation.
+    pub input_mixin_post_film: Option<&'a mut FiLMLayer>,
+    /// FiLM before activation (same insertion point as input_mixin_post_film).
+    pub activation_pre_film: Option<&'a mut FiLMLayer>,
+    /// FiLM after activation.
+    pub activation_post_film: Option<&'a mut FiLMLayer>,
+    /// FiLM after layer 1x1 residual.
+    pub layer1x1_post_film: Option<&'a mut FiLMLayer>,
+    /// FiLM after head 1x1 (reserved for future general A2 engine).
+    pub head1x1_post_film: Option<&'a mut FiLMLayer>,
+}
+
+impl<'a> FilmBlock<'a> {
+    /// Creates an empty `FilmBlock` with all fields set to `None`.
+    /// Useful for tests and for the fast-path when no FiLM is active.
+    pub fn empty() -> Self {
+        Self {
+            conv_pre_film: None,
+            conv_post_film: None,
+            input_mixin_pre_film: None,
+            input_mixin_post_film: None,
+            activation_pre_film: None,
+            activation_post_film: None,
+            layer1x1_post_film: None,
+            head1x1_post_film: None,
+        }
+    }
+}
+
+impl super::layer::A2Layer {
+    /// Returns a [`FilmBlock`] with mutable references to all 8 FiLM insertion points.
+    #[inline]
+    pub fn film_block(&mut self) -> FilmBlock<'_> {
+        FilmBlock {
+            conv_pre_film: self.conv_pre_film.as_mut(),
+            conv_post_film: self.conv_post_film.as_mut(),
+            input_mixin_pre_film: self.input_mixin_pre_film.as_mut(),
+            input_mixin_post_film: self.input_mixin_post_film.as_mut(),
+            activation_pre_film: self.activation_pre_film.as_mut(),
+            activation_post_film: self.activation_post_film.as_mut(),
+            layer1x1_post_film: self.layer1x1_post_film.as_mut(),
+            head1x1_post_film: self.head1x1_post_film.as_mut(),
+        }
+    }
+}
+
 // ── AVX2 dot product ───────────────────────────────────────────────────
 
 /// Dot product `sum(a[i] * b[i])` — AVX2+FMA, 8-wide.

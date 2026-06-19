@@ -6,6 +6,7 @@
 //! These functions use f32 native weights and AVX2 batching for the post-conv stage.
 
 use super::A2Conv1dCh3;
+use crate::models::a2::film::FilmBlock;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use core::arch::x86_64::*;
@@ -212,7 +213,10 @@ pub unsafe fn conv1d_ch3_f32_dispatch(
 /// Processes `num_frames` through:
 /// 1. Dilated conv (frame-by-frame, unrolled SSE+FMA, f32 native weights)
 /// 2. Post-conv in pairs of frames via `__m256` (AVX2 x86-64-v3 baseline):
-///    mixin → LeakyReLU → head accumulate → l1x1 residual
+///    [FiLM post-conv] → mixin → [FiLM post-mixin] → LeakyReLU → [FiLM post-activation] →
+///    head accumulate → l1x1 residual → [FiLM post-l1x1]
+///
+/// FiLM insertion points are conditionally executed when `film.*_film.is_some()`.
 ///
 /// ## AVX2 batching (T=2 per YMM)
 ///
@@ -232,6 +236,7 @@ pub unsafe fn layer_forward_ch3_block(
     mixin_w: &[f32], // [3] f32 mixin weights
     l1x1_w: &[f32],  // [9] f32 col-major l1x1 weights (padded to [12]? no, use 3×3)
     l1x1_b: &[f32],  // [3] f32 l1x1 bias
+    film: &mut FilmBlock<'_>,
     layer_buffer: &[f32],
     frame_start: usize,
     num_frames: usize,
@@ -262,6 +267,18 @@ pub unsafe fn layer_forward_ch3_block(
         conv1d_ch3_f32_dispatch(conv, layer_buffer, frame_idx, z_slice);
     }
 
+    // 1b. FiLM: conv_post_film + input_mixin_pre_film (post-conv, pre-mixin).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * CH_PAD..f * CH_PAD + CH];
+        if let Some(ref mut film) = film.conv_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.input_mixin_pre_film {
+            film.process(z_slice, cond);
+        }
+    }
+
     // ── 2. Post-conv: AVX2 T=2 pairs ───────────────────────────────────────
     // Layout in z_buf: frame f is at z_buf[f * 4 .. f * 4 + 4]
     // Pair (f, f+1) occupies 8 contiguous floats → one __m256 load/store.
@@ -272,11 +289,9 @@ pub unsafe fn layer_forward_ch3_block(
     let mixin_v8 = _mm256_set_m128(mixin_v4, mixin_v4);
 
     // l1x1 row-major for GEMV: l1x1_w[u * CH + c] = weight from input u to output c.
-    // For each u, load the output row [w[u*3+0], w[u*3+1], w[u*3+2], 0.0] as __m128.
-    // In the AVX2 loop, we compute: acc += z[u] * l1x1_row_u (for u=0,1,2), then add bias.
-    let l1x1_row0 = _mm_setr_ps(l1x1_w[0], l1x1_w[1], l1x1_w[2], 0.0); // u=0 → [w[0,0], w[0,1], w[0,2], 0]
-    let l1x1_row1 = _mm_setr_ps(l1x1_w[CH], l1x1_w[CH + 1], l1x1_w[CH + 2], 0.0); // u=1
-    let l1x1_row2 = _mm_setr_ps(l1x1_w[2 * CH], l1x1_w[2 * CH + 1], l1x1_w[2 * CH + 2], 0.0); // u=2
+    let l1x1_row0 = _mm_setr_ps(l1x1_w[0], l1x1_w[1], l1x1_w[2], 0.0);
+    let l1x1_row1 = _mm_setr_ps(l1x1_w[CH], l1x1_w[CH + 1], l1x1_w[CH + 2], 0.0);
+    let l1x1_row2 = _mm_setr_ps(l1x1_w[2 * CH], l1x1_w[2 * CH + 1], l1x1_w[2 * CH + 2], 0.0);
     let l1x1_b_v4 = _mm_setr_ps(l1x1_b[0], l1x1_b[1], l1x1_b[2], 0.0);
 
     // Broadcast rows as __m256 for processing 2 frames at once.
@@ -302,16 +317,58 @@ pub unsafe fn layer_forward_ch3_block(
         let cond_v8 = _mm256_setr_ps(cond0, cond0, cond0, cond0, cond1, cond1, cond1, cond1);
         zv = _mm256_fmadd_ps(mixin_v8, cond_v8, zv);
 
+        // Store back for FiLM post-mixin access.
+        _mm256_storeu_ps(z_buf.as_mut_ptr().add(z_off), zv);
+
+        // 2a-fiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
+        {
+            let cond = &input_cond[f..f + 1];
+            if let Some(ref mut film) = film.input_mixin_post_film {
+                film.process(&mut z_buf[z_off..z_off + CH], cond);
+            }
+            if let Some(ref mut film) = film.activation_pre_film {
+                film.process(&mut z_buf[z_off..z_off + CH], cond);
+            }
+        }
+        {
+            let cond = &input_cond[f + 1..f + 2];
+            if let Some(ref mut film) = film.input_mixin_post_film {
+                film.process(&mut z_buf[z_off + CH_PAD..z_off + CH_PAD + CH], cond);
+            }
+            if let Some(ref mut film) = film.activation_pre_film {
+                film.process(&mut z_buf[z_off + CH_PAD..z_off + CH_PAD + CH], cond);
+            }
+        }
+
+        // Reload zv after FiLM modulation.
+        zv = _mm256_loadu_ps(z_buf.as_ptr().add(z_off));
+
         // 2b. LeakyReLU(0.01) branchless.
         let mask = _mm256_cmp_ps(zv, zero_v8, _CMP_LT_OS);
         let zv_leaky = _mm256_mul_ps(zv, slope_v8);
         zv = _mm256_blendv_ps(zv, zv_leaky, mask);
 
-        // Store back for l1x1 pass.
+        // Store back for FiLM post-activation access + l1x1 pass.
         _mm256_storeu_ps(z_buf.as_mut_ptr().add(z_off), zv);
 
+        // 2b-fiLM: activation_post_film (post-activation).
+        {
+            let cond = &input_cond[f..f + 1];
+            if let Some(ref mut film) = film.activation_post_film {
+                film.process(&mut z_buf[z_off..z_off + CH], cond);
+            }
+        }
+        {
+            let cond = &input_cond[f + 1..f + 2];
+            if let Some(ref mut film) = film.activation_post_film {
+                film.process(&mut z_buf[z_off + CH_PAD..z_off + CH_PAD + CH], cond);
+            }
+        }
+
+        // Reload zv after FiLM post-activation.
+        zv = _mm256_loadu_ps(z_buf.as_ptr().add(z_off));
+
         // 2c. Head accumulate (both frames).
-        // NOTE: head_accum stride is CH=3. Cannot use _mm_storeu_ps (4 floats would corrupt next slot).
         let head_off0 = (head_col + f) * CH;
         let head_off1 = (head_col + f + 1) * CH;
         let zv_lo = _mm256_castps256_ps128(zv);
@@ -340,18 +397,13 @@ pub unsafe fn layer_forward_ch3_block(
 
         // 2d. L1x1 residual (skipped on last layer) — pair of frames via AVX2.
         if !is_last {
-            // Extract z components for l1x1: broadcast each input channel across both frames.
-            // z_f0 is in low 128 bits, z_f1 in high 128 bits.
-            // For each output c: acc[f] += l1x1_w[0*CH+c]*z[0] + l1x1_w[1*CH+c]*z[1] + l1x1_w[2*CH+c]*z[2]
-            // Use col-major: accumulate column-by-column (u=0,1,2).
-            let z0_f0 = _mm_cvtss_f32(zv_lo); // z[f0][0]
-            let z1_f0 = _mm_cvtss_f32(_mm_shuffle_ps(zv_lo, zv_lo, 0x55)); // z[f0][1]
-            let z2_f0 = _mm_cvtss_f32(_mm_shuffle_ps(zv_lo, zv_lo, 0xAA)); // z[f0][2]
+            let z0_f0 = _mm_cvtss_f32(zv_lo);
+            let z1_f0 = _mm_cvtss_f32(_mm_shuffle_ps(zv_lo, zv_lo, 0x55));
+            let z2_f0 = _mm_cvtss_f32(_mm_shuffle_ps(zv_lo, zv_lo, 0xAA));
             let z0_f1 = _mm_cvtss_f32(zv_hi);
             let z1_f1 = _mm_cvtss_f32(_mm_shuffle_ps(zv_hi, zv_hi, 0x55));
             let z2_f1 = _mm_cvtss_f32(_mm_shuffle_ps(zv_hi, zv_hi, 0xAA));
 
-            // Broadcast z components as __m256 pairs [f0_z_u, f0_z_u, f0_z_u, f0_z_u, f1_z_u, f1_z_u, f1_z_u, f1_z_u]
             let zu0_v8 = _mm256_setr_ps(z0_f0, z0_f0, z0_f0, z0_f0, z0_f1, z0_f1, z0_f1, z0_f1);
             let zu1_v8 = _mm256_setr_ps(z1_f0, z1_f0, z1_f0, z1_f0, z1_f1, z1_f1, z1_f1, z1_f1);
             let zu2_v8 = _mm256_setr_ps(z2_f0, z2_f0, z2_f0, z2_f0, z2_f1, z2_f1, z2_f1, z2_f1);
@@ -361,25 +413,34 @@ pub unsafe fn layer_forward_ch3_block(
             acc8 = _mm256_fmadd_ps(zu1_v8, l1x1_row1_v8, acc8);
             acc8 = _mm256_fmadd_ps(zu2_v8, l1x1_row2_v8, acc8);
 
-            // Accumulate into layer_in (add to existing residual).
-            // NOTE: layer_in stride is CH=3, not 4. Cannot use _mm_storeu_ps (would corrupt next frame).
-            // Extract 3 valid lanes from acc_lo/acc_hi and accumulate scalar.
             let acc_lo = _mm256_castps256_ps128(acc8);
             let acc_hi = _mm256_extractf128_ps(acc8, 1);
             let lin_off0 = f * CH;
             let lin_off1 = (f + 1) * CH;
-            // Frame f0: acc_lo lanes [0,1,2]
             *layer_in.get_unchecked_mut(lin_off0) += _mm_cvtss_f32(acc_lo);
             *layer_in.get_unchecked_mut(lin_off0 + 1) +=
                 _mm_cvtss_f32(_mm_shuffle_ps(acc_lo, acc_lo, 0x55));
             *layer_in.get_unchecked_mut(lin_off0 + 2) +=
                 _mm_cvtss_f32(_mm_shuffle_ps(acc_lo, acc_lo, 0xAA));
-            // Frame f1: acc_hi lanes [0,1,2]
             *layer_in.get_unchecked_mut(lin_off1) += _mm_cvtss_f32(acc_hi);
             *layer_in.get_unchecked_mut(lin_off1 + 1) +=
                 _mm_cvtss_f32(_mm_shuffle_ps(acc_hi, acc_hi, 0x55));
             *layer_in.get_unchecked_mut(lin_off1 + 2) +=
                 _mm_cvtss_f32(_mm_shuffle_ps(acc_hi, acc_hi, 0xAA));
+
+            // 2d-fiLM: layer1x1_post_film (post-l1x1, on layer_in).
+            {
+                let cond = &input_cond[f..f + 1];
+                if let Some(ref mut film) = film.layer1x1_post_film {
+                    film.process(&mut layer_in[lin_off0..lin_off0 + CH], cond);
+                }
+            }
+            {
+                let cond = &input_cond[f + 1..f + 2];
+                if let Some(ref mut film) = film.layer1x1_post_film {
+                    film.process(&mut layer_in[lin_off1..lin_off1 + CH], cond);
+                }
+            }
         }
     }
 
@@ -387,39 +448,62 @@ pub unsafe fn layer_forward_ch3_block(
     #[allow(clippy::needless_range_loop)]
     for f in n_paired..num_frames {
         let z_off = f * CH_PAD;
-        let cond = input_cond[f];
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[z_off..z_off + CH];
 
-        // 3a. Mixin (scalar).
+        // 3a. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
+        // conv_post_film / input_mixin_pre_film already handled in step 1b.
+
+        // 3b. Mixin (scalar).
         for c in 0..CH {
-            z_buf[z_off + c] += mixin_w[c] * cond;
+            z_slice[c] += mixin_w[c] * input_cond[f];
         }
 
-        // 3b. LeakyReLU.
+        // 3b-fiLM: input_mixin_post_film + activation_pre_film.
+        if let Some(ref mut film) = film.input_mixin_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.activation_pre_film {
+            film.process(z_slice, cond);
+        }
+
+        // 3c. LeakyReLU.
         for c in 0..CH {
-            if z_buf[z_off + c] < 0.0 {
-                z_buf[z_off + c] *= A2_LEAKY_SLOPE;
+            if z_slice[c] < 0.0 {
+                z_slice[c] *= A2_LEAKY_SLOPE;
             }
         }
 
-        // 3c. Head accumulate.
+        // 3c-fiLM: activation_post_film.
+        if let Some(ref mut film) = film.activation_post_film {
+            film.process(z_slice, cond);
+        }
+
+        // 3d. Head accumulate.
         let head_off = (head_col + f) * CH;
         if is_first {
-            head_accum[head_off..head_off + CH].copy_from_slice(&z_buf[z_off..z_off + CH]);
+            head_accum[head_off..head_off + CH].copy_from_slice(z_slice);
         } else {
             for c in 0..CH {
-                head_accum[head_off + c] += z_buf[z_off + c];
+                head_accum[head_off + c] += z_slice[c];
             }
         }
 
-        // 3d. L1x1 residual.
+        // 3e. L1x1 residual.
         if !is_last {
             let lin_off = f * CH;
             for c in 0..CH {
                 let mut sum = l1x1_b[c];
                 for u in 0..CH {
-                    sum += l1x1_w[u * CH + c] * z_buf[z_off + u];
+                    sum += l1x1_w[u * CH + c] * z_slice[u];
                 }
                 layer_in[lin_off + c] += sum;
+            }
+
+            // 3e-fiLM: layer1x1_post_film.
+            let lin_slice = &mut layer_in[lin_off..lin_off + CH];
+            if let Some(ref mut film) = film.layer1x1_post_film {
+                film.process(lin_slice, cond);
             }
         }
     }

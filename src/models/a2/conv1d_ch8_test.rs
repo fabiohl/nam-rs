@@ -324,6 +324,7 @@ fn test_layer_forward_ch8_k6_parity() {
     let mut head_ref = vec![0.0f32; (num_frames + 1) * 8];
     let mut layer_in_simd = vec![0.0f32; num_frames * 8];
     let mut layer_in_ref = vec![0.0f32; num_frames * 8];
+    let mut fb = FilmBlock::empty();
 
     unsafe {
         layer_forward_ch8_block(
@@ -331,6 +332,7 @@ fn test_layer_forward_ch8_k6_parity() {
             &mixin_w_vec,
             &l1x1_w_vec,
             &l1x1_b_vec,
+            &mut fb,
             &history,
             frame_start,
             num_frames,
@@ -411,6 +413,7 @@ fn test_layer_forward_ch8_k15_last_layer_parity() {
     let mut head_ref = vec![0.0f32; (num_frames + 1) * 8];
     let mut layer_in_simd = vec![1.0f32; num_frames * 8];
     let mut layer_in_ref = vec![1.0f32; num_frames * 8];
+    let mut fb = FilmBlock::empty();
 
     unsafe {
         layer_forward_ch8_block(
@@ -418,6 +421,7 @@ fn test_layer_forward_ch8_k15_last_layer_parity() {
             &mixin_w_vec,
             &l1x1_w_vec,
             &l1x1_b_vec,
+            &mut fb,
             &history,
             frame_start,
             num_frames,
@@ -495,6 +499,7 @@ fn test_layer_forward_ch8_middle_layer_accumulates() {
     let mut head = vec![0.0f32; num_frames * 8];
     let mut head_copy = vec![0.0f32; num_frames * 8];
     let mut layer_in = vec![0.0f32; num_frames * 8];
+    let mut fb = FilmBlock::empty();
 
     unsafe {
         layer_forward_ch8_block(
@@ -502,6 +507,7 @@ fn test_layer_forward_ch8_middle_layer_accumulates() {
             &mixin_w_vec,
             &l1x1_w_vec,
             &l1x1_b_vec,
+            &mut fb,
             &history,
             frame_start,
             num_frames,
@@ -522,6 +528,7 @@ fn test_layer_forward_ch8_middle_layer_accumulates() {
             &mixin_w_vec,
             &l1x1_w_vec,
             &l1x1_b_vec,
+            &mut fb,
             &history,
             frame_start,
             num_frames,

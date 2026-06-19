@@ -44,6 +44,7 @@ use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_L
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
+use serde_json::Value;
 
 /// Computes the receptive field size for the A2 architecture.
 ///
@@ -123,6 +124,10 @@ pub struct WaveNetA2<const CH: usize> {
 
     /// Maximum frames per processing block (= `WAVENET_MAX_NUM_FRAMES`).
     pub max_buffer_size: usize,
+
+    /// Raw JSON for the single layer array, preserved for FiLM config parsing.
+    /// `None` when the model is constructed directly (not via JSON deserialization).
+    pub layer_raw: Option<Value>,
 }
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -169,6 +174,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             layer_in: AlignedVec::new(CH * max_buf, 0.0f32),
             receptive_field_size: rf,
             max_buffer_size: max_buf,
+            layer_raw: None,
         })
     }
 
@@ -333,9 +339,21 @@ impl<const CH: usize> WaveNetA2<CH> {
                 debug_assert!(bs >= lookback);
                 debug_assert!(bs + nf * ch <= ring_size * 2);
 
+                // Copy layer_in → history buffer, then apply conv_pre_film.
                 {
                     let buf = &mut self.layer_buffers[li];
                     buf[bs..bs + nf * ch].copy_from_slice(&self.layer_in[..nf * ch]);
+                    // Apply conv_pre_film on the new frames in the history buffer.
+                    for f in 0..nf {
+                        if let Some(ref mut film) = self.layers[li].conv_pre_film {
+                            unsafe {
+                                film.process(
+                                    &mut buf[bs + f * ch..bs + (f + 1) * ch],
+                                    &input[pos + f..pos + f + 1],
+                                );
+                            }
+                        }
+                    }
                 }
 
                 if bs + nf * ch + self.max_buffer_size * ch > ring_size * 2 {
@@ -346,15 +364,35 @@ impl<const CH: usize> WaveNetA2<CH> {
 
                 {
                     let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
-                    let layer = &self.layers[li];
+                    let layer = &mut self.layers[li];
 
-                    if let Some(ch3_conv) = &layer.ch3_conv {
+                    // Extract immutable references first, then create FilmBlock
+                    // (borrow checker can split struct fields when accessed individually).
+                    let ch3_conv = layer.ch3_conv.as_ref();
+                    let ch8_conv = layer.ch8_conv.as_ref();
+                    let mixin_w = &layer.mixin_w;
+                    let l1x1_w = &layer.l1x1_w;
+                    let l1x1_b = &layer.l1x1_b;
+
+                    let mut film_block = super::film::FilmBlock {
+                        conv_pre_film: layer.conv_pre_film.as_mut(),
+                        conv_post_film: layer.conv_post_film.as_mut(),
+                        input_mixin_pre_film: layer.input_mixin_pre_film.as_mut(),
+                        input_mixin_post_film: layer.input_mixin_post_film.as_mut(),
+                        activation_pre_film: layer.activation_pre_film.as_mut(),
+                        activation_post_film: layer.activation_post_film.as_mut(),
+                        layer1x1_post_film: layer.layer1x1_post_film.as_mut(),
+                        head1x1_post_film: layer.head1x1_post_film.as_mut(),
+                    };
+
+                    if let Some(ch3_conv) = ch3_conv {
                         unsafe {
                             super::conv1d_ch3::layer_forward_ch3_block(
                                 ch3_conv,
-                                &layer.mixin_w,
-                                &layer.l1x1_w,
-                                &layer.l1x1_b,
+                                mixin_w,
+                                l1x1_w,
+                                l1x1_b,
+                                &mut film_block,
                                 history,
                                 max_lookback_cols,
                                 nf,
@@ -369,13 +407,14 @@ impl<const CH: usize> WaveNetA2<CH> {
                         continue;
                     }
 
-                    if let Some(ch8_conv) = &layer.ch8_conv {
+                    if let Some(ch8_conv) = ch8_conv {
                         unsafe {
                             super::conv1d_ch8::layer_forward_ch8_block(
                                 ch8_conv,
-                                &layer.mixin_w,
-                                &layer.l1x1_w,
-                                &layer.l1x1_b,
+                                mixin_w,
+                                l1x1_w,
+                                l1x1_b,
+                                &mut film_block,
                                 history,
                                 max_lookback_cols,
                                 nf,
@@ -457,6 +496,11 @@ impl<const CH: usize> WaveNetA2<CH> {
     #[inline(always)]
     pub fn has_weights(&self) -> bool {
         !self.layers.is_empty()
+    }
+
+    /// Stores the raw layer JSON for FiLM config parsing during weight loading.
+    pub fn set_layer_raw(&mut self, raw: Option<Value>) {
+        self.layer_raw = raw;
     }
 }
 

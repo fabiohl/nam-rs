@@ -59,9 +59,11 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
 
     // ── A2: first-class branch (detected by shape) ──
     if let Some(ch) = is_a2_shape(data) {
+        let layer_raw = data.config.layers.first().and_then(|l| l.layer_raw.clone());
         return match ch {
             3 => {
                 let mut model = WaveNetA2::<3>::new()?;
+                model.set_layer_raw(layer_raw);
                 model
                     .set_weights(&data.weights)
                     .map_err(|e| anyhow::anyhow!("A2-Lite weight load failed: {e}"))?;
@@ -73,6 +75,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
             }
             8 => {
                 let mut model = WaveNetA2::<8>::new()?;
+                model.set_layer_raw(layer_raw);
                 model
                     .set_weights(&data.weights)
                     .map_err(|e| anyhow::anyhow!("A2-Full weight load failed: {e}"))?;

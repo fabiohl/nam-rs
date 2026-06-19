@@ -15,6 +15,7 @@
 use super::conv1d::A2Conv1d;
 use super::conv1d_ch3::A2Conv1dCh3;
 use super::conv1d_ch8::A2Conv1dCh8;
+use super::film::FiLMLayer;
 use super::params::A2_LEAKY_SLOPE;
 use crate::math::common::AlignedVec;
 
@@ -25,6 +26,8 @@ use crate::math::common::AlignedVec;
 ///
 /// When `ch8_conv` is `Some`, it holds f32 col-major-per-tap weights for the CH=8 optimized path (T2.2).
 /// When `None`, the standard `A2Conv1d` (u16 interleaved) is used (CH=3 path and fallback).
+///
+/// FiLM layers (8 insertion points) are `Some` only when the JSON config marks them `active: true`.
 pub struct A2Layer {
     /// Dilated causal Conv1D (kernel ∈ {6, 15}). Used as u16/f16 fallback when fast paths absent.
     pub conv: A2Conv1d,
@@ -38,6 +41,22 @@ pub struct A2Layer {
     pub l1x1_w: AlignedVec<f32>,
     /// Layer1x1 bias (`CH` elements, f32).
     pub l1x1_b: AlignedVec<f32>,
+    /// FiLM before dilated convolution — modulates `layer_in` new frames in history buffer.
+    pub conv_pre_film: Option<FiLMLayer>,
+    /// FiLM after dilated convolution — modulates `z_buf` before mixin.
+    pub conv_post_film: Option<FiLMLayer>,
+    /// FiLM before input mixin (same insertion point as `conv_post_film`).
+    pub input_mixin_pre_film: Option<FiLMLayer>,
+    /// FiLM after input mixin — modulates `z_buf` after mixin, before activation.
+    pub input_mixin_post_film: Option<FiLMLayer>,
+    /// FiLM before activation (same insertion point as `input_mixin_post_film`).
+    pub activation_pre_film: Option<FiLMLayer>,
+    /// FiLM after activation — modulates `z_buf` after LeakyReLU.
+    pub activation_post_film: Option<FiLMLayer>,
+    /// FiLM after layer 1x1 residual — modulates `layer_in` after l1x1 accumulation.
+    pub layer1x1_post_film: Option<FiLMLayer>,
+    /// FiLM after head 1x1 (reserved for future general A2 engine).
+    pub head1x1_post_film: Option<FiLMLayer>,
 }
 
 impl A2Layer {
@@ -59,6 +78,14 @@ impl A2Layer {
             mixin_w,
             l1x1_w,
             l1x1_b,
+            conv_pre_film: None,
+            conv_post_film: None,
+            input_mixin_pre_film: None,
+            input_mixin_post_film: None,
+            activation_pre_film: None,
+            activation_post_film: None,
+            layer1x1_post_film: None,
+            head1x1_post_film: None,
         }
     }
 
@@ -82,6 +109,14 @@ impl A2Layer {
             mixin_w,
             l1x1_w,
             l1x1_b,
+            conv_pre_film: None,
+            conv_post_film: None,
+            input_mixin_pre_film: None,
+            input_mixin_post_film: None,
+            activation_pre_film: None,
+            activation_post_film: None,
+            layer1x1_post_film: None,
+            head1x1_post_film: None,
         }
     }
 
@@ -105,6 +140,14 @@ impl A2Layer {
             mixin_w,
             l1x1_w,
             l1x1_b,
+            conv_pre_film: None,
+            conv_post_film: None,
+            input_mixin_pre_film: None,
+            input_mixin_post_film: None,
+            activation_pre_film: None,
+            activation_post_film: None,
+            layer1x1_post_film: None,
+            head1x1_post_film: None,
         }
     }
 

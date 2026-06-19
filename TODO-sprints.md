@@ -38,7 +38,7 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
     * Preservar o fast-path extremo para convoluções tradicionais (`groups == 1`).
     * Testes unitários com tensores exatos para validar paridade.
 
-### Sprint 2: Motor FiLM Completo e Integração
+### Sprint 2: Motor FiLM Completo e Integração [DONE]
 
 **Objetivo**: Construir a sub-rede matemática e integrá-la dentro dos 8 pontos definidos na estrutura de blocos do A2.
 
@@ -47,10 +47,18 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
   * **Ação**: Implementar lógica no stub existente (`FiLMLayer`). Processamento recebe entrada do canal principal e do vetor condicional, convertendo com Conv1x1 (utilizando Tarefa 1.2) em `scale` e opcionalmente `shift`. Em seguida, aplica transformações batch-wise via AVX2.
   * **Critério de aceite**: Buffers pré-alocados no `load()`, uso intensivo de chunks_exact e ausência de branches e alocações (`unwrap`, `Vec::new`) no bloco DSP iterativo.
 
-* **Tarefa 2.2: Instanciação nos Pontos Insercionais A2**
+* **Tarefa 2.2: Instanciação nos Pontos Insercionais A2** ✅ [DONE]
   * **Arquivo alvo**: `src/models/a2/layer.rs` (ou equivalente que instancie os layers).
   * **Ação**: Ler o JSON para habilitar as instâncias nos 8 pontos: `conv_pre_film`, `conv_post_film`, `input_mixin_pre_film`, `input_mixin_post_film`, `activation_pre_film`, `activation_post_film`, `layer1x1_post_film` e `head1x1_post_film`.
   * **Critério de aceite**: Executar condicionalmente as rotinas apenas quando a respectiva config contiver `active: true`. Zero-alloc mantido.
+  * **Nota pós-implementação**:
+    * `A2Layer` agora possui 8 campos `Option<FiLMLayer>`, inicializados como `None` e populados por `set_weights` quando o JSON `layer_raw` contém entradas FiLM com `active: true`.
+    * `WaveNetA2` ganhou campo `layer_raw: Option<serde_json::Value>` para que `set_weights` possa parsear as configs FiLM e carregar os pesos (weights + bias) do stream.
+    * `FilmBlock<'a>` (em `film.rs`) agrupa referências mutáveis para os 8 pontos, passado como `&mut FilmBlock` para `layer_forward_ch3_block` e `layer_forward_ch8_block`.
+    * `conv_pre_film` é aplicado no nível do modelo (antes da cópia para o buffer de histórico). Todos os outros pontos são aplicados dentro das funções de bloco.
+    * `check_film_all_inactive()` em `is_a2_shape()` foi relaxado: modelos A2 com FiLM ativo não são mais rejeitados (a carga de pesos FiLM ocorre em `set_weights`).
+    * O `FilmBlock::empty()` cria um bloco vazio para o fast-path (sem FiLM), garantindo zero custo de branches (todas `if let Some` são cold e nunca tomadas).
+    * **Impacto em tarefas futuras**: A infraestrutura de parsing JSON (`layer_raw`) e o `FilmBlock` serão reutilizados pela Tarefa 3.1 (`condition_dsp`) e pelo motor A2 dinâmico. Modelos com `cond_size > 1` ainda fluem para o engine dinâmico; o suporte a `cond_size > 1` no fast-path A2 requer adaptação adicional (não coberta por esta tarefa).
 
 ### Sprint 3: `condition_dsp` e Cobertura Golden
 

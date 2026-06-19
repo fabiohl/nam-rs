@@ -5,6 +5,9 @@
 //!
 //! Parses a flat f32 weight stream in NAM JSON order and populates the
 //! model layers with quantized weights and col-major-per-tap layouts.
+//!
+//! When the layer JSON contains active FiLM entries, FiLM weights are read
+//! from the stream after each layer's standard weights.
 
 use super::WaveNetA2;
 use crate::math::common::{
@@ -12,6 +15,7 @@ use crate::math::common::{
 };
 use crate::models::a2::conv1d_ch3::A2Conv1dCh3;
 use crate::models::a2::conv1d_ch8::A2Conv1dCh8;
+use crate::models::a2::film::{FiLMConfig, FiLMLayer};
 use crate::models::a2::head::A2HeadConv;
 use crate::models::a2::layer::A2Layer;
 use crate::models::a2::params::{
@@ -149,11 +153,19 @@ impl<const CH: usize> WaveNetA2<CH> {
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
             // Assemble the layer: priority is ch3_conv > ch8_conv > scalar fallback.
-            layers.push(match (ch3_conv, ch8_conv) {
+            let mut layer = match (ch3_conv, ch8_conv) {
                 (Some(ch3c), _) => A2Layer::new_with_ch3(conv, ch3c, mixin_w, l1x1_w, l1x1_b),
                 (_, Some(ch8c)) => A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b),
                 _ => A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b),
-            });
+            };
+
+            // 2f. FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
+            if let Some(ref raw) = self.layer_raw {
+                let configs = parse_film_configs(raw);
+                load_film_for_layer(&mut layer, &configs, CH, 1, weights, &mut pos, total, i)?;
+            }
+
+            layers.push(layer);
         }
 
         // ── 3. Head rechannel: Conv1D(CH → 1, K=16, bias) ─────────────────
@@ -266,4 +278,119 @@ fn transpose_head_w(raw: &[f32], head: &mut [f32], channels: usize, kernel: usiz
             head[tap * channels + ch] = raw[ch * kernel + tap];
         }
     }
+}
+
+// =============================================================================
+// FiLM loading helpers
+// =============================================================================
+
+const FILM_KEYS: &[(&str, usize)] = &[
+    ("conv_pre_film", 0),
+    ("conv_post_film", 1),
+    ("input_mixin_pre_film", 2),
+    ("input_mixin_post_film", 3),
+    ("activation_pre_film", 4),
+    ("activation_post_film", 5),
+    ("layer1x1_post_film", 6),
+    ("head1x1_post_film", 7),
+];
+
+fn parse_single_film_config(raw: &serde_json::Value, key: &str) -> FiLMConfig {
+    let obj = match raw.get(key).and_then(|v| v.as_object()) {
+        Some(o) => o,
+        None => return FiLMConfig::default(),
+    };
+    FiLMConfig {
+        active: obj.get("active").and_then(|a| a.as_bool()).unwrap_or(false),
+        shift: obj.get("shift").and_then(|s| s.as_bool()).unwrap_or(true),
+        groups: obj
+            .get("groups")
+            .and_then(|g| g.as_u64())
+            .map(|g| g as u32)
+            .unwrap_or(1),
+    }
+}
+
+fn parse_film_configs(raw: &serde_json::Value) -> [FiLMConfig; 8] {
+    let mut configs = [FiLMConfig::default(); 8];
+    for &(key, idx) in FILM_KEYS {
+        configs[idx] = parse_single_film_config(raw, key);
+    }
+    configs
+}
+
+fn film_weight_count(config: &FiLMConfig, cond_size: usize, channels: usize) -> usize {
+    let g = config.groups as usize;
+    let ch_per_group = channels / g;
+    let cond_per_group = cond_size / g;
+    let out_per_group = if config.shift {
+        ch_per_group * 2
+    } else {
+        ch_per_group
+    };
+    g * out_per_group * cond_per_group
+}
+
+fn film_bias_count(config: &FiLMConfig, channels: usize) -> usize {
+    if config.shift { channels * 2 } else { channels }
+}
+
+fn set_layer_film(layer: &mut A2Layer, _config: &FiLMConfig, idx: usize, film: FiLMLayer) {
+    match idx {
+        0 => layer.conv_pre_film = Some(film),
+        1 => layer.conv_post_film = Some(film),
+        2 => layer.input_mixin_pre_film = Some(film),
+        3 => layer.input_mixin_post_film = Some(film),
+        4 => layer.activation_pre_film = Some(film),
+        5 => layer.activation_post_film = Some(film),
+        6 => layer.layer1x1_post_film = Some(film),
+        7 => layer.head1x1_post_film = Some(film),
+        _ => unreachable!(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn load_film_for_layer(
+    layer: &mut A2Layer,
+    configs: &[FiLMConfig; 8],
+    channels: usize,
+    cond_size: usize,
+    weights: &[f32],
+    pos: &mut usize,
+    total: usize,
+    layer_idx: usize,
+) -> Result<(), String> {
+    for (idx, config) in configs.iter().enumerate() {
+        if !config.active {
+            continue;
+        }
+        let w_count = film_weight_count(config, cond_size, channels);
+        let b_count = film_bias_count(config, channels);
+        let key = FILM_KEYS[idx].0;
+
+        let film_w = read_slice(
+            weights,
+            pos,
+            w_count,
+            total,
+            &format!("layer[{layer_idx}].{key}.w"),
+        )?;
+        let film_b = read_slice(
+            weights,
+            pos,
+            b_count,
+            total,
+            &format!("layer[{layer_idx}].{key}.b"),
+        )?;
+
+        let film_layer = FiLMLayer::load(
+            *config,
+            cond_size,
+            channels,
+            film_w.to_vec(),
+            film_b.to_vec(),
+        );
+        set_layer_film(layer, config, idx, film_layer);
+    }
+    Ok(())
 }

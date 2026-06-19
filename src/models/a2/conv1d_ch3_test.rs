@@ -559,6 +559,7 @@ fn test_ch3_unrolled_k15_vs_generic() {
 use crate::models::a2::conv1d_ch3::{
     A2Conv1dCh3, conv1d_ch3_single_frame_ref, layer_forward_ch3_block, layer_forward_ch3_scalar_ref,
 };
+use crate::models::a2::film::FilmBlock;
 
 fn make_ch3_f32_weights(kernel: usize, seed: u32) -> (Vec<f32>, Vec<f32>) {
     let mut raw = vec![0.0f32; 3 * 3 * kernel];
@@ -709,12 +710,14 @@ fn test_layer_fwd_ch3_k6_even_frames_parity() {
     let mut lin_fast = vec![0.0f32; num_frames * CH];
     let mut lin_ref = vec![0.0f32; num_frames * CH];
     let head_col = 8usize;
+    let mut fb = FilmBlock::empty();
     unsafe {
         layer_forward_ch3_block(
             &conv,
             &mixin_w,
             &l1x1_w,
             &l1x1_b,
+            &mut fb,
             &layer_buffer,
             frame_start,
             num_frames,
@@ -791,12 +794,14 @@ fn test_layer_fwd_ch3_k15_odd_frames_parity() {
     let mut lin_fast = vec![0.0f32; num_frames * CH];
     let mut lin_ref = vec![0.0f32; num_frames * CH];
     let head_col = 4usize;
+    let mut fb = FilmBlock::empty();
     unsafe {
         layer_forward_ch3_block(
             &conv,
             &mixin_w,
             &l1x1_w,
             &l1x1_b,
+            &mut fb,
             &layer_buffer,
             frame_start,
             num_frames,
@@ -860,12 +865,14 @@ fn test_layer_fwd_ch3_is_last_skips_l1x1() {
     let input_cond = vec![0.5f32; num_frames];
     let mut head = vec![0.0f32; 64 * CH];
     let mut lin = vec![99.0f32; num_frames * CH];
+    let mut fb = FilmBlock::empty();
     unsafe {
         layer_forward_ch3_block(
             &conv,
             &mixin_w,
             &l1x1_w,
             &l1x1_b,
+            &mut fb,
             &layer_buffer,
             frame_start,
             num_frames,
@@ -904,12 +911,14 @@ fn test_layer_fwd_ch3_is_first_assigns_head() {
     let input_cond = vec![0.5f32; num_frames];
     let mut head = vec![999.0f32; 64 * CH];
     let mut lin = vec![0.0f32; num_frames * CH];
+    let mut fb = FilmBlock::empty();
     unsafe {
         layer_forward_ch3_block(
             &conv,
             &mixin_w,
             &l1x1_w,
             &l1x1_b,
+            &mut fb,
             &layer_buffer,
             frame_start,
             num_frames,
