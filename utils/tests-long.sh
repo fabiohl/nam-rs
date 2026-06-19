@@ -7,6 +7,8 @@
 # CLAP release compliance, multi-instance stress tests, and long-running performance benchmarks.
 
 set -uo pipefail
+## Observação à IA: Dado à longa (por design) duração da execução deste script, é PROIBIDO executa-lo durante atividades de IA.
+### Se necessário, peça ao desenvolvedor humano para roda-lo e trazer o resultado.
 
 # Style helpers
 RED='\033[0;31m'

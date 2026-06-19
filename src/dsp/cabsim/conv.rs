@@ -44,12 +44,16 @@ pub struct ConvEngine {
     partition_size: usize,
     /// Number of IR partitions.
     num_partitions: usize,
-    /// Pre-FFT'd kernel partitions.
-    /// Flat storage: `num_partitions × fft_size` complex values (re, im interleaved).
-    h_fdl: AlignedVec<f32>,
-    /// Frequency Delay Line (FDL): circular buffer of input spectra.
-    /// Flat storage: `num_partitions × fft_size` complex values (re, im interleaved).
-    fdl: AlignedVec<f32>,
+    /// Pre-FFT'd kernel partitions (real part).
+    /// Flat storage: `num_partitions × fft_size` f32 values.
+    h_fdl_re: AlignedVec<f32>,
+    /// Pre-FFT'd kernel partitions (imaginary part).
+    h_fdl_im: AlignedVec<f32>,
+    /// Frequency Delay Line (FDL): circular buffer of input spectra (real part).
+    /// Flat storage: `num_partitions × fft_size` f32 values.
+    fdl_re: AlignedVec<f32>,
+    /// FDL imaginary part.
+    fdl_im: AlignedVec<f32>,
     /// Write index into the FDL circular buffer.
     fdl_idx: usize,
     /// Input overlap buffer for overlap-save (length = `fft_size`).
@@ -63,8 +67,10 @@ pub struct ConvEngine {
     ifft_scratch: Vec<Complex<f32>>,
     /// Work buffer for forward FFT (length = fft_size).
     fft_buf: Vec<Complex<f32>>,
-    /// Accumulation buffer in frequency domain (length = fft_size).
-    acc: AlignedVec<Complex<f32>>,
+    /// Accumulation buffer in frequency domain, real part (length = fft_size).
+    acc_re: AlignedVec<f32>,
+    /// Accumulation buffer imaginary part.
+    acc_im: AlignedVec<f32>,
     /// Forward FFT plan.
     fft: Arc<dyn Fft<f32>>,
     /// Inverse FFT plan.
@@ -116,8 +122,9 @@ impl ConvEngine {
         let ifft_scratch = vec![Complex::new(0.0_f32, 0.0_f32); ifft_scratch_len];
 
         // Pre-FFT each kernel partition
-        let h_fdl_len = num_partitions * fft_size * 2;
-        let mut h_fdl = AlignedVec::new(h_fdl_len, 0.0_f32);
+        let h_fdl_part_len = num_partitions * fft_size;
+        let mut h_fdl_re = AlignedVec::new(h_fdl_part_len, 0.0_f32);
+        let mut h_fdl_im = AlignedVec::new(h_fdl_part_len, 0.0_f32);
         let mut fft_buf = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
 
         for p in 0..num_partitions {
@@ -133,35 +140,40 @@ impl ConvEngine {
 
             fft.process_with_scratch(&mut fft_buf, &mut fft_scratch);
 
-            // Store in h_fdl (interleaved re, im)
-            let base = p * fft_size * 2;
+            // Store in h_fdl (separate re, im)
+            let base = p * fft_size;
             for (k, c) in fft_buf.iter().enumerate() {
-                h_fdl[base + 2 * k] = c.re;
-                h_fdl[base + 2 * k + 1] = c.im;
+                h_fdl_re[base + k] = c.re;
+                h_fdl_im[base + k] = c.im;
             }
         }
 
         // Pre-allocate FDL (all zeros initially)
-        let fdl_len = num_partitions * fft_size * 2;
-        let fdl = AlignedVec::new(fdl_len, 0.0_f32);
+        let fdl_part_len = num_partitions * fft_size;
+        let fdl_re = AlignedVec::new(fdl_part_len, 0.0_f32);
+        let fdl_im = AlignedVec::new(fdl_part_len, 0.0_f32);
 
         // Pre-allocate other buffers
         let input_buf = AlignedVec::new(fft_size, 0.0_f32);
         let fft_buf_final = vec![Complex::new(0.0_f32, 0.0_f32); fft_size];
-        let acc = AlignedVec::new(fft_size, Complex::new(0.0_f32, 0.0_f32));
+        let acc_re = AlignedVec::new(fft_size, 0.0_f32);
+        let acc_im = AlignedVec::new(fft_size, 0.0_f32);
 
         Self {
             fft_size,
             partition_size,
             num_partitions,
-            h_fdl,
-            fdl,
+            h_fdl_re,
+            h_fdl_im,
+            fdl_re,
+            fdl_im,
             fdl_idx: 0,
             input_buf,
             fft_scratch,
             ifft_scratch,
             fft_buf: fft_buf_final,
-            acc,
+            acc_re,
+            acc_im,
             fft,
             ifft,
             ifft_scale,
@@ -244,10 +256,10 @@ impl ConvEngine {
             .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
 
         // ── Step 3: Store in FDL (circular buffer) ──
-        let fdl_base = self.fdl_idx * self.fft_size * 2;
+        let fdl_base = self.fdl_idx * self.fft_size;
         for (k, c) in self.fft_buf.iter().enumerate() {
-            self.fdl[fdl_base + 2 * k] = c.re;
-            self.fdl[fdl_base + 2 * k + 1] = c.im;
+            self.fdl_re[fdl_base + k] = c.re;
+            self.fdl_im[fdl_base + k] = c.im;
         }
 
         // ── Step 4: Frequency-domain MAC over all partitions ──
@@ -255,19 +267,19 @@ impl ConvEngine {
         let n_bins = self.fft_size;
 
         // Zero the accumulator
-        self.acc.fill(Complex::new(0.0, 0.0));
+        self.acc_re.fill(0.0);
+        self.acc_im.fill(0.0);
 
         if p_count == 1 {
             // Fast path: single partition — no loop over p
-            let fdl_start = self.fdl_idx * self.fft_size * 2;
+            let fdl_start = self.fdl_idx * self.fft_size;
             for k in 0..n_bins {
-                let h_off = 2 * k;
-                let fdl_off = fdl_start + 2 * k;
-                let h_re = self.h_fdl[h_off];
-                let h_im = self.h_fdl[h_off + 1];
-                let x_re = self.fdl[fdl_off];
-                let x_im = self.fdl[fdl_off + 1];
-                self.acc[k] = Complex::new(h_re * x_re - h_im * x_im, h_re * x_im + h_im * x_re);
+                let h_re = self.h_fdl_re[k];
+                let h_im = self.h_fdl_im[k];
+                let x_re = self.fdl_re[fdl_start + k];
+                let x_im = self.fdl_im[fdl_start + k];
+                self.acc_re[k] = h_re * x_re - h_im * x_im;
+                self.acc_im[k] = h_re * x_im + h_im * x_re;
             }
         } else {
             // General case: sum over all partitions
@@ -275,29 +287,29 @@ impl ConvEngine {
                 // FDL is a circular buffer: partition p uses spectrum from
                 // (fdl_idx - p) mod num_partitions blocks ago.
                 let fdl_p = (self.fdl_idx + p_count - p) % p_count;
-                let fdl_start = fdl_p * self.fft_size * 2;
-                let h_start = p * self.fft_size * 2;
+                let fdl_start = fdl_p * self.fft_size;
+                let h_start = p * self.fft_size;
 
                 for k in 0..n_bins {
-                    let h_off = h_start + 2 * k;
-                    let fdl_off = fdl_start + 2 * k;
-                    let h_re = self.h_fdl[h_off];
-                    let h_im = self.h_fdl[h_off + 1];
-                    let x_re = self.fdl[fdl_off];
-                    let x_im = self.fdl[fdl_off + 1];
-                    let acc = &mut self.acc[k];
-                    acc.re += h_re * x_re - h_im * x_im;
-                    acc.im += h_re * x_im + h_im * x_re;
+                    let h_re = self.h_fdl_re[h_start + k];
+                    let h_im = self.h_fdl_im[h_start + k];
+                    let x_re = self.fdl_re[fdl_start + k];
+                    let x_im = self.fdl_im[fdl_start + k];
+                    self.acc_re[k] += h_re * x_re - h_im * x_im;
+                    self.acc_im[k] += h_re * x_im + h_im * x_re;
                 }
             }
         }
 
-        // ── Step 5: Inverse FFT ──
+        // ── Step 5: Merge acc_re/acc_im into fft_buf for IFFT (rustfft requires interleaved) ──
+        for k in 0..n_bins {
+            self.fft_buf[k] = Complex::new(self.acc_re[k], self.acc_im[k]);
+        }
         self.ifft
-            .process_with_scratch(&mut self.acc, &mut self.ifft_scratch);
+            .process_with_scratch(&mut self.fft_buf, &mut self.ifft_scratch);
 
         // ── Step 6: Extract valid output (overlap-save discard) ──
-        for (i, c) in self.acc[out_start..out_start + self.partition_size]
+        for (i, c) in self.fft_buf[out_start..out_start + self.partition_size]
             .iter()
             .enumerate()
         {

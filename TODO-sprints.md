@@ -30,7 +30,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 **Risco**: Médio-Alto (manipulação de ponteiros intrínsecos AVX2 e layout SoA - Struct of Arrays).
 **Diretriz Central**: Converter buffers FDL e H_FDL para Struct-of-Arrays (separando `re` e `im`) e usar FMA (`_mm256_fmadd_ps`) no domínio da frequência.
 
-- [ ] **Tarefa 2.1 (Estruturas SoA)**: Em `src/dsp/cabsim/conv.rs`, refatorar a estrutura `ConvEngine`. Substituir `h_fdl: AlignedVec<f32>` e `fdl: AlignedVec<f32>` por 4 vetores paralelos com a metade do tamanho (sem o multiplicador `* 2`):
+- [x] **Tarefa 2.1 (Estruturas SoA)**: Em `src/dsp/cabsim/conv.rs`, refatorar a estrutura `ConvEngine`. Substituir `h_fdl: AlignedVec<f32>` e `fdl: AlignedVec<f32>` por 4 vetores paralelos com a metade do tamanho (sem o multiplicador `* 2`):
   - `h_fdl_re: AlignedVec<f32>` e `h_fdl_im: AlignedVec<f32>`
   - `fdl_re: AlignedVec<f32>` e `fdl_im: AlignedVec<f32>`
   - Modificar o acumulador para ser SoA nativamente para evitar unpack antes da IFFT: `acc_re: AlignedVec<f32>` e `acc_im: AlignedVec<f32>`.
