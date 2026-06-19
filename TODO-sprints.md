@@ -685,6 +685,7 @@ Zero alocações no hot-path A2 com kernels SIMD ativos.
 #### T4.4 — Revisar copyright/SPDX em arquivos modificados ✅
 
 Todos os arquivos `.rs` modificados nos Sprints S1–S3 contêm cabeçalho `SPDX-License-Identifier: Apache-2.0`:
+
 - `src/models/a2/head.rs` ✅
 - `src/models/a2/head_test.rs` ✅
 - `src/models/a2/activations.rs` ✅
@@ -699,7 +700,7 @@ Todos os arquivos `.rs` modificados nos Sprints S1–S3 contêm cabeçalho `SPDX
 > **Nota**: Este épico é preparatório para MT2 (Motor A2 Geral). Pode ser executado
 > independentemente de MT2, mas entrega valor somente quando MT2 for ativado.
 
-### Sprint S5 — Conectar `ActivationType` ao dispatcher SIMD centralizado
+### Sprint S5 — Conectar `ActivationType` ao dispatcher SIMD centralizado ✅
 
 **Objetivo**: Substituir as implementações inline de `HardTanh`, `HardSwish`, `FastTanh`,
 `LeakyHardTanh` por funções em `src/math/activations/` que usem o padrão `SIMD_MATH`.
@@ -723,6 +724,11 @@ para as novas ativações.
 
 > ⚠️ **Atenção**: S5 tem escopo maior (modifica `SIMD_MATH` struct, que é shared infrastructure).
 > Executar apenas após S1–S4 serem aprovados e merged.
+>
+> **Concluído 2026-06-19**: 4 novas ativações migradas para `src/math/activations/` (hard_tanh, hard_swish,
+> fast_tanh, leaky_hard_tanh) com wrappers `SIMD_MATH`. `SimdMathConfig` expandido com 4 novos campos.
+> `detect_best_simd()` populado nas 3 branches ISA. AVX-512 delega para AVX2 (implementações AVX-512
+> não fazem parte do escopo deste sprint). 505 testes passam, benchmarks sem regressão.
 
 ---
 
@@ -733,7 +739,7 @@ S1 (A2 Head SIMD) → independente, executar primeiro
 S2 (Ativações inline) → independente, pode ser paralelo a S1
 S3 (Benchmarks) → após S1 e S2
 S4 (Verificação) → após S1, S2, S3
-S5 (Migração math/) → após S1–S4, pré-requisito para MT2
+S5 (Migração math/) → após S1–S4 ✅, pré-requisito para MT2
 ```
 
 ---

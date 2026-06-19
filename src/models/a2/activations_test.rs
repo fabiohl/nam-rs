@@ -197,7 +197,7 @@ mod tests {
         let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
         let mut ref_data = simd_data.clone();
 
-        unsafe { super::super::hard_tanh_slice_avx2(&mut simd_data) };
+        unsafe { crate::math::activations::hard_tanh_slice_avx2(&mut simd_data) };
         unsafe { scalar_ref(&mut ref_data) };
 
         for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
@@ -223,7 +223,7 @@ mod tests {
             *x = x.clamp(-1.0, 1.0);
         }
 
-        unsafe { super::super::hard_tanh_slice_avx2(&mut data) };
+        unsafe { crate::math::activations::hard_tanh_slice_avx2(&mut data) };
 
         for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
             assert!(
@@ -253,7 +253,7 @@ mod tests {
         let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
         let mut ref_data = simd_data.clone();
 
-        unsafe { super::super::hard_swish_slice_avx2(&mut simd_data) };
+        unsafe { crate::math::activations::hard_swish_slice_avx2(&mut simd_data) };
         unsafe { scalar_ref(&mut ref_data) };
 
         for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
@@ -280,7 +280,7 @@ mod tests {
             *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
         }
 
-        unsafe { super::super::hard_swish_slice_avx2(&mut data) };
+        unsafe { crate::math::activations::hard_swish_slice_avx2(&mut data) };
 
         for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
             assert!(
@@ -325,7 +325,7 @@ mod tests {
         let mut ref_data = simd_data.clone();
 
         unsafe {
-            super::super::leaky_hard_tanh_slice_avx2(
+            crate::math::activations::leaky_hard_tanh_slice_avx2(
                 &mut simd_data,
                 min_val,
                 max_val,
@@ -368,7 +368,7 @@ mod tests {
         }
 
         unsafe {
-            super::super::leaky_hard_tanh_slice_avx2(
+            crate::math::activations::leaky_hard_tanh_slice_avx2(
                 &mut data, min_val, max_val, min_slope, max_slope,
             )
         };
@@ -409,7 +409,7 @@ mod tests {
         let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
         let mut ref_data = simd_data.clone();
 
-        unsafe { super::super::fast_tanh_slice_avx2(&mut simd_data) };
+        unsafe { crate::math::activations::fast_tanh_slice_avx2(&mut simd_data) };
         unsafe { scalar_ref(&mut ref_data) };
 
         for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
@@ -446,7 +446,7 @@ mod tests {
             *x = fast_tanh_scalar(*x);
         }
 
-        unsafe { super::super::fast_tanh_slice_avx2(&mut data) };
+        unsafe { crate::math::activations::fast_tanh_slice_avx2(&mut data) };
 
         for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
             assert!(

@@ -40,6 +40,10 @@ fn detect_best_simd() -> SimdMathConfig {
                     prelu_slice: crate::math::activations::prelu_slice_avx512,
                     softsign_slice: crate::math::activations::softsign_slice_avx512,
                     silu_slice: crate::math::activations::silu_slice_avx512,
+                    hard_tanh_slice: crate::math::activations::hard_tanh_slice_avx2,
+                    hard_swish_slice: crate::math::activations::hard_swish_slice_avx2,
+                    fast_tanh_slice: crate::math::activations::fast_tanh_slice_avx2,
+                    leaky_hard_tanh_slice: crate::math::activations::leaky_hard_tanh_slice_avx2,
                 }
             );
         }
@@ -59,6 +63,10 @@ fn detect_best_simd() -> SimdMathConfig {
                     prelu_slice: crate::math::activations::prelu_slice_avx512,
                     softsign_slice: crate::math::activations::softsign_slice_avx512,
                     silu_slice: crate::math::activations::silu_slice_avx512,
+                    hard_tanh_slice: crate::math::activations::hard_tanh_slice_avx2,
+                    hard_swish_slice: crate::math::activations::hard_swish_slice_avx2,
+                    fast_tanh_slice: crate::math::activations::fast_tanh_slice_avx2,
+                    leaky_hard_tanh_slice: crate::math::activations::leaky_hard_tanh_slice_avx2,
                 }
             );
         }
@@ -79,6 +87,10 @@ fn detect_best_simd() -> SimdMathConfig {
                     prelu_slice: crate::math::activations::prelu_slice_avx2,
                     softsign_slice: crate::math::activations::softsign_slice_avx2,
                     silu_slice: crate::math::activations::silu_slice_avx2,
+                    hard_tanh_slice: crate::math::activations::hard_tanh_slice_avx2,
+                    hard_swish_slice: crate::math::activations::hard_swish_slice_avx2,
+                    fast_tanh_slice: crate::math::activations::fast_tanh_slice_avx2,
+                    leaky_hard_tanh_slice: crate::math::activations::leaky_hard_tanh_slice_avx2,
                 }
             );
         }

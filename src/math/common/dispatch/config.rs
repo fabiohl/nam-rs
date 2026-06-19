@@ -136,6 +136,18 @@ pub struct SimdMathConfig {
     /// Applies SiLU activation to a slice.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub silu_slice: unsafe fn(&mut [f32]),
+    /// Applies HardTanh activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub hard_tanh_slice: unsafe fn(&mut [f32]),
+    /// Applies HardSwish activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub hard_swish_slice: unsafe fn(&mut [f32]),
+    /// Applies FastTanh activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub fast_tanh_slice: unsafe fn(&mut [f32]),
+    /// Applies LeakyHardTanh activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub leaky_hard_tanh_slice: unsafe fn(&mut [f32], f32, f32, f32, f32),
 }
 
 impl SimdMathConfig {

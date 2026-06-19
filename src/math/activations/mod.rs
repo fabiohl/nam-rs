@@ -19,7 +19,11 @@
 //! - **Zero-Alloc**: Operations strictly safe for use in real-time threads.
 //! - **AMX/AVX10.2-ready**: Branchless approach compatible with future extensions.
 
+pub mod fast_tanh;
 pub mod fused;
+pub mod hard_swish;
+pub mod hard_tanh;
+pub mod leaky_hard_tanh;
 pub mod prelu;
 pub mod relu;
 pub mod sigmoid;
@@ -30,7 +34,11 @@ pub mod tanh;
 #[cfg(test)]
 mod tests;
 
+pub use fast_tanh::*;
 pub use fused::*;
+pub use hard_swish::*;
+pub use hard_tanh::*;
+pub use leaky_hard_tanh::*;
 pub use prelu::*;
 pub use relu::*;
 pub use sigmoid::*;
@@ -74,4 +82,34 @@ pub fn softsign_slice(data: &mut [f32]) {
 #[inline(always)]
 pub fn silu_slice(data: &mut [f32]) {
     unsafe { (SIMD_MATH.silu_slice)(data) };
+}
+
+/// Applies HardTanh activation to a slice of f32 with automatic dispatch.
+#[inline(always)]
+pub fn hard_tanh_slice(data: &mut [f32]) {
+    unsafe { (SIMD_MATH.hard_tanh_slice)(data) };
+}
+
+/// Applies HardSwish activation to a slice of f32 with automatic dispatch.
+#[inline(always)]
+pub fn hard_swish_slice(data: &mut [f32]) {
+    unsafe { (SIMD_MATH.hard_swish_slice)(data) };
+}
+
+/// Applies FastTanh activation to a slice of f32 with automatic dispatch.
+#[inline(always)]
+pub fn fast_tanh_slice(data: &mut [f32]) {
+    unsafe { (SIMD_MATH.fast_tanh_slice)(data) };
+}
+
+/// Applies LeakyHardTanh activation to a slice of f32 with automatic dispatch.
+#[inline(always)]
+pub fn leaky_hard_tanh_slice(
+    data: &mut [f32],
+    min_val: f32,
+    max_val: f32,
+    min_slope: f32,
+    max_slope: f32,
+) {
+    unsafe { (SIMD_MATH.leaky_hard_tanh_slice)(data, min_val, max_val, min_slope, max_slope) };
 }

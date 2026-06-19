@@ -17,8 +17,6 @@
 //! Todas as demais variantes de `ActivationType` são preservadas para suporte
 //! futuro ao motor A2 completo (ativações heterogêneas por camada, FiLM, gating).
 
-use core::arch::x86_64::*;
-
 /// Activation types supported by NAM A2.
 ///
 /// Apenas `LeakyReLU` é exercitada pelo fast-path A2-Full/Lite.
@@ -91,24 +89,12 @@ impl ActivationFn for ActivationType {
             // HardTanh (Rigid Hyperbolic Tangent): Abrupt saturation (hard clipping/culling).
             // Limits values strictly to a minimum of -1.0 and a maximum of 1.0.
             Self::HardTanh => {
-                if is_x86_feature_detected!("avx2") {
-                    unsafe { hard_tanh_slice_avx2(data) }
-                } else {
-                    for x in data.iter_mut() {
-                        *x = x.clamp(-1.0, 1.0);
-                    }
-                }
+                crate::math::activations::hard_tanh_slice(data);
             }
             // FastTanh: A fast mathematical approximation of the processor's native Tanh function.
             // Uses a rational polynomial to avoid computing slow exponentials.
             Self::FastTanh => {
-                if is_x86_feature_detected!("avx2") {
-                    unsafe { fast_tanh_slice_avx2(data) }
-                } else {
-                    for x in data.iter_mut() {
-                        *x = fast_tanh(*x);
-                    }
-                }
+                crate::math::activations::fast_tanh_slice(data);
             }
             // ReLU (Rectified Linear Unit): Zeros all negative values, letting
             // positive values pass through without any change.
@@ -142,15 +128,7 @@ impl ActivationFn for ActivationType {
             // HardSwish: A linear approximation of the Swish/SiLU function designed to be
             // computed efficiently without calculating complex exponential functions.
             Self::HardSwish => {
-                if is_x86_feature_detected!("avx2") {
-                    unsafe { hard_swish_slice_avx2(data) }
-                } else {
-                    for x in data.iter_mut() {
-                        let t = *x + 3.0;
-                        let clamped = t.clamp(0.0, 6.0);
-                        *x *= clamped * (1.0 / 6.0);
-                    }
-                }
+                crate::math::activations::hard_swish_slice(data);
             }
             // LeakyHardTanh: A hybrid version that acts like HardTanh, but in the saturation
             // zones (outside min_val/max_val) the signal continues to grow with attenuated gain.
@@ -160,19 +138,9 @@ impl ActivationFn for ActivationType {
                 min_slope,
                 max_slope,
             } => {
-                if is_x86_feature_detected!("avx2") {
-                    unsafe {
-                        leaky_hard_tanh_slice_avx2(data, *min_val, *max_val, *min_slope, *max_slope)
-                    }
-                } else {
-                    for x in data.iter_mut() {
-                        if *x < *min_val {
-                            *x = (*x - *min_val) * *min_slope + *min_val;
-                        } else if *x > *max_val {
-                            *x = (*x - *max_val) * *max_slope + *max_val;
-                        }
-                    }
-                }
+                crate::math::activations::leaky_hard_tanh_slice(
+                    data, *min_val, *max_val, *min_slope, *max_slope,
+                );
             }
             // Softsign: Smooth symmetric curve similar to Tanh, given by the formula x / (1 + |x|),
             // being smoother at the edges and cheaper to compute on the processor.
@@ -181,244 +149,6 @@ impl ActivationFn for ActivationType {
             }
         }
     }
-}
-
-/// AVX2-accelerated HardTanh: `clamp(x, -1.0, 1.0)` over a slice.
-///
-/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
-///
-/// # Safety
-/// Requires AVX2 support.
-#[target_feature(enable = "avx2")]
-pub unsafe fn hard_tanh_slice_avx2(data: &mut [f32]) {
-    let neg_one = _mm256_set1_ps(-1.0_f32);
-    let pos_one = _mm256_set1_ps(1.0_f32);
-    let mut i = 0;
-    let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x1)),
-            );
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i + 8),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x2)),
-            );
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x)),
-            );
-        }
-        i += 8;
-    }
-    for x in data.iter_mut().skip(i) {
-        *x = x.clamp(-1.0, 1.0);
-    }
-}
-
-/// AVX2-accelerated HardSwish: `x * clamp(x+3, 0, 6) / 6` over a slice.
-///
-/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
-///
-/// # Safety
-/// Requires AVX2 support.
-#[target_feature(enable = "avx2")]
-pub unsafe fn hard_swish_slice_avx2(data: &mut [f32]) {
-    let three = _mm256_set1_ps(3.0_f32);
-    let six = _mm256_set1_ps(6.0_f32);
-    let inv6 = _mm256_set1_ps(1.0_f32 / 6.0_f32);
-    let zero = _mm256_setzero_ps();
-    let mut i = 0;
-    let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            let t1 = _mm256_add_ps(x1, three);
-            let t2 = _mm256_add_ps(x2, three);
-            let c1 = _mm256_min_ps(six, _mm256_max_ps(zero, t1));
-            let c2 = _mm256_min_ps(six, _mm256_max_ps(zero, t2));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_mul_ps(_mm256_mul_ps(x1, c1), inv6),
-            );
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i + 8),
-                _mm256_mul_ps(_mm256_mul_ps(x2, c2), inv6),
-            );
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            let t = _mm256_add_ps(x, three);
-            let c = _mm256_min_ps(six, _mm256_max_ps(zero, t));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_mul_ps(_mm256_mul_ps(x, c), inv6),
-            );
-        }
-        i += 8;
-    }
-    for x in data.iter_mut().skip(i) {
-        let t = *x + 3.0;
-        *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
-    }
-}
-
-/// AVX2-accelerated LeakyHardTanh: branchless blend over a slice.
-///
-/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
-///
-/// # Safety
-/// Requires AVX2 and FMA support.
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn leaky_hard_tanh_slice_avx2(
-    data: &mut [f32],
-    min_val: f32,
-    max_val: f32,
-    min_slope: f32,
-    max_slope: f32,
-) {
-    let min_v = _mm256_set1_ps(min_val);
-    let max_v = _mm256_set1_ps(max_val);
-    let min_sl_v = _mm256_set1_ps(min_slope);
-    let max_sl_v = _mm256_set1_ps(max_slope);
-    let mut i = 0;
-    let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            let lt_min1 = _mm256_cmp_ps(x1, min_v, _CMP_LT_OS);
-            let lt_min2 = _mm256_cmp_ps(x2, min_v, _CMP_LT_OS);
-            let lo_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, min_v), min_sl_v, min_v);
-            let lo_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, min_v), min_sl_v, min_v);
-            let gt_max1 = _mm256_cmp_ps(x1, max_v, _CMP_GT_OS);
-            let gt_max2 = _mm256_cmp_ps(x2, max_v, _CMP_GT_OS);
-            let hi_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, max_v), max_sl_v, max_v);
-            let hi_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, max_v), max_sl_v, max_v);
-            let y1 = _mm256_blendv_ps(_mm256_blendv_ps(x1, lo_part1, lt_min1), hi_part1, gt_max1);
-            let y2 = _mm256_blendv_ps(_mm256_blendv_ps(x2, lo_part2, lt_min2), hi_part2, gt_max2);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            let lt_min = _mm256_cmp_ps(x, min_v, _CMP_LT_OS);
-            let lo_part = _mm256_fmadd_ps(_mm256_sub_ps(x, min_v), min_sl_v, min_v);
-            let gt_max = _mm256_cmp_ps(x, max_v, _CMP_GT_OS);
-            let hi_part = _mm256_fmadd_ps(_mm256_sub_ps(x, max_v), max_sl_v, max_v);
-            let y = _mm256_blendv_ps(_mm256_blendv_ps(x, lo_part, lt_min), hi_part, gt_max);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
-        }
-        i += 8;
-    }
-    for x in data.iter_mut().skip(i) {
-        if *x < min_val {
-            *x = (*x - min_val) * min_slope + min_val;
-        } else if *x > max_val {
-            *x = (*x - max_val) * max_slope + max_val;
-        }
-    }
-}
-
-/// AVX2-accelerated FastTanh: Padé rational approximation over a slice.
-///
-/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
-///
-/// # Safety
-/// Requires AVX2 and FMA support.
-#[target_feature(enable = "avx2,fma")]
-#[allow(clippy::excessive_precision)]
-pub unsafe fn fast_tanh_slice_avx2(data: &mut [f32]) {
-    let ca = _mm256_set1_ps(2.45550750702956_f32);
-    let cb = _mm256_set1_ps(0.893229853513558_f32);
-    let cc = _mm256_set1_ps(0.821226666969744_f32);
-    let cd = _mm256_set1_ps(2.44506634652299_f32);
-    let ce = _mm256_set1_ps(0.814642734961073_f32);
-    let sign_mask = _mm256_set1_ps(-0.0_f32);
-    let mut i = 0;
-    let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            let ax1 = _mm256_andnot_ps(sign_mask, x1);
-            let ax2 = _mm256_andnot_ps(sign_mask, x2);
-            let x21 = _mm256_mul_ps(x1, x1);
-            let x22 = _mm256_mul_ps(x2, x2);
-            let num_inner1 = _mm256_fmadd_ps(cc, ax1, cb);
-            let num_inner2 = _mm256_fmadd_ps(cc, ax2, cb);
-            let num_poly1 = _mm256_fmadd_ps(num_inner1, x21, _mm256_fmadd_ps(ca, ax1, ca));
-            let num_poly2 = _mm256_fmadd_ps(num_inner2, x22, _mm256_fmadd_ps(ca, ax2, ca));
-            let num1 = _mm256_mul_ps(x1, num_poly1);
-            let num2 = _mm256_mul_ps(x2, num_poly2);
-            let xe1 = _mm256_mul_ps(ce, _mm256_mul_ps(x1, ax1));
-            let xe2 = _mm256_mul_ps(ce, _mm256_mul_ps(x2, ax2));
-            let xterm1 = _mm256_add_ps(x1, xe1);
-            let xterm2 = _mm256_add_ps(x2, xe2);
-            let abs_xterm1 = _mm256_andnot_ps(sign_mask, xterm1);
-            let abs_xterm2 = _mm256_andnot_ps(sign_mask, xterm2);
-            let den_inner1 = _mm256_add_ps(cd, x21);
-            let den_inner2 = _mm256_add_ps(cd, x22);
-            let den1 = _mm256_fmadd_ps(den_inner1, abs_xterm1, cd);
-            let den2 = _mm256_fmadd_ps(den_inner2, abs_xterm2, cd);
-            let y1 = _mm256_div_ps(num1, den1);
-            let y2 = _mm256_div_ps(num2, den2);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            let ax = _mm256_andnot_ps(sign_mask, x);
-            let x2 = _mm256_mul_ps(x, x);
-            let num_inner = _mm256_fmadd_ps(cc, ax, cb);
-            let num_poly = _mm256_fmadd_ps(num_inner, x2, _mm256_fmadd_ps(ca, ax, ca));
-            let num = _mm256_mul_ps(x, num_poly);
-            let xe = _mm256_mul_ps(ce, _mm256_mul_ps(x, ax));
-            let xterm = _mm256_add_ps(x, xe);
-            let abs_xterm = _mm256_andnot_ps(sign_mask, xterm);
-            let den_inner = _mm256_add_ps(cd, x2);
-            let den = _mm256_fmadd_ps(den_inner, abs_xterm, cd);
-            let y = _mm256_div_ps(num, den);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
-        }
-        i += 8;
-    }
-    for x in data.iter_mut().skip(i) {
-        *x = fast_tanh(*x);
-    }
-}
-
-/// Fast rational approximation for the tanh function.
-/// Parity with `NAM/activations.h` L111-122.
-#[inline(always)]
-#[allow(clippy::excessive_precision)]
-fn fast_tanh(x: f32) -> f32 {
-    let ax = x.abs();
-    let x2 = x * x;
-
-    (x * (2.45550750702956
-        + 2.45550750702956 * ax
-        + (0.893229853513558 + 0.821226666969744 * ax) * x2))
-        / (2.44506634652299 + (2.44506634652299 + x2) * (x + 0.814642734961073 * x * ax).abs())
 }
 
 #[cfg(test)]
