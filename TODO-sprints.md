@@ -185,13 +185,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint 3 — Micro-Fixes P16 + P17
 
-### T3.1 — P17: Corrigir `SeqCst` → `Acquire/Release` no shutdown flag
+### T3.1 — P17: Corrigir `SeqCst` → `Acquire/Release` no shutdown flag [DONE]
 
 **Detalhes**:
 
-- [ ] Em `src/main.rs:76`: `Ordering::SeqCst` → `Ordering::Acquire` (load)
-- [ ] Em `src/main.rs:79`: `Ordering::SeqCst` → `Ordering::Release` (store)
-- [ ] `cargo check`
+- [x] Em `src/main.rs:76`: `Ordering::SeqCst` → `Ordering::Acquire` (load)
+- [x] Em `src/main.rs:79`: `Ordering::SeqCst` → `Ordering::Release` (store)
+- [x] `cargo check`
 
 **Critério de aceite**: Zero `SeqCst` em `main.rs`.
 

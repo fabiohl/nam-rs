@@ -73,10 +73,10 @@ fn main() -> anyhow::Result<()> {
     // 4. EMERGENCY BUTTON: Configures "Ctrl+C".
     // If you want to close the program, it ensures the audio stops smoothly, without clicks.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
-        if spsc::SHUTDOWN.load(Ordering::SeqCst) {
+        if spsc::SHUTDOWN.load(Ordering::Acquire) {
             unsafe { libc::_exit(1) };
         }
-        spsc::SHUTDOWN.store(true, Ordering::SeqCst);
+        spsc::SHUTDOWN.store(true, Ordering::Release);
     }
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
