@@ -97,7 +97,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T1.3 — Eliminar `minstant::Anchor` (parâmetro morto do standalone)
+### T1.3 — Eliminar `minstant::Anchor` (parâmetro morto do standalone) [DONE]
 
 **Objetivo**: O `Anchor` é passado por toda a cadeia standalone mas nunca usado
 (`_tsc_anchor` com underscore em `telemetry.rs:28`). Remover.

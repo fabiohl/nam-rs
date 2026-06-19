@@ -9,7 +9,6 @@
 //! Prerequisite: a running PipeWire daemon (session or system). Without it the test is skipped
 //! by the `#[ignore]` attribute; `utils/tests-long.sh` auto-detects the daemon via `pw-cli info`.
 
-use minstant::Anchor;
 use nam_rs::common::diagnostics::SystemSnapshot;
 use nam_rs::common::spsc::{self, RtStatusFlags};
 use nam_rs::standalone::pw_host::run_pipewire_host;
@@ -54,8 +53,6 @@ fn test_pipewire_integration() {
     let gc_overflow_clone = gc_overflow.clone();
     // Captures system metadata for initial diagnostics
     let sys = SystemSnapshot::capture();
-    // Synchronizes the TSC clock for low-latency nanosecond measurements
-    let anchor = Anchor::new();
 
     // Starts the Audio Thread
     let pw_thread = thread::spawn(move || {
@@ -72,7 +69,6 @@ fn test_pipewire_integration() {
             nam_rs::standalone::pw_host::PipewireHostConfig {
                 buffer_size: 0, // 0 = Use system default (PipeWire quantum)
                 sys,
-                tsc_anchor: anchor,
                 ir_raw_samples: None,
             },
             gc_cons,

@@ -176,8 +176,6 @@ fn main() -> anyhow::Result<()> {
 
     let _ = producer.push(ParamPayload::SlimOverride(args.slim_override));
 
-    let tsc_anchor = minstant::Anchor::new();
-
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.
     // Executed here (outside the cold-path of the first DSP frame) to avoid
     // syscalls that would cause jitter at the critical moment of the first audio delivery.
@@ -195,7 +193,6 @@ fn main() -> anyhow::Result<()> {
         rt_status,
         pw_host::PipewireHostConfig {
             buffer_size,
-            tsc_anchor,
             sys,
             ir_raw_samples,
         },

@@ -9,7 +9,6 @@
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::spsc::RtStatusFlags;
 use crate::standalone::colors::Colorize;
-use minstant::Anchor;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
@@ -25,7 +24,6 @@ pub fn poll_rt_status(
     sys: &SystemSnapshot,
     was_silent: bool,
     was_fading: bool,
-    _tsc_anchor: &Anchor,
     bridge: &crate::dsp::pipeline::DspBridge,
 ) -> (bool, bool) {
     let current_bits = rt_status.status_bits.load(Ordering::Relaxed);

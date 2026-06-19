@@ -8,7 +8,6 @@ use super::bridge::DspBridgeReader;
 #[cfg(feature = "standalone")]
 use crate::common::diagnostics::SystemSnapshot;
 #[cfg(feature = "standalone")]
-use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
 
@@ -29,8 +28,6 @@ pub(crate) struct AppState<S1, L1, S2, L2> {
 pub struct PipewireHostConfig {
     /// Requested audio buffer size.
     pub buffer_size: u32,
-    /// Time anchor for RDTSC telemetry.
-    pub tsc_anchor: Anchor,
     /// System snapshot for diagnostics.
     pub sys: SystemSnapshot,
     /// Raw IR samples for adaptive partition rebuild (None if no IR loaded).

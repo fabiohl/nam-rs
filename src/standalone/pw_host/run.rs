@@ -50,7 +50,6 @@ pub fn run_pipewire_host(
 ) -> anyhow::Result<()> {
     let PipewireHostConfig {
         buffer_size,
-        tsc_anchor,
         sys,
         ir_raw_samples,
     } = config;
@@ -220,14 +219,10 @@ pub fn run_pipewire_host(
             }
         }
 
-        (was_silent, was_fading) = rt_setup::poll_rt_status(
-            &rt_status,
-            &sys,
-            was_silent,
-            was_fading,
-            &tsc_anchor,
-            unsafe { &*(bridge_ptr.as_ptr()) },
-        );
+        (was_silent, was_fading) =
+            rt_setup::poll_rt_status(&rt_status, &sys, was_silent, was_fading, unsafe {
+                &*(bridge_ptr.as_ptr())
+            });
 
         let drained =
             crate::common::spsc::drain_gc_channels(&mut gc_consumer, &gc_overflow, &rt_status);
