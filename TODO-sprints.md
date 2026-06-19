@@ -3,77 +3,70 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Planejamento de Sprints e Tarefas Técnicas (TODO-sprints.md)
+# TODO Sprints: NAM-rs — Mega Tópicos 3 e 4
 
-> **Mega-Tópico:** MT2 — 🟠 Motor A2 Geral (F3 + F8 + F9)
-> **Data do Planejamento:** 19/jun/2026
-> **Skills Envolvidas:** revisor-auditor, planejador-arquiteto
+Este documento organiza a execução das demandas levantadas pela auditoria (`revisor-auditor`) em ciclos granulares de desenvolvimento, garantindo conformidade com arquitetura, performance e RT-Safety.
 
-## Visão Geral e Riscos
+## Épico 1: MT3 — WaveNet A1 Dinâmico: Generalização para N Arrays (F1-ext)
 
-O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 do Neural Amp Modeler Core, permitindo configurações não-padronizadas que atualmente são rejeitadas ou que quebram a paridade com o C++ v0.5.3.
+**Objetivo:** Remover o limite fixo de 2 arrays no motor `WaveNetModelDyn`, permitindo topologias de tamanho arbitrário. Isso solucionará a falha atual do teste `live_cross_validation_nondist_models`.
 
-**Riscos Identificados:**
+### Sprint 1.1: Refatoração Estrutural do Modelo
 
-1. **Regressão de Performance:** A principal ameaça é degradar o fast-path atual (`WaveNetA2<3>` e `WaveNetA2<8>`). A solução híbrida (A2 Dinâmico vs A2 Const-Generic) é obrigatória.
-2. **RT-Safety:** As novas ativações de gating/blending exigem buffers temporários intermediários. Isso deve ser pré-alocado no load (`new()`) para garantir zero alocações (`zero-alloc`) no hot-path.
-3. **Complexidade de Dispatch:** O JSON precisa ser profundamente interpretado para determinar corretamente quando instanciar a versão dinâmica ou fazer downcast para o fast-path.
+* **Task 1.1.1 [ ] Modificar `WaveNetModelDyn`:**
+  * Arquivo: `src/models/wavenet/model_dyn.rs`
+  * Substituir os campos `array1` e `array2` por um vetor `pub arrays: Vec<WaveNetLayerArrayDyn>`.
+* **Task 1.1.2 [ ] Adaptar Iteração do `process_internal`:**
+  * Arquivo: `src/models/wavenet/model_dyn.rs`
+  * Substituir as invocações fixas ao `array1` e `array2` por um laço seguro e "borrow-checker friendly".
+  * Lógica de conexão: O `output` do array N passa a ser o `input` do array N+1.
+  * O `head_outputs` só precisa ser extraído do *último array* no laço.
+* **Task 1.1.3 [ ] Adaptar Iteração do `prewarm_internal`:**
+  * Arquivo: `src/models/wavenet/model_dyn.rs`
+  * Reproduzir a mesma lógica iterativa da Task 1.1.2 para a fase de aquecimento do modelo (`zero_input`).
+
+### Sprint 1.2: Loader Dinâmico e Validação
+
+* **Task 1.2.1 [ ] Modificar o construtor `build_wavenet_dynamic_inner`:**
+  * Arquivo: `src/loader/dispatcher/wavenet/dynamic.rs`
+  * Remover a restrição restritiva: `if geom.num_arrays != 2 { bail!(...) }`.
+  * Instanciar `WaveNetLayerArrayDyn` dentro de um `for i in 0..geom.num_arrays`.
+  * Extrair os canais (CH), tamanho do kernel (K), e bias (`has_head_bias = is_last`).
+  * Atualizar as alocações de buffer dinamicamente mantendo RT-safety (pré-alocação estrita no momento do load).
+* **Task 1.2.2 [ ] Testes e Homologação Funcional:**
+  * Arquivo: `tests/cpp_parity.rs`
+  * Rodar a suite longa: `./utils/tests-long.sh` e certificar que `live_cross_validation_nondist_models` passa com sucesso.
+  * Verificar a integridade sonora de outros modelos via Golden Vectors.
 
 ---
 
-## Sprint 1: Parsing e Relaxamento de Topologia (A2 Geral)
+## Épico 2: MT4 — Motor LSTM Arbitrário (F7)
 
-**Objetivo:** Permitir que o parser e as checagens de arquitetura (JSON) deixem de rejeitar modelos A2 não-padronizados, mantendo a detecção estrita apenas para o fast-path const-generic.
+**Objetivo:** Implementar um "fallback dinâmico" para o motor LSTM capaz de lidar com constelações dimensionais desconhecidas (`num_layers`, `hidden_size`) além dos 10 perfis otimizados por `const generics`.
 
-- [x] **Tarefa 1.1: Refatoração de `topology.rs` para o Motor Dinâmico**
-  - **Especialista:** `implementador` / `refatora-rust`
-  - **Ação:** Em `src/loader/nam_json/topology.rs`, a função `is_a2_shape` aplica regras severas (`check_groups_are_1`, `check_activations_are_leaky_relu`, etc.). Modificar esta lógica para retornar variantes (ex: `A2Topology::FastPath(u8)` vs `A2Topology::Dynamic`).
-  - **Requisito:** Modelos que usam `head1x1`, `layer1x1` com `groups>1`, ativações heterogêneas ou gating devem ser aceitos como `Dynamic`.
+### Sprint 2.1: Infraestrutura de Camada Dinâmica
 
-- [x] **Tarefa 1.2: Parsing da Biblioteca de Ativações (F8) e Gating**
-  - **Especialista:** `implementador`
-  - **Ação:** Implementar a desserialização avançada de `ActivationConfig` no loader. Portar a lógica para ler arrays de ativações JSON, mapeando para o enum `ActivationType` em `src/models/a2/activations.rs`.
-  - **Requisito:** Obter a lista completa de ativações por camada (23 elementos) para instanciar as funções corretamente.
-  - **Nota:** `NamLayerConfig::parse_activation_config()` é o ponto de entrada para o motor dinâmico (T3.1). Para usar, chamar com `num_layers=23` (ou usar `A2_NUM_LAYERS`). Retorna `LayerActivationConfig { activations, gating_modes, secondary_activations }`.
+* **Task 2.1.1 [ ] Criar estrutura `LstmLayerDyn`:**
+  * Criar arquivo: `src/models/lstm/layer_dyn.rs`
+  * Declarar `LstmLayerDyn` usando `AlignedVec` em substituição aos arrays constantes (`Aligned64<[T; N]>`).
+  * Campos: `input_size`, `hidden_size`, `input_hidden_weights`, `bias`, `state`, `state_bf16`, `cell_state`, `gates`.
+* **Task 2.1.2 [ ] Implementar kernels de processamento (`LstmLayerDyn`):**
+  * Criar versões que leem as dimensões `hidden_size` diretamente em tempo de execução.
+  * Reutilizar as macros e funções estáticas localizadas em `crate::math::gemm` (por exemplo, `gemv_4gate_avx2`), que inferem o tamanho pela *length* do `slice`.
+  * Implementar as versões escalares e as versões SIMD otimizadas (`avx2`, `avx512`).
 
-## Sprint 2: Fundações Numéricas e Gating/Blending (F8 + F9)
+### Sprint 2.2: Construção do Modelo e Dispatcher Híbrido
 
-**Objetivo:** Preparar os blocos de processamento essenciais (convoluções agrupadas e modos de gating) que o motor dinâmico montará.
-
-- [x] **Tarefa 2.1: Integração de Convoluções Agrupadas (F9)**
-  - **Especialista:** `implementador` / `debugger`
-  - **Ação:** O arquivo `src/models/a2/grouped_conv1d.rs` já possui a base vetorial AVX2 para `A2GroupedConv1d`. Conectá-la de forma fluida nas abstrações de camada (ou generalizar `src/models/a2/conv1d.rs`) para que a arquitetura instancie `Conv1dDyn` quando `groups == 1` ou `A2GroupedConv1d` quando `groups > 1`.
-  - **Critério de Aceite:** Kernel depthwise (`groups == channels`) otimizado e ativado sob demanda.
-
-- [x] **Tarefa 2.2: Implementação Real do Gating e Blending**
-  - **Especialista:** `implementador`
-  - **Ação:** Dar vida ao arquivo `src/models/a2/gating.rs`. Implementar os métodos de `apply_gating` ou `apply_blending` que operam em canais adjacentes.
-  - **Requisito RT-Safety:** Pré-alocar os buffers auxiliares na inicialização. Escrever laços branchless auto-vetorizáveis ou usar intrinsics equivalentes aos que usamos em ativações inline. Paridade total com `NAM/gating_activations.h`.
-
-## Sprint 3: O Motor A2 Dinâmico (F3) e Golden Tests
-
-**Objetivo:** Aglutinar as fundações em um motor escalável e híbrido, assegurando cross-validation.
-
-- [x] **Tarefa 3.1: Criação do `WaveNetA2Dyn`**
-  - **Especialista:** `implementador` / `planejador-arquiteto`
-  - **Ação:** Criar `src/models/a2/model/dynamic.rs`. Esta será a versão de `mod.rs` do A2, porém, alocada dinamicamente com base nos tamanhos detectados:
-    - Suporte a `bottleneck != channels`.
-    - Suporte aos pontos ativos para `head1x1` e `layer1x1`.
-    - Chamadas dinâmicas para as ativações heterogêneas e gating/blending.
-  - **Requisito:** Manter o SPSC / MirroredBuffer design para eficiência no anel de memória.
-
-- [x] **Tarefa 3.2: Dispatch e Integração no Core**
-  - **Especialista:** `implementador`
-  - **Ação:** No dispatcher central, se a topologia A2 for classificada como `Dynamic`, instanciar o novo `WaveNetA2Dyn`. Garantir que o fast-path continue intocado para os modelos Standard e Lite clássicos.
-
-- [x] **Tarefa 3.3: Golden Vectors e C++ Parity**
-  - **Especialista:** `revisor-auditor` / `pesquisador-inovador`
-  - **Ação:** Gerar golden vectors contra o C++ v0.5.3 (ex: usando `wavenet_a2_max.nam` ou modelos A2 sintéticos com gating e bottleneck) e atingir ESR/SNR dentro da margem de tolerância.
-    - **Nota:** Não executar `utils/tests-long.sh` (é muito demorado). Rode apenas os testes bem específicos estritamente necessários para validar.
-  - **Concluído:** 2026-06-19. Modelos sintéticos criados em `tests/fixtures/generate_a2_fixtures.py`:
-    - `a2_dynamic_gated_ch8.nam` — CH=8, gating Sigmoid em 3/23 camadas. SNR=103.0 dB, ESR=5.01e-11.
-    - `a2_dynamic_blended_ch3.nam` — CH=3, blending Tanh em 2/23 camadas. SNR=133.0 dB, ESR=5.01e-14.
-    - Goldens em `tests/fixtures/golden_a2_dynamic_{gated_ch8,blended_ch3}.bin`.
-    - Corrigido `WaveNetA2Dyn::set_weights()` para ler `conv_out=2*bottleneck` nos pesos de conv/mixin quando gating ativo.
-    - Corrigido `A2Layer::new_dyn()` para usar `bottleneck` (não `conv.out_ch()`) na asserção de l1x1_w.
-  - **Nota:** `wavenet_a2_max.nam` permanece rejeitado (FiLM com `condition_size=8`). Head1x1 não coberto por goldens ainda — requer reconciliação da ordem de pesos per-layer (C++ tem head1x1 por camada, Rust tem head1x1 global).
+* **Task 2.2.1 [ ] Construir o Modelo Dinâmico `LstmModelDyn`:**
+  * Criar arquivo: `src/models/lstm/model_dyn.rs`
+  * Compor uma struct com `layers: Vec<LstmLayerDyn>`.
+  * Implementar o método genérico `process` que faz a cadeia completa de repasse entre as camadas e soma com `head_weights`.
+* **Task 2.2.2 [ ] Atualizar Parsing de Pesos:**
+  * Criar ou adaptar módulo em `src/loader/dispatcher/lstm/weights.rs` para ler os tamanhos dinâmicos alocando buffers `AlignedVec`.
+  * Cuidar com o layout dos pesos e *gate_major*.
+* **Task 2.2.3 [ ] Alterar o Dispatch Híbrido:**
+  * Arquivo: `src/loader/dispatcher/lstm/dispatch.rs`
+  * Em vez de retornar um `bail!` ao encontrar topologia diferente das 10 estáticas, executar o `build_lstm_dynamic` e retornar a nova variação do `StaticModel::LstmDyn`.
+  * *Ponto de Risco*: Inserir a nova variação na `enum StaticModel` (`src/models/mod.rs`) afeta o trait. Implementar todos os selos (Sealed trait) corretamente.
+* **Task 2.2.4 [ ] Validação Exaustiva:**
+  * Criar testes isolados para topologias pequenas/estranhas (ex: 3 layers, 10 hidden units) e avaliar parity com C++ se houver golden vector, ou no mínimo atestar panic-free execution.

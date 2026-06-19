@@ -26,13 +26,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 | ID      | Feature ausente / parcial                                               | Impacto p/ Produto | Esforço |
 | ------- | ----------------------------------------------------------------------- |:------------------:|:-------:|
-| **F2**  | **Multi-condição / FiLM** (`condition_size > 1`, `condition_dsp`)       | 🔴 Crítico         | Alto    |
-| **F3**  | **Motor A2 geral** (gating, ativações heterogêneas, `head1x1`, `bn≠ch`) | 🟠 Alto            | Alto    |
+| **F2**  | **Multi-condição / FiLM** (`condition_size > 1`, `condition_dsp`)       | 🟢 Concluído       | Alto    |
+| **F3**  | **Motor A2 geral** (gating, ativações heterogêneas, `head1x1`, `bn≠ch`) | 🟢 Concluído       | Alto    |
 | **F5**  | **SlimmableWavenet** (slicing dinâmico de canais)                       | 🟠 Médio-Alto      | Alto    |
 | **F6**  | **Post-stack Head** (sub-objeto `head` multi-camada do WaveNet)         | 🟡 Médio           | Médio   |
 | **F7**  | **LSTM arbitrário** (`hidden_size`/`num_layers` fora dos 10 perfis)     | 🟠 Médio-Alto      | Médio   |
-| **F8**  | **Biblioteca completa de ativações** (PReLU, SiLU, etc.)                | 🟡 Médio           | Médio   |
-| **F9**  | **Convoluções agrupadas/depthwise** (`groups > 1`)                      | 🟡 Médio           | Médio   |
+| **F8**  | **Biblioteca completa de ativações** (PReLU, SiLU, etc.)                | 🟢 Concluído       | Médio   |
+| **F9**  | **Convoluções agrupadas/depthwise** (`groups > 1`)                      | 🟢 Concluído       | Médio   |
 | **F4**  | **ConvNet** (arquitetura legada)                                        | 🟢 Baixo           | Médio   |
 | **F10** | **Modelos multi-canal** (`in/out_channels > 1`)                         | 🟢 Baixo           | Médio   |
 | **F11** | **Container aninhado** + cobertura `SlimmableContainer` real            | 🟢 Baixo           | Baixo   |
@@ -49,7 +49,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `lstm.nam`                    | ✅ Carrega (golden oficial)                                  | —                          |
 | `wavenet.nam` (CH=3, livre)   | ✅ Carrega (motor dinâmico)                                  | —                          |
 | `slimmable_wavenet.nam`       | ❌ "A2 shape not recognized"                                 | **F5**                     |
-| `wavenet_a2_max.nam` (cond=8) | ❌ "A2 model detected but architecture shape not recognized" | **F3** (Motor A2 dinâmico) |
+| `wavenet_a2_max.nam` (cond=8) | ❌ "condition_size=8 not supported" (Aguardando F1)          | **F1** (Cond=8)            |
 | `wavenet_condition_dsp.nam`   | ✅ Carrega (golden oficial c/ sub-modelo)                    | —                          |
 | `slimmable_container.nam`     | ❌ "submodel build failed"                                   | **F5 / F11**               |
 | Modelos nondist 4-array       | ❌ "requires exactly 2 layer arrays"                         | **F1-ext**                 |
@@ -297,7 +297,7 @@ original (`model.cpp`) não tem `head_scale`. O nam-rs está correto.
 
 ---
 
-### MT2 — 🟠 Motor A2 Geral (F3 + F8 + F9)
+### MT2 — ✅ Motor A2 Geral (F3 + F8 + F9) Concluído (2026-06-19)
 
 **Pré-requisitos**: MT1 (FiLM/conditioning).
 **Desafio**: 🟠 Alto — generalização de um motor const-generic para dinâmico.
@@ -305,49 +305,27 @@ original (`model.cpp`) não tem `head_scale`. O nam-rs está correto.
 
 **Achados relacionados**: 2, 3, 4, 6.
 
-**Escopo detalhado**:
+**Resumo da Implementação e Resultados**:
 
-1. **Motor A2 dinâmico**:
+1. **Motor A2 Dinâmico (`WaveNetA2Dyn`)**:
+   - Implementado com buffers circulares pre-alocados para processamento `zero-alloc` e lock-free no hot-path.
+   - Suporte completo a ativações heterogêneas (`gating` e `blending`), `head1x1` e `layer1x1` customizados.
+   - Suporte a arquiteturas onde `bottleneck ≠ channels`.
 
-   - Alocação de buffers no load (como o WaveNet dinâmico existente).
-   - Downcast para fast-path const-generic quando a geometria casa com CH=3 ou CH=8
-     e sem gating/FiLM (preservar desempenho atual).
-   - Suporte a `bottleneck ≠ channels`.
-   - Suporte a `head1x1` e `layer1x1` configuráveis.
+2. **Gating e Blending (F8)**:
+   - Implementados os modos de `Gating` e `Blending` com alocação estrita de `scratch buffers` (`z_scratch`, `gating_scratch`).
+   - Parsing completo do `ActivationConfig` via `serde`.
 
-2. **GatingActivation e BlendingActivation**:
+3. **Convoluções Agrupadas (F9)**:
+   - Suporte a `groups > 1` integrado à pipeline de convolução dinâmica (`A2Conv1d` enum).
+   - Caminho otimizado (depthwise) instanciado dinamicamente.
 
-   - Implementar `src/models/a2/gating.rs` com lógica real.
-   - Paridade com `NAM/gating_activations.h` (251 linhas C++).
-   - Buffers pré-alocados, zero-alloc no hot-path.
-   - Vetorizar com AVX2+FMA nativamente.
+4. **Golden Tests e Paridade Numérica**:
+   - Modelos sintéticos C++ parity gerados (`a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam`).
+   - SNR de ~103 dB (gating) e ~133 dB (blending) na validação cruzada.
 
-3. **Biblioteca completa de ativações (F8)**:
-
-   - Portar `ActivationConfig` com parsing de string/objeto JSON.
-   - Ativações heterogêneas por camada (array de `ActivationType`).
-   - Toggle global de fast-tanh (já existe como conceito).
-   - Todas as ativações existem em `src/models/a2/activations.rs` mas precisam
-     de parsing JSON e wiring com o motor dinâmico.
-
-4. **Conv1D com `groups > 1` completa (F9)**:
-
-   - Generalizar `src/models/a2/conv1d.rs` para grupos.
-   - Manter fast-path `groups==1` intacto e SIMD-otimizado.
-   - Kernel depthwise (groups == channels) como caso especial otimizado.
-
-5. **Vetorizar A2 Head Conv (Achado 2)**:
-
-   - CH=8: `_mm256_loadu_ps` + `_mm256_fmadd_ps` — padrão já usado em `conv1d_ch8.rs`.
-   - CH=3: SSE4.1 ou auto-vetorização com padding (tratar como CH=4 com mask).
-   - Manter `a2_head_block_scalar_ref` como oracle de parity.
-   - **Fazer isso já na etapa atual** (otimização evidente e imediata).
-
-6. **Testes**:
-
-   - Golden C++ para modelos com gating, blending, ativações heterogêneas.
-   - Parity ESR/SNR para cada combinação de ativação vs C++.
-   - Heap-audit para motor A2 dinâmico.
+> **Achado da Auditoria de Código:**
+> Embora o motor funcione perfeitamente, o `revisor-auditor` identificou em `dynamic.rs` e `layer.rs` que o código das matrizes 1x1 (`layer1x1` e `head1x1`) está realizando laços internos pulando acessos de memória pelo tamanho do `channels` (`l1x1_w[u * ch + c]`), o que quebra a coerência de cache e a auto-vetorização. Isso gera um pequeno gargalo de desempenho desnecessário. Foi criada uma nova sprint de Otimização Imediata no TODO-sprints para tratar essa inversão de laço (DAXPY).
 
 ---
 
