@@ -6,7 +6,6 @@
 //! Provides time measurement with ~1ns precision and ~1 cycle cost,
 //! avoiding the vDSO clock_gettime syscall in the audio hot-path.
 
-use crate::standalone::colors::Colorize;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -36,6 +35,20 @@ pub fn rdtsc_nanos() -> u64 {
     }
 }
 
+/// Probes the CPU for invariant TSC support via CPUID.
+///
+/// Invariant TSC means the counter ticks at a constant rate regardless of
+/// P-state, C-state, or other CPU frequency scaling. This is critical for
+/// reliable timing in the audio hot-path.
+fn probe_invariant_tsc() {
+    let res = core::arch::x86_64::__cpuid(0x8000_0007);
+    if res.edx & (1 << 8) != 0 {
+        log::info!("Invariant TSC confirmed");
+    } else {
+        log::warn!("Non-invariant TSC detected — timing may drift under CPU scaling");
+    }
+}
+
 /// Calibrates the TSC (Time Stamp Counter) frequency against the system clock.
 ///
 /// Imagine the CPU has an internal "odometer" that counts every heartbeat (cycle).
@@ -46,6 +59,9 @@ pub fn rdtsc_nanos() -> u64 {
 #[cold]
 pub fn calibrate_tsc() {
     use std::thread;
+
+    // 0. PROBE: Check if the CPU supports invariant TSC.
+    probe_invariant_tsc();
 
     // 1. WARM-UP:
     // We call the instruction once and wait a bit. This ensures the CPU
@@ -79,10 +95,6 @@ pub fn calibrate_tsc() {
     if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
         TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::Release);
 
-        log::info!(
-            "{} High-Precision Clock (TSC) calibrated at {:.3} GHz",
-            "⏱️".bright_blue(),
-            freq_x1000 as f64 / 1000.0
-        );
+        log::info!("TSC calibrated at {:.3} GHz", freq_x1000 as f64 / 1000.0);
     }
 }

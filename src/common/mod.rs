@@ -9,6 +9,8 @@ pub mod diagnostics;
 pub mod panic_hook;
 pub mod params;
 pub mod spsc;
+#[cfg(target_arch = "x86_64")]
+pub mod tsc;
 
 pub use audio_host::*;
 pub use diagnostics::*;

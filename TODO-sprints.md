@@ -31,7 +31,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > ⚠️ **Sprint crítica**: toca o hot-path do CLAP processor e remove uma dependência
 > com cadeia `ctor` + `syn` v1. Verificação incremental a cada tarefa.
 
-### T1.1 — Mover `tsc.rs` para `src/common/tsc.rs`
+### T1.1 — Mover `tsc.rs` para `src/common/tsc.rs` [DONE]
 
 **Objetivo**: Tornar o clock TSC acessível tanto ao standalone quanto ao CLAP.
 

@@ -12,7 +12,7 @@ pub mod affinity;
 pub mod pm_qos;
 pub mod telemetry;
 pub mod thread;
-pub mod tsc;
+pub use crate::common::tsc;
 
 pub use affinity::*;
 pub use pm_qos::*;
