@@ -395,7 +395,7 @@ Self::HardTanh => {
 
 ---
 
-#### T2.2 — Vetorizar `HardSwish` com AVX2
+#### T2.2 — Vetorizar `HardSwish` com AVX2 [DONE]
 
 **Arquivo**: `src/models/a2/activations.rs`
 
@@ -426,6 +426,8 @@ unsafe fn hard_swish_slice_avx2(data: &mut [f32]) {
 ```
 
 **Ganho esperado**: ~5× throughput vs escalar (5 instruções/8 floats vs 4 ops escalares/float).
+
+**Status**: Concluído (2026-06-19). Função `hard_swish_slice_avx2` implementada em `src/models/a2/activations.rs:225` com dispatch via `is_x86_feature_detected!("avx2")`. Testes de paridade AVX2 (`test_hard_swish_avx2_parity`, `test_hard_swish_avx2_large_slice`) em `activations_test.rs`. 17/17 testes passando com diff < 1e-6.
 
 ---
 
