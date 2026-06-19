@@ -25,15 +25,23 @@ pub enum NamWavenetTopology {
 /// (Standard/Lite/Feather/Nano). The dynamic engine (T3.1) consumes this
 /// structure to build a runtime-dimensioned [`WaveNetModelDyn`].
 ///
+/// ## Semver note
+///
+/// The `channels` and `head_sizes` fields changed from `usize` to `Vec<usize>`
+/// to support per-array geometry (required for condition_dsp). This is a
+/// breaking change from the v2.x API.
+///
 /// [`WaveNetModelDyn`]: crate::models::wavenet::WaveNetModelDyn
 #[derive(Debug, Clone, PartialEq)]
 pub struct FreeWavenetGeometry {
-    /// Internal channels (same across all layer arrays).
-    pub channels: usize,
+    /// Internal channels per layer-array (first array → array[0]).
+    pub channels: Vec<usize>,
     /// Kernel size (same across all layers).
     pub kernel_size: usize,
-    /// Head projection size from the first layer's `head_size`.
-    pub head_size: usize,
+    /// Head projection size per layer-array.
+    /// `head_sizes.last()` determines `NumOutputChannels()` for the model
+    /// (C++ `wave_net_output_channels` returns `layer_array_params.back().head_size`).
+    pub head_sizes: Vec<usize>,
     /// Dilations per layer-array.
     pub dilations: Vec<Vec<usize>>,
     /// Number of layer-arrays.
@@ -52,6 +60,7 @@ pub struct FreeWavenetGeometry {
 /// - `Rejected`: unsupported feature (F2 multi-condition, F6 post-stack head)
 ///   or invalid/missing shape data.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(private_interfaces)]
 pub enum WavenetTopologyResult {
     /// Matches a known catalog SKU — use const-generic fast-path.
     Known(NamWavenetTopology),
@@ -161,6 +170,8 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     let mut first_kernel_size: Option<usize> = None;
     let mut first_head_size: Option<usize> = None;
     let mut dilations: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
+    let mut head_sizes: Vec<usize> = Vec::with_capacity(layers.len());
+    let mut channels: Vec<usize> = Vec::with_capacity(layers.len());
 
     for (i, layer) in layers.iter().enumerate() {
         let ch = match layer.channels {
@@ -179,7 +190,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
             Some(d) if !d.is_empty() => d.to_vec(),
             _ => {
                 return WavenetTopologyResult::Rejected(format!(
-                    "Layer {} is missing or has empty 'dilations'.",
+                    "Layer {} is missing or has invalid 'dilations'.",
                     i
                 ));
             }
@@ -191,10 +202,20 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
             first_head_size = layer.head_size;
         }
 
+        let hd = layer.head_size.unwrap_or(1);
+        if hd == 0 {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {} has invalid head_size=0.",
+                i
+            ));
+        }
+
+        channels.push(ch);
+        head_sizes.push(hd);
         dilations.push(dils);
     }
 
-    let channels = first_channels.unwrap();
+    let first_channels_val = first_channels.unwrap();
 
     // ── Try matching a known catalog SKU (fast-path) ──
     // Catalog SKU detection uses only channels + dilations, matching the
@@ -223,7 +244,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
             let dils_0 = &dilations[0];
             let dils_1 = &dilations[1];
 
-            let result = match channels {
+            let result = match first_channels_val {
                 16 if dils_0 == STD_DILATIONS && dils_1 == STD_DILATIONS => {
                     Some(NamWavenetTopology::Standard)
                 }
@@ -256,21 +277,18 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
             );
         }
     };
-    let head_size = match first_head_size {
-        Some(h) if h > 0 => h,
-        _ => {
-            return WavenetTopologyResult::Rejected(
-                "Layer 0 is missing or has invalid 'head_size' — required for \
-                 WaveNet A1 geometries (determines the head projection dimension)."
-                    .to_string(),
-            );
-        }
-    };
+    if first_head_size.is_none_or(|h| h == 0) {
+        return WavenetTopologyResult::Rejected(
+            "Layer 0 is missing or has invalid 'head_size' — required for \
+             WaveNet A1 geometries (determines the head projection dimension)."
+                .to_string(),
+        );
+    }
 
     WavenetTopologyResult::Free(FreeWavenetGeometry {
         channels,
         kernel_size,
-        head_size,
+        head_sizes,
         condition_size,
         num_arrays: layers.len(),
         dilations,

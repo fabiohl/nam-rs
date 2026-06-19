@@ -180,6 +180,15 @@ pub struct NamConfig {
         deserialize_with = "deserialize_submodels"
     )]
     pub submodels: Option<Vec<serde_json::Value>>,
+    /// Nested condition DSP sub-model (raw JSON).
+    ///
+    /// Self-contained `.nam` model with its own `version`, `architecture`,
+    /// `config`, `weights`, and `sample_rate`. Parsed and built independently
+    /// before the main model's layer arrays are processed. The sub-model's
+    /// output channels serve as the condition input for the main model's layers
+    /// (C++ `_process_condition()` mirror, wavenet/model.cpp:692-722).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_dsp: Option<serde_json::Value>,
 }
 
 /// Root mapping structure for `.nam` files.

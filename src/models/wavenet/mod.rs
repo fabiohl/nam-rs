@@ -98,7 +98,19 @@ impl NamModel for model_dyn::WaveNetModelDyn {
     }
 
     fn prewarm_samples(&self) -> usize {
-        self.array1.receptive_field_size
+        let rf = self.array1.receptive_field_size;
+        if let Some(ref cond_dsp) = self.condition_dsp {
+            rf.max(cond_dsp.prewarm_samples())
+        } else {
+            rf
+        }
+    }
+
+    fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
+        if let Some(ref mut cond_dsp) = self.condition_dsp {
+            cond_dsp.set_max_buffer_size(max_buf)?;
+        }
+        Ok(())
     }
 }
 

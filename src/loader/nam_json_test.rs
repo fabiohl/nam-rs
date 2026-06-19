@@ -175,9 +175,9 @@ fn test_topology_invalid_channels() {
         result
     );
     if let WavenetTopologyResult::Free(ref geom) = result {
-        assert_eq!(geom.channels, 10);
+        assert_eq!(geom.channels, vec![10, 10]);
         assert_eq!(geom.kernel_size, 3);
-        assert_eq!(geom.head_size, 5);
+        assert_eq!(geom.head_sizes, vec![5, 5]);
         assert_eq!(geom.num_arrays, 2);
     }
 }
@@ -195,9 +195,9 @@ fn test_topology_free_geometry() {
         result
     );
     if let WavenetTopologyResult::Free(ref geom) = result {
-        assert_eq!(geom.channels, 14);
+        assert_eq!(geom.channels, vec![14, 14]);
         assert_eq!(geom.kernel_size, 3);
-        assert_eq!(geom.head_size, 7);
+        assert_eq!(geom.head_sizes, vec![7, 7]);
         assert_eq!(geom.num_arrays, 2);
         assert_eq!(geom.dilations.len(), 2);
     }
@@ -337,8 +337,8 @@ fn test_topology_free_different_channels_per_array() {
         result
     );
     if let WavenetTopologyResult::Free(ref geom) = result {
-        assert_eq!(geom.channels, 8);
-        assert_eq!(geom.head_size, 4);
+        assert_eq!(geom.channels, vec![8, 4]);
+        assert_eq!(geom.head_sizes, vec![4, 1]);
     }
 }
 

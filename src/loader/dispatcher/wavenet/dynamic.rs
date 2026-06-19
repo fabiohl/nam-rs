@@ -3,7 +3,9 @@
 
 use super::super::WeightCursor;
 use super::layout;
-use crate::loader::nam_json::{FreeWavenetGeometry, NamModelData};
+use crate::loader::nam_json::{
+    FreeWavenetGeometry, NamModelData, WavenetTopologyResult, get_wavenet_topology,
+};
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::{
     DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
@@ -90,8 +92,35 @@ fn build_wavenet_array_dyn(
 }
 
 // =============================================================================
+// Sub-model builder for condition_dsp recursion control
+// =============================================================================
+
+/// Builds a nested DSP sub-model with recursion depth tracking.
+///
+/// Only WaveNet Free-geometry sub-models contribute to the depth counter
+/// (const-generic SKUs and non-WaveNet architectures cannot nest further).
+fn build_sub_model(
+    data: &NamModelData,
+    depth: usize,
+) -> anyhow::Result<Box<crate::models::StaticModel>> {
+    if data.architecture == "WaveNet"
+        && let WavenetTopologyResult::Free(ref geom) = get_wavenet_topology(data)
+    {
+        let model = build_wavenet_dynamic_inner(data, geom, depth)?;
+        return Ok(Box::new(crate::models::StaticModel::WavenetDyn(Box::new(
+            model,
+        ))));
+    }
+    crate::loader::dispatcher::build_model(data)
+}
+
+// =============================================================================
 // Dynamic WaveNet model entry point
 // =============================================================================
+
+/// Maximum nesting depth for `condition_dsp` sub-models.
+/// Prevents stack overflow from maliciously nested `.nam` files.
+const MAX_CONDITION_DSP_DEPTH: usize = 8;
 
 /// Builds a `WaveNetModelDyn` from parsed model data using runtime dimensions.
 ///
@@ -108,6 +137,14 @@ pub(crate) fn build_wavenet_dynamic(
     data: &NamModelData,
     geom: &FreeWavenetGeometry,
 ) -> anyhow::Result<WaveNetModelDyn> {
+    build_wavenet_dynamic_inner(data, geom, 0)
+}
+
+fn build_wavenet_dynamic_inner(
+    data: &NamModelData,
+    geom: &FreeWavenetGeometry,
+    depth: usize,
+) -> anyhow::Result<WaveNetModelDyn> {
     super::validate_layer_activations(data)?;
 
     if geom.num_arrays != 2 {
@@ -119,9 +156,9 @@ pub(crate) fn build_wavenet_dynamic(
         );
     }
 
-    let ch = geom.channels;
+    let ch = geom.channels[0];
     let k = geom.kernel_size;
-    let head = geom.head_size;
+    let head = geom.head_sizes[0];
     let cond = geom.condition_size;
 
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
@@ -134,7 +171,7 @@ pub(crate) fn build_wavenet_dynamic(
 
     let mut alloc_num = 0usize;
 
-    // Array1: IN=1, COND=condition_size, CH channels, HEAD outputs, no head bias
+    // Array1: IN=1, COND=condition_size, CH channels[0], HEAD head_sizes[0], no head bias
     let array1 = build_wavenet_array_dyn(
         &mut cursor,
         1,    // in_ch
@@ -147,14 +184,14 @@ pub(crate) fn build_wavenet_dynamic(
         &mut alloc_num,
     )?;
 
-    // Array2: IN=ch, COND=condition_size, CH=head, HEAD=1, with head bias
+    // Array2: IN=ch, COND=condition_size, CH channels[1], HEAD head_sizes[1], with head bias
     let array2 = build_wavenet_array_dyn(
         &mut cursor,
-        ch,   // in_ch
-        cond, // cond
-        head, // ch
-        k,    // k
-        1,    // head
+        ch,                 // in_ch (= array1 channels)
+        cond,               // cond
+        geom.channels[1],   // ch (= array2 channels)
+        k,                  // k
+        geom.head_sizes[1], // head (= array2 head_size)
         dils_1,
         true, // has_head_bias
         &mut alloc_num,
@@ -163,6 +200,55 @@ pub(crate) fn build_wavenet_dynamic(
     let head_scale = cursor.read_f32()?;
 
     cursor.verify_exhausted()?;
+
+    // Build condition_dsp sub-model if present in JSON config.
+    // The sub-model is a self-contained `.nam` model that pre-processes the
+    // audio input before it reaches the main layer arrays. Its weights are
+    // consumed independently during sub-model construction (C++ get_dsp
+    // inside parse_config_json, model.cpp:834-838).
+    let condition_dsp = if let Some(ref cond_dsp_json) = data.config.condition_dsp {
+        if depth >= MAX_CONDITION_DSP_DEPTH {
+            anyhow::bail!(
+                "condition_dsp nesting depth ({}) exceeds maximum ({})",
+                depth,
+                MAX_CONDITION_DSP_DEPTH
+            );
+        }
+
+        let cond_dsp_data: NamModelData = serde_json::from_value(cond_dsp_json.clone())?;
+
+        if let (Some(main_sr), Some(cond_sr)) = (data.sample_rate, cond_dsp_data.sample_rate)
+            && (main_sr - cond_sr).abs() > 1.0
+        {
+            anyhow::bail!(
+                "condition_dsp sample rate mismatch: main={} Hz, condition_dsp={} Hz",
+                main_sr,
+                cond_sr
+            );
+        }
+
+        let cond_model = build_sub_model(&cond_dsp_data, depth + 1)?;
+
+        let cond_out = cond_model.num_output_channels();
+        if cond_out != cond {
+            anyhow::bail!(
+                "condition_dsp output channels ({}) must match WaveNet condition_size ({})",
+                cond_out,
+                cond
+            );
+        }
+
+        info!(
+            "[Dispatcher] condition_dsp built — architecture={}, output_channels={}",
+            cond_dsp_data.architecture, cond_out
+        );
+
+        Some(cond_model)
+    } else {
+        None
+    };
+
+    let cond_dsp_output_size = cond * WAVENET_MAX_NUM_FRAMES;
 
     let rf = array1.receptive_field_size.max(array2.receptive_field_size);
 
@@ -174,6 +260,8 @@ pub(crate) fn build_wavenet_dynamic(
         array2,
         head_scale,
         receptive_field_size: rf,
+        condition_dsp,
+        condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
     };
 
     info!(

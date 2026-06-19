@@ -161,6 +161,33 @@ impl StaticModel {
             _ => self.prewarm_samples(),
         }
     }
+
+    /// Returns the number of output channels produced by the model's `process()`.
+    ///
+    /// Mirrors C++ `DSP::NumOutputChannels()`:
+    /// - WaveNet A1 without post-stack head: last array's `head_size` (`wave_net_output_channels`)
+    /// - LSTM: `hidden_size`
+    /// - Linear: 1
+    /// - Container: delegates to active sub-model
+    pub fn num_output_channels(&self) -> usize {
+        match self {
+            Self::WavenetStandard(_)
+            | Self::WavenetLite(_)
+            | Self::WavenetFeather(_)
+            | Self::WavenetNano(_) => 1,
+            Self::WavenetA2Full(_) => 1,
+            Self::WavenetA2Lite(_) => 1,
+            Self::WavenetDyn(m) => m.array2.head,
+            Self::Container(c) => c.active().num_output_channels(),
+            Self::Lstm1x3(_) => 3,
+            Self::Lstm1x8(_) | Self::Lstm2x8(_) => 8,
+            Self::Lstm1x12(_) | Self::Lstm2x12(_) => 12,
+            Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
+            Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
+            Self::Lstm1x40(_) => 40,
+            Self::Linear(_) => 1,
+        }
+    }
 }
 
 impl NamModel for StaticModel {

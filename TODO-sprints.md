@@ -64,10 +64,20 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
 
 **Objetivo**: Realizar a cadeia de ponta a ponta e garantir conformidade audível de 100% com os testes e modelos Golden C++.
 
-* **Tarefa 3.1: Parsing e DSP Condicional (`condition_dsp`)**
+* **Tarefa 3.1: Parsing e DSP Condicional (`condition_dsp`)** ✅ [DONE]
   * **Arquivo alvo**: `src/loader/nam_json/model.rs` e rotinas de DSP no `WaveNetModelDyn`.
   * **Ação**: Identificar o modelo subjacente (`WaveNet`, `LSTM`, `Linear`) aninhado em `condition_dsp`, alocá-lo integralmente durante o estágio de setup (sem comprometer os buffers). Integrar seu processamento passo a passo antes de despachar a saída para as instâncias FiLM.
   * **Critério de aceite**: DSP secundário operando fluidamente dentro do ciclo de processamento do master DSP de áudio.
+  * **Nota pós-implementação**:
+    * `NamConfig` agora possui campo `condition_dsp: Option<serde_json::Value>` para o sub-modelo aninhado.
+    * `StaticModel::num_output_channels()` retorna os canais de saída do modelo (equivalente a `DSP::NumOutputChannels()` do C++).
+    * `FreeWavenetGeometry` agora armazena `channels: Vec<usize>` e `head_sizes: Vec<usize>` por array, capturando geometrias onde a última array tem `head_size` diferente de 1 (necessário para condition_dsp WaveNet cujo último array tem `head_size=3`).
+    * O sub-modelo `condition_dsp` é construído recursivamente via `build_model()` durante `build_wavenet_dynamic()`, com validação de sample_rate e `condition_size == num_output_channels()`.
+    * `WaveNetModelDyn` ganhou campo `condition_dsp: Option<Box<StaticModel>>` e buffer `condition_dsp_output: AlignedVec<f32>` (tamanho `cond × WAVENET_MAX_NUM_FRAMES`).
+    * `process_internal`: quando `condition_dsp` está presente, o áudio mono de entrada é processado pelo sub-modelo e seu output multi-canal é usado como `condition` para as arrays (espelhando `_process_condition` do C++). Sem condition_dsp, mantém comportamento passthrough (cond≤1).
+    * `prewarm_internal`: propaga `prewarm(0)` para o sub-modelo antes de preaquecer as arrays principais.
+    * `set_max_buffer_size` e `prewarm_samples` propagam para o sub-modelo.
+    * Teste `test_loader_gap_wavenet_condition_dsp` agora carrega o modelo completo com condition_dsp funcional (519 lib tests, 19 golden, todos passando).
 
 * **Tarefa 3.2: Golden Tests e Paridade ESR/SNR**
   * **Arquivos alvo**: `tests/cpp_parity.rs` e suítes (`tests-long.sh`).

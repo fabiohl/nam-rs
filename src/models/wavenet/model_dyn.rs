@@ -3,7 +3,8 @@
 
 use super::common::WAVENET_MAX_NUM_FRAMES;
 use super::layer_array_dyn::WaveNetLayerArrayDyn;
-use crate::math::common::SimdMath;
+use crate::math::common::{AlignedVec, SimdMath};
+use crate::models::{NamModel, StaticModel};
 
 /// Complete WaveNet Model with runtime dimensions.
 ///
@@ -21,6 +22,15 @@ use crate::math::common::SimdMath;
 ///
 /// - Array1: IN=1, COND=condition_size, CH channels, HEAD outputs
 /// - Array2: IN=CH, COND=condition_size, HEAD channels, 1 output (with HeadBias)
+///
+/// ## condition_dsp (C++ `_process_condition`)
+///
+/// When `condition_dsp` is `Some`, the raw audio input is first processed by
+/// the nested DSP sub-model before reaching the main layer arrays. The sub-model's
+/// output channels replace the raw input as the `condition` parameter for both
+/// arrays (layer_inputs remain the raw audio). This mirrors C++ `model.cpp:692-722`.
+/// The sub-model is built eagerly during model construction and its `set_weights`
+/// and `prewarm` are consumed independently from the main weight stream.
 pub struct WaveNetModelDyn {
     /// Internal channel count (e.g., 16 for Standard).
     pub ch: usize,
@@ -36,6 +46,19 @@ pub struct WaveNetModelDyn {
     pub head_scale: f32,
     /// Largest circular buffer required at the Kernel's temporal root.
     pub receptive_field_size: usize,
+    /// Optional nested condition DSP sub-model (C++ `_condition_dsp`).
+    ///
+    /// Built eagerly during model construction from the `condition_dsp` JSON
+    /// object. Its `process()` is called with mono audio input; its multi-channel
+    /// output replaces the raw input as the `condition` parameter passed to the
+    /// layer arrays. When `None`, the raw input is used as both `layer_inputs`
+    /// and `condition` (passthrough, cond≤1).
+    pub condition_dsp: Option<Box<StaticModel>>,
+    /// Pre-allocated output buffer for condition_dsp processing.
+    ///
+    /// Size: `cond × WAVENET_MAX_NUM_FRAMES`, where `cond` is the main model's
+    /// `condition_size`. This matches the sub-model's `NumOutputChannels()`.
+    pub condition_dsp_output: AlignedVec<f32>,
 }
 
 impl WaveNetModelDyn {
@@ -61,6 +84,11 @@ impl WaveNetModelDyn {
     /// Fast, generic routine that implements the neural network (WaveNet).
     /// The `<M: SimdMath>` constraint forces the compiler to generate assembly focused on
     /// large registers (256-bit or 512-bit) without branches (branchless).
+    ///
+    /// When `condition_dsp` is present, the raw input is first processed by the sub-DSP
+    /// to produce multi-channel conditioning. The sub-model's output is used as the
+    /// `condition` parameter for both layer arrays, while the raw input remains as
+    /// `layer_inputs`. This mirrors C++ `model.cpp:737-825`.
     #[inline(always)]
     unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let total_frames = input.len();
@@ -70,28 +98,43 @@ impl WaveNetModelDyn {
 
         let ch = self.ch;
         let head = self.head;
+        let cond = self.array1.cond;
         let mut pos = 0;
 
         while pos < total_frames {
             let num_frames = (total_frames - pos).min(WAVENET_MAX_NUM_FRAMES);
             let in_slice = &input[pos..pos + num_frames];
 
+            let condition_slice: &[f32] = if let Some(ref mut cond_dsp) = self.condition_dsp {
+                let cond_out = &mut self.condition_dsp_output[0..num_frames * cond];
+                cond_dsp.process(in_slice, cond_out);
+                cond_out
+            } else {
+                in_slice
+            };
+
             unsafe {
-                self.array1
-                    .process_block_internal::<M, false>(in_slice, in_slice, num_frames, None);
+                self.array1.process_block_internal::<M, false>(
+                    in_slice,
+                    condition_slice,
+                    num_frames,
+                    None,
+                );
 
                 let array1_head_out = &self.array1.head_outputs[0..num_frames * head];
                 let array1_outputs = &self.array1.array_outputs[0..num_frames * ch];
                 self.array2.process_block_internal::<M, false>(
                     array1_outputs,
-                    in_slice,
+                    condition_slice,
                     num_frames,
                     Some(array1_head_out),
                 );
             }
 
-            let array2_head = &self.array2.head_outputs[0..num_frames];
-            let out_slice = &mut output[pos..pos + num_frames];
+            let head_dim = self.array2.head;
+            let array2_head = &self.array2.head_outputs[0..num_frames * head_dim];
+            let out_start = pos * head_dim;
+            let out_slice = &mut output[out_start..out_start + num_frames * head_dim];
             out_slice.copy_from_slice(array2_head);
             unsafe {
                 M::apply_gain(out_slice, self.head_scale);
@@ -137,12 +180,23 @@ impl WaveNetModelDyn {
     #[inline(always)]
     #[cold]
     unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
-        let condition = [0.0f32];
-        let layer_inputs_1 = [0.0f32];
+        if let Some(ref mut cond_dsp) = self.condition_dsp {
+            cond_dsp.prewarm(0);
+        }
+
+        let zero_input = [0.0f32];
+        let cond = self.array1.cond;
+
+        let condition: &[f32] = if let Some(ref mut cond_dsp) = self.condition_dsp {
+            cond_dsp.process(&zero_input, &mut self.condition_dsp_output[0..cond]);
+            &self.condition_dsp_output[0..cond]
+        } else {
+            &zero_input
+        };
 
         unsafe {
             self.array1
-                .prewarm_internal::<M>(&layer_inputs_1, &condition, None);
+                .prewarm_internal::<M>(&zero_input, condition, None);
         }
         let ch = self.ch;
         let head = self.head;
@@ -150,7 +204,7 @@ impl WaveNetModelDyn {
         let array1_head_out = &self.array1.head_outputs[0..head];
         unsafe {
             self.array2
-                .prewarm_internal::<M>(array1_outputs, &condition, Some(array1_head_out));
+                .prewarm_internal::<M>(array1_outputs, condition, Some(array1_head_out));
         }
     }
 }

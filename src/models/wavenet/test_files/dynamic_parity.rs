@@ -293,6 +293,8 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         array2,
         head_scale: 0.02,
         receptive_field_size: rf,
+        condition_dsp: None,
+        condition_dsp_output: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
     }
 }
 
