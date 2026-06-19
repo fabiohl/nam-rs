@@ -390,58 +390,10 @@ impl<const CH: usize> WaveNetA2<CH> {
                         continue;
                     }
 
-                    // ── Scalar fallback: per-frame, per-layer ────────────────
-                    for (f, x) in input[pos..pos + nf].iter().enumerate() {
-                        let head_col = head_wp + f;
-                        let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
-                        let mut frame_z = [0.0f32; 8];
-                        let z_slice = &mut frame_z[..ch];
-
-                        let frame_idx = max_lookback_cols + f;
-
-                        // ── Phase 1: dilated conv over receptive field ──────
-                        unsafe {
-                            layer
-                                .conv
-                                .process_single_frame(history, z_slice, frame_idx, None);
-                        }
-
-                        // ── Phase 2: input mixin (conditioning) ─────────────
-                        let mixin: &[f32] = &layer.mixin_w;
-                        for c in 0..ch {
-                            z_slice[c] += mixin[c] * x;
-                        }
-
-                        // ── Phase 3: gated activation (leaky-ReLU, slope 0.01) ──
-                        for z in z_slice.iter_mut().take(ch) {
-                            if *z < 0.0 {
-                                *z *= 0.01;
-                            }
-                        }
-
-                        // ── Phase 4: head accumulation ─────────────────────
-                        let head_off = head_col * ch;
-                        if is_first {
-                            self.head_accum[head_off..head_off + ch].copy_from_slice(z_slice);
-                        } else {
-                            for (c, z_val) in z_slice.iter().enumerate().take(ch) {
-                                self.head_accum[head_off + c] += *z_val;
-                            }
-                        }
-
-                        // ── Phase 5: 1×1 projection to next layer ──────────
-                        if !is_last {
-                            let l1x1: &[f32] = &layer.l1x1_w;
-                            let l1x1_b: &[f32] = &layer.l1x1_b;
-                            for c in 0..ch {
-                                let mut sum = l1x1_b[c];
-                                for u in 0..ch {
-                                    sum += l1x1[u * ch + c] * z_slice[u];
-                                }
-                                lin_slice[c] += sum;
-                            }
-                        }
-                    }
+                    unreachable!(
+                        "A2 layers always have ch3 or ch8 conv; \
+                         scalar fallback unreachable per set_weights invariant (CH=3|8)"
+                    );
                 }
             }
 

@@ -197,16 +197,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T3.2 — P16: Marcar fallback escalar A2 como `unreachable!()`
+### T3.2 — P16: Marcar fallback escalar A2 como `unreachable!()` [DONE]
 
 **Detalhes**:
 
-- [ ] Em `src/models/a2/model/mod.rs:393-444`:
+- [x] Em `src/models/a2/model/mod.rs:393-444`:
   - Substituir o bloco escalar por `unreachable!()` com mensagem explicativa
   - Usar `unreachable!()` safe (não `unreachable_unchecked()`) — custo zero pois
     o branch nunca é tomado; segurança preservada contra bug futuro em `set_weights`
-- [ ] `cargo check`
-- [ ] `cargo test` — confirmar que nenhum teste usa o fallback escalar
+- [x] `cargo check`
+- [x] `cargo test` — confirmar que nenhum teste usa o fallback escalar
 
 **Critério de aceite**: Compilação limpa; testes verdes; invariante documentada.
 
