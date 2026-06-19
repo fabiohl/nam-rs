@@ -12,6 +12,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > funcionalidade** consulte **`TODO-features.md`**.
 >
 > **Última auditoria**: jun/2026 (revisor-auditor + planejador-arquiteto).
+> **Última atualização**: jun/2026 (T2.1 — formalização O5 DONE, O4 cancelado).
 >
 > **Filosofia**: internalizar é justificado quando a dependência é genérica demais, arrasta
 > cadeia de build desproporcional, ou deixa performance na mesa que só o controle total
@@ -25,8 +26,6 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | ------ | ------------------------------------------------- | --------------------------------------- |:---------:|:---------:| -------------- |
 | **O2** | `minstant` → `RtClock` TSC unificado              | −1 proc-macro, −`syn` v1; 1 clock único | Baixo-Méd | Morno     | 🟢 Fazer       |
 | **O3** | `rustfft` → RFFT real interna + MAC complexo SIMD | ~2× FFT + metade memória do cabsim      | Alto      | **Sim**   | ★ PoC faseada  |
-| **O4** | `rtrb` → fila SPSC interna                        | Marginal                                | Médio     | Controle  | ⚪ Deferir     |
-| **O5** | Cobertura SIMD x86-64-v3 (índice + guard-rail)    | Latência ↓ no hot-path                  | Baixo     | **Sim**   | 🟢 (via F1/F3) |
 
 ### Matriz de Priorização (esforço × impacto)
 
@@ -37,18 +36,17 @@ A │                               O3  rustfft → RFFT interna  ★ flagship
 L │
 T │      O2  minstant
 O │
-  │        O5  cobertura SIMD (itens em F1/F3)         O4  rtrb  ⚪ (deferir)
+  │
 B │
 A │
 I │
 X └──────────────────────────────────────────────────────────────────►
        BAIXO              MÉDIO                 ALTO         ESFORÇO
 
-🟢 = fazer já    ★ = PoC profunda faseada    ⚪ = opcional/deferido
+🟢 = fazer já    ★ = PoC profunda faseada
 ```
 
-**Ordem recomendada**: O2 → O5 (lacunas escalares, baixo risco) → O3a (MAC SIMD) →
-O3b (RFFT interna) → (O4, opcional).
+**Ordem recomendada**: O2 → O3a (MAC SIMD) → O3b (RFFT interna).
 
 ---
 
@@ -110,39 +108,7 @@ O3b (RFFT interna) → (O4, opcional).
 
 ---
 
-## O4 — ⚪ `rtrb`: deferir (baixo retorno)
-
-**O que é.** `rtrb` é fila SPSC lock-free bounded, **zero-dependências**. Encapsulada em
-`src/common/spsc/{mod,gc}.rs`. Usada **só para controle** (parâmetros, GC cascade, swap).
-
-**Decisão**: deferir. `rtrb` é minúsculo, zero-dep, bem testado. Risco de errar ordering
-lock-free supera o ganho marginal. Reconsiderar somente se perfil apontar false sharing.
-
----
-
-## O5 — 🟢 Cobertura SIMD x86-64-v3 (índice + guard-rail)
-
-**Contexto.** `.cargo/config.toml` fixa x86-64-v3 → AVX2, FMA e F16C garantidos em compilação.
-
-**Achados verificados (jun/2026):**
-
-| Achado  | Local                     | Status                                 | Roteamento                    |
-| ------- | ------------------------- | -------------------------------------- | ----------------------------- |
-| S1      | `a2/head.rs:96-118`       | Head conv 100% escalar (128 FMA/frame) | → F3 (motor A2)               |
-| S2      | `a2/model/mod.rs:264-270` | ✅ DONE — rechannel AVX2 SIMD (CH=8)   | Verificado :281-294           |
-| S3      | `wavenet/model.rs:96-98`  | ✅ DONE — `M::apply_gain` SIMD         | Verificado :98                |
-| S4      | `cabsim/conv.rs:259-292`  | MAC complexo escalar                   | → O3a (acima)                 |
-| Limpeza | `avx2_impl.rs:42-99`      | ✅ DONE — `unreachable!()` BF16        | Verificado :42,76,192,242,303 |
-
-**Guard-rail ativo**: com x86-64-v3 garantido, **nenhum laço de aritmética f32/f16
-por-amostra/por-bloco** deve permanecer escalar. Regra de revisão para qualquer sprint
-que toque inferência.
-
----
-
 ## Histórico — Achados Resolvidos
-
-Expandir item resolvido (O1)
 
 ### O1 — ✅ `half`: internalizado (verificado jun/2026)
 
@@ -151,6 +117,25 @@ Expandir item resolvido (O1)
 - **`half` removido do `Cargo.toml`** (verificado: não presente nas linhas 18-39).
 - Todas as 16 caudas escalares dos kernels SIMD usam F16C hardware.
 - Testes exaustivos: decode 65.536 + encode 65.536 + regressão carry.
+
+### O5 — ✅ Cobertura SIMD x86-64-v3: formalizado DONE (Sprint 2, jun/2026)
+
+- **S2 ✅ DONE** — rechannel AVX2 SIMD (CH=8) em `src/models/a2/model/mod.rs:281-294`
+- **S3 ✅ DONE** — `M::apply_gain` SIMD em `src/models/wavenet/model.rs:98`
+- **Limpeza ✅ DONE** — `unreachable!()` BF16 em `src/math/common/avx2_impl.rs:42,76,192,242,303`
+- **S1** → F3 (roteado para motor A2)
+- **S4** → O3a (roteado para MAC complexo SIMD)
+- **Guard-rail ativo**: regra documentada — com x86-64-v3 garantido, nenhum laço de aritmética f32/f16 por-amostra/por-bloco deve permanecer escalar.
+
+---
+
+## Cancelado
+
+### O4 — ⚪ `rtrb`: cancelado (baixo retorno)
+
+- `rtrb` é zero-dep, minúsculo, bem testado
+- Custo de re-implementar > benefício marginal
+- Reconsiderar apenas se profiling apontar false sharing
 
 ---
 
@@ -168,6 +153,7 @@ Expandir item resolvido (O1)
 ## Nota de Método (para o planejador-arquiteto)
 
 - Ao planejar sprints: O2 é independente (baixo risco, boa primeira sprint); O3 é faseado
-  (O3a → O3b → O3c), cada fase com critério de aceite numérico próprio; O4 fica deferido.
-- O5 é transversal: S1 e S4 executados dentro de F3 e O3a respectivamente.
+  (O3a → O3b → O3c), cada fase com critério de aceite numérico próprio; O4 está cancelado.
+- O5 (SIMD guard-rail) está DONE: S1 e S4 executados dentro de F3 e O3a respectivamente;
+  guard-rail segue ativo como regra de revisão.
 - Cruzar com P5/P6 ao planejar O2, e com P18 ao planejar O3a.

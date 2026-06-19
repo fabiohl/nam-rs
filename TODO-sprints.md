@@ -151,16 +151,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T1.5 — Testes e verificação de calibração
+### T1.5 — Testes e verificação de calibração [DONE]
 
 **Objetivo**: Garantir que o TSC funciona corretamente no novo path.
 
 **Detalhes**:
 
-- [ ] Verificar que `rt_setup_test::test_rdtsc_nanos_monotonic` passa
-- [ ] Verificar que `rt_setup_test::test_rdtsc_nanos_significant` passa
-- [ ] `cargo test` (suíte completa)
-- [ ] Verificar zero warnings em toda a build
+- [x] Verificar que `rt_setup_test::test_rdtsc_nanos_monotonic` passa
+- [x] Verificar que `rt_setup_test::test_rdtsc_nanos_significant` passa
+- [x] `cargo test` (suíte completa) — 456 passed, 0 failed
+- [x] Verificar zero warnings em toda a build
 
 **Critério de aceite**: `cargo test` verde sem warnings.
 
@@ -168,13 +168,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint 2 — O5: Formalizar SIMD DONE + Cancelar O4
 
-### T2.1 — Atualizar `TODO-optimize.md`
+### T2.1 — Atualizar `TODO-optimize.md` [DONE]
 
-- [ ] Mover O5 para seção histórico (DONE) com nota:
+- [x] Mover O5 para seção histórico (DONE) com nota:
   - S2 ✅, S3 ✅, Limpeza ✅ (verificados no código)
   - S1 → F3 (roteado), S4 → O3a (roteado)
   - Guard-rail ativo: regra documentada
-- [ ] Mover O4 para seção "Cancelado" com justificativa:
+- [x] Mover O4 para seção "Cancelado" com justificativa:
   - `rtrb` é zero-dep, minúsculo, bem testado
   - Custo de re-implementar > benefício marginal
   - Reconsiderar apenas se profiling apontar false sharing
