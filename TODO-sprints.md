@@ -13,15 +13,15 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
 
 ### Sprint 1.1: Refatoração Estrutural do Modelo
 
-* **Task 1.1.1 [ ] Modificar `WaveNetModelDyn`:**
+* **Task 1.1.1 [x] Modificar `WaveNetModelDyn`:**
   * Arquivo: `src/models/wavenet/model_dyn.rs`
   * Substituir os campos `array1` e `array2` por um vetor `pub arrays: Vec<WaveNetLayerArrayDyn>`.
-* **Task 1.1.2 [ ] Adaptar Iteração do `process_internal`:**
+* **Task 1.1.2 [x] Adaptar Iteração do `process_internal`:**
   * Arquivo: `src/models/wavenet/model_dyn.rs`
   * Substituir as invocações fixas ao `array1` e `array2` por um laço seguro e "borrow-checker friendly".
   * Lógica de conexão: O `output` do array N passa a ser o `input` do array N+1.
   * O `head_outputs` só precisa ser extraído do *último array* no laço.
-* **Task 1.1.3 [ ] Adaptar Iteração do `prewarm_internal`:**
+* **Task 1.1.3 [x] Adaptar Iteração do `prewarm_internal`:**
   * Arquivo: `src/models/wavenet/model_dyn.rs`
   * Reproduzir a mesma lógica iterativa da Task 1.1.2 para a fase de aquecimento do modelo (`zero_input`).
 
@@ -33,6 +33,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
   * Instanciar `WaveNetLayerArrayDyn` dentro de um `for i in 0..geom.num_arrays`.
   * Extrair os canais (CH), tamanho do kernel (K), e bias (`has_head_bias = is_last`).
   * Atualizar as alocações de buffer dinamicamente mantendo RT-safety (pré-alocação estrita no momento do load).
+  * **Nota Sprint 1.1:** O laço de encadeamento em `process_internal`/`prewarm_internal` usa `self.ch`/`self.head` (dimensões do array 0) para fatiar `head_outputs` e `array_outputs` dos arrays intermediários. Para N>2, verificar se usar `prev.ch`/`prev.head` (dimensões per-array) é mais robusto, especialmente se arrays intermediários tiverem CH diferente do array 0.
 * **Task 1.2.2 [ ] Testes e Homologação Funcional:**
   * Arquivo: `tests/cpp_parity.rs`
   * Rodar a suite longa: `./utils/tests-long.sh` e certificar que `live_cross_validation_nondist_models` passa com sucesso.

@@ -79,7 +79,7 @@ impl StaticModel {
             Self::WavenetLite(m) => m.array1.layers.len(),
             Self::WavenetFeather(m) => m.array1.layers.len(),
             Self::WavenetNano(m) => m.array1.layers.len(),
-            Self::WavenetDyn(m) => m.array1.layers.len(),
+            Self::WavenetDyn(m) => m.arrays[0].layers.len(),
             Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) | Self::WavenetA2Dyn(_) => {
                 crate::models::a2::A2_NUM_LAYERS
             }
@@ -183,7 +183,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) => 1,
             Self::WavenetA2Lite(_) => 1,
             Self::WavenetA2Dyn(_) => 1,
-            Self::WavenetDyn(m) => m.array2.head,
+            Self::WavenetDyn(m) => m.arrays.last().map(|a| a.head).unwrap_or(0),
             Self::Container(c) => c.active().num_output_channels(),
             Self::Lstm1x3(_) => 3,
             Self::Lstm1x8(_) | Self::Lstm2x8(_) => 8,

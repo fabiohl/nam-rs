@@ -20,8 +20,14 @@ use crate::models::{NamModel, StaticModel};
 ///
 /// ## Array Topology
 ///
-/// - Array1: IN=1, COND=condition_size, CH channels, HEAD outputs
-/// - Array2: IN=CH, COND=condition_size, HEAD channels, 1 output (with HeadBias)
+/// The model is composed of `N` dynamically-sized layer arrays chained sequentially:
+///   - Array 0: IN=1, COND=condition_size, CH channels, HEAD outputs, no HeadBias
+///   - Arrays 1..N-2: IN=CH, COND=condition_size, CH channels, HEAD outputs, no HeadBias
+///   - Array N-1: IN=CH, COND=condition_size, HEAD channels, 1 output, with HeadBias
+///
+/// The `output` of array `i` is used as the `input` of array `i+1`, and the
+/// `head_outputs` of array `i` seed the `head_accum` of array `i+1` (cascaded head
+/// pattern from C++).
 ///
 /// ## condition_dsp (C++ `_process_condition`)
 ///
@@ -38,10 +44,11 @@ pub struct WaveNetModelDyn {
     pub k: usize,
     /// Head projection size (e.g., 8 for Standard).
     pub head: usize,
-    /// Inner array 01: IN=1, COND=condition_size, CH channels, HEAD outputs, no HeadBias.
-    pub array1: WaveNetLayerArrayDyn,
-    /// Inner array 02: IN=CH, COND=condition_size, HEAD channels, 1 output, with HeadBias.
-    pub array2: WaveNetLayerArrayDyn,
+    /// Dynamically-sized layer arrays chained sequentially.
+    /// - Array 0: IN=1, COND=cond, CH channels, HEAD outputs, no HeadBias
+    /// - Middle arrays: IN=CH, COND=cond, CH channels, HEAD outputs, no HeadBias
+    /// - Last array: IN=CH, COND=cond, HEAD channels, 1 output, with HeadBias
+    pub arrays: Vec<WaveNetLayerArrayDyn>,
     /// Final voltage compensation scale (Target Output Scale).
     pub head_scale: f32,
     /// Largest circular buffer required at the Kernel's temporal root.
@@ -62,11 +69,12 @@ pub struct WaveNetModelDyn {
 }
 
 impl WaveNetModelDyn {
-    /// Sets the effective number of layers on both arrays for soft-degrade.
+    /// Sets the effective number of layers on all arrays for soft-degrade.
     #[inline(always)]
     pub fn set_effective_layers(&mut self, n: usize) {
-        self.array1.set_effective_layers(n);
-        self.array2.set_effective_layers(n);
+        for array in &mut self.arrays {
+            array.set_effective_layers(n);
+        }
     }
 
     /// Resolves the full forward pass and produces waveform samples in zero allocation (DSP).
@@ -85,10 +93,16 @@ impl WaveNetModelDyn {
     /// The `<M: SimdMath>` constraint forces the compiler to generate assembly focused on
     /// large registers (256-bit or 512-bit) without branches (branchless).
     ///
+    /// ## Array chaining
+    /// Array 0 receives the raw input and condition. Each subsequent array `i`
+    /// receives the `array_outputs` of array `i-1` as layer inputs, and the
+    /// `head_outputs` of array `i-1` seed its head accumulator (cascaded head
+    /// pattern). The final output is the last array's `head_outputs × head_scale`.
+    ///
     /// When `condition_dsp` is present, the raw input is first processed by the sub-DSP
     /// to produce multi-channel conditioning. The sub-model's output is used as the
-    /// `condition` parameter for both layer arrays, while the raw input remains as
-    /// `layer_inputs`. This mirrors C++ `model.cpp:737-825`.
+    /// `condition` parameter for all arrays, while the raw input remains as
+    /// `layer_inputs` for the first array. This mirrors C++ `model.cpp:737-825`.
     #[inline(always)]
     unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let total_frames = input.len();
@@ -98,7 +112,7 @@ impl WaveNetModelDyn {
 
         let ch = self.ch;
         let head = self.head;
-        let cond = self.array1.cond;
+        let cond = self.arrays[0].cond;
         let mut pos = 0;
 
         while pos < total_frames {
@@ -114,28 +128,38 @@ impl WaveNetModelDyn {
             };
 
             unsafe {
-                self.array1.process_block_internal::<M, false>(
+                let num_arrays = self.arrays.len();
+                let arrays_ptr = self.arrays.as_mut_ptr();
+
+                // Array 0: layer_inputs = raw input, no prev_head_outputs
+                (*arrays_ptr).process_block_internal::<M, false>(
                     in_slice,
                     condition_slice,
                     num_frames,
                     None,
                 );
 
-                let array1_head_out = &self.array1.head_outputs[0..num_frames * head];
-                let array1_outputs = &self.array1.array_outputs[0..num_frames * ch];
-                self.array2.process_block_internal::<M, false>(
-                    array1_outputs,
-                    condition_slice,
-                    num_frames,
-                    Some(array1_head_out),
-                );
+                // Chain arrays 1..N-1
+                for i in 1..num_arrays {
+                    let prev = &*arrays_ptr.add(i - 1);
+                    let curr = &mut *arrays_ptr.add(i);
+                    let prev_head_out = &prev.head_outputs[0..num_frames * head];
+                    let prev_outputs = &prev.array_outputs[0..num_frames * ch];
+                    curr.process_block_internal::<M, false>(
+                        prev_outputs,
+                        condition_slice,
+                        num_frames,
+                        Some(prev_head_out),
+                    );
+                }
             }
 
-            let head_dim = self.array2.head;
-            let array2_head = &self.array2.head_outputs[0..num_frames * head_dim];
+            let last = &self.arrays[self.arrays.len() - 1];
+            let head_dim = last.head;
+            let last_head = &last.head_outputs[0..num_frames * head_dim];
             let out_start = pos * head_dim;
             let out_slice = &mut output[out_start..out_start + num_frames * head_dim];
-            out_slice.copy_from_slice(array2_head);
+            out_slice.copy_from_slice(last_head);
             unsafe {
                 M::apply_gain(out_slice, self.head_scale);
             }
@@ -185,7 +209,7 @@ impl WaveNetModelDyn {
         }
 
         let zero_input = [0.0f32];
-        let cond = self.array1.cond;
+        let cond = self.arrays[0].cond;
 
         let condition: &[f32] = if let Some(ref mut cond_dsp) = self.condition_dsp {
             cond_dsp.process(&zero_input, &mut self.condition_dsp_output[0..cond]);
@@ -194,17 +218,23 @@ impl WaveNetModelDyn {
             &zero_input
         };
 
-        unsafe {
-            self.array1
-                .prewarm_internal::<M>(&zero_input, condition, None);
-        }
         let ch = self.ch;
         let head = self.head;
-        let array1_outputs = &self.array1.array_outputs[0..ch];
-        let array1_head_out = &self.array1.head_outputs[0..head];
+
         unsafe {
-            self.array2
-                .prewarm_internal::<M>(array1_outputs, condition, Some(array1_head_out));
+            let num_arrays = self.arrays.len();
+            let arrays_ptr = self.arrays.as_mut_ptr();
+
+            // Array 0: layer_inputs = silence, no prev_head_outputs
+            (*arrays_ptr).prewarm_internal::<M>(&zero_input, condition, None);
+
+            for i in 1..num_arrays {
+                let prev = &*arrays_ptr.add(i - 1);
+                let curr = &mut *arrays_ptr.add(i);
+                let prev_outputs = &prev.array_outputs[0..ch];
+                let prev_head_out = &prev.head_outputs[0..head];
+                curr.prewarm_internal::<M>(prev_outputs, condition, Some(prev_head_out));
+            }
         }
     }
 }
