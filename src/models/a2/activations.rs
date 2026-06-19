@@ -17,6 +17,8 @@
 //! Todas as demais variantes de `ActivationType` são preservadas para suporte
 //! futuro ao motor A2 completo (ativações heterogêneas por camada, FiLM, gating).
 
+use core::arch::x86_64::*;
+
 /// Activation types supported by NAM A2.
 ///
 /// Apenas `LeakyReLU` é exercitada pelo fast-path A2-Full/Lite.
@@ -89,8 +91,12 @@ impl ActivationFn for ActivationType {
             // HardTanh (Rigid Hyperbolic Tangent): Abrupt saturation (hard clipping/culling).
             // Limits values strictly to a minimum of -1.0 and a maximum of 1.0.
             Self::HardTanh => {
-                for x in data.iter_mut() {
-                    *x = x.clamp(-1.0, 1.0);
+                if is_x86_feature_detected!("avx2") {
+                    unsafe { hard_tanh_slice_avx2(data) }
+                } else {
+                    for x in data.iter_mut() {
+                        *x = x.clamp(-1.0, 1.0);
+                    }
                 }
             }
             // FastTanh: A fast mathematical approximation of the processor's native Tanh function.
@@ -160,6 +166,48 @@ impl ActivationFn for ActivationType {
                 crate::math::activations::softsign_slice(data);
             }
         }
+    }
+}
+
+/// AVX2-accelerated HardTanh: `clamp(x, -1.0, 1.0)` over a slice.
+///
+/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
+///
+/// # Safety
+/// Requires AVX2 support.
+#[target_feature(enable = "avx2")]
+pub unsafe fn hard_tanh_slice_avx2(data: &mut [f32]) {
+    let neg_one = _mm256_set1_ps(-1.0_f32);
+    let pos_one = _mm256_set1_ps(1.0_f32);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
+            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+            _mm256_storeu_ps(
+                data.as_mut_ptr().add(i),
+                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x1)),
+            );
+            _mm256_storeu_ps(
+                data.as_mut_ptr().add(i + 8),
+                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x2)),
+            );
+        }
+        i += 16;
+    }
+    while i + 8 <= len {
+        unsafe {
+            let x = _mm256_loadu_ps(data.as_ptr().add(i));
+            _mm256_storeu_ps(
+                data.as_mut_ptr().add(i),
+                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x)),
+            );
+        }
+        i += 8;
+    }
+    for x in data.iter_mut().skip(i) {
+        *x = x.clamp(-1.0, 1.0);
     }
 }
 

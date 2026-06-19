@@ -180,4 +180,59 @@ mod tests {
         // Slopes ciclam: [0.1, 0.5, 0.1, 0.5]
         assert_eq!(data, [-0.1, -0.5, -0.1, -0.5]);
     }
+
+    #[test]
+    fn test_hard_tanh_avx2_parity() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        #[target_feature(enable = "avx2")]
+        unsafe fn scalar_ref(data: &mut [f32]) {
+            for x in data.iter_mut() {
+                *x = x.clamp(-1.0, 1.0);
+            }
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe { super::super::hard_tanh_slice_avx2(&mut simd_data) };
+        unsafe { scalar_ref(&mut ref_data) };
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-6,
+                "AVX2 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_hard_tanh_avx2_large_slice() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            *x = x.clamp(-1.0, 1.0);
+        }
+
+        unsafe { super::super::hard_tanh_slice_avx2(&mut data) };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX2 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
 }
