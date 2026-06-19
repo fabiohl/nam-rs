@@ -175,7 +175,7 @@ pub enum WeightsLayout {
 /// Mirrors the `_Head` structure in NAMCore's `convnet.h:108-118`.
 /// Contains a Conv1D + activation that processes the signal after the
 /// stack of blocks, before the output.
-#[derive(Serialize, Debug, Clone, Default)]
+#[derive(Serialize, Debug, Clone, PartialEq, Default)]
 pub struct HeadConfig {
     /// Number of internal channels for the head Conv1D.
     pub channels: Option<usize>,

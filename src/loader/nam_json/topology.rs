@@ -4,6 +4,7 @@
 //! Detection of WaveNet and LSTM topologies from model data.
 
 use super::data::NamModelData;
+use super::model::HeadConfig;
 
 /// The closed and supported topologies within native WaveNet modeling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,10 @@ pub struct FreeWavenetGeometry {
     /// Models with `condition_size > 1` flow into the dynamic engine
     /// (the const-generic fast-path is reserved for `COND=1`).
     pub condition_size: usize,
+    /// Post-stack head configuration (Conv1D + activation) that processes
+    /// the signal after all layer arrays, before `head_scale` and output.
+    /// `None` means no post-stack head is present (standard behavior).
+    pub post_stack_head: Option<HeadConfig>,
 }
 
 /// Result of WaveNet topology detection.
@@ -292,6 +297,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         condition_size,
         num_arrays: layers.len(),
         dilations,
+        post_stack_head: data.config.parse_head(),
     })
 }
 
