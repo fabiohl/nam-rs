@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+// SAFETY: Caller guarantees alignment, bounds, and AVX2+FMA ISA availability for SIMD kernels.
+#![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
+
 //! A2 Head convolution (k=16, bias, head_scale).
 //!
 //! Implements the head rechannel convolution from `a2_fast.cpp:722-743`:
@@ -20,6 +23,8 @@
 //! - `NAM/wavenet/a2_fast.cpp:716-745` (`_head_forward`)
 
 use crate::math::common::AlignedVec;
+use crate::math::common::hsum_avx2;
+use core::arch::x86_64::*;
 
 /// Head convolution for the A2 WaveNet architecture.
 ///
@@ -116,6 +121,92 @@ impl A2HeadConv {
 
             *out_val = y * self.head_scale;
         }
+    }
+}
+
+// =============================================================================
+// AVX2+FMA kernel for CH=8
+// =============================================================================
+
+/// Kernel SIMD AVX2+FMA para A2 Head Conv com CH=8.
+///
+/// Processa `num_frames` frames usando T=4 frame-tiling:
+/// carrega os K=16 pesos uma vez por tap e acumula
+/// via broadcast FMA em 4 acumuladores `__m256` simultâneos.
+///
+/// Ao final de cada tile de 4 frames, `hsum_avx2` reduz cada acumulador,
+/// adiciona `head_b` e multiplica por `head_scale`.
+///
+/// # Safety
+/// - Requer AVX2+FMA (`target_feature`).
+/// - `head_w` deve ter pelo menos `K * 8` elementos.
+/// - `head_history` deve ter `(ring_mask + 1) * 8` elementos.
+/// - `output` deve ter pelo menos `num_frames` elementos.
+/// - `num_channels` implícito = 8 (chamador deve garantir).
+#[allow(clippy::too_many_arguments)]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn head_process_ch8_avx2(
+    head_w: &[f32],
+    head_b: f32,
+    head_scale: f32,
+    head_history: &[f32],
+    head_write_pos: usize,
+    ring_mask: usize,
+    num_frames: usize,
+    output: &mut [f32],
+) {
+    let k = A2HeadConv::HEAD_KERNEL_SIZE;
+    const T: usize = 4;
+    let n_tiled = (num_frames / T) * T;
+    let base = head_write_pos.wrapping_sub(num_frames);
+
+    for f in (0..n_tiled).step_by(T) {
+        let mut a0 = _mm256_setzero_ps();
+        let mut a1 = _mm256_setzero_ps();
+        let mut a2 = _mm256_setzero_ps();
+        let mut a3 = _mm256_setzero_ps();
+
+        let col_base_f = base.wrapping_add(f);
+
+        for t in 0..k {
+            let w_v = _mm256_loadu_ps(head_w.as_ptr().add(t * 8));
+
+            let col0 = col_base_f.wrapping_sub(k - 1 - t) & ring_mask;
+            let h0 = _mm256_loadu_ps(head_history.as_ptr().add(col0 * 8));
+            a0 = _mm256_fmadd_ps(w_v, h0, a0);
+
+            let col1 = col_base_f.wrapping_add(1).wrapping_sub(k - 1 - t) & ring_mask;
+            let h1 = _mm256_loadu_ps(head_history.as_ptr().add(col1 * 8));
+            a1 = _mm256_fmadd_ps(w_v, h1, a1);
+
+            let col2 = col_base_f.wrapping_add(2).wrapping_sub(k - 1 - t) & ring_mask;
+            let h2 = _mm256_loadu_ps(head_history.as_ptr().add(col2 * 8));
+            a2 = _mm256_fmadd_ps(w_v, h2, a2);
+
+            let col3 = col_base_f.wrapping_add(3).wrapping_sub(k - 1 - t) & ring_mask;
+            let h3 = _mm256_loadu_ps(head_history.as_ptr().add(col3 * 8));
+            a3 = _mm256_fmadd_ps(w_v, h3, a3);
+        }
+
+        output[f] = (hsum_avx2(a0) + head_b) * head_scale;
+        output[f + 1] = (hsum_avx2(a1) + head_b) * head_scale;
+        output[f + 2] = (hsum_avx2(a2) + head_b) * head_scale;
+        output[f + 3] = (hsum_avx2(a3) + head_b) * head_scale;
+    }
+
+    // Scalar tail for remaining frames (< T)
+    for (f, out_val) in output.iter_mut().take(num_frames).enumerate().skip(n_tiled) {
+        *out_val = a2_head_single_frame_scalar_ref(
+            head_w,
+            head_b,
+            head_scale,
+            8,
+            head_history,
+            head_write_pos,
+            ring_mask,
+            num_frames,
+            f,
+        );
     }
 }
 

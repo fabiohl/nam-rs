@@ -72,7 +72,11 @@ for t in 0..k {
 
 ---
 
-#### T1.1 — Implementar `head_process_ch8_avx2` (kernel CH=8)
+#### T1.1 — Implementar `head_process_ch8_avx2` (kernel CH=8) ✅ [DONE]
+
+**Arquivo**: `src/models/a2/head.rs`
+
+**Status**: Concluído. Kernel AVX2+FMA implementado com T=4 frame-tiling, reutilizando `hsum_avx2` de `src/math/common/utility.rs`. Tail frames (< T) delegam para `a2_head_single_frame_scalar_ref`. Testes adicionados em `head_test.rs`: paridade, large block (128 frames) e wraparound.
 
 **Arquivo**: `src/models/a2/head.rs`
 
