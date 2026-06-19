@@ -21,7 +21,7 @@ pub enum NamWavenetTopology {
 /// Description of a detected free (non-catalog) WaveNet A1 geometry.
 ///
 /// Returned by [`get_wavenet_topology`] when the model is a valid WaveNet A1
-/// (no post-stack head) but does not match any of the four catalog SKUs
+/// but does not match any of the four catalog SKUs
 /// (Standard/Lite/Feather/Nano). The dynamic engine (T3.1) consumes this
 /// structure to build a runtime-dimensioned [`WaveNetModelDyn`].
 ///
@@ -143,10 +143,8 @@ impl NamModelData {
 ///   use the const-generic fast-path. Only `condition_size=1` (or absent) models
 ///   can match a catalog SKU.
 /// - `Free(geometry)`: valid A1 geometry outside the catalog — destined for the
-///   dynamic engine (T3.1). No post-stack head is enforced. Any `condition_size`
-///   is accepted.
-/// - `Rejected(reason)`: unsupported feature (F6 post-stack head) or
-///   missing/invalid shape data.
+///   dynamic engine (T3.1). Any `condition_size` is accepted.
+/// - `Rejected(reason)`: missing/invalid shape data.
 ///
 /// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid
 /// WaveNet A1 geometry, not only the four catalog SKUs.
@@ -159,11 +157,6 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     let layers = &data.config.layers;
     if layers.is_empty() {
         return WavenetTopologyResult::Rejected("WaveNet model has no layer arrays.".to_string());
-    }
-
-    // ── Feature validation: no post-stack head (F6) ──
-    if let Err(reason) = validate_wavenet_features(data) {
-        return WavenetTopologyResult::Rejected(reason);
     }
 
     // ── Extract condition_size from first layer (all layers share the same value) ──
@@ -627,31 +620,3 @@ fn check_not_slimmable(raw: &serde_json::Value) -> bool {
 }
 
 // =============================================================================
-// WaveNet feature validation — condition_size and head (post-stack)
-// =============================================================================
-
-/// Validates that WaveNet models use only supported feature combinations.
-///
-/// The current NAM-rs implementation rejects models with a post-stack head
-/// sub-object (F6) because that feature is not yet implemented. Models with
-/// `condition_size > 1` are now accepted and routed to the dynamic engine,
-/// which is parameterized on `condition_size` at runtime.
-///
-/// If official models requiring the post-stack head are found in circulation
-/// (Tone3000/ToneHunt), they can be supported in a future release.
-pub fn validate_wavenet_features(data: &NamModelData) -> Result<(), String> {
-    // Check head: must be absent (None) or null (Some(Value::Null))
-    if let Some(ref head) = data.config.head
-        && !head.is_null()
-    {
-        return Err(
-            "WaveNet 'head' (post-stack sub-object) is not supported (F6). \
-             Only head=null is accepted for A1 WaveNet topologies. \
-             Post-stack heads are an official NAMCore feature not yet \
-             implemented in NAM-rs."
-                .to_string(),
-        );
-    }
-
-    Ok(())
-}

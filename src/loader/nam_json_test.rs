@@ -242,9 +242,9 @@ fn test_topology_accepts_f2_multi_condition_as_free() {
     }
 }
 
-/// F6 rejection: non-null head returns `Rejected` with F6 reference.
+/// Post-stack head (F6) is now accepted by the topology parser.
 #[test]
-fn test_topology_rejected_f6_post_stack_head() {
+fn test_topology_f6_post_stack_head_accepted() {
     let json = r#"{
         "version": "0.5.4",
         "architecture": "WaveNet",
@@ -261,7 +261,7 @@ fn test_topology_rejected_f6_post_stack_head() {
                     "gated": false, "head_bias": true
                 }
             ],
-            "head": "PostStackHead",
+            "head": { "channels": 4, "bias": false, "out_channels": 1, "activation": "Tanh", "kernel_size": 1 },
             "head_scale": 0.02
         },
         "weights": [0.0]
@@ -269,8 +269,11 @@ fn test_topology_rejected_f6_post_stack_head() {
     let parsed = parse_nam_json(json).unwrap();
     let result = get_wavenet_topology(&parsed);
     assert!(
-        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("F6")),
-        "non-null head should be Rejected with F6 reference, got: {:?}",
+        matches!(
+            result,
+            WavenetTopologyResult::Known(_) | WavenetTopologyResult::Free(_)
+        ),
+        "post-stack head (F6) should now be accepted, got: {:?}",
         result
     );
 }
@@ -866,7 +869,7 @@ fn test_reject_empty_submodels() {
 }
 
 // =============================================================================
-// T7.3 — validate_wavenet_features: condition_size and head rejection
+// T7.3 — Topology acceptance of post-stack head (F6)
 // =============================================================================
 
 /// Fixture JSON with `head: null` and `condition_size: 1` (valid A1 WaveNet).
@@ -897,107 +900,53 @@ fn make_valid_wavenet_json() -> NamModelData {
 }
 
 #[test]
-fn test_validate_wavenet_features_accepts_normal_a1() {
+fn test_topology_accepts_non_null_head() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": { "channels": 4, "bias": false, "out_channels": 1, "activation": "Tanh", "kernel_size": 1 },
+            "head_scale": 0.02
+        },
+        "weights": [0.0],
+        "metadata": {}
+    }"#;
+    let data = parse_nam_json(json).expect("Fixture should parse");
+    assert!(
+        data.config.head.as_ref().is_some_and(|h| !h.is_null()),
+        "head should be present and non-null"
+    );
+    let result = get_wavenet_topology(&data);
+    assert!(
+        matches!(
+            result,
+            WavenetTopologyResult::Known(_) | WavenetTopologyResult::Free(_)
+        ),
+        "get_wavenet_topology should accept WaveNet model with post-stack head, got: {result:?}"
+    );
+}
+
+#[test]
+fn test_topology_accepts_null_head() {
     let data = make_valid_wavenet_json();
+    let result = get_wavenet_topology(&data);
     assert!(
-        validate_wavenet_features(&data).is_ok(),
-        "Standard A1 WaveNet with condition_size=1 and head=null should pass validation"
-    );
-}
-
-/// `condition_size > 1` is now accepted by `validate_wavenet_features` —
-/// the dynamic engine handles it at runtime. Only `head` (post-stack) is rejected.
-#[test]
-fn test_validate_wavenet_features_accepts_condition_size_neq_1() {
-    let json = r#"{
-        "version": "0.5.4",
-        "architecture": "WaveNet",
-        "config": {
-            "layers": [
-                {
-                    "input_size": 1, "condition_size": 2, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
-                    "activation": "Tanh", "gated": false, "head_bias": false
-                },
-                {
-                    "input_size": 1, "condition_size": 1, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
-                    "activation": "Tanh", "gated": false, "head_bias": true
-                }
-            ],
-            "head": null,
-            "head_scale": 0.02
-        },
-        "weights": [0.0],
-        "metadata": {}
-    }"#;
-    let data = parse_nam_json(json).expect("Fixture should parse");
-    assert!(
-        validate_wavenet_features(&data).is_ok(),
-        "condition_size=2 should pass validation (dynamic engine handles it at runtime)"
-    );
-}
-
-#[test]
-fn test_validate_wavenet_features_rejects_non_null_head() {
-    let json = r#"{
-        "version": "0.5.4",
-        "architecture": "WaveNet",
-        "config": {
-            "layers": [
-                {
-                    "input_size": 1, "condition_size": 1, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
-                    "activation": "Tanh", "gated": false, "head_bias": false
-                },
-                {
-                    "input_size": 1, "condition_size": 1, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
-                    "activation": "Tanh", "gated": false, "head_bias": true
-                }
-            ],
-            "head": "PostStackHead",
-            "head_scale": 0.02
-        },
-        "weights": [0.0],
-        "metadata": {}
-    }"#;
-    let data = parse_nam_json(json).expect("Fixture should parse");
-    let err = validate_wavenet_features(&data).unwrap_err();
-    assert!(
-        err.contains("head"),
-        "Error should mention 'head', got: {err}"
-    );
-}
-
-/// `condition_size` absent from JSON (None) is valid — implicitly 1.
-#[test]
-fn test_validate_wavenet_features_accepts_missing_condition_size() {
-    let json = r#"{
-        "version": "0.5.4",
-        "architecture": "WaveNet",
-        "config": {
-            "layers": [
-                {
-                    "input_size": 1, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
-                    "activation": "Tanh", "gated": false, "head_bias": false
-                },
-                {
-                    "input_size": 1, "head_size": 4,
-                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
-                    "activation": "Tanh", "gated": false, "head_bias": true
-                }
-            ],
-            "head": null,
-            "head_scale": 0.02
-        },
-        "weights": [0.0],
-        "metadata": {}
-    }"#;
-    let data = parse_nam_json(json).expect("Fixture should parse");
-    assert!(
-        validate_wavenet_features(&data).is_ok(),
-        "WaveNet with omitted condition_size should pass validation (implicitly 1)"
+        matches!(
+            result,
+            WavenetTopologyResult::Known(_) | WavenetTopologyResult::Free(_)
+        ),
+        "get_wavenet_topology should accept WaveNet model with null head, got: {result:?}"
     );
 }
