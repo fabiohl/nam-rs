@@ -175,7 +175,7 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = item.tanh();
+        *item = scalar_pade_tanh(*item);
     }
 }
 
@@ -199,12 +199,28 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = item.tanh();
+        *item = scalar_pade_tanh(*item);
     }
 }
 
-/// Scalar version of `tanh` — delegates to `f32::tanh`.
+/// Scalar Padé [5,4] rational approximation for `tanh(x)`.
+///
+/// Formula: `x·(x²+105)·(x²+945) / ((15x²+420)·x²+945)`
+/// Domain: [-4, 4], output clamped to [-1, 1].
+/// Max absolute error: ~2.32e-3 vs `f32::tanh`.
+#[inline]
+pub fn scalar_pade_tanh(x: f32) -> f32 {
+    let x = x.clamp(-PADE_TANH_CLAMP, PADE_TANH_CLAMP);
+    let x2 = x * x;
+
+    let num = x * (x2 + PADE_TANH_NUM_A).mul_add(x2, PADE_TANH_NUM_B);
+    let den = (PADE_TANH_DEN_C4.mul_add(x2, PADE_TANH_DEN_C2)).mul_add(x2, PADE_TANH_DEN_A);
+
+    (num / den).clamp(-1.0, 1.0)
+}
+
+/// Scalar version of `tanh` — delegates to the Padé rational approximation.
 #[inline]
 pub fn tanh(x: f32) -> f32 {
-    x.tanh()
+    scalar_pade_tanh(x)
 }

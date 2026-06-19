@@ -17,7 +17,7 @@ mod tests {
             5.0f32.tanh(),
         ];
         for (i, &v) in data.iter().enumerate() {
-            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+            assert!((v - expected[i]).abs() < 5e-3, "At index {}", i);
         }
     }
 
@@ -89,7 +89,7 @@ mod tests {
         }
         let expected = [sig(-5.0), sig(-1.0), sig(0.0), sig(1.0), sig(5.0)];
         for (i, &v) in data.iter().enumerate() {
-            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+            assert!((v - expected[i]).abs() < 5e-4, "At index {}", i);
         }
     }
 
@@ -102,7 +102,7 @@ mod tests {
         }
         let expected = [silu(-5.0), silu(-1.0), silu(0.0), silu(1.0), silu(5.0)];
         for (i, &v) in data.iter().enumerate() {
-            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+            assert!((v - expected[i]).abs() < 5e-3, "At index {}", i);
         }
     }
 

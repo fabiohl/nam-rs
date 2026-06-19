@@ -17,7 +17,7 @@ pub unsafe fn f32_to_bf16_fallback(src: &[f32], dest: &mut [u16]) {
 #[inline]
 pub unsafe fn tanh_slice_fallback(slice: &mut [f32]) {
     for v in slice.iter_mut() {
-        *v = v.tanh();
+        *v = crate::math::activations::scalar_pade_tanh(*v);
     }
 }
 
@@ -28,7 +28,7 @@ pub unsafe fn tanh_slice_fallback(slice: &mut [f32]) {
 #[inline]
 pub unsafe fn sigmoid_slice_fallback(slice: &mut [f32]) {
     for v in slice.iter_mut() {
-        *v = 1.0 / (1.0 + (-*v).exp());
+        *v = crate::math::activations::scalar_minimax_sigmoid(*v);
     }
 }
 

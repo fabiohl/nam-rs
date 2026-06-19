@@ -72,7 +72,7 @@ pub unsafe fn silu_slice_avx2(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = *item / (1.0 + (-*item).exp());
+        *item = *item * super::sigmoid::scalar_minimax_sigmoid(*item);
     }
 }
 
@@ -95,12 +95,12 @@ pub unsafe fn silu_slice_avx512(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = *item / (1.0 + (-*item).exp());
+        *item = *item * super::sigmoid::scalar_minimax_sigmoid(*item);
     }
 }
 
-/// Scalar version of `silu` (x * sigmoid(x)).
+/// Scalar version of `silu` (x * sigmoid(x)) — uses rational minimax approximation.
 #[inline(always)]
 pub fn silu(x: f32) -> f32 {
-    x / (1.0 + (-x).exp())
+    x * super::sigmoid::scalar_minimax_sigmoid(x)
 }

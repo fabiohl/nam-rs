@@ -178,7 +178,7 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = 1.0 / (1.0 + (-*item).exp());
+        *item = scalar_minimax_sigmoid(*item);
     }
 }
 
@@ -202,14 +202,14 @@ pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = 1.0 / (1.0 + (-*item).exp());
+        *item = scalar_minimax_sigmoid(*item);
     }
 }
 
-/// Scalar version of `sigmoid` (1 / (1 + exp(-x))).
+/// Scalar version of `sigmoid` — uses the direct minimax rational approximation.
 #[inline(always)]
 pub fn sigmoid(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
+    scalar_minimax_sigmoid(x)
 }
 
 /// Scalar direct minimax sigmoid (degree 17, 9 odd terms).

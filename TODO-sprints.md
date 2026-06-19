@@ -551,7 +551,7 @@ se benchmarks mostrarem necessidade. Não implementar agora.
 
 ---
 
-#### T2.5 — Testes de paridade para ativações SIMD
+#### T2.5 — Testes de paridade para ativações SIMD [DONE]
 
 **Arquivo**: `src/models/a2/activations_test.rs`
 
@@ -578,30 +578,47 @@ fn test_fast_tanh_avx2_parity() {
 }
 ```
 
+**Status**: Concluído (2026-06-19). Todos os 4 testes de paridade (`test_hard_tanh_avx2_parity`, `test_hard_swish_avx2_parity`, `test_leaky_hard_tanh_avx2_parity`, `test_fast_tanh_avx2_parity`) já implementados em `activations_test.rs` com os respectivos testes de large slice. 21/21 testes passando com `cargo test --lib activations_test`.
+
 ---
 
-#### T2.6 — Auditar `src/math/activations/` (confirmar estado)
+#### T2.6 — Auditar `src/math/activations/` (confirmar estado) [DONE]
 
 **Responsabilidade**: verificação/documentação, sem mudança de código esperada.
 
-Com base na auditoria atual:
+**Auditoria completa (2026-06-19)**:
 
-- `relu.rs`: ✅ AVX2 + AVX-512, loops `while i + 16` / `while i + 8`.
-- `prelu.rs`: ✅ AVX2 + AVX-512, optimized para `s_len==1` (LeakyReLU) e `s_len==len`.
-- `softsign.rs`: ✅ AVX2+FMA (dual 16-wide) + AVX-512.
-- `silu.rs`: ✅ AVX2+FMA (dual 16-wide) + AVX-512. ⚠️ Scalar fallback usa `(-x).exp()` — se
-  o fallback for chamado em contexto DSP, pode ser lento. Mas o fallback só ocorre para len < 8,
-  o que é raro em produção.
-- `sigmoid.rs`: ✅ AVX2+FMA (minimax D17) + AVX-512. ⚠️ Scalar fallback usa `exp()`.
-- `tanh/`: A verificar — possui `high_fidelity.rs`, `production.rs`, `reference.rs`.
+- `relu.rs`: ✅ AVX2 (dual 16-wide + 8-wide) + AVX-512 (16-wide). Scalar fallback: `if x < 0.0 { 0.0 }` — sem transcendentais.
+- `prelu.rs`: ✅ AVX2 (dual 16-wide + 8-wide) + AVX-512 (16-wide). Optimized para `s_len==1` (LeakyReLU) e `s_len==len`. Scalar: `x * slopes[idx % s_len]` — sem transcendentais.
+- `softsign.rs`: ✅ AVX2+FMA (dual 16-wide, Newton-Raphson) + AVX-512 (rcp14). Scalar: `x / (1 + |x|)` — sem transcendentais.
+- `silu.rs`: ✅ AVX2+FMA (dual 16-wide, via simd_sigmoid_dual_avx2) + AVX-512. ~~Scalar usava `f32::exp`~~ → Corrigido para `x * scalar_minimax_sigmoid(x)`.
+- `sigmoid.rs`: ✅ AVX2+FMA (minimax D17 dual 16-wide + 8-wide) + AVX-512. ~~Scalar usava `f32::exp`~~ → Corrigido para `scalar_minimax_sigmoid(x)`.
+- `tanh/production.rs`: ✅ AVX2+FMA (Padé [5,4] dual 16-wide + 8-wide) + AVX-512. ~~Scalar usava `f32::tanh`~~ → Corrigido para `scalar_pade_tanh(x)`.
+- `tanh/high_fidelity.rs`: ✅ AVX2+FMA (poly exp dual 16-wide + 8-wide) + AVX-512. ~~`scalar_tanh_poly` usava `f32::tanh`, `scalar_sigmoid_poly` usava `f32::exp`~~ → Corrigido para `scalar_pade_tanh(x)` e `scalar_minimax_sigmoid(x)`.
+- `tanh/reference.rs`: ✅ Padé NR2 variants — referência/benchmark, não usada no hot-path.
+- `fused.rs`: ✅ AVX2+FMA (dual 16-wide + 8-wide) + AVX-512 fused sigmoid+relu. ~~Scalar usava `f32::exp`~~ → Corrigido para `scalar_minimax_sigmoid(x)`.
+- `mod.rs`: ✅ Dispatch via `SIMD_MATH`.
 
-**Achado adicional — silu.rs:L75 e sigmoid.rs:L181**:
-Os fallbacks escalares usam `(-*item).exp()` — proibido no hot-path RT (lento e não-determinístico).
-Porém, para len < 8 (raro), são chamados. Para garantia absoluta, substituir por aproximações
-racionais escalares (`fast_tanh_scalar`, `scalar_minimax_sigmoid`) mesmo no fallback.
+**T2.6a — Correções aplicadas**:
 
-**Tarefa T2.6a**: Confirmar que os fallbacks escalares de `silu_slice`, `sigmoid_slice` e
-`softsign_slice` usam aproximações racionais (não `f32::exp`) — ou corrigir.
+| Arquivo                                     | Antes (proibido)                 | Depois (racional)                                     |
+| ------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
+| `silu.rs:L75,98`                            | `*item / (1.0 + (-*item).exp())` | `*item * scalar_minimax_sigmoid(*item)`               |
+| `silu.rs:L105` (scalar `silu()`)            | `x / (1.0 + (-x).exp())`         | `x * scalar_minimax_sigmoid(x)`                       |
+| `sigmoid.rs:L181,205`                       | `1.0 / (1.0 + (-*item).exp())`   | `scalar_minimax_sigmoid(*item)`                       |
+| `sigmoid.rs:L212` (scalar `sigmoid()`)      | `1.0 / (1.0 + (-x).exp())`       | `scalar_minimax_sigmoid(x)`                           |
+| `tanh/production.rs:L178,202`               | `item.tanh()`                    | `scalar_pade_tanh(*item)`                             |
+| `tanh/production.rs:L209` (scalar `tanh()`) | `x.tanh()`                       | `scalar_pade_tanh(x)`                                 |
+| `tanh/high_fidelity.rs:L247`                | `x.tanh()`                       | `super::scalar_pade_tanh(x)`                          |
+| `tanh/high_fidelity.rs:L253`                | `1.0 / (1.0 + (-x).exp())`       | `crate::math::activations::scalar_minimax_sigmoid(x)` |
+| `fused.rs:L97,121`                          | `1.0 / (1.0 + (-*item).exp())`   | `super::sigmoid::scalar_minimax_sigmoid(*item)`       |
+| `scalar_ref/utility.rs:L20,30`              | `v.tanh()` / `1.0/(1+exp(-v))`   | `scalar_pade_tanh(v)` / `scalar_minimax_sigmoid(v)`   |
+
+Nova função: `scalar_pade_tanh()` implementada em `tanh/production.rs:207` (Padé [5,4], max error ~2.32e-3, no transcendentals).
+
+Testes ajustados: tolerâncias atualizadas de `1e-6`/`2e-5` para `5e-4`/`5e-3` (error budget documentado das aproximações racionais). 64/64 testes passando (34 math + 9 LSTM + 21 activation).
+
+**Status**: Concluído (2026-06-19). Zero `f32::exp()`/`f32::tanh()` no código de produção de `src/math/activations/`. Únicos transcendentais remanescentes estão no código de teste (oráculo de referência).
 
 ---
 

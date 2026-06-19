@@ -94,7 +94,7 @@ pub unsafe fn fused_sigmoid_relu_slice_avx2(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        let s = 1.0 / (1.0 + (-*item).exp());
+        let s = super::sigmoid::scalar_minimax_sigmoid(*item);
         *item = if s < 0.0 { 0.0 } else { s };
     }
 }
@@ -118,7 +118,7 @@ pub unsafe fn fused_sigmoid_relu_slice_avx512(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        let s = 1.0 / (1.0 + (-*item).exp());
+        let s = super::sigmoid::scalar_minimax_sigmoid(*item);
         *item = if s < 0.0 { 0.0 } else { s };
     }
 }

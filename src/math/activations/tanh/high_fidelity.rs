@@ -241,16 +241,16 @@ pub unsafe fn sigmoid_poly_slice_avx2(slice: &mut [f32]) {
 // Scalar reference implementations (for testing / fallback)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Scalar polynomial `tanh(x)` — delegates to `f32::tanh`.
+/// Scalar polynomial `tanh(x)` — Padé [5,4] rational approximation.
 #[inline]
 pub fn scalar_tanh_poly(x: f32) -> f32 {
-    x.tanh()
+    super::scalar_pade_tanh(x)
 }
 
-/// Scalar polynomial `sigmoid(x)`: `1 / (1 + exp(-x))`.
+/// Scalar polynomial `sigmoid(x)` — direct minimax rational approximation.
 #[inline]
 pub fn scalar_sigmoid_poly(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
+    crate::math::activations::scalar_minimax_sigmoid(x)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
