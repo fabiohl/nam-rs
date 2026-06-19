@@ -18,7 +18,7 @@ O NAMCore v0.5.3 (espelhado na pasta `tests/fixtures/NeuralAmpModelerCore/`) é 
 Esteja atento às orientações em `TODO-features.md`.
 O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
 
-### Sprint 1: Infraestrutura Base (Grouped Conv e Condition Size)
+### Sprint 1: Infraestrutura Base (Grouped Conv e Condition Size) [DONE]
 
 **Objetivo**: Preparar as peças fundamentais no loader e na camada matemática para suportar as features subsequentes.
 
@@ -42,7 +42,7 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
 
 **Objetivo**: Construir a sub-rede matemática e integrá-la dentro dos 8 pontos definidos na estrutura de blocos do A2.
 
-* **Tarefa 2.1: Lógica Principal do FiLM**
+* **Tarefa 2.1: Lógica Principal do FiLM** [DONE]
   * **Arquivo alvo**: `src/models/a2/film.rs`.
   * **Ação**: Implementar lógica no stub existente (`FiLMLayer`). Processamento recebe entrada do canal principal e do vetor condicional, convertendo com Conv1x1 (utilizando Tarefa 1.2) em `scale` e opcionalmente `shift`. Em seguida, aplica transformações batch-wise via AVX2.
   * **Critério de aceite**: Buffers pré-alocados no `load()`, uso intensivo de chunks_exact e ausência de branches e alocações (`unwrap`, `Vec::new`) no bloco DSP iterativo.
