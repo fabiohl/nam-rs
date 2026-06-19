@@ -15,7 +15,7 @@
 //!    each with taps aligned to 64 bytes for AVX2/AVX-512 convolution.
 
 use crate::math::common::AlignedVec;
-use rustfft::{FftPlanner, num_complex::Complex};
+use crate::math::dsp::fft::FftPlanner;
 
 /// Number of phases in the overabundant polyphase bank.
 ///
@@ -172,54 +172,55 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
     let n_proto = kernel.len();
     let n_fft = (4 * n_proto).next_power_of_two();
 
-    let mut planner = FftPlanner::<f64>::new();
-    let fft_fwd = planner.plan_fft_forward(n_fft);
-    let fft_inv = planner.plan_fft_inverse(n_fft);
-    let scale = 1.0 / n_fft as f64;
+    let planner = FftPlanner::<f64>::new(n_fft);
 
-    // Step 1-2: Zero-pad + FFT
-    let mut buf: Vec<Complex<f64>> = kernel
-        .iter()
-        .map(|&x| Complex::new(x, 0.0))
-        .chain(std::iter::repeat_n(Complex::new(0.0, 0.0), n_fft - n_proto))
-        .collect();
-    fft_fwd.process(&mut buf);
+    // Step 1-2: Zero-pad kernel into SoA buffers
+    let mut buf_re = vec![0.0_f64; n_fft];
+    let mut buf_im = vec![0.0_f64; n_fft];
+    buf_re[..n_proto].copy_from_slice(kernel);
+    planner.process(&mut buf_re, &mut buf_im);
 
     // Step 3: Log-magnitude (real-only complex)
     let eps = 1e-10_f64;
-    for c in &mut buf {
-        *c = Complex::new((c.norm() + eps).ln(), 0.0);
+    for i in 0..n_fft {
+        buf_re[i] = (buf_re[i].hypot(buf_im[i]) + eps).ln();
+        buf_im[i] = 0.0;
     }
 
-    // Step 4: IFFT → real cepstrum
-    fft_inv.process(&mut buf);
-    for c in &mut buf {
-        *c *= scale;
-    }
+    // Step 4: IFFT -> real cepstrum (process_inverse already scales by 1/n)
+    planner.process_inverse(&mut buf_re, &mut buf_im);
 
     // Step 5: Causal truncation
-    // c[0] unchanged, c[1..N/2-1] *= 2, c[N/2] unchanged, c[N/2+1..] = 0
     let half = n_fft / 2;
-    for c in &mut buf[1..half] {
-        *c *= 2.0;
+    for item in buf_re.iter_mut().take(half).skip(1) {
+        *item *= 2.0;
     }
-    for c in &mut buf[half + 1..] {
-        *c = Complex::new(0.0, 0.0);
+    for (re, im) in buf_re[half + 1..]
+        .iter_mut()
+        .zip(buf_im[half + 1..].iter_mut())
+    {
+        *re = 0.0;
+        *im = 0.0;
     }
+    // c[half] unchanged, im zeroed
+    buf_im[half] = 0.0;
 
     // Step 6: FFT of causal cepstrum
-    fft_fwd.process(&mut buf);
+    planner.process(&mut buf_re, &mut buf_im);
 
     // Step 7: Complex exponential
-    for c in &mut buf {
-        *c = c.exp();
+    for i in 0..n_fft {
+        let exp_a = buf_re[i].exp();
+        let (sin_b, cos_b) = buf_im[i].sin_cos();
+        buf_re[i] = exp_a * cos_b;
+        buf_im[i] = exp_a * sin_b;
     }
 
-    // Step 8: IFFT → minimum-phase impulse
-    fft_inv.process(&mut buf);
+    // Step 8: IFFT -> minimum-phase impulse (process_inverse already scales by 1/n)
+    planner.process_inverse(&mut buf_re, &mut buf_im);
 
-    // Return real part, truncated to original length
-    buf[..n_proto].iter().map(|c| c.re * scale).collect()
+    buf_re.truncate(n_proto);
+    buf_re
 }
 
 /// Partitions the FIR prototype into `NUM_PHASES` polyphase sub-filters.
