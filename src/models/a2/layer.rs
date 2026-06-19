@@ -151,6 +151,39 @@ impl A2Layer {
         }
     }
 
+    /// Creates a layer with arbitrary l1x1 dimensions (bottleneck → channels).
+    ///
+    /// Used by the dynamic A2 engine where `l1x1_out_ch` (channels) may differ
+    /// from `conv.out_ch()` (bottleneck).
+    pub fn new_dyn(
+        conv: A2Conv1d,
+        mixin_w: AlignedVec<f32>,
+        l1x1_w: AlignedVec<f32>,
+        l1x1_b: AlignedVec<f32>,
+        l1x1_out_ch: usize,
+    ) -> Self {
+        let ch = conv.out_ch();
+        debug_assert_eq!(mixin_w.len(), ch);
+        debug_assert_eq!(l1x1_w.len(), ch * l1x1_out_ch);
+        debug_assert_eq!(l1x1_b.len(), l1x1_out_ch);
+        Self {
+            conv,
+            ch3_conv: None,
+            ch8_conv: None,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+            conv_pre_film: None,
+            conv_post_film: None,
+            input_mixin_pre_film: None,
+            input_mixin_post_film: None,
+            activation_pre_film: None,
+            activation_post_film: None,
+            layer1x1_post_film: None,
+            head1x1_post_film: None,
+        }
+    }
+
     /// Channel count (bottleneck == channels in A2 fast-path).
     #[inline(always)]
     pub fn channels(&self) -> usize {

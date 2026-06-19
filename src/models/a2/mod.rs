@@ -40,6 +40,7 @@ pub use head::{
 };
 pub use layer::{A2Layer, a2_layer_single_frame_scalar_ref};
 pub use model::WaveNetA2;
+pub use model::dynamic::WaveNetA2Dyn;
 pub use params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
@@ -73,6 +74,30 @@ use crate::models::sealed;
 impl<const CH: usize> sealed::Sealed for model::WaveNetA2<CH> {}
 
 impl<const CH: usize> NamModel for model::WaveNetA2<CH> {
+    fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        self.process(input, output);
+    }
+
+    fn prewarm(&mut self, _num_samples: usize) {
+        self.prewarm();
+    }
+
+    fn prewarm_samples(&self) -> usize {
+        self.receptive_field_size
+    }
+
+    fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
+        self.set_max_buffer_size(max_buf)
+    }
+
+    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
+        self.reset(_sample_rate, max_buffer_size)
+    }
+}
+
+impl sealed::Sealed for model::dynamic::WaveNetA2Dyn {}
+
+impl NamModel for model::dynamic::WaveNetA2Dyn {
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
     }

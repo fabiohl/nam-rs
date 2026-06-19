@@ -607,6 +607,7 @@ impl<const CH: usize> WaveNetA2<CH> {
     }
 }
 
+pub mod dynamic;
 mod set_weights;
 
 #[cfg(test)]

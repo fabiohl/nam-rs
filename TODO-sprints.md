@@ -54,7 +54,7 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
 
 **Objetivo:** Aglutinar as fundações em um motor escalável e híbrido, assegurando cross-validation.
 
-- [ ] **Tarefa 3.1: Criação do `WaveNetA2Dyn`**
+- [x] **Tarefa 3.1: Criação do `WaveNetA2Dyn`**
   - **Especialista:** `implementador` / `planejador-arquiteto`
   - **Ação:** Criar `src/models/a2/model/dynamic.rs`. Esta será a versão de `mod.rs` do A2, porém, alocada dinamicamente com base nos tamanhos detectados:
     - Suporte a `bottleneck != channels`.
@@ -68,4 +68,5 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
 
 - [ ] **Tarefa 3.3: Golden Vectors e C++ Parity**
   - **Especialista:** `revisor-auditor` / `pesquisador-inovador`
-  - **Ação:** Gerar golden vectors contra o C++ v0.5.3 (ex: usando `wavenet_a2_max.nam` ou modelos A2 sintéticos com gating e bottleneck) e atingir ESR/SNR dentro da margem de tolerância. Executar `utils/tests-long.sh`.
+  - **Ação:** Gerar golden vectors contra o C++ v0.5.3 (ex: usando `wavenet_a2_max.nam` ou modelos A2 sintéticos com gating e bottleneck) e atingir ESR/SNR dentro da margem de tolerância.
+    - **Nota:** Não executar `utils/tests-long.sh` (é muito demorado). Rode apenas os testes bem específicos estritamente necessários para validar.

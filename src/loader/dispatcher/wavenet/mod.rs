@@ -6,7 +6,10 @@ use crate::loader::nam_json::{
     validate_wavenet_features,
 };
 use crate::models::StaticModel;
-use crate::models::a2::WaveNetA2;
+use crate::models::a2::activations::ActivationType;
+use crate::models::a2::gating::GatingMode;
+use crate::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS};
+use crate::models::a2::{WaveNetA2, WaveNetA2Dyn};
 use anyhow::bail;
 use log::info;
 
@@ -89,11 +92,61 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 unreachable!("is_a2_shape KnownFastPath only returns 3 or 8")
             }
             A2TopologyResult::Dynamic => {
-                // TODO: Tarefa 3.1 & 3.2 - Instanciar o WaveNetA2Dyn
-                bail!(
-                    "WaveNet A2 model detected but architecture shape is dynamic. \
-                       Dynamic A2 engine (F3) is not yet implemented."
+                let l0 = &data.config.layers[0];
+                let channels = l0.channels.unwrap_or(0);
+                let bottleneck = l0.bottleneck.unwrap_or(channels);
+
+                // Parse activations from raw JSON.
+                let act_cfg = l0
+                    .parse_activation_config(A2_NUM_LAYERS)
+                    .map(|cfg| (cfg.activations, cfg.gating_modes, cfg.secondary_activations));
+                let (activations, gating_modes, secondary_activations) = match act_cfg {
+                    Some((a, g, s)) => (a, g, s),
+                    None => {
+                        // Fallback: standard LeakyReLU, no gating.
+                        (
+                            vec![
+                                ActivationType::LeakyReLU {
+                                    negative_slope: A2_LEAKY_SLOPE,
+                                };
+                                A2_NUM_LAYERS
+                            ],
+                            vec![GatingMode::None; A2_NUM_LAYERS],
+                            vec![None; A2_NUM_LAYERS],
+                        )
+                    }
+                };
+
+                // Detect head1x1 from raw JSON.
+                let head1x1_active = l0
+                    .layer_raw
+                    .as_ref()
+                    .and_then(|raw| raw.get("head1x1"))
+                    .and_then(|h| h.get("active"))
+                    .and_then(|a| a.as_bool())
+                    .unwrap_or(false);
+
+                let mut model = WaveNetA2Dyn::new(
+                    channels,
+                    bottleneck,
+                    &A2_KERNEL_SIZES,
+                    &A2_DILATIONS,
+                    activations,
+                    gating_modes,
+                    secondary_activations,
+                    head1x1_active,
+                )?;
+                model.set_layer_raw(layer_raw);
+                model
+                    .set_weights(&data.weights)
+                    .map_err(|e| anyhow::anyhow!("A2-Dynamic weight load failed: {e}"))?;
+                info!(
+                    "[Dispatcher] WaveNet A2-Dynamic built — CH={}, BN={}, layers=23, weights={}",
+                    channels,
+                    bottleneck,
+                    data.weights.len()
                 );
+                return Ok(Box::new(StaticModel::WavenetA2Dyn(Box::new(model))));
             }
         }
     }

@@ -44,6 +44,7 @@ impl StaticModel {
             // LSTM, A2, Container, and Linear: no-op — reduction handled at pipeline level
             Self::WavenetA2Full(_)
             | Self::WavenetA2Lite(_)
+            | Self::WavenetA2Dyn(_)
             | Self::Container(_)
             | Self::Lstm1x3(_)
             | Self::Lstm1x8(_)
@@ -79,7 +80,9 @@ impl StaticModel {
             Self::WavenetFeather(m) => m.array1.layers.len(),
             Self::WavenetNano(m) => m.array1.layers.len(),
             Self::WavenetDyn(m) => m.array1.layers.len(),
-            Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) => crate::models::a2::A2_NUM_LAYERS,
+            Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) | Self::WavenetA2Dyn(_) => {
+                crate::models::a2::A2_NUM_LAYERS
+            }
             Self::Container(c) => c.active().layer_count(),
             Self::Lstm2x8(_) | Self::Lstm2x12(_) | Self::Lstm2x16(_) | Self::Lstm2x24(_) => 2,
             Self::Lstm1x3(_)
@@ -121,6 +124,7 @@ impl StaticModel {
                 | Self::WavenetNano(_)
                 | Self::WavenetA2Full(_)
                 | Self::WavenetA2Lite(_)
+                | Self::WavenetA2Dyn(_)
                 | Self::WavenetDyn(_)
         )
     }
@@ -140,6 +144,7 @@ impl StaticModel {
             Self::WavenetNano(_) => 4,
             Self::WavenetA2Full(_) => 8,
             Self::WavenetA2Lite(_) => 3,
+            Self::WavenetA2Dyn(m) => m.channels,
             Self::WavenetDyn(m) => m.ch,
             Self::Container(c) => c.active().channels(),
             Self::Lstm1x3(_) => 3,
@@ -177,6 +182,7 @@ impl StaticModel {
             | Self::WavenetNano(_) => 1,
             Self::WavenetA2Full(_) => 1,
             Self::WavenetA2Lite(_) => 1,
+            Self::WavenetA2Dyn(_) => 1,
             Self::WavenetDyn(m) => m.array2.head,
             Self::Container(c) => c.active().num_output_channels(),
             Self::Lstm1x3(_) => 3,
@@ -200,6 +206,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.process(input, output),
             Self::WavenetA2Full(m) => m.process(input, output),
             Self::WavenetA2Lite(m) => m.process(input, output),
+            Self::WavenetA2Dyn(m) => m.process(input, output),
             Self::WavenetDyn(m) => m.process(input, output),
             Self::Container(m) => m.process(input, output),
             Self::Lstm1x3(m) => m.process(input, output),
@@ -225,6 +232,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.prewarm(),
             Self::WavenetA2Full(m) => m.prewarm(),
             Self::WavenetA2Lite(m) => m.prewarm(),
+            Self::WavenetA2Dyn(m) => m.prewarm(),
             Self::WavenetDyn(m) => m.prewarm(),
             Self::Container(m) => m.prewarm(num_samples),
             Self::Lstm1x3(m) => m.prewarm(num_samples),
@@ -249,6 +257,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Full(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Lite(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetA2Dyn(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetDyn(m) => m.reset(sample_rate, max_buffer_size),
             Self::Container(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x3(m) => m.reset(sample_rate, max_buffer_size),
@@ -273,6 +282,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Full(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Lite(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetA2Dyn(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetDyn(m) => m.set_max_buffer_size(max_buf),
             Self::Container(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x3(m) => m.set_max_buffer_size(max_buf),
@@ -297,6 +307,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.prewarm_samples(),
             Self::WavenetA2Full(m) => m.prewarm_samples(),
             Self::WavenetA2Lite(m) => m.prewarm_samples(),
+            Self::WavenetA2Dyn(m) => m.prewarm_samples(),
             Self::WavenetDyn(m) => m.prewarm_samples(),
             Self::Container(m) => m.prewarm_samples(),
             Self::Lstm1x3(m) => m.prewarm_samples(),
