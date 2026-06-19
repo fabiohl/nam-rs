@@ -18,9 +18,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
     1. Arrays estáticos de **Bit-Reversal** baseados no tamanho $N$.
     2. Fatores de rotação (**Twiddle Factors**): matrizes de senos e cossenos pré-computados (para evitar recomputar `sin/cos` na thread de áudio).
   - Implementar o algoritmo DIT Radix-2 iterativo ascendente iterando em arrays SoA (`re: &mut [T], im: &mut [T]`). Nenhuma alocação `Vec` pode ocorrer na rotina `process`.
-- [ ] **Tarefa 1.2 (RFFT - Real to Complex)**: Implementar wrapper RFFT que converte um buffer puramente real de tamanho $N$ num espectro complexo compacto de tamanho $N/2 + 1$.
+- [x] **Tarefa 1.2 (RFFT - Real to Complex)**: Implementar wrapper RFFT que converte um buffer puramente real de tamanho $N$ num espectro complexo compacto de tamanho $N/2 + 1$.
   - Método: Empacotar array real de tamanho $N$ num array complexo imaginário de tamanho $N/2$, executar a FFT complexa de $N/2$ e, no final, aplicar um passo $O(N)$ post-processing para separar os espectros originais via simetria Hermitiana.
-  - Assinatura alvo: `fn process_forward(&self, input: &[T], out_re: &mut [T], out_im: &mut [T])`.
+  - Assinatura alvo: `fn process_forward(&mut self, input: &[T], out_re: &mut [T], out_im: &mut [T])` (scratch buffers pré-alocados em `new`, reutilizados no hot-path para RT-safety).
 - [ ] **Tarefa 1.3 (IRFFT - Complex to Real)**: Implementar a operação reversa (IRFFT).
   - Método: Aplicar simetria reversa $O(N)$ (pre-processing) combinando `re` e `im` em um sinal empacotado de $N/2$, chamar a FFT Inversa complexa $N/2$ e extrair os valores reais intercalados.
   - Assinatura alvo: `fn process_inverse(&self, in_re: &mut [T], in_im: &mut [T], out: &mut [T])`. O ganho de scaling ($1/N$ ou $2/N$) deve estar embutido no loop final.

@@ -285,6 +285,142 @@ impl<T: FftFloat> FftPlanner<T> {
     }
 }
 
+/// Pre-computed real-to-complex FFT plan (Radix-2 DIT).
+///
+/// Converts a purely real buffer of size `N` into a compact complex
+/// spectrum of size `N/2 + 1` using an `N/2`-point complex FFT followed
+/// by an O(N) Hermitian-symmetry unpacking step.
+///
+/// Construction (`new`) allocates the inner half-size complex FFT plan,
+/// post-processing twiddle factors, and scratch buffers.
+/// [`process_forward`](Self::process_forward) performs the transform
+/// reusing the pre-allocated scratch space — safe for real-time audio
+/// threads.
+pub struct RfftPlanner<T: FftFloat> {
+    n: usize,
+    fft_n2: FftPlanner<T>,
+    post_twiddle_re: Vec<T>,
+    post_twiddle_im: Vec<T>,
+    scratch_re: Vec<T>,
+    scratch_im: Vec<T>,
+}
+
+impl<T: FftFloat> RfftPlanner<T> {
+    /// Creates a new RFFT plan for a real input of size `n`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n` is not a power of two, is zero, or is not even
+    /// (guaranteed by the power-of-two check).
+    pub fn new(n: usize) -> Self {
+        assert!(n > 0, "RFFT size must be positive");
+        assert!(
+            n.is_power_of_two(),
+            "RFFT size must be a power of two, got {n}"
+        );
+
+        let n_half = n / 2;
+        let fft_n2 = FftPlanner::new(n_half);
+
+        let tau = T::tau();
+        let n_t = T::from_usize(n);
+        let mut post_twiddle_re = Vec::with_capacity(n_half + 1);
+        let mut post_twiddle_im = Vec::with_capacity(n_half + 1);
+        for k in 0..=n_half {
+            let angle = tau * T::from_usize(k) * n_t.recip();
+            post_twiddle_re.push(angle.cos());
+            post_twiddle_im.push(-angle.sin());
+        }
+
+        let scratch_re = vec![T::from_usize(0); n_half];
+        let scratch_im = vec![T::from_usize(0); n_half];
+
+        Self {
+            n,
+            fft_n2,
+            post_twiddle_re,
+            post_twiddle_im,
+            scratch_re,
+            scratch_im,
+        }
+    }
+
+    /// Returns the original real input size `N`.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.n
+    }
+
+    /// Returns `true` if the size is zero (never, guarded at construction).
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    /// Real-to-complex forward FFT.
+    ///
+    /// Given a purely-real input `input` of length `N`, writes the
+    /// non-redundant half of the complex spectrum (size `N/2 + 1`) into
+    /// `out_re` and `out_im`.
+    ///
+    /// Uses pre-allocated scratch buffers internally — no heap
+    /// allocations occur inside this method.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `input` length ≠ `N`, or if `out_re` / `out_im` length ≠ `N/2 + 1`.
+    pub fn process_forward(&mut self, input: &[T], out_re: &mut [T], out_im: &mut [T]) {
+        let n = self.n;
+        let n_half = n / 2;
+        let expected = n_half + 1;
+        assert_eq!(input.len(), n, "input length mismatch");
+        assert_eq!(out_re.len(), expected, "out_re length mismatch");
+        assert_eq!(out_im.len(), expected, "out_im length mismatch");
+
+        // 1. Pack even/odd samples into scratch complex array of size N/2
+        for i in 0..n_half {
+            self.scratch_re[i] = input[2 * i];
+            self.scratch_im[i] = input[2 * i + 1];
+        }
+
+        // 2. Complex FFT of size N/2
+        self.fft_n2
+            .process(&mut self.scratch_re, &mut self.scratch_im);
+
+        // 3. Post-processing via Hermitian symmetry
+        // DC: X[0] = H[0].re + H[0].im
+        out_re[0] = self.scratch_re[0] + self.scratch_im[0];
+        out_im[0] = T::from_usize(0);
+
+        if n_half > 1 {
+            let half = T::from_usize(2).recip();
+            for k in 1..n_half {
+                let nk = n_half - k;
+
+                let re_k = self.scratch_re[k];
+                let im_k = self.scratch_im[k];
+                let re_nk = self.scratch_re[nk];
+                let im_nk = self.scratch_im[nk];
+
+                let even_re = half * (re_k + re_nk);
+                let even_im = half * (im_k - im_nk);
+                let odd_re = half * (re_k - re_nk);
+                let odd_im = half * (im_k + im_nk);
+
+                let w_re = self.post_twiddle_re[k];
+                let w_im = self.post_twiddle_im[k];
+
+                out_re[k] = even_re + odd_re.mul_add(w_im, odd_im * w_re);
+                out_im[k] = even_im - odd_re.mul_add(w_re, -odd_im * w_im);
+            }
+        }
+
+        // Nyquist: X[N/2] = H[0].re - H[0].im
+        out_re[n_half] = self.scratch_re[0] - self.scratch_im[0];
+        out_im[n_half] = T::from_usize(0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,5 +690,295 @@ mod tests {
         fft.process_inverse(&mut re, &mut im);
         assert!((re[0] - 42.0).abs() < EPS_F64);
         assert!((im[0] - 7.0).abs() < EPS_F64);
+    }
+
+    // =================================================================
+    // RFFT tests
+    // =================================================================
+
+    // -----------------------------------------------------------------
+    // construction
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_accepts_n2() {
+        let _rfft = RfftPlanner::<f32>::new(2);
+    }
+
+    #[test]
+    #[should_panic(expected = "power of two")]
+    fn rfft_rejects_non_power_of_two_6() {
+        RfftPlanner::<f64>::new(6);
+    }
+
+    #[test]
+    #[should_panic(expected = "positive")]
+    fn rfft_rejects_zero() {
+        RfftPlanner::<f32>::new(0);
+    }
+
+    #[test]
+    fn rfft_accepts_powers_of_two() {
+        for n in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] {
+            let rfft = RfftPlanner::<f64>::new(n);
+            assert_eq!(rfft.len(), n);
+            assert_eq!(rfft.fft_n2.len(), n / 2);
+            assert_eq!(rfft.post_twiddle_re.len(), n / 2 + 1);
+            assert_eq!(rfft.post_twiddle_im.len(), n / 2 + 1);
+            assert_eq!(rfft.scratch_re.len(), n / 2);
+            assert_eq!(rfft.scratch_im.len(), n / 2);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // impulse → DC (all bins = 1.0 in re, 0.0 in im)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_impulse_dc_f64() {
+        for n in [2, 4, 8, 16, 32, 64] {
+            let mut rfft = RfftPlanner::<f64>::new(n);
+            let input = {
+                let mut v = vec![0.0f64; n];
+                v[0] = 1.0;
+                v
+            };
+            let n_out = n / 2 + 1;
+            let mut out_re = vec![0.0f64; n_out];
+            let mut out_im = vec![0.0f64; n_out];
+            rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+            for (i, v) in out_re.iter().enumerate() {
+                assert!((v - 1.0).abs() < EPS_F64, "n={n} re[{i}] = {v}");
+            }
+            for (i, v) in out_im.iter().enumerate() {
+                assert!(v.abs() < EPS_F64, "n={n} im[{i}] = {v}");
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // known values: N=4 matches full complex FFT
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_known_n4_f64() {
+        let mut rfft = RfftPlanner::<f64>::new(4);
+        let input = vec![1.0, 2.0, 3.0, 4.0];
+        let mut out_re = vec![0.0f64; 3];
+        let mut out_im = vec![0.0f64; 3];
+        rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+        // From full complex FFT of [1,2,3,4]:
+        // bin0 = 10, bin1 = -2 + 2i, bin2 = -2
+        assert!((out_re[0] - 10.0).abs() < EPS_F64);
+        assert!((out_im[0] - 0.0).abs() < EPS_F64);
+        assert!((out_re[1] - (-2.0)).abs() < EPS_F64);
+        assert!((out_im[1] - 2.0).abs() < EPS_F64);
+        assert!((out_re[2] - (-2.0)).abs() < EPS_F64);
+        assert!((out_im[2] - 0.0).abs() < EPS_F64);
+    }
+
+    // -----------------------------------------------------------------
+    // known values: N=8 — single cosine matches full complex FFT
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_cosine_n8_f64() {
+        let n = 8;
+        let mut rfft = RfftPlanner::<f64>::new(n);
+        let freq = 2.0;
+        let input: Vec<f64> = (0..n)
+            .map(|i| (TAU * freq * i as f64 / n as f64).cos())
+            .collect();
+
+        // Full complex reference
+        let fft = FftPlanner::<f64>::new(n);
+        let mut ref_re = input.clone();
+        let mut ref_im = vec![0.0f64; n];
+        fft.process(&mut ref_re, &mut ref_im);
+
+        let n_out = n / 2 + 1;
+        let mut out_re = vec![0.0f64; n_out];
+        let mut out_im = vec![0.0f64; n_out];
+        rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+        for i in 0..n_out {
+            assert!(
+                (out_re[i] - ref_re[i]).abs() < 1e-9,
+                "n={n} re[{i}]: rfft={} vs ref={}",
+                out_re[i],
+                ref_re[i]
+            );
+            assert!(
+                (out_im[i] - ref_im[i]).abs() < 1e-9,
+                "n={n} im[{i}]: rfft={} vs ref={}",
+                out_im[i],
+                ref_im[i]
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // RFFT vs full complex FFT for various N (roundtrip parity)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_parity_vs_complex_f64() {
+        for n in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] {
+            let mut rfft = RfftPlanner::<f64>::new(n);
+
+            let input: Vec<f64> = (0..n).map(|i| (i as f64 * 0.3).sin()).collect();
+
+            // Full complex FFT reference
+            let fft = FftPlanner::<f64>::new(n);
+            let mut ref_re = input.clone();
+            let mut ref_im = vec![0.0f64; n];
+            fft.process(&mut ref_re, &mut ref_im);
+
+            let n_out = n / 2 + 1;
+            let mut out_re = vec![0.0f64; n_out];
+            let mut out_im = vec![0.0f64; n_out];
+            rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+            for i in 0..n_out {
+                assert!(
+                    (out_re[i] - ref_re[i]).abs() < EPS_F64,
+                    "n={n} re[{i}]: rfft={} vs ref={}",
+                    out_re[i],
+                    ref_re[i]
+                );
+                assert!(
+                    (out_im[i] - ref_im[i]).abs() < EPS_F64,
+                    "n={n} im[{i}]: rfft={} vs ref={}",
+                    out_im[i],
+                    ref_im[i]
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // RFFT f32 parity vs full complex FFT
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_parity_vs_complex_f32() {
+        for n in [2, 4, 8, 16, 32, 64, 128] {
+            let mut rfft = RfftPlanner::<f32>::new(n);
+
+            let input: Vec<f32> = (0..n).map(|i| (i as f32 * 0.7).cos()).collect();
+
+            let fft = FftPlanner::<f32>::new(n);
+            let mut ref_re = input.clone();
+            let mut ref_im = vec![0.0f32; n];
+            fft.process(&mut ref_re, &mut ref_im);
+
+            let n_out = n / 2 + 1;
+            let mut out_re = vec![0.0f32; n_out];
+            let mut out_im = vec![0.0f32; n_out];
+            rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+            for i in 0..n_out {
+                assert!(
+                    (out_re[i] - ref_re[i]).abs() < 1e-4,
+                    "n={n} re[{i}]: rfft={} vs ref={}",
+                    out_re[i],
+                    ref_re[i]
+                );
+                assert!(
+                    (out_im[i] - ref_im[i]).abs() < 1e-4,
+                    "n={n} im[{i}]: rfft={} vs ref={}",
+                    out_im[i],
+                    ref_im[i]
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // N=2 edge case
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_n2_f64() {
+        let mut rfft = RfftPlanner::<f64>::new(2);
+        let input = vec![3.0, 7.0];
+        let mut out_re = vec![0.0f64; 2];
+        let mut out_im = vec![0.0f64; 2];
+        rfft.process_forward(&input, &mut out_re, &mut out_im);
+
+        // DC = 3 + 7 = 10, Nyquist = 3 - 7 = -4
+        assert!((out_re[0] - 10.0).abs() < EPS_F64);
+        assert!((out_im[0] - 0.0).abs() < EPS_F64);
+        assert!((out_re[1] - (-4.0)).abs() < EPS_F64);
+        assert!((out_im[1] - 0.0).abs() < EPS_F64);
+    }
+
+    // -----------------------------------------------------------------
+    // panics on wrong buffer sizes
+    // -----------------------------------------------------------------
+
+    #[test]
+    #[should_panic(expected = "input length mismatch")]
+    fn rfft_wrong_input_len() {
+        let mut rfft = RfftPlanner::<f32>::new(8);
+        let input = vec![0.0f32; 7];
+        let mut out_re = vec![0.0f32; 5];
+        let mut out_im = vec![0.0f32; 5];
+        rfft.process_forward(&input, &mut out_re, &mut out_im);
+    }
+
+    #[test]
+    #[should_panic(expected = "out_re length mismatch")]
+    fn rfft_wrong_out_len() {
+        let mut rfft = RfftPlanner::<f32>::new(8);
+        let input = vec![0.0f32; 8];
+        let mut out_re = vec![0.0f32; 4];
+        let mut out_im = vec![0.0f32; 5];
+        rfft.process_forward(&input, &mut out_re, &mut out_im);
+    }
+
+    // -----------------------------------------------------------------
+    // linearity: RFFT(a + b) = RFFT(a) + RFFT(b)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rfft_linearity_f64() {
+        let n = 16;
+        let mut rfft = RfftPlanner::<f64>::new(n);
+
+        let a: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+        let b: Vec<f64> = (0..n).map(|i| (i as f64 * 0.3).cos()).collect();
+
+        let n_out = n / 2 + 1;
+        let mut ra_re = vec![0.0f64; n_out];
+        let mut ra_im = vec![0.0f64; n_out];
+        let mut rb_re = vec![0.0f64; n_out];
+        let mut rb_im = vec![0.0f64; n_out];
+        rfft.process_forward(&a, &mut ra_re, &mut ra_im);
+        rfft.process_forward(&b, &mut rb_re, &mut rb_im);
+
+        let sum: Vec<f64> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
+        let mut sum_re = vec![0.0f64; n_out];
+        let mut sum_im = vec![0.0f64; n_out];
+        rfft.process_forward(&sum, &mut sum_re, &mut sum_im);
+
+        for i in 0..n_out {
+            let expected_re = ra_re[i] + rb_re[i];
+            let expected_im = ra_im[i] + rb_im[i];
+            assert!(
+                (sum_re[i] - expected_re).abs() < EPS_F64,
+                "linearity re[{i}]: {} vs {}",
+                sum_re[i],
+                expected_re
+            );
+            assert!(
+                (sum_im[i] - expected_im).abs() < EPS_F64,
+                "linearity im[{i}]: {} vs {}",
+                sum_im[i],
+                expected_im
+            );
+        }
     }
 }
