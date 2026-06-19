@@ -19,8 +19,8 @@ use crate::math::common::SimdMath;
 ///
 /// ## Array Topology
 ///
-/// - Array1: IN=1, COND=1, CH channels, HEAD outputs
-/// - Array2: IN=CH, COND=1, HEAD channels, 1 output (with HeadBias)
+/// - Array1: IN=1, COND=condition_size, CH channels, HEAD outputs
+/// - Array2: IN=CH, COND=condition_size, HEAD channels, 1 output (with HeadBias)
 pub struct WaveNetModelDyn {
     /// Internal channel count (e.g., 16 for Standard).
     pub ch: usize,
@@ -28,9 +28,9 @@ pub struct WaveNetModelDyn {
     pub k: usize,
     /// Head projection size (e.g., 8 for Standard).
     pub head: usize,
-    /// Inner array 01: IN=1, COND=1, CH channels, HEAD outputs, no HeadBias.
+    /// Inner array 01: IN=1, COND=condition_size, CH channels, HEAD outputs, no HeadBias.
     pub array1: WaveNetLayerArrayDyn,
-    /// Inner array 02: IN=CH, COND=1, HEAD channels, 1 output, with HeadBias.
+    /// Inner array 02: IN=CH, COND=condition_size, HEAD channels, 1 output, with HeadBias.
     pub array2: WaveNetLayerArrayDyn,
     /// Final voltage compensation scale (Target Output Scale).
     pub head_scale: f32,

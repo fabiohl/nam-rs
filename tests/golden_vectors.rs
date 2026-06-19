@@ -848,7 +848,10 @@ fn test_golden_vectors_wavenet_a2_container() {
     }
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — verifies condition_size=8 is rejected (F2 unsupported).
+/// Test 8k: Loader Gap WaveNet A2 Max — T1.1: condition_size=8 is now accepted by the
+/// loader and topology (passed to the dynamic engine). The model still fails to load
+/// because A2 uses 1 layer array and the A1 dynamic engine requires exactly 2.
+/// A2 dynamic loading will be addressed in a future sprint.
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -859,13 +862,16 @@ fn test_loader_gap_wavenet_a2_max() {
     assert!(model.is_err());
     let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("condition_size=8"),
-        "Expected condition_size error, got: {}",
+        err_msg.contains("dynamic engine requires exactly 2 layer arrays"),
+        "Expected array-count error (A2->A1 dynamic mismatch), got: {}",
         err_msg
     );
 }
 
-/// Test 8l: Loader Gap WaveNet Condition DSP — verifies condition_size=3 is rejected (F2 unsupported).
+/// Test 8l: Loader Gap WaveNet Condition DSP — T1.1: condition_size=3 is now accepted
+/// by the loader and topology. The model loads successfully via the dynamic engine
+/// with cond=3. The condition_dsp sub-model (nested DSP) is not yet functional
+/// (Sprint 3) but loading succeeds.
 #[test]
 fn test_loader_gap_wavenet_condition_dsp() {
     let path = model_path("wavenet_condition_dsp.nam");
@@ -873,12 +879,10 @@ fn test_loader_gap_wavenet_condition_dsp() {
     let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_dsp.nam");
     let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_dsp.nam");
     let model = build_model(&data);
-    assert!(model.is_err());
-    let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("condition_size=3"),
-        "Expected condition_size error, got: {}",
-        err_msg
+        model.is_ok(),
+        "condition_dsp model with condition_size=3 should load via dynamic engine: {:?}",
+        model.err()
     );
 }
 

@@ -22,10 +22,13 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
 
 **Objetivo**: Preparar as peças fundamentais no loader e na camada matemática para suportar as features subsequentes.
 
-* **Tarefa 1.1: Generalizar `condition_size` no Loader e Topologia**
+* **Tarefa 1.1: Generalizar `condition_size` no Loader e Topologia** ✅ [DONE]
   * **Arquivo alvo**: `src/loader/nam_json/topology.rs` e correlatos.
   * **Ação**: Remover a restrição `condition_size != Some(1)` nas funções de validação. Propagar `condition_size` para o ambiente dinâmico do modelo em vez de fixá-lo como const-generic restrito.
   * **Critério de aceite**: Modelos com `condition_size > 1` devem passar pela validação de shape, caindo na estrutura dinâmica. Manter o modelo de const-generic intocado como fast-path se `COND=1`.
+  * **Nota pós-implementação**:
+    * `wavenet_condition_dsp.nam` (condition_size=3) agora carrega via engine dinâmico com `cond=3`. O sub-modelo `condition_dsp` aninhado ainda não é funcional — a ser abordado na Tarefa 3.1.
+    * `wavenet_a2_max.nam` (condition_size=8, 1 layer-array A2) passa o gate de condition_size mas é rejeitado pelo dynamic engine A1 (requer 2 arrays). O engine dinâmico A2 será necessário para modelos A2 com `condition_size > 1` (Sprint 2).
 
 * **Tarefa 1.2: Implementação de Convolução Agrupada (`groups > 1`)**
   * **Arquivo alvo**: `src/models/a2/conv1d.rs` ou afins.

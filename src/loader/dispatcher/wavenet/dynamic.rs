@@ -122,6 +122,7 @@ pub(crate) fn build_wavenet_dynamic(
     let ch = geom.channels;
     let k = geom.kernel_size;
     let head = geom.head_size;
+    let cond = geom.condition_size;
 
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
@@ -133,11 +134,11 @@ pub(crate) fn build_wavenet_dynamic(
 
     let mut alloc_num = 0usize;
 
-    // Array1: IN=1, COND=1, CH channels, HEAD outputs, no head bias
+    // Array1: IN=1, COND=condition_size, CH channels, HEAD outputs, no head bias
     let array1 = build_wavenet_array_dyn(
         &mut cursor,
         1,    // in_ch
-        1,    // cond
+        cond, // cond
         ch,   // ch
         k,    // k
         head, // head
@@ -146,11 +147,11 @@ pub(crate) fn build_wavenet_dynamic(
         &mut alloc_num,
     )?;
 
-    // Array2: IN=ch, COND=1, CH=head, HEAD=1, with head bias
+    // Array2: IN=ch, COND=condition_size, CH=head, HEAD=1, with head bias
     let array2 = build_wavenet_array_dyn(
         &mut cursor,
         ch,   // in_ch
-        1,    // cond
+        cond, // cond
         head, // ch
         k,    // k
         1,    // head

@@ -203,9 +203,10 @@ fn test_topology_free_geometry() {
     }
 }
 
-/// F2 rejection: condition_size ≠ 1 returns `Rejected` with F2 reference.
+/// condition_size ≠ 1 now routes to Free geometry (dynamic engine) instead of
+/// being rejected. The dynamic engine is parameterized on `condition_size` at runtime.
 #[test]
-fn test_topology_rejected_f2_multi_condition() {
+fn test_topology_accepts_f2_multi_condition_as_free() {
     let json = r#"{
         "version": "0.5.4",
         "architecture": "WaveNet",
@@ -230,10 +231,13 @@ fn test_topology_rejected_f2_multi_condition() {
     let parsed = parse_nam_json(json).unwrap();
     let result = get_wavenet_topology(&parsed);
     assert!(
-        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("F2")),
-        "condition_size=2 should be Rejected with F2 reference, got: {:?}",
+        matches!(result, WavenetTopologyResult::Free(_)),
+        "condition_size=2 should be Free (dynamic engine), got: {:?}",
         result
     );
+    if let WavenetTopologyResult::Free(ref geom) = result {
+        assert_eq!(geom.condition_size, 2);
+    }
 }
 
 /// F6 rejection: non-null head returns `Rejected` with F6 reference.
@@ -899,8 +903,10 @@ fn test_validate_wavenet_features_accepts_normal_a1() {
     );
 }
 
+/// `condition_size > 1` is now accepted by `validate_wavenet_features` —
+/// the dynamic engine handles it at runtime. Only `head` (post-stack) is rejected.
 #[test]
-fn test_validate_wavenet_features_rejects_condition_size_neq_1() {
+fn test_validate_wavenet_features_accepts_condition_size_neq_1() {
     let json = r#"{
         "version": "0.5.4",
         "architecture": "WaveNet",
@@ -924,10 +930,9 @@ fn test_validate_wavenet_features_rejects_condition_size_neq_1() {
         "metadata": {}
     }"#;
     let data = parse_nam_json(json).expect("Fixture should parse");
-    let err = validate_wavenet_features(&data).unwrap_err();
     assert!(
-        err.contains("condition_size=2"),
-        "Error should mention condition_size=2, got: {err}"
+        validate_wavenet_features(&data).is_ok(),
+        "condition_size=2 should pass validation (dynamic engine handles it at runtime)"
     );
 }
 

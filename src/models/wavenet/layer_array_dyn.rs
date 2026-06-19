@@ -12,7 +12,7 @@ use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 pub struct WaveNetLayerArrayDyn {
     /// Number of input channels.
     pub in_ch: usize,
-    /// Number of conditioning channels (always 1 for NAM).
+    /// Number of conditioning channels (runtime-configurable; 1 for classic WaveNet A1).
     pub cond: usize,
     /// Number of internal channels.
     pub ch: usize,

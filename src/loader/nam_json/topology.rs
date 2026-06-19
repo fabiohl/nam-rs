@@ -21,7 +21,7 @@ pub enum NamWavenetTopology {
 /// Description of a detected free (non-catalog) WaveNet A1 geometry.
 ///
 /// Returned by [`get_wavenet_topology`] when the model is a valid WaveNet A1
-/// (COND=1, no post-stack head) but does not match any of the four catalog SKUs
+/// (no post-stack head) but does not match any of the four catalog SKUs
 /// (Standard/Lite/Feather/Nano). The dynamic engine (T3.1) consumes this
 /// structure to build a runtime-dimensioned [`WaveNetModelDyn`].
 ///
@@ -38,6 +38,10 @@ pub struct FreeWavenetGeometry {
     pub dilations: Vec<Vec<usize>>,
     /// Number of layer-arrays.
     pub num_arrays: usize,
+    /// Condition input size (number of conditioning channels).
+    /// Models with `condition_size > 1` flow into the dynamic engine
+    /// (the const-generic fast-path is reserved for `COND=1`).
+    pub condition_size: usize,
 }
 
 /// Result of WaveNet topology detection.
@@ -123,11 +127,13 @@ impl NamModelData {
 ///
 /// Returns [`WavenetTopologyResult`] with three possible outcomes:
 /// - `Known(SKU)`: matches a catalog variant (Standard/Lite/Feather/Nano) —
-///   use the const-generic fast-path.
+///   use the const-generic fast-path. Only `condition_size=1` (or absent) models
+///   can match a catalog SKU.
 /// - `Free(geometry)`: valid A1 geometry outside the catalog — destined for the
-///   dynamic engine (T3.1). COND=1 and no post-stack head are enforced.
-/// - `Rejected(reason)`: unsupported feature (F2 multi-condition, F6 post-stack
-///   head) or missing/invalid shape data.
+///   dynamic engine (T3.1). No post-stack head is enforced. Any `condition_size`
+///   is accepted.
+/// - `Rejected(reason)`: unsupported feature (F6 post-stack head) or
+///   missing/invalid shape data.
 ///
 /// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid
 /// WaveNet A1 geometry, not only the four catalog SKUs.
@@ -142,10 +148,13 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         return WavenetTopologyResult::Rejected("WaveNet model has no layer arrays.".to_string());
     }
 
-    // ── Feature validation: COND=1 and no post-stack head (F2/F6) ──
+    // ── Feature validation: no post-stack head (F6) ──
     if let Err(reason) = validate_wavenet_features(data) {
         return WavenetTopologyResult::Rejected(reason);
     }
+
+    // ── Extract condition_size from first layer (all layers share the same value) ──
+    let condition_size = layers[0].condition_size.unwrap_or(1);
 
     // ── Extract per-layer fields (gently — full validation deferred to free geometry) ──
     let mut first_channels: Option<usize> = None;
@@ -192,6 +201,10 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     // original detector (NeuralModel.cpp L:155-218). kernel_size and
     // head_size from JSON are optional for catalog models (already known
     // from the const-generic type parameters).
+    //
+    // condition_size must be 1 (or absent) for catalog matching because
+    // the const-generic fast-path uses COND=1. Models with condition_size > 1
+    // fall through to the Free geometry path (dynamic engine).
     if layers.len() == 2 {
         let l0 = &layers[0];
         let l1 = &layers[1];
@@ -201,8 +214,10 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         let l0_head_bias = l0.head_bias.unwrap_or(false);
         let l1_head_bias = l1.head_bias.unwrap_or(false);
 
-        // Catalog SKUs require: no gating, array1 no head_bias, array2 head_bias
-        let catalog_compatible = !l0_gated && !l1_gated && !l0_head_bias && l1_head_bias;
+        // Catalog SKUs require: no gating, array1 no head_bias, array2 head_bias,
+        // and condition_size=1 (const-generic fast-path uses COND=1).
+        let catalog_compatible =
+            !l0_gated && !l1_gated && !l0_head_bias && l1_head_bias && condition_size <= 1;
 
         if catalog_compatible {
             let dils_0 = &dilations[0];
@@ -256,6 +271,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         channels,
         kernel_size,
         head_size,
+        condition_size,
         num_arrays: layers.len(),
         dilations,
     })
@@ -575,29 +591,14 @@ fn check_not_slimmable(raw: &serde_json::Value) -> bool {
 
 /// Validates that WaveNet models use only supported feature combinations.
 ///
-/// The current NAM-rs implementation hardcodes `COND=1` as a const generic and
-/// does not implement a post-stack head sub-object. Models that require
-/// `condition_size != 1` or a non-null `head` would load and produce incorrect
-/// output silently — the worst failure mode.
+/// The current NAM-rs implementation rejects models with a post-stack head
+/// sub-object (F6) because that feature is not yet implemented. Models with
+/// `condition_size > 1` are now accepted and routed to the dynamic engine,
+/// which is parameterized on `condition_size` at runtime.
 ///
-/// This validator **rejects** such models with a clear diagnostic, preventing
-/// silent misbehavior. If official models requiring these features are found in
-/// circulation (Tone3000/ToneHunt), they can be supported in a future release.
+/// If official models requiring the post-stack head are found in circulation
+/// (Tone3000/ToneHunt), they can be supported in a future release.
 pub fn validate_wavenet_features(data: &NamModelData) -> Result<(), String> {
-    // Check condition_size on all layers
-    for (i, layer) in data.config.layers.iter().enumerate() {
-        match layer.condition_size {
-            None | Some(1) => {}
-            Some(cs) => {
-                return Err(format!(
-                    "WaveNet layer {} has condition_size={}, but only condition_size=1 is \
-                     supported (F2: multi-condition WaveNet not yet implemented in NAM-rs).",
-                    i, cs
-                ));
-            }
-        }
-    }
-
     // Check head: must be absent (None) or null (Some(None))
     if let Some(ref head) = data.config.head
         && head.is_some()
