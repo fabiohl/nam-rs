@@ -3,40 +3,30 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO Sprints — Execução Técnica
+# Épico: RT-Safety & SIMD (P15 + O3a)
 
-> **Objetivo**: Transformar o planejamento técnico das skills de arquitetura e revisão em tarefas atômicas e seguras para a equipe de implementação.
-> **Skill Primária**: `implementador`
+**Foco do Épico**: Erradicar `expect()` da inicialização A2 para garantir 100% de RT-Safety no ciclo de carregamento e implementar a Fase 1 da vetorização do Cabsim (MAC complexo SIMD).
 
----
+## Sprint 1: P15 — Erradicação de `expect()` no A2 [DONE]
 
-## Sprint 6: RT-Safety & SIMD (P15 + O3a)
-
-**Foco da Sprint**: Erradicar `expect()` da inicialização A2 para garantir 100% de RT-Safety no ciclo de carregamento e implementar a Fase 1 da vetorização do Cabsim (MAC complexo SIMD).
-**Pré-requisitos**: Nenhum pendente.
-
-### Epic 1: P15 — Erradicação de `expect()` no A2
-
-**Origem**: `TODO-problemas.md`
 **Risco**: Alto (mudança de assinatura da trait `NamModel` afeta todos os modelos e a inicialização do CLAP host).
 **Diretriz Central**: Substituir `expect` por `Result` no construtor `WaveNetA2` e propagar erros da alocação de memória virtual (`MirroredBuffer`) até o loop de eventos RT do host.
 
-- [ ] **Tarefa 1.1 (Trait NamModel)**: Em `src/models/mod.rs`, alterar as assinaturas na trait `NamModel` para que os métodos de redimensionamento possam falhar:
+- [x] **Tarefa 1.1 (Trait NamModel)**: Em `src/models/mod.rs`, alterar as assinaturas na trait `NamModel` para que os métodos de redimensionamento possam falhar:
   - De `fn set_max_buffer_size(&mut self, _max_buf: usize)` para `fn set_max_buffer_size(&mut self, _max_buf: usize) -> anyhow::Result<()> { Ok(()) }`
   - De `fn reset(&mut self, ...)` para `fn reset(&mut self, ...) -> anyhow::Result<()> { self.prewarm(max_buffer_size); Ok(()) }`
-- [ ] **Tarefa 1.2 (StaticModel e Container)**: Atualizar a propagação em `src/models/mod.rs` (enum `StaticModel`) e em `src/models/container.rs` (`ContainerModel`), fazendo com que o `set_max_buffer_size` e `reset` repassem os erros dos submodelos via `?` ou loop com verificação. Atualizar `Lstm`, `Linear` e `WaveNetModel` genérico para retornarem `Ok(())`.
-- [ ] **Tarefa 1.3 (A2 Constructor)**: Em `src/models/a2/model/mod.rs`:
+- [x] **Tarefa 1.2 (StaticModel e Container)**: Atualizar a propagação em `src/models/mod.rs` (enum `StaticModel`) e em `src/models/container.rs` (`ContainerModel`), fazendo com que o `set_max_buffer_size` e `reset` repassem os erros dos submodelos via `?` ou loop com verificação. Atualizar `Lstm`, `Linear` e `WaveNetModel` genérico para retornarem `Ok(())`.
+- [x] **Tarefa 1.3 (A2 Constructor)**: Em `src/models/a2/model/mod.rs`:
   - Remover `impl Default for WaveNetA2`.
   - Alterar `pub fn new() -> anyhow::Result<Self>`.
   - Substituir `.expect("MirroredBuffer...")` por `?`.
-- [ ] **Tarefa 1.4 (A2 Resize)**: No mesmo arquivo, alterar `set_max_buffer_size` para retornar `anyhow::Result<()>`. Repassar falhas de realocação usando `?`.
-- [ ] **Tarefa 1.5 (Dispatcher)**: Em `src/loader/dispatcher/wavenet/mod.rs`, nas linhas ~64 e ~75, tratar a instanciação `WaveNetA2::<3>::new()?` e `WaveNetA2::<8>::new()?` (o método `build_wavenet` já retorna `anyhow::Result`).
-- [ ] **Tarefa 1.6 (Host RT Loop)**: Em `src/clap/processor/events.rs`, no método `cold_load_model` (linha ~173), tratar a chamada `model.set_max_buffer_size(self.max_frames_count)`.
+- [x] **Tarefa 1.4 (A2 Resize)**: No mesmo arquivo, alterar `set_max_buffer_size` para retornar `anyhow::Result<()>`. Repassar falhas de realocação usando `?`.
+- [x] **Tarefa 1.5 (Dispatcher)**: Em `src/loader/dispatcher/wavenet/mod.rs`, nas linhas ~64 e ~75, tratar a instanciação `WaveNetA2::<3>::new()?` e `WaveNetA2::<8>::new()?` (o método `build_wavenet` já retorna `anyhow::Result`).
+- [x] **Tarefa 1.6 (Host RT Loop)**: Em `src/clap/processor/events.rs`, no método `cold_load_model` (linha ~173), tratar a chamada `model.set_max_buffer_size(self.max_frames_count)`.
   - **Crítico para RT-Safety**: O RT-thread *não pode* usar `log::error!` nem dar `panic`. Se `set_max_buffer_size` retornar `Err`, você deve descartar o modelo (`self.push_to_gc(GcItem::Model(self.model_l.take().unwrap()))`) e ativar a flag de erro na atômica compartilhada (`self.rt_status.set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)`).
 
-### Epic 2: O3a — MAC Complexo SIMD no Cabsim (Fase 1)
+## Sprint 2: O3a — MAC Complexo SIMD no Cabsim (Fase 1)
 
-**Origem**: `TODO-optimize.md`
 **Risco**: Médio-Alto (manipulação de ponteiros intrínsecos AVX2 e layout SoA - Struct of Arrays).
 **Diretriz Central**: Converter buffers FDL e H_FDL para Struct-of-Arrays (separando `re` e `im`) e usar FMA (`_mm256_fmadd_ps`) no domínio da frequência.
 

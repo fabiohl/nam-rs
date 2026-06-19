@@ -17,7 +17,7 @@ fn make_test_weights(n: usize, seed: u32) -> Vec<f32> {
 
 #[test]
 fn test_wavenet_a2_receptive_field_ch3() {
-    let model = WaveNetA2::<3>::new();
+    let model = WaveNetA2::<3>::new().unwrap();
     // Reference: computed from A2_KERNEL_SIZES and A2_DILATIONS arrays.
     let expected = {
         let mut sum = 0usize;
@@ -33,7 +33,7 @@ fn test_wavenet_a2_receptive_field_ch3() {
 
 #[test]
 fn test_wavenet_a2_receptive_field_ch8() {
-    let model = WaveNetA2::<8>::new();
+    let model = WaveNetA2::<8>::new().unwrap();
     let expected = {
         let mut sum = 0usize;
         for i in 0..A2_NUM_LAYERS {
@@ -47,7 +47,7 @@ fn test_wavenet_a2_receptive_field_ch8() {
 
 #[test]
 fn test_wavenet_a2_process_stub_output_silence() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let input = vec![0.5f32; 64];
     let mut output = vec![1.0f32; 64];
     model.process(&input, &mut output);
@@ -58,7 +58,7 @@ fn test_wavenet_a2_process_stub_output_silence() {
 
 #[test]
 fn test_wavenet_a2_process_empty_input() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let input: [f32; 0] = [];
     let mut output: [f32; 0] = [];
     model.process(&input, &mut output);
@@ -67,7 +67,7 @@ fn test_wavenet_a2_process_empty_input() {
 
 #[test]
 fn test_wavenet_a2_prewarm_fills_buffers() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     for buf in &mut model.layer_buffers {
         let len = buf.size();
         buf[..len].fill(0.5);
@@ -92,9 +92,9 @@ fn test_wavenet_a2_prewarm_fills_buffers() {
 
 #[test]
 fn test_wavenet_a2_reset_reallocates_and_prewarms() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let orig_rings: Vec<usize> = model.layer_ring_sizes.clone();
-    model.reset(48000, 128);
+    model.reset(48000, 128).unwrap();
     assert!(model.max_buffer_size == 128);
     for (i, &size) in model.layer_ring_sizes.iter().enumerate() {
         assert!(size >= orig_rings[i], "layer ring {} shrank", i);
@@ -109,18 +109,18 @@ fn test_wavenet_a2_reset_reallocates_and_prewarms() {
 
 #[test]
 fn test_wavenet_a2_set_max_buffer_size_noop_on_smaller() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let orig_sizes: Vec<usize> = model.layer_ring_sizes.clone();
-    model.set_max_buffer_size(32);
+    model.set_max_buffer_size(32).unwrap();
     assert_eq!(model.layer_ring_sizes, orig_sizes);
     assert_eq!(model.max_buffer_size, WAVENET_MAX_NUM_FRAMES);
 }
 
 #[test]
 fn test_wavenet_a2_set_max_buffer_size_grows() {
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     let orig_sizes: Vec<usize> = model.layer_ring_sizes.clone();
-    model.set_max_buffer_size(256);
+    model.set_max_buffer_size(256).unwrap();
     assert!(model.max_buffer_size == 256);
     assert_eq!(model.layer_ring_sizes.len(), A2_NUM_LAYERS);
     assert_eq!(model.layer_buffers.len(), A2_NUM_LAYERS);
@@ -139,7 +139,7 @@ fn test_wavenet_a2_set_max_buffer_size_grows() {
 
 #[test]
 fn test_wavenet_a2_default_creates_valid_model() {
-    let model = WaveNetA2::<3>::default();
+    let model = WaveNetA2::<3>::new().unwrap();
     assert_eq!(model.channels(), 3);
     assert!(model.receptive_field_size > 0);
     assert!(!model.head_accum.is_empty());
@@ -155,8 +155,8 @@ fn test_wavenet_a2_default_creates_valid_model() {
 #[test]
 fn test_wavenet_a2_const_receptive_field_matches_runtime() {
     let rf_const = a2_receptive_field();
-    let model3 = WaveNetA2::<3>::new();
-    let model8 = WaveNetA2::<8>::new();
+    let model3 = WaveNetA2::<3>::new().unwrap();
+    let model8 = WaveNetA2::<8>::new().unwrap();
     assert_eq!(model3.receptive_field_size, rf_const);
     assert_eq!(model8.receptive_field_size, rf_const);
 }
@@ -165,7 +165,7 @@ fn test_wavenet_a2_const_receptive_field_matches_runtime() {
 
 #[test]
 fn test_set_weights_exact_count_ch3() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let count = a2_weight_count::<3>();
     assert_eq!(count, 1871); // sanity-check known count
     let weights = make_test_weights(count, 42);
@@ -177,7 +177,7 @@ fn test_set_weights_exact_count_ch3() {
 
 #[test]
 fn test_set_weights_exact_count_ch8() {
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     let count = a2_weight_count::<8>();
     assert_eq!(count, 12146); // sanity-check known count
     let weights = make_test_weights(count, 77);
@@ -189,7 +189,7 @@ fn test_set_weights_exact_count_ch8() {
 
 #[test]
 fn test_set_weights_wrong_count_ch3_too_few() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let count = a2_weight_count::<3>();
     let weights = make_test_weights(count - 10, 42);
     let err = model.set_weights(&weights);
@@ -204,7 +204,7 @@ fn test_set_weights_wrong_count_ch3_too_few() {
 
 #[test]
 fn test_set_weights_too_many_ch3() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let count = a2_weight_count::<3>();
     let weights = make_test_weights(count + 5, 42);
     let err = model.set_weights(&weights);
@@ -218,7 +218,7 @@ fn test_set_weights_too_many_ch3() {
 
 #[test]
 fn test_set_weights_too_few_ch8() {
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     let count = a2_weight_count::<8>();
     let weights = make_test_weights(count - 1, 99);
     let err = model.set_weights(&weights);
@@ -232,7 +232,7 @@ fn test_set_weights_too_few_ch8() {
 
 #[test]
 fn test_set_weights_too_many_ch8() {
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     let count = a2_weight_count::<8>();
     let weights = make_test_weights(count + 1, 88);
     let err = model.set_weights(&weights);
@@ -246,7 +246,7 @@ fn test_set_weights_too_many_ch8() {
 
 #[test]
 fn test_set_weights_has_weights_flag_ch3() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     assert!(!model.has_weights());
     let count = a2_weight_count::<3>();
     let weights = make_test_weights(count, 123);
@@ -258,7 +258,7 @@ fn test_set_weights_has_weights_flag_ch3() {
 /// (random weights almost certainly produce non-zero output).
 #[test]
 fn test_set_weights_process_smoke_ch3() {
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     let count = a2_weight_count::<3>();
     let weights = make_test_weights(count, 42);
     model.set_weights(&weights).unwrap();
@@ -278,7 +278,7 @@ fn test_set_weights_process_smoke_ch3() {
 
 #[test]
 fn test_set_weights_process_smoke_ch8() {
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     let count = a2_weight_count::<8>();
     let weights = make_test_weights(count, 77);
     model.set_weights(&weights).unwrap();
@@ -318,15 +318,15 @@ fn test_wavenet_a2_block_invariance_ch3() {
         .collect();
 
     // Single-call model: process() rechunks internally to ≤64.
-    let mut model_a = WaveNetA2::<3>::new();
+    let mut model_a = WaveNetA2::<3>::new().unwrap();
     model_a.set_weights(&weights).unwrap();
-    model_a.set_max_buffer_size(num_samples);
+    model_a.set_max_buffer_size(num_samples).unwrap();
     model_a.prewarm();
     let mut out_a = vec![0.0f32; num_samples];
     model_a.process(&input, &mut out_a);
 
     // External 64-frame chunk model: same state, explicit sub-blocks.
-    let mut model_b = WaveNetA2::<3>::new();
+    let mut model_b = WaveNetA2::<3>::new().unwrap();
     model_b.set_weights(&weights).unwrap();
     model_b.prewarm();
     let mut out_b = vec![0.0f32; num_samples];
@@ -357,14 +357,14 @@ fn test_wavenet_a2_block_invariance_ch8() {
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect();
 
-    let mut model_a = WaveNetA2::<8>::new();
+    let mut model_a = WaveNetA2::<8>::new().unwrap();
     model_a.set_weights(&weights).unwrap();
-    model_a.set_max_buffer_size(num_samples);
+    model_a.set_max_buffer_size(num_samples).unwrap();
     model_a.prewarm();
     let mut out_a = vec![0.0f32; num_samples];
     model_a.process(&input, &mut out_a);
 
-    let mut model_b = WaveNetA2::<8>::new();
+    let mut model_b = WaveNetA2::<8>::new().unwrap();
     model_b.set_weights(&weights).unwrap();
     model_b.prewarm();
     let mut out_b = vec![0.0f32; num_samples];
@@ -396,14 +396,14 @@ fn test_wavenet_a2_neg_internal_chunking_ch3() {
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect();
 
-    let mut model_a = WaveNetA2::<3>::new();
+    let mut model_a = WaveNetA2::<3>::new().unwrap();
     model_a.set_weights(&weights).unwrap();
-    model_a.set_max_buffer_size(num_samples);
+    model_a.set_max_buffer_size(num_samples).unwrap();
     model_a.prewarm();
     let mut out_a = vec![0.0f32; num_samples];
     model_a.process(&input, &mut out_a);
 
-    let mut model_b = WaveNetA2::<3>::new();
+    let mut model_b = WaveNetA2::<3>::new().unwrap();
     model_b.set_weights(&weights).unwrap();
     model_b.prewarm();
     let mut out_b = vec![0.0f32; num_samples];
@@ -432,14 +432,14 @@ fn test_wavenet_a2_neg_internal_chunking_ch8() {
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect();
 
-    let mut model_a = WaveNetA2::<8>::new();
+    let mut model_a = WaveNetA2::<8>::new().unwrap();
     model_a.set_weights(&weights).unwrap();
-    model_a.set_max_buffer_size(num_samples);
+    model_a.set_max_buffer_size(num_samples).unwrap();
     model_a.prewarm();
     let mut out_a = vec![0.0f32; num_samples];
     model_a.process(&input, &mut out_a);
 
-    let mut model_b = WaveNetA2::<8>::new();
+    let mut model_b = WaveNetA2::<8>::new().unwrap();
     model_b.set_weights(&weights).unwrap();
     model_b.prewarm();
     let mut out_b = vec![0.0f32; num_samples];

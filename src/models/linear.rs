@@ -169,8 +169,9 @@ impl NamModel for LinearModel {
         self.prewarm(num_samples);
     }
 
-    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
+    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset(sample_rate, max_buffer_size);
+        Ok(())
     }
 
     fn prewarm_samples(&self) -> usize {

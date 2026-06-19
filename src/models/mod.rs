@@ -43,8 +43,9 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     /// architectures like WaveNet that need to fill the receptive field with silence.
     /// Architectures with recurrent state (LSTM) may override this for a lighter
     /// reset (only zero the internal states without reprocessing a full prewarm).
-    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
+    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.prewarm(max_buffer_size);
+        Ok(())
     }
 
     /// Reallocates internal buffers to support the given maximum block size.
@@ -52,7 +53,9 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     /// Models with fixed (const-generic) buffer sizes can use the default no-op.
     ///
     /// Default: no-op (suitable for static models and LSTM).
-    fn set_max_buffer_size(&mut self, _max_buf: usize) {}
+    fn set_max_buffer_size(&mut self, _max_buf: usize) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     /// Returns the number of samples needed to fully stabilize the model's internal
     /// state (receptive field / recurrent memory depth).

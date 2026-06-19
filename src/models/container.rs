@@ -188,23 +188,25 @@ impl NamModel for ContainerModel {
         }
     }
 
-    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
+    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.sample_rate = sample_rate;
         self.max_buffer_size = max_buffer_size;
         self.scratch_buffer.resize(max_buffer_size, 0.0);
         self.crossfade_duration =
             (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
         for (_, model) in &mut self.submodels {
-            model.reset(sample_rate, max_buffer_size);
+            model.reset(sample_rate, max_buffer_size)?;
         }
+        Ok(())
     }
 
-    fn set_max_buffer_size(&mut self, max_buf: usize) {
+    fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
         self.max_buffer_size = max_buf;
         self.scratch_buffer.resize(max_buf, 0.0);
         for (_, model) in &mut self.submodels {
-            model.set_max_buffer_size(max_buf);
+            model.set_max_buffer_size(max_buf)?;
         }
+        Ok(())
     }
 
     fn prewarm_samples(&self) -> usize {

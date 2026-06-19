@@ -223,7 +223,10 @@ fn test_container_crossfade_continuity() {
             unreachable!()
         };
         // Manually switch to Lite with a hard cut (simulating old behavior)
-        container_b.submodels_mut()[0].1.reset(sample_rate, 64);
+        container_b.submodels_mut()[0]
+            .1
+            .reset(sample_rate, 64)
+            .unwrap();
         // Set the active index directly (bypass crossfade)
         container_b.set_active_index(0);
     }

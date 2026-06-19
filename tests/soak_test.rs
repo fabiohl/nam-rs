@@ -568,7 +568,7 @@ fn a2_synth_weights<const CH: usize>(weight_val: f32) -> Vec<f32> {
 /// Builds a synthetically-weighted A2 model.
 fn build_soak_a2<const CH: usize>(weight_val: f32) -> WaveNetA2<CH> {
     let weights = a2_synth_weights::<CH>(weight_val);
-    let mut model = WaveNetA2::<CH>::new();
+    let mut model = WaveNetA2::<CH>::new().expect("Failed to create WaveNetA2");
     model.set_weights(&weights).expect("A2 set_weights failed");
     model
 }

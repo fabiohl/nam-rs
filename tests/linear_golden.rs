@@ -294,7 +294,7 @@ fn test_linear_reset_reproduces() {
     let mut out1 = vec![0.0f32; input.len()];
     model.process(&input, &mut out1);
 
-    model.reset(48000, 512);
+    model.reset(48000, 512).unwrap();
     model.prewarm(input.len());
     let mut out2 = vec![0.0f32; input.len()];
     model.process(&input, &mut out2);

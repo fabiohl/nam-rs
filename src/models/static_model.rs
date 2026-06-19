@@ -214,7 +214,7 @@ impl NamModel for StaticModel {
         }
     }
 
-    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
+    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         match self {
             Self::WavenetStandard(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetLite(m) => m.reset(sample_rate, max_buffer_size),
@@ -234,11 +234,11 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x40(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x24(m) => m.reset(sample_rate, max_buffer_size),
-            Self::Linear(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Linear(m) => NamModel::reset(m.as_mut(), sample_rate, max_buffer_size),
         }
     }
 
-    fn set_max_buffer_size(&mut self, max_buf: usize) {
+    fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
         match self {
             Self::WavenetStandard(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetLite(m) => m.set_max_buffer_size(max_buf),
@@ -258,7 +258,7 @@ impl NamModel for StaticModel {
             Self::Lstm2x16(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x40(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm2x24(m) => m.set_max_buffer_size(max_buf),
-            Self::Linear(m) => m.set_max_buffer_size(max_buf),
+            Self::Linear(m) => NamModel::set_max_buffer_size(m.as_mut(), max_buf),
         }
     }
 

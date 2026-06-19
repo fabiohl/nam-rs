@@ -131,7 +131,7 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Allocates ring buffers (MirroredBuffer per layer, pow2 head accumulator)
     /// sized for the architecture and computes the receptive field.
     /// Weight-bearing fields start empty and are populated by the weight loader (T1.6).
-    pub fn new() -> Self {
+    pub fn new() -> anyhow::Result<Self> {
         let rf = a2_receptive_field();
         let max_buf = WAVENET_MAX_NUM_FRAMES;
 
@@ -146,8 +146,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         for i in 0..A2_NUM_LAYERS {
             let max_lookback = (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
             let cap = max_lookback + max_buf + 1;
-            let mb = MirroredBuffer::<f32>::new(cap * CH)
-                .expect("MirroredBuffer allocation for A2 layer ring failed");
+            let mb = MirroredBuffer::<f32>::new(cap * CH)?;
             let ring_size = mb.size();
             layer_buffers.push(mb);
             layer_ring_sizes.push(ring_size);
@@ -155,7 +154,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             layer_buffer_starts.push(ring_size);
         }
 
-        Self {
+        Ok(Self {
             layers: Vec::with_capacity(A2_NUM_LAYERS),
             rechannel_w: AlignedVec::new(CH, 0u16),
             rechannel_w_f32: AlignedVec::new(CH, 0.0f32),
@@ -170,7 +169,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             layer_in: AlignedVec::new(CH * max_buf, 0.0f32),
             receptive_field_size: rf,
             max_buffer_size: max_buf,
-        }
+        })
     }
 
     /// Returns the channel count.
@@ -194,9 +193,9 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// buffers are sized correctly.
     ///
     /// If `max_buf` is smaller than or equal to the current capacity, this is a no-op.
-    pub fn set_max_buffer_size(&mut self, max_buf: usize) {
+    pub fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
         if max_buf <= self.max_buffer_size {
-            return;
+            return Ok(());
         }
         self.max_buffer_size = max_buf;
         let rf = self.receptive_field_size;
@@ -209,8 +208,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         for i in 0..A2_NUM_LAYERS {
             let max_lookback = (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
             let cap = max_lookback + max_buf + 1;
-            let mb = MirroredBuffer::<f32>::new(cap * CH)
-                .expect("MirroredBuffer reallocation for A2 layer ring failed");
+            let mb = MirroredBuffer::<f32>::new(cap * CH)?;
             let ring_size = mb.size();
             self.layer_buffers.push(mb);
             self.layer_ring_sizes.push(ring_size);
@@ -224,6 +222,8 @@ impl<const CH: usize> WaveNetA2<CH> {
         self.head_ring_mask = head_ring_size - 1;
         self.head_accum = AlignedVec::new(head_ring_size * CH, 0.0f32);
         self.head_write_pos = rf;
+
+        Ok(())
     }
 
     /// Full forward pass through the A2 model.
@@ -447,21 +447,16 @@ impl<const CH: usize> WaveNetA2<CH> {
     }
 
     /// Resets internal state for a new sample rate and max buffer size.
-    pub fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
-        self.set_max_buffer_size(max_buffer_size);
+    pub fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
+        self.set_max_buffer_size(max_buffer_size)?;
         self.prewarm();
+        Ok(())
     }
 
     /// Returns whether weights have been loaded via `set_weights`.
     #[inline(always)]
     pub fn has_weights(&self) -> bool {
         !self.layers.is_empty()
-    }
-}
-
-impl<const CH: usize> Default for WaveNetA2<CH> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

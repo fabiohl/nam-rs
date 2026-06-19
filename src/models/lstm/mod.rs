@@ -117,8 +117,9 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
 
     /// Light reset for LSTM: only zeros internal states without reprocessing
     /// the full prewarm with silence.
-    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
+        Ok(())
     }
 }
 
@@ -142,8 +143,9 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 
     /// Light reset for 2-layer LSTM: only zeros internal states without
     /// reprocessing the full prewarm with silence.
-    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
+        Ok(())
     }
 }
 

@@ -31,7 +31,7 @@ mod tests_a2_real {
     /// Smoke: A2-Lite without weights outputs finite silence.
     #[test]
     fn test_wavenet_a2_lite_process() {
-        let mut model = WaveNetA2::<3>::new();
+        let mut model = WaveNetA2::<3>::new().unwrap();
         model.prewarm();
         let input = vec![0.01f32; 64];
         let mut output = vec![0.0f32; 64];
@@ -44,7 +44,7 @@ mod tests_a2_real {
     /// Smoke: A2-Full without weights outputs finite silence.
     #[test]
     fn test_wavenet_a2_full_process() {
-        let mut model = WaveNetA2::<8>::new();
+        let mut model = WaveNetA2::<8>::new().unwrap();
         model.prewarm();
         let input = vec![0.01f32; 64];
         let mut output = vec![0.0f32; 64];
@@ -60,7 +60,7 @@ mod tests_a2_real {
     /// produces non-zero, finite output — exercises the full trait path.
     #[test]
     fn test_a2_lite_via_nam_model_process() {
-        let mut model = WaveNetA2::<3>::new();
+        let mut model = WaveNetA2::<3>::new().unwrap();
         let weights = make_weights(a2_weight_count::<3>(), 42);
         model
             .set_weights(&weights)
@@ -87,7 +87,7 @@ mod tests_a2_real {
     /// produces non-zero, finite output — exercises the full trait path.
     #[test]
     fn test_a2_full_via_nam_model_process() {
-        let mut model = WaveNetA2::<8>::new();
+        let mut model = WaveNetA2::<8>::new().unwrap();
         let weights = make_weights(a2_weight_count::<8>(), 77);
         model
             .set_weights(&weights)
@@ -112,8 +112,8 @@ mod tests_a2_real {
     /// Validates that `prewarm_samples()` returns exactly the receptive field size.
     #[test]
     fn test_a2_prewarm_samples_returns_rf() {
-        let model_lite = WaveNetA2::<3>::new();
-        let model_full = WaveNetA2::<8>::new();
+        let model_lite = WaveNetA2::<3>::new().unwrap();
+        let model_full = WaveNetA2::<8>::new().unwrap();
 
         let rf_lite = model_lite.receptive_field();
         let rf_full = model_full.receptive_field();
@@ -145,7 +145,7 @@ mod tests_a2_real {
     /// produce exactly the same sequence of output samples.
     #[test]
     fn test_a2_reset_determinism() {
-        let mut model = WaveNetA2::<3>::new();
+        let mut model = WaveNetA2::<3>::new().unwrap();
         let weights = make_weights(a2_weight_count::<3>(), 123);
         model.set_weights(&weights).expect("set_weights failed");
         model.prewarm();
@@ -157,7 +157,7 @@ mod tests_a2_real {
         model.process(&input, &mut out_a);
 
         // Reset + identical prewarm
-        model.reset(48000, 64);
+        model.reset(48000, 64).unwrap();
         model.prewarm();
 
         // Second run with same input

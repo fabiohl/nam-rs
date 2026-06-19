@@ -78,12 +78,12 @@ impl<const CH: usize> NamModel for model::WaveNetA2<CH> {
         self.receptive_field_size
     }
 
-    fn set_max_buffer_size(&mut self, max_buf: usize) {
-        self.set_max_buffer_size(max_buf);
+    fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
+        self.set_max_buffer_size(max_buf)
     }
 
-    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
-        self.reset(_sample_rate, max_buffer_size);
+    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
+        self.reset(_sample_rate, max_buffer_size)
     }
 }
 

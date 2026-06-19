@@ -800,7 +800,7 @@ fn test_a2_lite_fixture_loads() {
 fn test_a2_lite_inference_produces_finite_output() {
     use nam_rs::models::a2::WaveNetA2;
 
-    let mut model = WaveNetA2::<3>::new();
+    let mut model = WaveNetA2::<3>::new().unwrap();
     model.prewarm();
     let input = [0.01f32; 64];
     let mut output = [0.0f32; 64];
@@ -815,7 +815,7 @@ fn test_a2_lite_inference_produces_finite_output() {
 fn test_a2_full_inference_produces_finite_output() {
     use nam_rs::models::a2::WaveNetA2;
 
-    let mut model = WaveNetA2::<8>::new();
+    let mut model = WaveNetA2::<8>::new().unwrap();
     model.prewarm();
     let input = [0.01f32; 64];
     let mut output = [0.0f32; 64];

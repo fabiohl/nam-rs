@@ -738,7 +738,10 @@ fn test_golden_vectors_container_a2_lite() {
 
     if let StaticModel::Container(ref mut c) = model {
         // Switch to Lite submodel directly (bypass crossfade) to match existing golden
-        c.submodels_mut()[0].1.reset(sample_rate, GOLDEN_BLOCK_SIZE);
+        c.submodels_mut()[0]
+            .1
+            .reset(sample_rate, GOLDEN_BLOCK_SIZE)
+            .unwrap();
         c.set_active_index(0);
     } else {
         unreachable!("Expected Container variant");
@@ -789,7 +792,10 @@ fn test_golden_vectors_wavenet_a2_container() {
             read_golden_bin(&lite_golden_path).expect("Failed to read golden_wavenet_a2_lite.bin");
 
         if let StaticModel::Container(ref mut c) = *model {
-            c.submodels_mut()[0].1.reset(sample_rate, GOLDEN_BLOCK_SIZE);
+            c.submodels_mut()[0]
+                .1
+                .reset(sample_rate, GOLDEN_BLOCK_SIZE)
+                .unwrap();
             c.set_active_index(0);
         } else {
             unreachable!("Expected Container variant");
