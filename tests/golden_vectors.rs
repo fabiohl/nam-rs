@@ -848,10 +848,13 @@ fn test_golden_vectors_wavenet_a2_container() {
     }
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — T1.1: condition_size=8 is now accepted by the
-/// loader and topology (passed to the dynamic engine). The model still fails to load
-/// because A2 uses 1 layer array and the A1 dynamic engine requires exactly 2.
-/// A2 dynamic loading will be addressed in a future sprint.
+/// Test 8k: Loader Gap WaveNet A2 Max — T3.2: this model requires a full A2 dynamic
+/// engine (FiLM, gating, heterogeneous activations, bottleneck, condition_dsp with
+/// A2 sub-model). The A2 secondary detector (`is_wavenet_a2()`) flags it via
+/// non-Tanh activation (Softsign) and rejects it at dispatch. Even if routing were
+/// relaxed, the A1 dynamic engine lacks FiLM, gating, and 1-array support.
+/// An A2 dynamic engine (`WaveNetModelDynA2`) is required and deferred to a future
+/// sprint. See TODO-sprints.md for the A2 dynamic engine tracking.
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -862,27 +865,66 @@ fn test_loader_gap_wavenet_a2_max() {
     assert!(model.is_err());
     let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("dynamic engine requires exactly 2 layer arrays"),
-        "Expected array-count error (A2->A1 dynamic mismatch), got: {}",
+        err_msg.contains("A2 model detected but architecture shape not recognized")
+            || err_msg.contains("dynamic engine requires exactly 2 layer arrays"),
+        "Expected A2 shape rejection or array-count error, got: {}",
         err_msg
     );
 }
 
-/// Test 8l: Loader Gap WaveNet Condition DSP — T1.1: condition_size=3 is now accepted
-/// by the loader and topology. The model loads successfully via the dynamic engine
-/// with cond=3. The condition_dsp sub-model (nested DSP) is not yet functional
-/// (Sprint 3) but loading succeeds.
+/// Test 8l: Golden Vectors WaveNet Condition DSP — T3.2 cross-reference C++ ↔ NAM-rs.
+///
+/// Replaces the pre-T3.2 gap test (`test_loader_gap_wavenet_condition_dsp`).
+/// With T3.1, the condition_dsp sub-model is fully functional and the dynamic engine
+/// processes audio through the nested DSP. Validates Rust output against C++ reference
+/// via ESR/SNR/MSE fusion report.
+///
+/// Reads `tests/fixtures/golden_wavenet_condition_dsp.bin`, builds the dynamic `StaticModel`
+/// from `wavenet_condition_dsp.nam`, and compares via ESR/SNR/MSE fusion report.
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
-fn test_loader_gap_wavenet_condition_dsp() {
-    let path = model_path("wavenet_condition_dsp.nam");
-    assert!(path.exists());
-    let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_dsp.nam");
-    let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_dsp.nam");
-    let model = build_model(&data);
+fn test_golden_vectors_wavenet_condition_dsp() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_condition_dsp.bin");
+
     assert!(
-        model.is_ok(),
-        "condition_dsp model with condition_size=3 should load via dynamic engine: {:?}",
-        model.err()
+        golden_path.exists(),
+        "golden_wavenet_condition_dsp.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate the golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_condition_dsp.bin");
+
+    let nam_path = model_path("wavenet_condition_dsp.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_condition_dsp.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
+
+    let json_data =
+        fs::read_to_string(&nam_path).expect("Failed to read wavenet_condition_dsp.nam");
+    let model_data =
+        parse_nam_json(&json_data).expect("Failed to parse wavenet_condition_dsp.nam JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet Condition DSP for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) =
+        topology_thresholds(&model_data, "wavenet_condition_dsp");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
     );
 }
 
@@ -1105,6 +1147,18 @@ fn test_golden_vectors_v2_wavenet_a2_lite() {
         "golden_wavenet_a2_lite",
         "WaveNet A2-Lite (CH=3)",
         "wavenet_a2_lite",
+        SR_48K_ONLY,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_condition_dsp() {
+    run_v2_golden_test(
+        "wavenet_condition_dsp.nam",
+        "golden_wavenet_condition_dsp",
+        "WaveNet Condition DSP (CH=3, cond=3, dynamic)",
+        "wavenet_condition_dsp",
         SR_48K_ONLY,
     );
 }

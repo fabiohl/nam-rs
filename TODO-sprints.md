@@ -79,9 +79,16 @@ O baseline exigido para otimizações será x86-64-v3 (AVX2+FMA).
     * `set_max_buffer_size` e `prewarm_samples` propagam para o sub-modelo.
     * Teste `test_loader_gap_wavenet_condition_dsp` agora carrega o modelo completo com condition_dsp funcional (519 lib tests, 19 golden, todos passando).
 
-* **Tarefa 3.2: Golden Tests e Paridade ESR/SNR**
+* **Tarefa 3.2: Golden Tests e Paridade ESR/SNR** ✅ [DONE]
   * **Arquivos alvo**: `tests/cpp_parity.rs` e suítes (`tests-long.sh`).
   * **Ação**: Converter `test_loader_gap_*` associado a essas flags em um teste golden positivo. Carregar fisicamente os artefatos `wavenet_a2_max.nam` e `wavenet_condition_dsp.nam`.
   * **Critério de aceite**: Output de áudio precisa equiparar o `NAMCore v0.5.3` sem degradação do SNR, mantendo processamento sob 2ms em low-latency buffer sizes.
+  * **Nota pós-implementação**:
+    * `test_loader_gap_wavenet_condition_dsp` foi convertido em `test_golden_vectors_wavenet_condition_dsp`: golden positivo com C++ cross-reference via ESR/SNR/MSE. SNR medido: 139.5 dB (quase bit-exact), ESR: 1.13e-14. Golden v1 (2048 samples) + v2 (240k samples @ 48 kHz) gerados e commitados.
+    * Live cpp_parity adicionado: `live_cross_validation_wavenet_condition_dsp` (v1) + `live_cross_validation_v2_wavenet_condition_dsp` (v2 multi-SR).
+    * **wavenet_a2_max.nam: BLOQUEADO — requer engine dinâmico A2 completo.** O modelo possui FiLM (8 pontos ativos), gating, ativação Softsign, bottleneck, condition_dsp com sub-modelo A2 (SiLU, PReLU, gating, FiLM). O detector secundário A2 (`is_wavenet_a2()`) o classifica como A2 pela ativação ≠ Tanh e rejeita na dispatch. Mesmo que o roteamento fosse relaxado, o engine dinâmico A1 carece de suporte a FiLM, gating, arrays únicas e ativações heterogêneas. Um engine `WaveNetModelDynA2` é necessário — ver `TODO-features.md` para tracking.
+    * `test_loader_gap_wavenet_a2_max` atualizado para documentar o bloqueio (erro esperado: "A2 model detected but architecture shape not recognized").
+    * Calibração: `wavenet_condition_dsp` registrado em `get_calibrated_threshold()` com SNR floor 100 dB, ESR 1e-10.
+    * `golden_gen_build.sh` atualizado para incluir `wavenet_condition_dsp.nam` nos modelos v1 e v2.
 
 ---

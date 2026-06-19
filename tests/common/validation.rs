@@ -436,6 +436,15 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 80.0;
             Some((1e30, snr_db, Some(6.0e-9)))
         }
+        // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
+        // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel
+        // conditioning. The sub-model processes the raw audio before the main arrays.
+        // Measured: SNR=139.5 dB, ESR=1.13e-14 (nearly bit-exact, 2026-06-19).
+        // Floor: SNR - 39.5 dB margin, ESR factor ~8800x
+        "wavenet_condition_dsp" => {
+            let snr_db = 100.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+        }
         _ => None,
     }
 }

@@ -509,6 +509,16 @@ fn live_cross_validation_wavenet_a2_lite() {
     );
 }
 
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_condition_dsp() {
+    run_v1(
+        "wavenet_condition_dsp.nam",
+        "wavenet_condition_dsp",
+        "Live WaveNet Condition DSP",
+    );
+}
+
 // --- v2 (multi-SR, comprehensive) ---
 
 #[test]
@@ -590,6 +600,16 @@ fn live_cross_validation_v2_wavenet_a2_lite() {
         "wavenet_a2_lite.nam",
         "wavenet_a2_lite",
         "Live WaveNet A2-Lite (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_condition_dsp() {
+    run_v2_multi_sr(
+        "wavenet_condition_dsp.nam",
+        "wavenet_condition_dsp",
+        "Live WaveNet Condition DSP (v2)",
     );
 }
 

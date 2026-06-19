@@ -924,9 +924,11 @@ fn test_is_a2_shape_rejects_gated_activation() {
     );
 }
 
-/// Active FiLM conditioning must be rejected (fast-path A2 assumes no FiLM).
+/// Active FiLM conditioning is now accepted by is_a2_shape (T2.2 relaxation: FiLM
+/// weight loading happens in set_weights, so the shape detector no longer rejects
+/// models with active FiLM config entries).
 #[test]
-fn test_is_a2_shape_rejects_active_film() {
+fn test_is_a2_shape_accepts_active_film() {
     let json = r#"{
         "version": "0.6.0",
         "architecture": "WaveNet",
@@ -955,8 +957,8 @@ fn test_is_a2_shape_rejects_active_film() {
     }"#;
     let data = parse_nam_json(json).expect("JSON parse failed");
     assert!(
-        is_a2_shape(&data).is_none(),
-        "active FiLM (conv_pre_film) must be rejected by is_a2_shape"
+        is_a2_shape(&data).is_some(),
+        "active FiLM (conv_pre_film) must now be accepted by is_a2_shape (T2.2 relaxation)"
     );
 }
 

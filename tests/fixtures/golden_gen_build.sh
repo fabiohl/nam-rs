@@ -224,6 +224,7 @@ MODELS=(
     "lstm.nam:golden_lstm_official:LSTM Official"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
+    "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3)"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
@@ -292,6 +293,7 @@ V2_MODELS=(
     "lstm.nam:golden_lstm_official:LSTM Official"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
+    "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3)"
 )
 
 for entry in "${V2_MODELS[@]}"; do
