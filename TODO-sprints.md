@@ -3,73 +3,69 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO Sprints: NAM-rs — Mega Tópicos 3 e 4
+# Plano de Execução — nam-rs (MT5 e MT6)
 
-Este documento organiza a execução das demandas levantadas pela auditoria (`revisor-auditor`) em ciclos granulares de desenvolvimento, garantindo conformidade com arquitetura, performance e RT-Safety.
+Este documento traduz os requisitos dos Mega-Tópicos finais de `TODO-features.md` (MT5 e MT6) em sprints detalhadas para execução técnica, conforme as diretrizes da arquitetura do projeto e o nível de excelência `nam-rs`.
 
-## Épico 1: MT3 — WaveNet A1 Dinâmico: Generalização para N Arrays (F1-ext)
+## Épico 1: MT5 — Post-stack Head (F6)
 
-**Objetivo:** Remover o limite fixo de 2 arrays no motor `WaveNetModelDyn`, permitindo topologias de tamanho arbitrário. Isso solucionará a falha atual do teste `live_cross_validation_nondist_models`.
+O WaveNet A1 permite que um sub-objeto "head" (Conv1D + ativação) processe o sinal após a pilha de blocos, antes da saída. O `nam-rs` atualmente rejeita esse cenário na topologia e não sabe parsear o objeto.
 
-### Sprint 1.1: Refatoração Estrutural do Modelo
+### Sprint 1.1: Correção do Parser JSON e Topologia
 
-* **Task 1.1.1 [x] Modificar `WaveNetModelDyn`:**
-  * Arquivo: `src/models/wavenet/model_dyn.rs`
-  * Substituir os campos `array1` e `array2` por um vetor `pub arrays: Vec<WaveNetLayerArrayDyn>`.
-* **Task 1.1.2 [x] Adaptar Iteração do `process_internal`:**
-  * Arquivo: `src/models/wavenet/model_dyn.rs`
-  * Substituir as invocações fixas ao `array1` e `array2` por um laço seguro e "borrow-checker friendly".
-  * Lógica de conexão: O `output` do array N passa a ser o `input` do array N+1.
-  * O `head_outputs` só precisa ser extraído do *último array* no laço.
-* **Task 1.1.3 [x] Adaptar Iteração do `prewarm_internal`:**
-  * Arquivo: `src/models/wavenet/model_dyn.rs`
-  * Reproduzir a mesma lógica iterativa da Task 1.1.2 para a fase de aquecimento do modelo (`zero_input`).
+- **Tarefa 1.1.1**: Corrigir `src/loader/nam_json/model.rs`. O campo `head` em `NamConfig` está tipado incorretamente como `Option<Option<String>>`. Deve ser alterado para `Option<serde_json::Value>` (ou criar `HeadConfig`) para extrair os campos `{ channels, bias, out_channels, activation, kernel_size }` vindos do `NeuralModel.cpp` (ref: `convnet.h:108-118`).
+- **Tarefa 1.1.2**: Remover a rejeição explícita `"WaveNet 'head' (post-stack sub-object) is not supported (F6)"` no arquivo `src/loader/nam_json/topology.rs:648`.
+- **Tarefa 1.1.3**: Ajustar `FreeWavenetGeometry` se necessário para passar as informações do Head.
 
-### Sprint 1.2: Loader Dinâmico e Validação
+### Sprint 1.2: DSP do Head e Integração
 
-* **Task 1.2.1 [x] Modificar o construtor `build_wavenet_dynamic_inner`:**
-  * Arquivo: `src/loader/dispatcher/wavenet/dynamic.rs`
-  * Remover a restrição restritiva: `if geom.num_arrays != 2 { bail!(...) }`.
-  * Instanciar `WaveNetLayerArrayDyn` dentro de um `for i in 0..geom.num_arrays`.
-  * Extrair os canais (CH), tamanho do kernel (K), e bias (`has_head_bias = is_last`).
-  * Atualizar as alocações de buffer dinamicamente mantendo RT-safety (pré-alocação estrita no momento do load).
-  * **Nota Sprint 1.1:** O laço de encadeamento em `process_internal`/`prewarm_internal` usa `self.ch`/`self.head` (dimensões do array 0) para fatiar `head_outputs` e `array_outputs` dos arrays intermediários. Para N>2, verificar se usar `prev.ch`/`prev.head` (dimensões per-array) é mais robusto, especialmente se arrays intermediários tiverem CH diferente do array 0.
-* **Task 1.2.2 [x] Testes e Homologação Funcional:**
-  * Arquivo: `tests/cpp_parity.rs`
-  * Rodar a suite longa: `./utils/tests-long.sh` e certificar que `live_cross_validation_nondist_models` passa com sucesso.
-  * Verificar a integridade sonora de outros modelos via Golden Vectors.
+- **Tarefa 1.2.1**: Criar uma estrutura `PostStackHead` em `src/models/wavenet/` contendo um `Conv1d` (já existente no projeto) e o suporte a ativação dinâmica.
+- **Tarefa 1.2.2**: Adicionar o `PostStackHead` opcional ao `WaveNetModelDyn`.
+- **Tarefa 1.2.3**: Ajustar o ciclo `process` do motor dinâmico para rotear o sinal da pilha para o `PostStackHead` antes do `head_scale`.
+- **Tarefa 1.2.4**: Somar o tamanho do kernel do `PostStackHead` ao cálculo de `receptive_field` global do modelo para o `prewarm`.
+- **Tarefa 1.2.5**: Escrever testes para validar o fluxo, providenciando ou construindo um `golden test` com um modelo simulado que utilize Post-stack Head.
 
 ---
 
-## Épico 2: MT4 — Motor LSTM Arbitrário (F7)
+## Épico 2: MT5 — SlimmableWavenet e Containers Aninhados (F5 e F11)
 
-**Objetivo:** Implementar um "fallback dinâmico" para o motor LSTM capaz de lidar com constelações dimensionais desconhecidas (`num_layers`, `hidden_size`) além dos 10 perfis otimizados por `const generics`.
+Modelos "Slimmable" permitem ajustes de carga computacional e qualidade em tempo real sem a necessidade de recarregar todo o plugin.
 
-### Sprint 2.1: Infraestrutura de Camada Dinâmica
+### Sprint 2.1: Swap Dinâmico (Slimmable via SPSC GC)
 
-* **Task 2.1.1 [x] Criar estrutura `LstmLayerDyn`:**
-  * Criar arquivo: `src/models/lstm/layer_dyn.rs`
-  * Declarar `LstmLayerDyn` usando `AlignedVec` em substituição aos arrays constantes (`Aligned64<[T; N]>`).
-  * Campos: `input_size`, `hidden_size`, `input_hidden_weights`, `bias`, `state`, `state_bf16`, `cell_state`, `gates`.
-* **Task 2.1.2 [x] Implementar kernels de processamento (`LstmLayerDyn`):**
-  * Criar versões que leem as dimensões `hidden_size` diretamente em tempo de execução.
-  * Reutilizar as macros e funções estáticas localizadas em `crate::math::gemm` (por exemplo, `gemv_4gate_avx2`), que inferem o tamanho pela *length* do `slice`.
-  * Implementar as versões escalares e as versões SIMD otimizadas (`avx2`, `avx512`).
+- **Tarefa 2.1.1**: Desenvolver a infraestrutura de extração em `src/models/slimmable.rs` para permitir que o motor de instanciamento fatiar os pesos com base em um tamanho de camada dinâmico. O `NeuralAmpModelerCore` ajusta em runtime, mas para manter o hot-path RT-safe no Rust (`zero-alloc`, lock-free), o `nam-rs` utilizará a arquitetura existente de GC:
+  - A thread assíncrona cria uma nova instância `WaveNetModelDyn` recortando (`slice`) os vetores de canais/pesos.
+  - Uma nova instância leve é trocada atomicamente com o `SPSC GC` e o modelo antigo é varrido da thread RT.
+- **Tarefa 2.1.2**: Integrar este comportamento ao `adaptive.rs` para permitir que o slider de qualidade re-estancie o SLimmable sem falhas.
 
-### Sprint 2.2: Construção do Modelo e Dispatcher Híbrido
+### Sprint 2.2: Suporte a Containers Aninhados (F11)
 
-* **Task 2.2.1 [x] Construir o Modelo Dinâmico `LstmModelDyn`:**
-  * Criar arquivo: `src/models/lstm/model_dyn.rs`
-  * Compor uma struct com `layers: Vec<LstmLayerDyn>`.
-  * Implementar o método genérico `process` que faz a cadeia completa de repasse entre as camadas e soma com `head_weights`.
-* **Task 2.2.2 [x] Atualizar Parsing de Pesos:**
-  * Criar ou adaptar módulo em `src/loader/dispatcher/lstm/weights.rs` para ler os tamanhos dinâmicos alocando buffers `AlignedVec`.
-  * Cuidar com o layout dos pesos e *gate_major*.
-* **Task 2.2.3 [x] Alterar o Dispatch Híbrido:**
-  * Arquivo: `src/loader/dispatcher/lstm/dispatch.rs`
-  * Em vez de retornar um `bail!` ao encontrar topologia diferente das 10 estáticas, executar o `build_lstm_dynamic` e retornar a nova variação do `StaticModel::LstmDyn`.
-  * *Ponto de Risco*: Inserir a nova variação na `enum StaticModel` (`src/models/mod.rs`) afeta o trait. Implementar todos os selos (Sealed trait) corretamente.
-* **Task 2.2.4 [x] Validação Exaustiva:**
-  * Criar testes isolados para topologias pequenas/estranhas (ex: 3 layers, 10 hidden units) e avaliar parity com C++ se houver golden vector, ou no mínimo atestar panic-free execution.
-  * Arquivo: `tests/lstm_model_dyn_validation.rs`
-  * Cobre: 17 testes unitários + 2 proptests (#[ignore]) para geometrias (1..=8 layers) × (1..=128 hidden), parity SIMD vs scalar, determinismo, block-size invariance, reset de estados, zero-input, quantized-head path.
+- **Tarefa 2.2.1**: Revisar `src/models/container.rs` (que hoje já prevê SlimmableModel) e o desserializador `deserialize_submodels` em `src/loader/nam_json/validation.rs` para permitir de forma recursiva e segura que o modelo embutido seja um próprio container, ou mais provável, um `SlimmableWavenet`.
+- **Tarefa 2.2.2**: Produzir um carregamento robusto do `slimmable_container.nam`, validando se a topologia agora aprova os sub-modelos.
+
+---
+
+## Épico 3: MT6 — Arquitetura ConvNet e Multi-canal (F4 e F10)
+
+O `ConvNet` é um modelo legável do NAM, raramente usado por usuários finais, mas requerido para completude e conformidade estrita (paridade total). Os modelos Multi-canal (`in_channels > 1`, `out_channels > 1`) abrem caminho para DSP de pedais complexos.
+
+### Sprint 3.1: Parsing e DSP do ConvNet (F4)
+
+- **Tarefa 3.1.1**: Estender a `NamConfig` / `NamModelData` em `nam_json` para suportar `architecture: "ConvNet"`.
+- **Tarefa 3.1.2**: Implementar `BatchNorm1D` (normalização por lote) que é requerida pelos `ConvNetBlocks`, de forma nativamente vetorizada (`vfmadd231ps` em x86-64-v3).
+- **Tarefa 3.1.3**: Implementar o DSP modular:
+  - `ConvNetBlock` contendo: Conv1D (ou equivalente) -> BatchNorm -> Activation.
+  - `ConvNetModel` implementando `NamModel` para encadear os blocos e o Post-stack Head.
+- **Tarefa 3.1.4**: Conectar `ConvNetModel` ao `dispatcher`, efetuando o carregamento da lista de pesos adequadamente (`[weights]`).
+
+### Sprint 3.2: Multi-canal (F10)
+
+- **Tarefa 3.2.1**: Analisar o design da trait `NamModel::process(&mut self, input: &[f32], output: &mut [f32])`. Atualmente orientada a processamento mono/serial.
+- **Tarefa 3.2.2**: Para suportar `in_channels > 1` e `out_channels > 1`, decidir se implementaremos arrays planares (ex: iteradores multi-slice) ou sinais entrelaçados internamente. (Recomenda-se buffers N-dimensionais empacotados nos scratch buffers para os tensores convolucionais).
+- **Tarefa 3.2.3**: Alterar restrições no dispatcher e no loader para parar de injetar `in_channels=1` / `out_channels=1` compulsivo na topologia, liberando F10.
+- **Tarefa 3.2.4**: Validar desempenho das convoluções com dimensões de in/out estendidas com `cargo bench`.
+
+---
+
+> **Atenção (Revisor-Auditor):**
+> Todas as implementações acima devem assegurar a RT-Safety com `Zero Heap Drop` na thread de DSP, uso primário de `AlignedVec<T>` de 64 bytes e fallback para ISA x86-64-v3 contendo intrínsecos `AVX2/FMA`. Não se deve utilizar `f32::tanh()` em favor do aproximações nativas pré-existentes no repositório. O processo será progressivo com pull-requests isolados via `utils/lints.sh`.

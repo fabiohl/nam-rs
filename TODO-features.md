@@ -30,7 +30,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | **F3**  | **Motor A2 geral** (gating, ativações heterogêneas, `head1x1`, `bn≠ch`) | 🟢 Concluído       | Alto    |
 | **F5**  | **SlimmableWavenet** (slicing dinâmico de canais)                       | 🟠 Médio-Alto      | Alto    |
 | **F6**  | **Post-stack Head** (sub-objeto `head` multi-camada do WaveNet)         | 🟡 Médio           | Médio   |
-| **F7**  | **LSTM arbitrário** (`hidden_size`/`num_layers` fora dos 10 perfis)     | 🟠 Médio-Alto      | Médio   |
+| **F7**  | **LSTM arbitrário** (`hidden_size`/`num_layers` fora dos 10 perfis)     | 🟢 Concluído       | Médio   |
 | **F8**  | **Biblioteca completa de ativações** (PReLU, SiLU, etc.)                | 🟢 Concluído       | Médio   |
 | **F9**  | **Convoluções agrupadas/depthwise** (`groups > 1`)                      | 🟢 Concluído       | Médio   |
 | **F4**  | **ConvNet** (arquitetura legada)                                        | 🟢 Baixo           | Médio   |
@@ -52,7 +52,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `wavenet_a2_max.nam` (cond=8) | ❌ "condition_size=8 not supported" (Aguardando F1)          | **F1** (Cond=8)            |
 | `wavenet_condition_dsp.nam`   | ✅ Carrega (golden oficial c/ sub-modelo)                    | —                          |
 | `slimmable_container.nam`     | ❌ "submodel build failed"                                   | **F5 / F11**               |
-| Modelos nondist 4-array       | ❌ "requires exactly 2 layer arrays"                         | **F1-ext**                 |
+| Modelos nondist 4-array       | ✅ Carrega (motor dinâmico de N arrays)                      | —                          |
 
 ---
 
@@ -329,7 +329,7 @@ original (`model.cpp`) não tem `head_scale`. O nam-rs está correto.
 
 ---
 
-### MT3 — 🟠 WaveNet A1 Dinâmico: Generalização para N Arrays (F1-ext)
+### MT3 — ✅ WaveNet A1 Dinâmico: Generalização para N Arrays (F1-ext) Concluído (2026-06-19)
 
 **Pré-requisitos**: nenhum (ortogonal a MT1/MT2).
 **Desafio**: 🟡 Médio — mudança localizada no motor dinâmico.
@@ -354,9 +354,14 @@ que falha** na suite `tests-long.sh`.
    - Adicionar testes unitários com 3 e 4 arrays (geometrias sintéticas).
    - Golden C++ com modelo nondist de 4 arrays.
 
+**Resumo da Implementação e Resultados**:
+
+1. **Topologia Genérica de Arrays**: O `WaveNetModelDyn` foi atualizado para conter um vetor `arrays: Vec<WaveNetLayerArrayDyn>` em vez de instâncias fixas `array1` e `array2`. O dispatcher itera de forma agnóstica repassando saídas e entradas pela corrente.
+2. **Correção de Rejeição e Suporte ao C++**: A restrição no carregamento de JSON que obrigava a presença de apenas 2 sub-arrays foi removida e generalizada, o que possibilitou o teste de cross validation longo em modelos _nondist_ carregar com sucesso os pesos C++ parity.
+
 ---
 
-### MT4 — 🟠 LSTM Arbitrário (F7)
+### MT4 — ✅ LSTM Arbitrário (F7) Concluído (2026-06-19)
 
 **Pré-requisitos**: nenhum (ortogonal).
 **Desafio**: 🟡 Médio — mesma filosofia do dispatch híbrido de F1.
@@ -375,6 +380,11 @@ que falha** na suite `tests-long.sh`.
 
    - Testar com `(1,32)`, `(2,16)`, `(3,8)` e outras geometrias incomuns.
    - Golden C++ com LSTM de geometria não-padrão.
+
+**Resumo da Implementação e Resultados**:
+
+1. **Estruturas Dinâmicas LSTM**: `LstmLayerDyn` e `LstmModelDyn` implementados em `src/models/lstm/` operando via vetores (`AlignedVec`), com integração segura (RT-safe heap allocation apenas em load time) das funções super dimensionais de `crate::math::gemm` já vetorizadas (AVX2, AVX-512 e fallback escalar).
+2. **Dispatcher Híbrido**: O motor de despacho em `src/loader/dispatcher/lstm/dispatch.rs` foi redirecionado; ao invés de abortar no `match` de _const generics_, ele preenche via fallback os pesos alinhados pelo JSON na via `LstmDyn` de `StaticModel`. A compatibilidade cobre a totalidade do spec atual de modelos LSTM, validados pelo validador.
 
 ---
 
