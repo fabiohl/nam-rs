@@ -47,7 +47,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
 
 ### Sprint 2.1: Infraestrutura de Camada Dinâmica
 
-* **Task 2.1.1 [ ] Criar estrutura `LstmLayerDyn`:**
+* **Task 2.1.1 [x] Criar estrutura `LstmLayerDyn`:**
   * Criar arquivo: `src/models/lstm/layer_dyn.rs`
   * Declarar `LstmLayerDyn` usando `AlignedVec` em substituição aos arrays constantes (`Aligned64<[T; N]>`).
   * Campos: `input_size`, `hidden_size`, `input_hidden_weights`, `bias`, `state`, `state_bf16`, `cell_state`, `gates`.

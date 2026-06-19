@@ -12,7 +12,8 @@
 //! ```text
 //! lstm/
 //! ├── mod.rs        # Re-exports, type aliases, NamModel impls
-//! ├── layer.rs      # LstmLayer + per-sample SIMD processing macros
+//! ├── layer.rs      # LstmLayer (const-generic)
+//! ├── layer_dyn.rs  # LstmLayerDyn (heap-allocated)
 //! ├── model1.rs     # LstmModel1 + define_lstm1_process! macro
 //! ├── model2.rs     # LstmModel2 + define_lstm2_process_pipelined! macro
 //! ├── prewarm.rs    # LstmLike trait + lstm_prewarm_common
@@ -23,6 +24,7 @@ use super::NamModel;
 use super::sealed;
 
 pub mod layer;
+pub mod layer_dyn;
 pub mod layer_kernels;
 pub mod model1;
 pub mod model2;
@@ -33,6 +35,7 @@ pub mod prewarm;
 // =============================================================================
 
 pub use layer::LstmLayer;
+pub use layer_dyn::LstmLayerDyn;
 pub use model1::LstmModel1;
 pub use model2::LstmModel2;
 
