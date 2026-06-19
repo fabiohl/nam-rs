@@ -292,4 +292,95 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_leaky_hard_tanh_avx2_parity() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        let min_val = -1.0_f32;
+        let max_val = 1.0_f32;
+        let min_slope = 0.15_f32;
+        let max_slope = 0.25_f32;
+
+        #[target_feature(enable = "avx2")]
+        unsafe fn scalar_ref(
+            data: &mut [f32],
+            min_val: f32,
+            max_val: f32,
+            min_slope: f32,
+            max_slope: f32,
+        ) {
+            for x in data.iter_mut() {
+                if *x < min_val {
+                    *x = (*x - min_val) * min_slope + min_val;
+                } else if *x > max_val {
+                    *x = (*x - max_val) * max_slope + max_val;
+                }
+            }
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe {
+            super::super::leaky_hard_tanh_slice_avx2(
+                &mut simd_data,
+                min_val,
+                max_val,
+                min_slope,
+                max_slope,
+            )
+        };
+        unsafe { scalar_ref(&mut ref_data, min_val, max_val, min_slope, max_slope) };
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-6,
+                "AVX2 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_leaky_hard_tanh_avx2_large_slice() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        let min_val = -1.5_f32;
+        let max_val = 1.5_f32;
+        let min_slope = 0.1_f32;
+        let max_slope = 0.3_f32;
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            if *x < min_val {
+                *x = (*x - min_val) * min_slope + min_val;
+            } else if *x > max_val {
+                *x = (*x - max_val) * max_slope + max_val;
+            }
+        }
+
+        unsafe {
+            super::super::leaky_hard_tanh_slice_avx2(
+                &mut data, min_val, max_val, min_slope, max_slope,
+            )
+        };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX2 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
 }

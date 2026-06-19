@@ -156,11 +156,17 @@ impl ActivationFn for ActivationType {
                 min_slope,
                 max_slope,
             } => {
-                for x in data.iter_mut() {
-                    if *x < *min_val {
-                        *x = (*x - *min_val) * *min_slope + *min_val;
-                    } else if *x > *max_val {
-                        *x = (*x - *max_val) * *max_slope + *max_val;
+                if is_x86_feature_detected!("avx2") {
+                    unsafe {
+                        leaky_hard_tanh_slice_avx2(data, *min_val, *max_val, *min_slope, *max_slope)
+                    }
+                } else {
+                    for x in data.iter_mut() {
+                        if *x < *min_val {
+                            *x = (*x - *min_val) * *min_slope + *min_val;
+                        } else if *x > *max_val {
+                            *x = (*x - *max_val) * *max_slope + *max_val;
+                        }
                     }
                 }
             }
@@ -263,6 +269,66 @@ pub unsafe fn hard_swish_slice_avx2(data: &mut [f32]) {
     for x in data.iter_mut().skip(i) {
         let t = *x + 3.0;
         *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
+    }
+}
+
+/// AVX2-accelerated LeakyHardTanh: branchless blend over a slice.
+///
+/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn leaky_hard_tanh_slice_avx2(
+    data: &mut [f32],
+    min_val: f32,
+    max_val: f32,
+    min_slope: f32,
+    max_slope: f32,
+) {
+    let min_v = _mm256_set1_ps(min_val);
+    let max_v = _mm256_set1_ps(max_val);
+    let min_sl_v = _mm256_set1_ps(min_slope);
+    let max_sl_v = _mm256_set1_ps(max_slope);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
+            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+            let lt_min1 = _mm256_cmp_ps(x1, min_v, _CMP_LT_OS);
+            let lt_min2 = _mm256_cmp_ps(x2, min_v, _CMP_LT_OS);
+            let lo_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, min_v), min_sl_v, min_v);
+            let lo_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, min_v), min_sl_v, min_v);
+            let gt_max1 = _mm256_cmp_ps(x1, max_v, _CMP_GT_OS);
+            let gt_max2 = _mm256_cmp_ps(x2, max_v, _CMP_GT_OS);
+            let hi_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, max_v), max_sl_v, max_v);
+            let hi_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, max_v), max_sl_v, max_v);
+            let y1 = _mm256_blendv_ps(_mm256_blendv_ps(x1, lo_part1, lt_min1), hi_part1, gt_max1);
+            let y2 = _mm256_blendv_ps(_mm256_blendv_ps(x2, lo_part2, lt_min2), hi_part2, gt_max2);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
+        }
+        i += 16;
+    }
+    while i + 8 <= len {
+        unsafe {
+            let x = _mm256_loadu_ps(data.as_ptr().add(i));
+            let lt_min = _mm256_cmp_ps(x, min_v, _CMP_LT_OS);
+            let lo_part = _mm256_fmadd_ps(_mm256_sub_ps(x, min_v), min_sl_v, min_v);
+            let gt_max = _mm256_cmp_ps(x, max_v, _CMP_GT_OS);
+            let hi_part = _mm256_fmadd_ps(_mm256_sub_ps(x, max_v), max_sl_v, max_v);
+            let y = _mm256_blendv_ps(_mm256_blendv_ps(x, lo_part, lt_min), hi_part, gt_max);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
+        }
+        i += 8;
+    }
+    for x in data.iter_mut().skip(i) {
+        if *x < min_val {
+            *x = (*x - min_val) * min_slope + min_val;
+        } else if *x > max_val {
+            *x = (*x - max_val) * max_slope + max_val;
+        }
     }
 }
 

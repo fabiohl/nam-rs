@@ -431,7 +431,7 @@ unsafe fn hard_swish_slice_avx2(data: &mut [f32]) {
 
 ---
 
-#### T2.3 — Vetorizar `LeakyHardTanh` com AVX2 branchless
+#### T2.3 — Vetorizar `LeakyHardTanh` com AVX2 branchless [DONE]
 
 **Arquivo**: `src/models/a2/activations.rs`
 
@@ -479,6 +479,8 @@ unsafe fn leaky_hard_tanh_slice_avx2(
 ```
 
 **Ganho esperado**: ~4× throughput vs escalar com branches (branch mispredicts eliminados).
+
+**Status**: Concluído (2026-06-19). Função `leaky_hard_tanh_slice_avx2` implementada em `src/models/a2/activations.rs:289` com dispatch via `is_x86_feature_detected!("avx2")`. Testes de paridade AVX2 (`test_leaky_hard_tanh_avx2_parity`, `test_leaky_hard_tanh_avx2_large_slice`) em `activations_test.rs`. 19/19 testes passando com diff < 1e-6.
 
 ---
 
