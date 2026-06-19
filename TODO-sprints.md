@@ -261,7 +261,7 @@ com `-C target-cpu=x86-64-v3`). Ver Cargo.toml para confirmar.
 
 ---
 
-#### T1.4 — Benchmarks antes/depois da A2 Head Conv
+#### T1.4 — Benchmarks antes/depois da A2 Head Conv ✅ [DONE]
 
 **Arquivo**: `benches/inference_bench.rs`
 
@@ -284,6 +284,9 @@ fn bench_a2_head_ch3(c: &mut Criterion) { ... }
 - AVX2 deve ser ≥ 2× mais rápido que escalar para CH=8 (estimado: ~4–6×).
 - Throughput CH=3 SSE deve ser ≥ 1.5× mais rápido que escalar.
 - Comparar com baseline capturado ANTES da mudança (salvar em `target/logs/bench_before_mt7_s1.txt`).
+
+**Status**: Concluído. `bench_a2_head_ch8` e `bench_a2_head_ch3` adicionados em `inference_bench.rs`.
+Resultados (2026-06-19): CH=8 AVX2 ~14.7× sobre escalar (critério ≥2× OK), CH=3 SSE ~2.19× sobre escalar (critério ≥1.5× OK). Baseline salva em `target/logs/bench_before_mt7_s1.txt`.
 
 ---
 

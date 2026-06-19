@@ -1398,6 +1398,8 @@ criterion_group!(
     bench_prewarm_lstm_2x16,
     bench_prewarm_a2_full,
     bench_prewarm_a2_lite,
+    bench_a2_head_ch8,
+    bench_a2_head_ch3,
     bench_head_rechannel_fp32,
     bench_clap_process_block_64samp,
     bench_cabsim_short_ir_64samp,
@@ -1411,6 +1413,148 @@ criterion_group!(
     bench_container_crossfade_64samp,
     bench_nondist_models
 );
+
+/// Bench: A2 Head Conv CH=8 — scalar vs AVX2+FMA (16 frames).
+///
+/// Tests the isolated A2 Head Conv kernel with 8 channels over 16
+/// frames, comparing the scalar reference implementation against
+/// the AVX2+FMA SIMD kernel with T=4 frame-tiling.
+fn bench_a2_head_ch8(c: &mut Criterion) {
+    const NUM_FRAMES: usize = 16;
+    const RING_SIZE: usize = 256;
+    const RING_MASK: usize = RING_SIZE - 1;
+    const CH: usize = 8;
+    const K: usize = 16;
+    let write_pos: usize = 200;
+
+    // Deterministic weights via LCG (matches head_test.rs)
+    let mut state: u32 = 42;
+    let mut w = AlignedVec::new(K * CH, 0.0f32);
+    for val in &mut *w {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
+    }
+    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+    let head_b = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
+    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+    let head_scale = ((state as f32) / (u32::MAX as f32)) * 0.5 + 0.75;
+
+    let mut history = vec![0.0f32; CH * RING_SIZE];
+    state = 99;
+    for val in &mut history {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
+    }
+
+    let mut output = vec![0.0f32; NUM_FRAMES];
+    let avx2_available =
+        std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
+
+    let mut group = c.benchmark_group("A2HeadConv_CH8");
+    group.bench_function("a2_head_ch8_scalar", |b| {
+        b.iter(|| {
+            nam_rs::models::a2::a2_head_block_scalar_ref(
+                std::hint::black_box(&w),
+                std::hint::black_box(head_b),
+                std::hint::black_box(head_scale),
+                std::hint::black_box(CH),
+                std::hint::black_box(&history),
+                std::hint::black_box(write_pos),
+                std::hint::black_box(RING_MASK),
+                std::hint::black_box(NUM_FRAMES),
+                std::hint::black_box(&mut output),
+            );
+        });
+    });
+
+    if avx2_available {
+        group.bench_function("a2_head_ch8_avx2", |b| {
+            b.iter(|| unsafe {
+                nam_rs::models::a2::head_process_ch8_avx2(
+                    std::hint::black_box(&w),
+                    std::hint::black_box(head_b),
+                    std::hint::black_box(head_scale),
+                    std::hint::black_box(&history),
+                    std::hint::black_box(write_pos),
+                    std::hint::black_box(RING_MASK),
+                    std::hint::black_box(NUM_FRAMES),
+                    std::hint::black_box(&mut output),
+                );
+            });
+        });
+    }
+    group.finish();
+}
+
+/// Bench: A2 Head Conv CH=3 — scalar vs SSE+FMA (16 frames).
+///
+/// Tests the isolated A2 Head Conv kernel with 3 channels over 16
+/// frames, comparing the scalar reference implementation against
+/// the SSE+FMA SIMD kernel.
+fn bench_a2_head_ch3(c: &mut Criterion) {
+    const NUM_FRAMES: usize = 16;
+    const RING_SIZE: usize = 256;
+    const RING_MASK: usize = RING_SIZE - 1;
+    const CH: usize = 3;
+    const K: usize = 16;
+    let write_pos: usize = 200;
+
+    let mut state: u32 = 42;
+    let mut w = AlignedVec::new(K * CH, 0.0f32);
+    for val in &mut *w {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
+    }
+    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+    let head_b = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
+    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+    let head_scale = ((state as f32) / (u32::MAX as f32)) * 0.5 + 0.75;
+
+    let mut history = vec![0.0f32; CH * RING_SIZE];
+    state = 99;
+    for val in &mut history {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
+    }
+
+    let mut output = vec![0.0f32; NUM_FRAMES];
+    let sse_available = std::arch::is_x86_feature_detected!("fma");
+
+    let mut group = c.benchmark_group("A2HeadConv_CH3");
+    group.bench_function("a2_head_ch3_scalar", |b| {
+        b.iter(|| {
+            nam_rs::models::a2::a2_head_block_scalar_ref(
+                std::hint::black_box(&w),
+                std::hint::black_box(head_b),
+                std::hint::black_box(head_scale),
+                std::hint::black_box(CH),
+                std::hint::black_box(&history),
+                std::hint::black_box(write_pos),
+                std::hint::black_box(RING_MASK),
+                std::hint::black_box(NUM_FRAMES),
+                std::hint::black_box(&mut output),
+            );
+        });
+    });
+
+    if sse_available {
+        group.bench_function("a2_head_ch3_sse", |b| {
+            b.iter(|| unsafe {
+                nam_rs::models::a2::head_process_ch3_sse(
+                    std::hint::black_box(&w),
+                    std::hint::black_box(head_b),
+                    std::hint::black_box(head_scale),
+                    std::hint::black_box(&history),
+                    std::hint::black_box(write_pos),
+                    std::hint::black_box(RING_MASK),
+                    std::hint::black_box(NUM_FRAMES),
+                    std::hint::black_box(&mut output),
+                );
+            });
+        });
+    }
+    group.finish();
+}
 
 /// Measures the processing cost of a ContainerModel crossfade block
 /// (dual inference + SIMD blend via FMA), the worst-case per-block cost

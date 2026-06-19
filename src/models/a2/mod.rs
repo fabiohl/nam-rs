@@ -30,7 +30,10 @@ pub use activations::{ActivationFn, ActivationType};
 pub use conv1d::A2Conv1d;
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
-pub use head::{A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref};
+pub use head::{
+    A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref, head_process_ch3_sse,
+    head_process_ch8_avx2,
+};
 pub use layer::{A2Layer, a2_layer_single_frame_scalar_ref};
 pub use model::WaveNetA2;
 pub use params::{
