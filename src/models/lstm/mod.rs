@@ -25,6 +25,7 @@ use super::sealed;
 
 pub mod layer;
 pub mod layer_dyn;
+pub mod layer_dyn_kernels;
 pub mod layer_kernels;
 pub mod model1;
 pub mod model2;

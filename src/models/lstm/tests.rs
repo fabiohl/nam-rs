@@ -261,4 +261,184 @@ mod tests {
             );
         }
     }
+
+    // =====================================================================
+    // Dynamic layer kernel tests (Task 2.1.2)
+    // =====================================================================
+
+    use crate::models::lstm::layer_dyn::LstmLayerDyn;
+
+    fn fill_dyn_layer(layer: &mut LstmLayerDyn, h: usize, input_size: usize) {
+        let ih = input_size + h;
+        for i in 0..(4 * h) {
+            layer.bias[i] = 0.1 * (1 + (i % 4)) as f32;
+        }
+        for k in 0..4 {
+            let w_start = k * ih * h;
+            for j in 0..ih {
+                for hi in 0..h {
+                    layer.input_hidden_weights[w_start + j * h + hi] =
+                        f32_to_f16_bits(0.01 * (j + hi + k + 1) as f32);
+                }
+            }
+        }
+    }
+
+    /// Tests SIMD vs scalar parity on a 1-input dynamic layer.
+    fn assert_dyn_layer_parity(hidden_size: usize) {
+        let h = hidden_size;
+
+        let mut layer_scalar = LstmLayerDyn::new(1, h);
+        let mut layer_simd = LstmLayerDyn::new(1, h);
+
+        fill_dyn_layer(&mut layer_scalar, h, 1);
+        layer_simd
+            .input_hidden_weights
+            .copy_from_slice(&layer_scalar.input_hidden_weights);
+        layer_simd.bias.copy_from_slice(&layer_scalar.bias);
+        layer_simd.state.copy_from_slice(&layer_scalar.state);
+        layer_simd
+            .cell_state
+            .copy_from_slice(&layer_scalar.cell_state);
+
+        let test_inputs = [0.5f32, -0.7, 0.1, 0.9, -1.0, 0.3, -0.3, 0.0];
+
+        for (_step, &input_val) in test_inputs.iter().enumerate() {
+            let input = [input_val];
+
+            layer_scalar.process_sample_scalar(&input, false);
+            layer_simd.process(&input);
+
+            for j in 0..h {
+                assert!(
+                    (layer_scalar.state[1 + j] - layer_simd.state[1 + j]).abs() < 1e-2,
+                    "Dyn parity H={} step={} hidden[{}]: {} vs {}",
+                    h,
+                    _step,
+                    j,
+                    layer_scalar.state[1 + j],
+                    layer_simd.state[1 + j],
+                );
+                assert!(
+                    (layer_scalar.cell_state[j] - layer_simd.cell_state[j]).abs() < 1e-2,
+                    "Dyn parity H={} step={} cell[{}]: {} vs {}",
+                    h,
+                    _step,
+                    j,
+                    layer_scalar.cell_state[j],
+                    layer_simd.cell_state[j],
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dyn_layer_parity_h8() {
+        assert_dyn_layer_parity(8);
+    }
+
+    #[test]
+    fn test_dyn_layer_parity_h16() {
+        assert_dyn_layer_parity(16);
+    }
+
+    #[test]
+    fn test_dyn_layer_parity_h24() {
+        assert_dyn_layer_parity(24);
+    }
+
+    #[test]
+    fn test_dyn_layer_parity_h_nonstandard() {
+        assert_dyn_layer_parity(10);
+        assert_dyn_layer_parity(13);
+    }
+
+    #[test]
+    fn test_dyn_layer_no_panic() {
+        let test_sizes = [3, 7, 20, 40, 64];
+        for &h in &test_sizes {
+            let mut layer = LstmLayerDyn::new(1, h);
+            fill_dyn_layer(&mut layer, h, 1);
+            let input = [0.5];
+            layer.process(&input);
+            for j in 0..h {
+                assert!(
+                    layer.state[1 + j].is_finite(),
+                    "Dyn H={} hidden[{}] is NaN/Inf: {}",
+                    h,
+                    j,
+                    layer.state[1 + j]
+                );
+                assert!(
+                    layer.cell_state[j].is_finite(),
+                    "Dyn H={} cell[{}] is NaN/Inf: {}",
+                    h,
+                    j,
+                    layer.cell_state[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dyn_layer_determinism() {
+        let mut layer_a = LstmLayerDyn::new(1, 12);
+        let mut layer_b = LstmLayerDyn::new(1, 12);
+
+        fill_dyn_layer(&mut layer_a, 12, 1);
+        layer_b
+            .input_hidden_weights
+            .copy_from_slice(&layer_a.input_hidden_weights);
+        layer_b.bias.copy_from_slice(&layer_a.bias);
+        layer_b.state.copy_from_slice(&layer_a.state);
+        layer_b.cell_state.copy_from_slice(&layer_a.cell_state);
+
+        let input = [0.7];
+        layer_a.process(&input);
+        layer_b.process(&input);
+
+        for j in 0..12 {
+            assert_eq!(
+                layer_a.state[1 + j],
+                layer_b.state[1 + j],
+                "Dyn deter hidden[{}]: {} vs {}",
+                j,
+                layer_a.state[1 + j],
+                layer_b.state[1 + j]
+            );
+            assert_eq!(
+                layer_a.cell_state[j], layer_b.cell_state[j],
+                "Dyn deter cell[{}]: {} vs {}",
+                j, layer_a.cell_state[j], layer_b.cell_state[j]
+            );
+        }
+    }
+
+    #[test]
+    fn test_dyn_layer_state_evolution() {
+        let mut layer = LstmLayerDyn::new(1, 16);
+        fill_dyn_layer(&mut layer, 16, 1);
+
+        let initial_hidden: Vec<f32> = layer.state[1..].to_vec();
+
+        let input = [0.5];
+        layer.process(&input);
+        let hidden_1: Vec<f32> = layer.state[1..].to_vec();
+
+        for _ in 0..9 {
+            layer.process(&input);
+        }
+        let hidden_10: Vec<f32> = layer.state[1..].to_vec();
+
+        for j in 0..16 {
+            assert!(initial_hidden[j] == 0.0, "Initial hidden should be zero");
+            assert!(
+                (hidden_1[j] - hidden_10[j]).abs() > 1e-6,
+                "Dyn state should evolve h[{}]: {} vs {}",
+                j,
+                hidden_1[j],
+                hidden_10[j]
+            );
+        }
+    }
 }

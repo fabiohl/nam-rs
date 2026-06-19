@@ -1,0 +1,258 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Dynamic LSTM layer processing kernels — SIMD paths and scalar fallback.
+//!
+//! Reuses the existing `gemv_4gate_*` and `fused_lstm_gates_dyn_*` functions
+//! from `crate::math::gemm` and `crate::math::lstm`, which infer dimensions
+//! directly from slice lengths at runtime.
+
+use crate::dispatch_simd;
+use crate::math::activations::scalar_minimax_sigmoid;
+use crate::math::common::half::f16_bits_to_f32;
+use core::arch::x86_64::*;
+
+use super::layer_dyn::LstmLayerDyn;
+
+// =========================================================================
+// Scalar fallback — reference implementation for validation
+// =========================================================================
+
+impl LstmLayerDyn {
+    /// Scalar processing (fallback) for tests and benchmarks.
+    ///
+    /// This is the fully manual version, used as a reference to ensure that
+    /// the SIMD-accelerated paths produce mathematically identical results.
+    #[inline(always)]
+    pub fn process_sample_scalar(&mut self, input: &[f32], is_bf16: bool) {
+        let i = self.input_size;
+        let h = self.hidden_size;
+        let ih = i + h;
+
+        self.state[..i].copy_from_slice(&input[..i]);
+
+        // Manual weight-input multiplication (4 gates).
+        for k in 0..4 {
+            let target_gate_offset = k * h;
+            let w_start = k * ih * h;
+            for hi in 0..h {
+                let mut sum = 0.0;
+                for j in 0..ih {
+                    let s = self.state[j];
+                    let w = self.input_hidden_weights[w_start + j * h + hi];
+                    let w_f32 = if is_bf16 {
+                        f32::from_bits((w as u32) << 16)
+                    } else {
+                        f16_bits_to_f32(w)
+                    };
+                    sum += w_f32 * s;
+                }
+                self.gates[target_gate_offset + hi] = sum + self.bias[target_gate_offset + hi];
+            }
+        }
+
+        // Manual activation of the LSTM gates.
+        for j in 0..h {
+            let gf = self.gates[j + h];
+            let gi = self.gates[j];
+            let gg = self.gates[j + 2 * h];
+            let go = self.gates[j + 3 * h];
+            let cs = self.cell_state[j];
+
+            let f = scalar_minimax_sigmoid(gf);
+            let in_gate = scalar_minimax_sigmoid(gi);
+            let g = gg.tanh();
+            let o = scalar_minimax_sigmoid(go);
+
+            let new_cs = f * cs + in_gate * g;
+            let h_val = o * new_cs.tanh();
+
+            self.cell_state[j] = new_cs;
+            self.state[i + j] = h_val;
+        }
+    }
+}
+
+// =========================================================================
+// AVX2 specialization (x86-64-v3 baseline)
+// =========================================================================
+
+impl LstmLayerDyn {
+    /// Processes a sample through the dynamic LSTM layer using AVX2+FMA+F16C.
+    ///
+    /// # Safety
+    /// The caller must have verified AVX2+FMA+F16C CPU support.
+    #[target_feature(enable = "avx2,fma,f16c")]
+    pub unsafe fn process_sample_avx2(&mut self, input: &[f32]) {
+        let i = self.input_size;
+        let h = self.hidden_size;
+        let ih = i + h;
+        let stride = ih * h;
+
+        // 1. Copy audio sample into the consolidated state buffer.
+        self.state[..i].copy_from_slice(&input[..i]);
+
+        // 2. Prefetch state to minimise DRAM stalls during the GEMV.
+        _mm_prefetch::<_MM_HINT_T0>(self.state.as_ptr().cast::<i8>());
+
+        // 3. Compute the 4 LSTM gates via the AVX2 GEMV kernel.
+        unsafe {
+            crate::math::gemm::gemv_4gate_avx2(
+                &self.state[..ih],
+                &self.input_hidden_weights[0..stride],
+                &self.input_hidden_weights[stride..2 * stride],
+                &self.input_hidden_weights[2 * stride..3 * stride],
+                &self.input_hidden_weights[3 * stride..4 * stride],
+                &self.bias[..4 * h],
+                &mut self.gates[..4 * h],
+                true,
+            );
+        }
+
+        // 4. Update cell state and hidden state via fused-gate kernel.
+        let (gates_slice, _rest) = &mut self.gates.split_at_mut(4 * h);
+        let (cell_slice, _) = &mut self.cell_state.split_at_mut(h);
+        let hidden_slice = &mut self.state[i..];
+        unsafe {
+            crate::math::lstm::fused_lstm_gates_dyn_avx2(gates_slice, cell_slice, hidden_slice, h);
+        }
+    }
+}
+
+// =========================================================================
+// AVX-512 specialization (F+VL)
+// =========================================================================
+
+impl LstmLayerDyn {
+    /// Processes a sample through the dynamic LSTM layer using AVX-512F+VL.
+    ///
+    /// # Safety
+    /// The caller must have verified AVX-512F+VL CPU support.
+    #[target_feature(enable = "avx512f,avx512vl")]
+    pub unsafe fn process_sample_avx512(&mut self, input: &[f32]) {
+        let i = self.input_size;
+        let h = self.hidden_size;
+        let ih = i + h;
+        let stride = ih * h;
+
+        self.state[..i].copy_from_slice(&input[..i]);
+
+        _mm_prefetch::<_MM_HINT_T0>(self.state.as_ptr().cast::<i8>());
+
+        unsafe {
+            crate::math::gemm::gemv_4gate_avx512(
+                &self.state[..ih],
+                &self.input_hidden_weights[0..stride],
+                &self.input_hidden_weights[stride..2 * stride],
+                &self.input_hidden_weights[2 * stride..3 * stride],
+                &self.input_hidden_weights[3 * stride..4 * stride],
+                &self.bias[..4 * h],
+                &mut self.gates[..4 * h],
+                true,
+            );
+        }
+
+        let (gates_slice, _rest) = &mut self.gates.split_at_mut(4 * h);
+        let (cell_slice, _) = &mut self.cell_state.split_at_mut(h);
+        let hidden_slice = &mut self.state[i..];
+        unsafe {
+            crate::math::lstm::fused_lstm_gates_dyn_avx512(
+                gates_slice,
+                cell_slice,
+                hidden_slice,
+                h,
+            );
+        }
+    }
+}
+
+// =========================================================================
+// AVX-512 BF16 VNNI specialization
+// =========================================================================
+
+impl LstmLayerDyn {
+    /// Processes a sample through the dynamic LSTM layer using AVX-512 BF16.
+    ///
+    /// # Safety
+    /// The caller must have verified AVX-512F+VL+BF16 CPU support.
+    #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
+    pub unsafe fn process_sample_avx512_vnni_bf16(&mut self, input: &[f32]) {
+        let i = self.input_size;
+        let h = self.hidden_size;
+        let ih = i + h;
+        let stride = ih * h;
+
+        // 1. Copy input.
+        self.state[..i].copy_from_slice(&input[..i]);
+
+        // 2. Convert input portion of state to BF16 for VNNI acceleration.
+        use crate::math::common::SimdMath;
+        unsafe {
+            crate::math::common::Avx512VnniBf16Math::f32_to_bf16(
+                &self.state[..i],
+                &mut self.state_bf16[..i],
+            );
+        }
+
+        _mm_prefetch::<_MM_HINT_T0>(self.state.as_ptr().cast::<i8>());
+
+        // 3. GEMV with native BF16 weights and state.
+        unsafe {
+            crate::math::gemm::gemv_4gate_bf16_avx512(
+                &self.state_bf16[..ih],
+                &self.input_hidden_weights[0..stride],
+                &self.input_hidden_weights[stride..2 * stride],
+                &self.input_hidden_weights[2 * stride..3 * stride],
+                &self.input_hidden_weights[3 * stride..4 * stride],
+                &self.bias[..4 * h],
+                &mut self.gates[..4 * h],
+                true,
+            );
+        }
+
+        // 4. Fused gates.
+        let (gates_slice, _rest) = &mut self.gates.split_at_mut(4 * h);
+        let (cell_slice, _) = &mut self.cell_state.split_at_mut(h);
+        let hidden_slice = &mut self.state[i..];
+        unsafe {
+            crate::math::lstm::fused_lstm_gates_dyn_avx512(
+                gates_slice,
+                cell_slice,
+                hidden_slice,
+                h,
+            );
+        }
+
+        // 5. Update BF16 mirror for the new hidden state.
+        unsafe {
+            crate::math::common::Avx512VnniBf16Math::f32_to_bf16(
+                &self.state[i..],
+                &mut self.state_bf16[i..],
+            );
+        }
+    }
+}
+
+// =========================================================================
+// Dispatch helper — selects the right kernel at call site
+// =========================================================================
+
+impl LstmLayerDyn {
+    /// Dispatches to the highest available SIMD kernel based on global config.
+    ///
+    /// Calls the matching `#[target_feature]` method, which is safe because
+    /// the global `SIMD_MATH` configuration was validated against the CPU
+    /// at application startup.
+    #[inline]
+    pub fn process(&mut self, input: &[f32]) {
+        unsafe {
+            dispatch_simd!(
+                @self,
+                process_sample_avx512_vnni_bf16,
+                process_sample_avx512,
+                process_sample_avx2,
+                input
+            );
+        }
+    }
+}

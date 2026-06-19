@@ -51,7 +51,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
   * Criar arquivo: `src/models/lstm/layer_dyn.rs`
   * Declarar `LstmLayerDyn` usando `AlignedVec` em substituição aos arrays constantes (`Aligned64<[T; N]>`).
   * Campos: `input_size`, `hidden_size`, `input_hidden_weights`, `bias`, `state`, `state_bf16`, `cell_state`, `gates`.
-* **Task 2.1.2 [ ] Implementar kernels de processamento (`LstmLayerDyn`):**
+* **Task 2.1.2 [x] Implementar kernels de processamento (`LstmLayerDyn`):**
   * Criar versões que leem as dimensões `hidden_size` diretamente em tempo de execução.
   * Reutilizar as macros e funções estáticas localizadas em `crate::math::gemm` (por exemplo, `gemv_4gate_avx2`), que inferem o tamanho pela *length* do `slice`.
   * Implementar as versões escalares e as versões SIMD otimizadas (`avx2`, `avx512`).
