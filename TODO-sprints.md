@@ -223,7 +223,7 @@ Limitado pelo custo dos 16 `_mm_setr_ps` por frame; aceitável para esta geometr
 
 ---
 
-#### T1.3 — Integrar dispatch no `A2HeadConv::process()`
+#### T1.3 — Integrar dispatch no `A2HeadConv::process()` [DONE]
 
 **Arquivo**: `src/models/a2/head.rs`
 

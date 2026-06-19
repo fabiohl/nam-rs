@@ -25,6 +25,7 @@
 use crate::math::common::AlignedVec;
 use crate::math::common::hsum_avx2;
 use core::arch::x86_64::*;
+use std::arch::is_x86_feature_detected;
 
 /// Head convolution for the A2 WaveNet architecture.
 ///
@@ -90,12 +91,53 @@ impl A2HeadConv {
         num_frames: usize,
         output: &mut [f32],
     ) {
+        debug_assert!(output.len() >= num_frames);
+        debug_assert!(head_history.len() >= (ring_mask + 1) * self.num_channels);
+
+        // Dispatch to SIMD kernels when available.
+        match self.num_channels {
+            8 => {
+                if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                    // SAFETY: target_feature gated by runtime detection above.
+                    unsafe {
+                        head_process_ch8_avx2(
+                            &self.head_w,
+                            self.head_b,
+                            self.head_scale,
+                            head_history,
+                            head_write_pos,
+                            ring_mask,
+                            num_frames,
+                            output,
+                        );
+                    }
+                    return;
+                }
+            }
+            3 => {
+                if is_x86_feature_detected!("fma") {
+                    // SAFETY: target_feature gated by runtime detection above.
+                    unsafe {
+                        head_process_ch3_sse(
+                            &self.head_w,
+                            self.head_b,
+                            self.head_scale,
+                            head_history,
+                            head_write_pos,
+                            ring_mask,
+                            num_frames,
+                            output,
+                        );
+                    }
+                    return;
+                }
+            }
+            _ => {}
+        }
+
+        // Scalar fallback.
         let k = self.kernel_size;
         let ch = self.num_channels;
-        debug_assert!(output.len() >= num_frames);
-        // Ring mask must be consistent with buffer size.
-        debug_assert!(head_history.len() >= (ring_mask + 1) * ch);
-
         let base = head_write_pos.wrapping_sub(num_frames);
 
         for (f, out_val) in output.iter_mut().take(num_frames).enumerate() {
