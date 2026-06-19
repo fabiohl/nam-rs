@@ -15,6 +15,7 @@
 //! Contains implementations of optimized audio algorithms, including
 //! energy calculations, correlations, and filters.
 
+pub mod fft;
 pub mod gain;
 pub mod gain_lut;
 pub mod stereo;

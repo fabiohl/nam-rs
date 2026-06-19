@@ -13,7 +13,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Diretriz Central**: Desenvolver algoritmos *Radix-2 Cooley-Tukey* decimation-in-time in-place e algoritmos reais (RFFT/IRFFT) customizados, abstraindo `f32` e `f64`.
 
-- [ ] **Tarefa 1.1 (Base Complexa In-Place)**: Criar módulo `src/math/dsp/fft.rs` contendo a FFT Complexa genérica (`f32` e `f64`).
+- [x] **Tarefa 1.1 (Base Complexa In-Place)**: Criar módulo `src/math/dsp/fft.rs` contendo a FFT Complexa genérica (`f32` e `f64`).
   - Desenvolver a inicialização (`new`) que pré-calcula:
     1. Arrays estáticos de **Bit-Reversal** baseados no tamanho $N$.
     2. Fatores de rotação (**Twiddle Factors**): matrizes de senos e cossenos pré-computados (para evitar recomputar `sin/cos` na thread de áudio).
