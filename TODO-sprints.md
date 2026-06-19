@@ -62,7 +62,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
   * Criar arquivo: `src/models/lstm/model_dyn.rs`
   * Compor uma struct com `layers: Vec<LstmLayerDyn>`.
   * Implementar o método genérico `process` que faz a cadeia completa de repasse entre as camadas e soma com `head_weights`.
-* **Task 2.2.2 [ ] Atualizar Parsing de Pesos:**
+* **Task 2.2.2 [x] Atualizar Parsing de Pesos:**
   * Criar ou adaptar módulo em `src/loader/dispatcher/lstm/weights.rs` para ler os tamanhos dinâmicos alocando buffers `AlignedVec`.
   * Cuidar com o layout dos pesos e *gate_major*.
 * **Task 2.2.3 [ ] Alterar o Dispatch Híbrido:**

@@ -3,7 +3,7 @@
 
 use super::super::WeightCursor;
 use crate::math::common::quantize_weight;
-use crate::models::lstm::LstmLayer;
+use crate::models::lstm::{LstmLayer, LstmLayerDyn};
 
 /// Fills `output` (buffer of `u16` with size `4 * hidden * (input + hidden)`)
 /// with the LSTM weights quantized from `raw` (`f32` slice already read from the cursor).
@@ -68,6 +68,55 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
     layer.state[I..I + H].copy_from_slice(hidden_init);
 
     let cell_init = cursor.read_slice(H)?;
+    layer.cell_state.copy_from_slice(cell_init);
+
+    Ok(layer)
+}
+
+/// Reads the weights of an `LstmLayerDyn` (runtime-sized LSTM layer).
+///
+/// This is the dynamic counterpart to [`read_lstm_layer`], allocating
+/// [`AlignedVec`] buffers instead of const-generic stack arrays.
+///
+/// Layout NAM JSON (C++ `LSTMLayerT::SetNAMWeights`):
+/// ```text
+/// input_hidden_weights: [H4 × IH] — row-major or Gate-Major
+/// bias:                 [H4]
+/// initial_hidden:       [H]  → state[input_size..]
+/// initial_cell_state:   [H]  → cell_state[0..H]
+/// ```
+#[allow(dead_code)]
+pub(crate) fn read_lstm_layer_dyn(
+    cursor: &mut WeightCursor<'_>,
+    input_size: usize,
+    hidden_size: usize,
+    is_bf16: bool,
+) -> anyhow::Result<LstmLayerDyn> {
+    let ih = input_size + hidden_size;
+    let h4 = 4 * hidden_size;
+    let weights_len = h4 * ih;
+
+    let mut layer = LstmLayerDyn::new(input_size, hidden_size);
+
+    let raw_weights = cursor.read_slice(weights_len)?;
+    let is_gate_major = cursor.is_gate_major_lstm();
+
+    read_lstm_weights_into(
+        raw_weights,
+        &mut layer.input_hidden_weights,
+        is_gate_major,
+        hidden_size,
+        input_size,
+        is_bf16,
+    );
+
+    let bias_data = cursor.read_slice(h4)?;
+    layer.bias.copy_from_slice(bias_data);
+
+    let hidden_init = cursor.read_slice(hidden_size)?;
+    layer.state[input_size..].copy_from_slice(hidden_init);
+
+    let cell_init = cursor.read_slice(hidden_size)?;
     layer.cell_state.copy_from_slice(cell_init);
 
     Ok(layer)
