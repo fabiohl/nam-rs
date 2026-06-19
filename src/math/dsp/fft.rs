@@ -419,6 +419,86 @@ impl<T: FftFloat> RfftPlanner<T> {
         out_re[n_half] = self.scratch_re[0] - self.scratch_im[0];
         out_im[n_half] = T::from_usize(0);
     }
+
+    /// Complex-to-real inverse FFT.
+    ///
+    /// Given a compact complex spectrum `in_re`/`in_im` of length `N/2 + 1`
+    /// (as produced by [`process_forward`](Self::process_forward)), computes
+    /// the inverse real FFT into `out` of length `N`.
+    ///
+    /// The input buffers are mutated in-place (reused as scratch space).
+    /// No heap allocations occur inside this method.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `in_re`/`in_im` length ≠ `N/2 + 1`, or `out` length ≠ `N`.
+    pub fn process_inverse(&self, in_re: &mut [T], in_im: &mut [T], out: &mut [T]) {
+        let n = self.n;
+        let n_half = n / 2;
+        let expected = n_half + 1;
+        assert_eq!(in_re.len(), expected, "in_re length mismatch");
+        assert_eq!(in_im.len(), expected, "in_im length mismatch");
+        assert_eq!(out.len(), n, "output length mismatch");
+
+        let two = T::from_usize(2);
+        let half = two.recip();
+
+        // 1. Pre-processing: recover packed N/2 complex array from compact spectrum.
+        //    DC + Nyquist → H[0]
+        {
+            let x0_re = in_re[0];
+            let xn2_re = in_re[n_half];
+            in_re[0] = (x0_re + xn2_re) * half;
+            in_im[0] = (x0_re - xn2_re) * half;
+        }
+
+        // 2. Pre-processing: k = 1 .. N/4 (paired with nk = N/2 - k)
+        let quarter_n = n / 4;
+        for k in 1..quarter_n {
+            let nk = n_half - k;
+
+            let xk_re = in_re[k];
+            let xk_im = in_im[k];
+            let xnk_re = in_re[nk];
+            let xnk_im = in_im[nk];
+
+            let even_re = (xk_re + xnk_re) * half;
+            let even_im = (xk_im - xnk_im) * half;
+
+            let diff_re = (xk_re - xnk_re) * half;
+            let sum_im = (xk_im + xnk_im) * half;
+
+            let w_re = self.post_twiddle_re[k];
+            let w_im = self.post_twiddle_im[k];
+
+            let odd_re = w_im.mul_add(diff_re, -w_re * sum_im);
+            let odd_im = w_re.mul_add(diff_re, w_im * sum_im);
+
+            in_re[k] = even_re + odd_re;
+            in_im[k] = even_im + odd_im;
+            in_re[nk] = even_re - odd_re;
+            in_im[nk] = -even_im + odd_im;
+        }
+
+        // 3. Pre-processing: middle bin k = N/4 (when N divisible by 4)
+        if quarter_n > 0 && n_half.is_multiple_of(2) {
+            let k_mid = quarter_n;
+            let x_re = in_re[k_mid];
+            let x_im = in_im[k_mid];
+            in_re[k_mid] = x_re;
+            in_im[k_mid] = -x_im;
+        }
+
+        // 4. Inverse complex FFT of size N/2 (in-place)
+        self.fft_n2
+            .process_inverse(&mut in_re[..n_half], &mut in_im[..n_half]);
+
+        // 5. Unpack even/odd samples into real output
+        for k in 0..n_half {
+            out[2 * k] = in_re[k];
+            out[2 * k + 1] = in_im[k];
+        }
+    }
 }
 
 #[cfg(test)]
@@ -979,6 +1059,226 @@ mod tests {
                 sum_im[i],
                 expected_im
             );
+        }
+    }
+
+    // =================================================================
+    // IRFFT tests
+    // =================================================================
+
+    #[test]
+    fn irfft_roundtrip_f64() {
+        for n in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] {
+            let mut rfft = RfftPlanner::<f64>::new(n);
+
+            let input: Vec<f64> = (0..n).map(|i| (i as f64 * 0.3).sin()).collect();
+            let n_out = n / 2 + 1;
+            let mut fwd_re = vec![0.0f64; n_out];
+            let mut fwd_im = vec![0.0f64; n_out];
+            rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+            let mut out = vec![0.0f64; n];
+            rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+            for i in 0..n {
+                assert!(
+                    (out[i] - input[i]).abs() < EPS_F64,
+                    "n={n} roundtrip[{i}]: {} vs {} (diff {})",
+                    out[i],
+                    input[i],
+                    (out[i] - input[i]).abs()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn irfft_roundtrip_f32() {
+        for n in [2, 4, 8, 16, 32, 64, 128] {
+            let mut rfft = RfftPlanner::<f32>::new(n);
+
+            let input: Vec<f32> = (0..n).map(|i| (i as f32 * 0.7).cos()).collect();
+            let n_out = n / 2 + 1;
+            let mut fwd_re = vec![0.0f32; n_out];
+            let mut fwd_im = vec![0.0f32; n_out];
+            rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+            let mut out = vec![0.0f32; n];
+            rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+            assert_slice_approx_eq_f32(&out, &input, 1e-3f32 * n as f32);
+        }
+    }
+
+    #[test]
+    fn irfft_impulse_recovery_f64() {
+        for n in [2, 4, 8, 16, 32, 64] {
+            let mut rfft = RfftPlanner::<f64>::new(n);
+
+            let mut input = vec![0.0f64; n];
+            input[0] = 1.0;
+
+            let n_out = n / 2 + 1;
+            let mut fwd_re = vec![0.0f64; n_out];
+            let mut fwd_im = vec![0.0f64; n_out];
+            rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+            let mut out = vec![0.0f64; n];
+            rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+            for i in 0..n {
+                assert!(
+                    (out[i] - input[i]).abs() < EPS_F64,
+                    "n={n} impulse[{i}]: {} vs {}",
+                    out[i],
+                    input[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn irfft_n2_f64() {
+        let mut rfft = RfftPlanner::<f64>::new(2);
+        let input = vec![3.0, 7.0];
+        let n_out = 2;
+        let mut fwd_re = vec![0.0f64; n_out];
+        let mut fwd_im = vec![0.0f64; n_out];
+        rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+        let mut out = vec![0.0f64; 2];
+        rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+        assert_slice_approx_eq_f64(&out, &input, EPS_F64);
+    }
+
+    #[test]
+    fn irfft_known_n4_f64() {
+        let mut rfft = RfftPlanner::<f64>::new(4);
+
+        let input = vec![1.0, 2.0, 3.0, 4.0];
+        let mut fwd_re = vec![0.0f64; 3];
+        let mut fwd_im = vec![0.0f64; 3];
+        rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+        assert!((fwd_re[0] - 10.0).abs() < EPS_F64);
+        assert!((fwd_im[0]).abs() < EPS_F64);
+        assert!((fwd_re[1] - (-2.0)).abs() < EPS_F64);
+        assert!((fwd_im[1] - 2.0).abs() < EPS_F64);
+        assert!((fwd_re[2] - (-2.0)).abs() < EPS_F64);
+        assert!((fwd_im[2]).abs() < EPS_F64);
+
+        let mut out = vec![0.0f64; 4];
+        rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+        assert_slice_approx_eq_f64(&out, &input, EPS_F64);
+    }
+
+    #[test]
+    fn irfft_cosine_roundtrip_f64() {
+        let n = 8;
+        let mut rfft = RfftPlanner::<f64>::new(n);
+        let freq = 2.0;
+        let input: Vec<f64> = (0..n)
+            .map(|i| (TAU * freq * i as f64 / n as f64).cos())
+            .collect();
+
+        let n_out = n / 2 + 1;
+        let mut fwd_re = vec![0.0f64; n_out];
+        let mut fwd_im = vec![0.0f64; n_out];
+        rfft.process_forward(&input, &mut fwd_re, &mut fwd_im);
+
+        let mut out = vec![0.0f64; n];
+        rfft.process_inverse(&mut fwd_re, &mut fwd_im, &mut out);
+
+        assert_slice_approx_eq_f64(&out, &input, EPS_F64);
+    }
+
+    #[test]
+    #[should_panic(expected = "in_re length mismatch")]
+    fn irfft_wrong_in_re_len() {
+        let rfft = RfftPlanner::<f32>::new(8);
+        let mut in_re = vec![0.0f32; 4];
+        let mut in_im = vec![0.0f32; 5];
+        let mut out = vec![0.0f32; 8];
+        rfft.process_inverse(&mut in_re, &mut in_im, &mut out);
+    }
+
+    #[test]
+    #[should_panic(expected = "in_im length mismatch")]
+    fn irfft_wrong_in_im_len() {
+        let rfft = RfftPlanner::<f32>::new(8);
+        let mut in_re = vec![0.0f32; 5];
+        let mut in_im = vec![0.0f32; 4];
+        let mut out = vec![0.0f32; 8];
+        rfft.process_inverse(&mut in_re, &mut in_im, &mut out);
+    }
+
+    #[test]
+    #[should_panic(expected = "output length mismatch")]
+    fn irfft_wrong_out_len() {
+        let rfft = RfftPlanner::<f32>::new(8);
+        let mut in_re = vec![0.0f32; 5];
+        let mut in_im = vec![0.0f32; 5];
+        let mut out = vec![0.0f32; 7];
+        rfft.process_inverse(&mut in_re, &mut in_im, &mut out);
+    }
+
+    #[test]
+    fn irfft_parity_vs_complex_f64() {
+        for n in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] {
+            let rfft = RfftPlanner::<f64>::new(n);
+
+            let input: Vec<f64> = (0..n).map(|i| (i as f64 * 0.3).sin()).collect();
+
+            let fft = FftPlanner::<f64>::new(n);
+            let mut ref_re = input.clone();
+            let mut ref_im = vec![0.0f64; n];
+            fft.process(&mut ref_re, &mut ref_im);
+
+            let n_out = n / 2 + 1;
+            let mut in_re = vec![0.0f64; n_out];
+            let mut in_im = vec![0.0f64; n_out];
+            in_re.copy_from_slice(&ref_re[..n_out]);
+            in_im.copy_from_slice(&ref_im[..n_out]);
+
+            let mut out = vec![0.0f64; n];
+            rfft.process_inverse(&mut in_re, &mut in_im, &mut out);
+
+            for i in 0..n {
+                assert!(
+                    (out[i] - input[i]).abs() < EPS_F64,
+                    "n={n} parity[{i}]: {} vs {} (diff {})",
+                    out[i],
+                    input[i],
+                    (out[i] - input[i]).abs()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn irfft_parity_vs_complex_f32() {
+        for n in [2, 4, 8, 16, 32, 64, 128] {
+            let rfft = RfftPlanner::<f32>::new(n);
+
+            let input: Vec<f32> = (0..n).map(|i| (i as f32 * 0.7).cos()).collect();
+
+            let fft = FftPlanner::<f32>::new(n);
+            let mut ref_re = input.clone();
+            let mut ref_im = vec![0.0f32; n];
+            fft.process(&mut ref_re, &mut ref_im);
+
+            let n_out = n / 2 + 1;
+            let mut in_re = vec![0.0f32; n_out];
+            let mut in_im = vec![0.0f32; n_out];
+            in_re.copy_from_slice(&ref_re[..n_out]);
+            in_im.copy_from_slice(&ref_im[..n_out]);
+
+            let mut out = vec![0.0f32; n];
+            rfft.process_inverse(&mut in_re, &mut in_im, &mut out);
+
+            assert_slice_approx_eq_f32(&out, &input, 1e-4);
         }
     }
 }
