@@ -170,6 +170,25 @@ pub enum WeightsLayout {
     Interleaved4WaveNet = 2,
 }
 
+/// Configuration for the post-stack head sub-object (WaveNet / ConvNet).
+///
+/// Mirrors the `_Head` structure in NAMCore's `convnet.h:108-118`.
+/// Contains a Conv1D + activation that processes the signal after the
+/// stack of blocks, before the output.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct HeadConfig {
+    /// Number of internal channels for the head Conv1D.
+    pub channels: Option<usize>,
+    /// Whether the head Conv1D has a bias term.
+    pub bias: Option<bool>,
+    /// Number of output channels (typically 1 for mono).
+    pub out_channels: Option<usize>,
+    /// Activation function name (e.g. "Tanh", "ReLU").
+    pub activation: Option<String>,
+    /// Kernel size for the head Conv1D.
+    pub kernel_size: Option<usize>,
+}
+
 /// The internal configuration of the architecture node in the JSON.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamConfig {
@@ -179,8 +198,11 @@ pub struct NamConfig {
     /// Number of input channels (WaveNet A2). Defaults to 1 when absent.
     #[serde(default)]
     pub in_channels: Option<usize>,
-    /// A possible auxiliary string for the final head. If null in JSON, it may be absent.
-    pub head: Option<std::option::Option<String>>,
+    /// Post-stack head sub-object (WaveNet with head / ConvNet).
+    /// `null` in JSON becomes `Some(Value::Null)` (head present but empty).
+    /// Absent in JSON becomes `None`.
+    /// Non-null values contain the head configuration object.
+    pub head: Option<serde_json::Value>,
     /// Fine scale over the network summation (WaveNet only).
     pub head_scale: Option<f32>,
     /// Number of layers (for LSTMs in C++ it is the layer count, or explicit)
@@ -208,6 +230,42 @@ pub struct NamConfig {
     /// (C++ `_process_condition()` mirror, wavenet/model.cpp:692-722).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_dsp: Option<serde_json::Value>,
+}
+
+impl NamConfig {
+    /// Extracts a typed `HeadConfig` from the raw `head` JSON value.
+    ///
+    /// Returns `None` if the head field is absent, `null`, or not an object.
+    pub fn parse_head(&self) -> Option<HeadConfig> {
+        let val = self.head.as_ref()?;
+        if val.is_null() || !val.is_object() {
+            return None;
+        }
+        let channels = val
+            .get("channels")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let bias = val.get("bias").and_then(|v| v.as_bool());
+        let out_channels = val
+            .get("out_channels")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let activation = val
+            .get("activation")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let kernel_size = val
+            .get("kernel_size")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        Some(HeadConfig {
+            channels,
+            bias,
+            out_channels,
+            activation,
+            kernel_size,
+        })
+    }
 }
 
 /// Root mapping structure for `.nam` files.

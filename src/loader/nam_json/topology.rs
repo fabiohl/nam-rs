@@ -363,7 +363,7 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
 
     // 3. No post-stack head (a2_fast.cpp:881-884)
     if let Some(ref head) = data.config.head
-        && head.is_some()
+        && !head.is_null()
     {
         return None;
     }
@@ -640,9 +640,9 @@ fn check_not_slimmable(raw: &serde_json::Value) -> bool {
 /// If official models requiring the post-stack head are found in circulation
 /// (Tone3000/ToneHunt), they can be supported in a future release.
 pub fn validate_wavenet_features(data: &NamModelData) -> Result<(), String> {
-    // Check head: must be absent (None) or null (Some(None))
+    // Check head: must be absent (None) or null (Some(Value::Null))
     if let Some(ref head) = data.config.head
-        && head.is_some()
+        && !head.is_null()
     {
         return Err(
             "WaveNet 'head' (post-stack sub-object) is not supported (F6). \

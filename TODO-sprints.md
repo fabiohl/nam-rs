@@ -13,7 +13,7 @@ O WaveNet A1 permite que um sub-objeto "head" (Conv1D + ativação) processe o s
 
 ### Sprint 1.1: Correção do Parser JSON e Topologia
 
-- **Tarefa 1.1.1**: Corrigir `src/loader/nam_json/model.rs`. O campo `head` em `NamConfig` está tipado incorretamente como `Option<Option<String>>`. Deve ser alterado para `Option<serde_json::Value>` (ou criar `HeadConfig`) para extrair os campos `{ channels, bias, out_channels, activation, kernel_size }` vindos do `NeuralModel.cpp` (ref: `convnet.h:108-118`).
+- **Tarefa 1.1.1** [DONE]: Corrigir `src/loader/nam_json/model.rs`. O campo `head` em `NamConfig` está tipado incorretamente como `Option<Option<String>>`. Deve ser alterado para `Option<serde_json::Value>` (ou criar `HeadConfig`) para extrair os campos `{ channels, bias, out_channels, activation, kernel_size }` vindos do `NeuralModel.cpp` (ref: `convnet.h:108-118`).
 - **Tarefa 1.1.2**: Remover a rejeição explícita `"WaveNet 'head' (post-stack sub-object) is not supported (F6)"` no arquivo `src/loader/nam_json/topology.rs:648`.
 - **Tarefa 1.1.3**: Ajustar `FreeWavenetGeometry` se necessário para passar as informações do Head.
 

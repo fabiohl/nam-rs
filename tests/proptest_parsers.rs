@@ -327,11 +327,43 @@ fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
         )
 }
 
+/// Strategy for `NamConfig` head field.
+/// Generates `None` (absent), `Some(Value::Null)` (null),
+/// or `Some(Value::Object)` (head config with fields).
+fn arbitrary_head_value() -> impl Strategy<Value = Option<serde_json::Value>> {
+    prop::option::of(prop_oneof![
+        Just(serde_json::Value::Null),
+        (any::<u16>(), any::<bool>(), any::<u16>(), any::<u16>(),).prop_map(
+            |(ch, bias, out_ch, ks)| {
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    "channels".into(),
+                    serde_json::Value::Number((ch as u64).into()),
+                );
+                map.insert("bias".into(), serde_json::Value::Bool(bias));
+                map.insert(
+                    "out_channels".into(),
+                    serde_json::Value::Number((out_ch as u64).into()),
+                );
+                map.insert(
+                    "activation".into(),
+                    serde_json::Value::String("Tanh".into()),
+                );
+                map.insert(
+                    "kernel_size".into(),
+                    serde_json::Value::Number((ks as u64).into()),
+                );
+                serde_json::Value::Object(map)
+            }
+        ),
+    ])
+}
+
 /// Strategy for `NamConfig` with shrinking.
 fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
     (
         prop::collection::vec(arbitrary_layer_config(), 1..6),
-        any::<Option<Option<String>>>(),
+        arbitrary_head_value(),
         prop_oneof![Just(Some(0.02f32)), any::<Option<f32>>()],
         any::<Option<usize>>(),
         any::<Option<usize>>(),
