@@ -270,33 +270,111 @@ impl ConvEngine {
         self.acc_re.fill(0.0);
         self.acc_im.fill(0.0);
 
-        if p_count == 1 {
-            // Fast path: single partition — no loop over p
-            let fdl_start = self.fdl_idx * self.fft_size;
-            for k in 0..n_bins {
-                let h_re = self.h_fdl_re[k];
-                let h_im = self.h_fdl_im[k];
-                let x_re = self.fdl_re[fdl_start + k];
-                let x_im = self.fdl_im[fdl_start + k];
-                self.acc_re[k] = h_re * x_re - h_im * x_im;
-                self.acc_im[k] = h_re * x_im + h_im * x_re;
-            }
-        } else {
-            // General case: sum over all partitions
-            for p in 0..p_count {
-                // FDL is a circular buffer: partition p uses spectrum from
-                // (fdl_idx - p) mod num_partitions blocks ago.
-                let fdl_p = (self.fdl_idx + p_count - p) % p_count;
-                let fdl_start = fdl_p * self.fft_size;
-                let h_start = p * self.fft_size;
+        #[cfg(target_arch = "x86_64")]
+        {
+            use core::arch::x86_64::{
+                _mm256_add_ps, _mm256_fmadd_ps, _mm256_fnmadd_ps, _mm256_load_ps, _mm256_mul_ps,
+                _mm256_store_ps,
+            };
+            // SAFETY: AlignedVec guarantees 64-byte alignment, sufficient for
+            // _mm256_load_ps/_mm256_store_ps (32-byte). All indices are
+            // bounded by pre-allocated buffer sizes.
+            unsafe {
+                if p_count == 1 {
+                    let fdl_start = self.fdl_idx * self.fft_size;
+                    let mut k = 0usize;
+                    while k + 8 <= n_bins {
+                        let h_re = _mm256_load_ps(self.h_fdl_re.as_ptr().add(k));
+                        let h_im = _mm256_load_ps(self.h_fdl_im.as_ptr().add(k));
+                        let x_re = _mm256_load_ps(self.fdl_re.as_ptr().add(fdl_start + k));
+                        let x_im = _mm256_load_ps(self.fdl_im.as_ptr().add(fdl_start + k));
 
+                        let re_prod = _mm256_mul_ps(h_re, x_re);
+                        let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
+
+                        let im_prod = _mm256_mul_ps(h_re, x_im);
+                        let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
+
+                        _mm256_store_ps(self.acc_re.as_mut_ptr().add(k), re_res);
+                        _mm256_store_ps(self.acc_im.as_mut_ptr().add(k), im_res);
+
+                        k += 8;
+                    }
+                    for k in k..n_bins {
+                        let h_re = self.h_fdl_re[k];
+                        let h_im = self.h_fdl_im[k];
+                        let x_re = self.fdl_re[fdl_start + k];
+                        let x_im = self.fdl_im[fdl_start + k];
+                        self.acc_re[k] = h_re * x_re - h_im * x_im;
+                        self.acc_im[k] = h_re * x_im + h_im * x_re;
+                    }
+                } else {
+                    for p in 0..p_count {
+                        let fdl_p = (self.fdl_idx + p_count - p) % p_count;
+                        let fdl_start = fdl_p * self.fft_size;
+                        let h_start = p * self.fft_size;
+
+                        let mut k = 0usize;
+                        while k + 8 <= n_bins {
+                            let h_re = _mm256_load_ps(self.h_fdl_re.as_ptr().add(h_start + k));
+                            let h_im = _mm256_load_ps(self.h_fdl_im.as_ptr().add(h_start + k));
+                            let x_re = _mm256_load_ps(self.fdl_re.as_ptr().add(fdl_start + k));
+                            let x_im = _mm256_load_ps(self.fdl_im.as_ptr().add(fdl_start + k));
+                            let acc_re_curr = _mm256_load_ps(self.acc_re.as_ptr().add(k));
+                            let acc_im_curr = _mm256_load_ps(self.acc_im.as_ptr().add(k));
+
+                            let re_prod = _mm256_mul_ps(h_re, x_re);
+                            let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
+                            let re_sum = _mm256_add_ps(acc_re_curr, re_res);
+
+                            let im_prod = _mm256_mul_ps(h_re, x_im);
+                            let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
+                            let im_sum = _mm256_add_ps(acc_im_curr, im_res);
+
+                            _mm256_store_ps(self.acc_re.as_mut_ptr().add(k), re_sum);
+                            _mm256_store_ps(self.acc_im.as_mut_ptr().add(k), im_sum);
+
+                            k += 8;
+                        }
+                        for k in k..n_bins {
+                            let h_re = self.h_fdl_re[h_start + k];
+                            let h_im = self.h_fdl_im[h_start + k];
+                            let x_re = self.fdl_re[fdl_start + k];
+                            let x_im = self.fdl_im[fdl_start + k];
+                            self.acc_re[k] += h_re * x_re - h_im * x_im;
+                            self.acc_im[k] += h_re * x_im + h_im * x_re;
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            if p_count == 1 {
+                // Fast path: single partition — no loop over p
+                let fdl_start = self.fdl_idx * self.fft_size;
                 for k in 0..n_bins {
-                    let h_re = self.h_fdl_re[h_start + k];
-                    let h_im = self.h_fdl_im[h_start + k];
+                    let h_re = self.h_fdl_re[k];
+                    let h_im = self.h_fdl_im[k];
                     let x_re = self.fdl_re[fdl_start + k];
                     let x_im = self.fdl_im[fdl_start + k];
-                    self.acc_re[k] += h_re * x_re - h_im * x_im;
-                    self.acc_im[k] += h_re * x_im + h_im * x_re;
+                    self.acc_re[k] = h_re * x_re - h_im * x_im;
+                    self.acc_im[k] = h_re * x_im + h_im * x_re;
+                }
+            } else {
+                for p in 0..p_count {
+                    let fdl_p = (self.fdl_idx + p_count - p) % p_count;
+                    let fdl_start = fdl_p * self.fft_size;
+                    let h_start = p * self.fft_size;
+
+                    for k in 0..n_bins {
+                        let h_re = self.h_fdl_re[h_start + k];
+                        let h_im = self.h_fdl_im[h_start + k];
+                        let x_re = self.fdl_re[fdl_start + k];
+                        let x_im = self.fdl_im[fdl_start + k];
+                        self.acc_re[k] += h_re * x_re - h_im * x_im;
+                        self.acc_im[k] += h_re * x_im + h_im * x_re;
+                    }
                 }
             }
         }

@@ -34,16 +34,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - `h_fdl_re: AlignedVec<f32>` e `h_fdl_im: AlignedVec<f32>`
   - `fdl_re: AlignedVec<f32>` e `fdl_im: AlignedVec<f32>`
   - Modificar o acumulador para ser SoA nativamente para evitar unpack antes da IFFT: `acc_re: AlignedVec<f32>` e `acc_im: AlignedVec<f32>`.
-- [ ] **Tarefa 2.2 (Inicialização)**: Atualizar `ConvEngine::new()`. Ao processar a FFT das partições de impulso (IR), gravar os componentes iterando em `fft_buf`:
+- [x] **Tarefa 2.2 (Inicialização)**: Atualizar `ConvEngine::new()`. Ao processar a FFT das partições de impulso (IR), gravar os componentes iterando em `fft_buf`:
   - `h_fdl_re[base + k] = c.re;`
   - `h_fdl_im[base + k] = c.im;`
-- [ ] **Tarefa 2.3 (Alimentação RT)**: Em `process()` (Passo 3), quando extrair resultados de `self.fft_buf`, salvar os componentes separadamente em `self.fdl_re` e `self.fdl_im`.
-- [ ] **Tarefa 2.4 (Laço MAC AVX2)**: Implementar o MAC SIMD vetorizado em `process()` (Passo 4).
+- [x] **Tarefa 2.3 (Alimentação RT)**: Em `process()` (Passo 3), quando extrair resultados de `self.fft_buf`, salvar os componentes separadamente em `self.fdl_re` e `self.fdl_im`.
+- [x] **Tarefa 2.4 (Laço MAC AVX2)**: Implementar o MAC SIMD vetorizado em `process()` (Passo 4).
   - Criar bloco `#[cfg(target_arch = "x86_64")]` para usar intrínsecos AVX2 (`core::arch::x86_64::*`).
   - Iterar `k` em steps de `8`. Usar ponteiros `.as_ptr().add(k)`.
   - Usar `_mm256_load_ps` para carregar 8 floats de `x_re`, `x_im`, `h_re`, `h_im`.
   - Calcular parte real: `re_prod = _mm256_mul_ps(h_re, x_re)`. Depois `re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod)` (que faz `re_prod - h_im * x_im`).
   - Calcular parte imaginária: `im_prod = _mm256_mul_ps(h_re, x_im)`. Depois `im_res = _mm256_fmadd_ps(h_im, x_re, im_prod)` (que faz `h_im * x_re + im_prod`).
   - Acumular iterativamente (somar ao acumulador global do particionamento) usando `_mm256_add_ps` com os valores carregados de `acc_re` e `acc_im`, depois `_mm256_store_ps`.
-- [ ] **Tarefa 2.5 (Reconstrução IFFT)**: No Passo 5, antes de passar o acumulador para a `ifft.process_with_scratch`, mesclar temporariamente os resultados de `acc_re` e `acc_im` em `self.acc` (tipo `Complex<f32>`), uma vez que a biblioteca `rustfft` requer estrutura intercalada.
-- [ ] **Tarefa 2.6 (Validação)**: Executar `cargo test --release --test conv_test`. Validar a ausência de distorção de fase e amplitude no modo `x86_64-v3` vs fallback escalar.
+- [x] **Tarefa 2.5 (Reconstrução IFFT)**: No Passo 5, antes de passar o acumulador para a `ifft.process_with_scratch`, mesclar temporariamente os resultados de `acc_re` e `acc_im` em `self.acc` (tipo `Complex<f32>`), uma vez que a biblioteca `rustfft` requer estrutura intercalada.
+- [x] **Tarefa 2.6 (Validação)**: Executar `cargo test --release --test conv_test`. Validar a ausência de distorção de fase e amplitude no modo `x86_64-v3` vs fallback escalar.
