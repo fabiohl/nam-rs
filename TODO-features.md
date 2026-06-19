@@ -43,16 +43,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Diagnóstico Verificado (probe de carga, jun/2026)
 
-| Modelo oficial                | Resultado no nam-rs                     | Feature que destrava |
-| ----------------------------- | --------------------------------------- | -------------------- |
-| `wavenet_a1_standard.nam`     | ✅ Carrega (golden oficial)             | —                    |
-| `lstm.nam`                    | ✅ Carrega (golden oficial)             | —                    |
-| `wavenet.nam` (CH=3, livre)   | ✅ Carrega (motor dinâmico)             | —                    |
-| `slimmable_wavenet.nam`       | ❌ "A2 shape not recognized"            | **F5**               |
-| `wavenet_a2_max.nam` (cond=8) | ❌ "only condition_size=1 is supported" | **F2 / F3**          |
-| `wavenet_condition_dsp.nam`   | ❌ "only condition_size=1 is supported" | **F2 / F3**          |
-| `slimmable_container.nam`     | ❌ "submodel build failed"              | **F5 / F11**         |
-| Modelos nondist 4-array       | ❌ "requires exactly 2 layer arrays"    | **F1-ext**           |
+| Modelo oficial                | Resultado no nam-rs                                          | Feature que destrava       |
+| ----------------------------- | ------------------------------------------------------------ | -------------------------- |
+| `wavenet_a1_standard.nam`     | ✅ Carrega (golden oficial)                                  | —                          |
+| `lstm.nam`                    | ✅ Carrega (golden oficial)                                  | —                          |
+| `wavenet.nam` (CH=3, livre)   | ✅ Carrega (motor dinâmico)                                  | —                          |
+| `slimmable_wavenet.nam`       | ❌ "A2 shape not recognized"                                 | **F5**                     |
+| `wavenet_a2_max.nam` (cond=8) | ❌ "A2 model detected but architecture shape not recognized" | **F3** (Motor A2 dinâmico) |
+| `wavenet_condition_dsp.nam`   | ✅ Carrega (golden oficial c/ sub-modelo)                    | —                          |
+| `slimmable_container.nam`     | ❌ "submodel build failed"                                   | **F5 / F11**               |
+| Modelos nondist 4-array       | ❌ "requires exactly 2 layer arrays"                         | **F1-ext**                 |
 
 ---
 
@@ -243,7 +243,7 @@ original (`model.cpp`) não tem `head_scale`. O nam-rs está correto.
 
 ## Plano de Implementação — Mega-Tópicos (Achados Organizados)
 
-### MT1 — 🔴 Infraestrutura de Conditioning e FiLM (F2 + F8 parcial + F9 parcial)
+### MT1 — ✅ Infraestrutura de Conditioning e FiLM (F2 + F8 parcial + F9 parcial) Concluído (2026-06-19)
 
 **Pré-requisitos**: nenhum (base para F3).
 **Desafio**: 🔴 Alto — arquitetural, muitos módulos novos.
@@ -286,6 +286,14 @@ original (`model.cpp`) não tem `head_scale`. O nam-rs está correto.
    - Converter `test_loader_gap_*` (rejeição) → golden positivo.
    - Golden C++ para modelos `wavenet_a2_max.nam` e `wavenet_condition_dsp.nam`.
    - Paridade ESR/SNR vs C++ v0.5.3.
+
+**Resumo da Implementação e Resultados**:
+
+1. **Generalização de `condition_size` e Topologia**: Removida restrição de `COND=1`. Adicionado parsing dinâmico de `condition_size` no loader.
+2. **Motor FiLM Completo**: Implementado e integrado via `FilmBlock` aos 8 pontos ativos da arquitetura A2. Zero branches (utilizando fallback genérico `empty()`) e nativamente vetorizado com `vfmadd231ps`.
+3. **Parsing e DSP Condicional (`condition_dsp`)**: Sub-modelo aninhado adicionado a `WaveNetModelDyn`. DSP roda como pipeline condicional (mono -> sub-modelo multi-canal -> FiLM da camada de onda principal).
+4. **Paridade C++ Absoluta**: Golden V1 e V2 gerados e validados (`wavenet_condition_dsp.nam`). SNR de ~139.5 dB alcançado. Performance sob 2ms verificada. Todas as validações `clap-validator` 19/19 OK.
+5. **Bloqueios Identificados**: `wavenet_a2_max.nam` desbloqueou o gate de condição, mas caiu com precisão em modelo A2 sem dispatch A2 dinâmico. Motor dinâmico de A2 torna-se o próximo alvo principal (F3).
 
 ---
 
