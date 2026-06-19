@@ -73,9 +73,9 @@ fn test_a2_conv1d_kernel6_parity_single_frame() {
     }
 
     a2_conv1d_single_frame_fallback(
-        &conv.inner.weights,
-        &conv.inner.bias,
-        conv.inner.do_bias,
+        &conv.standard_inner().weights,
+        &conv.standard_inner().bias,
+        conv.standard_inner().do_bias,
         dilation,
         in_ch,
         out_ch,
@@ -140,9 +140,9 @@ fn test_a2_conv1d_kernel15_parity_single_frame() {
     }
 
     a2_conv1d_single_frame_fallback(
-        &conv.inner.weights,
-        &conv.inner.bias,
-        conv.inner.do_bias,
+        &conv.standard_inner().weights,
+        &conv.standard_inner().bias,
+        conv.standard_inner().do_bias,
         dilation,
         in_ch,
         out_ch,
@@ -207,9 +207,9 @@ fn test_a2_conv1d_first_layer_in_ch_1() {
     }
 
     a2_conv1d_single_frame_fallback(
-        &conv.inner.weights,
-        &conv.inner.bias,
-        conv.inner.do_bias,
+        &conv.standard_inner().weights,
+        &conv.standard_inner().bias,
+        conv.standard_inner().do_bias,
         dilation,
         in_ch,
         out_ch,
@@ -282,9 +282,9 @@ fn test_a2_conv1d_with_mixin_kernel6() {
     }
 
     a2_conv1d_single_frame_fallback(
-        &conv.inner.weights,
-        &conv.inner.bias,
-        conv.inner.do_bias,
+        &conv.standard_inner().weights,
+        &conv.standard_inner().bias,
+        conv.standard_inner().do_bias,
         dilation,
         in_ch,
         out_ch,
@@ -358,9 +358,9 @@ fn test_a2_conv1d_all_dilations_kernel6() {
         }
 
         a2_conv1d_single_frame_fallback(
-            &conv.inner.weights,
-            &conv.inner.bias,
-            conv.inner.do_bias,
+            &conv.standard_inner().weights,
+            &conv.standard_inner().bias,
+            conv.standard_inner().do_bias,
             dilation,
             in_ch,
             out_ch,
@@ -433,9 +433,9 @@ fn test_a2_conv1d_block_processing_kernel15() {
         }
 
         crate::models::a2::conv1d_fallback::a2_conv1d_block_fallback(
-            &conv.inner.weights,
-            &conv.inner.bias,
-            conv.inner.do_bias,
+            &conv.standard_inner().weights,
+            &conv.standard_inner().bias,
+            conv.standard_inner().do_bias,
             dilation,
             in_ch,
             out_ch,
@@ -503,9 +503,9 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
     }
 
     a2_conv1d_single_frame_fallback(
-        &conv.inner.weights,
-        &conv.inner.bias,
-        conv.inner.do_bias,
+        &conv.standard_inner().weights,
+        &conv.standard_inner().bias,
+        conv.standard_inner().do_bias,
         dilation,
         in_ch,
         out_ch,
@@ -524,6 +524,242 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
             c,
             simd_out[c],
             scalar_out[c],
+            diff
+        );
+    }
+}
+
+// =============================================================================
+// Grouped conv integration tests — A2Conv1d enum (T2.1)
+// =============================================================================
+
+use crate::models::a2::grouped_conv1d::{make_layer_buffer, make_test_weights_grouped};
+
+#[test]
+fn test_a2_conv1d_grouped_groups2_parity() {
+    let in_ch = 6;
+    let out_ch = 4;
+    let kernel = 6;
+    let dilation = A2_DILATIONS[1];
+    let groups = 2;
+
+    let (raw_weights, raw_bias) = make_test_weights_grouped(in_ch, out_ch, kernel, groups, 42);
+
+    let conv = A2Conv1d::new_grouped(
+        &raw_weights,
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        crate::math::common::prefetch_strategy_simple,
+    );
+
+    let buf_frames = 512;
+    let layer_buffer = make_layer_buffer(buf_frames, in_ch, 99);
+    let frame_idx = 400;
+
+    let mut simd_out = vec![0.0f32; out_ch];
+    let mut scalar_out = vec![0.0f32; out_ch];
+
+    unsafe {
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+    }
+
+    crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(
+        match &conv {
+            A2Conv1d::Grouped(g) => &g.weights,
+            _ => panic!("expected Grouped variant"),
+        },
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        &layer_buffer,
+        frame_idx,
+        &mut scalar_out,
+    );
+
+    for c in 0..out_ch {
+        let diff = (simd_out[c] - scalar_out[c]).abs();
+        assert!(
+            diff < 1e-5,
+            "groups=2 channel {}: simd={}, scalar={}, diff={}",
+            c,
+            simd_out[c],
+            scalar_out[c],
+            diff
+        );
+    }
+}
+
+#[test]
+fn test_a2_conv1d_grouped_depthwise_parity() {
+    let in_ch = 4;
+    let out_ch = 4;
+    let kernel = 6;
+    let dilation = A2_DILATIONS[3];
+    let groups = 4; // depthwise: groups == channels
+
+    let (raw_weights, raw_bias) = make_test_weights_grouped(in_ch, out_ch, kernel, groups, 555);
+
+    let conv = A2Conv1d::new_grouped(
+        &raw_weights,
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        crate::math::common::prefetch_strategy_simple,
+    );
+
+    assert!(conv.is_depthwise());
+    assert_eq!(conv.groups(), 4);
+
+    let buf_frames = 512;
+    let layer_buffer = make_layer_buffer(buf_frames, in_ch, 31);
+    let frame_idx = kernel * dilation + 64;
+
+    let mut simd_out = vec![0.0f32; out_ch];
+    let mut scalar_out = vec![0.0f32; out_ch];
+
+    unsafe {
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+    }
+
+    crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(
+        match &conv {
+            A2Conv1d::Grouped(g) => &g.weights,
+            _ => panic!("expected Grouped variant"),
+        },
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        &layer_buffer,
+        frame_idx,
+        &mut scalar_out,
+    );
+
+    for c in 0..out_ch {
+        let diff = (simd_out[c] - scalar_out[c]).abs();
+        assert!(
+            diff < 1e-5,
+            "depthwise ch={}: simd={}, scalar={}, diff={}",
+            c,
+            simd_out[c],
+            scalar_out[c],
+            diff
+        );
+    }
+}
+
+#[test]
+fn test_a2_conv1d_standard_groups_is_1() {
+    let in_ch = 3;
+    let out_ch = 8;
+    let kernel = 6;
+    let dilation = A2_DILATIONS[0];
+
+    let (weights, bias) = make_test_weights(in_ch, out_ch, kernel, 7);
+
+    let conv = A2Conv1d::new(
+        weights.clone(),
+        bias.clone(),
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        crate::math::common::prefetch_strategy_simple,
+    );
+
+    assert_eq!(conv.groups(), 1);
+    assert!(!conv.is_depthwise());
+    assert_eq!(conv.kernel_size(), kernel);
+    assert_eq!(conv.dilation(), dilation);
+    assert_eq!(conv.in_ch(), in_ch);
+    assert_eq!(conv.out_ch(), out_ch);
+}
+
+#[test]
+fn test_a2_conv1d_grouped_with_mixin() {
+    let in_ch = 6;
+    let out_ch = 8;
+    let kernel = 6;
+    let dilation = A2_DILATIONS[5];
+    let groups = 2;
+
+    let (raw_weights, raw_bias) = make_test_weights_grouped(in_ch, out_ch, kernel, groups, 777);
+
+    let conv = A2Conv1d::new_grouped(
+        &raw_weights,
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        crate::math::common::prefetch_strategy_simple,
+    );
+
+    let buf_frames = kernel * dilation + 512;
+    let layer_buffer = make_layer_buffer(buf_frames, in_ch, 44);
+
+    let mut state = 88u32;
+    let mixin: Vec<f32> = (0..out_ch)
+        .map(|_| {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0
+        })
+        .collect();
+
+    let frame_idx = kernel * dilation + 64;
+
+    let mut simd_out = vec![0.0f32; out_ch];
+    let mut scalar_out = vec![0.0f32; out_ch];
+
+    unsafe {
+        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, Some(&mixin));
+    }
+
+    crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(
+        match &conv {
+            A2Conv1d::Grouped(g) => &g.weights,
+            _ => panic!("expected Grouped variant"),
+        },
+        &raw_bias,
+        true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        groups,
+        &layer_buffer,
+        frame_idx,
+        &mut scalar_out,
+    );
+
+    for c in 0..out_ch {
+        let scalar_with_mixin = scalar_out[c] + mixin[c];
+        let diff = (simd_out[c] - scalar_with_mixin).abs();
+        assert!(
+            diff < 1e-5,
+            "groups=2 with mixin ch={}: simd={}, scalar+mixin={}, diff={}",
+            c,
+            simd_out[c],
+            scalar_with_mixin,
             diff
         );
     }

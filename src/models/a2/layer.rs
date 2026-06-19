@@ -29,7 +29,7 @@ use crate::math::common::AlignedVec;
 ///
 /// FiLM layers (8 insertion points) are `Some` only when the JSON config marks them `active: true`.
 pub struct A2Layer {
-    /// Dilated causal Conv1D (kernel ∈ {6, 15}). Used as u16/f16 fallback when fast paths absent.
+    /// Dilated causal Conv1D (kernel ∈ {6, 15}). Standard (groups=1) or Grouped (groups>1).
     pub conv: A2Conv1d,
     /// CH=3 optimized weights (f32 col-major-per-tap). Only populated when CH=3.
     pub ch3_conv: Option<A2Conv1dCh3>,
@@ -155,6 +155,18 @@ impl A2Layer {
     #[inline(always)]
     pub fn channels(&self) -> usize {
         self.conv.out_ch()
+    }
+
+    /// Number of groups for the dilated conv (1 = standard, >1 = grouped/depthwise).
+    #[inline(always)]
+    pub fn groups(&self) -> usize {
+        self.conv.groups()
+    }
+
+    /// Returns true if the dilated conv is depthwise (groups == channels).
+    #[inline(always)]
+    pub fn is_depthwise(&self) -> bool {
+        self.conv.is_depthwise()
     }
 
     /// Kernel size of this layer's dilated conv.

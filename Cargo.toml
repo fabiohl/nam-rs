@@ -67,6 +67,7 @@ testing = []
 heap-audit = []
 long_bench = []                                       # → benches/long_inference_bench.rs, utils/tests-long.sh
 pgo = []                                              # → utils/build-release.sh (PGO build profile)
+dynamic-engine = []                                    # → A2 dynamic engine scaffolding (T3.1/T3.2)
 
 [[bin]]
 name = "nam-rs"

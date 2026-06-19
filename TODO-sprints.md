@@ -40,7 +40,7 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
 
 **Objetivo:** Preparar os blocos de processamento essenciais (convoluções agrupadas e modos de gating) que o motor dinâmico montará.
 
-- [ ] **Tarefa 2.1: Integração de Convoluções Agrupadas (F9)**
+- [x] **Tarefa 2.1: Integração de Convoluções Agrupadas (F9)**
   - **Especialista:** `implementador` / `debugger`
   - **Ação:** O arquivo `src/models/a2/grouped_conv1d.rs` já possui a base vetorial AVX2 para `A2GroupedConv1d`. Conectá-la de forma fluida nas abstrações de camada (ou generalizar `src/models/a2/conv1d.rs`) para que a arquitetura instancie `Conv1dDyn` quando `groups == 1` ou `A2GroupedConv1d` quando `groups > 1`.
   - **Critério de Aceite:** Kernel depthwise (`groups == channels`) otimizado e ativado sob demanda.

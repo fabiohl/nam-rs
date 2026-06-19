@@ -128,6 +128,10 @@ pub struct WaveNetA2<const CH: usize> {
     /// Raw JSON for the single layer array, preserved for FiLM config parsing.
     /// `None` when the model is constructed directly (not via JSON deserialization).
     pub layer_raw: Option<Value>,
+
+    /// Per-frame scratch buffer for the fallback conv path (CH f32).
+    /// Allocated once at model creation to avoid heap ops on the hot path.
+    pub z_scratch: AlignedVec<f32>,
 }
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -175,6 +179,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             receptive_field_size: rf,
             max_buffer_size: max_buf,
             layer_raw: None,
+            z_scratch: AlignedVec::new(CH, 0.0f32),
         })
     }
 
@@ -428,11 +433,109 @@ impl<const CH: usize> WaveNetA2<CH> {
                         }
                         continue;
                     }
+                    // Fallback: per-frame path using the generic A2Conv1d enum.
+                    // This handles grouped, depthwise, and standard convs without
+                    // CH=3/CH=8-specific optimized paths.
+                    // Gated behind the dynamic-engine feature (T3.1 scaffolding).
+                    #[cfg(any(test, feature = "dynamic-engine"))]
+                    {
+                        use super::params::A2_LEAKY_SLOPE;
 
-                    unreachable!(
-                        "A2 layers always have ch3 or ch8 conv; \
-                         scalar fallback unreachable per set_weights invariant (CH=3|8)"
-                    );
+                        debug_assert!(self.z_scratch.len() >= ch);
+                        for f in 0..nf {
+                            let frame_idx = max_lookback_cols + f;
+
+                            // 1. Dilated conv → z_buf.
+                            unsafe {
+                                layer.conv.process_single_frame(
+                                    history,
+                                    &mut self.z_scratch[..ch],
+                                    frame_idx,
+                                    None,
+                                );
+                            }
+
+                            // 1b. FiLM post-conv (conv_post_film + input_mixin_pre_film).
+                            let cond = &input[pos + f..pos + f + 1];
+                            if let Some(ref mut film) = film_block.conv_post_film {
+                                unsafe {
+                                    film.process(&mut self.z_scratch[..ch], cond);
+                                }
+                            }
+                            if let Some(ref mut film) = film_block.input_mixin_pre_film {
+                                unsafe {
+                                    film.process(&mut self.z_scratch[..ch], cond);
+                                }
+                            }
+
+                            // 2. Input mixin.
+                            for c in 0..ch {
+                                self.z_scratch[c] += mixin_w[c] * input[pos + f];
+                            }
+
+                            // 2b. FiLM post-mixin (input_mixin_post_film + activation_pre_film).
+                            if let Some(ref mut film) = film_block.input_mixin_post_film {
+                                unsafe {
+                                    film.process(&mut self.z_scratch[..ch], cond);
+                                }
+                            }
+                            if let Some(ref mut film) = film_block.activation_pre_film {
+                                unsafe {
+                                    film.process(&mut self.z_scratch[..ch], cond);
+                                }
+                            }
+
+                            // 3. LeakyReLU.
+                            for z in self.z_scratch.iter_mut().take(ch) {
+                                if *z < 0.0 {
+                                    *z *= A2_LEAKY_SLOPE;
+                                }
+                            }
+
+                            // 3b. FiLM post-activation.
+                            if let Some(ref mut film) = film_block.activation_post_film {
+                                unsafe {
+                                    film.process(&mut self.z_scratch[..ch], cond);
+                                }
+                            }
+
+                            // 4. Head accumulator.
+                            let head_off = (head_wp + f) * ch;
+                            if is_first {
+                                self.head_accum[head_off..head_off + ch]
+                                    .copy_from_slice(&self.z_scratch[..ch]);
+                            } else {
+                                for (c, z) in self.z_scratch.iter().enumerate().take(ch) {
+                                    self.head_accum[head_off + c] += *z;
+                                }
+                            }
+
+                            // 5. L1x1 residual (skip on last layer).
+                            if !is_last {
+                                let base = f * ch;
+                                for c in 0..ch {
+                                    let mut sum = l1x1_b[c];
+                                    for u in 0..ch {
+                                        sum += l1x1_w[u * ch + c] * self.z_scratch[u];
+                                    }
+                                    self.layer_in[base + c] += sum;
+                                }
+                                // 5b. FiLM post-l1x1.
+                                if let Some(ref mut film) = film_block.layer1x1_post_film {
+                                    unsafe {
+                                        film.process(&mut self.layer_in[base..base + ch], cond);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    #[cfg(not(any(test, feature = "dynamic-engine")))]
+                    {
+                        unreachable!(
+                            "A2 layers always have ch3 or ch8 conv; \
+                             scalar fallback unreachable per set_weights invariant (CH=3|8)"
+                        );
+                    }
                 }
             }
 

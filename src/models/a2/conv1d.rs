@@ -3,9 +3,9 @@
 
 //! Dilated causal Conv1D for the A2 architecture (kernel sizes 6 and 15).
 //!
-//! Reuses the battle-tested `Conv1dDyn` engine from the WaveNet module,
-//! validated specifically for A2 parameters: `kernel ∈ {6, 15}`,
-//! `A2_DILATIONS`, input=1 (first layer) or CH (remaining layers).
+//! Supports two variants:
+//! - `Standard` — groups=1, delegates to the battle-tested `Conv1dDyn` engine.
+//! - `Grouped` — groups>1, uses the AVX2 `A2GroupedConv1d` with depthwise fast-path.
 //!
 //! Operates over `MirrorBuffer`-backed slices — the dilation tap pointers
 //! access a contiguous virtual window where physical wrap is handled by the
@@ -14,20 +14,23 @@
 use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 
-/// A2-specific dilated causal conv1d.
+use super::grouped_conv1d::A2GroupedConv1d;
+
+/// A2-specific dilated causal conv1d — polymorphic over grouping.
 ///
-/// Thin wrapper around `Conv1dDyn` with A2 construction validation.
-/// Kernel sizes are validated to be in `{6, 15}` and dilation is validated
-/// to allow sufficient lookback within the mirror buffer.
+/// When `groups == 1` the standard interleaved-4-wide `Conv1dDyn` is used.
+/// When `groups > 1` the grouped-interleaved-4-wide `A2GroupedConv1d` is used,
+/// with automatic depthwise dispatch when `groups == in_ch == out_ch`.
 #[derive(Clone)]
-#[repr(align(64))]
-pub struct A2Conv1d {
-    /// The underlying `Conv1dDyn` engine, battle-tested across all WaveNet variants.
-    pub inner: Conv1dDyn,
+pub enum A2Conv1d {
+    /// Standard conv (groups=1). Uses interleaved-4-wide `Conv1dDyn`.
+    Standard(Conv1dDyn),
+    /// Grouped conv (groups>1). Uses grouped-interleaved-4-wide AVX2 kernel.
+    Grouped(A2GroupedConv1d),
 }
 
 impl A2Conv1d {
-    /// Builds an A2 conv1d with pre-validated A2 parameters.
+    /// Builds an A2 conv1d with pre-validated A2 parameters (groups=1).
     ///
     /// # Panics
     /// Panics if `kernel_size` is not 6 or 15 (debug builds).
@@ -65,48 +68,110 @@ impl A2Conv1d {
         );
         debug_assert!(bias.len() >= out_ch);
 
-        Self {
-            inner: Conv1dDyn {
-                weights,
-                bias,
-                do_bias,
-                dilation,
-                in_ch,
-                out_ch,
-                num_blocks,
-                kernel: kernel_size,
-                prefetch_fn,
-            },
+        Self::Standard(Conv1dDyn {
+            weights,
+            bias,
+            do_bias,
+            dilation,
+            in_ch,
+            out_ch,
+            num_blocks,
+            kernel: kernel_size,
+            prefetch_fn,
+        })
+    }
+
+    /// Builds a grouped A2 conv1d from raw NAM JSON row-major weights.
+    ///
+    /// Wraps `A2GroupedConv1d::new()`. The raw_weights are in
+    /// `[out_ch][in_ch][kernel]` order and are permuted to
+    /// grouped-interleaved-4-wide internally.
+    ///
+    /// # Panics
+    /// Panics in debug if `in_ch % groups != 0` or `out_ch % groups != 0`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_grouped(
+        raw_weights: &[f32],
+        raw_bias: &[f32],
+        do_bias: bool,
+        dilation: usize,
+        in_ch: usize,
+        out_ch: usize,
+        kernel: usize,
+        groups: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self {
+        Self::Grouped(A2GroupedConv1d::new(
+            raw_weights,
+            raw_bias,
+            do_bias,
+            dilation,
+            in_ch,
+            out_ch,
+            kernel,
+            groups,
+            prefetch_fn,
+        ))
+    }
+
+    /// Returns the number of groups (1 for `Standard`, >1 for `Grouped`).
+    #[inline(always)]
+    pub fn groups(&self) -> usize {
+        match self {
+            Self::Standard(_) => 1,
+            Self::Grouped(g) => g.groups,
+        }
+    }
+
+    /// Returns true if this is a depthwise convolution (groups == in_ch == out_ch).
+    #[inline(always)]
+    pub fn is_depthwise(&self) -> bool {
+        match self {
+            Self::Standard(_) => false,
+            Self::Grouped(g) => g.groups == g.in_ch && g.groups == g.out_ch,
         }
     }
 
     /// Kernel size of this convolution.
     #[inline(always)]
     pub fn kernel_size(&self) -> usize {
-        self.inner.kernel
+        match self {
+            Self::Standard(c) => c.kernel,
+            Self::Grouped(g) => g.kernel,
+        }
     }
 
     /// Dilation factor.
     #[inline(always)]
     pub fn dilation(&self) -> usize {
-        self.inner.dilation
+        match self {
+            Self::Standard(c) => c.dilation,
+            Self::Grouped(g) => g.dilation,
+        }
     }
 
     /// Number of input channels.
     #[inline(always)]
     pub fn in_ch(&self) -> usize {
-        self.inner.in_ch
+        match self {
+            Self::Standard(c) => c.in_ch,
+            Self::Grouped(g) => g.in_ch,
+        }
     }
 
     /// Number of output channels.
     #[inline(always)]
     pub fn out_ch(&self) -> usize {
-        self.inner.out_ch
+        match self {
+            Self::Standard(c) => c.out_ch,
+            Self::Grouped(g) => g.out_ch,
+        }
     }
 
     /// Processes a single frame (f32) through the dilated convolution.
     ///
-    /// Uses the SIMD-accelerated path dispatched via `M`.
+    /// Uses the SIMD-accelerated path: `Conv1dDyn` for groups=1,
+    /// AVX2 grouped kernel (with depthwise dispatch) for groups>1.
     ///
     /// # Safety
     /// `layer_buffer` must contain valid elements for the dilated tap indices.
@@ -121,8 +186,14 @@ impl A2Conv1d {
         mixin: Option<&[f32]>,
     ) {
         unsafe {
-            self.inner
-                .process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
+            match self {
+                Self::Standard(c) => {
+                    c.process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
+                }
+                Self::Grouped(g) => {
+                    g.process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
+                }
+            }
         }
     }
 
@@ -142,8 +213,27 @@ impl A2Conv1d {
         mixin: Option<&[f32]>,
     ) {
         unsafe {
-            self.inner
-                .process_block(layer_buffer, block, buffer_start, num_frames, mixin);
+            match self {
+                Self::Standard(c) => {
+                    c.process_block(layer_buffer, block, buffer_start, num_frames, mixin);
+                }
+                Self::Grouped(g) => {
+                    g.process_block(layer_buffer, block, buffer_start, num_frames, mixin);
+                }
+            }
+        }
+    }
+
+    /// Returns a reference to the inner `Conv1dDyn` for the `Standard` variant.
+    ///
+    /// # Panics
+    /// Panics if called on a `Grouped` variant — only valid in tests of the
+    /// standard const-generic fast-path.
+    #[cfg(test)]
+    pub fn standard_inner(&self) -> &Conv1dDyn {
+        match self {
+            Self::Standard(c) => c,
+            Self::Grouped(_) => panic!("standard_inner called on Grouped variant"),
         }
     }
 }

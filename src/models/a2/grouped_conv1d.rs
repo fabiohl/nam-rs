@@ -177,6 +177,9 @@ impl A2GroupedConv1d {
 
     /// Processes a single frame through the grouped dilated convolution using SIMD AVX2.
     ///
+    /// Dispatches to the depthwise fast-path when `groups == in_ch == out_ch`,
+    /// otherwise uses the general grouped AVX2 kernel.
+    ///
     /// # Safety
     /// `layer_buffer` must contain valid elements for the dilated tap indices.
     /// `out_frame` must have length at least `self.out_ch`.
@@ -189,7 +192,18 @@ impl A2GroupedConv1d {
         mixin: Option<&[f32]>,
     ) {
         unsafe {
-            process_single_frame_avx2(self, layer_buffer, out_frame, frame_idx, mixin);
+            if self.groups == self.in_ch && self.groups == self.out_ch {
+                // Depthwise: 1 channel per group, single weight per tap.
+                process_single_frame_depthwise_avx2(self, layer_buffer, out_frame, frame_idx);
+                // Apply mixin post-conv if present.
+                if let Some(m) = mixin {
+                    for c in 0..self.out_ch {
+                        *out_frame.get_unchecked_mut(c) += *m.get_unchecked(c);
+                    }
+                }
+            } else {
+                process_single_frame_avx2(self, layer_buffer, out_frame, frame_idx, mixin);
+            }
         }
     }
 
@@ -446,7 +460,6 @@ unsafe fn process_single_frame_avx2(
 /// # Safety
 /// Only call when `groups == in_ch == out_ch`.
 #[target_feature(enable = "avx2,fma")]
-#[allow(dead_code)]
 pub(crate) unsafe fn process_single_frame_depthwise_avx2(
     conv: &A2GroupedConv1d,
     layer_buffer: &[f32],
@@ -624,43 +637,50 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
 }
 
 // =============================================================================
+// Test helpers (pub(crate) for cross-module reuse)
+// =============================================================================
+
+#[cfg(test)]
+pub(crate) fn make_test_weights_grouped(
+    in_ch: usize,
+    out_ch: usize,
+    kernel: usize,
+    _groups: usize,
+    seed: u32,
+) -> (Vec<f32>, Vec<f32>) {
+    let total_w = out_ch * in_ch * kernel;
+    let mut raw_weights = Vec::with_capacity(total_w);
+    let mut state = seed;
+    for _ in 0..total_w {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        raw_weights.push(((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25);
+    }
+    let mut bias = Vec::with_capacity(out_ch);
+    for _ in 0..out_ch {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        bias.push(((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1);
+    }
+    (raw_weights, bias)
+}
+
+#[cfg(test)]
+pub(crate) fn make_layer_buffer(buf_frames: usize, in_ch: usize, seed: u32) -> Vec<f32> {
+    let mut buf = vec![0.0f32; buf_frames * in_ch];
+    let mut state = seed;
+    for val in &mut buf {
+        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
+    }
+    buf
+}
+
+// =============================================================================
 // Unit tests
 // =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn make_test_weights_grouped(
-        in_ch: usize,
-        out_ch: usize,
-        kernel: usize,
-        _groups: usize,
-        seed: u32,
-    ) -> (Vec<f32>, Vec<f32>) {
-        let total_w = out_ch * in_ch * kernel;
-        let mut raw_weights = Vec::with_capacity(total_w);
-        let mut state = seed;
-        for _ in 0..total_w {
-            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-            raw_weights.push(((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25);
-        }
-        let mut bias = Vec::with_capacity(out_ch);
-        for _ in 0..out_ch {
-            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-            bias.push(((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1);
-        }
-        (raw_weights, bias)
-    }
-
-    fn make_layer_buffer(buf_frames: usize, in_ch: usize, seed: u32) -> Vec<f32> {
-        let mut buf = vec![0.0f32; buf_frames * in_ch];
-        let mut state = seed;
-        for val in &mut buf {
-            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-            *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
-        }
-        buf
-    }
 
     #[test]
     fn test_grouped_conv1d_groups2_single_frame() {

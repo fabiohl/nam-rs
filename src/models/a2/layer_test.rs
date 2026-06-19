@@ -107,9 +107,9 @@ fn test_a2_layer_ch3_kernel6_parity() {
             let lin_slice = &mut layer_in_scalar[f * ch..(f + 1) * ch];
             let frame_idx = hist_write_pos + f;
             a2_layer_single_frame_scalar_ref(
-                &layer.conv.inner.weights,
-                &layer.conv.inner.bias,
-                layer.conv.inner.do_bias,
+                &layer.conv.standard_inner().weights,
+                &layer.conv.standard_inner().bias,
+                layer.conv.standard_inner().do_bias,
                 dilation,
                 kernel,
                 &history,
@@ -217,9 +217,9 @@ fn test_a2_layer_ch8_kernel15_parity() {
             let lin_slice = &mut layer_in_scalar[f * ch..(f + 1) * ch];
             let frame_idx = hist_write_pos + f;
             a2_layer_single_frame_scalar_ref(
-                &layer.conv.inner.weights,
-                &layer.conv.inner.bias,
-                layer.conv.inner.do_bias,
+                &layer.conv.standard_inner().weights,
+                &layer.conv.standard_inner().bias,
+                layer.conv.standard_inner().do_bias,
                 dilation,
                 kernel,
                 &history,
