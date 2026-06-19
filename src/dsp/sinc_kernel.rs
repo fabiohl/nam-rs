@@ -191,19 +191,18 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
     planner.process_inverse(&mut buf_re, &mut buf_im);
 
     // Step 5: Causal truncation
+    // c[0] unchanged, c[1..N/2-1] × 2, c[N/2] unchanged, c[N/2+1..] = 0
     let half = n_fft / 2;
     for item in buf_re.iter_mut().take(half).skip(1) {
         *item *= 2.0;
     }
-    for (re, im) in buf_re[half + 1..]
-        .iter_mut()
-        .zip(buf_im[half + 1..].iter_mut())
-    {
-        *re = 0.0;
-        *im = 0.0;
+    // c[half] remains unchanged
+    for item in buf_re.iter_mut().skip(half + 1) {
+        *item = 0.0;
     }
-    // c[half] unchanged, im zeroed
-    buf_im[half] = 0.0;
+    // Cepstrum is purely real — zero entire imaginary part.
+    // process_inverse may leave numerical noise in buf_im.
+    buf_im.fill(0.0);
 
     // Step 6: FFT of causal cepstrum
     planner.process(&mut buf_re, &mut buf_im);

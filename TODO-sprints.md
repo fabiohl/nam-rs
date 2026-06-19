@@ -44,7 +44,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - [x] **Tarefa 3.1 (Migração do Cepstrum Real)**: Em `src/dsp/sinc_kernel.rs`, reescrever `to_minimum_phase()` (algoritmo iterativo de convolução logarítmica).
   - Instanciar o novo `FftPlanner<f64>`.
   - Como a implementação nova recebe e emite vetores escalares desacoplados, alterar o payload que manipula `Vec<Complex<f64>>` por dois arrays `buf_re` e `buf_im`. Computar a raiz quadrada (log-magnitude) acessando iterativamente `buf_re[i]` e `buf_im[i]`.
-- [ ] **Tarefa 3.2 (Causal Truncation Fix)**: Ajustar a indexação das cópias no truncate de cepstrum em `sinc_kernel.rs` e garantir que `im` é mantido zerado antes da segunda `process_forward`.
+- [x] **Tarefa 3.2 (Causal Truncation Fix)**: Ajustar a indexação das cópias no truncate de cepstrum em `sinc_kernel.rs` e garantir que `im` é mantido zerado antes da segunda `process_forward`.
 - [ ] **Tarefa 3.3 (Migração STFT e LUFS)**: Em `src/testing/perceptual.rs`, na rotina `compute_mr_stft()`:
   - Usar os métodos do `FftPlanner<f64>` interno.
   - Tratar a divisão de arrays SoA na extração do módulo L1 e L2 dentro das janelas (256, 1024, 4096).
