@@ -141,39 +141,43 @@ fn test_a2_constants_match_cpp_reference() {
 fn test_is_a2_shape_accepts_channels_3() {
     let data = make_a2_data(3, A2_DILATIONS.to_vec());
     let result = is_a2_shape(&data);
-    assert!(
-        result.is_some(),
-        "is_a2_shape should accept channels=3 with correct dilations"
+    assert!(result.is_some(), "should be A2 shape");
+    assert_eq!(
+        result.unwrap(),
+        nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(3),
+        "should return channels=3"
     );
-    assert_eq!(result.unwrap(), 3, "should return channels=3");
 }
 
 #[test]
 fn test_is_a2_shape_accepts_channels_8() {
     let data = make_a2_data(8, A2_DILATIONS.to_vec());
     let result = is_a2_shape(&data);
-    assert!(
-        result.is_some(),
-        "is_a2_shape should accept channels=8 with correct dilations"
+    assert!(result.is_some(), "should be A2 shape");
+    assert_eq!(
+        result.unwrap(),
+        nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(8),
+        "should return channels=8"
     );
-    assert_eq!(result.unwrap(), 8, "should return channels=8");
 }
 
 #[test]
 fn test_is_a2_shape_rejects_channels_4() {
     let data = make_a2_data(4, A2_DILATIONS.to_vec());
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "channels=4 should not match A2 shape"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(nam_rs::loader::nam_json::A2TopologyResult::Dynamic),
+        "channels=4 should be Dynamic A2 shape"
     );
 }
 
 #[test]
 fn test_is_a2_shape_rejects_channels_16() {
     let data = make_a2_data(16, A2_DILATIONS.to_vec());
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "channels=16 should not match A2 shape"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(nam_rs::loader::nam_json::A2TopologyResult::Dynamic),
+        "channels=16 should be Dynamic A2 shape"
     );
 }
 
@@ -360,7 +364,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
     struct Case {
         desc: &'static str,
         data: NamModelData,
-        expect_a2_shape: Option<u8>,
+        expect_a2_shape: Option<nam_rs::loader::nam_json::A2TopologyResult>,
         expect_wavenet_a2: bool,
     }
 
@@ -595,7 +599,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                 metadata: None,
                 weights_layout: WeightsLayout::Original,
             },
-            expect_a2_shape: Some(3),
+            expect_a2_shape: Some(nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(3)),
             expect_wavenet_a2: true,
         },
         Case {
@@ -632,7 +636,7 @@ fn test_dispatch_table_a1_high_version_not_misrouted() {
                 metadata: None,
                 weights_layout: WeightsLayout::Original,
             },
-            expect_a2_shape: Some(8),
+            expect_a2_shape: Some(nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(8)),
             expect_wavenet_a2: true,
         },
         Case {
@@ -772,7 +776,10 @@ fn test_a2_full_fixture_loads() {
     assert_eq!(data.weights.len(), a2_weight_count::<8>());
 
     let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
-    assert_eq!(ch, 8);
+    assert_eq!(
+        ch,
+        nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(8)
+    );
 
     let _model = build_model(&data).expect("Should dispatch to A2-Full");
 }
@@ -787,7 +794,10 @@ fn test_a2_lite_fixture_loads() {
     assert_eq!(data.weights.len(), a2_weight_count::<3>());
 
     let ch = is_a2_shape(&data).expect("Should be recognized as A2 shape");
-    assert_eq!(ch, 3);
+    assert_eq!(
+        ch,
+        nam_rs::loader::nam_json::A2TopologyResult::KnownFastPath(3)
+    );
 
     let _model = build_model(&data).expect("Should dispatch to A2-Lite");
 }
@@ -883,9 +893,10 @@ fn test_is_a2_shape_rejects_bottleneck_neq_channels() {
         "weights": []
     }"#;
     let data = parse_nam_json(json).expect("JSON parse failed");
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "bottleneck=16 != channels=8 must be rejected by is_a2_shape"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(nam_rs::loader::nam_json::A2TopologyResult::Dynamic),
+        "bottleneck=16 != channels=8 must be Dynamic A2 shape"
     );
 }
 
@@ -918,9 +929,10 @@ fn test_is_a2_shape_rejects_gated_activation() {
         "weights": []
     }"#;
     let data = parse_nam_json(json).expect("JSON parse failed");
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "gating_mode=all gated must be rejected by is_a2_shape"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(nam_rs::loader::nam_json::A2TopologyResult::Dynamic),
+        "gating_mode=all gated must be Dynamic A2 shape"
     );
 }
 

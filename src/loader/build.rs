@@ -205,11 +205,12 @@ pub fn load_and_build_model(
             }
             nam_json::WavenetTopologyResult::Free(_) => "WaveNet-Dynamic".to_string(),
             _ => {
-                if let Some(ch) = nam_json::is_a2_shape(&model_data) {
-                    match ch {
-                        3 => "A2-Lite".to_string(),
-                        8 => "A2-Full".to_string(),
-                        _ => "A2-Custom".to_string(),
+                if let Some(topo) = nam_json::is_a2_shape(&model_data) {
+                    match topo {
+                        nam_json::A2TopologyResult::KnownFastPath(3) => "A2-Lite".to_string(),
+                        nam_json::A2TopologyResult::KnownFastPath(8) => "A2-Full".to_string(),
+                        nam_json::A2TopologyResult::KnownFastPath(_) => "A2-Unknown".to_string(),
+                        nam_json::A2TopologyResult::Dynamic => "A2-Dynamic".to_string(),
                     }
                 } else if architecture == "SlimmableContainer" {
                     "Container".to_string()

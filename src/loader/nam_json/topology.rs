@@ -318,18 +318,27 @@ pub fn get_linear_topology(data: &NamModelData) -> Option<(usize, bool)> {
 }
 
 // =============================================================================
-// A2 Shape Detection — Mirror of C++ is_a2_shape (a2_fast.cpp:875-908)
+// A2 Shape Detection — Hybrid Dispatch (A2 Fast-Path vs A2 Dynamic)
 // =============================================================================
 
-/// Shape-based A2 detector: returns `Some(channels)` if the parsed model data
-/// matches the A2 architectural signature exactly (18 criteria from the C++
-/// reference `a2_fast.cpp:875-908`). Returns `None` if the shape does not match.
+/// Valid A2 topologies.
+#[derive(Debug, Clone, PartialEq)]
+pub enum A2TopologyResult {
+    /// Fast-path const-generic with exact channels (3 or 8).
+    KnownFastPath(u8),
+    /// Valid A2 geometry that falls outside the rigid fast-path.
+    Dynamic,
+}
+
+/// Shape-based A2 detector: returns `Some(A2TopologyResult)` if the parsed model data
+/// matches the A2 architectural signature. If the model strictly matches the
+/// C++ fast-path criteria, it returns `KnownFastPath(CH)`, otherwise `Dynamic`.
 ///
 /// Checks that require raw JSON (activation arrays, FiLM keys, etc.) are
 /// skipped when `layer_raw` is `None` (structs constructed directly, not via
 /// JSON deserialization). This keeps existing test helpers working while
 /// enforcing full parity for models loaded from actual `.nam` files.
-pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
+pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
     use crate::models::a2::{
         A2_DILATIONS, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS, A2_VALID_CHANNELS,
     };
@@ -346,7 +355,6 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
     }
 
     // 3. No post-stack head (a2_fast.cpp:881-884)
-    //    Already enforced by validate_wavenet_features(), but check here for shape purity.
     if let Some(ref head) = data.config.head
         && head.is_some()
     {
@@ -356,34 +364,7 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
     // 4. head_scale present and numeric (a2_fast.cpp:886-890)
     data.config.head_scale.as_ref()?;
 
-    // 5. in_channels defaults to 1, must be 1 (a2_fast.cpp:892-894)
-    if data.config.in_channels.unwrap_or(1) != 1 {
-        return None;
-    }
-
     let l0 = &layers[0];
-
-    // 6. input_size must be 1 (a2_fast.cpp:898)
-    if l0.input_size != Some(1) {
-        return None;
-    }
-
-    // 7. condition_size must be 1 (a2_fast.cpp:900)
-    if l0.condition_size != Some(1) {
-        return None;
-    }
-
-    // 8. channels and bottleneck must match (a2_fast.cpp:903-906)
-    let ch = l0.channels? as u8;
-    let bn = l0.bottleneck.unwrap_or(0);
-    if ch as usize != bn {
-        return None;
-    }
-
-    // 9. Channels must be exactly 3 or 8 (a2_fast.cpp:907-908)
-    if !A2_VALID_CHANNELS.contains(&ch) {
-        return None;
-    }
 
     // 10. kernel_sizes must match A2_KERNEL_SIZES exactly (a2_fast.cpp:910-918)
     let ks = l0.kernel_sizes.as_deref()?;
@@ -403,60 +384,91 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
         return None;
     }
 
+    // --- Se chegamos aqui, o modelo é inequivocamente um WaveNet A2. ---
+    // A partir daqui, validamos se ele se enquadra no fast-path const-generic.
+
+    // 5. in_channels defaults to 1, must be 1 (a2_fast.cpp:892-894)
+    if data.config.in_channels.unwrap_or(1) != 1 {
+        return Some(A2TopologyResult::Dynamic);
+    }
+
+    // 6. input_size must be 1 (a2_fast.cpp:898)
+    if l0.input_size != Some(1) {
+        return Some(A2TopologyResult::Dynamic);
+    }
+
+    // 7. condition_size must be 1 (a2_fast.cpp:900)
+    if l0.condition_size != Some(1) {
+        return Some(A2TopologyResult::Dynamic);
+    }
+
+    let ch = match l0.channels {
+        Some(c) => c as u8,
+        None => return Some(A2TopologyResult::Dynamic),
+    };
+
+    // 8. channels and bottleneck must match (a2_fast.cpp:903-906)
+    let bn = l0.bottleneck.unwrap_or(0);
+    if ch as usize != bn {
+        return Some(A2TopologyResult::Dynamic);
+    }
+
+    // 9. Channels must be exactly 3 or 8 (a2_fast.cpp:907-908)
+    if !A2_VALID_CHANNELS.contains(&ch) {
+        return Some(A2TopologyResult::Dynamic);
+    }
+
     // ── Checks 12-19 require raw JSON (a2_fast.cpp:930-1000) ──
     if let Some(ref raw) = l0.layer_raw {
-        // 12. All activations must be LeakyReLU(negative_slope ≈ 0.01) (a2_fast.cpp:930-940)
+        // 12. All activations must be LeakyReLU(negative_slope ≈ 0.01)
         if !check_activations_are_leaky_relu(raw, A2_NUM_LAYERS, A2_LEAKY_SLOPE as f64) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 13. gating_mode: all "none" or absent (a2_fast.cpp:942-948)
+        // 13. gating_mode: all "none" or absent
         if !check_gating_mode_all_none(raw, A2_NUM_LAYERS) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 14. secondary_activation: all null or absent (a2_fast.cpp:950-956)
+        // 14. secondary_activation: all null or absent
         if !check_secondary_activation_all_null(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 15. head1x1 must be inactive (a2_fast.cpp:958-961)
+        // 15. head1x1 must be inactive
         if !check_head1x1_inactive(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 16. layer1x1 active with groups=1 (a2_fast.cpp:963-970)
+        // 16. layer1x1 active with groups=1
         if !check_layer1x1_active_groups1(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
         // 17. Layer-array head: out_channels=1, kernel_size=16, bias=true
-        //     (a2_fast.cpp:972-981)
         if !check_layer_array_head(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 18. No FiLM anywhere — relaxed: A2 models with active FiLM are now
-        //     supported as of Task 2.2 (FiLM instantiation at insertion points).
-        //     The check is kept as a warning-only gate for models with only
-        //     scale/shift config but no weights (invalid).
         if !check_film_all_inactive(raw) {
-            // FiLM config entries found — this is now supported.
-            // The strict rejection is removed; FiLM weights are loaded in set_weights.
+            // Models with FiLM are now routed to Dynamic if they break const-generic assumptions,
+            // but currently the fast-path does support some FiLM. For safety, let's say:
+            // if it has active FiLM it goes to Dynamic? No, the T1/T2 already added FiLM to fast-path.
+            // So we don't return Dynamic here just for FiLM.
         }
 
-        // 19. groups_input == 1 AND groups_input_mixin == 1 (a2_fast.cpp:991-995)
+        // 19. groups_input == 1 AND groups_input_mixin == 1
         if !check_groups_are_1(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
 
-        // 20. Not slimmable (a2_fast.cpp:997-1000)
+        // 20. Not slimmable
         if !check_not_slimmable(raw) {
-            return None;
+            return Some(A2TopologyResult::Dynamic);
         }
     }
 
-    Some(ch)
+    Some(A2TopologyResult::KnownFastPath(ch))
 }
 
 // ── Raw JSON helper functions for strict A2 shape checks ──

@@ -21,7 +21,8 @@
 ///
 /// Apenas `LeakyReLU` é exercitada pelo fast-path A2-Full/Lite.
 /// Demais variantes: reservadas p/ motor A2 geral (futuro).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type")]
 pub enum ActivationType {
     /// Hyperbolic Tangent (standard).
     /// NOTE: reservado p/ motor A2 geral (futuro).

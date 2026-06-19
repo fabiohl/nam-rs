@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::loader::nam_json::{
-    NamModelData, WavenetTopologyResult, get_wavenet_topology, is_a2_shape,
+    A2TopologyResult, NamModelData, WavenetTopologyResult, get_wavenet_topology, is_a2_shape,
     validate_wavenet_features,
 };
 use crate::models::StaticModel;
@@ -58,10 +58,10 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
     }
 
     // ── A2: first-class branch (detected by shape) ──
-    if let Some(ch) = is_a2_shape(data) {
+    if let Some(topo) = is_a2_shape(data) {
         let layer_raw = data.config.layers.first().and_then(|l| l.layer_raw.clone());
-        return match ch {
-            3 => {
+        match topo {
+            A2TopologyResult::KnownFastPath(3) => {
                 let mut model = WaveNetA2::<3>::new()?;
                 model.set_layer_raw(layer_raw);
                 model
@@ -71,9 +71,9 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     "[Dispatcher] WaveNet A2-Lite built — CH=3, layers=23, weights={}",
                     data.weights.len()
                 );
-                Ok(Box::new(StaticModel::WavenetA2Lite(Box::new(model))))
+                return Ok(Box::new(StaticModel::WavenetA2Lite(Box::new(model))));
             }
-            8 => {
+            A2TopologyResult::KnownFastPath(8) => {
                 let mut model = WaveNetA2::<8>::new()?;
                 model.set_layer_raw(layer_raw);
                 model
@@ -83,10 +83,19 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     "[Dispatcher] WaveNet A2-Full built — CH=8, layers=23, weights={}",
                     data.weights.len()
                 );
-                Ok(Box::new(StaticModel::WavenetA2Full(Box::new(model))))
+                return Ok(Box::new(StaticModel::WavenetA2Full(Box::new(model))));
             }
-            _ => unreachable!("is_a2_shape only returns 3 or 8"),
-        };
+            A2TopologyResult::KnownFastPath(_) => {
+                unreachable!("is_a2_shape KnownFastPath only returns 3 or 8")
+            }
+            A2TopologyResult::Dynamic => {
+                // TODO: Tarefa 3.1 & 3.2 - Instanciar o WaveNetA2Dyn
+                bail!(
+                    "WaveNet A2 model detected but architecture shape is dynamic. \
+                       Dynamic A2 engine (F3) is not yet implemented."
+                );
+            }
+        }
     }
 
     // ── A2: activation-based detection (secondary) — reject before A1 validation ──

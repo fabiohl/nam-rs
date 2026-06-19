@@ -18,7 +18,8 @@ use super::activations::ActivationType;
 ///
 /// NOTE: apenas `None` é utilizado pelo fast-path A2-Full/Lite.
 /// `Gated` e `Blended` estão reservados p/ motor A2 geral (futuro).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GatingMode {
     /// No gating or blending - standard activation (fast-path A2).
     #[default]
