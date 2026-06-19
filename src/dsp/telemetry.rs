@@ -13,6 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct LatencyHistogram {
     /// Histogram atomic bins.
     bins: [AtomicU64; 32],
+    /// Exact maximum latency observed (lock-free, via fetch_max).
+    exact_max: AtomicU64,
 }
 
 impl Default for LatencyHistogram {
@@ -27,6 +29,7 @@ impl LatencyHistogram {
     pub fn new() -> Self {
         Self {
             bins: [const { AtomicU64::new(0) }; 32],
+            exact_max: AtomicU64::new(0),
         }
     }
 
@@ -36,6 +39,7 @@ impl LatencyHistogram {
     /// This function is safe for calls in the DSP hot-path.
     #[inline(always)]
     pub fn record(&self, duration_ns: u64) {
+        self.exact_max.fetch_max(duration_ns, Ordering::Relaxed);
         if duration_ns == 0 {
             self.bins[0].fetch_add(1, Ordering::Relaxed);
             return;
@@ -94,6 +98,16 @@ impl LatencyHistogram {
         for bin in &self.bins {
             bin.store(0, Ordering::Relaxed);
         }
+    }
+
+    /// Returns the exact maximum latency observed via lock-free fetch_max (in nanoseconds).
+    pub fn get_exact_max(&self) -> u64 {
+        self.exact_max.load(Ordering::Relaxed)
+    }
+
+    /// Atomically reads and resets the exact maximum (in nanoseconds).
+    pub fn take_exact_max(&self) -> u64 {
+        self.exact_max.swap(0, Ordering::Relaxed)
     }
 }
 

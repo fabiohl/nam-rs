@@ -168,15 +168,15 @@ pub fn poll_rt_status(
         {
             let p50 = rt_status.latency_hist.get_percentile(0.50) / 1000;
             let p99 = rt_status.latency_hist.get_percentile(0.99) / 1000;
-            let max = rt_status.latency_hist.get_max() / 1000;
+            let exact = rt_status.latency_hist.take_exact_max() / 1000;
             let total_calls = rt_status.latency_hist.total_count();
 
             log::info!(
-                "{} DSP Telemetry (10s): {}µs (Median) | {}µs (P99) | {}µs (Max) [{} blocks]",
+                "{} DSP Telemetry (10s): {}µs (Median) | {}µs (P99) | {}µs (Exact Max) [{} blocks]",
                 "📊".bright_blue(),
                 p50,
                 p99,
-                max,
+                exact,
                 total_calls
             );
             rt_status.latency_hist.reset();

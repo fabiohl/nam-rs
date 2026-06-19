@@ -216,15 +216,15 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > Depende da **S1 (O2)** concluída para ter acesso a `rdtsc_nanos()`.
 
-### T4.1 — P6: Telemetria exata via lock-free max
+### T4.1 — P6: Telemetria exata via lock-free max [DONE]
 
 **Detalhes**:
 
-- [ ] Em `src/dsp/telemetry.rs`, adicionar `exact_max: std::sync::atomic::AtomicU64` no `LatencyHistogram`.
-- [ ] Atualizar o método `new()` e `reset()` para zerar `exact_max`.
-- [ ] Em `record()`, usar `self.exact_max.fetch_max(duration_ns, Ordering::Relaxed)`.
-- [ ] Adicionar método `pub fn get_exact_max(&self) -> u64` retornando o `.load()`.
-- [ ] Em `src/standalone/rt_setup/telemetry.rs:171`, ler o exato (`let exact = ... / 1000`) em vez de logar o `get_max()` log2. Exibir `p50`, `p99`, e `exact`.
+- [x] Em `src/dsp/telemetry.rs`, adicionar `exact_max: std::sync::atomic::AtomicU64` no `LatencyHistogram`.
+- [x] Atualizar o método `new()` e `reset()` para zerar `exact_max`.
+- [x] Em `record()`, usar `self.exact_max.fetch_max(duration_ns, Ordering::Relaxed)`.
+- [x] Adicionar método `pub fn get_exact_max(&self) -> u64` retornando o `.load()`.
+- [x] Em `src/standalone/rt_setup/telemetry.rs:171`, ler o exato (`let exact = ... / 1000`) em vez de logar o `get_max()` log2. Exibir `p50`, `p99`, e `exact`.
 
 ### T4.2 — P5: Proteção anti-denormal e percentis
 
