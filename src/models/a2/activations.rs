@@ -102,8 +102,12 @@ impl ActivationFn for ActivationType {
             // FastTanh: A fast mathematical approximation of the processor's native Tanh function.
             // Uses a rational polynomial to avoid computing slow exponentials.
             Self::FastTanh => {
-                for x in data.iter_mut() {
-                    *x = fast_tanh(*x);
+                if is_x86_feature_detected!("avx2") {
+                    unsafe { fast_tanh_slice_avx2(data) }
+                } else {
+                    for x in data.iter_mut() {
+                        *x = fast_tanh(*x);
+                    }
                 }
             }
             // ReLU (Rectified Linear Unit): Zeros all negative values, letting
@@ -329,6 +333,77 @@ pub unsafe fn leaky_hard_tanh_slice_avx2(
         } else if *x > max_val {
             *x = (*x - max_val) * max_slope + max_val;
         }
+    }
+}
+
+/// AVX2-accelerated FastTanh: Padé rational approximation over a slice.
+///
+/// Processes 16 elements per iteration (2× `__m256`), then 8, then scalar remainder.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[target_feature(enable = "avx2,fma")]
+#[allow(clippy::excessive_precision)]
+pub unsafe fn fast_tanh_slice_avx2(data: &mut [f32]) {
+    let ca = _mm256_set1_ps(2.45550750702956_f32);
+    let cb = _mm256_set1_ps(0.893229853513558_f32);
+    let cc = _mm256_set1_ps(0.821226666969744_f32);
+    let cd = _mm256_set1_ps(2.44506634652299_f32);
+    let ce = _mm256_set1_ps(0.814642734961073_f32);
+    let sign_mask = _mm256_set1_ps(-0.0_f32);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
+            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+            let ax1 = _mm256_andnot_ps(sign_mask, x1);
+            let ax2 = _mm256_andnot_ps(sign_mask, x2);
+            let x21 = _mm256_mul_ps(x1, x1);
+            let x22 = _mm256_mul_ps(x2, x2);
+            let num_inner1 = _mm256_fmadd_ps(cc, ax1, cb);
+            let num_inner2 = _mm256_fmadd_ps(cc, ax2, cb);
+            let num_poly1 = _mm256_fmadd_ps(num_inner1, x21, _mm256_fmadd_ps(ca, ax1, ca));
+            let num_poly2 = _mm256_fmadd_ps(num_inner2, x22, _mm256_fmadd_ps(ca, ax2, ca));
+            let num1 = _mm256_mul_ps(x1, num_poly1);
+            let num2 = _mm256_mul_ps(x2, num_poly2);
+            let xe1 = _mm256_mul_ps(ce, _mm256_mul_ps(x1, ax1));
+            let xe2 = _mm256_mul_ps(ce, _mm256_mul_ps(x2, ax2));
+            let xterm1 = _mm256_add_ps(x1, xe1);
+            let xterm2 = _mm256_add_ps(x2, xe2);
+            let abs_xterm1 = _mm256_andnot_ps(sign_mask, xterm1);
+            let abs_xterm2 = _mm256_andnot_ps(sign_mask, xterm2);
+            let den_inner1 = _mm256_add_ps(cd, x21);
+            let den_inner2 = _mm256_add_ps(cd, x22);
+            let den1 = _mm256_fmadd_ps(den_inner1, abs_xterm1, cd);
+            let den2 = _mm256_fmadd_ps(den_inner2, abs_xterm2, cd);
+            let y1 = _mm256_div_ps(num1, den1);
+            let y2 = _mm256_div_ps(num2, den2);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
+        }
+        i += 16;
+    }
+    while i + 8 <= len {
+        unsafe {
+            let x = _mm256_loadu_ps(data.as_ptr().add(i));
+            let ax = _mm256_andnot_ps(sign_mask, x);
+            let x2 = _mm256_mul_ps(x, x);
+            let num_inner = _mm256_fmadd_ps(cc, ax, cb);
+            let num_poly = _mm256_fmadd_ps(num_inner, x2, _mm256_fmadd_ps(ca, ax, ca));
+            let num = _mm256_mul_ps(x, num_poly);
+            let xe = _mm256_mul_ps(ce, _mm256_mul_ps(x, ax));
+            let xterm = _mm256_add_ps(x, xe);
+            let abs_xterm = _mm256_andnot_ps(sign_mask, xterm);
+            let den_inner = _mm256_add_ps(cd, x2);
+            let den = _mm256_fmadd_ps(den_inner, abs_xterm, cd);
+            let y = _mm256_div_ps(num, den);
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
+        }
+        i += 8;
+    }
+    for x in data.iter_mut().skip(i) {
+        *x = fast_tanh(*x);
     }
 }
 

@@ -383,4 +383,79 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_fast_tanh_avx2_parity() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        #[target_feature(enable = "avx2")]
+        #[allow(clippy::excessive_precision)]
+        unsafe fn scalar_ref(data: &mut [f32]) {
+            for x in data.iter_mut() {
+                let xv = *x;
+                let ax = xv.abs();
+                let x2 = xv * xv;
+                *x = (xv
+                    * (2.45550750702956
+                        + 2.45550750702956 * ax
+                        + (0.893229853513558 + 0.821226666969744 * ax) * x2))
+                    / (2.44506634652299
+                        + (2.44506634652299 + x2) * (xv + 0.814642734961073 * xv * ax).abs());
+            }
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe { super::super::fast_tanh_slice_avx2(&mut simd_data) };
+        unsafe { scalar_ref(&mut ref_data) };
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-5,
+                "AVX2 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_fast_tanh_avx2_large_slice() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        #[allow(clippy::excessive_precision)]
+        fn fast_tanh_scalar(x: f32) -> f32 {
+            let ax = x.abs();
+            let x2 = x * x;
+            (x * (2.45550750702956
+                + 2.45550750702956 * ax
+                + (0.893229853513558 + 0.821226666969744 * ax) * x2))
+                / (2.44506634652299
+                    + (2.44506634652299 + x2) * (x + 0.814642734961073 * x * ax).abs())
+        }
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            *x = fast_tanh_scalar(*x);
+        }
+
+        unsafe { super::super::fast_tanh_slice_avx2(&mut data) };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-5,
+                "AVX2 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
 }

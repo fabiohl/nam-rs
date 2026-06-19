@@ -484,7 +484,7 @@ unsafe fn leaky_hard_tanh_slice_avx2(
 
 ---
 
-#### T2.4 — Vetorizar `FastTanh` com AVX2 (Rational Polynomial SIMD)
+#### T2.4 — Vetorizar `FastTanh` com AVX2 (Rational Polynomial SIMD) [DONE]
 
 **Arquivo**: `src/models/a2/activations.rs`
 
@@ -546,6 +546,8 @@ se benchmarks mostrarem necessidade. Não implementar agora.
 
 - Max erro absoluto vs `fast_tanh` escalar < 1e-5 em toda a faixa [-8, 8].
 - Throughput ≥ 3× escalar (medido com `criterion` sobre 1024 elementos).
+
+**Status**: Concluído (2026-06-19). Função `fast_tanh_slice_avx2` implementada em `src/models/a2/activations.rs:346` via `#[target_feature(enable = "avx2,fma")]` com dispatch em `FastTanh::apply()`. Processa 16 elementos/iteração (2× `__m256`), depois 8, tail escalar. Divisão exata via `_mm256_div_ps`. Testes de paridade (`test_fast_tanh_avx2_parity`, `test_fast_tanh_avx2_large_slice`) com diff < 1e-5 em `activations_test.rs`. 21/21 testes passando.
 
 ---
 
