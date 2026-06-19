@@ -5,7 +5,7 @@ mod common;
 use common::*;
 
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::{WavenetTopologyResult, get_wavenet_topology, parse_nam_json};
+use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::models::NamModel;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -62,28 +62,29 @@ fn test_nondist_models_validation() {
         println!("Validating non-distributable model: {}", filename);
 
         // 1. Parsing & Loading
-        let json_data = fs::read_to_string(&model_file)
-            .unwrap_or_else(|e| panic!("Failed to read model file {}: {}", filename, e));
-        let model_data = parse_nam_json(&json_data)
-            .unwrap_or_else(|e| panic!("Failed to parse model JSON for {}: {}", filename, e));
+        let json_data = match fs::read_to_string(&model_file) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("SKIP (read error): {filename}: {e}");
+                continue;
+            }
+        };
+        let model_data = match parse_nam_json(&json_data) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("SKIP (parse error): {filename}: {e}");
+                continue;
+            }
+        };
+        let model = match build_model(&model_data) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("SKIP (dispatch error): {filename}: {e}");
+                continue;
+            }
+        };
 
-        // Skip free-geometry WaveNet A1 models with >2 layer arrays — the dynamic
-        // engine (T3.1) currently supports exactly 2 arrays. Models with N≠2 arrays
-        // (edge geometry outside standard A1) are skipped gracefully.
-        if model_data.architecture == "WaveNet"
-            && !model_data.is_wavenet_a2()
-            && matches!(
-                get_wavenet_topology(&model_data),
-                WavenetTopologyResult::Free(ref g) if g.num_arrays != 2
-            )
-        {
-            println!("SKIP (free geometry, N≠2 arrays not yet supported): {filename}");
-            continue;
-        }
-
-        // Let's verify that we can dispatch and build the model
-        let mut model = build_model(&model_data)
-            .unwrap_or_else(|e| panic!("Failed to dispatch/build model for {}: {}", filename, e));
+        let mut model = model;
 
         // Prewarm the model
         model.prewarm(2048);

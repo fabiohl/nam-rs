@@ -36,8 +36,12 @@ pub enum NamWavenetTopology {
 pub struct FreeWavenetGeometry {
     /// Internal channels per layer-array (first array → array[0]).
     pub channels: Vec<usize>,
-    /// Kernel size (same across all layers).
+    /// Kernel size (same across all layers for legacy models;
+    /// per-array kernel sizes for heterogeneous topologies).
     pub kernel_size: usize,
+    /// Per-array kernel sizes, one per layer-array.
+    /// For homogeneous topologies this is a repetition of `kernel_size`.
+    pub kernel_sizes: Vec<usize>,
     /// Head projection size per layer-array.
     /// `head_sizes.last()` determines `NumOutputChannels()` for the model
     /// (C++ `wave_net_output_channels` returns `layer_array_params.back().head_size`).
@@ -172,6 +176,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     let mut dilations: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
     let mut head_sizes: Vec<usize> = Vec::with_capacity(layers.len());
     let mut channels: Vec<usize> = Vec::with_capacity(layers.len());
+    let mut kernel_sizes: Vec<usize> = Vec::with_capacity(layers.len());
 
     for (i, layer) in layers.iter().enumerate() {
         let ch = match layer.channels {
@@ -211,6 +216,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         }
 
         channels.push(ch);
+        kernel_sizes.push(k.unwrap_or(0));
         head_sizes.push(hd);
         dilations.push(dils);
     }
@@ -288,6 +294,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     WavenetTopologyResult::Free(FreeWavenetGeometry {
         channels,
         kernel_size,
+        kernel_sizes,
         head_sizes,
         condition_size,
         num_arrays: layers.len(),

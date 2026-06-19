@@ -152,7 +152,6 @@ fn build_wavenet_dynamic_inner(
     }
 
     let ch = geom.channels[0];
-    let k = geom.kernel_size;
     let head = geom.head_sizes[0];
     let cond = geom.condition_size;
 
@@ -161,6 +160,7 @@ fn build_wavenet_dynamic_inner(
     debug_assert_eq!(geom.channels.len(), geom.num_arrays);
     debug_assert_eq!(geom.head_sizes.len(), geom.num_arrays);
     debug_assert_eq!(geom.dilations.len(), geom.num_arrays);
+    debug_assert_eq!(geom.kernel_sizes.len(), geom.num_arrays);
 
     let mut alloc_num = 0usize;
 
@@ -171,13 +171,18 @@ fn build_wavenet_dynamic_inner(
         let array_head = geom.head_sizes[i];
         let dilations = &geom.dilations[i];
         let has_head_bias = i == geom.num_arrays - 1;
+        let array_k = if geom.kernel_sizes[i] > 0 {
+            geom.kernel_sizes[i]
+        } else {
+            geom.kernel_size
+        };
 
         let array = build_wavenet_array_dyn(
             &mut cursor,
             in_ch,
             cond,
             array_ch,
-            k,
+            array_k,
             array_head,
             dilations,
             has_head_bias,
@@ -247,7 +252,7 @@ fn build_wavenet_dynamic_inner(
 
     let model = WaveNetModelDyn {
         ch,
-        k,
+        k: geom.kernel_size,
         head,
         arrays,
         head_scale,
@@ -260,7 +265,7 @@ fn build_wavenet_dynamic_inner(
         "[Dispatcher] WaveNet Dynamic built — CH={}, K={}, HEAD={}, arrays={}, \
          head_scale={:.6}, weights={}",
         ch,
-        k,
+        geom.kernel_size,
         head,
         geom.num_arrays,
         head_scale,

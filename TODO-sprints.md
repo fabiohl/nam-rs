@@ -34,7 +34,7 @@ Este documento organiza a execução das demandas levantadas pela auditoria (`re
   * Extrair os canais (CH), tamanho do kernel (K), e bias (`has_head_bias = is_last`).
   * Atualizar as alocações de buffer dinamicamente mantendo RT-safety (pré-alocação estrita no momento do load).
   * **Nota Sprint 1.1:** O laço de encadeamento em `process_internal`/`prewarm_internal` usa `self.ch`/`self.head` (dimensões do array 0) para fatiar `head_outputs` e `array_outputs` dos arrays intermediários. Para N>2, verificar se usar `prev.ch`/`prev.head` (dimensões per-array) é mais robusto, especialmente se arrays intermediários tiverem CH diferente do array 0.
-* **Task 1.2.2 [ ] Testes e Homologação Funcional:**
+* **Task 1.2.2 [x] Testes e Homologação Funcional:**
   * Arquivo: `tests/cpp_parity.rs`
   * Rodar a suite longa: `./utils/tests-long.sh` e certificar que `live_cross_validation_nondist_models` passa com sucesso.
   * Verificar a integridade sonora de outros modelos via Golden Vectors.
