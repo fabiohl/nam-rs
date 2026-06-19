@@ -319,8 +319,6 @@ impl WaveNetA2Dyn {
         for i in 0..num_layers {
             let ksize = self.kernel_sizes[i];
             let dilation = self.dilations[i];
-            let conv_w_count = channels * bottleneck * ksize;
-            let conv_w_padded = bottleneck.div_ceil(4) * 4 * channels * ksize;
             let use_gating = self.gating_modes[i] == GatingMode::Gated
                 || self.gating_modes[i] == GatingMode::Blended;
             let conv_out = if use_gating {
@@ -330,6 +328,8 @@ impl WaveNetA2Dyn {
             };
 
             // 2a. Dilated conv weights — interleave-4-wide.
+            let conv_w_count = channels * conv_out * ksize;
+            let conv_w_padded = conv_out.div_ceil(4) * 4 * channels * ksize;
             let conv_w_f32 = read_slice_dyn(
                 weights,
                 &mut pos,
@@ -338,13 +338,7 @@ impl WaveNetA2Dyn {
                 &format!("layer[{i}].conv_w"),
             )?;
             let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
-            transpose_conv1d_interleaved_4wide(
-                conv_w_f32,
-                &mut conv_w,
-                channels,
-                bottleneck,
-                ksize,
-            );
+            transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, channels, conv_out, ksize);
 
             // 2b. Conv bias.
             let conv_b_f32 = read_slice_dyn(
@@ -373,11 +367,11 @@ impl WaveNetA2Dyn {
                 prefetch_fn,
             );
 
-            // 2c. Mixin (bottleneck elements, applied after conv).
+            // 2c. Mixin (conv_out elements, applied after conv).
             let mixin_w_f32 = read_slice_dyn(
                 weights,
                 &mut pos,
-                bottleneck,
+                conv_out,
                 total,
                 &format!("layer[{i}].mixin_w"),
             )?;
@@ -404,7 +398,7 @@ impl WaveNetA2Dyn {
             )?;
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
-            let layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels);
+            let layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
             layers.push(layer);
         }
 

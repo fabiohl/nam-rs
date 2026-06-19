@@ -1279,3 +1279,116 @@ fn test_poly_regression_gate_wavenet_a2_full() {
         STRESS_SAMPLE_RATE,
     );
 }
+
+// =============================================================================
+// WaveNet A2 Dynamic Golden Tests — Task 3.3 (Golden Vectors e C++ Parity)
+// =============================================================================
+
+/// Test 9a: Golden Vectors — A2 Dynamic Gated (CH=8)
+///
+/// Validates the `WaveNetA2Dyn` engine with gating active on 3 layers
+/// (early/mid/late) against the C++ generic WaveNet reference.
+///
+/// The C++ v0.5.3 `is_a2_shape()` rejects this model (gating detected) and
+/// routes it to the generic WaveNet path. The Rust dispatcher classifies it
+/// as `A2TopologyResult::Dynamic` and routes to `WaveNetA2Dyn`.
+///
+/// Run `./tests/fixtures/generate_a2_fixtures.py` then render via
+/// `build/namcore_render/tools/render` to regenerate the golden vectors.
+#[test]
+fn test_golden_vectors_a2_dynamic_gated_ch8() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_a2_dynamic_gated_ch8.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_a2_dynamic_gated_ch8.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/generate_a2_fixtures.py && ./build/namcore_render/tools/render \
+         tests/fixtures/models/a2_dynamic_gated_ch8.nam tests/fixtures/stress_signal.wav /tmp/out.wav && \
+         cargo run --release --bin wav_to_golden -- --input /tmp/out.wav --reference \
+         tests/fixtures/stress_signal.wav --output tests/fixtures/golden_a2_dynamic_gated_ch8.bin'"
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_a2_dynamic_gated_ch8.bin");
+
+    let nam_path = model_path("a2_dynamic_gated_ch8.nam");
+    assert!(
+        nam_path.exists(),
+        "a2_dynamic_gated_ch8.nam not found at {nam_path:?}."
+    );
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read A2 Dynamic Gated model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build A2 Dynamic Gated for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "a2_dynamic_gated_ch8");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 9b: Golden Vectors — A2 Dynamic Blended (CH=3)
+///
+/// Validates the `WaveNetA2Dyn` engine with blending active on 2 layers
+/// against the C++ generic WaveNet reference.
+///
+/// The C++ v0.5.3 `is_a2_shape()` rejects this model (blending detected) and
+/// routes it to the generic WaveNet path. The Rust dispatcher classifies it
+/// as `A2TopologyResult::Dynamic` and routes to `WaveNetA2Dyn`.
+///
+/// Run `./tests/fixtures/generate_a2_fixtures.py` then render via
+/// `build/namcore_render/tools/render` to regenerate the golden vectors.
+#[test]
+fn test_golden_vectors_a2_dynamic_blended_ch3() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_a2_dynamic_blended_ch3.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_a2_dynamic_blended_ch3.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/generate_a2_fixtures.py' then render via C++ and convert with \
+         wav_to_golden."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_a2_dynamic_blended_ch3.bin");
+
+    let nam_path = model_path("a2_dynamic_blended_ch3.nam");
+    assert!(
+        nam_path.exists(),
+        "a2_dynamic_blended_ch3.nam not found at {nam_path:?}."
+    );
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read A2 Dynamic Blended model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build A2 Dynamic Blended for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) =
+        topology_thresholds(&model_data, "a2_dynamic_blended_ch3");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}

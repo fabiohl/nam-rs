@@ -62,11 +62,18 @@ O Mega-Tópico 2 visa implementar a generalização completa da arquitetura A2 d
     - Chamadas dinâmicas para as ativações heterogêneas e gating/blending.
   - **Requisito:** Manter o SPSC / MirroredBuffer design para eficiência no anel de memória.
 
-- [ ] **Tarefa 3.2: Dispatch e Integração no Core**
+- [x] **Tarefa 3.2: Dispatch e Integração no Core**
   - **Especialista:** `implementador`
   - **Ação:** No dispatcher central, se a topologia A2 for classificada como `Dynamic`, instanciar o novo `WaveNetA2Dyn`. Garantir que o fast-path continue intocado para os modelos Standard e Lite clássicos.
 
-- [ ] **Tarefa 3.3: Golden Vectors e C++ Parity**
+- [x] **Tarefa 3.3: Golden Vectors e C++ Parity**
   - **Especialista:** `revisor-auditor` / `pesquisador-inovador`
   - **Ação:** Gerar golden vectors contra o C++ v0.5.3 (ex: usando `wavenet_a2_max.nam` ou modelos A2 sintéticos com gating e bottleneck) e atingir ESR/SNR dentro da margem de tolerância.
     - **Nota:** Não executar `utils/tests-long.sh` (é muito demorado). Rode apenas os testes bem específicos estritamente necessários para validar.
+  - **Concluído:** 2026-06-19. Modelos sintéticos criados em `tests/fixtures/generate_a2_fixtures.py`:
+    - `a2_dynamic_gated_ch8.nam` — CH=8, gating Sigmoid em 3/23 camadas. SNR=103.0 dB, ESR=5.01e-11.
+    - `a2_dynamic_blended_ch3.nam` — CH=3, blending Tanh em 2/23 camadas. SNR=133.0 dB, ESR=5.01e-14.
+    - Goldens em `tests/fixtures/golden_a2_dynamic_{gated_ch8,blended_ch3}.bin`.
+    - Corrigido `WaveNetA2Dyn::set_weights()` para ler `conv_out=2*bottleneck` nos pesos de conv/mixin quando gating ativo.
+    - Corrigido `A2Layer::new_dyn()` para usar `bottleneck` (não `conv.out_ch()`) na asserção de l1x1_w.
+  - **Nota:** `wavenet_a2_max.nam` permanece rejeitado (FiLM com `condition_size=8`). Head1x1 não coberto por goldens ainda — requer reconciliação da ordem de pesos per-layer (C++ tem head1x1 por camada, Rust tem head1x1 global).

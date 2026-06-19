@@ -445,6 +445,26 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
+        // --- WaveNet A2 Dynamic Gated CH=8 (Task 3.3) ---
+        // Gating doubles conv output (channels × 2*bottleneck) and applies
+        // Sigmoid gate + LeakyReLU main activation. C++ uses Eigen-based generic
+        // WaveNet, Rust uses WaveNetA2Dyn per-frame.
+        // Measured: SNR=103.0 dB, ESR=5.01e-11 (2026-06-19)
+        // Margin: SNR - 18.0 dB, ESR factor ~20x
+        "a2_dynamic_gated_ch8" => {
+            let snr_db = 85.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-9)))
+        }
+        // --- WaveNet A2 Dynamic Blended CH=3 (Task 3.3) ---
+        // Blending mixes main activation (LeakyReLU) with Tanh gate via linear
+        // interpolation. C++ uses Eigen-based generic WaveNet, Rust uses
+        // WaveNetA2Dyn per-frame.
+        // Measured: SNR=133.0 dB, ESR=5.01e-14 (2026-06-19)
+        // Margin: SNR - 23.0 dB, ESR factor ~20x
+        "a2_dynamic_blended_ch3" => {
+            let snr_db = 110.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12)))
+        }
         _ => None,
     }
 }

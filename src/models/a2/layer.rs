@@ -154,17 +154,20 @@ impl A2Layer {
     /// Creates a layer with arbitrary l1x1 dimensions (bottleneck → channels).
     ///
     /// Used by the dynamic A2 engine where `l1x1_out_ch` (channels) may differ
-    /// from `conv.out_ch()` (bottleneck).
+    /// from `conv.out_ch()` (bottleneck). When gating/blending is active,
+    /// `conv.out_ch()` is `2*bottleneck` but l1x1 operates on the post-gating
+    /// bottleneck-wide output.
     pub fn new_dyn(
         conv: A2Conv1d,
         mixin_w: AlignedVec<f32>,
         l1x1_w: AlignedVec<f32>,
         l1x1_b: AlignedVec<f32>,
         l1x1_out_ch: usize,
+        bottleneck: usize,
     ) -> Self {
         let ch = conv.out_ch();
         debug_assert_eq!(mixin_w.len(), ch);
-        debug_assert_eq!(l1x1_w.len(), ch * l1x1_out_ch);
+        debug_assert_eq!(l1x1_w.len(), bottleneck * l1x1_out_ch);
         debug_assert_eq!(l1x1_b.len(), l1x1_out_ch);
         Self {
             conv,
