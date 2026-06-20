@@ -66,8 +66,7 @@ pub struct FreeWavenetGeometry {
 /// Distinguishes three states:
 /// - `Known`: fast-path const-generic SKU (Standard/Lite/Feather/Nano).
 /// - `Free`: valid geometry outside the catalog — destined for the dynamic engine.
-/// - `Rejected`: unsupported feature (F2 multi-condition, F6 post-stack head)
-///   or invalid/missing shape data.
+/// - `Rejected`: invalid or missing shape data (no channels, no dilations, etc.).
 #[derive(Debug, Clone, PartialEq)]
 #[allow(private_interfaces)]
 pub enum WavenetTopologyResult {

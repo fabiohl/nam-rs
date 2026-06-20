@@ -29,7 +29,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
     * Alterar o título da Seção 3.3 para refletir o suporte real aos engines dinâmicos.
     * Adicionar entradas para `WaveNetModelDyn`, `LstmModelDyn` e `WaveNetA2Dyn` nas tabelas correspondentes, indicando que operam como fallback genérico para geometrias livres, `condition_size ≠ 1`, post-stack heads e outros cenários dinâmicos.
     * Adicionar à matriz o mapeamento de `ConvNet` para o respectivo fonte C++ (`convnet.cpp`).
-* [ ] **Tarefa A.1.2: Corrigir documentação sobre `condition_size` e `head` (`docs/cpp_parity_map.md`)**
+* [x] **Tarefa A.1.2: Corrigir documentação sobre `condition_size` e `head` (`docs/cpp_parity_map.md`)**
   * **Especialista:** `documentador`
   * **Ação:** Em `docs/cpp_parity_map.md`, seção `10.1 Architecture`:
     * Modificar a divergência que afirma que `condition_size ≠ 1` ou `head` não-nulo são rejeitados no carregamento.

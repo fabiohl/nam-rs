@@ -311,9 +311,10 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
 | **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                                      |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features not implemented in NAM-rs. Models using them are **rejected at load   |
-| `head` (non-null) rejected**                  | time** with a clear diagnostic (T7.3). All known A1 WaveNet models (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null`; these features are only needed for advanced         |
-|                                               | architectures (A2 FiLM conditioning, custom post-stack heads). If real-world models requiring them are found in circulation (Tone3000/ToneHunt), they can be supported in a future sprint.  |
+| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features. Models using them are **accepted at load time** —                   |
+| `head` (non-null) accepted**                  | `get_wavenet_topology()` captures the non-catalog geometry as `Free` and routes it to `WaveNetModelDyn` (the dynamic engine), which is parameterized on `condition_size` at runtime.         |
+|                                               | Catalog SKUs (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null` via the const-generic fast-path. The dynamic path handles `condition_size > 1`, post-stack heads,         |
+|                                               | and free geometries with generic dispatch (§3.3).                                                                                                        |
 
 ### 11.2 Math
 
