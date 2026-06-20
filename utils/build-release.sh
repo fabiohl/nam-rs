@@ -179,6 +179,8 @@ fi
     echo -e "  Compiling and running inference workload (inference_bench)..."
     # To keep PGO profile generation fast yet highly representative, we run:
     # 1. Standard end-to-end models at 64 samples buffer size (filter: "64samp")
+    #   - ConvNet models (ConvNet_MultiChannel/LargeKernel/Dilated_64samp) — Added by Épico E
+    #   - Dynamic engines (WaveNet_Dynamic_CH5_64samp, LSTM_Dynamic_1x7_64samp) — Added by Épico E
     # 2. Vectorized SIMD/FastMath kernels (filter: "AVX")
     # 3. Resampler configurations (filter: "Resampler")
     # Using "--profile-time 1" avoids slow statistical analysis and plots.

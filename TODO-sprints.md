@@ -145,7 +145,7 @@ cargo bench --bench inference_bench -- "Dynamic" --profile-time 1
 
 ---
 
-### T-E1.3 — Atualizar filtros PGO em `build-release.sh` (incluir dinâmicos)
+### T-E1.3 — Atualizar filtros PGO em `build-release.sh` (incluir dinâmicos) [DONE]
 
 > **Achado:** F8 — o script `build-release.sh` Phase 2 filtra apenas `"64samp"`, `"AVX"`,
 > `"Resampler"`. Após T-E1.1 e T-E1.2, os novos benches já serão capturados por `"64samp"`.
