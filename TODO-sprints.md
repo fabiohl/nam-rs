@@ -530,11 +530,12 @@ escolhido, `.gitattributes` configurado e migração executada.
 > **Objetivo:** O mecanismo `models-nondist` se torna reprodutível e auditável: manifesto
 > machine-readable, discovery consolidada, asserção de classificação quando manifesto presente.
 >
-> **DoD do Sprint:** `nondist_validation.rs` consome manifesto quando disponível e valida
-> classe esperada; helper gera manifesto sem ANSI; `find_models_in_dir` existe em fonte única.
+> **DoD do Sprint:** `nondist_validation.rs` consome `manifest.json` como catálogo e valida
+> classe esperada; helper gera manifesto sem ANSI; `find_models_in_dir` é fallback filesystem.
 >
 > **⚠️ Risco:** Baixo (🟡). O diretório `models-nondist` é gitignored; nenhuma mudança
-> afeta a suíte em clone limpo. O manifesto é complementar (auto-skip quando ausente).
+> afeta a suíte em clone limpo. O `manifest.json` é complementar (auto-skip quando ausente).
+> Já pré-gerado com 6 modelos nondist.
 
 ---
 
@@ -601,10 +602,10 @@ cargo test --test nondist_validation 2>&1 | tail -5
 
 ---
 
-### T-E3.2 — Criar helper de geração de manifesto nondist (sem ANSI)
+### T-E3.2 — Criar helper de geração de manifesto nondist (sem ANSI) [DONE]
 
 > **Achado:** F10 — `CATALOG.txt` gerado por `check-model.py` contém escapes ANSI e não é
-> machine-readable.
+> machine-readable. **Substituído por `manifest.json`.**
 > **Risco/Cautela:** 🟡 Baixo. Novo helper, sem alterar fluxos existentes.
 
 **Contexto:**
@@ -670,6 +671,9 @@ python3 utils/check-model.py --manifest tests/fixtures/models/*.nam | python3 -m
 
 **Critério de aceite:** `check-model.py --manifest` gera JSON sem ANSI; formato machine-readable.
 
+> **Nota:** O `CATALOG.txt` antigo (ANSI) foi removido. O `manifest.json` é o catálogo
+> canônico. Já gerado com todos os modelos nondist atuais (6 entradas).
+
 ---
 
 ### T-E3.3 — `nondist_validation.rs` assertar contra manifesto quando presente
@@ -677,19 +681,22 @@ python3 utils/check-model.py --manifest tests/fixtures/models/*.nam | python3 -m
 > **Achado:** F10 — Sem asserção de classificação, o teste não captura roteamento incorreto.
 > **Risco/Cautela:** 🟠 Médio. Requer cuidado para não quebrar o teste quando manifesto
 > ausente (manter auto-skip).
+> **Catálogo:** `tests/fixtures/models-nondist/manifest.json` (substitui `CATALOG.txt` antigo).
 
 **Contexto:**
 
 - `tests/nondist_validation.rs` valida determinismo, block-invariance, finitude e
   estabilidade — mas **não** valida que o dispatcher roteou para a classe esperada.
+- `manifest.json` contém `{filename, sha256, expected_class, is_goal_target, name, author}`
+  para cada modelo nondist. Já pré-gerado (6 modelos).
 
 **Ação (implementação):**
 
-1. **`tests/nondist_validation.rs`** — Após construir o modelo (L79-85), se manifesto
-   presente, assertar a classe:
+1. **`tests/nondist_validation.rs`** — Carregar manifesto como catálogo de modelos
+   (substitui `find_models_in_dir` como fonte primária de discovery):
 
    ```rust
-   // Load manifest if present
+   // Load nondist catalog (manifest.json)
    let manifest_path = nondist_path.join("manifest.json");
    let manifest: Option<Vec<ManifestEntry>> = if manifest_path.exists() {
        let manifest_json = fs::read_to_string(&manifest_path)
@@ -701,27 +708,11 @@ python3 utils/check-model.py --manifest tests/fixtures/models/*.nam | python3 -m
    };
    ```
 
-   Dentro do loop de modelos:
+   **Descoberta de modelos:** Se `manifest.json` presente, iterar sobre
+   `manifest[].filename` e resolver `nondist_path.join(filename)` — evita
+   `find_models_in_dir` para nondist (usa o catálogo como source-of-truth).
 
-   ```rust
-   // If manifest is present, validate expected class
-   if let Some(ref manifest) = manifest {
-       if let Some(entry) = manifest.iter().find(|e| e.filename == filename) {
-           let actual_class = format!("{:?}", model.variant_name());
-           // Log but don't fail hard — the manifest is advisory
-           if !actual_class.contains(&entry.expected_class_prefix()) {
-               eprintln!(
-                   "⚠ Classification mismatch for {}: expected '{}', got '{}'",
-                   filename, entry.expected_class, actual_class
-               );
-           } else {
-               println!("  ✓ Classification OK: {} → {}", filename, actual_class);
-           }
-       }
-   }
-   ```
-
-2. **Struct `ManifestEntry`** — Definir em `tests/common/` (ou inline):
+2. **Struct `ManifestEntry`** — Definir em `tests/common/`:
 
    ```rust
    #[derive(serde::Deserialize)]
@@ -735,36 +726,58 @@ python3 utils/check-model.py --manifest tests/fixtures/models/*.nam | python3 -m
    }
    ```
 
-3. **Dependência:** Adicionar `serde_json` e `serde` como dev-dependencies em `Cargo.toml`
-   (provavelmente já presentes; verificar).
+3. **Validação de classificação** — Dentro do loop de modelos:
 
-4. **Comportamento quando manifesto ausente:** Nenhuma asserção de classificação — mantém
-   o comportamento atual. Apenas log: `"NOTE: No manifest.json found — skipping
-   classification validation."`.
+   ```rust
+   // If manifest is present, validate expected class
+   if let Some(ref manifest) = manifest {
+       if let Some(entry) = manifest.iter().find(|e| e.filename == filename) {
+           let class_label = model.class_label();  // "WaveNet A2", "LSTM 1x16", etc.
+           if class_label != entry.expected_class {
+               eprintln!(
+                   "⚠ Classification mismatch for {}: expected '{}', got '{}'",
+                   filename, entry.expected_class, class_label
+               );
+           } else {
+               println!("  ✓ Classification OK: {} → {}", filename, class_label);
+           }
+       }
+   }
+   ```
+
+   **Modelos desconhecidos (`Unknown (SlimmableContainer)`):** Se `expected_class`
+   começa com `"Unknown"`, skip da asserção (classificação conscientemente ignorada
+   para arquiteturas não suportadas no dispatcher).
+
+4. **Dependência:** `serde` + `serde_json` já são dependencies em `Cargo.toml` (L24-25).
+
+5. **Comportamento quando manifesto ausente:** Fallback para `find_models_in_dir` no
+   filesystem (descobrir `.nam` via glob). Sem asserção de classificação. Apenas log:
+   `"NOTE: No manifest.json found — falling back to filesystem discovery, skipping classification validation."`.
 
 **Verificação:**
 
 ```bash
-# Com manifesto:
-python3 utils/check-model.py --manifest tests/fixtures/models-nondist/*.nam \
-    > tests/fixtures/models-nondist/manifest.json
+# Com manifesto (já pré-gerado):
 cargo test --test nondist_validation -- --nocapture
 # Esperado: linhas "✓ Classification OK" ou "⚠ Classification mismatch"
 
 # Sem manifesto:
-rm -f tests/fixtures/models-nondist/manifest.json
+mv tests/fixtures/models-nondist/manifest.json tests/fixtures/models-nondist/manifest.json.bak
 cargo test --test nondist_validation -- --nocapture
-# Esperado: "NOTE: No manifest.json found" + testes passam normalmente
+# Esperado: "NOTE: No manifest.json found" + fallback filesystem discovery + testes passam
+mv tests/fixtures/models-nondist/manifest.json.bak tests/fixtures/models-nondist/manifest.json
 ```
 
-**Critério de aceite:** Com manifesto presente, classificações são validadas e reportadas;
-sem manifesto, comportamento inalterado.
+**Critério de aceite:** `manifest.json` é a fonte primária de discovery para nondist;
+classificações são validadas quando manifesto presente; sem manifesto, fallback inalterado.
 
 ---
 
-### T-E3.4 — Documentar comando único de (re)geração do manifesto nondist
+### T-E3.4 — Documentar comando único de (re)geração do manifesto nondist [DONE]
 
 > **Risco/Cautela:** 🟡 Trivial — documentação.
+> **Catálogo canônico:** `manifest.json` (já gerado, 6 modelos).
 
 **Ação (implementação):**
 
@@ -776,18 +789,21 @@ sem manifesto, comportamento inalterado.
    Private models for extended validation. The directory is gitignored; place a symlink
    or copy at `tests/fixtures/models-nondist/`.
 
-   ### Generating the Manifest
+   ### Manifest / Catalog
+
+   `manifest.json` serves as the machine-readable catalog of all nondist models. It enables
+   `nondist_validation.rs` to discover models and validate expected classification
+   (e.g., "this CH=32 model should route to WaveNetDyn"). Without the manifest, only
+   determinism, block-invariance, and stability are checked.
+
+   ### (Re)generating the Manifest
 
    ```sh
    python3 utils/check-model.py --manifest tests/fixtures/models-nondist/*.nam \
        > tests/fixtures/models-nondist/manifest.json
    ```
 
-   The manifest enables `nondist_validation.rs` to validate expected model classification
-   (e.g., "this CH=32 model should route to WaveNetDyn"). Without the manifest, only
-   determinism, block-invariance, and stability are checked.
-
-   ```markdown
+   Regenerate whenever nondist models are added, removed, or updated.
 
 **Critério de aceite:** Documentação presente com comando reprodutível.
 
@@ -795,8 +811,10 @@ sem manifesto, comportamento inalterado.
 
 ### T-E3.5 — Limpar escapes ANSI do output padrão de `check-model.py`
 
-> **Achado:** F10 — Output com escapes ANSI embutidos no CATALOG.txt.
+> **Achado:** F10 — Output interativo com escapes ANSI; quando pipeado para arquivo, polui.
 > **Risco/Cautela:** 🟡 Quick-win.
+> **Nota:** `manifest.json` já resolve o caso machine-readable. Esta tarefa melhora o modo
+> interativo (`isatty()`).
 
 **Ação (implementação):**
 
@@ -815,7 +833,8 @@ sem manifesto, comportamento inalterado.
    Substituir todas as referências a `\033[92m`, `\033[91m`, `\033[94m`, `\033[0m` por
    chamadas a `color(...)`.
 
-2. **Resultado:** Redirecionar para arquivo (`> CATALOG.txt`) produz output limpo sem ANSI.
+2. **Resultado:** Redirecionar para arquivo produz output limpo sem ANSI;
+   terminal interativo mantém cores.
 
 **Verificação:**
 
@@ -873,6 +892,7 @@ O desenvolvedor humano deve executar, em uma VM ou clone limpo:
 
    ```bash
    ln -s /path/to/nondist tests/fixtures/models-nondist
+   # manifest.json já pré-gerado (6 modelos). Regenere se adicionar/remover modelos:
    python3 utils/check-model.py --manifest tests/fixtures/models-nondist/*.nam \
        > tests/fixtures/models-nondist/manifest.json
    cargo test --test nondist_validation -- --nocapture
@@ -882,7 +902,7 @@ O desenvolvedor humano deve executar, em uma VM ou clone limpo:
 
 - [ ] Em VM/clone limpo + `mod-update.sh`, `tests-long.sh` completa todas as fases sem switches.
 - [ ] PGO/perf-annotate/`build-release.sh` inclui ConvNet e ≥1 engine dinâmico.
-- [ ] `models-nondist` documentado num único comando; manifesto machine-readable.
+- [ ] `models-nondist` usa `manifest.json` como catálogo; `find_models_in_dir` é fallback.
 - [ ] `.gitignore` un-ignora `tests/fixtures/**/*.json` (F12).
 - [ ] Freshness manifest detecta goldens desatualizados (warn-only).
 - [ ] `cargo check`, `cargo test`, `cargo bench` passam sem warnings.

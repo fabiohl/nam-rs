@@ -202,10 +202,39 @@ def classify_model(data, filename=""):
         }
 
 def main():
+    manifest_mode = False
+    if "--manifest" in sys.argv:
+        sys.argv.remove("--manifest")
+        manifest_mode = True
+
     if len(sys.argv) < 2:
-        print("Usage: utils/check-model.py <path_to_model.nam> [path_to_model2.nam ...]")
+        print("Usage: utils/check-model.py [--manifest] <path_to_model.nam> [path_to_model2.nam ...]")
         sys.exit(1)
-        
+
+    if manifest_mode:
+        import hashlib
+        manifest_entries = []
+        for filepath in sys.argv[1:]:
+            if not os.path.exists(filepath):
+                continue
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+            info = classify_model(data, filepath)
+            sha256_hash = hashlib.sha256(open(filepath, 'rb').read()).hexdigest()
+            manifest_entries.append({
+                "filename": os.path.basename(filepath),
+                "sha256": sha256_hash,
+                "expected_class": info["arch"],
+                "is_goal_target": info["is_goal"],
+                "name": info["name"],
+                "author": info["author"]
+            })
+        print(json.dumps(manifest_entries, indent=2))
+        return
+
     for filepath in sys.argv[1:]:
         if not os.path.exists(filepath):
             print(f"\033[91mError: File not found: {filepath}\033[0m")

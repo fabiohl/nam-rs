@@ -74,6 +74,10 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 * **Non-Distributable Local Models (`tests/fixtures/models-nondist/`)**:
   To test the engine locally against high-quality copyrighted models (such as `t3k` licensed files) without committing them to git, create a symbolic link named `tests/fixtures/models-nondist` pointing to your local directory containing these files. The integration test suite (`tests/nondist_validation.rs`) will automatically detect, parse, load, and perform self-consistency, block invariance, and stability checks on these models. If the directory is missing, these tests are skipped gracefully.
 
+  Use `utils/check-model.py --manifest` to (re)generate the machine-readable catalog
+  (`manifest.json`) and `utils/check-model.py <file>` to interactively inspect model metadata.
+  See `tests/fixtures/README.md` for full documentation.
+
 * To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
 
   1. `sudo usermod -aG audio $USER`
