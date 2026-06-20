@@ -286,13 +286,13 @@ This single-mode architecture eliminates the entire low-fidelity/high-fidelity
 duality that existed prior to E-HF Sprint 6. The ESR vs C++ reference improved
 by ~10 orders of magnitude:
 
-| Architecture          | ESR (linear) | ESR (dB)  | SNR (dB) | Precision class |
-|:--------------------- |:------------ |:--------- |:-------- |:--------------- |
-| LSTM / Linear         | ~1e-7..1e-9  | −70..−90  | 67–91    | **Bit-exact**   |
-| WaveNet A1-Std CH=16  | 4.58e-13     | −123.4    | 123.4    | f32 + poly tanh |
-| WaveNet A1-Std (v2)   | *varies*     | *varies*  | 101.8*   | f32 + poly tanh |
-| WaveNet Feather CH=8  | 4.92e-14     | −133.1    | 133.1    | f32 + poly tanh |
-| WaveNet Nano CH=4     | 6.30e-14     | −132.0    | 132.0    | f32 + poly tanh |
+| Architecture         | ESR (linear) | ESR (dB) | SNR (dB) | Precision class |
+|:-------------------- |:------------ |:-------- |:-------- |:--------------- |
+| LSTM / Linear        | ~1e-7..1e-9  | −70..−90 | 67–91    | **Bit-exact**   |
+| WaveNet A1-Std CH=16 | 4.58e-13     | −123.4   | 123.4    | f32 + poly tanh |
+| WaveNet A1-Std (v2)  | *varies*     | *varies* | 101.8*   | f32 + poly tanh |
+| WaveNet Feather CH=8 | 4.92e-14     | −133.1   | 133.1    | f32 + poly tanh |
+| WaveNet Nano CH=4    | 6.30e-14     | −132.0   | 132.0    | f32 + poly tanh |
 
 > \* Worst-case across multi-SR v2 goldens @ 192 kHz.
 > ESR measured against NeuralAmpModelerCore v0.5.3 reference (commit `9c7b185`).
@@ -300,14 +300,14 @@ by ~10 orders of magnitude:
 
 ### 9.2 What Changed (E-HF Sprint 6)
 
-| Prior state (pre-HF6)              | Current state (post-HF6)                             | Sprint/task |
-|:---------------------------------- |:---------------------------------------------------- | ----------- |
-| Dual weight storage (u16 + f32)    | Single f32 storage, no `AlignedVec<u16>` in WaveNet  | T-HF6.1–6.3 |
-| `#[cfg(feature = "high-fidelity")]`| No cfg gates in WaveNet — removed                    | T-HF6.4      |
-| `high-fidelity = []` in Cargo.toml | Feature flag removed                                 | T-HF6.5      |
-| ESR ~3e-3 to 1e-2 (−25 to −20 dB)  | ESR ~1e-13 (−123 dB) — ~10 orders improvement        | T-HF6.6      |
-| Golden thresholds SNR ≥ 7 dB       | Thresholds SNR 85–105 dB (16-37 dB margin)           | T-HF6.6      |
-| BF16/F16 weight quantization       | Eliminated for WaveNet (zero u16 in hot-path)        | T-HF6.1–6.3  |
+| Prior state (pre-HF6)               | Current state (post-HF6)                            | Sprint/task |
+|:----------------------------------- |:--------------------------------------------------- | ----------- |
+| Dual weight storage (u16 + f32)     | Single f32 storage, no `AlignedVec<u16>` in WaveNet | T-HF6.1–6.3 |
+| `#[cfg(feature = "high-fidelity")]` | No cfg gates in WaveNet — removed                   | T-HF6.4     |
+| `high-fidelity = []` in Cargo.toml  | Feature flag removed                                | T-HF6.5     |
+| ESR ~3e-3 to 1e-2 (−25 to −20 dB)   | ESR ~1e-13 (−123 dB) — ~10 orders improvement       | T-HF6.6     |
+| Golden thresholds SNR ≥ 7 dB        | Thresholds SNR 85–105 dB (16-37 dB margin)          | T-HF6.6     |
+| BF16/F16 weight quantization        | Eliminated for WaveNet (zero u16 in hot-path)       | T-HF6.1–6.3 |
 
 ### 9.3 Tanh Poly Approximation — Remaining Divergence from C++
 
@@ -371,13 +371,13 @@ because:
 
 ### 9.6 Cross-References
 
-| Item     | Location                                 | Topic                              |
-|:-------- |:---------------------------------------- |:---------------------------------- |
-| P1       | `TODO-problemas.md:47`                   | Lite divergent (architectural)     |
-| P2       | `TODO-problemas.md:92`                   | Fidelity asymmetry — RESOLVED      |
-| P10      | `TODO-problemas.md:353`                  | Lo-fi mode review — RESOLVED       |
-| T-HF6.6  | `TODO-sprints.md:1277`                   | Golden recalibration post-nuke     |
-| T-HF6.5  | `TODO-sprints.md:1258`                   | Feature flag removal               |
+| Item    | Location                | Topic                          |
+|:------- |:----------------------- |:------------------------------ |
+| P1      | `TODO-problemas.md:47`  | Lite divergent (architectural) |
+| P2      | `TODO-problemas.md:92`  | Fidelity asymmetry — RESOLVED  |
+| P10     | `TODO-problemas.md:353` | Lo-fi mode review — RESOLVED   |
+| T-HF6.6 | `TODO-sprints.md:1277`  | Golden recalibration post-nuke |
+| T-HF6.5 | `TODO-sprints.md:1258`  | Feature flag removal           |
 
 ---
 

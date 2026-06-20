@@ -58,22 +58,22 @@ divergences, and the sprint/task that established each equivalence.
 
 > Models whose topology does not match a catalog SKU (Standard/Lite/Feather/Nano) are routed through the dynamic fallback path (`WaveNetModelDyn`) — not rejected. This engine handles arbitrary channel counts, kernel sizes, dilations, `condition_size > 1`, and post-stack heads. The `Conv1dDyn` convolution kernel serves as the low-level compute engine for this path, for the A2 dynamic engine (`WaveNetA2Dyn`), and for static WaveNet test/stress kernels.
 
-| C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                                                      | Parity established |
-| ----------------------------- | ---------------------------------------------------------------------------------- | ------------------ |
-| Dynamic Conv1D                | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn`                                       | —                  |
-| Generic WaveNet inference     | `models/wavenet/model_dyn.rs` — `WaveNetModelDyn`                                  | —                  |
-| Generic LSTM inference        | `models/lstm/model_dyn.rs` — `LstmModelDyn`                                        | —                  |
-| Generic WaveNet A2 inference  | `models/a2/model/dynamic.rs` — `WaveNetA2Dyn`                                      | —                  |
+| C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                     | Parity established |
+| ----------------------------- | ------------------------------------------------- | ------------------ |
+| Dynamic Conv1D                | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn`      | —                  |
+| Generic WaveNet inference     | `models/wavenet/model_dyn.rs` — `WaveNetModelDyn` | —                  |
+| Generic LSTM inference        | `models/lstm/model_dyn.rs` — `LstmModelDyn`       | —                  |
+| Generic WaveNet A2 inference  | `models/a2/model/dynamic.rs` — `WaveNetA2Dyn`     | —                  |
 
 ### 3.4 Topology → Concrete Type Mapping
 
-| C++ topology          | Rust construct                                 | Static type              |
-| --------------------- | ---------------------------------------------- | ------------------------ |
-| WaveNet Standard (16) | `loader/dispatcher/wavenet/standard.rs`        | `WaveNetModel<16, 3, 8>` |
-| WaveNet Lite (12)     | `loader/dispatcher/wavenet/lite.rs`            | `WaveNetModel<12, 3, 6>` |
-| WaveNet Feather (8)   | `loader/dispatcher/wavenet/feather.rs`         | `WaveNetModel<8, 3, 4>`  |
-| WaveNet Nano (4)      | `loader/dispatcher/wavenet/nano.rs`            | `WaveNetModel<4, 3, 2>`  |
-| Any other geometry    | `loader/dispatcher/wavenet/dynamic.rs`         | `WaveNetModelDyn`         |
+| C++ topology          | Rust construct                          | Static type              |
+| --------------------- | --------------------------------------- | ------------------------ |
+| WaveNet Standard (16) | `loader/dispatcher/wavenet/standard.rs` | `WaveNetModel<16, 3, 8>` |
+| WaveNet Lite (12)     | `loader/dispatcher/wavenet/lite.rs`     | `WaveNetModel<12, 3, 6>` |
+| WaveNet Feather (8)   | `loader/dispatcher/wavenet/feather.rs`  | `WaveNetModel<8, 3, 4>`  |
+| WaveNet Nano (4)      | `loader/dispatcher/wavenet/nano.rs`     | `WaveNetModel<4, 3, 2>`  |
+| Any other geometry    | `loader/dispatcher/wavenet/dynamic.rs`  | `WaveNetModelDyn`        |
 
 ---
 
@@ -107,18 +107,18 @@ divergences, and the sprint/task that established each equivalence.
 
 ### 4.4 LSTM Configurations
 
-| Config                         | Rust type                                      | `src/models/lstm/mod.rs` alias |
-| ------------------------------ | ---------------------------------------------- | ------------------------------ |
-| `1×8`                          | `LstmModel1<8, 9, 32>`                         | `Lstm1x8`                      |
-| `1×12`                         | `LstmModel1<12, 13, 48>`                       | `Lstm1x12`                     |
-| `1×16`                         | `LstmModel1<16, 17, 64>`                       | `Lstm1x16`                     |
-| `1×24`                         | `LstmModel1<24, 25, 96>`                       | `Lstm1x24`                     |
-| `1×40`                         | `LstmModel1<40, 41, 160>`                      | `Lstm1x40`                     |
-| `2×8`                          | `LstmModel2<8, 9, 16, 32>`                     | `Lstm2x8`                      |
-| `2×12`                         | `LstmModel2<12, 13, 24, 48>`                   | `Lstm2x12`                     |
-| `2×16`                         | `LstmModel2<16, 17, 32, 64>`                   | `Lstm2x16`                     |
-| `2×24`                         | `LstmModel2<24, 25, 48, 96>`                   | `Lstm2x24`                     |
-| Any other (num_layers, hidden) | `loader/dispatcher/lstm.rs` → `LstmModelDyn`    | —                              |
+| Config                         | Rust type                                    | `src/models/lstm/mod.rs` alias |
+| ------------------------------ | -------------------------------------------- | ------------------------------ |
+| `1×8`                          | `LstmModel1<8, 9, 32>`                       | `Lstm1x8`                      |
+| `1×12`                         | `LstmModel1<12, 13, 48>`                     | `Lstm1x12`                     |
+| `1×16`                         | `LstmModel1<16, 17, 64>`                     | `Lstm1x16`                     |
+| `1×24`                         | `LstmModel1<24, 25, 96>`                     | `Lstm1x24`                     |
+| `1×40`                         | `LstmModel1<40, 41, 160>`                    | `Lstm1x40`                     |
+| `2×8`                          | `LstmModel2<8, 9, 16, 32>`                   | `Lstm2x8`                      |
+| `2×12`                         | `LstmModel2<12, 13, 24, 48>`                 | `Lstm2x12`                     |
+| `2×16`                         | `LstmModel2<16, 17, 32, 64>`                 | `Lstm2x16`                     |
+| `2×24`                         | `LstmModel2<24, 25, 48, 96>`                 | `Lstm2x24`                     |
+| Any other (num_layers, hidden) | `loader/dispatcher/lstm.rs` → `LstmModelDyn` | —                              |
 
 ---
 
@@ -126,12 +126,12 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 5. ConvNet Architecture
 
-| C++ (`NeuralAmpModelerCore/`)                    | Rust (`src/`)                                             | Parity established |
-| ------------------------------------------------ | --------------------------------------------------------- | ------------------ |
-| `convnet.cpp` / `convnet.h` — ConvNet inference  | `models/convnet/model.rs` — `ConvNetModel`                | —                  |
-| Conv1D → BatchNorm → Activation blocks           | `models/convnet/block.rs` — `ConvNetBlock`                | —                  |
-| `convnet.h:108-118` — `_Head` (post-stack head)  | `models/convnet/model.rs` — `ConvNetModel.post_stack_head` | —                  |
-| ConvNet topology dispatch                        | `loader/dispatcher/convnet/mod.rs` — `build_convnet()`     | —                  |
+| C++ (`NeuralAmpModelerCore/`)                   | Rust (`src/`)                                              | Parity established |
+| ----------------------------------------------- | ---------------------------------------------------------- | ------------------ |
+| `convnet.cpp` / `convnet.h` — ConvNet inference | `models/convnet/model.rs` — `ConvNetModel`                 | —                  |
+| Conv1D → BatchNorm → Activation blocks          | `models/convnet/block.rs` — `ConvNetBlock`                 | —                  |
+| `convnet.h:108-118` — `_Head` (post-stack head) | `models/convnet/model.rs` — `ConvNetModel.post_stack_head` | —                  |
+| ConvNet topology dispatch                       | `loader/dispatcher/convnet/mod.rs` — `build_convnet()`     | —                  |
 
 ---
 
@@ -243,16 +243,16 @@ After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet 
 (E-HF Sprint 6), the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
 was recalibrated:
 
-| Model                  | ESR (linear)     | ESR (dB)  | SNR (dB) | Notes                     |
-|:---------------------- |:---------------- |:--------- |:-------- |:------------------------- |
-| WaveNet A1-Std CH=16   | 4.58e-13         | −123.4    | 123.4    | Live v1, f32 + poly tanh  |
-| WaveNet Standard v2    | *varies*         | *varies*  | 101.8*   | Multi-SR v2 worst @ 192k  |
-| WaveNet Standard (v2)  | *varies*         | *varies*  | 123.0**  | v2 best @ 48kHz           |
-| WaveNet Feather CH=8   | 4.92e-14         | −133.1    | 133.1    | Live v1                   |
-| WaveNet Feather (v2)   | *varies*         | *varies*  | 117.6*   | v2 worst @ 192kHz         |
-| WaveNet Nano CH=4      | 6.30e-14         | −132.0    | 132.0    | Live v1                   |
-| WaveNet Nano (v2)      | *varies*         | *varies*  | 114.6*   | v2 worst @ 192kHz         |
-| WaveNet Lite CH=12     | —                | —         | 0.9      | P1 — architectural, `#[ignore]` |
+| Model                 | ESR (linear) | ESR (dB) | SNR (dB) | Notes                           |
+|:--------------------- |:------------ |:-------- |:-------- |:------------------------------- |
+| WaveNet A1-Std CH=16  | 4.58e-13     | −123.4   | 123.4    | Live v1, f32 + poly tanh        |
+| WaveNet Standard v2   | *varies*     | *varies* | 101.8*   | Multi-SR v2 worst @ 192k        |
+| WaveNet Standard (v2) | *varies*     | *varies* | 123.0**  | v2 best @ 48kHz                 |
+| WaveNet Feather CH=8  | 4.92e-14     | −133.1   | 133.1    | Live v1                         |
+| WaveNet Feather (v2)  | *varies*     | *varies* | 117.6*   | v2 worst @ 192kHz               |
+| WaveNet Nano CH=4     | 6.30e-14     | −132.0   | 132.0    | Live v1                         |
+| WaveNet Nano (v2)     | *varies*     | *varies* | 114.6*   | v2 worst @ 192kHz               |
+| WaveNet Lite CH=12    | —            | —        | 0.9      | P1 — architectural, `#[ignore]` |
 
 > \* Worst-case across v2 multi-SR golden vectors.
 > \*\* Best-case v2 (48 kHz native).
@@ -267,28 +267,28 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 ## 10. Topology Table
 
-| C++ NAM topology      | Rust module / type                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| WaveNet Standard 16   | `models::wavenet::WaveNetModel<16, 3, 8>`                                                   |
-| WaveNet Lite 12       | `models::wavenet::WaveNetModel<12, 3, 6>`                                                   |
-| WaveNet Feather 8     | `models::wavenet::WaveNetModel<8, 3, 4>`                                                    |
-| WaveNet Nano 4        | `models::wavenet::WaveNetModel<4, 3, 2>`                                                    |
-| WaveNet Dyn           | `models::wavenet::WaveNetModelDyn` (fallback genérico para geometrias livres)              |
-| LSTM 1×3              | `models::lstm::Lstm1x3`                                                                      |
-| LSTM 1×8              | `models::lstm::LstmModel1<8, 9, 32>`                                                        |
-| LSTM 1×12             | `models::lstm::LstmModel1<12, 13, 48>`                                                      |
-| LSTM 1×16             | `models::lstm::LstmModel1<16, 17, 64>`                                                      |
-| LSTM 1×24             | `models::lstm::LstmModel1<24, 25, 96>`                                                      |
-| LSTM 1×40             | `models::lstm::LstmModel1<40, 41, 160>`                                                     |
-| LSTM 2×8              | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                    |
-| LSTM 2×12             | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                  |
-| LSTM 2×16             | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                  |
-| LSTM 2×24             | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                  |
-| LSTM Dyn              | `models::lstm::LstmModelDyn` (fallback genérico para camadas/hidden não-catalogados)        |
-| A2-Full (8 ch)        | `models::a2::WaveNetA2<8>` (fixed fast-path, 8 channels, tap-major frame-tiled convolution) |
-| A2-Lite (3 ch)        | `models::a2::WaveNetA2<3>` (fixed fast-path, 3 channels, unrolled GEMV convolution)         |
-| WaveNet A2 Dyn        | `models::a2::WaveNetA2Dyn` (motor dinâmico para geometrias A2 não-catalogadas, FiLM/gating) |
-| ConvNet               | `models::convnet::ConvNetModel` (feed-forward Conv1D+BatchNorm+Activation, sem recorrência)  |
+| C++ NAM topology    | Rust module / type                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| WaveNet Standard 16 | `models::wavenet::WaveNetModel<16, 3, 8>`                                                   |
+| WaveNet Lite 12     | `models::wavenet::WaveNetModel<12, 3, 6>`                                                   |
+| WaveNet Feather 8   | `models::wavenet::WaveNetModel<8, 3, 4>`                                                    |
+| WaveNet Nano 4      | `models::wavenet::WaveNetModel<4, 3, 2>`                                                    |
+| WaveNet Dyn         | `models::wavenet::WaveNetModelDyn` (fallback genérico para geometrias livres)               |
+| LSTM 1×3            | `models::lstm::Lstm1x3`                                                                     |
+| LSTM 1×8            | `models::lstm::LstmModel1<8, 9, 32>`                                                        |
+| LSTM 1×12           | `models::lstm::LstmModel1<12, 13, 48>`                                                      |
+| LSTM 1×16           | `models::lstm::LstmModel1<16, 17, 64>`                                                      |
+| LSTM 1×24           | `models::lstm::LstmModel1<24, 25, 96>`                                                      |
+| LSTM 1×40           | `models::lstm::LstmModel1<40, 41, 160>`                                                     |
+| LSTM 2×8            | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                    |
+| LSTM 2×12           | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                  |
+| LSTM 2×16           | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                  |
+| LSTM 2×24           | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                  |
+| LSTM Dyn            | `models::lstm::LstmModelDyn` (fallback genérico para camadas/hidden não-catalogados)        |
+| A2-Full (8 ch)      | `models::a2::WaveNetA2<8>` (fixed fast-path, 8 channels, tap-major frame-tiled convolution) |
+| A2-Lite (3 ch)      | `models::a2::WaveNetA2<3>` (fixed fast-path, 3 channels, unrolled GEMV convolution)         |
+| WaveNet A2 Dyn      | `models::a2::WaveNetA2Dyn` (motor dinâmico para geometrias A2 não-catalogadas, FiLM/gating) |
+| ConvNet             | `models::convnet::ConvNetModel` (feed-forward Conv1D+BatchNorm+Activation, sem recorrência) |
 
 > Engine genres: **Catalog SKUs** (Standard/Lite/Feather/Nano, LSTM 1×/2×, A2-Full/Lite) use const-generic paths with full SIMD specialization. **Dynamic engines** (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) handle free geometry, `condition_size ≠ 1`, post-stack heads, and other non-catalogued topologies via generic dispatch (§3.3). **ConvNet** maps to the C++ `convnet.cpp` / `convnet.h` reference.
 
@@ -311,21 +311,21 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
 | **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                                      |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features. Models using them are **accepted at load time** —                   |
-| `head` (non-null) accepted**                  | `get_wavenet_topology()` captures the non-catalog geometry as `Free` and routes it to `WaveNetModelDyn` (the dynamic engine), which is parameterized on `condition_size` at runtime.         |
-|                                               | Catalog SKUs (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null` via the const-generic fast-path. The dynamic path handles `condition_size > 1`, post-stack heads,         |
-|                                               | and free geometries with generic dispatch (§3.3).                                                                                                        |
+| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features. Models using them are **accepted at load time** —                    |
+| `head` (non-null) accepted**                  | `get_wavenet_topology()` captures the non-catalog geometry as `Free` and routes it to `WaveNetModelDyn` (the dynamic engine), which is parameterized on `condition_size` at runtime.        |
+|                                               | Catalog SKUs (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null` via the const-generic fast-path. The dynamic path handles `condition_size > 1`, post-stack heads,          |
+|                                               | and free geometries with generic dispatch (§3.3).                                                                                                                                           |
 
 ### 11.2 Math
 
-| Divergence                                           | Rationale                                                                                                                                                                                                              |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Divergence                                           | Rationale                                                                                                                                                                                                                          |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. Post-T-HF6.6, this is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated). |
-| **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                            |
-| **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+. |
-| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation (T13.2/T18.4).                                                                 |
-| **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                  |
-| **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                    |
+| **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                                        |
+| **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+.             |
+| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation (T13.2/T18.4).                                                                             |
+| **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                              |
+| **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                                |
 
 ### 11.3 Ecosystem
 
@@ -438,14 +438,14 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 
 ## 14. Version History
 
-| Date       | Change                                                                                                                                                                                                                                                                                                         |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-20 | [Tarefa A.1.3] Seção 6 (A2 Architecture): removido aviso de "C++ Live Cross-Validation Blocked" e "self-golden pattern" — os goldens A2 são gerados pelo C++ `render` v0.5.3 desde T2.5/T16.4; documentada natureza sintética dos pesos, limitação de sample rate (48 kHz apenas), ESR/SNR calibrados reais (79.2/90.7 dB) e status normal do `#[ignore]` de Layer 2. |
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-20 | [Tarefa A.1.3] Seção 6 (A2 Architecture): removido aviso de "C++ Live Cross-Validation Blocked" e "self-golden pattern" — os goldens A2 são gerados pelo C++ `render` v0.5.3 desde T2.5/T16.4; documentada natureza sintética dos pesos, limitação de sample rate (48 kHz apenas), ESR/SNR calibrados reais (79.2/90.7 dB) e status normal do `#[ignore]` de Layer 2.                              |
 | 2026-06-20 | [Tarefa A.1.1] Atualização de §§3.3, 3.4, 4.4, 10 e nova Seção 5 (ConvNet): removida linguagem de "removido" dos engines dinâmicos; corrigido fallback `Free`/`WaveNetModelDyn`/`LstmModelDyn` para geometrias não-catalogadas; adicionadas entradas `WaveNetDyn`, `LSTM Dyn`, `WaveNetA2Dyn` e `ConvNet` na tabela de topologia; renumeradas todas as seções subsequentes (5→6, 6→7, ..., 15→14). |
-| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§9.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §11.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                         |
-| 2026-06-12 | [T11.2] `is_a2_shape()` now matches C++ `is_a2_shape()` exactly (20 criteria from `a2_fast.cpp:875-908`). Added `bottleneck`, `kernel_sizes`, `in_channels` to typed config structs; raw JSON capture via `layer_raw` for complex checks (activation arrays, FiLM, gating_mode, head sub-objects, groups,      |
-|            | slimmable). Strict rejection with clear diagnostics prevents silent fast-path misroute for models with `bottleneck≠channels`, gated/blended activation, or active FiLM conditioning. Full parity map entry updated with correct line range.                                                                    |
-| 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm. |
-| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                                                       |
-| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                                                                   |
-| 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences.                                      |
+| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§9.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §11.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                                                                                                              |
+| 2026-06-12 | [T11.2] `is_a2_shape()` now matches C++ `is_a2_shape()` exactly (20 criteria from `a2_fast.cpp:875-908`). Added `bottleneck`, `kernel_sizes`, `in_channels` to typed config structs; raw JSON capture via `layer_raw` for complex checks (activation arrays, FiLM, gating_mode, head sub-objects, groups,                                                                                          |
+|            | slimmable). Strict rejection with clear diagnostics prevents silent fast-path misroute for models with `bottleneck≠channels`, gated/blended activation, or active FiLM conditioning. Full parity map entry updated with correct line range.                                                                                                                                                        |
+| 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm.                                                                                     |
+| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                                                                                                                                           |
+| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                                                                                                                                                       |
+| 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences.                                                                                                                          |

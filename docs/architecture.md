@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # NAM-rs Architecture: Standalone Neural Inference Client
@@ -35,17 +36,17 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 
 NAM-rs uses a **static enum dispatch** pattern to route inference calls to the correct model architecture without virtual table (vtable) overhead. The `StaticModel` enum (`src/models/mod.rs:77`) has 23 variants covering all supported architectures:
 
-| Family               | Variants                                                                                              | Dispatch Strategy          |
-|:-------------------- |:----------------------------------------------------------------------------------------------------- |:-------------------------- |
-| **WaveNet A1**       | `Standard` (ch=16), `Lite` (ch=12), `Feather` (ch=8), `Nano` (ch=4)                                  | Const-generic monomorphization |
-| **WaveNet A2**       | `A2Full` (ch=8), `A2Lite` (ch=3)                                                                     | Const-generic monomorphization |
-| **WaveNet A2 Dyn**   | `WaveNetA2Dyn`                                                                                        | Runtime dimensions (free channels) |
-| **WaveNet Dyn**      | `WaveNetModelDyn`                                                                                     | Free geometry fallback     |
-| **LSTM Static**      | `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`, `1×40`, `2×24` (10 profiles)        | Const-generic monomorphization |
-| **LSTM Dyn**         | `LstmModelDyn`                                                                                        | Runtime dimensions fallback |
-| **Container**        | `ContainerModel`                                                                                      | Nested `StaticModel` dispatch |
-| **ConvNet**          | `ConvNetModel`                                                                                        | Layer-chain SIMD dispatch  |
-| **Linear**           | `LinearModel`                                                                                         | Direct SIMD FIR            |
+| Family             | Variants                                                                                  | Dispatch Strategy                  |
+|:------------------ |:----------------------------------------------------------------------------------------- |:---------------------------------- |
+| **WaveNet A1**     | `Standard` (ch=16), `Lite` (ch=12), `Feather` (ch=8), `Nano` (ch=4)                       | Const-generic monomorphization     |
+| **WaveNet A2**     | `A2Full` (ch=8), `A2Lite` (ch=3)                                                          | Const-generic monomorphization     |
+| **WaveNet A2 Dyn** | `WaveNetA2Dyn`                                                                            | Runtime dimensions (free channels) |
+| **WaveNet Dyn**    | `WaveNetModelDyn`                                                                         | Free geometry fallback             |
+| **LSTM Static**    | `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`, `1×40`, `2×24` (10 profiles) | Const-generic monomorphization     |
+| **LSTM Dyn**       | `LstmModelDyn`                                                                            | Runtime dimensions fallback        |
+| **Container**      | `ContainerModel`                                                                          | Nested `StaticModel` dispatch      |
+| **ConvNet**        | `ConvNetModel`                                                                            | Layer-chain SIMD dispatch          |
+| **Linear**         | `LinearModel`                                                                             | Direct SIMD FIR                    |
 
 The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs:242`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
 
@@ -491,12 +492,12 @@ Model switching in the audio thread is RT-safe:
 
 **Analysis:**
 
-| Duplication site                        | Inline SLOC | Fix                           | SLOC saved |
-| --------------------------------------- | ----------: | ----------------------------- | ---------: |
-| `resampler_swap.rs` inline GC cascade   |          20 | Replace with `gc_cascade()`   |         19 |
-| `commands.rs` model GC cascade          |          18 | Replace with `gc_cascade()`   |         17 |
-| `clap/processor/gc.rs` `push_to_gc()`   |          15 | Delegate to `gc_cascade()`    |         10 |
-| **Total** with `gc_cascade()` reuse     |             |                               |     **46** |
+| Duplication site                      | Inline SLOC | Fix                         | SLOC saved |
+| ------------------------------------- | -----------:| --------------------------- | ----------:|
+| `resampler_swap.rs` inline GC cascade | 20          | Replace with `gc_cascade()` | 19         |
+| `commands.rs` model GC cascade        | 18          | Replace with `gc_cascade()` | 17         |
+| `clap/processor/gc.rs` `push_to_gc()` | 15          | Delegate to `gc_cascade()`  | 10         |
+| **Total** with `gc_cascade()` reuse   |             |                             | **46**     |
 
 A `SwapStrategy<T>` would encapsulate only the `std::mem::replace(active, new)` + GC cascade pair.
 Each drain site has unique logic interleaved with the swap (rate tracking in `drain_resamplers`,
@@ -687,7 +688,7 @@ The graphical interface is decomposed from its original monolithic state into a 
 >
 > - **Toast/Loading Animations:** Visual elements that animate or fade out cannot rely solely on the host scheduling frame ticks or on passive repaint flags. Instead, they must actively call `request_repaint()` on the `egui::Context` during their active duration.
 > - **Reduced Idle CPU:** CPU utilization drops to virtually 0% when the UI is open but static (no audio playing and no user interaction).
->
+
 - **References:** [handler.rs](../src/clap/gui/window/handler.rs), [gui-architecture.md](gui-architecture.md#L154-L172).
 
 ### 8.3.4 CLAP Mono Design and Stereophonic Discard

@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # CLAP (Clever Audio Plug-in) Integration Strategy
@@ -177,7 +178,7 @@ Since loading neural network models and resamplers requires disk access, parsing
    - The RT thread must never drop heap-allocated objects (such as `Box<StaticModel>` or `Box<NamResampler>`), as dropping can trigger system deallocations and block the audio thread.
    - When a new model is loaded, the RT thread replaces the active model/resampler and pushes the obsolete instances into `gc_tx` as `GcItem` variants.
    - The Main thread periodically drains `gc_rx` and safely drops the resources.
-    - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
+     - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
 
 ## 10. Model Gain Calibration (input_level_dbu / loudness)
 
@@ -195,6 +196,7 @@ at the same level as it does in the standalone binary and in the reference C++ i
 (where similar normalization is applied via `calibrated_loudness`).
 
 The flow is:
+
 1. `load_and_build_model()` → computes `input_mult_adj` / `output_mult_adj` from metadata
    (`src/loader/build.rs:145-151`), stores them in `LoadedModelPair`
 2. CLAP `load_model()` → extracts the multipliers and sends them via `ClapParamPayload::LoadModel`

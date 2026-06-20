@@ -431,7 +431,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO A — Sincronização Documentação ↔ Implementação (paridade real)
+### ÉPICO A — Sincronização Documentação ↔ Implementação (paridade real) [DONE]
 
 - **Objetivo:** a documentação reflete fielmente o engine atual (engines dinâmicos + ConvNet ativos; A2
   goldens reais; matriz de paridade NAMcore completa e verdadeira).
