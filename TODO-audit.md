@@ -496,7 +496,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist)
+### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist) [DOING]
 
 - **Objetivo:** `tests-long.sh` roda a suíte completa em **clone recém-clonado** tendo apenas `mod-update.sh`
   como pré-requisito; PGO cobre inteligentemente todos os hot-paths; mecanismo `models-nondist` reprodutível
@@ -538,11 +538,11 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ## 4. Ordem de Execução Sugerida
 
-1. **Épico A** (docs) — primeiro: estabelece a verdade de escopo para todos os demais. Baixo risco, alto valor.
-2. **Épico E** (infra) **em paralelo com C/D** — provê a base de geração de goldens/benches que o B consome.
-3. **Épico B** (validação dos novos paths) — **o mais crítico**; idealmente após E disponibilizar a infra de
+1. **Épico A** (docs) — primeiro: estabelece a verdade de escopo para todos os demais. Baixo risco, alto valor. [DONE]
+2. **Épico E** (infra) **em paralelo com C/D** — provê a base de geração de goldens/benches que o B consome. [DOING]
+3. **Épicos C e D** — independentes, podem correr em paralelo desde o início.
+4. **Épico B** (validação dos novos paths) — **o mais crítico**; idealmente após E disponibilizar a infra de
    golden/bench (ou coordenado com ela).
-4. **Épicos C e D** — independentes, podem correr em paralelo desde o início.
 
 > **Riscos transversais a vigiar:** (a) IA **não** executa `tests-long.sh` nem `build-release.sh` longos —
 > validações pesadas (live C++ parity, soak, PGO) exigem execução pelo desenvolvedor humano; (b) toda
