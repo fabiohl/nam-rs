@@ -89,6 +89,20 @@ impl WaveNetModelDyn {
         }
     }
 
+    /// Creates a new `WaveNetModelDyn` with all internal channels reduced to
+    /// `new_ch`. Delegates to [`crate::models::slimmable::slice_wavenet_model`].
+    ///
+    /// This is the entry point for the SPSC GC swap pipeline: the async thread
+    /// calls this to produce a lightweight copy that can be atomically swapped
+    /// in via `gc_cascade`.
+    ///
+    /// # Panics
+    /// Panics if `new_ch` is zero, exceeds the original channel count, or if
+    /// arrays have non-uniform channel counts.
+    pub fn slice_channels(&self, new_ch: usize) -> std::io::Result<Self> {
+        crate::models::slimmable::slice_wavenet_model(self, new_ch)
+    }
+
     /// Resolves the full forward pass and produces waveform samples in zero allocation (DSP).
     ///
     /// Combines the outputs of both arrays: sum(head1) + sum(head2) × `head_scale`.

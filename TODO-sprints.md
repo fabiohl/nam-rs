@@ -33,9 +33,12 @@ Modelos "Slimmable" permitem ajustes de carga computacional e qualidade em tempo
 
 ### Sprint 2.1: Swap Dinâmico (Slimmable via SPSC GC)
 
-- **Tarefa 2.1.1**: Desenvolver a infraestrutura de extração em `src/models/slimmable.rs` para permitir que o motor de instanciamento fatiar os pesos com base em um tamanho de camada dinâmico. O `NeuralAmpModelerCore` ajusta em runtime, mas para manter o hot-path RT-safe no Rust (`zero-alloc`, lock-free), o `nam-rs` utilizará a arquitetura existente de GC:
+- **Tarefa 2.1.1** [DONE]: Desenvolver a infraestrutura de extração em `src/models/slimmable.rs` para permitir que o motor de instanciamento fatiar os pesos com base em um tamanho de camada dinâmico. O `NeuralAmpModelerCore` ajusta em runtime, mas para manter o hot-path RT-safe no Rust (`zero-alloc`, lock-free), o `nam-rs` utilizará a arquitetura existente de GC:
   - A thread assíncrona cria uma nova instância `WaveNetModelDyn` recortando (`slice`) os vetores de canais/pesos.
   - Uma nova instância leve é trocada atomicamente com o `SPSC GC` e o modelo antigo é varrido da thread RT.
+  - **Implementado**: funções `slice_conv1d`, `slice_dense`, `slice_wavenet_layer`, `slice_wavenet_array`, `slice_wavenet_model` em `src/models/slimmable.rs` + método `WaveNetModelDyn::slice_channels()`.
+  - **Limitação conhecida**: `condition_dsp` é setado como `None` no modelo fatiado (não clonável genericamente). Deve ser endereçado na Tarefa 2.1.2 ou resolvido com rebuild a partir do JSON original.
+  - `PostStackHead` agora deriva `Clone`.
 - **Tarefa 2.1.2**: Integrar este comportamento ao `adaptive.rs` para permitir que o slider de qualidade re-estancie o SLimmable sem falhas.
 
 ### Sprint 2.2: Suporte a Containers Aninhados (F11)

@@ -15,6 +15,7 @@ use crate::loader::nam_json::model::HeadConfig;
 /// Contains a causal Conv1D + activation that processes the signal
 /// after the stack of layer arrays, before the final `head_scale` gain.
 /// Mirrors the `_Head` structure in NAMCore's `convnet.h:108-118`.
+#[derive(Clone)]
 #[repr(align(64))]
 pub struct PostStackHead {
     /// Causal 1D convolution (dynamic runtime dimensions).
