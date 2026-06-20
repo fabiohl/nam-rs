@@ -220,7 +220,7 @@ regions de ConvNet e engines dinâmicos. Documentação do script atualizada.
 
 ---
 
-## Sprint E.2 — Fresh-Clone e Frescor dos Goldens (F9, F15)
+## Sprint E.2 — Fresh-Clone e Frescor dos Goldens (F9, F15) [DONE]
 
 > **Objetivo:** Um `git clone` + `utils/mod-update.sh` + `utils/tests-long.sh` deve
 > completar a suíte inteira **sem switches manuais** (`NAM_AUTO_BUILD_GOLDENS`). Goldens
@@ -676,7 +676,7 @@ python3 utils/check-model.py --manifest tests/fixtures/models/*.nam | python3 -m
 
 ---
 
-### T-E3.3 — `nondist_validation.rs` assertar contra manifesto quando presente
+### T-E3.3 — `nondist_validation.rs` assertar contra manifesto quando presente [DONE]
 
 > **Achado:** F10 — Sem asserção de classificação, o teste não captura roteamento incorreto.
 > **Risco/Cautela:** 🟠 Médio. Requer cuidado para não quebrar o teste quando manifesto

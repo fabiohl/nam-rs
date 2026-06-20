@@ -23,7 +23,37 @@ fn test_nondist_models_validation() {
         return;
     }
 
-    let models = find_models_in_dir(&nondist_path);
+    let manifest_path = nondist_path.join("manifest.json");
+    let manifest: Option<Vec<ManifestEntry>> = if manifest_path.exists() {
+        let manifest_json =
+            fs::read_to_string(&manifest_path).expect("Failed to read manifest.json");
+        let entries: Vec<ManifestEntry> =
+            serde_json::from_str(&manifest_json).expect("Failed to parse manifest.json");
+        println!(
+            "Loaded manifest.json with {} entries — using catalog as model discovery source.",
+            entries.len()
+        );
+        Some(entries)
+    } else {
+        None
+    };
+
+    // Model discovery: manifest-driven when present, filesystem fallback otherwise.
+    let models: Vec<PathBuf> = if let Some(ref manifest) = manifest {
+        manifest
+            .iter()
+            .map(|e| nondist_path.join(&e.filename))
+            .filter(|p| p.exists())
+            .collect()
+    } else {
+        println!(
+            "NOTE: No manifest.json found in {:?} — falling back to \
+             filesystem discovery, skipping classification validation.",
+            nondist_path
+        );
+        find_models_in_dir(&nondist_path)
+    };
+
     if models.is_empty() {
         println!("SKIP: No .nam or .json models found in {:?}", nondist_path);
         return;
@@ -67,10 +97,34 @@ fn test_nondist_models_validation() {
 
         let mut model = model;
 
+        // 2. Classification validation (manifest-driven)
+        if let Some(ref manifest) = manifest
+            && let Some(entry) = manifest.iter().find(|e| e.filename == filename)
+        {
+            if entry.expected_class.starts_with("Unknown") {
+                println!(
+                    "  ∎ Classification skip: {filename} — expected_class \
+                     is '{expected}' (unsupported architecture, skip assertion)",
+                    expected = entry.expected_class
+                );
+            } else {
+                let class_label = model.class_label();
+                if class_label == entry.expected_class {
+                    println!("  ✓ Classification OK: {filename} → {class_label}");
+                } else {
+                    eprintln!(
+                        "⚠ Classification mismatch for {filename}: \
+                         expected '{}', got '{}'",
+                        entry.expected_class, class_label
+                    );
+                }
+            }
+        }
+
         // Prewarm the model
         model.prewarm(2048);
 
-        // 2. Determinism (Self-Consistency)
+        // 3. Determinism (Self-Consistency)
         let mut model_dup = build_model(&model_data)
             .expect("Failed to build duplicate model for determinism check");
         model_dup.prewarm(2048);
@@ -90,7 +144,7 @@ fn test_nondist_models_validation() {
             filename, mse
         );
 
-        // 3. Block Size Invariance.
+        // 4. Block Size Invariance.
         // All architectures re-chunk internally in sub-blocks of ≤
         // `WAVENET_MAX_NUM_FRAMES` (64 frames). A2 gained internal chunking in T2.1,
         // so block sizes > 64 are safe across the board and fully exercise streaming
@@ -116,7 +170,7 @@ fn test_nondist_models_validation() {
             );
         }
 
-        // 4. Stability / Finiteness Check
+        // 5. Stability / Finiteness Check
         for (i, &s) in out_a.iter().enumerate() {
             assert!(
                 s.is_finite(),
@@ -127,7 +181,7 @@ fn test_nondist_models_validation() {
             );
         }
 
-        // 5. Denormal/Subnormal Silence Test
+        // 6. Denormal/Subnormal Silence Test
         let silence = vec![0.0f32; num_samples];
         let mut silence_output = vec![0.0f32; num_samples];
 

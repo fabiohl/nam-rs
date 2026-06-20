@@ -101,6 +101,50 @@ impl StaticModel {
         }
     }
 
+    /// Returns a human-readable classification label for this model variant.
+    ///
+    /// Used by `nondist_validation.rs` to cross-check against the manifest's
+    /// `expected_class` field and detect dispatcher routing errors.
+    pub fn class_label(&self) -> String {
+        match self {
+            Self::WavenetStandard(_) => "WaveNet A1 Standard (CH=16)".into(),
+            Self::WavenetLite(_) => "WaveNet A1 Lite (CH=12)".into(),
+            Self::WavenetFeather(_) => "WaveNet A1 Feather (CH=8)".into(),
+            Self::WavenetNano(_) => "WaveNet A1 Nano (CH=4)".into(),
+            Self::WavenetA2Full(_) => "WaveNet A2 (CH=8)".into(),
+            Self::WavenetA2Lite(_) => "WaveNet A2 Lite (CH=3)".into(),
+            Self::WavenetA2Dyn(m) => format!("WaveNet A2 (CH={})", m.channels),
+            Self::WavenetDyn(m) => {
+                if m.arrays.len() == 2 {
+                    "WaveNet A1 (Custom)".into()
+                } else {
+                    "WaveNet (Custom Layers)".into()
+                }
+            }
+            Self::Container(c) => {
+                let active_label = c.active().class_label();
+                if active_label.starts_with("WaveNet") {
+                    active_label
+                } else {
+                    "SlimmableContainer".into()
+                }
+            }
+            Self::Lstm1x3(_) => "LSTM 1x3".into(),
+            Self::Lstm1x8(_) => "LSTM 1x8".into(),
+            Self::Lstm1x12(_) => "LSTM 1x12".into(),
+            Self::Lstm1x16(_) => "LSTM 1x16".into(),
+            Self::Lstm1x24(_) => "LSTM 1x24".into(),
+            Self::Lstm1x40(_) => "LSTM 1x40".into(),
+            Self::Lstm2x8(_) => "LSTM 2x8".into(),
+            Self::Lstm2x12(_) => "LSTM 2x12".into(),
+            Self::Lstm2x16(_) => "LSTM 2x16".into(),
+            Self::Lstm2x24(_) => "LSTM 2x24".into(),
+            Self::LstmDyn(m) => format!("LSTM {}x{}", m.layers.len(), m.head_weights.len()),
+            Self::Linear(_) => "Linear".into(),
+            Self::ConvNet(m) => format!("ConvNet (CH={})", m.in_channels()),
+        }
+    }
+
     /// Returns `true` if this is an LSTM model.
     #[inline(always)]
     pub fn is_lstm(&self) -> bool {
