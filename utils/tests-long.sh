@@ -5,6 +5,13 @@
 # Intensive long-duration verification suite for nam-rs.
 # Performs numerical soak tests, proptest fuzzing, NeuralAmpModelerCore parity checks,
 # CLAP release compliance, multi-instance stress tests, and long-running performance benchmarks.
+#
+# Environment variables:
+#   NAM_SKIP_GOLDEN_BUILD=1   Opt-out from automatic generation of missing golden vectors.
+#                             By default, if goldens are missing and C++ toolchain +
+#                             NeuralAmpModelerCore dependencies are present, they are
+#                             automatically rebuilt during Phase 0.
+#   NAM_AUTO_BUILD_GOLDENS    (Deprecated and ignored)
 
 set -uo pipefail
 ## Observação à IA: Dado à longa (por design) duração da execução deste script, é PROIBIDO executa-lo durante atividades de IA.
@@ -22,7 +29,7 @@ NC='\033[0m'
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 38 minutes - cold run)   ${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 43 minutes - cold run)   ${NC}"
 echo -e "${BLUE}${BOLD}==========================================================================${NC}"
 
 # Ensure we are in the project root directory
@@ -136,8 +143,20 @@ if [ ${#MISSING_GOLDENS[@]} -gt 0 ] || [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
         done
     fi
 
-    if [ "${NAM_AUTO_BUILD_GOLDENS:-0}" = "1" ]; then
-        echo -e "\n${YELLOW}${BOLD}→ NAM_AUTO_BUILD_GOLDENS=1 — invocando golden_gen_build.sh automaticamente...${NC}"
+    if [ -n "${NAM_AUTO_BUILD_GOLDENS+x}" ]; then
+        echo -e "${YELLOW}⚠ AVISO: A variável NAM_AUTO_BUILD_GOLDENS foi descontinuada e agora é ignorada.${NC}"
+        echo -e "${YELLOW}  O auto-build agora é ativado por padrão se faltarem goldens e as ferramentas estiverem presentes.${NC}"
+        echo -e "${YELLOW}  Para desativar o auto-build, utilize NAM_SKIP_GOLDEN_BUILD=1.${NC}"
+    fi
+
+    if [ "${NAM_SKIP_GOLDEN_BUILD:-0}" = "1" ]; then
+        echo -e "${YELLOW}→ NAM_SKIP_GOLDEN_BUILD=1 — pulando regeneração automática.${NC}"
+        exit 1
+    fi
+
+    # Auto-build é o padrão quando toolchain C++ e NeuralAmpModelerCore estão presentes
+    if [ ${#MISSING_TOOLS[@]} -eq 0 ] && [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
+        echo -e "\n${YELLOW}${BOLD}→ Regenerando goldens automaticamente (toolchain C++ + NeuralAmpModelerCore presentes)...${NC}"
         if ! bash tests/fixtures/golden_gen_build.sh; then
             echo -e "${RED}${BOLD}❌ golden_gen_build.sh falhou. Corrija as dependências e tente novamente.${NC}"
             exit 1
@@ -177,11 +196,10 @@ if [ ${#MISSING_GOLDENS[@]} -gt 0 ] || [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
             exit 1
         fi
     else
-        echo -e "  ${YELLOW}→ Execute: ./tests/fixtures/golden_gen_build.sh${NC}"
         if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
             echo -e "  ${YELLOW}→ Instale: cmake >= 3.10, g++/clang++ com C++20${NC}"
         fi
-        echo -e "  ${YELLOW}→ Ou defina NAM_AUTO_BUILD_GOLDENS=1 para geração automática.${NC}"
+        echo -e "  ${YELLOW}→ Execute: ./utils/mod-update.sh${NC}"
         exit 1
     fi
 fi

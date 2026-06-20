@@ -52,6 +52,10 @@ rm -rf tests/fixtures/NeuralAmpModelerCore \
 ./utils/tests-long.sh
 ```
 
+> [!NOTE]
+> `utils/tests-long.sh` automatically regenerates any missing golden vectors (requiring a C++ toolchain and local NeuralAmpModelerCore dependencies). To opt out of this auto-regeneration, run with `NAM_SKIP_GOLDEN_BUILD=1`. The environment variable `NAM_AUTO_BUILD_GOLDENS` is deprecated and ignored.
+
+
 When the pinned upstream commits are updated (after re-baselining goldens),
 update the `NAM_CORE_COMMIT` and `NAM_PLUGIN_COMMIT` variables at the top of
 `golden_gen_build.sh` and this section. All goldens generated from the new

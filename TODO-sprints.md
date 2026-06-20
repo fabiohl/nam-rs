@@ -198,7 +198,7 @@ regions de ConvNet e engines dinâmicos. Documentação do script atualizada.
 
 ---
 
-### T-E1.4 — Atualizar tabela de benches na doc-header de `inference_bench.rs`
+### T-E1.4 — Atualizar tabela de benches na doc-header de `inference_bench.rs` [DONE]
 
 > **Risco/Cautela:** 🟡 Trivial — documentação inline.
 
@@ -236,7 +236,7 @@ regions de ConvNet e engines dinâmicos. Documentação do script atualizada.
 
 ---
 
-### T-E2.1 — Inverter lógica de auto-build de goldens (padrão = on-missing)
+### T-E2.1 — Inverter lógica de auto-build de goldens (padrão = on-missing) [DONE]
 
 > **Achado:** F9 — Regeneração automática exige `NAM_AUTO_BUILD_GOLDENS=1`; o padrão
 > deveria ser auto-build quando goldens faltam e toolchain C++ está presente.
