@@ -6,6 +6,14 @@ import sys
 import json
 import os
 
+USE_COLOR = sys.stdout.isatty()
+
+
+def color(code, text):
+    if USE_COLOR:
+        return f"\033[{code}m{text}\033[0m"
+    return text
+
 # Define standard A1 WaveNet topologies
 STD_DILATIONS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
 LITE_DILATIONS_1 = [1, 2, 4, 8, 16, 32, 64]
@@ -237,33 +245,33 @@ def main():
 
     for filepath in sys.argv[1:]:
         if not os.path.exists(filepath):
-            print(f"\033[91mError: File not found: {filepath}\033[0m")
+            print(color("91", f"Error: File not found: {filepath}"))
             continue
             
         try:
             with open(filepath, 'r') as f:
                 data = json.load(f)
         except Exception as e:
-            print(f"\033[91mError: Failed to parse JSON for {filepath}: {e}\033[0m")
+            print(color("91", f"Error: Failed to parse JSON for {filepath}: {e}"))
             continue
             
         info = classify_model(data, filepath)
         
         # Color coding for F12 goal targets
         if info["is_goal"]:
-            color = "\033[92m" # Green
+            status_color = "92"
             tag = "[TARGET F12 MATCH]"
         else:
-            color = "\033[94m" # Blue
+            status_color = "94"
             tag = "[STANDARD/SUPPORTED]"
-            
+
         print(f"================================================================")
         print(f"File: {filepath}")
         print(f"Name: {info['name']} (by {info['author']})")
         print(f"Version: {info['version']}")
         print(f"Architecture: {info['arch']}")
         print(f"Details: {info['details']}")
-        print(f"Status: {color}{tag} {info['status']}\033[0m")
+        print(color(status_color, f"Status: {tag} {info['status']}"))
         print(f"================================================================")
 
 if __name__ == "__main__":

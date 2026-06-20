@@ -809,7 +809,7 @@ classificações são validadas quando manifesto presente; sem manifesto, fallba
 
 ---
 
-### T-E3.5 — Limpar escapes ANSI do output padrão de `check-model.py`
+### T-E3.5 — Limpar escapes ANSI do output padrão de `check-model.py` [DONE]
 
 > **Achado:** F10 — Output interativo com escapes ANSI; quando pipeado para arquivo, polui.
 > **Risco/Cautela:** 🟡 Quick-win.
