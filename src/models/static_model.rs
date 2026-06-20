@@ -166,6 +166,38 @@ impl StaticModel {
         }
     }
 
+    /// Returns the number of input channels consumed by the model's `process()`.
+    ///
+    /// - WaveNet variants and LSTM: always 1 (single sample per frame).
+    /// - ConvNet: `in_channels` from configuration (defaults to 1).
+    /// - Container: delegates to active sub-model.
+    pub fn in_channels(&self) -> usize {
+        match self {
+            Self::WavenetStandard(_)
+            | Self::WavenetLite(_)
+            | Self::WavenetFeather(_)
+            | Self::WavenetNano(_) => 1,
+            Self::WavenetA2Full(_) => 1,
+            Self::WavenetA2Lite(_) => 1,
+            Self::WavenetA2Dyn(_) => 1,
+            Self::WavenetDyn(_) => 1,
+            Self::Container(c) => c.active().in_channels(),
+            Self::Lstm1x3(_)
+            | Self::Lstm1x8(_)
+            | Self::Lstm1x12(_)
+            | Self::Lstm1x16(_)
+            | Self::Lstm1x24(_)
+            | Self::Lstm2x8(_)
+            | Self::Lstm2x12(_)
+            | Self::Lstm2x16(_)
+            | Self::Lstm1x40(_)
+            | Self::Lstm2x24(_)
+            | Self::LstmDyn(_) => 1,
+            Self::Linear(_) => 1,
+            Self::ConvNet(m) => m.in_channels(),
+        }
+    }
+
     /// Returns the receptive field size of the model (or 0 for LSTM/Container).
     pub fn receptive_field(&self) -> usize {
         match self {

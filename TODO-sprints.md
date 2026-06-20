@@ -59,14 +59,24 @@ O `ConvNet` é um modelo legável do NAM, raramente usado por usuários finais, 
 - **Tarefa 3.1.3** [DONE]: Implementar o DSP modular:
   - `ConvNetBlock` contendo: Conv1D (ou equivalente) -> BatchNorm -> Activation.
   - `ConvNetModel` implementando `NamModel` para encadear os blocos e o Post-stack Head.
-- **Tarefa 3.1.4**: Conectar `ConvNetModel` ao `dispatcher`, efetuando o carregamento da lista de pesos adequadamente (`[weights]`).
+- **Tarefa 3.1.4** [DONE]: Conectar `ConvNetModel` ao `dispatcher`, efetuando o carregamento da lista de pesos adequadamente (`[weights]`).
 
 ### Sprint 3.2: Multi-canal (F10)
 
-- **Tarefa 3.2.1**: Analisar o design da trait `NamModel::process(&mut self, input: &[f32], output: &mut [f32])`. Atualmente orientada a processamento mono/serial.
-- **Tarefa 3.2.2**: Para suportar `in_channels > 1` e `out_channels > 1`, decidir se implementaremos arrays planares (ex: iteradores multi-slice) ou sinais entrelaçados internamente. (Recomenda-se buffers N-dimensionais empacotados nos scratch buffers para os tensores convolucionais).
-- **Tarefa 3.2.3**: Alterar restrições no dispatcher e no loader para parar de injetar `in_channels=1` / `out_channels=1` compulsivo na topologia, liberando F10.
+- **Tarefa 3.2.1** [DONE]: Analisar o design da trait `NamModel::process(&mut self, input: &[f32], output: &mut [f32])`. Atualmente orientada a processamento mono/serial.
+  - **Resultado**: A assinatura da trait já é agnóstica a canais (slices planos, frames entrelaçados). `ConvNetModel` já processa `in_ch > 1` / `out_ch > 1` sem modificar a trait. Os gargalos estão no pipeline de inferência (`run_stereo_or_mono` assume 1 amostra/frame), nas rejeições de topologia (`in_channels != 1`, `out_channels != 1`), no `convnet/mod.rs:39` (`in_ch = 1` hardcoded), e no `ContainerModel::crossfade_blend_mono`.
+- **Tarefa 3.2.2** [DONE]: Para suportar `in_channels > 1` e `out_channels > 1`, decidir se implementaremos arrays planares (ex: iteradores multi-slice) ou sinais entrelaçados internamente.
+  - **Decisão (Buffer)**: Buffers planares entrelaçados — compatíveis com SIMD 4-wide (blocos de 4 elementos por canal em Conv1d), já usados por `ConvNetModel`/`PostStackHead`/`BatchNorm1D`. Sem mudança de formato.
+  - **Decisão (Pipeline L/R)**: Arquitetura híbrida:
+    - **`out_ch == 1`** (WaveNet, A2, LSTM): Mantém o modelo L/R split atual — `model_l.process()` e `model_r.process()` independentes. Zero regressão.
+    - **`out_ch > 1`** (ConvNet multi-canal, WaveNet-Dyn com post-stack head `out_ch>1`): Modelo único processa buffer interleaved — `model.process(interleaved_input, interleaved_output)`, depois de-interleave nos buffers L/R. Para `in_ch==2`, entrada interleaved L/R no mesmo buffer.
+    - **Container crossfade**: `crossfade_blend_mono` atual é element-wise (incompatível com `out_ch>1`). Substituir por blend multi-canal que respeita frames (`out_ch` elementos por frame).
+    - **Buffer sizing**: `num_frames * max(out_ch, 2)` nos buffers intermediários (model_out_l/r alocados com cabeça extra).
+    - **Flow resumido** para `out_ch>1`: `[L0,R0,...,Ln,Rn]` → interleave → `process(input, output)` → interleaved `[ch0_f0, ch1_f0, ...]` → de-interleave → `[L0,...,Ln]`, `[R0,...,Rn]`.
+- **Tarefa 3.2.3** [DONE]: Alterar restrições no dispatcher e no loader para parar de injetar `in_channels=1` / `out_channels=1` compulsivo na topologia, liberando F10.
+  - **Checklist concreto**: (1) `topology.rs:475` — remover `in_channels != 1` do A2, permitir Dynamic; (2) `topology.rs:651` — flexibilizar `out_channels != 1` em `check_layer_array_head`; (3) `convnet/mod.rs:39` — usar `data.config.in_channels.unwrap_or(1)` no primeiro bloco; (4) `container.rs:171` — adaptar `crossfade_blend_mono` para `out_ch > 1` ou documentar limitação.
 - **Tarefa 3.2.4**: Validar desempenho das convoluções com dimensões de in/out estendidas com `cargo bench`.
+  - **Foco**: ConvNet com `in_ch ∈ {1, 2, 4}`, `out_ch ∈ {1, 2, 4}` em `benches/inference_bench.rs`.
 
 ---
 
