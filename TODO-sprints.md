@@ -52,7 +52,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   * **Ação:** Em `docs/architecture.md`, nas seções de dispatch e descrição da Microarquitetura SIMD:
     * Mencionar o suporte ativo à arquitetura `ConvNet` e aos modelos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`).
     * Explicar como o `StaticModel` realiza o routing dinâmico por trás da enum, sem penalidade de vtable mas acomodando blocos imprevisíveis de modelos não classificados ("free-shape").
-* [ ] **Tarefa A.2.2: Documentar o escopo da feature flag `dynamic-engine` (`docs/architecture.md`)**
+* [x] **Tarefa A.2.2: Documentar o escopo da feature flag `dynamic-engine` (`docs/architecture.md`)**
   * **Especialista:** `documentador`
   * **Ação:** No arquivo `docs/architecture.md` (na seção de flags/condicionais):
     * Deixar explícito que a feature `dynamic-engine` do Cargo **NÃO** controla se os paths dinâmicos (WaveNetModelDyn, etc.) são compilados.
