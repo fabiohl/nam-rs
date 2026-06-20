@@ -57,7 +57,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   * **Ação:** No arquivo `docs/architecture.md` (na seção de flags/condicionais):
     * Deixar explícito que a feature `dynamic-engine` do Cargo **NÃO** controla se os paths dinâmicos (WaveNetModelDyn, etc.) são compilados.
     * Aclarar que o real escopo desta flag é controlar um ramo escalar interno do path rápido do `WaveNetA2<CH>`. Os engines dinâmicos principais permanecem sempre compilados.
-* [ ] **Tarefa A.2.3: Atualizar Matriz de Cobertura (`docs/testing.md`)**
+* [x] **Tarefa A.2.3: Atualizar Matriz de Cobertura (`docs/testing.md`)**
   * **Especialista:** `documentador`
   * **Ação:** Em `docs/testing.md`:
     * Adicionar ou atualizar as descrições na tabela de matriz de rastreabilidade (ex: `golden_vectors`, `soak_test`, `cpp_parity`) para citar explicitamente a validação de `ConvNet` e motores dinâmicos, refletindo o objetivo de testes que será implementado nos próximos épicos.
