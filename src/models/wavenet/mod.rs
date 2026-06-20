@@ -101,12 +101,14 @@ impl NamModel for model_dyn::WaveNetModelDyn {
     }
 
     fn prewarm_samples(&self) -> usize {
-        let rf = self.arrays[0].receptive_field_size;
+        let mut rf = self.arrays[0].receptive_field_size;
         if let Some(ref cond_dsp) = self.condition_dsp {
-            rf.max(cond_dsp.prewarm_samples())
-        } else {
-            rf
+            rf = rf.max(cond_dsp.prewarm_samples());
         }
+        if let Some(ref head_proc) = self.post_stack_head {
+            rf += head_proc.receptive_field() - 1;
+        }
+        rf
     }
 
     fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {

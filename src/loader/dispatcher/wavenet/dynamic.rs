@@ -8,7 +8,7 @@ use crate::loader::nam_json::{
 };
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::{
-    DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
+    DenseLayerDyn, PostStackHead, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
     WaveNetLayerState, WaveNetModelDyn,
 };
 use log::info;
@@ -193,6 +193,38 @@ fn build_wavenet_dynamic_inner(
 
     let head_scale = cursor.read_f32()?;
 
+    let post_stack_head = if let Some(ref head_config) = geom.post_stack_head {
+        let in_ch = *geom.head_sizes.last().unwrap_or(&1);
+        let mut head = PostStackHead::from_config(head_config, in_ch)
+            .map_err(|e| anyhow::anyhow!("Failed to build post-stack head: {}", e))?;
+
+        let ch = head.in_channels();
+        let out_ch = head.out_channels();
+        let kernel = head.conv.kernel;
+        let num_blocks = out_ch.div_ceil(4);
+        let padded_total = num_blocks * kernel * ch * 4;
+
+        if cursor.is_interleaved4() {
+            let raw = cursor.read_slice(padded_total)?;
+            head.set_weights(raw);
+        } else {
+            let total = out_ch * ch * kernel;
+            let raw = cursor.read_slice(total)?;
+            let mut interleaved = AlignedVec::new(padded_total, 0.0f32);
+            layout::transpose_conv1d_interleaved_4wide(raw, &mut interleaved, ch, out_ch, kernel);
+            head.set_weights(&interleaved);
+        }
+
+        if head.conv.do_bias {
+            let bias_raw = cursor.read_slice(out_ch)?;
+            head.set_bias(bias_raw);
+        }
+
+        Some(head)
+    } else {
+        None
+    };
+
     cursor.verify_exhausted()?;
 
     // Build condition_dsp sub-model if present in JSON config.
@@ -244,11 +276,20 @@ fn build_wavenet_dynamic_inner(
 
     let cond_dsp_output_size = cond * WAVENET_MAX_NUM_FRAMES;
 
-    let rf = arrays
+    let head_out_ch = post_stack_head
+        .as_ref()
+        .map(|h| h.out_channels())
+        .unwrap_or(1);
+    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0);
+
+    let mut rf = arrays
         .iter()
         .map(|a| a.receptive_field_size)
         .max()
         .unwrap_or(0);
+    if let Some(ref head_proc) = post_stack_head {
+        rf += head_proc.receptive_field() - 1;
+    }
 
     let model = WaveNetModelDyn {
         ch,
@@ -259,6 +300,8 @@ fn build_wavenet_dynamic_inner(
         receptive_field_size: rf,
         condition_dsp,
         condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
+        post_stack_head,
+        head_output_scratch,
     };
 
     info!(

@@ -3,6 +3,7 @@
 
 use super::common::WAVENET_MAX_NUM_FRAMES;
 use super::layer_array_dyn::WaveNetLayerArrayDyn;
+use super::post_stack_head::PostStackHead;
 use crate::math::common::{AlignedVec, SimdMath};
 use crate::models::{NamModel, StaticModel};
 
@@ -66,6 +67,17 @@ pub struct WaveNetModelDyn {
     /// Size: `cond × WAVENET_MAX_NUM_FRAMES`, where `cond` is the main model's
     /// `condition_size`. This matches the sub-model's `NumOutputChannels()`.
     pub condition_dsp_output: AlignedVec<f32>,
+    /// Optional post-stack head sub-object (Conv1D + activation).
+    ///
+    /// Processes the signal after the last layer array and before `head_scale`.
+    /// When `None`, the output of the last array is used directly (standard behavior).
+    /// Mirrors the `_Head` structure in NAMCore's `convnet.h:108-118`.
+    pub post_stack_head: Option<PostStackHead>,
+    /// Scratch buffer for post-stack head output.
+    ///
+    /// Size: `out_ch × WAVENET_MAX_NUM_FRAMES`, where `out_ch` is the head's
+    /// output channel count (defaults to 1 for mono).
+    pub head_output_scratch: AlignedVec<f32>,
 }
 
 impl WaveNetModelDyn {
@@ -155,11 +167,26 @@ impl WaveNetModelDyn {
             let last = &self.arrays[self.arrays.len() - 1];
             let head_dim = last.head;
             let last_head = &last.head_outputs[0..num_frames * head_dim];
-            let out_start = pos * head_dim;
-            let out_slice = &mut output[out_start..out_start + num_frames * head_dim];
-            out_slice.copy_from_slice(last_head);
-            unsafe {
-                M::apply_gain(out_slice, self.head_scale);
+
+            if let Some(ref mut head_proc) = self.post_stack_head {
+                let out_ch = head_proc.out_channels();
+                let scratch = &mut self.head_output_scratch[0..num_frames * out_ch];
+                unsafe {
+                    head_proc.process_block(last_head, scratch, num_frames);
+                }
+                let out_start = pos * out_ch;
+                let out_slice = &mut output[out_start..out_start + num_frames * out_ch];
+                out_slice.copy_from_slice(scratch);
+                unsafe {
+                    M::apply_gain(out_slice, self.head_scale);
+                }
+            } else {
+                let out_start = pos * head_dim;
+                let out_slice = &mut output[out_start..out_start + num_frames * head_dim];
+                out_slice.copy_from_slice(last_head);
+                unsafe {
+                    M::apply_gain(out_slice, self.head_scale);
+                }
             }
             pos += num_frames;
         }
@@ -230,6 +257,10 @@ impl WaveNetModelDyn {
                 let prev_head_out = &prev.head_outputs[0..prev.head];
                 curr.prewarm_internal::<M>(prev_outputs, condition, Some(prev_head_out));
             }
+        }
+
+        if let Some(ref mut head_proc) = self.post_stack_head {
+            head_proc.prewarm();
         }
     }
 }
