@@ -485,7 +485,7 @@ nenhum JSON indesejado adicionado ao staging.
 
 ---
 
-### T-E2.5 — Decisão e documentação sobre Git LFS para goldens (F15)
+### T-E2.5 — Decisão e documentação sobre Git LFS para goldens (F15) [CANCELADO]
 
 > **Achado:** F15 — Goldens commitados pesam ~105 MB. Trade-off consciente.
 > **Risco/Cautela:** 🟡 Decisão de arquitetura, não código.
@@ -538,7 +538,7 @@ escolhido, `.gitattributes` configurado e migração executada.
 
 ---
 
-### T-E3.1 — Consolidar `find_models_in_dir` em `tests/common/`
+### T-E3.1 — Consolidar `find_models_in_dir` em `tests/common/` [DONE]
 
 > **Achado:** F10 — A função de discovery existia em 2 locais. Após verificação, atualmente
 > ela existe apenas em `nondist_validation.rs`. Mover para `tests/common/` como fonte única

@@ -8,26 +8,7 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::models::NamModel;
 use std::fs;
-use std::path::{Path, PathBuf};
-
-/// Finds all `.nam` and `.json` files in the given directory recursively.
-fn find_models_in_dir(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                files.extend(find_models_in_dir(&path));
-            } else if path
-                .extension()
-                .is_some_and(|ext| ext == "nam" || ext == "json")
-            {
-                files.push(path);
-            }
-        }
-    }
-    files
-}
+use std::path::PathBuf;
 
 #[test]
 fn test_nondist_models_validation() {
