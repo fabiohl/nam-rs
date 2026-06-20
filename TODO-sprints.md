@@ -55,7 +55,7 @@ O `ConvNet` é um modelo legável do NAM, raramente usado por usuários finais, 
 ### Sprint 3.1: Parsing e DSP do ConvNet (F4)
 
 - **Tarefa 3.1.1** [DONE]: Estender a `NamConfig` / `NamModelData` em `nam_json` para suportar `architecture: "ConvNet"`.
-- **Tarefa 3.1.2**: Implementar `BatchNorm1D` (normalização por lote) que é requerida pelos `ConvNetBlocks`, de forma nativamente vetorizada (`vfmadd231ps` em x86-64-v3).
+- **Tarefa 3.1.2** [DONE]: Implementar `BatchNorm1D` (normalização por lote) que é requerida pelos `ConvNetBlocks`, de forma nativamente vetorizada (`vfmadd231ps` em x86-64-v3).
 - **Tarefa 3.1.3**: Implementar o DSP modular:
   - `ConvNetBlock` contendo: Conv1D (ou equivalente) -> BatchNorm -> Activation.
   - `ConvNetModel` implementando `NamModel` para encadear os blocos e o Post-stack Head.

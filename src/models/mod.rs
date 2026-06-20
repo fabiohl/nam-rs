@@ -8,6 +8,8 @@
 
 pub mod a2;
 pub mod container;
+/// ConvNet feed-forward architecture (F4).
+pub mod convnet;
 pub mod linear;
 pub mod lstm;
 pub mod slimmable;
