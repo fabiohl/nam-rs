@@ -75,7 +75,7 @@ O `ConvNet` é um modelo legável do NAM, raramente usado por usuários finais, 
     - **Flow resumido** para `out_ch>1`: `[L0,R0,...,Ln,Rn]` → interleave → `process(input, output)` → interleaved `[ch0_f0, ch1_f0, ...]` → de-interleave → `[L0,...,Ln]`, `[R0,...,Rn]`.
 - **Tarefa 3.2.3** [DONE]: Alterar restrições no dispatcher e no loader para parar de injetar `in_channels=1` / `out_channels=1` compulsivo na topologia, liberando F10.
   - **Checklist concreto**: (1) `topology.rs:475` — remover `in_channels != 1` do A2, permitir Dynamic; (2) `topology.rs:651` — flexibilizar `out_channels != 1` em `check_layer_array_head`; (3) `convnet/mod.rs:39` — usar `data.config.in_channels.unwrap_or(1)` no primeiro bloco; (4) `container.rs:171` — adaptar `crossfade_blend_mono` para `out_ch > 1` ou documentar limitação.
-- **Tarefa 3.2.4**: Validar desempenho das convoluções com dimensões de in/out estendidas com `cargo bench`.
+- **Tarefa 3.2.4** [DONE]: Validar desempenho das convoluções com dimensões de in/out estendidas com `cargo bench`.
   - **Foco**: ConvNet com `in_ch ∈ {1, 2, 4}`, `out_ch ∈ {1, 2, 4}` em `benches/inference_bench.rs`.
 
 ---

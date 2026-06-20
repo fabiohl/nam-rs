@@ -40,7 +40,9 @@ use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::NamModel;
+use nam_rs::models::a2::activations::ActivationType;
 use nam_rs::models::container::ContainerModel;
+use nam_rs::models::convnet::ConvNetBlock;
 use nam_rs::models::lstm::lstm_weight_count;
 use nam_rs::models::slimmable::SlimmableModel;
 use nam_rs::models::wavenet::dense::DenseLayer;
@@ -1268,6 +1270,200 @@ fn bench_linear_model_dot_product(c: &mut Criterion) {
     });
 }
 
+// ── ConvNet Multi-Channel Convolution Benchmarks (T3.2.4) ──
+
+/// Creates a synthetic `ConvNetBlock` with identity-like weights for benchmarking
+/// the Conv1D + BatchNorm + Activation pipeline at a specific (in_ch, out_ch) pair.
+fn make_convnet_block(
+    in_ch: usize,
+    out_ch: usize,
+    kernel: usize,
+    dilation: usize,
+    do_bias: bool,
+) -> ConvNetBlock {
+    let mut block = ConvNetBlock::new(
+        in_ch,
+        out_ch,
+        kernel,
+        dilation,
+        do_bias,
+        ActivationType::Tanh,
+        0,
+    )
+    .expect("create convnet block for bench");
+
+    let num_blocks = out_ch.div_ceil(4);
+    let padded_total = num_blocks * kernel * in_ch * 4;
+
+    let mut weights = vec![0.0f32; padded_total];
+    for b in 0..num_blocks {
+        for k in 0..kernel {
+            for c_in in 0..in_ch {
+                for c_out in 0..4usize {
+                    let dst_c = b * 4 + c_out;
+                    if dst_c < out_ch {
+                        let idx = c_out + c_in * 4 + k * in_ch * 4 + b * kernel * in_ch * 4;
+                        weights[idx] = if dst_c == c_in.min(out_ch - 1) {
+                            1.0
+                        } else {
+                            0.01
+                        };
+                    }
+                }
+            }
+        }
+    }
+    block.set_conv_weights(&weights);
+
+    if do_bias {
+        let bias = vec![0.0f32; out_ch];
+        block.set_conv_bias(&bias);
+    }
+
+    let bn_scale = vec![1.0f32; out_ch];
+    let bn_offset = vec![0.0f32; out_ch];
+    block.set_bn_params(&bn_scale, &bn_offset);
+
+    block
+}
+
+/// Generates an interleaved multi-channel signal for benchmarking.
+/// Layout: `[f0_c0, f0_c1, ..., f0_c{n-1}, f1_c0, ..., f{t-1}_c{n-1}]`
+fn generate_multichannel_sine(num_frames: usize, num_channels: usize) -> Vec<f32> {
+    (0..num_frames)
+        .flat_map(|f| {
+            let base = (2.0 * std::f32::consts::PI * 440.0 * (f as f32) / 48000.0).sin();
+            (0..num_channels).map(move |c| base * (1.0 + 0.2 * c as f32))
+        })
+        .collect()
+}
+
+/// Benchmarks ConvNetBlock convolution throughput across channel dimensions.
+///
+/// Covers all 9 combinations of `in_ch ∈ {1, 2, 4}` × `out_ch ∈ {1, 2, 4}`
+/// with kernel=3, dilation=1, bias=true — measuring Conv1D + BatchNorm + Tanh
+/// over 64 audio frames at 48 kHz.
+fn bench_convnet_multichannel(c: &mut Criterion) {
+    const NUM_FRAMES: usize = 64;
+    const KERNEL: usize = 3;
+    const DILATION: usize = 1;
+    const DO_BIAS: bool = true;
+
+    let combos: [(usize, usize); 9] = [
+        (1, 1),
+        (1, 2),
+        (1, 4),
+        (2, 1),
+        (2, 2),
+        (2, 4),
+        (4, 1),
+        (4, 2),
+        (4, 4),
+    ];
+
+    let mut group = c.benchmark_group("ConvNet_MultiChannel_64f");
+    group.sample_size(50);
+
+    for &(in_ch, out_ch) in &combos {
+        let mut block = make_convnet_block(in_ch, out_ch, KERNEL, DILATION, DO_BIAS);
+        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
+        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
+
+        unsafe {
+            block.process_block(&input, &mut output, NUM_FRAMES);
+        }
+
+        group.bench_function(format!("ConvNetBlock_in{}_out{}", in_ch, out_ch), |b| {
+            b.iter(|| unsafe {
+                block.process_block(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&mut output),
+                    NUM_FRAMES,
+                );
+            });
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmarks ConvNetBlock with larger kernel sizes (5 and 7) to stress
+/// the tap-pointer prefetch logic in Conv1dDyn convolution.
+fn bench_convnet_large_kernels(c: &mut Criterion) {
+    const NUM_FRAMES: usize = 64;
+    const DO_BIAS: bool = true;
+
+    let mut group = c.benchmark_group("ConvNet_LargeKernel_64f");
+    group.sample_size(50);
+
+    for &((in_ch, out_ch, kernel), label) in &[
+        ((1, 1, 5), "ConvNetBlock_in1_out1_k5"),
+        ((2, 2, 5), "ConvNetBlock_in2_out2_k5"),
+        ((4, 4, 5), "ConvNetBlock_in4_out4_k5"),
+        ((1, 1, 7), "ConvNetBlock_in1_out1_k7"),
+        ((2, 2, 7), "ConvNetBlock_in2_out2_k7"),
+        ((4, 4, 7), "ConvNetBlock_in4_out4_k7"),
+    ] {
+        let mut block = make_convnet_block(in_ch, out_ch, kernel, 1, DO_BIAS);
+        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
+        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
+
+        unsafe {
+            block.process_block(&input, &mut output, NUM_FRAMES);
+        }
+
+        group.bench_function(label, |b| {
+            b.iter(|| unsafe {
+                block.process_block(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&mut output),
+                    NUM_FRAMES,
+                );
+            });
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmarks ConvNetBlock with dilated convolutions (dilation ∈ {1, 2, 4}),
+/// which exercise the full tap-pointer offset computation in Conv1dDyn.
+fn bench_convnet_dilated(c: &mut Criterion) {
+    const NUM_FRAMES: usize = 64;
+    const DO_BIAS: bool = true;
+    const KERNEL: usize = 3;
+
+    let mut group = c.benchmark_group("ConvNet_Dilated_64f");
+    group.sample_size(50);
+
+    for &(dilation, label) in &[
+        (1, "ConvNetBlock_d1_in4_out4"),
+        (2, "ConvNetBlock_d2_in4_out4"),
+        (4, "ConvNetBlock_d4_in4_out4"),
+    ] {
+        let (in_ch, out_ch) = (4, 4);
+        let mut block = make_convnet_block(in_ch, out_ch, KERNEL, dilation, DO_BIAS);
+        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
+        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
+
+        unsafe {
+            block.process_block(&input, &mut output, NUM_FRAMES);
+        }
+
+        group.bench_function(label, |b| {
+            b.iter(|| unsafe {
+                block.process_block(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&mut output),
+                    NUM_FRAMES,
+                );
+            });
+        });
+    }
+
+    group.finish();
+}
+
 // ── IR Cabsim Convolution Benchmarks ──
 
 fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
@@ -1411,7 +1607,10 @@ criterion_group!(
     bench_gate_fsm,
     bench_linear_model_dot_product,
     bench_container_crossfade_64samp,
-    bench_nondist_models
+    bench_nondist_models,
+    bench_convnet_multichannel,
+    bench_convnet_large_kernels,
+    bench_convnet_dilated
 );
 
 /// Bench: A2 Head Conv CH=8 — scalar vs AVX2+FMA (16 frames).
