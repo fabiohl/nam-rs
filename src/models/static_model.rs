@@ -335,3 +335,16 @@ impl NamModel for StaticModel {
         }
     }
 }
+
+/// Clones a `StaticModel` for use in `condition_dsp` preservation during
+/// channel slimming (`slice_wavenet_model`).
+///
+/// Only `WavenetDyn` is currently supported (the only variant that can appear
+/// as a recursive `condition_dsp` sub-model in the current dispatcher).
+/// All other variants return `None`, matching the pre-Task-2.1.2 behavior.
+pub(crate) fn clone_condition_dsp(model: &Option<Box<StaticModel>>) -> Option<Box<StaticModel>> {
+    model.as_ref().and_then(|m| match m.as_ref() {
+        StaticModel::WavenetDyn(w) => Some(Box::new(StaticModel::WavenetDyn(w.clone()))),
+        _ => None,
+    })
+}

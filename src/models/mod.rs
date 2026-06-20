@@ -118,3 +118,5 @@ pub enum StaticModel {
 }
 
 impl sealed::Sealed for StaticModel {}
+
+pub(crate) use static_model::clone_condition_dsp;

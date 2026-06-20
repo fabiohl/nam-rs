@@ -39,7 +39,7 @@ Modelos "Slimmable" permitem ajustes de carga computacional e qualidade em tempo
   - **Implementado**: funções `slice_conv1d`, `slice_dense`, `slice_wavenet_layer`, `slice_wavenet_array`, `slice_wavenet_model` em `src/models/slimmable.rs` + método `WaveNetModelDyn::slice_channels()`.
   - **Limitação conhecida**: `condition_dsp` é setado como `None` no modelo fatiado (não clonável genericamente). Deve ser endereçado na Tarefa 2.1.2 ou resolvido com rebuild a partir do JSON original.
   - `PostStackHead` agora deriva `Clone`.
-- **Tarefa 2.1.2**: Integrar este comportamento ao `adaptive.rs` para permitir que o slider de qualidade re-estancie o SLimmable sem falhas.
+- **Tarefa 2.1.2** [DONE]: Integrar este comportamento ao `adaptive.rs` para permitir que o slider de qualidade re-estancie o SLimmable sem falhas.
 
 ### Sprint 2.2: Suporte a Containers Aninhados (F11)
 

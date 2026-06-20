@@ -7,6 +7,7 @@
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, gc_cascade};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::GateParams;
+use crate::models::StaticModel;
 
 use std::sync::Arc;
 
@@ -60,6 +61,9 @@ pub fn receive_commands(
                 }
                 if let Some(model) = active_model_l {
                     model.inject_rt_status(Arc::clone(rt_status_for_process));
+                    if let StaticModel::WavenetDyn(w) = model.as_ref() {
+                        adaptive.set_wavenet_full_ch(w.ch);
+                    }
                 }
                 if let Some(old) = std::mem::replace(active_model_r, model_r) {
                     old_models[1] = Some(old);
@@ -102,4 +106,60 @@ pub fn receive_commands(
         }
     }
     param_changed
+}
+
+/// Checks if the adaptive FSM demands a WaveNet channel count change
+/// and performs the allocation-intensive `slice_channels` + GC swap.
+///
+/// Must be called **before** DSP to keep the hot-path zero-alloc.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub fn try_slimmable_rebuild(
+    active_model_l: &mut Option<Box<StaticModel>>,
+    active_model_r: &mut Option<Box<StaticModel>>,
+    gc_producer: &mut rtrb::Producer<GcItem>,
+    parking_lot: &mut [Option<GcItem>; 16],
+    gc_overflow: &GcOverflowBuffer,
+    rt_status: &RtStatusFlags,
+    adaptive: &mut AdaptiveCompute,
+) {
+    let Some(target_ch) = adaptive.take_slimmable_rebuild() else {
+        return;
+    };
+
+    if let Some(model) = active_model_l.as_ref()
+        && let StaticModel::WavenetDyn(w) = model.as_ref()
+        && w.ch != target_ch
+        && let Ok(mut new_model) = w.slice_channels(target_ch)
+    {
+        new_model.prewarm();
+        let old = active_model_l.replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
+        if let Some(old) = old {
+            gc_cascade(
+                Some(GcItem::Model(old)),
+                gc_producer,
+                parking_lot,
+                gc_overflow,
+                rt_status,
+            );
+        }
+    }
+
+    if let Some(model) = active_model_r.as_ref()
+        && let StaticModel::WavenetDyn(w) = model.as_ref()
+        && w.ch != target_ch
+        && let Ok(mut new_model) = w.slice_channels(target_ch)
+    {
+        new_model.prewarm();
+        let old = active_model_r.replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
+        if let Some(old) = old {
+            gc_cascade(
+                Some(GcItem::Model(old)),
+                gc_producer,
+                parking_lot,
+                gc_overflow,
+                rt_status,
+            );
+        }
+    }
 }

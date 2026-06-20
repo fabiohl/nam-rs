@@ -15,7 +15,7 @@ mod rate_sync;
 mod resampler_swap;
 
 pub use cabsim_swap::drain_cabsims;
-pub use commands::receive_commands;
+pub use commands::{receive_commands, try_slimmable_rebuild};
 pub use process::process_dsp_buffer;
 pub use rate_sync::sync_rate;
 pub use resampler_swap::drain_resamplers;

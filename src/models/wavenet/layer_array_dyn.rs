@@ -9,6 +9,7 @@ use crate::math::common::SimdMath;
 use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
 /// Grouped Multi-Layer WaveNet Unit with runtime dimensions.
+#[derive(Clone)]
 pub struct WaveNetLayerArrayDyn {
     /// Number of input channels.
     pub in_ch: usize,

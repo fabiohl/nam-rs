@@ -129,6 +129,16 @@ pub fn setup_capture_stream<'c>(
                 &mut state.adaptive_compute,
             );
 
+            rt_callback::try_slimmable_rebuild(
+                &mut state.active_model_l,
+                &mut state.active_model_r,
+                &mut gc_producer,
+                &mut state.parking_lot,
+                &gc_overflow_for_process,
+                &rt_status_for_process,
+                &mut state.adaptive_compute,
+            );
+
             let current_pw_rate = rt_callback::sync_rate(
                 &rate_for_process,
                 &state.resampler,

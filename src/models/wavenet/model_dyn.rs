@@ -80,6 +80,24 @@ pub struct WaveNetModelDyn {
     pub head_output_scratch: AlignedVec<f32>,
 }
 
+impl Clone for WaveNetModelDyn {
+    fn clone(&self) -> Self {
+        let condition_dsp = crate::models::clone_condition_dsp(&self.condition_dsp);
+        Self {
+            ch: self.ch,
+            k: self.k,
+            head: self.head,
+            arrays: self.arrays.clone(),
+            head_scale: self.head_scale,
+            receptive_field_size: self.receptive_field_size,
+            condition_dsp,
+            condition_dsp_output: self.condition_dsp_output.clone(),
+            post_stack_head: self.post_stack_head.clone(),
+            head_output_scratch: self.head_output_scratch.clone(),
+        }
+    }
+}
+
 impl WaveNetModelDyn {
     /// Sets the effective number of layers on all arrays for soft-degrade.
     #[inline(always)]

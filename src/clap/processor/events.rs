@@ -11,7 +11,7 @@ use crate::clap::extensions::params::{
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
-use crate::models::NamModel;
+use crate::models::{NamModel, StaticModel};
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
 use std::sync::atomic::Ordering;
@@ -154,6 +154,10 @@ impl<'a> NamClapProcessor<'a> {
                 &self.rt_status,
             );
         }
+
+        // WaveNet slimmable rebuild: check if FSM demands a different channel
+        // count and perform the allocation-intensive slice+swap before DSP.
+        self.try_slimmable_rebuild();
     }
 
     #[cold]
@@ -195,6 +199,12 @@ impl<'a> NamClapProcessor<'a> {
 
         self.model_input_mult_adj = input_mult_adj;
         self.model_output_mult_adj = output_mult_adj;
+
+        if let Some(ref model) = self.model_l
+            && let StaticModel::WavenetDyn(w) = model.as_ref()
+        {
+            self.adaptive_compute.set_wavenet_full_ch(w.ch);
+        }
     }
 
     #[cold]
@@ -202,6 +212,76 @@ impl<'a> NamClapProcessor<'a> {
     fn cold_load_cabsim(&mut self, engine: Option<Box<ConvEngine>>) {
         if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
             self.push_to_gc(GcItem::CabConvEngine(old_engine));
+        }
+    }
+
+    /// Checks if the adaptive FSM demands a WaveNet channel count change
+    /// and performs the allocation-intensive `slice_channels` + GC swap.
+    ///
+    /// Must be called **before** DSP (inside `process_events`) to keep the
+    /// hot-path zero-alloc.
+    fn try_slimmable_rebuild(&mut self) {
+        let Some(target_ch) = self.adaptive_compute.take_slimmable_rebuild() else {
+            return;
+        };
+
+        // Slice model_l (left channel)
+        if let Some(ref model) = self.model_l
+            && let StaticModel::WavenetDyn(w) = model.as_ref()
+        {
+            if w.ch == target_ch {
+                return;
+            }
+            match w.slice_channels(target_ch) {
+                Ok(mut new_model) => {
+                    new_model.prewarm();
+                    if new_model
+                        .set_max_buffer_size(self.max_frames_count)
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let old = self
+                        .model_l
+                        .replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
+                    if let Some(old) = old {
+                        self.push_to_gc(GcItem::Model(old));
+                    }
+                }
+                Err(e) => {
+                    log::error!("[slimmable] slice_channels(L) failed: {e}");
+                    return;
+                }
+            }
+        }
+
+        // Slice model_r (right channel) — only if independent stereo
+        if let Some(ref model) = self.active_model_r
+            && let StaticModel::WavenetDyn(w) = model.as_ref()
+        {
+            if w.ch == target_ch {
+                return;
+            }
+            match w.slice_channels(target_ch) {
+                Ok(mut new_model) => {
+                    new_model.prewarm();
+                    if new_model
+                        .set_max_buffer_size(self.max_frames_count)
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let old = self
+                        .active_model_r
+                        .replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
+                    if let Some(old) = old {
+                        self.push_to_gc(GcItem::Model(old));
+                    }
+                }
+                Err(e) => {
+                    log::error!("[slimmable] slice_channels(R) failed: {e}");
+                }
+            }
         }
     }
 }

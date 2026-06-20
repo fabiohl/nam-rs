@@ -225,10 +225,10 @@ pub fn slice_wavenet_array(
 ///
 /// ## Limitations
 ///
-/// - **`condition_dsp`**: Set to `None` in the sliced model. The `condition_dsp`
-///   sub-model (`Box<StaticModel>`) cannot be cloned generically. Future work
-///   (Task 2.1.2) may address this by rebuilding the condition DSP from the
-///   original JSON or cloning it.
+/// - **`condition_dsp`**: Cloned from the original model. Only `WavenetDyn`
+///   sub-models are supported for deep cloning; other variants fall back to
+///   `None` (matching pre-Task-2.1.2 behavior). The `post_stack_head` and
+///   `condition_dsp_output` buffers are allocated fresh.
 /// - **`post_stack_head`**: Cloned as-is (not affected by channel slicing).
 ///
 /// # Panics
@@ -288,7 +288,7 @@ pub fn slice_wavenet_model(
         arrays,
         head_scale: model.head_scale,
         receptive_field_size: rf,
-        condition_dsp: None,
+        condition_dsp: crate::models::clone_condition_dsp(&model.condition_dsp),
         condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
         post_stack_head: model.post_stack_head.clone(),
         head_output_scratch,
@@ -657,7 +657,6 @@ mod tests {
         assert_eq!(sliced.arrays[0].in_ch, 1);
         assert_eq!(sliced.arrays[1].ch, CH_SLIM);
         assert_eq!(sliced.arrays[1].in_ch, CH_SLIM);
-        assert!(sliced.condition_dsp.is_none());
         assert_eq!(sliced.arrays[0].effective_layers, 3);
         assert_eq!(sliced.arrays[1].effective_layers, 3);
     }
