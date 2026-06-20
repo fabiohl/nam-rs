@@ -22,7 +22,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 **Foco:** Refatorar o `docs/cpp_parity_map.md` para remover falsas afirmações de rejeição/remoção e mapear corretamente os novos módulos (WaveNet Dyn, LSTM Dyn, WaveNetA2 Dyn, ConvNet) e a natureza dos goldens A2.
 **Findings Relacionados:** F1, F2
 
-* [ ] **Tarefa A.1.1: Atualizar seções de WaveNet e LSTM Dinâmicos (`docs/cpp_parity_map.md`)**
+* [x] **Tarefa A.1.1: Atualizar seções de WaveNet e LSTM Dinâmicos (`docs/cpp_parity_map.md`)**
   * **Especialista:** `documentador`
   * **Ação:** Em `docs/cpp_parity_map.md`, seção `3.3 Legacy Dynamic WaveNet (removed)` e `9. A1 Topology Table`:
     * Remover qualquer linguagem que afirme que `WaveNet Dyn` ou `LSTM Dyn` foram removidos.

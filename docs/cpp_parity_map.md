@@ -54,13 +54,16 @@ divergences, and the sprint/task that established each equivalence.
 | Layer states (delay buffers, receptive field tracking) | `models/wavenet/common.rs` — `WaveNetLayerState`                   | —                  |
 | BF16 layer state caching                               | `models/wavenet/common.rs` — `u16` mirrored buffer variant         | —                  |
 
-### 3.3 Legacy Dynamic WaveNet (removed)
+### 3.3 Dynamic WaveNet (fallback path for free geometries)
 
-> The dynamic paths (`WaveNetDynModel`/`LstmDynModel`) that loaded arbitrary, non-catalogued geometries have been removed. Non-catalogued `.nam` files now fail to load with a clear diagnostic error. The `Conv1dDyn` convolution kernel is retained as a low-level compute engine for the A2 architecture and static WaveNet test/stress kernels — it is not a model path.
+> Models whose topology does not match a catalog SKU (Standard/Lite/Feather/Nano) are routed through the dynamic fallback path (`WaveNetModelDyn`) — not rejected. This engine handles arbitrary channel counts, kernel sizes, dilations, `condition_size > 1`, and post-stack heads. The `Conv1dDyn` convolution kernel serves as the low-level compute engine for this path, for the A2 dynamic engine (`WaveNetA2Dyn`), and for static WaveNet test/stress kernels.
 
-| C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                | Parity established |
-| ----------------------------- | -------------------------------------------- | ------------------ |
-| Dynamic Conv1D                | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn` | —                  |
+| C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                                                      | Parity established |
+| ----------------------------- | ---------------------------------------------------------------------------------- | ------------------ |
+| Dynamic Conv1D                | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn`                                       | —                  |
+| Generic WaveNet inference     | `models/wavenet/model_dyn.rs` — `WaveNetModelDyn`                                  | —                  |
+| Generic LSTM inference        | `models/lstm/model_dyn.rs` — `LstmModelDyn`                                        | —                  |
+| Generic WaveNet A2 inference  | `models/a2/model/dynamic.rs` — `WaveNetA2Dyn`                                      | —                  |
 
 ### 3.4 Topology → Concrete Type Mapping
 
@@ -70,7 +73,7 @@ divergences, and the sprint/task that established each equivalence.
 | WaveNet Lite (12)     | `loader/dispatcher/wavenet/lite.rs`            | `WaveNetModel<12, 3, 6>` |
 | WaveNet Feather (8)   | `loader/dispatcher/wavenet/feather.rs`         | `WaveNetModel<8, 3, 4>`  |
 | WaveNet Nano (4)      | `loader/dispatcher/wavenet/nano.rs`            | `WaveNetModel<4, 3, 2>`  |
-| Any other geometry    | Error — non-catalogued geometries fail to load | —                        |
+| Any other geometry    | `loader/dispatcher/wavenet/dynamic.rs`         | `WaveNetModelDyn`         |
 
 ---
 
@@ -115,11 +118,24 @@ divergences, and the sprint/task that established each equivalence.
 | `2×12`                         | `LstmModel2<12, 13, 24, 48>`                   | `Lstm2x12`                     |
 | `2×16`                         | `LstmModel2<16, 17, 32, 64>`                   | `Lstm2x16`                     |
 | `2×24`                         | `LstmModel2<24, 25, 48, 96>`                   | `Lstm2x24`                     |
-| Any other (num_layers, hidden) | Error — non-catalogued topologies fail to load | —                              |
+| Any other (num_layers, hidden) | `loader/dispatcher/lstm.rs` → `LstmModelDyn`    | —                              |
 
 ---
 
-## 5. A2 Architecture (Fixed fast-path port)
+---
+
+## 5. ConvNet Architecture
+
+| C++ (`NeuralAmpModelerCore/`)                    | Rust (`src/`)                                             | Parity established |
+| ------------------------------------------------ | --------------------------------------------------------- | ------------------ |
+| `convnet.cpp` / `convnet.h` — ConvNet inference  | `models/convnet/model.rs` — `ConvNetModel`                | —                  |
+| Conv1D → BatchNorm → Activation blocks           | `models/convnet/block.rs` — `ConvNetBlock`                | —                  |
+| `convnet.h:108-118` — `_Head` (post-stack head)  | `models/convnet/model.rs` — `ConvNetModel.post_stack_head` | —                  |
+| ConvNet topology dispatch                        | `loader/dispatcher/convnet/mod.rs` — `build_convnet()`     | —                  |
+
+---
+
+## 6. A2 Architecture (Fixed fast-path port)
 
 > **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 >
@@ -146,9 +162,9 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 6. Weight Loading & Parsing
+## 7. Weight Loading & Parsing
 
-### 6.1 `.nam` JSON Format
+### 7.1 `.nam` JSON Format
 
 | C++ (`NeuralAmpModelerCore/`)                         | Rust (`src/`)                                                                    | Parity established |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------ |
@@ -157,7 +173,7 @@ divergences, and the sprint/task that established each equivalence.
 | `NeuralModel.cpp` — topology dispatch                 | `loader/nam_json/topology.rs` — `get_wavenet_topology()` / `get_lstm_topology()` | S4.T03             |
 | NAM metadata (input_level_dbu, loudness, sample_rate) | `loader/nam_json/data.rs` — `NamMetadata`                                        | S1.T02             |
 
-### 6.2 NAMB Binary Format
+### 7.2 NAMB Binary Format
 
 | C++ ecosystem convention                       | Rust (`src/`)                                          | Parity established |
 | ---------------------------------------------- | ------------------------------------------------------ | ------------------ |
@@ -168,7 +184,7 @@ divergences, and the sprint/task that established each equivalence.
 | NAMB CRC32 validation (v2+)                    | `loader/namb.rs` — `crc32_ieee()`                      | S12.T02            |
 | NAMB encoder/export                            | `loader/namb_encoder.rs` — `encode_namb()`             | S10.T01            |
 
-### 6.3 WaveNet Weight Layout
+### 7.3 WaveNet Weight Layout
 
 | C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                     | Parity established |
 | --------------------------------------------------- | ----------------------------------------------------------------- | ------------------ |
@@ -176,7 +192,7 @@ divergences, and the sprint/task that established each equivalence.
 | `WaveNetLayerArrayT::SetWeights` (per-array layout) | `loader/dispatcher/wavenet/standard.rs` — `build_wavenet_array()` | S3.T03             |
 | Head scale (final scalar multiplier)                | `loader/dispatcher/wavenet/standard.rs` — `head_scale`            | S3.T03             |
 
-### 6.4 LSTM Weight Layout
+### 7.4 LSTM Weight Layout
 
 | C++ (`NeuralAmpModelerCore/`)            | Rust (`src/`)                                                               | Parity established |
 | ---------------------------------------- | --------------------------------------------------------------------------- | ------------------ |
@@ -185,7 +201,7 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 7. Math / SIMD Kernels
+## 8. Math / SIMD Kernels
 
 | C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                 | Parity established |
 | --------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
@@ -211,7 +227,7 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 8. Cross-Validation
+## 9. Cross-Validation
 
 | C++ (`NeuralAmpModelerCore/`)                        | Rust (`src/` / `tests/`)                        | Parity established |
 | ---------------------------------------------------- | ----------------------------------------------- | ------------------ |
@@ -221,7 +237,7 @@ divergences, and the sprint/task that established each equivalence.
 | `test_slimmable_wavenet.cpp` (official WaveNet test) | `tests/fixtures/` — shared models               | S13a.T01           |
 | SNR thresholds (C++ → Rust comparison)               | `tests/cpp_parity.rs` — per-model SNR passes    | —                  |
 
-### 8.1 Post-Nuke ESR Measurements (T-HF6.6, jun/2026)
+### 9.1 Post-Nuke ESR Measurements (T-HF6.6, jun/2026)
 
 After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet A1
 (E-HF Sprint 6), the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
@@ -249,7 +265,7 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 ---
 
-## 9. A1 Topology Table
+## 10. Topology Table
 
 | C++ NAM topology      | Rust module / type                                                                          |
 | --------------------- | ------------------------------------------------------------------------------------------- |
@@ -257,7 +273,8 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | WaveNet Lite 12       | `models::wavenet::WaveNetModel<12, 3, 6>`                                                   |
 | WaveNet Feather 8     | `models::wavenet::WaveNetModel<8, 3, 4>`                                                    |
 | WaveNet Nano 4        | `models::wavenet::WaveNetModel<4, 3, 2>`                                                    |
-| WaveNet Dyn (removed) | *(removed — Sprint 1.5)*                                                                    |
+| WaveNet Dyn           | `models::wavenet::WaveNetModelDyn` (fallback genérico para geometrias livres)              |
+| LSTM 1×3              | `models::lstm::Lstm1x3`                                                                      |
 | LSTM 1×8              | `models::lstm::LstmModel1<8, 9, 32>`                                                        |
 | LSTM 1×12             | `models::lstm::LstmModel1<12, 13, 48>`                                                      |
 | LSTM 1×16             | `models::lstm::LstmModel1<16, 17, 64>`                                                      |
@@ -267,17 +284,19 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | LSTM 2×12             | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                  |
 | LSTM 2×16             | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                  |
 | LSTM 2×24             | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                  |
-| LSTM Dyn (removed)    | *(removed — Sprint 1.5)*                                                                    |
+| LSTM Dyn              | `models::lstm::LstmModelDyn` (fallback genérico para camadas/hidden não-catalogados)        |
 | A2-Full (8 ch)        | `models::a2::WaveNetA2<8>` (fixed fast-path, 8 channels, tap-major frame-tiled convolution) |
 | A2-Lite (3 ch)        | `models::a2::WaveNetA2<3>` (fixed fast-path, 3 channels, unrolled GEMV convolution)         |
+| WaveNet A2 Dyn        | `models::a2::WaveNetA2Dyn` (motor dinâmico para geometrias A2 não-catalogadas, FiLM/gating) |
+| ConvNet               | `models::convnet::ConvNetModel` (feed-forward Conv1D+BatchNorm+Activation, sem recorrência)  |
 
-> Rows marked **Dyn** above were removed in Sprint 1.5 — see §3.3 and [TODO-sprints.md](../TODO-sprints.md).
+> Engine genres: **Catalog SKUs** (Standard/Lite/Feather/Nano, LSTM 1×/2×, A2-Full/Lite) use const-generic paths with full SIMD specialization. **Dynamic engines** (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) handle free geometry, `condition_size ≠ 1`, post-stack heads, and other non-catalogued topologies via generic dispatch (§3.3). **ConvNet** maps to the C++ `convnet.cpp` / `convnet.h` reference.
 
 ---
 
-## 10. NAM-rs Divergences from C++ Reference (Accepted)
+## 11. NAM-rs Divergences from C++ Reference (Accepted)
 
-### 10.1 Architecture
+### 11.1 Architecture
 
 | Divergence                                    | Rationale                                                                                                                                                                                   |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -296,7 +315,7 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | `head` (non-null) rejected**                  | time** with a clear diagnostic (T7.3). All known A1 WaveNet models (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null`; these features are only needed for advanced         |
 |                                               | architectures (A2 FiLM conditioning, custom post-stack heads). If real-world models requiring them are found in circulation (Tone3000/ToneHunt), they can be supported in a future sprint.  |
 
-### 10.2 Math
+### 11.2 Math
 
 | Divergence                                           | Rationale                                                                                                                                                                                                              |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -307,7 +326,7 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                  |
 | **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                    |
 
-### 10.3 Ecosystem
+### 11.3 Ecosystem
 
 | Divergence                                  | Rationale                                                                                                                                |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -318,7 +337,7 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 ---
 
-## 13. IR Cabsim — New NAM-rs Feature (No C++ Equivalent)
+## 12. IR Cabsim — New NAM-rs Feature (No C++ Equivalent)
 
 > **Status:** The IR Cabsim convolution stage (`src/dsp/cabsim/`) is a **feature native to NAM-rs** with no equivalent in the canonical C++ reference (`NeuralAmpModelerCore`). There is no `ImpulseResponse` or convolution-processing class in the `NAM/` or `NeuralAmpModelerCore/` source tree.
 
@@ -329,11 +348,11 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 | `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed (S5.3/T5.7)** |
 | `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**          |
 
-### 13.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
+### 12.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
 
 > **Analysis completed:** Sprint 5.3, [T5.7] — submodule `AudioDSPTools` initialized at commit `0827c6c`.
 
-#### 13.1.1 C++ `dsp::ImpulseResponse` — Algorithm
+#### 12.1.1 C++ `dsp::ImpulseResponse` — Algorithm
 
 | Property                 | Detail                                                                                                                                                                   |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -348,7 +367,7 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 | **Latency**              | 0 samples (direct sample-by-sample convolution).                                                                                                                         |
 | **Channels**             | Convolves mono; duplicates to all output channels.                                                                                                                       |
 
-#### 13.1.2 NAM-rs `ConvEngine` (UPOLS) — Algorithm
+#### 12.1.2 NAM-rs `ConvEngine` (UPOLS) — Algorithm
 
 | Property                 | Detail                                                                                                                                                                      |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -363,7 +382,7 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 | **Latency**              | `partition_size` samples (one full audio block).                                                                                                                            |
 | **Channels**             | Convolves mono; stereo duplication handled externally (`capture.rs`).                                                                                                       |
 
-#### 13.1.3 Algorithmic Differences — Impact on Cross-Validation Tolerances
+#### 12.1.3 Algorithmic Differences — Impact on Cross-Validation Tolerances
 
 | #   | Divergence         | C++                                                    | NAM-rs                                                                 | Expected impact on ESR/SNR                                                                                                                                                                                                                                                                                                                                              |
 | --- | ------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -375,7 +394,7 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 | 6   | **Latency**        | 0 samples                                              | `partition_size` samples                                               | NAM-rs output is time-shifted by `partition_size` samples relative to C++. Cross-validation must align sequences (shift or trim) before comparison.                                                                                                                                                                                                                     |
 | 7   | **WAV loading**    | `dsp::wav::Load()` — supports PCM16, float32           | `CabSimIr` — PCM16, PCM24, float32 + NaN/Inf validation + TOCTOU guard | Loading differences (e.g. quantization rounding when PCM → float) are negligible relative to the algorithmic differences above.                                                                                                                                                                                                                                         |
 
-#### 13.1.4 Cross-Validation Strategy
+#### 12.1.4 Cross-Validation Strategy
 
 Given the dominant gain divergence (#2), cross-validation should apply **gain compensation** before comparison: multiply C++ output by `1 / gain = 10^(0.9) × mSampleRate / 48000` or normalize both outputs to the same peak RMS before computing ESR/SNR. ESR is naturally gain-insensitive (ratio metric), making it the preferred tolerance measure. SNR and absolute-error metrics should account for the gain offset.
 
@@ -392,7 +411,7 @@ Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden thresho
 
 > **Stress scenario skipped:** C++ `ImpulseResponse::mMaxLength = 8192` hard-caps the IR, truncating the 32768-sample stress IR. NAM-rs UPOLS stress validation is performed against direct convolution in `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5). All three comparable scenarios exceed the 1e-3 ESR threshold by 10+ orders of magnitude, confirming bit-identical equivalence after gain compensation.
 
-### 13.2 Cross-Validation Performed (Sprint 5.3)
+### 12.2 Cross-Validation Performed (Sprint 5.3)
 
 The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/`. Cross-validation tests are implemented as `#[ignore]` in `tests/cabsim_cpp_parity.rs` and run via `utils/tests-long.sh`.
 
@@ -402,7 +421,7 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 
 ---
 
-## 14. Related Sprints & Tasks
+## 13. Related Sprints & Tasks
 
 | Sprint        | Topic                                                | Key C++ reference                               |
 | ------------- | ---------------------------------------------------- | ----------------------------------------------- |
@@ -416,11 +435,12 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 
 ---
 
-## 15. Version History
+## 14. Version History
 
 | Date       | Change                                                                                                                                                                                                                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§8.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §10.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                         |
+| 2026-06-20 | [Tarefa A.1.1] Atualização de §§3.3, 3.4, 4.4, 10 e nova Seção 5 (ConvNet): removida linguagem de "removido" dos engines dinâmicos; corrigido fallback `Free`/`WaveNetModelDyn`/`LstmModelDyn` para geometrias não-catalogadas; adicionadas entradas `WaveNetDyn`, `LSTM Dyn`, `WaveNetA2Dyn` e `ConvNet` na tabela de topologia; renumeradas todas as seções subsequentes (5→6, 6→7, ..., 15→14). |
+| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§9.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §11.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                         |
 | 2026-06-12 | [T11.2] `is_a2_shape()` now matches C++ `is_a2_shape()` exactly (20 criteria from `a2_fast.cpp:875-908`). Added `bottleneck`, `kernel_sizes`, `in_channels` to typed config structs; raw JSON capture via `layer_raw` for complex checks (activation arrays, FiLM, gating_mode, head sub-objects, groups,      |
 |            | slimmable). Strict rejection with clear diagnostics prevents silent fast-path misroute for models with `bottleneck≠channels`, gated/blended activation, or active FiLM conditioning. Full parity map entry updated with correct line range.                                                                    |
 | 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm. |
