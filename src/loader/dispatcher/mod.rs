@@ -26,12 +26,15 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
         "LSTM" => lstm::build_lstm(data),
         "SlimmableContainer" => container::build_container(data),
         "Linear" => linear::build_linear(data),
+        "ConvNet" => convnet::build_convnet(data),
         other => bail!("Unsupported architecture: '{}'", other),
     }
 }
 
 /// SlimmableContainer model builder module
 pub mod container;
+/// ConvNet model builder module
+pub mod convnet;
 /// Linear model builder module
 pub mod linear;
 /// LSTM model builder module

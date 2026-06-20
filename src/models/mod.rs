@@ -117,6 +117,8 @@ pub enum StaticModel {
     Container(Box<container::ContainerModel>),
     /// Linear — FIR-based model (dot product of input history with weights + bias).
     Linear(Box<linear::LinearModel>),
+    /// ConvNet feed-forward model (F4).
+    ConvNet(Box<convnet::ConvNetModel>),
 }
 
 impl sealed::Sealed for StaticModel {}
