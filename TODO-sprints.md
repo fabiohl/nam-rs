@@ -47,7 +47,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 **Foco:** Garantir que o `docs/architecture.md` cite os módulos dinâmicos e que a flag `dynamic-engine` seja bem esclarecida. Atualizar a matriz de testes no `docs/testing.md` para incluir a cobertura pretendida.
 **Findings Relacionados:** F1
 
-* [ ] **Tarefa A.2.1: Incluir Dinâmicos e ConvNet na Arquitetura (`docs/architecture.md`)**
+* [x] **Tarefa A.2.1: Incluir Dinâmicos e ConvNet na Arquitetura (`docs/architecture.md`)**
   * **Especialista:** `documentador`
   * **Ação:** Em `docs/architecture.md`, nas seções de dispatch e descrição da Microarquitetura SIMD:
     * Mencionar o suporte ativo à arquitetura `ConvNet` e aos modelos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`).

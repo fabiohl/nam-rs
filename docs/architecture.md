@@ -29,6 +29,35 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 - **Fused Residual GEMV with Frame Tiling (WaveNet):** The residual calculation is fused into the GEMV of the next layer, utilizing **4-frame tiling (AVX2)** or **8-frame tiling (AVX-512)** to maximize weight reuse in registers.
 - **Conv1D Tiling:** Block processing of multiple channels to maximize data reuse in SIMD registers and reduce cache latency in deep dilation models.
 - **Linear Model (FIR Filter):** A fast non-neural FIR filter architecture implementing convolved input history with weights and a bias.
+- **ConvNet Architecture:** A feed-forward convolutional neural network composed of a sequential chain of `ConvNetBlock` layers. Each block performs causal Conv1D → BatchNorm1D (pre-fused affine `y = x * scale + offset`) → activation (Tanh, ReLU, LeakyReLU, etc.), chained via ping-pong scratch buffers. An optional `PostStackHead` (Conv1D + activation) can process the final block output before the `head_scale` gain. Unlike WaveNet, ConvNet has no gating, no rechannel projections, and no dual-array architecture. See [`src/models/convnet/`](../src/models/convnet/).
+
+### Structural Dispatch: `StaticModel` Enum (Zero Vtable Routing)
+
+NAM-rs uses a **static enum dispatch** pattern to route inference calls to the correct model architecture without virtual table (vtable) overhead. The `StaticModel` enum (`src/models/mod.rs:77`) has 23 variants covering all supported architectures:
+
+| Family               | Variants                                                                                              | Dispatch Strategy          |
+|:-------------------- |:----------------------------------------------------------------------------------------------------- |:-------------------------- |
+| **WaveNet A1**       | `Standard` (ch=16), `Lite` (ch=12), `Feather` (ch=8), `Nano` (ch=4)                                  | Const-generic monomorphization |
+| **WaveNet A2**       | `A2Full` (ch=8), `A2Lite` (ch=3)                                                                     | Const-generic monomorphization |
+| **WaveNet A2 Dyn**   | `WaveNetA2Dyn`                                                                                        | Runtime dimensions (free channels) |
+| **WaveNet Dyn**      | `WaveNetModelDyn`                                                                                     | Free geometry fallback     |
+| **LSTM Static**      | `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`, `1×40`, `2×24` (10 profiles)        | Const-generic monomorphization |
+| **LSTM Dyn**         | `LstmModelDyn`                                                                                        | Runtime dimensions fallback |
+| **Container**        | `ContainerModel`                                                                                      | Nested `StaticModel` dispatch |
+| **ConvNet**          | `ConvNetModel`                                                                                        | Layer-chain SIMD dispatch  |
+| **Linear**           | `LinearModel`                                                                                         | Direct SIMD FIR            |
+
+The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs:242`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
+
+#### Dynamic Models: Free-Shape Fallback
+
+For models whose geometry does not match any of the const-generic profiles, the loader routes to one of three dynamic variants:
+
+- **`WaveNetModelDyn`** (`src/models/wavenet/model_dyn.rs`): Activated when `get_wavenet_topology()` returns `Free(geometry)` — handling arbitrary `channels`, `head`, `condition_size`, and `post_stack_head` dimensions. Supports optional `condition_dsp` (a nested `StaticModel` sub-model that pre-processes raw audio, mirroring C++ `model.cpp:692-722`).
+- **`LstmModelDyn`** (`src/models/lstm/model_dyn.rs`): Activated when the `(num_layers, hidden_size)` pair does not match any of the 10 static LSTM profiles. Supports arbitrary layer counts and hidden sizes, with three SIMD kernels (AVX2+FMA+F16C, AVX-512F+VL, AVX-512 BF16 VNNI).
+- **`WaveNetA2Dyn`** (`src/models/a2/wavenet_a2_dyn.rs`): Activated for models matching the A2 23-layer pattern with channel counts other than 3 or 8. Uses runtime-dimensioned conv1d and GEMV kernels.
+
+These dynamic paths use heap-allocated `Vec`-based arrays for weights and states instead of stack-allocated const-generic arrays. While they introduce a one-time allocation at load time, the hot inference path remains **zero-allocation** and **RT-safe** via the same `match self` dispatch as const-generic variants.
 
 ### Technical Decision: FastMath Precision vs. Performance
 
