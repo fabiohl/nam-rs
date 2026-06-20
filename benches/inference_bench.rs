@@ -17,8 +17,8 @@
 //! | `A2Lite_CH3_64samp_48kHz`               | A2-Lite (CH=3) inference                | u16 interleaved GEMV, CPU-efficient      |
 //! | `FastMath_tanh_AVX2_256elem`            | Padé×rsqrt tanh activation over 256 f32 | Kernel called N×layers/block in WaveNet  |
 //! | `FastMath_sigmoid_AVX2_256elem`         | Sigmoid activation derived from tanh    | Kernel called N×gates/block in LSTM      |
-//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | WaveNet Dynamic inference (fallback)    | Measures overhead of path without const generics |
-//! | `LSTM_Dynamic_1x16_64samp_48kHz`        | LSTM Dynamic 1×16 inference (fallback)  | Measures overhead of path without const generics |
+//! | `WaveNet_Dynamic_CH5_64samp_48kHz`  | WaveNet Dynamic free-geom inference  | Fallback for non-cataloged WaveNet geometries |
+//! | `LSTM_Dynamic_1x7_64samp_48kHz`      | LSTM Dynamic 1×7 inference           | Fallback for non-cataloged LSTM geometries     |
 //!
 //! ## Interpreting the results
 //!
@@ -77,6 +77,75 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
         },
         // Weights initialized with a small value (0.01) to avoid premature saturation/infs
         // during repeated benchmark runs.
+        weights: vec![0.01; total_weights],
+        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
+        sample_rate: Some(48000.0),
+        metadata: None,
+    }
+}
+
+/// Creates a synthetic `NamModelData` for WaveNet Dynamic with free geometry.
+///
+/// CH=5, K=3, COND=3 — forces routing to `WaveNetModelDyn` because
+/// CH ∉ {4,8,12,16} and `condition_size > 1` disqualifies catalog matching.
+fn make_wavenet_dyn_data() -> NamModelData {
+    let channels = 5usize;
+    let kernel_size = 3usize;
+    let condition_size = 3usize;
+    let head_1 = 5usize;
+    let head_2 = 1usize;
+    let dilations = [vec![1, 2, 4, 8, 16], vec![1, 2, 4, 8, 16]];
+    let num_layers_per_array = 5usize;
+
+    let array1_rechannel = channels;
+    let array2_rechannel = channels * channels;
+    let per_layer = channels * kernel_size * channels + channels              // conv1d + bias
+        + condition_size * channels                                // input_mixin
+        + channels * channels + channels; // one_by_one + bias
+    let array1_head = channels * head_1; // no bias
+    let array2_head = channels * head_2 + head_2; // with bias
+    let total_weights = array1_rechannel
+        + num_layers_per_array * per_layer
+        + array1_head
+        + array2_rechannel
+        + num_layers_per_array * per_layer
+        + array2_head
+        + 1; // head_scale
+
+    NamModelData {
+        version: Some("0.5.4".to_string()),
+        architecture: "WaveNet".to_string(),
+        config: NamConfig {
+            layers: vec![
+                nam_rs::loader::nam_json::NamLayerConfig {
+                    input_size: Some(1),
+                    condition_size: Some(condition_size),
+                    head_size: Some(head_1),
+                    channels: Some(channels),
+                    kernel_size: Some(kernel_size),
+                    dilations: Some(dilations[0].clone()),
+                    activation: Some("Tanh".to_string()),
+                    gated: Some(false),
+                    head_bias: Some(false),
+                    ..Default::default()
+                },
+                nam_rs::loader::nam_json::NamLayerConfig {
+                    input_size: Some(channels),
+                    condition_size: Some(condition_size),
+                    head_size: Some(head_2),
+                    channels: Some(channels),
+                    kernel_size: Some(kernel_size),
+                    dilations: Some(dilations[1].clone()),
+                    activation: Some("Tanh".to_string()),
+                    gated: Some(false),
+                    head_bias: Some(true),
+                    ..Default::default()
+                },
+            ],
+            head: None,
+            head_scale: Some(0.02),
+            ..Default::default()
+        },
         weights: vec![0.01; total_weights],
         weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
         sample_rate: Some(48000.0),
@@ -1607,6 +1676,8 @@ criterion_group!(
     bench_gate_fsm,
     bench_linear_model_dot_product,
     bench_container_crossfade_64samp,
+    bench_wavenet_dynamic_process,
+    bench_lstm_dynamic_process,
     bench_nondist_models,
     bench_convnet_multichannel,
     bench_convnet_large_kernels,
@@ -1793,6 +1864,47 @@ fn bench_container_crossfade_64samp(c: &mut Criterion) {
 
     let mut model = nam_rs::models::StaticModel::Container(Box::new(container));
     c.bench_function("Container_Crossfade_64samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+// PGO: group name uses _64samp suffix to match build-release.sh profiling filter
+/// Measures the processing time of a free-geometry WaveNet Dynamic model (CH=5, K=3, COND=3).
+///
+/// CH=5 and condition_size=3 force the dispatcher to route to `WaveNetModelDyn`
+/// instead of a const-generic SKU. This benchmark covers the dynamic hot-path
+/// that is exercised when a user loads a model outside the catalog.
+fn bench_wavenet_dynamic_process(c: &mut Criterion) {
+    let data = make_wavenet_dyn_data();
+    let mut model = build_model(&data).expect("Dispatcher failed for WaveNet Dynamic benchmark");
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("WaveNet_Dynamic_CH5_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+// PGO: group name uses _64samp suffix to match build-release.sh profiling filter
+/// Measures the processing time of an LSTM Dynamic model (1 layer × 7 hidden).
+///
+/// H=7 is not in the const-generic dispatch table ({3,8,12,16,24,40}),
+/// forcing routing to `LstmModelDyn`. This covers the dynamic LSTM hot-path.
+fn bench_lstm_dynamic_process(c: &mut Criterion) {
+    let data = make_lstm_data(1, 7);
+    let mut model = build_model(&data).expect("Dispatcher failed for LSTM Dynamic benchmark");
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("LSTM_Dynamic_1x7_64samp_48kHz", |b| {
         b.iter(|| {
             model.process(&input, &mut output);
         });

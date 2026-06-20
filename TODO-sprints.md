@@ -84,7 +84,7 @@ retorna linhas ConvNet.
 
 ---
 
-### T-E1.2 — Adicionar benches de engine dinâmico representativo (WaveNetDyn + LstmDyn)
+### T-E1.2 — Adicionar benches de engine dinâmico representativo (WaveNetDyn + LstmDyn) [DONE]
 
 > **Achado:** F8 + F4 — engines dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`) não têm
 > benchmark algum em `inference_bench.rs`, logo PGO nunca os profila.
