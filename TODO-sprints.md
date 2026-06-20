@@ -19,7 +19,7 @@ O WaveNet A1 permite que um sub-objeto "head" (Conv1D + ativação) processe o s
 
 ### Sprint 1.2: DSP do Head e Integração
 
-- **Tarefa 1.2.1**: Criar uma estrutura `PostStackHead` em `src/models/wavenet/` contendo um `Conv1d` (já existente no projeto) e o suporte a ativação dinâmica.
+- **Tarefa 1.2.1** [DONE]: Criar uma estrutura `PostStackHead` em `src/models/wavenet/` contendo um `Conv1d` (já existente no projeto) e o suporte a ativação dinâmica.
 - **Tarefa 1.2.2**: Adicionar o `PostStackHead` opcional ao `WaveNetModelDyn`.
 - **Tarefa 1.2.3**: Ajustar o ciclo `process` do motor dinâmico para rotear o sinal da pilha para o `PostStackHead` antes do `head_scale`.
 - **Tarefa 1.2.4**: Somar o tamanho do kernel do `PostStackHead` ao cálculo de `receptive_field` global do modelo para o `prewarm`.

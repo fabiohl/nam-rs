@@ -19,8 +19,9 @@
 //! | `layer_dyn`   | Runtime-dimensional WaveNet layer (`WaveNetLayerDyn`)                   |
 //! | `layer_array` | Static WaveNet layer array (`WaveNetLayerArray`)                        |
 //! | `layer_array_dyn` | Runtime-dimensional WaveNet layer array (`WaveNetLayerArrayDyn`)    |
-//! | `model`       | Complete static model (`WaveNetModel`)                                  |
-//! | `model_dyn`   | Runtime-dimensional model (`WaveNetModelDyn`)                           |
+//! | `model`           | Complete static model (`WaveNetModel`)                                  |
+//! | `model_dyn`       | Runtime-dimensional model (`WaveNetModelDyn`)                           |
+//! | `post_stack_head` | Post-stack head sub-object (Conv1D + activation)                        |
 
 pub mod common;
 pub mod conv1d;
@@ -46,6 +47,8 @@ pub mod layer_dyn;
 pub mod model;
 /// Runtime-dimensional model (`WaveNetModelDyn`).
 pub mod model_dyn;
+/// Post-stack head sub-object (Conv1D + activation).
+pub mod post_stack_head;
 
 use super::NamModel;
 use super::sealed;
@@ -132,6 +135,7 @@ pub use layer_array_dyn::WaveNetLayerArrayDyn;
 pub use layer_dyn::WaveNetLayerDyn;
 pub use model::WaveNetModel;
 pub use model_dyn::WaveNetModelDyn;
+pub use post_stack_head::PostStackHead;
 
 #[cfg(test)]
 #[path = "tests.rs"]
