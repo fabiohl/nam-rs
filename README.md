@@ -106,6 +106,29 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
     CPU_SCALING_GOVERNOR_ON_BAT=powersave
     ```
 
+### Fresh Clone Setup
+
+After cloning, a single command prepares all external dependencies:
+
+```sh
+./utils/mod-update.sh
+```
+
+This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (v0.5.3) and [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin) with submodules.
+
+#### Running the Full Test Suite
+
+```sh
+# Standard tests (< 2 min):
+./utils/tests-cargo.sh
+
+# Long-duration audit (± 38 min, requires cmake + g++/clang++):
+./utils/tests-long.sh
+```
+
+> [!NOTE]
+> `tests-long.sh` **automatically regenerates** golden vectors if they are missing (requires C++ toolchain). Set `NAM_SKIP_GOLDEN_BUILD=1` to disable auto-regeneration.
+
 ### Build, install and run
 
 *Note: `.cargo/config.toml` allows configuring a build optimized specifically for your current CPU ("march=native").*

@@ -10,10 +10,10 @@
 #   2. Run `git lfs install` once to register the clean/smudge filters.
 #   3. To convert the EXISTING committed blobs to LFS (history rewrite, do this
 #      deliberately and coordinate with the team):
-#        git lfs migrate import --include="tests/fixtures/*_v2_*.bin" --everything
+#        git lfs migrate import --include="tests/fixtures/*.bin" --everything
 #
 # Until git-lfs is installed these patterns are inert and files are stored as
 # normal blobs. The small v1 fixtures (~16 KB) are intentionally NOT tracked by
 # LFS — the overhead is not worth it for tiny files.
 
-tests/fixtures/*_v2_*.bin filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/*.bin filter=lfs diff=lfs merge=lfs -text

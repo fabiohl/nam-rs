@@ -28,7 +28,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sprint E.1 — PGO e Benchmarks: Cobertura dos Hot-Paths (F8)
+## Sprint E.1 — PGO e Benchmarks: Cobertura dos Hot-Paths (F8) [DONE]
 
 > **Objetivo:** Garantir que `build-release.sh` (PGO Phase 2) profila **todos** os
 > hot-paths de produção — incluindo ConvNet e engines dinâmicos que hoje escapam dos
@@ -385,7 +385,7 @@ Phase 0 detecta e avisa (warn-only) quando `.nam` diverge do manifesto.
 
 ---
 
-### T-E2.3 — Documentar pré-requisito único: `mod-update.sh`
+### T-E2.3 — Documentar pré-requisito único: `mod-update.sh` [DONE]
 
 > **Achado:** F9 — Documentação dispersa sobre pré-requisitos de clone novo.
 > **Risco/Cautela:** 🟡 Trivial — documentação.
@@ -431,7 +431,7 @@ a suíte completa em clone limpo.
 
 ---
 
-### T-E2.4 — Escopar `.gitignore` para `*.json` (F12)
+### T-E2.4 — Escopar `.gitignore` para `*.json` (F12) [DONE]
 
 > **Achado:** F12 — `.gitignore` ignora `*.json` globalmente sem un-ignore para fixtures.
 > **Risco/Cautela:** 🟡 Baixo, mas requer cuidado para não stagear configs indesejados.
@@ -843,27 +843,33 @@ O desenvolvedor humano deve executar, em uma VM ou clone limpo:
    ./utils/mod-update.sh
    ```
 
-2. **Suíte rápida (smoke test):**
+2. **Re-gerar Goldens:**
+
+   ```bash
+   ./tests/fixtures/golden_gen_build.sh
+   ```
+
+3. **Suíte rápida (smoke test):**
 
    ```bash
    ./utils/tests-cargo.sh
    ```
 
-3. **Suíte longa (sem switches):**
+4. **Suíte longa (sem switches):**
 
    ```bash
    ./utils/tests-long.sh
    # Esperado: Phase 0 regenera goldens automaticamente; todas as fases completam.
    ```
 
-4. **PGO build:**
+5. **PGO build:**
 
    ```bash
    ./utils/build-release.sh
    # Esperado: Phase 2 mostra linhas de ConvNet_*_64samp e *_Dynamic_*_64samp
    ```
 
-5. **Nondist (se disponível):**
+6. **Nondist (se disponível):**
 
    ```bash
    ln -s /path/to/nondist tests/fixtures/models-nondist

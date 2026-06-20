@@ -8,12 +8,7 @@
 Thumbs.db
 repomix-*.xml
 *.bak
-*.bin
-*.old
 *.swp
-*.tar
-*.log
-*.json
 
 # Defesa em profundidade: impede commit de metadados .git/ aninhados em qualquer subdiretório
 # (ex.: se /github.com/ for futuramente unignorado por engano, .git/ aninhados não serão stagedos).
