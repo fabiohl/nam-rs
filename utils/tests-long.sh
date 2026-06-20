@@ -212,6 +212,30 @@ fi
 
 echo -e "${GREEN}✓ Pré-requisitos C++ e golden vectors verificados.${NC}"
 
+# ── Optional freshness check (warn-only, not blocking) ──
+MANIFEST="tests/fixtures/.golden_manifest.sha256"
+if [ -f "$MANIFEST" ]; then
+    STALE_COUNT=0
+    while read -r expected_model_sha expected_golden_sha nam_file golden_file; do
+        [[ "$expected_model_sha" == \#* ]] && continue
+        MODEL_PATH="tests/fixtures/models/$nam_file"
+        if [ -f "$MODEL_PATH" ]; then
+            CURRENT_MODEL_SHA=$(sha256sum "$MODEL_PATH" | cut -d' ' -f1)
+            if [ "$CURRENT_MODEL_SHA" != "$expected_model_sha" ]; then
+                echo -e "  ${YELLOW}⚠ STALE: $nam_file changed since golden was generated${NC}"
+                STALE_COUNT=$((STALE_COUNT + 1))
+            fi
+        fi
+    done < "$MANIFEST"
+    if [ "$STALE_COUNT" -gt 0 ]; then
+        echo -e "${YELLOW}⚠ $STALE_COUNT golden(s) may be stale. Consider re-running golden_gen_build.sh${NC}"
+    else
+        echo -e "${GREEN}✓ Golden freshness manifest OK (all models match).${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}⚠ No freshness manifest found (.golden_manifest.sha256). Run golden_gen_build.sh to generate.${NC}"
+fi
+
 # Trackers for the final summary
 declare -a PHASE_NAMES
 declare -a PHASE_COMMANDS

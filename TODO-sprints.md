@@ -299,7 +299,7 @@ aborta sem regenerar.
 
 ---
 
-### T-E2.2 — Implementar manifesto de frescor `.nam ↔ golden`
+### T-E2.2 — Implementar manifesto de frescor `.nam ↔ golden` [DONE]
 
 > **Achado:** F9 — Não há verificação de que os goldens commitados são consistentes com os
 > `.nam` atuais. Risco de golden stale após editar fixture.
