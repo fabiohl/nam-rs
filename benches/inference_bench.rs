@@ -1361,7 +1361,7 @@ fn bench_convnet_multichannel(c: &mut Criterion) {
         (4, 4),
     ];
 
-    let mut group = c.benchmark_group("ConvNet_MultiChannel_64f");
+    let mut group = c.benchmark_group("ConvNet_MultiChannel_64samp");
     group.sample_size(50);
 
     for &(in_ch, out_ch) in &combos {
@@ -1393,7 +1393,7 @@ fn bench_convnet_large_kernels(c: &mut Criterion) {
     const NUM_FRAMES: usize = 64;
     const DO_BIAS: bool = true;
 
-    let mut group = c.benchmark_group("ConvNet_LargeKernel_64f");
+    let mut group = c.benchmark_group("ConvNet_LargeKernel_64samp");
     group.sample_size(50);
 
     for &((in_ch, out_ch, kernel), label) in &[
@@ -1433,7 +1433,7 @@ fn bench_convnet_dilated(c: &mut Criterion) {
     const DO_BIAS: bool = true;
     const KERNEL: usize = 3;
 
-    let mut group = c.benchmark_group("ConvNet_Dilated_64f");
+    let mut group = c.benchmark_group("ConvNet_Dilated_64samp");
     group.sample_size(50);
 
     for &(dilation, label) in &[

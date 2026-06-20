@@ -43,7 +43,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T-E1.1 — Padronizar sufixo de IDs de bench ConvNet (`_64f` → `_64samp`)
+### T-E1.1 — Padronizar sufixo de IDs de bench ConvNet (`_64f` → `_64samp`) [DONE]
 
 > **Achado:** F8 — ConvNet usa sufixo `_64f`, não casado pelo filtro `"64samp"` do PGO.
 > **Risco/Cautela:** 🟡 Baixo. Renomear IDs apaga o histórico de comparação Criterion
