@@ -117,11 +117,15 @@ impl NamModelData {
             return true;
         }
 
-        // Secondary: activation-based detection
-        for layer in &self.config.layers {
-            if layer.activation.as_deref().is_some_and(|a| a != "Tanh") {
-                return true;
-            }
+        // Secondary: activation-based detection — only if the model has the
+        // structural signature of an A2 (single layer array). Multi-array
+        // WaveNet models with non-Tanh activation are A1 geometries with
+        // a non-standard activation, not A2.
+        if self.config.layers.len() == 1
+            && let Some(layer) = self.config.layers.first()
+            && layer.activation.as_deref().is_some_and(|a| a != "Tanh")
+        {
+            return true;
         }
 
         // Tertiary: version telemetry (warning only, does NOT classify)

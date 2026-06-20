@@ -51,7 +51,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `slimmable_wavenet.nam`       | ❌ "A2 shape not recognized"                                 | **F5**                     |
 | `wavenet_a2_max.nam` (cond=8) | ❌ "condition_size=8 not supported" (Aguardando F1)          | **F1** (Cond=8)            |
 | `wavenet_condition_dsp.nam`   | ✅ Carrega (golden oficial c/ sub-modelo)                    | —                          |
-| `slimmable_container.nam`     | ❌ "submodel build failed"                                   | **F5 / F11**               |
+| `slimmable_container.nam`     | ✅ Carrega (LSTM 1x3 + WaveNetDyn [3,2] + Nano [4,2])        | **F5 / F11** (Sprint 2.2)  |
 | Modelos nondist 4-array       | ✅ Carrega (motor dinâmico de N arrays)                      | —                          |
 
 ---

@@ -982,7 +982,10 @@ fn test_golden_vectors_wavenet_official() {
     );
 }
 
-/// Test 8n: Loader Gap Slimmable Container — verifies container with unsupported submodel is rejected.
+/// Test 8n: Loader Gap Slimmable Container — verifies robust loading with
+/// submodel topology routing (LSTM 1x3 + WaveNet free [3,2] + WaveNet free [4,2]).
+/// After Sprint 2.2 (Tarefa 2.2.2), the container with all three submodels loads
+/// successfully via the dynamic engine (heterogeneous channels) and LSTM fast-path.
 #[test]
 fn test_loader_gap_slimmable_container() {
     let path = model_path("slimmable_container.nam");
@@ -990,13 +993,37 @@ fn test_loader_gap_slimmable_container() {
     let json = fs::read_to_string(&path).expect("Failed to read slimmable_container.nam");
     let data = parse_nam_json(&json).expect("Failed to parse slimmable_container.nam");
     let model = build_model(&data);
-    assert!(model.is_err());
-    let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("build failed"),
-        "Expected submodel build failure error, got: {}",
-        err_msg
+        model.is_ok(),
+        "Expected successful container build, got: {:?}",
+        model.err()
     );
+
+    let container = model.unwrap();
+    // Verify we have a Container with 3 submodels
+    match container.as_ref() {
+        StaticModel::Container(c) => {
+            assert_eq!(c.submodels().len(), 3);
+            // Verify max_values are sorted: 0.33, 0.66, 1.0
+            let max_values: Vec<f32> = c.submodels().iter().map(|(mv, _)| *mv).collect();
+            assert_eq!(max_values, vec![0.33, 0.66, 1.0]);
+            // Verify submodel architectures are correctly dispatched
+            let sub_arches: Vec<&str> = c
+                .submodels()
+                .iter()
+                .map(|(_, sm)| match sm.as_ref() {
+                    StaticModel::Lstm1x3(_) => "LSTM",
+                    StaticModel::WavenetDyn(_) => "WaveNetDyn",
+                    StaticModel::WavenetNano(_) => "Nano",
+                    _ => "Unknown",
+                })
+                .collect();
+            // Submodel[0] is LSTM 1x3, Submodel[1] is WaveNetDyn (free geometry),
+            // Submodel[2] is Nano (channels [4,2] + LITE dilations).
+            assert_eq!(sub_arches, vec!["LSTM", "WaveNetDyn", "Nano"]);
+        }
+        _other => panic!("Expected StaticModel::Container, got a different variant"),
+    }
 }
 
 // =============================================================================
