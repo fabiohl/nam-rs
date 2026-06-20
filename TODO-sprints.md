@@ -34,7 +34,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   * **Ação:** Em `docs/cpp_parity_map.md`, seção `10.1 Architecture`:
     * Modificar a divergência que afirma que `condition_size ≠ 1` ou `head` não-nulo são rejeitados no carregamento.
     * Documentar que essas propriedades são agora capturadas por `loader/nam_json/topology.rs` (`get_wavenet_topology` → `Free`) e direcionadas para processamento seguro via `WaveNetModelDyn`.
-* [ ] **Tarefa A.1.3: Reconciliar a natureza dos goldens A2 (`docs/cpp_parity_map.md`)**
+* [x] **Tarefa A.1.3: Reconciliar a natureza dos goldens A2 (`docs/cpp_parity_map.md`)**
   * **Especialista:** `documentador`
   * **Ação:** Na seção `5. A2 Architecture (Fixed fast-path port)` de `docs/cpp_parity_map.md`:
     * Remover ou reformular o aviso "C++ Live Cross-Validation Blocked (Upstream Bug) … self-golden pattern", uma vez que os testes atuais para A2 já utilizam goldens reais compilados (`tests/fixtures/golden_gen_build.sh`).
