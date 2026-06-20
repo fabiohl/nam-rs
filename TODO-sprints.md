@@ -21,9 +21,9 @@ O WaveNet A1 permite que um sub-objeto "head" (Conv1D + ativação) processe o s
 
 - **Tarefa 1.2.1** [DONE]: Criar uma estrutura `PostStackHead` em `src/models/wavenet/` contendo um `Conv1d` (já existente no projeto) e o suporte a ativação dinâmica.
 - **Tarefa 1.2.2** [DONE]: Adicionar o `PostStackHead` opcional ao `WaveNetModelDyn`.
-- **Tarefa 1.2.3**: Ajustar o ciclo `process` do motor dinâmico para rotear o sinal da pilha para o `PostStackHead` antes do `head_scale`.
-- **Tarefa 1.2.4**: Somar o tamanho do kernel do `PostStackHead` ao cálculo de `receptive_field` global do modelo para o `prewarm`.
-- **Tarefa 1.2.5**: Escrever testes para validar o fluxo, providenciando ou construindo um `golden test` com um modelo simulado que utilize Post-stack Head.
+- **Tarefa 1.2.3** [DONE]: Ajustar o ciclo `process` do motor dinâmico para rotear o sinal da pilha para o `PostStackHead` antes do `head_scale`.
+- **Tarefa 1.2.4** [DONE]: Somar o tamanho do kernel do `PostStackHead` ao cálculo de `receptive_field` global do modelo para o `prewarm`.
+- **Tarefa 1.2.5** [DONE]: Escrever testes para validar o fluxo, providenciando ou construindo um `golden test` com um modelo simulado que utilize Post-stack Head.
 
 ---
 

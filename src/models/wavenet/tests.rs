@@ -198,6 +198,8 @@ mod conv1d_tests;
 mod dense_tests;
 #[path = "test_files/dynamic_parity.rs"]
 mod dynamic_parity;
+#[path = "test_files/post_stack_head_integration_tests.rs"]
+mod post_stack_head_integration_tests;
 #[path = "test_files/wavenet_tests.rs"]
 mod wavenet_tests;
 
