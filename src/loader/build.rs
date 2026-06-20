@@ -235,6 +235,11 @@ pub fn load_and_build_model(
             }
             None => "Custom".to_string(),
         }
+    } else if architecture == "ConvNet" {
+        match nam_json::get_convnet_topology(&model_data) {
+            Some(topo) => format!("B{}", topo.num_blocks),
+            None => "Custom".to_string(),
+        }
     } else {
         "Unknown".to_string()
     };

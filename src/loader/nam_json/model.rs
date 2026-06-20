@@ -192,7 +192,7 @@ pub struct HeadConfig {
 /// The internal configuration of the architecture node in the JSON.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamConfig {
-    /// List of stacked layer configurations (present in WaveNet, absent in LSTM).
+    /// List of stacked layer configurations (present in WaveNet, ConvNet; absent in LSTM).
     #[serde(default)]
     pub layers: Vec<NamLayerConfig>,
     /// Number of input channels (WaveNet A2). Defaults to 1 when absent.
@@ -203,7 +203,7 @@ pub struct NamConfig {
     /// Absent in JSON becomes `None`.
     /// Non-null values contain the head configuration object.
     pub head: Option<serde_json::Value>,
-    /// Fine scale over the network summation (WaveNet only).
+    /// Fine scale over the network summation (WaveNet / ConvNet).
     pub head_scale: Option<f32>,
     /// Number of layers (for LSTMs in C++ it is the layer count, or explicit)
     pub num_layers: Option<usize>,
@@ -273,7 +273,7 @@ impl NamConfig {
 pub struct NamModelData {
     /// Version in the JSON header (e.g. "0.5.4")
     pub version: Option<String>,
-    /// Declared architecture type ("WaveNet" or "LSTM")
+    /// Declared architecture type ("WaveNet", "LSTM", "ConvNet", "Linear", "SlimmableContainer")
     pub architecture: String,
     /// Structural configuration of hyperparameters
     pub config: NamConfig,
