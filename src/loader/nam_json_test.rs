@@ -759,7 +759,7 @@ fn make_submodel_entry(max_value: f32, _idx: usize) -> String {
 }
 
 /// Builds a minimal JSON for a submodel entry whose inner model is itself
-/// a SlimmableContainer (nested — should be rejected).
+/// a SlimmableContainer (nested — allowed since Sprint 2.2 per F11).
 fn make_nested_container_entry(max_value: f32) -> String {
     let outer_entry = make_submodel_entry(max_value, 0);
     format!(
@@ -843,15 +843,16 @@ fn test_reject_too_many_submodels() {
     );
 }
 
-/// Nested container inside a submodel should be rejected.
+/// Nested container inside a submodel is now accepted (Sprint 2.2 per F11).
+/// Deserializer alone permits nesting — depth is enforced by the dispatcher.
 #[test]
-fn test_reject_nested_container() {
+fn test_accept_nested_container() {
     let nested = make_nested_container_entry(1.0);
     let json = make_container_json(&nested);
     let result = parse_nam_json(&json);
     assert!(
-        result.is_err(),
-        "Container with nested container inside submodel should be rejected"
+        result.is_ok(),
+        "Nested container inside submodel should now be accepted by the deserializer"
     );
 }
 

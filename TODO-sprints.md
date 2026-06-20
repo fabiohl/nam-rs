@@ -43,7 +43,7 @@ Modelos "Slimmable" permitem ajustes de carga computacional e qualidade em tempo
 
 ### Sprint 2.2: Suporte a Containers Aninhados (F11)
 
-- **Tarefa 2.2.1**: Revisar `src/models/container.rs` (que hoje já prevê SlimmableModel) e o desserializador `deserialize_submodels` em `src/loader/nam_json/validation.rs` para permitir de forma recursiva e segura que o modelo embutido seja um próprio container, ou mais provável, um `SlimmableWavenet`.
+- **Tarefa 2.2.1** [DONE]: Revisar `src/models/container.rs` (que hoje já prevê SlimmableModel) e o desserializador `deserialize_submodels` em `src/loader/nam_json/validation.rs` para permitir de forma recursiva e segura que o modelo embutido seja um próprio container, ou mais provável, um `SlimmableWavenet`.
 - **Tarefa 2.2.2**: Produzir um carregamento robusto do `slimmable_container.nam`, validando se a topologia agora aprova os sub-modelos.
 
 ---

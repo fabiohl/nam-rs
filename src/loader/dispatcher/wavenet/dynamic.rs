@@ -91,22 +91,38 @@ fn build_wavenet_array_dyn(
     })
 }
 
+/// Maximum combined nesting depth across Container and condition_dsp recursion.
+/// Prevents stack overflow from alternating Container/WaveNet(condition_dsp) chains.
+const MAX_UNIFIED_DEPTH: usize = 8;
+
 // =============================================================================
 // Sub-model builder for condition_dsp recursion control
 // =============================================================================
 
-/// Builds a nested DSP sub-model with recursion depth tracking.
+/// Builds a nested DSP sub-model with combined depth tracking.
 ///
-/// Only WaveNet Free-geometry sub-models contribute to the depth counter
-/// (const-generic SKUs and non-WaveNet architectures cannot nest further).
+/// Only WaveNet Free-geometry sub-models contribute to the condition_dsp depth
+/// counter (const-generic SKUs and non-WaveNet architectures cannot nest further).
+/// Container sub-models forward the combined depth to their own builder.
 fn build_sub_model(
     data: &NamModelData,
     depth: usize,
+    container_depth: usize,
 ) -> anyhow::Result<Box<crate::models::StaticModel>> {
+    if data.architecture == "SlimmableContainer" {
+        let combined = depth + container_depth;
+        if combined > MAX_UNIFIED_DEPTH {
+            anyhow::bail!(crate::loader::nam_json::JsonError::SubmodelsTooDeep {
+                depth: combined,
+                max_depth: MAX_UNIFIED_DEPTH,
+            });
+        }
+        return super::super::container::build_container_inner(data, combined);
+    }
     if data.architecture == "WaveNet"
         && let WavenetTopologyResult::Free(ref geom) = get_wavenet_topology(data)
     {
-        let model = build_wavenet_dynamic_inner(data, geom, depth)?;
+        let model = build_wavenet_dynamic_inner(data, geom, depth, container_depth)?;
         return Ok(Box::new(crate::models::StaticModel::WavenetDyn(Box::new(
             model,
         ))));
@@ -117,10 +133,6 @@ fn build_sub_model(
 // =============================================================================
 // Dynamic WaveNet model entry point
 // =============================================================================
-
-/// Maximum nesting depth for `condition_dsp` sub-models.
-/// Prevents stack overflow from maliciously nested `.nam` files.
-const MAX_CONDITION_DSP_DEPTH: usize = 8;
 
 /// Builds a `WaveNetModelDyn` from parsed model data using runtime dimensions.
 ///
@@ -137,13 +149,14 @@ pub(crate) fn build_wavenet_dynamic(
     data: &NamModelData,
     geom: &FreeWavenetGeometry,
 ) -> anyhow::Result<WaveNetModelDyn> {
-    build_wavenet_dynamic_inner(data, geom, 0)
+    build_wavenet_dynamic_inner(data, geom, 0, 0)
 }
 
 fn build_wavenet_dynamic_inner(
     data: &NamModelData,
     geom: &FreeWavenetGeometry,
     depth: usize,
+    container_depth: usize,
 ) -> anyhow::Result<WaveNetModelDyn> {
     super::validate_layer_activations(data)?;
 
@@ -233,11 +246,12 @@ fn build_wavenet_dynamic_inner(
     // consumed independently during sub-model construction (C++ get_dsp
     // inside parse_config_json, model.cpp:834-838).
     let condition_dsp = if let Some(ref cond_dsp_json) = data.config.condition_dsp {
-        if depth >= MAX_CONDITION_DSP_DEPTH {
+        let combined = depth + container_depth;
+        if combined >= MAX_UNIFIED_DEPTH {
             anyhow::bail!(
                 "condition_dsp nesting depth ({}) exceeds maximum ({})",
-                depth,
-                MAX_CONDITION_DSP_DEPTH
+                combined,
+                MAX_UNIFIED_DEPTH
             );
         }
 
@@ -253,7 +267,7 @@ fn build_wavenet_dynamic_inner(
             );
         }
 
-        let cond_model = build_sub_model(&cond_dsp_data, depth + 1)?;
+        let cond_model = build_sub_model(&cond_dsp_data, depth + 1, container_depth)?;
 
         let cond_out = cond_model.num_output_channels();
         if cond_out != cond {

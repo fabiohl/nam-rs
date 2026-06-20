@@ -302,19 +302,9 @@ where
     deserializer.deserialize_option(TrainingOptionVisitor)
 }
 
-/// Checks whether a submodel entry's inner `model` JSON tree contains
-/// a nested `config.submodels` non-empty array (depth violation).
-fn submodel_has_nested_container(entry: &serde_json::Value) -> bool {
-    entry
-        .get("model")
-        .and_then(|m| m.get("config"))
-        .and_then(|c| c.get("submodels"))
-        .and_then(|s| s.as_array())
-        .is_some_and(|a| !a.is_empty())
-}
-
 /// Custom deserializer for `config.submodels: Option<Vec<serde_json::Value>>`
-/// that enforces a maximum of 8 submodels and rejects container-in-container nesting.
+/// that enforces a maximum of 8 submodels. Nested containers are allowed —
+/// recursion depth is enforced by the dispatcher.
 pub(crate) fn deserialize_submodels<'de, D>(
     deserializer: D,
 ) -> Result<Option<Vec<serde_json::Value>>, D::Error>
@@ -358,14 +348,6 @@ impl<'de> serde::de::Visitor<'de> for SubmodelsOptionVisitor {
                 got: arr.len(),
                 max: MAX_SUBMODELS,
             }));
-        }
-
-        for (i, entry) in arr.iter().enumerate() {
-            if submodel_has_nested_container(entry) {
-                return Err(serde::de::Error::custom(JsonError::SubmodelsTooDeep {
-                    index: i,
-                }));
-            }
         }
 
         Ok(Some(arr))

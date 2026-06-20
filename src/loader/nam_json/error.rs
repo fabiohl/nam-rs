@@ -34,10 +34,12 @@ pub enum JsonError {
         /// Maximum allowed submodels.
         max: usize,
     },
-    /// Nested container detected inside a submodel (max depth is 2).
+    /// Container recursion depth exceeded (max depth enforced by dispatcher).
     SubmodelsTooDeep {
-        /// Index of the offending submodel.
-        index: usize,
+        /// Current recursion depth.
+        depth: usize,
+        /// Maximum allowed depth.
+        max_depth: usize,
     },
     /// Generic serde_json parse error.
     Serde(String),
@@ -74,11 +76,11 @@ impl std::fmt::Display for JsonError {
                     got, max
                 )
             }
-            Self::SubmodelsTooDeep { index } => {
+            Self::SubmodelsTooDeep { depth, max_depth } => {
                 write!(
                     f,
-                    "submodel[{}] contains a nested container (max depth is 2)",
-                    index
+                    "container nesting too deep (depth {}, max is {})",
+                    depth, max_depth
                 )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),

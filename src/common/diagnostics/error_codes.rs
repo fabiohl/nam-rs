@@ -40,7 +40,7 @@ pub enum NamErrorCode {
     NamJsonTrainingTooDeep,
     /// JSON `config.submodels` array exceeds the maximum count (8).
     NamJsonSubmodelsExceedLimit,
-    /// JSON `config.submodels` contains a nested container (depth > 2).
+    /// JSON `config.submodels` exceeds container recursion depth limit.
     NamJsonSubmodelsTooDeep,
     /// .namb CRC32 checksum does not match expected value.
     NambCrc32Mismatch,
@@ -149,7 +149,7 @@ impl NamErrorCode {
             Self::NamJsonTrainingTooLarge => "Training metadata too large",
             Self::NamJsonTrainingTooDeep => "Training metadata too deeply nested",
             Self::NamJsonSubmodelsExceedLimit => "Submodels count exceeds limit (max 8)",
-            Self::NamJsonSubmodelsTooDeep => "Nested container inside submodel (max depth 2)",
+            Self::NamJsonSubmodelsTooDeep => "Container nesting too deep",
             Self::NambCrc32Mismatch => "CRC32 checksum mismatch",
             Self::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
             Self::NambInvalidMagic => "Invalid signature",
