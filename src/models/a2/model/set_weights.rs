@@ -340,7 +340,8 @@ pub(crate) fn set_layer_film(
     _config: &FiLMConfig,
     idx: usize,
     film: FiLMLayer,
-) {
+) -> Result<(), String> {
+    debug_assert!(idx < 8, "FiLM slot index {} out of range (0-7)", idx);
     match idx {
         0 => layer.conv_pre_film = Some(film),
         1 => layer.conv_post_film = Some(film),
@@ -350,8 +351,9 @@ pub(crate) fn set_layer_film(
         5 => layer.activation_post_film = Some(film),
         6 => layer.layer1x1_post_film = Some(film),
         7 => layer.head1x1_post_film = Some(film),
-        _ => unreachable!(),
+        _ => return Err(format!("FiLM slot index {} out of range (0-7)", idx)),
     }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -395,7 +397,7 @@ pub(crate) fn load_film_for_layer(
             film_w.to_vec(),
             film_b.to_vec(),
         );
-        set_layer_film(layer, config, idx, film_layer);
+        set_layer_film(layer, config, idx, film_layer)?;
     }
     Ok(())
 }

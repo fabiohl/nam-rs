@@ -8,7 +8,14 @@ use std::sync::Arc;
 impl StaticModel {
     /// Injects `RtStatusFlags` into the model so it can signal its state
     /// to the UI via atomic flags.
-    pub fn inject_rt_status(&mut self, _rt_status: Arc<crate::common::spsc::RtStatusFlags>) {}
+    pub fn inject_rt_status(&mut self, rt_status: Arc<crate::common::spsc::RtStatusFlags>) {
+        match self {
+            Self::WavenetA2Full(m) => m.inject_rt_status(rt_status),
+            Self::WavenetA2Lite(m) => m.inject_rt_status(rt_status),
+            Self::WavenetA2Dyn(m) => m.inject_rt_status(rt_status),
+            _ => {}
+        }
+    }
 
     /// Scalar processing path for LSTM models (exact tanh/sigmoid via libm).
     ///

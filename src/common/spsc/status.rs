@@ -43,6 +43,9 @@ pub const RT_STATUS_NEEDS_CABSIM_REBUILD: u64 = 1 << 9;
 /// Flag indicating that a corrupted/malformed GC item was detected
 /// (unknown type_id or inconsistent type+ptr in overflow buffer).
 pub const RT_STATUS_GC_CORRUPTED: u64 = 1 << 14;
+/// Flag indicating that the A2 static variant triggered the scalar fallback path
+/// (no CH=3 or CH=8 conv available). Set by the RT thread for telemetry polling.
+pub const RT_STATUS_A2_FALLBACK_TRIGGERED: u64 = 1 << 15;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -69,6 +72,7 @@ pub const RT_STATUS_GC_CORRUPTED: u64 = 1 << 14;
 /// | 12 | `DEGRADE_REDUCED` | Soft-degrade active — Reduced mode |
 /// | 13 | `DEGRADE_MINIMAL` | Soft-degrade active — Minimal mode |
 /// | 14 | `GC_CORRUPTED` | GC overflow buffer corrupted (unknown type/ptr) |
+/// | 15 | `A2_FALLBACK_TRIGGERED` | A2 static variant fell back to scalar zero-output path |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

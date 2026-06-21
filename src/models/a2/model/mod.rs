@@ -45,6 +45,7 @@ use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use serde_json::Value;
+use std::sync::Arc;
 
 /// Computes the receptive field size for the A2 architecture.
 ///
@@ -132,6 +133,9 @@ pub struct WaveNetA2<const CH: usize> {
     /// Per-frame scratch buffer for the fallback conv path (CH f32).
     /// Allocated once at model creation to avoid heap ops on the hot path.
     pub z_scratch: AlignedVec<f32>,
+
+    /// `RtStatusFlags` for silent RT→Main telemetry (RF8).
+    pub rt_status: Option<Arc<crate::common::spsc::RtStatusFlags>>,
 }
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -180,6 +184,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             max_buffer_size: max_buf,
             layer_raw: None,
             z_scratch: AlignedVec::new(CH, 0.0f32),
+            rt_status: None,
         })
     }
 
@@ -187,6 +192,11 @@ impl<const CH: usize> WaveNetA2<CH> {
     #[inline(always)]
     pub fn channels(&self) -> usize {
         CH
+    }
+
+    /// Injects `RtStatusFlags` for RT→Main telemetry (RF8).
+    pub fn inject_rt_status(&mut self, rt_status: Arc<crate::common::spsc::RtStatusFlags>) {
+        self.rt_status = Some(rt_status);
     }
 
     /// Returns the total receptive field size.
@@ -535,6 +545,9 @@ impl<const CH: usize> WaveNetA2<CH> {
                         // invariant (A2 layers always have CH=3 or CH=8 conv). Retained
                         // as a panic-free guard for future model format changes — never
                         // panics on the audio thread.
+                        if let Some(ref rt) = self.rt_status {
+                            rt.set_flag(crate::common::spsc::RT_STATUS_A2_FALLBACK_TRIGGERED);
+                        }
                         debug_assert!(
                             false,
                             "A2 layers always have ch3 or ch8 conv; \

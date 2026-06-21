@@ -87,7 +87,7 @@ As tarefas estão prontas para a skill `implementador`.
   2. Ajustar os marcadores explicativos de drift SNR para denotar a melhoria (`>= 105 dB`).
   3. Alterar `tests/fixtures/README.md` (linhas ~68, 120 e 348), removendo justificativas passadas de "SNR 0.9 dB / limite a 0 dB" e alinhando com a nova realidade restritiva.
 
-#### Tarefa 2.5: Correções de Thread-safety e Fallback (Ref: RF8 🟡)
+#### Tarefa 2.5: Correções de Thread-safety e Fallback (Ref: RF8 🟡) [DONE]
 
 - **Contexto:** Hot-paths de áudio não podem gerar pânicos (unreachable) nem falhar silenciosamente sem sinalizar flag telemétrica de corrupção.
 - **Implementação:**
