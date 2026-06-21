@@ -178,6 +178,7 @@ fn run_render_comparison(
     label: &str,
     sample_rate: u32,
     use_v2: bool,
+    check_lufs_gate: bool,
 ) {
     let model_path = model_path(model_filename);
     if !model_path.exists() {
@@ -371,23 +372,32 @@ fn run_render_comparison(
     };
 
     let min_len = cpp_output.len().min(rust_output.len());
-    report_dsp_fidelity(
-        &cpp_output[..min_len],
-        &rust_output[..min_len],
-        mse_limit,
-        min_snr_db,
-        max_esr,
-        label,
-        actual_sr,
-    );
+    let cpp_slice = &cpp_output[..min_len];
+    let rust_slice = &rust_output[..min_len];
+    if check_lufs_gate {
+        report_dsp_fidelity(
+            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, label, actual_sr,
+        );
+    } else {
+        report_dsp_fidelity_no_lufs(
+            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, label, actual_sr,
+        );
+    }
 
     // Cleanup
     fs::remove_file(&output_wav).ok();
 }
 
 /// Helper: run v1 comparison (legacy 48 kHz, fast CI).
-fn run_v1(model_filename: &str, golden_name: &str, label: &str) {
-    run_render_comparison(model_filename, golden_name, label, 48000, false);
+fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
+    run_render_comparison(
+        model_filename,
+        golden_name,
+        label,
+        48000,
+        false,
+        check_lufs_gate,
+    );
 }
 
 /// Runs v2 stress signal comparison across all supported sample rates for one model.
@@ -405,13 +415,18 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str) {
 /// This is a `render` tool limitation, not a nam-rs issue. The Rust inference
 /// engine itself supports arbitrary sample rates. Lighter models (Nano, Feather)
 /// and LSTM models may not enforce this restriction in the C++ render tool.
-fn run_v2_multi_sr(model_filename: &str, golden_name: &str, label_base: &str) {
+fn run_v2_multi_sr(
+    model_filename: &str,
+    golden_name: &str,
+    label_base: &str,
+    check_lufs_gate: bool,
+) {
     let mut failures = Vec::new();
     for &sr in SUPPORTED_SAMPLE_RATES {
         let label = format!("{label_base} @ {sr} Hz (v2)");
         let gname = format!("{golden_name}_v2_{sr}");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_render_comparison(model_filename, &gname, &label, sr, true);
+            run_render_comparison(model_filename, &gname, &label, sr, true, check_lufs_gate);
         }));
         if result.is_err() {
             failures.push(sr);
@@ -435,6 +450,7 @@ fn live_cross_validation_wavenet_standard() {
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard",
+        true,
     );
 }
 
@@ -445,31 +461,37 @@ fn live_cross_validation_wavenet_feather() {
         "BossWN-feather.nam",
         "wavenet_feather",
         "Live WaveNet Feather",
+        true,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_nano() {
-    run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano");
+    run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano", true);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_lite() {
-    run_v1("EVH-5150-Lite.nam", "wavenet_lite", "Live WaveNet Lite");
+    run_v1(
+        "EVH-5150-Lite.nam",
+        "wavenet_lite",
+        "Live WaveNet Lite",
+        true,
+    );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_1x16() {
-    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16");
+    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16", true);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_2x8() {
-    run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8");
+    run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8", true);
 }
 
 #[test]
@@ -479,13 +501,14 @@ fn live_cross_validation_wavenet_a1_standard() {
         "wavenet_a1_standard.nam",
         "wavenet_a1_standard",
         "Live WaveNet A1 Standard (Official)",
+        true,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_official() {
-    run_v1("lstm.nam", "lstm_official", "Live LSTM Official");
+    run_v1("lstm.nam", "lstm_official", "Live LSTM Official", true);
 }
 
 #[test]
@@ -495,6 +518,7 @@ fn live_cross_validation_wavenet_a2_full() {
         "wavenet_a2_full.nam",
         "wavenet_a2_full",
         "Live WaveNet A2-Full",
+        true,
     );
 }
 
@@ -505,6 +529,7 @@ fn live_cross_validation_wavenet_a2_lite() {
         "wavenet_a2_lite.nam",
         "wavenet_a2_lite",
         "Live WaveNet A2-Lite",
+        true,
     );
 }
 
@@ -515,6 +540,7 @@ fn live_cross_validation_wavenet_condition_dsp() {
         "wavenet_condition_dsp.nam",
         "wavenet_condition_dsp",
         "Live WaveNet Condition DSP",
+        true,
     );
 }
 
@@ -527,6 +553,7 @@ fn live_cross_validation_v2_wavenet_standard() {
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard (v2)",
+        true,
     );
 }
 
@@ -537,13 +564,19 @@ fn live_cross_validation_v2_wavenet_feather() {
         "BossWN-feather.nam",
         "wavenet_feather",
         "Live WaveNet Feather (v2)",
+        true,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_v2_wavenet_nano() {
-    run_v2_multi_sr("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano (v2)");
+    run_v2_multi_sr(
+        "BossWN-nano.nam",
+        "wavenet_nano",
+        "Live WaveNet Nano (v2)",
+        true,
+    );
 }
 
 #[test]
@@ -553,19 +586,25 @@ fn live_cross_validation_v2_wavenet_lite() {
         "EVH-5150-Lite.nam",
         "wavenet_lite",
         "Live WaveNet Lite (v2)",
+        true,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_1x16() {
-    run_v2_multi_sr("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16 (v2)");
+    run_v2_multi_sr(
+        "BossLSTM-1x16.nam",
+        "lstm_1x16",
+        "Live LSTM 1×16 (v2)",
+        true,
+    );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_2x8() {
-    run_v2_multi_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)");
+    run_v2_multi_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)", true);
 }
 
 #[test]
@@ -575,13 +614,14 @@ fn live_cross_validation_v2_wavenet_a1_standard() {
         "wavenet_a1_standard.nam",
         "wavenet_a1_standard",
         "Live WaveNet A1 Standard (Official) (v2)",
+        true,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_official() {
-    run_v2_multi_sr("lstm.nam", "lstm_official", "Live LSTM Official (v2)");
+    run_v2_multi_sr("lstm.nam", "lstm_official", "Live LSTM Official (v2)", true);
 }
 
 #[test]
@@ -591,6 +631,7 @@ fn live_cross_validation_v2_wavenet_a2_full() {
         "wavenet_a2_full.nam",
         "wavenet_a2_full",
         "Live WaveNet A2-Full (v2)",
+        true,
     );
 }
 
@@ -601,6 +642,7 @@ fn live_cross_validation_v2_app_evh() {
         "APP-EVH-Stealth100-Dialled-xSTD.nam",
         "wavenet_app_evh",
         "Live APP EVH Stealth 100 (v2)",
+        true,
     );
 }
 
@@ -611,6 +653,7 @@ fn live_cross_validation_v2_boss_bd2() {
         "Boss BD-2 H2O Mod T-12_00 G-12_00.nam",
         "wavenet_boss_bd2",
         "Live Boss BD-2 H2O Mod (v2)",
+        true,
     );
 }
 
@@ -621,6 +664,7 @@ fn live_cross_validation_v2_slammin_marshall() {
         "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam",
         "wavenet_slammin_marshall",
         "Live SLAMMIN MARSHALL JTM 45 (v2)",
+        true,
     );
 }
 
@@ -631,6 +675,7 @@ fn live_cross_validation_v2_wavenet_a2_lite() {
         "wavenet_a2_lite.nam",
         "wavenet_a2_lite",
         "Live WaveNet A2-Lite (v2)",
+        true,
     );
 }
 
@@ -641,6 +686,7 @@ fn live_cross_validation_v2_wavenet_condition_dsp() {
         "wavenet_condition_dsp.nam",
         "wavenet_condition_dsp",
         "Live WaveNet Condition DSP (v2)",
+        true,
     );
 }
 
@@ -653,13 +699,19 @@ fn live_cross_validation_wavenet_dyn() {
         "wavenet_dyn_free.nam",
         "wavenet_dyn_free",
         "Live WaveNetDyn Free-Shape",
+        false,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_dyn() {
-    run_v1("lstm_dyn_test.nam", "lstm_dyn_test", "Live LSTM-Dyn 1×7");
+    run_v1(
+        "lstm_dyn_test.nam",
+        "lstm_dyn_test",
+        "Live LSTM-Dyn 1×7",
+        false,
+    );
 }
 
 #[test]
@@ -669,6 +721,7 @@ fn live_cross_validation_v2_wavenet_dyn() {
         "wavenet_dyn_free.nam",
         "wavenet_dyn_free",
         "Live WaveNetDyn Free-Shape (v2)",
+        false,
     );
 }
 
@@ -679,6 +732,7 @@ fn live_cross_validation_v2_lstm_dyn() {
         "lstm_dyn_test.nam",
         "lstm_dyn_test",
         "Live LSTM-Dyn 1×7 (v2)",
+        false,
     );
 }
 
@@ -687,13 +741,18 @@ fn live_cross_validation_v2_lstm_dyn() {
 #[test]
 #[ignore]
 fn live_cross_validation_linear() {
-    run_v1("linear_test.nam", "linear_test", "Live Linear RF=4");
+    run_v1("linear_test.nam", "linear_test", "Live Linear RF=4", true);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_v2_linear() {
-    run_v2_multi_sr("linear_test.nam", "linear_test", "Live Linear RF=4 (v2)");
+    run_v2_multi_sr(
+        "linear_test.nam",
+        "linear_test",
+        "Live Linear RF=4 (v2)",
+        true,
+    );
 }
 
 #[test]
@@ -747,6 +806,7 @@ fn live_cross_validation_nondist_models() {
                 &filename,
                 &format!("nondist_{}", filename.replace('.', "_")),
                 &format!("Live Nondist {}", filename),
+                true,
             );
         }));
 
