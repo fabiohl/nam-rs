@@ -153,7 +153,14 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
         match self.kernel {
             6 => self.process_single_ch3_k6(layer_buffer, out_frame, frame_idx, mixin),
             15 => self.process_single_ch3_k15(layer_buffer, out_frame, frame_idx, mixin),
-            _ => unreachable!(),
+            _ => {
+                debug_assert!(
+                    false,
+                    "A2 CH3 conv kernel must be 6 or 15; got {} — silencing output frame",
+                    self.kernel
+                );
+                out_frame[..self.out_ch].fill(0.0);
+            }
         }
     }
 

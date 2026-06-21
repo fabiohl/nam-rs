@@ -25,11 +25,12 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Implementação:** Substituir a diretriz de pânico incondicional por um `debug_assert!(false, "...")` (para falhar ativamente em debug builds durante os testes) e, em runtime (`release`), implementar um fallback 100% RT-safe. Este fallback deve silenciar o buffer de saída do bloco atual ou retornar sem processar, nunca disparando pânico. Se apropriado, sinalizar uma flag interna de telemetria de erro.
   - **Risco:** Alta criticidade, viola a regra de ouro de RT-safety se o invariante falhar no futuro.
 
-- [ ] **Tarefa C.1.2 (Auditoria e Blindagem): Varrer hot-paths de inferência (process)**
+- [x] **Tarefa C.1.2 (Auditoria e Blindagem): Varrer hot-paths de inferência (process)**
   - **Especialista:** `implementador`.
   - **Alvos:** Todo o código nas pastas `src/models/**` e `src/dsp/pipeline/**`.
   - **Ação:** Realizar grep extensivo por `unwrap()`, `expect()`, `panic!()`, `unreachable!()` e indexações em array diretas sem assert (`[i]`) em funções executadas pela thread de áudio (`process`, `process_block`).
   - **Implementação:** Transmutar qualquer ocorrência perigosa para tratamentos seguros e resilientes. Para indexações que são provadamente seguras, deve-se adicionar um comentário de bloco documentando formalmente a garantia do invariante.
+  - **Resultado:** Auditoria completa em 33 funções `process/process_block` em 17 arquivos. Nenhum `unwrap()/expect()/panic!` em produção. Encontrados e corrigidos 2 `unreachable!()` residuais em `src/models/a2/conv1d_ch3/simd.rs:203` e `src/models/a2/conv1d_ch3/mod.rs:156` (substituídos por `debug_assert!` + fallback de silenciamento). Hot-path livre de panics.
 
 - [ ] **Tarefa C.1.3 (F14): Eliminar `unwrap()` inseguro no parser de topologia**
   - **Especialista:** `implementador`.

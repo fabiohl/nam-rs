@@ -200,7 +200,14 @@ pub unsafe fn conv1d_ch3_f32_dispatch(
             frame_idx,
             out_frame,
         ),
-        _ => unreachable!(),
+        _ => {
+            debug_assert!(
+                false,
+                "A2 CH3 conv kernel must be 6 or 15; got {} — silencing output frame",
+                conv.kernel
+            );
+            out_frame[..3].fill(0.0);
+        }
     }
 }
 
