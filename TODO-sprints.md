@@ -44,12 +44,14 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
   * **Caso B (Diverge/Falha):** Alterar `src/loader/nam_json/topology.rs` (função `check_film_all_inactive`) para retornar `Rejected` quando houver FiLM, forçando a queda para o `WaveNetA2Dyn` e equiparando com o roteamento C++.
 * **Limpeza:** Eliminar comentários ambíguos e o `if` vazio associado no módulo `topology.rs`.
 
-### [ ] Tarefa B.1.2: Aquisição de Fixtures (ConvNet e Dinâmicos) (F3, F4)
+### [X] Tarefa B.1.2: Aquisição de Fixtures (ConvNet e Dinâmicos) (F3, F4)
 
-* **Ação:** Popular os subdiretórios de `tests/fixtures/` com modelos adequados.
-* **ConvNet:** Utilizar modelo disponível em `example_models/` do NAMcore ou sintetizar um Dummy ConvNet calibrado (1D).
-* **WaveNetDyn:** Preparar um modelo "Free-shape" (CH=32, por exemplo) para ancorar `WaveNetModelDyn`.
-* **LstmDyn:** Preparar um modelo LSTM não catalogado (ex: 1x7 ou 3x8) para ancorar `LstmModelDyn`.
+* **Resultado:** Três modelos sintéticos gerados deterministicamente via `tests/fixtures/generate_b1_2_fixtures.py`.
+* **ConvNet:** `convnet_test.nam` — 2 blocos (CH=8→4, K=3, Dil=[1,2,4], Tanh), sem post-stack head, `head_scale=0.02`. 157 pesos.
+* **WaveNetDyn:** `wavenet_dyn_free.nam` — geometria livre com 2 arrays (CH=7→4, Dil=[1,2,4]+[8,16], K=3, Tanh), não casa com nenhum SKU do catálogo, roteia para `WaveNetModelDyn`. 872 pesos.
+* **LstmDyn:** `lstm_dyn_test.nam` — 1 camada × 7 hidden units (não catalogado: 3,8,12,16,24,40), roteia para `LstmModelDyn`. 274 pesos.
+* **Verificação:** Smoke tests em `tests/fixture_b1_2_smoke.rs` confirmam roteamento correto para `StaticModel::ConvNet`, `StaticModel::WavenetDyn` e `StaticModel::LstmDyn`.
+* **Nota p/ tarefas futuras:** Goldens C++ e testes de paridade (Sprint B.2) dependem destes fixtures e do script `golden_gen_build.sh` ser atualizado para incluí-los.
 
 ---
 
