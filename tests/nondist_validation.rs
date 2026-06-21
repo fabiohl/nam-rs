@@ -112,8 +112,9 @@ fn test_nondist_models_validation() {
                 if class_label == entry.expected_class {
                     println!("  ✓ Classification OK: {filename} → {class_label}");
                 } else {
-                    eprintln!(
-                        "⚠ Classification mismatch for {filename}: \
+                    assert_eq!(
+                        class_label, entry.expected_class,
+                        "Classification mismatch for {filename}: \
                          expected '{}', got '{}'",
                         entry.expected_class, class_label
                     );

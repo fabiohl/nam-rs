@@ -20,7 +20,7 @@ As tarefas estão prontas para a skill `implementador`.
 
 ---
 
-### Sprint 1: Cobertura e Desempenho Críticos (RF1, RF2, RF3)
+### Sprint 1: Cobertura e Desempenho Críticos (RF1, RF2, RF3) [DONE]
 
 **Foco:** Reforçar cobertura dos paths dinâmicos e de convolução, eliminando testes placebo sensíveis e provendo instrumentação apropriada para o PGO (Profile-Guided Optimization).
 
@@ -57,7 +57,7 @@ As tarefas estão prontas para a skill `implementador`.
 
 **Foco:** Transformar tolerâncias fracas em restrições assertivas, corrigir inconsistências de documentação, refatorar descobertas duplicadas e remover riscos silenciosos de panics de áudio (thread-safety).
 
-#### Tarefa 2.1: Asserção de Classificação no `nondist_validation` (Ref: RF4 🟠)
+#### Tarefa 2.1: Asserção de Classificação no `nondist_validation` (Ref: RF4 🟠) [DONE]
 
 - **Contexto:** Erros de classificação atualmente causam somente um aviso impresso e deixam o teste passar com falsa sensação de sucesso.
 - **Implementação:**
