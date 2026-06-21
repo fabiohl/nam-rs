@@ -32,7 +32,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Implementação:** Transmutar qualquer ocorrência perigosa para tratamentos seguros e resilientes. Para indexações que são provadamente seguras, deve-se adicionar um comentário de bloco documentando formalmente a garantia do invariante.
   - **Resultado:** Auditoria completa em 33 funções `process/process_block` em 17 arquivos. Nenhum `unwrap()/expect()/panic!` em produção. Encontrados e corrigidos 2 `unreachable!()` residuais em `src/models/a2/conv1d_ch3/simd.rs:203` e `src/models/a2/conv1d_ch3/mod.rs:156` (substituídos por `debug_assert!` + fallback de silenciamento). Hot-path livre de panics.
 
-- [ ] **Tarefa C.1.3 (F14): Eliminar `unwrap()` inseguro no parser de topologia**
+- [x] **Tarefa C.1.3 (F14): Eliminar `unwrap()` inseguro no parser de topologia**
   - **Especialista:** `implementador`.
   - **Arquivo alvo:** `src/loader/nam_json/topology.rs` (linha ~226).
   - **Ação:** Onde ocorre `first_channels.unwrap()`, a asserção de que os canais estão presentes é vulnerável a refatorações.

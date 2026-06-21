@@ -222,7 +222,16 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         dilations.push(dils);
     }
 
-    let first_channels_val = first_channels.unwrap();
+    let first_channels_val = match first_channels {
+        Some(c) => c,
+        None => {
+            return WavenetTopologyResult::Rejected(
+                "Layer 0 is missing or has invalid 'channels' — required for \
+                 WaveNet topology detection."
+                    .to_string(),
+            );
+        }
+    };
 
     // ── Try matching a known catalog SKU (fast-path) ──
     // Catalog SKU detection uses only channels + dilations, matching the
