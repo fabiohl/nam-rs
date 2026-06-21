@@ -19,6 +19,7 @@
 //! | `FastMath_sigmoid_AVX2_256elem`         | Sigmoid activation derived from tanh    | Kernel called N×gates/block in LSTM      |
 //! | `WaveNet_Dynamic_CH5_64samp_48kHz`  | WaveNet Dynamic free-geom inference  | Fallback for non-cataloged WaveNet geometries |
 //! | `LSTM_Dynamic_1x7_64samp_48kHz`      | LSTM Dynamic 1×7 inference           | Fallback for non-cataloged LSTM geometries     |
+//! | `ConvNet_Model_64samp_48kHz`         | ConvNet end-to-end model inference   | Full pipeline: 2 blocks CH=8→4 + head_scale    |
 //!
 //! ## Interpreting the results
 //!
@@ -40,6 +41,7 @@ use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::NamModel;
+use nam_rs::models::StaticModel;
 use nam_rs::models::a2::activations::ActivationType;
 use nam_rs::models::container::ContainerModel;
 use nam_rs::models::convnet::ConvNetBlock;
@@ -1533,6 +1535,39 @@ fn bench_convnet_dilated(c: &mut Criterion) {
     group.finish();
 }
 
+// PGO: name uses _64samp suffix for build-release.sh profiling filter
+/// Measures the end-to-end inference cost of a full ConvNet model (2 blocks, CH=8→4, K=3).
+///
+/// Unlike the ConvNetBlock-level benches, this loads the `convnet_test.nam` fixture,
+/// exercises the full model pipeline (multi-block chaining + head_scale), and profiles
+/// the dispatcher build_model path.
+fn bench_convnet_model_process(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/convnet_test.nam");
+
+    if !path.exists() {
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read ConvNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for ConvNet benchmark");
+    model.prewarm(2048);
+
+    let num_out = match model.as_ref() {
+        StaticModel::ConvNet(c) => c.out_channels(),
+        _ => 1,
+    };
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64 * num_out];
+
+    c.bench_function("ConvNet_Model_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
 // ── IR Cabsim Convolution Benchmarks ──
 
 fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
@@ -1681,7 +1716,8 @@ criterion_group!(
     bench_nondist_models,
     bench_convnet_multichannel,
     bench_convnet_large_kernels,
-    bench_convnet_dilated
+    bench_convnet_dilated,
+    bench_convnet_model_process
 );
 
 /// Bench: A2 Head Conv CH=8 — scalar vs AVX2+FMA (16 frames).

@@ -100,8 +100,8 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
   * `test_a2_dyn_blended_soak` — `a2_dynamic_blended_ch3.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
 * **Infra:** `#[global_allocator]` com `CountingAllocator` adicionado ao binário `soak_test`. Helper `run_model_soak()` centraliza loading de fixture, prewarm, alternância noise/silence, tracking de alloc e validação numérica.
 
-### [ ] Tarefa B.3.2: Benches PGO-aware
+### [X] Tarefa B.3.2: Benches PGO-aware
 
-* **Ação:** Adicionar funções em `benches/inference_bench.rs` focado em um bloco de áudio regime RT (64 samples).
-* **Escopo Exigido:** 1 Modelo Dinâmico representativo e 1 ConvNet.
-* **Atenção PGO:** Assegurar a parametrização do nome do teste/grupo de bench para incluir o sufixo necessário para *match* (ex: `_64samp`) conforme definido em `utils/build-release.sh`, caso contrário eles serão ignorados pelo perfilador BOLT/PGO.
+* **Resultado:** Adicionado `bench_convnet_model_process` (`ConvNet_Model_64samp_48kHz`) — bench end-to-end do modelo ConvNet completo (fixture `convnet_test.nam`, 2 blocos CH=8→4), cobrindo o pipeline multi-bloco + head_scale com saída multicanal (64×4 floats). Importado `StaticModel` p/ acesso a `out_channels()`.
+* **Cobertura Preexistente (Épico E):** Benches dinâmicos sintéticos (`WaveNet_Dynamic_CH5_64samp_48kHz`, `LSTM_Dynamic_1x7_64samp_48kHz`) e benches de kernel ConvNet (`ConvNet_MultiChannel/LargeKernel/Dilated_64samp`) já cobriam os hot-paths com sufixo `_64samp`.
+* **Validação PGO:** Todos os benches com `_64samp` no nome são capturados pelo filtro `"64samp"` do `build-release.sh:187`. Verificado via `cargo bench --bench inference_bench -- --list | grep 64samp`.
