@@ -676,13 +676,13 @@ fn live_cross_validation_nondist_models() {
     if let Ok(entries) = std::fs::read_dir(&nondist_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    let is_nam_or_json = ext == "nam" || ext == "json";
-                    let is_manifest = path.file_name().is_some_and(|name| name == "manifest.json");
-                    if is_nam_or_json && !is_manifest {
-                        models.push(path);
-                    }
+            if path.is_file()
+                && let Some(ext) = path.extension()
+            {
+                let is_nam_or_json = ext == "nam" || ext == "json";
+                let is_manifest = path.file_name().is_some_and(|name| name == "manifest.json");
+                if is_nam_or_json && !is_manifest {
+                    models.push(path);
                 }
             }
         }

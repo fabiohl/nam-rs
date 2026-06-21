@@ -1143,7 +1143,6 @@ fn test_golden_vectors_v2_slammin_marshall() {
     );
 }
 
-
 #[test]
 #[ignore]
 fn test_golden_vectors_v2_lstm_2x8() {

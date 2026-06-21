@@ -446,10 +446,15 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
         // --- Nondist Models ---
-        "APP-EVH-Stealth100-Dialled-xSTD" | "APP-EVH-Stealth100-Dialled-xSTD.nam" |
-        "Boss BD-2 H2O Mod T-12_00 G-12_00" | "Boss BD-2 H2O Mod T-12_00 G-12_00.nam" |
-        "SLAMMIN MARSHALL JTM 45 REISSUE" | "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam" |
-        "wavenet_app_evh" | "wavenet_boss_bd2" | "wavenet_slammin_marshall" => {
+        "APP-EVH-Stealth100-Dialled-xSTD"
+        | "APP-EVH-Stealth100-Dialled-xSTD.nam"
+        | "Boss BD-2 H2O Mod T-12_00 G-12_00"
+        | "Boss BD-2 H2O Mod T-12_00 G-12_00.nam"
+        | "SLAMMIN MARSHALL JTM 45 REISSUE"
+        | "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam"
+        | "wavenet_app_evh"
+        | "wavenet_boss_bd2"
+        | "wavenet_slammin_marshall" => {
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
