@@ -549,7 +549,11 @@ fn live_cross_validation_v2_wavenet_nano() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_wavenet_lite() {
-    run_v2_multi_sr("EVH-5150-Lite.nam", "wavenet_lite", "Live WaveNet Lite (v2)");
+    run_v2_multi_sr(
+        "EVH-5150-Lite.nam",
+        "wavenet_lite",
+        "Live WaveNet Lite (v2)",
+    );
 }
 
 #[test]
@@ -587,6 +591,36 @@ fn live_cross_validation_v2_wavenet_a2_full() {
         "wavenet_a2_full.nam",
         "wavenet_a2_full",
         "Live WaveNet A2-Full (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_app_evh() {
+    run_v2_multi_sr(
+        "APP-EVH-Stealth100-Dialled-xSTD.nam",
+        "wavenet_app_evh",
+        "Live APP EVH Stealth 100 (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_boss_bd2() {
+    run_v2_multi_sr(
+        "Boss BD-2 H2O Mod T-12_00 G-12_00.nam",
+        "wavenet_boss_bd2",
+        "Live Boss BD-2 H2O Mod (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_slammin_marshall() {
+    run_v2_multi_sr(
+        "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam",
+        "wavenet_slammin_marshall",
+        "Live SLAMMIN MARSHALL JTM 45 (v2)",
     );
 }
 
@@ -642,12 +676,14 @@ fn live_cross_validation_nondist_models() {
     if let Ok(entries) = std::fs::read_dir(&nondist_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|ext| ext == "nam" || ext == "json")
-            {
-                models.push(path);
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let is_nam_or_json = ext == "nam" || ext == "json";
+                    let is_manifest = path.file_name().is_some_and(|name| name == "manifest.json");
+                    if is_nam_or_json && !is_manifest {
+                        models.push(path);
+                    }
+                }
             }
         }
     }

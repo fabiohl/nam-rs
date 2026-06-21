@@ -101,7 +101,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
 
 **Foco:** Aproveitar o acervo contido em `tests/fixtures/models-nondist/` para estender a malha de validação para geometrias que não possuem cobertura oficial nos goldens tradicionais.
 
-- [ ] **Tarefa D.3.1: Parametrizar testes de paridade para demais modelos nondist**
+- [x] **Tarefa D.3.1: Parametrizar testes de paridade para demais modelos nondist**
   - **Especialista:** `implementador`.
   - **Ação:** Identificar arquiteturas úteis no diretório (ex: LSTM 1x16 de ganho extremo, WaveNet com arrays atípicos, Container models).
   - **Implementação:** Desenvolver uma etapa no script de goldens (`golden_gen_build.sh`) que opcionalmente gere goldens baseados neles caso o diretório exista.

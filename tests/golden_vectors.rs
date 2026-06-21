@@ -44,7 +44,9 @@ fn run_v2_golden_test(
     let nam_path = model_path(model_filename);
 
     if !nam_path.exists() {
-        eprintln!("SKIP: Model {model_filename} not found at {nam_path:?}. Skipping v2 golden test.");
+        eprintln!(
+            "SKIP: Model {model_filename} not found at {nam_path:?}. Skipping v2 golden test."
+        );
         return;
     }
 
@@ -56,7 +58,9 @@ fn run_v2_golden_test(
         let golden_path = fixtures_dir.join(&golden_filename);
 
         if !golden_path.exists() {
-            eprintln!("SKIP: {golden_filename} not found at {golden_path:?}. Run './tests/fixtures/golden_gen_build.sh' to generate v2 multi-SR golden vectors.");
+            eprintln!(
+                "SKIP: {golden_filename} not found at {golden_path:?}. Run './tests/fixtures/golden_gen_build.sh' to generate v2 multi-SR golden vectors."
+            );
             continue;
         }
 
@@ -1102,6 +1106,43 @@ fn test_golden_vectors_v2_lstm_1x16() {
         SR_EX_192K,
     );
 }
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_app_evh() {
+    run_v2_golden_test(
+        "APP-EVH-Stealth100-Dialled-xSTD.nam",
+        "golden_wavenet_app_evh",
+        "APP EVH Stealth 100",
+        "APP-EVH-Stealth100-Dialled-xSTD",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_boss_bd2() {
+    run_v2_golden_test(
+        "Boss BD-2 H2O Mod T-12_00 G-12_00.nam",
+        "golden_wavenet_boss_bd2",
+        "Boss BD-2 H2O Mod",
+        "Boss BD-2 H2O Mod T-12_00 G-12_00",
+        ALL_SR,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_slammin_marshall() {
+    run_v2_golden_test(
+        "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam",
+        "golden_wavenet_slammin_marshall",
+        "SLAMMIN MARSHALL JTM 45",
+        "SLAMMIN MARSHALL JTM 45 REISSUE",
+        ALL_SR,
+    );
+}
+
 
 #[test]
 #[ignore]
