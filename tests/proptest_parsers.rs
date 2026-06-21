@@ -17,7 +17,6 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
-    #[ignore]
     fn prop_fuzz_nam_json_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
         let json_str = String::from_utf8_lossy(&bytes);
         // The goal here is only to ensure absence of panics (memory safety).

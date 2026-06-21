@@ -56,7 +56,6 @@ proptest! {
         /// Validates the precision of the Hyperbolic Tangent approximation via AVX2.
         /// Uses Minimax/Padé approximations that prioritize throughput over 64-bit precision.
     #[test]
-    #[ignore]
     fn prop_simd_tanh_avx2_rmse(input in avx2_input_array()) {
             // Unaligned load, safe for generic buffers
         let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };

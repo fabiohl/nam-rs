@@ -24,7 +24,7 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 **Risco:** Baixo
 **Base:** [TODO-findings.md - F8](TODO-findings.md)
 
-### 📝 Tarefa 1.1: Tornar o Gate LUFS flexível em `cpp_parity.rs`
+### 📝 Tarefa 1.1: Tornar o Gate LUFS flexível em `cpp_parity.rs` [DONE]
 
 **Responsável Sugerido:** `implementador` / `debugger`
 **Contexto:** O script de teste de paridade C++ compara referências numéricas, mas modelos silenciosos como `wavenet_dyn_free` caem na trava restrita do gate LUFS `[-50, +10]` e quebram falsamente a suite longa de testes.
@@ -43,7 +43,7 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 **Risco:** Baixo
 **Base:** [TODO-findings.md - F30, F31, F34]
 
-### 📝 Tarefa 2.1: Promover Testes Críticos "Smoke" para a Lane Rápida
+### 📝 Tarefa 2.1: Promover Testes Críticos "Smoke" para a Lane Rápida [DONE]
 
 **Responsável Sugerido:** `implementador`
 **Contexto:** Validações profundas e demoradas são mantidas sobre `#[ignore]` no CI rápido. Porém não ter uma mínima cobertura do Parser ou Parity nos runs locais compromete a qualidade da verificação. (Ref: F30)
