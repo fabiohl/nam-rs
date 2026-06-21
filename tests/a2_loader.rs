@@ -806,6 +806,10 @@ fn test_a2_lite_fixture_loads() {
 // 5. Real inference sanity: A2 models produce finite output
 // =============================================================================
 
+/// With zero-weights (default construction), the A2 Lite pipeline
+/// must produce silence — input × zero weights → zero output.
+/// Enforces the rigid dynamic envelope: |output| < 1e-7 for
+/// constant 0.01 input through zero-weighted net.
 #[test]
 fn test_a2_lite_inference_produces_finite_output() {
     use nam_rs::models::a2::WaveNetA2;
@@ -816,11 +820,26 @@ fn test_a2_lite_inference_produces_finite_output() {
     let mut output = [0.0f32; 64];
     model.process(&input, &mut output);
 
-    for &s in output.iter() {
+    let mut max_abs_out = 0.0f32;
+    for (i, &s) in output.iter().enumerate() {
         assert!(s.is_finite(), "A2-Lite output must be finite");
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        assert!(
+            abs_s < 1e-7,
+            "[A2-Lite] sample {i}: |{s}| >= 1e-7 — zero-weight net produced non-zero output"
+        );
     }
+    assert!(
+        max_abs_out < 1e-7,
+        "[A2-Lite] max_abs={max_abs_out} — silence expected from zero-weight model"
+    );
 }
 
+/// With zero-weights (default construction), the A2 Full pipeline
+/// must produce silence — input × zero weights → zero output.
+/// Enforces the rigid dynamic envelope: |output| < 1e-7 for
+/// constant 0.01 input through zero-weighted net.
 #[test]
 fn test_a2_full_inference_produces_finite_output() {
     use nam_rs::models::a2::WaveNetA2;
@@ -831,9 +850,20 @@ fn test_a2_full_inference_produces_finite_output() {
     let mut output = [0.0f32; 64];
     model.process(&input, &mut output);
 
-    for &s in output.iter() {
+    let mut max_abs_out = 0.0f32;
+    for (i, &s) in output.iter().enumerate() {
         assert!(s.is_finite(), "A2-Full output must be finite");
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        assert!(
+            abs_s < 1e-7,
+            "[A2-Full] sample {i}: |{s}| >= 1e-7 — zero-weight net produced non-zero output"
+        );
     }
+    assert!(
+        max_abs_out < 1e-7,
+        "[A2-Full] max_abs={max_abs_out} — silence expected from zero-weight model"
+    );
 }
 
 // =============================================================================

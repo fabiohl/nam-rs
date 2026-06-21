@@ -72,7 +72,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Ação:** Identificar testes validando a saída via métricas nulas (finitude/limites arbitrariamente gigantes).
   - **Implementação:** Onde disponível referência C++, engatar comparações diretas de fidelidade paramétrica (MSE/ESR). Sem referência, extrair um teto (bound) correlacionado fisicamente ao sinal de excitação de entrada do teste, garantindo margens contidas (ex: saída não desvia acima de 4x do pico máximo injetado).
 
-- [ ] **Tarefa D.1.2 (F6): Rastreabilidade rígida em testes SPSC e A2 (a2_loader, spsc_pipeline)**
+- [x] **Tarefa D.1.2 (F6): Rastreabilidade rígida em testes SPSC e A2 (a2_loader, spsc_pipeline)**
   - **Arquivos alvo:** `tests/a2_loader.rs` (`test_a2_*_finite_output`), `tests/spsc_pipeline.rs`.
   - **Ação:** Refatorar as verificações que aceitam qualquer output contanto que não seja NaN (ou abs < 100.0 com ruído 0.01).
   - **Implementação:** Substituir asserts de `abs < 100.0` por envelopes rígidos provando que o bloco de saída segue matematicamente a dinâmica alimentada ao pipeline de SPSC e RingBuffer sem overflow injustificado.

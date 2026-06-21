@@ -21,11 +21,12 @@ use common::*;
 
 /// Test 11: End-to-end SPSC pipeline — simulates CLI→SPSC→DSP.
 ///
-/// Loads and processes `BossWN-standard.nam` exclusively via SPSC:
-/// 1. Load + Parse + Dispatch (simulates CLI thread)
-/// 2. Send model via SPSC (ParamPayload::LoadModel)
-/// 3. Receive and run inference in the consumer (simulates DSP callback)
-/// 4. Validate finiteness and reasonable magnitude
+/// Loads and processes `BossWN-standard.nam` via SPSC and directly
+/// (no-SPSC reference). Validates:
+///   - Per-sample envelope: |output| ≤ max_abs_in × 20 (WaveNet Standard gate)
+///   - All outputs finite
+///   - Non-silent output (max_abs_out > 0)
+///   - SPSC transparency: SPSC output == direct output bit-exact
 ///
 /// This test validates the entire chain without PipeWire/Jack dependency.
 #[test]
@@ -37,12 +38,28 @@ fn test_end_to_end_spsc_pipeline() {
         return;
     }
 
-    // 1. Parse + Dispatch (simulates CLI thread)
+    // 1. Parse (shared)
     let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet model for E2E");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser for E2E");
+
+    let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
+    const GAIN_LIMIT: f32 = 20.0;
+    let limit = max_abs_in * GAIN_LIMIT;
+
+    // 2. Direct inference (no SPSC) — reference output
+    let mut ref_model = build_model(&model_data).expect("Dispatcher failed for direct ref");
+    ref_model.prewarm(2048);
+    let mut reference_output = vec![0.0f32; 64];
+    ref_model.process(&input, &mut reference_output);
+
+    // 3. Dispatch (simulates CLI thread) + SPSC send
     let boxed = build_model(&model_data).expect("Dispatcher failed in E2E pipeline");
 
-    // 2. Create SPSC channel and send the model as the CLI would
     let (mut producer, mut consumer) =
         rtrb::RingBuffer::<nam_rs::common::spsc::ParamPayload>::new(8);
 
@@ -56,7 +73,7 @@ fn test_end_to_end_spsc_pipeline() {
         })
         .expect("Failed to send model via SPSC in E2E");
 
-    // 3. Consumer side (simulates DSP callback) — drains and runs inference
+    // 4. Consumer side (simulates DSP callback) — drains and runs inference
     let received = consumer
         .pop()
         .expect("Failed to receive model via SPSC in E2E");
@@ -69,21 +86,36 @@ fn test_end_to_end_spsc_pipeline() {
     let model = active_model.as_mut().expect("Null model after SPSC drain");
     model.prewarm(2048);
 
-    // 4. Process 440 Hz sine signal (64 samples, 1 block)
-    let input = generate_sine_440hz(64);
-    let mut output = vec![0.0f32; 64];
-    model.process(&input, &mut output);
+    let mut spsc_output = vec![0.0f32; 64];
+    model.process(&input, &mut spsc_output);
 
-    // 5. Validation: finiteness and reasonable magnitude
-    for (i, &s) in output.iter().enumerate() {
-        assert!(s.is_finite(), "[E2E] Non-finite sample at index {i}: {s}");
+    // 5. Validation: rigid envelope, finiteness, non-silence, SPSC transparency
+    let mut max_abs_out = 0.0f32;
+    for (i, (&s, &ref_s)) in spsc_output.iter().zip(reference_output.iter()).enumerate() {
         assert!(
-            s.abs() < 100.0,
-            "[E2E] Excessive magnitude at index {i}: {s} (limit 100.0)"
+            s.is_finite(),
+            "[E2E SPSC] Non-finite sample at index {i}: {s}"
+        );
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        assert!(
+            abs_s <= limit,
+            "[E2E SPSC] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
+        );
+        assert_eq!(
+            s.to_bits(),
+            ref_s.to_bits(),
+            "[E2E SPSC] Transparency violation at index {i}: SPSC {s} ≠ direct {ref_s}"
         );
     }
+    assert!(
+        max_abs_out > 0.0,
+        "[E2E SPSC] All-zero output — model may be silent"
+    );
 
-    println!("E2E Pipeline OK — CLI→SPSC→DSP validated without PipeWire (64 samples processed).");
+    println!(
+        "E2E Pipeline OK — CLI→SPSC→DSP validated (64 samples, SPSC-transparent, {GAIN_LIMIT}× gate)."
+    );
 }
 
 // =============================================================================
@@ -176,7 +208,8 @@ fn test_namb_roundtrip_dispatcher_e2e() {
 /// Simulates the scenario of a user rapidly switching between 3 different
 /// models via CLI (`model <path>`). The SPSC chain must maintain ownership
 /// integrity (no leak, no double-free) and each model must produce stable
-/// inference after prewarm.
+/// inference after prewarm within a rigid envelope (|output| ≤ max_abs_in × 20).
+/// SPSC transparency is verified for the first model (bit-exact vs direct).
 ///
 /// Models used:
 /// 1. WaveNet Standard (`BossWN-standard.nam`)
@@ -184,10 +217,12 @@ fn test_namb_roundtrip_dispatcher_e2e() {
 /// 3. WaveNet Feather (`BossWN-feather.nam`)
 ///
 /// Procedure:
-/// 1. Push the 3 models sequentially into the SPSC queue (simulates CLI)
-/// 2. Pop sequentially, replacing the active model each iteration
-/// 3. For each model: prewarm + process 64 sinusoidal samples
-/// 4. Verify finiteness and reasonable magnitude of outputs
+/// 1. Build direct reference for model #1 (transparency check)
+/// 2. Push the 3 models sequentially into the SPSC queue (simulates CLI)
+/// 3. Pop sequentially, replacing the active model each iteration
+/// 4. For each model: prewarm + process 64 sinusoidal samples
+/// 5. Verify finiteness, rigid envelope (20× input peak), and
+///    for model #1: bit-exact match with direct reference
 ///
 /// The previous model is discarded (dropped) when replaced — validating
 /// that ownership transfer via `Box<StaticModel>` works without leak.
@@ -209,6 +244,24 @@ fn test_rapid_hot_swap_spsc() {
             return;
         }
     }
+
+    let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
+    const GAIN_LIMIT: f32 = 20.0;
+    let limit = max_abs_in * GAIN_LIMIT;
+
+    // Direct reference for model #1 (SPSC transparency)
+    let p0 = model_path(models_to_load[0].0);
+    let json_ref = fs::read_to_string(&p0).expect("Failed to read for direct ref");
+    let data_ref = parse_nam_json(&json_ref).expect("Failed in JSON for direct ref");
+    let mut ref_model = build_model(&data_ref).expect("Dispatcher failed for direct ref");
+    ref_model.prewarm(2048);
+    let mut reference_output = vec![0.0f32; 64];
+    ref_model.process(&input, &mut reference_output);
 
     // Create SPSC channel with capacity 4 (fits all 3 models)
     let (mut producer, mut consumer) =
@@ -236,7 +289,6 @@ fn test_rapid_hot_swap_spsc() {
     }
 
     // 2. Pop and sequential processing (simulates DSP thread receiving swaps)
-    let input = generate_sine_440hz(64);
     let mut active_model: Option<Box<nam_rs::models::StaticModel>> = None;
 
     for (idx, (_filename, label)) in models_to_load.iter().enumerate() {
@@ -263,17 +315,32 @@ fn test_rapid_hot_swap_spsc() {
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
-        // 4. Validation: finiteness and reasonable magnitude
+        // 4. Validation: finiteness, rigid envelope, SPSC transparency (model #1)
+        let mut max_abs_out = 0.0f32;
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
                 "[Hot-Swap #{idx} {label}] Non-finite sample at index {i}: {s}"
             );
+            let abs_s = s.abs();
+            max_abs_out = max_abs_out.max(abs_s);
             assert!(
-                s.abs() < 100.0,
-                "[Hot-Swap #{idx} {label}] Excessive magnitude at index {i}: {s}"
+                abs_s <= limit,
+                "[Hot-Swap #{idx} {label}] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
             );
+            if idx == 0 {
+                assert_eq!(
+                    s.to_bits(),
+                    reference_output[i].to_bits(),
+                    "[Hot-Swap #{idx} {label}] SPSC transparency violation at index {i}: SPSC {s} ≠ direct {}",
+                    reference_output[i]
+                );
+            }
         }
+        assert!(
+            max_abs_out > 0.0,
+            "[Hot-Swap #{idx} {label}] All-zero output — model may be silent"
+        );
     }
 
     // Verify that the SPSC channel is empty (all payloads consumed)
@@ -284,6 +351,6 @@ fn test_rapid_hot_swap_spsc() {
 
     println!(
         "Hot-Swap SPSC OK — 3 models swapped sequentially, \
-         ownership transfer validated without leak."
+         ownership transfer validated without leak, {GAIN_LIMIT}× gate, SPSC-transparent."
     );
 }

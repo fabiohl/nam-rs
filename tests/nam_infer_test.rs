@@ -277,7 +277,10 @@ fn test_wavenet_computational_stability() {
         rms
     );
 
-    assert!(rms <= 10.0, "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence.");
+    assert!(
+        rms <= 10.0,
+        "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence."
+    );
     // The synthetic model (all weights 0.001, head_rechannel bias=0) can produce
     // near-zero outputs by design — this is a known property of the controlled fixture
     const GAIN_LIMIT: f32 = 10.0;
@@ -316,7 +319,10 @@ fn test_wavenet_stability_feather() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 20.0;
 
     let mut output = vec![0.0f32; 64];
@@ -339,7 +345,10 @@ fn test_wavenet_stability_feather() {
         );
     }
     let rms = (tot_energy / 64.0).sqrt();
-    assert!(max_abs_out > 0.0, "[Feather] All-zero output — model may be silent");
+    assert!(
+        max_abs_out > 0.0,
+        "[Feather] All-zero output — model may be silent"
+    );
     assert!(
         rms < max_abs_out as f64,
         "[Feather] RMS ({rms}) >= max_abs ({max_abs_out}) — abnormal output shape"
@@ -367,7 +376,10 @@ fn test_wavenet_stability_nano() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 20.0;
 
     let mut output = vec![0.0f32; 64];
@@ -387,7 +399,10 @@ fn test_wavenet_stability_nano() {
         );
     }
     let rms = (tot_energy / 64.0).sqrt();
-    assert!(max_abs_out > 0.0, "[Nano] All-zero output — model may be silent");
+    assert!(
+        max_abs_out > 0.0,
+        "[Nano] All-zero output — model may be silent"
+    );
     assert!(
         rms < max_abs_out as f64,
         "[Nano] RMS ({rms}) >= max_abs ({max_abs_out}) — abnormal output shape"
@@ -416,7 +431,10 @@ fn test_wavenet_stability_a2_full() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 50.0;
     let limit = max_abs_in * GAIN_LIMIT;
 
@@ -436,7 +454,10 @@ fn test_wavenet_stability_a2_full() {
             "[A2-Full] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
-    assert!(max_abs_out > 0.0, "[A2-Full] All-zero output — model may be silent");
+    assert!(
+        max_abs_out > 0.0,
+        "[A2-Full] All-zero output — model may be silent"
+    );
 }
 
 /// WaveNet A2-Lite Stability
@@ -460,7 +481,10 @@ fn test_wavenet_stability_a2_lite() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 50.0;
     let limit = max_abs_in * GAIN_LIMIT;
 
@@ -480,7 +504,10 @@ fn test_wavenet_stability_a2_lite() {
             "[A2-Lite] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
-    assert!(max_abs_out > 0.0, "[A2-Lite] All-zero output — model may be silent");
+    assert!(
+        max_abs_out > 0.0,
+        "[A2-Lite] All-zero output — model may be silent"
+    );
 }
 
 /// Test 15: LSTM 2x8 Stability
@@ -506,7 +533,10 @@ fn test_lstm_stability_2x8() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 20.0;
     let limit = max_abs_in * GAIN_LIMIT;
 
@@ -526,7 +556,10 @@ fn test_lstm_stability_2x8() {
             "[LSTM 2x8] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
-    assert!(max_abs_out > 0.0, "[LSTM 2x8] All-zero output — model may be silent");
+    assert!(
+        max_abs_out > 0.0,
+        "[LSTM 2x8] All-zero output — model may be silent"
+    );
 }
 
 // =============================================================================
@@ -859,7 +892,10 @@ fn test_community_models_inference() {
 
     let input = generate_sine_440hz(64);
     let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    assert!(
+        max_abs_in > 0.0,
+        "Input signal is silent — test fixture broken"
+    );
     const GAIN_LIMIT: f32 = 20.0;
     let limit = max_abs_in * GAIN_LIMIT;
 
