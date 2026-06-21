@@ -33,7 +33,7 @@ As tarefas estão prontas para a skill `implementador`.
   3. Instanciar a métrica com `common::metrics::snr` (ou MSE/ESR) passando pela inferência o sinal padrão.
   4. Substituir `is_finite()` pelo gate forte (ex: `assert!(snr >= 60.0)`). Calibrar e marcar `// Measured: XX.X dB` junto ao código. Se os arquivos precisarem ser eliminados (se forem apenas resíduos sem utilidade), provar paridade de outra forma ou justificar a inexistência deles.
 
-#### Tarefa 1.2: Inclusão do `WaveNetA2Dyn` no Benchmark PGO (Ref: RF2 🟠)
+#### Tarefa 1.2: Inclusão do `WaveNetA2Dyn` no Benchmark PGO (Ref: RF2 🟠) [DONE]
 
 - **Contexto:** Sem bench, o `WaveNetA2Dyn` não se beneficia do PGO.
 - **Implementação:**

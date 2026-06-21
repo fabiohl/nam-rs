@@ -20,6 +20,7 @@
 //! | `WaveNet_Dynamic_CH5_64samp_48kHz`  | WaveNet Dynamic free-geom inference  | Fallback for non-cataloged WaveNet geometries |
 //! | `LSTM_Dynamic_1x7_64samp_48kHz`      | LSTM Dynamic 1×7 inference           | Fallback for non-cataloged LSTM geometries     |
 //! | `ConvNet_Model_64samp_48kHz`         | ConvNet end-to-end model inference   | Full pipeline: 2 blocks CH=8→4 + head_scale    |
+//! | `A2Dyn_Gated_64samp_48kHz`           | A2 Dynamic CH=4 gated inference      | Fallback for non-cataloged A2 geometries       |
 //!
 //! ## Interpreting the results
 //!
@@ -37,7 +38,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
+use nam_rs::loader::nam_json::{NamConfig, NamLayerConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::NamModel;
@@ -621,6 +622,56 @@ fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
                 }
             });
         });
+    }
+}
+
+/// Creates a synthetic `NamModelData` for WaveNet A2 Dynamic with free geometry.
+///
+/// CH=4 forces routing to `WaveNetA2Dyn` because CH ∉ {3,8}
+/// disqualifies the const-generic fast-path (A2-Full/Lite).
+fn make_wavenet_a2_dyn_data() -> NamModelData {
+    use nam_rs::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES};
+
+    let channels = 4usize;
+    let bottleneck = 4usize;
+    let head_k = nam_rs::models::a2::params::A2_HEAD_KERNEL_SIZE;
+
+    let mut total_weights = channels; // rechannel_w
+    for &ksize in A2_KERNEL_SIZES.iter() {
+        total_weights += channels * bottleneck * ksize; // conv_w
+        total_weights += bottleneck; // conv_b
+        total_weights += bottleneck; // mixin_w
+        total_weights += bottleneck * channels; // l1x1_w
+        total_weights += channels; // l1x1_b
+    }
+    total_weights += head_k * channels; // head_w
+    total_weights += 1; // head_b
+    total_weights += 1; // head_scale
+
+    NamModelData {
+        version: Some("0.5.4".to_string()),
+        architecture: "WaveNet".to_string(),
+        config: NamConfig {
+            layers: vec![NamLayerConfig {
+                input_size: Some(1),
+                condition_size: Some(1),
+                channels: Some(channels),
+                bottleneck: Some(bottleneck),
+                kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
+                dilations: Some(A2_DILATIONS.to_vec()),
+                activation: Some("Tanh".to_string()),
+                gated: Some(false),
+                head_bias: Some(true),
+                ..Default::default()
+            }],
+            head: None,
+            head_scale: Some(0.02),
+            ..Default::default()
+        },
+        weights: vec![0.01; total_weights],
+        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
+        sample_rate: Some(48000.0),
+        metadata: None,
     }
 }
 
@@ -1713,6 +1764,7 @@ criterion_group!(
     bench_container_crossfade_64samp,
     bench_wavenet_dynamic_process,
     bench_lstm_dynamic_process,
+    bench_wavenet_a2_dyn_gated_process,
     bench_nondist_models,
     bench_convnet_multichannel,
     bench_convnet_large_kernels,
@@ -1941,6 +1993,27 @@ fn bench_lstm_dynamic_process(c: &mut Criterion) {
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("LSTM_Dynamic_1x7_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+// PGO: name uses _64samp suffix for build-release.sh profiling filter
+/// Measures the processing time of a WaveNet A2 Dynamic model (CH=4, gated).
+///
+/// CH=4 is not in the A2 const-generic dispatch table ({3, 8}),
+/// forcing routing to `WaveNetA2Dyn`. This covers the dynamic A2 hot-path
+/// with gating active on the first layer, exercising the full dynamic engine.
+fn bench_wavenet_a2_dyn_gated_process(c: &mut Criterion) {
+    let data = make_wavenet_a2_dyn_data();
+    let mut model = build_model(&data).expect("Dispatcher failed for WaveNet A2 Dynamic benchmark");
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("A2Dyn_Gated_64samp_48kHz", |b| {
         b.iter(|| {
             model.process(&input, &mut output);
         });
