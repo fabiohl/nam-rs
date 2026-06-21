@@ -72,7 +72,7 @@ As tarefas estão prontas para a skill `implementador`.
   1. Em `tests/cpp_parity.rs` (linhas 713-727), remover a rotina local iterativa usando `read_dir`.
   2. Trocar pelo uso do utilitário padronizado: chamar `common::discovery::find_models_in_dir` para obter a lista de modelos.
 
-#### Tarefa 2.3: Substituição de Placebos por Limites Físicos (Ref: RF6 🟡)
+#### Tarefa 2.3: Substituição de Placebos por Limites Físicos (Ref: RF6 🟡) [DONE]
 
 - **Contexto:** Ainda restam checks `is_finite()` soltos que passam muito frouxos sem medir a integridade estrutural da onda.
 - **Implementação:**

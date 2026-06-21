@@ -408,8 +408,11 @@ fn test_prewarm_zero_rf() {
     let input = [0.0f32; 16];
     let mut output = [0.0f32; 16];
     model.process(&input, &mut output);
-    for &v in &output {
-        assert!(v.is_finite(), "Non-finite output with RF=0");
+    for (i, &v) in output.iter().enumerate() {
+        assert!(
+            v.abs() < 1e-7,
+            "Non-zero output with RF=0 at sample {i}: {v}"
+        );
     }
 }
 
