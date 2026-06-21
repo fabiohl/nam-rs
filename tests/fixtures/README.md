@@ -165,6 +165,32 @@ Due to the legal redistribution restriction of the default `t3k` license in the 
 Without the manifest, only determinism, block-invariance, and stability are checked (no
 classification validation).
 
+##### WaveNet Lite Golden Gate (Non-Distributable)
+
+The cross-parity gate for the WaveNet Lite model in `tests/golden_vectors.rs`
+(`test_golden_vectors_wavenet_lite`, `test_golden_vectors_v2_wavenet_lite`) is conditioned
+on the presence of the local model `EVH-5150-Lite.nam` inside the `models-nondist` directory.
+This model is a community-real capture (CH=12, K=3, HEAD=6, 20 layers) and cannot be
+redistributed under the project's Apache-2.0 license.
+
+In a clean environment (e.g., third-party CI) where the `models-nondist` directory is absent
+and only the `golden_wavenet_lite.bin` golden file is present, the test will **skip**
+gracefully with an `eprintln!` message — preserving test honesty (no placebo gate) but
+sacrificing coverage of the WaveNet Lite golden cross-reference.
+
+To re-enable full WaveNet Lite golden coverage:
+
+1. Place `EVH-5150-Lite.nam` in your local `tests/fixtures/models-nondist/` directory.
+2. Regenerate golden vectors from the C++ reference:
+   ```bash
+   ./tests/fixtures/golden_gen_build.sh
+   ```
+3. Run the golden tests:
+   ```bash
+   cargo test --test golden_vectors test_golden_vectors_wavenet_lite
+   cargo test --test golden_vectors test_golden_vectors_v2_wavenet_lite -- --ignored
+   ```
+
 ##### Model Maintenance Tool: `utils/check-model.py`
 
 `utils/check-model.py` is the canonical tool for inspecting and managing non-distributable

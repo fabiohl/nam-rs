@@ -109,16 +109,12 @@ fn test_nondist_models_validation() {
                 );
             } else {
                 let class_label = model.class_label();
-                if class_label == entry.expected_class {
-                    println!("  ✓ Classification OK: {filename} → {class_label}");
-                } else {
-                    assert_eq!(
-                        class_label, entry.expected_class,
-                        "Classification mismatch for {filename}: \
-                         expected '{}', got '{}'",
-                        entry.expected_class, class_label
-                    );
-                }
+                assert_eq!(
+                    class_label, entry.expected_class,
+                    "Classification mismatch for {filename}: \
+                     expected '{}', got '{}'",
+                    entry.expected_class, class_label
+                );
             }
         }
 
