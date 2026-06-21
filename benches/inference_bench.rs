@@ -660,7 +660,7 @@ fn make_wavenet_a2_dyn_data() -> NamModelData {
                 kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
                 dilations: Some(A2_DILATIONS.to_vec()),
                 activation: Some("Tanh".to_string()),
-                gated: Some(false),
+                gated: Some(true),
                 head_bias: Some(true),
                 ..Default::default()
             }],

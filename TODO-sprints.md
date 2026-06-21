@@ -17,7 +17,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Foco na correção de inconsistências no código de benchmark e na remoção de atributos não utilizados no código de produção para garantir clareza e facilidade de manutenção.
 
-* **Tarefa 1.1: Ativar path Gated no Benchmark do WaveNetA2Dyn (Referência: NRF1 / RF2)**
+* **Tarefa 1.1: Ativar path Gated no Benchmark do WaveNetA2Dyn (Referência: NRF1 / RF2)** [DONE]
   * **Arquivo:** `benches/inference_bench.rs`
   * **Ação:** Na função que inicializa os dados, possivelmente `make_wavenet_a2_dyn_data`, alterar a configuração de `gated: Some(false)` para `gated: Some(true)`. Em contrapartida, se for mais condizente com a estrutura atual, renomeie o ID/doc de `A2Dyn_Gated_64samp_48kHz` para não indicar `gated` caso não deva de fato usar gating. Optaremos pela primeira solução (`gated: Some(true)`), conforme sugestão primária da auditoria.
   * **Justificativa:** O nome do bench (`A2Dyn_Gated_64samp_48kHz`) e a documentação indicam o uso do ramo de gating ("gating active on the first layer"). Fornecer `gated: false` perfila outro ramo da inferência, fugindo do perfil pretendido.
