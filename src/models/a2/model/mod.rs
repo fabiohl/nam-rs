@@ -531,10 +531,41 @@ impl<const CH: usize> WaveNetA2<CH> {
                     }
                     #[cfg(not(any(test, feature = "dynamic-engine")))]
                     {
-                        unreachable!(
+                        // RT-safe fallback: this branch is unreachable per set_weights
+                        // invariant (A2 layers always have CH=3 or CH=8 conv). Retained
+                        // as a panic-free guard for future model format changes — never
+                        // panics on the audio thread.
+                        debug_assert!(
+                            false,
                             "A2 layers always have ch3 or ch8 conv; \
-                             scalar fallback unreachable per set_weights invariant (CH=3|8)"
+                             scalar fallback triggered — silencing layer output"
                         );
+                        self.z_scratch[..ch].fill(0.0);
+                        for f in 0..nf {
+                            let head_off = (head_wp + f) * ch;
+                            if is_first {
+                                self.head_accum[head_off..head_off + ch]
+                                    .copy_from_slice(&self.z_scratch[..ch]);
+                            }
+                            if !is_last {
+                                let base = f * ch;
+                                for c in 0..ch {
+                                    let mut sum = l1x1_b[c];
+                                    for u in 0..ch {
+                                        sum += l1x1_w[u * ch + c] * self.z_scratch[u];
+                                    }
+                                    self.layer_in[base + c] += sum;
+                                }
+                                if let Some(ref mut film) = film_block.layer1x1_post_film {
+                                    unsafe {
+                                        film.process(
+                                            &mut self.layer_in[base..base + ch],
+                                            &input[pos + f..pos + f + 1],
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

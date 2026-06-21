@@ -18,7 +18,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
 
 **Foco:** Tratar achados críticos que podem derrubar a thread de áudio (F11) ou falhar de forma não-tratada no parser (F14).
 
-- [ ] **Tarefa C.1.1 (F11): Converter `unreachable!()` no A2 fixo para fallback RT-safe**
+- [x] **Tarefa C.1.1 (F11): Converter `unreachable!()` no A2 fixo para fallback RT-safe**
   - **Especialista:** `implementador` / Especialista em DSP e Rust RT-safe.
   - **Arquivo alvo:** `src/models/a2/model/mod.rs` (linhas ~532-538).
   - **Ação:** No método `process()` do A2 Fixo (`WaveNetA2<CH>`), o ramo de fallback escalar do bloco `if cfg!(...)` possui um `unreachable!("A2 layers always have ch3 or ch8 conv; ...")`.
