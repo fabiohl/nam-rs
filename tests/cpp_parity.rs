@@ -710,21 +710,10 @@ fn live_cross_validation_nondist_models() {
         return;
     }
 
-    let mut models = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&nondist_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file()
-                && let Some(ext) = path.extension()
-            {
-                let is_nam_or_json = ext == "nam" || ext == "json";
-                let is_manifest = path.file_name().is_some_and(|name| name == "manifest.json");
-                if is_nam_or_json && !is_manifest {
-                    models.push(path);
-                }
-            }
-        }
-    }
+    let models: Vec<_> = discovery::find_models_in_dir(&nondist_path)
+        .into_iter()
+        .filter(|p| p.file_name().is_some_and(|n| n != "manifest.json"))
+        .collect();
 
     if models.is_empty() {
         println!("SKIP: No models found in {:?}", nondist_path);

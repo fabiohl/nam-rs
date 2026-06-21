@@ -65,7 +65,7 @@ As tarefas estão prontas para a skill `implementador`.
   2. Identificar `eprintln!("⚠ Classification mismatch ...")`.
   3. Converter essa emissão de logs em uma chamada assertiva forte `assert_eq!(actual, expected, "Classification mismatch ...");` de forma a falhar o teste (exceto nos casos "Unknown*", que continuam sofrendo auto-skip).
 
-#### Tarefa 2.2: Refatoração da Discovery em `cpp_parity.rs` (Ref: RF5 🟡)
+#### Tarefa 2.2: Refatoração da Discovery em `cpp_parity.rs` (Ref: RF5 🟡) [DONE]
 
 - **Contexto:** A função `find_models_in_dir` foi generalizada em `tests/common/discovery.rs`, mas `cpp_parity.rs` manteve seu parser inline.
 - **Implementação:**
