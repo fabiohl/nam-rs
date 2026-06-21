@@ -77,7 +77,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Ação:** Refatorar as verificações que aceitam qualquer output contanto que não seja NaN (ou abs < 100.0 com ruído 0.01).
   - **Implementação:** Substituir asserts de `abs < 100.0` por envelopes rígidos provando que o bloco de saída segue matematicamente a dinâmica alimentada ao pipeline de SPSC e RingBuffer sem overflow injustificado.
 
-- [ ] **Tarefa D.1.3 (F6): Consolidação para Dinâmicos / Edge Cases (lstm_model_dyn_validation)**
+- [x] **Tarefa D.1.3 (F6): Consolidação para Dinâmicos / Edge Cases (lstm_model_dyn_validation)**
   - **Arquivos alvo:** `tests/lstm_model_dyn_validation.rs`.
   - **Ação:** Testes isolados para finitude como `test_model_dyn_no_panic_edge` geram volume sem garantia total.
   - **Implementação:** Agregar as verificações de não-pânico (No-Panic/Zero-Input) nos testes core determinísticos e aplicar gates matemáticos (comparação block/frame). O resultado será menor volume bruto de `#[test]`, porém com asserção estrita de confiabilidade.

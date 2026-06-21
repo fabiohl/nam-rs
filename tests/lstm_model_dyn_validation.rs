@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Exhaustive validation tests for `LstmModelDyn` (Task 2.2.4).
+//! Exhaustive validation tests for `LstmModelDyn` (Task D.1.3 / D.2.4).
 //!
 //! Covers arbitrary (num_layers, hidden_size) topologies not matched by the
 //! 10 static const-generic profiles.
+//!
+//! Post-consolidation (D.1.3): no-panic and zero-input finitude assertions
+//! merged into strict SIMD-vs-scalar parity gates, eliminating weak
+//! `is_finite()` placebo tests.
 
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::lstm::LstmModelDyn;
@@ -49,17 +53,15 @@ fn fill_model_dyn(model: &mut LstmModelDyn) {
     model.use_f32_head = true;
 }
 
-/// Runs the model on a sine-wave input and asserts SIMD vs scalar parity.
-fn assert_model_dyn_parity(num_layers: usize, hidden_size: usize) {
+/// Inner: runs the model on the provided input and asserts SIMD vs scalar parity.
+fn assert_model_dyn_parity_inner(num_layers: usize, hidden_size: usize, zero_input: bool) {
     let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
     let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
 
     model_simd.use_f32_head = true;
     model_scalar.use_f32_head = true;
 
-    // Fill both models with identical weights
     fill_model_dyn(&mut model_simd);
-    // Copy weights from simd to scalar
     for li in 0..num_layers {
         model_scalar.layers[li]
             .input_hidden_weights
@@ -83,7 +85,12 @@ fn assert_model_dyn_parity(num_layers: usize, hidden_size: usize) {
     model_scalar.head_bias = model_simd.head_bias;
 
     let n_samples = 64;
-    let input: Vec<f32> = (0..n_samples).map(|i| (i as f32 * 0.1).sin()).collect();
+    let input: Vec<f32> = if zero_input {
+        vec![0.0f32; n_samples]
+    } else {
+        (0..n_samples).map(|i| (i as f32 * 0.1).sin()).collect()
+    };
+    let input_label = if zero_input { "zero_input" } else { "sine" };
     let mut out_simd = vec![0.0f32; n_samples];
     let mut out_scalar = vec![0.0f32; n_samples];
 
@@ -100,7 +107,7 @@ fn assert_model_dyn_parity(num_layers: usize, hidden_size: usize) {
                 || (out_simd[i].is_infinite()
                     && out_scalar[i].is_infinite()
                     && out_simd[i].to_bits() == out_scalar[i].to_bits()),
-            "ModelDyn {num_layers}x{hidden_size}: SIMD vs scalar parity failed at [{i}]: \
+            "ModelDyn {num_layers}x{hidden_size} ({input_label}): SIMD vs scalar parity failed at [{i}]: \
              SIMD={}, Scalar={}, Delta={}, Rel={}",
             out_simd[i],
             out_scalar[i],
@@ -110,53 +117,69 @@ fn assert_model_dyn_parity(num_layers: usize, hidden_size: usize) {
     }
 }
 
+/// Runs parity on sine-wave input.
+fn assert_model_dyn_parity(num_layers: usize, hidden_size: usize) {
+    assert_model_dyn_parity_inner(num_layers, hidden_size, false);
+}
+
+/// Runs parity on zero input (asserts no NaN/Inf under silence).
+fn assert_model_dyn_parity_zero(num_layers: usize, hidden_size: usize) {
+    assert_model_dyn_parity_inner(num_layers, hidden_size, true);
+}
+
 // =============================================================================
 // A. Unit tests — fast, non-ignored
 // =============================================================================
 
+/// Consolidated parity: core LSTM topologies (sine + zero-input).
+///
+/// Subsumes the former isolated parity tests and `test_model_dyn_zero_input`:
+/// every topology is validated by strict SIMD-vs-scalar relative-error gates
+/// (<5e-3) under both excitation and silence, eliminating the weak `is_finite()`
+/// placebo assertions.
 #[test]
-fn test_model_dyn_parity_1x7() {
-    assert_model_dyn_parity(1, 7);
+fn test_model_dyn_parity_core() {
+    let topologies: &[(usize, usize)] = &[
+        (1, 1),
+        (1, 7),
+        (1, 20),
+        (2, 5),
+        (2, 13),
+        (3, 8),
+        (3, 10),
+        (4, 6),
+        (5, 4),
+    ];
+    for &(l, h) in topologies {
+        assert_model_dyn_parity(l, h);
+        assert_model_dyn_parity_zero(l, h);
+    }
 }
 
+/// Consolidated parity: edge-case / extreme LSTM topologies (sine + zero-input).
+///
+/// Absorbs the former `test_model_dyn_no_panic_edge`: arbitrary (num_layers,
+/// hidden_size) configurations not matched by the 10 static const-generic
+/// profiles are now validated through the same strict parity gate, instead of
+/// the previous permissive `is_finite()` placeholder.
 #[test]
-fn test_model_dyn_parity_2x5() {
-    assert_model_dyn_parity(2, 5);
-}
-
-#[test]
-fn test_model_dyn_parity_3x10() {
-    assert_model_dyn_parity(3, 10);
-}
-
-#[test]
-fn test_model_dyn_parity_2x13() {
-    assert_model_dyn_parity(2, 13);
-}
-
-#[test]
-fn test_model_dyn_parity_4x6() {
-    assert_model_dyn_parity(4, 6);
-}
-
-#[test]
-fn test_model_dyn_parity_1x1() {
-    assert_model_dyn_parity(1, 1);
-}
-
-#[test]
-fn test_model_dyn_parity_5x4() {
-    assert_model_dyn_parity(5, 4);
-}
-
-#[test]
-fn test_model_dyn_parity_1x20() {
-    assert_model_dyn_parity(1, 20);
-}
-
-#[test]
-fn test_model_dyn_parity_3x8() {
-    assert_model_dyn_parity(3, 8);
+fn test_model_dyn_parity_edge() {
+    let topologies: &[(usize, usize)] = &[
+        (1, 2),    // tiny
+        (1, 40),   // large single layer
+        (1, 64),   // large single layer
+        (1, 128),  // extreme wide
+        (2, 3),    // small stacked
+        (2, 20),   // medium H
+        (3, 5),    // shallow stack
+        (4, 12),   // medium-deep
+        (6, 4),    // deeper stack, small H
+        (8, 4),    // many layers
+    ];
+    for &(l, h) in topologies {
+        assert_model_dyn_parity(l, h);
+        assert_model_dyn_parity_zero(l, h);
+    }
 }
 
 // Determinism: two identically-initialized LstmModelDyn produce identical output.
@@ -237,66 +260,6 @@ fn test_model_dyn_block_size_invariance() {
                     reference_out[i],
                 );
             }
-        }
-    }
-}
-
-// No-panic for extreme/edge topologies — output must be finite.
-#[test]
-fn test_model_dyn_no_panic_edge() {
-    let topologies: &[(usize, usize)] = &[
-        (1, 1),   // absolute minimum
-        (1, 2),   // tiny
-        (1, 40),  // large single layer
-        (1, 64),  // large single layer
-        (2, 3),   // small stacked
-        (3, 5),   // shallow stack
-        (4, 6),   // medium
-        (6, 4),   // deeper stack, small H
-        (8, 4),   // many layers
-        (2, 20),  // medium H
-        (1, 128), // large H
-        (4, 12),  // medium-deep
-    ];
-
-    let input: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
-
-    for &(num_layers, hidden_size) in topologies {
-        let mut model = LstmModelDyn::new(num_layers, hidden_size);
-        model.use_f32_head = true;
-        fill_model_dyn(&mut model);
-
-        let mut output = vec![0.0f32; 64];
-        model.process(&input, &mut output);
-
-        for (i, &v) in output.iter().enumerate() {
-            assert!(
-                v.is_finite(),
-                "ModelDyn {num_layers}x{hidden_size}: output[{i}] is NaN/Inf: {v}",
-            );
-        }
-    }
-}
-
-// Zero input produces finite output (no NaN/Inf when processing silence).
-#[test]
-fn test_model_dyn_zero_input() {
-    let topologies: &[(usize, usize)] = &[(1, 7), (2, 5), (3, 10), (4, 6)];
-
-    for &(num_layers, hidden_size) in topologies {
-        let mut model = LstmModelDyn::new(num_layers, hidden_size);
-        model.use_f32_head = true;
-        fill_model_dyn(&mut model);
-
-        let input = vec![0.0f32; 64];
-        let mut output = vec![0.0f32; 64];
-        model.process(&input, &mut output);
-
-        for (i, &v) in output.iter().enumerate() {
-            assert!(
-                v.is_finite(),
-                "ModelDyn {num_layers}x{hidden_size}: zero-input output[{i}] is NaN/Inf: {v}",
-            );
         }
     }
 }
