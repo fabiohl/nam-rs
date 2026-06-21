@@ -197,6 +197,9 @@ by the test suite.
 | 48 kHz only | `wavenet_standard`, `lstm_official`, `wavenet_a2_full`, `wavenet_a2_lite`                         |
 | All 5 SRs   | `wavenet_feather`, `wavenet_nano`, `wavenet_lite`, `wavenet_a1_standard`, `lstm_1x16`, `lstm_2x8` |
 | Excl. 192k  | `lstm_1x16`, `lstm_2x8` (recurrent drift > 18 dB SNR at 192k over 960k samples)                   |
+| 48 kHz only | `wavenet_dyn_free`, `lstm_dyn_test`, `a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*` (dynamic engines — intentional, see rationale below) |
+
+**v2 multi-SR coverage for dynamic engines:** The dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) only provide v1 golden vectors at 48 kHz. v2 multi-SR goldens are intentionally absent because: (a) dynamic engines handle arbitrary free geometries — the geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` already exercises multi-SR parity via the C++ toolchain for `wavenet_dyn_free` and `lstm_dyn_test`; (c) A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface for the fixed A2 fast-path and not part of the v2 golden pipeline. See `TODO-audit.md` RF3 and `docs/cpp_parity_map.md` §3.3.
 
 **v2 files** (`golden_<model_id>_v2_<sr>.bin`): Multi-sample-rate goldens using Stress Signal v2 (5 seconds, multi-component, covering all 5 stimulus categories GA/FRG/P/BA/PA in a single file). Naming schema:
 

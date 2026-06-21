@@ -1349,6 +1349,12 @@ fn test_poly_regression_gate_wavenet_a2_full() {
 
 // =============================================================================
 // WaveNet A2 Dynamic Golden Tests — Task 3.3 (Golden Vectors e C++ Parity)
+//
+// NOTE (RF3, 2026-06-21): v2 multi-SR goldens (`golden_a2_dynamic_*_v2_<sr>.bin`)
+// do not exist for the A2 dynamic geometries (gated/blended/FiLM). These
+// engines are forward-compat parser surface only and not part of the v2 golden
+// pipeline. The A2 fixed fast-path models (`wavenet_a2_full`, `wavenet_a2_lite`)
+// already have v2 golden coverage at 48 kHz.
 // =============================================================================
 
 /// Test 9a: Golden Vectors — A2 Dynamic Gated (CH=8)
@@ -1574,6 +1580,14 @@ fn test_golden_vectors_wavenet_a2_film_full() {
 
 // =============================================================================
 // Sprint B.2.2: Dynamic Model Golden Vector Tests
+//
+// NOTE (RF3, 2026-06-21): v2 multi-SR goldens for `wavenet_dyn_free` and
+// `lstm_dyn_test` are intentionally limited to 48 kHz (v1 only). Dynamic
+// engines handle arbitrary free geometries — geometry variance subsumes
+// sample-rate variance. Live cross-validation (`tests/cpp_parity.rs` lines
+// 667, 678) exercises multi-SR parity via the C++ toolchain for these
+// geometries without committing large v2 golden files. See `docs/cpp_parity_map.md`
+// §3.3 and `TODO-audit.md` RF3.
 // =============================================================================
 
 /// Test 10a: Golden Vectors — WaveNetDyn Free-Shape (CH=7→4)

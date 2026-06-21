@@ -57,6 +57,8 @@ divergences, and the sprint/task that established each equivalence.
 ### 3.3 Dynamic WaveNet (fallback path for free geometries)
 
 > Models whose topology does not match a catalog SKU (Standard/Lite/Feather/Nano) are routed through the dynamic fallback path (`WaveNetModelDyn`) — not rejected. This engine handles arbitrary channel counts, kernel sizes, dilations, `condition_size > 1`, and post-stack heads. The `Conv1dDyn` convolution kernel serves as the low-level compute engine for this path, for the A2 dynamic engine (`WaveNetA2Dyn`), and for static WaveNet test/stress kernels.
+>
+> **v2 multi-SR goldens:** Dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) are anchored at **48 kHz only** for v1 golden vectors. v2 multi-SR goldens are intentionally not provided because: (a) dynamic engines handle arbitrary free geometries — geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` (lines 651, 662, 667, 678) already exercises multi-SR parity via the C++ toolchain for the canonical dynamic geometries (`wavenet_dyn_free`, `lstm_dyn_test`); (c) the A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface only and not part of the fixed fast-path. See `TODO-audit.md` RF3 and `tests/fixtures/README.md` §v2 multi-SR coverage.
 
 | C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                     | Parity established |
 | ----------------------------- | ------------------------------------------------- | ------------------ |

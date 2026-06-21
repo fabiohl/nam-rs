@@ -603,13 +603,18 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
   A2 dinâmico (catch-all de geometrias A2 não-catalogadas) **não é perfilado** pelo PGO nem tem bench.
 - **Resolução:** adicionar bench `…_64samp` para 1 geometria A2 dinâmica representativa (gated/blended).
 
-#### RF3 🟠 — (Épico B / F4) Sem goldens v2 multi-SR para engines dinâmicos
+#### RF3 🟢 — (Épico B / F4) Sem goldens v2 multi-SR para engines dinâmicos _(RESOLVIDO — Tarefa 1.3, 2026-06-21)_
 
 - `V2_MODELS` lista as entradas, mas **nenhum** `golden_*dyn*_v2_*.bin` existe (ls = vazio). A âncora
   externa dinâmica cobre **apenas 48 kHz single-SR** (`golden_wavenet_dyn_free.bin`,
   `golden_lstm_dyn_test.bin`, `golden_a2_dynamic_{gated,blended}*.bin`).
-- **Resolução:** gerar os v2 multi-SR **ou** documentar explicitamente que dinâmicos são ancorados só
-  em 48 kHz (e por quê).
+- **Resolução (documentação):** v2 multi-SR goldens são intencionalmente ausentes para engines dinâmicos.
+  Racional: (a) engines dinâmicos lidam com geometrias arbitrárias — a variância da geometria subsume a
+  variância de sample rate; (b) live cross-validation em `tests/cpp_parity.rs` já cobre multi-SR via
+  toolchain C++ para `wavenet_dyn_free` e `lstm_dyn_test`; (c) geometrias A2 dinâmicas são superfície
+  de parser forward-compat apenas. Documentado em `docs/cpp_parity_map.md` §3.3,
+  `tests/fixtures/README.md` §v2 multi-SR coverage, e `tests/golden_vectors.rs` (comentários
+  em cabeçalhos de seção).
 
 #### RF4 🟠 — (Épico E / F10) Classificação nondist é _warn-only_, não asserção
 
@@ -661,5 +666,5 @@ incompatível com o ConvNet NAM 0.5.4 de kernel=3; self-golden + soak + bench é
 Porém **falhou exatamente no FiLM-em-A2 (F5/RF1)**, que ficou com asserção placebo (`is_finite()`) e dois
 goldens commitados não consumidos.
 
-**Prioridade de correção:** **RF1 (🔴)** → **RF2 / RF3 / RF4 (🟠)** → **RF5–RF8 (🟡)**. F15 permanece
+**Prioridade de correção:** **RF1 (🔴)** → **RF2 / RF4 (🟠)** → **RF5–RF8 (🟡)**. ~~RF3~~ (🟢 resolvido via documentação, Tarefa 1.3). F15 permanece
 deferido (decisão opcional de Git LFS/subset).

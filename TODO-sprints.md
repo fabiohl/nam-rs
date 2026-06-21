@@ -42,13 +42,14 @@ As tarefas estão prontas para a skill `implementador`.
   3. Instanciar o engine A2 dinâmico (`WaveNetA2Dyn`) com um modelo representativo (gated ou blended), utilizando block size = 64.
   4. Executar um laço clássico de criterion, como feito com os outros engines.
 
-#### Tarefa 1.3: Documentação ou Geração de Goldens Multi-SR (Ref: RF3 🟠)
+#### Tarefa 1.3: Documentação ou Geração de Goldens Multi-SR (Ref: RF3 🟢) [DONE]
 
 - **Contexto:** Faltam `.bin` v2 (multi-SR) para engines dinâmicos. Apenas 48 kHz estão suportados.
 - **Implementação:**
-  1. **Decisão:** Avaliar se os dinâmicos compensam o peso dos assets v2.
-  2. **Caso documente:** Em `docs/cpp_parity_map.md` e nos arquivos de tests pertinentes, deixar claro em texto (ou num README da suite de dinâmicos) que os goldens estão intencionalmente vinculados exclusivamente a 48 kHz para economizar overhead, referenciando o `TODO-audit.md` (RF3).
-  3. **Caso implemente:** Gerar usando o commit C++ e adicionar em `tests/fixtures/`. (Se seguir esse rumo, inclua o diff que estenda o `V2_MODELS` no script de build de golden).
+  1. ~~**Decisão:** Avaliar se os dinâmicos compensam o peso dos assets v2.~~ **Decidido: documentar.** Engines dinâmicos lidam com geometrias arbitrárias — a variância de geometria subsume a variância de sample rate. Live cross-validation em `cpp_parity.rs` já cobre multi-SR.
+  2. **Caso documente:** ~~Em `docs/cpp_parity_map.md` e nos arquivos de tests pertinentes, deixar claro em texto (ou num README da suite de dinâmicos) que os goldens estão intencionalmente vinculados exclusivamente a 48 kHz para economizar overhead, referenciando o `TODO-audit.md` (RF3).~~ **FEITO** em `docs/cpp_parity_map.md` §3.3, `tests/fixtures/README.md` §v2 multi-SR coverage, e `tests/golden_vectors.rs` (comentários de seção). `TODO-audit.md` RF3 marcado como 🟢 resolvido.
+  3. ~~**Caso implemente:** Gerar usando o commit C++ e adicionar em `tests/fixtures/`. (Se seguir esse rumo, inclua o diff que estenda o `V2_MODELS` no script de build de golden).~~ Não aplicável (caminho de documentação escolhido).
+ docs: document intentional 48kHz-only v2 limitation for dynamic engine goldens
 
 ---
 
