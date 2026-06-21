@@ -446,7 +446,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO B — Fechamento de cobertura de validação dos novos paths (🔴 CRÍTICO)
+### ÉPICO B — Fechamento de cobertura de validação dos novos paths (🔴 CRÍTICO) [DOING]
 
 - **Objetivo:** toda arquitetura roteável (ConvNet + engines dinâmicos + FiLM-em-A2) tem **âncora externa
   vs NAMcore** + soak + bench — garantindo "resultados sonoros semelhantes" e "carregar/processar
