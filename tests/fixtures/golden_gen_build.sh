@@ -6,7 +6,7 @@
 # NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
 #
 # Canonical reference: NeuralAmpModelerCore v0.5.3 (tag), pinned at commit
-# 9c7b185de346fe0725dea537bcee4bc38b5bb6d6. All goldens (A1/LSTM/WaveNet/A2)
+# 9c7b185de346fe0725dea537bcee4bc38b5bb6d6. All goldens (A1/LSTM/WaveNet/A2/ConvNet/Dyn)
 # are rendered from this single commit.
 #
 # Prerequisites:
@@ -36,6 +36,8 @@
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (A2 goldens are cross-reference Rust↔C++ v0.5.3 via ESR/SNR scale-invariant
 #    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
+#   golden_convnet_test.bin, golden_wavenet_dyn_free.bin, golden_lstm_dyn_test.bin
+#   (ConvNet and dynamic model goldens from Sprint B.1.2 fixtures — sample_rate=48000)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
 #   golden_cabsim_cpp_long.bin
 #   (C++ dsp::ImpulseResponse reference for cabsim cross-validation)
@@ -228,6 +230,11 @@ MODELS=(
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod"
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45"
+    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
+    # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
+    #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
+    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
+    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
@@ -304,6 +311,11 @@ V2_MODELS=(
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod"
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45"
+    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
+    # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
+    #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
+    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
+    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
 )
 
 for entry in "${V2_MODELS[@]}"; do

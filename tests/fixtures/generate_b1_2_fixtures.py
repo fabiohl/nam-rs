@@ -33,6 +33,16 @@ def gen_weights(n: int, rng: random.Random, scale: float) -> List[float]:
 
 # =============================================================================
 # 1. ConvNet
+#
+# NOTE: C++ golden generation NOT currently possible for ConvNet.
+# The NAM 0.5.4 ConvNet uses a multi-block architecture with per-block channels,
+# kernel_size>2, and a `layers`-based JSON config. The C++ render tool (NAM Core
+# v0.5.3) implements a different ConvNet: single `channels` shared across blocks,
+# flat `dilations`, fixed kernel_size=2, and `batchnorm` flag. These are
+# architecturally incompatible — the C++ render will crash with a JSON type_error.
+#
+# Golden vectors for ConvNet must be generated through a NAM 0.5.4+ render pipeline
+# or via a future C++ Core upgrade. For now, this fixture serves Rust-only validation.
 # =============================================================================
 
 CONVNET_SEED = 77
@@ -285,6 +295,7 @@ def build_lstm_dyn_nam(weights: List[float]) -> dict:
         "config": {
             "num_layers": LSTM_DYN_NUM_LAYERS,
             "hidden_size": LSTM_DYN_HIDDEN_SIZE,
+            "input_size": 1,
         },
         "weights": weights,
         "metadata": {

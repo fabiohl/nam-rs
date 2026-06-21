@@ -59,16 +59,19 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
 
 **Objetivo:** Expandir a suite de renderização C++ e assegurar validação numérica com thresholds calibrados (sem fallback placebo).
 
-### [ ] Tarefa B.2.1: Ampliação do Gerador C++ (`golden_gen_build.sh`)
+### [X] Tarefa B.2.1: Ampliação do Gerador C++ (`golden_gen_build.sh`)
 
-* **Ação:** Incluir os modelos obtidos na Sprint B.1 dentro das listas de renderização automática (`MODELS` e arrays V2) do script `tests/fixtures/golden_gen_build.sh`.
-* **Validação:** Rodar o processo localmente via `NAM_AUTO_BUILD_GOLDENS=1 utils/tests-long.sh` e assegurar que o compilador e runtime C++ consigam despejar os `.bin` do ConvNet e dinâmicos de forma intacta.
+* **Resultado:** WaveNetDyn (`wavenet_dyn_free.nam`) e LSTM-Dyn (`lstm_dyn_test.nam`) integrados ao `golden_gen_build.sh` (arrays MODELS e V2_MODELS). Golden vectors gerados com sucesso pelo C++ render tool (NAM Core v0.5.3).
+* **Correção do Fixture LSTM-Dyn:** Adicionado `"input_size": 1` ao `config` do `lstm_dyn_test.nam` — o parser LSTM do C++ (`lstm.cpp:171`) acessa `config["input_size"]` diretamente e falhava com `type_error` quando ausente. O Rust (`get_lstm_topology`) não usa este campo, portanto sem impacto.
+* **Bloqueio ConvNet (🔴):** A arquitetura ConvNet do NAM 0.5.4 (multi-bloco, per-block channels, kernel_size variável, formato `layers`) é **incompatível** com o ConvNet do NAM Core v0.5.3 (single `channels`, dilatações planas, kernel_size=2 fixo, flag `batchnorm`). O render C++ aborta com `json.exception.type_error`. Golden vectors para ConvNet não podem ser gerados via o pipeline atual.
+  * **Impacto nas tarefas seguintes:** Tarefa B.2.2 (`test_golden_vectors_convnet`) precisa ser adaptada — o golden de ConvNet depende de upgrade do NAM Core p/ versão ≥0.5.4 ou de um pipeline de render alternativo.
 
 ### [ ] Tarefa B.2.2: Expansão da Suíte de Paridade
 
-* **Ação (Golden Vectors):** Adicionar testes em `tests/golden_vectors.rs` para ConvNet e dinâmicos (`test_golden_vectors_convnet`, etc).
+* **Ação (Golden Vectors):** Adicionar testes em `tests/golden_vectors.rs` para dinâmicos (`test_golden_vectors_wavenet_dyn_free`, `test_golden_vectors_lstm_dyn_test`).
+* **Ação (ConvNet sem golden C++ — 🔴 Bloqueado):** `test_golden_vectors_convnet` depende de golden C++ que o NAM Core v0.5.3 não produz (ver Tarefa B.2.1). Alternativas: (a) usar self-golden Rust→Rust com threshold de consistência interna, (b) aguardar upgrade do NAM Core.
 * **Ação (Threshold Calibration):** Modificar `tests/common/validation.rs` para incluir a tolerância calibrada de SNR exigindo nível realístico (`SNR ≥ 70 dB`) e anotar o ganho como `// Measured: ...`.
-* **Ação (Live Cross-Validation):** Inserir os equivalentes em `tests/cpp_parity.rs` para a suite longa (`live_cross_validation_convnet`, etc).
+* **Ação (Live Cross-Validation):** Inserir os equivalentes em `tests/cpp_parity.rs` para a suite longa (`live_cross_validation_wavenet_dyn`, `live_cross_validation_lstm_dyn`).
 
 ---
 

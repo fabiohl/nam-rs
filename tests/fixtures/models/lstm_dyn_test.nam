@@ -3,7 +3,8 @@
   "architecture": "LSTM",
   "config": {
     "num_layers": 1,
-    "hidden_size": 7
+    "hidden_size": 7,
+    "input_size": 1
   },
   "weights": [
     0.039712405740517806,
