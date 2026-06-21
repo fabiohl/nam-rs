@@ -265,12 +265,18 @@ fn test_prewarm_large_rf_deterministic() {
 }
 
 /// Stress test: process multiple blocks after prewarm to ensure state machine stability.
+///
+/// Feeds 16 blocks of 64-sample sine waves through a synthetic model (weights=0.01,
+/// tanh layers). Validates finiteness and bounds output peak to 50× input peak
+/// (generous for a controlled synthetic model; any output beyond this indicates
+/// numerical divergence in the state machine).
 #[test]
 fn test_prewarm_large_rf_multiblock() {
     let mut model = build_large_rf_wavenet();
     model.prewarm();
 
-    // Process 16 blocks of 64 samples each (covering all jitter positions).
+    const GAIN_LIMIT: f32 = 50.0;
+
     for block_idx in 0..16 {
         let sine: Vec<f32> = (0..64)
             .map(|i| {
@@ -288,6 +294,10 @@ fn test_prewarm_large_rf_multiblock() {
                 block_idx,
                 i,
                 v
+            );
+            assert!(
+                v.abs() <= GAIN_LIMIT,
+                "Excessive magnitude at block {block_idx}, sample {i}: {v} (limit {GAIN_LIMIT})",
             );
         }
     }
@@ -511,10 +521,14 @@ fn test_prewarm_k5_large_rf_deterministic() {
 }
 
 /// K=5 multiblock: processes multiple blocks after prewarm to ensure stability.
+///
+/// Same gate as the K=3 large-RF multiblock: peak ≤ 50× input.
 #[test]
 fn test_prewarm_k5_large_rf_multiblock() {
     let mut model = build_k5_large_rf_wavenet();
     model.prewarm();
+
+    const GAIN_LIMIT: f32 = 50.0;
 
     for block_idx in 0..16 {
         let sine: Vec<f32> = (0..64)
@@ -533,6 +547,10 @@ fn test_prewarm_k5_large_rf_multiblock() {
                 block_idx,
                 i,
                 v
+            );
+            assert!(
+                v.abs() <= GAIN_LIMIT,
+                "Excessive K=5 magnitude at block {block_idx}, sample {i}: {v} (limit {GAIN_LIMIT})",
             );
         }
     }
@@ -700,6 +718,10 @@ fn test_a2_lite_prewarm_deterministic() {
 }
 
 /// A2-Full multiblock: processes multiple blocks of variable sizes after prewarm.
+///
+/// The A2 synthetic model uses LeakyReLU (slope=0.01) instead of tanh, so output
+/// can accumulate more gain. A 50× input bound catches divergence without false
+/// positives for the deterministic random-weight fixture.
 #[test]
 fn test_a2_full_prewarm_multiblock() {
     let mut model = build_synth_a2::<8>(0.01);
@@ -707,6 +729,7 @@ fn test_a2_full_prewarm_multiblock() {
 
     let block_sizes = [1usize, 8, 16, 32, 48, 64, 63, 17];
     let mut sample_offset = 0usize;
+    const GAIN_LIMIT: f32 = 50.0;
 
     for &block_size in &block_sizes {
         let sine: Vec<f32> = (0..block_size)
@@ -726,12 +749,18 @@ fn test_a2_full_prewarm_multiblock() {
                 i,
                 v
             );
+            assert!(
+                v.abs() <= GAIN_LIMIT,
+                "Excessive A2-Full magnitude at block_size={block_size}, sample {i}: {v} (limit {GAIN_LIMIT})",
+            );
         }
         sample_offset += block_size;
     }
 }
 
 /// A2-Lite multiblock: processes multiple blocks of variable sizes after prewarm.
+///
+/// Same gate as A2-Full: peak ≤ 50× input for the synthetic random-weight fixture.
 #[test]
 fn test_a2_lite_prewarm_multiblock() {
     let mut model = build_synth_a2::<3>(0.01);
@@ -739,6 +768,7 @@ fn test_a2_lite_prewarm_multiblock() {
 
     let block_sizes = [1usize, 8, 16, 32, 48, 64, 63, 17];
     let mut sample_offset = 0usize;
+    const GAIN_LIMIT: f32 = 50.0;
 
     for &block_size in &block_sizes {
         let sine: Vec<f32> = (0..block_size)
@@ -757,6 +787,10 @@ fn test_a2_lite_prewarm_multiblock() {
                 block_size,
                 i,
                 v
+            );
+            assert!(
+                v.abs() <= GAIN_LIMIT,
+                "Excessive A2-Lite magnitude at block_size={block_size}, sample {i}: {v} (limit {GAIN_LIMIT})",
             );
         }
         sample_offset += block_size;

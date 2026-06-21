@@ -230,19 +230,18 @@ fn test_wavenet_model_json_parsing() {
 
 /// Test 2: Run Multiple Sine Wave Blocks through the WaveNet Core and compute RMS/Error (Sanity)
 ///
-/// Added RMS magnitude check ≤ 10.0 to detect divergence.
-/// In debug, uses reduced blocks (512) for CI speed.
+/// Processes a multi-block sine wave through a synthetic WaveNet (weights=0.001,
+/// tanh activations). Validates finiteness, per-sample magnitude (≤ 10× input peak),
+/// and RMS ≤ 10.0. In debug, uses reduced blocks (512) for CI speed.
 #[test]
 fn test_wavenet_computational_stability() {
     let mut model = build_synthetic_wavenet_standard();
 
-    // Math stabilization with silent transient blocks
     model.prewarm();
 
     let mut in_data = [0.0f32; TEST_BLOCK_SIZE];
     let mut out_data = [0.0f32; TEST_BLOCK_SIZE];
 
-    // In debug, reduce blocks for faster CI; release uses full value.
     let num_blocks = if cfg!(debug_assertions) {
         512
     } else {
@@ -250,10 +249,10 @@ fn test_wavenet_computational_stability() {
     };
 
     let mut tot_energy = 0.0f64;
+    let mut max_abs_out = 0.0f32;
     let mut pos: u64 = 0;
 
     for _ in 0..num_blocks {
-        // Controlled sine generator as in `ModelTest.cpp`
         for item in in_data.iter_mut().take(TEST_BLOCK_SIZE) {
             *item = ((pos as f32) * 0.01).sin();
             pos += 1;
@@ -266,6 +265,8 @@ fn test_wavenet_computational_stability() {
                 out_val.is_finite(),
                 "Computational crash detected: FPU produced non-finite float. Audit failure."
             );
+            let abs_v = out_val.abs();
+            max_abs_out = max_abs_out.max(abs_v);
             tot_energy += (out_val as f64) * (out_val as f64);
         }
     }
@@ -276,11 +277,13 @@ fn test_wavenet_computational_stability() {
         rms
     );
 
-    // T-7: Reasonable magnitude check — RMS should be ≤ 10.0 for synthetic model.
-    // An RMS > 10.0 would indicate numerical divergence of the network or initialization error.
+    assert!(rms <= 10.0, "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence.");
+    // The synthetic model (all weights 0.001, head_rechannel bias=0) can produce
+    // near-zero outputs by design — this is a known property of the controlled fixture
+    const GAIN_LIMIT: f32 = 10.0;
     assert!(
-        rms <= 10.0,
-        "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence."
+        max_abs_out <= GAIN_LIMIT,
+        "Synthetic WaveNet peak {max_abs_out} exceeds {GAIN_LIMIT}× input peak. Numerical divergence."
     );
 }
 
@@ -289,6 +292,13 @@ fn test_wavenet_computational_stability() {
 // =============================================================================
 
 /// Test 13: WaveNet Feather Stability
+///
+/// Processes a 440 Hz sine through the real Feather model and validates:
+/// - All outputs are finite (no NaN/Inf).
+/// - Peak output does not exceed 20× the peak input (physically-grounded gate
+///   for a guitar amp model; any output exceeding 20× a ±1 sine indicates
+///   numerical divergence).
+/// - RMS is bounded relative to the input (catches silent-model bugs).
 #[test]
 fn test_wavenet_stability_feather() {
     let path = model_path("BossWN-feather.nam");
@@ -305,22 +315,41 @@ fn test_wavenet_stability_feather() {
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 20.0;
+
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
+    let mut max_abs_out = 0.0f32;
+    let mut tot_energy = 0.0f64;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
             "[Feather] Non-finite sample at index {i}: {s}"
         );
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        tot_energy += (s as f64) * (s as f64);
+        let limit = max_abs_in * GAIN_LIMIT;
         assert!(
-            s.abs() < 100.0,
-            "[Feather] Excessive magnitude at index {i}: {s} (limit 100.0)"
+            abs_s <= limit,
+            "[Feather] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    let rms = (tot_energy / 64.0).sqrt();
+    assert!(max_abs_out > 0.0, "[Feather] All-zero output — model may be silent");
+    assert!(
+        rms < max_abs_out as f64,
+        "[Feather] RMS ({rms}) >= max_abs ({max_abs_out}) — abnormal output shape"
+    );
 }
 
 /// WaveNet Nano Stability
+///
+/// Processes a 440 Hz sine through the real Nano model. Same physical gate as
+/// Feather: peak output ≤ 20× peak input.
 #[test]
 fn test_wavenet_stability_nano() {
     let path = model_path("BossWN-nano.nam");
@@ -337,24 +366,39 @@ fn test_wavenet_stability_nano() {
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 20.0;
+
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
+    let mut max_abs_out = 0.0f32;
+    let mut tot_energy = 0.0f64;
     for (i, &s) in output.iter().enumerate() {
         assert!(s.is_finite(), "[Nano] Non-finite sample at index {i}: {s}");
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        tot_energy += (s as f64) * (s as f64);
+        let limit = max_abs_in * GAIN_LIMIT;
         assert!(
-            s.abs() < 100.0,
-            "[Nano] Excessive magnitude at index {i}: {s} (limit 100.0)"
+            abs_s <= limit,
+            "[Nano] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    let rms = (tot_energy / 64.0).sqrt();
+    assert!(max_abs_out > 0.0, "[Nano] All-zero output — model may be silent");
+    assert!(
+        rms < max_abs_out as f64,
+        "[Nano] RMS ({rms}) >= max_abs ({max_abs_out}) — abnormal output shape"
+    );
 }
 
 /// WaveNet A2-Full Stability
 ///
 /// A2 fixtures use deterministic random weights (SEED=42), which can produce
-/// large-but-finite outputs for certain inputs. Only finiteness is asserted
-/// (no NaN/Inf), not magnitude limits — matching the existing
-/// `test_a2_full_real_inference_finite_output()` convention.
+/// larger-than-usual outputs. A physically-grounded gate of 50× input peak
+/// catches numerical divergence while tolerating the synthetic weight distribution.
 #[test]
 fn test_wavenet_stability_a2_full() {
     let path = model_path("wavenet_a2_full.nam");
@@ -371,20 +415,34 @@ fn test_wavenet_stability_a2_full() {
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 50.0;
+    let limit = max_abs_in * GAIN_LIMIT;
+
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
+    let mut max_abs_out = 0.0f32;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
             "[A2-Full] Non-finite sample at index {i}: {s}"
         );
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        assert!(
+            abs_s <= limit,
+            "[A2-Full] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
+        );
     }
+    assert!(max_abs_out > 0.0, "[A2-Full] All-zero output — model may be silent");
 }
 
 /// WaveNet A2-Lite Stability
 ///
-/// Same convention as A2-Full: only finiteness asserted.
+/// Same convention as A2-Full: physically-grounded gate of 50× input peak
+/// for the synthetic random-weight fixture (SEED=42).
 #[test]
 fn test_wavenet_stability_a2_lite() {
     let path = model_path("wavenet_a2_lite.nam");
@@ -401,18 +459,36 @@ fn test_wavenet_stability_a2_lite() {
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 50.0;
+    let limit = max_abs_in * GAIN_LIMIT;
+
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
+    let mut max_abs_out = 0.0f32;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
             "[A2-Lite] Non-finite sample at index {i}: {s}"
         );
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
+        assert!(
+            abs_s <= limit,
+            "[A2-Lite] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
+        );
     }
+    assert!(max_abs_out > 0.0, "[A2-Lite] All-zero output — model may be silent");
 }
 
 /// Test 15: LSTM 2x8 Stability
+///
+/// Processes a 440 Hz sine through the real LSTM 2×8 model.
+/// Physically-grounded gate: peak output ≤ 20× peak input.
+/// LSTM recurrent cells can accumulate state, but a clean sine input
+/// should not diverge beyond 20× gain.
 #[test]
 fn test_lstm_stability_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
@@ -429,19 +505,28 @@ fn test_lstm_stability_2x8() {
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 20.0;
+    let limit = max_abs_in * GAIN_LIMIT;
+
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
+    let mut max_abs_out = 0.0f32;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
             "[LSTM 2x8] Non-finite sample at index {i}: {s}"
         );
+        let abs_s = s.abs();
+        max_abs_out = max_abs_out.max(abs_s);
         assert!(
-            s.abs() < 100.0,
-            "[LSTM 2x8] Excessive magnitude at index {i}: {s} (limit 100.0)"
+            abs_s <= limit,
+            "[LSTM 2x8] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    assert!(max_abs_out > 0.0, "[LSTM 2x8] All-zero output — model may be silent");
 }
 
 // =============================================================================
@@ -748,6 +833,9 @@ fn test_lstm_variable_block_sizes() {
 ///
 /// Validation on real models is critical as it detects regressions that do not appear
 /// in ideal synthetic models, such as bias truncation or gain normalization.
+///
+/// Each model is fed a 440 Hz sine; output must be finite and bounded to 20× the
+/// input peak. This physically-grounded gate supersedes the arbitrary 100.0 limit.
 #[test]
 fn test_community_models_inference() {
     let models: [(&str, WavenetTopologyResult); 4] = [
@@ -770,6 +858,10 @@ fn test_community_models_inference() {
     ];
 
     let input = generate_sine_440hz(64);
+    let max_abs_in = input.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+    assert!(max_abs_in > 0.0, "Input signal is silent — test fixture broken");
+    const GAIN_LIMIT: f32 = 20.0;
+    let limit = max_abs_in * GAIN_LIMIT;
 
     for (filename, expected_topo) in models {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -803,6 +895,7 @@ fn test_community_models_inference() {
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
+        let mut max_abs_out = 0.0f32;
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
@@ -810,14 +903,22 @@ fn test_community_models_inference() {
                 filename,
                 i
             );
+            let abs_s = s.abs();
+            max_abs_out = max_abs_out.max(abs_s);
             assert!(
-                s.abs() < 100.0,
-                "Model {} generated excessive magnitude peak at index {}: {}. Possible instability.",
+                abs_s <= limit,
+                "Model {} generated excessive magnitude peak at index {}: {}. \
+                 Possible instability (limit {limit}, {GAIN_LIMIT}× input peak).",
                 filename,
                 i,
                 s
             );
         }
+        assert!(
+            max_abs_out > 0.0,
+            "Model {} produced all-zero output — model may be silent",
+            filename
+        );
         println!("✓ Community model {} successfully validated.", filename);
     }
 }

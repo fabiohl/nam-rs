@@ -49,7 +49,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Ação:** O uso da função `std::slice::from_raw_parts_mut` ocorre sob um buffer bruto sem validação de pré-condições sobre o tamanho esperado (`H4 * IH`).
   - **Implementação:** Antes do bloco `unsafe`, inserir validações fortes de estado, como um `assert_eq!(buf.len(), expected_len, "...")`, ou encapsular dentro de um construtor que valide os bounds de memória, evitando *Undefined Behavior* por falha de casting.
 
-- [ ] **Tarefa C.2.2 (F12): Corrigir regra global de `*.json` no `.gitignore`**
+- [x] **Tarefa C.2.2 (F12): Corrigir regra global de `*.json` no `.gitignore`**
   - **Especialista:** `implementador`.
   - **Arquivo alvo:** `.gitignore` (raiz).
   - **Ação:** O arquivo de configuração proíbe track de json, arriscando a integridade dos fixtures.
@@ -66,7 +66,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
 
 **Foco:** Refatorar, apertar bounds ou consolidar testes cujo único gate efetivo é genérico: `is_finite()` ou `abs() < 100.0`.
 
-- [ ] **Tarefa D.1.1 (F6): Restringir pass-gates e fortalecer prewarm do WaveNet**
+- [x] **Tarefa D.1.1 (F6): Restringir pass-gates e fortalecer prewarm do WaveNet**
   - **Especialista:** `implementador` / `revisor-auditor`.
   - **Arquivos alvo:** `tests/nam_infer_test.rs` (`test_wavenet_stability_*`), `tests/wavenet_prewarm_edge.rs`.
   - **Ação:** Identificar testes validando a saída via métricas nulas (finitude/limites arbitrariamente gigantes).
