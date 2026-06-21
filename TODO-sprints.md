@@ -83,7 +83,7 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
 
 **Objetivo:** Assegurar perenidade na thread de áudio e extração de máxima performance nativa na compilação *Release*.
 
-### [ ] Tarefa B.3.1: Cobertura Soak (Endurance)
+### [X] Tarefa B.3.1: Cobertura Soak (Endurance)
 
 * **Ação:** Atualizar `tests/soak_test.rs` implementando instâncias de execução extrema (10M de frames) em blocos.
 * **Escopo Exigido:**
@@ -92,6 +92,13 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
   * LstmModelDyn
   * WaveNetA2Dyn (Gated/Blended)
 * **Aserções:** Ausência total de subnormais, `NaN` ou `Inf`; checagem restrita de *zero-allocs*.
+* **Resultado:** Adicionados 5 novos soak tests (`#[ignore]`) em `tests/soak_test.rs`:
+  * `test_convnet_soak` — `convnet_test.nam`, buffer `64×out_ch`, zero-alloc + NaN/Inf/subnormal checks.
+  * `test_wavenet_dyn_soak` — `wavenet_dyn_free.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
+  * `test_lstm_dyn_soak` — `lstm_dyn_test.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
+  * `test_a2_dyn_gated_soak` — `a2_dynamic_gated_ch8.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
+  * `test_a2_dyn_blended_soak` — `a2_dynamic_blended_ch3.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
+* **Infra:** `#[global_allocator]` com `CountingAllocator` adicionado ao binário `soak_test`. Helper `run_model_soak()` centraliza loading de fixture, prewarm, alternância noise/silence, tracking de alloc e validação numérica.
 
 ### [ ] Tarefa B.3.2: Benches PGO-aware
 

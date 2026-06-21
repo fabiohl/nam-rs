@@ -15,14 +15,27 @@ use nam_rs::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
+use nam_rs::loader::dispatcher::build_model;
+use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::math::common::half::{f16_bits_to_f32, f32_to_f16_bits};
+use nam_rs::models::NamModel;
+use nam_rs::models::StaticModel;
 use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
 use nam_rs::models::lstm::*;
 
 mod common;
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
+use common::alloc_audit::CountingAllocator;
+use common::alloc_audit::{TrackingGuard, get_alloc_count};
+use common::io_helpers::model_path;
 use common::model_builders::build_soak_wavenet;
+use std::fs;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
+
+#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
+#[global_allocator]
+static GLOBAL: CountingAllocator = CountingAllocator;
 
 /// Simple deterministic PRNG (Linear Congruential Generator - LCG).
 ///
@@ -1611,4 +1624,156 @@ fn test_wavenet_drift_decomposition() {
     println!("//   should prioritize higher-precision weight storage.");
     println!("//   Tanh Padé contribution is negligible for this topology (small");
     println!("//   weights keep activations in the linear tanh region).");
+}
+
+// =============================================================================
+// B.3.1 — Soak Tests for New Paths (ConvNet, WaveNetDyn, LstmDyn, WaveNetA2Dyn)
+// =============================================================================
+
+fn run_model_soak(
+    fixture: &str,
+    label: &str,
+    num_frames: usize,
+    block_size: usize,
+    output_is_multichannel: bool,
+) {
+    let path = model_path(fixture);
+    assert!(path.exists(), "Fixture {} not found at {:?}", fixture, path);
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read model file");
+    let model_data = parse_nam_json(&json_data).expect("Failed to parse JSON");
+    let mut model = build_model(&model_data).expect("Failed to build model");
+
+    let out_ch = if output_is_multichannel {
+        match model.as_ref() {
+            StaticModel::ConvNet(c) => c.out_channels(),
+            _ => 1,
+        }
+    } else {
+        1
+    };
+
+    model.prewarm(model.prewarm_samples());
+
+    let out_len = if output_is_multichannel {
+        block_size * out_ch
+    } else {
+        block_size
+    };
+
+    let mut input = vec![0.0f32; block_size];
+    let mut output = vec![0.0f32; out_len];
+    let mut pcg = SimplePcg::new(42);
+
+    let mut processed = 0;
+    let mut zero_alloc_checked = false;
+
+    let start = Instant::now();
+    while processed < num_frames {
+        let is_noise = (processed / 100_000) % 2 == 0;
+        if is_noise {
+            for v in &mut input {
+                *v = pcg.next_f32();
+            }
+        } else {
+            input.fill(0.0);
+        }
+
+        // Zero-alloc audit: verify during one noise frame (post-prewarm)
+        if !zero_alloc_checked {
+            {
+                let _guard = TrackingGuard::new();
+                model.process(
+                    std::hint::black_box(&input),
+                    std::hint::black_box(&mut output),
+                );
+            }
+            assert_eq!(
+                get_alloc_count(),
+                0,
+                "{} — heap allocation detected during process() call",
+                label
+            );
+            zero_alloc_checked = true;
+        } else {
+            model.process(
+                std::hint::black_box(&input),
+                std::hint::black_box(&mut output),
+            );
+        }
+
+        for &v in &output {
+            assert!(
+                v.is_finite(),
+                "{} NaN/Inf after {} frames",
+                label,
+                processed
+            );
+            assert!(
+                v == 0.0 || v.is_normal(),
+                "{} subnormal at frame {} (bits: 0x{:08X})",
+                label,
+                processed,
+                v.to_bits()
+            );
+        }
+
+        processed += block_size;
+    }
+
+    let duration = start.elapsed();
+    println!("--- {} Soak ---", label);
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
+    println!("Zero-alloc verified: ✓");
+}
+
+/// Soak Test: ConvNet endurance — 10M frames.
+///
+/// ConvNet operates on the full buffer (not sub-blocks). The output buffer
+/// must be `block_size × out_channels`.
+#[test]
+#[ignore]
+fn test_convnet_soak() {
+    run_model_soak("convnet_test.nam", "ConvNet", 10_000_000, 64, true);
+}
+
+/// Soak Test: WaveNetModelDyn endurance — 10M frames.
+#[test]
+#[ignore]
+fn test_wavenet_dyn_soak() {
+    run_model_soak("wavenet_dyn_free.nam", "WaveNetDyn", 10_000_000, 64, false);
+}
+
+/// Soak Test: LstmModelDyn endurance — 10M frames.
+#[test]
+#[ignore]
+fn test_lstm_dyn_soak() {
+    run_model_soak("lstm_dyn_test.nam", "LstmDyn", 10_000_000, 64, false);
+}
+
+/// Soak Test: WaveNetA2Dyn (Gated) endurance — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_dyn_gated_soak() {
+    run_model_soak(
+        "a2_dynamic_gated_ch8.nam",
+        "A2Dyn-Gated",
+        10_000_000,
+        64,
+        false,
+    );
+}
+
+/// Soak Test: WaveNetA2Dyn (Blended) endurance — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_dyn_blended_soak() {
+    run_model_soak(
+        "a2_dynamic_blended_ch3.nam",
+        "A2Dyn-Blended",
+        10_000_000,
+        64,
+        false,
+    );
 }
