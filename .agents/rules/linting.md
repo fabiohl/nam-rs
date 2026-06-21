@@ -11,7 +11,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # Quality and Linting at Activity Completion
 
-1. **Incremental compilation**: Run `cargo check` and `cargo build` at appropriate moments during work.
+1. **Incremental compilation**: Run `cargo check`, `cargo clippy` and `cargo build` at appropriate moments during work.
 2. **Documentation**: If there were relevant architectural changes, trigger the `documentador` skill.
 3. **Tests (if `.rs` modified)**: `cargo test` — no functionality breakage.
 4. **Benchmarks (if `.rs` modified with performance goals)**: `cargo bench` — verify gain or at least no regression.
