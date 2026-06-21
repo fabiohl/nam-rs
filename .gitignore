@@ -30,6 +30,13 @@ scratch.rs
 # Golden vectors de validação numérica (não ignorar)
 !tests/fixtures/*.bin
 
+# Ignorar arquivos json desnecessários mas liberar os de testes
+*.json
+!tests/fixtures/**/*.json
+
+# Manifesto de frescor (não versionar)
+/tests/fixtures/.golden_manifest.sha256
+
 # Proptest regression files (gerados automaticamente)
 *.proptest-regressions
 

@@ -496,7 +496,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist) [DOING]
+### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist) [DONE]
 
 - **Objetivo:** `tests-long.sh` roda a suíte completa em **clone recém-clonado** tendo apenas `mod-update.sh`
   como pré-requisito; PGO cobre inteligentemente todos os hot-paths; mecanismo `models-nondist` reprodutível
