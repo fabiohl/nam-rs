@@ -466,7 +466,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO C — Robustez RT & caça a bugs (panics, `unsafe`, parsing)
+### ÉPICO C — Robustez RT & caça a bugs (panics, `unsafe`, parsing) [DOING]
 
 - **Objetivo:** zero superfícies de panic no hot-path; `unsafe` com invariantes verificados; parser/loader
   defensivos; gitignore robusto.
@@ -480,7 +480,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO D — Saneamento da suíte de testes (anti-placebo & consolidação)
+### ÉPICO D — Saneamento da suíte de testes (anti-placebo & consolidação) [DOING]
 
 - **Objetivo:** eliminar testes de baixo valor (finite-only/`<100`, dead tests, golden neutralizado),
   aplicando o princípio "todo golden deve poder falhar" sem perder cobertura legítima.
