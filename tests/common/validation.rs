@@ -458,6 +458,26 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
         }
+        // --- WaveNet A2-FiLM-Lite (CH=3, FiLM active, RF1 🔴) ---
+        // FiLM modulation adds per-frame conditioning (FiLM gamma/beta) that diverges
+        // from C++ generic WaveNet path. The Rust WaveNetA2Dyn engine implements FiLM
+        // natively; C++ a2_fast.cpp rejects FiLM and falls back to Eigen-based generic
+        // WaveNet. The divergence is inherent — not an engine regression.
+        // Measured: SNR=18.1 dB, ESR=1.54e-2 (2026-06-21)
+        // Margin: SNR - 6.1 dB, ESR factor ~1.3x
+        "wavenet_a2_film_lite" => {
+            let snr_db = 12.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2)))
+        }
+        // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
+        // FiLM modulation on 8-channel A2 model. C++ routes to generic WaveNet
+        // (Eigen), Rust routes to WaveNetA2Dyn with native FiLM support.
+        // Measured: SNR=36.0 dB, ESR=2.50e-4 (2026-06-21)
+        // Margin: SNR - 6.0 dB, ESR factor ~2.0x
+        "wavenet_a2_film_full" => {
+            let snr_db = 30.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4)))
+        }
         // --- WaveNet A2 Dynamic Gated CH=8 (Task 3.3) ---
         // Gating doubles conv output (channels × 2*bottleneck) and applies
         // Sigmoid gate + LeakyReLU main activation. C++ uses Eigen-based generic

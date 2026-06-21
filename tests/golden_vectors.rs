@@ -1460,17 +1460,34 @@ fn test_golden_vectors_a2_dynamic_blended_ch3() {
     );
 }
 
-/// Test: WaveNet A2-FiLM-Lite (CH=3, FiLM active) — routing and load smoke test.
+/// Test 9c: Golden Vectors — WaveNet A2-FiLM-Lite (CH=3, FiLM active)
 ///
-/// B.1.1 (F5, Caso B): FiLM models are routed to WaveNetA2Dyn, matching C++ behavior
-/// (C++ a2_fast.cpp rejects FiLM and falls back to generic WaveNet).
-/// This test verifies the model loads and processes without error.
+/// Validates the `WaveNetA2Dyn` engine with FiLM modulation against the
+/// C++ generic WaveNet reference (C++ a2_fast.cpp rejects FiLM and falls
+/// back to Eigen-based generic WaveNet).
+///
+/// Reads `tests/fixtures/golden_wavenet_a2_film_lite.bin`, builds the
+/// dynamic `StaticModel` from `wavenet_a2_film_lite.nam`, and compares
+/// via ESR/SNR/MSE fusion report.
 #[test]
 fn test_golden_vectors_wavenet_a2_film_lite() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_film_lite.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_film_lite.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_film_lite.bin");
+
     let nam_path = model_path("wavenet_a2_film_lite.nam");
     assert!(
         nam_path.exists(),
-        "wavenet_a2_film_lite.nam not found at {nam_path:?}. This fixture is part of the repository."
+        "wavenet_a2_film_lite.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
     );
 
     let json_data =
@@ -1478,29 +1495,55 @@ fn test_golden_vectors_wavenet_a2_film_lite() {
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data).expect("Dispatcher failed to build A2-FiLM-Lite");
 
-    // Verify routing: FiLM models must route to WaveNetA2Dyn (not fast-path).
     assert!(
         matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),
         "FiLM model must route to WaveNetA2Dyn (C++ a2_fast.cpp rejects FiLM)"
     );
 
-    // Smoke: load and process a small block, output must be finite.
-    model.prewarm(64);
-    let input = vec![0.1f32; 64];
-    let mut output = vec![0.0f32; 64];
-    model.process(&input, &mut output);
-    for &s in output.iter() {
-        assert!(s.is_finite(), "A2-FiLM-Lite output must be finite");
-    }
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_film_lite");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
-/// Test: WaveNet A2-FiLM-Full (CH=8, FiLM active) — routing and load smoke test.
+/// Test 9d: Golden Vectors — WaveNet A2-FiLM-Full (CH=8, FiLM active)
+///
+/// Validates the `WaveNetA2Dyn` engine with FiLM modulation against the
+/// C++ generic WaveNet reference (C++ a2_fast.cpp rejects FiLM and falls
+/// back to Eigen-based generic WaveNet).
+///
+/// Reads `tests/fixtures/golden_wavenet_a2_film_full.bin`, builds the
+/// dynamic `StaticModel` from `wavenet_a2_film_full.nam`, and compares
+/// via ESR/SNR/MSE fusion report.
 #[test]
 fn test_golden_vectors_wavenet_a2_film_full() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_film_full.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_film_full.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_film_full.bin");
+
     let nam_path = model_path("wavenet_a2_film_full.nam");
     assert!(
         nam_path.exists(),
-        "wavenet_a2_film_full.nam not found at {nam_path:?}. This fixture is part of the repository."
+        "wavenet_a2_film_full.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
     );
 
     let json_data =
@@ -1513,13 +1556,20 @@ fn test_golden_vectors_wavenet_a2_film_full() {
         "FiLM model must route to WaveNetA2Dyn (C++ a2_fast.cpp rejects FiLM)"
     );
 
-    model.prewarm(64);
-    let input = vec![0.1f32; 64];
-    let mut output = vec![0.0f32; 64];
-    model.process(&input, &mut output);
-    for &s in output.iter() {
-        assert!(s.is_finite(), "A2-FiLM-Full output must be finite");
-    }
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_film_full");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 // =============================================================================

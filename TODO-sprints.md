@@ -24,7 +24,7 @@ As tarefas estão prontas para a skill `implementador`.
 
 **Foco:** Reforçar cobertura dos paths dinâmicos e de convolução, eliminando testes placebo sensíveis e provendo instrumentação apropriada para o PGO (Profile-Guided Optimization).
 
-#### Tarefa 1.1: Eliminar Placebo FiLM-em-A2 (Ref: RF1 🔴)
+#### Tarefa 1.1: Eliminar Placebo FiLM-em-A2 (Ref: RF1 🔴) [DONE]
 
 - **Contexto:** Os goldens de paridade `tests/fixtures/golden_wavenet_a2_film_full.bin` e `..._lite.bin` não estão sendo consumidos. Os testes que deveriam conferir a paridade apenas garantem que a saída não gera `NaN` (`is_finite()`).
 - **Implementação:**
