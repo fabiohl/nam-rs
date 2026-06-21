@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use std::mem::size_of;
+
 use super::super::WeightCursor;
 use crate::math::common::quantize_weight;
 use crate::models::lstm::{LstmLayer, LstmLayerDyn};
@@ -50,13 +52,20 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
+    assert_eq!(H4, 4 * H, "H4 must equal 4*H for LSTM layer");
+    assert_eq!(IH, I + H, "IH must equal I+H for LSTM layer");
+
     let raw_weights = cursor.read_slice(H4 * IH)?;
     let is_gate_major = cursor.is_gate_major_lstm();
+
+    let expected_len = H4 * IH;
+    let actual_len = size_of::<[[[u16; H]; IH]; 4]>() / size_of::<u16>();
+    assert_eq!(actual_len, expected_len, "LSTM weight buffer size mismatch");
 
     let dst = unsafe {
         core::slice::from_raw_parts_mut(
             layer.input_hidden_weights.as_mut_ptr() as *mut u16,
-            H4 * IH,
+            expected_len,
         )
     };
     read_lstm_weights_into(raw_weights, dst, is_gate_major, H, I, is_bf16);

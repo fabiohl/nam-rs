@@ -43,7 +43,7 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
 
 **Foco:** Fechar as vulnerabilidades em cast unsafe (F13) e evitar perda de arquivos no Git (F12).
 
-- [ ] **Tarefa C.2.1 (F13): Proteger e checar cast `unsafe` do LSTM**
+- [x] **Tarefa C.2.1 (F13): Proteger e checar cast `unsafe` do LSTM**
   - **Especialista:** `implementador`.
   - **Arquivo alvo:** `src/loader/dispatcher/lstm/weights.rs` (linhas ~56-61).
   - **Ação:** O uso da função `std::slice::from_raw_parts_mut` ocorre sob um buffer bruto sem validação de pré-condições sobre o tamanho esperado (`H4 * IH`).
