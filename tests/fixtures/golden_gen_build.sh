@@ -230,12 +230,11 @@ MODELS=(
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod"
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45"
+    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
+    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
     #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
-    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
-    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
-)
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
 mkdir -p "$TEMP_DIR"
@@ -256,6 +255,11 @@ for entry in "${MODELS[@]}"; do
     fi
 
     echo "  Processing $label ($nam_file)..."
+
+    if [[ "$label" == ConvNet* ]]; then
+        echo "  SKIP: $label — C++ v0.5.3 ConvNet is architecturally incompatible (known)"
+        continue
+    fi
 
     "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
 
@@ -311,18 +315,25 @@ V2_MODELS=(
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod"
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45"
+    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
+    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
     #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
-    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
-    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
-)
 
 for entry in "${V2_MODELS[@]}"; do
     IFS=':' read -r nam_file golden_name label skip_srs <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
     if [ ! -f "$MODEL_PATH" ]; then
         MODEL_PATH="$FIXTURES_DIR/models-nondist/$nam_file"
+    fi
+    if [ ! -f "$MODEL_PATH" ]; then
+        echo "  SKIP: $nam_file not found at $MODELS_DIR or models-nondist"
+        continue
+    fi
+    if [[ "$label" == ConvNet* ]]; then
+        echo "  SKIP: $label — C++ v0.5.3 ConvNet is architecturally incompatible (known)"
+        continue
     fi
 
     if [ ! -f "$MODEL_PATH" ]; then

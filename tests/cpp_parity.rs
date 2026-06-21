@@ -644,6 +644,44 @@ fn live_cross_validation_v2_wavenet_condition_dsp() {
     );
 }
 
+// --- Dynamic Models (Sprint B.2.2) ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_dyn() {
+    run_v1(
+        "wavenet_dyn_free.nam",
+        "wavenet_dyn_free",
+        "Live WaveNetDyn Free-Shape",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_lstm_dyn() {
+    run_v1("lstm_dyn_test.nam", "lstm_dyn_test", "Live LSTM-Dyn 1×7");
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_dyn() {
+    run_v2_multi_sr(
+        "wavenet_dyn_free.nam",
+        "wavenet_dyn_free",
+        "Live WaveNetDyn Free-Shape (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_lstm_dyn() {
+    run_v2_multi_sr(
+        "lstm_dyn_test.nam",
+        "lstm_dyn_test",
+        "Live LSTM-Dyn 1×7 (v2)",
+    );
+}
+
 // --- Linear ---
 
 #[test]

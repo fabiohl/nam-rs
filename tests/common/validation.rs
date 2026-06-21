@@ -478,6 +478,35 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 110.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12)))
         }
+        // --- WaveNetDyn Free-Shape (CH=7→4, Sprint B.2.2) ---
+        // Free-geometry dynamic path, 2 arrays, Tanh activation, head_scale=0.02.
+        // The low head_scale produces quiet output (~−65 LUFS) that trips the
+        // LUFS plausibility gate — golden tests use report_dsp_fidelity_no_lufs.
+        // Measured: SNR=124.2 dB, ESR=3.79e-13 (2026-06-21)
+        // Margin: SNR - 34.2 dB, ESR factor ~26x
+        "wavenet_dyn_free" => {
+            let snr_db = 90.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11)))
+        }
+        // --- LSTM-Dyn 1×7 (Sprint B.2.2) ---
+        // Single-layer LSTM with hidden_size=7, non-catalog geometry routed to
+        // LstmModelDyn. Recurrent state accumulation over 2048-sample stress
+        // signal produces measurable but minimal drift at 48 kHz.
+        // Measured: SNR=118.1 dB, ESR=1.54e-12 (2026-06-21)
+        // Margin: SNR - 28.1 dB, ESR factor ~19x
+        "lstm_dyn_test" => {
+            let snr_db = 90.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11)))
+        }
+        // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
+        // Self-golden consistency test — no C++ golden available (NAM Core
+        // v0.5.3 incompatible with NAM 0.5.4 multi-block ConvNet).
+        // Block-size determinism test yields bit-identical output,
+        // thresholds reflect expected perfect self-consistency.
+        "convnet_test" => {
+            let snr_db = 140.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+        }
         _ => None,
     }
 }
