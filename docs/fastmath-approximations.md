@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # FastMath: Transcendental Function Approximations
@@ -334,10 +333,10 @@ WaveNet **Lite (CH=12)** is the only WaveNet SKU that diverges from C++:
 > FastMath or quantization. Suspected causes: bias-tuning, 4-wide interleaving
 > order, or the CH=12 static engine path itself.
 
-| Model                   | Status                                     | SNR (vs C++) |
-|:----------------------- |:------------------------------------------ |:------------ |
-| BossWN-lite (synthetic) | `#[ignore]` — known-divergent              | ~0.9 dB      |
-| EVH-5150-Lite (real)    | WARN [P1] — block-size invariance violated | —            |
+| Model                   | Status                                       | SNR (vs C++) |
+|:----------------------- |:-------------------------------------------- |:------------ |
+| BossWN-lite (synthetic) | Obsolete (RF7/T2.4) — replaced by real CH=12 | ~0.9 dB      |
+| EVH-5150-Lite (real)    | ✅ Golden parity resolved (RF7) — ≥ 105 dB   | 122.3 dB     |
 
 > [!CAUTION]
 > Lite models should be treated with caution. Users loading a WaveNet Lite model

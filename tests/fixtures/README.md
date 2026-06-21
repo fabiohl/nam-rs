@@ -65,7 +65,7 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 | Golden File                      | `.nam` Model              | Nature                                                                     | Topology                                                          |
 | -------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `golden_wavenet_standard.bin`    | `BossWN-standard.nam`     | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                     |
-| `golden_wavenet_lite.bin`        | `BossWN-lite.nam`         | **Synthetic** (CH=12 weights auto-generated, non-power-of-2 topology)      | CH=12, K=3, HEAD=6, 20 layers                                     |
+| `golden_wavenet_lite.bin`        | `EVH-5150-Lite.nam`       | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                     |
 | `golden_wavenet_feather.bin`     | `BossWN-feather.nam`      | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                      |
 | `golden_wavenet_nano.bin`        | `BossWN-nano.nam`         | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                      |
 | `golden_wavenet_a1_standard.bin` | `wavenet_a1_standard.nam` | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                     |
@@ -117,7 +117,7 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 
 | Model / Fixture             | Nature           | Architecture                                                   | Quality & Confidence                         | License & Provenance                                                     | Purpose in Tests                                                                                        |
 | --------------------------- | ---------------- | -------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Low** (Known-divergent, ~0.9 dB SNR drift) | Artificially generated (2026-06-11).                                     | Regression tests under `#[ignore]`. Awaiting replacement by a real model (see `TODO-features.md §F12`). |
+| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam` (RF7, T2.4) | Artificially generated (2026-06-11).                                     | Legacy fixture; no longer used in active tests. Superseded by real community model. |
 | `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                 | Simple weights defined for testing. Apache-2.0.                          | Linear parity and linear_golden.                                                                        |
 | `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.15). Apache-2.0.                       | Parity A2 fast-path (Full), container submodel.                                                         |
 | `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.19). Apache-2.0.                       | Parity A2 fast-path (Lite), container submodel.                                                         |
@@ -340,7 +340,7 @@ See `docs/perceptual_validation.md` for methodology.
 | LSTM 2×8         | < 1e-3        | ≥ 18 dB       |               |
 | WaveNet Feather  | < 3e-7        | ≥ 60 dB       |               |
 | WaveNet Standard | < 3e-7        | ≥ 45 dB       |               |
-| WaveNet Lite     | < 3e-1        | ≥ 0 dB        |               |
+| WaveNet Lite     | < 3.16e-9     | ≥ 105 dB      | < 3.5e-11     |
 | WaveNet Nano     | < 9.5e-6      | ≥ 45 dB       |               |
 | A2-Lite (CH=3)   | < 1e30        | ≥ 80 dB       | < 6.0e-9      |
 | A2-Full (CH=8)   | < 1e30        | ≥ 70 dB       | < 8.0e-8      |
@@ -348,8 +348,9 @@ See `docs/perceptual_validation.md` for methodology.
 > [!IMPORTANT]
 > Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
 > `tests/common/validation.rs` from post-T16.1 C++-generated golden measurements.
-> WaveNet Lite (CH=12) SNRhreshold is 0 dB — the synthetic `BossWN-lite.nam` model
-> produces only 0.9 dB SNR against the C++ reference (see §Model provenance below).
+> WaveNet Lite (CH=12) was migrated from the synthetic `BossWN-lite.nam` (0.9 dB SNR)
+> to the real community model `EVH-5150-Lite.nam` (≥ 105 dB SNR, RF7/T2.4).
+> See §Non-Distributable Model Management and `tests/common/validation.rs`.
 
 ### Principle: "Todo Golden Deve Poder Falhar" (Every Golden Must Be Able to Fail)
 
@@ -434,15 +435,15 @@ These files are committed to the repository so that the Rust golden vector tests
 
 ## Model Provenance
 
-### `BossWN-lite.nam` — Synthetic WaveNet Lite (CH=12)
+### `BossWN-lite.nam` — Obsolete Synthetic WaveNet Lite (CH=12)
 
 - **Created:** 2026-06-11
 - **Nature:** Synthetic fixture (weights auto-generated, not trained on real data).
 - **Metadata:** Round values, no `sample_rate` field in the JSON.
-- **Status:** Post-T16.1 SNR is 0.9 dB against the C++ reference (esentially decorrelated).
-  The CH=12 topology (not power-of-2) combined with synthetic weights produces near-noise
-  output. This model is an active golden test gate (threshold 0 dB) pending replacement
-  by a real trained Lite model. See `TODO-sprints.md §T16.3`.
+- **Status:** **Obsolete as of 2026-06-21 (RF7/T2.4).** Was an active golden test gate with
+  a 0 dB SNR threshold (near-noise output). Replaced by the real community model
+  `EVH-5150-Lite.nam` (non-distributable, ≥ 105 dB SNR).
+  See `tests/common/validation.rs` and `tests/fixtures/README.md` §Non-Distributable Model Management.
 
 ### `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-nano.nam` — Community real (Boss Waza, trained)
 

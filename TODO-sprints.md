@@ -79,7 +79,7 @@ As tarefas estão prontas para a skill `implementador`.
   1. Modificar `test_namb_roundtrip_dispatcher_e2e` em `tests/spsc_pipeline.rs`: Substituir o asserção frouxa com a exigência de manter-se abaixo do zero físico para entradas controladas, aplicando `< 1e-7`.
   2. Modificar `test_prewarm_zero_rf` em `tests/wavenet_prewarm_edge.rs`: Checar se a variação obedece os parâmetros de tolerância corretos para silêncios (`abs < 1e-7`) em invés de meramente `is_finite()`.
 
-#### Tarefa 2.4: Expurgar as referências legadas de `BossWN-lite.nam` (Ref: RF7 🟡)
+#### Tarefa 2.4: Expurgar as referências legadas de `BossWN-lite.nam` (Ref: RF7 🟡) [DONE]
 
 - **Contexto:** Mudanças foram efetuadas em Épicos anteriores para adotar `EVH-5150-Lite.nam` como gate de threshold apertado, mas a documentação antiga restou.
 - **Implementação:**
