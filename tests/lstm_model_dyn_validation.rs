@@ -165,16 +165,16 @@ fn test_model_dyn_parity_core() {
 #[test]
 fn test_model_dyn_parity_edge() {
     let topologies: &[(usize, usize)] = &[
-        (1, 2),    // tiny
-        (1, 40),   // large single layer
-        (1, 64),   // large single layer
-        (1, 128),  // extreme wide
-        (2, 3),    // small stacked
-        (2, 20),   // medium H
-        (3, 5),    // shallow stack
-        (4, 12),   // medium-deep
-        (6, 4),    // deeper stack, small H
-        (8, 4),    // many layers
+        (1, 2),   // tiny
+        (1, 40),  // large single layer
+        (1, 64),  // large single layer
+        (1, 128), // extreme wide
+        (2, 3),   // small stacked
+        (2, 20),  // medium H
+        (3, 5),   // shallow stack
+        (4, 12),  // medium-deep
+        (6, 4),   // deeper stack, small H
+        (8, 4),   // many layers
     ];
     for &(l, h) in topologies {
         assert_model_dyn_parity(l, h);
