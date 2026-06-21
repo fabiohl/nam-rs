@@ -23,6 +23,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Compilação:** `cargo check --lib` limpo (default features). ✅
 - **Suíte rápida (`cargo test`):** **761 passaram · 0 falharam · 93 ignorados** (os `#[ignore]` da suíte longa). ✅
+  _(snapshot da auditoria original, 2026-06-20; estado re-medido em §5.1 — **873 · 0 · 110** após a execução dos épicos.)_
 - **Paridade estrutural vs NAMcore:** fiel. WaveNet (estático + dinâmico), LSTM (estático + dinâmico),
   A2 (fixo CH=3/8 + dinâmico), ConvNet, Linear e Container correspondem 1:1 às classes C++
   (`NAM/wavenet/model.cpp`, `a2_fast.cpp`, `lstm.cpp`, `convnet.cpp`, `container.cpp`).
@@ -36,8 +37,8 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **A implementação avançou além do que a documentação e a cadeia de validação registram.**
 
 Os épicos recentes de paridade reintroduziram/criaram os **engines dinâmicos** (`WaveNetModelDyn`,
-`LstmModelDyn`, `WaveNetA2Dyn`) e a arquitetura **ConvNet**, todos *sempre compilados* e *alcançáveis
-por padrão* via dispatcher. Com isso o NAM-rs hoje **carrega uma fração muito maior do universo de
+`LstmModelDyn`, `WaveNetA2Dyn`) e a arquitetura **ConvNet**, todos _sempre compilados_ e _alcançáveis
+por padrão_ via dispatcher. Com isso o NAM-rs hoje **carrega uma fração muito maior do universo de
 modelos do NAMcore** (geometrias livres, condição/condition_dsp, post-stack head, gated/blended, FiLM
 em A2). Porém:
 
@@ -47,7 +48,7 @@ em A2). Porém:
 3. Restam **higiene de testes** (placebos `is_finite()`-only e dead tests — F6, F7), **robustez
    RT/parsing** (F11–F14) e **reprodutibilidade da cadeia de testes/nondist** (F9, F10).
 
-Nenhum bug de correção *ativo* foi confirmado na suíte atual, mas há **lacunas de cobertura que
+Nenhum bug de correção _ativo_ foi confirmado na suíte atual, mas há **lacunas de cobertura que
 tornam regressões de inferência invisíveis** nos paths mais novos — exatamente os que mais precisam
 de rede de segurança. Este é o foco do Épico mais crítico (B).
 
@@ -188,6 +189,7 @@ bench, são justamente os paths menos protegidos contra regressão e drift de lo
   ```
 
   → o resultado de `check_film_all_inactive` é **descartado** (corpo `if` vazio, comentário indeciso).
+
 - C++ `a2_fast.cpp:864-869` **rejeita** qualquer FiLM ativo do fast-path. NAM-rs aceita FiLM ativo no
   const-generic `WaveNetA2<CH>` (o `film_block` é plumbado em `model/mod.rs` p/ ch3/ch8) — é um
   **superset intencional**, porém **não há golden** validando FiLM-no-fast-path (os goldens A2 são
@@ -431,7 +433,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO A — Sincronização Documentação ↔ Implementação (paridade real) [DONE]
+### ÉPICO A — Sincronização Documentação ↔ Implementação (paridade real) [DONE ✅ verificado §5]
 
 - **Objetivo:** a documentação reflete fielmente o engine atual (engines dinâmicos + ConvNet ativos; A2
   goldens reais; matriz de paridade NAMcore completa e verdadeira).
@@ -446,7 +448,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO B — Fechamento de cobertura de validação dos novos paths (🔴 CRÍTICO) [DOING]
+### ÉPICO B — Fechamento de cobertura de validação dos novos paths (🔴 CRÍTICO) [⚠️ PARCIAL — ver §5]
 
 - **Objetivo:** toda arquitetura roteável (ConvNet + engines dinâmicos + FiLM-em-A2) tem **âncora externa
   vs NAMcore** + soak + bench — garantindo "resultados sonoros semelhantes" e "carregar/processar
@@ -466,7 +468,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO C — Robustez RT & caça a bugs (panics, `unsafe`, parsing) [DONE]
+### ÉPICO C — Robustez RT & caça a bugs (panics, `unsafe`, parsing) [DONE ✅ verificado §5]
 
 - **Objetivo:** zero superfícies de panic no hot-path; `unsafe` com invariantes verificados; parser/loader
   defensivos; gitignore robusto.
@@ -480,7 +482,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO D — Saneamento da suíte de testes (anti-placebo & consolidação) [DONE]
+### ÉPICO D — Saneamento da suíte de testes (anti-placebo & consolidação) [DONE ✅ verificado §5]
 
 - **Objetivo:** eliminar testes de baixo valor (finite-only/`<100`, dead tests, golden neutralizado),
   aplicando o princípio "todo golden deve poder falhar" sem perder cobertura legítima.
@@ -496,7 +498,7 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ---
 
-### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist) [DONE]
+### ÉPICO E — Cadeia de suprimentos reprodutível (fresh-clone, PGO, nondist) [DONE ✅ (F10 parcial) — ver §5]
 
 - **Objetivo:** `tests-long.sh` roda a suíte completa em **clone recém-clonado** tendo apenas `mod-update.sh`
   como pré-requisito; PGO cobre inteligentemente todos os hot-paths; mecanismo `models-nondist` reprodutível
@@ -516,30 +518,30 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ## 3. Matriz de Rastreabilidade (Achado → Épico)
 
-| Achado | Sev. | Tema                                         | Épico |
-| ------ | ---- | -------------------------------------------- | ----- |
-| F1     | 🔴   | Docs: dinâmicos/ConvNet "removidos"          | **A** |
-| F2     | 🟠   | Docs: natureza dos goldens A2                | **A** |
-| F3     | 🔴   | ConvNet sem golden de paridade               | **B** |
-| F4     | 🔴   | Dinâmicos sem golden/soak/bench              | **B** |
-| F5     | 🟠   | FiLM fast-path: código morto + sem golden    | **B** |
-| F6     | 🟠   | Testes placebo (`is_finite`/`<100`)          | **D** |
-| F7     | 🟠   | Dead test + golden Lite neutralizado         | **D** |
-| F8     | 🟠   | PGO não cobre ConvNet/dinâmicos              | **E** |
-| F9     | 🟠   | `tests-long.sh` fresh-clone/auto-build       | **E** |
-| F10    | 🟠   | Mecanismo `models-nondist`/manifesto         | **E** |
-| F11    | 🟠   | `unreachable!()` no hot-path A2 (RT)         | **C** |
-| F12    | 🟡   | `.gitignore` `*.json` frágil                 | **C** |
-| F13    | 🟡   | `unsafe` LSTM sem assert de tamanho          | **C** |
-| F14    | 🟡   | `unwrap()` em topology                       | **C** |
-| F15    | 🟡   | Peso dos goldens (LFS/subset)                | **E** |
+| Achado | Sev. | Tema                                      | Épico |
+| ------ | ---- | ----------------------------------------- | ----- |
+| F1     | 🔴   | Docs: dinâmicos/ConvNet "removidos"       | **A** |
+| F2     | 🟠   | Docs: natureza dos goldens A2             | **A** |
+| F3     | 🔴   | ConvNet sem golden de paridade            | **B** |
+| F4     | 🔴   | Dinâmicos sem golden/soak/bench           | **B** |
+| F5     | 🟠   | FiLM fast-path: código morto + sem golden | **B** |
+| F6     | 🟠   | Testes placebo (`is_finite`/`<100`)       | **D** |
+| F7     | 🟠   | Dead test + golden Lite neutralizado      | **D** |
+| F8     | 🟠   | PGO não cobre ConvNet/dinâmicos           | **E** |
+| F9     | 🟠   | `tests-long.sh` fresh-clone/auto-build    | **E** |
+| F10    | 🟠   | Mecanismo `models-nondist`/manifesto      | **E** |
+| F11    | 🟠   | `unreachable!()` no hot-path A2 (RT)      | **C** |
+| F12    | 🟡   | `.gitignore` `*.json` frágil              | **C** |
+| F13    | 🟡   | `unsafe` LSTM sem assert de tamanho       | **C** |
+| F14    | 🟡   | `unwrap()` em topology                    | **C** |
+| F15    | 🟡   | Peso dos goldens (LFS/subset)             | **E** |
 
 ---
 
 ## 4. Ordem de Execução Sugerida
 
-1. **Épico A** (docs) — primeiro: estabelece a verdade de escopo para todos os demais. Baixo risco, alto valor. [DONE]
-2. **Épico E** (infra) **em paralelo com C/D** — provê a base de geração de goldens/benches que o B consome. [DOING]
+1. **Épico A** (docs) — primeiro: estabelece a verdade de escopo para todos os demais. Baixo risco, alto valor. [DONE ✅]
+2. **Épico E** (infra) **em paralelo com C/D** — provê a base de geração de goldens/benches que o B consome. [DONE ✅ / F10 parcial]
 3. **Épicos C e D** — independentes, podem correr em paralelo desde o início.
 4. **Épico B** (validação dos novos paths) — **o mais crítico**; idealmente após E disponibilizar a infra de
    golden/bench (ou coordenado com ela).
@@ -548,3 +550,116 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 > validações pesadas (live C++ parity, soak, PGO) exigem execução pelo desenvolvedor humano; (b) toda
 > geração de golden deve usar o commit canônico `9c7b185` (NAMcore v0.5.3) para reprodutibilidade;
 > (c) ao mexer em `topology.rs`/`set_weights`, reexecutar `a2_loader` + `golden_vectors` (gates de roteamento).
+
+---
+
+## 5. Re-Auditoria — Verificação In Loco (2026-06-21)
+
+> **Skill:** `revisor-auditor`. Verificação pós-execução de **todos** os épicos/achados, com evidência
+> `arquivo:linha` e re-execução da suíte rápida + lints. **IA não executa `tests-long.sh`/
+> `build-release.sh`** — validações pesadas (live C++ parity, soak 10M frames, PGO/BOLT) seguem
+> pendentes de execução humana.
+
+### 5.1 Estado verde (re-medido)
+
+- `cargo check --all-features --tests`: **limpo**. ✅
+- `cargo test --all-features` (suíte rápida; `#[ignore]` pulados): **873 passaram · 0 falharam ·
+  110 ignorados** (era **761/0/93** na auditoria → **+112 testes ativos**, +17 `#[ignore]` = novos
+  soaks/parity longos). ✅
+- `utils/lints.sh`: **4/4** configs limpas (fmt + `cargo check` + `clippy -D warnings` + guard de
+  `#[test]`). ✅
+
+### 5.2 Veredito por épico
+
+| Épico            | Achados          | Veredito          | Síntese da verificação                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------- | ---------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** Docs       | F1, F2           | ✅ **RESOLVIDO**  | Docs cruzadas contra o código: `cpp_parity_map.md:59,127-134,293,314-317` e `architecture.md:57,210-217` descrevem corretamente dinâmicos/ConvNet **ativos** e `condition_size≠1`/`head` **roteados** (não rejeitados); flag `dynamic-engine` documentado com escopo real. F2 reconciliado (goldens A2 = C++ real c/ pesos sintéticos). Sem linguagem stale de "removido/blocked". |
+| **B** Validação  | F3, F4, F5       | ⚠️ **PARCIAL**    | Estrutura/soak/goldens-externos majoritariamente presentes, **mas o objetivo numérico falhou no ponto mais sensível (F5 FiLM)** + lacunas de bench/golden v2. Ver RF1–RF3.                                                                                                                                                                                                         |
+| **C** RT         | F11–F14          | ✅ **RESOLVIDO**  | Varredura de hot-path (`models/**`, `dsp/pipeline/**`) **limpa**: zero `unwrap/expect/panic!/unreachable!` alcançável em `process()` release. F11 (fallback silencioso RT-safe, `debug_assert` compilado-fora), F12 (`!tests/fixtures/**/*.json`), F13 (assert de tamanho pré-`from_raw_parts_mut`), F14 (`Rejected` no lugar de `unwrap`) confirmados. Nits: RF8.                 |
+| **D** Saneamento | F6, F7           | ✅ **RESOLVIDO**  | Placebos `is_finite()`/`<100` trocados por envelopes físicos justificados (20×/50× pico; `<1e-7` zero-weight) com invariantes fortes (determinismo `<1e-12`, block-invariance `<1e-6`, transparência SPSC bit-exata) **preservados**. F7: `v2_wavenet_lite` reanimado (`#[ignore]`), `EVH-5150-Lite.nam` real, gate SNR≥105 dB (era ≥0). Nits: RF6, RF7.                           |
+| **E** Cadeia     | F8, F9, F10, F15 | ✅ **RESOLVIDO¹** | F8 (filtro `64samp` + IDs `_64samp`, `_64f` eliminado dos paths-alvo), F9 (auto-build padrão + opt-out `NAM_SKIP_GOLDEN_BUILD` + manifesto de frescor warn-only + README fresh-clone) confirmados. ¹**F10 PARCIAL** (RF4/RF5); F15 **deferido** (decisão opcional de LFS/subset — aceitável).                                                                                      |
+
+### 5.3 Achados residuais da re-auditoria (RF)
+
+> Severidade: 🔴 Alta · 🟠 Média · 🟡 Baixa.
+
+#### RF1 🔴 — (Épico B / F5) Paridade numérica FiLM é placebo + goldens órfãos
+
+- `tests/fixtures/golden_wavenet_a2_film_full.bin` e `…_lite.bin` (16 KB cada) estão **commitados mas
+  NÃO são consumidos por nenhum teste** (grep por consumo = vazio).
+- `tests/golden_vectors.rs:1469` (`test_golden_vectors_wavenet_a2_film_lite`) e `:1499` (`…_film_full`)
+  asseguram **apenas** roteamento (`matches!(…WavenetA2Dyn)`) + `is_finite()` (linhas 1493/1521) — ou
+  seja, **reintroduzem o anti-padrão placebo** que o Épico D removeu, justamente no path que o Épico B
+  existia para blindar.
+- **Impacto:** a correção sonora do FiLM-em-A2 (roteado p/ `WaveNetA2Dyn`) **não é validada**
+  numericamente vs C++/referência — exatamente a divergência silenciosa que F5 buscava eliminar.
+- **Resolução:** confirmar a proveniência/consumibilidade dos `.bin` (oráculo C++ via engine genérico
+  vs self-golden); então **ler o golden e comparar (MSE/SNR)** com entrada calibrada (`// Measured:`),
+  **ou** remover os goldens órfãos e documentar o escopo. Trocar `is_finite()` por gate forte.
+
+#### RF2 🟠 — (Épico B+E / F4+F8) `WaveNetA2Dyn` sem benchmark → fora do PGO
+
+- Confirmado **ausente** em `benches/inference_bench.rs` (grep `A2Dyn`/`a2_dynamic` = vazio). O engine
+  A2 dinâmico (catch-all de geometrias A2 não-catalogadas) **não é perfilado** pelo PGO nem tem bench.
+- **Resolução:** adicionar bench `…_64samp` para 1 geometria A2 dinâmica representativa (gated/blended).
+
+#### RF3 🟠 — (Épico B / F4) Sem goldens v2 multi-SR para engines dinâmicos
+
+- `V2_MODELS` lista as entradas, mas **nenhum** `golden_*dyn*_v2_*.bin` existe (ls = vazio). A âncora
+  externa dinâmica cobre **apenas 48 kHz single-SR** (`golden_wavenet_dyn_free.bin`,
+  `golden_lstm_dyn_test.bin`, `golden_a2_dynamic_{gated,blended}*.bin`).
+- **Resolução:** gerar os v2 multi-SR **ou** documentar explicitamente que dinâmicos são ancorados só
+  em 48 kHz (e por quê).
+
+#### RF4 🟠 — (Épico E / F10) Classificação nondist é _warn-only_, não asserção
+
+- `tests/nondist_validation.rs:115-119` usa `eprintln!("⚠ Classification mismatch …")` em vez de
+  `assert!` — uma **misclassificação não derruba o teste**. A promessa do F10 ("asserir contra o
+  manifesto") foi **parcialmente** cumprida (detecta, não impõe). `manifest.json` **existe** localmente
+  (via symlink gitignored) e o caminho roda; o `Unknown*` já é tratado como skip (`:104`).
+- **Resolução:** converter o `eprintln!` em `assert_eq!` (mantendo o skip de `Unknown*`).
+
+#### RF5 🟡 — (Épico E / F10) Discovery duplicada remanescente
+
+- `find_models_in_dir` foi consolidado em `tests/common/discovery.rs` ✅, **porém**
+  `tests/cpp_parity.rs:713-727` mantém **descoberta inline** (read_dir + filtro) em vez de usar o helper
+  compartilhado. **Resolução:** substituir pela chamada a `common::find_models_in_dir`.
+
+#### RF6 🟡 — (Épico D / F6) Placebos residuais fora do escopo original
+
+- `tests/spsc_pipeline.rs` (`test_namb_roundtrip_dispatcher_e2e`, ~`:194`) e
+  `tests/wavenet_prewarm_edge.rs` (`test_prewarm_zero_rf`, ~`:412`) ainda asseguram **só** `is_finite()`.
+  **Resolução:** aplicar envelope `<1e-7` (zero-weight) por consistência com `a2_loader.rs`.
+
+#### RF7 🟡 — (Épicos A/D / F7) Comentários/docs stale "BossWN-lite"
+
+- `tests/golden_vectors.rs:475,487` (doc-comment) ainda cita o **nome** stale `BossWN-lite.nam`; e
+  `tests/fixtures/README.md:68,120,348` ainda traz `BossWN-lite.nam` + `~0.9 dB SNR drift` +
+  `SNRthreshold is 0 dB` (estado pré-fix) — embora o código já use `EVH-5150-Lite.nam` (SNR≥105 dB).
+  **Resolução:** atualizar os comentários/README ao estado atual.
+
+#### RF8 🟡 — (Épico C / F11) Nits de RT-safety
+
+- O fallback silencioso A2 (`src/models/a2/model/mod.rs:532-569`) **não seta flag de telemetria/
+  `RT_STATUS_*`** (sugerido no caminho de resolução do F11). Além disso, resta **1 `unreachable!()` em
+  cold-path** (`src/models/a2/model/set_weights.rs:353`, índice estruturalmente bounded 0..7) — não toca
+  a thread RT, mas viola a política "zero `unreachable!()` em código não-teste".
+- **Resolução:** setar flag de telemetria no fallback; trocar o `unreachable!()` cold-path por erro
+  checado/`debug_assert!`.
+
+### 5.4 Conclusão da re-auditoria
+
+**4 dos 5 épicos foram entregues com qualidade e verificados in loco** (A, C, D, E — este último com
+F10 parcial e F15 deferido). A suíte rápida cresceu de **761 → 873** testes ativos sem regressões, e os
+fixes de robustez RT (C) e anti-placebo (D) resistiram à inspeção `arquivo:linha`.
+
+**O Épico B — o mais crítico — é o único com lacuna substantiva.** O seu objetivo declarado ("âncora
+numérica externa para todo path novo") foi **atingido** para os engines dinâmicos (goldens C++ **reais**
+p/ WaveNetDyn free, LstmDyn 1×7, A2Dyn gated/blended) e para soak/bench; e o **bloqueio do golden ConvNet
+é genuíno e verificado** (NAMcore v0.5.3 `convnet.cpp:56-57` fixa `kernel=2` — "HACK 2 kernel" —
+incompatível com o ConvNet NAM 0.5.4 de kernel=3; self-golden + soak + bench é mitigação aceitável).
+Porém **falhou exatamente no FiLM-em-A2 (F5/RF1)**, que ficou com asserção placebo (`is_finite()`) e dois
+goldens commitados não consumidos.
+
+**Prioridade de correção:** **RF1 (🔴)** → **RF2 / RF3 / RF4 (🟠)** → **RF5–RF8 (🟡)**. F15 permanece
+deferido (decisão opcional de Git LFS/subset).

@@ -3,105 +3,92 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO Sprints — Épico B (Fechamento de Cobertura)
+# TODO-sprints.md — Planejamento de Sprints (Resolução dos Achados Residuais)
 
-Este documento contém o planejamento de **Sprints e Tarefas Técnicas** focado na execução do **ÉPICO B — Fechamento de cobertura de validação dos novos paths (🔴 CRÍTICO)**, de acordo com o plano documentado em `TODO-audit.md`.
+> **Skill:** `planejador-arquiteto`
+> **Data:** 2026-06-21
+> **Referência:** `TODO-audit.md` §5.3 Achados residuais da re-auditoria (RF1 a RF8).
 
-## Visão Geral e Criticidade
-
-Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a arquitetura `ConvNet` foram expostos e habilitados, mas carecem de instrumentação rigorosa na cadeia de testes. O risco reside no fato de que regressões de inferência ou problemas numéricos (subnormais, instabilidade) não seriam detectados.
-
-### Análise Crítica: O que não pode passar batido?
-
-1. **FiLM em A2 (F5):** O motor NAM C++ rejeita modelos FiLM no seu *fast-path*, jogando-os para o motor dinâmico. O NAM-rs hoje implementa isso no *fast-path* por um superset intencional, mas **nunca comprovado sonoramente**. Esta discrepância deve ser sanada e testada empiricamente (Tarefa B.1.1).
-2. **Suporte C++ ao ConvNet:** A geração de goldens depende da capacidade do utilitário `render` (C++) do projeto NAMCore processar modelos ConvNet corretamente.
-3. **Thresholds Calibrados:** Para os novos caminhos (ConvNet, Dinâmicos), não podemos nos dar ao luxo de criar "testes placebos" com bounds frouxos. As comparações devem garantir `SNR ≥ 70dB` contra o golden.
-4. **PGO e Hot-paths (F4/F8):** É inútil fazer *benchmarks* se eles não forem pinçados pelo PGO (`utils/build-release.sh`). As novas funções do `inference_bench.rs` precisam impreterivelmente carregar os sufixos corretos (ex: `_64samp`) mapeados no script.
+Este documento detalha as Sprints e Tarefas Técnicas super detalhadas focadas em solucionar os Achados Residuais (RF) da última auditoria.
+As tarefas estão prontas para a skill `implementador`.
 
 ---
 
-## SPRINT B.1: Roteamento e Setup de Fixtures
+## Épico F — Resolução Final de Robustez e Cobertura (RF1-RF8)
 
-**Objetivo:** Obter os modelos `.nam` faltantes (representativos dos caminhos expostos) e firmar o roteamento paramétrico definitivo (F3, F4, F5).
-
-### [X] Tarefa B.1.1: Resolução Definitiva da Política A2+FiLM (F5)
-
-* **Resultado:** **Caso B** — fast-path `WaveNetA2<CH>` diverge do motor dinâmico C++.
-  * CH=3: SNR 18.1 dB, CH=8: SNR 36.0 dB (ambos abaixo do limiar de 70 dB).
-  * C++ `a2_fast.cpp` rejeita FiLM → fallback p/ `WaveNet` genérico. Rust agora equipara: FiLM ativo força `WaveNetA2Dyn`.
-* **Ação Investigativa:** Gerados modelos `wavenet_a2_film_lite.nam` (CH=3) e `wavenet_a2_film_full.nam` (CH=8) com 4 chaves FiLM ativas (`conv_post_film`, `input_mixin_post_film`, `activation_post_film`, `layer1x1_post_film`), `condition_size=1`. Goldens C++ renderizados via `NeuralAmpModelerCore v0.5.3` (roteamento fallback p/ motor genérico).
-* **Implementação da Política:**
-  * Alterado `src/loader/nam_json/topology.rs` (`check_film_all_inactive`): quando FiLM ativo → retorna `A2TopologyResult::Dynamic`.
-  * Adicionado `condition_size` ao `WaveNetA2Dyn` e suporte a carregamento de pesos FiLM em `dynamic.rs::set_weights()` (após `l1x1_b`).
-  * Funções FiLM de `set_weights.rs` tornadas `pub(crate)` p/ reuso pelo motor dinâmico.
-* **Testes:** `test_a2_film_routes_to_dynamic` (unitário em topology.rs). Smoke tests em `golden_vectors.rs` verificam roteamento p/ `WavenetA2Dyn` e finitude da saída.
-* **Limpeza:** Eliminados comentários ambíguos e `if` vazio no bloco FiLM de `topology.rs`.
-* **Nota p/ tarefas futuras:** Fixtures FiLM estão nos repositórios. Goldens C++ (`golden_wavenet_a2_film_*.bin`) foram gerados mas não são usados nos testes atuais pois o motor genérico C++ interpreta a stream A2 em ordem diferente. Dados brutos preservados para eventual calibração cruzada futura.
-
-* **Ação Investigativa:** Gerar/modificar um modelo A2 (CH=3 ou CH=8) com `condition_size = 1` e matriz FiLM ativa. Renderizar um *golden* no C++ (que fará roteamento fallback pro dinâmico) e compará-lo via Rust (que fará roteamento via `WaveNetA2<CH>`).
-* **Implementação da Política:**
-  * **Caso A (Bate perfeitamente):** Aceitar formalmente o "superset". Manter o modelo como golden oficial de A2+FiLM.
-  * **Caso B (Diverge/Falha):** Alterar `src/loader/nam_json/topology.rs` (função `check_film_all_inactive`) para retornar `Rejected` quando houver FiLM, forçando a queda para o `WaveNetA2Dyn` e equiparando com o roteamento C++.
-* **Limpeza:** Eliminar comentários ambíguos e o `if` vazio associado no módulo `topology.rs`.
-
-### [X] Tarefa B.1.2: Aquisição de Fixtures (ConvNet e Dinâmicos) (F3, F4)
-
-* **Resultado:** Três modelos sintéticos gerados deterministicamente via `tests/fixtures/generate_b1_2_fixtures.py`.
-* **ConvNet:** `convnet_test.nam` — 2 blocos (CH=8→4, K=3, Dil=[1,2,4], Tanh), sem post-stack head, `head_scale=0.02`. 157 pesos.
-* **WaveNetDyn:** `wavenet_dyn_free.nam` — geometria livre com 2 arrays (CH=7→4, Dil=[1,2,4]+[8,16], K=3, Tanh), não casa com nenhum SKU do catálogo, roteia para `WaveNetModelDyn`. 872 pesos.
-* **LstmDyn:** `lstm_dyn_test.nam` — 1 camada × 7 hidden units (não catalogado: 3,8,12,16,24,40), roteia para `LstmModelDyn`. 274 pesos.
-* **Verificação:** Smoke tests em `tests/fixture_b1_2_smoke.rs` confirmam roteamento correto para `StaticModel::ConvNet`, `StaticModel::WavenetDyn` e `StaticModel::LstmDyn`.
-* **Nota p/ tarefas futuras:** Goldens C++ e testes de paridade (Sprint B.2) dependem destes fixtures e do script `golden_gen_build.sh` ser atualizado para incluí-los.
+**Objetivo:** Eliminar as últimas divergências de placebos em testes, unificar as estratégias de descoberta, reforçar integridade RT (real-time) e documentar comportamentos atípicos identificados nos achados RF1 a RF8 da auditoria `TODO-audit.md`.
 
 ---
 
-## SPRINT B.2: Goldens e Paridade Estrita (F3, F4)
+### Sprint 1: Cobertura e Desempenho Críticos (RF1, RF2, RF3)
 
-**Objetivo:** Expandir a suite de renderização C++ e assegurar validação numérica com thresholds calibrados (sem fallback placebo).
+**Foco:** Reforçar cobertura dos paths dinâmicos e de convolução, eliminando testes placebo sensíveis e provendo instrumentação apropriada para o PGO (Profile-Guided Optimization).
 
-### [X] Tarefa B.2.1: Ampliação do Gerador C++ (`golden_gen_build.sh`)
+#### Tarefa 1.1: Eliminar Placebo FiLM-em-A2 (Ref: RF1 🔴)
 
-* **Resultado:** WaveNetDyn (`wavenet_dyn_free.nam`) e LSTM-Dyn (`lstm_dyn_test.nam`) integrados ao `golden_gen_build.sh` (arrays MODELS e V2_MODELS). Golden vectors gerados com sucesso pelo C++ render tool (NAM Core v0.5.3).
-* **Correção do Fixture LSTM-Dyn:** Adicionado `"input_size": 1` ao `config` do `lstm_dyn_test.nam` — o parser LSTM do C++ (`lstm.cpp:171`) acessa `config["input_size"]` diretamente e falhava com `type_error` quando ausente. O Rust (`get_lstm_topology`) não usa este campo, portanto sem impacto.
-* **Bloqueio ConvNet (🔴):** A arquitetura ConvNet do NAM 0.5.4 (multi-bloco, per-block channels, kernel_size variável, formato `layers`) é **incompatível** com o ConvNet do NAM Core v0.5.3 (single `channels`, dilatações planas, kernel_size=2 fixo, flag `batchnorm`). O render C++ aborta com `json.exception.type_error`. Golden vectors para ConvNet não podem ser gerados via o pipeline atual.
-  * **Impacto nas tarefas seguintes:** Tarefa B.2.2 (`test_golden_vectors_convnet`) precisa ser adaptada — o golden de ConvNet depende de upgrade do NAM Core p/ versão ≥0.5.4 ou de um pipeline de render alternativo.
+- **Contexto:** Os goldens de paridade `tests/fixtures/golden_wavenet_a2_film_full.bin` e `..._lite.bin` não estão sendo consumidos. Os testes que deveriam conferir a paridade apenas garantem que a saída não gera `NaN` (`is_finite()`).
+- **Implementação:**
+  1. Em `tests/golden_vectors.rs`, localizar os testes `test_golden_vectors_wavenet_a2_film_lite` (aprox. linha 1469) e `test_golden_vectors_wavenet_a2_film_full` (aprox. linha 1499).
+  2. Implementar a leitura dos goldens (`common::validation::read_golden`) já comitados no projeto, correspondentes aos arquivos `.bin` órfãos.
+  3. Instanciar a métrica com `common::metrics::snr` (ou MSE/ESR) passando pela inferência o sinal padrão.
+  4. Substituir `is_finite()` pelo gate forte (ex: `assert!(snr >= 60.0)`). Calibrar e marcar `// Measured: XX.X dB` junto ao código. Se os arquivos precisarem ser eliminados (se forem apenas resíduos sem utilidade), provar paridade de outra forma ou justificar a inexistência deles.
 
-### [X] Tarefa B.2.2: Expansão da Suíte de Paridade
+#### Tarefa 1.2: Inclusão do `WaveNetA2Dyn` no Benchmark PGO (Ref: RF2 🟠)
 
-* **Golden Vectors (Dinâmicos):** Adicionados `test_golden_vectors_wavenet_dyn_free` (SNR 124.2 dB, ESR 3.79e-13) e `test_golden_vectors_lstm_dyn_test` (SNR 118.1 dB, ESR 1.54e-12) em `tests/golden_vectors.rs`. Goldens C++ gerados via `render` tool (NAM Core v0.5.3) e confirmados bit-convergentes contra Rust.
-* **ConvNet Self-Golden:** `test_golden_vectors_convnet_test` — teste de determinismo com self-golden Rust→Rust (SNR=∞, ESR=0.0, output bit-idêntico entre duas instâncias independentes). Substitui o golden C++ bloqueado pela incompatibilidade NAM Core v0.5.3 × NAM 0.5.4 (ConvNet multi-bloco).
-  * **Nota p/ tarefas futuras:** A engine ConvNet foi validada como determinística e correta (output finito, não-zero). Upgrade do NAM Core p/ versão >=0.5.4 habilitará golden C++ cross-reference no futuro.
-* **Thresholds Calibrados:** Adicionadas entradas em `get_calibrated_threshold()` em `tests/common/validation.rs` para `wavenet_dyn_free` (SNR≥90 dB, ESR≤1e-11), `lstm_dyn_test` (SNR≥90 dB, ESR≤3e-11) e `convnet_test` (SNR≥140 dB, ESR≤1e-10). Todos com `// Measured: ...` documentando a medição real.
-* **Live Cross-Validation:** Adicionados `live_cross_validation_wavenet_dyn`, `live_cross_validation_lstm_dyn`, `live_cross_validation_v2_wavenet_dyn` e `live_cross_validation_v2_lstm_dyn` em `tests/cpp_parity.rs`.
-* **Correção `golden_gen_build.sh`:** ConvNet movido para fim do array MODELS e V2_MODELS com skip explícito (`[[ "$label" == ConvNet* ]]`) para evitar crash que impedia geração dos goldens dinâmicos subsequentes.
-* **Nota p/ B.3.1:** ConvNet usa `model.process()` (buffer inteiro), não `process_in_blocks`. O soak test deve respeitar o tamanho de buffer como `num_frames × out_channels`.
-* **Golden Manifest:** Adicionados SHAs de `golden_wavenet_dyn_free.bin` e `golden_lstm_dyn_test.bin` ao `.golden_manifest.sha256`.
+- **Contexto:** Sem bench, o `WaveNetA2Dyn` não se beneficia do PGO.
+- **Implementação:**
+  1. Abrir `benches/inference_bench.rs`.
+  2. Criar uma função de banco de ensaio, nomeada de forma compatível com o filtro PGO (precisa conter `_64samp`), como `A2Dyn_Gated_64samp_48kHz`.
+  3. Instanciar o engine A2 dinâmico (`WaveNetA2Dyn`) com um modelo representativo (gated ou blended), utilizando block size = 64.
+  4. Executar um laço clássico de criterion, como feito com os outros engines.
+
+#### Tarefa 1.3: Documentação ou Geração de Goldens Multi-SR (Ref: RF3 🟠)
+
+- **Contexto:** Faltam `.bin` v2 (multi-SR) para engines dinâmicos. Apenas 48 kHz estão suportados.
+- **Implementação:**
+  1. **Decisão:** Avaliar se os dinâmicos compensam o peso dos assets v2.
+  2. **Caso documente:** Em `docs/cpp_parity_map.md` e nos arquivos de tests pertinentes, deixar claro em texto (ou num README da suite de dinâmicos) que os goldens estão intencionalmente vinculados exclusivamente a 48 kHz para economizar overhead, referenciando o `TODO-audit.md` (RF3).
+  3. **Caso implemente:** Gerar usando o commit C++ e adicionar em `tests/fixtures/`. (Se seguir esse rumo, inclua o diff que estenda o `V2_MODELS` no script de build de golden).
 
 ---
 
-## SPRINT B.3: RT-Safety (Soaks) e Performance (PGO)
+### Sprint 2: Assertividade, Consistência de Testes e Segurança RT (RF4 a RF8)
 
-**Objetivo:** Assegurar perenidade na thread de áudio e extração de máxima performance nativa na compilação *Release*.
+**Foco:** Transformar tolerâncias fracas em restrições assertivas, corrigir inconsistências de documentação, refatorar descobertas duplicadas e remover riscos silenciosos de panics de áudio (thread-safety).
 
-### [X] Tarefa B.3.1: Cobertura Soak (Endurance)
+#### Tarefa 2.1: Asserção de Classificação no `nondist_validation` (Ref: RF4 🟠)
 
-* **Ação:** Atualizar `tests/soak_test.rs` implementando instâncias de execução extrema (10M de frames) em blocos.
-* **Escopo Exigido:**
-  * ConvNet
-  * WaveNetModelDyn
-  * LstmModelDyn
-  * WaveNetA2Dyn (Gated/Blended)
-* **Aserções:** Ausência total de subnormais, `NaN` ou `Inf`; checagem restrita de *zero-allocs*.
-* **Resultado:** Adicionados 5 novos soak tests (`#[ignore]`) em `tests/soak_test.rs`:
-  * `test_convnet_soak` — `convnet_test.nam`, buffer `64×out_ch`, zero-alloc + NaN/Inf/subnormal checks.
-  * `test_wavenet_dyn_soak` — `wavenet_dyn_free.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
-  * `test_lstm_dyn_soak` — `lstm_dyn_test.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
-  * `test_a2_dyn_gated_soak` — `a2_dynamic_gated_ch8.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
-  * `test_a2_dyn_blended_soak` — `a2_dynamic_blended_ch3.nam`, blocos de 64, zero-alloc + NaN/Inf/subnormal checks.
-* **Infra:** `#[global_allocator]` com `CountingAllocator` adicionado ao binário `soak_test`. Helper `run_model_soak()` centraliza loading de fixture, prewarm, alternância noise/silence, tracking de alloc e validação numérica.
+- **Contexto:** Erros de classificação atualmente causam somente um aviso impresso e deixam o teste passar com falsa sensação de sucesso.
+- **Implementação:**
+  1. Editar `tests/nondist_validation.rs` por volta das linhas 115-119.
+  2. Identificar `eprintln!("⚠ Classification mismatch ...")`.
+  3. Converter essa emissão de logs em uma chamada assertiva forte `assert_eq!(actual, expected, "Classification mismatch ...");` de forma a falhar o teste (exceto nos casos "Unknown*", que continuam sofrendo auto-skip).
 
-### [X] Tarefa B.3.2: Benches PGO-aware
+#### Tarefa 2.2: Refatoração da Discovery em `cpp_parity.rs` (Ref: RF5 🟡)
 
-* **Resultado:** Adicionado `bench_convnet_model_process` (`ConvNet_Model_64samp_48kHz`) — bench end-to-end do modelo ConvNet completo (fixture `convnet_test.nam`, 2 blocos CH=8→4), cobrindo o pipeline multi-bloco + head_scale com saída multicanal (64×4 floats). Importado `StaticModel` p/ acesso a `out_channels()`.
-* **Cobertura Preexistente (Épico E):** Benches dinâmicos sintéticos (`WaveNet_Dynamic_CH5_64samp_48kHz`, `LSTM_Dynamic_1x7_64samp_48kHz`) e benches de kernel ConvNet (`ConvNet_MultiChannel/LargeKernel/Dilated_64samp`) já cobriam os hot-paths com sufixo `_64samp`.
-* **Validação PGO:** Todos os benches com `_64samp` no nome são capturados pelo filtro `"64samp"` do `build-release.sh:187`. Verificado via `cargo bench --bench inference_bench -- --list | grep 64samp`.
+- **Contexto:** A função `find_models_in_dir` foi generalizada em `tests/common/discovery.rs`, mas `cpp_parity.rs` manteve seu parser inline.
+- **Implementação:**
+  1. Em `tests/cpp_parity.rs` (linhas 713-727), remover a rotina local iterativa usando `read_dir`.
+  2. Trocar pelo uso do utilitário padronizado: chamar `common::discovery::find_models_in_dir` para obter a lista de modelos.
+
+#### Tarefa 2.3: Substituição de Placebos por Limites Físicos (Ref: RF6 🟡)
+
+- **Contexto:** Ainda restam checks `is_finite()` soltos que passam muito frouxos sem medir a integridade estrutural da onda.
+- **Implementação:**
+  1. Modificar `test_namb_roundtrip_dispatcher_e2e` em `tests/spsc_pipeline.rs`: Substituir o asserção frouxa com a exigência de manter-se abaixo do zero físico para entradas controladas, aplicando `< 1e-7`.
+  2. Modificar `test_prewarm_zero_rf` em `tests/wavenet_prewarm_edge.rs`: Checar se a variação obedece os parâmetros de tolerância corretos para silêncios (`abs < 1e-7`) em invés de meramente `is_finite()`.
+
+#### Tarefa 2.4: Expurgar as referências legadas de `BossWN-lite.nam` (Ref: RF7 🟡)
+
+- **Contexto:** Mudanças foram efetuadas em Épicos anteriores para adotar `EVH-5150-Lite.nam` como gate de threshold apertado, mas a documentação antiga restou.
+- **Implementação:**
+  1. Substituir menções textuais ao nome obsoleto `BossWN-lite.nam` para `EVH-5150-Lite.nam` em `tests/golden_vectors.rs:475,487`.
+  2. Ajustar os marcadores explicativos de drift SNR para denotar a melhoria (`>= 105 dB`).
+  3. Alterar `tests/fixtures/README.md` (linhas ~68, 120 e 348), removendo justificativas passadas de "SNR 0.9 dB / limite a 0 dB" e alinhando com a nova realidade restritiva.
+
+#### Tarefa 2.5: Correções de Thread-safety e Fallback (Ref: RF8 🟡)
+
+- **Contexto:** Hot-paths de áudio não podem gerar pânicos (unreachable) nem falhar silenciosamente sem sinalizar flag telemétrica de corrupção.
+- **Implementação:**
+  1. Modificar `src/models/a2/model/mod.rs` (linhas ~532-569), de forma que a entrada no branch de _fallback_ do áudio (usualmente processamento limpo / zero output) acione (sete) uma flag `RT_STATUS_` apropriada para fins de detecção de fluxo errôneo de estado da engine em produção.
+  2. Em `src/models/a2/model/set_weights.rs:353` existe um `unreachable!()` num cold-path de inicialização. Substitua-o por um `debug_assert!()` emparelhado com um retorno de Result de erro limpo ou _handling_ que evite Panic em builds de release.
