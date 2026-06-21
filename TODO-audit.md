@@ -571,10 +571,10 @@ commitado e regenerar os demais on-demand (alinhado ao auto-build de F9). Decis�
 
 ### 5.2 Veredito por épico
 
-| Épico            | Achados          | Veredito          | Síntese da verificação                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------- | ---------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Épico            | Achados          | Veredito         | Síntese da verificação                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------- | ---------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A** Docs       | F1, F2           | ✅ **RESOLVIDO**  | Docs cruzadas contra o código: `cpp_parity_map.md:59,127-134,293,314-317` e `architecture.md:57,210-217` descrevem corretamente dinâmicos/ConvNet **ativos** e `condition_size≠1`/`head` **roteados** (não rejeitados); flag `dynamic-engine` documentado com escopo real. F2 reconciliado (goldens A2 = C++ real c/ pesos sintéticos). Sem linguagem stale de "removido/blocked". |
-| **B** Validação  | F3, F4, F5       | ⚠️ **PARCIAL**    | Estrutura/soak/goldens-externos majoritariamente presentes, **mas o objetivo numérico falhou no ponto mais sensível (F5 FiLM)** + lacunas de bench/golden v2. Ver RF1–RF3.                                                                                                                                                                                                         |
+| **B** Validação  | F3, F4, F5       | ⚠️ **PARCIAL**   | Estrutura/soak/goldens-externos majoritariamente presentes, **mas o objetivo numérico falhou no ponto mais sensível (F5 FiLM)** + lacunas de bench/golden v2. Ver RF1–RF3.                                                                                                                                                                                                         |
 | **C** RT         | F11–F14          | ✅ **RESOLVIDO**  | Varredura de hot-path (`models/**`, `dsp/pipeline/**`) **limpa**: zero `unwrap/expect/panic!/unreachable!` alcançável em `process()` release. F11 (fallback silencioso RT-safe, `debug_assert` compilado-fora), F12 (`!tests/fixtures/**/*.json`), F13 (assert de tamanho pré-`from_raw_parts_mut`), F14 (`Rejected` no lugar de `unwrap`) confirmados. Nits: RF8.                 |
 | **D** Saneamento | F6, F7           | ✅ **RESOLVIDO**  | Placebos `is_finite()`/`<100` trocados por envelopes físicos justificados (20×/50× pico; `<1e-7` zero-weight) com invariantes fortes (determinismo `<1e-12`, block-invariance `<1e-6`, transparência SPSC bit-exata) **preservados**. F7: `v2_wavenet_lite` reanimado (`#[ignore]`), `EVH-5150-Lite.nam` real, gate SNR≥105 dB (era ≥0). Nits: RF6, RF7.                           |
 | **E** Cadeia     | F8, F9, F10, F15 | ✅ **RESOLVIDO¹** | F8 (filtro `64samp` + IDs `_64samp`, `_64f` eliminado dos paths-alvo), F9 (auto-build padrão + opt-out `NAM_SKIP_GOLDEN_BUILD` + manifesto de frescor warn-only + README fresh-clone) confirmados. ¹**F10 PARCIAL** (RF4/RF5); F15 **deferido** (decisão opcional de LFS/subset — aceitável).                                                                                      |
@@ -668,3 +668,70 @@ goldens commitados não consumidos.
 
 **Prioridade de correção:** **RF1 (🔴)** → **RF2 / RF4 (🟠)** → **RF5–RF8 (🟡)**. ~~RF3~~ (🟢 resolvido via documentação, Tarefa 1.3). F15 permanece
 deferido (decisão opcional de Git LFS/subset).
+
+> **Atualizado em §6 (2026-06-21):** todos os RF1–RF8 foram executados (Épico F, `TODO-sprints.md`) e
+> **re-auditados in loco** — ver §6 para o veredito por RF e os achados residuais remanescentes (NRF1–NRF5).
+
+---
+
+## 6. Re-Auditoria da Rodada RF (Épico F) — Verificação In Loco (2026-06-21)
+
+> **Escopo:** verificar se as Tarefas 1.1–1.3 e 2.1–2.5 de `TODO-sprints.md` (RF1–RF8) foram entregues
+> **com qualidade**, conferindo `arquivo:linha` contra a árvore limpa (8 commits `81c30a9..b50f291`).
+> **Skill:** `revisor-auditor`. NAMcore (`9c7b185`, v0.5.3) como bíblia de correção.
+
+### 6.1 Estado verde
+
+- **Compilação:** `cargo check --all-features --tests --benches` limpo (inclui o novo bench). ✅
+- **Suíte rápida (`cargo test --all-features`):** **873 passaram · 0 falharam · 110 ignorados** — sem
+  regressão vs. baseline §5.1. A contagem é idêntica porque a rodada **endureceu testes existentes**
+  (RF1/RF4/RF6) em vez de adicionar casos novos; RF2 adicionou um _bench_ (fora da contagem de testes). ✅
+- **Anti-placebo comprovado:** `test_golden_vectors_wavenet_a2_film_lite` e `…_film_full` **passam de
+  fato** (não-`ignored`, não-skip), exercendo os goldens antes órfãos contra gates SNR/ESR reais. ✅
+
+### 6.2 Veredito por RF
+
+| RF  | Sev | Tarefa | Commit    | Veredito                           | Evidência in loco                                                                                                                                                                                                                                                   |
+| --- | --- | ------ | --------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RF1 | 🔴  | 1.1    | `81c30a9` | ✅ **RESOLVIDO**                    | `golden_vectors.rs` lê `read_golden_bin` + `report_dsp_fidelity`; thresholds calibrados em `validation.rs:461-481` (lite SNR≥12/ESR≤2e-2; full SNR≥30/ESR≤5e-4) com `// Measured: 18.1/36.0 dB`. Ambos PASS.                                                        |
+| RF2 | 🟠  | 1.2    | `626e1f5` | ✅ **RESOLVIDO** (c/ ressalva NRF1) | `bench_wavenet_a2_dyn_gated_process` registrado no `criterion_group!`; ID `A2Dyn_Gated_64samp_48kHz`; CH=4 força rota `WaveNetA2Dyn`. Compila com `--benches`.                                                                                                      |
+| RF3 | 🟢  | 1.3    | `6df1080` | ✅ **RESOLVIDO**                    | Documentado em `cpp_parity_map.md §3.3`, `README.md` (tabela SR + §v2 coverage) e comentários de seção em `golden_vectors.rs`. Decisão "documentar > gerar" justificada (geometria subsume SR; live x-val cobre multi-SR).                                          |
+| RF4 | 🟠  | 2.1    | `8a2054a` | ✅ **RESOLVIDO**                    | `nondist_validation.rs:115-120` `eprintln!`→`assert_eq!`; auto-skip `Unknown*` preservado (`:104-109`). `test_nondist_models_validation` PASS.                                                                                                                      |
+| RF5 | 🟡  | 2.2    | `ff6792c` | ✅ **RESOLVIDO**                    | `cpp_parity.rs:713-716` usa `discovery::find_models_in_dir` + filtro `manifest.json`; loop `read_dir` inline removido.                                                                                                                                              |
+| RF6 | 🟡  | 2.3    | `f135e78` | ✅ **RESOLVIDO**                    | `spsc_pipeline.rs` (pesos `0.0` + entrada silêncio → `\|v\|<1e-7`) e `wavenet_prewarm_edge.rs:411-415` (modelo `do_bias:false` → zero físico atingível). Ambos PASS.                                                                                                |
+| RF7 | 🟡  | 2.4    | `6230fdb` | ✅ **RESOLVIDO**                    | `BossWN-lite` purgado em `fastmath-approximations.md`, `README.md` (×4) e doc-comment `golden_vectors.rs:472-490`; código já carrega `model_path("EVH-5150-Lite.nam")` em `:504`.                                                                                   |
+| RF8 | 🟡  | 2.5    | `b50f291` | ✅ **RESOLVIDO** (c/ ressalva NRF2) | `set_weights.rs:340-359` `unreachable!`→`Result<(),String>`+`debug_assert!`+`?`; flag `RT_STATUS_A2_FALLBACK_TRIGGERED` (`status.rs` `1<<15`) setada RT-safe (`fetch_or` Relaxed) no fallback de `WaveNetA2<CH>` (`mod.rs:548-550`); dispatch em `static_model.rs`. |
+
+### 6.3 Novos achados residuais (menores — nenhum bloqueante)
+
+- **NRF1 🟡 — (RF2) Bench "Gated" não exercita o path gated.** `make_wavenet_a2_dyn_data`
+  (`benches/inference_bench.rs`) seta `gated: Some(false)`, mas o ID/doc são `A2Dyn_Gated…` / "gating
+  active on the first layer". O PGO perfila o engine dinâmico (dispatch+conv+head) mas **não** o ramo
+  gated (sigmoid). _Correção:_ `gated: true` **ou** renomear `A2Dyn_64samp_48kHz` e ajustar a doc.
+- **NRF2 🟡 — (RF8) `WaveNetA2Dyn.rt_status` é campo morto (write-only).** Definido em `dynamic.rs:140`,
+  inicializado (`:273`) e injetado (`inject_rt_status:284`), porém **nunca lido** — o engine dinâmico não
+  tem fallback escalar que sete a flag (só `WaveNetA2<CH>` seta). _Correção:_ remover o campo do Dyn **ou**
+  documentar explicitamente como forward-compat.
+- **NRF3 🔵 — (RF4) `assert_eq!` em ramo de falha garantida.** Em `nondist_validation.rs:112-121` o
+  `assert_eq!` fica no `else` de `if class_label == expected` — sempre falha quando alcançado. Funcional
+  (mensagem correta), mas o `if/else` é redundante; poderia ser `assert_eq!` direto.
+- **NRF4 🔵 — (RF5) Descoberta agora é recursiva.** `find_models_in_dir` desce subdiretórios; o inline
+  removido era _flat_. É melhoria + consistência com os demais call-sites; `manifest.json` é filtrado em
+  qualquer profundidade. Sem ação — apenas registrar a mudança de comportamento.
+- **NRF5 🔵 — (RF7) Gate WaveNet Lite passou a ser condicional.** `golden_vectors.rs:505-508` faz _skip_
+  se `EVH-5150-Lite.nam` (non-dist) ausente; em checkout limpo de CI o gate Lite **não roda**. Trade-off
+  saudável (gate real de 122 dB vs. placebo sempre-presente de 0 dB), mas garantir o modelo no ambiente
+  de validação para não perder cobertura.
+
+### 6.4 Conclusão da re-auditoria RF
+
+**Épico F COMPLETO — todos os 8 achados residuais (RF1–RF8) resolvidos e verificados in loco**, sem
+regressão na suíte (873/0/110) e com o compilador limpo (incl. `--benches`). O achado **🔴 crítico (RF1)**
+— o placebo `is_finite()` no FiLM-em-A2 com goldens órfãos — foi **efetivamente eliminado**: os dois
+goldens agora são consumidos por gates SNR/ESR calibrados que **passam de fato**, com margens documentadas
+(`// Measured:`) e racional honesto da divergência inerente C++/Rust (C++ rejeita FiLM).
+
+Restam **5 achados residuais menores** (NRF1–NRF5): **2 🟡** valem correção rápida (bench "Gated" enganoso;
+campo `rt_status` morto no engine dinâmico) e **3 🔵** são informativos/trade-offs aceitos. **Nenhum é
+bloqueante.** O conjunto da rodada elevou a qualidade real dos gates (anti-placebo) e a robustez RT
+(telemetria de fallback + remoção de `unreachable!()` em cold-path) conforme as políticas do projeto.
