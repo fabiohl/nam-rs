@@ -12,7 +12,7 @@ impl StaticModel {
         match self {
             Self::WavenetA2Full(m) => m.inject_rt_status(rt_status),
             Self::WavenetA2Lite(m) => m.inject_rt_status(rt_status),
-            Self::WavenetA2Dyn(m) => m.inject_rt_status(rt_status),
+            Self::WavenetA2Dyn(_) => {}
             _ => {}
         }
     }

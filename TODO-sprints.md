@@ -23,7 +23,7 @@ Foco na correção de inconsistências no código de benchmark e na remoção de
   * **Justificativa:** O nome do bench (`A2Dyn_Gated_64samp_48kHz`) e a documentação indicam o uso do ramo de gating ("gating active on the first layer"). Fornecer `gated: false` perfila outro ramo da inferência, fugindo do perfil pretendido.
   * **Critérios de Aceite (DoD):** Compilar os benchmarks (`cargo check --benches`) com sucesso. Se executado (`cargo bench`), o teste não deve apresentar pânico.
 
-* **Tarefa 1.2: Remoção do campo morto `rt_status` em `WaveNetA2Dyn` (Referência: NRF2 / RF8)**
+* **Tarefa 1.2: Remoção do campo morto `rt_status` em `WaveNetA2Dyn` (Referência: NRF2 / RF8)** [DONE]
   * **Arquivo(s):** Principalmente `src/models/a2/model/dynamic.rs`
   * **Ação:**
         1. Remover o campo `rt_status` da definição da `struct WaveNetA2Dyn` (aprox. linha 140).

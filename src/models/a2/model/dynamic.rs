@@ -41,7 +41,6 @@ use crate::models::a2::head::A2HeadConv;
 use crate::models::a2::layer::A2Layer;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Runtime-dimensioned WaveNet A2 model.
 ///
@@ -135,9 +134,6 @@ pub struct WaveNetA2Dyn {
 
     /// Scratch buffer for head1x1 projection output (channels elements).
     pub head1x1_scratch: AlignedVec<f32>,
-
-    /// `RtStatusFlags` for silent RT→Main telemetry (RF8).
-    pub rt_status: Option<Arc<crate::common::spsc::RtStatusFlags>>,
 }
 
 impl WaveNetA2Dyn {
@@ -270,7 +266,6 @@ impl WaveNetA2Dyn {
             condition_size: 1,
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32),
             head1x1_scratch,
-            rt_status: None,
         })
     }
 
@@ -278,11 +273,6 @@ impl WaveNetA2Dyn {
     #[inline(always)]
     pub fn channels(&self) -> usize {
         self.channels
-    }
-
-    /// Injects `RtStatusFlags` for RT→Main telemetry (RF8).
-    pub fn inject_rt_status(&mut self, rt_status: Arc<crate::common::spsc::RtStatusFlags>) {
-        self.rt_status = Some(rt_status);
     }
 
     /// Returns the total receptive field size.
