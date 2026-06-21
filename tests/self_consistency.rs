@@ -130,10 +130,10 @@ fn test_auto_consistency_wavenet_nano() {
 
 #[test]
 fn test_auto_consistency_wavenet_lite() {
-    if !model_exists("BossWN-lite.nam") {
+    if !model_exists("EVH-5150-Lite.nam") {
         return;
     }
-    assert_model_determinism(&model_path("BossWN-lite.nam"), "WaveNet Lite CH=12");
+    assert_model_determinism(&model_path("EVH-5150-Lite.nam"), "WaveNet Lite CH=12");
 }
 
 #[test]

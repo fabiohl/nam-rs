@@ -214,7 +214,7 @@ echo "[5/5] Running render for each model (v1)..."
 # Models: (.nam file : golden name : label)
 MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard"
-    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite"
+    "EVH-5150-Lite.nam:golden_wavenet_lite:WaveNet Lite"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano"
     "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
@@ -237,7 +237,11 @@ for entry in "${MODELS[@]}"; do
     GOLDEN_BIN="$FIXTURES_DIR/${golden_name}.bin"
 
     if [ ! -f "$MODEL_PATH" ]; then
-        echo "  SKIP: $nam_file not found at $MODELS_DIR"
+        MODEL_PATH="$FIXTURES_DIR/models-nondist/$nam_file"
+    fi
+
+    if [ ! -f "$MODEL_PATH" ]; then
+        echo "  SKIP: $nam_file not found at $MODELS_DIR or models-nondist"
         continue
     fi
 
@@ -283,7 +287,7 @@ echo "[5b/5] Generating v2 multi-SR golden vectors..."
 # P1 RESOLVIDO (T1.2): wavenet_lite re-added with full v2 multi-SR coverage.
 V2_MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16)"
-    "BossWN-lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12)"
+    "EVH-5150-Lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12)"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather (CH=8)"
     "BossWN-nano.nam:golden_wavenet_nano:WaveNet Nano (CH=4)"
     "wavenet_a1_standard.nam:golden_wavenet_a1_standard:WaveNet A1 Standard (Official)"
@@ -299,9 +303,12 @@ V2_MODELS=(
 for entry in "${V2_MODELS[@]}"; do
     IFS=':' read -r nam_file golden_name label skip_srs <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
+    if [ ! -f "$MODEL_PATH" ]; then
+        MODEL_PATH="$FIXTURES_DIR/models-nondist/$nam_file"
+    fi
 
     if [ ! -f "$MODEL_PATH" ]; then
-        echo "  SKIP v2: $nam_file not found at $MODELS_DIR"
+        echo "  SKIP v2: $nam_file not found at $MODELS_DIR or models-nondist"
         continue
     fi
 

@@ -366,6 +366,7 @@ fn test_zero_alloc_nondist_models() {
                 && path
                     .extension()
                     .is_some_and(|ext| ext == "nam" || ext == "json")
+                && path.file_name().unwrap() != "manifest.json"
             {
                 models.push(path);
             }

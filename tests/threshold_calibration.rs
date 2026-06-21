@@ -40,7 +40,7 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_lstm_official" => Some("lstm (Official)"),
         "golden_wavenet_feather" => Some("BossWN-feather"),
         "golden_wavenet_nano" => Some("BossWN-nano"),
-        "golden_wavenet_lite" => Some("BossWN-lite"),
+        "golden_wavenet_lite" => Some("EVH-5150-Lite"),
         "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
         "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
         "golden_wavenet_official" => Some("wavenet_official"),
@@ -128,7 +128,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "lstm_official",
         "BossWN-feather",
         "BossWN-nano",
-        "BossWN-lite",
+        "EVH-5150-Lite",
         "wavenet_a2_full",
         "wavenet_a2_lite",
     ];

@@ -100,10 +100,16 @@ pub fn write_golden_bin(path: &Path, input: &[f32], output: &[f32]) -> std::io::
 
 /// Resolves the path to a test model in `tests/fixtures/models/`.
 pub fn model_path(filename: &str) -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models");
-    path.push(filename);
-    path
+    let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut nondist = base.clone();
+    nondist.push("tests/fixtures/models-nondist");
+    nondist.push(filename);
+    if nondist.exists() {
+        return nondist;
+    }
+    base.push("tests/fixtures/models");
+    base.push(filename);
+    base
 }
 
 /// Processes an input block through the model in chunks of `block_size`.

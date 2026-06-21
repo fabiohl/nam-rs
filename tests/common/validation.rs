@@ -416,11 +416,11 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
         }
         // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
-        // Measured: SNR=117.4 dB, ESR=1.83e-12 (golden v1, post-T1.2+T1.3 fix).
-        // Floor: SNR - 17.4 dB margin, ESR factor ~55x
-        "BossWN-lite" | "wavenet_lite" => {
-            let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+        // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration).
+        // Floor: SNR - 17.3 dB margin, ESR factor ~60x
+        "EVH-5150-Lite" | "wavenet_lite" => {
+            let snr_db = 105.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11)))
         }
         // --- WaveNet A2 Full (CH=8) ---
         // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5)

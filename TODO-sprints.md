@@ -96,3 +96,13 @@ Este documento detalha o planejamento das Sprints e Tarefas Técnicas para os É
   - **Arquivo alvo:** `tests/cpp_parity.rs` (linhas ~551-555 - teste `live_cross_validation_v2_wavenet_lite`).
   - **Ação:** O teste possui um hard `return` logando `"SKIP: ... known-divergent (T1.2)"`, efetivamente morto.
   - **Implementação:** Substituir por tratamento de paridade com o novo modelo Lite real da Tarefa D.2.1. Se a divergência V2 C++ para Lite ainda ocorrer fundamentalmente por conta do bug T1.2 de upstream, encapsular adequadamente através de uma flag explícita `#[cfg(feature = "known-divergent")]`, `#[ignore]` justificado ou assert específico em faixa perdoável, devolvendo seu status à "Validação Confiável".
+
+### SPRINT D.3 — Validação Estendida de Arquiteturas via Nondist
+
+**Foco:** Aproveitar o acervo contido em `tests/fixtures/models-nondist/` para estender a malha de validação para geometrias que não possuem cobertura oficial nos goldens tradicionais.
+
+- [ ] **Tarefa D.3.1: Parametrizar testes de paridade para demais modelos nondist**
+  - **Especialista:** `implementador`.
+  - **Ação:** Identificar arquiteturas úteis no diretório (ex: LSTM 1x16 de ganho extremo, WaveNet com arrays atípicos, Container models).
+  - **Implementação:** Desenvolver uma etapa no script de goldens (`golden_gen_build.sh`) que opcionalmente gere goldens baseados neles caso o diretório exista.
+  - **Integração:** Inserir a validação desses goldens adicionais na rotina de `tests/cpp_parity.rs` ou via metadados no `manifest.json`, aplicando sempre a lógica de *auto-skip* recomendada para não quebrar CI ou clones frescos.
