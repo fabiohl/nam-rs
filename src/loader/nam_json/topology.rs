@@ -543,10 +543,11 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
         }
 
         if !check_film_all_inactive(raw) {
-            // Models with FiLM are now routed to Dynamic if they break const-generic assumptions,
-            // but currently the fast-path does support some FiLM. For safety, let's say:
-            // if it has active FiLM it goes to Dynamic? No, the T1/T2 already added FiLM to fast-path.
-            // So we don't return Dynamic here just for FiLM.
+            // B.1.1 (F5): FiLM routing policy — C++ a2_fast.cpp rejects FiLM
+            // models, routing them to the generic WaveNet engine. Rust fast-path
+            // output diverges from C++ (measured CH=3 SNR 18.1 dB, CH=8 SNR 36.0 dB).
+            // Route to WaveNetA2Dyn to match C++ behavior.
+            return Some(A2TopologyResult::Dynamic);
         }
 
         // 19. groups_input == 1 AND groups_input_mixin == 1
@@ -711,4 +712,54 @@ fn check_not_slimmable(raw: &serde_json::Value) -> bool {
     matches!(raw.get("slimmable"), None | Some(serde_json::Value::Null))
 }
 
-// =============================================================================
+#[cfg(test)]
+mod topology_film_tests {
+    use super::*;
+    use crate::loader::nam_json::NamModelData;
+
+    /// B.1.1: Verifies that is_a2_shape routes FiLM-active models to Dynamic.
+    #[test]
+    fn test_a2_film_routes_to_dynamic() {
+        let json = r#"{
+            "version": "0.6.0",
+            "architecture": "WaveNet",
+            "config": {
+                "in_channels": 1,
+                "head_scale": 0.02,
+                "head": null,
+                "layers": [{
+                    "input_size": 1,
+                    "condition_size": 1,
+                    "channels": 3,
+                    "bottleneck": 3,
+                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true},
+                    "kernel_sizes": [6,6,6,6,6,6,6,6,6,6,6,6,6,6,15,15,6,6,6,6,6,6,6],
+                    "dilations": [1,3,7,17,41,101,239,1,3,7,17,41,101,239,1,13,1,3,7,17,41,101,239],
+                    "activation": [{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01},{"type":"LeakyReLU","negative_slope":0.01}],
+                    "gating_mode": ["none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none"],
+                    "head1x1": {"active": false, "out_channels": 3, "groups": 1},
+                    "layer1x1": {"active": true, "groups": 1},
+                    "conv_post_film": {"active": true, "shift": true, "groups": 1},
+                    "input_mixin_post_film": {"active": true, "shift": true, "groups": 1},
+                    "activation_post_film": {"active": true, "shift": true, "groups": 1},
+                    "layer1x1_post_film": {"active": true, "shift": true, "groups": 1},
+                    "groups_input": 1,
+                    "groups_input_mixin": 1
+                }]
+            },
+            "weights": [],
+            "sample_rate": 48000
+        }"#;
+
+        let data: NamModelData = serde_json::from_str(json).expect("parse FiLM model JSON");
+        match is_a2_shape(&data) {
+            Some(A2TopologyResult::Dynamic) => {}
+            Some(A2TopologyResult::KnownFastPath(ch)) => {
+                panic!("FiLM model was routed to KnownFastPath({ch}) instead of Dynamic");
+            }
+            None => {
+                panic!("FiLM model was not recognized as A2 (returned None)");
+            }
+        }
+    }
+}

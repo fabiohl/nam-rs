@@ -131,6 +131,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     head1x1_active,
                 )?;
                 model.set_layer_raw(layer_raw);
+                model.condition_size = l0.condition_size.unwrap_or(1);
                 model
                     .set_weights(&data.weights)
                     .map_err(|e| anyhow::anyhow!("A2-Dynamic weight load failed: {e}"))?;

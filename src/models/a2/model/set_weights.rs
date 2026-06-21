@@ -284,7 +284,7 @@ fn transpose_head_w(raw: &[f32], head: &mut [f32], channels: usize, kernel: usiz
 // FiLM loading helpers
 // =============================================================================
 
-const FILM_KEYS: &[(&str, usize)] = &[
+pub(crate) const FILM_KEYS: &[(&str, usize)] = &[
     ("conv_pre_film", 0),
     ("conv_post_film", 1),
     ("input_mixin_pre_film", 2),
@@ -295,7 +295,7 @@ const FILM_KEYS: &[(&str, usize)] = &[
     ("head1x1_post_film", 7),
 ];
 
-fn parse_single_film_config(raw: &serde_json::Value, key: &str) -> FiLMConfig {
+pub(crate) fn parse_single_film_config(raw: &serde_json::Value, key: &str) -> FiLMConfig {
     let obj = match raw.get(key).and_then(|v| v.as_object()) {
         Some(o) => o,
         None => return FiLMConfig::default(),
@@ -311,7 +311,7 @@ fn parse_single_film_config(raw: &serde_json::Value, key: &str) -> FiLMConfig {
     }
 }
 
-fn parse_film_configs(raw: &serde_json::Value) -> [FiLMConfig; 8] {
+pub(crate) fn parse_film_configs(raw: &serde_json::Value) -> [FiLMConfig; 8] {
     let mut configs = [FiLMConfig::default(); 8];
     for &(key, idx) in FILM_KEYS {
         configs[idx] = parse_single_film_config(raw, key);
@@ -319,7 +319,7 @@ fn parse_film_configs(raw: &serde_json::Value) -> [FiLMConfig; 8] {
     configs
 }
 
-fn film_weight_count(config: &FiLMConfig, cond_size: usize, channels: usize) -> usize {
+pub(crate) fn film_weight_count(config: &FiLMConfig, cond_size: usize, channels: usize) -> usize {
     let g = config.groups as usize;
     let ch_per_group = channels / g;
     let cond_per_group = cond_size / g;
@@ -331,11 +331,16 @@ fn film_weight_count(config: &FiLMConfig, cond_size: usize, channels: usize) -> 
     g * out_per_group * cond_per_group
 }
 
-fn film_bias_count(config: &FiLMConfig, channels: usize) -> usize {
+pub(crate) fn film_bias_count(config: &FiLMConfig, channels: usize) -> usize {
     if config.shift { channels * 2 } else { channels }
 }
 
-fn set_layer_film(layer: &mut A2Layer, _config: &FiLMConfig, idx: usize, film: FiLMLayer) {
+pub(crate) fn set_layer_film(
+    layer: &mut A2Layer,
+    _config: &FiLMConfig,
+    idx: usize,
+    film: FiLMLayer,
+) {
     match idx {
         0 => layer.conv_pre_film = Some(film),
         1 => layer.conv_post_film = Some(film),
@@ -350,7 +355,7 @@ fn set_layer_film(layer: &mut A2Layer, _config: &FiLMConfig, idx: usize, film: F
 }
 
 #[allow(clippy::too_many_arguments)]
-fn load_film_for_layer(
+pub(crate) fn load_film_for_layer(
     layer: &mut A2Layer,
     configs: &[FiLMConfig; 8],
     channels: usize,

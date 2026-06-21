@@ -74,6 +74,15 @@ def count_weights(ch: int) -> int:
     return count
 
 
+def count_weights_film(ch: int, num_film_keys: int) -> int:
+    base = count_weights(ch)
+    for _ in range(NUM_LAYERS):
+        for _ in range(num_film_keys):
+            base += ch * 2      # film_w (cond_size=1: ch*2*1)
+            base += ch * 2      # film_b
+    return base
+
+
 def count_weights_dynamic(ch: int, bottleneck: int, gating_modes: List[str]) -> int:
     count = 0
     count += ch  # rechannel_w
@@ -119,6 +128,30 @@ def generate_weights(ch: int, rng: random.Random) -> List[float]:
     # 4. Head scale: 1 float (should be positive and small, like 0.02)
     weights.extend([0.02])
 
+    return weights
+
+
+def generate_weights_film(ch: int, num_film_keys: int, rng: random.Random) -> List[float]:
+    scales = SCALES[ch]
+    ws = scales["weight"]
+    bs = scales["bias"]
+    weights: List[float] = []
+
+    weights.extend(gen_weights(ch, rng, scale=ws))
+    for k in KERNEL_SIZES:
+        weights.extend(gen_weights(ch * ch * k, rng, scale=ws))
+        weights.extend(gen_weights(ch, rng, scale=bs))
+        weights.extend(gen_weights(ch, rng, scale=ws))
+        weights.extend(gen_weights(ch * ch, rng, scale=ws))
+        weights.extend(gen_weights(ch, rng, scale=bs))
+        # FiLM weights per layer (ch*2 for w, ch*2 for b)
+        for _ in range(num_film_keys):
+            weights.extend(gen_weights(ch * 2, rng, scale=ws))
+            weights.extend(gen_weights(ch * 2, rng, scale=bs))
+
+    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=ws))
+    weights.extend(gen_weights(1, rng, scale=bs))
+    weights.extend([0.02])
     return weights
 
 
@@ -179,6 +212,13 @@ def build_layer_config(ch: int) -> dict:
     }
 
 
+def build_layer_config_film(ch: int, film_keys: list) -> dict:
+    cfg = build_layer_config(ch)
+    for key in film_keys:
+        cfg[key] = {"active": True, "shift": True, "groups": 1}
+    return cfg
+
+
 def build_layer_config_dynamic(
     ch: int,
     bottleneck: int,
@@ -221,6 +261,25 @@ def build_nam(ch: int, weights: List[float], label: str) -> dict:
         "weights": weights,
         "metadata": {
             "name": f"A2-{label} Fixture (CH={ch})",
+            "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
+        },
+        "sample_rate": 48000,
+    }
+
+
+def build_nam_film(ch: int, weights: List[float], label: str, film_keys: list) -> dict:
+    return {
+        "version": "0.6.0",
+        "architecture": "WaveNet",
+        "config": {
+            "in_channels": 1,
+            "head_scale": HEAD_SCALE,
+            "head": None,
+            "layers": [build_layer_config_film(ch, film_keys)],
+        },
+        "weights": weights,
+        "metadata": {
+            "name": f"A2-{label} FiLM Fixture (CH={ch})",
             "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
         },
         "sample_rate": 48000,
@@ -357,6 +416,28 @@ def main() -> None:
     with open(out_path, "w") as f:
         json.dump(doc_blended, f, indent=2)
     print(f"Written {out_path}  ({len(w_blended)} weights)")
+
+    # ── A2-FiLM model (Tarefa B.1.1: FiLM routing policy) ──────────────────
+    FILM_KEYS_ACTIVE = [
+        "conv_post_film",
+        "input_mixin_post_film",
+        "activation_post_film",
+        "layer1x1_post_film",
+    ]
+    for ch, label, fname in [(3, "FiLM-Lite", "wavenet_a2_film_lite.nam"),
+                               (8, "FiLM-Full", "wavenet_a2_film_full.nam")]:
+        num_film = len(FILM_KEYS_ACTIVE)
+        rng_film = random.Random(42 + ch)
+        expected_film = count_weights_film(ch, num_film)
+        w_film = generate_weights_film(ch, num_film, rng_film)
+        assert len(w_film) == expected_film, (
+            f"A2-{label}: got {len(w_film)} weights, expected {expected_film}"
+        )
+        doc_film = build_nam_film(ch, w_film, label, FILM_KEYS_ACTIVE)
+        out_path = OUTPUT_DIR / fname
+        with open(out_path, "w") as f:
+            json.dump(doc_film, f, indent=2)
+        print(f"Written {out_path}  ({len(w_film)} weights)")
 
     print("Done.")
 

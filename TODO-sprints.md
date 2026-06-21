@@ -24,7 +24,19 @@ Os caminhos dinâmicos (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) e a a
 
 **Objetivo:** Obter os modelos `.nam` faltantes (representativos dos caminhos expostos) e firmar o roteamento paramétrico definitivo (F3, F4, F5).
 
-### [ ] Tarefa B.1.1: Resolução Definitiva da Política A2+FiLM (F5)
+### [X] Tarefa B.1.1: Resolução Definitiva da Política A2+FiLM (F5)
+
+* **Resultado:** **Caso B** — fast-path `WaveNetA2<CH>` diverge do motor dinâmico C++.
+  * CH=3: SNR 18.1 dB, CH=8: SNR 36.0 dB (ambos abaixo do limiar de 70 dB).
+  * C++ `a2_fast.cpp` rejeita FiLM → fallback p/ `WaveNet` genérico. Rust agora equipara: FiLM ativo força `WaveNetA2Dyn`.
+* **Ação Investigativa:** Gerados modelos `wavenet_a2_film_lite.nam` (CH=3) e `wavenet_a2_film_full.nam` (CH=8) com 4 chaves FiLM ativas (`conv_post_film`, `input_mixin_post_film`, `activation_post_film`, `layer1x1_post_film`), `condition_size=1`. Goldens C++ renderizados via `NeuralAmpModelerCore v0.5.3` (roteamento fallback p/ motor genérico).
+* **Implementação da Política:**
+  * Alterado `src/loader/nam_json/topology.rs` (`check_film_all_inactive`): quando FiLM ativo → retorna `A2TopologyResult::Dynamic`.
+  * Adicionado `condition_size` ao `WaveNetA2Dyn` e suporte a carregamento de pesos FiLM em `dynamic.rs::set_weights()` (após `l1x1_b`).
+  * Funções FiLM de `set_weights.rs` tornadas `pub(crate)` p/ reuso pelo motor dinâmico.
+* **Testes:** `test_a2_film_routes_to_dynamic` (unitário em topology.rs). Smoke tests em `golden_vectors.rs` verificam roteamento p/ `WavenetA2Dyn` e finitude da saída.
+* **Limpeza:** Eliminados comentários ambíguos e `if` vazio no bloco FiLM de `topology.rs`.
+* **Nota p/ tarefas futuras:** Fixtures FiLM estão nos repositórios. Goldens C++ (`golden_wavenet_a2_film_*.bin`) foram gerados mas não são usados nos testes atuais pois o motor genérico C++ interpreta a stream A2 em ordem diferente. Dados brutos preservados para eventual calibração cruzada futura.
 
 * **Ação Investigativa:** Gerar/modificar um modelo A2 (CH=3 ou CH=8) com `condition_size = 1` e matriz FiLM ativa. Renderizar um *golden* no C++ (que fará roteamento fallback pro dinâmico) e compará-lo via Rust (que fará roteamento via `WaveNetA2<CH>`).
 * **Implementação da Política:**

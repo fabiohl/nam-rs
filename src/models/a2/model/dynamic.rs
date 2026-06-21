@@ -125,6 +125,9 @@ pub struct WaveNetA2Dyn {
     /// Raw JSON for the single layer array.
     pub layer_raw: Option<Value>,
 
+    /// Condition vector size (default 1 for A2 fast-path equivalence).
+    pub condition_size: usize,
+
     /// Per-frame scratch buffer for conv output (2*bottleneck elements).
     /// When gating/blending is active, the conv output is 2× wide.
     pub z_scratch: AlignedVec<f32>,
@@ -260,6 +263,7 @@ impl WaveNetA2Dyn {
             receptive_field_size: rf,
             max_buffer_size: max_buf,
             layer_raw: None,
+            condition_size: 1,
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32),
             head1x1_scratch,
         })
@@ -398,7 +402,23 @@ impl WaveNetA2Dyn {
             )?;
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
-            let layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
+            let mut layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
+
+            // FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
+            if let Some(ref raw) = self.layer_raw {
+                let configs = super::set_weights::parse_film_configs(raw);
+                super::set_weights::load_film_for_layer(
+                    &mut layer,
+                    &configs,
+                    channels,
+                    self.condition_size,
+                    weights,
+                    &mut pos,
+                    total,
+                    i,
+                )?;
+            }
+
             layers.push(layer);
         }
 
