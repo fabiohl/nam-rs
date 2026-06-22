@@ -3,6 +3,8 @@
 
 //! Optimized HardTanh activation kernels.
 
+use crate::activation_simd_avx2;
+use crate::activation_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Applies HardTanh (`clamp(x, -1.0, 1.0)`) to a slice using AVX2.
@@ -15,30 +17,30 @@ pub unsafe fn hard_tanh_slice_avx2(data: &mut [f32]) {
     let pos_one = _mm256_set1_ps(1.0_f32);
     let mut i = 0;
     let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x1)),
-            );
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i + 8),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x2)),
-            );
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            _mm256_storeu_ps(
-                data.as_mut_ptr().add(i),
-                _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x)),
-            );
-        }
-        i += 8;
+    unsafe {
+        activation_simd_avx2!(
+            i,
+            len,
+            {
+                let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
+                let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+                _mm256_storeu_ps(
+                    data.as_mut_ptr().add(i),
+                    _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x1)),
+                );
+                _mm256_storeu_ps(
+                    data.as_mut_ptr().add(i + 8),
+                    _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x2)),
+                );
+            },
+            {
+                let x = _mm256_loadu_ps(data.as_ptr().add(i));
+                _mm256_storeu_ps(
+                    data.as_mut_ptr().add(i),
+                    _mm256_min_ps(pos_one, _mm256_max_ps(neg_one, x)),
+                );
+            }
+        );
     }
     for x in data.iter_mut().skip(i) {
         *x = x.clamp(-1.0, 1.0);
@@ -55,15 +57,14 @@ pub unsafe fn hard_tanh_slice_avx512(data: &mut [f32]) {
     let pos_one = _mm512_set1_ps(1.0_f32);
     let mut i = 0;
     let len = data.len();
-    while i + 16 <= len {
-        unsafe {
+    unsafe {
+        activation_simd_avx512!(i, len, {
             let x = _mm512_loadu_ps(data.as_ptr().add(i));
             _mm512_storeu_ps(
                 data.as_mut_ptr().add(i),
                 _mm512_min_ps(pos_one, _mm512_max_ps(neg_one, x)),
             );
-        }
-        i += 16;
+        });
     }
     for x in data.iter_mut().skip(i) {
         *x = x.clamp(-1.0, 1.0);

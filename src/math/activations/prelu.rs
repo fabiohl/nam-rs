@@ -3,6 +3,8 @@
 
 //! Optimized PReLU (Parametric ReLU) activation kernels.
 
+use crate::activation_simd_avx2;
+use crate::activation_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Vector approximation of `PReLU(x) = x > 0 ? x : alpha * x` using AVX2.
@@ -51,42 +53,42 @@ pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
     // Optimized case: single slope (LeakyReLU)
     if s_len == 1 {
         let alpha = _mm256_set1_ps(slopes[0]);
-        while i + 16 <= len {
-            unsafe {
-                let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
-                let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x1, alpha));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), simd_prelu_avx2(x2, alpha));
-            }
-            i += 16;
-        }
-        while i + 8 <= len {
-            unsafe {
-                let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x, alpha));
-            }
-            i += 8;
+        unsafe {
+            activation_simd_avx2!(
+                i,
+                len,
+                {
+                    let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+                    let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x1, alpha));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), simd_prelu_avx2(x2, alpha));
+                },
+                {
+                    let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x, alpha));
+                }
+            );
         }
     } else if s_len == len {
         // Optimized case: per-element slopes
-        while i + 16 <= len {
-            unsafe {
-                let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
-                let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
-                let a1 = _mm256_loadu_ps(slopes.as_ptr().add(i));
-                let a2 = _mm256_loadu_ps(slopes.as_ptr().add(i + 8));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x1, a1));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), simd_prelu_avx2(x2, a2));
-            }
-            i += 16;
-        }
-        while i + 8 <= len {
-            unsafe {
-                let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-                let a = _mm256_loadu_ps(slopes.as_ptr().add(i));
-                _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x, a));
-            }
-            i += 8;
+        unsafe {
+            activation_simd_avx2!(
+                i,
+                len,
+                {
+                    let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+                    let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+                    let a1 = _mm256_loadu_ps(slopes.as_ptr().add(i));
+                    let a2 = _mm256_loadu_ps(slopes.as_ptr().add(i + 8));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x1, a1));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), simd_prelu_avx2(x2, a2));
+                },
+                {
+                    let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+                    let a = _mm256_loadu_ps(slopes.as_ptr().add(i));
+                    _mm256_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx2(x, a));
+                }
+            );
         }
     }
 
@@ -115,21 +117,19 @@ pub unsafe fn prelu_slice_avx512(slice: &mut [f32], slopes: &[f32]) {
 
     if s_len == 1 {
         let alpha = _mm512_set1_ps(slopes[0]);
-        while i + 16 <= len {
-            unsafe {
+        unsafe {
+            activation_simd_avx512!(i, len, {
                 let x = _mm512_loadu_ps(slice.as_ptr().add(i));
                 _mm512_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx512(x, alpha));
-            }
-            i += 16;
+            });
         }
     } else if s_len == len {
-        while i + 16 <= len {
-            unsafe {
+        unsafe {
+            activation_simd_avx512!(i, len, {
                 let x = _mm512_loadu_ps(slice.as_ptr().add(i));
                 let a = _mm512_loadu_ps(slopes.as_ptr().add(i));
                 _mm512_storeu_ps(slice.as_mut_ptr().add(i), simd_prelu_avx512(x, a));
-            }
-            i += 16;
+            });
         }
     }
 

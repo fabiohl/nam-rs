@@ -4,6 +4,8 @@
 //! Optimized SiLU (Sigmoid Linear Unit / Swish) activation kernels.
 
 use super::sigmoid::{simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2};
+use crate::activation_simd_avx2;
+use crate::activation_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Vector approximation of `SiLU(x) = x * sigmoid(x)` using AVX2.
@@ -54,21 +56,22 @@ pub unsafe fn silu_slice_avx2(slice: &mut [f32]) {
     let len = slice.len();
 
     unsafe {
-        while i + 16 <= len {
-            let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
-            let (y1, y2) = simd_silu_dual_avx2(x1, x2);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
-            i += 16;
-        }
-
-        while i + 8 <= len {
-            let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_silu_avx2(x);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
-            i += 8;
-        }
+        activation_simd_avx2!(
+            i,
+            len,
+            {
+                let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+                let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+                let (y1, y2) = simd_silu_dual_avx2(x1, x2);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
+            },
+            {
+                let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+                let y = simd_silu_avx2(x);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
+            }
+        );
     }
 
     for item in slice.iter_mut().skip(i) {
@@ -89,12 +92,11 @@ pub unsafe fn silu_slice_avx512(slice: &mut [f32]) {
     let len = slice.len();
 
     unsafe {
-        while i + 16 <= len {
+        activation_simd_avx512!(i, len, {
             let x = _mm512_loadu_ps(slice.as_ptr().add(i));
             let y = simd_silu_avx512(x);
             _mm512_storeu_ps(slice.as_mut_ptr().add(i), y);
-            i += 16;
-        }
+        });
     }
 
     for item in slice.iter_mut().skip(i) {

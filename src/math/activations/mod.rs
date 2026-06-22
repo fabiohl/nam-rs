@@ -23,6 +23,7 @@ pub mod fast_tanh;
 pub mod fused;
 pub mod hard_swish;
 pub mod hard_tanh;
+pub mod kernel_macro;
 pub mod leaky_hard_tanh;
 pub mod prelu;
 pub mod relu;

@@ -14,7 +14,7 @@
 **Achados Mapeados:** F23, F27.
 **Grau de Risco:** Médio (Requer extrema cautela na preservação da paridade bit-a-bit dos cálculos matemáticos de inferência).
 
-### 🏃 Sprint E6.1: Deduplicação Estrutural de Gain e Ativações (F23)
+### 🏃 Sprint E6.1: Deduplicação Estrutural de Gain e Ativações (F23) [DONE]
 
 Foco: Extração de *boilerplates* repetitivos nas rotinas matemáticas de ganho e funções de ativação.
 
@@ -23,7 +23,7 @@ Foco: Extração de *boilerplates* repetitivos nas rotinas matemáticas de ganho
   - **Ação:** Inspirando-se no padrão existente `gemv_kernel!`, criar uma macro (ex: `gain_kernel!`) que parametrize as rotinas de ganho (largura, *step*, *tail*). Reimplementar os laços das fatias iterativas (*slice*) invocando a macro unificada.
   - **Riscos/Atenção:** Assegurar o correto tratamento dos elementos escalares (tail/remainder).
 
-- [ ] **Tarefa T6.1.2: Unificação das Funções de Ativação**
+- [x] **Tarefa T6.1.2: Unificação das Funções de Ativação**
   - **Origem:** Achado F23 (laços `slice` das ativações `*_slice_avx2`/`avx512`).
   - **Ação:** Projetar e aplicar macros para unificar a aplicação de funções de ativação sobre *slices* grandes de dados. Compartilhar a lógica de varredura SIMD entre as arquiteturas.
   - **Riscos/Atenção:** Validar se a paridade é mantida em fronteiras de alinhamento com `cargo bench` e `cargo test` dedicados em `tests-quick.sh`.

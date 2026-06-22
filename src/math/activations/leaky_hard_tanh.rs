@@ -3,6 +3,8 @@
 
 //! Optimized LeakyHardTanh activation kernels.
 
+use crate::activation_simd_avx2;
+use crate::activation_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Applies LeakyHardTanh (branchless blend) to a slice using AVX2+FMA.
@@ -23,36 +25,38 @@ pub unsafe fn leaky_hard_tanh_slice_avx2(
     let max_sl_v = _mm256_set1_ps(max_slope);
     let mut i = 0;
     let len = data.len();
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
-            let lt_min1 = _mm256_cmp_ps(x1, min_v, _CMP_LT_OS);
-            let lt_min2 = _mm256_cmp_ps(x2, min_v, _CMP_LT_OS);
-            let lo_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, min_v), min_sl_v, min_v);
-            let lo_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, min_v), min_sl_v, min_v);
-            let gt_max1 = _mm256_cmp_ps(x1, max_v, _CMP_GT_OS);
-            let gt_max2 = _mm256_cmp_ps(x2, max_v, _CMP_GT_OS);
-            let hi_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, max_v), max_sl_v, max_v);
-            let hi_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, max_v), max_sl_v, max_v);
-            let y1 = _mm256_blendv_ps(_mm256_blendv_ps(x1, lo_part1, lt_min1), hi_part1, gt_max1);
-            let y2 = _mm256_blendv_ps(_mm256_blendv_ps(x2, lo_part2, lt_min2), hi_part2, gt_max2);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
-        }
-        i += 16;
-    }
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(data.as_ptr().add(i));
-            let lt_min = _mm256_cmp_ps(x, min_v, _CMP_LT_OS);
-            let lo_part = _mm256_fmadd_ps(_mm256_sub_ps(x, min_v), min_sl_v, min_v);
-            let gt_max = _mm256_cmp_ps(x, max_v, _CMP_GT_OS);
-            let hi_part = _mm256_fmadd_ps(_mm256_sub_ps(x, max_v), max_sl_v, max_v);
-            let y = _mm256_blendv_ps(_mm256_blendv_ps(x, lo_part, lt_min), hi_part, gt_max);
-            _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
-        }
-        i += 8;
+    unsafe {
+        activation_simd_avx2!(
+            i,
+            len,
+            {
+                let x1 = _mm256_loadu_ps(data.as_ptr().add(i));
+                let x2 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+                let lt_min1 = _mm256_cmp_ps(x1, min_v, _CMP_LT_OS);
+                let lt_min2 = _mm256_cmp_ps(x2, min_v, _CMP_LT_OS);
+                let lo_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, min_v), min_sl_v, min_v);
+                let lo_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, min_v), min_sl_v, min_v);
+                let gt_max1 = _mm256_cmp_ps(x1, max_v, _CMP_GT_OS);
+                let gt_max2 = _mm256_cmp_ps(x2, max_v, _CMP_GT_OS);
+                let hi_part1 = _mm256_fmadd_ps(_mm256_sub_ps(x1, max_v), max_sl_v, max_v);
+                let hi_part2 = _mm256_fmadd_ps(_mm256_sub_ps(x2, max_v), max_sl_v, max_v);
+                let y1 =
+                    _mm256_blendv_ps(_mm256_blendv_ps(x1, lo_part1, lt_min1), hi_part1, gt_max1);
+                let y2 =
+                    _mm256_blendv_ps(_mm256_blendv_ps(x2, lo_part2, lt_min2), hi_part2, gt_max2);
+                _mm256_storeu_ps(data.as_mut_ptr().add(i), y1);
+                _mm256_storeu_ps(data.as_mut_ptr().add(i + 8), y2);
+            },
+            {
+                let x = _mm256_loadu_ps(data.as_ptr().add(i));
+                let lt_min = _mm256_cmp_ps(x, min_v, _CMP_LT_OS);
+                let lo_part = _mm256_fmadd_ps(_mm256_sub_ps(x, min_v), min_sl_v, min_v);
+                let gt_max = _mm256_cmp_ps(x, max_v, _CMP_GT_OS);
+                let hi_part = _mm256_fmadd_ps(_mm256_sub_ps(x, max_v), max_sl_v, max_v);
+                let y = _mm256_blendv_ps(_mm256_blendv_ps(x, lo_part, lt_min), hi_part, gt_max);
+                _mm256_storeu_ps(data.as_mut_ptr().add(i), y);
+            }
+        );
     }
     for x in data.iter_mut().skip(i) {
         if *x < min_val {
@@ -81,8 +85,8 @@ pub unsafe fn leaky_hard_tanh_slice_avx512(
     let max_sl_v = _mm512_set1_ps(max_slope);
     let mut i = 0;
     let len = data.len();
-    while i + 16 <= len {
-        unsafe {
+    unsafe {
+        activation_simd_avx512!(i, len, {
             let x = _mm512_loadu_ps(data.as_ptr().add(i));
             let lt_min = _mm512_cmp_ps_mask(x, min_v, _CMP_LT_OS);
             let lo_part = _mm512_fmadd_ps(_mm512_sub_ps(x, min_v), min_sl_v, min_v);
@@ -91,8 +95,7 @@ pub unsafe fn leaky_hard_tanh_slice_avx512(
             let temp = _mm512_mask_blend_ps(lt_min, x, lo_part);
             let y = _mm512_mask_blend_ps(gt_max, temp, hi_part);
             _mm512_storeu_ps(data.as_mut_ptr().add(i), y);
-        }
-        i += 16;
+        });
     }
     for x in data.iter_mut().skip(i) {
         if *x < min_val {

@@ -8,6 +8,8 @@
 use super::relu::{simd_relu_avx2, simd_relu_avx512, simd_relu_dual_avx2};
 use super::sigmoid::{simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2};
 use super::tanh::{simd_tanh_avx2, simd_tanh_avx512};
+use crate::activation_simd_avx2;
+use crate::activation_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Applies Sigmoid followed by ReLU (fused).
@@ -73,24 +75,23 @@ pub unsafe fn fused_sigmoid_relu_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
     let len = slice.len();
 
-    while i + 16 <= len {
-        unsafe {
-            let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
-            let (y1, y2) = simd_fused_sigmoid_relu_dual_avx2(x1, x2);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
-        }
-        i += 16;
-    }
-
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_fused_sigmoid_relu_avx2(x);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
-        }
-        i += 8;
+    unsafe {
+        activation_simd_avx2!(
+            i,
+            len,
+            {
+                let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+                let x2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+                let (y1, y2) = simd_fused_sigmoid_relu_dual_avx2(x1, x2);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i), y1);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), y2);
+            },
+            {
+                let x = _mm256_loadu_ps(slice.as_ptr().add(i));
+                let y = simd_fused_sigmoid_relu_avx2(x);
+                _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
+            }
+        );
     }
 
     for item in slice.iter_mut().skip(i) {
@@ -111,13 +112,12 @@ pub unsafe fn fused_sigmoid_relu_slice_avx512(slice: &mut [f32]) {
     let mut i = 0;
     let len = slice.len();
 
-    while i + 16 <= len {
-        unsafe {
+    unsafe {
+        activation_simd_avx512!(i, len, {
             let x = _mm512_loadu_ps(slice.as_ptr().add(i));
             let y = simd_fused_sigmoid_relu_avx512(x);
             _mm512_storeu_ps(slice.as_mut_ptr().add(i), y);
-        }
-        i += 16;
+        });
     }
 
     for item in slice.iter_mut().skip(i) {
