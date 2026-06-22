@@ -53,7 +53,7 @@ Foco: Consolidação das operações de *Stereo Convolution* e lógicas redundan
 
 Foco: Divisão de grandes módulos em namespaces menores e re-assentamento de testes de acordo com a política (>300 linhas = arquivo separado, <300 linhas = inline).
 
-- [ ] **Tarefa T7.1.1: Quebra de Monolitos de Domínio (F24)**
+- [x] **Tarefa T7.1.1: Quebra de Monolitos de Domínio (F24)**
   - **Ação 1:** Extrair e reestruturar `src/loader/nam_json/topology.rs` (765 linhas) em submódulos ou diretório próprio abrangendo `{wavenet, lstm, convnet, a2, linear}.rs`.
   - **Ação 2:** Separar as responsabilidades mistas dos testes em `src/clap/processor_test.rs` (2048 linhas) dividindo-os tematicamente em múltiplos arquivos dentro do diretório de testes apropriado.
 

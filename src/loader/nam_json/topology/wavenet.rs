@@ -1,0 +1,315 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Detection of WaveNet topologies from model data.
+
+use super::super::data::NamModelData;
+use super::super::model::HeadConfig;
+
+/// The closed and supported topologies within native WaveNet modeling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamWavenetTopology {
+    /// Channels: 16 (Standard)
+    Standard,
+    /// Channels: 12 (Lite)
+    Lite,
+    /// Channels: 8 (Feather)
+    Feather,
+    /// Channels: 4 (Nano)
+    Nano,
+}
+
+/// Description of a detected free (non-catalog) WaveNet A1 geometry.
+///
+/// Returned by [`get_wavenet_topology`] when the model is a valid WaveNet A1
+/// but does not match any of the four catalog SKUs
+/// (Standard/Lite/Feather/Nano). The dynamic engine (T3.1) consumes this
+/// structure to build a runtime-dimensioned [`WaveNetModelDyn`].
+///
+/// ## Semver note
+///
+/// The `channels` and `head_sizes` fields changed from `usize` to `Vec<usize>`
+/// to support per-array geometry (required for condition_dsp). This is a
+/// breaking change from the v2.x API.
+///
+/// [`WaveNetModelDyn`]: crate::models::wavenet::WaveNetModelDyn
+#[derive(Debug, Clone, PartialEq)]
+pub struct FreeWavenetGeometry {
+    /// Internal channels per layer-array (first array → array[0]).
+    pub channels: Vec<usize>,
+    /// Kernel size (same across all layers for legacy models;
+    /// per-array kernel sizes for heterogeneous topologies).
+    pub kernel_size: usize,
+    /// Per-array kernel sizes, one per layer-array.
+    /// For homogeneous topologies this is a repetition of `kernel_size`.
+    pub kernel_sizes: Vec<usize>,
+    /// Head projection size per layer-array.
+    /// `head_sizes.last()` determines `NumOutputChannels()` for the model
+    /// (C++ `wave_net_output_channels` returns `layer_array_params.back().head_size`).
+    pub head_sizes: Vec<usize>,
+    /// Dilations per layer-array.
+    pub dilations: Vec<Vec<usize>>,
+    /// Number of layer-arrays.
+    pub num_arrays: usize,
+    /// Condition input size (number of conditioning channels).
+    /// Models with `condition_size > 1` flow into the dynamic engine
+    /// (the const-generic fast-path is reserved for `COND=1`).
+    pub condition_size: usize,
+    /// Post-stack head configuration (Conv1D + activation) that processes
+    /// the signal after all layer arrays, before `head_scale` and output.
+    /// `None` means no post-stack head is present (standard behavior).
+    pub post_stack_head: Option<HeadConfig>,
+}
+
+/// Result of WaveNet topology detection.
+///
+/// Distinguishes three states:
+/// - `Known`: fast-path const-generic SKU (Standard/Lite/Feather/Nano).
+/// - `Free`: valid geometry outside the catalog — destined for the dynamic engine.
+/// - `Rejected`: invalid or missing shape data (no channels, no dilations, etc.).
+#[derive(Debug, Clone, PartialEq)]
+#[allow(private_interfaces)]
+pub enum WavenetTopologyResult {
+    /// Matches a known catalog SKU — use const-generic fast-path.
+    Known(NamWavenetTopology),
+    /// Valid geometry not in the catalog — use dynamic engine (T3.1).
+    Free(FreeWavenetGeometry),
+    /// Rejected due to unsupported feature or invalid shape.
+    Rejected(String),
+}
+
+static STD_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+static LITE_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
+static LITE_DILATIONS_2: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+
+/// Parses a version string in minimal SemVer format.
+/// Supports pre-release or metadata suffixes and 'v' or 'V' prefix.
+/// Returns `Some((major, minor, patch))` or `None` on parsing failure.
+pub(crate) fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
+    let clean = version.trim().trim_start_matches(['v', 'V']);
+    let clean = clean.split('-').next()?.split('+').next()?;
+    let mut parts = clean.split('.');
+    let major = parts.next()?.trim().parse::<u16>().ok()?;
+    let minor = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
+    let patch = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
+    Some((major, minor, patch))
+}
+
+impl NamModelData {
+    /// Detects whether the model uses the WaveNet A2 architecture.
+    ///
+    /// A2 detection is layered:
+    /// 1. **Primary — shape-based:** `is_a2_shape()` checks channels, dilations,
+    ///    and single-layer structure. If shape matches, the model is A2.
+    /// 2. **Secondary — activation:** any non-Tanh activation implies A2 semantics.
+    /// 3. **Tertiary — version telemetry:** a SemVer >= 0.6.0 is logged as a
+    ///    warning when the shape is not recognised, but version alone is NOT
+    ///    sufficient to classify the model as A2. This prevents a WaveNet A1
+    ///    model with a high version string from being silently misrouted.
+    pub fn is_wavenet_a2(&self) -> bool {
+        if self.architecture != "WaveNet" {
+            return false;
+        }
+
+        // Primary: shape-based detection (channels + dilations + kernel sizes)
+        if super::a2::is_a2_shape(self).is_some() {
+            return true;
+        }
+
+        // Secondary: activation-based detection — only if the model has the
+        // structural signature of an A2 (single layer array). Multi-array
+        // WaveNet models with non-Tanh activation are A1 geometries with
+        // a non-standard activation, not A2.
+        if self.config.layers.len() == 1
+            && let Some(layer) = self.config.layers.first()
+            && layer.activation.as_deref().is_some_and(|a| a != "Tanh")
+        {
+            return true;
+        }
+
+        // Tertiary: version telemetry (warning only, does NOT classify)
+        if let Some(ref v) = self.version
+            && let Some(ver) = parse_semver(v)
+            && ver >= (0, 6, 0)
+        {
+            log::warn!(
+                "WaveNet model declares version {v} (>= 0.6.0), but its shape \
+                 does not match any known A2 topology. Treating as non-A2. \
+                 Channels/dilations may indicate an unsupported A2 variant \
+                 or an A1 model with an unusually high version string."
+            );
+        }
+
+        false
+    }
+}
+
+/// Detects the WaveNet topology, distinguishing known SKUs from free geometries.
+///
+/// Returns [`WavenetTopologyResult`] with three possible outcomes:
+/// - `Known(SKU)`: matches a catalog variant (Standard/Lite/Feather/Nano) —
+///   use the const-generic fast-path. Only `condition_size=1` (or absent) models
+///   can match a catalog SKU.
+/// - `Free(geometry)`: valid A1 geometry outside the catalog — destined for the
+///   dynamic engine (T3.1). Any `condition_size` is accepted.
+/// - `Rejected(reason)`: missing/invalid shape data.
+///
+/// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid
+/// WaveNet A1 geometry, not only the four catalog SKUs.
+pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
+    use super::super::validation::MAX_WAVENET_FREE_CHANNELS;
+
+    // ── Architecture gate ──
+    if data.architecture != "WaveNet" {
+        return WavenetTopologyResult::Rejected("Not a WaveNet model.".to_string());
+    }
+
+    let layers = &data.config.layers;
+    if layers.is_empty() {
+        return WavenetTopologyResult::Rejected("WaveNet model has no layer arrays.".to_string());
+    }
+
+    // ── Extract condition_size from first layer (all layers share the same value) ──
+    let condition_size = layers[0].condition_size.unwrap_or(1);
+
+    // ── Extract per-layer fields (gently — full validation deferred to free geometry) ──
+    let mut first_channels: Option<usize> = None;
+    let mut first_kernel_size: Option<usize> = None;
+    let mut first_head_size: Option<usize> = None;
+    let mut dilations: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
+    let mut head_sizes: Vec<usize> = Vec::with_capacity(layers.len());
+    let mut channels: Vec<usize> = Vec::with_capacity(layers.len());
+    let mut kernel_sizes: Vec<usize> = Vec::with_capacity(layers.len());
+
+    for (i, layer) in layers.iter().enumerate() {
+        let ch = match layer.channels {
+            Some(c) if c > 0 => {
+                if c > MAX_WAVENET_FREE_CHANNELS {
+                    return WavenetTopologyResult::Rejected(format!(
+                        "Layer {} channels ({}) exceeds maximum {} — \
+                         OOM/DoS protection (Task 5.2).",
+                        i, c, MAX_WAVENET_FREE_CHANNELS
+                    ));
+                }
+                c
+            }
+            _ => {
+                return WavenetTopologyResult::Rejected(format!(
+                    "Layer {} is missing or has invalid 'channels'.",
+                    i
+                ));
+            }
+        };
+        let k = layer
+            .kernel_size
+            .and_then(|k| if k > 0 { Some(k) } else { None });
+        let dils = match layer.dilations.as_deref() {
+            Some(d) if !d.is_empty() => d.to_vec(),
+            _ => {
+                return WavenetTopologyResult::Rejected(format!(
+                    "Layer {} is missing or has invalid 'dilations'.",
+                    i
+                ));
+            }
+        };
+
+        if i == 0 {
+            first_channels = Some(ch);
+            first_kernel_size = k;
+            first_head_size = layer.head_size;
+        }
+
+        let hd = layer.head_size.unwrap_or(1);
+        if hd == 0 {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {} has invalid head_size=0.",
+                i
+            ));
+        }
+
+        channels.push(ch);
+        kernel_sizes.push(k.unwrap_or(0));
+        head_sizes.push(hd);
+        dilations.push(dils);
+    }
+
+    let first_channels_val = match first_channels {
+        Some(c) => c,
+        None => {
+            return WavenetTopologyResult::Rejected(
+                "Layer 0 is missing or has invalid 'channels' — required for \
+                 WaveNet topology detection."
+                    .to_string(),
+            );
+        }
+    };
+
+    // ── Try matching a known catalog SKU (fast-path) ──
+    if layers.len() == 2 {
+        let l0 = &layers[0];
+        let l1 = &layers[1];
+
+        let l0_gated = l0.gated.unwrap_or(false);
+        let l1_gated = l1.gated.unwrap_or(false);
+        let l0_head_bias = l0.head_bias.unwrap_or(false);
+        let l1_head_bias = l1.head_bias.unwrap_or(false);
+
+        let catalog_compatible =
+            !l0_gated && !l1_gated && !l0_head_bias && l1_head_bias && condition_size <= 1;
+
+        if catalog_compatible {
+            let dils_0 = &dilations[0];
+            let dils_1 = &dilations[1];
+
+            let result = match first_channels_val {
+                16 if dils_0 == STD_DILATIONS && dils_1 == STD_DILATIONS => {
+                    Some(NamWavenetTopology::Standard)
+                }
+                12 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
+                    Some(NamWavenetTopology::Lite)
+                }
+                8 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
+                    Some(NamWavenetTopology::Feather)
+                }
+                4 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
+                    Some(NamWavenetTopology::Nano)
+                }
+                _ => None,
+            };
+
+            if let Some(sku) = result {
+                return WavenetTopologyResult::Known(sku);
+            }
+        }
+    }
+
+    // ── Free geometry (valid A1, but not in catalog) ──
+    let kernel_size = match first_kernel_size {
+        Some(k) => k,
+        None => {
+            return WavenetTopologyResult::Rejected(
+                "Layer 0 is missing or has invalid 'kernel_size' — required for \
+                 free geometry WaveNet A1."
+                    .to_string(),
+            );
+        }
+    };
+    if first_head_size.is_none_or(|h| h == 0) {
+        return WavenetTopologyResult::Rejected(
+            "Layer 0 is missing or has invalid 'head_size' — required for \
+             WaveNet A1 geometries (determines the head projection dimension)."
+                .to_string(),
+        );
+    }
+
+    WavenetTopologyResult::Free(FreeWavenetGeometry {
+        channels,
+        kernel_size,
+        kernel_sizes,
+        head_sizes,
+        condition_size,
+        num_arrays: layers.len(),
+        dilations,
+        post_stack_head: data.config.parse_head(),
+    })
+}

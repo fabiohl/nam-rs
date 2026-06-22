@@ -288,5 +288,33 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 }
 
 #[cfg(test)]
-#[path = "../processor_test.rs"]
-mod processor_test;
+#[path = "../processor_bypass_test.rs"]
+mod processor_bypass_test;
+
+#[cfg(test)]
+#[path = "../processor_stress_test.rs"]
+mod processor_stress_test;
+
+#[cfg(test)]
+#[path = "../processor_gui_test.rs"]
+mod processor_gui_test;
+
+#[cfg(test)]
+#[path = "../processor_state_test.rs"]
+mod processor_state_test;
+
+#[cfg(test)]
+#[path = "../processor_heap_audit_test.rs"]
+mod processor_heap_audit_test;
+
+#[cfg(test)]
+#[path = "../processor_clip_test.rs"]
+mod processor_clip_test;
+
+#[cfg(test)]
+#[path = "../processor_gc_stress_test.rs"]
+mod processor_gc_stress_test;
+
+#[cfg(test)]
+#[path = "../processor_calibration_test.rs"]
+mod processor_calibration_test;
