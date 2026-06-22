@@ -283,7 +283,7 @@ A sub-proposta de A7 de usar `_mm_fmadd_ss` **não foi implementada**; só a exp
 
 ---
 
-## A4.1 — [BAIXA] Kernel depthwise AVX2: 1 acumulador serializa FMAs atrás do `gather` (latência ~10–26 ciclos)
+## A4.1 — [BAIXA] Kernel depthwise AVX2: 1 acumulador serializa FMAs atrás do `gather` (latência ~10–26 ciclos) [DONE]
 
 **Arquivo:** `src/models/a2/grouped_conv1d.rs:470-488` (`process_single_frame_depthwise_avx2`, bloco `while c < ch8`).
 

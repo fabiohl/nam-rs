@@ -469,15 +469,32 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
 
     let mut c = 0;
     while c < ch8 {
-        let mut acc = _mm256_setzero_ps();
+        let mut acc0 = _mm256_setzero_ps();
+        let mut acc1 = _mm256_setzero_ps();
+        let mut k = 0;
+        while k + 1 < kernel {
+            let tap0 = *tap_ptrs.get_unchecked(k);
+            let w_base0 = w_ptr.add(c * group_stride + k * 4);
+            let wv0 = _mm256_i32gather_ps(w_base0, gather_idx, 4);
+            let sv0 = _mm256_loadu_ps(tap0.add(c));
+            acc0 = _mm256_fmadd_ps(wv0, sv0, acc0);
 
-        for k in 0..kernel {
+            let tap1 = *tap_ptrs.get_unchecked(k + 1);
+            let w_base1 = w_ptr.add(c * group_stride + (k + 1) * 4);
+            let wv1 = _mm256_i32gather_ps(w_base1, gather_idx, 4);
+            let sv1 = _mm256_loadu_ps(tap1.add(c));
+            acc1 = _mm256_fmadd_ps(wv1, sv1, acc1);
+
+            k += 2;
+        }
+        if k < kernel {
             let tap = *tap_ptrs.get_unchecked(k);
             let w_base = w_ptr.add(c * group_stride + k * 4);
             let wv = _mm256_i32gather_ps(w_base, gather_idx, 4);
             let sv = _mm256_loadu_ps(tap.add(c));
-            acc = _mm256_fmadd_ps(wv, sv, acc);
+            acc0 = _mm256_fmadd_ps(wv, sv, acc0);
         }
+        let mut acc = _mm256_add_ps(acc0, acc1);
 
         if conv.do_bias {
             let bv = _mm256_loadu_ps(bias_ptr.add(c));
