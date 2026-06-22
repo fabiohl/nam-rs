@@ -116,12 +116,16 @@ pub unsafe fn gemv_with_bias_f32_avx2(
                 acc0 = _mm256_add_ps(acc0, acc2);
                 acc4 = _mm256_add_ps(acc4, acc6);
                 acc0 = _mm256_add_ps(acc0, acc4);
+                let mut tail = [0.0f32; 8];
                 while in_c < in_len {
-                    let vs = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
-                    let vw = _mm256_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));
-                    acc0 = _mm256_fmadd_ps(vs, vw, acc0);
+                    let inp = *in_frames.get_unchecked(f * in_len + in_c);
+                    let base_idx = in_c * out_len + out_c;
+                    for (j, t) in tail.iter_mut().enumerate() {
+                        *t = f32::mul_add(inp, *weights.get_unchecked(base_idx + j), *t);
+                    }
                     in_c += 1;
                 }
+                acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(tail.as_ptr()));
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
                 f += 1;
             }
@@ -257,12 +261,16 @@ pub unsafe fn gemv_no_bias_f32_avx2(
                 acc0 = _mm256_add_ps(acc0, acc2);
                 acc4 = _mm256_add_ps(acc4, acc6);
                 acc0 = _mm256_add_ps(acc0, acc4);
+                let mut tail = [0.0f32; 8];
                 while in_c < in_len {
-                    let vs = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
-                    let vw = _mm256_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));
-                    acc0 = _mm256_fmadd_ps(vs, vw, acc0);
+                    let inp = *in_frames.get_unchecked(f * in_len + in_c);
+                    let base_idx = in_c * out_len + out_c;
+                    for (j, t) in tail.iter_mut().enumerate() {
+                        *t = f32::mul_add(inp, *weights.get_unchecked(base_idx + j), *t);
+                    }
                     in_c += 1;
                 }
+                acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(tail.as_ptr()));
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
                 f += 1;
             }

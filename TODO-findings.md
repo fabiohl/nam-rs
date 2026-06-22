@@ -232,9 +232,15 @@ Estes três itens foram identificados durante a **revisão de implementação do
 
 ---
 
-## A7.1 — [MÉDIA] Cauda `in_c` do `gemv_kernel!` e `gemv_with_bias_f32_avx2` processa 1 elemento com instrução 256-bit
+## A7.1 — [MÉDIA] Cauda `in_c` do `gemv_kernel!` e `gemv_with_bias_f32_avx2` processa 1 elemento com instrução 256-bit [DONE]
 
 **Arquivos:** `src/math/gemm/gemv/kernel_macro.rs:104-110`; `src/math/gemm/gemv/f32_avx2.rs:119-122`.
+
+**Resolução (2026-06-22):**
+
+- `f32_avx2.rs`: Substituída a cauda `in_c` SIMD (linhas 119-124 e 260-265) por acumulação escalar com `f32::mul_add` em array `[f32; 8]`, seguida de `_mm256_add_ps`. Corrige transição de estado YMM no final do loop.
+- `kernel_macro.rs`: Cauda mantida. A vetorização 1×8 (1 `in_c` × 8 `out_c`) é produtiva — todos os 8 pesos carregados contribuem para canais de saída independentes. A abstração de closure (`$load_weight` para f16 via `_mm256_cvtph_ps`) impede extração escalar sem quebrar o design da macro.
+- 770 testes passaram (`cargo test --lib`).
 
 **Problema.** Após o laço principal de 8 acumuladores (unroll de 8 linhas por iteração), a cauda que drena os `in_c` restantes (máximo 7 elementos) faz, para **cada** elemento avulso:
 
