@@ -101,7 +101,7 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 2. Adicionar testes ao `src/loader/nam_json/validation.rs` cobrindo o comportamento do validador. Caso o arquivo possua linhas >= 300 (seguir as regras da casa), ele deve ficar em `src/loader/nam_json/validation_test.rs`. Criar mocks injetando `NaN` e dimensões inválidas extremas para assegurar robustez.
 3. Repetir o exercício criando baterias básicas de `set_weights.rs` para atestar bounds/finitude.
 
-### 📝 Tarefa 3.2: Garantir os Contratos Críticos em Zonas SIMD e Memórias Diretas
+### 📝 Tarefa 3.2: Garantir os Contratos Críticos em Zonas SIMD e Memórias Diretas [DONE]
 
 **Responsável Sugerido:** `implementador` / `pesquisador-inovador`
 **Contexto:** Kernels transpositores de modelo não blindam ativamente (através de testes focados `should_panic`) operações em que callers pudessem burlar as restrições ou enviar matrizes desbalanceadas. (Ref: F33)
@@ -110,3 +110,10 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 1. Selecionar o módulo de `grouped_conv1d.rs` e subjacentes de resampling e avaliar todos os callers `unsafe` das funções publicamente expostas ao kernel RT.
 2. Escrever e adicionar cenários com anotações de atributo `#[should_panic]` que entregam shapes quebrados de dims/chans que seriam proibidos nas aproximações SIMD (passar um `vec` desalinhado e um layout faltando posições).
 3. Assegurar que o programa abortará a execução por um `debug_assert!` ou bound safe panics internos antes de explodir por um `#GP` (General Protection Fault) / Memory Violation C-style segfault.
+
+**✅ Tarefa 3.2 concluída (2026-06-21):**
+
+* Adicionados `debug_assert!` nos 4 entry points SIMD (`process_single_frame`, `process_single_frame_avx2`, `grouped_conv1d_single_frame_simd`, `process_single_frame_depthwise_avx2`) + `load_mixin_4` + `process_block` verificando: `out_frame.len() >= out_ch`, `frame_idx >= lookback`, `layer_buffer` suficiente, mixin length.
+* 15 testes `#[should_panic]` cobrindo: out_frame curto, frame_idx baixo, mixin/block desbalanceados, pesos truncados, groups=0, in_ch/out_ch não divisíveis por groups.
+* Resampler (`src/dsp/resampler.rs`) já possui `debug_assert!` nos acessos `DelayLine::push`/`window_ptr` e bounds guards via `while` loops nos métodos `process_internal`. Layout de transposição (`src/loader/dispatcher/wavenet/layout.rs`) é código seguro com slice indexing. Nenhum gap remanescente de segurança SIMD nestes módulos.
+* **Nota para tarefas futuras:** `debug_assert!` só atua em modo debug; em release as verificações são removidas. Kernels SIMD dependem da disciplina do caller — o contrato de segurança está documentado nas assinaturas `unsafe fn`.
