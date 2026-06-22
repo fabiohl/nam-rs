@@ -32,3 +32,7 @@ pub use topology::{
 #[cfg(test)]
 #[path = "../nam_json_test.rs"]
 mod nam_json_test;
+
+#[cfg(test)]
+#[path = "validation_test.rs"]
+mod validation_test;

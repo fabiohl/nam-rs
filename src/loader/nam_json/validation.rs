@@ -23,7 +23,10 @@ const MAX_TRAINING_DEPTH: usize = 16;
 const MAX_SUBMODELS: usize = 8;
 
 /// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
+#[cfg(not(test))]
 struct WeightsVisitor;
+#[cfg(test)]
+pub(super) struct WeightsVisitor;
 
 impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
     type Value = Vec<f32>;

@@ -84,7 +84,14 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 **Risco:** Médio (Requer assertiva e conhecimento das premissas numéricas/matrizes das arquiteturas internas).
 **Base:** [TODO-findings.md - F22, F32, F33]
 
-### 📝 Tarefa 3.1: Oráculos Desacoplados e Mapeamento de Testes Críticos Co-localizados
+### 📝 Tarefa 3.1: Oráculos Desacoplados e Mapeamento de Testes Críticos Co-localizados [DONE]
+
+**Nota pós-implementação (2026-06-21):**
+
+* `tanh_slice_fallback` agora usa `f32::tanh()` (oráculo independente), desacoplando do Padé SIMD. Epsilon de paridade mantido em 5e-3 — `f32::tanh()` tem erro ~2e-6, folga adequada.
+* `validation_test.rs` (23 testes) cobre NaN/Inf no visitor, limites de profundidade/tamanho, submodels. Documenta que `WeightsVisitor` **ainda aceita NaN/Inf silenciosamente** (F1 — gap conhecido, requer validação futura no loader).
+* `model_test.rs` +13 testes de finitude/bounds em `set_weights` (NaN, Inf, subnormals, zeros, extremos finitos, slice vazio).
+* **Impacto em Tarefa 3.2:** Kernels de transposição (`transpose_conv1d_interleaved_4wide` etc.) em `set_weights.rs` não validam finitude das entradas — NaN/Inf propagam silenciosamente para os buffers do modelo. Testes `should_panic` de T3.2 devem considerar que pesos não-finitos chegam aos kernels.
 
 **Responsável Sugerido:** `implementador` / `debugger`
 **Contexto:** Componentes chaves de inferência matemática e loaders de fronteiras não contam com verificação cruzada totalmente independente ou não têm baterias de testes focados nativos que capturam comportamentos fora da curva. (Ref: F22, F32)

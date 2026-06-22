@@ -295,6 +295,148 @@ fn test_set_weights_process_smoke_ch8() {
     );
 }
 
+// ── set_weights finitude & bounds tests (T3.1-C3) ──────────────────
+
+/// NaN in weight stream: currently accepted silently (F1 documents the gap).
+#[test]
+fn test_set_weights_with_nan_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let mut weights = make_test_weights(count, 42);
+    weights[0] = f32::NAN;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "NaN in weights is currently accepted silently: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_with_inf_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let mut weights = make_test_weights(count, 42);
+    weights[0] = f32::INFINITY;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "Infinity in weights is currently accepted silently: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_with_neg_inf_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let mut weights = make_test_weights(count, 42);
+    weights[0] = f32::NEG_INFINITY;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "negative Infinity is currently accepted silently: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_all_zeros_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let weights = vec![0.0f32; count];
+    assert!(model.set_weights(&weights).is_ok());
+    assert!(model.has_weights());
+}
+
+#[test]
+fn test_set_weights_all_zeros_ch8() {
+    let mut model = WaveNetA2::<8>::new().unwrap();
+    let count = a2_weight_count::<8>();
+    let weights = vec![0.0f32; count];
+    assert!(model.set_weights(&weights).is_ok());
+    assert!(model.has_weights());
+}
+
+#[test]
+fn test_set_weights_extreme_finite_values_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let mut weights = make_test_weights(count, 99);
+    weights[0] = 3.4e38;
+    weights[1] = -3.4e38;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "extreme finite values should be accepted: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_extreme_finite_values_ch8() {
+    let mut model = WaveNetA2::<8>::new().unwrap();
+    let count = a2_weight_count::<8>();
+    let mut weights = make_test_weights(count, 88);
+    weights[0] = 3.4e38;
+    weights[1] = -3.4e38;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "extreme finite values should be accepted: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_subnormal_values_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let count = a2_weight_count::<3>();
+    let mut weights = make_test_weights(count, 55);
+    weights[0] = 1.0e-45;
+    weights[1] = -1.0e-45;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "subnormal values should be accepted: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_subnormal_values_ch8() {
+    let mut model = WaveNetA2::<8>::new().unwrap();
+    let count = a2_weight_count::<8>();
+    let mut weights = make_test_weights(count, 66);
+    weights[0] = 1.0e-45;
+    weights[1] = -1.0e-45;
+    let result = model.set_weights(&weights);
+    assert!(
+        result.is_ok(),
+        "subnormal values should be accepted: {result:?}"
+    );
+}
+
+#[test]
+fn test_set_weights_empty_slice_ch3() {
+    let mut model = WaveNetA2::<3>::new().unwrap();
+    let weights: [f32; 0] = [];
+    let err = model.set_weights(&weights);
+    assert!(err.is_err(), "empty slice should error");
+    let err_msg = err.unwrap_err();
+    assert!(
+        err_msg.contains("stream exhausted"),
+        "error should mention exhaustion: {err_msg}"
+    );
+}
+
+#[test]
+fn test_set_weights_empty_slice_ch8() {
+    let mut model = WaveNetA2::<8>::new().unwrap();
+    let weights: [f32; 0] = [];
+    let err = model.set_weights(&weights);
+    assert!(err.is_err(), "empty slice should error");
+    let err_msg = err.unwrap_err();
+    assert!(
+        err_msg.contains("stream exhausted"),
+        "error should mention exhaustion: {err_msg}"
+    );
+}
+
 // ── Block invariance & negative tests (T2.3) ──────────────────────────
 
 /// Asserts that kernel frame capacity equals 64.

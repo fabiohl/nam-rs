@@ -13,11 +13,16 @@ pub unsafe fn f32_to_bf16_fallback(src: &[f32], dest: &mut [u16]) {
 }
 
 /// Applies the Tanh "squashing" function across an entire list of numbers.
+///
+/// Uses `f32::tanh()` as an **independent** reference oracle — not the Padé
+/// approximant used by SIMD kernels.  This provides genuine cross-validation
+/// in parity tests: the scalar fallback and SIMD paths now compute tanh via
+/// different algorithms, so agreement is a meaningful correctness signal.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]
 pub unsafe fn tanh_slice_fallback(slice: &mut [f32]) {
     for v in slice.iter_mut() {
-        *v = crate::math::activations::scalar_pade_tanh(*v);
+        *v = (*v).tanh();
     }
 }
 
