@@ -413,3 +413,7 @@ pub(crate) fn load_film_for_layer(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "set_weights_test.rs"]
+mod set_weights_test;
