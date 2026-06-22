@@ -557,7 +557,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Baixo–Médio (caminho cold; cuidar de compatibilidade com modelos legítimos antigos — F3).
 - **Crítico:** F1 e F2 têm impacto de segurança real (dano a equipamento / DoS).
 
-### **🟠 Épico E3 — Pureza RT do Hot-Path (Zero-panic, Zero-IO, Zero-denormal)** [TO-DO]
+### **🟠 Épico E3 — Pureza RT do Hot-Path (Zero-panic, Zero-IO, Zero-denormal)** [DOING]
 
 - **Objetivo:** Eliminar os últimos desvios da política RT-safety §1.
 - **Achados:** **F9** (unwrap), **F10** (log::error RT), **F11** (denormal tails), **F19** (salto numérico
@@ -565,7 +565,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** Hot-path RT; mudanças pequenas e localizadas.
 - **Risco:** Baixo (F19 pode mexer em goldens — revalidar thresholds).
 
-### **🟡 Épico E4 — Robustez de Concorrência e Ciclo de Vida (CLAP/Standalone)** [TO-DO]
+### **🟡 Épico E4 — Robustez de Concorrência e Ciclo de Vida (CLAP/Standalone)** [DOING]
 
 - **Objetivo:** Eliminar scaffolding morto/ambíguo e endurecer concorrência/persistência.
 - **Achados:** **F12** (model_r/active_model_r), **F13** (GcOverflow ordering), **F14** (migrate),
@@ -573,7 +573,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** Camadas `clap/`+`standalone/`+`common/spsc`.
 - **Risco:** Médio em F13 (ordering atômico → exige teste de concorrência dedicado).
 
-### **🟡 Épico E5 — Soundness e Performance SIMD** [TO-DO]
+### **🟡 Épico E5 — Soundness e Performance SIMD** [DOING]
 
 - **Objetivo:** Fechar UB latente e capturar quick-wins de performance.
 - **Achados:** **F18** (assert de alinhamento na convolução), **F20** (ativações AVX-512), **F21**

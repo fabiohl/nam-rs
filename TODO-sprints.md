@@ -12,16 +12,16 @@
 
 **Meta:** Eliminar os últimos desvios da política RT-safety §1, garantindo execução sem falhas no hot-path.
 
-### Sprint E3.1: Remoção de Código Perigoso no RT Thread
+### Sprint E3.1: Remoção de Código Perigoso no RT Thread [DONE]
 
 *Foco: Remover `unwrap` e logs de I/O do hot-path.*
 
-- [ ] **Tarefa E3.1.1 [F9]: Substituir `.unwrap()` por fallback seguro no descarregamento a frio.**
+- [x] **Tarefa E3.1.1 [F9]: Substituir `.unwrap()` por fallback seguro no descarregamento a frio.**
   - **Especialista:** `implementador`
   - **Arquivo:** `src/clap/processor/events.rs`
   - **Ação:** Em `cold_load_model`, alterar `self.model_l.take().unwrap()` para `if let Some(failed) = self.model_l.take() { self.push_to_gc(GcItem::Model(failed)); }`.
 
-- [ ] **Tarefa E3.1.2 [F10]: Trocar `log::error!` por sinalização atômica em operações de rebuild.**
+- [x] **Tarefa E3.1.2 [F10]: Trocar `log::error!` por sinalização atômica em operações de rebuild.**
   - **Especialista:** `implementador`
   - **Arquivos:** `src/clap/processor/events.rs`
   - **Ação:** Em `try_slimmable_rebuild`, substituir o log direto no RT thread por uma atualização numa flag atômica (ex.: `RT_STATUS_SLIMMABLE_SLICE_FAILED`) a ser consumida pelo thread principal para logar de forma segura.

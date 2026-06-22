@@ -181,8 +181,9 @@ impl<'a> NamClapProcessor<'a> {
             false
         };
         if resize_failed {
-            let failed_model = self.model_l.take().unwrap();
-            self.push_to_gc(GcItem::Model(failed_model));
+            if let Some(failed) = self.model_l.take() {
+                self.push_to_gc(GcItem::Model(failed));
+            }
             self.rt_status
                 .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
         }
@@ -248,8 +249,9 @@ impl<'a> NamClapProcessor<'a> {
                         self.push_to_gc(GcItem::Model(old));
                     }
                 }
-                Err(e) => {
-                    log::error!("[slimmable] slice_channels(L) failed: {e}");
+                Err(_) => {
+                    self.rt_status
+                        .set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
                     return;
                 }
             }
@@ -278,8 +280,9 @@ impl<'a> NamClapProcessor<'a> {
                         self.push_to_gc(GcItem::Model(old));
                     }
                 }
-                Err(e) => {
-                    log::error!("[slimmable] slice_channels(R) failed: {e}");
+                Err(_) => {
+                    self.rt_status
+                        .set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
                 }
             }
         }

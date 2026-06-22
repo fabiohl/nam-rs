@@ -46,6 +46,9 @@ pub const RT_STATUS_GC_CORRUPTED: u64 = 1 << 14;
 /// Flag indicating that the A2 static variant triggered the scalar fallback path
 /// (no CH=3 or CH=8 conv available). Set by the RT thread for telemetry polling.
 pub const RT_STATUS_A2_FALLBACK_TRIGGERED: u64 = 1 << 15;
+/// Flag indicating that a WaveNet slimmable slice_channels rebuild failed on the RT thread.
+/// Replaces `log::error!` for RT-zero-IO compliance.
+pub const RT_STATUS_SLIMMABLE_SLICE_FAILED: u64 = 1 << 16;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -73,6 +76,7 @@ pub const RT_STATUS_A2_FALLBACK_TRIGGERED: u64 = 1 << 15;
 /// | 13 | `DEGRADE_MINIMAL` | Soft-degrade active — Minimal mode |
 /// | 14 | `GC_CORRUPTED` | GC overflow buffer corrupted (unknown type/ptr) |
 /// | 15 | `A2_FALLBACK_TRIGGERED` | A2 static variant fell back to scalar zero-output path |
+/// | 16 | `SLIMMABLE_SLICE_FAILED` | WaveNet slimmable slice_channels rebuild failed |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

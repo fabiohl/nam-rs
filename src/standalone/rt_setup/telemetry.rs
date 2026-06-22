@@ -57,6 +57,12 @@ pub fn poll_rt_status(
             .emit();
     }
 
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED) {
+        log::error!(
+            "WaveNet slimmable slice_channels rebuild failed — model may run in reduced state."
+        );
+    }
+
     // 2. RATE CHANGE (Sample Rate):
     // Warns when the audio server (PipeWire) changes the sampling frequency
     // (e.g. changed from 44.100 to 48.000 beats per second).

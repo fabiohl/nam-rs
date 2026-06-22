@@ -85,6 +85,17 @@ impl<'a> NamClapMainThread<'a> {
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);
             }
+
+            if self
+                .shared
+                .cold
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED)
+            {
+                let msg = CString::new("NAM-rs: WaveNet slimmable slice_channels rebuild failed.")
+                    .unwrap_or_default();
+                log.log(&shared, LogSeverity::Error, &msg);
+            }
         }
     }
 }
