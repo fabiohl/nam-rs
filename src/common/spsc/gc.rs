@@ -162,11 +162,25 @@ impl GcOverflowBuffer {
     ///
     /// If the buffer is full, the oldest item is overwritten (leak).
     /// Returns `true` if an overwrite (controlled leak) occurred.
+    ///
+    /// ## Concurrency note
+    ///
+    /// `write_idx` uses `Relaxed` because this is an SPSC overflow buffer:
+    /// only the producer (RT thread) writes/reads this index. The drain
+    /// path (main thread) never touches `write_idx` — it sweeps all slots
+    /// via `swap(AcqRel)` on each slot. That `AcqRel` pair (producer at
+    /// `swap(packed, AcqRel)` in `push`, consumer at `swap(0, AcqRel)` in
+    /// `drain`) provides the happens-before edge for the item payload.
+    ///
+    /// The window between `fetch_add` and `swap` means a slot may be
+    /// collected one cycle later than its write. This is benign: no
+    /// double-free or leak can occur because the consumer always replaces
+    /// the slot value with 0.
     pub fn push(&self, item: GcItem) -> bool {
         let packed = item.into_packed();
 
         let len = self.slots.len() as u64;
-        let idx = (self.write_idx.fetch_add(1, Ordering::Acquire) % len) as usize;
+        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
 
         let old = self.slots[idx].swap(packed, Ordering::AcqRel);
 
