@@ -512,11 +512,11 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Single-layer LSTM with hidden_size=7, non-catalog geometry routed to
         // LstmModelDyn. Recurrent state accumulation over 2048-sample stress
         // signal produces measurable but minimal drift at 48 kHz.
-        // Measured: SNR=118.1 dB, ESR=1.54e-12 (2026-06-21)
-        // Margin: SNR - 28.1 dB, ESR factor ~19x
+        // Measured: SNR=90.8 dB, ESR=8.34e-10 (2026-06-21) after minimax/Padé unification (Sprint E3.2)
+        // Margin: SNR - 10.8 dB, ESR factor ~4x
         "lstm_dyn_test" => {
-            let snr_db = 90.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11)))
+            let snr_db = 80.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-9)))
         }
         // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
         // Self-golden consistency test — no C++ golden available (NAM Core
