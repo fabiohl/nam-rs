@@ -39,7 +39,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 
 ### 0.1 Estado da Suíte de Testes (a partir de `Testes.log` e `target/logs/*`)
 
-**Lane rápida (`utils/tests-cargo.sh`) — VERDE:**
+**Lane rápida (`utils/tests-quick.sh`) — VERDE:**
 
 - 631 passou / 0 falhou / 1 ignorado (lib unit/integ).
 - CLAP debug + heap-audit: todos os heap-audits zero-alloc passaram.
@@ -475,7 +475,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 #### **F30 — Testes de correção críticos isolados atrás de `#[ignore]` (fora da lane rápida)**
 
 - **Severidade:** 🟠 **Alta** (risco de regressão não-detectada no fluxo do desenvolvedor)
-- **Detalhe (verificado):** 115 atributos `#[ignore]`. `utils/tests-cargo.sh` roda `cargo test` **sem**
+- **Detalhe (verificado):** 115 atributos `#[ignore]`. `utils/tests-quick.sh` roda `cargo test` **sem**
   `--ignored`, logo **não** exercita: `cpp_parity.rs` (45 testes — paridade C++), `proptest_parsers.rs`
   (10 — fuzzing de parser), `proptest_math.rs` (4 — precisão SIMD), `golden_vectors.rs` v2 (16),
   FSM proptests (gate/adaptive), soak (19).
@@ -485,7 +485,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Caminho de resolução:**
   1. Promover 1–2 testes representativos de cada categoria crítica à lane rápida (1 paridade C++ no
      formato mais comum; 1 smoke de fuzzing com iterações reduzidas; 1 precisão tanh SIMD).
-  2. Criar lane intermediária (`tests-medium.sh`, <5 min) com subconjunto curado.
+  2. Criar lane intermediária com subconjunto curado. **→ Implementada como Phase 2 de `utils/tests-quick.sh` (cpp_parity + proptest_parsers + proptest_math, release, ignored), com skip condicional se goldens ausentes. O script unificado é o PR gate do projeto.**
 - **Custo:** Baixo–Médio. **Risco:** Baixo.
 
 #### **F31 — Asserções somente-`is_finite()` em ~20 stress tests (drift de valor passa silenciosamente)**

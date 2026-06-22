@@ -39,7 +39,7 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 
 ## 🏃 Sprint 2: Balanceamento e Melhoria dos Gates de Lane Rápida e Scripts (Épico E8)
 
-**Objetivo:** Aumentar a utilidade dos scripts diários da suite unitária/integração (`tests-cargo.sh`) não deixando áreas críticas inteiramente dependentes dos testes longos (ignorados por padrão), fortalecendo também as verificações base dos stress testes.
+**Objetivo:** Aumentar a utilidade dos scripts diários da suite unitária/integração (`tests-quick.sh`) não deixando áreas críticas inteiramente dependentes dos testes longos (ignorados por padrão), fortalecendo também as verificações base dos stress testes.
 **Risco:** Baixo
 **Base:** [TODO-findings.md - F30, F31, F34]
 
@@ -52,18 +52,19 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 1. Visitar os módulos isolados de suíte pesada: `tests/proptest_parsers.rs` e `tests/proptest_math.rs`.
 2. Remover a anotação `#[ignore]` de apenas **1 caso representativo (smoke-test rápido)** do parser (ex: injeção básica sem estender iterações pra milhares) e 1 de precisão SIMD tanh.
 3. Em `tests/cpp_parity.rs`, escolher uma amostra estática/rápida unitária de formato comum (ex. modelo Wavenet menor), e retirar o `#[ignore]`.
-4. Assegurar que ao rodar `utils/tests-cargo.sh`, todos os novos testes ativados passem em Verde e o tempo total de rodada não aumente abusivamente (< 20-30s extra em média no debug run local).
+4. Assegurar que ao rodar `utils/tests-quick.sh`, todos os novos testes ativados passem em Verde e o tempo total de rodada não aumente abusivamente (< 20-30s extra em média no debug run local).
 
-### 📝 Tarefa 2.2: Suíte de Validação Intermediária
+### 📝 Tarefa 2.2: Suíte de Validação Intermediária [DONE]
 
 **Responsável Sugerido:** `implementador`
 **Contexto:** O time requer uma etapa viável antes de aprovar PR sem aguardar longos ciclos e com garantias robustas sobre estresse de parsers proptest. (Ref: F30)
 **Critérios de Aceitação:**
 
-1. Desenvolver um script `utils/tests-medium.sh` nos moldes e com a mesma maturidade de headers (`SPDX-License-Identifier: Apache-2.0` no topo).
-2. Neste script habilitar `set -euo pipefail` (com trap similar aos scripts utils atuais).
-3. Lançar o comando do Cargo contendo uma flag combinada ou seleta para despachar todos proptests e o arquivo inteiro `cpp_parity` do repositório (`cargo test --test cpp_parity --test proptest_parsers --test proptest_math -- --ignored` por exemplo).
-4. Garantir que este run seja concluído e passe sem erros.
+1. Desenvolver um script `utils/tests-medium.sh` nos moldes e com a mesma maturidade de headers (`SPDX-License-Identifier: Apache-2.0` no topo). **→ Feito; fusionado com `tests-quick.sh` como Phase 2 (medium validation) por coesão funcional. `tests-medium.sh` removido.**
+2. Neste script habilitar `set -euo pipefail` (com trap similar aos scripts utils atuais). **→ Adotado no script fundido.**
+3. Lançar o comando do Cargo contendo uma flag combinada ou seleta para despachar todos proptests e o arquivo inteiro `cpp_parity` do repositório (`cargo test --test cpp_parity --test proptest_parsers --test proptest_math -- --ignored` por exemplo). **→ Executado com sucesso.**
+4. Garantir que este run seja concluído e passe sem erros. **→ 43 passed, 0 failed.**
+5. **Adicional (fusão):** Suíte intermediária fusionada com `utils/tests-quick.sh` como Phase 2, com skip condicional se goldens/NeuralAmpModelerCore ausentes. O script agora é o PR gate unificado: fast tests + medium validation + CLAP audit.
 
 ### 📝 Tarefa 2.3: Elevar Rigor contra Drifts Silenciosos nos Testes de Estresse
 

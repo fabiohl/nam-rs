@@ -37,8 +37,8 @@ Unit tests should test the internal logic of each module.
 
 Tests that exercise the crate's public API or multiple integrated modules should be placed in the root `tests/` directory.
 
-- **Standard/Fast Integration Tests:** Should be run as part of the daily developer verification flow via `utils/tests-cargo.sh` (which runs all unit, integration, CLAP/heap-audit tests, and `clap-validator` in under 1.5 minutes).
-- **Long-Duration Stress/Soak Tests:** Slow or heavy tests (such as soak/endurance checks, property-based parsing/math sweeps, C++ parity verifications) should be marked with `#[ignore]` and run exclusively via the decoupled long-duration audit suite `utils/tests-long.sh` (± 30 minutes).
+- **Standard/Fast Integration Tests:** Should be run as part of the daily developer verification flow via `utils/tests-quick.sh` (which runs all unit, integration, CLAP/heap-audit tests, `clap-validator`, and medium validation — C++ parity + proptests — in under 2.5 minutes).
+- **Long-Duration Stress/Soak Tests:** Slow or heavy tests (such as soak/endurance checks, property-based parsing/math sweeps, C++ parity verifications) that aren't covered by the unified suite should be marked with `#[ignore]` and run exclusively via the decoupled long-duration audit suite `utils/tests-long.sh` (± 30 minutes).
 
 ## 3. Benchmarks
 
@@ -51,7 +51,7 @@ Performance benchmarks using the `criterion` framework should be placed in the r
 
 Developers should use the following scripts under `utils/` before pushing commits:
 
-- `utils/tests-cargo.sh`: Runs the standard unit and integration tests, builds the debug CLAP library with heap audits, and performs strict validation.
+- `utils/tests-quick.sh`: Runs the unified QA suite — unit/integration tests, medium validation (C++ parity + proptests), builds the debug CLAP library with heap audits, and performs strict validation.
 - `utils/tests-long.sh`: Runs the decoupled 5-phase long-duration audit (Soak, Proptests, Parity/Heap-Audits, Release CLAP Validation, and Long Benchmarks), logging execution output to `target/logs/`.
 
 ## 5. Code Requirements

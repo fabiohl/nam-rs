@@ -123,8 +123,8 @@ This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModele
 #### Running the Full Test Suite
 
 ```sh
-# Standard tests (< 2 min):
-./utils/tests-cargo.sh
+# Standard tests (< 3 min):
+./utils/tests-quick.sh
 
 # Long-duration audit (± 38 min, requires cmake + g++/clang++):
 ./utils/tests-long.sh
@@ -170,8 +170,8 @@ NAM-rs maintains a suite of approximately **350+ automated checks** anchored aga
 # 1. Lint & Quality (Formatting + Clippy + Feature Matrix)
 utils/lints.sh
 
-# 2. Standard QA Suite (Unit/Integration Tests + CLAP Plugin Build/Heap-Audit + CLAP Validator)
-utils/tests-cargo.sh
+# 2. Unified QA Suite (Unit/Integration + Medium Validation + CLAP Plugin Build/Heap-Audit + CLAP Validator)
+utils/tests-quick.sh
 
 # 3. Long-Duration Stress & Audit Suite (Soak + Proptests + Heap-Audit/Parity + CLAP Release Validation + Benchmarks)
 utils/tests-long.sh
