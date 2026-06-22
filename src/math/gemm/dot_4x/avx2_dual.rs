@@ -8,6 +8,9 @@
 
 //! Dot Product 4x kernels — AVX2 (dual-frame + batch).
 
+use crate::dot4x_simd8_avx2;
+use crate::dot4x_simd8_avx2_tail2;
+use crate::dot4x_simd16_avx2;
 use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
@@ -37,78 +40,80 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
         let mut sum2_f1 = _mm256_setzero_ps();
         let mut sum3_f1 = _mm256_setzero_ps();
 
-        while i + 8 <= len {
-            let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
-            let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
-            let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
+        dot4x_simd8_avx2_tail2!(
+            i,
+            len,
+            {
+                let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
+                let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
+                let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
 
-            let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
-            let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
-            let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
+                let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
+                let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
+                let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
 
-            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
-            sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
-            sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
+                let w01 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+                sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
+                sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
 
-            let s2_f0 = _mm256_broadcast_ss(&state_f0[i + 2]);
-            let s3_f0 = _mm256_broadcast_ss(&state_f0[i + 3]);
-            let s23_f0 = _mm256_blend_ps(s2_f0, s3_f0, 0b11110000);
+                let s2_f0 = _mm256_broadcast_ss(&state_f0[i + 2]);
+                let s3_f0 = _mm256_broadcast_ss(&state_f0[i + 3]);
+                let s23_f0 = _mm256_blend_ps(s2_f0, s3_f0, 0b11110000);
 
-            let s2_f1 = _mm256_broadcast_ss(&state_f1[i + 2]);
-            let s3_f1 = _mm256_broadcast_ss(&state_f1[i + 3]);
-            let s23_f1 = _mm256_blend_ps(s2_f1, s3_f1, 0b11110000);
+                let s2_f1 = _mm256_broadcast_ss(&state_f1[i + 2]);
+                let s3_f1 = _mm256_broadcast_ss(&state_f1[i + 3]);
+                let s23_f1 = _mm256_blend_ps(s2_f1, s3_f1, 0b11110000);
 
-            let w23 = _mm256_cvtph_ps(_mm_loadu_si128(
-                weights.as_ptr().add(i + 2) as *const __m128i
-            ));
-            sum1_f0 = _mm256_fmadd_ps(w23, s23_f0, sum1_f0);
-            sum1_f1 = _mm256_fmadd_ps(w23, s23_f1, sum1_f1);
+                let w23 = _mm256_cvtph_ps(_mm_loadu_si128(
+                    weights.as_ptr().add(i + 2) as *const __m128i
+                ));
+                sum1_f0 = _mm256_fmadd_ps(w23, s23_f0, sum1_f0);
+                sum1_f1 = _mm256_fmadd_ps(w23, s23_f1, sum1_f1);
 
-            let s4_f0 = _mm256_broadcast_ss(&state_f0[i + 4]);
-            let s5_f0 = _mm256_broadcast_ss(&state_f0[i + 5]);
-            let s45_f0 = _mm256_blend_ps(s4_f0, s5_f0, 0b11110000);
+                let s4_f0 = _mm256_broadcast_ss(&state_f0[i + 4]);
+                let s5_f0 = _mm256_broadcast_ss(&state_f0[i + 5]);
+                let s45_f0 = _mm256_blend_ps(s4_f0, s5_f0, 0b11110000);
 
-            let s4_f1 = _mm256_broadcast_ss(&state_f1[i + 4]);
-            let s5_f1 = _mm256_broadcast_ss(&state_f1[i + 5]);
-            let s45_f1 = _mm256_blend_ps(s4_f1, s5_f1, 0b11110000);
+                let s4_f1 = _mm256_broadcast_ss(&state_f1[i + 4]);
+                let s5_f1 = _mm256_broadcast_ss(&state_f1[i + 5]);
+                let s45_f1 = _mm256_blend_ps(s4_f1, s5_f1, 0b11110000);
 
-            let w45 = _mm256_cvtph_ps(_mm_loadu_si128(
-                weights.as_ptr().add(i + 4) as *const __m128i
-            ));
-            sum2_f0 = _mm256_fmadd_ps(w45, s45_f0, sum2_f0);
-            sum2_f1 = _mm256_fmadd_ps(w45, s45_f1, sum2_f1);
+                let w45 = _mm256_cvtph_ps(_mm_loadu_si128(
+                    weights.as_ptr().add(i + 4) as *const __m128i
+                ));
+                sum2_f0 = _mm256_fmadd_ps(w45, s45_f0, sum2_f0);
+                sum2_f1 = _mm256_fmadd_ps(w45, s45_f1, sum2_f1);
 
-            let s6_f0 = _mm256_broadcast_ss(&state_f0[i + 6]);
-            let s7_f0 = _mm256_broadcast_ss(&state_f0[i + 7]);
-            let s67_f0 = _mm256_blend_ps(s6_f0, s7_f0, 0b11110000);
+                let s6_f0 = _mm256_broadcast_ss(&state_f0[i + 6]);
+                let s7_f0 = _mm256_broadcast_ss(&state_f0[i + 7]);
+                let s67_f0 = _mm256_blend_ps(s6_f0, s7_f0, 0b11110000);
 
-            let s6_f1 = _mm256_broadcast_ss(&state_f1[i + 6]);
-            let s7_f1 = _mm256_broadcast_ss(&state_f1[i + 7]);
-            let s67_f1 = _mm256_blend_ps(s6_f1, s7_f1, 0b11110000);
+                let s6_f1 = _mm256_broadcast_ss(&state_f1[i + 6]);
+                let s7_f1 = _mm256_broadcast_ss(&state_f1[i + 7]);
+                let s67_f1 = _mm256_blend_ps(s6_f1, s7_f1, 0b11110000);
 
-            let w67 = _mm256_cvtph_ps(_mm_loadu_si128(
-                weights.as_ptr().add(i + 6) as *const __m128i
-            ));
-            sum3_f0 = _mm256_fmadd_ps(w67, s67_f0, sum3_f0);
-            sum3_f1 = _mm256_fmadd_ps(w67, s67_f1, sum3_f1);
+                let w67 = _mm256_cvtph_ps(_mm_loadu_si128(
+                    weights.as_ptr().add(i + 6) as *const __m128i
+                ));
+                sum3_f0 = _mm256_fmadd_ps(w67, s67_f0, sum3_f0);
+                sum3_f1 = _mm256_fmadd_ps(w67, s67_f1, sum3_f1);
+            },
+            {
+                let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
+                let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
+                let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
 
-            i += 8;
-        }
+                let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
+                let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
+                let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
 
-        while i + 2 <= len {
-            let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
-            let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
-            let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
-
-            let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
-            let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
-            let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
-
-            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
-            sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
-            sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
-            i += 2;
-        }
+                let w01 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+                sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
+                sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
+            }
+        );
 
         let sum01_f0 = _mm256_add_ps(sum0_f0, sum1_f0);
         let sum23_f0 = _mm256_add_ps(sum2_f0, sum3_f0);
@@ -166,7 +171,7 @@ pub unsafe fn dot_product_batch_4x_avx2(
         let mut sum2 = _mm256_setzero_ps();
         let mut sum3 = _mm256_setzero_ps();
 
-        while i + 16 <= len {
+        dot4x_simd16_avx2!(i, len, {
             _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h0.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h1.as_ptr().add(i + 32) as *const i8);
@@ -198,11 +203,9 @@ pub unsafe fn dot_product_batch_4x_avx2(
             sum2 = _mm256_fmadd_ps(vw_1, vh2_1, sum2);
             let vh3_1 = _mm256_loadu_ps(h3.as_ptr().add(i + 8));
             sum3 = _mm256_fmadd_ps(vw_1, vh3_1, sum3);
+        });
 
-            i += 16;
-        }
-
-        while i + 8 <= len {
+        dot4x_simd8_avx2!(i, len, {
             let vw = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
             let vh0 = _mm256_loadu_ps(h0.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(vw, vh0, sum0);
@@ -212,9 +215,7 @@ pub unsafe fn dot_product_batch_4x_avx2(
             sum2 = _mm256_fmadd_ps(vw, vh2, sum2);
             let vh3 = _mm256_loadu_ps(h3.as_ptr().add(i));
             sum3 = _mm256_fmadd_ps(vw, vh3, sum3);
-
-            i += 8;
-        }
+        });
 
         let mut s0 = crate::math::common::utility::hsum_avx2(sum0);
         let mut s1 = crate::math::common::utility::hsum_avx2(sum1);

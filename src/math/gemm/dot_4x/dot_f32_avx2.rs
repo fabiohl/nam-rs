@@ -15,6 +15,7 @@
 //! strictly‑serial FMA chain of the scalar reference. No dequantization or
 //! precision conversion is involved.
 
+use crate::dot4x_simd4;
 use core::arch::x86_64::*;
 
 /// 4‑lane interleaved dot product (`weights: &[[f32; 4]]`, `state: &[f32]`) with
@@ -43,7 +44,7 @@ pub unsafe fn dot_product_4x_f32_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f
     let mut i = 0;
 
     unsafe {
-        while i + 4 <= len {
+        dot4x_simd4!(i, len, {
             let w0 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
             let s0 = _mm_set1_ps(*state.get_unchecked(i));
             acc0 = _mm_fmadd_ps(w0, s0, acc0);
@@ -59,9 +60,7 @@ pub unsafe fn dot_product_4x_f32_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f
             let w3 = _mm_loadu_ps(weights.as_ptr().add(i + 3) as *const f32);
             let s3 = _mm_set1_ps(*state.get_unchecked(i + 3));
             acc3 = _mm_fmadd_ps(w3, s3, acc3);
-
-            i += 4;
-        }
+        });
 
         while i < len {
             let s = _mm_set1_ps(*state.get_unchecked(i));
@@ -122,7 +121,7 @@ pub unsafe fn dot_product_4x_f32_dual_avx2(
     let mut i = 0;
 
     unsafe {
-        while i + 4 <= len {
+        dot4x_simd4!(i, len, {
             let w0_128 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
             let w0_256 = _mm256_broadcast_ps(&w0_128);
             let s_f0_0 = _mm_set1_ps(*state_f0.get_unchecked(i));
@@ -150,9 +149,7 @@ pub unsafe fn dot_product_4x_f32_dual_avx2(
             let s_f1_3 = _mm_set1_ps(*state_f1.get_unchecked(i + 3));
             let s_blend3 = _mm256_set_m128(s_f1_3, s_f0_3);
             acc3 = _mm256_fmadd_ps(w3_256, s_blend3, acc3);
-
-            i += 4;
-        }
+        });
 
         while i < len {
             let w128 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);

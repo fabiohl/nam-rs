@@ -10,6 +10,7 @@
 
 mod avx2;
 mod avx512;
+mod kernel_macro;
 mod scalar;
 
 pub use avx2::*;

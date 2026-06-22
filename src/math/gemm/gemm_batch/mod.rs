@@ -7,6 +7,7 @@
 
 mod avx2;
 mod avx512;
+mod kernel_macro;
 
 pub use avx2::{
     fused_add_gemm_batch_avx2, fused_gemm_residual_batch_avx2, fused_gemm_residual_batch_f32_avx2,

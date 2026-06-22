@@ -25,6 +25,8 @@ pub mod f16_avx512;
 pub mod f32_avx2;
 #[doc = "f32 batched GEMV kernels using AVX-512 (with_bias, no_bias)."]
 pub mod f32_avx512;
+#[doc = "Internal: the `gemv_f32_inner_loop` macro for batched f32 GEMV."]
+mod f32_kernel_macro;
 #[doc = "Internal: the `gemv_kernel!` macro used by f16 AVX2 and AVX-512 kernels."]
 pub mod kernel_macro;
 

@@ -3,6 +3,7 @@
 
 //! AVX2 accumulation and activation kernels for WaveNet.
 
+use crate::wavenet_simd_avx2;
 use core::arch::x86_64::*;
 
 /// Accumulates src into dest using AVX2.
@@ -10,17 +11,19 @@ use core::arch::x86_64::*;
 pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
     let len = dest.len();
     let mut i = 0;
-    while i + 8 <= len {
-        let vs = _mm256_loadu_ps(src.as_ptr().add(i));
-        let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
-        _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vs));
-        i += 8;
-    }
-    while i < len {
-        let acc = dest[i] as f64 + src[i] as f64;
-        dest[i] = acc as f32;
-        i += 1;
-    }
+    wavenet_simd_avx2!(
+        i,
+        len,
+        {
+            let vs = _mm256_loadu_ps(src.as_ptr().add(i));
+            let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
+            _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vs));
+        },
+        {
+            let acc = dest[i] as f64 + src[i] as f64;
+            dest[i] = acc as f32;
+        }
+    );
 }
 
 /// Applies tanh in-place on block and accumulates into head_input using AVX2.
@@ -28,22 +31,24 @@ pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
 pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    while i + 8 <= len {
-        let vb = _mm256_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
-        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
+    wavenet_simd_avx2!(
+        i,
+        len,
+        {
+            let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+            let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
+            _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
 
-        let vh = _mm256_loadu_ps(head_input.as_ptr().add(i));
-        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vh, vt));
-        i += 8;
-    }
-    while i < len {
-        let val = block[i].tanh();
-        block[i] = val;
-        let acc = head_input[i] as f64 + val as f64;
-        head_input[i] = acc as f32;
-        i += 1;
-    }
+            let vh = _mm256_loadu_ps(head_input.as_ptr().add(i));
+            _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vh, vt));
+        },
+        {
+            let val = block[i].tanh();
+            block[i] = val;
+            let acc = head_input[i] as f64 + val as f64;
+            head_input[i] = acc as f32;
+        }
+    );
 }
 
 /// Applies gated activation (tanh * sigmoid) in-place on block and accumulates into head_input using AVX2.
@@ -58,32 +63,34 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        while c + 8 <= ch {
-            let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
-            let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
+        wavenet_simd_avx2!(
+            c,
+            ch,
+            {
+                let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
+                let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
-            let (tanh_z1, sig_z2) =
-                crate::math::activations::simd_tanh_sigmoid_dual_poly_avx2(z1, z2);
-            let activated = _mm256_mul_ps(tanh_z1, sig_z2);
+                let (tanh_z1, sig_z2) =
+                    crate::math::activations::simd_tanh_sigmoid_dual_poly_avx2(z1, z2);
+                let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
-            _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
+                _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
 
-            let vh = _mm256_loadu_ps(head_input.as_ptr().add(head_offset + c));
-            _mm256_storeu_ps(
-                head_input.as_mut_ptr().add(head_offset + c),
-                _mm256_add_ps(vh, activated),
-            );
-            c += 8;
-        }
-        while c < ch {
-            let z1 = block[block_offset + c];
-            let z2 = block[block_offset + ch + c];
-            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
-            block[block_offset + c] = activated;
-            let acc = head_input[head_offset + c] as f64 + activated as f64;
-            head_input[head_offset + c] = acc as f32;
-            c += 1;
-        }
+                let vh = _mm256_loadu_ps(head_input.as_ptr().add(head_offset + c));
+                _mm256_storeu_ps(
+                    head_input.as_mut_ptr().add(head_offset + c),
+                    _mm256_add_ps(vh, activated),
+                );
+            },
+            {
+                let z1 = block[block_offset + c];
+                let z2 = block[block_offset + ch + c];
+                let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+                block[block_offset + c] = activated;
+                let acc = head_input[head_offset + c] as f64 + activated as f64;
+                head_input[head_offset + c] = acc as f32;
+            }
+        );
     }
 }
 
@@ -92,19 +99,21 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
 pub unsafe fn tanh_and_overwrite_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
-    while i + 8 <= len {
-        let vb = _mm256_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
-        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
-        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), vt);
-        i += 8;
-    }
-    while i < len {
-        let val = block[i].tanh();
-        block[i] = val;
-        head_input[i] = val;
-        i += 1;
-    }
+    wavenet_simd_avx2!(
+        i,
+        len,
+        {
+            let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+            let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
+            _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
+            _mm256_storeu_ps(head_input.as_mut_ptr().add(i), vt);
+        },
+        {
+            let val = block[i].tanh();
+            block[i] = val;
+            head_input[i] = val;
+        }
+    );
 }
 
 /// Applies gated activation (tanh * sigmoid) in-place on block and overwrites head_input using AVX2.
@@ -119,25 +128,27 @@ pub unsafe fn gated_activation_and_overwrite_block_avx2(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        while c + 8 <= ch {
-            let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
-            let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
+        wavenet_simd_avx2!(
+            c,
+            ch,
+            {
+                let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
+                let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
-            let (tanh_z1, sig_z2) =
-                crate::math::activations::simd_tanh_sigmoid_dual_poly_avx2(z1, z2);
-            let activated = _mm256_mul_ps(tanh_z1, sig_z2);
+                let (tanh_z1, sig_z2) =
+                    crate::math::activations::simd_tanh_sigmoid_dual_poly_avx2(z1, z2);
+                let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
-            _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
-            _mm256_storeu_ps(head_input.as_mut_ptr().add(head_offset + c), activated);
-            c += 8;
-        }
-        while c < ch {
-            let z1 = block[block_offset + c];
-            let z2 = block[block_offset + ch + c];
-            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
-            block[block_offset + c] = activated;
-            head_input[head_offset + c] = activated;
-            c += 1;
-        }
+                _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
+                _mm256_storeu_ps(head_input.as_mut_ptr().add(head_offset + c), activated);
+            },
+            {
+                let z1 = block[block_offset + c];
+                let z2 = block[block_offset + ch + c];
+                let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+                block[block_offset + c] = activated;
+                head_input[head_offset + c] = activated;
+            }
+        );
     }
 }

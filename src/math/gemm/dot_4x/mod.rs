@@ -14,6 +14,7 @@ pub mod avx512;
 pub mod avx512_dual;
 pub mod dot_f32_avx2;
 pub mod dot_f32_avx512;
+mod kernel_macro;
 pub mod scalar;
 
 pub use avx2::*;

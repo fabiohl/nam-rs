@@ -412,7 +412,7 @@ Duas das seis fases da auditoria longa falham de forma **determinística**. Nenh
 
 ## EPIC D — Organização, duplicação e documentação
 
-## D1 — [MÉDIA] Duplicação AVX2/AVX-512 (~4.600 linhas; 7 de 10 pares sem macro)
+## D1 — [MÉDIA] Duplicação AVX2/AVX-512 (~4.600 linhas; 7 de 10 pares sem macro) [DONE]
 
 **Evidência (pares estruturalmente ~90–95% idênticos):** `math/dsp/gain/{avx2,avx512}.rs`; `math/dsp/stereo/convolution_{avx2,avx512}.rs`; `math/gemm/gemv_4gate/{avx2,avx512}.rs`; `math/wavenet/accumulate/{avx2,avx512}.rs`; `math/gemm/dot_4x/{avx2,avx512}.rs` e `{avx2_dual,avx512_dual}.rs`; `math/gemm/gemm_batch/{avx2,avx512}.rs`; `math/gemm/dot_4x/{dot_f32_avx2,dot_f32_avx512}.rs`.
 

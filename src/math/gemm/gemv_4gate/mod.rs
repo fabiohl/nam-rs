@@ -5,7 +5,8 @@
 
 mod avx2; // gemv_4gate_avx2
 mod avx512; // gemv_4gate_avx512
-mod avx512_bf16; // gemv_4gate_bf16_avx512
+mod avx512_bf16;
+mod kernel_macro; // gemv_4gate_bf16_avx512
 
 pub use avx2::gemv_4gate_avx2;
 pub use avx512::gemv_4gate_avx512;
