@@ -20,6 +20,10 @@ pub(crate) fn read_lstm_weights_into(
     is_bf16: bool,
 ) {
     let ih = input + hidden;
+    debug_assert!(
+        raw.len() >= 4 * hidden * ih,
+        "raw slice too short for LSTM weights"
+    );
     if is_gate_major {
         for i in 0..output.len() {
             output[i] = quantize_weight(raw[i], is_bf16);
