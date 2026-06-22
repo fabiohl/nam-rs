@@ -60,7 +60,7 @@
   - **Arquivo:** `src/common/audio_host.rs`
   - **Ação:** Como não é utilizado no CLAP ou PipeWire, removê-lo do projeto para diminuir código morto.
 
-### Sprint E4.2: Robustez de Estado e Interfaces de Áudio
+### Sprint E4.2: Robustez de Estado e Interfaces de Áudio [DONE]
 
 *Foco: Refinamentos no GC e estado do plugin.*
 
@@ -69,12 +69,12 @@
   - **Arquivo:** `src/common/spsc/gc.rs`
   - **Ação:** Analisar e ajustar a ordem de operações (`fetch_add(1, Relaxed)` vs `swap`) para garantir semântica estrita de sincronização ou documentar explícita e tecnicamente como "drain deferido".
 
-- [ ] **Tarefa E4.2.2 [F14, F15]: Estruturar `migrate()` de estado e limpar escape ANSI.**
+- [x] **Tarefa E4.2.2 [F14, F15]: Estruturar `migrate()` de estado e limpar escape ANSI.**
   - **Especialista:** `implementador`
   - **Arquivo:** `src/clap/extensions/state.rs`
   - **Ação:** Estruturar um pipeline básico de migração v0->v1 (`match version`) e remover o escape ANSI (`\r\x1b[K`) em retornos de log, trocando por strings limpas.
 
-- [ ] **Tarefa E4.2.3 [F16]: Adicionar asserções de bounds de callback no PipeWire.**
+- [x] **Tarefa E4.2.3 [F16]: Adicionar asserções de bounds de callback no PipeWire.**
   - **Especialista:** `implementador`
   - **Arquivo:** `src/standalone/pw_host/rt_callback/process.rs`
   - **Ação:** Adicionar `debug_assert!(offset + n_bytes <= len)` e `debug_assert!(n_samples * 4 == n_bytes)` documentando e garantindo em runtime o contrato do host.

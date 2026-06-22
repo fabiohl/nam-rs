@@ -56,12 +56,15 @@ pub(crate) fn serialize_envelope(params: &NamPluginParams) -> Result<Vec<u8>, Pl
         .map_err(|e| PluginError::Error(Box::new(StateError::Serialize(e))))
 }
 
+#[allow(clippy::single_match)]
 fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
-    if version < 1 {
-        // v0 → v1: common fields copied, new fields use Default
-        // (NamPluginParams already has #[serde(default)] on all fields)
+    match version {
+        0 => {
+            // v0 → v1: common fields copied, new fields use Default
+            // (NamPluginParams already has #[serde(default)] on all fields)
+        }
+        _ => {}
     }
-    let _ = version;
     params
 }
 
@@ -89,7 +92,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 let msg = CString::new("NAM-rs: Empty state buffer, returning false").unwrap();
                 log.log(&self.host.shared(), LogSeverity::Debug, &msg);
             }
-            return Err(PluginError::Message("\r\x1b[K"));
+            return Err(PluginError::Message("Empty state buffer"));
         }
 
         let new_params = load_state(&buffer)?;

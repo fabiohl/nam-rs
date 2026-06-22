@@ -44,6 +44,23 @@ pub fn process_dsp_buffer(
                 let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
                 let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
 
+                debug_assert!(
+                    offset_l + n_bytes_l <= raw_l.len(),
+                    "PW host contract: left offset+bytes exceeds buffer length"
+                );
+                debug_assert!(
+                    offset_r + n_bytes_r <= raw_r.len(),
+                    "PW host contract: right offset+bytes exceeds buffer length"
+                );
+                debug_assert!(
+                    n_samples_l * std::mem::size_of::<f32>() == n_bytes_l,
+                    "PW host contract: left n_bytes not aligned to f32"
+                );
+                debug_assert!(
+                    n_samples_r * std::mem::size_of::<f32>() == n_bytes_r,
+                    "PW host contract: right n_bytes not aligned to f32"
+                );
+
                 let n_samples = n_samples_l.min(n_samples_r);
 
                 if n_samples > 0 {
