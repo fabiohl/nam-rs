@@ -13,28 +13,37 @@
 //! - `NAM/wavenet/detail.h` (`Layer`)
 
 use super::conv1d::A2Conv1d;
-use super::conv1d_ch3::A2Conv1dCh3;
-use super::conv1d_ch8::A2Conv1dCh8;
+use super::conv1d_ch::A2Conv1dCh;
 use super::film::FiLMLayer;
 use super::params::A2_LEAKY_SLOPE;
 use crate::math::common::AlignedVec;
+
+/// CH-optimized conv wrapper (enum dispatch).
+///
+/// Both variants hold the same underlying `A2Conv1dCh<CH>` type; the enum
+/// preserves the monomorphized type so the hot-path can call the correct
+/// SIMD kernel without indirect dispatch.
+pub enum A2ConvCh {
+    /// CH=3 variant (SSE 128-bit, stride-16).
+    Ch3(A2Conv1dCh<3>),
+    /// CH=8 variant (AVX2 256-bit, stride-64).
+    Ch8(A2Conv1dCh<8>),
+}
 
 /// Single A2 WaveNet layer.
 ///
 /// Holds the weights for: dilated conv (via `A2Conv1d`), input mixin (`Conv1x1 condition→CH`, no bias),
 /// and layer1x1 (`Conv1x1 CH→CH`, with bias, col-major).
 ///
-/// When `ch8_conv` is `Some`, it holds f32 col-major-per-tap weights for the CH=8 optimized path (T2.2).
-/// When `None`, the standard `A2Conv1d` (u16 interleaved) is used (CH=3 path and fallback).
+/// When `conv_ch` is `Some`, it holds f32 col-major-per-tap weights for the CH=3 or CH=8
+/// optimized path. When `None`, the standard `A2Conv1d` (u16 interleaved) is used (fallback).
 ///
 /// FiLM layers (8 insertion points) are `Some` only when the JSON config marks them `active: true`.
 pub struct A2Layer {
     /// Dilated causal Conv1D (kernel ∈ {6, 15}). Standard (groups=1) or Grouped (groups>1).
     pub conv: A2Conv1d,
-    /// CH=3 optimized weights (f32 col-major-per-tap). Only populated when CH=3.
-    pub ch3_conv: Option<A2Conv1dCh3>,
-    /// CH=8 optimized weights (f32 col-major-per-tap). Only populated when CH=8.
-    pub ch8_conv: Option<A2Conv1dCh8>,
+    /// CH-optimized conv (col-major-per-tap f32). `Some` when CH ∈ {3, 8}.
+    pub conv_ch: Option<A2ConvCh>,
     /// Input mixin weights (`CH` elements, f32).
     pub mixin_w: AlignedVec<f32>,
     /// Layer1x1 weights (`CH × CH`, col-major: `[bottleneck][out]`).
@@ -73,8 +82,7 @@ impl A2Layer {
         debug_assert_eq!(l1x1_b.len(), ch);
         Self {
             conv,
-            ch3_conv: None,
-            ch8_conv: None,
+            conv_ch: None,
             mixin_w,
             l1x1_w,
             l1x1_b,
@@ -92,20 +100,18 @@ impl A2Layer {
     /// Creates a CH=3 layer with f32-native col-major-per-tap weights.
     pub fn new_with_ch3(
         conv: A2Conv1d,
-        ch3_conv: A2Conv1dCh3,
+        ch3_conv: A2Conv1dCh<3>,
         mixin_w: AlignedVec<f32>,
         l1x1_w: AlignedVec<f32>,
         l1x1_b: AlignedVec<f32>,
     ) -> Self {
-        let ch = conv.out_ch();
-        debug_assert_eq!(ch, 3);
-        debug_assert_eq!(mixin_w.len(), ch);
-        debug_assert_eq!(l1x1_w.len(), ch * ch);
-        debug_assert_eq!(l1x1_b.len(), ch);
+        debug_assert_eq!(conv.out_ch(), 3);
+        debug_assert_eq!(mixin_w.len(), 3);
+        debug_assert_eq!(l1x1_w.len(), 9);
+        debug_assert_eq!(l1x1_b.len(), 3);
         Self {
             conv,
-            ch3_conv: Some(ch3_conv),
-            ch8_conv: None,
+            conv_ch: Some(A2ConvCh::Ch3(ch3_conv)),
             mixin_w,
             l1x1_w,
             l1x1_b,
@@ -123,20 +129,18 @@ impl A2Layer {
     /// Creates a layer with CH=8 optimized weights.
     pub fn new_with_ch8(
         conv: A2Conv1d,
-        ch8_conv: A2Conv1dCh8,
+        ch8_conv: A2Conv1dCh<8>,
         mixin_w: AlignedVec<f32>,
         l1x1_w: AlignedVec<f32>,
         l1x1_b: AlignedVec<f32>,
     ) -> Self {
-        let ch = conv.out_ch();
-        debug_assert_eq!(ch, 8);
-        debug_assert_eq!(mixin_w.len(), ch);
-        debug_assert_eq!(l1x1_w.len(), ch * ch);
-        debug_assert_eq!(l1x1_b.len(), ch);
+        debug_assert_eq!(conv.out_ch(), 8);
+        debug_assert_eq!(mixin_w.len(), 8);
+        debug_assert_eq!(l1x1_w.len(), 64);
+        debug_assert_eq!(l1x1_b.len(), 8);
         Self {
             conv,
-            ch3_conv: None,
-            ch8_conv: Some(ch8_conv),
+            conv_ch: Some(A2ConvCh::Ch8(ch8_conv)),
             mixin_w,
             l1x1_w,
             l1x1_b,
@@ -171,8 +175,7 @@ impl A2Layer {
         debug_assert_eq!(l1x1_b.len(), l1x1_out_ch);
         Self {
             conv,
-            ch3_conv: None,
-            ch8_conv: None,
+            conv_ch: None,
             mixin_w,
             l1x1_w,
             l1x1_b,

@@ -16,6 +16,7 @@
 
 pub mod activations;
 pub mod conv1d;
+pub mod conv1d_ch;
 pub mod conv1d_ch3;
 pub mod conv1d_ch8;
 pub mod conv1d_fallback;
@@ -38,7 +39,7 @@ pub use head::{
     A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref, head_process_ch3_sse,
     head_process_ch8_avx2,
 };
-pub use layer::{A2Layer, a2_layer_single_frame_scalar_ref};
+pub use layer::{A2ConvCh, A2Layer, a2_layer_single_frame_scalar_ref};
 pub use model::WaveNetA2;
 pub use model::dynamic::WaveNetA2Dyn;
 pub use params::{

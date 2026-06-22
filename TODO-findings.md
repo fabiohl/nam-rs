@@ -422,9 +422,11 @@ Duas das seis fases da auditoria longa falham de forma **determinística**. Nenh
 
 **Risco:** médio. **Esforço:** médio.
 
-## D2 — [BAIXA] Structs `A2Conv1dCh3`/`A2Conv1dCh8` quase idênticas → const-generic
+## D2 — [CONCLUÍDA] Structs `A2Conv1dCh3`/`A2Conv1dCh8` quase idênticas → const-generic [DONE]
 
 **Arquivos:** `src/models/a2/conv1d_ch3/mod.rs:63` e `src/models/a2/conv1d_ch8/mod.rs:52` (diferem só em contagem de canais e stride 16 vs 64). **Proposta:** unificar como `A2Conv1dCh<const CH: usize>`, reduzindo ~440 linhas e divergência. **Risco:** médio. **Esforço:** médio.
+
+**Conclusão (2026-06):** Implementado. `A2Conv1dCh<const CH: usize>` unificado em `src/models/a2/conv1d_ch/mod.rs` com `CH_PAD = CH.next_power_of_two()`. Structs antigos viram type aliases (`A2Conv1dCh3 = A2Conv1dCh<3>`, `A2Conv1dCh8 = A2Conv1dCh<8>`). Campos duplicados em `A2Layer` (`ch3_conv`, `ch8_conv`) unificados em `conv_ch: Option<A2ConvCh>` via enum `A2ConvCh { Ch3, Ch8 }`. Redução líquida: ~150 linhas removidas entre struct defs + constructors; dispatch em `model/mod.rs` simplificado para single match. Testes (25 CH3 + CH8) passam sem alterações semânticas. SIMD kernels preservados nos módulos originais.
 
 ## D3 — [BAIXA] Arquivos grandes com responsabilidades misturadas
 

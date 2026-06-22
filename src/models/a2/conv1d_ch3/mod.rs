@@ -43,84 +43,8 @@
 //! - `a2_fast.cpp` (strategy `Channels=3`, GEMV unrolled)
 //! - T2.2/T2.4 (`conv1d_ch8.rs`) for the f32 col-major pattern
 
-use crate::math::common::AlignedVec;
-
-// =============================================================================
-// A2Conv1dCh3 — CH=3 convolution with col-major-per-tap f32 weights
-// =============================================================================
-
-/// CH=3 dilated causal Conv1D weights in col-major-per-tap layout with f32 precision.
-///
-/// Layout: `w[k * 16 + in_ch * 4 + out_ch]`
-/// - `k`: kernel tap index (0..K-1)
-/// - `in_ch`: input channel (0..2)
-/// - `out_ch`: output channel (0..2), lane 3 = 0.0 (SIMD padding)
-///
-/// For a given `(k, in_ch)`, the 4 floats (3 weights + 1 zero) are contiguous
-/// → one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA — no f16 decode.
-#[derive(Clone)]
-#[repr(align(64))]
-pub struct A2Conv1dCh3 {
-    /// Col-major-per-tap f32 weights: `kernel_size * 16` elements.
-    /// Stride 16 per tap: [k][in_ch=0..2][out_ch=0..3 (padded)].
-    pub weights: AlignedVec<f32>,
-    /// Bias vector — 4 elements: [bias0, bias1, bias2, 0.0] (SIMD-ready).
-    pub bias: AlignedVec<f32>,
-    /// Temporal dilation factor.
-    pub dilation: usize,
-    /// Kernel size (6 or 15 for A2).
-    pub kernel: usize,
-}
-
-impl A2Conv1dCh3 {
-    /// Builds a CH=3 conv1d from the NAM JSON weight stream (f32, raw order).
-    ///
-    /// `raw_weights` is in NAM JSON row-major order: `[out_ch][in_ch][kernel]`.
-    /// This constructor permutes once (at load time) to col-major-per-tap:
-    /// `w[k * 16 + in * 4 + out]`.
-    ///
-    /// `bias` must contain exactly 3 elements; a zero-padded 4th lane is appended
-    /// internally for SIMD alignment.
-    pub fn new(
-        raw_weights: &[f32],
-        out_ch: usize,
-        in_ch: usize,
-        kernel: usize,
-        dilation: usize,
-        raw_bias: &[f32],
-    ) -> Self {
-        debug_assert_eq!(out_ch, 3);
-        debug_assert_eq!(in_ch, 3);
-        debug_assert!(kernel == 6 || kernel == 15);
-        debug_assert_eq!(raw_weights.len(), out_ch * in_ch * kernel);
-        debug_assert_eq!(raw_bias.len(), out_ch);
-
-        // Permute: raw[out * in_ch * K + in * K + k] → w[k * 16 + in * 4 + out]
-        let mut weights = AlignedVec::new(kernel * 16, 0.0f32);
-        for out in 0..out_ch {
-            for inp in 0..in_ch {
-                for k in 0..kernel {
-                    let src = out * in_ch * kernel + inp * kernel + k;
-                    let dst = k * 16 + inp * 4 + out;
-                    weights[dst] = raw_weights[src];
-                }
-            }
-        }
-
-        // 4-wide bias: [b0, b1, b2, 0.0]
-        let mut bias = AlignedVec::new(4, 0.0f32);
-        bias[0] = raw_bias[0];
-        bias[1] = raw_bias[1];
-        bias[2] = raw_bias[2];
-
-        Self {
-            weights,
-            bias,
-            dilation,
-            kernel,
-        }
-    }
-}
+/// CH=3 dilated causal Conv1D alias — see `super::conv1d_ch::A2Conv1dCh` for docs.
+pub type A2Conv1dCh3 = super::conv1d_ch::A2Conv1dCh<3>;
 
 mod scalar;
 mod simd;

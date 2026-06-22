@@ -104,29 +104,18 @@ impl<const CH: usize> WaveNetA2<CH> {
                 prefetch_fn,
             );
 
-            // Optional CH=3 col-major-per-tap f32 conv.
+            // Optional col-major-per-tap f32 conv for CH=3 and CH=8.
             // Uses the original (non-interleaved) f32 weights for SIMD-friendly access.
-            let ch3_conv = if CH == 3 {
-                Some(A2Conv1dCh3::new(
-                    conv_w_f32, CH, CH, ksize, dilation, conv_b_f32,
-                ))
-            } else {
-                None
-            };
-
-            // Optional CH=8 col-major-per-tap conv.
-            // Uses the owned f32 copy since conv_w_f32 reference may not outlive the scope.
-            let ch8_conv = if CH == 8 {
-                Some(A2Conv1dCh8::new(
-                    &conv_w_f32_owned,
-                    CH,
-                    CH,
-                    ksize,
-                    dilation,
-                    conv_b.clone(),
-                ))
-            } else {
-                None
+            let conv_ch = match CH {
+                3 => {
+                    let ch3 = A2Conv1dCh3::new(conv_w_f32, CH, CH, ksize, dilation, conv_b_f32);
+                    Some(crate::models::a2::layer::A2ConvCh::Ch3(ch3))
+                }
+                8 => {
+                    let ch8 = A2Conv1dCh8::new(&conv_w_f32_owned, CH, CH, ksize, dilation, &conv_b);
+                    Some(crate::models::a2::layer::A2ConvCh::Ch8(ch8))
+                }
+                _ => None,
             };
 
             // 2c. Input mixin: per-channel scalar weights (f32, no bias).
@@ -153,11 +142,10 @@ impl<const CH: usize> WaveNetA2<CH> {
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
             // Assemble the layer: priority is ch3_conv > ch8_conv > scalar fallback.
-            let mut layer = match (ch3_conv, ch8_conv) {
-                (Some(ch3c), _) => A2Layer::new_with_ch3(conv, ch3c, mixin_w, l1x1_w, l1x1_b),
-                (_, Some(ch8c)) => A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b),
-                _ => A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b),
-            };
+            let mut layer = A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b);
+            if let Some(conv_ch) = conv_ch {
+                layer.conv_ch = Some(conv_ch);
+            }
 
             // 2f. FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
             if let Some(ref raw) = self.layer_raw {

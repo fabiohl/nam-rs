@@ -383,8 +383,7 @@ impl<const CH: usize> WaveNetA2<CH> {
 
                     // Extract immutable references first, then create FilmBlock
                     // (borrow checker can split struct fields when accessed individually).
-                    let ch3_conv = layer.ch3_conv.as_ref();
-                    let ch8_conv = layer.ch8_conv.as_ref();
+                    let conv_ch = layer.conv_ch.as_ref();
                     let mixin_w = &layer.mixin_w;
                     let l1x1_w = &layer.l1x1_w;
                     let l1x1_b = &layer.l1x1_b;
@@ -400,46 +399,44 @@ impl<const CH: usize> WaveNetA2<CH> {
                         head1x1_post_film: layer.head1x1_post_film.as_mut(),
                     };
 
-                    if let Some(ch3_conv) = ch3_conv {
-                        unsafe {
-                            super::conv1d_ch3::layer_forward_ch3_block(
-                                ch3_conv,
-                                mixin_w,
-                                l1x1_w,
-                                l1x1_b,
-                                &mut film_block,
-                                history,
-                                max_lookback_cols,
-                                nf,
-                                &input[pos..pos + nf],
-                                &mut self.head_accum,
-                                head_wp,
-                                &mut self.layer_in,
-                                is_first,
-                                is_last,
-                            );
-                        }
-                        continue;
-                    }
-
-                    if let Some(ch8_conv) = ch8_conv {
-                        unsafe {
-                            super::conv1d_ch8::layer_forward_ch8_block(
-                                ch8_conv,
-                                mixin_w,
-                                l1x1_w,
-                                l1x1_b,
-                                &mut film_block,
-                                history,
-                                max_lookback_cols,
-                                nf,
-                                &input[pos..pos + nf],
-                                &mut self.head_accum,
-                                head_wp,
-                                &mut self.layer_in,
-                                is_first,
-                                is_last,
-                            );
+                    if let Some(conv_ch) = conv_ch {
+                        match conv_ch {
+                            super::layer::A2ConvCh::Ch3(ch3_conv) => unsafe {
+                                super::conv1d_ch3::layer_forward_ch3_block(
+                                    ch3_conv,
+                                    mixin_w,
+                                    l1x1_w,
+                                    l1x1_b,
+                                    &mut film_block,
+                                    history,
+                                    max_lookback_cols,
+                                    nf,
+                                    &input[pos..pos + nf],
+                                    &mut self.head_accum,
+                                    head_wp,
+                                    &mut self.layer_in,
+                                    is_first,
+                                    is_last,
+                                );
+                            },
+                            super::layer::A2ConvCh::Ch8(ch8_conv) => unsafe {
+                                super::conv1d_ch8::layer_forward_ch8_block(
+                                    ch8_conv,
+                                    mixin_w,
+                                    l1x1_w,
+                                    l1x1_b,
+                                    &mut film_block,
+                                    history,
+                                    max_lookback_cols,
+                                    nf,
+                                    &input[pos..pos + nf],
+                                    &mut self.head_accum,
+                                    head_wp,
+                                    &mut self.layer_in,
+                                    is_first,
+                                    is_last,
+                                );
+                            },
                         }
                         continue;
                     }

@@ -266,7 +266,7 @@ fn test_conv1d_ch8_a2conv1dch8_constructor() {
         }
     }
     let bias = AlignedVec::from(vec![0.0f32; 8]);
-    let conv = A2Conv1dCh8::new(&raw, 8, 8, kernel, 1, bias);
+    let conv = A2Conv1dCh8::new(&raw, 8, 8, kernel, 1, &bias);
 
     // Verify: conv.weights[k * 64 + in * 8 + out] == raw[out * 8 * K + in * K + k]
     for out in 0..8 {
@@ -295,7 +295,7 @@ fn test_layer_forward_ch8_k6_parity() {
     let kernel = 6;
     let dilation = 7; // A2_DILATIONS[2]
     let (w, b) = make_random_weights(kernel, 42);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, b.clone());
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
 
     let mut mixin_w_vec = AlignedVec::new(8, 0.0f32);
     let mut l1x1_w_vec = AlignedVec::new(64, 0.0f32);
@@ -397,7 +397,7 @@ fn test_layer_forward_ch8_k15_last_layer_parity() {
     let kernel = 15;
     let dilation = 13;
     let (w, b) = make_random_weights(kernel, 88);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, b.clone());
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
 
     let mixin_w_vec = AlignedVec::from(vec![0.1f32; 8]);
     let l1x1_w_vec = AlignedVec::from(vec![0.5f32; 64]);
@@ -483,7 +483,7 @@ fn test_layer_forward_ch8_middle_layer_accumulates() {
     let kernel = 6;
     let dilation = 1;
     let (w, b) = make_random_weights(kernel, 33);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, b.clone());
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
 
     let mixin_w_vec = AlignedVec::from(vec![0.1f32; 8]);
     let l1x1_w_vec = AlignedVec::from(vec![0.0f32; 64]);
