@@ -35,6 +35,7 @@ fn main() -> anyhow::Result<()> {
     // Initialize the logging backend (respects RUST_LOG; default: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    #[cfg(feature = "testing")]
     if std::env::var("NAM_DISABLE_GATE").is_ok() {
         nam_rs::dsp::pipeline::DISABLE_GATE.store(true, Ordering::Relaxed);
         log::info!("⚡ Noise gate disabled via NAM_DISABLE_GATE environment variable.");

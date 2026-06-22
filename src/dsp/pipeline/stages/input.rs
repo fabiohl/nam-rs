@@ -3,7 +3,7 @@
 
 //! Stage 1: Gate, Input Gains, Mono Detection, and Silence Bypass.
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(feature = "testing")]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -18,8 +18,10 @@ use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff};
 use super::super::bridge::DspBridgeWriter;
 use super::super::context::DspPipelineContext;
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(feature = "testing")]
 /// Global control to disable the noise gate/silence bypass during profiling/benchmarks.
+/// Only available in testing builds — production CLAP plugin builds must not share
+/// this state across instances.
 pub static DISABLE_GATE: AtomicBool = AtomicBool::new(false);
 
 /// Ultra-low DC offset injected at the input stage to prevent subnormal floats
@@ -75,12 +77,11 @@ pub(crate) fn apply_input_stage(
 
     // If the gate is fully closed (absolute silence), we stop here to save battery/CPU.
     if ctx.silence_hysteresis.state() == GateState::Closed {
+        #[cfg(feature = "testing")]
         if DISABLE_GATE.load(Ordering::Relaxed) {
-            // Keep running the model, return FadingIn or Open so the pipeline runs neural inference
             return GateState::Open;
-        } else {
-            return GateState::Closed;
         }
+        return GateState::Closed;
     }
 
     #[cfg(feature = "stereo")]

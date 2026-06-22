@@ -444,13 +444,15 @@ Duas das seis fases da auditoria longa falham de forma **determinística**. Nenh
 - `stereo/mod.rs`: removido `#![allow(clippy::missing_safety_doc)]`. Seções `# Safety` melhoradas nos 4 dispatchers de slice (`compute_energy_stereo`, `compute_max_diff`, `compute_peak_abs_stereo`, `compute_peak_abs_mono`) — trocado "Uses dynamic dispatch via global v-table" por contrato real: slices devem ter mesmo comprimento, backends usam loads não-alinhados.
 - `bridge.rs`, `input.rs`, `gate_flags.rs`, `telemetry.rs`: já possuíam `///` doc-comments adequados (finding anterior ao acréscimo dos docs). `cargo clippy` passa limpo sem warnings de missing docs.
 
-## D5 — [INFO] Código morto: `grouped_conv1d_single_frame_simd`
+## D5 — [CONCLUÍDA] Código morto: `grouped_conv1d_single_frame_simd`
 
-Ver **A3**: hoje sem chamadores. Será resolvido ao redirecionar o caminho ativo para ela (ou removido se o item 2 do A3 a substituir). Evitar `#[allow(dead_code)]` — integrar ou remover.
+Ver **A3**: já redirecionada — `process_single_frame` (`:234`) e `process_block` (`:272`) chamam `grouped_conv1d_single_frame_simd`. `process_single_frame_avx2` removida.
 
-## D6 — [INFO] `DISABLE_GATE` é estática global compartilhada entre instâncias CLAP
+**Conclusão (2026-06):** Código morto resolvido durante o Sprint 1 (A3-item1). A função estava viva e integrada ao caminho ativo; `process_single_frame_avx2` já removida. Finding fechado como verificação.
 
-**Arquivo:** `src/dsp/pipeline/stages/input.rs:23` (`pub static DISABLE_GATE: AtomicBool`). Lida em `:78`. Em DAW com múltiplas instâncias, afeta **todas**. Documentada como uso de profiling/bench. **Proposta:** garantir que nunca seja escrita por código de produção; idealmente mover para estado por-instância ou atrás de `#[cfg(feature = "testing")]`. **Risco:** baixo. **Esforço:** baixo.
+## D6 — [CONCLUÍDA] `DISABLE_GATE` é estática global compartilhada entre instâncias CLAP
+
+**Arquivo:** `src/dsp/pipeline/stages/input.rs:23` (`pub static DISABLE_GATE: AtomicBool`). Em DAW com múltiplas instâncias, afetava **todas**. **Solução:** gate atrás de `#[cfg(feature = "testing")]` (4 arquivos alterados: `input.rs`, `stages/mod.rs`, `pipeline/mod.rs`, `main.rs`). CLAP plugin sem `testing` não compila a estática nem o desvio condicional; hot-path simplificado conforme branch `GateState::Closed` pura. `cargo test` (770 pass) e `cargo clippy` limpos.
 
 ---
 
