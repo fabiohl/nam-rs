@@ -49,7 +49,7 @@ Foco: Consolidação das operações de *Stereo Convolution* e lógicas redundan
 **Achados Mapeados:** F24, F25, F26, F28, F29.
 **Grau de Risco:** Baixo (Esforço mecânico, altamente paralelizável; baixo impacto no DSP).
 
-### 🏃 Sprint E7.1: Desmembramento e Normalização de Regras de Teste (F24, F25)
+### 🏃 Sprint E7.1: Desmembramento e Normalização de Regras de Teste (F24, F25) [DONE]
 
 Foco: Divisão de grandes módulos em namespaces menores e re-assentamento de testes de acordo com a política (>300 linhas = arquivo separado, <300 linhas = inline).
 
@@ -57,7 +57,7 @@ Foco: Divisão de grandes módulos em namespaces menores e re-assentamento de te
   - **Ação 1:** Extrair e reestruturar `src/loader/nam_json/topology.rs` (765 linhas) em submódulos ou diretório próprio abrangendo `{wavenet, lstm, convnet, a2, linear}.rs`.
   - **Ação 2:** Separar as responsabilidades mistas dos testes em `src/clap/processor_test.rs` (2048 linhas) dividindo-os tematicamente em múltiplos arquivos dentro do diretório de testes apropriado.
 
-- [ ] **Tarefa T7.1.2: Realocação Restrita das Regras de Teste (F24, F25)**
+- [x] **Tarefa T7.1.2: Realocação Restrita das Regras de Teste (F24, F25)**
   - **Ação 1:** Extrair testes contidos em blocos `inline` para arquivos separados com o sufixo `_test.rs` em:
     - `src/math/dsp/fft.rs` (1284 linhas).
     - `src/models/a2/grouped_conv1d.rs` (1205 linhas).
