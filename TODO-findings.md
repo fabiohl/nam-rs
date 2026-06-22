@@ -464,6 +464,123 @@ Ver **A3**: já redirecionada — `process_single_frame` (`:234`) e `process_blo
 
 ---
 
+---
+
+## EPIC E — Pendências de Fechamento (auditoria final 2026-06-22)
+
+Três itens identificados na **auditoria geral de fechamento** permanecem abertos após a conclusão dos Epics A–D. Dois são sub-tarefas nunca implementadas de findings anteriores; um é a continuação inacabada do D3. Nenhum bloqueia produção, mas devem ser concluídos para fechar o ciclo de auditoria sem dívida técnica.
+
+---
+
+## E1 — [MÉDIA] `gemv_kernel!` tail `in_c`: 256-bit para 1 elemento persiste (A7.1 não implementado)
+
+**Arquivo:** `src/math/gemm/gemv/kernel_macro.rs:104-110`; `src/math/gemm/gemv/f32_avx2.rs:119-122`.
+
+**Estado atual.** O laço principal da macro foi expandido para 8 acumuladores (A7 ✅), mas a cauda de drenagem pós-unroll ainda executa para cada elemento avulso restante (≤ 7 por bloco):
+
+```rust
+while in_c < in_len {
+    let vs = _mm256_set1_ps(*$in_frame.get_unchecked(in_c)); // YMM por 1 escalar
+    let vw = $load_weight(weight_ptr);                        // _mm256_loadu_ps — 8 floats
+    acc0 = $fmadd_ps(vs, vw, acc0);                          // _mm256_fmadd_ps 256-bit
+    in_c += 1;
+}
+```
+
+Cada iteração da cauda carrega 32 bytes de pesos mas utiliza apenas 4 (1 lane); os outros 28 bytes são trabalho desperdiçado de cache L1.
+
+**Solução.** Substituir o tail YMM por escalar puro `f32` com `mul_add`, acumulando num `f32 tail_sum` e somando ao lane-0 de `acc0` via `_mm256_cvtss_f32` antes do store:
+
+```rust
+let mut tail_sum = 0.0f32;
+while in_c < in_len {
+    let s = *$in_frame.get_unchecked(in_c);
+    // peso: extrair lane 0 do bloco de pesos f16→f32 ou f32
+    let w = /* escalar via referência ao slice */;
+    tail_sum = s.mul_add(w, tail_sum);
+    in_c += 1;
+}
+// Adicionar tail_sum ao lane-0 de acc0 antes de store_ps
+let a0_scalar = _mm256_cvtss_f32(_mm256_castps256_ps128(acc0));
+// ... inserir via _mm256_insert_epi32 ou reduzir acc0 + tail_sum
+```
+
+Alternativamente (mais simples): usar a variante escalar existente para o tail completo quando `in_len % 8 != 0` e somar ao resultado do bloco principal (pattern já presente em `f32_avx2.rs:132+` para o tail de `out_c`).
+
+**Mesma correção aplica-se ao `f32_avx2.rs:119-122`** (`gemv_with_bias_f32_avx2`, `gemv_no_bias_f32_avx2`).
+
+**Validação.** `cargo test --lib -- gemm` + `cpp_parity` (tolerância ESR existente cobre ≤ 2 ULP de diferença). `cargo bench -- kahan_conv1d`.
+
+**Risco:** baixíssimo (tail ≤ 7 iterações, path frio). **Esforço:** baixo (≈ 30 linhas).
+
+---
+
+## E2 — [ALTA] `test_lstm_noise_soak` logicamente impossível: modelo zero-weight nunca emite RMS > 0 (C2 não corrigido)
+
+**Arquivo:** `tests/soak_test.rs:357-397`.
+
+**Estado atual.** Idêntico ao momento da auditoria inicial. O teste:
+
+1. Instancia `LstmModel2::<16,17,32,64>::new()` — todos os pesos zerados (`head_weights: [0u16; H]`, `head_bias: 0.0`, células LSTM zeradas), cf. `src/models/lstm/model2.rs:98-107`.
+2. Alimenta ruído via `SimplePcg` e **afirma** `rms > 0.0001` na saída.
+3. Um modelo de pesos zero produz silêncio para qualquer entrada → RMS = 0 → **pânico na primeira iteração** (`0 frames`).
+
+A fase `Soak Tests (Numerical Stability)` continua falhando deterministicamente, tornando o CI de auditoria permanentemente vermelho e mascarando regressões futuras reais.
+
+**Solução (opção preferida — pesos aleatórios determinísticos).** Antes do loop, popular os pesos com o `SimplePcg` já disponível:
+
+```rust
+fn test_lstm_noise_soak() {
+    let mut model = LstmModel2::<16, 17, 32, 64>::new();
+    let mut pcg = SimplePcg::new(1337);
+
+    // Inicializar pesos com valores pseudo-aleatórios pequenos
+    // (evitar saturação: escalar para ~0.1 * rand)
+    for w in model.layer1.weights.iter_mut() {
+        *w = f32_to_f16(pcg.next_f32() * 0.1 - 0.05);
+    }
+    for w in model.layer2.weights.iter_mut() {
+        *w = f32_to_f16(pcg.next_f32() * 0.1 - 0.05);
+    }
+    model.head_bias = pcg.next_f32() * 0.1;
+    for w in model.head_weights.iter_mut() {
+        *w = f32_to_f16(pcg.next_f32() * 0.1 - 0.05);
+    }
+    // ... rest of the test
+```
+
+**Solução alternativa (fixture real).** Carregar uma fixture LSTM real como em `tests/a2_loader.rs` — maior robustez de cobertura mas adiciona dependência de arquivo de fixture.
+
+**Atenção:** verificar que `LstmLayer` expõe os campos `weights` / `biases` publicamente (ou via método `set_weights_raw`) — caso contrário, adicionar accessor `#[cfg(test)]`.
+
+**Validação.** O teste deve passar localmente com `cargo test --release --test soak_test -- test_lstm_noise_soak --ignored --nocapture`. A fase de auditoria longa `Soak Tests` volta a verde.
+
+**Risco:** baixíssimo (apenas teste, zero impacto em produção). **Esforço:** baixo (≈ 20 linhas).
+
+---
+
+## E3 — [BAIXA] `conv1d.rs` (1006 linhas) ainda mistura dispatch de inferência com construção de modelo (D3 parcialmente concluído)
+
+**Arquivo:** `src/models/a2/conv1d.rs` (1006 linhas).
+
+**Estado atual.** O D3 foi parcialmente executado: os helpers de transposição/layout foram extraídos com sucesso para `src/models/a2/weights_layout.rs` (71 linhas, 3 funções: `transpose_dense_f32`, `transpose_conv1d_interleaved_4wide`, `transpose_head_w`), e `dynamic.rs` foi reduzido de 880 → 835 linhas. Porém `conv1d.rs` permanece em **1006 linhas** com duas responsabilidades distintas misturadas:
+
+1. **Construção/configuração** — enum `A2Conv1d`, impl de `new()`, lógica de switch CH3/CH8, seleção de kernel por dilation (linhas ~1–250).
+2. **Dispatch de inferência** — `process_single_frame()` e `layer_forward_block()` delegando para CH3/CH8/fallback/grouped (linhas ~250–750).
+3. **Helpers de transposição de pesos específicos de A2** — `wave_net_to_a2_conv1d_weights()` e congêneres ainda embutidos (~750–1006).
+
+**Proposta.** Completar a extração iniciada no D3:
+
+- Mover os helpers de transposição A2-específicos remanescentes (ex.: `wave_net_to_a2_conv1d_weights`, packing CH3/CH8) para `weights_layout.rs` ou um novo `src/models/a2/conv1d_layout.rs`.
+- Separar o dispatch de inferência (`process_single_frame`, `layer_forward_block`) para `src/models/a2/conv1d_dispatch.rs`.
+- `conv1d.rs` deve ficar como arquivo de definição do tipo `A2Conv1d` (enum + `new`) com ≤ 250 linhas.
+
+**Validação.** `cargo check` + `cargo test --lib -- models::a2` + `cargo test --test cpp_parity -- --ignored` (zero regressão estrutural — é refatoração pura).
+
+**Risco:** baixo (refatoração sem lógica, cobertura de testes extensa). **Esforço:** médio.
+
+---
+
 ## Priorização sugerida (visão do planejador)
 
 1. **Sprint 1 (vermelho→verde + ganhos rápidos):** C1, C2 (destrava CI), A3-item1 (redirecionar grouped conv), A5 (dot_4x f32), B2.
