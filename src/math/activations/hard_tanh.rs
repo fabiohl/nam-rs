@@ -45,6 +45,31 @@ pub unsafe fn hard_tanh_slice_avx2(data: &mut [f32]) {
     }
 }
 
+/// Applies HardTanh (`clamp(x, -1.0, 1.0)`) to a slice using AVX-512.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn hard_tanh_slice_avx512(data: &mut [f32]) {
+    let neg_one = _mm512_set1_ps(-1.0_f32);
+    let pos_one = _mm512_set1_ps(1.0_f32);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x = _mm512_loadu_ps(data.as_ptr().add(i));
+            _mm512_storeu_ps(
+                data.as_mut_ptr().add(i),
+                _mm512_min_ps(pos_one, _mm512_max_ps(neg_one, x)),
+            );
+        }
+        i += 16;
+    }
+    for x in data.iter_mut().skip(i) {
+        *x = x.clamp(-1.0, 1.0);
+    }
+}
+
 /// Scalar HardTanh: `clamp(x, -1.0, 1.0)`.
 #[inline(always)]
 pub fn hard_tanh(x: f32) -> f32 {

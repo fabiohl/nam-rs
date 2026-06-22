@@ -99,11 +99,11 @@
   - **Arquivos:** `src/math/dsp/stereo/convolution_avx2.rs` etc.
   - **Ação:** Substituir usos passivos de `_mm_cvtss_f32` por `_mm_store_ss(&mut out, r)`.
 
-### Sprint E5.2: Performance AVX-512
+### Sprint E5.2: Performance AVX-512 [DONE]
 
 *Foco: Implementar pipelines de ativação mais largos.*
 
-- [ ] **Tarefa E5.2.1 [F20]: Implementar variantes AVX-512 para as 4 ativações A2.**
+- [x] **Tarefa E5.2.1 [F20]: Implementar variantes AVX-512 para as 4 ativações A2.**
   - **Especialista:** `pesquisador-inovador` / `implementador`
   - **Arquivos:** `src/math/common/dispatch/detect.rs`, ativações.
   - **Ação:** Implementar kernels AVX-512 e dispatch para `hard_tanh`, `hard_swish`, `fast_tanh`, e `leaky_hard_tanh`. Testar contra referências escalares para garantir bit-parity ou tolerância adequada.

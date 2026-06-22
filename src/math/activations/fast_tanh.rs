@@ -74,6 +74,44 @@ pub unsafe fn fast_tanh_slice_avx2(data: &mut [f32]) {
     }
 }
 
+/// Applies FastTanh (Padé rational approximation) to a slice using AVX-512+FMA.
+///
+/// # Safety
+/// Requires AVX-512F, AVX-512VL, AVX-512DQ, and FMA support.
+#[target_feature(enable = "avx512f,avx512vl,avx512dq,fma")]
+#[allow(clippy::excessive_precision)]
+pub unsafe fn fast_tanh_slice_avx512(data: &mut [f32]) {
+    let ca = _mm512_set1_ps(2.45550750702956_f32);
+    let cb = _mm512_set1_ps(0.893229853513558_f32);
+    let cc = _mm512_set1_ps(0.821226666969744_f32);
+    let cd = _mm512_set1_ps(2.44506634652299_f32);
+    let ce = _mm512_set1_ps(0.814642734961073_f32);
+    let sign_mask = _mm512_set1_ps(-0.0_f32);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x = _mm512_loadu_ps(data.as_ptr().add(i));
+            let ax = _mm512_andnot_ps(sign_mask, x);
+            let x2 = _mm512_mul_ps(x, x);
+            let num_inner = _mm512_fmadd_ps(cc, ax, cb);
+            let num_poly = _mm512_fmadd_ps(num_inner, x2, _mm512_fmadd_ps(ca, ax, ca));
+            let num = _mm512_mul_ps(x, num_poly);
+            let xe = _mm512_mul_ps(ce, _mm512_mul_ps(x, ax));
+            let xterm = _mm512_add_ps(x, xe);
+            let abs_xterm = _mm512_andnot_ps(sign_mask, xterm);
+            let den_inner = _mm512_add_ps(cd, x2);
+            let den = _mm512_fmadd_ps(den_inner, abs_xterm, cd);
+            let y = _mm512_div_ps(num, den);
+            _mm512_storeu_ps(data.as_mut_ptr().add(i), y);
+        }
+        i += 16;
+    }
+    for x in data.iter_mut().skip(i) {
+        *x = fast_tanh(*x);
+    }
+}
+
 /// Fast rational Padé approximation for the tanh function.
 #[inline(always)]
 #[allow(clippy::excessive_precision)]

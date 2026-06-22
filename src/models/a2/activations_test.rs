@@ -458,4 +458,260 @@ mod tests {
             );
         }
     }
+
+    // --- AVX-512 parity tests ---
+
+    #[test]
+    fn test_hard_tanh_avx512_parity() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe { crate::math::activations::hard_tanh_slice_avx512(&mut simd_data) };
+        for x in ref_data.iter_mut() {
+            *x = x.clamp(-1.0, 1.0);
+        }
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-6,
+                "AVX-512 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_hard_tanh_avx512_large_slice() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            *x = x.clamp(-1.0, 1.0);
+        }
+
+        unsafe { crate::math::activations::hard_tanh_slice_avx512(&mut data) };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX-512 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
+
+    #[test]
+    fn test_hard_swish_avx512_parity() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe { crate::math::activations::hard_swish_slice_avx512(&mut simd_data) };
+        for x in ref_data.iter_mut() {
+            let t = *x + 3.0;
+            *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
+        }
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-6,
+                "AVX-512 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_hard_swish_avx512_large_slice() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            let t = *x + 3.0;
+            *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
+        }
+
+        unsafe { crate::math::activations::hard_swish_slice_avx512(&mut data) };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX-512 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
+
+    #[test]
+    fn test_leaky_hard_tanh_avx512_parity() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let min_val = -1.0_f32;
+        let max_val = 1.0_f32;
+        let min_slope = 0.15_f32;
+        let max_slope = 0.25_f32;
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe {
+            crate::math::activations::leaky_hard_tanh_slice_avx512(
+                &mut simd_data,
+                min_val,
+                max_val,
+                min_slope,
+                max_slope,
+            )
+        };
+        for x in ref_data.iter_mut() {
+            if *x < min_val {
+                *x = (*x - min_val) * min_slope + min_val;
+            } else if *x > max_val {
+                *x = (*x - max_val) * max_slope + max_val;
+            }
+        }
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-6,
+                "AVX-512 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_leaky_hard_tanh_avx512_large_slice() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let min_val = -1.5_f32;
+        let max_val = 1.5_f32;
+        let min_slope = 0.1_f32;
+        let max_slope = 0.3_f32;
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            if *x < min_val {
+                *x = (*x - min_val) * min_slope + min_val;
+            } else if *x > max_val {
+                *x = (*x - max_val) * max_slope + max_val;
+            }
+        }
+
+        unsafe {
+            crate::math::activations::leaky_hard_tanh_slice_avx512(
+                &mut data, min_val, max_val, min_slope, max_slope,
+            )
+        };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX-512 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
+
+    #[test]
+    fn test_fast_tanh_avx512_parity() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        #[allow(clippy::excessive_precision)]
+        fn fast_tanh_scalar(x: f32) -> f32 {
+            let ax = x.abs();
+            let x2 = x * x;
+            (x * (2.45550750702956
+                + 2.45550750702956 * ax
+                + (0.893229853513558 + 0.821226666969744 * ax) * x2))
+                / (2.44506634652299
+                    + (2.44506634652299 + x2) * (x + 0.814642734961073 * x * ax).abs())
+        }
+
+        let mut simd_data: Vec<f32> = (-20..21).map(|i| i as f32 * 0.43).collect();
+        let mut ref_data = simd_data.clone();
+
+        unsafe { crate::math::activations::fast_tanh_slice_avx512(&mut simd_data) };
+        for x in ref_data.iter_mut() {
+            *x = fast_tanh_scalar(*x);
+        }
+
+        for (i, (&s, &r)) in simd_data.iter().zip(ref_data.iter()).enumerate() {
+            assert!(
+                (s - r).abs() < 1e-5,
+                "AVX-512 parity mismatch at index {}: simd={}, ref={}",
+                i,
+                s,
+                r
+            );
+        }
+    }
+
+    #[test]
+    fn test_fast_tanh_avx512_large_slice() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        #[allow(clippy::excessive_precision)]
+        fn fast_tanh_scalar(x: f32) -> f32 {
+            let ax = x.abs();
+            let x2 = x * x;
+            (x * (2.45550750702956
+                + 2.45550750702956 * ax
+                + (0.893229853513558 + 0.821226666969744 * ax) * x2))
+                / (2.44506634652299
+                    + (2.44506634652299 + x2) * (x + 0.814642734961073 * x * ax).abs())
+        }
+
+        let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
+        let mut expected = data.clone();
+        for x in expected.iter_mut() {
+            *x = fast_tanh_scalar(*x);
+        }
+
+        unsafe { crate::math::activations::fast_tanh_slice_avx512(&mut data) };
+
+        for (i, (&a, &b)) in data.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-5,
+                "AVX-512 mismatch at index {}: got={}, expected={}",
+                i,
+                a,
+                b
+            );
+        }
+    }
 }

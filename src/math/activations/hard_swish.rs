@@ -54,6 +54,36 @@ pub unsafe fn hard_swish_slice_avx2(data: &mut [f32]) {
     }
 }
 
+/// Applies HardSwish (`x * clamp(x+3, 0, 6) / 6`) to a slice using AVX-512.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn hard_swish_slice_avx512(data: &mut [f32]) {
+    let three = _mm512_set1_ps(3.0_f32);
+    let six = _mm512_set1_ps(6.0_f32);
+    let inv6 = _mm512_set1_ps(1.0_f32 / 6.0_f32);
+    let zero = _mm512_setzero_ps();
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x = _mm512_loadu_ps(data.as_ptr().add(i));
+            let t = _mm512_add_ps(x, three);
+            let c = _mm512_min_ps(six, _mm512_max_ps(zero, t));
+            _mm512_storeu_ps(
+                data.as_mut_ptr().add(i),
+                _mm512_mul_ps(_mm512_mul_ps(x, c), inv6),
+            );
+        }
+        i += 16;
+    }
+    for x in data.iter_mut().skip(i) {
+        let t = *x + 3.0;
+        *x *= t.clamp(0.0, 6.0) * (1.0 / 6.0);
+    }
+}
+
 /// Scalar HardSwish: `x * clamp(x+3, 0, 6) / 6`.
 #[inline(always)]
 pub fn hard_swish(x: f32) -> f32 {

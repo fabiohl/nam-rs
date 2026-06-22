@@ -63,6 +63,46 @@ pub unsafe fn leaky_hard_tanh_slice_avx2(
     }
 }
 
+/// Applies LeakyHardTanh (branchless blend) to a slice using AVX-512+FMA.
+///
+/// # Safety
+/// Requires AVX-512F, AVX-512VL, and FMA support.
+#[target_feature(enable = "avx512f,avx512vl,fma")]
+pub unsafe fn leaky_hard_tanh_slice_avx512(
+    data: &mut [f32],
+    min_val: f32,
+    max_val: f32,
+    min_slope: f32,
+    max_slope: f32,
+) {
+    let min_v = _mm512_set1_ps(min_val);
+    let max_v = _mm512_set1_ps(max_val);
+    let min_sl_v = _mm512_set1_ps(min_slope);
+    let max_sl_v = _mm512_set1_ps(max_slope);
+    let mut i = 0;
+    let len = data.len();
+    while i + 16 <= len {
+        unsafe {
+            let x = _mm512_loadu_ps(data.as_ptr().add(i));
+            let lt_min = _mm512_cmp_ps_mask(x, min_v, _CMP_LT_OS);
+            let lo_part = _mm512_fmadd_ps(_mm512_sub_ps(x, min_v), min_sl_v, min_v);
+            let gt_max = _mm512_cmp_ps_mask(x, max_v, _CMP_GT_OS);
+            let hi_part = _mm512_fmadd_ps(_mm512_sub_ps(x, max_v), max_sl_v, max_v);
+            let temp = _mm512_mask_blend_ps(lt_min, x, lo_part);
+            let y = _mm512_mask_blend_ps(gt_max, temp, hi_part);
+            _mm512_storeu_ps(data.as_mut_ptr().add(i), y);
+        }
+        i += 16;
+    }
+    for x in data.iter_mut().skip(i) {
+        if *x < min_val {
+            *x = (*x - min_val) * min_slope + min_val;
+        } else if *x > max_val {
+            *x = (*x - max_val) * max_slope + max_val;
+        }
+    }
+}
+
 /// Scalar LeakyHardTanh.
 #[inline(always)]
 pub fn leaky_hard_tanh(x: f32, min_val: f32, max_val: f32, min_slope: f32, max_slope: f32) -> f32 {
