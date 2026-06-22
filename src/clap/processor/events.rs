@@ -170,22 +170,7 @@ impl<'a> NamClapProcessor<'a> {
         }
         if let Some(ref mut model) = self.model_l {
             model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
-        }
-        let resize_failed = if let Some(ref mut model) = self.model_l {
-            model.set_max_buffer_size(self.max_frames_count).is_err()
-        } else {
-            false
-        };
-        if resize_failed {
-            if let Some(failed) = self.model_l.take() {
-                self.push_to_gc(GcItem::Model(failed));
-            }
-            self.rt_status
-                .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
-        }
-        if self.model_l.is_none() {
-            self.rt_status
-                .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
+            let _ = model.set_max_buffer_size(self.max_frames_count);
         }
 
         let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);

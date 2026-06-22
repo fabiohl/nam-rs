@@ -8,6 +8,7 @@ use super::NamClapMainThread;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::dsp::resampler::NamResampler;
 use crate::loader::load_and_build_model;
+use crate::models::NamModel;
 use crate::models::StaticModel;
 use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
 use clack_extensions::log::{HostLog, LogSeverity};
@@ -116,7 +117,7 @@ impl<'a> NamClapMainThread<'a> {
             .model_sample_rate
             .store(model_rate, Ordering::Relaxed);
 
-        let model_l = model_pair.model_l;
+        let mut model_l = model_pair.model_l;
         let input_mult_adj = model_pair.input_mult_adj;
         let output_mult_adj = model_pair.output_mult_adj;
 
@@ -135,6 +136,19 @@ impl<'a> NamClapMainThread<'a> {
                     None
                 }
             });
+        }
+
+        let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed) as usize;
+        if buffer_size > 0
+            && let Some(ref mut model) = model_l
+            && let Err(e) = model.set_max_buffer_size(buffer_size)
+        {
+            return Err(Box::new(
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                    .message("Failed to resize model buffers for host buffer size")
+                    .param("buffer_size", buffer_size.to_string())
+                    .param("error", e.to_string()),
+            ));
         }
 
         self.param_tx

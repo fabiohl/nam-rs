@@ -202,7 +202,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## B2 — [MÉDIA] `cold_load_model` → `set_max_buffer_size` → `MirroredBuffer::new`/`mmap` na thread de áudio (CLAP)
+## B2 — [MÉDIA] `cold_load_model` → `set_max_buffer_size` → `MirroredBuffer::new`/`mmap` na thread de áudio (CLAP) [DONE]
 
 **Arquivo:** `src/clap/processor/events.rs:157-199` (`cold_load_model`, `set_max_buffer_size` em `:172`) → `src/models/.../dynamic.rs:487` → `src/dsp/mirror_buf/alloc.rs:44` (`mmap`).
 
