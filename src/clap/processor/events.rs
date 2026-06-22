@@ -38,17 +38,10 @@ impl<'a> NamClapProcessor<'a> {
                 }
                 ClapParamPayload::LoadModel {
                     model_l,
-                    model_r,
                     new_resampler,
                     input_mult_adj,
                     output_mult_adj,
-                } => self.cold_load_model(
-                    model_l,
-                    model_r,
-                    new_resampler,
-                    input_mult_adj,
-                    output_mult_adj,
-                ),
+                } => self.cold_load_model(model_l, new_resampler, input_mult_adj, output_mult_adj),
                 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
                 ClapParamPayload::LoadCabIr { engine } => {
                     self.cold_load_cabsim(engine);
@@ -164,7 +157,6 @@ impl<'a> NamClapProcessor<'a> {
     fn cold_load_model(
         &mut self,
         model_l: Option<Box<crate::models::StaticModel>>,
-        model_r: Option<Box<crate::models::StaticModel>>,
         new_resampler: Box<crate::dsp::resampler::NamResampler>,
         input_mult_adj: f32,
         output_mult_adj: f32,
@@ -186,9 +178,6 @@ impl<'a> NamClapProcessor<'a> {
             }
             self.rt_status
                 .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
-        }
-        if let Some(model_r) = model_r {
-            self.push_to_gc(GcItem::Model(model_r));
         }
         if self.model_l.is_none() {
             self.rt_status
@@ -244,37 +233,6 @@ impl<'a> NamClapProcessor<'a> {
                     }
                     let old = self
                         .model_l
-                        .replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
-                    if let Some(old) = old {
-                        self.push_to_gc(GcItem::Model(old));
-                    }
-                }
-                Err(_) => {
-                    self.rt_status
-                        .set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
-                    return;
-                }
-            }
-        }
-
-        // Slice model_r (right channel) — only if independent stereo
-        if let Some(ref model) = self.active_model_r
-            && let StaticModel::WavenetDyn(w) = model.as_ref()
-        {
-            if w.ch == target_ch {
-                return;
-            }
-            match w.slice_channels(target_ch) {
-                Ok(mut new_model) => {
-                    new_model.prewarm();
-                    if new_model
-                        .set_max_buffer_size(self.max_frames_count)
-                        .is_err()
-                    {
-                        return;
-                    }
-                    let old = self
-                        .active_model_r
                         .replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
                     if let Some(old) = old {
                         self.push_to_gc(GcItem::Model(old));

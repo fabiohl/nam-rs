@@ -115,14 +115,12 @@ impl<'a> NamClapMainThread<'a> {
             .store(model_rate, Ordering::Relaxed);
 
         let model_l = model_pair.model_l;
-        let model_r = model_pair.model_r;
         let input_mult_adj = model_pair.input_mult_adj;
         let output_mult_adj = model_pair.output_mult_adj;
 
         self.param_tx
             .push(ClapParamPayload::LoadModel {
                 model_l,
-                model_r,
                 new_resampler,
                 input_mult_adj,
                 output_mult_adj,

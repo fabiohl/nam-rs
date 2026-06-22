@@ -21,8 +21,6 @@ pub enum ClapParamPayload {
     LoadModel {
         /// The encapsulated model for neural inference (Left Channel)
         model_l: Option<Box<StaticModel>>,
-        /// The encapsulated model for neural inference (Right Channel)
-        model_r: Option<Box<StaticModel>>,
         /// Polyphase sinc resampler
         new_resampler: Box<NamResampler>,
         /// Model input gain calibration multiplier (from input_level_dbu metadata).

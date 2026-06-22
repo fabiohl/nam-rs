@@ -50,12 +50,12 @@
 
 *Foco: Limpeza do scaffolding CLAP stereo e traits não utilizados.*
 
-- [ ] **Tarefa E4.1.1 [F12]: Remover scaffolding stereo morto (CLAP mono).**
+- [x] **Tarefa E4.1.1 [F12]: Remover scaffolding stereo morto (CLAP mono).**
   - **Especialista:** `refatora-rust`
   - **Arquivos:** `src/clap/processor/events.rs`, `src/clap/processor/dsp/orchestrator.rs`, `src/clap/processor_test.rs`
   - **Ação:** NAM-rs é native mono. Remover `model_r` em `cold_load_model`, `active_model_r` nas structs, e fluxos R no orchestrator/rebuild. Corrigir os comentários nos testes.
 
-- [ ] **Tarefa E4.1.2 [F17]: Remover trait `AudioHost` inerte.**
+- [x] **Tarefa E4.1.2 [F17]: Remover trait `AudioHost` inerte.**
   - **Especialista:** `refatora-rust`
   - **Arquivo:** `src/common/audio_host.rs`
   - **Ação:** Como não é utilizado no CLAP ou PipeWire, removê-lo do projeto para diminuir código morto.

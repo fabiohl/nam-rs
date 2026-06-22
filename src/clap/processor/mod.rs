@@ -161,7 +161,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_out_l,
             buf_out_r,
             silence_hyst,
-            active_model_r: None,
             mono_hyst,
             process_mono: true,
             rt_status: Arc::clone(&shared.cold.rt_status),

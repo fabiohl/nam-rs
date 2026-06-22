@@ -4,7 +4,6 @@
 //! Modules shared between the standalone version and plugin.
 
 pub mod alloc_audit;
-pub mod audio_host;
 pub mod diagnostics;
 pub mod panic_hook;
 pub mod params;
@@ -12,7 +11,6 @@ pub mod spsc;
 #[cfg(target_arch = "x86_64")]
 pub mod tsc;
 
-pub use audio_host::*;
 pub use diagnostics::*;
 pub use panic_hook::*;
 pub use params::*;

@@ -49,8 +49,6 @@ pub struct NamClapProcessor<'a> {
 
     /// Hysteresis for absolute silence detection.
     pub(crate) silence_hyst: DynamicHysteresis,
-    /// Active model for the right channel (None = process as mono or bypass).
-    pub(crate) active_model_r: Option<Box<StaticModel>>,
     /// Hysteresis for mono signal detection. Persistent field to avoid
     /// re-initialization on every port_pair iteration.
     pub(crate) mono_hyst: DynamicHysteresis,

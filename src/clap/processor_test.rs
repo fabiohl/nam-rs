@@ -1587,8 +1587,8 @@ mod tests {
         let rt_status = &shared.cold.rt_status;
 
         // Perform exactly 24 model swaps first to test limit of SPSC + parking lot (48 slots).
-        // CLAP is mono so model_r is never built (T17.4); cold_load_model no longer discards it.
-        // 1st swap pushes 1 item (old_resampler, since model_l is initially None and model_r is None).
+        // CLAP is native mono — model_r was removed.
+        // 1st swap pushes 1 item (old_resampler, since model_l is initially None).
         // Subsequent swaps push 2 items each (old_model_l + old_resampler).
         // Total items pushed for 24 swaps (i = 0 to 23) is exactly 1 + 23 * 2 = 47 items.
         for i in 0..24 {

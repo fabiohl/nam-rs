@@ -65,7 +65,7 @@ impl<'a> NamClapProcessor<'a> {
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
-                active_model_r: &mut self.active_model_r,
+                active_model_r: &mut None,
                 input_gain_mult: self.model_input_mult_adj,
                 output_gain_mult: self.model_output_mult_adj,
                 gate_params: &self.cached_gate_params,
