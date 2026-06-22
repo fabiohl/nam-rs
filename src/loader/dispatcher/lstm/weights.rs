@@ -94,7 +94,6 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
 /// initial_hidden:       [H]  → state[input_size..]
 /// initial_cell_state:   [H]  → cell_state[0..H]
 /// ```
-#[allow(dead_code)]
 pub(crate) fn read_lstm_layer_dyn(
     cursor: &mut WeightCursor<'_>,
     input_size: usize,

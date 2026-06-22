@@ -11,7 +11,7 @@
 //! | Module        | Description                                                             |
 //! | ------------- | ----------------------------------------------------------------------- |
 //! | `common`      | Fundamental constants and types (`WaveNetLayerState`, `WavenetProcessContext`) |
-//! | `conv1d`      | Static causal 1D convolution (`Conv1d`) + `ConvInput` trait             |
+//! | `conv1d`      | Static causal 1D convolution (`Conv1d`)                                |
 //! | `conv1d_dyn`  | Runtime-dimensional causal 1D convolution (`Conv1dDyn`)                 |
 //! | `dense`       | Static 1x1 dense layer (`DenseLayer`)                                   |
 //! | `dense_dyn`   | Runtime-dimensional 1x1 dense layer (`DenseLayerDyn`)                   |
@@ -29,7 +29,7 @@ pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Dual-frame kernel for Conv1dDyn (Temporal-Tiling dual-frame processing).
 pub mod conv1d_dyn_dual;
-/// ConvInput trait shared by conv1d, conv1d_dual, and conv1d_dyn.
+/// F32-native dot-product helpers (standalone functions).
 pub mod conv_input;
 /// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).
 pub mod dense;

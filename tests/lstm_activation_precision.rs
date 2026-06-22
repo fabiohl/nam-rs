@@ -20,11 +20,8 @@ use common::*;
 const GOLDEN_BLOCK_SIZE: usize = 64;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 struct SnrResult {
     model_name: String,
-    snr_fastmath_db: f64,
-    snr_exact_tanh_db: f64,
     gain_db: f64,
 }
 
@@ -139,8 +136,6 @@ fn test_lstm_activation_precision_gain() {
         .filter(|(_, (f, e))| f.is_finite() && e.is_finite())
         .map(|(i, &(snr_fastmath_db, snr_exact_tanh_db))| SnrResult {
             model_name: ["LSTM 1×16", "LSTM 2×8", "LSTM Official"][i].to_string(),
-            snr_fastmath_db,
-            snr_exact_tanh_db,
             gain_db: snr_exact_tanh_db - snr_fastmath_db,
         })
         .collect();

@@ -5,24 +5,9 @@
 #[cfg(test)]
 mod tests {
     use crate::clap::entry::NamEntry;
+    use crate::clap::test_util::{TestHost, TestHostShared};
     use clack_extensions::preset_discovery::factory::PresetDiscoveryFactory;
     use clack_host::prelude::*;
-
-    #[allow(dead_code)]
-    struct TestHostShared;
-    impl SharedHandler<'_> for TestHostShared {
-        fn request_restart(&self) {}
-        fn request_process(&self) {}
-        fn request_callback(&self) {}
-    }
-
-    #[allow(dead_code)]
-    struct TestHost;
-    impl HostHandlers for TestHost {
-        type Shared<'a> = TestHostShared;
-        type MainThread<'a> = ();
-        type AudioProcessor<'a> = ();
-    }
 
     #[test]
     fn test_entry_exposes_plugin_factory() {

@@ -138,8 +138,8 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
     ///
     /// Dispatches to `process_single_ch3_k6` or `process_single_ch3_k15`
     /// depending on the kernel size.
+    #[cfg(test)]
     #[inline(always)]
-    #[allow(dead_code)]
     pub(crate) unsafe fn process_single_ch3_unrolled(
         &self,
         layer_buffer: &[f32],
@@ -165,7 +165,7 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
     }
 
     /// Unrolled K=6 GEMV for 3-channel input/output (f32-native).
-    #[allow(dead_code)]
+    #[cfg(test)]
     #[target_feature(enable = "avx")]
     unsafe fn process_single_ch3_k6(
         &self,
@@ -234,7 +234,7 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
     }
 
     /// Unrolled K=15 GEMV for 3-channel input/output (f32-native).
-    #[allow(dead_code)]
+    #[cfg(test)]
     #[target_feature(enable = "avx")]
     unsafe fn process_single_ch3_k15(
         &self,

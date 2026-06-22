@@ -46,7 +46,6 @@ fn test_dense_ch12_scalar_vs_simd() {
 fn test_conv1d_ch12_scalar_vs_simd() {
     use crate::math::common::AlignedVec;
     use crate::models::wavenet::Conv1d;
-    use crate::models::wavenet::conv_input::ConvInput;
     
     const CH: usize = 12;
     const K: usize = 3;

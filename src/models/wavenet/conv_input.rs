@@ -98,53 +98,6 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
     }
 }
 
-/// Data Bridge (ConvInput):
-/// This trait is a bridge that allows NAM-rs to use exactly the same code
-/// for two number types: regular floats (f32) and compact numbers (u16/BF16).
-/// This avoids duplicating complex logic and facilitates maintenance.
-#[allow(dead_code)]
-pub(crate) trait ConvInput: Copy + Default {
-    /// 4x version: Computes 4 channels at once.
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4];
-
-    /// Dual Frame version: Computes 4 channels of TWO frames simultaneously.
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]);
-
-    /// Pointer Adjustment: Ensures the memory address follows the correct format.
-    fn cast_ptr(ptr: *const Self) -> *const f32;
-}
-
-// 1. Full Precision Mode (f32):
-// Used on computers that prioritize absolute sound fidelity.
-impl ConvInput for f32 {
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4] {
-        unsafe { M::dot_product_4x_interleaved(weights, state) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]) {
-        unsafe { M::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    fn cast_ptr(ptr: *const Self) -> *const f32 {
-        ptr
-    }
-}
-
 /// F32-native 4-lane interleaved dot product (AVX2/FMA or AVX-512 kernel).
 ///
 /// Computes Conv1D output directly from full-precision f32 weights.

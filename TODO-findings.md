@@ -581,7 +581,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** `src/math/`. **Risco:** Baixo (F20 valida paridade vs escalar/AVX2).
 - **Nota:** Performance é fase posterior, mas F18 (UB) e F20 (quick-win 2×) merecem antecipação.
 
-### **🟢 Épico E6 — Unificação e Deduplicação de Kernels (DRY SIMD)** [DOING]
+### **🟢 Épico E6 — Unificação e Deduplicação de Kernels (DRY SIMD)** [DONE]
 
 - **Objetivo:** Reduzir ~850 SLOC duplicados e o risco de drift AVX2/AVX-512.
 - **Achados:** **F23** (gain/conv/activation macros), **F27** (slimmable rebuild dedup).
@@ -589,7 +589,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Médio (revalidar paridade bit-a-bit pós-refator). **Dependência:** idealmente após E5
   (alinhar F20 antes de macro-unificar ativações).
 
-### **🟢 Épico E7 — Reorganização Estrutural e Higiene ("Embelezamento")** [DOING]
+### **🟢 Épico E7 — Reorganização Estrutural e Higiene ("Embelezamento")** [DONE]
 
 - **Objetivo:** Melhorar navegabilidade e aderência às próprias regras do projeto.
 - **Achados:** **F24** (split de arquivos gigantes), **F25** (regra de testes 300L), **F26** (nomenclatura),

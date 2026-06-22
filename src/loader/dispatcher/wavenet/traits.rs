@@ -8,7 +8,6 @@ use crate::models::wavenet::{Conv1d, DenseLayer, DenseLayerDyn};
 /// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
     #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)]
     fn from_parts(
         weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,

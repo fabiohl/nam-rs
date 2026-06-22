@@ -12,8 +12,11 @@ use crate::common::diagnostics::SystemSnapshot;
 use pipewire as pw;
 
 /// Holds essential PipeWire instances (`StreamBox` and `Listener`).
-/// Fields exist solely to keep streams and listeners alive via RAII;
-/// they are never read directly — only held for their drop semantics.
+///
+/// RAII-only struct: fields are never read directly — they exist solely
+/// to keep streams and listeners alive via drop semantics.  The compiler
+/// may warn about unused fields; that is expected and safe here.
+/// Removing the fields would cause premature deallocation and audio dropout.
 #[cfg(feature = "standalone")]
 #[allow(dead_code)]
 pub(crate) struct AppState<S1, L1, S2, L2> {

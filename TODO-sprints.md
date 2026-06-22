@@ -66,7 +66,7 @@ Foco: Divisão de grandes módulos em namespaces menores e re-assentamento de te
     - `src/models/a2/model/mod.rs` e `src/models/a2/film.rs` (arquivos >300 linhas).
   - **Ação 2:** Movimentar testes que estão declarados em um arquivo `_test.rs` separado mas que referenciam um módulo fonte menor que 300 linhas (ex: `a2/activations.rs` que tem 157 linhas) devolvendo-os ao modelo estrutural *inline* com `#[cfg(test)]`.
 
-### 🏃 Sprint E7.2: Higiene, Layout e Código Morto (F26, F28, F29)
+### 🏃 Sprint E7.2: Higiene, Layout e Código Morto (F26, F28, F29) [DONE]
 
 Foco: Ajustes visuais, normalização da árvore de arquivos e limpeza de *dead code* indesejado.
 
@@ -78,6 +78,6 @@ Foco: Ajustes visuais, normalização da árvore de arquivos e limpeza de *dead 
   - **Contexto:** Multiplicidade de convenções como `tests.rs`, `test_files/` no lugar da oficial.
   - **Ação:** Renomear sistematicamente as ocorrências de `tests.rs` (ex: em `math/activations/`, `math/common/`, `models/{a2,lstm,wavenet}/`, e `clap/gui/ui/`) para `_test.rs` de modo a honrar o padrão do projeto. Revisar os caminhos e importações (`#[path = ...]`).
 
-- [ ] **Tarefa T7.2.3: Auditoria e Extinção de `#[allow(dead_code)]` (F28)**
+- [x] **Tarefa T7.2.3: Auditoria e Extinção de `#[allow(dead_code)]` (F28)**
   - **Contexto:** Várias rotinas ignoram verificação de código não utilizado, maquiando dívidas de implementação.
   - **Ação:** Localizar as 9 ocorrências (ex: `loader/dispatcher/lstm/weights.rs:97`, 3 ocorrências em `models/a2/conv1d_ch3/mod.rs`, `dsp/pipeline/output_pw.rs:18`, `models/wavenet/conv_input.rs:105`, `loader/dispatcher/wavenet/traits.rs:11`). Remover o código subjacente se inútil, ou remover o macro documentando justificativa plausível. Compilar garantindo ausência de *warnings*.

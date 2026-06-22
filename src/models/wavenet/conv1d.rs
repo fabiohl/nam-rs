@@ -3,11 +3,11 @@
 
 //! Static Causal CNN Mesh for WaveNet Inference (Data-Oriented Design, SoA).
 //!
-//! **Cohesion Justification:** Single static 1D convolution unit: `ConvInput` trait +
-//! `Conv1d` struct + single-frame kernel + mixin wrappers form a cohesive algorithmic unit.
-//! `ConvInput` was extracted to `conv_input.rs` (S2.T06). Further splitting the
-//! single-frame kernel would break the locality of `unsafe` aliasing contracts and
-//! plain accumulators.
+//! **Cohesion Justification:** Single static 1D convolution unit: `Conv1d` struct +
+//! single-frame kernel + mixin wrappers form a cohesive algorithmic unit.
+//! The f32-native dot-product helpers live in `conv_input.rs`.
+//! Further splitting the single-frame kernel would break the locality
+//! of `unsafe` aliasing contracts and plain accumulators.
 
 #[cfg(test)]
 use super::conv_input::init_accum_with_bias_mixin;

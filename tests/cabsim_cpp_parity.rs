@@ -216,14 +216,9 @@ fn cross_validate_cabsim_cpp_long() {
     });
 }
 
-/// NOT applicable — C++ `ImpulseResponse` hard-caps IR at 8192 samples
-/// (`mMaxLength`).  The stress IR (32768 samples) exceeds this limit and
-/// the C++ engine truncates it, making cross-validation meaningless.
-/// The stress scenario is validated against direct convolution in
-/// `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5).
-/// See `docs/cpp_parity_map.md` §13.1.3 divergence #5.
-#[allow(dead_code)]
-fn cross_validate_cabsim_cpp_stress_skipped() {
-    // This test is intentionally omitted from the #[test] suite.
-    // IR length 32768 > C++ mMaxLength (8192).
-}
+// NOT applicable — C++ `ImpulseResponse` hard-caps IR at 8192 samples
+// (`mMaxLength`).  The stress IR (32768 samples) exceeds this limit and
+// the C++ engine truncates it, making cross-validation meaningless.
+// The stress scenario is validated against direct convolution in
+// `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5).
+// See `docs/cpp_parity_map.md` §13.1.3 divergence #5.
