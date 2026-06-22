@@ -126,7 +126,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## A5 — [ALTA] `dot_product_4x_f32_avx2` (conv de entrada do WaveNet): 1 acumulador
+## A5 — [ALTA] `dot_product_4x_f32_avx2` (conv de entrada do WaveNet): 1 acumulador [DONE]
 
 **Arquivos:** `src/math/gemm/dot_4x/dot_f32_avx2.rs:33-50` (`dot_product_4x_f32_avx2`, 1× `__m128`) e `:73-104` (`dot_product_4x_f32_dual_avx2`, 1× `__m256`).
 **Chamador em produção:** `src/models/wavenet/conv_input.rs:118` (caminho de conv de entrada do WaveNet com pesos f32 nativos).

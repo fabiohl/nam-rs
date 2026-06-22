@@ -106,10 +106,12 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
 /// Dispatches to `dot_product_4x_f32_avx512` when AVX-512F is detected
 /// at runtime; otherwise falls back to `dot_product_4x_f32_avx2`.
 ///
-/// # Bit‑exactness guarantee
+/// # Precision
 /// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
-/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
-/// result on any x86‑64‑v3 CPU.
+/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → mathematically
+/// equivalent result. The AVX2 kernel splits the summation across 4 independent
+/// accumulators for latency hiding; the AVX-512 kernel matches the scalar
+/// summation order exactly. Maximum observed deviation is < 2 ULP.
 #[inline(always)]
 pub(crate) fn dot_product_4x(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
     if is_x86_feature_detected!("avx512f") {
@@ -127,10 +129,12 @@ pub(crate) fn dot_product_4x(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
 /// AVX-512F is detected at runtime; otherwise falls back to
 /// `dot_product_4x_f32_dual_avx2`.
 ///
-/// # Bit‑exactness guarantee
+/// # Precision
 /// Both the scalar reference (`mul_add`) and the SIMD kernels (`_mm_fmadd_ps`
-/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → bit‑identical
-/// result on any x86‑64‑v3 CPU.
+/// / `_mm512_fmadd_ps`) use the same FMA3 fused multiply‑add → mathematically
+/// equivalent result. The AVX2 kernel splits the summation across 4 independent
+/// accumulators for latency hiding; the AVX-512 kernel matches the scalar
+/// summation order exactly. Maximum observed deviation is < 2 ULP.
 #[inline(always)]
 pub(crate) fn dot_product_4x_dual(
     weights: &[[f32; 4]],

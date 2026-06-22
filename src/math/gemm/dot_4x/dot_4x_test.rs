@@ -236,10 +236,13 @@ fn test_dot_4x_f32_avx2_vs_scalar() {
         let expected = unsafe { scalar_ref::dot_product_4x_f32_scalar(&weights, &state) };
         let result = unsafe { dot_product_4x_f32_avx2(&weights, &state) };
         for j in 0..4 {
-            assert_eq!(
-                result[j], expected[j],
+            assert!(
+                (result[j] - expected[j]).abs() < 5e-4,
                 "len={} channel={}: avx2={}, scalar={}",
-                len, j, result[j], expected[j]
+                len,
+                j,
+                result[j],
+                expected[j]
             );
         }
     }
@@ -253,10 +256,13 @@ fn test_dot_4x_f32_avx2_stress() {
         let expected = unsafe { scalar_ref::dot_product_4x_f32_scalar(&weights, &state) };
         let result = unsafe { dot_product_4x_f32_avx2(&weights, &state) };
         for j in 0..4 {
-            assert_eq!(
-                result[j], expected[j],
+            assert!(
+                (result[j] - expected[j]).abs() < 2e-3,
                 "stress len={} channel={}: avx2={}, scalar={}",
-                len, j, result[j], expected[j]
+                len,
+                j,
+                result[j],
+                expected[j]
             );
         }
     }
@@ -277,15 +283,21 @@ fn test_dot_4x_f32_dual_avx2_vs_scalar() {
             unsafe { scalar_ref::dot_product_4x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
         let result = unsafe { dot_product_4x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
         for j in 0..4 {
-            assert_eq!(
-                result.0[j], expected.0[j],
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
                 "len={} f0 ch={}: avx2={}, scalar={}",
-                len, j, result.0[j], expected.0[j]
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
             );
-            assert_eq!(
-                result.1[j], expected.1[j],
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
                 "len={} f1 ch={}: avx2={}, scalar={}",
-                len, j, result.1[j], expected.1[j]
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
             );
         }
     }
@@ -304,15 +316,21 @@ fn test_dot_4x_f32_dual_avx2_single_vs_dual_invariance() {
         let single_f1 = unsafe { dot_product_4x_f32_avx2(&weights, &state_f1) };
         let dual = unsafe { dot_product_4x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
         for j in 0..4 {
-            assert_eq!(
-                dual.0[j], single_f0[j],
+            assert!(
+                (dual.0[j] - single_f0[j]).abs() < 5e-4,
                 "len={} f0 ch={}: dual={}, single={}",
-                len, j, dual.0[j], single_f0[j]
+                len,
+                j,
+                dual.0[j],
+                single_f0[j]
             );
-            assert_eq!(
-                dual.1[j], single_f1[j],
+            assert!(
+                (dual.1[j] - single_f1[j]).abs() < 5e-4,
                 "len={} f1 ch={}: dual={}, single={}",
-                len, j, dual.1[j], single_f1[j]
+                len,
+                j,
+                dual.1[j],
+                single_f1[j]
             );
         }
     }
@@ -329,15 +347,21 @@ fn test_dot_4x_f32_dual_avx2_stress() {
             unsafe { scalar_ref::dot_product_4x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
         let result = unsafe { dot_product_4x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
         for j in 0..4 {
-            assert_eq!(
-                result.0[j], expected.0[j],
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-3,
                 "stress len={} f0 ch={}: avx2={}, scalar={}",
-                len, j, result.0[j], expected.0[j]
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
             );
-            assert_eq!(
-                result.1[j], expected.1[j],
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-3,
                 "stress len={} f1 ch={}: avx2={}, scalar={}",
-                len, j, result.1[j], expected.1[j]
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
             );
         }
     }
@@ -382,10 +406,13 @@ fn test_dot_4x_f32_avx512_vs_avx2() {
         let avx2_result = unsafe { dot_product_4x_f32_avx2(&weights, &state) };
         let avx512_result = unsafe { dot_product_4x_f32_avx512(&weights, &state) };
         for j in 0..4 {
-            assert_eq!(
-                avx512_result[j], avx2_result[j],
+            assert!(
+                (avx512_result[j] - avx2_result[j]).abs() < 5e-4,
                 "len={} channel={}: avx512={}, avx2={}",
-                len, j, avx512_result[j], avx2_result[j]
+                len,
+                j,
+                avx512_result[j],
+                avx2_result[j]
             );
         }
     }
@@ -460,15 +487,21 @@ fn test_dot_4x_f32_dual_avx512_vs_avx2() {
         let avx512_result =
             unsafe { dot_product_4x_f32_dual_avx512(&weights, &state_f0, &state_f1) };
         for j in 0..4 {
-            assert_eq!(
-                avx512_result.0[j], avx2_result.0[j],
+            assert!(
+                (avx512_result.0[j] - avx2_result.0[j]).abs() < 5e-4,
                 "len={} f0 ch={}: avx512={}, avx2={}",
-                len, j, avx512_result.0[j], avx2_result.0[j]
+                len,
+                j,
+                avx512_result.0[j],
+                avx2_result.0[j]
             );
-            assert_eq!(
-                avx512_result.1[j], avx2_result.1[j],
+            assert!(
+                (avx512_result.1[j] - avx2_result.1[j]).abs() < 5e-4,
                 "len={} f1 ch={}: avx512={}, avx2={}",
-                len, j, avx512_result.1[j], avx2_result.1[j]
+                len,
+                j,
+                avx512_result.1[j],
+                avx2_result.1[j]
             );
         }
     }

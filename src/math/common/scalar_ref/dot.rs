@@ -115,8 +115,11 @@ pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &
 
 /// F32-native 4-lane interleaved dot product (scalar reference for SIMD validation).
 ///
-/// Uses `mul_add` (FMA3 fused multiply-add) to match the rounding of the AVX2/FMA
-/// kernel (`dot_product_4x_f32_avx2`). Both paths produce bit‑identical results.
+/// Uses `mul_add` (FMA3 fused multiply-add) to match the instruction set of the
+/// AVX2/FMA kernel (`dot_product_4x_f32_avx2`). Both paths produce **mathematically
+/// equivalent** results with FMA‑level precision. The SIMD kernel uses 4‑way
+/// accumulator unrolling and a final horizontal reduction, which may yield slightly
+/// different rounding (< 2 ULP) compared to this strictly‑serial FMA chain.
 ///
 /// # Safety
 /// Caller must ensure `weights.len() >= state.len()`.

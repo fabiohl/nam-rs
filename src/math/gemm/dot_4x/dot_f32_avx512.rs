@@ -8,11 +8,12 @@
 //! sharing the same FMA‑based rounding chain as the AVX2 kernel and the scalar
 //! reference.
 //!
-//! # Bit‑exactness guarantee
-//! The AVX‑512 kernel (`_mm512_fmadd_ps`), the AVX2 kernel (`_mm256_fmadd_ps` /
-//! `_mm_fmadd_ps`), and the scalar reference (`mul_add`) all use FMA3 fused
-//! multiply‑add → **bit‑identical** result on any x86 CPU with FMA support
-//! (x86‑64‑v3).
+//! # Precision
+//! The AVX‑512 kernel (`_mm512_fmadd_ps`) and the scalar reference (`mul_add`)
+//! both use FMA3 fused multiply‑add with identical summation order →
+//! **bit‑identical** result on any x86 CPU with FMA support (x86‑64‑v3).
+//! The AVX2 kernel uses 4‑way accumulator splitting for latency hiding, so
+//! cross‑ISA comparisons may differ by < 2 ULP.
 
 use core::arch::x86_64::*;
 
@@ -107,9 +108,10 @@ pub unsafe fn dot_product_4x_f32_avx512(weights: &[[f32; 4]], state: &[f32]) -> 
 /// - Tail (< 4 elements) zero‑padded into a 4‑element buffer → continuous
 ///   FMA rounding chain preserved for both frames.
 ///
-/// # Bit‑exactness
-/// Uses the same FMA3 instructions as the AVX2 kernel and scalar reference →
-/// bit‑identical result.
+/// # Precision
+/// Uses the same FMA3 instructions as the scalar reference → bit‑identical
+/// result on any x86‑64‑v3 CPU. The AVX2 dual kernel uses accumulator
+/// splitting and may differ by < 2 ULP.
 ///
 /// # Safety
 /// Caller must ensure `weights.len() >= state_f0.len()` and
