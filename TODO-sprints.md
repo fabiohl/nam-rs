@@ -28,7 +28,7 @@ Foco: Extração de *boilerplates* repetitivos nas rotinas matemáticas de ganho
   - **Ação:** Projetar e aplicar macros para unificar a aplicação de funções de ativação sobre *slices* grandes de dados. Compartilhar a lógica de varredura SIMD entre as arquiteturas.
   - **Riscos/Atenção:** Validar se a paridade é mantida em fronteiras de alinhamento com `cargo bench` e `cargo test` dedicados em `tests-quick.sh`.
 
-### 🏃 Sprint E6.2: Deduplicação de Convolução e Rotinas Comuns (F23, F27)
+### 🏃 Sprint E6.2: Deduplicação de Convolução e Rotinas Comuns (F23, F27) [DONE]
 
 Foco: Consolidação das operações de *Stereo Convolution* e lógicas redundantes de arquitetura do App/Plugin.
 
@@ -37,7 +37,7 @@ Foco: Consolidação das operações de *Stereo Convolution* e lógicas redundan
   - **Ação:** Substituir as 300+ SLOC estruturais idênticas por macros de kernel ou *generics* com especializações SIMD. A macro deverá englobar carregamento alinhado, processamento e *tail escalares*.
   - **Riscos/Atenção:** A convolução é um hot-path crítico para performance e *memory safety*. Validar paridade rigorosamente através dos testes C++.
 
-- [ ] **Tarefa T6.2.2: Centralização de `try_slimmable_rebuild`**
+- [x] **Tarefa T6.2.2: Centralização de `try_slimmable_rebuild`**
   - **Origem:** Achado F27 (Standalone `commands.rs` x CLAP `events.rs`).
   - **Ação:** Extrair a lógica comum para um *helper* central genérico que receba `&mut Option<Box<StaticModel>>`, adicionando *hooks* de estado ou callbacks para a lógica específica do CLAP (ex: *flags RT*). Substituir os laços nos arquivos chamadores, excluindo a duplicação.
 

@@ -109,7 +109,8 @@ pub fn receive_commands(
 }
 
 /// Checks if the adaptive FSM demands a WaveNet channel count change
-/// and performs the allocation-intensive `slice_channels` + GC swap.
+/// and performs the allocation-intensive `slice_channels` + GC swap
+/// on both left and right model slots.
 ///
 /// Must be called **before** DSP to keep the hot-path zero-alloc.
 #[inline(always)]
@@ -127,39 +128,22 @@ pub fn try_slimmable_rebuild(
         return;
     };
 
-    if let Some(model) = active_model_l.as_ref()
-        && let StaticModel::WavenetDyn(w) = model.as_ref()
-        && w.ch != target_ch
-        && let Ok(mut new_model) = w.slice_channels(target_ch)
-    {
-        new_model.prewarm();
-        let old = active_model_l.replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
-        if let Some(old) = old {
-            gc_cascade(
-                Some(GcItem::Model(old)),
-                gc_producer,
-                parking_lot,
-                gc_overflow,
-                rt_status,
-            );
-        }
-    }
+    let mut on_gc = |item: GcItem| {
+        gc_cascade(Some(item), gc_producer, parking_lot, gc_overflow, rt_status);
+    };
 
-    if let Some(model) = active_model_r.as_ref()
-        && let StaticModel::WavenetDyn(w) = model.as_ref()
-        && w.ch != target_ch
-        && let Ok(mut new_model) = w.slice_channels(target_ch)
-    {
-        new_model.prewarm();
-        let old = active_model_r.replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
-        if let Some(old) = old {
-            gc_cascade(
-                Some(GcItem::Model(old)),
-                gc_producer,
-                parking_lot,
-                gc_overflow,
-                rt_status,
-            );
-        }
-    }
+    crate::models::slimmable::try_slimmable_rebuild_single(
+        active_model_l,
+        target_ch,
+        None,
+        &mut on_gc,
+        &mut || {},
+    );
+    crate::models::slimmable::try_slimmable_rebuild_single(
+        active_model_r,
+        target_ch,
+        None,
+        &mut on_gc,
+        &mut || {},
+    );
 }

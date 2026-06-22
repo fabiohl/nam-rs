@@ -10,7 +10,8 @@ use crate::clap::extensions::params::{
     PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::plugin::ClapParamPayload;
-use crate::common::spsc::GcItem;
+use crate::common::spsc::{GcItem, gc_cascade};
+use crate::models::slimmable::try_slimmable_rebuild_single;
 use crate::models::{NamModel, StaticModel};
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
@@ -214,35 +215,24 @@ impl<'a> NamClapProcessor<'a> {
         let Some(target_ch) = self.adaptive_compute.take_slimmable_rebuild() else {
             return;
         };
+        let max_frames = self.max_frames_count;
+        let gc_tx = &mut self.gc_tx;
+        let parking_lot = &mut self.parking_lot;
+        let gc_overflow = &self.gc_overflow;
+        let rt_status = &self.rt_status;
 
-        // Slice model_l (left channel)
-        if let Some(ref model) = self.model_l
-            && let StaticModel::WavenetDyn(w) = model.as_ref()
-        {
-            if w.ch == target_ch {
-                return;
-            }
-            match w.slice_channels(target_ch) {
-                Ok(mut new_model) => {
-                    new_model.prewarm();
-                    if new_model
-                        .set_max_buffer_size(self.max_frames_count)
-                        .is_err()
-                    {
-                        return;
-                    }
-                    let old = self
-                        .model_l
-                        .replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
-                    if let Some(old) = old {
-                        self.push_to_gc(GcItem::Model(old));
-                    }
-                }
-                Err(_) => {
-                    self.rt_status
-                        .set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
-                }
-            }
-        }
+        let mut on_gc = |item: GcItem| {
+            gc_cascade(Some(item), gc_tx, parking_lot, gc_overflow, rt_status);
+        };
+
+        try_slimmable_rebuild_single(
+            &mut self.model_l,
+            target_ch,
+            Some(max_frames),
+            &mut on_gc,
+            &mut || {
+                rt_status.set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
+            },
+        );
     }
 }

@@ -19,11 +19,13 @@
 //! - `Conv1dDyn`: `[block][kernel][in_ch][4]` — 4-wide lane-interleaved
 //! - `DenseLayerDyn`: column-major `weights[in_c * out_ch + out_c]`
 
+use crate::common::spsc::GcItem;
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::{
     Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
     WaveNetLayerState, WaveNetModelDyn,
 };
+use crate::models::{NamModel, StaticModel};
 
 /// Trait for models that can dynamically scale quality/complexity at runtime
 /// without reallocation.
@@ -293,6 +295,51 @@ pub fn slice_wavenet_model(
         post_stack_head: model.post_stack_head.clone(),
         head_output_scratch,
     })
+}
+
+/// Centralized helper for slimmable WaveNet channel rebuild.
+///
+/// Checks if a model slot needs a WaveNet channel count change
+/// and performs the allocation-intensive `slice_channels` + GC swap.
+///
+/// Must be called **before** DSP to keep the hot-path zero-alloc.
+/// Callers should obtain `target_ch` via `AdaptiveCompute::take_slimmable_rebuild()`
+/// before invoking this function.
+///
+/// `max_buffer_size`: if `Some(n)`, calls `set_max_buffer_size(n)` after prewarm
+/// (needed by CLAP). Pass `None` for standalone mode.
+/// `on_gc`: callback to dispose the old model (e.g., `gc_cascade` or `push_to_gc`).
+/// `on_slice_error`: callback invoked when `slice_channels` fails.
+#[inline(always)]
+pub fn try_slimmable_rebuild_single(
+    model: &mut Option<Box<StaticModel>>,
+    target_ch: usize,
+    max_buffer_size: Option<usize>,
+    on_gc: &mut impl FnMut(GcItem),
+    on_slice_error: &mut impl FnMut(),
+) {
+    if let Some(model_inner) = model.as_ref()
+        && let StaticModel::WavenetDyn(w) = model_inner.as_ref()
+        && w.ch != target_ch
+    {
+        match w.slice_channels(target_ch) {
+            Ok(mut new_model) => {
+                new_model.prewarm();
+                if let Some(max) = max_buffer_size
+                    && new_model.set_max_buffer_size(max).is_err()
+                {
+                    return;
+                }
+                let old = model.replace(Box::new(StaticModel::WavenetDyn(Box::new(new_model))));
+                if let Some(old) = old {
+                    on_gc(GcItem::Model(old));
+                }
+            }
+            Err(_) => {
+                on_slice_error();
+            }
+        }
+    }
 }
 
 // =============================================================================
