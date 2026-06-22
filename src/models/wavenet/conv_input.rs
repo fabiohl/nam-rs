@@ -10,6 +10,7 @@ use crate::math::common::SimdMath;
 ///
 /// # Safety
 /// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
+// used only in test-only `process_single_frame` (cfg(test) gated in conv1d.rs)
 #[cfg_attr(not(test), allow(dead_code))]
 #[inline(always)]
 pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(

@@ -5,6 +5,7 @@
 //!
 //! Includes ESR (Error-to-Signal Ratio), LUFS (ITU-R BS.1770-4 simplified),
 //! and baseline constants from published A2/Tone3000 data.
+// Q1/Q3 constants and NAM_RS_CPP_PARITY_ESR_MAX are reference-only baselines; public API used by integration tests.
 
 #![allow(dead_code)]
 

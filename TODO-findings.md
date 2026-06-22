@@ -647,5 +647,130 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 
 ---
 
-*Fim do TODO-findings.md — Achados (F1–F34) e Épicos (E1–E8). Sprints e tarefas técnicas serão
-elaborados separadamente, por épico, quando solicitado.*
+## 5. Auditoria de Conformidade Pós-Implementação (Resíduos)
+
+> **Origem:** Verificação de conformidade da implementação dos Épicos **E1–E8** (skill `revisor-auditor`),
+> realizada arquivo:linha contra o código entregue, com *ground-truth* executável.
+>
+> **Resultado da verificação (ground-truth — estado objetivo, não declarado):**
+> `cargo clippy --all-targets` com `-D warnings` em **4 configurações** (`all-features`, `standalone`,
+> `pure-core`, `clap-plugin`) → **0 warnings**. PR gate `utils/tests-quick.sh` Fases 1+2 **verdes**:
+> Fase 1 **872 passou / 0 falhou** (105 ignored); `cpp_parity` (release, ignored) **31 passou / 0 falhou**
+> — incluindo os 3 testes `*_dyn` que originavam o CI vermelho (F8); `proptest_parsers` **9/0** e
+> `proptest_math` **3/0**. Os 34 achados (F1–F34) foram confirmados **substancialmente implementados**;
+> os P0/P1 (F1, F2, F8, F30) estão **fechados com testes dedicados**.
+>
+> **Escopo desta seção:** registrar os **resíduos de baixa severidade** detectados na verificação.
+> **Nenhum** é bug funcional, de segurança ou de RT-safety — são divergências doc↔código, lacunas de
+> clareza/cobertura e ambiguidades de regra.
+
+### 5.1 — Novos Achados (Resíduos)
+
+#### **F35 — `#[allow(dead_code)]` residuais sem justificativa em código de suporte a teste**
+
+- **Severidade:** 🟢 **Baixa** (higiene/documentação; divergência mensagem-de-commit ↔ código)
+- **Locais (verificado):**
+  - `src/models/wavenet/conv_input.rs:13` — `#[cfg_attr(not(test), allow(dead_code))]` sobre
+    `init_accum_with_bias_mixin` (há doc do "o quê" + `# Safety`, mas não do **porquê** da supressão).
+  - `src/testing/perceptual.rs:9` — `#![allow(dead_code)]` de módulo (métricas ESR/LUFS de suporte a teste).
+  - `src/testing/wav.rs:9` — `#![allow(dead_code)]` de módulo (helpers WAV de suporte a teste).
+- **Contexto:** A correção de F28 (commit `f804dbd`) eliminou 14/15 ocorrências de **produção**, mas sua
+  mensagem afirma "1 restante" quando, na realidade, restam **3** — todas em código de suporte a teste
+  (fora do escopo de produção contabilizado). Divergência entre a mensagem do commit e o código.
+- **Impacto:** Nenhum funcional. Supressões não-documentadas escondem a razão (helper usado só em
+  test/feature), dificultando auditorias futuras de *dead code*.
+- **Caminho de resolução:** Adicionar comentário de 1 linha justificando cada supressão (ex.:
+  "usado apenas em testes; mantido via `cfg`") **ou** remover o item se de fato morto.
+- **Custo:** Trivial.
+
+#### **F36 — Comentário de árvore de módulos obsoleto em `lstm/mod.rs`**
+
+- **Severidade:** 🟢 **Baixa** (documentação)
+- **Local (verificado):** `src/models/lstm/mod.rs:20` — o diagrama ASCII ainda lista `└── tests.rs`,
+  porém após F26 o arquivo passou a ser `lstm_test.rs`.
+- **Impacto:** Documentação enganosa; referência a arquivo inexistente.
+- **Caminho de resolução:** Atualizar a linha para `lstm_test.rs`; varrer demais diagramas de módulo
+  por referências `tests.rs` remanescentes.
+- **Custo:** Trivial.
+
+#### **F37 — `debug_assert!` de bounds ausente em `lstm/weights.rs` (assimetria com `layout.rs`)**
+
+- **Severidade:** 🟢 **Baixa** (defense-in-depth)
+- **Locais (verificado):** F6 adicionou `debug_assert!` em
+  `src/loader/dispatcher/wavenet/layout.rs:129,135,160,164`, mas o helper equivalente em
+  `src/loader/dispatcher/lstm/weights.rs` (indexação `raw[k*ih*hidden + i*ih + j]`) **não** recebeu
+  asserção análoga — apoia-se apenas no laço `0..output.len()`.
+- **Impacto:** Nenhum hoje (callers via `WeightCursor` sempre passam slices exatos). Uma regressão
+  futura poderia causar OOB sem o guard de debug que o `layout.rs` já possui.
+- **Caminho de resolução:** Adicionar `debug_assert!(raw.len() >= expected_len)` no topo do helper,
+  espelhando `layout.rs` (custo zero em release).
+- **Custo:** Trivial.
+
+#### **F38 — Correção de F13 (GcOverflow) funcionalmente inócua + janela de drain deferido não documentada**
+
+- **Severidade:** 🟢 **Baixa** (clareza de concorrência)
+- **Local (verificado):** `src/common/spsc/gc.rs:169` — `write_idx.fetch_add(1, Ordering::Acquire)`.
+- **Análise:** Sendo a estrutura **SPSC**, apenas o produtor (thread RT) escreve/lê `write_idx`; o
+  `drain` (main thread) **nunca** lê esse índice — a publicação segura do item já é garantida pelo
+  `swap(.., Ordering::AcqRel)` no slot (`gc.rs:171` no produtor e `gc.rs:185` no consumidor). Logo, a
+  promoção `Relaxed → Acquire` em `write_idx` (commit `290c0d4`) é **funcionalmente inócua** — não há
+  escritor concorrente com quem sincronizar. A janela "fetch_add → swap" descrita em F13 permanece,
+  porém é **benigna por design** (coleta apenas adiada um ciclo; sem leak/double-free).
+- **Impacto:** Nenhum. Risco de confusão: um futuro mantenedor pode supor que o `Acquire` "resolve" uma
+  corrida que, neste padrão SPSC, não é relevante.
+- **Caminho de resolução:** (a) Reverter para `Relaxed` (semântica correta para índice de produtor único)
+  **e** (b) adicionar comentário explicando que a publicação se dá via `swap(AcqRel)` e que o *drain*
+  deferido é intencional/benigno. Alternativa: manter e apenas documentar a justificativa.
+- **Custo:** Trivial. **Risco:** Baixo (cobrir com o teste de concorrência de GC já existente).
+
+#### **F39 — `set_weights.rs` sem testes-unidade dedicados (resíduo de F32)**
+
+- **Severidade:** 🟡 **Média** (fronteira de correção sem teste dirigido)
+- **Local (verificado):** F32 foi atendido para a **fronteira de segurança** (`nam_json/validation.rs`
+  ganhou `validation_test.rs` com rejeição de `NaN`/`Inf`), porém `src/models/.../set_weights.rs` segue
+  **sem `_test.rs` próprio** — coberto apenas indiretamente por `model_test.rs` / `a2_test.rs`.
+- **Impacto:** Edge cases de aplicação de pesos (dimensões de fronteira, ordem de transposição,
+  contagem de canais mínima/máxima) não têm teste-unidade dirigido.
+- **Caminho de resolução:** Criar `set_weights_test.rs` cobrindo fronteiras (slices exatos, off-by-one,
+  canais no limite) e a interação com o `WeightCursor` (incl. `verify_exhausted`).
+- **Custo:** Médio.
+
+#### **F40 — Volume de testes inline em `a2/activations.rs` e ambiguidade da regra "300 linhas"**
+
+- **Severidade:** 🟢 **Baixa** (regra/manutenção)
+- **Local (verificado):** `src/models/a2/activations.rs` — a **fonte** termina na linha 154
+  (`#[cfg(test)]` em 155); o arquivo **total** tem **854 linhas** (≈700 de testes inline, 29 `#[test]`).
+  É **conforme** à `.agents/rules/testing.md` pela leitura de "tamanho do **módulo-fonte**" (154 < 300 →
+  inline), exatamente como a resolução de F25 prescreveu. Contudo, 700 linhas de testes inline é
+  volumoso, e a redação da regra ("Arquivos < 300 linhas") é **ambígua** quanto a medir linhas
+  **totais** vs **de fonte** (esta auditoria chegou a marcá-lo como violação por essa ambiguidade).
+- **Impacto:** Interpretações divergentes em auditorias futuras; navegabilidade do arquivo.
+- **Caminho de resolução:** (a) Esclarecer em `.agents/rules/testing.md` que o limiar de 300 linhas se
+  refere à **fonte (exclui o bloco `#[cfg(test)]`)**; e/ou (b) se preferir teto absoluto de arquivo,
+  externalizar os testes para `activations_test.rs`. Decidir e padronizar o critério.
+- **Custo:** Baixo.
+
+### 5.2 — Novo Épico
+
+### **🟢 Épico E9 — Polimento e Esclarecimentos Pós-Auditoria de Conformidade** [TODO]
+
+- **Objetivo:** Resolver os resíduos de baixa severidade levantados na verificação de conformidade de
+  E1–E8; fechar divergências doc↔código e lacunas de clareza/cobertura.
+- **Achados:** **F35** (allow(dead_code) sem justificativa), **F36** (doc obsoleto `lstm/mod.rs`),
+  **F37** (assert de bounds em `lstm/weights.rs`), **F38** (ordering GC inócuo + doc), **F39**
+  (`set_weights_test.rs`), **F40** (ambiguidade da regra 300L / `activations.rs`).
+- **Coesão:** Itens mecânicos/documentais de baixíssimo acoplamento; nenhum toca lógica de DSP/inferência.
+  Altamente paralelizáveis (ideal para *fan-out* via Agent Manager).
+- **Prioridade:** **Mais baixa** (após E1–E8, já concluídos). F39 (cobertura) é o de maior valor; os
+  demais são higiene/clareza.
+- **Risco:** Baixo. Atenção apenas em F38 (reverter `Acquire → Relaxed` no índice SPSC é correção em
+  direção à semântica correta — exige nota de revisão e reexecução do teste de concorrência de GC).
+- **Critério de pronto:** clippy 0 warnings mantido em todas as configs; PR gate verde; comentários de
+  justificativa presentes (F35/F38); diagrama de módulo corrigido (F36); `debug_assert!` adicionado
+  (F37); `set_weights_test.rs` criado (F39); critério da regra 300L esclarecido (F40).
+
+---
+
+*Fim do TODO-findings.md — Achados (F1–F40) e Épicos (E1–E9). E1–E8 implementados e verificados
+(ground-truth verde); E9 (resíduos da auditoria de conformidade) pendente. Sprints e tarefas técnicas
+são elaborados separadamente, por épico, quando solicitado.*
