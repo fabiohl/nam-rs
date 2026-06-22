@@ -335,7 +335,7 @@ while c < ch8 {
 
 ---
 
-## B2.1 — [MÍNIMO] Fallback `set_max_buffer_size` na thread de áudio: chamada sem comentário RT-safety
+## B2.1 — [MÍNIMO] Fallback `set_max_buffer_size` na thread de áudio: chamada sem comentário RT-safety [DONE]
 
 **Arquivo:** `src/clap/processor/events.rs:177-180` (`cold_load_model`).
 

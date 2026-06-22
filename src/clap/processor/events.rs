@@ -176,6 +176,13 @@ impl<'a> NamClapProcessor<'a> {
         }
         if let Some(ref mut model) = self.model_l {
             model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
+            // RT-SAFETY: `load.rs` pre-sizes the model on the main thread when `buffer_size > 0`
+            // at load time (B2 fix). This call is a defensive fallback for hosts that load state
+            // (preset/restore) before `activate()`, leaving `buffer_size == 0` on the main thread.
+            // `set_max_buffer_size` is a no-op when `max_buf <= self.max_buffer_size`
+            // (src/models/a2/model/dynamic.rs:488), making this allocation-free in ≥99% of calls.
+            // The remaining case (first invocation on a larger quantum) is a cold-path, one-time
+            // exception accepted per the RT-safety audit (B2.1).
             let _ = model.set_max_buffer_size(self.max_frames_count);
         }
 
