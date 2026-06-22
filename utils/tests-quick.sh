@@ -24,6 +24,23 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# Re-execute with low CPU and I/O priority (nice and ionice) to prevent overloading the system.
+# This can be bypassed by setting NAM_NO_LOW_PRIORITY=1.
+if [ "${NAM_LOW_PRIORITY:-0}" != "1" ] && [ "${NAM_NO_LOW_PRIORITY:-0}" != "1" ]; then
+    export NAM_LOW_PRIORITY=1
+    CMD_PREFIX=""
+    if command -v nice >/dev/null 2>&1; then
+        CMD_PREFIX="nice -n 19"
+    fi
+    if command -v ionice >/dev/null 2>&1; then
+        CMD_PREFIX="$CMD_PREFIX ionice -c 3"
+    fi
+    if [ -n "$CMD_PREFIX" ]; then
+        echo -e "${YELLOW}ⓘ Reiniciando o script com baixa prioridade (CPU/IO) para evitar travamentos...${NC}"
+        exec $CMD_PREFIX "$0" "$@"
+    fi
+fi
+
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}=================================================${NC}"
@@ -34,6 +51,24 @@ echo -e "${BLUE}${BOLD}=================================================${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
+
+CLAP_BIN_RAW="target/debug/libnam_rs.so"
+CLAP_BIN="target/debug/libnam_rs_validated.so"
+
+# Helper to compute SHA256 of a file
+get_sha256() {
+    sha256sum "$1" | cut -d' ' -f1
+}
+
+# Helper to run cargo commands with the CLAP profile, features, and environment variables
+cargo_clap() {
+    local action="$1"
+    shift
+    CLAP_PLUGIN_PATH="$CLAP_BIN" \
+    NAM_HEAP_AUDIT=1 \
+    RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
+      cargo "$action" --profile test --no-default-features --features "clap-plugin,heap-audit,testing" "$@"
+}
 
 # 1. Standard tests (fast feedback)
 echo -e "\n${BLUE}${BOLD}[1/5] Executando testes unitários e de integração...${NC}"
@@ -73,19 +108,16 @@ fi
 
 # 3. Build CLAP plugin debug binary with heap-audit
 echo -e "\n${BLUE}${BOLD}[3/5] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
-RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo build --profile test --no-default-features --features "clap-plugin,heap-audit,testing" --lib
+cargo_clap build --lib
 
-CLAP_BIN_RAW="target/debug/libnam_rs.so"
 if [ ! -f "$CLAP_BIN_RAW" ]; then
     echo -e "${RED}Erro: Falha ao encontrar a biblioteca do CLAP em $CLAP_BIN_RAW!${NC}"
     exit 1
 fi
 
 # Preservar o binário compilado em um local estável para evitar modificações por etapas subsequentes
-CLAP_BIN="target/debug/libnam_rs_validated.so"
 cp "$CLAP_BIN_RAW" "$CLAP_BIN"
-HASH_PHASE3=$(sha256sum "$CLAP_BIN" | cut -d' ' -f1)
+HASH_PHASE3=$(get_sha256 "$CLAP_BIN")
 echo -e "  Preservado binário da fase 3: $CLAP_BIN"
 echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE3}${NC}"
 
@@ -93,14 +125,10 @@ echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE3}${NC}"
 echo -e "\n${BLUE}${BOLD}[4/5] Executando testes de integração CLAP e auditoria de heap...${NC}"
 
 # A) CLAP Library tests
-CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" --lib clap::
+cargo_clap test --lib clap::
 
 # B) Targeted integration tests
-CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" \
+cargo_clap test \
   --test a2_heap_audit \
   --test cabsim_heap_audit \
   --test resampler_heap_audit \
@@ -109,17 +137,13 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   --test clap_multi_instance
 
 # C) Diagnostic bundle heap variant test
-CLAP_PLUGIN_PATH="$CLAP_BIN" NAM_HEAP_AUDIT=1 \
-RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo test --profile test --no-default-features --features "clap-plugin,heap-audit,testing" \
-  --test diagnostic_bundle heap_audit
-
+cargo_clap test --test diagnostic_bundle heap_audit
 
 # 5. Run the official CLAP validator if available
 echo -e "\n${BLUE}${BOLD}[5/5] Executando validação via clap-validator...${NC}"
 if command -v clap-validator >/dev/null 2>&1; then
   # Validar que o binário a ser testado pelo clap-validator é rigorosamente o da fase 3
-  HASH_PHASE5=$(sha256sum "$CLAP_BIN" | cut -d' ' -f1)
+  HASH_PHASE5=$(get_sha256 "$CLAP_BIN")
   echo -e "  SHA256 do binário na fase 3: ${GREEN}${HASH_PHASE3}${NC}"
   echo -e "  SHA256 do binário na fase 5: ${GREEN}${HASH_PHASE5}${NC}"
   if [ "$HASH_PHASE3" != "$HASH_PHASE5" ]; then
