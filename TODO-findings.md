@@ -226,6 +226,148 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
+## PENDÊNCIAS CORRETIVAS — Achados pós-auditoria dos Epics A/B
+
+Estes três itens foram identificados durante a **revisão de implementação dos Epics A e B** (2026-06-22). Cada um representa uma sub-tarefa incompleta de um item marcado `[DONE]` ou uma lacuna documental que, se não corrigida, deixa code-rot ou risco de RT-safety mal-explicado. Devem ser resolvidos antes de avançar ao Epic C para manter o rastreio consistente.
+
+---
+
+## A7.1 — [MÉDIA] Cauda `in_c` do `gemv_kernel!` e `gemv_with_bias_f32_avx2` processa 1 elemento com instrução 256-bit
+
+**Arquivos:** `src/math/gemm/gemv/kernel_macro.rs:104-110`; `src/math/gemm/gemv/f32_avx2.rs:119-122`.
+
+**Problema.** Após o laço principal de 8 acumuladores (unroll de 8 linhas por iteração), a cauda que drena os `in_c` restantes (máximo 7 elementos) faz, para **cada** elemento avulso:
+
+```rust
+// kernel_macro.rs:104-110
+while in_c < in_len {
+    let vs = _mm256_set1_ps(*$in_frame.get_unchecked(in_c)); // broadcast 256-bit de 1 escalar
+    let vw = $load_weight(weight_ptr);                        // _mm256_loadu_ps — 8 floats
+    acc0 = $fmadd_ps(vs, vw, acc0);                          // _mm256_fmadd_ps 256-bit
+    in_c += 1;
+}
+```
+
+Usar `_mm256_set1_ps` + `_mm256_fmadd_ps` de 256-bit para processar 1 elemento carrega 8 floats de pesos (`vw`) quando apenas 1 será produtivo; os outros 7 são trabalho descartado. O `$load_weight` lê 32 bytes desnecessariamente, aumentando a pressão no cache L1 sem retorno. Em adicional, manter o processador em modo YMM ao final do loop pode atrasar a transição implícita para SSE/escalar em microarquiteturas que emitem `vzeroupper` internamente.
+
+O mesmo padrão ocorre no `f32_avx2.rs:119-122` (`gemv_with_bias_f32_avx2` e `gemv_no_bias_f32_avx2`).
+
+A sub-proposta de A7 de usar `_mm_fmadd_ss` **não foi implementada**; só a expansão de 4 para 8 acumuladores no laço principal foi feita.
+
+**Proposta.**
+
+1. **Na macro `gemv_kernel!` (`:104-110`):** substituir o `while in_c < in_len` por um laço escalar puro (sem SIMD) que acumula em `f32` e depois soma ao `_mm256_cvtss_f32(_mm256_castps256_ps128(acc0))` antes do store final. O tail tem no máximo 7 elementos — custo absoluto mínimo, ganho em loads de peso eliminados:
+
+   ```rust
+   let mut tail_sum = 0.0f32;
+   while in_c < in_len {
+       tail_sum += *$in_frame.get_unchecked(in_c) * /* peso escalar */;
+       in_c += 1;
+   }
+   // somar tail_sum à lane 0 de acc0 antes do $store_ps
+   ```
+
+   Alternativamente, a macro pode usar `_mm_fmadd_ss` com o acumulador `__m128` da lane inferior de `acc0`.
+
+2. **No `f32_avx2.rs:119-122`:** mesma substituição por escalar `f32` puro com `f32::mul_add`.
+
+**Validação.** `cargo test --lib -- gemm` (cobre `test_dot_product_avx2_fma`, `test_gemv_*`, `test_compute_*`). A diferença de arredondamento do tail escalar vs tail 256-bit é ≤ 1 ULP por elemento e dentro das tolerâncias dos testes de paridade existentes.
+
+**Risco:** baixíssimo (tail path, ≤ 7 iterações raras). **Esforço:** baixo.
+
+---
+
+## A4.1 — [BAIXA] Kernel depthwise AVX2: 1 acumulador serializa FMAs atrás do `gather` (latência ~10–26 ciclos)
+
+**Arquivo:** `src/models/a2/grouped_conv1d.rs:470-488` (`process_single_frame_depthwise_avx2`, bloco `while c < ch8`).
+
+**Problema.** O kernel depthwise vetorizado usa `_mm256_i32gather_ps` para coletar 8 pesos de canais não-contíguos no layout empacotado (`group_stride = kernel * 4` elementos entre canais) e acumula todos os taps num único `acc`:
+
+```rust
+while c < ch8 {
+    let mut acc = _mm256_setzero_ps();          // 1 acumulador para TODOS os K taps
+    for k in 0..kernel {                        // kernel = 6 ou 15
+        let w_base = w_ptr.add(c * group_stride + k * 4);
+        let wv = _mm256_i32gather_ps(w_base, gather_idx, 4); // latência ~10–26 ciclos
+        let sv = _mm256_loadu_ps(tap.add(c));                // contíguo, rápido
+        acc = _mm256_fmadd_ps(wv, sv, acc);                  // encadeado no mesmo acc
+    }
+    ...
+}
+```
+
+`_mm256_i32gather_ps` tem latência de **~10–26 ciclos** em Haswell/Skylake (1 ciclo de throughput). Com 1 acumulador, cada FMA depende do `acc` anterior — a FMA k+1 não pode emitir antes que a FMA k complete (~4-5 ciclos), e o gather k+1 não pode concluir antes que o barramento de load esteja livre. Para kernel=6, o caminho crítico mínimo é ≈ 6 × (latência_gather) ciclos. Com **2 acumuladores alternados**, o OoO execution pode sobrepor o gather k+1 enquanto o FMA k ainda está em voo, cortando o caminho crítico ~1.5–2×.
+
+**Nota de contexto:** esta é uma consequência do layout de pesos empacotado (`group[g]→block[b]→tap[k]→in[0]→lanes[4]`) que coloca pesos de canais diferentes em posições não-contíguas; o gather foi necessário para evitar uma reorganização de pesos no `set_weights`. A solução de longo prazo é reorganizar o layout, mas o ganho imediato via 2 acumuladores é seguro e barato.
+
+**Proposta.**
+
+1. **Imediato — 2 acumuladores alternados por tap:**
+
+   ```rust
+   let mut acc0 = _mm256_setzero_ps();
+   let mut acc1 = _mm256_setzero_ps();
+   let mut k = 0;
+   while k + 1 < kernel {
+       let wv0 = _mm256_i32gather_ps(w_ptr.add(c * group_stride + k * 4), gather_idx, 4);
+       let sv0 = _mm256_loadu_ps(*tap_ptrs.get_unchecked(k) as *const f32 as *const f32 + c); // alias
+       acc0 = _mm256_fmadd_ps(wv0, sv0, acc0);
+       let wv1 = _mm256_i32gather_ps(w_ptr.add(c * group_stride + (k+1) * 4), gather_idx, 4);
+       let sv1 = _mm256_loadu_ps(*tap_ptrs.get_unchecked(k+1) as *const f32 + c);
+       acc1 = _mm256_fmadd_ps(wv1, sv1, acc1);
+       k += 2;
+   }
+   if k < kernel { /* tail tap */ acc0 = _mm256_fmadd_ps(..., acc0); }
+   let acc = _mm256_add_ps(acc0, acc1);
+   ```
+
+2. **Investigação de layout (médio prazo):** avaliar se reorganizar o layout de pesos no `set_weights` para `tap[k]→channel[c]` contíguo elimina o gather e substitui por `_mm256_loadu_ps` puro — solução ideal; mede custo de carga vs ganho em runtime.
+
+**Validação.** `cargo test -- test_grouped_conv1d_depthwise test_grouped_conv1d_groups1_delegates_correctly`. Reordenação de soma em ponto flutuante: verificar ESR dentro da tolerância de paridade.
+
+**Risco:** baixo (acumulação em par; revalidar paridade de saída). **Esforço:** baixo (item 1) / médio (item 2).
+
+---
+
+## B2.1 — [MÍNIMO] Fallback `set_max_buffer_size` na thread de áudio: chamada sem comentário RT-safety
+
+**Arquivo:** `src/clap/processor/events.rs:177-180` (`cold_load_model`).
+
+**Problema.** A função `cold_load_model`, chamada **na thread de áudio** ao drenar o SPSC em `process_events`, contém:
+
+```rust
+if let Some(ref mut model) = self.model_l {
+    model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
+    let _ = model.set_max_buffer_size(self.max_frames_count);  // ← sem comentário explicativo
+}
+```
+
+Com o B2 implementado, `load.rs` (main thread) agora pré-chama `set_max_buffer_size(buffer_size)` antes de emitir via SPSC — cobrindo o caminho nominal. Porém, se o modelo for carregado **antes de `activate()`** (ex.: preset restore, state load em hosts que não chamam `activate` antes de `start_processing`), `buffer_size` vale `0` na main thread, o guard `if buffer_size > 0` (`:142`) faz skip, e o modelo chega sem dimensionamento. Esta linha é o **único fallback de segurança** para esse cenário.
+
+`set_max_buffer_size` tem early-return em `dynamic.rs:488-490` quando `max_buf <= self.max_buffer_size` — tornando-o alocação-zero em ≥ 99% das chamadas. Mas **sem o comentário**, qualquer revisor futuro verá esta linha como violação do "Zero Heap" do Epic B não resolvida, podendo removê-la indevidamente ou reabrir o finding.
+
+**Proposta.** Inserir comentário RT-safety inline documentando o raciocínio completo:
+
+```rust
+if let Some(ref mut model) = self.model_l {
+    model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
+    // RT-SAFETY: `load.rs` pre-sizes the model on the main thread when `buffer_size > 0`
+    // at load time (B2 fix). This call is a defensive fallback for hosts that load state
+    // (preset/restore) before `activate()`, leaving `buffer_size == 0` on the main thread.
+    // `set_max_buffer_size` is a no-op when `max_buf <= self.max_buffer_size`
+    // (src/models/a2/model/dynamic.rs:488), making this allocation-free in ≥99% of calls.
+    // The remaining case (first invocation on a larger quantum) is a cold-path, one-time
+    // exception accepted per the RT-safety audit (B2.1).
+    let _ = model.set_max_buffer_size(self.max_frames_count);
+}
+```
+
+**Validação.** `cargo check` + `cargo test --release --lib` (zero regressão — mudança puramente documental).
+
+**Risco:** nulo. **Esforço:** mínimo (1 bloco de comentário).
+
+---
+
 ## EPIC C — Saúde da suíte de testes / CI (insights de `testes.log`)
 
 Duas das seis fases da auditoria longa falham de forma **determinística**. Nenhuma indica regressão de áudio em produção, mas mantêm a auditoria vermelha e **mascaram** regressões futuras. Correção prioritária para restaurar o valor de sinalização do CI.
