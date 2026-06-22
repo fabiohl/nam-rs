@@ -4,9 +4,11 @@
 //! PipeWire host execution — dual-stream topology setup, DSP bridge allocation,
 //! CPU affinity locking, main control loop, and graceful shutdown.
 
-use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, SHUTDOWN};
+use crate::common::spsc::{self, GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, SHUTDOWN};
 use crate::dsp::pipeline::AppState;
 use crate::dsp::resampler::NamResampler;
+use crate::models::StaticModel;
+use crate::models::slimmable::slice_wavenet_model;
 use crate::standalone::colors::Colorize;
 use crate::standalone::rt_setup;
 
@@ -47,12 +49,17 @@ pub fn run_pipewire_host(
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
+    slimmable_consumer: Consumer<Option<Box<StaticModel>>>,
 ) -> anyhow::Result<()> {
     let PipewireHostConfig {
         buffer_size,
         sys,
         ir_raw_samples,
+        full_wavenet_model,
+        mut slimmable_producer,
     } = config;
+
+    let full_wavenet_model = full_wavenet_model;
 
     // =========================================================
     // 1. PIPEWIRE LOOP INITIALIZATION
@@ -94,6 +101,7 @@ pub fn run_pipewire_host(
             resampler_consumer,
             cabsim_consumer,
             rt_status.clone(),
+            slimmable_consumer,
         )?;
         capture_stream = cs;
         capture_listener = cl;
@@ -217,6 +225,40 @@ pub fn run_pipewire_host(
                 }
                 rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
             }
+        }
+
+        // WaveNet slimmable rebuild: main thread performs all allocation,
+        // prewarm, and mmap outside the audio-thread callback.
+        if rt_status.check_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD) {
+            let target_ch = rt_status.requested_slimmable_ch.load(Ordering::Relaxed) as usize;
+            if target_ch >= 4
+                && let Some(ref m) = full_wavenet_model
+                && let StaticModel::WavenetDyn(w) = m.as_ref()
+            {
+                // Build L channel model
+                match slice_wavenet_model(w, target_ch) {
+                    Ok(mut slimmed) => {
+                        slimmed.prewarm();
+                        let model_l = Box::new(StaticModel::WavenetDyn(Box::new(slimmed)));
+                        let _ = slimmable_producer.push(Some(model_l));
+                    }
+                    Err(_) => {
+                        rt_status.set_flag(spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
+                    }
+                }
+                // Build R channel model (same weights, same target_ch)
+                match slice_wavenet_model(w, target_ch) {
+                    Ok(mut slimmed) => {
+                        slimmed.prewarm();
+                        let model_r = Box::new(StaticModel::WavenetDyn(Box::new(slimmed)));
+                        let _ = slimmable_producer.push(Some(model_r));
+                    }
+                    Err(_) => {
+                        rt_status.set_flag(spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
+                    }
+                }
+            }
+            rt_status.clear_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
         (was_silent, was_fading) =

@@ -4,7 +4,9 @@
 //! Main thread housekeeping: GC drain, status-flags sync, pending model load, latency.
 
 use super::NamClapMainThread;
-use crate::common::spsc::drain_gc_channels;
+use crate::common::spsc::{self, drain_gc_channels};
+use crate::models::slimmable::slice_wavenet_model;
+use crate::models::{NamModel, StaticModel};
 use clack_extensions::log::{HostLog, LogSeverity};
 use std::ffi::CString;
 use std::sync::atomic::Ordering;
@@ -44,6 +46,64 @@ impl<'a> NamClapMainThread<'a> {
                 crate::dsp::mirror_buf::sync_huge_page_flag(&self.shared.cold.rt_status);
                 HUGEPAGE_SYNCED.store(true, Ordering::Relaxed);
             }
+        }
+
+        // WaveNet slimmable rebuild: main thread performs all allocation,
+        // prewarm, and mmap outside the audio-thread callback.
+        if self
+            .shared
+            .cold
+            .rt_status
+            .check_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD)
+        {
+            let target_ch = self
+                .shared
+                .cold
+                .rt_status
+                .requested_slimmable_ch
+                .load(Ordering::Relaxed) as usize;
+            let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed) as usize;
+
+            if target_ch >= 4 {
+                let new_model = {
+                    let storage = self
+                        .shared
+                        .cold
+                        .full_wavenet_model
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    storage.as_ref().and_then(|m| {
+                        if let StaticModel::WavenetDyn(w) = m.as_ref() {
+                            match slice_wavenet_model(w, target_ch) {
+                                Ok(mut slimmed) => {
+                                    slimmed.prewarm();
+                                    if buffer_size > 0 {
+                                        let _ = slimmed.set_max_buffer_size(buffer_size);
+                                    }
+                                    Some(Box::new(StaticModel::WavenetDyn(Box::new(slimmed))))
+                                }
+                                Err(_) => {
+                                    self.shared
+                                        .cold
+                                        .rt_status
+                                        .set_flag(spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                };
+
+                if let Some(model) = new_model {
+                    let _ = self.slimmable_tx.push(Some(model));
+                }
+            }
+            self.shared
+                .cold
+                .rt_status
+                .clear_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
         // Check if there is a pending model sent by the UI

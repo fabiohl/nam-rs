@@ -20,6 +20,8 @@
 use nam_rs::diagnostics::SystemSnapshot;
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 use nam_rs::dsp::cabsim::loader::CabSimIr;
+use nam_rs::models::StaticModel;
+use nam_rs::models::slimmable::clone_wavenet_for_slimmable_storage;
 use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
 use nam_rs::{loader, spsc, spsc::ParamPayload};
 
@@ -98,6 +100,8 @@ fn main() -> anyhow::Result<()> {
     let resampler_consumer = channels.resampler_consumer;
     let mut cabsim_producer = channels.cabsim_producer;
     let cabsim_consumer = channels.cabsim_consumer;
+    let slimmable_producer = channels.slimmable_producer;
+    let slimmable_consumer = channels.slimmable_consumer;
     let rt_status = channels.rt_status;
 
     // 6. LOAD THE CAB-SIM IR: If you said "use cabinet X",
@@ -134,6 +138,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
+    let mut full_wavenet_model: Option<Box<StaticModel>> = None;
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(path, &sys, true) {
@@ -149,6 +154,14 @@ fn main() -> anyhow::Result<()> {
                 if let Ok(mut info_guard) = nam_rs::diagnostics::ACTIVE_MODEL_INFO.write() {
                     *info_guard = Some(model_info);
                 }
+
+                full_wavenet_model = loaded.model_l.as_ref().and_then(|m| {
+                    if let StaticModel::WavenetDyn(w) = m.as_ref() {
+                        clone_wavenet_for_slimmable_storage(w).ok()
+                    } else {
+                        None
+                    }
+                });
 
                 let _ = producer.push(ParamPayload::LoadModel {
                     model_l: loaded.model_l,
@@ -195,8 +208,11 @@ fn main() -> anyhow::Result<()> {
             buffer_size,
             sys,
             ir_raw_samples,
+            full_wavenet_model,
+            slimmable_producer,
         },
         gc_consumer,
+        slimmable_consumer,
     );
 
     // Signal shutdown to bypass panic hook during cleanup

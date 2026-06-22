@@ -16,6 +16,7 @@ use super::shared::{ClapParamPayload, NamClapShared};
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::GcItem;
+use crate::models::StaticModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
@@ -34,6 +35,8 @@ pub struct NamClapMainThread<'a> {
     pub param_tx: Producer<ClapParamPayload>,
     /// Consumer to collect garbage (obsolete models) from the audio thread.
     pub gc_rx: Consumer<GcItem>,
+    /// Producer to send slimmable-rebuilt models to the audio thread.
+    pub slimmable_tx: Producer<Option<Box<StaticModel>>>,
     /// Cached last latency reported to the host to avoid redundant notifications.
     pub last_reported_latency: u32,
     /// Baseview window handle for GUI lifecycle control (embedded mode).

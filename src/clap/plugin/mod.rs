@@ -63,6 +63,7 @@ impl DefaultPluginFactory for NamClapPlugin {
 
         let (param_tx, param_rx) = RingBuffer::new(8);
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
+        let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);
 
         Ok(NamClapShared {
             rt_to_ui: RtToUi {
@@ -129,6 +130,9 @@ impl DefaultPluginFactory for NamClapPlugin {
                 ui_ir_load_error_msg: Mutex::new(String::new()),
                 ui_clear_ir: std::sync::atomic::AtomicBool::new(false),
                 ir_raw_samples: Mutex::new(None),
+                slimmable_tx: Mutex::new(Some(slimmable_tx)),
+                slimmable_rx: Mutex::new(Some(slimmable_rx)),
+                full_wavenet_model: Mutex::new(None),
             },
         })
     }
@@ -176,6 +180,14 @@ impl DefaultPluginFactory for NamClapPlugin {
             .take()
             .ok_or(PluginError::Message("gc_rx consumer already taken"))?;
 
+        let slimmable_tx = shared
+            .cold
+            .slimmable_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .ok_or(PluginError::Message("slimmable_tx producer already taken"))?;
+
         #[cfg_attr(test, allow(unused_mut))]
         let main_thread = NamClapMainThread {
             shared,
@@ -184,6 +196,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             sys: SystemSnapshot::capture(),
             param_tx,
             gc_rx,
+            slimmable_tx,
             last_reported_latency: 0,
             #[cfg(feature = "clap-plugin")]
             window_handle: None,

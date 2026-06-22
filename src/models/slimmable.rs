@@ -297,6 +297,18 @@ pub fn slice_wavenet_model(
     })
 }
 
+/// Usage:
+/// Creates a full clone of a WaveNet model for storage, enabling main-thread
+/// slimmable rebuilds. The clone uses `slice_wavenet_model` with the original
+/// channel count — the immutable weights are duplicated, while states and scratch
+/// buffers are allocated fresh (to be reused for inference during rebuild).
+pub fn clone_wavenet_for_slimmable_storage(
+    model: &WaveNetModelDyn,
+) -> std::io::Result<Box<StaticModel>> {
+    let full_copy = slice_wavenet_model(model, model.ch)?;
+    Ok(Box::new(StaticModel::WavenetDyn(Box::new(full_copy))))
+}
+
 /// Centralized helper for slimmable WaveNet channel rebuild.
 ///
 /// Checks if a model slot needs a WaveNet channel count change

@@ -16,6 +16,8 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::math::dsp::gain_lut;
+use crate::models::StaticModel;
+use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 
@@ -49,6 +51,7 @@ pub struct CaptureState {
     pub frame_count: u32,
     pub thread_configured: bool,
     pub ir_raw_samples: Option<Vec<f32>>,
+    pub slimmable_rx: Option<Consumer<Option<Box<StaticModel>>>>,
 }
 
 impl CaptureState {
@@ -98,6 +101,7 @@ impl CaptureState {
             frame_count: 0,
             thread_configured: false,
             ir_raw_samples: None,
+            slimmable_rx: None,
         }
     }
 }

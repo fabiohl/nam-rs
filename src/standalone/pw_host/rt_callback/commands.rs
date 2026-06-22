@@ -9,7 +9,9 @@ use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::GateParams;
 use crate::models::StaticModel;
 
+use rtrb::Consumer;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 /// 5.1.2. COMMAND RECEPTION (SPSC Channel)
 /// Processes commands from the command-line interface or control system (volume, model, noise gate).
@@ -108,42 +110,60 @@ pub fn receive_commands(
     param_changed
 }
 
-/// Checks if the adaptive FSM demands a WaveNet channel count change
-/// and performs the allocation-intensive `slice_channels` + GC swap
-/// on both left and right model slots.
+/// Signals the main thread to rebuild WaveNet models with a reduced channel count.
 ///
-/// Must be called **before** DSP to keep the hot-path zero-alloc.
+/// The audio thread ONLY sets the atomic flag and target channel count.
+/// All allocation, prewarm, and mmap happen on the main thread.
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub fn try_slimmable_rebuild(
+pub fn try_slimmable_rebuild(adaptive: &mut AdaptiveCompute, rt_status: &RtStatusFlags) {
+    let Some(target_ch) = adaptive.take_slimmable_rebuild() else {
+        return;
+    };
+    rt_status
+        .requested_slimmable_ch
+        .store(target_ch as u32, Ordering::Relaxed);
+    rt_status.set_flag(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+}
+
+/// Drains slimmable-rebuilt models delivered by the main thread via SPSC.
+/// Handles both L and R channels for dual-mono/stereo configurations.
+#[inline(always)]
+pub fn drain_slimmable_models(
+    slimmable_rx: &mut Option<Consumer<Option<Box<StaticModel>>>>,
     active_model_l: &mut Option<Box<StaticModel>>,
     active_model_r: &mut Option<Box<StaticModel>>,
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
     gc_overflow: &GcOverflowBuffer,
     rt_status: &RtStatusFlags,
-    adaptive: &mut AdaptiveCompute,
 ) {
-    let Some(target_ch) = adaptive.take_slimmable_rebuild() else {
+    let Some(rx) = slimmable_rx.as_mut() else {
         return;
     };
-
-    let mut on_gc = |item: GcItem| {
-        gc_cascade(Some(item), gc_producer, parking_lot, gc_overflow, rt_status);
-    };
-
-    crate::models::slimmable::try_slimmable_rebuild_single(
-        active_model_l,
-        target_ch,
-        None,
-        &mut on_gc,
-        &mut || {},
-    );
-    crate::models::slimmable::try_slimmable_rebuild_single(
-        active_model_r,
-        target_ch,
-        None,
-        &mut on_gc,
-        &mut || {},
-    );
+    while let Ok(Some(new_model)) = rx.pop() {
+        let old = active_model_l.replace(new_model);
+        if let Some(old) = old {
+            gc_cascade(
+                Some(GcItem::Model(old)),
+                gc_producer,
+                parking_lot,
+                gc_overflow,
+                rt_status,
+            );
+        }
+        if active_model_r.is_some()
+            && let Ok(Some(new_model_r)) = rx.pop()
+        {
+            let old_r = active_model_r.replace(new_model_r);
+            if let Some(old_r) = old_r {
+                gc_cascade(
+                    Some(GcItem::Model(old_r)),
+                    gc_producer,
+                    parking_lot,
+                    gc_overflow,
+                    rt_status,
+                );
+            }
+        }
+    }
 }

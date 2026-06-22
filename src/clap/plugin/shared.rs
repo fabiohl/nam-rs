@@ -179,6 +179,14 @@ pub struct ColdShared {
     pub ui_clear_ir: AtomicBool,
     /// Raw IR samples stored for adaptive partition rebuild without WAV reload.
     pub ir_raw_samples: Mutex<Option<Vec<f32>>>,
+    /// SPSC channel: Main Thread -> Audio Thread (Slimmable model producer).
+    pub slimmable_tx: Mutex<Option<Producer<Option<Box<StaticModel>>>>>,
+    /// SPSC channel: Main Thread -> Audio Thread (Slimmable model consumer).
+    pub slimmable_rx: Mutex<Option<Consumer<Option<Box<StaticModel>>>>>,
+    /// Full WaveNet model weights stored for main-thread slimmable rebuild.
+    /// When a WaveNet model is loaded, a clone is stored here so the main thread
+    /// can create slimmed variants without touching the audio thread.
+    pub full_wavenet_model: Mutex<Option<Box<StaticModel>>>,
 }
 
 // ---------------------------------------------------------------------------

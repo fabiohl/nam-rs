@@ -77,6 +77,8 @@ pub struct NamClapProcessor<'a> {
     pub(crate) parking_lot: [Option<GcItem>; 16],
     /// SPSC channel: Main Thread -> Audio Thread (Consumer).
     pub(crate) param_rx: Consumer<ClapParamPayload>,
+    /// SPSC channel: Main Thread -> Audio Thread (Slimmable model consumer).
+    pub(crate) slimmable_rx: Consumer<Option<Box<StaticModel>>>,
     /// GC channel: Audio Thread -> Main Thread (Producer).
     pub(crate) gc_tx: Producer<GcItem>,
     /// Fallback buffer for GC overflow (overwrite).

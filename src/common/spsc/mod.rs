@@ -56,6 +56,10 @@ pub struct SpscChannels {
     /// Cab-sim IR consumer: RT callback drains to replace the active IR.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     pub cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
+    /// Slimmable model producer: main thread builds and sends slimmed model to RT callback.
+    pub slimmable_producer: Producer<Option<Box<crate::models::StaticModel>>>,
+    /// Slimmable model consumer: RT callback drains to swap the active model.
+    pub slimmable_consumer: Consumer<Option<Box<crate::models::StaticModel>>>,
     /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }
@@ -77,6 +81,8 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     // Cab-sim IR channel: small capacity (only 1 in transit at a time)
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     let (cs_prod, cs_cons) = RingBuffer::new(4);
+    // Slimmable model channel: small capacity (only 1 in transit at a time)
+    let (sl_prod, sl_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
     // The overflow buffer should be large enough to accommodate model swap spikes.
     // We use 64 as a base, or the requested capacity if higher.
@@ -94,6 +100,8 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
         cabsim_producer: cs_prod,
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         cabsim_consumer: cs_cons,
+        slimmable_producer: sl_prod,
+        slimmable_consumer: sl_cons,
         rt_status,
     }
 }

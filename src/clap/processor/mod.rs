@@ -67,6 +67,16 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .take()
             .ok_or_else(|| PluginError::Message("gc_tx producer has already been extracted"))?;
 
+        let slimmable_rx = shared
+            .cold
+            .slimmable_rx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .ok_or_else(|| {
+                PluginError::Message("slimmable_rx consumer has already been extracted")
+            })?;
+
         // 2. Intermediate buffer pre-allocation (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
             .max(MAX_RESAMP_BUF)
@@ -174,6 +184,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             model_output_mult_adj: 1.0,
             param_rx,
             gc_tx,
+            slimmable_rx,
             gc_overflow: Arc::clone(&shared.cold.gc_overflow),
             parking_lot: Default::default(),
             mod_input_gain: 0.0,
@@ -209,6 +220,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         *gc_tx_guard = Some(self.gc_tx);
+
+        let mut slimmable_rx_guard = self
+            .shared
+            .cold
+            .slimmable_rx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *slimmable_rx_guard = Some(self.slimmable_rx);
     }
 
     fn process(

@@ -168,7 +168,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## A8 — [ENCERRADO] Padé tanh/sigmoid: avaliar `rcp_ps`+1 Newton-Raphson no lugar de `div_ps`
+## A8 — [ENCERRADO] Padé tanh/sigmoid: avaliar `rcp_ps`+1 Newton-Raphson no lugar de `div_ps` [DONE]
 
 **Arquivos:** `src/math/activations/tanh/production.rs:58,102-103,145`; `src/math/activations/tanh/reference.rs`; `benches/inference_bench.rs`; `src/math/activations/tanh/reference_test.rs`.
 
@@ -182,7 +182,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 > Regra aplicável: `.agents/rules/rust.md` §1 — "Zero Heap Drop ... Heap objects must never go out of scope on the RT thread"; e §1 "Zero Blocking I/O". O steady-state cumpre isso; as **transições** abaixo violam.
 
-## B1 — [ALTA] Rebuild "slimmable" executa alocação + *prewarm* (inferência!) + `mmap` na thread de áudio
+## B1 — [ALTA] Rebuild "slimmable" executa alocação + *prewarm* (inferência!) + `mmap` na thread de áudio [DONE]
 
 **Arquivos:** `src/models/slimmable.rs:314-343` (`try_slimmable_rebuild_single`).
 **Chamadores na thread de áudio:** CLAP — `src/clap/processor/events.rs:154` (dentro de `process_events`); PipeWire — `src/standalone/pw_host/capture/setup.rs:132-140` (dentro do `process` callback).

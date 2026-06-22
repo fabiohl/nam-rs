@@ -10,8 +10,7 @@ use crate::clap::extensions::params::{
     PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::plugin::ClapParamPayload;
-use crate::common::spsc::{GcItem, gc_cascade};
-use crate::models::slimmable::try_slimmable_rebuild_single;
+use crate::common::spsc::GcItem;
 use crate::models::{NamModel, StaticModel};
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
@@ -150,8 +149,12 @@ impl<'a> NamClapProcessor<'a> {
         }
 
         // WaveNet slimmable rebuild: check if FSM demands a different channel
-        // count and perform the allocation-intensive slice+swap before DSP.
-        self.try_slimmable_rebuild();
+        // count and signal the main thread to perform the allocation-intensive
+        // slice+prewarm+mmap off the audio thread.
+        self.signal_slimmable_rebuild();
+
+        // Drain any slimmable-rebuilt models delivered from the main thread.
+        self.drain_slimmable_models();
     }
 
     #[cold]
@@ -207,32 +210,30 @@ impl<'a> NamClapProcessor<'a> {
     }
 
     /// Checks if the adaptive FSM demands a WaveNet channel count change
-    /// and performs the allocation-intensive `slice_channels` + GC swap.
+    /// and signals the main thread to perform the rebuild off the audio thread.
     ///
-    /// Must be called **before** DSP (inside `process_events`) to keep the
-    /// hot-path zero-alloc.
-    fn try_slimmable_rebuild(&mut self) {
+    /// The audio thread ONLY sets the atomic flag and target channel count.
+    /// All allocation, prewarm, and mmap happen on the main thread.
+    fn signal_slimmable_rebuild(&mut self) {
         let Some(target_ch) = self.adaptive_compute.take_slimmable_rebuild() else {
             return;
         };
-        let max_frames = self.max_frames_count;
-        let gc_tx = &mut self.gc_tx;
-        let parking_lot = &mut self.parking_lot;
-        let gc_overflow = &self.gc_overflow;
-        let rt_status = &self.rt_status;
+        self.rt_status
+            .requested_slimmable_ch
+            .store(target_ch as u32, Ordering::Relaxed);
+        self.rt_status
+            .set_flag(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+    }
 
-        let mut on_gc = |item: GcItem| {
-            gc_cascade(Some(item), gc_tx, parking_lot, gc_overflow, rt_status);
-        };
-
-        try_slimmable_rebuild_single(
-            &mut self.model_l,
-            target_ch,
-            Some(max_frames),
-            &mut on_gc,
-            &mut || {
-                rt_status.set_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_SLICE_FAILED);
-            },
-        );
+    /// Drains slimmable-rebuilt models delivered by the main thread via SPSC.
+    /// The main thread has already done slice_channels, prewarm, and set_max_buffer_size.
+    /// The audio thread only swaps the pointer and sends the old model to GC.
+    fn drain_slimmable_models(&mut self) {
+        while let Ok(Some(new_model)) = self.slimmable_rx.pop() {
+            let old = self.model_l.replace(new_model);
+            if let Some(old) = old {
+                self.push_to_gc(GcItem::Model(old));
+            }
+        }
     }
 }

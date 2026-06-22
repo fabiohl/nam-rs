@@ -13,6 +13,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
 
     let (param_tx, param_rx) = RingBuffer::new(8);
     let (gc_tx, gc_rx) = RingBuffer::new(32);
+    let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);
 
     NamClapShared {
         rt_to_ui: RtToUi {
@@ -79,6 +80,9 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ui_ir_load_error_msg: Mutex::new(String::new()),
             ui_clear_ir: AtomicBool::new(false),
             ir_raw_samples: Mutex::new(None),
+            slimmable_tx: Mutex::new(Some(slimmable_tx)),
+            slimmable_rx: Mutex::new(Some(slimmable_rx)),
+            full_wavenet_model: Mutex::new(None),
         },
     }
 }

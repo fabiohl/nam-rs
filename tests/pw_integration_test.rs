@@ -42,6 +42,8 @@ fn test_pipewire_integration() {
     let (res_prod, res_cons) = RingBuffer::new(2);
     // cabsim: IR loader (Main -> DSP)
     let (cs_prod, cs_cons) = RingBuffer::new(2);
+    // slimmable: Slimmable model rebuild (Main -> DSP)
+    let (sl_prod, sl_cons) = RingBuffer::new(2);
 
     // Fallback buffer for GC overflow
     let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new(64));
@@ -70,8 +72,11 @@ fn test_pipewire_integration() {
                 buffer_size: 0, // 0 = Use system default (PipeWire quantum)
                 sys,
                 ir_raw_samples: None,
+                full_wavenet_model: None,
+                slimmable_producer: sl_prod,
             },
             gc_cons,
+            sl_cons,
         )
     });
 

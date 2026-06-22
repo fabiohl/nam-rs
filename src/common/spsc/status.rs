@@ -49,6 +49,8 @@ pub const RT_STATUS_A2_FALLBACK_TRIGGERED: u64 = 1 << 15;
 /// Flag indicating that a WaveNet slimmable slice_channels rebuild failed on the RT thread.
 /// Replaces `log::error!` for RT-zero-IO compliance.
 pub const RT_STATUS_SLIMMABLE_SLICE_FAILED: u64 = 1 << 16;
+/// Flag indicating that a WaveNet slimmable rebuild is needed (set by RT, cleared by main).
+pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -77,6 +79,7 @@ pub const RT_STATUS_SLIMMABLE_SLICE_FAILED: u64 = 1 << 16;
 /// | 14 | `GC_CORRUPTED` | GC overflow buffer corrupted (unknown type/ptr) |
 /// | 15 | `A2_FALLBACK_TRIGGERED` | A2 static variant fell back to scalar zero-output path |
 /// | 16 | `SLIMMABLE_SLICE_FAILED` | WaveNet slimmable slice_channels rebuild failed |
+/// | 17 | `NEEDS_SLIMMABLE_REBUILD` | DSP thread requests slimmable model rebuild |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.
@@ -135,6 +138,9 @@ pub struct RtStatusFlags {
     pub drains: AtomicU32,
     /// Requested partition size for cabsim rebuild (set by RT thread).
     pub requested_cabsim_partition_size: AtomicU32,
+    /// Requested slimmable channel count (set by RT thread, read by main thread).
+    /// Value `0` indicates no pending request.
+    pub requested_slimmable_ch: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -160,6 +166,7 @@ impl RtStatusFlags {
             xruns: AtomicU32::new(0),
             drains: AtomicU32::new(0),
             requested_cabsim_partition_size: AtomicU32::new(0),
+            requested_slimmable_ch: AtomicU32::new(0),
         }
     }
 

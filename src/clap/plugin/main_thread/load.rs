@@ -8,6 +8,8 @@ use super::NamClapMainThread;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::dsp::resampler::NamResampler;
 use crate::loader::load_and_build_model;
+use crate::models::StaticModel;
+use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
 use clack_extensions::log::{HostLog, LogSeverity};
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -117,6 +119,23 @@ impl<'a> NamClapMainThread<'a> {
         let model_l = model_pair.model_l;
         let input_mult_adj = model_pair.input_mult_adj;
         let output_mult_adj = model_pair.output_mult_adj;
+
+        // Store full WaveNet weights for main-thread slimmable rebuild
+        {
+            let mut storage = self
+                .shared
+                .cold
+                .full_wavenet_model
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            *storage = model_l.as_ref().and_then(|m| {
+                if let StaticModel::WavenetDyn(w) = m.as_ref() {
+                    clone_wavenet_for_slimmable_storage(w).ok()
+                } else {
+                    None
+                }
+            });
+        }
 
         self.param_tx
             .push(ClapParamPayload::LoadModel {

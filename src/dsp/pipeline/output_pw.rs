@@ -8,8 +8,9 @@ use super::bridge::DspBridgeReader;
 #[cfg(feature = "standalone")]
 use crate::common::diagnostics::SystemSnapshot;
 #[cfg(feature = "standalone")]
-#[cfg(feature = "standalone")]
 use pipewire as pw;
+#[cfg(feature = "standalone")]
+use rtrb;
 
 /// Holds essential PipeWire instances (`StreamBox` and `Listener`).
 ///
@@ -35,6 +36,10 @@ pub struct PipewireHostConfig {
     pub sys: SystemSnapshot,
     /// Raw IR samples for adaptive partition rebuild (None if no IR loaded).
     pub ir_raw_samples: Option<Vec<f32>>,
+    /// Full WaveNet model stored for main-thread slimmable rebuild.
+    pub full_wavenet_model: Option<Box<crate::models::StaticModel>>,
+    /// Producer to send slimmable-rebuilt models to the audio thread.
+    pub slimmable_producer: rtrb::Producer<Option<Box<crate::models::StaticModel>>>,
 }
 
 /// Playback DSP Pipeline (Bridge → Hardware).

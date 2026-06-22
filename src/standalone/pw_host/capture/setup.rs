@@ -10,6 +10,7 @@ use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags}
 use crate::dsp::pipeline::{
     BridgeRef, DspBridgeWriter, DspBuffers, DspPipelineContext, build_spa_format_pod,
 };
+use crate::models::StaticModel;
 use crate::standalone::colors::Colorize;
 use crate::standalone::rt_setup;
 
@@ -38,6 +39,7 @@ pub fn setup_capture_stream<'c>(
     mut resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
     mut cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     rt_status: Arc<RtStatusFlags>,
+    slimmable_consumer: Consumer<Option<Box<StaticModel>>>,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let mut capture_props = properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
@@ -63,6 +65,7 @@ pub fn setup_capture_stream<'c>(
 
     let mut state = CaptureState::init(sys);
     state.ir_raw_samples = ir_raw_samples;
+    state.slimmable_rx = Some(slimmable_consumer);
     let rate_for_param = state.shared_target_rate.clone();
     let rate_for_process = state.shared_target_rate.clone();
 
@@ -129,14 +132,16 @@ pub fn setup_capture_stream<'c>(
                 &mut state.adaptive_compute,
             );
 
-            rt_callback::try_slimmable_rebuild(
+            rt_callback::try_slimmable_rebuild(&mut state.adaptive_compute, &rt_status_for_process);
+
+            rt_callback::drain_slimmable_models(
+                &mut state.slimmable_rx,
                 &mut state.active_model_l,
                 &mut state.active_model_r,
                 &mut gc_producer,
                 &mut state.parking_lot,
                 &gc_overflow_for_process,
                 &rt_status_for_process,
-                &mut state.adaptive_compute,
             );
 
             let current_pw_rate = rt_callback::sync_rate(
