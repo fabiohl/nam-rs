@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::math::common::AlignedVec;
+use crate::models::a2::film::FilmBlock;
 
 fn make_random_weights(kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let mut w = AlignedVec::new(kernel * 64, 0.0f32);

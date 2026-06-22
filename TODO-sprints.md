@@ -70,7 +70,7 @@ Foco: Divisão de grandes módulos em namespaces menores e re-assentamento de te
 
 Foco: Ajustes visuais, normalização da árvore de arquivos e limpeza de *dead code* indesejado.
 
-- [ ] **Tarefa T7.2.1: Adequação do Layout de Módulos (F29)**
+- [x] **Tarefa T7.2.1: Adequação do Layout de Módulos (F29)**
   - **Contexto:** Módulos de arquiteturas similares estão armazenados com layouts de diretório inconsistentes.
   - **Ação:** Promover o arquivo *flat* `src/models/a2/conv1d_ch8.rs` para um diretório `conv1d_ch8/` com a estrutura padrão: `{mod.rs, simd.rs, scalar.rs}`. Atualizar as exportações (`pub use`).
 
