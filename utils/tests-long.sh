@@ -435,7 +435,7 @@ run_clap_audit_local() {
     timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test concurrency_stress -- --ignored --nocapture || audit_status=1
 
     echo "  Executando testes unitários e de integração em modo Mono..."
-    timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
+    RUSTFLAGS="${RUSTFLAGS} -C debug-assertions=on" timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
 
     return $audit_status
 }

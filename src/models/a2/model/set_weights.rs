@@ -353,7 +353,6 @@ pub(crate) fn set_layer_film(
     idx: usize,
     film: FiLMLayer,
 ) -> Result<(), String> {
-    debug_assert!(idx < 8, "FiLM slot index {} out of range (0-7)", idx);
     match idx {
         0 => layer.conv_pre_film = Some(film),
         1 => layer.conv_post_film = Some(film),

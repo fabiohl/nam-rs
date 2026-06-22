@@ -651,7 +651,6 @@ fn test_set_layer_film_slot_7() {
 }
 
 #[test]
-#[should_panic(expected = "FiLM slot index")]
 fn test_set_layer_film_out_of_range() {
     let mut layer = make_minimal_layer(4);
     let config = FiLMConfig {

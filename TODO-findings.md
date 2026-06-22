@@ -378,7 +378,7 @@ if let Some(ref mut model) = self.model_l {
 
 Duas das seis fases da auditoria longa falham de forma **determinística**. Nenhuma indica regressão de áudio em produção, mas mantêm a auditoria vermelha e **mascaram** regressões futuras. Correção prioritária para restaurar o valor de sinalização do CI.
 
-## C1 — [ALTA] Fase "CLAP Release Validation" sempre falha: 16 testes `should_panic` dependem de `debug_assert!` desligado em release
+## C1 — [ALTA] Fase "CLAP Release Validation" sempre falha: 16 testes `should_panic` dependem de `debug_assert!` desligado em release [DONE]
 
 **Evidência:** `target/logs/phase4-clap-validation.log:1143-1216` → `test result: FAILED. 804 passed; 16 failed`. Invocação: `utils/tests-long.sh:438` (`cargo test --release ... --lib`).
 

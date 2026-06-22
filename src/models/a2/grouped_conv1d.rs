@@ -85,7 +85,7 @@ impl A2GroupedConv1d {
     /// `[group][num_blocks][kernel][in_per_group][4]`.
     ///
     /// # Panics
-    /// Panics in debug if `in_ch % groups != 0` or `out_ch % groups != 0`.
+    /// Panics if `in_ch % groups != 0` or `out_ch % groups != 0`.
     pub fn new(
         raw_weights: &[f32],
         raw_bias: &[f32],
@@ -97,22 +97,22 @@ impl A2GroupedConv1d {
         groups: usize,
         prefetch_fn: PrefetchFn,
     ) -> Self {
-        debug_assert!(groups > 0, "groups must be > 0");
-        debug_assert_eq!(
+        assert!(groups > 0, "groups must be > 0");
+        assert_eq!(
             in_ch % groups,
             0,
             "in_ch={} must be divisible by groups={}",
             in_ch,
             groups
         );
-        debug_assert_eq!(
+        assert_eq!(
             out_ch % groups,
             0,
             "out_ch={} must be divisible by groups={}",
             out_ch,
             groups
         );
-        debug_assert_eq!(
+        assert_eq!(
             raw_weights.len(),
             out_ch * in_ch * kernel,
             "raw_weights len {} != expected {} (out_ch={} * in_ch={} * kernel={})",
