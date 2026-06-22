@@ -117,3 +117,45 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 * 15 testes `#[should_panic]` cobrindo: out_frame curto, frame_idx baixo, mixin/block desbalanceados, pesos truncados, groups=0, in_ch/out_ch não divisíveis por groups.
 * Resampler (`src/dsp/resampler.rs`) já possui `debug_assert!` nos acessos `DelayLine::push`/`window_ptr` e bounds guards via `while` loops nos métodos `process_internal`. Layout de transposição (`src/loader/dispatcher/wavenet/layout.rs`) é código seguro com slice indexing. Nenhum gap remanescente de segurança SIMD nestes módulos.
 * **Nota para tarefas futuras:** `debug_assert!` só atua em modo debug; em release as verificações são removidas. Kernels SIMD dependem da disciplina do caller — o contrato de segurança está documentado nas assinaturas `unsafe fn`.
+
+---
+
+## 🏃 Sprint 5: Blindagem de Segurança do Loader (Épico E2)
+
+**Objetivo:** Tornar o parsing de modelos (`.nam` e `.namb`) resiliente a entradas hostis, corrompidas ou malformadas, prevenindo ataques de DoS por exaustão de memória, danos a equipamentos por ruídos (`NaN`/`Inf`) e garantindo a integridade dos dados carregados.
+**Risco:** Baixo–Médio (Caminho frio de loading, atentar para manter a compatibilidade retroativa, especialmente na validação CRC de v1).
+**Base:** [TODO-findings.md - F1, F2, F3, F4, F5, F6, F7](TODO-findings.md)
+
+### 📝 Tarefa 5.1: Defesa contra Valores Numéricos Maliciosos (Finitude) [TO-DO]
+
+**Responsável Sugerido:** `implementador` / `revisor-auditor`
+**Contexto:** O projeto aceita pesos, ganhos e configs de taxa de amostragem que podem ser `NaN` ou infinitos, o que em processamento DSP causaria ruídos extremos e danos a equipamentos. (Ref: F1, F4)
+**Critérios de Aceitação:**
+
+1. **JSON (`src/loader/nam_json/validation.rs`):** Modificar `WeightsVisitor::visit_seq` para validar `is_finite()` em cada valor extraído. Se não for, retornar um novo erro `JsonError::NonFiniteWeight`.
+2. **Binário (`src/loader/namb/parse.rs`):** Validar `is_finite()` dos pesos importados do buffer (idealmente usando `iter().all()` antes de prosseguir) e retornar um erro `NambError::NonFiniteWeight` se corrompido.
+3. **Escalas/Bias:** Inserir validação `.is_finite()` logo após a leitura de `head_scale` e `head_bias` nos construtores em `wavenet` (`standard.rs`, `dynamic.rs`), `lstm` (`static_builder.rs`, `dynamic_builder.rs`), `convnet` e `linear`.
+4. **Header Namb (`parse.rs`):** Validar as variáveis de header lidas (`sample_rate`, `input_level_dbu`, `output_level_dbu`) com `is_finite()`. Além disso, rejeitar `sample_rate <= 0.0`.
+5. Prover testes injetando floats maliciosos nestes campos para atestar o reject do modelo (fail-fast, sem panic).
+
+### 📝 Tarefa 5.2: Proteção contra Exaustão de Memória (OOM/DoS) [TO-DO]
+
+**Responsável Sugerido:** `implementador`
+**Contexto:** Alguns tipos de modelo especificam sua topologia (canais, camadas ocultas) no arquivo e alocam `Vec` baseados nesses tamanhos antes de verificar a quantidade real de pesos do bloco, abrindo janela para alocações em casa de GBs caso os canais sejam gigantes (DoS). (Ref: F2)
+**Critérios de Aceitação:**
+
+1. Definir e documentar constantes de limite máximo baseadas nas arquiteturas (ex. `MAX_DYN_CHANNELS`, `MAX_LSTM_LAYERS`, `MAX_LSTM_HIDDEN`).
+2. **LSTM (`nam_json/topology.rs` e dispatch):** Rejeitar tentativas com `num_layers > 16` ou `hidden_size > 1024` logo no parse de `get_lstm_topology`.
+3. **WaveNet e A2-Dyn (`wavenet/dynamic.rs`, `wavenet/mod.rs`):** Rejeitar `channels > 512` em WaveNet Free-shape e validar `channels <= 256` e `bottleneck <= 256` para A2-Dyn.
+4. Incluir proptest ou um `#[test]` negativo forçando a injeção de parâmetros de topology massivos e atestar que a API retorna um `Err` limpo invés de crash/OOM.
+
+### 📝 Tarefa 5.3: Integridade de Formato e Resiliência Estrutural [TO-DO]
+
+**Responsável Sugerido:** `implementador`
+**Contexto:** Arquivos de modelos v1 evadem validação de CRC se o campo for `0`, existem indexações seguras mas assumidas implicitamente, e truncamentos de ponteiro inseguros entre 64/32-bit. (Ref: F3, F5, F6, F7)
+**Critérios de Aceitação:**
+
+1. **CRC V1 (`namb/parse.rs`):** Mudar o tratamento do `.namb` v1 para computar e verificar o CRC32 em todo caso, exceto estritamente quando a seção de pesos estiver vazia E o `crc32 == 0`. (Ajustar com compatibilidade para os modelos antigos).
+2. **FastPath (`dispatcher/wavenet/mod.rs`):** Substituir a macro `unreachable!()` no pattern-matching catch-all `KnownFastPath(_)` por um fallback grace failure seguro (ex: `bail!("A2 channels inesperado")`).
+3. **Limites de Transposição e Indexação (`layout.rs` e `weights.rs`):** Inserir `debug_assert!(raw.len() >= ...)` no início das funções de helpers de transposição (`transpose_conv1d_interleaved_4wide` e indexadores lógicos) garantindo a suficiência do slice providenciado.
+4. **Portabilidade 32-bit (`model.rs`):** Refatorar `parse_head` para substituir `v as usize` por um pattern check usando `usize::try_from(v).ok()?` nas configurações do model json.

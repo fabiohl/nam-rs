@@ -539,7 +539,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 
 ---
 
-### **🔴 Épico E1 — Correção do Pipeline de Validação C++ (CI Verde)** [DOING]
+### **🔴 Épico E1 — Correção do Pipeline de Validação C++ (CI Verde)** [DONE]
 
 - **Objetivo:** Restaurar a auditoria longa para 6/6 fases verdes, sem enfraquecer gates legítimos.
 - **Achados:** **F8**.
@@ -548,7 +548,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Baixo. **Critério de pronto:** `tests/cpp_parity.rs` verde mantendo o gate LUFS ativo para
   modelos não-quietos; desativação explícita e rastreável apenas para `wavenet_dyn_free`/`lstm_dyn_test`.
 
-### **🔴 Épico E2 — Blindagem de Segurança do Loader (Hardening contra modelos maliciosos)** [TO-DO]
+### **🔴 Épico E2 — Blindagem de Segurança do Loader (Hardening contra modelos maliciosos)** [DOING]
 
 - **Objetivo:** Tornar o parsing de `.nam`/`.namb` resiliente a entrada hostil/corrompida.
 - **Achados:** **F1** (NaN/Inf), **F2** (alloc DoS), **F3** (CRC v1), **F4** (header floats), **F5**
@@ -597,7 +597,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** Mudanças mecânicas, baixo risco; ótimas para paralelizar via Agent Manager.
 - **Risco:** Baixo.
 
-### **🟠 Épico E8 — Rigor e Cobertura da Suíte de Testes** [DOING]
+### **🟠 Épico E8 — Rigor e Cobertura da Suíte de Testes** [DONE]
 
 - **Objetivo:** Fechar pontos cegos do processo de teste e fortalecer oráculos.
 - **Achados:** **F30** (#[ignore] na lane rápida), **F31** (is_finite-only), **F32** (módulos críticos
