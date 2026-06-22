@@ -557,7 +557,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Baixo–Médio (caminho cold; cuidar de compatibilidade com modelos legítimos antigos — F3).
 - **Crítico:** F1 e F2 têm impacto de segurança real (dano a equipamento / DoS).
 
-### **🟠 Épico E3 — Pureza RT do Hot-Path (Zero-panic, Zero-IO, Zero-denormal)** [DOING]
+### **🟠 Épico E3 — Pureza RT do Hot-Path (Zero-panic, Zero-IO, Zero-denormal)** [DONE]
 
 - **Objetivo:** Eliminar os últimos desvios da política RT-safety §1.
 - **Achados:** **F9** (unwrap), **F10** (log::error RT), **F11** (denormal tails), **F19** (salto numérico
@@ -565,7 +565,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** Hot-path RT; mudanças pequenas e localizadas.
 - **Risco:** Baixo (F19 pode mexer em goldens — revalidar thresholds).
 
-### **🟡 Épico E4 — Robustez de Concorrência e Ciclo de Vida (CLAP/Standalone)** [DOING]
+### **🟡 Épico E4 — Robustez de Concorrência e Ciclo de Vida (CLAP/Standalone)** [DONE]
 
 - **Objetivo:** Eliminar scaffolding morto/ambíguo e endurecer concorrência/persistência.
 - **Achados:** **F12** (model_r/active_model_r), **F13** (GcOverflow ordering), **F14** (migrate),
@@ -573,7 +573,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** Camadas `clap/`+`standalone/`+`common/spsc`.
 - **Risco:** Médio em F13 (ordering atômico → exige teste de concorrência dedicado).
 
-### **🟡 Épico E5 — Soundness e Performance SIMD** [DOING]
+### **🟡 Épico E5 — Soundness e Performance SIMD** [DONE]
 
 - **Objetivo:** Fechar UB latente e capturar quick-wins de performance.
 - **Achados:** **F18** (assert de alinhamento na convolução), **F20** (ativações AVX-512), **F21**
@@ -581,7 +581,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Coesão:** `src/math/`. **Risco:** Baixo (F20 valida paridade vs escalar/AVX2).
 - **Nota:** Performance é fase posterior, mas F18 (UB) e F20 (quick-win 2×) merecem antecipação.
 
-### **🟢 Épico E6 — Unificação e Deduplicação de Kernels (DRY SIMD)** [TO-DO]
+### **🟢 Épico E6 — Unificação e Deduplicação de Kernels (DRY SIMD)** [DOING]
 
 - **Objetivo:** Reduzir ~850 SLOC duplicados e o risco de drift AVX2/AVX-512.
 - **Achados:** **F23** (gain/conv/activation macros), **F27** (slimmable rebuild dedup).
@@ -589,7 +589,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Médio (revalidar paridade bit-a-bit pós-refator). **Dependência:** idealmente após E5
   (alinhar F20 antes de macro-unificar ativações).
 
-### **🟢 Épico E7 — Reorganização Estrutural e Higiene ("Embelezamento")** [TO-DO]
+### **🟢 Épico E7 — Reorganização Estrutural e Higiene ("Embelezamento")** [DOING]
 
 - **Objetivo:** Melhorar navegabilidade e aderência às próprias regras do projeto.
 - **Achados:** **F24** (split de arquivos gigantes), **F25** (regra de testes 300L), **F26** (nomenclatura),
