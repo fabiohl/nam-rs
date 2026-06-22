@@ -18,6 +18,10 @@ pub unsafe fn convolve_stereo_avx512(
     input_r: *const f32,
     taps: usize,
 ) -> (f32, f32) {
+    debug_assert!(
+        (coeffs as usize).is_multiple_of(64),
+        "coeffs must be 64-byte aligned"
+    );
     let mut sum_l0 = _mm512_setzero_ps();
     let mut sum_l1 = _mm512_setzero_ps();
     let mut sum_r0 = _mm512_setzero_ps();
@@ -67,6 +71,14 @@ pub unsafe fn convolve_stereo_dual_avx512(
     input_r: *const f32,
     taps: usize,
 ) -> ((f32, f32), (f32, f32)) {
+    debug_assert!(
+        (coeffs0 as usize).is_multiple_of(64),
+        "coeffs0 must be 64-byte aligned"
+    );
+    debug_assert!(
+        (coeffs1 as usize).is_multiple_of(64),
+        "coeffs1 must be 64-byte aligned"
+    );
     let mut sum0_l = _mm512_setzero_ps();
     let mut sum0_r = _mm512_setzero_ps();
     let mut sum1_l = _mm512_setzero_ps();
@@ -117,6 +129,14 @@ pub unsafe fn convolve_mono_dual_avx512(
     input: *const f32,
     taps: usize,
 ) -> (f32, f32) {
+    debug_assert!(
+        (coeffs0 as usize).is_multiple_of(64),
+        "coeffs0 must be 64-byte aligned"
+    );
+    debug_assert!(
+        (coeffs1 as usize).is_multiple_of(64),
+        "coeffs1 must be 64-byte aligned"
+    );
     let mut sum0 = _mm512_setzero_ps();
     let mut sum1 = _mm512_setzero_ps();
     let mut i = 0;
@@ -150,6 +170,10 @@ pub unsafe fn convolve_mono_dual_avx512(
 /// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn convolve_mono_avx512(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+    debug_assert!(
+        (coeffs as usize).is_multiple_of(64),
+        "coeffs must be 64-byte aligned"
+    );
     let mut sum0 = _mm512_setzero_ps();
     let mut sum1 = _mm512_setzero_ps();
     let mut i = 0;

@@ -85,16 +85,16 @@
 
 **Meta:** Prevenir potenciais falhas de memória UB e extrair máxima performance das CPUs AVX-512.
 
-### Sprint E5.1: Soundness (UB Latente) e Intrínsecos
+### Sprint E5.1: Soundness (UB Latente) e Intrínsecos [DONE]
 
 *Foco: Ajustes preventivos de segurança e higiene no math.*
 
-- [ ] **Tarefa E5.1.1 [F18]: Garantir restrição de alinhamento nas convoluções SIMD.**
+- [x] **Tarefa E5.1.1 [F18]: Garantir restrição de alinhamento nas convoluções SIMD.**
   - **Especialista:** `implementador`
   - **Arquivos:** `src/math/dsp/stereo/convolution_avx2.rs`, `src/math/dsp/stereo/convolution_avx512.rs`
   - **Ação:** Inserir checks defensivos `debug_assert!(coeffs.as_ptr() as usize % alinhamento == 0)` para fail-fast se ponteiros não-alinhados entrarem nesses kernels.
 
-- [ ] **Tarefa E5.1.2 [F21]: Remover intrínsecos de redução deprecados.**
+- [x] **Tarefa E5.1.2 [F21]: Remover intrínsecos de redução deprecados.**
   - **Especialista:** `implementador`
   - **Arquivos:** `src/math/dsp/stereo/convolution_avx2.rs` etc.
   - **Ação:** Substituir usos passivos de `_mm_cvtss_f32` por `_mm_store_ss(&mut out, r)`.

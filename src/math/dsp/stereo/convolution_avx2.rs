@@ -18,6 +18,10 @@ pub unsafe fn convolve_stereo_avx2(
     input_r: *const f32,
     taps: usize,
 ) -> (f32, f32) {
+    debug_assert!(
+        (coeffs as usize).is_multiple_of(32),
+        "coeffs must be 32-byte aligned"
+    );
     let mut sum_l0 = _mm256_setzero_ps();
     let mut sum_l1 = _mm256_setzero_ps();
     let mut sum_r0 = _mm256_setzero_ps();
@@ -58,7 +62,8 @@ pub unsafe fn convolve_stereo_avx2(
     let sums_l = _mm_add_ps(s128_l, shuf_l);
     let shuf2_l = _mm_movehl_ps(sums_l, sums_l);
     let r_l = _mm_add_ss(sums_l, shuf2_l);
-    let mut out_l = _mm_cvtss_f32(r_l);
+    let mut out_l = 0.0f32;
+    _mm_store_ss(&mut out_l, r_l);
 
     // Horizontal reduction R
     let sum_r = _mm256_add_ps(sum_r0, sum_r1);
@@ -69,7 +74,8 @@ pub unsafe fn convolve_stereo_avx2(
     let sums_r = _mm_add_ps(s128_r, shuf_r);
     let shuf2_r = _mm_movehl_ps(sums_r, sums_r);
     let r_r = _mm_add_ss(sums_r, shuf2_r);
-    let mut out_r = _mm_cvtss_f32(r_r);
+    let mut out_r = 0.0f32;
+    _mm_store_ss(&mut out_r, r_r);
 
     while i < taps {
         let h = *coeffs.add(i);
@@ -93,6 +99,14 @@ pub unsafe fn convolve_stereo_dual_avx2(
     input_r: *const f32,
     taps: usize,
 ) -> ((f32, f32), (f32, f32)) {
+    debug_assert!(
+        (coeffs0 as usize).is_multiple_of(32),
+        "coeffs0 must be 32-byte aligned"
+    );
+    debug_assert!(
+        (coeffs1 as usize).is_multiple_of(32),
+        "coeffs1 must be 32-byte aligned"
+    );
     let mut sum0_l0 = _mm256_setzero_ps();
     let mut sum0_r0 = _mm256_setzero_ps();
     let mut sum0_l1 = _mm256_setzero_ps();
@@ -160,7 +174,8 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let sums_0l = _mm_add_ps(s128_0l, shuf_0l);
     let shuf2_0l = _mm_movehl_ps(sums_0l, sums_0l);
     let r_0l = _mm_add_ss(sums_0l, shuf2_0l);
-    let mut out0_l = _mm_cvtss_f32(r_0l);
+    let mut out0_l = 0.0f32;
+    _mm_store_ss(&mut out0_l, r_0l);
 
     // Horizontal reduction sum0_r
     let hi128_0r = _mm256_extractf128_ps(sum0_r, 1);
@@ -170,7 +185,8 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let sums_0r = _mm_add_ps(s128_0r, shuf_0r);
     let shuf2_0r = _mm_movehl_ps(sums_0r, sums_0r);
     let r_0r = _mm_add_ss(sums_0r, shuf2_0r);
-    let mut out0_r = _mm_cvtss_f32(r_0r);
+    let mut out0_r = 0.0f32;
+    _mm_store_ss(&mut out0_r, r_0r);
 
     // Horizontal reduction sum1_l
     let hi128_1l = _mm256_extractf128_ps(sum1_l, 1);
@@ -180,7 +196,8 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let sums_1l = _mm_add_ps(s128_1l, shuf_1l);
     let shuf2_1l = _mm_movehl_ps(sums_1l, sums_1l);
     let r_1l = _mm_add_ss(sums_1l, shuf2_1l);
-    let mut out1_l = _mm_cvtss_f32(r_1l);
+    let mut out1_l = 0.0f32;
+    _mm_store_ss(&mut out1_l, r_1l);
 
     // Horizontal reduction sum1_r
     let hi128_1r = _mm256_extractf128_ps(sum1_r, 1);
@@ -190,7 +207,8 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let sums_1r = _mm_add_ps(s128_1r, shuf_1r);
     let shuf2_1r = _mm_movehl_ps(sums_1r, sums_1r);
     let r_1r = _mm_add_ss(sums_1r, shuf2_1r);
-    let mut out1_r = _mm_cvtss_f32(r_1r);
+    let mut out1_r = 0.0f32;
+    _mm_store_ss(&mut out1_r, r_1r);
 
     while i < taps {
         let h0 = *coeffs0.add(i);
@@ -216,6 +234,14 @@ pub unsafe fn convolve_mono_dual_avx2(
     input: *const f32,
     taps: usize,
 ) -> (f32, f32) {
+    debug_assert!(
+        (coeffs0 as usize).is_multiple_of(32),
+        "coeffs0 must be 32-byte aligned"
+    );
+    debug_assert!(
+        (coeffs1 as usize).is_multiple_of(32),
+        "coeffs1 must be 32-byte aligned"
+    );
     let mut sum0_0 = _mm256_setzero_ps();
     let mut sum0_1 = _mm256_setzero_ps();
     let mut sum1_0 = _mm256_setzero_ps();
@@ -265,7 +291,8 @@ pub unsafe fn convolve_mono_dual_avx2(
     let sums_0 = _mm_add_ps(s128_0, shuf_0);
     let shuf2_0 = _mm_movehl_ps(sums_0, sums_0);
     let r_0 = _mm_add_ss(sums_0, shuf2_0);
-    let mut out0 = _mm_cvtss_f32(r_0);
+    let mut out0 = 0.0f32;
+    _mm_store_ss(&mut out0, r_0);
 
     // Horizontal reduction sum1
     let hi128_1 = _mm256_extractf128_ps(sum1, 1);
@@ -275,7 +302,8 @@ pub unsafe fn convolve_mono_dual_avx2(
     let sums_1 = _mm_add_ps(s128_1, shuf_1);
     let shuf2_1 = _mm_movehl_ps(sums_1, sums_1);
     let r_1 = _mm_add_ss(sums_1, shuf2_1);
-    let mut out1 = _mm_cvtss_f32(r_1);
+    let mut out1 = 0.0f32;
+    _mm_store_ss(&mut out1, r_1);
 
     while i < taps {
         let xl = *input.add(i);
@@ -291,6 +319,10 @@ pub unsafe fn convolve_mono_dual_avx2(
 /// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn convolve_mono_avx2(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+    debug_assert!(
+        (coeffs as usize).is_multiple_of(32),
+        "coeffs must be 32-byte aligned"
+    );
     let mut sum0 = _mm256_setzero_ps();
     let mut sum1 = _mm256_setzero_ps();
     let mut i = 0;
@@ -323,7 +355,8 @@ pub unsafe fn convolve_mono_avx2(coeffs: *const f32, input: *const f32, taps: us
     let sums = _mm_add_ps(s128, shuf);
     let shuf2 = _mm_movehl_ps(sums, sums);
     let r = _mm_add_ss(sums, shuf2);
-    let mut out = _mm_cvtss_f32(r);
+    let mut out = 0.0f32;
+    _mm_store_ss(&mut out, r);
 
     while i < taps {
         let h = *coeffs.add(i);
