@@ -41,7 +41,7 @@ Validação obrigatória para **todos** os itens deste Epic: paridade bit-a-bit/
 
 ---
 
-## A1 — [ALTA] Conv CH=3 do A2: cadeia FMA totalmente serial (1 acumulador)
+## A1 — [ALTA] Conv CH=3 do A2: cadeia FMA totalmente serial (1 acumulador) [DONE]
 
 **Arquivo:** `src/models/a2/conv1d_ch3/simd.rs:31-92` (`conv1d_ch3_k6_f32`) e `:97-176` (`conv1d_ch3_k15_f32`).
 

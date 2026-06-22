@@ -21,6 +21,8 @@ const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 /// Fully unrolled K=6 GEMV for CH=3 with f32 native weights.
 ///
 /// 6 taps × 3 input channels = 18 `_mm_fmadd_ps` instructions.
+/// Split across 3 independent accumulators (interleaved by tap index)
+/// to break the FMA dependency chain. Each accumulator handles 6 FMAs.
 /// Each FMA loads 4 f32 weights (3 valid + 1 zero padding) via `_mm_loadu_ps`.
 ///
 /// # Safety
@@ -50,50 +52,55 @@ unsafe fn conv1d_ch3_k6_f32(
     let t4 = (fi + d * (5 - 6)) as usize * CH;
     let t5 = fi as usize * CH; // tap 5 = current frame (offset 0)
 
-    // Load bias [b0, b1, b2, 0.0]
-    let mut acc = _mm_loadu_ps(bias.as_ptr());
+    let mut acc0 = _mm_loadu_ps(bias.as_ptr());
+    let mut acc1 = _mm_setzero_ps();
+    let mut acc2 = _mm_setzero_ps();
 
     // Unrolled: 6 taps × 3 input channels = 18 FMAs
-    // For each tap: load the 4-wide weight column for each input channel
-    macro_rules! fma3 {
-        ($tap_base:expr, $k:expr) => {
+    // Split across 3 independent accumulators (interleaved by tap index)
+    // to break the single FMA dependency chain.  acc0: taps 0,3  acc1: taps 1,4  acc2: taps 2,5
+    macro_rules! fma3_to {
+        ($acc:ident, $tap_base:expr, $k:expr) => {
             // in=0
             {
                 let wp = w_ptr.add($k * 16 + 0 * 4);
                 let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 0));
-                acc = _mm_fmadd_ps(wv, sv, acc);
+                $acc = _mm_fmadd_ps(wv, sv, $acc);
             }
             // in=1
             {
                 let wp = w_ptr.add($k * 16 + 1 * 4);
                 let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 1));
-                acc = _mm_fmadd_ps(wv, sv, acc);
+                $acc = _mm_fmadd_ps(wv, sv, $acc);
             }
             // in=2
             {
                 let wp = w_ptr.add($k * 16 + 2 * 4);
                 let wv = _mm_loadu_ps(wp);
                 let sv = _mm_set1_ps(*buf.add($tap_base + 2));
-                acc = _mm_fmadd_ps(wv, sv, acc);
+                $acc = _mm_fmadd_ps(wv, sv, $acc);
             }
         };
     }
 
-    fma3!(t0, 0);
-    fma3!(t1, 1);
-    fma3!(t2, 2);
-    fma3!(t3, 3);
-    fma3!(t4, 4);
-    fma3!(t5, 5);
+    fma3_to!(acc0, t0, 0);
+    fma3_to!(acc1, t1, 1);
+    fma3_to!(acc2, t2, 2);
+    fma3_to!(acc0, t3, 3);
+    fma3_to!(acc1, t4, 4);
+    fma3_to!(acc2, t5, 5);
 
+    let acc = _mm_add_ps(_mm_add_ps(acc0, acc1), acc2);
     _mm_storeu_ps(out_frame.as_mut_ptr(), acc);
 }
 
 /// Fully unrolled K=15 GEMV for CH=3 with f32 native weights.
 ///
 /// 15 taps × 3 input channels = 45 `_mm_fmadd_ps` instructions.
+/// Split across 3 independent accumulators (interleaved by tap index)
+/// to break the FMA dependency chain. Each accumulator handles 15 FMAs.
 #[target_feature(enable = "fma")]
 unsafe fn conv1d_ch3_k15_f32(
     weights: &[f32],
@@ -133,45 +140,50 @@ unsafe fn conv1d_ch3_k15_f32(
     let t13 = tap!(13);
     let t14 = tap!(14);
 
-    let mut acc = _mm_loadu_ps(bias.as_ptr());
+    let mut acc0 = _mm_loadu_ps(bias.as_ptr());
+    let mut acc1 = _mm_setzero_ps();
+    let mut acc2 = _mm_setzero_ps();
 
-    macro_rules! fma3 {
-        ($tap_base:expr, $k:expr) => {{
+    macro_rules! fma3_to {
+        ($acc:ident, $tap_base:expr, $k:expr) => {{
             let wp = w_ptr.add($k * 16 + 0 * 4);
             let wv = _mm_loadu_ps(wp);
             let sv = _mm_set1_ps(*buf.add($tap_base + 0));
-            acc = _mm_fmadd_ps(wv, sv, acc);
+            $acc = _mm_fmadd_ps(wv, sv, $acc);
         }
         {
             let wp = w_ptr.add($k * 16 + 1 * 4);
             let wv = _mm_loadu_ps(wp);
             let sv = _mm_set1_ps(*buf.add($tap_base + 1));
-            acc = _mm_fmadd_ps(wv, sv, acc);
+            $acc = _mm_fmadd_ps(wv, sv, $acc);
         }
         {
             let wp = w_ptr.add($k * 16 + 2 * 4);
             let wv = _mm_loadu_ps(wp);
             let sv = _mm_set1_ps(*buf.add($tap_base + 2));
-            acc = _mm_fmadd_ps(wv, sv, acc);
+            $acc = _mm_fmadd_ps(wv, sv, $acc);
         }};
     }
 
-    fma3!(t0, 0);
-    fma3!(t1, 1);
-    fma3!(t2, 2);
-    fma3!(t3, 3);
-    fma3!(t4, 4);
-    fma3!(t5, 5);
-    fma3!(t6, 6);
-    fma3!(t7, 7);
-    fma3!(t8, 8);
-    fma3!(t9, 9);
-    fma3!(t10, 10);
-    fma3!(t11, 11);
-    fma3!(t12, 12);
-    fma3!(t13, 13);
-    fma3!(t14, 14);
+    // Split 15 taps across 3 independent accumulators (interleaved by tap index)
+    // acc0: taps 0,3,6,9,12  acc1: taps 1,4,7,10,13  acc2: taps 2,5,8,11,14
+    fma3_to!(acc0, t0, 0);
+    fma3_to!(acc1, t1, 1);
+    fma3_to!(acc2, t2, 2);
+    fma3_to!(acc0, t3, 3);
+    fma3_to!(acc1, t4, 4);
+    fma3_to!(acc2, t5, 5);
+    fma3_to!(acc0, t6, 6);
+    fma3_to!(acc1, t7, 7);
+    fma3_to!(acc2, t8, 8);
+    fma3_to!(acc0, t9, 9);
+    fma3_to!(acc1, t10, 10);
+    fma3_to!(acc2, t11, 11);
+    fma3_to!(acc0, t12, 12);
+    fma3_to!(acc1, t13, 13);
+    fma3_to!(acc2, t14, 14);
 
+    let acc = _mm_add_ps(_mm_add_ps(acc0, acc1), acc2);
     _mm_storeu_ps(out_frame.as_mut_ptr(), acc);
 }
 
