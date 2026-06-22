@@ -17,7 +17,7 @@
 //! ├── model1.rs     # LstmModel1 + define_lstm1_process! macro
 //! ├── model2.rs     # LstmModel2 + define_lstm2_process_pipelined! macro
 //! ├── prewarm.rs    # LstmLike trait + lstm_prewarm_common
-//! └── tests.rs      # Unit and SIMD vs scalar parity tests
+//! └── lstm_test.rs  # Unit and SIMD vs scalar parity tests
 //! ```
 
 use super::NamModel;
