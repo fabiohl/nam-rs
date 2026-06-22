@@ -428,13 +428,21 @@ Duas das seis fases da auditoria longa falham de forma **determinística**. Nenh
 
 **Conclusão (2026-06):** Implementado. `A2Conv1dCh<const CH: usize>` unificado em `src/models/a2/conv1d_ch/mod.rs` com `CH_PAD = CH.next_power_of_two()`. Structs antigos viram type aliases (`A2Conv1dCh3 = A2Conv1dCh<3>`, `A2Conv1dCh8 = A2Conv1dCh<8>`). Campos duplicados em `A2Layer` (`ch3_conv`, `ch8_conv`) unificados em `conv_ch: Option<A2ConvCh>` via enum `A2ConvCh { Ch3, Ch8 }`. Redução líquida: ~150 linhas removidas entre struct defs + constructors; dispatch em `model/mod.rs` simplificado para single match. Testes (25 CH3 + CH8) passam sem alterações semânticas. SIMD kernels preservados nos módulos originais.
 
-## D3 — [BAIXA] Arquivos grandes com responsabilidades misturadas
+## D3 — [CONCLUÍDA] Arquivos grandes com responsabilidades misturadas [DONE]
 
 **Arquivos:** `src/models/a2/conv1d.rs` (1006 linhas: transposição de pesos + dispatch de inferência + lógica grouped) e `src/models/a2/model/dynamic.rs` (880 linhas: engine dinâmico + ~15 helpers de transposição). **Proposta:** extrair helpers de transposição/layout de pesos para submódulo dedicado (ex.: `a2/weights_layout.rs`), separando "carregamento/layout" de "inferência". **Risco:** baixo. **Esforço:** médio.
 
-## D4 — [BAIXA] Lacunas de doc-comment em módulos de dispatch do hot-path
+**Conclusão (2026-06):** Implementado. Helper `transpose_dense_f32`, `transpose_conv1d_interleaved_4wide` e `transpose_head_w` extraídos para `src/models/a2/weights_layout.rs` como funções `pub(crate)`. Duplicações removidas de `dynamic.rs` (~60 linhas) e `set_weights.rs` (~60 linhas). Ambos os módulos importam do submódulo compartilhado. Redução líquida: ~65 linhas (nova definição + imports vs 2 cópias removidas). `cargo test` e `cargo clippy` passam limpos.
+
+## D4 — [CONCLUÍDA] Lacunas de doc-comment em módulos de dispatch do hot-path [DONE]
 
 **Itens públicos sem `///` (têm doc de módulo, faltam por-função):** `src/math/dsp/stereo/mod.rs:40,48,56,64,74`; `src/math/dsp/gain/mod.rs:75,86,112,123`; `src/dsp/pipeline/stages/bridge.rs:12`; `src/dsp/pipeline/stages/input.rs:36`; `src/dsp/gate_flags.rs:22`; `src/dsp/telemetry.rs:13`. **Proposta:** adicionar doc-comments (contrato, `# Safety` para `unsafe`). **Risco:** nulo. **Esforço:** baixo.
+
+**Conclusão (2026-06):** Implementado.
+
+- `gain/mod.rs`: docs expandidos para `crossfade_blend_mono_simd` e `apply_dither_add_simd` (já possuíam one-liners; agora têm descrição completa de comportamento). `apply_gain_simd` e `apply_ramp_simd` já tinham docs multi-linha adequados.
+- `stereo/mod.rs`: removido `#![allow(clippy::missing_safety_doc)]`. Seções `# Safety` melhoradas nos 4 dispatchers de slice (`compute_energy_stereo`, `compute_max_diff`, `compute_peak_abs_stereo`, `compute_peak_abs_mono`) — trocado "Uses dynamic dispatch via global v-table" por contrato real: slices devem ter mesmo comprimento, backends usam loads não-alinhados.
+- `bridge.rs`, `input.rs`, `gate_flags.rs`, `telemetry.rs`: já possuíam `///` doc-comments adequados (finding anterior ao acréscimo dos docs). `cargo clippy` passa limpo sem warnings de missing docs.
 
 ## D5 — [INFO] Código morto: `grouped_conv1d_single_frame_simd`
 

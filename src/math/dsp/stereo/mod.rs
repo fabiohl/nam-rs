@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-#![allow(
-    unsafe_op_in_unsafe_fn,
-    clippy::missing_safety_doc,
-    clippy::too_many_arguments
-)]
+#![allow(unsafe_op_in_unsafe_fn, clippy::too_many_arguments)]
 
 //! DSP operations for stereo processing and signal metering.
 
@@ -36,7 +32,8 @@ pub use peak::{
 /// Computes the maximum energy between two audio channels via SIMD dispatch.
 ///
 /// # Safety
-/// Uses dynamic dispatch via global v-table.
+/// The slices must have the same length. The SIMD backends use unaligned loads,
+/// so no alignment contract is imposed on the caller.
 pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_energy_stereo(l, r))
 }
@@ -44,7 +41,8 @@ pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
 /// Computes the maximum absolute difference between two blocks via SIMD dispatch.
 ///
 /// # Safety
-/// Uses dynamic dispatch via global v-table.
+/// The slices must have the same length. The SIMD backends use unaligned loads,
+/// so no alignment contract is imposed on the caller.
 pub unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_max_diff(a, b))
 }
@@ -52,7 +50,8 @@ pub unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
 /// Computes the peak absolute value of both stereo channels via SIMD dispatch.
 ///
 /// # Safety
-/// Uses dynamic dispatch via global v-table.
+/// The slices must have the same length. The SIMD backends use unaligned loads,
+/// so no alignment contract is imposed on the caller.
 pub unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
     crate::math::common::dispatch_simd!(compute_peak_abs_stereo(left, right))
 }
@@ -60,7 +59,8 @@ pub unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32)
 /// Computes the peak absolute value of a single channel via SIMD dispatch.
 ///
 /// # Safety
-/// Uses dynamic dispatch via global v-table.
+/// The SIMD backends use unaligned loads; no alignment contract is imposed
+/// on the caller.
 pub unsafe fn compute_peak_abs_mono(data: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_peak_abs_mono(data))
 }

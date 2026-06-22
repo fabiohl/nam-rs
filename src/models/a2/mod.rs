@@ -27,6 +27,7 @@ pub mod head;
 pub mod layer;
 pub mod model;
 pub mod params;
+pub mod weights_layout;
 /// Public re-exports for easy access.
 pub use activations::{ActivationFn, ActivationType};
 pub use conv1d::A2Conv1d;

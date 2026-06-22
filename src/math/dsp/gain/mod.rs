@@ -107,7 +107,10 @@ pub unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
     crate::math::common::dispatch_simd!(crossfade_blend_mono(out, pending, t))
 }
 
-/// Safe wrapper for crossfade blend.
+/// Safe wrapper for crossfade blend: `out[i] = fma(pending[i] - out[i], t, out[i])`.
+///
+/// Handles mismatched buffer lengths by blending only the overlapping prefix.
+/// Uses `[t]` as the blend coefficient (0.0 = keep current, 1.0 = replace with pending).
 #[inline]
 pub fn crossfade_blend_mono_simd(out: &mut [f32], pending: &[f32], t: f32) {
     if out.len() != pending.len() {
@@ -120,6 +123,10 @@ pub fn crossfade_blend_mono_simd(out: &mut [f32], pending: &[f32], t: f32) {
     unsafe { crossfade_blend_mono(out, pending, t) };
 }
 /// Safe wrapper for dither offset addition via SIMD broadcast + vector add.
+///
+/// Injects a subnormal-safe DC offset (typically `DENORMAL_DITHER_OFFSET` or its
+/// negative) to prevent subnormal floats from propagating through neural network
+/// activations during fade-out/silence.
 pub fn apply_dither_add_simd(buffer: &mut [f32], offset: f32) {
     // SAFETY: `buffer` is a valid mutable reference provided by the caller;
     // `offset` is a finite f32 constant (DENORMAL_DITHER_OFFSET or its negative).
