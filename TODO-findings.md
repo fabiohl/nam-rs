@@ -103,7 +103,7 @@ A FMA fica **soterrada** por ~8 µops de shuffle/move por iteração. Utilizaç�
 
 ---
 
-## A4 — [MÉDIA] Conv depthwise agrupada é 100% escalar (sem SIMD)
+## A4 — [MÉDIA] Conv depthwise agrupada é 100% escalar (sem SIMD) [DONE]
 
 **Arquivo:** `src/models/a2/grouped_conv1d.rs:532-598` (`process_single_frame_depthwise_avx2`), laço `:582-591`.
 

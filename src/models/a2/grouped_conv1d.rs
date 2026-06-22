@@ -446,11 +446,52 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
     // Depthwise: num_blocks_per_group = 1, in_per_group = 1
     // Weight layout: group[g] → block[0] → kernel[k] → in[0] → lanes[4] with only lane 0 valid
     let w_ptr = conv.weights.as_ptr();
+    let bias_ptr = conv.bias.as_ptr();
+    let group_stride = kernel * 4;
 
-    for c in 0..ch {
+    // Process 8 channels at a time with AVX2 gather
+    let ch8 = ch & !7;
+
+    // Precompute gather indices: for channels [c0..c0+7] at a given tap k,
+    // weight for channel c0+i is at w_ptr + (c0+i)*group_stride + k*4.
+    // Gather delta from base (channel c0): i * group_stride f32 elements = i*kernel*4*4 bytes.
+    // _mm256_i32gather_ps: addr = base + vindex[i]*scale bytes, scale=4 for f32.
+    let gather_idx = _mm256_setr_epi32(
+        0,
+        group_stride as i32,
+        (group_stride * 2) as i32,
+        (group_stride * 3) as i32,
+        (group_stride * 4) as i32,
+        (group_stride * 5) as i32,
+        (group_stride * 6) as i32,
+        (group_stride * 7) as i32,
+    );
+
+    let mut c = 0;
+    while c < ch8 {
+        let mut acc = _mm256_setzero_ps();
+
+        for k in 0..kernel {
+            let tap = *tap_ptrs.get_unchecked(k);
+            let w_base = w_ptr.add(c * group_stride + k * 4);
+            let wv = _mm256_i32gather_ps(w_base, gather_idx, 4);
+            let sv = _mm256_loadu_ps(tap.add(c));
+            acc = _mm256_fmadd_ps(wv, sv, acc);
+        }
+
+        if conv.do_bias {
+            let bv = _mm256_loadu_ps(bias_ptr.add(c));
+            acc = _mm256_add_ps(acc, bv);
+        }
+
+        _mm256_storeu_ps(out_frame.as_mut_ptr().add(c), acc);
+        c += 8;
+    }
+
+    // Scalar tail for remaining channels
+    for c in c..ch {
         let mut acc = 0.0f32;
 
-        let group_stride = kernel * 4;
         for k in 0..kernel {
             let tap = *tap_ptrs.get_unchecked(k);
             let w = *w_ptr.add(c * group_stride + k * 4);
