@@ -178,7 +178,15 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 3. **WaveNet e A2-Dyn (`wavenet/dynamic.rs`, `wavenet/mod.rs`):** Rejeitar `channels > 512` em WaveNet Free-shape e validar `channels <= 256` e `bottleneck <= 256` para A2-Dyn.
 4. Incluir proptest ou um `#[test]` negativo forçando a injeção de parâmetros de topology massivos e atestar que a API retorna um `Err` limpo invés de crash/OOM.
 
-### 📝 Tarefa 5.3: Integridade de Formato e Resiliência Estrutural [TO-DO]
+### 📝 Tarefa 5.3: Integridade de Formato e Resiliência Estrutural [DONE]
+
+**Nota pós-implementação (2026-06-21):**
+
+* **CRC V1 (`namb/parse.rs`):** CRC32 verificado sempre para `.namb` v1, com bypass apenas quando pesos vazios E `crc32==0`. Script `check_crc(..)` chamado para todos os demais casos (v2 com flag, v1 com pesos ou `crc32!=0`).
+* **FastPath (`dispatcher/wavenet/mod.rs:85`):** Macro `unreachable!()` substituída por `bail!("Unexpected A2 channels in KnownFastPath: {ch}. Only 3 (Lite) and 8 (Full) are supported.")`, eliminando risco de panic em release.
+* **Transposição (`layout.rs`):** `debug_assert!` adicionados em `transpose_conv1d_interleaved_4wide` (valida `raw.len() >= out_ch * in_ch * kernel` e `weights.len() >= padded_total`) e `transpose_dense_layer_f32` (valida `raw.len() >= out_size * in_size` e `weights.len() >= in_size * out_size`).
+* **Portabilidade 32-bit (`model.rs:244-264`):** `parse_head` refatorado com `usize::try_from(v).ok()` nos campos `channels`, `out_channels`, `kernel_size`, substituindo `v as usize` (truncamento silencioso em 32-bit).
+* **Testes NAMB (`namb_test.rs`):** 30/30 passando. `build_namb_v1_no_crc` atualizado para computar CRC válido. Testes de finitude usam CRC computado. `test_v1_crc32_zero_with_weights_rejected` (renomeado) valida rejeição do sentinela com pesos. `test_v1_crc32_zero_empty_weights_skips` valida bypass com pesos vazios. Testes de truncamento aceitam `CrcMismatch` ou `Truncated`.
 
 **Responsável Sugerido:** `implementador`
 **Contexto:** Arquivos de modelos v1 evadem validação de CRC se o campo for `0`, existem indexações seguras mas assumidas implicitamente, e truncamentos de ponteiro inseguros entre 64/32-bit. (Ref: F3, F5, F6, F7)

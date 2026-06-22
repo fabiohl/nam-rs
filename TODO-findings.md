@@ -548,7 +548,7 @@ A auditoria, porém, revelou **um conjunto pequeno mas relevante de gaps**, com 
 - **Risco:** Baixo. **Critério de pronto:** `tests/cpp_parity.rs` verde mantendo o gate LUFS ativo para
   modelos não-quietos; desativação explícita e rastreável apenas para `wavenet_dyn_free`/`lstm_dyn_test`.
 
-### **🔴 Épico E2 — Blindagem de Segurança do Loader (Hardening contra modelos maliciosos)** [DOING]
+### **🔴 Épico E2 — Blindagem de Segurança do Loader (Hardening contra modelos maliciosos)** [DONE]
 
 - **Objetivo:** Tornar o parsing de `.nam`/`.namb` resiliente a entrada hostil/corrompida.
 - **Achados:** **F1** (NaN/Inf), **F2** (alloc DoS), **F3** (CRC v1), **F4** (header floats), **F5**

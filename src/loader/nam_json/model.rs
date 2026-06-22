@@ -244,12 +244,12 @@ impl NamConfig {
         let channels = val
             .get("channels")
             .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
+            .and_then(|v| usize::try_from(v).ok());
         let bias = val.get("bias").and_then(|v| v.as_bool());
         let out_channels = val
             .get("out_channels")
             .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
+            .and_then(|v| usize::try_from(v).ok());
         let activation = val
             .get("activation")
             .and_then(|v| v.as_str())
@@ -257,7 +257,7 @@ impl NamConfig {
         let kernel_size = val
             .get("kernel_size")
             .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
+            .and_then(|v| usize::try_from(v).ok());
         Some(HeadConfig {
             channels,
             bias,

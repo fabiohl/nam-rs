@@ -125,10 +125,11 @@ mod tests {
     }
 
     #[test]
-    fn test_v1_crc32_zero_warns_but_passes() -> Result<()> {
-        // v1 with crc==0 (sentinel) should pass with warning, not block.
+    fn test_v1_crc32_zero_with_weights_rejected() {
+        // v1 with crc==0 and non-empty weights: CRC is now verified strictly.
+        // crc32=0 sentinel is only skipped when weights are empty.
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size + 4]; // 1 float dummy
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
@@ -137,14 +138,39 @@ mod tests {
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
-        header.crc32 = 0; // Sentinel: CRC absent in v1
+        header.crc32 = 0;
 
-        // Writes a dummy weight
         let w = 0.5f32;
         data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
 
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::CrcMismatch");
+        assert!(
+            matches!(namb_err, NambError::CrcMismatch { .. }),
+            "Expected CrcMismatch, got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_v1_crc32_zero_empty_weights_skips() -> Result<()> {
+        // v1 with crc==0 AND empty weights: CRC check is skipped.
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.crc32 = 0;
+
         let parsed = parse_namb(&data)?;
-        assert_eq!(parsed.weights, vec![0.5f32]);
+        assert!(parsed.weights.is_empty());
         Ok(())
     }
 
@@ -191,21 +217,18 @@ mod tests {
         // Weights section with trailing 1-3 bytes must be rejected.
         for residue in 1..=3 {
             let header_size = std::mem::size_of::<NambHeader>();
-            let weights_bytes = residue + 4; // 1 complete f32 + residue
+            let weights_bytes = residue + 4;
             let mut data = vec![0u8; header_size + weights_bytes];
             let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
             header.magic = 0x4E414D42;
             header.version = 1;
             header.weights_offset = header_size as u32;
-            header.crc32 = 0; // v1 sentinel: no CRC
-            // Fill version_str with something
             header.version_str[0..5].copy_from_slice(b"1.0.0");
 
-            // Write one valid f32
             let weight = 0.5f32;
             data[header_size..header_size + 4].copy_from_slice(&weight.to_le_bytes());
-            // Trailing 1-3 bytes are left as zeros (residue)
+            header.crc32 = crc32_ieee(&data[header_size..]);
 
             let err = parse_namb(&data).unwrap_err();
             let namb_err = err
@@ -288,8 +311,9 @@ mod tests {
 
     // ── Truncation at header boundary offsets ──────────────────────────
 
-    /// Builds a .namb v1 without CRC (crc32=0 sentinel) for truncation testing.
-    /// CRC is intentionally 0 so truncation doesn't trigger CRC mismatch.
+    /// Builds a .namb v1 with valid CRC for truncation testing.
+    /// CRC is computed so truncation tests can pass through CRC validation
+    /// and reach the weight section truncation checks.
     fn build_namb_v1_no_crc(w_floats: &[f32]) -> Vec<u8> {
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size + w_floats.len() * 4];
@@ -298,7 +322,6 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0; // v1 sentinel: no CRC validation
         header.version_str[0..5].copy_from_slice(b"1.0.0");
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
@@ -308,6 +331,7 @@ mod tests {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
+        header.crc32 = crc32_ieee(&data[header_size..]);
         data
     }
 
@@ -336,9 +360,10 @@ mod tests {
 
     #[test]
     fn test_truncation_weight_boundaries() -> Result<()> {
-        // Creates a valid namb with 16 weights (no CRC) and truncates
+        // Creates a valid namb with 16 weights and truncates
         // at every 4-byte boundary within the weight section.
-        // Each truncation at a 4-byte boundary must parse correctly.
+        // With strict CRC v1, truncation within the weight section
+        // triggers CrcMismatch before reaching weight parsing.
         let weights: Vec<f32> = (0..16).map(|i| i as f32).collect();
         let full = build_namb_v1_no_crc(&weights);
         let header_size = std::mem::size_of::<NambHeader>();
@@ -346,24 +371,24 @@ mod tests {
         for num_weights in 0..=weights.len() {
             let truncate_at = header_size + num_weights * 4;
             let truncated = &full[..truncate_at];
-            let parsed = parse_namb(truncated)?;
-            assert_eq!(
-                parsed.weights.len(),
-                num_weights,
-                "Expected {} weights at truncation offset {}, got {}",
-                num_weights,
-                truncate_at,
-                parsed.weights.len()
-            );
-            // Verify weight values match the original
-            for (i, &expected) in weights[..num_weights].iter().enumerate() {
+            let result = parse_namb(truncated);
+            if num_weights == weights.len() {
+                let parsed = result?;
+                assert_eq!(parsed.weights.len(), weights.len());
+            } else {
+                let err = result.unwrap_err();
+                let namb_err = err
+                    .downcast_ref::<NambError>()
+                    .expect("Error should be NambError variant");
                 assert!(
-                    (parsed.weights[i] - expected).abs() < f32::EPSILON,
-                    "Weight {} mismatch at truncation {} bytes: expected {}, got {}",
-                    i,
+                    matches!(
+                        namb_err,
+                        NambError::CrcMismatch { .. } | NambError::Truncated { .. }
+                    ),
+                    "Truncation at {} weights (offset {}): expected CrcMismatch or Truncated, got {:?}",
+                    num_weights,
                     truncate_at,
-                    expected,
-                    parsed.weights[i]
+                    namb_err
                 );
             }
         }
@@ -373,7 +398,7 @@ mod tests {
     #[test]
     fn test_truncation_residue_at_every_boundary() {
         // For every 4-byte boundary in the weights section, adding 1-3
-        // residue bytes must be rejected as Truncated.
+        // residue bytes must be rejected (CrcMismatch or Truncated).
         let weights: Vec<f32> = (0..8).map(|i| i as f32).collect();
         let full = build_namb_v1_no_crc(&weights);
         let header_size = std::mem::size_of::<NambHeader>();
@@ -389,10 +414,13 @@ mod tests {
                 let err = parse_namb(truncated).unwrap_err();
                 let namb_err = err
                     .downcast_ref::<NambError>()
-                    .expect("Error should be NambError::Truncated");
+                    .expect("Error should be NambError variant");
                 assert!(
-                    matches!(namb_err, NambError::Truncated { .. }),
-                    "Residue {} after {} weights (offset {}): expected Truncated, got {:?}",
+                    matches!(
+                        namb_err,
+                        NambError::CrcMismatch { .. } | NambError::Truncated { .. }
+                    ),
+                    "Residue {} after {} weights (offset {}): expected CrcMismatch or Truncated, got {:?}",
                     residue,
                     num_weights,
                     truncate_at,
@@ -461,13 +489,13 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0; // v1 sentinel: no CRC
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
 
         data[header_size..header_size + 4].copy_from_slice(&w[0].to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -490,7 +518,6 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
@@ -500,6 +527,7 @@ mod tests {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -522,7 +550,6 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
@@ -532,6 +559,7 @@ mod tests {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err

@@ -82,8 +82,11 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 );
                 return Ok(Box::new(StaticModel::WavenetA2Full(Box::new(model))));
             }
-            A2TopologyResult::KnownFastPath(_) => {
-                unreachable!("is_a2_shape KnownFastPath only returns 3 or 8")
+            A2TopologyResult::KnownFastPath(unexpected) => {
+                bail!(
+                    "Unexpected A2 channels in KnownFastPath: {}. Only 3 (Lite) and 8 (Full) are supported.",
+                    unexpected
+                )
             }
             A2TopologyResult::Dynamic => {
                 use crate::loader::nam_json::validation::{

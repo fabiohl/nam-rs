@@ -126,7 +126,16 @@ pub fn transpose_conv1d_interleaved_4wide(
     out_ch: usize,
     kernel: usize,
 ) {
+    debug_assert!(
+        raw.len() >= out_ch * in_ch * kernel,
+        "raw slice too short for transposition"
+    );
     let num_blocks = out_ch.div_ceil(4);
+    let padded_total = num_blocks * 4 * in_ch * kernel;
+    debug_assert!(
+        weights.len() >= padded_total,
+        "weights slice too short for interleaved output"
+    );
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -148,6 +157,14 @@ pub fn transpose_conv1d_interleaved_4wide(
 /// Rearranges dense layer weights into transposed format, keeping full f32 precision.
 /// Stores result in column-major layout: `f32_weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c]`.
 fn transpose_dense_layer_f32(raw: &[f32], weights: &mut [f32], in_size: usize, out_size: usize) {
+    debug_assert!(
+        raw.len() >= out_size * in_size,
+        "raw slice too short for dense transposition"
+    );
+    debug_assert!(
+        weights.len() >= in_size * out_size,
+        "weights slice too short for dense output"
+    );
     for out_c in 0..out_size {
         for in_c in 0..in_size {
             weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c];

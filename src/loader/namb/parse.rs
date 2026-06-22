@@ -72,10 +72,16 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
             return Err(NambError::CrcMissing { version }.into());
         }
         check_crc(data, weights_offset, crc32_header)?;
-    } else if crc32_header != 0 {
-        check_crc(data, weights_offset, crc32_header)?;
     } else {
-        log::warn!("CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check");
+        let pesos_raw = &data[weights_offset..];
+        let pesos_empty = pesos_raw.is_empty() || pesos_raw.iter().all(|&b| b == 0);
+        if crc32_header == 0 && pesos_empty {
+            log::warn!(
+                "CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check"
+            );
+        } else {
+            check_crc(data, weights_offset, crc32_header)?;
+        }
     }
 
     // 4. Reads the binary weights
