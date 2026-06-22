@@ -7,6 +7,8 @@
     clippy::too_many_arguments
 )]
 
+use crate::gain_kernel_avx2;
+use crate::gain_simd_avx2;
 use core::arch::x86_64::*;
 
 /// Applies constant gain to a mono buffer using AVX2.
@@ -15,28 +17,30 @@ pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
     let len = data.len();
     let vg = _mm256_set1_ps(gain);
     let mut i = 0;
-    while i + 8 <= len {
-        let v = _mm256_loadu_ps(data.as_ptr().add(i));
-        _mm256_storeu_ps(data.as_mut_ptr().add(i), _mm256_mul_ps(v, vg));
-        i += 8;
-    }
-    while i < len {
-        data[i] *= gain;
-        i += 1;
-    }
+    gain_kernel_avx2!(
+        i,
+        len,
+        {
+            let v = _mm256_loadu_ps(data.as_ptr().add(i));
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), _mm256_mul_ps(v, vg));
+        },
+        {
+            data[i] *= gain;
+        }
+    );
 }
 
 /// Applies gain and detects clipping in mono in a single pass using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_and_detect_clipping_mono_avx2(data: &mut [f32], gain: f32) -> bool {
     let len = data.len();
-    let mut i = 0;
     let vg = _mm256_set1_ps(gain);
     let limit = _mm256_set1_ps(1.0);
     let sign_mask = _mm256_set1_ps(-0.0f32);
     let mut any_clip = _mm256_setzero_ps();
+    let mut i = 0;
 
-    while i + 8 <= len {
+    gain_simd_avx2!(i, len, {
         let p = data.as_mut_ptr().add(i);
         let v = _mm256_loadu_ps(p);
         let g = _mm256_mul_ps(v, vg);
@@ -44,8 +48,7 @@ pub unsafe fn apply_gain_and_detect_clipping_mono_avx2(data: &mut [f32], gain: f
         let abs = _mm256_andnot_ps(sign_mask, g);
         let cmp = _mm256_cmp_ps(abs, limit, _CMP_GT_OQ);
         any_clip = _mm256_or_ps(any_clip, cmp);
-        i += 8;
-    }
+    });
 
     let mut clipped = _mm256_movemask_ps(any_clip) != 0;
 
@@ -68,13 +71,13 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
     gain: f32,
 ) -> bool {
     let n = core::cmp::min(left.len(), right.len());
-    let mut i = 0;
     let ymm_gain = _mm256_set1_ps(gain);
     let limit = _mm256_set1_ps(1.0);
     let sign_mask = _mm256_set1_ps(-0.0f32);
     let mut any_clip = _mm256_setzero_ps();
+    let mut i = 0;
 
-    while i + 8 <= n {
+    gain_simd_avx2!(i, n, {
         let pl = left.as_mut_ptr().add(i);
         let pr = right.as_mut_ptr().add(i);
 
@@ -94,8 +97,7 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
         let cmp_r = _mm256_cmp_ps(abs_r, limit, _CMP_GT_OQ);
 
         any_clip = _mm256_or_ps(any_clip, _mm256_or_ps(cmp_l, cmp_r));
-        i += 8;
-    }
+    });
 
     let mut clipped = _mm256_movemask_ps(any_clip) != 0;
 
@@ -116,20 +118,22 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_stereo_avx2(left: &mut [f32], right: &mut [f32], gain: f32) {
     let n = core::cmp::min(left.len(), right.len());
-    let mut i = 0;
     let ymm_gain = _mm256_set1_ps(gain);
-    while i + 8 <= n {
-        let pl = left.as_mut_ptr().add(i);
-        let pr = right.as_mut_ptr().add(i);
-        _mm256_storeu_ps(pl, _mm256_mul_ps(_mm256_loadu_ps(pl), ymm_gain));
-        _mm256_storeu_ps(pr, _mm256_mul_ps(_mm256_loadu_ps(pr), ymm_gain));
-        i += 8;
-    }
-    while i < n {
-        *left.get_unchecked_mut(i) *= gain;
-        *right.get_unchecked_mut(i) *= gain;
-        i += 1;
-    }
+    let mut i = 0;
+    gain_kernel_avx2!(
+        i,
+        n,
+        {
+            let pl = left.as_mut_ptr().add(i);
+            let pr = right.as_mut_ptr().add(i);
+            _mm256_storeu_ps(pl, _mm256_mul_ps(_mm256_loadu_ps(pl), ymm_gain));
+            _mm256_storeu_ps(pr, _mm256_mul_ps(_mm256_loadu_ps(pr), ymm_gain));
+        },
+        {
+            *left.get_unchecked_mut(i) *= gain;
+            *right.get_unchecked_mut(i) *= gain;
+        }
+    );
 }
 
 /// Applies linear gain ramp in stereo via AVX2.
@@ -148,14 +152,13 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
         start,
     );
     let v_step_8 = _mm256_set1_ps(8.0 * step);
-    while i + 8 <= n {
+    gain_simd_avx2!(i, n, {
         let pl = left.as_mut_ptr().add(i);
         let pr = right.as_mut_ptr().add(i);
         _mm256_storeu_ps(pl, _mm256_mul_ps(_mm256_loadu_ps(pl), current_ramp));
         _mm256_storeu_ps(pr, _mm256_mul_ps(_mm256_loadu_ps(pr), current_ramp));
         current_ramp = _mm256_add_ps(current_ramp, v_step_8);
-        i += 8;
-    }
+    });
     let mut g = start + (i as f32) * step;
     while i < n {
         *left.get_unchecked_mut(i) *= g;
@@ -171,30 +174,31 @@ pub unsafe fn apply_dither_add_avx2(data: &mut [f32], offset: f32) {
     let len = data.len();
     let voffset = _mm256_set1_ps(offset);
     let mut i = 0;
-    while i + 8 <= len {
-        let p = data.as_mut_ptr().add(i);
-        _mm256_storeu_ps(p, _mm256_add_ps(_mm256_loadu_ps(p), voffset));
-        i += 8;
-    }
-    while i < len {
-        *data.get_unchecked_mut(i) += offset;
-        i += 1;
-    }
+    gain_kernel_avx2!(
+        i,
+        len,
+        {
+            let p = data.as_mut_ptr().add(i);
+            _mm256_storeu_ps(p, _mm256_add_ps(_mm256_loadu_ps(p), voffset));
+        },
+        {
+            *data.get_unchecked_mut(i) += offset;
+        }
+    );
 }
 
 /// Crossfade blend (mono): `out[i] = fma(pending[i] - out[i], t, out[i])`.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn crossfade_blend_mono_avx2(out: &mut [f32], pending: &[f32], t: f32) {
     let n = core::cmp::min(out.len(), pending.len());
-    let vt = _mm256_set1_ps(t);
     let mut i = 0;
-    while i + 8 <= n {
+    let vt = _mm256_set1_ps(t);
+    gain_simd_avx2!(i, n, {
         let v_out = _mm256_loadu_ps(out.as_ptr().add(i));
         let v_pending = _mm256_loadu_ps(pending.as_ptr().add(i));
         let v_diff = _mm256_sub_ps(v_pending, v_out);
         _mm256_storeu_ps(out.as_mut_ptr().add(i), _mm256_fmadd_ps(v_diff, vt, v_out));
-        i += 8;
-    }
+    });
     let one_minus_t = 1.0 - t;
     while i < n {
         *out.get_unchecked_mut(i) =
@@ -219,12 +223,11 @@ pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {
         start,
     );
     let v_step_8 = _mm256_set1_ps(8.0 * step);
-    while i + 8 <= len {
+    gain_simd_avx2!(i, len, {
         let ptr = buffer.as_mut_ptr().add(i);
         _mm256_storeu_ps(ptr, _mm256_mul_ps(_mm256_loadu_ps(ptr), current_ramp));
         current_ramp = _mm256_add_ps(current_ramp, v_step_8);
-        i += 8;
-    }
+    });
     let mut m = start + (i as f32) * step;
     while i < len {
         *buffer.get_unchecked_mut(i) *= m;

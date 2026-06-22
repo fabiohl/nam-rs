@@ -7,6 +7,9 @@
     clippy::too_many_arguments
 )]
 
+use crate::gain_kernel_avx512_masked;
+use crate::gain_kernel_avx512_scalar;
+use crate::gain_simd_avx512;
 use core::arch::x86_64::*;
 
 /// Adds a broadcast constant to every element of a mono buffer using AVX-512.
@@ -15,16 +18,19 @@ pub unsafe fn apply_dither_add_avx512(data: &mut [f32], offset: f32) {
     let len = data.len();
     let voffset = _mm512_set1_ps(offset);
     let mut i = 0;
-    while i + 16 <= len {
-        let p = data.as_mut_ptr().add(i);
-        _mm512_storeu_ps(p, _mm512_add_ps(_mm512_loadu_ps(p), voffset));
-        i += 16;
-    }
-    if i < len {
-        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
-        let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
-        _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_add_ps(v, voffset));
-    }
+    gain_kernel_avx512_masked!(
+        i,
+        len,
+        {
+            let p = data.as_mut_ptr().add(i);
+            _mm512_storeu_ps(p, _mm512_add_ps(_mm512_loadu_ps(p), voffset));
+        },
+        {
+            let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+            let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
+            _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_add_ps(v, voffset));
+        }
+    );
 }
 
 /// Applies constant gain to a mono buffer using AVX-512.
@@ -33,29 +39,32 @@ pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
     let len = data.len();
     let vg = _mm512_set1_ps(gain);
     let mut i = 0;
-    while i + 16 <= len {
-        let v = _mm512_loadu_ps(data.as_ptr().add(i));
-        _mm512_storeu_ps(data.as_mut_ptr().add(i), _mm512_mul_ps(v, vg));
-        i += 16;
-    }
-    if i < len {
-        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
-        let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
-        _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_mul_ps(v, vg));
-    }
+    gain_kernel_avx512_masked!(
+        i,
+        len,
+        {
+            let v = _mm512_loadu_ps(data.as_ptr().add(i));
+            _mm512_storeu_ps(data.as_mut_ptr().add(i), _mm512_mul_ps(v, vg));
+        },
+        {
+            let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+            let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
+            _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_mul_ps(v, vg));
+        }
+    );
 }
 
 /// Applies gain and detects clipping in mono in a single pass using AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_gain_and_detect_clipping_mono_avx512(data: &mut [f32], gain: f32) -> bool {
     let len = data.len();
-    let mut i = 0;
     let v_gain = _mm512_set1_ps(gain);
     let v_limit = _mm512_set1_ps(1.0);
     let sign_mask = _mm512_set1_ps(-0.0f32);
     let mut k_clip = 0u16;
+    let mut i = 0;
 
-    while i + 16 <= len {
+    gain_simd_avx512!(i, len, {
         let p = data.as_mut_ptr().add(i);
         let v = _mm512_loadu_ps(p);
         let g = _mm512_mul_ps(v, v_gain);
@@ -63,8 +72,7 @@ pub unsafe fn apply_gain_and_detect_clipping_mono_avx512(data: &mut [f32], gain:
         let abs = _mm512_andnot_ps(sign_mask, g);
         let k = _mm512_cmp_ps_mask(abs, v_limit, _CMP_GT_OQ);
         k_clip |= k;
-        i += 16;
-    }
+    });
 
     let mut clipped = k_clip != 0;
 
@@ -87,13 +95,13 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
     gain: f32,
 ) -> bool {
     let n = core::cmp::min(left.len(), right.len());
-    let mut i = 0;
     let v_gain = _mm512_set1_ps(gain);
     let v_limit = _mm512_set1_ps(1.0);
     let sign_mask = _mm512_set1_ps(-0.0f32);
     let mut k_clip = 0u16;
+    let mut i = 0;
 
-    while i + 16 <= n {
+    gain_simd_avx512!(i, n, {
         let pl = left.as_mut_ptr().add(i);
         let pr = right.as_mut_ptr().add(i);
 
@@ -113,8 +121,7 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
         let k_r = _mm512_cmp_ps_mask(abs_r, v_limit, _CMP_GT_OQ);
 
         k_clip |= k_l | k_r;
-        i += 16;
-    }
+    });
 
     let mut clipped = k_clip != 0;
 
@@ -135,20 +142,22 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_gain_stereo_avx512(left: &mut [f32], right: &mut [f32], gain: f32) {
     let n = core::cmp::min(left.len(), right.len());
-    let mut i = 0;
     let zmm_gain = _mm512_set1_ps(gain);
-    while i + 16 <= n {
-        let pl = left.as_mut_ptr().add(i);
-        let pr = right.as_mut_ptr().add(i);
-        _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), zmm_gain));
-        _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), zmm_gain));
-        i += 16;
-    }
-    while i < n {
-        *left.get_unchecked_mut(i) *= gain;
-        *right.get_unchecked_mut(i) *= gain;
-        i += 1;
-    }
+    let mut i = 0;
+    gain_kernel_avx512_scalar!(
+        i,
+        n,
+        {
+            let pl = left.as_mut_ptr().add(i);
+            let pr = right.as_mut_ptr().add(i);
+            _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), zmm_gain));
+            _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), zmm_gain));
+        },
+        {
+            *left.get_unchecked_mut(i) *= gain;
+            *right.get_unchecked_mut(i) *= gain;
+        }
+    );
 }
 
 /// Applies linear gain ramp in stereo via AVX-512.
@@ -175,14 +184,13 @@ pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], star
         start,
     );
     let v_step_16 = _mm512_set1_ps(16.0 * step);
-    while i + 16 <= n {
+    gain_simd_avx512!(i, n, {
         let pl = left.as_mut_ptr().add(i);
         let pr = right.as_mut_ptr().add(i);
         _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), current_ramp));
         _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), current_ramp));
         current_ramp = _mm512_add_ps(current_ramp, v_step_16);
-        i += 16;
-    }
+    });
     let mut g = start + (i as f32) * step;
     while i < n {
         *left.get_unchecked_mut(i) *= g;
@@ -216,12 +224,11 @@ pub unsafe fn apply_ramp_avx512(buffer: &mut [f32], start: f32, step: f32) {
         start,
     );
     let v_step_16 = _mm512_set1_ps(16.0 * step);
-    while i + 16 <= len {
+    gain_simd_avx512!(i, len, {
         let ptr = buffer.as_mut_ptr().add(i);
         _mm512_storeu_ps(ptr, _mm512_mul_ps(_mm512_loadu_ps(ptr), current_ramp));
         current_ramp = _mm512_add_ps(current_ramp, v_step_16);
-        i += 16;
-    }
+    });
     let mut m = start + (i as f32) * step;
     while i < len {
         *buffer.get_unchecked_mut(i) *= m;
@@ -236,22 +243,25 @@ pub unsafe fn crossfade_blend_mono_avx512(out: &mut [f32], pending: &[f32], t: f
     let n = core::cmp::min(out.len(), pending.len());
     let vt = _mm512_set1_ps(t);
     let mut i = 0;
-    while i + 16 <= n {
-        let v_out = _mm512_loadu_ps(out.as_ptr().add(i));
-        let v_pending = _mm512_loadu_ps(pending.as_ptr().add(i));
-        let v_diff = _mm512_sub_ps(v_pending, v_out);
-        _mm512_storeu_ps(out.as_mut_ptr().add(i), _mm512_fmadd_ps(v_diff, vt, v_out));
-        i += 16;
-    }
-    if i < n {
-        let mask = _cvtu32_mask16((1u32 << (n - i)) - 1);
-        let v_out = _mm512_maskz_loadu_ps(mask, out.as_ptr().add(i));
-        let v_pending = _mm512_maskz_loadu_ps(mask, pending.as_ptr().add(i));
-        let v_diff = _mm512_sub_ps(v_pending, v_out);
-        _mm512_mask_storeu_ps(
-            out.as_mut_ptr().add(i),
-            mask,
-            _mm512_fmadd_ps(v_diff, vt, v_out),
-        );
-    }
+    gain_kernel_avx512_masked!(
+        i,
+        n,
+        {
+            let v_out = _mm512_loadu_ps(out.as_ptr().add(i));
+            let v_pending = _mm512_loadu_ps(pending.as_ptr().add(i));
+            let v_diff = _mm512_sub_ps(v_pending, v_out);
+            _mm512_storeu_ps(out.as_mut_ptr().add(i), _mm512_fmadd_ps(v_diff, vt, v_out));
+        },
+        {
+            let mask = _cvtu32_mask16((1u32 << (n - i)) - 1);
+            let v_out = _mm512_maskz_loadu_ps(mask, out.as_ptr().add(i));
+            let v_pending = _mm512_maskz_loadu_ps(mask, pending.as_ptr().add(i));
+            let v_diff = _mm512_sub_ps(v_pending, v_out);
+            _mm512_mask_storeu_ps(
+                out.as_mut_ptr().add(i),
+                mask,
+                _mm512_fmadd_ps(v_diff, vt, v_out),
+            );
+        }
+    );
 }

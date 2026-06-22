@@ -5,6 +5,9 @@
 //!
 //! Dynamically dispatches to the configured SIMD backend.
 
+#[doc = "Internal: the `gain_kernel!` macro used by AVX2 and AVX-512 gain kernels."]
+mod kernel_macro;
+
 mod avx2;
 mod avx512;
 

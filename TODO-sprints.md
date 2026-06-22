@@ -18,7 +18,7 @@
 
 Foco: Extração de *boilerplates* repetitivos nas rotinas matemáticas de ganho e funções de ativação.
 
-- [ ] **Tarefa T6.1.1: Parametrização via Macros em `Gain` (AVX2 / AVX-512)**
+- [x] **Tarefa T6.1.1: Parametrização via Macros em `Gain` (AVX2 / AVX-512)**
   - **Origem:** Achado F23 (`src/math/dsp/gain/avx2.rs` e `gain/avx512.rs`).
   - **Ação:** Inspirando-se no padrão existente `gemv_kernel!`, criar uma macro (ex: `gain_kernel!`) que parametrize as rotinas de ganho (largura, *step*, *tail*). Reimplementar os laços das fatias iterativas (*slice*) invocando a macro unificada.
   - **Riscos/Atenção:** Assegurar o correto tratamento dos elementos escalares (tail/remainder).
