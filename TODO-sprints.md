@@ -148,7 +148,26 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 4. **Header Namb (`parse.rs`):** Validar as variáveis de header lidas (`sample_rate`, `input_level_dbu`, `output_level_dbu`) com `is_finite()`. Além disso, rejeitar `sample_rate <= 0.0`.
 5. Prover testes injetando floats maliciosos nestes campos para atestar o reject do modelo (fail-fast, sem panic).
 
-### 📝 Tarefa 5.2: Proteção contra Exaustão de Memória (OOM/DoS) [TO-DO]
+### 📝 Tarefa 5.2: Proteção contra Exaustão de Memória (OOM/DoS) [DONE]
+
+**Nota pós-implementação (2026-06-21):**
+
+* Constantes de limite definidas em `src/loader/nam_json/validation.rs`:
+  `MAX_LSTM_LAYERS=16`, `MAX_LSTM_HIDDEN_SIZE=1024`, `MAX_WAVENET_FREE_CHANNELS=512`,
+  `MAX_A2_DYN_CHANNELS=256`, `MAX_A2_DYN_BOTTLENECK=256`.
+* **LSTM:** `get_lstm_topology()` rejeita `num_layers > 16` ou `hidden_size > 1024`
+  retornando `None`, impedindo alocação em `build_lstm_dynamic` (onde
+  `Vec::with_capacity(num_layers)` e buffers quadráticos em `hidden_size` causariam OOM).
+* **WaveNet Free-shape:** `get_wavenet_topology()` rejeita per-layer `channels > 512`
+  com `WavenetTopologyResult::Rejected`, antes que `build_wavenet_array_dyn`
+  aloque `MirroredBuffer` e `AlignedVec` multiplicativos.
+* **A2-Dyn:** Dispatcher (`wavenet/mod.rs`) rejeita `channels > 256` ou
+  `bottleneck > 256` via `bail!()` antes de `WaveNetA2Dyn::new()`, prevenindo
+  alocações catastróficas em `head_ring` e `head1x1_w`.
+* 8 testes negativos: `test_lstm_rejects_*` (2), `test_wavenet_free_rejects_channels_too_high`,
+  `test_a2_dyn_rejects_*` (2), `test_lstm_accepts_max_bounds`,
+  `test_wavenet_free_accepts_max_channels`, `test_a2_dyn_accepts_max_channels_and_bottleneck`.
+* `validation` module promovido a `pub(crate)` para acesso cross-crate.
 
 **Responsável Sugerido:** `implementador`
 **Contexto:** Alguns tipos de modelo especificam sua topologia (canais, camadas ocultas) no arquivo e alocam `Vec` baseados nesses tamanhos antes de verificar a quantidade real de pesos do bloco, abrindo janela para alocações em casa de GBs caso os canais sejam gigantes (DoS). (Ref: F2)

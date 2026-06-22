@@ -22,6 +22,23 @@ const MAX_TRAINING_DEPTH: usize = 16;
 /// Maximum number of submodels in a SlimmableContainer.
 const MAX_SUBMODELS: usize = 8;
 
+// ── Topology bounds (DoS/OOM prevention — Sprint 5, Task 5.2) ──
+
+/// Maximum number of LSTM layers accepted from model config.
+pub(crate) const MAX_LSTM_LAYERS: usize = 16;
+
+/// Maximum LSTM hidden size accepted from model config.
+pub(crate) const MAX_LSTM_HIDDEN_SIZE: usize = 1024;
+
+/// Maximum channels per layer-array for WaveNet A1 free-geometry (non-catalog SKU).
+pub(crate) const MAX_WAVENET_FREE_CHANNELS: usize = 512;
+
+/// Maximum channels for A2-Dynamic (A2 that doesn't fit the fast-path).
+pub(crate) const MAX_A2_DYN_CHANNELS: usize = 256;
+
+/// Maximum bottleneck size for A2-Dynamic.
+pub(crate) const MAX_A2_DYN_BOTTLENECK: usize = 256;
+
 /// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
 #[cfg(not(test))]
 struct WeightsVisitor;

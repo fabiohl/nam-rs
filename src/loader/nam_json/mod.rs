@@ -11,7 +11,7 @@ pub mod error;
 pub mod model;
 pub mod parse;
 pub mod topology;
-mod validation;
+pub(crate) mod validation;
 
 pub use activation_parser::{
     LayerActivationConfig, parse_activations_from_json, parse_gating_modes_from_json,

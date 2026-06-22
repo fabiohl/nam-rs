@@ -86,9 +86,28 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 unreachable!("is_a2_shape KnownFastPath only returns 3 or 8")
             }
             A2TopologyResult::Dynamic => {
+                use crate::loader::nam_json::validation::{
+                    MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS,
+                };
+
                 let l0 = &data.config.layers[0];
                 let channels = l0.channels.unwrap_or(0);
                 let bottleneck = l0.bottleneck.unwrap_or(channels);
+
+                if channels > MAX_A2_DYN_CHANNELS {
+                    bail!(
+                        "A2-Dynamic channels ({}) exceeds maximum {} (OOM/DoS protection)",
+                        channels,
+                        MAX_A2_DYN_CHANNELS
+                    );
+                }
+                if bottleneck > MAX_A2_DYN_BOTTLENECK {
+                    bail!(
+                        "A2-Dynamic bottleneck ({}) exceeds maximum {} (OOM/DoS protection)",
+                        bottleneck,
+                        MAX_A2_DYN_BOTTLENECK
+                    );
+                }
 
                 // Parse activations from raw JSON.
                 let act_cfg = l0

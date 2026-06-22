@@ -157,6 +157,8 @@ impl NamModelData {
 /// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid
 /// WaveNet A1 geometry, not only the four catalog SKUs.
 pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
+    use super::validation::MAX_WAVENET_FREE_CHANNELS;
+
     // ── Architecture gate ──
     if data.architecture != "WaveNet" {
         return WavenetTopologyResult::Rejected("Not a WaveNet model.".to_string());
@@ -181,7 +183,16 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
 
     for (i, layer) in layers.iter().enumerate() {
         let ch = match layer.channels {
-            Some(c) if c > 0 => c,
+            Some(c) if c > 0 => {
+                if c > MAX_WAVENET_FREE_CHANNELS {
+                    return WavenetTopologyResult::Rejected(format!(
+                        "Layer {} channels ({}) exceeds maximum {} — \
+                         OOM/DoS protection (Task 5.2).",
+                        i, c, MAX_WAVENET_FREE_CHANNELS
+                    ));
+                }
+                c
+            }
             _ => {
                 return WavenetTopologyResult::Rejected(format!(
                     "Layer {} is missing or has invalid 'channels'.",
@@ -314,13 +325,30 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
 }
 
 /// Checks and returns the LSTM geometry (num_layers, hidden_size).
+///
+/// Rejects topologies that exceed safe bounds to prevent DoS/OOM:
+/// - `num_layers > MAX_LSTM_LAYERS` (16)
+/// - `hidden_size > MAX_LSTM_HIDDEN_SIZE` (1024)
 pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
+    use super::validation::{MAX_LSTM_HIDDEN_SIZE, MAX_LSTM_LAYERS};
+
     if data.architecture != "LSTM" {
         return None;
     }
 
     let num_layers = data.config.num_layers?;
     let hidden_size = data.config.hidden_size?;
+
+    if num_layers > MAX_LSTM_LAYERS {
+        log::warn!("LSTM num_layers={num_layers} exceeds maximum {MAX_LSTM_LAYERS} — rejected");
+        return None;
+    }
+    if hidden_size > MAX_LSTM_HIDDEN_SIZE {
+        log::warn!(
+            "LSTM hidden_size={hidden_size} exceeds maximum {MAX_LSTM_HIDDEN_SIZE} — rejected"
+        );
+        return None;
+    }
     Some((num_layers, hidden_size))
 }
 

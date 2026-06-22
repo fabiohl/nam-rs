@@ -951,3 +951,199 @@ fn test_topology_accepts_null_head() {
         "get_wavenet_topology should accept WaveNet model with null head, got: {result:?}"
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Tarefa 5.2 — OOM/DoS protection: topology bounds tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+use crate::loader::nam_json::validation::{
+    MAX_LSTM_HIDDEN_SIZE, MAX_LSTM_LAYERS, MAX_WAVENET_FREE_CHANNELS,
+};
+
+// ── LSTM bounds ──
+
+#[test]
+fn test_lstm_rejects_num_layers_too_high() {
+    let json = format!(
+        r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": 8, "layers": []}}, "weights": [0.0]}}"#,
+        MAX_LSTM_LAYERS + 1
+    );
+    let parsed = parse_nam_json(&json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), None);
+}
+
+#[test]
+fn test_lstm_rejects_hidden_size_too_high() {
+    let json = format!(
+        r#"{{"architecture": "LSTM", "config": {{"num_layers": 2, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
+        MAX_LSTM_HIDDEN_SIZE + 1
+    );
+    let parsed = parse_nam_json(&json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), None);
+}
+
+#[test]
+fn test_lstm_accepts_max_bounds() {
+    let json = format!(
+        r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
+        MAX_LSTM_LAYERS, MAX_LSTM_HIDDEN_SIZE
+    );
+    let parsed = parse_nam_json(&json).expect("parse");
+    assert_eq!(
+        get_lstm_topology(&parsed),
+        Some((MAX_LSTM_LAYERS, MAX_LSTM_HIDDEN_SIZE))
+    );
+}
+
+// ── WaveNet free-shape channels bounds ──
+
+/// Helper: creates a 2‑layer WaveNet JSON with the given channels.
+fn make_wavenet_channels_json(channels: usize) -> String {
+    let d0 = [1, 2, 4, 8, 16, 32, 64];
+    let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+    make_wavenet_json_collect_fmt(channels, &d0, &d1, 4)
+}
+
+fn make_wavenet_json_collect_fmt(
+    channels: usize,
+    dils_0: &[usize],
+    dils_1: &[usize],
+    head_size: usize,
+) -> String {
+    let d0_s: Vec<String> = dils_0.iter().map(|d| d.to_string()).collect();
+    let d1_s: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
+    format!(
+        r#"{{
+            "architecture": "WaveNet",
+            "config": {{
+                "layers": [
+                    {{
+                        "channels": {channels}, "kernel_size": 3, "head_size": {head_size},
+                        "dilations": [{}],
+                        "gated": false, "head_bias": false
+                    }},
+                    {{
+                        "channels": {channels}, "kernel_size": 3, "head_size": {head_size},
+                        "dilations": [{}],
+                        "gated": false, "head_bias": true
+                    }}
+                ],
+                "head": null, "head_scale": 0.02
+            }},
+            "weights": [0.0]
+        }}"#,
+        d0_s.join(","),
+        d1_s.join(",")
+    )
+}
+
+#[test]
+fn test_wavenet_free_rejects_channels_too_high() {
+    let json = make_wavenet_channels_json(MAX_WAVENET_FREE_CHANNELS + 1);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("OOM/DoS")),
+        "Expected Rejected(OOM/DoS), got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_free_accepts_max_channels() {
+    let json = make_wavenet_channels_json(MAX_WAVENET_FREE_CHANNELS);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Free(_)),
+        "Expected Free geometry at max channels, got: {result:?}"
+    );
+}
+
+// ── A2-Dynamic channels / bottleneck bounds (exercised through the dispatcher) ──
+
+use crate::loader::dispatcher::wavenet::build_wavenet;
+
+/// Helper: builds valid A2 JSON with the minimal required shape for A2-Dyn routing.
+fn make_a2_dyn_json(channels: usize, bottleneck: usize) -> String {
+    // A2 requires exactly 1 layer array, 23 kernel sizes, 23 dilations,
+    // LeakyReLU activations, no post-stack head.
+    let kernel_sizes = "6,6,6,6,6,6,6,6,6,6,6,6,6,6,15,15,6,6,6,6,6,6,6";
+    let dilations = "1,3,7,17,41,101,239,1,3,7,17,41,101,239,1,13,1,3,7,17,41,101,239";
+    let activations: String = (0..23)
+        .map(|_| r#"{"type":"LeakyReLU","negative_slope":0.01}"#)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        r#"{{
+            "version": "0.6.0",
+            "architecture": "WaveNet",
+            "config": {{
+                "in_channels": 1,
+                "head_scale": 0.02,
+                "head": null,
+                "layers": [{{
+                    "input_size": 1,
+                    "condition_size": 1,
+                    "channels": {channels},
+                    "bottleneck": {bottleneck},
+                    "head": {{"out_channels": 1, "kernel_size": 16, "bias": true}},
+                    "kernel_sizes": [{kernel_sizes}],
+                    "dilations": [{dilations}],
+                    "activation": [{activations}],
+                    "gating_mode": ["none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none","none"],
+                    "head1x1": {{"active": false}},
+                    "layer1x1": {{"active": true, "groups": 1}},
+                    "groups_input": 1,
+                    "groups_input_mixin": 1
+                }}]
+            }},
+            "weights": [0.0],
+            "sample_rate": 48000
+        }}"#
+    )
+}
+
+#[test]
+fn test_a2_dyn_rejects_channels_too_high() {
+    use crate::loader::nam_json::validation::MAX_A2_DYN_CHANNELS;
+    let json = make_a2_dyn_json(MAX_A2_DYN_CHANNELS + 1, 16);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let err = match build_wavenet(&parsed) {
+        Err(e) => e.to_string(),
+        Ok(_) => String::new(),
+    };
+    assert!(
+        err.contains("OOM/DoS"),
+        "Expected OOM/DoS error, got: {err}"
+    );
+}
+
+#[test]
+fn test_a2_dyn_rejects_bottleneck_too_high() {
+    use crate::loader::nam_json::validation::MAX_A2_DYN_BOTTLENECK;
+    let json = make_a2_dyn_json(16, MAX_A2_DYN_BOTTLENECK + 1);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let err = match build_wavenet(&parsed) {
+        Err(e) => e.to_string(),
+        Ok(_) => String::new(),
+    };
+    assert!(
+        err.contains("OOM/DoS"),
+        "Expected OOM/DoS error, got: {err}"
+    );
+}
+
+#[test]
+fn test_a2_dyn_accepts_max_channels_and_bottleneck() {
+    use crate::loader::nam_json::validation::{MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS};
+    let json = make_a2_dyn_json(MAX_A2_DYN_CHANNELS, MAX_A2_DYN_BOTTLENECK);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let err_msg = match build_wavenet(&parsed) {
+        Err(e) => e.to_string(),
+        Ok(_) => panic!("expected error (at least weight count mismatch)"),
+    };
+    assert!(
+        !err_msg.contains("OOM/DoS"),
+        "Max channels/bottleneck should not trigger OOM/DoS rejection, got: {err_msg}"
+    );
+}
