@@ -140,5 +140,4 @@ pub use model_dyn::WaveNetModelDyn;
 pub use post_stack_head::PostStackHead;
 
 #[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+mod wavenet_test;

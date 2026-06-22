@@ -33,7 +33,7 @@ pub mod softsign;
 pub mod tanh;
 
 #[cfg(test)]
-mod tests;
+mod activations_test;
 
 pub use fast_tanh::*;
 pub use fused::*;

@@ -186,5 +186,4 @@ impl NamModel for LstmModelDyn {
 use self::prewarm::*;
 
 #[cfg(test)]
-#[path = "tests.rs"]
-mod lstm_tests;
+mod lstm_test;

@@ -115,13 +115,13 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "test_files/bypass_tests.rs"]
-mod bypass_tests;
+#[path = "test_files/bypass_test.rs"]
+mod bypass_test;
 
 #[cfg(test)]
-#[path = "test_files/gate_tests.rs"]
-mod gate_tests;
+#[path = "test_files/gate_test.rs"]
+mod gate_test;
 
 #[cfg(test)]
-#[path = "test_files/dither_tests.rs"]
-mod dither_tests;
+#[path = "test_files/dither_test.rs"]
+mod dither_test;

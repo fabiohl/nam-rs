@@ -74,7 +74,7 @@ Foco: Ajustes visuais, normalização da árvore de arquivos e limpeza de *dead 
   - **Contexto:** Módulos de arquiteturas similares estão armazenados com layouts de diretório inconsistentes.
   - **Ação:** Promover o arquivo *flat* `src/models/a2/conv1d_ch8.rs` para um diretório `conv1d_ch8/` com a estrutura padrão: `{mod.rs, simd.rs, scalar.rs}`. Atualizar as exportações (`pub use`).
 
-- [ ] **Tarefa T7.2.2: Padronização da Nomenclatura dos Arquivos de Teste (F26)**
+- [x] **Tarefa T7.2.2: Padronização da Nomenclatura dos Arquivos de Teste (F26)**
   - **Contexto:** Multiplicidade de convenções como `tests.rs`, `test_files/` no lugar da oficial.
   - **Ação:** Renomear sistematicamente as ocorrências de `tests.rs` (ex: em `math/activations/`, `math/common/`, `models/{a2,lstm,wavenet}/`, e `clap/gui/ui/`) para `_test.rs` de modo a honrar o padrão do projeto. Revisar os caminhos e importações (`#[path = ...]`).
 

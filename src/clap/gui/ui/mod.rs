@@ -156,5 +156,4 @@ pub fn draw_ui(
 }
 
 #[cfg(test)]
-#[path = "test.rs"]
-mod test;
+mod ui_test;

@@ -190,18 +190,18 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     }
 }
 
-#[path = "test_files/conv1d_dyn_tests.rs"]
-mod conv1d_dyn_tests;
-#[path = "test_files/conv1d_tests.rs"]
-mod conv1d_tests;
-#[path = "test_files/dense_tests.rs"]
-mod dense_tests;
-#[path = "test_files/dynamic_parity.rs"]
-mod dynamic_parity;
-#[path = "test_files/post_stack_head_integration_tests.rs"]
-mod post_stack_head_integration_tests;
-#[path = "test_files/wavenet_tests.rs"]
-mod wavenet_tests;
+#[path = "test_files/conv1d_dyn_test.rs"]
+mod conv1d_dyn_test;
+#[path = "test_files/conv1d_test.rs"]
+mod conv1d_test;
+#[path = "test_files/dense_test.rs"]
+mod dense_test;
+#[path = "test_files/dynamic_parity_test.rs"]
+mod dynamic_parity_test;
+#[path = "test_files/post_stack_head_integration_test.rs"]
+mod post_stack_head_integration_test;
+#[path = "test_files/wavenet_sub_test.rs"]
+mod wavenet_sub_test;
 
 #[test]
 fn wavenet_ringbuffer_alignment() {

@@ -120,5 +120,4 @@ impl NamModel for model::dynamic::WaveNetA2Dyn {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+mod a2_test;

@@ -21,13 +21,13 @@ pub mod half;
 pub mod huge_alloc;
 pub use huge_alloc::HugePageVec;
 pub mod avx512;
+/// Unit tests for the common math infrastructure.
+#[cfg(test)]
+pub mod common_test;
 pub mod dispatch;
 pub mod kahan;
 pub mod ops;
 pub mod scalar_ref;
-/// Unit tests for the common math infrastructure.
-#[cfg(test)]
-pub mod tests;
 pub mod traits;
 pub mod utility;
 
