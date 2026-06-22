@@ -320,6 +320,43 @@ fn test_compute_peak_abs_mono_parity() {
 }
 
 #[test]
+fn test_convolve_stereo_parity() {
+    let coeffs =
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+    let input_l = crate::math::common::AlignedVec::from_vec(
+        (0..32).map(|i| (32 - i) as f32 * 0.05).collect(),
+    );
+    let input_r =
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
+
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    let expected = unsafe {
+        crate::math::common::convolve_stereo_fallback(
+            coeffs.as_ptr(),
+            input_l.as_ptr(),
+            input_r.as_ptr(),
+            32,
+        )
+    };
+
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    let res_avx2 = unsafe {
+        Avx2Math::convolve_stereo(coeffs.as_ptr(), input_l.as_ptr(), input_r.as_ptr(), 32)
+    };
+    assert!((res_avx2.0 - expected.0).abs() < 1e-6);
+    assert!((res_avx2.1 - expected.1).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        let res_avx512 = unsafe {
+            Avx512Math::convolve_stereo(coeffs.as_ptr(), input_l.as_ptr(), input_r.as_ptr(), 32)
+        };
+        assert!((res_avx512.0 - expected.0).abs() < 1e-6);
+        assert!((res_avx512.1 - expected.1).abs() < 1e-6);
+    }
+}
+
+#[test]
 fn test_convolve_mono_parity() {
     let coeffs =
         crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());

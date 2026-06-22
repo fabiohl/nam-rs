@@ -32,7 +32,7 @@ Foco: Extração de *boilerplates* repetitivos nas rotinas matemáticas de ganho
 
 Foco: Consolidação das operações de *Stereo Convolution* e lógicas redundantes de arquitetura do App/Plugin.
 
-- [ ] **Tarefa T6.2.1: Refatoração da Convolução Stereo (AVX2 / AVX-512)**
+- [x] **Tarefa T6.2.1: Refatoração da Convolução Stereo (AVX2 / AVX-512)**
   - **Origem:** Achado F23 (`src/math/dsp/stereo/convolution_avx2.rs` e `convolution_avx512.rs`).
   - **Ação:** Substituir as 300+ SLOC estruturais idênticas por macros de kernel ou *generics* com especializações SIMD. A macro deverá englobar carregamento alinhado, processamento e *tail escalares*.
   - **Riscos/Atenção:** A convolução é um hot-path crítico para performance e *memory safety*. Validar paridade rigorosamente através dos testes C++.

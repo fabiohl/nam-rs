@@ -9,6 +9,7 @@
 
 //! DSP operations for stereo processing and signal metering.
 
+mod conv_kernels;
 mod convolution_avx2;
 mod convolution_avx512;
 mod energy;
