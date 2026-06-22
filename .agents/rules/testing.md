@@ -15,7 +15,8 @@ To maintain project organization and performance, we follow these test organizat
 
 Unit tests should test the internal logic of each module.
 
-- **Small Files (< 300 lines):** Should keep tests **inline** at the end of the file, inside a block:
+- **Small Files (< 300 lines of source code, excluding `#[cfg(test)]` blocks):** Should keep tests
+  **inline** at the end of the file, inside a block:
 
   ```rust
   #[cfg(test)]
@@ -25,13 +26,20 @@ Unit tests should test the internal logic of each module.
   }
   ```
 
-- **Large Files (>= 300 lines):** Should move tests to a separate file with the suffix `_test.rs` in the same directory. The main file should include the test at the end:
+- **Large Files (>= 300 lines of source code, excluding `#[cfg(test)]` blocks):** Should move tests
+  to a separate file with the suffix `_test.rs` in the same directory. The main file should include
+  the test at the end:
 
   ```rust
   #[cfg(test)]
   #[path = "module_name_test.rs"]
   mod module_name_test;
   ```
+
+> **Note:** The 300-line threshold measures **source code only** (lines before `#[cfg(test)]`),
+> not the total file length including test blocks. When a file has < 300 source lines but many
+> inline tests, inline tests remain valid — the threshold defines where tests are placed, not a
+> hard cap on total file size.
 
 ## 2. Integration Tests
 
