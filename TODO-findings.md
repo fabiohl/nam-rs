@@ -515,9 +515,11 @@ Alternativamente (mais simples): usar a variante escalar existente para o tail c
 
 ---
 
-## E2 — [ALTA] `test_lstm_noise_soak` logicamente impossível: modelo zero-weight nunca emite RMS > 0 (C2 não corrigido)
+## E2 — [ALTA] `test_lstm_noise_soak` logicamente impossível: modelo zero-weight nunca emite RMS > 0 [RESOLVIDO]
 
 **Arquivo:** `tests/soak_test.rs:357-397`.
+
+**Resolução (2026-06-22):** Pesos populados deterministicamente via `SimplePcg` antes do loop soak — `input_hidden_weights` (layer1 + layer2), `bias`, `head_weights` e `head_bias`. Teste passa em `cargo test --release --test soak_test -- test_lstm_noise_soak --ignored --nocapture` (2.06s, 10M frames).
 
 **Estado atual.** Idêntico ao momento da auditoria inicial. O teste:
 

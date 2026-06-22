@@ -358,9 +358,35 @@ fn test_lstm_silence_soak() {
 #[ignore]
 fn test_lstm_noise_soak() {
     let mut model = LstmModel2::<16, 17, 32, 64>::new();
+    let mut pcg = SimplePcg::new(1337);
+
+    for gate in 0..4 {
+        for ih in 0..17 {
+            for h in 0..16 {
+                model.layer1.input_hidden_weights.0[gate][ih][h] =
+                    f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+            }
+        }
+    }
+    for gate in 0..4 {
+        for ih in 0..32 {
+            for h in 0..16 {
+                model.layer2.input_hidden_weights.0[gate][ih][h] =
+                    f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+            }
+        }
+    }
+    for i in 0..64 {
+        model.layer1.bias.0[i] = pcg.next_f32() * 0.1 - 0.05;
+        model.layer2.bias.0[i] = pcg.next_f32() * 0.1 - 0.05;
+    }
+    model.head_bias = pcg.next_f32() * 0.1;
+    for i in 0..16 {
+        model.head_weights[i] = f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+    }
+
     let mut input = vec![0.0f32; 64];
     let mut output = vec![0.0f32; 64];
-    let mut pcg = SimplePcg::new(1337);
     let num_frames = 10_000_000;
     let mut processed = 0;
 
