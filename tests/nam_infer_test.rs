@@ -282,6 +282,8 @@ fn test_wavenet_computational_stability() {
         "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence."
     );
     // The synthetic model (all weights 0.001, head_rechannel bias=0) can produce
+    // near-zero outputs by design — no lower-bound RMS check for this fixture.
+    // The synthetic model (all weights 0.001, head_rechannel bias=0) can produce
     // near-zero outputs by design — this is a known property of the controlled fixture
     const GAIN_LIMIT: f32 = 10.0;
     assert!(
@@ -346,6 +348,11 @@ fn test_wavenet_stability_feather() {
     }
     let rms = (tot_energy / 64.0).sqrt();
     assert!(
+        rms > 0.0001 && rms < 10.0,
+        "[Feather] RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+        rms
+    );
+    assert!(
         max_abs_out > 0.0,
         "[Feather] All-zero output — model may be silent"
     );
@@ -400,6 +407,11 @@ fn test_wavenet_stability_nano() {
     }
     let rms = (tot_energy / 64.0).sqrt();
     assert!(
+        rms > 0.0001 && rms < 10.0,
+        "[Nano] RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+        rms
+    );
+    assert!(
         max_abs_out > 0.0,
         "[Nano] All-zero output — model may be silent"
     );
@@ -442,6 +454,7 @@ fn test_wavenet_stability_a2_full() {
     model.process(&input, &mut output);
 
     let mut max_abs_out = 0.0f32;
+    let mut tot_energy = 0.0f64;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
@@ -449,11 +462,18 @@ fn test_wavenet_stability_a2_full() {
         );
         let abs_s = s.abs();
         max_abs_out = max_abs_out.max(abs_s);
+        tot_energy += (s as f64) * (s as f64);
         assert!(
             abs_s <= limit,
             "[A2-Full] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    let rms = (tot_energy / 64.0).sqrt();
+    assert!(
+        rms > 0.0001 && rms < 10.0,
+        "[A2-Full] RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+        rms
+    );
     assert!(
         max_abs_out > 0.0,
         "[A2-Full] All-zero output — model may be silent"
@@ -492,6 +512,7 @@ fn test_wavenet_stability_a2_lite() {
     model.process(&input, &mut output);
 
     let mut max_abs_out = 0.0f32;
+    let mut tot_energy = 0.0f64;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
@@ -499,11 +520,18 @@ fn test_wavenet_stability_a2_lite() {
         );
         let abs_s = s.abs();
         max_abs_out = max_abs_out.max(abs_s);
+        tot_energy += (s as f64) * (s as f64);
         assert!(
             abs_s <= limit,
             "[A2-Lite] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    let rms = (tot_energy / 64.0).sqrt();
+    assert!(
+        rms > 0.0001 && rms < 10.0,
+        "[A2-Lite] RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+        rms
+    );
     assert!(
         max_abs_out > 0.0,
         "[A2-Lite] All-zero output — model may be silent"
@@ -544,6 +572,7 @@ fn test_lstm_stability_2x8() {
     model.process(&input, &mut output);
 
     let mut max_abs_out = 0.0f32;
+    let mut tot_energy = 0.0f64;
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
@@ -551,11 +580,18 @@ fn test_lstm_stability_2x8() {
         );
         let abs_s = s.abs();
         max_abs_out = max_abs_out.max(abs_s);
+        tot_energy += (s as f64) * (s as f64);
         assert!(
             abs_s <= limit,
             "[LSTM 2x8] Excessive magnitude at index {i}: {s} (limit {limit}, {GAIN_LIMIT}× input peak)"
         );
     }
+    let rms = (tot_energy / 64.0).sqrt();
+    assert!(
+        rms > 0.0001 && rms < 10.0,
+        "[LSTM 2x8] RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+        rms
+    );
     assert!(
         max_abs_out > 0.0,
         "[LSTM 2x8] All-zero output — model may be silent"
@@ -778,7 +814,12 @@ fn test_wavenet_variable_block_sizes() {
             tot_energy += (s as f64) * (s as f64);
         }
         let rms = (tot_energy / 512.0).sqrt();
-        assert!(rms <= 10.0, "Block size {} has high RMS: {}", bs, rms);
+        assert!(
+            rms > 0.0001 && rms <= 10.0,
+            "Block size {} RMS out of band: {}",
+            bs,
+            rms
+        );
 
         if bs == 1 {
             ref_output.copy_from_slice(&output);
@@ -833,8 +874,8 @@ fn test_lstm_variable_block_sizes() {
         }
         let rms = (tot_energy / 512.0).sqrt();
         assert!(
-            rms <= 10.0,
-            "Instability detected: LSTM Block size {} has excessive RMS: {}",
+            rms > 0.0001 && rms <= 10.0,
+            "Instability detected: LSTM Block size {} RMS out of band: {}",
             bs,
             rms
         );
@@ -928,6 +969,7 @@ fn test_community_models_inference() {
         model.process(&input, &mut output);
 
         let mut max_abs_out = 0.0f32;
+        let mut tot_energy = 0.0f64;
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
@@ -937,6 +979,7 @@ fn test_community_models_inference() {
             );
             let abs_s = s.abs();
             max_abs_out = max_abs_out.max(abs_s);
+            tot_energy += (s as f64) * (s as f64);
             assert!(
                 abs_s <= limit,
                 "Model {} generated excessive magnitude peak at index {}: {}. \
@@ -946,6 +989,13 @@ fn test_community_models_inference() {
                 s
             );
         }
+        let rms = (tot_energy / 64.0).sqrt();
+        assert!(
+            rms > 0.0001 && rms < 10.0,
+            "Model {} RMS out of band: {} (expected 0.0001 < rms < 10.0)",
+            filename,
+            rms
+        );
         assert!(
             max_abs_out > 0.0,
             "Model {} produced all-zero output — model may be silent",

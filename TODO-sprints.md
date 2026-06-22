@@ -66,7 +66,7 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 4. Garantir que este run seja concluído e passe sem erros. **→ 43 passed, 0 failed.**
 5. **Adicional (fusão):** Suíte intermediária fusionada com `utils/tests-quick.sh` como Phase 2, com skip condicional se goldens/NeuralAmpModelerCore ausentes. O script agora é o PR gate unificado: fast tests + medium validation + CLAP audit.
 
-### 📝 Tarefa 2.3: Elevar Rigor contra Drifts Silenciosos nos Testes de Estresse
+### 📝 Tarefa 2.3: Elevar Rigor contra Drifts Silenciosos nos Testes de Estresse [DONE]
 
 **Responsável Sugerido:** `implementador`
 **Contexto:** O loop DSP que verifica processamento baseando-se meramente em finitude `.is_finite()` em arrays não reage a sinais mortos ou zeros inesperados num caso de falha catastrófica matemática ou memory corrompida. E oráculos de threshold não estão calibrados adequadamente. (Ref: F31, F34)

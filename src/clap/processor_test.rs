@@ -140,6 +140,20 @@ mod tests {
                     n
                 );
             }
+            let rms_l = (out_l[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+            let rms_r = (out_r[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+            assert!(
+                rms_l > 0.0001 && rms_l < 10.0,
+                "CLAP output L RMS out of band for n={}: {}",
+                n,
+                rms_l
+            );
+            assert!(
+                rms_r > 0.0001 && rms_r < 10.0,
+                "CLAP output R RMS out of band for n={}: {}",
+                n,
+                rms_r
+            );
         }
     }
 
@@ -1874,13 +1888,8 @@ mod tests {
         // ── Verify CLAP output is a processed signal (not silence, not passthrough) ──
         let clap_rms: f32 = (bufs.out_l.iter().map(|x| x * x).sum::<f32>() / n as f32).sqrt();
         assert!(
-            clap_rms > 0.001,
-            "CLAP output RMS too low ({:.6}) — model may not have been loaded",
-            clap_rms
-        );
-        assert!(
-            clap_rms < 0.4,
-            "CLAP output RMS too high ({:.6}) — may be passthrough or uncalibrated",
+            (0.05..=0.20).contains(&clap_rms),
+            "CLAP output RMS out of band ({:.6}) — expected [0.05, 0.20] for Nano model",
             clap_rms
         );
 

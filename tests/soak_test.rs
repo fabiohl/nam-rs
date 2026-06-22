@@ -288,6 +288,13 @@ fn test_wavenet_noise_soak() {
             min_val = min_val.min(v);
             max_val = max_val.max(v);
         }
+        let rms = (output.iter().map(|x| (x * x) as f64).sum::<f64>() / output.len() as f64).sqrt();
+        assert!(
+            rms > 0.0001 && rms < 10.0,
+            "RMS do loop out of range: {} at {} frames",
+            rms,
+            processed
+        );
         processed += 64;
     }
     let duration = start.elapsed();
@@ -373,6 +380,13 @@ fn test_lstm_noise_soak() {
                 processed
             );
         }
+        let rms = (output.iter().map(|x| (x * x) as f64).sum::<f64>() / output.len() as f64).sqrt();
+        assert!(
+            rms > 0.0001 && rms < 10.0,
+            "LSTM RMS do loop out of range: {} at {} frames",
+            rms,
+            processed
+        );
         processed += 64;
     }
     let duration = start.elapsed();
@@ -421,6 +435,18 @@ fn test_resampler_drift_soak() {
             assert!(out_l[i].is_finite(), "NaN in Resampler Out L (Upsampling)");
             assert!(out_r[i].is_finite(), "NaN in Resampler Out R (Upsampling)");
         }
+        let rms_l = (out_l[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+        let rms_r = (out_r[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+        assert!(
+            rms_l > 0.0001 && rms_l < 10.0,
+            "Resampler Upsampling L RMS do loop out of range: {}",
+            rms_l
+        );
+        assert!(
+            rms_r > 0.0001 && rms_r < 10.0,
+            "Resampler Upsampling R RMS do loop out of range: {}",
+            rms_r
+        );
     }
     let duration = start.elapsed();
 
@@ -456,6 +482,18 @@ fn test_resampler_drift_soak() {
                 "NaN in Resampler Out R (Downsampling)"
             );
         }
+        let rms_l = (out_l[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+        let rms_r = (out_r[..n].iter().map(|x| (x * x) as f64).sum::<f64>() / n as f64).sqrt();
+        assert!(
+            rms_l > 0.0001 && rms_l < 10.0,
+            "Resampler Downsampling L RMS do loop out of range: {}",
+            rms_l
+        );
+        assert!(
+            rms_r > 0.0001 && rms_r < 10.0,
+            "Resampler Downsampling R RMS do loop out of range: {}",
+            rms_r
+        );
     }
     println!("--- Resampler Drift Soak (96000->48000) ---");
     println!("Duration: {:?}", start.elapsed());
@@ -698,6 +736,13 @@ fn test_a2_full_noise_soak() {
             min_val = min_val.min(v);
             max_val = max_val.max(v);
         }
+        let rms = (output.iter().map(|x| (x * x) as f64).sum::<f64>() / output.len() as f64).sqrt();
+        assert!(
+            rms > 0.0001 && rms < 10.0,
+            "A2-Full Noise RMS do loop out of range: {} at {} frames",
+            rms,
+            processed
+        );
         processed += 64;
     }
     let duration = start.elapsed();
@@ -740,6 +785,13 @@ fn test_a2_lite_noise_soak() {
             min_val = min_val.min(v);
             max_val = max_val.max(v);
         }
+        let rms = (output.iter().map(|x| (x * x) as f64).sum::<f64>() / output.len() as f64).sqrt();
+        assert!(
+            rms > 0.0001 && rms < 10.0,
+            "A2-Lite Noise RMS do loop out of range: {} at {} frames",
+            rms,
+            processed
+        );
         processed += 64;
     }
     let duration = start.elapsed();
@@ -1715,6 +1767,17 @@ fn run_model_soak(
                 label,
                 processed,
                 v.to_bits()
+            );
+        }
+        if is_noise {
+            let rms =
+                (output.iter().map(|x| (x * x) as f64).sum::<f64>() / output.len() as f64).sqrt();
+            assert!(
+                rms > 0.0001 && rms < 10.0,
+                "{} RMS do loop out of range: {} at {} frames",
+                label,
+                rms,
+                processed
             );
         }
 
