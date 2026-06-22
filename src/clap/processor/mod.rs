@@ -39,7 +39,7 @@ use std::sync::atomic::Ordering;
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor<'a> {
     /// `activate` is the ONLY allocation site — kept out of `process`.
     fn activate(
-        host: HostAudioProcessorHandle<'a>,
+        _host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut NamClapMainThread<'a>,
         shared: &'a NamClapShared,
         audio_config: PluginAudioConfiguration,
@@ -195,7 +195,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             cached_gate_params: GateParams::default(),
             gate_dirty: true,
             cycles_since_telemetry: 0,
-            host,
             prio_checked: false,
             last_seen_generation: 0,
             max_frames_count: audio_config.max_frames_count as usize,

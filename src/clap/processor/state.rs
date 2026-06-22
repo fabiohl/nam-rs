@@ -14,7 +14,6 @@ use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
 use crate::math::dsp::gain_lut::GainLUT;
 use crate::models::StaticModel;
-use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 
@@ -103,8 +102,6 @@ pub struct NamClapProcessor<'a> {
     /// SHARED ALGORITHM: Same decimation strategy as `src/standalone/pw_host.rs` (frame_count & 0xF).
     /// Any change to the decimation logic here must be mirrored in pw_host.rs, and vice-versa.
     pub(crate) cycles_since_telemetry: u32,
-    /// Host handle for calls on the audio thread.
-    pub(crate) host: HostAudioProcessorHandle<'a>,
     /// Per-instance flag for one-time RT priority query on the first block.
     pub(crate) prio_checked: bool,
     /// Monotonic generation counter for GUI param synchronization.

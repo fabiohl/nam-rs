@@ -214,13 +214,13 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## B3 — [BAIXA] `host.request_callback()` (syscall) na thread de áudio em mudança de latência
+## B3 — [BAIXA] `host.request_callback()` (syscall) na thread de áudio em mudança de latência [DONE]
 
 **Arquivo:** `src/clap/processor/events.rs:117`.
 
 **Problema.** Em transição de latência (raro: ativação/swap), `request_callback()` pode disparar wake do host (write em eventfd/pipe). Syscall na thread de áudio.
 
-**Proposta.** Aceitável por ser *cold path*; alternativamente, sinalizar via atomic e deixar o host detectar no próximo ciclo. Documentar explicitamente como exceção consciente.
+**Solução.** Removido `request_callback()`. O `current_latency` é armazenado atomicamente; a main thread detecta via polling em `housekeeping.rs:205-214` e chama `latency_ext.changed()`. Documentado como exceção RT consciente (cold path, atraso máximo de 1 ciclo de main thread).
 
 **Risco:** baixo. **Esforço:** baixo.
 

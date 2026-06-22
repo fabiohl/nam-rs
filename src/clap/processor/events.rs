@@ -98,7 +98,14 @@ impl<'a> NamClapProcessor<'a> {
             self.sync_slim_override_from_gui();
         } // generation guard
 
-        // Dynamic latency monitoring on the Audio Thread
+        // Dynamic latency monitoring on the Audio Thread.
+        //
+        // RT-safety: `host.request_callback()` is intentionally NOT called here
+        // (it would write to eventfd/pipe, violating "Zero Blocking I/O").
+        // The atomic store is sufficient — the main thread's housekeeping loop
+        // polls `current_latency` and calls `latency_ext.changed()` on its
+        // regular cycle. Worst case: one main-thread-period delay in reporting.
+        // This is a cold path (model activation/swap only), not the hot path.
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let mut effective_latency = self.resampler.latency_samples(host_rate);
@@ -113,7 +120,6 @@ impl<'a> NamClapProcessor<'a> {
                 .rt_to_ui
                 .current_latency
                 .store(effective_latency, Ordering::Relaxed);
-            self.host.request_callback();
         }
 
         // Honor render mode override: in offline mode, force adaptive compute to Off
