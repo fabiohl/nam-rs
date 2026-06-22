@@ -24,41 +24,50 @@ fn test_weights_accepts_finite_values() {
 }
 
 #[test]
-fn test_weights_visitor_accepts_nan() {
+fn test_weights_visitor_rejects_nan() {
     let values = vec![0.5f32, f32::NAN, -1.0f32];
     let deser = SeqDeserializer::<_, ValueError>::new(
         values.into_iter().map(F32Deserializer::<ValueError>::new),
     );
     let visitor = super::validation::WeightsVisitor;
-    let weights: Vec<f32> = visitor.visit_seq(deser).unwrap();
-    assert_eq!(weights.len(), 3);
-    assert!(weights[1].is_nan(), "NaN should be stored as NaN");
+    let result: Result<Vec<f32>, ValueError> = visitor.visit_seq(deser);
+    assert!(result.is_err(), "NaN weight should be rejected");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("not finite") || err_msg.contains("WeightNotFinite"),
+        "error should mention non-finite: {err_msg}"
+    );
 }
 
 #[test]
-fn test_weights_visitor_accepts_infinity() {
+fn test_weights_visitor_rejects_infinity() {
     let values = vec![0.5f32, f32::INFINITY, -1.0f32];
     let deser = SeqDeserializer::<_, ValueError>::new(
         values.into_iter().map(F32Deserializer::<ValueError>::new),
     );
     let visitor = super::validation::WeightsVisitor;
-    let weights: Vec<f32> = visitor.visit_seq(deser).unwrap();
-    assert_eq!(weights.len(), 3);
-    assert!(weights[1].is_infinite(), "Infinity should be stored as Inf");
+    let result: Result<Vec<f32>, ValueError> = visitor.visit_seq(deser);
+    assert!(result.is_err(), "+Inf weight should be rejected");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("not finite") || err_msg.contains("WeightNotFinite"),
+        "error should mention non-finite: {err_msg}"
+    );
 }
 
 #[test]
-fn test_weights_visitor_accepts_negative_infinity() {
+fn test_weights_visitor_rejects_negative_infinity() {
     let values = vec![0.5f32, f32::NEG_INFINITY, -1.0f32];
     let deser = SeqDeserializer::<_, ValueError>::new(
         values.into_iter().map(F32Deserializer::<ValueError>::new),
     );
     let visitor = super::validation::WeightsVisitor;
-    let weights: Vec<f32> = visitor.visit_seq(deser).unwrap();
-    assert_eq!(weights.len(), 3);
+    let result: Result<Vec<f32>, ValueError> = visitor.visit_seq(deser);
+    assert!(result.is_err(), "-Inf weight should be rejected");
+    let err_msg = result.unwrap_err().to_string();
     assert!(
-        weights[1].is_infinite() && weights[1].is_sign_negative(),
-        "negative Infinity should be stored"
+        err_msg.contains("not finite") || err_msg.contains("WeightNotFinite"),
+        "error should mention non-finite: {err_msg}"
     );
 }
 

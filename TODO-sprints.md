@@ -126,7 +126,17 @@ Neste planejamento abordamos as seguintes demandas de alta prioridade solicitada
 **Risco:** Baixo–Médio (Caminho frio de loading, atentar para manter a compatibilidade retroativa, especialmente na validação CRC de v1).
 **Base:** [TODO-findings.md - F1, F2, F3, F4, F5, F6, F7](TODO-findings.md)
 
-### 📝 Tarefa 5.1: Defesa contra Valores Numéricos Maliciosos (Finitude) [TO-DO]
+### 📝 Tarefa 5.1: Defesa contra Valores Numéricos Maliciosos (Finitude) [DONE]
+
+**Nota pós-implementação (2026-06-21):**
+
+* `WeightsVisitor::visit_seq` agora valida `is_finite()` em cada peso extraído, retornando `JsonError::WeightNotFinite { index, value }`.
+* `NambError::NonFiniteWeight` e `NambError::InvalidHeaderField` adicionados. Parser `.namb` valida finitude dos pesos (byte a byte) e das variáveis de header (`sample_rate`, `input_level_dbu`, `output_level_dbu`), com rejeição adicional de `sample_rate <= 0.0`.
+* `WeightCursor::read_f32_finite()` — choke point único usado por todos os construtores de modelo (WaveNet standard/dynamic, LSTM 1/2-layer/dynamic, ConvNet, Linear) para validar `head_scale`/`head_bias`.
+* A2 (static e dynamic): validação de `is_finite()` em `head_b` e `head_scale` nos métodos `set_weights`.
+* `NamErrorCode`: 3 novos códigos — `NamJsonWeightNotFinite` (E1211), `NambNonFiniteWeight` (E1212), `NambInvalidHeaderField` (E1213).
+* 8 novos testes NAMB: `test_non_finite_weight_*_rejected` (NaN/+Inf/-Inf), `test_invalid_header_*` (sample_rate NaN/0/neg, input_level Inf, output_level -Inf).
+* 3 testes de `validation_test.rs` atualizados para esperar rejeição (antes aceitavam NaN/Inf). 4 testes existentes de NAMB ajustados para inicializar `sample_rate`/`input_level_dbu`/`output_level_dbu`.
 
 **Responsável Sugerido:** `implementador` / `revisor-auditor`
 **Contexto:** O projeto aceita pesos, ganhos e configs de taxa de amostragem que podem ser `NaN` ou infinitos, o que em processamento DSP causaria ruídos extremos e danos a equipamentos. (Ref: F1, F4)

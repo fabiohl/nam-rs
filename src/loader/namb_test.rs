@@ -60,6 +60,9 @@ mod tests {
         header.layout_type = 1; // 1 indicates "GateMajorLstm" (layout optimized for LSTM)
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
 
         // Writes the weights into the buffer
         for (i, &f) in w.iter().enumerate() {
@@ -111,6 +114,9 @@ mod tests {
         header.layout_type = 1;
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
         header.crc32 = 0; // Legitimate CRC32 for empty slice
 
         let parsed = parse_namb(&data)?;
@@ -128,6 +134,9 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
         header.crc32 = 0; // Sentinel: CRC absent in v1
 
         // Writes a dummy weight
@@ -406,6 +415,9 @@ mod tests {
         header.version = 2;
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
         header.crc32 = 0; // crc32_ieee(&[]) == 0
 
         let parsed = parse_namb(&data).unwrap();
@@ -433,6 +445,263 @@ mod tests {
         assert!(
             matches!(namb_err, NambError::Truncated { .. }),
             "v2 residue after header: expected Truncated, got {:?}",
+            namb_err
+        );
+    }
+
+    // ── Non-finite weight rejection ────────────────────────────────────
+
+    #[test]
+    fn test_non_finite_weight_nan_rejected() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let w = [f32::NAN];
+        let mut data = vec![0u8; header_size + w.len() * 4];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0; // v1 sentinel: no CRC
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        data[header_size..header_size + 4].copy_from_slice(&w[0].to_le_bytes());
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::NonFiniteWeight");
+        assert!(
+            matches!(namb_err, NambError::NonFiniteWeight { index: 0, .. }),
+            "Expected NonFiniteWeight at index 0, got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_non_finite_weight_inf_rejected() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let w = [0.5f32, f32::INFINITY];
+        let mut data = vec![0u8; header_size + w.len() * 4];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        for (i, &f) in w.iter().enumerate() {
+            let offset = header_size + i * 4;
+            data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+        }
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::NonFiniteWeight");
+        assert!(
+            matches!(namb_err, NambError::NonFiniteWeight { index: 1, .. }),
+            "Expected NonFiniteWeight at index 1, got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_non_finite_weight_neg_inf_rejected() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let w = [1.0f32, 2.0f32, f32::NEG_INFINITY];
+        let mut data = vec![0u8; header_size + w.len() * 4];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        for (i, &f) in w.iter().enumerate() {
+            let offset = header_size + i * 4;
+            data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+        }
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::NonFiniteWeight");
+        assert!(
+            matches!(namb_err, NambError::NonFiniteWeight { index: 2, .. }),
+            "Expected NonFiniteWeight at index 2, got: {:?}",
+            namb_err
+        );
+    }
+
+    // ── Invalid header field rejection ─────────────────────────────────
+
+    #[test]
+    fn test_invalid_header_sample_rate_nan() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = f32::NAN;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::InvalidHeaderField");
+        assert!(
+            matches!(
+                namb_err,
+                NambError::InvalidHeaderField {
+                    field: "sample_rate",
+                    ..
+                }
+            ),
+            "Expected InvalidHeaderField(sample_rate), got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_invalid_header_sample_rate_negative() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = -44100.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::InvalidHeaderField");
+        assert!(
+            matches!(
+                namb_err,
+                NambError::InvalidHeaderField {
+                    field: "sample_rate",
+                    ..
+                }
+            ),
+            "Expected InvalidHeaderField(sample_rate), got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_invalid_header_sample_rate_zero() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = 0.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::InvalidHeaderField");
+        assert!(
+            matches!(
+                namb_err,
+                NambError::InvalidHeaderField {
+                    field: "sample_rate",
+                    ..
+                }
+            ),
+            "Expected InvalidHeaderField(sample_rate), got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_invalid_header_input_level_inf() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = f32::INFINITY;
+        header.output_level_dbu = -6.0;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::InvalidHeaderField");
+        assert!(
+            matches!(
+                namb_err,
+                NambError::InvalidHeaderField {
+                    field: "input_level_dbu",
+                    ..
+                }
+            ),
+            "Expected InvalidHeaderField(input_level_dbu), got: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_invalid_header_output_level_neg_inf() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = f32::NEG_INFINITY;
+        header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::InvalidHeaderField");
+        assert!(
+            matches!(
+                namb_err,
+                NambError::InvalidHeaderField {
+                    field: "output_level_dbu",
+                    ..
+                }
+            ),
+            "Expected InvalidHeaderField(output_level_dbu), got: {:?}",
             namb_err
         );
     }

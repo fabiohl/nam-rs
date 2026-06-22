@@ -42,6 +42,12 @@ pub enum NamErrorCode {
     NamJsonSubmodelsExceedLimit,
     /// JSON `config.submodels` exceeds container recursion depth limit.
     NamJsonSubmodelsTooDeep,
+    /// JSON weight value is non-finite (NaN, +Inf, -Inf).
+    NamJsonWeightNotFinite,
+    /// NAMB non-finite weight detected in binary weight section.
+    NambNonFiniteWeight,
+    /// NAMB header field contains an invalid value (non-finite, <= 0, etc.).
+    NambInvalidHeaderField,
     /// .namb CRC32 checksum does not match expected value.
     NambCrc32Mismatch,
     /// CRC32 flag missing in .namb v2+ file (mandatory).
@@ -111,6 +117,9 @@ impl NamErrorCode {
             Self::NamJsonTrainingTooDeep => "E1208",
             Self::NamJsonSubmodelsExceedLimit => "E1209",
             Self::NamJsonSubmodelsTooDeep => "E1210",
+            Self::NamJsonWeightNotFinite => "E1211",
+            Self::NambNonFiniteWeight => "E1212",
+            Self::NambInvalidHeaderField => "E1213",
             Self::NambCrc32Mismatch => "E1201",
             Self::NambCrc32Missing => "E1205",
             Self::NambInvalidMagic => "E1202",
@@ -150,6 +159,9 @@ impl NamErrorCode {
             Self::NamJsonTrainingTooDeep => "Training metadata too deeply nested",
             Self::NamJsonSubmodelsExceedLimit => "Submodels count exceeds limit (max 8)",
             Self::NamJsonSubmodelsTooDeep => "Container nesting too deep",
+            Self::NamJsonWeightNotFinite => "JSON weight is non-finite (NaN/Inf)",
+            Self::NambNonFiniteWeight => "NAMB weight is non-finite (NaN/Inf)",
+            Self::NambInvalidHeaderField => "NAMB header field is invalid",
             Self::NambCrc32Mismatch => "CRC32 checksum mismatch",
             Self::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
             Self::NambInvalidMagic => "Invalid signature",
@@ -189,6 +201,9 @@ impl NamErrorCode {
             Self::NamJsonTrainingTooDeep => "NAM_JSON_TRAINING_TOO_DEEP",
             Self::NamJsonSubmodelsExceedLimit => "NAM_JSON_SUBMODELS_EXCEED_LIMIT",
             Self::NamJsonSubmodelsTooDeep => "NAM_JSON_SUBMODELS_TOO_DEEP",
+            Self::NamJsonWeightNotFinite => "NAM_JSON_WEIGHT_NOT_FINITE",
+            Self::NambNonFiniteWeight => "NAMB_NON_FINITE_WEIGHT",
+            Self::NambInvalidHeaderField => "NAMB_INVALID_HEADER_FIELD",
             Self::NambCrc32Mismatch => "NAMB_CRC32_MISMATCH",
             Self::NambCrc32Missing => "NAMB_CRC32_MISSING",
             Self::NambInvalidMagic => "NAMB_INVALID_MAGIC",

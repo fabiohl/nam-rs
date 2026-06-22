@@ -40,9 +40,16 @@ impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
         A: serde::de::SeqAccess<'de>,
     {
         let mut weights = Vec::new();
+        let mut index: usize = 0;
         loop {
             match seq.next_element::<f32>() {
                 Ok(Some(val)) => {
+                    if !val.is_finite() {
+                        return Err(serde::de::Error::custom(JsonError::WeightNotFinite {
+                            index,
+                            value: val,
+                        }));
+                    }
                     if weights.len() >= MAX_WEIGHTS {
                         return Err(serde::de::Error::custom(JsonError::WeightsExceedLimit {
                             got: weights.len() + 1,
@@ -50,6 +57,7 @@ impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
                         }));
                     }
                     weights.push(val);
+                    index += 1;
                 }
                 Ok(None) => break,
                 Err(e) => return Err(e),

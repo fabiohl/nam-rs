@@ -204,7 +204,7 @@ fn build_wavenet_dynamic_inner(
         arrays.push(array);
     }
 
-    let head_scale = cursor.read_f32()?;
+    let head_scale = cursor.read_f32_finite()?;
 
     let post_stack_head = if let Some(ref head_config) = geom.post_stack_head {
         let in_ch = *geom.head_sizes.last().unwrap_or(&1);

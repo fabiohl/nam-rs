@@ -445,12 +445,24 @@ impl WaveNetA2Dyn {
 
         let head_b = {
             let s = read_slice_dyn(weights, &mut pos, 1, total, "head_b")?;
+            if !s[0].is_finite() {
+                return Err(format!(
+                    "set_weights: head_b is not finite (value: {:e})",
+                    s[0]
+                ));
+            }
             s[0]
         };
 
         // ── 5. Head scale ──────────────────────────────────────────
         let head_scale = {
             let s = read_slice_dyn(weights, &mut pos, 1, total, "head_scale")?;
+            if !s[0].is_finite() {
+                return Err(format!(
+                    "set_weights: head_scale is not finite (value: {:e})",
+                    s[0]
+                ));
+            }
             s[0]
         };
 

@@ -69,4 +69,24 @@ pub enum NambError {
         /// Maximum allowed number of floats (MAX_MODEL_BYTES/4).
         max: usize,
     },
+
+    /// A weight value is non-finite (NaN, +Inf, or -Inf).
+    #[error("weight at index {index} is not finite (value: {value:e})")]
+    NonFiniteWeight {
+        /// Index (0-based) of the non-finite float in the weights array.
+        index: usize,
+        /// The non-finite value.
+        value: f32,
+    },
+
+    /// Header field contains an invalid value (non-finite, <= 0, etc.).
+    #[error("invalid header field '{field}': {value:e} ({reason})")]
+    InvalidHeaderField {
+        /// Name of the header field.
+        field: &'static str,
+        /// The invalid value read.
+        value: f32,
+        /// Explanation of why the value is rejected.
+        reason: &'static str,
+    },
 }

@@ -59,7 +59,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
         alloc_num: &mut alloc_num,
     })?;
 
-    let head_scale = cursor.read_f32()?;
+    let head_scale = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;
 

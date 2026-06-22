@@ -135,7 +135,7 @@ pub(crate) fn build_convnet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
         None
     };
 
-    let head_scale = cursor.read_f32()?;
+    let head_scale = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;
 

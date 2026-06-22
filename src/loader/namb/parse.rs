@@ -99,14 +99,55 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
     let mut weights = Vec::with_capacity(float_count);
 
-    for chunk in pesos_raw.chunks_exact(4) {
-        weights.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    for (i, chunk) in pesos_raw.chunks_exact(4).enumerate() {
+        let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        if !val.is_finite() {
+            return Err(NambError::NonFiniteWeight {
+                index: i,
+                value: val,
+            }
+            .into());
+        }
+        weights.push(val);
     }
 
     // Populates header metadata into the final NamModelData
     let sample_rate_header = header.sample_rate;
     let input_level_header = header.input_level_dbu;
     let output_level_header = header.output_level_dbu;
+
+    if !sample_rate_header.is_finite() {
+        return Err(NambError::InvalidHeaderField {
+            field: "sample_rate",
+            value: sample_rate_header,
+            reason: "must be finite",
+        }
+        .into());
+    }
+    if sample_rate_header <= 0.0 {
+        return Err(NambError::InvalidHeaderField {
+            field: "sample_rate",
+            value: sample_rate_header,
+            reason: "must be > 0.0",
+        }
+        .into());
+    }
+    if !input_level_header.is_finite() {
+        return Err(NambError::InvalidHeaderField {
+            field: "input_level_dbu",
+            value: input_level_header,
+            reason: "must be finite",
+        }
+        .into());
+    }
+    if !output_level_header.is_finite() {
+        return Err(NambError::InvalidHeaderField {
+            field: "output_level_dbu",
+            value: output_level_header,
+            reason: "must be finite",
+        }
+        .into());
+    }
     let version_header = header.version;
 
     model_data.weights = weights;

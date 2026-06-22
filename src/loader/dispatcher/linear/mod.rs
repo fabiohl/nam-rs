@@ -19,7 +19,11 @@ pub(crate) fn build_linear(data: &NamModelData) -> anyhow::Result<Box<StaticMode
     let weight_data = cursor.read_slice(receptive_field)?;
     let weights: Vec<f32> = weight_data.to_vec();
 
-    let bias = if has_bias { cursor.read_f32()? } else { 0.0 };
+    let bias = if has_bias {
+        cursor.read_f32_finite()?
+    } else {
+        0.0
+    };
 
     cursor.verify_exhausted()?;
 

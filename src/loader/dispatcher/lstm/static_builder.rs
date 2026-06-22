@@ -38,7 +38,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
         head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
         head_weights_f32[i] = head_weights_data[i];
     }
-    let head_bias = cursor.read_f32()?;
+    let head_bias = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;
 
@@ -87,7 +87,7 @@ pub(crate) fn build_lstm_2layer<
         head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
         head_weights_f32[i] = head_weights_data[i];
     }
-    let head_bias = cursor.read_f32()?;
+    let head_bias = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;
 

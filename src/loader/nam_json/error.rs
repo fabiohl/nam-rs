@@ -41,6 +41,13 @@ pub enum JsonError {
         /// Maximum allowed depth.
         max_depth: usize,
     },
+    /// A weight value is non-finite (NaN, +Inf, or -Inf).
+    WeightNotFinite {
+        /// Index (0-based) of the non-finite float in the weights array.
+        index: usize,
+        /// The non-finite value.
+        value: f32,
+    },
     /// Generic serde_json parse error.
     Serde(String),
 }
@@ -81,6 +88,13 @@ impl std::fmt::Display for JsonError {
                     f,
                     "container nesting too deep (depth {}, max is {})",
                     depth, max_depth
+                )
+            }
+            Self::WeightNotFinite { index, value } => {
+                write!(
+                    f,
+                    "weight at index {} is not finite (value: {:e})",
+                    index, value
                 )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),

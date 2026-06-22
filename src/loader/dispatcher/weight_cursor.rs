@@ -64,6 +64,20 @@ impl<'a> WeightCursor<'a> {
         Ok(s[0])
     }
 
+    /// Reads a single `f32` scalar and validates finiteness, advancing the cursor.
+    /// Use this for critical scalars such as `head_scale`, `head_bias`, etc.
+    pub(crate) fn read_f32_finite(&mut self) -> anyhow::Result<f32> {
+        let val = self.read_f32()?;
+        if !val.is_finite() {
+            bail!(
+                "Non-finite f32 scalar at weight position {}: {:e}",
+                self.pos.wrapping_sub(1),
+                val
+            );
+        }
+        Ok(val)
+    }
+
     /// Verifies that all weights have been consumed. Fails if weights remain.
     pub(crate) fn verify_exhausted(&self) -> anyhow::Result<()> {
         if self.pos != self.data.len() {

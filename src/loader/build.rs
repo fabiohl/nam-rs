@@ -75,6 +75,10 @@ pub fn load_and_build_model(
                 Some(namb::NambError::CrcMismatch { .. }) => NamErrorCode::NambCrc32Mismatch,
                 Some(namb::NambError::CrcMissing { .. }) => NamErrorCode::NambCrc32Missing,
                 Some(namb::NambError::WeightsTooLarge { .. }) => NamErrorCode::ModelTooLarge,
+                Some(namb::NambError::NonFiniteWeight { .. }) => NamErrorCode::NambNonFiniteWeight,
+                Some(namb::NambError::InvalidHeaderField { .. }) => {
+                    NamErrorCode::NambInvalidHeaderField
+                }
                 None => NamErrorCode::ModelBuildFailed,
             };
             NamDiagnostic::new(code, sys)
@@ -134,6 +138,7 @@ pub fn load_and_build_model(
                 nam_json::JsonError::SubmodelsTooDeep { .. } => {
                     NamErrorCode::NamJsonSubmodelsTooDeep
                 }
+                nam_json::JsonError::WeightNotFinite { .. } => NamErrorCode::NamJsonWeightNotFinite,
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)
