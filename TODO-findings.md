@@ -139,7 +139,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## A6 — [ALTA] GEMV de 4 gates do LSTM e GEMM-batch: poucos acumuladores + `vcvtph2ps` no laço quente
+## A6 — [ALTA] GEMV de 4 gates do LSTM e GEMM-batch: poucos acumuladores + `vcvtph2ps` no laço quente [DONE]
 
 **Arquivos:** `src/math/gemm/gemv_4gate/avx2.rs:19-128` (`gemv_4gate_avx2`); `src/math/gemm/gemm_batch/avx2.rs:23-119` e `:128-247`.
 

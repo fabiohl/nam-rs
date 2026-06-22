@@ -14,6 +14,12 @@ use core::arch::x86_64::*;
 /// In an LSTM neural network, each step requires computing 4 sub-results (gates). This
 /// function executes all these computations at once, ensuring that the network's "memory"
 /// update is done with maximum performance and minimum latency.
+///
+/// # Optimization
+/// Processes 2 input columns per iteration with 8 independent FMA accumulators
+/// (2 per gate: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
+/// doubling port utilization on x86-64-v3 (Haswell+) where FMA has ~4–5 cycle
+/// latency and 2 execution ports.
 #[target_feature(enable = "avx2,fma,f16c")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx2(
@@ -31,55 +37,94 @@ pub unsafe fn gemv_4gate_avx2(
 
     unsafe {
         let mut out_c = 0;
-        // Process the 4 LSTM gates in parallel, 8 elements at a time.
         while out_c + 8 <= out_len {
-            // Initialize accumulators (buckets) with the Bias values for each gate.
-            let mut acc0 = if do_bias {
+            let bias_g0 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_c))
             } else {
                 _mm256_setzero_ps()
             };
-            let mut acc1 = if do_bias {
+            let bias_g1 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_len + out_c))
             } else {
                 _mm256_setzero_ps()
             };
-            let mut acc2 = if do_bias {
+            let bias_g2 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(2 * out_len + out_c))
             } else {
                 _mm256_setzero_ps()
             };
-            let mut acc3 = if do_bias {
+            let bias_g3 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(3 * out_len + out_c))
             } else {
                 _mm256_setzero_ps()
             };
 
-            // Main Computation Loop:
-            for in_c in 0..in_len {
-                // Take a single input value and "broadcast" it to use across all gates.
-                let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+            let mut acc0_lo = bias_g0;
+            let mut acc0_hi = _mm256_setzero_ps();
+            let mut acc1_lo = bias_g1;
+            let mut acc1_hi = _mm256_setzero_ps();
+            let mut acc2_lo = bias_g2;
+            let mut acc2_hi = _mm256_setzero_ps();
+            let mut acc3_lo = bias_g3;
+            let mut acc3_hi = _mm256_setzero_ps();
 
-                // Multiply the input by the weights for each of the 4 gates (acc0 to acc3).
-                // Each gate handles a different aspect of the LSTM "memory".
-                let wp0 = w0.as_ptr().add(in_c * out_len + out_c);
-                let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i));
-                acc0 = _mm256_fmadd_ps(vs, vw0, acc0);
+            let mut in_c = 0;
+            while in_c + 2 <= in_len {
+                let vs_lo = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+                let vs_hi = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
 
-                let wp1 = w1.as_ptr().add(in_c * out_len + out_c);
-                let vw1 = _mm256_cvtph_ps(_mm_loadu_si128(wp1 as *const __m128i));
-                acc1 = _mm256_fmadd_ps(vs, vw1, acc1);
+                let wp0_lo = w0.as_ptr().add(in_c * out_len + out_c);
+                let vw0_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp0_lo as *const __m128i));
+                acc0_lo = _mm256_fmadd_ps(vs_lo, vw0_lo, acc0_lo);
+                let wp0_hi = w0.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw0_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp0_hi as *const __m128i));
+                acc0_hi = _mm256_fmadd_ps(vs_hi, vw0_hi, acc0_hi);
 
-                let wp2 = w2.as_ptr().add(in_c * out_len + out_c);
-                let vw2 = _mm256_cvtph_ps(_mm_loadu_si128(wp2 as *const __m128i));
-                acc2 = _mm256_fmadd_ps(vs, vw2, acc2);
+                let wp1_lo = w1.as_ptr().add(in_c * out_len + out_c);
+                let vw1_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp1_lo as *const __m128i));
+                acc1_lo = _mm256_fmadd_ps(vs_lo, vw1_lo, acc1_lo);
+                let wp1_hi = w1.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw1_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp1_hi as *const __m128i));
+                acc1_hi = _mm256_fmadd_ps(vs_hi, vw1_hi, acc1_hi);
 
-                let wp3 = w3.as_ptr().add(in_c * out_len + out_c);
-                let vw3 = _mm256_cvtph_ps(_mm_loadu_si128(wp3 as *const __m128i));
-                acc3 = _mm256_fmadd_ps(vs, vw3, acc3);
+                let wp2_lo = w2.as_ptr().add(in_c * out_len + out_c);
+                let vw2_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp2_lo as *const __m128i));
+                acc2_lo = _mm256_fmadd_ps(vs_lo, vw2_lo, acc2_lo);
+                let wp2_hi = w2.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw2_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp2_hi as *const __m128i));
+                acc2_hi = _mm256_fmadd_ps(vs_hi, vw2_hi, acc2_hi);
+
+                let wp3_lo = w3.as_ptr().add(in_c * out_len + out_c);
+                let vw3_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp3_lo as *const __m128i));
+                acc3_lo = _mm256_fmadd_ps(vs_lo, vw3_lo, acc3_lo);
+                let wp3_hi = w3.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw3_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp3_hi as *const __m128i));
+                acc3_hi = _mm256_fmadd_ps(vs_hi, vw3_hi, acc3_hi);
+
+                in_c += 2;
             }
 
-            // Save the final results of each gate to their proper places in memory.
+            if in_c < in_len {
+                let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+                let wp0 = w0.as_ptr().add(in_c * out_len + out_c);
+                let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i));
+                acc0_lo = _mm256_fmadd_ps(vs, vw0, acc0_lo);
+                let wp1 = w1.as_ptr().add(in_c * out_len + out_c);
+                let vw1 = _mm256_cvtph_ps(_mm_loadu_si128(wp1 as *const __m128i));
+                acc1_lo = _mm256_fmadd_ps(vs, vw1, acc1_lo);
+                let wp2 = w2.as_ptr().add(in_c * out_len + out_c);
+                let vw2 = _mm256_cvtph_ps(_mm_loadu_si128(wp2 as *const __m128i));
+                acc2_lo = _mm256_fmadd_ps(vs, vw2, acc2_lo);
+                let wp3 = w3.as_ptr().add(in_c * out_len + out_c);
+                let vw3 = _mm256_cvtph_ps(_mm_loadu_si128(wp3 as *const __m128i));
+                acc3_lo = _mm256_fmadd_ps(vs, vw3, acc3_lo);
+            }
+
+            let acc0 = _mm256_add_ps(acc0_lo, acc0_hi);
+            let acc1 = _mm256_add_ps(acc1_lo, acc1_hi);
+            let acc2 = _mm256_add_ps(acc2_lo, acc2_hi);
+            let acc3 = _mm256_add_ps(acc3_lo, acc3_hi);
+
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_len + out_c), acc1);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(2 * out_len + out_c), acc2);
@@ -87,12 +132,7 @@ pub unsafe fn gemv_4gate_avx2(
             out_c += 8;
         }
 
-        // Tail Loop Processing:
-        // Executed when the output dimension (out_len) is not a perfect multiple of the AVX2 vector
-        // size (8 floats). Without this scalar cleanup fallback loop, attempting to read vector data
-        // would cause out-of-bounds memory accesses (Out-Of-Bounds / Segfault).
         while out_c < out_len {
-            // Initialize the sum for each of the 4 gates with the corresponding bias (if enabled).
             let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
             let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
             let mut sum2 = if do_bias {
@@ -106,18 +146,14 @@ pub unsafe fn gemv_4gate_avx2(
                 0.0
             };
 
-            // Executes the classic dot product (fused multiply-accumulate) in a scalar fashion
             for in_c in 0..in_len {
                 let s = *in_frame.get_unchecked(in_c);
-                // Converts the f16-compressed weights (packed as 16-bit u16) to f32
-                // at runtime using the `half` library before multiplying.
                 sum0 += s * f16_bits_to_f32_f16c(*w0.get_unchecked(in_c * out_len + out_c));
                 sum1 += s * f16_bits_to_f32_f16c(*w1.get_unchecked(in_c * out_len + out_c));
                 sum2 += s * f16_bits_to_f32_f16c(*w2.get_unchecked(in_c * out_len + out_c));
                 sum3 += s * f16_bits_to_f32_f16c(*w3.get_unchecked(in_c * out_len + out_c));
             }
 
-            // Write each gate's results contiguously into the output tensor.
             *out_frame.get_unchecked_mut(out_c) = sum0;
             *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
             *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;

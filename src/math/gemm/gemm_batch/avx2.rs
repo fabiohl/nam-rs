@@ -19,6 +19,11 @@ use core::arch::x86_64::*;
 /// This is the most powerful version of the fused operation. It organizes the work in groups of 4
 /// audio frames, allowing the processor to reuse the neural network weights extremely
 /// efficiently for all of them before needing to read new data from memory.
+///
+/// # Optimization
+/// Processes 2 input columns per iteration with 8 independent FMA accumulators
+/// (2 per frame: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
+/// doubling port utilization on x86-64-v3.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemm_batch_avx2(
     in_frames: &[f32],
@@ -36,47 +41,80 @@ pub unsafe fn fused_add_gemm_batch_avx2(
 
     unsafe {
         let mut f = 0;
-        // Batch Strategy: Process data in groups of 4 audio frames.
-        // This allows each neural network weight to be read once and reused
-        // 4 times consecutively (once per frame), which is extremely efficient.
         while f + 4 <= num_frames {
             let mut out_c = 0;
             while out_c + 8 <= out_len {
-                // Load the partial results (buckets) from 4 frames simultaneously.
-                let mut acc0 = _mm256_loadu_ps(out_frames.as_ptr().add(f * out_len + out_c));
-                let mut acc1 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 1) * out_len + out_c));
-                let mut acc2 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 2) * out_len + out_c));
-                let mut acc3 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 3) * out_len + out_c));
+                let existing0 = _mm256_loadu_ps(out_frames.as_ptr().add(f * out_len + out_c));
+                let existing1 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 1) * out_len + out_c));
+                let existing2 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 2) * out_len + out_c));
+                let existing3 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 3) * out_len + out_c));
 
-                // If there is a Bias (offset), add it to all 4 frames at once.
-                if do_bias {
-                    let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
-                    acc0 = _mm256_add_ps(acc0, b);
-                    acc1 = _mm256_add_ps(acc1, b);
-                    acc2 = _mm256_add_ps(acc2, b);
-                    acc3 = _mm256_add_ps(acc3, b);
+                let b = if do_bias {
+                    _mm256_loadu_ps(bias.as_ptr().add(out_c))
+                } else {
+                    _mm256_setzero_ps()
+                };
+
+                let mut acc0_lo = _mm256_add_ps(existing0, b);
+                let mut acc0_hi = _mm256_setzero_ps();
+                let mut acc1_lo = _mm256_add_ps(existing1, b);
+                let mut acc1_hi = _mm256_setzero_ps();
+                let mut acc2_lo = _mm256_add_ps(existing2, b);
+                let mut acc2_hi = _mm256_setzero_ps();
+                let mut acc3_lo = _mm256_add_ps(existing3, b);
+                let mut acc3_hi = _mm256_setzero_ps();
+
+                let mut in_c = 0;
+                while in_c + 2 <= in_len {
+                    let wp_lo = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp_lo as *const __m128i));
+                    let wp_hi = weights.as_ptr().add((in_c + 1) * out_len + out_c);
+                    let vw_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp_hi as *const __m128i));
+
+                    let vs0_lo = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vs0_hi = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
+                    acc0_lo = _mm256_fmadd_ps(vs0_lo, vw_lo, acc0_lo);
+                    acc0_hi = _mm256_fmadd_ps(vs0_hi, vw_hi, acc0_hi);
+
+                    let vs1_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                    let vs1_hi =
+                        _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c + 1));
+                    acc1_lo = _mm256_fmadd_ps(vs1_lo, vw_lo, acc1_lo);
+                    acc1_hi = _mm256_fmadd_ps(vs1_hi, vw_hi, acc1_hi);
+
+                    let vs2_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                    let vs2_hi =
+                        _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c + 1));
+                    acc2_lo = _mm256_fmadd_ps(vs2_lo, vw_lo, acc2_lo);
+                    acc2_hi = _mm256_fmadd_ps(vs2_hi, vw_hi, acc2_hi);
+
+                    let vs3_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
+                    let vs3_hi =
+                        _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c + 1));
+                    acc3_lo = _mm256_fmadd_ps(vs3_lo, vw_lo, acc3_lo);
+                    acc3_hi = _mm256_fmadd_ps(vs3_hi, vw_hi, acc3_hi);
+
+                    in_c += 2;
                 }
 
-                // Compute Loop: Multiply input by weights.
-                for in_c in 0..in_len {
-                    // Read the weight from memory only once.
-                    let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                    let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
-
-                    // Broadcast the corresponding input from each of the 4 frames.
+                if in_c < in_len {
+                    let wp = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw = _mm256_cvtph_ps(_mm_loadu_si128(wp as *const __m128i));
                     let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vs1 = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
                     let vs2 = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
                     let vs3 = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
-
-                    // Multiply and Accumulate (FMA) for the 4 frames using the same loaded weight.
-                    acc0 = _mm256_fmadd_ps(vs0, vw, acc0);
-                    acc1 = _mm256_fmadd_ps(vs1, vw, acc1);
-                    acc2 = _mm256_fmadd_ps(vs2, vw, acc2);
-                    acc3 = _mm256_fmadd_ps(vs3, vw, acc3);
+                    acc0_lo = _mm256_fmadd_ps(vs0, vw, acc0_lo);
+                    acc1_lo = _mm256_fmadd_ps(vs1, vw, acc1_lo);
+                    acc2_lo = _mm256_fmadd_ps(vs2, vw, acc2_lo);
+                    acc3_lo = _mm256_fmadd_ps(vs3, vw, acc3_lo);
                 }
 
-                // Save the 4 new results back to memory.
+                let acc0 = _mm256_add_ps(acc0_lo, acc0_hi);
+                let acc1 = _mm256_add_ps(acc1_lo, acc1_hi);
+                let acc2 = _mm256_add_ps(acc2_lo, acc2_hi);
+                let acc3 = _mm256_add_ps(acc3_lo, acc3_hi);
+
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
@@ -124,6 +162,11 @@ pub unsafe fn fused_add_gemm_batch_avx2(
 /// matrix-vector multiplication with the addition of a "residual connection" (a shortcut
 /// that helps the network retain important information from the past). By fusing all of this
 /// into a single vectorized step, we save valuable memory cycles.
+///
+/// # Optimization
+/// Processes 2 input columns per iteration with 8 independent FMA accumulators
+/// (2 per frame: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
+/// doubling port utilization on x86-64-v3.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_avx2(
     in_frames: &[f32],
@@ -138,53 +181,78 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
     let out_len = out_frames.len() / num_frames;
 
     let mut f = 0;
-    // Batch Strategy: Process 4 audio frames simultaneously for weight reuse.
     while f + 4 <= num_frames {
         let mut out_c = 0;
         while out_c + 8 <= out_len {
-            // Initialize accumulators with the "Residual Connection" (shortcut) values.
-            let mut acc0 = _mm256_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
-            let mut acc1 = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
-            let mut acc2 = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
-            let mut acc3 = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
+            let res0 = _mm256_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
+            let res1 = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
+            let res2 = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
+            let res3 = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
 
-            // If there is a Bias, add it to the residual buckets.
-            if do_bias {
-                let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
-                acc0 = _mm256_add_ps(acc0, b);
-                acc1 = _mm256_add_ps(acc1, b);
-                acc2 = _mm256_add_ps(acc2, b);
-                acc3 = _mm256_add_ps(acc3, b);
+            let b = if do_bias {
+                _mm256_loadu_ps(bias.as_ptr().add(out_c))
+            } else {
+                _mm256_setzero_ps()
+            };
+
+            let mut acc0_lo = _mm256_add_ps(res0, b);
+            let mut acc0_hi = _mm256_setzero_ps();
+            let mut acc1_lo = _mm256_add_ps(res1, b);
+            let mut acc1_hi = _mm256_setzero_ps();
+            let mut acc2_lo = _mm256_add_ps(res2, b);
+            let mut acc2_hi = _mm256_setzero_ps();
+            let mut acc3_lo = _mm256_add_ps(res3, b);
+            let mut acc3_hi = _mm256_setzero_ps();
+
+            let mut in_c = 0;
+            while in_c + 2 <= in_len {
+                let wp_lo = weights.as_ptr().add(in_c * out_len + out_c);
+                let vw_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp_lo as *const __m128i));
+                let wp_hi = weights.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp_hi as *const __m128i));
+
+                let vs0_lo = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                let vs0_hi = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
+                acc0_lo = _mm256_fmadd_ps(vs0_lo, vw_lo, acc0_lo);
+                acc0_hi = _mm256_fmadd_ps(vs0_hi, vw_hi, acc0_hi);
+
+                let vs1_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                let vs1_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c + 1));
+                acc1_lo = _mm256_fmadd_ps(vs1_lo, vw_lo, acc1_lo);
+                acc1_hi = _mm256_fmadd_ps(vs1_hi, vw_hi, acc1_hi);
+
+                let vs2_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                let vs2_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c + 1));
+                acc2_lo = _mm256_fmadd_ps(vs2_lo, vw_lo, acc2_lo);
+                acc2_hi = _mm256_fmadd_ps(vs2_hi, vw_hi, acc2_hi);
+
+                let vs3_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
+                let vs3_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c + 1));
+                acc3_lo = _mm256_fmadd_ps(vs3_lo, vw_lo, acc3_lo);
+                acc3_hi = _mm256_fmadd_ps(vs3_hi, vw_hi, acc3_hi);
+
+                in_c += 2;
             }
 
-            // Weight Loop: Multiply and accumulate the matrix result onto the buckets.
-            for in_c in 0..in_len {
-                let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
+            if in_c < in_len {
+                let wp = weights.as_ptr().add(in_c * out_len + out_c);
+                let vw = _mm256_cvtph_ps(_mm_loadu_si128(wp as *const __m128i));
+                let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                let vs1 = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                let vs2 = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                let vs3 = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
 
-                acc0 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c)),
-                    vw,
-                    acc0,
-                );
-                acc1 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c)),
-                    vw,
-                    acc1,
-                );
-                acc2 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c)),
-                    vw,
-                    acc2,
-                );
-                acc3 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c)),
-                    vw,
-                    acc3,
-                );
+                acc0_lo = _mm256_fmadd_ps(vs0, vw, acc0_lo);
+                acc1_lo = _mm256_fmadd_ps(vs1, vw, acc1_lo);
+                acc2_lo = _mm256_fmadd_ps(vs2, vw, acc2_lo);
+                acc3_lo = _mm256_fmadd_ps(vs3, vw, acc3_lo);
             }
 
-            // Save the 4 final results (Residual + Bias + Multiplication).
+            let acc0 = _mm256_add_ps(acc0_lo, acc0_hi);
+            let acc1 = _mm256_add_ps(acc1_lo, acc1_hi);
+            let acc2 = _mm256_add_ps(acc2_lo, acc2_hi);
+            let acc3 = _mm256_add_ps(acc3_lo, acc3_hi);
+
             _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
             _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
             _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
@@ -252,6 +320,11 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
 /// f32 weights instead of f16-quantized (u16) weights. Used where the 1x1 projection
 /// operates on native f32 weights and the residual
 /// addition is fused into the same SIMD pass.
+///
+/// # Optimization
+/// Processes 2 input columns per iteration with 8 independent FMA accumulators
+/// (2 per frame: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
+/// doubling port utilization on x86-64-v3.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     in_frames: &[f32],
@@ -269,44 +342,74 @@ pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     while f + 4 <= num_frames {
         let mut out_c = 0;
         while out_c + 8 <= out_len {
-            let mut acc0 = _mm256_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
-            let mut acc1 = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
-            let mut acc2 = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
-            let mut acc3 = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
+            let res0 = _mm256_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
+            let res1 = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
+            let res2 = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
+            let res3 = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
 
-            if do_bias {
-                let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
-                acc0 = _mm256_add_ps(acc0, b);
-                acc1 = _mm256_add_ps(acc1, b);
-                acc2 = _mm256_add_ps(acc2, b);
-                acc3 = _mm256_add_ps(acc3, b);
+            let b = if do_bias {
+                _mm256_loadu_ps(bias.as_ptr().add(out_c))
+            } else {
+                _mm256_setzero_ps()
+            };
+
+            let mut acc0_lo = _mm256_add_ps(res0, b);
+            let mut acc0_hi = _mm256_setzero_ps();
+            let mut acc1_lo = _mm256_add_ps(res1, b);
+            let mut acc1_hi = _mm256_setzero_ps();
+            let mut acc2_lo = _mm256_add_ps(res2, b);
+            let mut acc2_hi = _mm256_setzero_ps();
+            let mut acc3_lo = _mm256_add_ps(res3, b);
+            let mut acc3_hi = _mm256_setzero_ps();
+
+            let mut in_c = 0;
+            while in_c + 2 <= in_len {
+                let wp_lo = weights.as_ptr().add(in_c * out_len + out_c);
+                let vw_lo = _mm256_loadu_ps(wp_lo);
+                let wp_hi = weights.as_ptr().add((in_c + 1) * out_len + out_c);
+                let vw_hi = _mm256_loadu_ps(wp_hi);
+
+                let vs0_lo = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                let vs0_hi = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
+                acc0_lo = _mm256_fmadd_ps(vs0_lo, vw_lo, acc0_lo);
+                acc0_hi = _mm256_fmadd_ps(vs0_hi, vw_hi, acc0_hi);
+
+                let vs1_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                let vs1_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c + 1));
+                acc1_lo = _mm256_fmadd_ps(vs1_lo, vw_lo, acc1_lo);
+                acc1_hi = _mm256_fmadd_ps(vs1_hi, vw_hi, acc1_hi);
+
+                let vs2_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                let vs2_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c + 1));
+                acc2_lo = _mm256_fmadd_ps(vs2_lo, vw_lo, acc2_lo);
+                acc2_hi = _mm256_fmadd_ps(vs2_hi, vw_hi, acc2_hi);
+
+                let vs3_lo = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
+                let vs3_hi = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c + 1));
+                acc3_lo = _mm256_fmadd_ps(vs3_lo, vw_lo, acc3_lo);
+                acc3_hi = _mm256_fmadd_ps(vs3_hi, vw_hi, acc3_hi);
+
+                in_c += 2;
             }
 
-            for in_c in 0..in_len {
-                let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm256_loadu_ps(weight_ptr);
+            if in_c < in_len {
+                let wp = weights.as_ptr().add(in_c * out_len + out_c);
+                let vw = _mm256_loadu_ps(wp);
+                let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                let vs1 = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                let vs2 = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                let vs3 = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
 
-                acc0 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c)),
-                    vw,
-                    acc0,
-                );
-                acc1 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c)),
-                    vw,
-                    acc1,
-                );
-                acc2 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c)),
-                    vw,
-                    acc2,
-                );
-                acc3 = _mm256_fmadd_ps(
-                    _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c)),
-                    vw,
-                    acc3,
-                );
+                acc0_lo = _mm256_fmadd_ps(vs0, vw, acc0_lo);
+                acc1_lo = _mm256_fmadd_ps(vs1, vw, acc1_lo);
+                acc2_lo = _mm256_fmadd_ps(vs2, vw, acc2_lo);
+                acc3_lo = _mm256_fmadd_ps(vs3, vw, acc3_lo);
             }
+
+            let acc0 = _mm256_add_ps(acc0_lo, acc0_hi);
+            let acc1 = _mm256_add_ps(acc1_lo, acc1_hi);
+            let acc2 = _mm256_add_ps(acc2_lo, acc2_hi);
+            let acc3 = _mm256_add_ps(acc3_lo, acc3_hi);
 
             _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
             _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
