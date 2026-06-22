@@ -75,7 +75,7 @@ Agravante: a conv é executada **frame-a-frame** (`layer_forward_ch3_block` em `
 
 ---
 
-## A3 — [ALTA] Conv agrupada (grouped) do A2 usa anti-padrão escalar — e já existe versão SIMD pronta, porém *morta*
+## A3 — [ALTA] Conv agrupada (grouped) do A2 usa anti-padrão escalar — e já existe versão SIMD pronta, porém *morta* [DONE]
 
 **Arquivo:** `src/models/a2/grouped_conv1d.rs`.
 

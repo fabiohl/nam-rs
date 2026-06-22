@@ -231,7 +231,7 @@ impl A2GroupedConv1d {
                     }
                 }
             } else {
-                process_single_frame_avx2(self, layer_buffer, out_frame, frame_idx, mixin);
+                grouped_conv1d_single_frame_simd(self, layer_buffer, out_frame, frame_idx, mixin);
             }
         }
     }
@@ -269,7 +269,13 @@ impl A2GroupedConv1d {
             let out_slice = &mut block[f * self.out_ch..(f + 1) * self.out_ch];
             let m = mixin.map(|full| &full[f * self.out_ch..(f + 1) * self.out_ch]);
             unsafe {
-                process_single_frame_avx2(self, layer_buffer, out_slice, buffer_start + f, m);
+                grouped_conv1d_single_frame_simd(
+                    self,
+                    layer_buffer,
+                    out_slice,
+                    buffer_start + f,
+                    m,
+                );
             }
         }
     }
@@ -380,144 +386,6 @@ pub fn grouped_conv1d_block_ref(
             frame_start + f,
             &mut block[f * out_ch..(f + 1) * out_ch],
         );
-    }
-}
-
-// =============================================================================
-// AVX2+FMA SIMD kernel
-// =============================================================================
-
-/// Grouped dilated conv — AVX2 broadcast-FMA single-frame kernel.
-///
-/// For each group, iterates over 4-channel output blocks with the classic
-/// `vfmadd231ps` broadcast-FMA pattern: loads 4 output weights, broadcasts
-/// one input scalar, and accumulates.
-///
-/// # Safety
-/// Buffers must be sized correctly. Caller guarantees tap indices are valid.
-#[target_feature(enable = "avx2,fma")]
-unsafe fn process_single_frame_avx2(
-    conv: &A2GroupedConv1d,
-    layer_buffer: &[f32],
-    out_frame: &mut [f32],
-    frame_idx: usize,
-    mixin: Option<&[f32]>,
-) {
-    debug_assert!(
-        out_frame.len() >= conv.out_ch,
-        "avx2: out_frame len {} < out_ch {}",
-        out_frame.len(),
-        conv.out_ch
-    );
-    debug_assert!(
-        frame_idx >= conv.dilation * (conv.kernel.saturating_sub(1)),
-        "avx2: frame_idx {} < lookback {}",
-        frame_idx,
-        conv.dilation * (conv.kernel.saturating_sub(1))
-    );
-    debug_assert!(
-        layer_buffer.len() > frame_idx * conv.in_ch,
-        "avx2: layer_buffer len {} <= frame_idx {} * in_ch {}",
-        layer_buffer.len(),
-        frame_idx,
-        conv.in_ch
-    );
-    debug_assert!(
-        mixin.is_none_or(|m| m.len() >= conv.out_ch),
-        "avx2: mixin len {:?} < out_ch {}",
-        mixin.map(|m| m.len()),
-        conv.out_ch
-    );
-
-    let in_ch = conv.in_ch;
-    let in_per_group = conv.in_per_group;
-    let out_per_group = conv.out_per_group;
-    let kernel = conv.kernel;
-    let dilation = conv.dilation;
-    let num_blocks_per_group = conv.num_blocks_per_group;
-    let groups = conv.groups;
-
-    let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
-    let k_limit = kernel.min(MAX_KERNEL);
-
-    for (k, tap) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
-        let offset = (dilation as isize) * ((k as isize) + 1 - (kernel as isize));
-        let in_start = ((frame_idx as isize) + offset) as usize * in_ch;
-        unsafe {
-            *tap = layer_buffer.as_ptr().add(in_start);
-            (conv.prefetch_fn)(*tap, dilation * in_ch, k, kernel, dilation);
-        }
-    }
-
-    for g in 0..groups {
-        let group_in_start = g * in_per_group;
-        let group_out_start = g * out_per_group;
-
-        for b in 0..num_blocks_per_group {
-            let out_c = group_out_start + b * 4;
-            let (mu0, mu1, mu2, mu3) = load_mixin_4(mixin, out_c, conv.out_ch);
-
-            let (mut r0, mut r1, mut r2, mut r3);
-            if conv.do_bias {
-                r0 = *conv.bias.get_unchecked(out_c) + mu0;
-                r1 = if out_c + 1 < conv.out_ch {
-                    *conv.bias.get_unchecked(out_c + 1)
-                } else {
-                    0.0
-                } + mu1;
-                r2 = if out_c + 2 < conv.out_ch {
-                    *conv.bias.get_unchecked(out_c + 2)
-                } else {
-                    0.0
-                } + mu2;
-                r3 = if out_c + 3 < conv.out_ch {
-                    *conv.bias.get_unchecked(out_c + 3)
-                } else {
-                    0.0
-                } + mu3;
-            } else {
-                r0 = mu0;
-                r1 = mu1;
-                r2 = mu2;
-                r3 = mu3;
-            }
-
-            for ik in 0..kernel {
-                let tap = *tap_ptrs.get_unchecked(ik);
-                let wk_group_base = g * (num_blocks_per_group * kernel * in_per_group * 4);
-
-                for ic in 0..in_per_group {
-                    let w_base = wk_group_base
-                        + b * (kernel * in_per_group * 4)
-                        + ik * (in_per_group * 4)
-                        + ic * 4;
-
-                    let wv = _mm_loadu_ps(conv.weights.as_ptr().add(w_base));
-                    let sv = _mm_set1_ps(*tap.add(group_in_start + ic));
-                    let acc = _mm_setr_ps(r0, r1, r2, r3);
-                    let acc = _mm_fmadd_ps(wv, sv, acc);
-
-                    r0 = _mm_cvtss_f32(acc);
-                    r1 = _mm_cvtss_f32(_mm_shuffle_ps(acc, acc, 0x55));
-                    r2 = _mm_cvtss_f32(_mm_shuffle_ps(acc, acc, 0xAA));
-                    r3 = _mm_cvtss_f32(_mm_shuffle_ps(acc, acc, 0xFF));
-                }
-            }
-
-            if out_c + 3 < conv.out_ch {
-                *out_frame.get_unchecked_mut(out_c) = r0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3;
-            } else {
-                let r = [r0, r1, r2, r3];
-                for (lane, &val) in r.iter().enumerate() {
-                    if out_c + lane < conv.out_ch {
-                        *out_frame.get_unchecked_mut(out_c + lane) = val;
-                    }
-                }
-            }
-        }
     }
 }
 
