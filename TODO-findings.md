@@ -63,7 +63,7 @@ Agravante: a conv é executada **frame-a-frame** (`layer_forward_ch3_block` em `
 
 ---
 
-## A2 — [MÉDIA] Conv CH=8 do A2: T=4 subutiliza as portas FMA (~50%)
+## A2 — [MÉDIA] Conv CH=8 do A2: T=4 subutiliza as portas FMA (~50%) [DONE]
 
 **Arquivo:** `src/models/a2/conv1d_ch8/simd.rs:22-95` (`conv1d_ch8_t4_avx2`).
 

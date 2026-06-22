@@ -7,17 +7,17 @@
     clippy::too_many_arguments
 )]
 
-//! CH=8 T=4 frame-tiled tap-major convolution with broadcast-FMA (T2.2).
+//! CH=8 T=8 frame-tiled tap-major convolution with broadcast-FMA (T2.2).
 //!
 //! When `out_ch == 8`, the generic 4-wide interleaved scheme processes frames
 //! one at a time. This module implements a **block-level** kernel that processes
-//! 4 consecutive frames per tile, amortizing weight loads across all 4 frames
+//! 8 consecutive frames per tile, amortizing weight loads across all 8 frames
 //! via SIMD broadcast-FMA instructions. Weights are stored in **col-major-per-tap**
 //! layout (`w[k * 64 + in * 8 + out]`) so that the 8 output-channel weights for
 //! a single (tap, input_channel) pair are contiguous — one `_mm256_loadu_ps` loads
 //! them all.
 //!
-//! For each tile of T=4 frames, the inner loop is:
+//! For each tile of T=8 frames, the inner loop is:
 //!
 //! ```text
 //! a[f][o] += Wcol[o] * h[f]   (o vectorized, h[f] scalar broadcast)
@@ -27,6 +27,7 @@
 //!
 //! ## Source of truth
 //! - `a2_fast.cpp:617-681` (strategy `Channels >= 8`, T=4 tap-major).
+//!   Elevated to T=8 to saturate FMA ports.
 
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;

@@ -56,7 +56,7 @@ fn test_conv1d_ch8_k6_parity() {
     let mut z_ref = vec![0.0f32; num_frames * 8];
 
     unsafe {
-        conv1d_ch8_t4_avx2(
+        conv1d_ch8_t8_avx2(
             &w,
             &b,
             dilation,
@@ -108,7 +108,7 @@ fn test_conv1d_ch8_k15_parity() {
     let mut z_ref = vec![0.0f32; num_frames * 8];
 
     unsafe {
-        conv1d_ch8_t4_avx2(
+        conv1d_ch8_t8_avx2(
             &w,
             &b,
             dilation,
@@ -145,7 +145,7 @@ fn test_conv1d_ch8_k15_parity() {
 }
 
 #[test]
-fn test_conv1d_ch8_t4_tail_parity() {
+fn test_conv1d_ch8_t8_tail_parity() {
     let kernel = 6;
     let dilation = 1;
     let (w, b) = make_random_weights(kernel, 55);
@@ -161,7 +161,7 @@ fn test_conv1d_ch8_t4_tail_parity() {
     let mut z_ref = vec![0.0f32; num_frames * 8];
 
     unsafe {
-        conv1d_ch8_t4_avx2(
+        conv1d_ch8_t8_avx2(
             &w,
             &b,
             dilation,
@@ -199,7 +199,7 @@ fn test_conv1d_ch8_t4_tail_parity() {
 
 #[test]
 fn test_conv1d_ch8_z_1_frame() {
-    // Single frame: no T=4 tiling, pure scalar tail path.
+    // Single frame: no T=8 tiling, pure scalar tail path.
     let kernel = 15;
     let dilation = 239;
     let (w, b) = make_random_weights(kernel, 111);
@@ -214,7 +214,7 @@ fn test_conv1d_ch8_z_1_frame() {
     let mut z_ref = vec![0.0f32; num_frames * 8];
 
     unsafe {
-        conv1d_ch8_t4_avx2(
+        conv1d_ch8_t8_avx2(
             &w,
             &b,
             dilation,

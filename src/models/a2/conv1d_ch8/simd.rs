@@ -7,19 +7,24 @@ use crate::models::a2::film::FilmBlock;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
 use core::arch::x86_64::*;
 
-/// T=4 frame-tiled tap-major dilated conv for CH=8, AVX2+FMA.
+/// T=8 frame-tiled tap-major dilated conv for CH=8, AVX2+FMA.
 ///
-/// Processes frames in groups of 4, accumulating all K taps into `T*C`
+/// Processes frames in groups of 8, accumulating all K taps into `T*C`
 /// register-allocated accumulators. For each (tap, input_channel) pair,
 /// loads the 8 output-channel weights once and broadcasts the history
-/// value for each of the 4 frames via `_mm256_set1_ps`.
+/// value for each of the 8 frames via `_mm256_set1_ps`.
+///
+/// Maintaining 8 independent accumulator chains (a0..a7) saturates the
+/// 2 FMA ports (~4-5 cycle latency → 8 in-flight chains needed for full
+/// throughput). Register pressure: 8 accumulators + wcol + temp ≈ 10 YMM
+/// (fits within 16 YMM of x86-64-v3).
 ///
 /// # Safety
 /// - `weights` must have at least `kernel * 64` valid f32 elements.
 /// - `layer_buffer` must be large enough for all frame lookbacks.
 /// - `z_out` must have at least `num_frames * 8` elements.
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn conv1d_ch8_t4_avx2(
+pub unsafe fn conv1d_ch8_t8_avx2(
     weights: &[f32],
     bias: &[f32],
     dilation: usize,
@@ -41,7 +46,7 @@ pub unsafe fn conv1d_ch8_t4_avx2(
 
     let bias_v = _mm256_loadu_ps(bias.as_ptr());
 
-    const T: usize = 4;
+    const T: usize = 8;
     let n_tiled = (num_frames / T) * T;
 
     for f in (0..n_tiled).step_by(T) {
@@ -49,6 +54,10 @@ pub unsafe fn conv1d_ch8_t4_avx2(
         let mut a1 = bias_v;
         let mut a2 = bias_v;
         let mut a3 = bias_v;
+        let mut a4 = bias_v;
+        let mut a5 = bias_v;
+        let mut a6 = bias_v;
+        let mut a7 = bias_v;
 
         let frame0 = (frame_start + f) as isize;
 
@@ -63,10 +72,18 @@ pub unsafe fn conv1d_ch8_t4_avx2(
                 let h1 = *hb.add(ch + cp);
                 let h2 = *hb.add(2 * ch + cp);
                 let h3 = *hb.add(3 * ch + cp);
+                let h4 = *hb.add(4 * ch + cp);
+                let h5 = *hb.add(5 * ch + cp);
+                let h6 = *hb.add(6 * ch + cp);
+                let h7 = *hb.add(7 * ch + cp);
                 a0 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h0), a0);
                 a1 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h1), a1);
                 a2 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h2), a2);
                 a3 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h3), a3);
+                a4 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h4), a4);
+                a5 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h5), a5);
+                a6 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h6), a6);
+                a7 = _mm256_fmadd_ps(wcol, _mm256_set1_ps(h7), a7);
             }
         }
 
@@ -74,6 +91,10 @@ pub unsafe fn conv1d_ch8_t4_avx2(
         _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 1) * ch), a1);
         _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 2) * ch), a2);
         _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 3) * ch), a3);
+        _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 4) * ch), a4);
+        _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 5) * ch), a5);
+        _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 6) * ch), a6);
+        _mm256_storeu_ps(z_out.as_mut_ptr().add((f + 7) * ch), a7);
     }
 
     for f in n_tiled..num_frames {
@@ -94,7 +115,7 @@ pub unsafe fn conv1d_ch8_t4_avx2(
     }
 }
 
-/// Full layer forward pass for CH=8 using T=4 tiled tap-major conv.
+/// Full layer forward pass for CH=8 using T=8 tiled tap-major conv.
 ///
 /// Processes `num_frames` through: dilated conv → [FiLM post-conv] → bias → mixin →
 /// [FiLM post-mixin] → LeakyReLU → [FiLM post-activation] → head accumulate →
@@ -135,7 +156,7 @@ pub unsafe fn layer_forward_ch8_block(
     debug_assert!(num_frames <= MAX_KERNEL_FRAMES);
     let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * 8];
 
-    conv1d_ch8_t4_avx2(
+    conv1d_ch8_t8_avx2(
         &conv.weights,
         &conv.bias,
         conv.dilation,
