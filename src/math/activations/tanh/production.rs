@@ -176,6 +176,9 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
 
     for item in slice.iter_mut().skip(i) {
         *item = scalar_pade_tanh(*item);
+        if item.abs() < f32::MIN_POSITIVE {
+            *item = 0.0;
+        }
     }
 }
 
@@ -200,6 +203,9 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
 
     for item in slice.iter_mut().skip(i) {
         *item = scalar_pade_tanh(*item);
+        if item.abs() < f32::MIN_POSITIVE {
+            *item = 0.0;
+        }
     }
 }
 

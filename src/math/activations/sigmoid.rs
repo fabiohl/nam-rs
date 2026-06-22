@@ -179,6 +179,9 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
 
     for item in slice.iter_mut().skip(i) {
         *item = scalar_minimax_sigmoid(*item);
+        if item.abs() < f32::MIN_POSITIVE {
+            *item = 0.0;
+        }
     }
 }
 
@@ -203,6 +206,9 @@ pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
 
     for item in slice.iter_mut().skip(i) {
         *item = scalar_minimax_sigmoid(*item);
+        if item.abs() < f32::MIN_POSITIVE {
+            *item = 0.0;
+        }
     }
 }
 

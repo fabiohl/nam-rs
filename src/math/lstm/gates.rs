@@ -12,9 +12,9 @@
 //! during Task 3.3.
 
 use crate::math::activations::sigmoid::{
-    simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
+    scalar_minimax_sigmoid, simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
 };
-use crate::math::activations::tanh::{simd_tanh_avx2, simd_tanh_avx512};
+use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
 /// Fused kernel for LSTM gates (AVX2).
@@ -93,14 +93,14 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
         j += 8;
     }
     while j < hidden_size {
-        let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
-        let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
-        let tanh_g = gates[j + 2 * hidden_size].tanh();
-        let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
+        let sig_i = scalar_minimax_sigmoid(gates[j]);
+        let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
+        let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
+        let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
 
         let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
         cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * new_cs.tanh();
+        hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
         j += 1;
     }
 }
@@ -135,14 +135,14 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
     }
     // Handle the remainder.
     while j < hidden_size {
-        let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
-        let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
-        let tanh_g = gates[j + 2 * hidden_size].tanh();
-        let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
+        let sig_i = scalar_minimax_sigmoid(gates[j]);
+        let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
+        let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
+        let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
 
         let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
         cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * new_cs.tanh();
+        hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
         j += 1;
     }
 }

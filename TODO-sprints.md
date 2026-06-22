@@ -26,19 +26,19 @@
   - **Arquivos:** `src/clap/processor/events.rs`
   - **Ação:** Em `try_slimmable_rebuild`, substituir o log direto no RT thread por uma atualização numa flag atômica (ex.: `RT_STATUS_SLIMMABLE_SLICE_FAILED`) a ser consumida pelo thread principal para logar de forma segura.
 
-### Sprint E3.2: Consistência Numérica e Anti-Denormal em Ativações
+### Sprint E3.2: Consistência Numérica e Anti-Denormal em Ativações [DONE]
 
 *Foco: Impedir subnormalização nos tails escalares e unificar aproximações polinomiais nos LSTMs.*
 
-- [ ] **Tarefa E3.2.1 [F11]: Adicionar guardas de denormal nos tails escalares.**
+- [x] **Tarefa E3.2.1 [F11]: Adicionar guardas de denormal nos tails escalares.**
   - **Especialista:** `implementador`
   - **Arquivos:** `src/math/activations/sigmoid.rs`, `src/math/activations/tanh/production.rs`
   - **Ação:** Implementar o flush-to-zero manual (`if val.abs() < f32::MIN_POSITIVE { *val = 0.0; }`) nos loops escalares pós-SIMD.
 
-- [ ] **Tarefa E3.2.2 [F19]: Unificar polinômios de aproximação no tail escalar dos gates LSTM.**
+- [x] **Tarefa E3.2.2 [F19]: Unificar polinômios de aproximação no tail escalar dos gates LSTM.**
   - **Especialista:** `implementador` / `pesquisador-inovador` (math)
   - **Arquivos:** `src/math/lstm/gates.rs`
-  - **Ação:** Substituir chamadas diretas a `(-x).exp()`/`x.tanh()` pelas mesmas aproximações (`simd_sigmoid`/`simd_tanh_poly` versão escalar) usadas no corpo SIMD para manter continuidade. *Atenção:* Exige revalidar os thresholds dos testes de paridade.
+  - **Ação:** Substituir chamadas diretas a `(-x).exp()`/`x.tanh()` pelas mesmas aproximações (`scalar_minimax_sigmoid`/`scalar_pade_tanh`) usadas no corpo SIMD para manter continuidade. *Atenção:* Exige revalidar os thresholds dos testes de paridade.
 
 ---
 
