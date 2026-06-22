@@ -74,12 +74,20 @@ pub unsafe fn gemv_with_bias_f32_avx2(
                 let mut acc1 = _mm256_setzero_ps();
                 let mut acc2 = _mm256_setzero_ps();
                 let mut acc3 = _mm256_setzero_ps();
+                let mut acc4 = _mm256_setzero_ps();
+                let mut acc5 = _mm256_setzero_ps();
+                let mut acc6 = _mm256_setzero_ps();
+                let mut acc7 = _mm256_setzero_ps();
                 let mut in_c = 0;
-                while in_c + 4 <= in_len {
+                while in_c + 8 <= in_len {
                     let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vs1 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
                     let vs2 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 2));
                     let vs3 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 3));
+                    let vs4 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 4));
+                    let vs5 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 5));
+                    let vs6 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 6));
+                    let vs7 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 7));
 
                     let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                     let w0 = _mm256_loadu_ps(w_ptr);
@@ -90,12 +98,24 @@ pub unsafe fn gemv_with_bias_f32_avx2(
                     acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
                     let w3 = _mm256_loadu_ps(w_ptr.add(3 * out_len));
                     acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
+                    let w4 = _mm256_loadu_ps(w_ptr.add(4 * out_len));
+                    acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
+                    let w5 = _mm256_loadu_ps(w_ptr.add(5 * out_len));
+                    acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
+                    let w6 = _mm256_loadu_ps(w_ptr.add(6 * out_len));
+                    acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
+                    let w7 = _mm256_loadu_ps(w_ptr.add(7 * out_len));
+                    acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
-                    in_c += 4;
+                    in_c += 8;
                 }
                 acc0 = _mm256_add_ps(acc0, acc1);
                 acc2 = _mm256_add_ps(acc2, acc3);
+                acc4 = _mm256_add_ps(acc4, acc5);
+                acc6 = _mm256_add_ps(acc6, acc7);
                 acc0 = _mm256_add_ps(acc0, acc2);
+                acc4 = _mm256_add_ps(acc4, acc6);
+                acc0 = _mm256_add_ps(acc0, acc4);
                 while in_c < in_len {
                     let vs = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vw = _mm256_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));
@@ -195,12 +215,20 @@ pub unsafe fn gemv_no_bias_f32_avx2(
                 let mut acc1 = _mm256_setzero_ps();
                 let mut acc2 = _mm256_setzero_ps();
                 let mut acc3 = _mm256_setzero_ps();
+                let mut acc4 = _mm256_setzero_ps();
+                let mut acc5 = _mm256_setzero_ps();
+                let mut acc6 = _mm256_setzero_ps();
+                let mut acc7 = _mm256_setzero_ps();
                 let mut in_c = 0;
-                while in_c + 4 <= in_len {
+                while in_c + 8 <= in_len {
                     let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vs1 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
                     let vs2 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 2));
                     let vs3 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 3));
+                    let vs4 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 4));
+                    let vs5 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 5));
+                    let vs6 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 6));
+                    let vs7 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 7));
 
                     let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                     let w0 = _mm256_loadu_ps(w_ptr);
@@ -211,12 +239,24 @@ pub unsafe fn gemv_no_bias_f32_avx2(
                     acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
                     let w3 = _mm256_loadu_ps(w_ptr.add(3 * out_len));
                     acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
+                    let w4 = _mm256_loadu_ps(w_ptr.add(4 * out_len));
+                    acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
+                    let w5 = _mm256_loadu_ps(w_ptr.add(5 * out_len));
+                    acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
+                    let w6 = _mm256_loadu_ps(w_ptr.add(6 * out_len));
+                    acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
+                    let w7 = _mm256_loadu_ps(w_ptr.add(7 * out_len));
+                    acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
-                    in_c += 4;
+                    in_c += 8;
                 }
                 acc0 = _mm256_add_ps(acc0, acc1);
                 acc2 = _mm256_add_ps(acc2, acc3);
+                acc4 = _mm256_add_ps(acc4, acc5);
+                acc6 = _mm256_add_ps(acc6, acc7);
                 acc0 = _mm256_add_ps(acc0, acc2);
+                acc4 = _mm256_add_ps(acc4, acc6);
+                acc0 = _mm256_add_ps(acc0, acc4);
                 while in_c < in_len {
                     let vs = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vw = _mm256_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));

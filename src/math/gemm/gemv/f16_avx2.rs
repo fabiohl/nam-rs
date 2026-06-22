@@ -14,8 +14,8 @@ use core::arch::x86_64::*;
 /// at once avoids the processor having to read and write to memory multiple times, keeping
 /// the data "hot" and ready for the next computation.
 ///
-/// Uses 4 independent accumulators to break the FMA pipeline dependency chain,
-/// allowing the processor to execute up to 4 FMAs in parallel.
+/// Uses 8 independent accumulators to break the FMA pipeline dependency chain,
+/// allowing the processor to execute up to 8 FMAs in parallel.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
@@ -65,7 +65,7 @@ pub unsafe fn fused_add_gemv_avx2(
 
 /// Performs a linear projection (Y = Bias + W * Z), replacing the previous content.
 ///
-/// Uses 4 independent accumulators to break the FMA pipeline dependency chain.
+/// Uses 8 independent accumulators to break the FMA pipeline dependency chain.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gemv_overwrite_avx2(
     in_frame: &[f32],

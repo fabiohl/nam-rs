@@ -156,7 +156,7 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## A7 — [MÉDIA] Macro `gemv_kernel!`: 4→8 acumuladores e cauda escalar ineficiente
+## A7 — [MÉDIA] Macro `gemv_kernel!`: 4→8 acumuladores e cauda escalar ineficiente [DONE]
 
 **Arquivos:** `src/math/gemm/gemv/kernel_macro.rs:15-88`; `src/math/gemm/gemv/f16_avx2.rs:20-64`; `src/math/gemm/gemv/f32_avx2.rs:68-121`.
 

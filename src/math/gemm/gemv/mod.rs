@@ -12,7 +12,7 @@
 //! batch versions, and the fused operation `fused_add_gemv`.
 //!
 //! # Parallelism Strategy
-//! - AVX2: 4 YMM accumulators (4×8 = 32 lanes), inner loop with step 4.
+//! - AVX2: 8 YMM accumulators (8×8 = 64 lanes), inner loop with step 8.
 //! - AVX-512: 8 ZMM accumulators (8×16 = 128 lanes), inner loop with step 8.
 //! - FMA dependency chain breaking via multiple accumulators.
 //! - Software prefetch on in_frame to reduce cache miss latency.
