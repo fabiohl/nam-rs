@@ -46,7 +46,7 @@
 
 **Meta:** Endurecer os mecanismos de persistência, gerenciamento de estado e garbage collection lock-free.
 
-### Sprint E4.1: Organização e Limpeza de Scaffolding
+### Sprint E4.1: Organização e Limpeza de Scaffolding [DONE]
 
 *Foco: Limpeza do scaffolding CLAP stereo e traits não utilizados.*
 
@@ -64,7 +64,7 @@
 
 *Foco: Refinamentos no GC e estado do plugin.*
 
-- [ ] **Tarefa E4.2.1 [F13]: Corrigir ordering do buffer SPSC no `GcOverflowBuffer`.**
+- [x] **Tarefa E4.2.1 [F13]: Corrigir ordering do buffer SPSC no `GcOverflowBuffer`.**
   - **Especialista:** `implementador` (concorrência)
   - **Arquivo:** `src/common/spsc/gc.rs`
   - **Ação:** Analisar e ajustar a ordem de operações (`fetch_add(1, Relaxed)` vs `swap`) para garantir semântica estrita de sincronização ou documentar explícita e tecnicamente como "drain deferido".

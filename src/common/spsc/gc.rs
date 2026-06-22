@@ -166,7 +166,7 @@ impl GcOverflowBuffer {
         let packed = item.into_packed();
 
         let len = self.slots.len() as u64;
-        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
+        let idx = (self.write_idx.fetch_add(1, Ordering::Acquire) % len) as usize;
 
         let old = self.slots[idx].swap(packed, Ordering::AcqRel);
 
