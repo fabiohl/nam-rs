@@ -398,7 +398,7 @@ Duas das seis fases da auditoria longa falham de forma **determinística**. Nenh
 
 ---
 
-## C2 — [ALTA] Fase "Soak/Numerical Stability" sempre falha: `test_lstm_noise_soak` exige RMS≠0 de um modelo de **pesos zero**
+## C2 — [ALTA] Fase "Soak/Numerical Stability" sempre falha: `test_lstm_noise_soak` exige RMS≠0 de um modelo de **pesos zero** [DONE]
 
 **Evidência:** `target/logs/phase1-soak.log:7-10` → `panicked at tests/soak_test.rs:384: LSTM RMS do loop out of range: 0 at 0 frames`.
 
