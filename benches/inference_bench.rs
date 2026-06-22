@@ -287,6 +287,46 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
     });
 }
 
+/// A8: Padé [5,4] tanh with single Newton-Raphson on reciprocal (AVX2).
+/// Evaluates rcp_ps + 1×NR throughput vs div_ps and NR2.
+fn bench_tanh_pade_nr1_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PadeNR1_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_pade_nr1_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
+        });
+    });
+}
+
+/// A8: Padé [5,4] tanh with single Newton-Raphson — dual path (AVX2).
+/// Measures throughput when processing two independent registers.
+fn bench_tanh_pade_nr1_dual_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PadeNR1_Dual_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for pair in buf.chunks_exact_mut(16) {
+                    let x1 = _mm256_loadu_ps(pair[0..8].as_ptr());
+                    let x2 = _mm256_loadu_ps(pair[8..16].as_ptr());
+                    let (y1, y2) = nam_rs::math::activations::simd_tanh_pade_nr1_dual_avx2(x1, x2);
+                    _mm256_storeu_ps(pair[0..8].as_mut_ptr(), y1);
+                    _mm256_storeu_ps(pair[8..16].as_mut_ptr(), y2);
+                }
+            }
+        });
+    });
+}
+
 /// E8.T04: Padé [5,4] tanh with double Newton-Raphson on reciprocal (AVX2).
 /// Evaluates rcp_ps + 2×NR iteration throughput vs piecewise minimax.
 fn bench_tanh_pade_nr2_256(c: &mut Criterion) {
@@ -580,6 +620,26 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
             b.iter(|| {
                 buf.copy_from_slice(&base);
                 unsafe { nam_rs::math::activations::sigmoid_slice_avx512(&mut buf) };
+            });
+        });
+    }
+}
+
+/// A8: Padé [5,4] tanh with single Newton-Raphson (AVX-512).
+fn bench_tanh_pade_nr1_avx512_256elem(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        use std::arch::x86_64::*;
+        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+        c.bench_function("FastMath_tanh_PadeNR1_AVX512_256elem", |b| {
+            b.iter(|| {
+                let mut buf = base.clone();
+                unsafe {
+                    for chunk in buf.chunks_exact_mut(16) {
+                        let x = _mm512_loadu_ps(chunk.as_ptr());
+                        let y = nam_rs::math::activations::simd_tanh_pade_nr1_avx512(x);
+                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
+                    }
+                }
             });
         });
     }
@@ -1728,6 +1788,8 @@ criterion_group!(
     bench_lstm_1x40_comparison,
     bench_lstm_2x24_comparison,
     bench_tanh_slice_256,
+    bench_tanh_pade_nr1_256,
+    bench_tanh_pade_nr1_dual_256,
     bench_tanh_pade_nr2_256,
     bench_tanh_pade_div_256,
     bench_sigmoid_slice_256,
@@ -1738,6 +1800,7 @@ criterion_group!(
     bench_resampler_48000_bypass,
     bench_record,
     bench_tanh_avx512_256elem,
+    bench_tanh_pade_nr1_avx512_256elem,
     bench_tanh_pade_nr2_avx512_256elem,
     bench_tanh_pade_div_avx512_256elem,
     bench_sigmoid_avx512_256elem,

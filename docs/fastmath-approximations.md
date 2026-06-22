@@ -122,6 +122,8 @@ Experiment E8.T04 empirically proved that **the double Newton-Raphson iteration 
 
 **Normative implication:** Wherever `rcp_ps + 2× Newton-Raphson` is used in the codebase to approximate a rational Padé division, it can be replaced with `div_ps` with no precision penalty and a potential throughput gain (fewer dependencies, lower register pressure).
 
+A follow-up experiment (A8, 2026-06) tested whether a single NR iteration (`rcp_ps + 1×NR`, ~23 bits) could beat `div_ps` given the Padé intrinsic error of ~2.3e-3.  NR1 passed the −80 dB precision gate with ~64 dB margin but was **1.77× slower** than `div_ps` (110 ns vs 62 ns, 256-elem AVX2).  The hypothesis that manual NR saves latency was disproven: modern CPUs pipeline `div_ps` more efficiently than serial NR chains.  `div_ps` remains the optimal choice for both precision and throughput.
+
 ---
 
 ## 5. On WaveNet vs. C++ and BF16 Drift

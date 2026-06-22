@@ -168,15 +168,13 @@ Na conv depthwise (1 canal/grupo) os canais são triviais de vetorizar: processa
 
 ---
 
-## A8 — [BAIXA] Padé tanh/sigmoid: avaliar `rcp_ps`+1 Newton-Raphson no lugar de `div_ps`
+## A8 — [ENCERRADO] Padé tanh/sigmoid: avaliar `rcp_ps`+1 Newton-Raphson no lugar de `div_ps`
 
-**Arquivos:** `src/math/activations/tanh/production.rs:58,102-103,145`; `src/math/activations/sigmoid.rs`.
+**Arquivos:** `src/math/activations/tanh/production.rs:58,102-103,145`; `src/math/activations/tanh/reference.rs`; `benches/inference_bench.rs`; `src/math/activations/tanh/reference_test.rs`.
 
-**Observação.** O `div_ps` é a operação mais cara (latência ~11–14 ciclos, mal pipelinada). O caminho dual (`simd_tanh_dual_avx2`) já sobrepõe duas divisões — bom. Substituir `div` por `_mm256_rcp_ps` (12 bits) + 1 iteração de Newton-Raphson (~23 bits) atende à tolerância atual de tanh (erro ~2.3e-3) e pode ~dobrar a vazão da ativação.
+**Resultado (2026-06-22).** NR1 atende precisão com folga (−144 dB vs gate de −80 dB), mas `_mm256_div_ps` é **1.77× mais rápido** que `rcp_ps + 1 NR` (62 ns vs 110 ns, 256-elem, AVX2) — o oposto da hipótese inicial. O hardware `div_ps` já é a opção ótima em CPUs modernas, conforme confirmado pelo experimento E8.T04 (`fastmath-approximations.md` §4). A decisão é **não substituir** `div_ps`. Os protótipos NR1 e benchmarks ficam retidos em `reference.rs`/`reference_test.rs` para documentação.
 
-**Proposta (com cautela).** Prototipar e medir; **só** adotar se a paridade contra `f32::tanh`/golden mantiver erro < −80 dB (regra `rust.md` §2). Risco real de quebrar `golden_vectors`/`cpp_parity` e fidelidade perceptual. Por isso, **baixa prioridade** e gate por feature/medições.
-
-**Risco:** médio (fidelidade). **Esforço:** médio.
+**Desfecho:** FECHADO — `div_ps` mantido como produção. NR1 arquivado como referência.
 
 ---
 
