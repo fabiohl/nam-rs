@@ -182,7 +182,7 @@ O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do pro
 
 ### Tarefas Técnicas da Sprint 6
 
-- [ ] **T6.1: Restringir helper `init_accum_with_bias_mixin` a testes**
+- [x] **T6.1: Restringir helper `init_accum_with_bias_mixin` a testes**
 
   - **Descrição:** Substituir o atributo genérico de `dead_code` por uma restrição direta de teste (`#[cfg(test)]`), já que a função serve estritamente aos testes causais unitários.
   - **Arquivos envolvidos:**

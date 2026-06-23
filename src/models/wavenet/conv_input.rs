@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+#[cfg(test)]
 use crate::math::common::SimdMath;
 
 /// Initializes a block of 4 accumulator registers from bias and mixin vectors.
@@ -11,7 +12,7 @@ use crate::math::common::SimdMath;
 /// # Safety
 /// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
 // Helper for test-only `process_single_frame` (cfg(test) gated in conv1d.rs).
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 #[inline(always)]
 pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(
     acc: &mut [f32; 4],
