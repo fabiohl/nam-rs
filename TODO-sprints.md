@@ -147,7 +147,7 @@ O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do pro
 
 ### Tarefas Técnicas da Sprint 5
 
-- [ ] **T5.1: Adicionar compile_error! centralizado em `lib.rs`**
+- [x] **T5.1: Adicionar compile_error! centralizado em `lib.rs`**
 
   - **Descrição:** Introduzir uma diretiva condicional de compilação no arquivo raiz para falhar explicitamente o build caso a arquitetura de destino não seja `x86_64`.
   - **Arquivos envolvidos:**

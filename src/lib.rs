@@ -20,6 +20,9 @@
 //! The inference engine, processing kernels (SIMD), and model loading logic
 //! reside here to ensure mathematical parity between the CLI and the Plugin.
 
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!("NAM-rs requires x86_64 architecture");
+
 /// Common host-agnostic infrastructure layer.
 pub mod common;
 pub use common::*;
