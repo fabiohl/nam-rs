@@ -4,23 +4,24 @@
 macro_rules! impl_avx512vnni_bf16_gemv {
     () => {
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: a and b are valid slices; CPU supports AVX-512F+VL+F16C (verified by dispatch).
         unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
             crate::math::gemm::dot::dot_product_avx512(a, b)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: a and b are valid u16 (BF16) slices; CPU supports AVX-512 VNNI+BF16
+        // (verified by dispatch).
         unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            // SAFETY: a and b satisfy the function's documented invariants.
             unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(a, b) }
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
             crate::math::gemm::dot_4x::dot_product_4x_interleaved_avx512(weights, state)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: weights, state_f0, state_f1 are valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn dot_product_4x_interleaved_dual_frame(
             weights: &[[u16; 4]],
             state_f0: &[f32],
@@ -31,12 +32,12 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
             crate::math::gemm::dot_4x::dot_product_4x_f32_avx512(weights, state)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: weights, state_f0, state_f1 are valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn dot_product_4x_f32_dual(
             weights: &[[f32; 4]],
             state_f0: &[f32],
@@ -45,7 +46,7 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx512(weights, state_f0, state_f1)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: four weight slices and in_frame are valid u16 slices of equal length.
         unsafe fn dot_product_bf16_4x(
             w0: &[u16],
             w1: &[u16],
@@ -56,7 +57,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             dot_product_bf16_4x_fallback(w0, w1, w2, w3, in_frame)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frame, weights, bias, out_frame are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn fused_add_gemv(
             in_frame: &[f32],
             weights: &[u16],
@@ -67,7 +69,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             Avx512Math::fused_add_gemv(in_frame, weights, bias, out_frame, do_bias)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights, bias, out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn fused_add_gemm_batch(
             in_frames: &[f32],
             weights: &[u16],
@@ -81,7 +84,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights, bias, residual, out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn fused_gemm_residual_batch(
             in_frames: &[f32],
             weights: &[u16],
@@ -96,7 +100,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights (f32), bias, residual, out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn fused_gemm_residual_batch_f32(
             in_frames: &[f32],
             weights: &[f32],
@@ -111,7 +116,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frame, weights, bias, out_frame are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_overwrite(
             in_frame: &[f32],
             weights: &[u16],
@@ -122,7 +128,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             Avx512Math::gemv_overwrite(in_frame, weights, bias, out_frame, do_bias)
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frame (u16 BF16), weights (u16 BF16), bias (f32), out_frame (f32) are
+        // valid slices; CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
         unsafe fn gemv_overwrite_bf16(
             in_frame: &[u16],
             weights: &[u16],
@@ -135,7 +142,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frame, weights (4-gate concatenated), bias, out_gates are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_overwrite_4gate(
             in_frame: &[f32],
             weights: &[u16],
@@ -144,7 +152,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             hidden_size: usize,
             do_bias: bool,
         ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            // SAFETY: arguments satisfy the documented invariants; AVX-512 VNNI+BF16
+            // ISA verified by caller via dispatch.
             unsafe {
                 Avx512Math::gemv_overwrite_4gate(
                     in_frame,
@@ -157,7 +166,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             }
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frame (u16 BF16), weights (u16 BF16), bias (f32), out_gates (f32) are
+        // valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_overwrite_bf16_4gate(
             in_frame: &[u16],
             weights: &[u16],
@@ -166,7 +176,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             hidden_size: usize,
             do_bias: bool,
         ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            // SAFETY: arguments satisfy the documented invariants; AVX-512 VNNI+BF16
+            // ISA verified by caller via dispatch.
             unsafe {
                 Avx512Math::gemv_overwrite_bf16_4gate(
                     in_frame,
@@ -179,7 +190,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             }
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights, bias, out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_overwrite_batch(
             in_frames: &[f32],
             weights: &[u16],
@@ -193,7 +205,8 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights (f32), bias, out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_with_bias_f32(
             in_frames: &[f32],
             weights: &[f32],
@@ -201,7 +214,7 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             out_frames: &mut [f32],
             num_frames: usize,
         ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            // SAFETY: arguments satisfy the documented invariants.
             unsafe {
                 crate::math::gemm::gemv::gemv_with_bias_f32_avx512(
                     in_frames, weights, bias, out_frames, num_frames,
@@ -209,14 +222,15 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             }
         }
         #[inline(always)]
-        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        // SAFETY: in_frames, weights (f32), out_frames are valid slices;
+        // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_no_bias_f32(
             in_frames: &[f32],
             weights: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,
         ) {
-            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            // SAFETY: arguments satisfy the documented invariants.
             unsafe {
                 crate::math::gemm::gemv::gemv_no_bias_f32_avx512(
                     in_frames, weights, out_frames, num_frames,

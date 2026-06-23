@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #![allow(
-    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    // SAFETY: All unsafe blocks in this module are guarded by CPU feature detection
+    // (AVX-512F or AVX-512 VNNI+BF16) at dispatch time via SimdMathConfig::current().
+    // Each function's doc comment documents specific slice/pointer invariants.
     unsafe_op_in_unsafe_fn,
     clippy::missing_safety_doc,
     clippy::too_many_arguments

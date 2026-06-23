@@ -9,7 +9,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
 
 ---
 
-## SPRINT 1: Refatoração Estrutural de Arquivos Grandes e Testes Inline (EPIC C)
+## SPRINT 1: Refatoração Estrutural de Arquivos Grandes e Testes Inline (EPIC C) [DONE]
 
 **Objetivo:** Reduzir o acoplamento físico e tamanho dos arquivos do hot-path, separando testes inline e decompondo funções gigantescas de processamento sem alterar a lógica ou comportamento do áudio.
 **Duração estimada:** 1 a 2 semanas.
@@ -67,8 +67,9 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - *Concluído: função `read_and_validate_model_bytes(path, path_str, sys)` extraída com ~60 linhas eliminadas de duplicação. `.nam` agora lê bytes + `String::from_utf8` com diagnóstico próprio.*
   - *Referência no `TODO-findings.md`: F-06*
 
-- [ ] **Task 2.4: Avaliar generalização const-generic para convoluções estáticas vs dinâmicas**
+- [x] **Task 2.4: Avaliar generalização const-generic para convoluções estáticas vs dinâmicas**
   - Analisar se a conv1d estática de WaveNet pode ser reescrita usando parâmetros constantes genéricos (`const`-generic) herdados da versão dinâmica sem prejuízos à elisão de bounds checking.
+  - **Conclusão (2026-06-23): NÃO recomendado.** As duas versões diferem fundamentalmente na estratégia de preloading de taps (cópia em stack `[[0.0; IN]; K]` vs ponteiros `[*const f32; MAX_KERNEL]`), na inicialização de acumuladores (loops de tamanho conhecido em compilação vs guardas `out_c+3 < out_ch` em runtime) e no pipeline de blocos (single-frame vs dual-frame tiling). Unificá-las comprometeria ou a elisão de bounds-check da versão estática (com `IN`/`OUT`/`K` comprováveis em compilação) ou a flexibilidade da versão dinâmica (dimensões arbitrárias, CH > 16). O núcleo SIMD já é compartilhado via trait `SimdMath` (`dot_product_4x_f32` / `dot_product_4x_f32_dual`). Nota pós-F-01: o dispatch monomorfizado no topo (já existente para `WaveNetLayer::process_block_internal<M: SimdMath>`) deve ser estendido ao `A2Conv1d::process_single_frame`, eliminando `is_x86_feature_detected!` por-chamada — mas isso é ortogonal à questão const-generic da estrutura `Conv1dDyn` vs `Conv1d<IN, OUT, K>`.
   - *Referência no `TODO-findings.md`: F-06*
 
 - [ ] **Task 2.5: Substituir comentários `SAFETY` genéricos por descrições específicas**
