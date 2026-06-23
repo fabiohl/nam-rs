@@ -6,11 +6,11 @@ use crate::math::common::SimdMath;
 /// Initializes a block of 4 accumulator registers from bias and mixin vectors.
 ///
 /// Unifies the 4-case initialization pattern (Some(mixin)+bias, Some(mixin) only,
-/// bias only, zeros) shared between single-frame and dual-frame convolution kernels.
+/// bias only, zeros). Used by the cfg(test)-gated `process_single_frame` in conv1d.rs.
 ///
 /// # Safety
 /// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
-// used only in test-only `process_single_frame` (cfg(test) gated in conv1d.rs)
+// Helper for test-only `process_single_frame` (cfg(test) gated in conv1d.rs).
 #[cfg_attr(not(test), allow(dead_code))]
 #[inline(always)]
 pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(

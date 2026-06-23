@@ -47,8 +47,6 @@ pub use silu::*;
 pub use softsign::*;
 pub use tanh::*;
 
-
-
 /// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
 #[inline(always)]
 pub fn tanh_slice(data: &mut [f32]) {
@@ -112,5 +110,7 @@ pub fn leaky_hard_tanh_slice(
     min_slope: f32,
     max_slope: f32,
 ) {
-    crate::math::common::dispatch_simd!(leaky_hard_tanh_slice(data, min_val, max_val, min_slope, max_slope));
+    crate::math::common::dispatch_simd!(leaky_hard_tanh_slice(
+        data, min_val, max_val, min_slope, max_slope
+    ));
 }

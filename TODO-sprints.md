@@ -130,7 +130,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ### Tarefas Técnicas da Sprint 3
 
-- [ ] **T3.1: Atualizar comentários do código fonte**
+- [x] **T3.1: Atualizar comentários do código fonte**
 
   - **Descrição:** Corrigir comentários e docstrings que descreviam o comportamento antigo (como o dispatch dinâmico por chamada ou a viabilidade de performance na v-table).
   - **Arquivos envolvidos:**

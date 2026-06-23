@@ -38,10 +38,11 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// Combines the outputs of both arrays: `sum(head1) + sum(head2)` × `head_scale`.
     ///
-    /// **For Scientists and Devs:** This is where the performance "magic trick" happens (SIMD Dispatch).
-    /// Instead of using slow `if/else` per frame to check the CPU (AVX2 vs AVX-512),
-    /// the `dispatch_simd!` macro evaluates the hardware once and "teleports" execution
-    /// to a cloned (monomorphized) version of this function strictly optimized for your processor.
+    /// **For Scientists and Devs:** The `dispatch_simd!` macro monomorphizes
+    /// this function via the `SimdMath` trait, matching the global hardware
+    /// configuration once at the call site. The compiler generates branchless
+    /// assembly optimized for your processor (AVX2, AVX-512, or AVX-512 VNNI BF16)
+    /// without v-table or dynamic dispatch overhead.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe { crate::math::common::dispatch_simd!(self, process_internal, input, output) };
     }
@@ -103,10 +104,9 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
     /// Stabilizes the model by processing silence (Zero Input) for pre-warm.
     ///
-    /// AVX-512 vs AVX2 dispatch is done via `SimdMathConfig::get().is_avx512` —
-    /// Relaxed atomic read of a `LazyLock` initialized at startup, without calling
-    /// `is_x86_feature_detected!` per invocation (cold-path, but consistent with
-    /// the dispatch pattern of the rest of the codebase).
+    /// Dispatches via `dispatch_simd!` macro — a single static `match` on the
+    /// globally detected `SIMD_MATH.instruction_set` — to run the AVX2, AVX-512,
+    /// or AVX-512 VNNI BF16 kernel without runtime feature detection per call.
     #[cold]
     pub fn prewarm(&mut self) {
         unsafe {

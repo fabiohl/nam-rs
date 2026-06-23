@@ -6,11 +6,10 @@ use super::instruction_set::InstructionSet;
 
 /// Static SIMD configuration — descriptive data only, no v-table.
 ///
-/// Dispatch is now always handled via `dispatch_simd!` macro which
-/// matches on `instruction_set` and monomorphizes calls via the
-/// `SimdMath` trait (e.g. `<Avx2Math>::apply_gain(...)`).
-/// Function pointers have been removed as all consumers use
-/// the trait-based static dispatch (Mechanism 1).
+/// All dispatch is handled via the `dispatch_simd!` macro, which matches
+/// on `instruction_set` and monomorphizes calls via the `SimdMath` trait
+/// (e.g. `<Avx2Math>::apply_gain(...)`). Function pointers have been removed;
+/// all consumers use trait-based static dispatch.
 #[derive(Clone, Copy)]
 pub struct SimdMathConfig {
     /// Active instruction set.
