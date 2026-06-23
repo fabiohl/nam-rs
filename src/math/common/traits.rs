@@ -57,6 +57,23 @@ pub trait SimdMath {
         state_f1: &[f32],
     ) -> ([f32; 4], [f32; 4]);
 
+    /// Computes 4 simultaneous dot products with native f32 weights.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4];
+
+    /// Computes 4 simultaneous dot products with native f32 weights for 2 parallel frames.
+    /// Returns a tuple with the 4 results of frame 0 and the 4 results of frame 1.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn dot_product_4x_f32_dual(
+        weights: &[[f32; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]);
+
     /// Computes 4 simultaneous BF16 dot products.
     ///
     /// # Safety

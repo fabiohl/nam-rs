@@ -32,6 +32,20 @@ macro_rules! impl_avx512vnni_bf16_gemv {
         }
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+            crate::math::gemm::dot_4x::dot_product_4x_f32_avx512(weights, state)
+        }
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn dot_product_4x_f32_dual(
+            weights: &[[f32; 4]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+        ) -> ([f32; 4], [f32; 4]) {
+            crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx512(weights, state_f0, state_f1)
+        }
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn dot_product_bf16_4x(
             w0: &[u16],
             w1: &[u16],

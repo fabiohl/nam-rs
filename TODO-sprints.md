@@ -32,7 +32,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ### Tarefas Técnicas da Sprint 1
 
-- [ ] **T1.1: Adicionar os novos métodos f32 ao trait `SimdMath`**
+- [x] **T1.1: Adicionar os novos métodos f32 ao trait `SimdMath`**
 
   - **Descrição:** Declarar os métodos de multiplicação de acumuladores f32 diretamente no trait comum de SIMD.
 
