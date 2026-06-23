@@ -336,6 +336,60 @@ pub trait SimdMath {
     /// Buffers must be valid.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
 
+    /// Applies ReLU to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn relu_slice(slice: &mut [f32]);
+
+    /// Applies PReLU to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid. Slopes must be valid.
+    unsafe fn prelu_slice(slice: &mut [f32], slopes: &[f32]);
+
+    /// Applies Softsign to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn softsign_slice(slice: &mut [f32]);
+
+    /// Applies SiLU to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn silu_slice(slice: &mut [f32]);
+
+    /// Applies HardTanh to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn hard_tanh_slice(slice: &mut [f32]);
+
+    /// Applies HardSwish to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn hard_swish_slice(slice: &mut [f32]);
+
+    /// Applies FastTanh to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn fast_tanh_slice(slice: &mut [f32]);
+
+    /// Applies LeakyHardTanh to a slice.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn leaky_hard_tanh_slice(
+        slice: &mut [f32],
+        min_val: f32,
+        max_val: f32,
+        min_slope: f32,
+        max_slope: f32,
+    );
+
     /// Tanh activation on a block.
     ///
     /// # Safety

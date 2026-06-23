@@ -47,60 +47,60 @@ pub use silu::*;
 pub use softsign::*;
 pub use tanh::*;
 
-use crate::math::common::SIMD_MATH;
+
 
 /// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
 #[inline(always)]
 pub fn tanh_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.tanh_slice)(data) };
+    crate::math::common::dispatch_simd!(tanh_slice(data));
 }
 
 /// Applies Sigmoid activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn sigmoid_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.sigmoid_slice)(data) };
+    crate::math::common::dispatch_simd!(sigmoid_slice(data));
 }
 
 /// Applies ReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn relu_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.relu_slice)(data) };
+    crate::math::common::dispatch_simd!(relu_slice(data));
 }
 
 /// Applies PReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn prelu_slice(data: &mut [f32], slopes: &[f32]) {
-    unsafe { (SIMD_MATH.prelu_slice)(data, slopes) };
+    crate::math::common::dispatch_simd!(prelu_slice(data, slopes));
 }
 
 /// Applies Softsign activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn softsign_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.softsign_slice)(data) };
+    crate::math::common::dispatch_simd!(softsign_slice(data));
 }
 
 /// Applies SiLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn silu_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.silu_slice)(data) };
+    crate::math::common::dispatch_simd!(silu_slice(data));
 }
 
 /// Applies HardTanh activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn hard_tanh_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.hard_tanh_slice)(data) };
+    crate::math::common::dispatch_simd!(hard_tanh_slice(data));
 }
 
 /// Applies HardSwish activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn hard_swish_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.hard_swish_slice)(data) };
+    crate::math::common::dispatch_simd!(hard_swish_slice(data));
 }
 
 /// Applies FastTanh activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn fast_tanh_slice(data: &mut [f32]) {
-    unsafe { (SIMD_MATH.fast_tanh_slice)(data) };
+    crate::math::common::dispatch_simd!(fast_tanh_slice(data));
 }
 
 /// Applies LeakyHardTanh activation to a slice of f32 with automatic dispatch.
@@ -112,5 +112,5 @@ pub fn leaky_hard_tanh_slice(
     min_slope: f32,
     max_slope: f32,
 ) {
-    unsafe { (SIMD_MATH.leaky_hard_tanh_slice)(data, min_val, max_val, min_slope, max_slope) };
+    crate::math::common::dispatch_simd!(leaky_hard_tanh_slice(data, min_val, max_val, min_slope, max_slope));
 }

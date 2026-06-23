@@ -75,15 +75,25 @@ macro_rules! dispatch_simd {
         }
     };
 
-    // Mode 3: Direct v-table call
+    // Mode 3: Static dispatch to SimdMath trait associated functions
     ($method:ident ($($arg:expr),*)) => {
         {
+            use $crate::math::common::{SIMD_MATH, InstructionSet};
+            use $crate::math::common::traits::SimdMath;
             // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             #[allow(clippy::macro_metavars_in_unsafe)]
-            {
-                use $crate::math::common::SIMD_MATH;
-                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
-                unsafe { (SIMD_MATH.$method)($($arg),*) }
+            unsafe {
+                match SIMD_MATH.instruction_set {
+                    InstructionSet::Avx512VnniBf16 => {
+                        $crate::math::common::Avx512VnniBf16Math::$method($($arg),*)
+                    }
+                    InstructionSet::Avx512 => {
+                        $crate::math::common::Avx512Math::$method($($arg),*)
+                    }
+                    InstructionSet::Avx2 => {
+                        $crate::math::common::Avx2Math::$method($($arg),*)
+                    }
+                }
             }
         }
     };

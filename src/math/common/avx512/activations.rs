@@ -74,6 +74,62 @@ macro_rules! impl_avx512_activations {
 
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn relu_slice(slice: &mut [f32]) {
+            crate::math::activations::relu_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn prelu_slice(slice: &mut [f32], slopes: &[f32]) {
+            crate::math::activations::prelu_slice_avx512(slice, slopes)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn softsign_slice(slice: &mut [f32]) {
+            crate::math::activations::softsign_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn silu_slice(slice: &mut [f32]) {
+            crate::math::activations::silu_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn hard_tanh_slice(slice: &mut [f32]) {
+            crate::math::activations::hard_tanh_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn hard_swish_slice(slice: &mut [f32]) {
+            crate::math::activations::hard_swish_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn fast_tanh_slice(slice: &mut [f32]) {
+            crate::math::activations::fast_tanh_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn leaky_hard_tanh_slice(
+            slice: &mut [f32],
+            min_val: f32,
+            max_val: f32,
+            min_slope: f32,
+            max_slope: f32,
+        ) {
+            crate::math::activations::leaky_hard_tanh_slice_avx512(
+                slice, min_val, max_val, min_slope, max_slope,
+            )
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn activation_tanh_block(buf: &mut [f32]) {
             crate::math::activations::tanh_slice_avx512(buf)
         }
@@ -149,6 +205,60 @@ macro_rules! impl_avx512vnni_bf16_activations {
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn sigmoid_slice(slice: &mut [f32]) {
             Avx512Math::sigmoid_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn relu_slice(slice: &mut [f32]) {
+            Avx512Math::relu_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn prelu_slice(slice: &mut [f32], slopes: &[f32]) {
+            Avx512Math::prelu_slice(slice, slopes)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn softsign_slice(slice: &mut [f32]) {
+            Avx512Math::softsign_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn silu_slice(slice: &mut [f32]) {
+            Avx512Math::silu_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn hard_tanh_slice(slice: &mut [f32]) {
+            Avx512Math::hard_tanh_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn hard_swish_slice(slice: &mut [f32]) {
+            Avx512Math::hard_swish_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn fast_tanh_slice(slice: &mut [f32]) {
+            Avx512Math::fast_tanh_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn leaky_hard_tanh_slice(
+            slice: &mut [f32],
+            min_val: f32,
+            max_val: f32,
+            min_slope: f32,
+            max_slope: f32,
+        ) {
+            Avx512Math::leaky_hard_tanh_slice(slice, min_val, max_val, min_slope, max_slope)
         }
 
         #[inline(always)]

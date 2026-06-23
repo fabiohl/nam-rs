@@ -370,6 +370,72 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn relu_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::relu_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn prelu_slice(slice: &mut [f32], slopes: &[f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::prelu_slice_avx2(slice, slopes) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn softsign_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::softsign_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn silu_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::silu_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn hard_tanh_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::hard_tanh_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn hard_swish_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::hard_swish_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn fast_tanh_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { crate::math::activations::fast_tanh_slice_avx2(slice) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn leaky_hard_tanh_slice(
+        slice: &mut [f32],
+        min_val: f32,
+        max_val: f32,
+        min_slope: f32,
+        max_slope: f32,
+    ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe {
+            crate::math::activations::leaky_hard_tanh_slice_avx2(
+                slice, min_val, max_val, min_slope, max_slope,
+            )
+        }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::utility::horizontal_sum_avx2(ptr, N) }

@@ -86,7 +86,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ---
 
-## Sprint 2 — Eliminação do Dispatch Dinâmico Duplo (V-Table `SimdMathConfig`) (F-02)
+## Sprint 2 — Eliminação do Dispatch Dinâmico Duplo (V-Table `SimdMathConfig`) (F-02) [DONE]
 
 **Objetivo:** Eliminar o overhead de chamadas indiretas via ponteiro de função (`Mode 3` da macro `dispatch_simd!`) unificando os consumidores do pipeline DSP e ativações no mecanismo estático monomorfizado da `SimdMath`.
 
@@ -101,9 +101,9 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
     - [output.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (Monomorfizar chamadas de ganho e proteção)
   - **Responsável Sugerido:** `planejador-arquiteto` / `implementador`
   - **Risco:** Alto (estágio crucial de tempo real)
-  - **Nota Pós-Execução (T2.1):** `capture_dsp_pipeline` agora despacha estaticamente via `match SIMD_MATH.instruction_set` e chama `capture_dsp_pipeline_inner::<M>` que propaga `M` para `apply_input_stage_inner::<M>` e `apply_output_stage_inner::<M>`. As funções públicas `apply_input_stage`/`apply_output_stage` foram mantidas como wrappers (gated por `cfg(test, clap-plugin)`) para compatibilidade com o CLAP e testes — elas também despacham estaticamente, mas com um dispatch por estágio (vs único no `capture_dsp_pipeline`). O Modo 3 (`dispatch_simd!` v-table) foi eliminado do hot-path do pipeline; a remoção completa da v-table (`SimdMathConfig`) será feita em T2.2.
+  - **Nota Pós-Execução (T2.1):** `capture_dsp_pipeline` agora despacha estaticamente via `match SIMD_MATH.instruction_set` e chama `capture_dsp_pipeline_inner::<M>` que propaga `M` para `apply_input_stage_inner::<M>` e `apply_output_stage_inner::<M>`. As funções públicas `apply_input_stage`/`apply_output_stage` foram mantidas como wrappers (gated por `cfg(test, clap-plugin)`) para compatibilidade com o CLAP e testes — elas também despacham estaticamente, mas com um dispatch por estágio (vs único no `capture_dsp_pipeline`). O Modo 3 (`dispatch_simd!` v-table) foi eliminado do hot-path do pipeline; a remoção completa da v-table (`SimdMathConfig`) foi concluída em T2.2.
 
-- [ ] **T2.2: Reduzir a struct `SimdMathConfig` e remover ponteiros de função**
+- [x] **T2.2: Reduzir a struct `SimdMathConfig` e remover ponteiros de função**
 
   - **Descrição:** Remover os ponteiros de função associados à v-table em `SimdMathConfig`, deixando apenas dados estáticos descritivos (conjunto de instruções, nome, etc.). Ajustar a tabela global `SIMD_MATH` e as rotinas de inicialização/detecção de hardware.
   - **Arquivos envolvidos:**
@@ -112,6 +112,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
     - [mod.rs](file:///home/fabio/nam-rs/src/math/common/mod.rs) (Remoção do Modo 3 do `dispatch_simd!`)
   - **Responsável Sugerido:** `implementador`
   - **Risco:** Médio
+  - **Nota Pós-Execução (T2.2):** `SimdMathConfig` agora contém apenas `instruction_set`, `name` e `is_avx512`. Os 30+ ponteiros de função foram removidos. O `config_table!` foi simplificado para 3 parâmetros (isa, name, avx512). O Modo 3 do `dispatch_simd!` foi convertido de v-table (indireto) para dispatch estático monomorfizado via `match SIMD_MATH.instruction_set` chamando `<Avx2Math>::method()`, `<Avx512Math>::method()` ou `<Avx512VnniBf16Math>::method()`. As 8 funções de ativação que não estavam no trait `SimdMath` (`relu_slice`, `prelu_slice`, `softsign_slice`, `silu_slice`, `hard_tanh_slice`, `hard_swish_slice`, `fast_tanh_slice`, `leaky_hard_tanh_slice`) foram adicionadas ao trait e implementadas em `Avx2Math`, `Avx512Math` e `Avx512VnniBf16Math`. `activations/mod.rs` agora usa `dispatch_simd!` em vez de chamadas diretas à v-table. Zero v-table residual.
 
 ### Critério de Aceite da Sprint 2
 
