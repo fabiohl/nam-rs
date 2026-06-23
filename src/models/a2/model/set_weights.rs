@@ -214,7 +214,7 @@ impl<const CH: usize> WaveNetA2<CH> {
 /// Reads a contiguous slice of `n` f32 values from `weights[pos..]`,
 /// advancing `pos`. Returns an error with the label if out of bounds.
 #[inline]
-fn read_slice<'a>(
+pub(crate) fn read_slice<'a>(
     weights: &'a [f32],
     pos: &mut usize,
     n: usize,

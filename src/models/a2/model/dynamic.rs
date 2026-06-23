@@ -308,168 +308,23 @@ impl WaveNetA2Dyn {
     /// 3. Head1x1 (if active): weights `bottleneck*channels` f32 + bias `channels` f32
     /// 4. `_head_rechannel`: conv k=16 weights `16*channels` f32 + bias `1` f32
     /// 5. `head_scale`: last f32
-    #[allow(clippy::too_many_lines)]
     pub fn set_weights(&mut self, weights: &[f32]) -> Result<(), String> {
         let total = weights.len();
         let mut pos: usize = 0;
-        let channels = self.channels;
-        let bottleneck = self.bottleneck;
-        let num_layers = self.num_layers;
 
-        // ── 1. Rechannel: Conv1x1(1 → channels) (no bias) ─────────────
-        let rw_f32 = read_slice_dyn(weights, &mut pos, channels, total, "rechannel_w")?;
-        self.rechannel_w_f32.copy_from_slice(rw_f32);
+        self.load_rechannel_weights(weights, &mut pos, total)?;
 
-        // ── 2. Per-layer weights ──────────────────────────────────────
-        let mut layers = Vec::with_capacity(num_layers);
-
-        for i in 0..num_layers {
-            let ksize = self.kernel_sizes[i];
-            let dilation = self.dilations[i];
-            let use_gating = self.gating_modes[i] == GatingMode::Gated
-                || self.gating_modes[i] == GatingMode::Blended;
-            let conv_out = if use_gating {
-                bottleneck * 2
-            } else {
-                bottleneck
-            };
-
-            // 2a. Dilated conv weights — interleave-4-wide.
-            let conv_w_count = channels * conv_out * ksize;
-            let conv_w_padded = conv_out.div_ceil(4) * 4 * channels * ksize;
-            let conv_w_f32 = read_slice_dyn(
-                weights,
-                &mut pos,
-                conv_w_count,
-                total,
-                &format!("layer[{i}].conv_w"),
-            )?;
-            let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
-            transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, channels, conv_out, ksize);
-
-            // 2b. Conv bias.
-            let conv_b_f32 = read_slice_dyn(
-                weights,
-                &mut pos,
-                conv_out,
-                total,
-                &format!("layer[{i}].conv_b"),
-            )?;
-            let conv_b = AlignedVec::from(conv_b_f32.to_vec());
-
-            let prefetch_fn: crate::math::common::PrefetchFn = if dilation >= 128 {
-                crate::math::common::prefetch_strategy_2stage
-            } else {
-                crate::math::common::prefetch_strategy_simple
-            };
-
-            let conv = crate::models::a2::conv1d::A2Conv1d::new(
-                conv_w,
-                conv_b,
-                true,
-                dilation,
-                channels,
-                conv_out,
-                ksize,
-                prefetch_fn,
-            );
-
-            // 2c. Mixin (conv_out elements, applied after conv).
-            let mixin_w_f32 = read_slice_dyn(
-                weights,
-                &mut pos,
-                conv_out,
-                total,
-                &format!("layer[{i}].mixin_w"),
-            )?;
-            let mixin_w = AlignedVec::from(mixin_w_f32.to_vec());
-
-            // 2d. L1x1: bottleneck×channels + channels bias.
-            let l1x1_w_count = bottleneck * channels;
-            let l1x1_w_f32 = read_slice_dyn(
-                weights,
-                &mut pos,
-                l1x1_w_count,
-                total,
-                &format!("layer[{i}].l1x1_w"),
-            )?;
-            let mut l1x1_w = AlignedVec::new(l1x1_w_count, 0.0f32);
-            transpose_dense_f32(l1x1_w_f32, &mut l1x1_w, bottleneck, channels);
-
-            let l1x1_b_f32 = read_slice_dyn(
-                weights,
-                &mut pos,
-                channels,
-                total,
-                &format!("layer[{i}].l1x1_b"),
-            )?;
-            let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
-
-            let mut layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
-
-            // FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
-            if let Some(ref raw) = self.layer_raw {
-                let configs = super::set_weights::parse_film_configs(raw);
-                super::set_weights::load_film_for_layer(
-                    &mut layer,
-                    &configs,
-                    channels,
-                    self.condition_size,
-                    weights,
-                    &mut pos,
-                    total,
-                    i,
-                )?;
-            }
-
+        let mut layers = Vec::with_capacity(self.num_layers);
+        for i in 0..self.num_layers {
+            let layer = self.load_per_layer_weights(weights, &mut pos, total, i)?;
             layers.push(layer);
         }
 
-        // ── 3. Head1x1 (if active) ─────────────────────────────────
-        if self.head1x1_active {
-            let h1_w_count = bottleneck * channels;
-            let h1_w_f32 = read_slice_dyn(weights, &mut pos, h1_w_count, total, "head1x1_w")?;
-            let mut h1_w = AlignedVec::new(h1_w_count, 0.0f32);
-            transpose_dense_f32(h1_w_f32, &mut h1_w, bottleneck, channels);
+        self.load_head1x1_weights(weights, &mut pos, total)?;
 
-            let h1_b_f32 = read_slice_dyn(weights, &mut pos, channels, total, "head1x1_b")?;
-            let mut h1_b = AlignedVec::new(channels, 0.0f32);
-            h1_b.copy_from_slice(h1_b_f32);
+        let (head_w, head_b, head_scale) =
+            self.load_head_conv_and_scale(weights, &mut pos, total)?;
 
-            self.head1x1_w = h1_w;
-            self.head1x1_b = h1_b;
-        }
-
-        // ── 4. Head conv ───────────────────────────────────────────
-        let head_k = crate::models::a2::params::A2_HEAD_KERNEL_SIZE;
-        let head_w_f32 = read_slice_dyn(weights, &mut pos, head_k * channels, total, "head_w")?;
-        let mut head_w = AlignedVec::new(head_k * channels, 0.0f32);
-        transpose_head_w(head_w_f32, &mut head_w, channels, head_k);
-
-        let head_b = {
-            let s = read_slice_dyn(weights, &mut pos, 1, total, "head_b")?;
-            if !s[0].is_finite() {
-                return Err(format!(
-                    "set_weights: head_b is not finite (value: {:e})",
-                    s[0]
-                ));
-            }
-            s[0]
-        };
-
-        // ── 5. Head scale ──────────────────────────────────────────
-        let head_scale = {
-            let s = read_slice_dyn(weights, &mut pos, 1, total, "head_scale")?;
-            if !s[0].is_finite() {
-                return Err(format!(
-                    "set_weights: head_scale is not finite (value: {:e})",
-                    s[0]
-                ));
-            }
-            s[0]
-        };
-
-        // ── 6. Exhaustion check ────────────────────────────────────
         if pos != total {
             return Err(format!(
                 "set_weights: stream has {} unconsumed f32 (consumed {}, total {})",
@@ -479,11 +334,201 @@ impl WaveNetA2Dyn {
             ));
         }
 
-        // ── 7. Commit ──────────────────────────────────────────────
         self.layers = layers;
-        self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, channels));
+        self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, self.channels));
 
         Ok(())
+    }
+
+    /// Loads rechannel weights from the stream: `Conv1x1(1 → channels)` (no bias).
+    fn load_rechannel_weights(
+        &mut self,
+        weights: &[f32],
+        pos: &mut usize,
+        total: usize,
+    ) -> Result<(), String> {
+        let channels = self.channels;
+        let rw_f32 = super::set_weights::read_slice(weights, pos, channels, total, "rechannel_w")?;
+        self.rechannel_w_f32.copy_from_slice(rw_f32);
+        Ok(())
+    }
+
+    /// Loads a single layer's weights (conv, mixin, l1x1, optional FiLM).
+    #[allow(clippy::too_many_lines)]
+    fn load_per_layer_weights(
+        &mut self,
+        weights: &[f32],
+        pos: &mut usize,
+        total: usize,
+        i: usize,
+    ) -> Result<A2Layer, String> {
+        let channels = self.channels;
+        let bottleneck = self.bottleneck;
+        let ksize = self.kernel_sizes[i];
+        let dilation = self.dilations[i];
+        let use_gating = self.gating_modes[i] == GatingMode::Gated
+            || self.gating_modes[i] == GatingMode::Blended;
+        let conv_out = if use_gating {
+            bottleneck * 2
+        } else {
+            bottleneck
+        };
+
+        // 2a. Dilated conv weights — interleave-4-wide.
+        let conv_w_count = channels * conv_out * ksize;
+        let conv_w_padded = conv_out.div_ceil(4) * 4 * channels * ksize;
+        let conv_w_f32 = super::set_weights::read_slice(
+            weights,
+            pos,
+            conv_w_count,
+            total,
+            &format!("layer[{i}].conv_w"),
+        )?;
+        let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
+        transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, channels, conv_out, ksize);
+
+        // 2b. Conv bias.
+        let conv_b_f32 = super::set_weights::read_slice(
+            weights,
+            pos,
+            conv_out,
+            total,
+            &format!("layer[{i}].conv_b"),
+        )?;
+        let conv_b = AlignedVec::from(conv_b_f32.to_vec());
+
+        let prefetch_fn: crate::math::common::PrefetchFn = if dilation >= 128 {
+            crate::math::common::prefetch_strategy_2stage
+        } else {
+            crate::math::common::prefetch_strategy_simple
+        };
+
+        let conv = crate::models::a2::conv1d::A2Conv1d::new(
+            conv_w,
+            conv_b,
+            true,
+            dilation,
+            channels,
+            conv_out,
+            ksize,
+            prefetch_fn,
+        );
+
+        // 2c. Mixin (conv_out elements, applied after conv).
+        let mixin_w_f32 = super::set_weights::read_slice(
+            weights,
+            pos,
+            conv_out,
+            total,
+            &format!("layer[{i}].mixin_w"),
+        )?;
+        let mixin_w = AlignedVec::from(mixin_w_f32.to_vec());
+
+        // 2d. L1x1: bottleneck×channels + channels bias.
+        let l1x1_w_count = bottleneck * channels;
+        let l1x1_w_f32 = super::set_weights::read_slice(
+            weights,
+            pos,
+            l1x1_w_count,
+            total,
+            &format!("layer[{i}].l1x1_w"),
+        )?;
+        let mut l1x1_w = AlignedVec::new(l1x1_w_count, 0.0f32);
+        transpose_dense_f32(l1x1_w_f32, &mut l1x1_w, bottleneck, channels);
+
+        let l1x1_b_f32 = super::set_weights::read_slice(
+            weights,
+            pos,
+            channels,
+            total,
+            &format!("layer[{i}].l1x1_b"),
+        )?;
+        let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
+
+        let mut layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
+
+        // FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
+        if let Some(ref raw) = self.layer_raw {
+            let configs = super::set_weights::parse_film_configs(raw);
+            super::set_weights::load_film_for_layer(
+                &mut layer,
+                &configs,
+                channels,
+                self.condition_size,
+                weights,
+                pos,
+                total,
+                i,
+            )?;
+        }
+
+        Ok(layer)
+    }
+
+    /// Loads head1x1 projection weights from the stream (if active).
+    fn load_head1x1_weights(
+        &mut self,
+        weights: &[f32],
+        pos: &mut usize,
+        total: usize,
+    ) -> Result<(), String> {
+        if !self.head1x1_active {
+            return Ok(());
+        }
+        let channels = self.channels;
+        let bottleneck = self.bottleneck;
+        let h1_w_count = bottleneck * channels;
+        let h1_w_f32 =
+            super::set_weights::read_slice(weights, pos, h1_w_count, total, "head1x1_w")?;
+        let mut h1_w = AlignedVec::new(h1_w_count, 0.0f32);
+        transpose_dense_f32(h1_w_f32, &mut h1_w, bottleneck, channels);
+
+        let h1_b_f32 = super::set_weights::read_slice(weights, pos, channels, total, "head1x1_b")?;
+        let mut h1_b = AlignedVec::new(channels, 0.0f32);
+        h1_b.copy_from_slice(h1_b_f32);
+
+        self.head1x1_w = h1_w;
+        self.head1x1_b = h1_b;
+        Ok(())
+    }
+
+    /// Loads head conv weights (K=16), bias, and head scale from the stream.
+    fn load_head_conv_and_scale(
+        &self,
+        weights: &[f32],
+        pos: &mut usize,
+        total: usize,
+    ) -> Result<(AlignedVec<f32>, f32, f32), String> {
+        let channels = self.channels;
+        let head_k = crate::models::a2::params::A2_HEAD_KERNEL_SIZE;
+        let head_w_f32 =
+            super::set_weights::read_slice(weights, pos, head_k * channels, total, "head_w")?;
+        let mut head_w = AlignedVec::new(head_k * channels, 0.0f32);
+        transpose_head_w(head_w_f32, &mut head_w, channels, head_k);
+
+        let head_b = {
+            let s = super::set_weights::read_slice(weights, pos, 1, total, "head_b")?;
+            if !s[0].is_finite() {
+                return Err(format!(
+                    "set_weights: head_b is not finite (value: {:e})",
+                    s[0]
+                ));
+            }
+            s[0]
+        };
+
+        let head_scale = {
+            let s = super::set_weights::read_slice(weights, pos, 1, total, "head_scale")?;
+            if !s[0].is_finite() {
+                return Err(format!(
+                    "set_weights: head_scale is not finite (value: {:e})",
+                    s[0]
+                ));
+            }
+            s[0]
+        };
+
+        Ok((head_w, head_b, head_scale))
     }
 
     /// Reallocates internal buffers to support the given maximum block size.
@@ -550,224 +595,171 @@ impl WaveNetA2Dyn {
         );
         let nf_total = total.min(self.max_buffer_size);
 
-        let channels = self.channels;
-        let bottleneck = self.bottleneck;
-        let num_layers = self.num_layers;
-        let head_keep = super::super::params::A2_HEAD_KERNEL_SIZE - 1;
-
         let mut pos = 0;
         while pos < nf_total {
             let nf = (nf_total - pos).min(WAVENET_MAX_NUM_FRAMES);
 
-            // ── Phase 0: rechannel pre-scaling: input × rechannel_w_f32 → layer_in ──
-            for (f, &x) in input[pos..pos + nf].iter().enumerate() {
-                let base = f * channels;
-                for c in 0..channels {
-                    self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
-                }
+            self.rechannel_prescale(input, pos, nf);
+            let head_wp = self.advance_head_ring(nf);
+
+            for li in 0..self.num_layers {
+                self.layer_forward_dispatch(li, nf, input, pos, head_wp);
             }
 
-            // Head ring wrap.
-            let head_cap = self.head_ring_mask + 1;
-            if self.head_write_pos + nf > head_cap {
-                let keep_start = self.head_write_pos - head_keep;
-                let keep_bytes = head_keep * channels;
-                let src = keep_start * channels;
-                self.head_accum.copy_within(src..src + keep_bytes, 0);
-                self.head_write_pos = head_keep;
-            }
-            let head_wp = self.head_write_pos;
-
-            // ── Phase 1: per-layer processing ──
-            for li in 0..num_layers {
-                let is_first = li == 0;
-                let is_last = li == num_layers - 1;
-                let ring_size = self.layer_ring_sizes[li];
-                let lookback = self.layer_lookbacks[li];
-                let max_lookback_cols = lookback / channels;
-                let bs = self.layer_buffer_starts[li];
-                let use_gating = self.gating_modes[li] == GatingMode::Gated;
-                let use_blending = self.gating_modes[li] == GatingMode::Blended;
-                let z_out_ch = if use_gating || use_blending {
-                    bottleneck * 2
-                } else {
-                    bottleneck
-                };
-
-                // Copy layer_in → history buffer.
-                {
-                    let buf = &mut self.layer_buffers[li];
-                    buf[bs..bs + nf * channels].copy_from_slice(&self.layer_in[..nf * channels]);
-                    // Apply conv_pre_film on new frames.
-                    for f in 0..nf {
-                        if let Some(ref mut film) = self.layers[li].conv_pre_film {
-                            unsafe {
-                                film.process(
-                                    &mut buf[bs + f * channels..bs + (f + 1) * channels],
-                                    &input[pos + f..pos + f + 1],
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // Advance buffer start with wrap.
-                if bs + nf * channels + self.max_buffer_size * channels > ring_size * 2 {
-                    self.layer_buffer_starts[li] = bs + nf * channels - ring_size;
-                } else {
-                    self.layer_buffer_starts[li] = bs + nf * channels;
-                }
-
-                {
-                    let history = &self.layer_buffers[li][bs - lookback..bs + nf * channels];
-                    let layer = &mut self.layers[li];
-
-                    for f in 0..nf {
-                        let frame_idx = max_lookback_cols + f;
-                        let cond = input[pos + f];
-                        let cond_slice = &input[pos + f..pos + f + 1];
-
-                        #[allow(unused_assignments)]
-                        let mut z_len = z_out_ch;
-
-                        // 1. Dilated conv → z_scratch.
-                        unsafe {
-                            layer.conv.process_single_frame(
-                                history,
-                                &mut self.z_scratch[..z_out_ch],
-                                frame_idx,
-                                None,
-                            );
-                        }
-
-                        // FiLM post-conv + pre-mixin.
-                        if let Some(ref mut film) = layer.conv_post_film {
-                            unsafe {
-                                film.process(&mut self.z_scratch[..z_out_ch], cond_slice);
-                            }
-                        }
-                        if let Some(ref mut film) = layer.input_mixin_pre_film {
-                            unsafe {
-                                film.process(&mut self.z_scratch[..z_out_ch], cond_slice);
-                            }
-                        }
-
-                        // 2. Input mixin.
-                        // SAFETY: bounds-checked by z_out_ch .min(mixin_w.len()).
-                        for c in 0..z_out_ch.min(layer.mixin_w.len()) {
-                            self.z_scratch[c] += layer.mixin_w[c] * cond;
-                        }
-
-                        // FiLM post-mixin + pre-activation.
-                        if let Some(ref mut film) = layer.input_mixin_post_film {
-                            unsafe {
-                                film.process(&mut self.z_scratch[..z_out_ch], cond_slice);
-                            }
-                        }
-                        if let Some(ref mut film) = layer.activation_pre_film {
-                            unsafe {
-                                film.process(&mut self.z_scratch[..z_out_ch], cond_slice);
-                            }
-                        }
-
-                        // 3. Activation or Gating/Blending.
-                        if use_gating {
-                            if let Some(ref gc) = self.gating_configs[li] {
-                                gc.apply_gating(&mut self.z_scratch[..z_out_ch]);
-                            }
-                            z_len = bottleneck;
-                        } else if use_blending {
-                            if let Some(ref mut bc) = self.blending_configs[li] {
-                                bc.apply_blending(&mut self.z_scratch[..z_out_ch]);
-                            }
-                            z_len = bottleneck;
-                        } else {
-                            self.activations[li].apply(&mut self.z_scratch[..bottleneck]);
-                            z_len = bottleneck;
-                        }
-
-                        // FiLM post-activation.
-                        if let Some(ref mut film) = layer.activation_post_film {
-                            unsafe {
-                                film.process(&mut self.z_scratch[..z_len], cond_slice);
-                            }
-                        }
-
-                        // 4. Head accumulator.
-                        let head_off = (head_wp + f) * channels;
-                        if self.head1x1_active {
-                            // Apply head1x1: bottleneck → channels projection.
-                            let h1_w = &self.head1x1_w;
-                            let h1_b = &self.head1x1_b;
-                            for oc in 0..channels {
-                                let mut sum = h1_b[oc];
-                                for ic in 0..bottleneck {
-                                    sum += h1_w[ic * channels + oc] * self.z_scratch[ic];
-                                }
-                                self.head1x1_scratch[oc] = sum;
-                            }
-                            if is_first {
-                                self.head_accum[head_off..head_off + channels]
-                                    .copy_from_slice(&self.head1x1_scratch[..channels]);
-                            } else {
-                                for c in 0..channels {
-                                    self.head_accum[head_off + c] += self.head1x1_scratch[c];
-                                }
-                            }
-                        } else {
-                            debug_assert_eq!(
-                                bottleneck, channels,
-                                "head1x1 must be active when bottleneck != channels"
-                            );
-                            if is_first {
-                                self.head_accum[head_off..head_off + bottleneck]
-                                    .copy_from_slice(&self.z_scratch[..bottleneck]);
-                            } else {
-                                for c in 0..bottleneck {
-                                    self.head_accum[head_off + c] += self.z_scratch[c];
-                                }
-                            }
-                        }
-
-                        // 5. L1x1 residual (skip on last layer).
-                        if !is_last {
-                            let base = f * channels;
-                            let l1x1_w = &layer.l1x1_w;
-                            let l1x1_b = &layer.l1x1_b;
-                            for oc in 0..channels {
-                                let mut sum = l1x1_b[oc];
-                                for ic in 0..bottleneck {
-                                    sum += l1x1_w[ic * channels + oc] * self.z_scratch[ic];
-                                }
-                                self.layer_in[base + oc] += sum;
-                            }
-                            // FiLM post-l1x1.
-                            if let Some(ref mut film) = layer.layer1x1_post_film {
-                                unsafe {
-                                    film.process(
-                                        &mut self.layer_in[base..base + channels],
-                                        cond_slice,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
-
-            if let Some(ref head) = self.head_conv {
-                head.process(
-                    &self.head_accum,
-                    self.head_write_pos,
-                    self.head_ring_mask,
-                    nf,
-                    &mut output[pos..pos + nf],
-                );
-            }
-
+            self.head_finalize(head_wp, nf, &mut output[pos..pos + nf]);
             pos += nf;
+        }
+    }
+
+    /// Phase 0: rechannel pre-scaling — `input × rechannel_w_f32 → layer_in`.
+    #[inline(always)]
+    fn rechannel_prescale(&mut self, input: &[f32], pos: usize, nf: usize) {
+        let channels = self.channels;
+        for (f, &x) in input[pos..pos + nf].iter().enumerate() {
+            let base = f * channels;
+            for c in 0..channels {
+                self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+            }
+        }
+    }
+
+    /// Advances the head accumulator ring buffer.
+    ///
+    /// When the write cursor plus `nf` would overflow the ring capacity,
+    /// the tail `K-1` samples are memmove'd to the start and the write
+    /// position wraps around. Returns the (possibly wrapped) write position
+    /// for use by the layer loop.
+    #[inline(always)]
+    fn advance_head_ring(&mut self, nf: usize) -> usize {
+        let head_keep = super::super::params::A2_HEAD_KERNEL_SIZE - 1;
+        let head_cap = self.head_ring_mask + 1;
+        if self.head_write_pos + nf > head_cap {
+            let keep_start = self.head_write_pos - head_keep;
+            let keep_bytes = head_keep * self.channels;
+            let src = keep_start * self.channels;
+            self.head_accum.copy_within(src..src + keep_bytes, 0);
+            self.head_write_pos = head_keep;
+        }
+        self.head_write_pos
+    }
+
+    /// Per-layer forward dispatch for a single layer index.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `li < self.num_layers` and that `nf` frames of valid
+    /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
+    /// accesses assume caller-verified buffer capacities.
+    #[inline(always)]
+    fn layer_forward_dispatch(
+        &mut self,
+        li: usize,
+        nf: usize,
+        input: &[f32],
+        pos: usize,
+        head_wp: usize,
+    ) {
+        let channels = self.channels;
+        let bottleneck = self.bottleneck;
+        let is_first = li == 0;
+        let is_last = li == self.num_layers - 1;
+        let ring_size = self.layer_ring_sizes[li];
+        let lookback = self.layer_lookbacks[li];
+        let max_lookback_cols = lookback / channels;
+        let bs = self.layer_buffer_starts[li];
+        let use_gating = self.gating_modes[li] == GatingMode::Gated;
+        let use_blending = self.gating_modes[li] == GatingMode::Blended;
+        let z_out_ch = if use_gating || use_blending {
+            bottleneck * 2
+        } else {
+            bottleneck
+        };
+
+        // Copy layer_in → history buffer.
+        {
+            let buf = &mut self.layer_buffers[li];
+            buf[bs..bs + nf * channels].copy_from_slice(&self.layer_in[..nf * channels]);
+            // Apply conv_pre_film on new frames.
+            for f in 0..nf {
+                if let Some(ref mut film) = self.layers[li].conv_pre_film {
+                    unsafe {
+                        film.process(
+                            &mut buf[bs + f * channels..bs + (f + 1) * channels],
+                            &input[pos + f..pos + f + 1],
+                        );
+                    }
+                }
+            }
+        }
+
+        // Advance buffer start with wrap.
+        if bs + nf * channels + self.max_buffer_size * channels > ring_size * 2 {
+            self.layer_buffer_starts[li] = bs + nf * channels - ring_size;
+        } else {
+            self.layer_buffer_starts[li] = bs + nf * channels;
+        }
+
+        {
+            let history = &self.layer_buffers[li][bs - lookback..bs + nf * channels];
+            let layer = &mut self.layers[li];
+
+            let z_scratch = &mut self.z_scratch;
+            let head_accum = &mut self.head_accum;
+            let layer_in = &mut self.layer_in;
+            let head1x1_scratch = &mut self.head1x1_scratch;
+            let head1x1_w = &self.head1x1_w;
+            let head1x1_b = &self.head1x1_b;
+            let gating_config = self.gating_configs[li].as_ref();
+            let mut blending_config = self.blending_configs[li].as_mut();
+            let activation = &self.activations[li];
+
+            for f in 0..nf {
+                let bc = blending_config.as_deref_mut();
+                unsafe {
+                    process_frame_dyn(
+                        layer,
+                        history,
+                        f,
+                        max_lookback_cols,
+                        input,
+                        pos,
+                        head_wp,
+                        z_out_ch,
+                        use_gating,
+                        use_blending,
+                        is_first,
+                        is_last,
+                        self.channels,
+                        self.bottleneck,
+                        self.head1x1_active,
+                        z_scratch,
+                        head_accum,
+                        layer_in,
+                        head1x1_scratch,
+                        head1x1_w,
+                        head1x1_b,
+                        gating_config,
+                        bc,
+                        activation,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Finalizes the head convolution and advances the head write position.
+    #[inline(always)]
+    fn head_finalize(&mut self, head_wp: usize, nf: usize, output: &mut [f32]) {
+        self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
+
+        if let Some(ref head) = self.head_conv {
+            head.process(
+                &self.head_accum,
+                self.head_write_pos,
+                self.head_ring_mask,
+                nf,
+                output,
+            );
         }
     }
 
@@ -807,27 +799,157 @@ impl WaveNetA2Dyn {
     }
 }
 
-// ── Private helpers for set_weights ───────────────────────────────────
+// ── Private helpers ────────────────────────────────────────────
 
-/// Reads a contiguous slice of `n` f32 values from `weights[pos..]`,
-/// advancing `pos`. Returns an error with the label if out of bounds.
-#[inline]
-fn read_slice_dyn<'a>(
-    weights: &'a [f32],
-    pos: &mut usize,
-    n: usize,
-    total: usize,
-    label: &str,
-) -> Result<&'a [f32], String> {
-    if *pos + n > total {
-        return Err(format!(
-            "set_weights: stream exhausted at position {} (need {} for \"{}\", total {})",
-            *pos, n, label, total
-        ));
+/// Per-frame inner core: conv, FiLM, mixin, activation/gating/blending,
+/// head accumulation, and l1x1 residual for a single frame in one layer.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+unsafe fn process_frame_dyn(
+    layer: &mut A2Layer,
+    history: &[f32],
+    f: usize,
+    max_lookback_cols: usize,
+    input: &[f32],
+    pos: usize,
+    head_wp: usize,
+    z_out_ch: usize,
+    use_gating: bool,
+    use_blending: bool,
+    is_first: bool,
+    is_last: bool,
+    channels: usize,
+    bottleneck: usize,
+    head1x1_active: bool,
+    z_scratch: &mut [f32],
+    head_accum: &mut [f32],
+    layer_in: &mut [f32],
+    head1x1_scratch: &mut [f32],
+    head1x1_w: &[f32],
+    head1x1_b: &[f32],
+    gating_config: Option<&GatingActivationConfig>,
+    blending_config: Option<&mut BlendingActivationConfig>,
+    activation: &ActivationType,
+) {
+    let frame_idx = max_lookback_cols + f;
+    let cond_slice = &input[pos + f..pos + f + 1];
+    let cond = cond_slice[0];
+
+    #[allow(unused_assignments)]
+    let mut z_len = z_out_ch;
+
+    // 1. Dilated conv → z_scratch.
+    unsafe {
+        layer
+            .conv
+            .process_single_frame(history, &mut z_scratch[..z_out_ch], frame_idx, None);
     }
-    let slice = &weights[*pos..*pos + n];
-    *pos += n;
-    Ok(slice)
+
+    // FiLM post-conv + pre-mixin.
+    if let Some(ref mut film) = layer.conv_post_film {
+        unsafe {
+            film.process(&mut z_scratch[..z_out_ch], cond_slice);
+        }
+    }
+    if let Some(ref mut film) = layer.input_mixin_pre_film {
+        unsafe {
+            film.process(&mut z_scratch[..z_out_ch], cond_slice);
+        }
+    }
+
+    // 2. Input mixin.
+    for (c, z) in z_scratch
+        .iter_mut()
+        .enumerate()
+        .take(z_out_ch.min(layer.mixin_w.len()))
+    {
+        *z += layer.mixin_w[c] * cond;
+    }
+
+    // FiLM post-mixin + pre-activation.
+    if let Some(ref mut film) = layer.input_mixin_post_film {
+        unsafe {
+            film.process(&mut z_scratch[..z_out_ch], cond_slice);
+        }
+    }
+    if let Some(ref mut film) = layer.activation_pre_film {
+        unsafe {
+            film.process(&mut z_scratch[..z_out_ch], cond_slice);
+        }
+    }
+
+    // 3. Activation or Gating/Blending.
+    if use_gating {
+        if let Some(gc) = gating_config {
+            gc.apply_gating(&mut z_scratch[..z_out_ch]);
+        }
+        z_len = bottleneck;
+    } else if use_blending {
+        if let Some(bc) = blending_config {
+            bc.apply_blending(&mut z_scratch[..z_out_ch]);
+        }
+        z_len = bottleneck;
+    } else {
+        activation.apply(&mut z_scratch[..bottleneck]);
+        z_len = bottleneck;
+    }
+
+    // FiLM post-activation.
+    if let Some(ref mut film) = layer.activation_post_film {
+        unsafe {
+            film.process(&mut z_scratch[..z_len], cond_slice);
+        }
+    }
+
+    // 4. Head accumulator.
+    let head_off = (head_wp + f) * channels;
+    if head1x1_active {
+        for oc in 0..channels {
+            let mut sum = head1x1_b[oc];
+            for ic in 0..bottleneck {
+                sum += head1x1_w[ic * channels + oc] * z_scratch[ic];
+            }
+            head1x1_scratch[oc] = sum;
+        }
+        if is_first {
+            head_accum[head_off..head_off + channels].copy_from_slice(&head1x1_scratch[..channels]);
+        } else {
+            for c in 0..channels {
+                head_accum[head_off + c] += head1x1_scratch[c];
+            }
+        }
+    } else {
+        debug_assert_eq!(
+            bottleneck, channels,
+            "head1x1 must be active when bottleneck != channels"
+        );
+        if is_first {
+            head_accum[head_off..head_off + bottleneck].copy_from_slice(&z_scratch[..bottleneck]);
+        } else {
+            for c in 0..bottleneck {
+                head_accum[head_off + c] += z_scratch[c];
+            }
+        }
+    }
+
+    // 5. L1x1 residual (skip on last layer).
+    if !is_last {
+        let base = f * channels;
+        let l1x1_w = &layer.l1x1_w;
+        let l1x1_b = &layer.l1x1_b;
+        for oc in 0..channels {
+            let mut sum = l1x1_b[oc];
+            for ic in 0..bottleneck {
+                sum += l1x1_w[ic * channels + oc] * z_scratch[ic];
+            }
+            layer_in[base + oc] += sum;
+        }
+        if let Some(ref mut film) = layer.layer1x1_post_film {
+            unsafe {
+                film.process(&mut layer_in[base..base + channels], cond_slice);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

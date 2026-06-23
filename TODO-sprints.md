@@ -31,7 +31,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - Assegurar que a elisão de bounds checking (`core::slice::GetUnchecked` ou truques de tamanho do compilador) permaneça ativa e que os limites de arrays permaneçam eficientes.
   - *Referência no `TODO-findings.md`: F-05*
 
-- [ ] **Task 1.3: Decomposição de `WaveNetA2Dyn::process()` e `set_weights()` em `src/models/a2/model/dynamic.rs`**
+- [x] **Task 1.3: Decomposição de `WaveNetA2Dyn::process()` e `set_weights()` em `src/models/a2/model/dynamic.rs`**
   - Aplicar o mesmo princípio de decomposição da Task 1.2 para a versão dinâmica do A2.
   - Decompor a rotina complexa de atribuição de pesos (`set_weights()`).
   - *Referência no `TODO-findings.md`: F-05*
