@@ -1828,6 +1828,8 @@ criterion_group!(
     bench_wavenet_dynamic_process,
     bench_lstm_dynamic_process,
     bench_wavenet_a2_dyn_gated_process,
+    bench_wavenet_comparison,
+    bench_a2_comparison,
     bench_nondist_models,
     bench_convnet_multichannel,
     bench_convnet_large_kernels,
@@ -2081,6 +2083,109 @@ fn bench_wavenet_a2_dyn_gated_process(c: &mut Criterion) {
             model.process(&input, &mut output);
         });
     });
+}
+
+/// Comparative benchmark: WaveNet Standard (CH=16, cataloged) vs WaveNet Dynamic
+/// (CH=5, fallback) side by side. Measures the dispatch overhead and performance
+/// delta between the const-generic fast path and the dynamic free-geometry fallback.
+fn bench_wavenet_comparison(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+
+    let mut group = c.benchmark_group("WaveNet_Comparison");
+    group.sample_size(50);
+
+    if path.exists() {
+        let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+        let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+        let mut model = build_model(&model_data).expect("Dispatcher failed");
+        model.prewarm(2048);
+
+        let input = generate_sine_440hz(64);
+        let mut output = vec![0.0f32; 64];
+
+        group.bench_function("Standard_CH16_cataloged", |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
+
+    let dyn_data = make_wavenet_dyn_data();
+    let mut dyn_model =
+        build_model(&dyn_data).expect("Dispatcher failed for WaveNet Dynamic benchmark");
+    dyn_model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    group.bench_function("Dynamic_CH5_fallback", |b| {
+        b.iter(|| {
+            dyn_model.process(&input, &mut output);
+        });
+    });
+
+    group.finish();
+}
+
+/// Comparative benchmark: A2-Full (CH=8), A2-Lite (CH=3), and A2-Dyn (CH=4, gated)
+/// side by side. Validates the performance spread across the static const-generic
+/// fast paths and the dynamic free-geometry fallback of the A2 architecture.
+fn bench_a2_comparison(c: &mut Criterion) {
+    let full_path = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("tests/fixtures/models/wavenet_a2_full.nam");
+        p
+    };
+    let lite_path = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("tests/fixtures/models/wavenet_a2_lite.nam");
+        p
+    };
+
+    let mut group = c.benchmark_group("A2_Comparison");
+    group.sample_size(50);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    if full_path.exists() {
+        let json = std::fs::read_to_string(&full_path).expect("Failed to read A2-Full");
+        let data = parse_nam_json(&json).expect("Failed in JSON parser");
+        let mut model = build_model(&data).expect("Dispatcher failed for A2-Full");
+        model.prewarm(2048);
+
+        group.bench_function("Full_CH8", |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
+
+    if lite_path.exists() {
+        let json = std::fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
+        let data = parse_nam_json(&json).expect("Failed in JSON parser");
+        let mut model = build_model(&data).expect("Dispatcher failed for A2-Lite");
+        model.prewarm(2048);
+
+        group.bench_function("Lite_CH3", |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
+
+    let dyn_data = make_wavenet_a2_dyn_data();
+    let mut dyn_model = build_model(&dyn_data).expect("Dispatcher failed for A2 Dynamic benchmark");
+    dyn_model.prewarm(2048);
+
+    group.bench_function("Dynamic_CH4_gated", |b| {
+        b.iter(|| {
+            dyn_model.process(&input, &mut output);
+        });
+    });
+
+    group.finish();
 }
 
 /// Measures inference latency for any present non-distributable models.

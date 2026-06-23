@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Benchmarks for dot_product_4x kernels (AVX2 and AVX-512).
+//! Benchmarks for dot_product kernels (4x, 8x, and 16x SIMD variants).
 //!
-//! Measures throughput of interleaved 4x dot product for state sizes
-//! representative of LSTM and WaveNet topologies.
+//! Measures throughput of interleaved dot products for state sizes
+//! representative of LSTM and WaveNet topologies, now including the
+//! wider 8-channel (AVX2/FMA) and 16-channel (AVX-512) f32 kernels.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::common::scalar_ref;
 use nam_rs::math::gemm::dot_4x;
+use nam_rs::math::gemm::dot_product_8x_f32_avx2;
+use nam_rs::math::gemm::dot_product_8x_f32_scalar;
+use nam_rs::math::gemm::dot_product_16x_f32_avx512;
+use nam_rs::math::gemm::dot_product_16x_f32_scalar;
 
 fn generate_test_data(len: usize) -> (Vec<[u16; 4]>, Vec<f32>, Vec<f32>) {
     let weights: Vec<[u16; 4]> = (0..len)
@@ -22,6 +27,17 @@ fn generate_test_data(len: usize) -> (Vec<[u16; 4]>, Vec<f32>, Vec<f32>) {
     let state_f0: Vec<f32> = (0..len).map(|i| (i as f32 * 0.07).sin()).collect();
     let state_f1: Vec<f32> = (0..len).map(|i| (i as f32 * 0.07 + 1.0).sin()).collect();
     (weights, state_f0, state_f1)
+}
+
+fn generate_f32_test_data<const N: usize>(len: usize) -> (Vec<[f32; N]>, Vec<f32>) {
+    let weights: Vec<[f32; N]> = (0..len)
+        .map(|i| {
+            let v = (i as f32 * 0.1).sin() * 0.5 + 0.5;
+            [v; N]
+        })
+        .collect();
+    let state: Vec<f32> = (0..len).map(|i| (i as f32 * 0.07).sin()).collect();
+    (weights, state)
 }
 
 fn bench_dot_4x_interleaved_avx512(c: &mut Criterion) {
@@ -82,9 +98,49 @@ fn bench_dot_4x_interleaved_dual_frame_avx512(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_dot_8x_f32_avx2(c: &mut Criterion) {
+    let sizes = [16, 64, 256, 1024, 4096];
+    let mut group = c.benchmark_group("dot_8x_f32");
+
+    for &size in &sizes {
+        let (weights, state) = generate_f32_test_data::<8>(size);
+
+        group.bench_function(format!("scalar_{}", size), |b| {
+            b.iter(|| unsafe { dot_product_8x_f32_scalar(&weights, &state) })
+        });
+
+        group.bench_function(format!("avx2_{}", size), |b| {
+            b.iter(|| unsafe { dot_product_8x_f32_avx2(&weights, &state) })
+        });
+    }
+    group.finish();
+}
+
+fn bench_dot_16x_f32_avx512(c: &mut Criterion) {
+    let sizes = [16, 64, 256, 1024, 4096];
+    let mut group = c.benchmark_group("dot_16x_f32");
+
+    for &size in &sizes {
+        let (weights, state) = generate_f32_test_data::<16>(size);
+
+        group.bench_function(format!("scalar_{}", size), |b| {
+            b.iter(|| unsafe { dot_product_16x_f32_scalar(&weights, &state) })
+        });
+
+        if std::is_x86_feature_detected!("avx512f") {
+            group.bench_function(format!("avx512_{}", size), |b| {
+                b.iter(|| unsafe { dot_product_16x_f32_avx512(&weights, &state) })
+            });
+        }
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_dot_4x_interleaved_avx512,
     bench_dot_4x_interleaved_dual_frame_avx512,
+    bench_dot_8x_f32_avx2,
+    bench_dot_16x_f32_avx512,
 );
 criterion_main!(benches);

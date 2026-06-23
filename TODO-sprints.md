@@ -95,9 +95,10 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - **Concluído (2026-06-23).** Novos módulos `src/math/gemm/dot_8x/` e `src/math/gemm/dot_16x/` criados com kernels, scalar references e 6 testes unitários. `dot_product_8x_f32_avx2` usa 4 acumuladores `__m256` com unroll 4x via `dot4x_simd4!` para quebrar cadeia de latência FMA. `dot_product_16x_f32_avx512` usa 2 acumuladores `__m512` com unroll 2x. Métodos adicionados ao trait `SimdMath` (grupo A) e implementados em `Avx2Math`, `Avx512Math` e `Avx512VnniBf16Math`. Nota: `Avx2Math::dot_product_16x_f32` usa scalar reference (sem `__m512` disponível); decomposição via dois `dot_product_8x_f32_avx2` com reinterpretação de ponteiros pode ser adicionada como otimização futura. Testes de decomposição contra 4x equivalentes confirmam paridade < 5e-4 ULP.
   - *Referência no `TODO-findings.md`: F-09*
 
-- [ ] **Task 3.2: Estender a suíte de micro-benchmarks**
+- [x] **Task 3.2: Estender a suíte de micro-benchmarks**
   - Expandir o benchmark existente `benches/dot_4x_bench.rs` para abranger os novos cenários de processamento 8x e 16x de canais de saída.
   - Adicionar análises comparativas no `inference_bench.rs` medindo o tempo de inferência total do WaveNet e A2.
+  - *Concluído (2026-06-23).* `dot_4x_bench.rs` ampliado com grupos `dot_8x_f32` (scalar + AVX2) e `dot_16x_f32` (scalar + AVX-512, gate-checked) para tamanhos [16, 64, 256, 1024, 4096]. Exportações `dot_product_8x_f32_scalar`/`dot_product_16x_f32_scalar` adicionadas ao `mod.rs` de `gemm`. `inference_bench.rs` expandido com `WaveNet_Comparison` (Standard CH=16 vs Dynamic CH=5) e `A2_Comparison` (Full CH=8 vs Lite CH=3 vs Dyn CH=4 gated). Todos os 776 testes passam, zero warnings. Nota para Task 3.3: as funções comparativas usam `build_model` via dispatcher padrão; quando os kernels 8x/16x forem integrados ao pipeline de inferência, o grupo `A2_Comparison` servirá como baseline imediata de regressão.
   - *Referência no `TODO-findings.md`: F-09*
 
 - [ ] **Task 3.3: Integrar e testar kernels no pipeline de inferência**
