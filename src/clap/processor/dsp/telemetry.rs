@@ -11,10 +11,7 @@ impl<'a> NamClapProcessor<'a> {
     #[inline(always)]
     pub(super) fn process_telemetry(&mut self, start_nanos: u64) {
         if start_nanos > 0 {
-            #[cfg(target_arch = "x86_64")]
             let elapsed_nanos = rdtsc_nanos().wrapping_sub(start_nanos);
-            #[cfg(not(target_arch = "x86_64"))]
-            let elapsed_nanos = 0;
             self.rt_status
                 .dsp_cycle_time
                 .store(elapsed_nanos, Ordering::Relaxed);

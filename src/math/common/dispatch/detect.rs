@@ -21,14 +21,11 @@ pub static SIMD_MATH: LazyLock<SimdMathConfig> = LazyLock::new(detect_best_simd)
 /// We follow a descending priority order, choosing the most advanced instruction set
 /// available on the processor where the software is running.
 fn detect_best_simd() -> SimdMathConfig {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if is_x86_feature_detected!("avx512bf16") && is_x86_feature_detected!("avx512vnni") {
-            return config_table!(InstructionSet::Avx512VnniBf16, "AVX-512 (VNNI+BF16)", true);
-        }
-        if is_x86_feature_detected!("avx512f") {
-            return config_table!(InstructionSet::Avx512, "AVX-512", true);
-        }
-        config_table!(InstructionSet::Avx2, "AVX2", false)
+    if is_x86_feature_detected!("avx512bf16") && is_x86_feature_detected!("avx512vnni") {
+        return config_table!(InstructionSet::Avx512VnniBf16, "AVX-512 (VNNI+BF16)", true);
     }
+    if is_x86_feature_detected!("avx512f") {
+        return config_table!(InstructionSet::Avx512, "AVX-512", true);
+    }
+    config_table!(InstructionSet::Avx2, "AVX2", false)
 }

@@ -141,7 +141,7 @@ O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do pro
 
 ---
 
-## Sprint 5 — Eliminação de Fallbacks Portáveis e Guards Redundantes (F-03) [TODO]
+## Sprint 5 — Eliminação de Fallbacks Portáveis e Guards Redundantes (F-03) [DONE]
 
 **Objetivo:** Limpar a base de código de todos os ramos inalcançáveis `#[cfg(not(target_arch = "x86_64"))]` e simplificar os guards de arquitetura redundantes, visto que a aplicação é puramente voltada para `x86_64-v3`. Adicionar um guard centralizado de compilação.
 
@@ -155,7 +155,7 @@ O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do pro
   - **Responsável Sugerido:** `implementador` / `planejador-arquiteto`
   - **Risco:** Baixo
 
-- [ ] **T5.2: Remover ramificações `#[cfg(not(target_arch = "x86_64"))]` e guards redundantes**
+- [x] **T5.2: Remover ramificações `#[cfg(not(target_arch = "x86_64"))]` e guards redundantes**
 
   - **Descrição:** Eliminar blocos condicionais de fallback escalar para outras arquiteturas e remover guards desnecessários de `target_arch = "x86_64"` em funções que já rodam em arquivos/módulos exclusivos.
   - **Arquivos envolvidos:**

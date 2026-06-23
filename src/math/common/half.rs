@@ -138,17 +138,10 @@ pub fn f32_to_f16_bits(f: f32) -> u16 {
 #[inline]
 #[target_feature(enable = "f16c")]
 pub unsafe fn f16_bits_to_f32_f16c(bits: u16) -> f32 {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use std::arch::x86_64::_mm_cvtph_ps;
-        use std::arch::x86_64::_mm_cvtsi32_si128;
-        use std::arch::x86_64::_mm_cvtss_f32;
-        _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(bits as i32)))
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        f16_bits_to_f32(bits) // fallback for non-x86_64 builds (tests, docs)
-    }
+    use std::arch::x86_64::_mm_cvtph_ps;
+    use std::arch::x86_64::_mm_cvtsi32_si128;
+    use std::arch::x86_64::_mm_cvtss_f32;
+    _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(bits as i32)))
 }
 
 /// Encodes an f32 value to binary16 bits (u16) using the F16C `VCVTPS2PH`
@@ -161,19 +154,12 @@ pub unsafe fn f16_bits_to_f32_f16c(bits: u16) -> f32 {
 #[inline]
 #[target_feature(enable = "f16c")]
 pub unsafe fn f32_to_f16_bits_f16c(f: f32) -> u16 {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use std::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
-        use std::arch::x86_64::_mm_cvtps_ph;
-        use std::arch::x86_64::_mm_cvtsi128_si32;
-        use std::arch::x86_64::_mm_set_ss;
-        (_mm_cvtsi128_si32(_mm_cvtps_ph(_mm_set_ss(f), _MM_FROUND_TO_NEAREST_INT)) as u32 & 0xFFFF)
-            as u16
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        f32_to_f16_bits(f) // fallback for non-x86_64 builds (tests, docs)
-    }
+    use std::arch::x86_64::_MM_FROUND_TO_NEAREST_INT;
+    use std::arch::x86_64::_mm_cvtps_ph;
+    use std::arch::x86_64::_mm_cvtsi128_si32;
+    use std::arch::x86_64::_mm_set_ss;
+    (_mm_cvtsi128_si32(_mm_cvtps_ph(_mm_set_ss(f), _MM_FROUND_TO_NEAREST_INT)) as u32 & 0xFFFF)
+        as u16
 }
 
 #[cfg(test)]

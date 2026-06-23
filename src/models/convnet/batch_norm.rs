@@ -108,29 +108,14 @@ impl BatchNorm1D {
     #[inline(always)]
     pub unsafe fn process(&self, data: &mut [f32], num_frames: usize) {
         debug_assert_eq!(data.len(), num_frames * self.num_channels);
-        #[cfg(target_arch = "x86_64")]
-        {
-            unsafe {
-                process_avx2(
-                    data,
-                    &self.scale,
-                    &self.offset,
-                    self.num_channels,
-                    num_frames,
-                );
-            }
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            unsafe {
-                process_scalar_ref(
-                    data,
-                    &self.scale,
-                    &self.offset,
-                    self.num_channels,
-                    num_frames,
-                );
-            }
+        unsafe {
+            process_avx2(
+                data,
+                &self.scale,
+                &self.offset,
+                self.num_channels,
+                num_frames,
+            );
         }
     }
 
@@ -169,47 +154,38 @@ unsafe fn process_avx2(
     n_ch: usize,
     num_frames: usize,
 ) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use core::arch::x86_64::*;
+    use core::arch::x86_64::*;
 
-        let mut gather_buf = [0.0f32; 8];
+    let mut gather_buf = [0.0f32; 8];
 
-        for ch in 0..n_ch {
-            let s = unsafe { _mm256_set1_ps(*scale.get_unchecked(ch)) };
-            let o = unsafe { _mm256_set1_ps(*offset.get_unchecked(ch)) };
+    for ch in 0..n_ch {
+        let s = unsafe { _mm256_set1_ps(*scale.get_unchecked(ch)) };
+        let o = unsafe { _mm256_set1_ps(*offset.get_unchecked(ch)) };
 
-            let mut f = 0usize;
-            while f + 8 <= num_frames {
-                let base = ch + f * n_ch;
-                unsafe {
-                    for lane in 0..8 {
-                        *gather_buf.get_unchecked_mut(lane) =
-                            *data.get_unchecked(base + lane * n_ch);
-                    }
-                    let xv = _mm256_loadu_ps(gather_buf.as_ptr());
-                    let yv = _mm256_fmadd_ps(xv, s, o);
-                    _mm256_storeu_ps(gather_buf.as_mut_ptr(), yv);
-                    for lane in 0..8 {
-                        *data.get_unchecked_mut(base + lane * n_ch) =
-                            *gather_buf.get_unchecked(lane);
-                    }
+        let mut f = 0usize;
+        while f + 8 <= num_frames {
+            let base = ch + f * n_ch;
+            unsafe {
+                for lane in 0..8 {
+                    *gather_buf.get_unchecked_mut(lane) = *data.get_unchecked(base + lane * n_ch);
                 }
-                f += 8;
+                let xv = _mm256_loadu_ps(gather_buf.as_ptr());
+                let yv = _mm256_fmadd_ps(xv, s, o);
+                _mm256_storeu_ps(gather_buf.as_mut_ptr(), yv);
+                for lane in 0..8 {
+                    *data.get_unchecked_mut(base + lane * n_ch) = *gather_buf.get_unchecked(lane);
+                }
             }
+            f += 8;
+        }
 
-            for f in f..num_frames {
-                let idx = ch + f * n_ch;
-                unsafe {
-                    *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx))
-                        .mul_add(*scale.get_unchecked(ch), *offset.get_unchecked(ch));
-                }
+        for f in f..num_frames {
+            let idx = ch + f * n_ch;
+            unsafe {
+                *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx))
+                    .mul_add(*scale.get_unchecked(ch), *offset.get_unchecked(ch));
             }
         }
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        process_scalar_ref(data, scale, offset, n_ch, num_frames);
     }
 }
 

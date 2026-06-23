@@ -300,27 +300,15 @@ impl<const CH: usize> WaveNetA2<CH> {
 
             // ── Phase 0: rechannel pre-scaling: input × rechannel_w_f32 → layer_in ──
             if CH == 8 {
-                #[cfg(target_arch = "x86_64")]
-                {
-                    use core::arch::x86_64::{
-                        _mm256_load_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_store_ps,
-                    };
-                    unsafe {
-                        let rw_vec = _mm256_load_ps(self.rechannel_w_f32.as_ptr());
-                        for (f, &x) in input[pos..pos + nf].iter().enumerate() {
-                            let x_vec = _mm256_set1_ps(x);
-                            let res = _mm256_mul_ps(rw_vec, x_vec);
-                            _mm256_store_ps(self.layer_in.as_mut_ptr().add(f * 8), res);
-                        }
-                    }
-                }
-                #[cfg(not(target_arch = "x86_64"))]
-                {
+                use core::arch::x86_64::{
+                    _mm256_load_ps, _mm256_mul_ps, _mm256_set1_ps, _mm256_store_ps,
+                };
+                unsafe {
+                    let rw_vec = _mm256_load_ps(self.rechannel_w_f32.as_ptr());
                     for (f, &x) in input[pos..pos + nf].iter().enumerate() {
-                        let base = f * 8;
-                        for c in 0..8 {
-                            self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
-                        }
+                        let x_vec = _mm256_set1_ps(x);
+                        let res = _mm256_mul_ps(rw_vec, x_vec);
+                        _mm256_store_ps(self.layer_in.as_mut_ptr().add(f * 8), res);
                     }
                 }
             } else {

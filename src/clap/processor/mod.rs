@@ -244,18 +244,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         let should_measure = self.cycles_since_telemetry & 0xF == 0;
         self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
-        let start_nanos = if should_measure {
-            #[cfg(target_arch = "x86_64")]
-            {
-                rdtsc_nanos()
-            }
-            #[cfg(not(target_arch = "x86_64"))]
-            {
-                0
-            }
-        } else {
-            0
-        };
+        let start_nanos = if should_measure { rdtsc_nanos() } else { 0 };
 
         // One-time thread priority query on the first processed block
         if !self.prio_checked {
