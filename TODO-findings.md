@@ -469,7 +469,7 @@ pipeline e corrigir a documentação correlata.
 sem regressão (idealmente com ganho); zero warnings.
 **Risco:** Médio-alto (toca o caminho mais quente) — **maior atenção da auditoria**.
 
-### EPIC B — Conformidade x86-64-v3 e Limpeza de Portabilidade [DOING]
+### EPIC B — Conformidade x86-64-v3 e Limpeza de Portabilidade [DONE]
 
 **Findings:** F-03, F-04, F-07.
 **Objetivo:** Remover código morto não-x86, eliminar a transgressão `is_x86_feature_detected!("avx2")`
