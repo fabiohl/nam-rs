@@ -26,7 +26,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - Garantir a inclusão do cabeçalho de copyright SPDX em todos os novos arquivos de teste criados.
   - *Referência no `TODO-findings.md`: F-05*
 
-- [ ] **Task 1.2: Decomposição de `WaveNetA2::process()` em `src/models/a2/model/mod.rs`**
+- [x] **Task 1.2: Decomposição de `WaveNetA2::process()` em `src/models/a2/model/mod.rs`**
   - Refatorar a função de processamento de ~320 linhas em sub-funções menores marcadas com `#[inline(always)]` (ex.: `rechannel_prescale`, `advance_head_ring`, `layer_forward_dispatch`, `head_finalize`).
   - Assegurar que a elisão de bounds checking (`core::slice::GetUnchecked` ou truques de tamanho do compilador) permaneça ativa e que os limites de arrays permaneçam eficientes.
   - *Referência no `TODO-findings.md`: F-05*
