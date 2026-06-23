@@ -68,7 +68,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
   - **Risco:** Médio (garantir consistência com chamadores de alto nível)
   - **Nota Pós-Execução (T1.2):** O `Conv1dDyn` é compartilhado entre WaveNet e A2/ConvNet. O A2 (`a2/conv1d_dispatch.rs`) ainda usa detecção runtime de AVX-512 no nível `A2Conv1d` para selecionar `Avx512Math` vs `Avx2Math` — mas o loop interno de convolução (`Conv1dDyn::process_single_frame`) já está monomorfizado. A monomorfização completa do pipeline A2 exigirá envolver `A2Model::process` com `dispatch_simd!` (futuro sprint).
 
-- [ ] **T1.3: Limpeza de wrappers legados em `conv_input.rs`**
+- [x] **T1.3: Limpeza de wrappers legados em `conv_input.rs`**
 
   - **Descrição:** Remover as funções livres `dot_product_4x` e `dot_product_4x_dual` que usavam `is_x86_feature_detected!`. Se necessário para testes legados, encapsular sob `#[cfg(test)]`.
   - **Arquivos envolvidos:**

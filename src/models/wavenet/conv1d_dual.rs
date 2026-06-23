@@ -20,7 +20,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// (conditioning) directly to the accumulators.
     /// This approach maximizes the utilization of weights loaded into registers (Temporal Tiling).
     ///
-    /// Uses full-precision f32 weights via `dot_product_4x_dual` (AVX2/FMA or AVX-512 kernel).
+    /// Uses full-precision f32 weights via `M::dot_product_4x_f32_dual` (AVX2/FMA or AVX-512 kernel).
     ///
     /// # Safety
     /// `layer_buffer` and `mixin` must have appropriate sizes.
