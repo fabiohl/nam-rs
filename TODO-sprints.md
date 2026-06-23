@@ -54,7 +54,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
 - Verificação estática sem falhas ou avisos (`utils/tests-quick.sh`).
 - Cobertura de documentação `SAFETY` em conformidade com as regras do repositório.
 
-- [ ] **Task 2.1: Unificar a projeção do cabeçalho do LSTM (head projection)**
+- [x] **Task 2.1: Unificar a projeção do cabeçalho do LSTM (head projection)**
   - Isolar a lógica duplicada de projeção (`dot_product`, bias, etc.) presente em `src/models/lstm/model1.rs` e `model2.rs` para um macro ou helper comum compartilhado.
   - *Referência no `TODO-findings.md`: F-06*
 

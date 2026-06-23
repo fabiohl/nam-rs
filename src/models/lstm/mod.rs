@@ -23,6 +23,7 @@
 use super::NamModel;
 use super::sealed;
 
+pub mod head_projection;
 pub mod layer;
 pub mod layer_dyn;
 pub mod layer_dyn_kernels;

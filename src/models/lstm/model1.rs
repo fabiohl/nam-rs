@@ -18,23 +18,14 @@ macro_rules! define_lstm1_process {
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
-                // Simple Processing: For 1-layer models,
-                // we just pass the audio through the layer and project the final result.
                 for (i, &val) in input.iter().enumerate() {
                     self.layer.$layer_proc(&[val]);
-
-                    // Transform the neural network output into the final audio signal.
-                    let h = self.layer.$get_h();
-                    let dot = if self.use_f32_head {
-                        let h_f32 = self.layer.get_hidden_state();
-                        crate::math::common::scalar_ref::dot_product_f32_native(
-                            h_f32,
-                            &self.head_weights_f32,
-                        )
-                    } else {
-                        $dot_prod(h, &self.head_weights)
-                    };
-                    output[i] = dot + self.head_bias;
+                    output[i] = $crate::compute_lstm_head_simd!(
+                        self,
+                        self.layer.$get_h(),
+                        self.layer.get_hidden_state(),
+                        $dot_prod
+                    );
                 }
             }
         }

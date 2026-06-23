@@ -40,17 +40,12 @@ macro_rules! define_lstm2_process_pipelined {
 
                         // 3. Output Projection: Convert the Layer 2 neuron 'vote'
                         // into a real audio value using a Dot Product.
-                        let h2 = self.layer2.$get_h2();
-                        let dot = if self.use_f32_head {
-                            let h2_f32 = self.layer2.get_hidden_state();
-                            crate::math::common::scalar_ref::dot_product_f32_native(
-                                h2_f32,
-                                &self.head_weights_f32,
-                            )
-                        } else {
-                            $dot_prod(h2, &self.head_weights)
-                        };
-                        output[i - 1] = dot + self.head_bias;
+                        output[i - 1] = $crate::compute_lstm_head_simd!(
+                            self,
+                            self.layer2.$get_h2(),
+                            self.layer2.get_hidden_state(),
+                            $dot_prod
+                        );
 
                         // Save Layer 1's result for Layer 2 to use on the next iteration.
                         prev_h1.copy_from_slice(self.layer1.get_hidden_state());
@@ -58,17 +53,12 @@ macro_rules! define_lstm2_process_pipelined {
 
                     // 4. Epilogue: Process the last remaining frame in Layer 2.
                     self.layer2.$layer_proc(&prev_h1);
-                    let h2 = self.layer2.$get_h2();
-                    let dot = if self.use_f32_head {
-                        let h2_f32 = self.layer2.get_hidden_state();
-                        crate::math::common::scalar_ref::dot_product_f32_native(
-                            h2_f32,
-                            &self.head_weights_f32,
-                        )
-                    } else {
-                        $dot_prod(h2, &self.head_weights)
-                    };
-                    output[len - 1] = dot + self.head_bias;
+                    output[len - 1] = $crate::compute_lstm_head_simd!(
+                        self,
+                        self.layer2.$get_h2(),
+                        self.layer2.get_hidden_state(),
+                        $dot_prod
+                    );
                 }
             }
         }
