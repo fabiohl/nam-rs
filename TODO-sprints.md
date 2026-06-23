@@ -20,7 +20,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
 - Zero warnings ou erros de compilação produzidos pelo `cargo check` / `clippy`.
 - Nenhum desvio de performance mensurável nos benchmarks de inferência.
 
-- [ ] **Task 1.1: Extração de testes inline para arquivos `_test.rs`**
+- [x] **Task 1.1: Extração de testes inline para arquivos `_test.rs`**
   - Mover testes inline de arquivos de produção com tamanho substancial (>= 300 linhas de código útil antes do bloco de testes) para seus respectivos arquivos de teste separados no mesmo diretório (ex.: `post_stack_head_test.rs`, `convnet_model_test.rs`, `convnet_block_test.rs`, `a2_activations_test.rs`).
   - Adicionar a diretiva `#[cfg(test)] #[path = "..._test.rs"] mod ..._test;` no final do arquivo de produção correspondente.
   - Garantir a inclusão do cabeçalho de copyright SPDX em todos os novos arquivos de teste criados.
