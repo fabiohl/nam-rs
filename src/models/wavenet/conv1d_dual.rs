@@ -13,6 +13,7 @@
 
 use super::conv_input::{load_4_accums, store_4_accums};
 use super::conv1d::Conv1d;
+use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::SimdMath;
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
@@ -36,6 +37,25 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f0: &[f32],
         mixin_f1: &[f32],
     ) {
+        let interleave_width = select_interleave_width(OUT);
+
+        if interleave_width != 4 {
+            unsafe {
+                self.process_single_frame_with_mixin::<M>(
+                    layer_buffer,
+                    out_frame_f0,
+                    frame_idx_f0,
+                    mixin_f0,
+                );
+                self.process_single_frame_with_mixin::<M>(
+                    layer_buffer,
+                    out_frame_f1,
+                    frame_idx_f1,
+                    mixin_f1,
+                );
+            }
+            return;
+        }
         // --- 1. Setup (Bias and Mixin) ---
         let full_blocks = OUT & !3;
         for i in (0..full_blocks).step_by(4) {

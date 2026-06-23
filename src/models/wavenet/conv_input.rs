@@ -1,42 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-#[cfg(test)]
-use crate::math::common::SimdMath;
-
-/// Initializes a block of 4 accumulator registers from bias and mixin vectors.
-///
-/// Unifies the 4-case initialization pattern (Some(mixin)+bias, Some(mixin) only,
-/// bias only, zeros). Used by the cfg(test)-gated `process_single_frame` in conv1d.rs.
-///
-/// # Safety
-/// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
-// Helper for test-only `process_single_frame` (cfg(test) gated in conv1d.rs).
-#[cfg(test)]
-#[inline(always)]
-pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(
-    acc: &mut [f32; 4],
-    bias: &[f32],
-    mixin: Option<&[f32]>,
-    out_offset: usize,
-    do_bias: bool,
-) {
-    if let Some(m) = mixin {
-        if do_bias {
-            acc.copy_from_slice(&bias[out_offset..out_offset + 4]);
-            unsafe {
-                M::accumulate_head(acc, &m[out_offset..out_offset + 4]);
-            }
-        } else {
-            acc.copy_from_slice(&m[out_offset..out_offset + 4]);
-        }
-    } else if do_bias {
-        acc.copy_from_slice(&bias[out_offset..out_offset + 4]);
-    } else {
-        acc.fill(0.0);
-    }
-}
-
 /// Loads 4 accumulator values from the output buffer with fallback for non‑multiple‑of‑4
 /// OUT sizes. Extracted verbatim from single‑frame convolution kernel.
 ///
@@ -96,6 +60,112 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
         }
         if out_c + 3 < out_n {
             unsafe { *out.get_unchecked_mut(out_c + 3) = r[3] };
+        }
+    }
+}
+
+/// Loads 8 accumulator values from the output buffer.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path, `out_c + 7 < out_n`.
+#[inline(always)]
+#[allow(clippy::needless_range_loop)]
+pub(crate) unsafe fn load_8_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 8] {
+    let r0 = unsafe { *out.get_unchecked(out_c) };
+    if out_n.is_multiple_of(8) || out_c + 7 < out_n {
+        [
+            r0,
+            unsafe { *out.get_unchecked(out_c + 1) },
+            unsafe { *out.get_unchecked(out_c + 2) },
+            unsafe { *out.get_unchecked(out_c + 3) },
+            unsafe { *out.get_unchecked(out_c + 4) },
+            unsafe { *out.get_unchecked(out_c + 5) },
+            unsafe { *out.get_unchecked(out_c + 6) },
+            unsafe { *out.get_unchecked(out_c + 7) },
+        ]
+    } else {
+        let mut r = [0.0f32; 8];
+        r[0] = r0;
+        for i in 1..8 {
+            if out_c + i < out_n {
+                unsafe { r[i] = *out.get_unchecked(out_c + i) };
+            }
+        }
+        r
+    }
+}
+
+/// Stores 8 accumulator values back to the output buffer.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path, `out_c + 7 < out_n`.
+#[inline(always)]
+#[allow(clippy::needless_range_loop)]
+pub(crate) unsafe fn store_8_accums(out: &mut [f32], out_c: usize, r: [f32; 8], out_n: usize) {
+    unsafe { *out.get_unchecked_mut(out_c) = r[0] };
+    if out_n.is_multiple_of(8) || out_c + 7 < out_n {
+        unsafe {
+            *out.get_unchecked_mut(out_c + 1) = r[1];
+            *out.get_unchecked_mut(out_c + 2) = r[2];
+            *out.get_unchecked_mut(out_c + 3) = r[3];
+            *out.get_unchecked_mut(out_c + 4) = r[4];
+            *out.get_unchecked_mut(out_c + 5) = r[5];
+            *out.get_unchecked_mut(out_c + 6) = r[6];
+            *out.get_unchecked_mut(out_c + 7) = r[7];
+        }
+    } else {
+        for i in 1..8 {
+            if out_c + i < out_n {
+                unsafe { *out.get_unchecked_mut(out_c + i) = r[i] };
+            }
+        }
+    }
+}
+
+/// Loads 16 accumulator values from the output buffer.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path, `out_c + 15 < out_n`.
+#[inline(always)]
+#[allow(clippy::needless_range_loop)]
+pub(crate) unsafe fn load_16_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 16] {
+    let r0 = unsafe { *out.get_unchecked(out_c) };
+    if out_n.is_multiple_of(16) || out_c + 15 < out_n {
+        let mut r = [0.0f32; 16];
+        r[0] = r0;
+        for i in 1..16 {
+            unsafe { r[i] = *out.get_unchecked(out_c + i) };
+        }
+        r
+    } else {
+        let mut r = [0.0f32; 16];
+        r[0] = r0;
+        for i in 1..16 {
+            if out_c + i < out_n {
+                unsafe { r[i] = *out.get_unchecked(out_c + i) };
+            }
+        }
+        r
+    }
+}
+
+/// Stores 16 accumulator values back to the output buffer.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path, `out_c + 15 < out_n`.
+#[inline(always)]
+#[allow(clippy::needless_range_loop)]
+pub(crate) unsafe fn store_16_accums(out: &mut [f32], out_c: usize, r: [f32; 16], out_n: usize) {
+    unsafe { *out.get_unchecked_mut(out_c) = r[0] };
+    if out_n.is_multiple_of(16) || out_c + 15 < out_n {
+        for i in 1..16 {
+            unsafe { *out.get_unchecked_mut(out_c + i) = r[i] };
+        }
+    } else {
+        for i in 1..16 {
+            if out_c + i < out_n {
+                unsafe { *out.get_unchecked_mut(out_c + i) = r[i] };
+            }
         }
     }
 }

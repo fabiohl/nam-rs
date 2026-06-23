@@ -3,6 +3,7 @@
 
 use super::A2Conv1dCh8;
 use super::MAX_KERNEL_FRAMES;
+use crate::math::common::SimdMath;
 use crate::models::a2::film::FilmBlock;
 use crate::models::a2::params::A2_LEAKY_SLOPE;
 use core::arch::x86_64::*;
@@ -166,6 +167,183 @@ pub unsafe fn layer_forward_ch8_block(
         num_frames,
         &mut z_buf[..num_frames * ch],
     );
+
+    // 1b. FiLM: conv_post_film + input_mixin_pre_film (post-conv, pre-mixin).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.conv_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.input_mixin_pre_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 2. Post-conv: mixin (in-place on z_buf).
+    {
+        let z = z_buf.as_mut_ptr();
+        let mixin_v = _mm256_loadu_ps(mixin_w.as_ptr());
+        for (f, cond_val) in input_cond.iter().take(num_frames).enumerate() {
+            let off = f * ch;
+            let mut zv = _mm256_loadu_ps(z.add(off));
+            let cond_v = _mm256_set1_ps(*cond_val);
+            zv = _mm256_fmadd_ps(mixin_v, cond_v, zv);
+            _mm256_storeu_ps(z.add(off), zv);
+        }
+    }
+
+    // 2b. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.input_mixin_post_film {
+            film.process(z_slice, cond);
+        }
+        if let Some(ref mut film) = film.activation_pre_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 3. LeakyReLU (in-place on z_buf).
+    {
+        let z = z_buf.as_mut_ptr();
+        let slope_v = _mm256_set1_ps(A2_LEAKY_SLOPE);
+        let zero_v = _mm256_setzero_ps();
+        for f in 0..num_frames {
+            let off = f * ch;
+            let zv = _mm256_loadu_ps(z.add(off));
+            let mask = _mm256_cmp_ps(zv, zero_v, _CMP_LT_OS);
+            let zv_leaky = _mm256_mul_ps(zv, slope_v);
+            _mm256_storeu_ps(z.add(off), _mm256_blendv_ps(zv, zv_leaky, mask));
+        }
+    }
+
+    // 3b. FiLM: activation_post_film (post-activation).
+    for f in 0..num_frames {
+        let cond = &input_cond[f..f + 1];
+        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
+        if let Some(ref mut film) = film.activation_post_film {
+            film.process(z_slice, cond);
+        }
+    }
+
+    // 4. Head accumulate.
+    {
+        let head = head_accum.as_mut_ptr();
+        for f in 0..num_frames {
+            let head_off = (head_col + f) * ch;
+            let zv = _mm256_loadu_ps(z_buf.as_ptr().add(f * ch));
+            if is_first {
+                _mm256_storeu_ps(head.add(head_off), zv);
+            } else {
+                let hv = _mm256_loadu_ps(head.add(head_off));
+                _mm256_storeu_ps(head.add(head_off), _mm256_add_ps(hv, zv));
+            }
+        }
+    }
+
+    // 5. Layer1x1 residual (skipped on last layer).
+    if !is_last {
+        let lin = layer_in.as_mut_ptr();
+        let l1x1_b_v = _mm256_loadu_ps(l1x1_b.as_ptr());
+        let l1x1_w_ptr = l1x1_w.as_ptr();
+        for f in 0..num_frames {
+            let off = f * ch;
+            let mut acc = l1x1_b_v;
+            for u in 0..ch {
+                let zu = *z_buf.get_unchecked(off + u);
+                let zu_v = _mm256_set1_ps(zu);
+                let w_col = _mm256_loadu_ps(l1x1_w_ptr.add(u * ch));
+                acc = _mm256_fmadd_ps(zu_v, w_col, acc);
+            }
+            let lv = _mm256_loadu_ps(lin.add(off));
+            _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, acc));
+        }
+
+        // 5b. FiLM: layer1x1_post_film (post-l1x1, on layer_in).
+        for f in 0..num_frames {
+            let cond = &input_cond[f..f + 1];
+            let lin_slice = &mut layer_in[f * ch..(f + 1) * ch];
+            if let Some(ref mut film) = film.layer1x1_post_film {
+                film.process(lin_slice, cond);
+            }
+        }
+    }
+}
+
+/// SimdMath-dispatched full layer forward pass for CH=8.
+///
+/// Same semantics as `layer_forward_ch8_block` but uses `M::dot_product_8x_f32`
+/// for the convolution step via monomorphized SimdMath dispatch, enabling ISA-optimal
+/// kernel selection at compile time. Post-conv operations (mixin, LeakyReLU, head,
+/// l1x1) remain on raw `__m256` intrinsics.
+///
+/// # Safety
+/// Buffers must be sized appropriately. Caller ensures linear ring history
+/// includes lookback + block frames.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
+    conv: &A2Conv1dCh8,
+    mixin_w: &[f32],
+    l1x1_w: &[f32],
+    l1x1_b: &[f32],
+    film: &mut FilmBlock<'_>,
+    layer_buffer: &[f32],
+    frame_start: usize,
+    num_frames: usize,
+    input_cond: &[f32],
+    head_accum: &mut [f32],
+    head_col: usize,
+    layer_in: &mut [f32],
+    is_first: bool,
+    is_last: bool,
+) {
+    let ch: usize = 8;
+    debug_assert!(mixin_w.len() >= ch);
+    debug_assert!(l1x1_w.len() >= ch * ch);
+    debug_assert!(l1x1_b.len() >= ch);
+    debug_assert!(layer_in.len() >= num_frames * ch);
+    debug_assert!(input_cond.len() >= num_frames);
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES);
+
+    let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * 8];
+    let ch_pad = 8usize;
+    let stride = ch_pad * ch_pad;
+    let d = conv.dilation as isize;
+    let k_i = conv.kernel as isize;
+    let buf = layer_buffer.as_ptr();
+    let w_ptr = conv.weights.as_ptr();
+
+    let bias = &conv.bias;
+
+    for f in 0..num_frames {
+        let frame_idx = (frame_start + f) as isize;
+        let mut acc = [
+            bias[0], bias[1], bias[2], bias[3], bias[4], bias[5], bias[6], bias[7],
+        ];
+
+        for k in 0..conv.kernel {
+            let taps_back = k_i - 1 - k as isize;
+            let tap_base = frame_idx - d * taps_back;
+            let hb = buf.offset(tap_base * ch as isize);
+            let in_slice = core::slice::from_raw_parts(hb, ch);
+
+            let w_slice: &[[f32; 8]] = {
+                let ptr = w_ptr.add(k * stride) as *const [f32; 8];
+                core::slice::from_raw_parts(ptr, ch)
+            };
+
+            let t = M::dot_product_8x_f32(w_slice, in_slice);
+            for c in 0..8 {
+                acc[c] += t[c];
+            }
+        }
+
+        let off = f * ch;
+        z_buf[off..off + ch].copy_from_slice(&acc);
+    }
 
     // 1b. FiLM: conv_post_film + input_mixin_pre_film (post-conv, pre-mixin).
     for f in 0..num_frames {

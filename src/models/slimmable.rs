@@ -16,10 +16,11 @@
 //! zero-alloc and lock-free.
 //!
 //! Weights are stored in SIMD-friendly interleaved layouts:
-//! - `Conv1dDyn`: `[block][kernel][in_ch][4]` — 4-wide lane-interleaved
+//! - `Conv1dDyn`: `[block][kernel][in_ch][W]` — W-wide lane-interleaved (W = 4, 8, or 16)
 //! - `DenseLayerDyn`: column-major `weights[in_c * out_ch + out_c]`
 
 use crate::common::spsc::GcItem;
+use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::{
     Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerArrayDyn, WaveNetLayerDyn,
@@ -70,19 +71,29 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
         conv.out_ch
     );
 
-    let new_num_blocks = new_out_ch.div_ceil(4);
+    let dst_width = select_interleave_width(new_out_ch);
+    let src_width = conv.interleave_width;
+    let new_num_blocks = new_out_ch.div_ceil(dst_width);
     let kernel = conv.kernel;
-    let new_weights_len = new_num_blocks * 4 * new_in_ch * kernel;
+    let new_weights_len = new_num_blocks * dst_width * new_in_ch * kernel;
     let mut new_weights = AlignedVec::new(new_weights_len, 0.0f32);
 
-    for b in 0..new_num_blocks {
+    for src_b in 0..new_out_ch.div_ceil(src_width) {
         for k in 0..kernel {
             for in_c in 0..new_in_ch {
-                let src_idx = ((b * kernel + k) * conv.in_ch + in_c) * 4;
-                let dst_idx = ((b * kernel + k) * new_in_ch + in_c) * 4;
-                let src = &conv.weights[src_idx..src_idx + 4];
-                let dst = &mut new_weights[dst_idx..dst_idx + 4];
-                dst.copy_from_slice(src);
+                for lane in 0..src_width {
+                    let out_c = src_b * src_width + lane;
+                    if out_c >= new_out_ch {
+                        break;
+                    }
+                    let dst_b = out_c / dst_width;
+                    let dst_lane = out_c % dst_width;
+                    let src_idx =
+                        (src_b * kernel + k) * conv.in_ch * src_width + in_c * src_width + lane;
+                    let dst_idx =
+                        (dst_b * kernel + k) * new_in_ch * dst_width + in_c * dst_width + dst_lane;
+                    new_weights[dst_idx] = conv.weights[src_idx];
+                }
             }
         }
     }
@@ -98,6 +109,7 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
         in_ch: new_in_ch,
         out_ch: new_out_ch,
         num_blocks: new_num_blocks,
+        interleave_width: dst_width,
         kernel,
         prefetch_fn: conv.prefetch_fn,
     }

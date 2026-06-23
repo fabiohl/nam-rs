@@ -52,6 +52,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         in_ch,
         out_ch,
         num_blocks: out_ch.div_ceil(4),
+        interleave_width: 4,
         kernel,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
@@ -92,6 +93,7 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
         in_ch,
         out_ch,
         num_blocks: out_ch.div_ceil(4),
+        interleave_width: 4,
         kernel,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };

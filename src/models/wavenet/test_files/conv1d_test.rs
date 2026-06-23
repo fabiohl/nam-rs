@@ -247,3 +247,200 @@ fn test_conv1d_known_output() {
     assert_eq!(block[0], 21.0);
     assert_eq!(block[1], -21.0);
 }
+
+#[test]
+fn test_conv1d_ch8_wide_interleaving() {
+    use crate::math::common::AlignedVec;
+
+    const CH: usize = 8;
+    const K: usize = 2;
+
+    let mut raw = vec![0.0f32; CH * K * CH];
+
+    for out_c in 0..CH {
+        for k in 0..K {
+            for in_c in 0..CH {
+                let idx = (out_c * CH + in_c) * K + k;
+                raw[idx] = (out_c + 1) as f32 * 0.5;
+            }
+        }
+    }
+
+    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32);
+    crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_8wide(
+        &raw,
+        &mut weights,
+        CH,
+        CH,
+        K,
+    );
+
+    let conv = Conv1d::<CH, CH, K> {
+        weights: weights.clone(),
+        bias: AlignedVec::from_vec(vec![0.1f32; CH]),
+        do_bias: true,
+        dilation: 1,
+        prefetch_fn: crate::math::common::prefetch_strategy_simple,
+    };
+
+    let mut layer_buffer = vec![0.0f32; CH * 10];
+    layer_buffer.fill(1.0);
+
+    let mut simd_out = vec![0.0f32; CH];
+    unsafe {
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut simd_out, 5);
+    }
+
+    let mut scalar_out = [0.0f32; CH];
+    for (oc, s) in scalar_out.iter_mut().enumerate() {
+        let mut sum = 0.1; // bias
+        for k in 0..K {
+            let offset = (k as isize) + 1 - (K as isize);
+            let in_idx = ((5isize + offset) as usize) * CH;
+            for ic in 0..CH {
+                let w_idx = k * CH * CH + ic * CH + oc;
+                sum += layer_buffer[in_idx + ic] * weights[w_idx];
+            }
+        }
+        *s = sum;
+    }
+
+    for oc in 0..CH {
+        let diff = (simd_out[oc] - scalar_out[oc]).abs();
+        assert!(
+            diff < 1e-5,
+            "CH=8 ch{} mismatch: simd={}, scalar={}, diff={}",
+            oc,
+            simd_out[oc],
+            scalar_out[oc],
+            diff
+        );
+    }
+}
+
+#[test]
+fn test_conv1d_ch16_wide_interleaving() {
+    use crate::math::common::AlignedVec;
+
+    const CH: usize = 16;
+    const K: usize = 2;
+
+    let mut raw = vec![0.0f32; CH * K * CH];
+
+    for out_c in 0..CH {
+        for k in 0..K {
+            for in_c in 0..CH {
+                let idx = (out_c * CH + in_c) * K + k;
+                raw[idx] = (out_c + 1) as f32 * 0.5;
+            }
+        }
+    }
+
+    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32);
+    crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide(
+        &raw,
+        &mut weights,
+        CH,
+        CH,
+        K,
+    );
+
+    let conv = Conv1d::<CH, CH, K> {
+        weights: weights.clone(),
+        bias: AlignedVec::from_vec(vec![0.1f32; CH]),
+        do_bias: true,
+        dilation: 1,
+        prefetch_fn: crate::math::common::prefetch_strategy_simple,
+    };
+
+    let mut layer_buffer = vec![0.0f32; CH * 10];
+    layer_buffer.fill(1.0);
+
+    let mut simd_out = vec![0.0f32; CH];
+    unsafe {
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut simd_out, 5);
+    }
+
+    let mut scalar_out = [0.0f32; CH];
+    for (oc, s) in scalar_out.iter_mut().enumerate() {
+        let mut sum = 0.1; // bias
+        for k in 0..K {
+            let offset = (k as isize) + 1 - (K as isize);
+            let in_idx = ((5isize + offset) as usize) * CH;
+            for ic in 0..CH {
+                let w_idx = k * CH * CH + ic * CH + oc;
+                sum += layer_buffer[in_idx + ic] * weights[w_idx];
+            }
+        }
+        *s = sum;
+    }
+
+    for oc in 0..CH {
+        let diff = (simd_out[oc] - scalar_out[oc]).abs();
+        assert!(
+            diff < 1e-5,
+            "CH=16 ch{} mismatch: simd={}, scalar={}, diff={}",
+            oc,
+            simd_out[oc],
+            scalar_out[oc],
+            diff
+        );
+    }
+}
+
+#[test]
+fn test_4wide_to_16wide_transpose_correctness() {
+    use crate::math::common::AlignedVec;
+
+    const CH: usize = 16;
+    const K: usize = 2;
+
+    let mut raw = vec![0.0f32; CH * K * CH];
+    for out_c in 0..CH {
+        for k in 0..K {
+            for in_c in 0..CH {
+                let idx = (out_c * CH + in_c) * K + k;
+                raw[idx] = (out_c + 1) as f32 * 0.5 + (k as f32) * 0.1;
+            }
+        }
+    }
+
+    let padded_4 = (CH.div_ceil(4)) * 4 * CH * K;
+    let mut weights_4wide = AlignedVec::new(padded_4, 0.0f32);
+    crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_4wide(
+        &raw,
+        &mut weights_4wide,
+        CH,
+        CH,
+        K,
+    );
+
+    let mut weights_16wide_via_4to16 = AlignedVec::new(CH * K * CH, 0.0f32);
+    crate::loader::dispatcher::wavenet::layout::transpose_4wide_to_16wide(
+        &weights_4wide,
+        &mut weights_16wide_via_4to16,
+        CH,
+        CH,
+        K,
+    );
+
+    let mut weights_16wide_direct = AlignedVec::new(CH * K * CH, 0.0f32);
+    crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide(
+        &raw,
+        &mut weights_16wide_direct,
+        CH,
+        CH,
+        K,
+    );
+
+    for (i, (&a, &b)) in weights_16wide_via_4to16
+        .iter()
+        .zip(weights_16wide_direct.iter())
+        .enumerate()
+    {
+        assert!(
+            (a - b).abs() < 1e-6,
+            "4wide→16wide vs direct→16wide mismatch at idx {i}: {a} vs {b}"
+        );
+    }
+}

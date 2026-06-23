@@ -42,7 +42,7 @@ use super::head::A2HeadConv;
 use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
 use crate::dsp::mirror_buf::MirroredBuffer;
-use crate::math::common::AlignedVec;
+use crate::math::common::{AlignedVec, Avx512Math, InstructionSet};
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use serde_json::Value;
 use std::sync::Arc;
@@ -471,22 +471,45 @@ impl<const CH: usize> WaveNetA2<CH> {
                         );
                     },
                     super::layer::A2ConvCh::Ch8(ch8_conv) => unsafe {
-                        super::conv1d_ch8::layer_forward_ch8_block(
-                            ch8_conv,
-                            mixin_w,
-                            l1x1_w,
-                            l1x1_b,
-                            &mut film_block,
-                            history,
-                            max_lookback_cols,
-                            nf,
-                            &input[pos..pos + nf],
-                            &mut self.head_accum,
-                            head_wp,
-                            &mut self.layer_in,
-                            is_first,
-                            is_last,
-                        );
+                        let isa = crate::math::common::SIMD_MATH.instruction_set;
+                        match isa {
+                            InstructionSet::Avx512 | InstructionSet::Avx512VnniBf16 => {
+                                super::conv1d_ch8::layer_forward_ch8_block_simdmath::<Avx512Math>(
+                                    ch8_conv,
+                                    mixin_w,
+                                    l1x1_w,
+                                    l1x1_b,
+                                    &mut film_block,
+                                    history,
+                                    max_lookback_cols,
+                                    nf,
+                                    &input[pos..pos + nf],
+                                    &mut self.head_accum,
+                                    head_wp,
+                                    &mut self.layer_in,
+                                    is_first,
+                                    is_last,
+                                );
+                            }
+                            _ => {
+                                super::conv1d_ch8::layer_forward_ch8_block(
+                                    ch8_conv,
+                                    mixin_w,
+                                    l1x1_w,
+                                    l1x1_b,
+                                    &mut film_block,
+                                    history,
+                                    max_lookback_cols,
+                                    nf,
+                                    &input[pos..pos + nf],
+                                    &mut self.head_accum,
+                                    head_wp,
+                                    &mut self.layer_in,
+                                    is_first,
+                                    is_last,
+                                );
+                            }
+                        }
                     },
                 }
                 return;

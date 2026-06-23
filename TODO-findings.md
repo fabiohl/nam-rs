@@ -478,7 +478,7 @@ e helpers test-only mal posicionados; adicionar `compile_error!` guard.
 **Critério de aceite:** `utils/lints.sh` limpo; build x86_64 inalterado.
 **Risco:** Baixo (predominantemente remoção).
 
-### EPIC C — Refatoração Estrutural (refatora-rust) [DOING]
+### EPIC C — Refatoração Estrutural (refatora-rust) [DONE]
 
 **Findings:** F-05, F-06, F-10.
 **Objetivo:** Reduzir tamanho de arquivos/funções de hot-path, extrair testes inline,
@@ -488,7 +488,7 @@ desduplicar estático vs dinâmico e melhorar comentários `SAFETY`.
 `utils/lints.sh` + `utils/tests-quick.sh` sem warnings/erros.
 **Risco:** Baixo-médio.
 
-### EPIC D — Exploração de Performance Avant-garde [DOING]
+### EPIC D — Exploração de Performance Avant-garde [DONE]
 
 **Findings:** F-09.
 **Objetivo:** Prototipar kernels de conv 8/16-wide e medir ganho real.

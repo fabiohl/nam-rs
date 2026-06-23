@@ -25,6 +25,13 @@ impl Conv1dDyn {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
+        if self.interleave_width != 4 {
+            unsafe {
+                self.process_single_frame::<M>(layer_buffer, out_f0, idx_f0, mixin_f0);
+                self.process_single_frame::<M>(layer_buffer, out_f1, idx_f1, mixin_f1);
+            }
+            return;
+        }
         let num_blocks = self.num_blocks;
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); MAX_KERNEL];

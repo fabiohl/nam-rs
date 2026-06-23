@@ -138,6 +138,7 @@ fn conv1d_dyn_from_raw(raw: &[f32], in_ch: usize, out_ch: usize, kernel: usize) 
         in_ch,
         out_ch,
         num_blocks: out_ch.div_ceil(4),
+        interleave_width: 4,
         kernel,
         prefetch_fn: prefetch_strategy_simple,
     }

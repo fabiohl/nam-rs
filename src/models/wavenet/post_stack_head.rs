@@ -66,6 +66,7 @@ impl PostStackHead {
             in_ch: channels,
             out_ch: out_channels,
             num_blocks,
+            interleave_width: 4,
             kernel,
             prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };

@@ -62,6 +62,7 @@ impl ConvNetBlock {
             in_ch,
             out_ch,
             num_blocks,
+            interleave_width: 4,
             kernel,
             prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };

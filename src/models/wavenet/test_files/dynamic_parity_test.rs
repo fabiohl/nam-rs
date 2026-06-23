@@ -198,6 +198,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
             in_ch,
             out_ch,
             num_blocks: out_ch.div_ceil(4),
+            interleave_width: 4,
             kernel: k,
             prefetch_fn: prefetch_for(dilation),
         }

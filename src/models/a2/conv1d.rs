@@ -76,6 +76,7 @@ impl A2Conv1d {
             in_ch,
             out_ch,
             num_blocks,
+            interleave_width: 4,
             kernel: kernel_size,
             prefetch_fn,
         })
