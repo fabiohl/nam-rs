@@ -62,8 +62,9 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - Extrair a lógica idêntica de pre-aquecimento para uma função utilitária comum `a2_prewarm_common(...)` no local apropriado (por exemplo, sob `src/models/a2/model/`).
   - *Referência no `TODO-findings.md`: F-06*
 
-- [ ] **Task 2.3: Unificar leitura e validação de bytes no build loader**
+- [x] **Task 2.3: Unificar leitura e validação de bytes no build loader**
   - Extrair em `src/loader/build.rs` a validação comum de tamanho e formato para uma função `read_and_validate_model_bytes(...)` reduzindo a duplicação entre ler arquivos `.nam` e `.namb`.
+  - *Concluído: função `read_and_validate_model_bytes(path, path_str, sys)` extraída com ~60 linhas eliminadas de duplicação. `.nam` agora lê bytes + `String::from_utf8` com diagnóstico próprio.*
   - *Referência no `TODO-findings.md`: F-06*
 
 - [ ] **Task 2.4: Avaliar generalização const-generic para convoluções estáticas vs dinâmicas**

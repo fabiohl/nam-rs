@@ -14,6 +14,55 @@ use super::loaded_model_pair::{
     MAX_MODEL_BYTES,
 };
 
+/// Reads a model file into a byte buffer after validating its size.
+///
+/// Centralizes metadata retrieval, size validation against
+/// [`MAX_MODEL_BYTES`], and byte reading previously duplicated for `.nam`
+/// and `.namb` paths.
+fn read_and_validate_model_bytes(
+    path: &Path,
+    path_str: &str,
+    sys: &SystemSnapshot,
+) -> anyhow::Result<Vec<u8>> {
+    let len = std::fs::metadata(path)
+        .map_err(|e| {
+            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+                .message(format!("Failed to read metadata of \"{}\".", path_str))
+                .hint("Please verify file access permissions.")
+                .param("file", path_str)
+                .param("io_error", &e)
+                .emit();
+            anyhow::Error::from(e)
+        })?
+        .len();
+    if len > MAX_MODEL_BYTES {
+        NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
+            .message(format!(
+                "Model file \"{}\" is too large ({} bytes, max is {} bytes).",
+                path_str, len, MAX_MODEL_BYTES
+            ))
+            .hint("Please check the file size and ensure it is a valid NAM model.")
+            .param("file", path_str)
+            .param("size_bytes", len)
+            .emit();
+        return Err(anyhow::anyhow!(
+            "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
+            path_str,
+            MAX_MODEL_BYTES / (1024 * 1024)
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|e| {
+        NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+            .message(format!("Failed to read the file \"{}\".", path_str))
+            .hint("Please verify file access permissions.")
+            .param("file", path_str)
+            .param("io_error", &e)
+            .emit();
+        anyhow::Error::from(e)
+    })?;
+    Ok(bytes)
+}
+
 /// Loads and builds a model pair from a file.
 ///
 /// When `stereo` is `false` only the left-channel model is built;
@@ -29,42 +78,7 @@ pub fn load_and_build_model(
 
     // 1. Reading and Parsing
     let model_data = if ext_lower == "namb" {
-        let len = std::fs::metadata(path)
-            .map_err(|e| {
-                NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                    .message(format!("Failed to read metadata of \"{}\".", path_str))
-                    .hint("Please verify file access permissions.")
-                    .param("file", &path_str)
-                    .param("io_error", &e)
-                    .emit();
-                anyhow::Error::from(e)
-            })?
-            .len();
-        if len > MAX_MODEL_BYTES {
-            NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
-                .message(format!(
-                    "Model file \"{}\" is too large ({} bytes, max is {} bytes).",
-                    path_str, len, MAX_MODEL_BYTES
-                ))
-                .hint("Please check the file size and ensure it is a valid NAM model.")
-                .param("file", &path_str)
-                .param("size_bytes", len)
-                .emit();
-            return Err(anyhow::anyhow!(
-                "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
-                path_str,
-                MAX_MODEL_BYTES / (1024 * 1024)
-            ));
-        }
-        let bytes = std::fs::read(path).map_err(|e| {
-            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Failed to read the file \"{}\".", path_str))
-                .hint("Please verify file access permissions.")
-                .param("file", &path_str)
-                .param("io_error", &e)
-                .emit();
-            anyhow::Error::from(e)
-        })?;
+        let bytes = read_and_validate_model_bytes(path, &path_str, sys)?;
         namb::parse_namb(&bytes).inspect_err(|e| {
             let code = match e.downcast_ref::<namb::NambError>() {
                 Some(namb::NambError::Truncated { .. }) => NamErrorCode::NambTruncated,
@@ -87,39 +101,13 @@ pub fn load_and_build_model(
                 .emit();
         })?
     } else if ext_lower == "nam" {
-        let len = std::fs::metadata(path)
-            .map_err(|e| {
-                NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                    .message(format!("Failed to read metadata of \"{}\".", path_str))
-                    .hint("Please verify file access permissions.")
-                    .param("file", &path_str)
-                    .param("io_error", &e)
-                    .emit();
-                anyhow::Error::from(e)
-            })?
-            .len();
-        if len > MAX_MODEL_BYTES {
-            NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
-                .message(format!(
-                    "Model file \"{}\" is too large ({} bytes, max is {} bytes).",
-                    path_str, len, MAX_MODEL_BYTES
-                ))
-                .hint("Please check the file size and ensure it is a valid NAM model.")
-                .param("file", &path_str)
-                .param("size_bytes", len)
-                .emit();
-            return Err(anyhow::anyhow!(
-                "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
-                path_str,
-                MAX_MODEL_BYTES / (1024 * 1024)
-            ));
-        }
-        let json = std::fs::read_to_string(path).map_err(|e| {
+        let bytes = read_and_validate_model_bytes(path, &path_str, sys)?;
+        let json = String::from_utf8(bytes).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Failed to read the file \"{}\".", path_str))
-                .hint("Please verify file access permissions.")
+                .message(format!("File \"{}\" contains invalid UTF-8.", path_str))
+                .hint("Only UTF-8 encoded .nam files are supported.")
                 .param("file", &path_str)
-                .param("io_error", &e)
+                .param("utf8_error", &e)
                 .emit();
             anyhow::Error::from(e)
         })?;
