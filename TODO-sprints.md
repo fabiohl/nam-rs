@@ -36,7 +36,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - Decompor a rotina complexa de atribuição de pesos (`set_weights()`).
   - *Referência no `TODO-findings.md`: F-05*
 
-- [ ] **Task 1.4: Desmembrar `src/math/gemm/gemm_batch/avx2.rs`**
+- [x] **Task 1.4: Desmembrar `src/math/gemm/gemm_batch/avx2.rs`**
   - Separar os múltiplos kernels presentes no arquivo `avx2.rs` para arquivos modulares menores sob o diretório `gemm_batch/` (ex. `fused_add_gemm_batch.rs`, `fused_residual_batch.rs`).
   - Atualizar o `mod.rs` de `gemm_batch` para expô-los corretamente.
   - *Referência no `TODO-findings.md`: F-05*

@@ -5,14 +5,16 @@
 //!
 //! Process multiple audio frames simultaneously for efficient weight reuse.
 
-mod avx2;
 mod avx512;
+mod fused_add_gemm_batch;
+mod fused_residual_batch;
 mod kernel_macro;
 
-pub use avx2::{
-    fused_add_gemm_batch_avx2, fused_gemm_residual_batch_avx2, fused_gemm_residual_batch_f32_avx2,
-};
 pub use avx512::{
     fused_add_gemm_batch_avx512, fused_gemm_residual_batch_avx512,
     fused_gemm_residual_batch_f32_avx512,
+};
+pub use fused_add_gemm_batch::fused_add_gemm_batch_avx2;
+pub use fused_residual_batch::{
+    fused_gemm_residual_batch_avx2, fused_gemm_residual_batch_f32_avx2,
 };
