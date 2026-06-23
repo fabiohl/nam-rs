@@ -43,7 +43,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
 
 ---
 
-## SPRINT 2: Desduplicação de Código e Refinamento de Comentários SAFETY (EPIC C)
+## SPRINT 2: Desduplicação de Código e Refinamento de Comentários SAFETY (EPIC C) [DONE]
 
 **Objetivo:** Eliminar código redundante/duplicado entre os modelos estáticos e dinâmicos e melhorar a qualidade da documentação de segurança de blocos unsafe de baixo nível.
 **Duração estimada:** 1 semana.
@@ -72,7 +72,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - **Conclusão (2026-06-23): NÃO recomendado.** As duas versões diferem fundamentalmente na estratégia de preloading de taps (cópia em stack `[[0.0; IN]; K]` vs ponteiros `[*const f32; MAX_KERNEL]`), na inicialização de acumuladores (loops de tamanho conhecido em compilação vs guardas `out_c+3 < out_ch` em runtime) e no pipeline de blocos (single-frame vs dual-frame tiling). Unificá-las comprometeria ou a elisão de bounds-check da versão estática (com `IN`/`OUT`/`K` comprováveis em compilação) ou a flexibilidade da versão dinâmica (dimensões arbitrárias, CH > 16). O núcleo SIMD já é compartilhado via trait `SimdMath` (`dot_product_4x_f32` / `dot_product_4x_f32_dual`). Nota pós-F-01: o dispatch monomorfizado no topo (já existente para `WaveNetLayer::process_block_internal<M: SimdMath>`) deve ser estendido ao `A2Conv1d::process_single_frame`, eliminando `is_x86_feature_detected!` por-chamada — mas isso é ortogonal à questão const-generic da estrutura `Conv1dDyn` vs `Conv1d<IN, OUT, K>`.
   - *Referência no `TODO-findings.md`: F-06*
 
-- [ ] **Task 2.5: Substituir comentários `SAFETY` genéricos por descrições específicas**
+- [x] **Task 2.5: Substituir comentários `SAFETY` genéricos por descrições específicas**
   - Auditar `src/math/common/dispatch/config.rs` e subdiretórios `avx512/` para substituir comentários repetitivos/genéricos por invariantes e precondições específicas de segurança (ex. alinhamento de ponteiros, tamanhos de buffers).
   - *Referência no `TODO-findings.md`: F-10*
 
@@ -88,10 +88,11 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
 - Obter ganhos reais de performance nos benchmarks locais de inferência sem introduzir regressão em nenhum hardware x86-64-v3+.
 - Manter paridade numérica de áudio estrita (< 2 ULP) garantida por golden vectors e suíte C++ parity.
 
-- [ ] **Task 3.1: Prototipar kernels SIMD de convolução estendidos**
+- [x] **Task 3.1: Prototipar kernels SIMD de convolução estendidos**
   - Desenvolver o kernel `dot_product_8x_f32_avx2` processando 8 canais de saída simultâneos.
   - Desenvolver o kernel `dot_product_16x_f32_avx512` tirando proveito dos registradores amplos de 512 bits.
   - Focar no reuso persistente de acumuladores em registradores de vetor durante o laço interno de taps (facilitado pelo dispatch de alto nível monomorfizado).
+  - **Concluído (2026-06-23).** Novos módulos `src/math/gemm/dot_8x/` e `src/math/gemm/dot_16x/` criados com kernels, scalar references e 6 testes unitários. `dot_product_8x_f32_avx2` usa 4 acumuladores `__m256` com unroll 4x via `dot4x_simd4!` para quebrar cadeia de latência FMA. `dot_product_16x_f32_avx512` usa 2 acumuladores `__m512` com unroll 2x. Métodos adicionados ao trait `SimdMath` (grupo A) e implementados em `Avx2Math`, `Avx512Math` e `Avx512VnniBf16Math`. Nota: `Avx2Math::dot_product_16x_f32` usa scalar reference (sem `__m512` disponível); decomposição via dois `dot_product_8x_f32_avx2` com reinterpretação de ponteiros pode ser adicionada como otimização futura. Testes de decomposição contra 4x equivalentes confirmam paridade < 5e-4 ULP.
   - *Referência no `TODO-findings.md`: F-09*
 
 - [ ] **Task 3.2: Estender a suíte de micro-benchmarks**

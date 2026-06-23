@@ -239,6 +239,67 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
     (sum_f0, sum_f1)
 }
 
+/// F32-native 8-lane interleaved dot product (scalar reference for SIMD validation).
+///
+/// Uses `mul_add` (FMA3 fused multiply-add) to match the instruction set of the
+/// AVX2/FMA kernel (`dot_product_8x_f32_avx2`). Both paths produce **mathematically
+/// equivalent** results with FMA‑level precision.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_8x_f32_scalar(weights: &[[f32; 8]], state: &[f32]) -> [f32; 8] {
+    let len = core::cmp::min(weights.len(), state.len());
+    let mut r = [0.0f32; 8];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s = state.get_unchecked(i);
+        r[0] = (*w.get_unchecked(0)).mul_add(*s, r[0]);
+        r[1] = (*w.get_unchecked(1)).mul_add(*s, r[1]);
+        r[2] = (*w.get_unchecked(2)).mul_add(*s, r[2]);
+        r[3] = (*w.get_unchecked(3)).mul_add(*s, r[3]);
+        r[4] = (*w.get_unchecked(4)).mul_add(*s, r[4]);
+        r[5] = (*w.get_unchecked(5)).mul_add(*s, r[5]);
+        r[6] = (*w.get_unchecked(6)).mul_add(*s, r[6]);
+        r[7] = (*w.get_unchecked(7)).mul_add(*s, r[7]);
+    }
+    r
+}
+
+/// F32-native 16-lane interleaved dot product (scalar reference for SIMD validation).
+///
+/// Uses `mul_add` (FMA3 fused multiply-add) to match the instruction set of the
+/// AVX‑512 kernel (`dot_product_16x_f32_avx512`).
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_16x_f32_scalar(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
+    let len = core::cmp::min(weights.len(), state.len());
+    let mut r = [0.0f32; 16];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s = state.get_unchecked(i);
+        r[0] = (*w.get_unchecked(0)).mul_add(*s, r[0]);
+        r[1] = (*w.get_unchecked(1)).mul_add(*s, r[1]);
+        r[2] = (*w.get_unchecked(2)).mul_add(*s, r[2]);
+        r[3] = (*w.get_unchecked(3)).mul_add(*s, r[3]);
+        r[4] = (*w.get_unchecked(4)).mul_add(*s, r[4]);
+        r[5] = (*w.get_unchecked(5)).mul_add(*s, r[5]);
+        r[6] = (*w.get_unchecked(6)).mul_add(*s, r[6]);
+        r[7] = (*w.get_unchecked(7)).mul_add(*s, r[7]);
+        r[8] = (*w.get_unchecked(8)).mul_add(*s, r[8]);
+        r[9] = (*w.get_unchecked(9)).mul_add(*s, r[9]);
+        r[10] = (*w.get_unchecked(10)).mul_add(*s, r[10]);
+        r[11] = (*w.get_unchecked(11)).mul_add(*s, r[11]);
+        r[12] = (*w.get_unchecked(12)).mul_add(*s, r[12]);
+        r[13] = (*w.get_unchecked(13)).mul_add(*s, r[13]);
+        r[14] = (*w.get_unchecked(14)).mul_add(*s, r[14]);
+        r[15] = (*w.get_unchecked(15)).mul_add(*s, r[15]);
+    }
+    r
+}
+
 /// Computes 4 dot products at once for BF16.
 /// This is a shortcut to call the single-line function 4 times.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.

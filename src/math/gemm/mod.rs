@@ -16,14 +16,24 @@
 //! Contains AVX2 and AVX-512 implementations side by side, organized by operation.
 
 pub mod dot;
+pub mod dot_16x;
 pub mod dot_4x;
+pub mod dot_8x;
 pub mod gemm_batch;
 pub mod gemv;
 pub mod gemv_4gate;
 pub mod gemv_bf16;
 
 pub use dot::*;
-pub use dot_4x::*;
+pub use dot_4x::avx2::*;
+pub use dot_4x::avx2_dual::*;
+pub use dot_4x::avx512::*;
+pub use dot_4x::avx512_dual::*;
+pub use dot_4x::dot_f32_avx2::*;
+pub use dot_4x::dot_f32_avx512::*;
+pub use dot_4x::scalar::*;
+pub use dot_8x::dot_f32_avx2::*;
+pub use dot_16x::dot_f32_avx512::*;
 pub use gemm_batch::*;
 pub use gemv::*;
 pub use gemv_4gate::*;

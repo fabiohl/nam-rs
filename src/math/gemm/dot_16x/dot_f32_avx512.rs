@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+#![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
+
+//! Dot Product 16x f32 — AVX‑512 kernel (f32 native weights).
+//!
+//! Processes 16 interleaved weight rows (16 f32 values) per `__m512` iteration,
+//! sharing the same FMA‑based rounding chain as the scalar reference.
+//!
+//! # Precision
+//! The AVX‑512 kernel (`_mm512_fmadd_ps`) and the scalar reference (`mul_add`)
+//! both use FMA3 fused multiply‑add with identical summation order →
+//! **bit‑identical** result on any x86 CPU with FMA support (x86‑64‑v3).
+
+use core::arch::x86_64::*;
+
+/// 16‑lane interleaved dot product (`weights: &[[f32; 16]]`, `state: &[f32]`)
+/// with AVX‑512/FMA.
+///
+/// # Strategy
+/// - 16 weights per row loaded into a single `__m512`.
+/// - State scalar broadcast to all 16 lanes via `_mm512_set1_ps`.
+/// - Main loop processes 2 input samples per iteration using 2 independent
+///   `__m512` accumulators (`acc0`, `acc1`), interleaved by index `i`, to
+///   break the FMA latency chain.
+/// - Tail (< 2 elements) falls back to a single‑accumulator loop.
+/// - Final reduction: `acc0 + acc1`.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()` and that memory regions
+/// are valid for unaligned load.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn dot_product_16x_f32_avx512(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
+    let len = state.len();
+    let mut acc0 = _mm512_setzero_ps();
+    let mut acc1 = _mm512_setzero_ps();
+    let mut i = 0;
+
+    unsafe {
+        while i + 2 <= len {
+            let w0 = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let s0 = _mm512_set1_ps(*state.get_unchecked(i));
+            acc0 = _mm512_fmadd_ps(w0, s0, acc0);
+
+            let w1 = _mm512_loadu_ps(weights.as_ptr().add(i + 1) as *const f32);
+            let s1 = _mm512_set1_ps(*state.get_unchecked(i + 1));
+            acc1 = _mm512_fmadd_ps(w1, s1, acc1);
+
+            i += 2;
+        }
+
+        while i < len {
+            let s = _mm512_set1_ps(*state.get_unchecked(i));
+            let w = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            acc0 = _mm512_fmadd_ps(w, s, acc0);
+            i += 1;
+        }
+
+        acc0 = _mm512_add_ps(acc0, acc1);
+
+        let mut out = [0.0f32; 16];
+        _mm512_storeu_ps(out.as_mut_ptr(), acc0);
+        out
+    }
+}

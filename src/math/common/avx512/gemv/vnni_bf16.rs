@@ -46,6 +46,16 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             crate::math::gemm::dot_4x::dot_product_4x_f32_dual_avx512(weights, state_f0, state_f1)
         }
         #[inline(always)]
+        // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
+        unsafe fn dot_product_8x_f32(weights: &[[f32; 8]], state: &[f32]) -> [f32; 8] {
+            crate::math::gemm::dot_8x::dot_product_8x_f32_avx2(weights, state)
+        }
+        #[inline(always)]
+        // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
+        unsafe fn dot_product_16x_f32(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
+            crate::math::gemm::dot_16x::dot_product_16x_f32_avx512(weights, state)
+        }
+        #[inline(always)]
         // SAFETY: four weight slices and in_frame are valid u16 slices of equal length.
         unsafe fn dot_product_bf16_4x(
             w0: &[u16],
