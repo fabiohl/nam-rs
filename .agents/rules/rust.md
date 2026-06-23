@@ -29,7 +29,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## 3. SIMD & Auto-Vectorization (target: x86-64-v3)
 
-* **Mandatory Baseline (x86-64-v3):** The project enforces `x86-64-v3` (AVX2, FMA, BMI2) as the strict minimum baseline in `.cargo/config.toml`. **Never** write scalar fallbacks or use `is_x86_feature_detected!("avx2")` in production code. AVX2 and FMA instructions must be used natively and unconditionally throughout the entire codebase, including outside the hot path. Dynamic dispatch should only exist for higher extensions like AVX-512.
+* **Mandatory Baseline (x86-64-v3):** The project enforces `x86-64-v3` (AVX2, FMA, BMI2) as the strict minimum baseline in `.cargo/config.toml`. **Never** write scalar fallbacks or use `is_x86_feature_detected!("avx2")`, `if is_x86_feature_detected!("avx2") && ...)`, `if !avx2 { fallback }` or similar. AVX2 and FMA instructions must be used natively and unconditionally throughout the entire codebase, including outside the hot path. Dynamic dispatch should only exist for higher extensions like AVX-512.
 * **Loops:** Use `.chunks_exact(N)` / `.chunks_exact_mut(N)` + `zip`. Bodies free of complex branches — prefer branchless (SIMD masks).
 * **Alignment:** Always `AlignedVec<T>` (64 bytes) for buffers, coefficients, and tensors. Prevents unaligned load/store penalties.
 
