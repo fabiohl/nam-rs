@@ -124,7 +124,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ---
 
-## Sprint 3 — Ajuste de Documentação e Comentários (F-08)
+## Sprint 3 — Ajuste de Documentação e Comentários (F-08) [DONE]
 
 **Objetivo:** Sincronizar todos os comentários técnicos da base de código e documentação arquitetural com a nova infraestrutura de dispatch unificada.
 
@@ -140,7 +140,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
   - **Responsável Sugerido:** `documentador` / `refatora-doc`
   - **Risco:** Mínimo
 
-- [ ] **T3.2: Atualizar documentação arquitetural global**
+- [x] **T3.2: Atualizar documentação arquitetural global**
 
   - **Descrição:** Refletir o design final unificado e o fim do double-dispatch na documentação de design do projeto.
   - **Arquivos envolvidos:**
