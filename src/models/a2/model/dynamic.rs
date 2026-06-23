@@ -45,6 +45,8 @@ use crate::models::a2::weights_layout::{
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use serde_json::Value;
 
+use super::a2_prewarm_common;
+
 /// Runtime-dimensioned WaveNet A2 model.
 ///
 /// Supports the full A2 topology spectrum: arbitrary channel counts,
@@ -766,16 +768,16 @@ impl WaveNetA2Dyn {
     /// Pre-warms the model by filling the receptive field with silence.
     #[cold]
     pub fn prewarm(&mut self) {
-        for buf in &mut self.layer_buffers {
-            let len = buf.size();
-            buf[..len].fill(0.0);
-        }
-        for i in 0..self.num_layers {
-            self.layer_buffer_starts[i] = self.layer_ring_sizes[i];
-        }
-        self.layer_in.fill(0.0);
-        self.head_accum.fill(0.0);
-        self.head_write_pos = self.receptive_field_size;
+        a2_prewarm_common(
+            self.num_layers,
+            self.receptive_field_size,
+            &mut self.layer_buffers,
+            &self.layer_ring_sizes,
+            &mut self.layer_buffer_starts,
+            &mut self.layer_in,
+            &mut self.head_accum,
+            &mut self.head_write_pos,
+        );
 
         if self.has_weights() {
             let prewarm_samples = self.receptive_field_size;

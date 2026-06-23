@@ -62,6 +62,31 @@ pub const fn a2_receptive_field() -> usize {
     rf + (A2_HEAD_KERNEL_SIZE - 1)
 }
 
+/// Common prewarm reset: zeroes all layer buffers, resets ring starts,
+/// clears `layer_in` and `head_accum`, and positions `head_write_pos`
+/// at the receptive field frontier — matching the C++ `DSP::Reset` preamble.
+#[allow(clippy::too_many_arguments)]
+#[cold]
+pub(crate) fn a2_prewarm_common(
+    num_layers: usize,
+    receptive_field_size: usize,
+    layer_buffers: &mut [MirroredBuffer<f32>],
+    layer_ring_sizes: &[usize],
+    layer_buffer_starts: &mut [usize],
+    layer_in: &mut [f32],
+    head_accum: &mut [f32],
+    head_write_pos: &mut usize,
+) {
+    for buf in layer_buffers.iter_mut() {
+        let len = buf.size();
+        buf[..len].fill(0.0);
+    }
+    layer_buffer_starts[..num_layers].copy_from_slice(&layer_ring_sizes[..num_layers]);
+    layer_in.fill(0.0);
+    head_accum.fill(0.0);
+    *head_write_pos = receptive_field_size;
+}
+
 /// Complete WaveNet A2 Model.
 ///
 /// `CH` = channel count (3 for Lite/Nano, 8 for Full/Standard).
@@ -626,16 +651,16 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// C++ steady-state initial condition.
     #[cold]
     pub fn prewarm(&mut self) {
-        for buf in &mut self.layer_buffers {
-            let len = buf.size();
-            buf[..len].fill(0.0);
-        }
-        for i in 0..A2_NUM_LAYERS {
-            self.layer_buffer_starts[i] = self.layer_ring_sizes[i];
-        }
-        self.layer_in.fill(0.0);
-        self.head_accum.fill(0.0);
-        self.head_write_pos = self.receptive_field_size;
+        a2_prewarm_common(
+            A2_NUM_LAYERS,
+            self.receptive_field_size,
+            &mut self.layer_buffers,
+            &self.layer_ring_sizes,
+            &mut self.layer_buffer_starts,
+            &mut self.layer_in,
+            &mut self.head_accum,
+            &mut self.head_write_pos,
+        );
 
         if self.has_weights() {
             let prewarm_samples = self.receptive_field_size;

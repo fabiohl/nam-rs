@@ -58,7 +58,7 @@ Este documento detalha o planejamento ágil para a execução das melhorias de r
   - Isolar a lógica duplicada de projeção (`dot_product`, bias, etc.) presente em `src/models/lstm/model1.rs` e `model2.rs` para um macro ou helper comum compartilhado.
   - *Referência no `TODO-findings.md`: F-06*
 
-- [ ] **Task 2.2: Unificar rotinas de `prewarm` do WaveNetA2 e WaveNetA2Dyn**
+- [x] **Task 2.2: Unificar rotinas de `prewarm` do WaveNetA2 e WaveNetA2Dyn**
   - Extrair a lógica idêntica de pre-aquecimento para uma função utilitária comum `a2_prewarm_common(...)` no local apropriado (por exemplo, sob `src/models/a2/model/`).
   - *Referência no `TODO-findings.md`: F-06*
 
