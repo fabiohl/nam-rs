@@ -5,26 +5,28 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # TODO-sprints.md — Planejamento Ágil de Implementação
 
-> **Data:** 2026-06-22
+> **Data:** 2026-06-23
 > **Origem dos achados:** [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md)
-> **Foco:** EPIC A — Unificação de Dispatch SIMD e Hot-Path WaveNet/A2
-> **Skills Associadas:** `planejador-arquiteto`, `implementador`, `pesquisador-inovador`, `revisor-auditor`
+> **Foco:** EPIC B — Conformidade x86-64-v3 e Limpeza de Portabilidade
+> **Skills Associadas:** `planejador-arquiteto`, `implementador`, `refatora-rust`, `revisor-auditor`
 
 ---
 
 ## 0. Visão Geral do Épico e Gestão de Riscos
 
-O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, eliminando branches atômicos de detecção de hardware por chamada no hot-path da convolução da WaveNet/A2 e eliminando o mecanismo de dispatch dinâmico secundário (v-table) no pipeline DSP.
+O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do projeto, eliminando fallbacks portáveis mortos, removendo o uso proibido de condicionais dinâmicos para features garantidas (AVX2/FMA) em testes, e reposicionando ou isolando funções auxiliares que servem estritamente ao ambiente de testes.
 
 ### Matriz de Riscos
 
-| Identificador | Risco                                                   | Severidade | Ação de Mitigação                                                         |
-| ------------- | ------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| **R-1**       | Regressão de performance na monomorfização              | Média      | Executar benchmarks (`Long_Run_WaveNet` e `Prewarm_A2`) após cada sprint. |
-| **R-2**       | Quebra de paridade matemática (C++ e Golden Vectors)    | Alta       | Executar `tests/cpp_parity.rs` e `tests/golden_vectors.rs` localmente.    |
-| **R-3**       | Violação de RT-Safety (ex: alocações ocultas ou panics) | Alta       | Executar validação de heap e soak tests da suíte unificada.               |
+| Identificador | Risco                                                            | Severidade | Ação de Mitigação                                                                                                                                  |
+|:------------- |:---------------------------------------------------------------- |:---------- |:-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-1**       | Erros de compilação ou linkagem em código condicional modificado | Média      | Executar compilação incremental (`cargo check` e `cargo build`) em todas as configurações de features (`standalone`, `clap-plugin`).               |
+| **R-2**       | Quebra de regressão de testes unitários ou integração            | Alta       | Rodar a suíte rápida via `utils/tests-quick.sh` após cada tarefa.                                                                                  |
+| **R-3**       | Perda de suporte involuntária a builds x86_64 padrão (não-v3)    | Baixa      | A conformidade com `x86-64-v3` é um requisito incondicional do projeto. A adição do `compile_error!` apenas formaliza isso em tempo de compilação. |
 
 ---
+
+## Histórico de Execuções (EPIC A)
 
 ## Sprint 1 — Monomorfização da Convolução f32 e Eliminação de Dispatch por Chamada (F-01) [DONE]
 
@@ -35,54 +37,32 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 - [x] **T1.1: Adicionar os novos métodos f32 ao trait `SimdMath`**
 
   - **Descrição:** Declarar os métodos de multiplicação de acumuladores f32 diretamente no trait comum de SIMD.
-
-  - **Assinaturas sugeridas:**
-
-    ```rust
-    unsafe fn dot_product_4x_f32(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4];
-    unsafe fn dot_product_4x_f32_dual(
-        weights: &[[f32; 4]], state_f0: &[f32], state_f1: &[f32]
-    ) -> ([f32; 4], [f32; 4]);
-    ```
-
   - **Arquivos envolvidos:**
-
-    - [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs) (Definição dos métodos)
-    - [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs) (Implementação delegando para kernels AVX2 correspondentes)
-    - [base.rs](file:///home/fabio/nam-rs/src/math/common/avx512/gemv/base.rs) (Implementação delegando para kernels AVX-512 na macro `impl_avx512_gemv`)
-    - [vnni_bf16.rs](file:///home/fabio/nam-rs/src/math/common/avx512/gemv/vnni_bf16.rs) (Redirecionamento estático na macro `impl_avx512vnni_bf16_gemv`)
-
+    - [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs)
+    - [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs)
+    - [base.rs](file:///home/fabio/nam-rs/src/math/common/avx512/gemv/base.rs)
+    - [vnni_bf16.rs](file:///home/fabio/nam-rs/src/math/common/avx512/gemv/vnni_bf16.rs)
   - **Responsável Sugerido:** `implementador`
-
   - **Risco:** Baixo
 
 - [x] **T1.2: Propagar o parâmetro `<M: SimdMath>` nas estruturas de Convolução**
 
   - **Descrição:** Tornar as implementações de convolução que consomem `dot_product_4x` e `dot_product_4x_dual` genéricas em `M` e chamar as implementações do trait `M::dot_product_4x_f32` diretamente.
   - **Arquivos envolvidos:**
-    - [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs) (Generic em `M`, alteração na chamada de processamento de frame)
-    - [conv1d_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dyn.rs) (Generic em `M`)
-    - [conv1d_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dual.rs) (Generic em `M`)
-    - [layer.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer.rs) (Propagação de `M` nas chamadas)
+    - [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs)
+    - [conv1d_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dyn.rs)
+    - [conv1d_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dual.rs)
+    - [layer.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer.rs)
   - **Responsável Sugerido:** `implementador` / `pesquisador-inovador`
-  - **Risco:** Médio (garantir consistência com chamadores de alto nível)
-  - **Nota Pós-Execução (T1.2):** O `Conv1dDyn` é compartilhado entre WaveNet e A2/ConvNet. O A2 (`a2/conv1d_dispatch.rs`) ainda usa detecção runtime de AVX-512 no nível `A2Conv1d` para selecionar `Avx512Math` vs `Avx2Math` — mas o loop interno de convolução (`Conv1dDyn::process_single_frame`) já está monomorfizado. A monomorfização completa do pipeline A2 exigirá envolver `A2Model::process` com `dispatch_simd!` (futuro sprint).
+  - **Risco:** Médio
 
 - [x] **T1.3: Limpeza de wrappers legados em `conv_input.rs`**
 
-  - **Descrição:** Remover as funções livres `dot_product_4x` e `dot_product_4x_dual` que usavam `is_x86_feature_detected!`. Se necessário para testes legados, encapsular sob `#[cfg(test)]`.
+  - **Descrição:** Remover as funções livres `dot_product_4x` e `dot_product_4x_dual` que usavam `is_x86_feature_detected!`.
   - **Arquivos envolvidos:**
     - [conv_input.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv_input.rs)
   - **Responsável Sugerido:** `implementador`
   - **Risco:** Baixo
-
-### Critério de Aceite da Sprint 1
-
-- Compilação bem-sucedida sem warnings.
-
-- Suíte unificada rápida executada via `utils/tests-quick.sh` retornando sucesso (Golden Vectors e paridade C++ preservados).
-
-- Benchmarks `Long_Run_WaveNet` (`benches/inference_bench.rs`) executados antes e depois evidenciando estabilidade ou melhoria no tempo de execução.
 
 ---
 
@@ -96,31 +76,21 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
   - **Descrição:** Envolver a execução do pipeline de captura em um bloco `dispatch_simd!` de Modo 1 (estático) no nível mais alto, passando `M` genérico para as funções de estágio (`apply_input_stage`, `apply_output_stage`, etc.).
   - **Arquivos envolvidos:**
-    - [capture.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/capture.rs) (Adicionar macro dispatch e propagar generic `M`)
-    - [input.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs) (Adequar chamadas para usar `M::apply_gain`, `M::compute_energy`, etc.)
-    - [output.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (Monomorfizar chamadas de ganho e proteção)
+    - [capture.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/capture.rs)
+    - [input.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs)
+    - [output.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs)
   - **Responsável Sugerido:** `planejador-arquiteto` / `implementador`
-  - **Risco:** Alto (estágio crucial de tempo real)
-  - **Nota Pós-Execução (T2.1):** `capture_dsp_pipeline` agora despacha estaticamente via `match SIMD_MATH.instruction_set` e chama `capture_dsp_pipeline_inner::<M>` que propaga `M` para `apply_input_stage_inner::<M>` e `apply_output_stage_inner::<M>`. As funções públicas `apply_input_stage`/`apply_output_stage` foram mantidas como wrappers (gated por `cfg(test, clap-plugin)`) para compatibilidade com o CLAP e testes — elas também despacham estaticamente, mas com um dispatch por estágio (vs único no `capture_dsp_pipeline`). O Modo 3 (`dispatch_simd!` v-table) foi eliminado do hot-path do pipeline; a remoção completa da v-table (`SimdMathConfig`) foi concluída em T2.2.
+  - **Risco:** Alto
 
 - [x] **T2.2: Reduzir a struct `SimdMathConfig` e remover ponteiros de função**
 
-  - **Descrição:** Remover os ponteiros de função associados à v-table em `SimdMathConfig`, deixando apenas dados estáticos descritivos (conjunto de instruções, nome, etc.). Ajustar a tabela global `SIMD_MATH` e as rotinas de inicialização/detecção de hardware.
+  - **Descrição:** Remover os ponteiros de função associados à v-table em `SimdMathConfig`, deixando apenas dados estáticos descritivos (conjunto de instruções, nome, etc.).
   - **Arquivos envolvidos:**
-    - [config.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/config.rs) (Alteração da struct e remoção de campos da v-table)
-    - [detect.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/detect.rs) (Eliminação de atribuições de ponteiros em `detect_best_simd()`)
-    - [mod.rs](file:///home/fabio/nam-rs/src/math/common/mod.rs) (Remoção do Modo 3 do `dispatch_simd!`)
+    - [config.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/config.rs)
+    - [detect.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/detect.rs)
+    - [mod.rs](file:///home/fabio/nam-rs/src/math/common/mod.rs)
   - **Responsável Sugerido:** `implementador`
   - **Risco:** Médio
-  - **Nota Pós-Execução (T2.2):** `SimdMathConfig` agora contém apenas `instruction_set`, `name` e `is_avx512`. Os 30+ ponteiros de função foram removidos. O `config_table!` foi simplificado para 3 parâmetros (isa, name, avx512). O Modo 3 do `dispatch_simd!` foi convertido de v-table (indireto) para dispatch estático monomorfizado via `match SIMD_MATH.instruction_set` chamando `<Avx2Math>::method()`, `<Avx512Math>::method()` ou `<Avx512VnniBf16Math>::method()`. As 8 funções de ativação que não estavam no trait `SimdMath` (`relu_slice`, `prelu_slice`, `softsign_slice`, `silu_slice`, `hard_tanh_slice`, `hard_swish_slice`, `fast_tanh_slice`, `leaky_hard_tanh_slice`) foram adicionadas ao trait e implementadas em `Avx2Math`, `Avx512Math` e `Avx512VnniBf16Math`. `activations/mod.rs` agora usa `dispatch_simd!` em vez de chamadas diretas à v-table. Zero v-table residual.
-
-### Critério de Aceite da Sprint 2
-
-- Suíte unificada de testes (`utils/tests-quick.sh`) passa completamente sem erros.
-
-- Validação rigorosa de Heap-Audit certificando que a unificação não introduziu alocações em tempo de execução no caminho RT.
-
-- Codebase livre de chamadas dinâmicas redundantes para dispatch matemático.
 
 ---
 
@@ -134,9 +104,9 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
   - **Descrição:** Corrigir comentários e docstrings que descreviam o comportamento antigo (como o dispatch dinâmico por chamada ou a viabilidade de performance na v-table).
   - **Arquivos envolvidos:**
-    - [model.rs](file:///home/fabio/nam-rs/src/models/wavenet/model.rs) (Atualizar explicação da monomorfização)
-    - [config.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/config.rs) (Remover comentários sobre o débito técnico resolvido)
-    - [conv_input.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv_input.rs) (Revisar docstrings sobre kernels SIMD)
+    - [model.rs](file:///home/fabio/nam-rs/src/models/wavenet/model.rs)
+    - [config.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/config.rs)
+    - [conv_input.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv_input.rs)
   - **Responsável Sugerido:** `documentador` / `refatora-doc`
   - **Risco:** Mínimo
 
@@ -144,11 +114,91 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
   - **Descrição:** Refletir o design final unificado e o fim do double-dispatch na documentação de design do projeto.
   - **Arquivos envolvidos:**
-    - Documentos relevantes em `docs/` (ex: `docs/architecture.md`, caso aplicável).
+    - [architecture.md](file:///home/fabio/nam-rs/docs/architecture.md)
   - **Responsável Sugerido:** `documentador`
   - **Risco:** Mínimo
 
-### Critério de Aceite da Sprint 3
+---
 
-- Revisão de texto limpa.
-- Documentação condizente com a implementação monomorfizada final.
+## Planejamento Ativo (EPIC B)
+
+## Sprint 4 — Conformidade de Testes e Remoção de CPU Detection Redundante (F-04) [TODO]
+
+**Objetivo:** Eliminar guards dinâmicos de detecção de CPU para features que são garantidas incondicionalmente pelo baseline mínimo do compilador (`x86-64-v3`), garantindo conformidade com a regra `rust.md §3`.
+
+### Tarefas Técnicas da Sprint 4
+
+- [ ] **T4.1: Remover guards `is_x86_feature_detected!` para AVX2 e FMA em testes**
+  - **Descrição:** Remover o bloco condicional `if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") { return Ok(()); }` do teste proptest em `activations_test.rs`, pois o baseline do compilador já garante essas instruções de forma incondicional.
+  - **Arquivos envolvidos:**
+    - [activations_test.rs](file:///home/fabio/nam-rs/src/math/activations/activations_test.rs#L208)
+  - **Responsável Sugerido:** `implementador`
+  - **Risco:** Mínimo
+
+### Critério de Aceite da Sprint 4
+
+- Testes unitários de ativações compilam e passam com sucesso via `cargo test --lib math::activations`.
+
+---
+
+## Sprint 5 — Eliminação de Fallbacks Portáveis e Guards Redundantes (F-03) [TODO]
+
+**Objetivo:** Limpar a base de código de todos os ramos inalcançáveis `#[cfg(not(target_arch = "x86_64"))]` e simplificar os guards de arquitetura redundantes, visto que a aplicação é puramente voltada para `x86_64-v3`. Adicionar um guard centralizado de compilação.
+
+### Tarefas Técnicas da Sprint 5
+
+- [ ] **T5.1: Adicionar compile_error! centralizado em `lib.rs`**
+
+  - **Descrição:** Introduzir uma diretiva condicional de compilação no arquivo raiz para falhar explicitamente o build caso a arquitetura de destino não seja `x86_64`.
+  - **Arquivos envolvidos:**
+    - [lib.rs](file:///home/fabio/nam-rs/src/lib.rs#L4)
+  - **Responsável Sugerido:** `implementador` / `planejador-arquiteto`
+  - **Risco:** Baixo
+
+- [ ] **T5.2: Remover ramificações `#[cfg(not(target_arch = "x86_64"))]` e guards redundantes**
+
+  - **Descrição:** Eliminar blocos condicionais de fallback escalar para outras arquiteturas e remover guards desnecessários de `target_arch = "x86_64"` em funções que já rodam em arquivos/módulos exclusivos.
+  - **Arquivos envolvidos:**
+    - [detect.rs](file:///home/fabio/nam-rs/src/math/common/dispatch/detect.rs#L24) (Tornar o corpo de `detect_best_simd` incondicional ou limpo)
+    - [conv.rs](file:///home/fabio/nam-rs/src/dsp/cabsim/conv.rs#L338) (Remover o bloco de fallback escalar UPOLS não-x86_64)
+    - [telemetry.rs](file:///home/fabio/nam-rs/src/clap/processor/dsp/telemetry.rs#L16) (Remover struct vazia de fallback)
+    - [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/mod.rs#L317) (Remover branch escalar do rechannel do A2)
+    - [processor/mod.rs](file:///home/fabio/nam-rs/src/clap/processor/mod.rs#L252) (Remover fallback no processador CLAP)
+    - [batch_norm.rs](file:///home/fabio/nam-rs/src/models/convnet/batch_norm.rs#L123-L210) (Remover blocos escalares de normalização)
+    - [half.rs](file:///home/fabio/nam-rs/src/math/common/half.rs#L148-L173) (Remover funções escalares de conversão de f16/bf16)
+  - **Responsável Sugerido:** `refatora-rust` / `implementador`
+  - **Risco:** Médio
+
+### Critério de Aceite da Sprint 5
+
+- Compilação limpa em todas as features (`standalone`, `clap-plugin`).
+- Suíte unificada de testes (`utils/tests-quick.sh`) passa completamente sem regressões.
+
+---
+
+## Sprint 6 — Isolamento de Helpers e Código de Teste Causal (F-07) [TODO]
+
+**Objetivo:** Evitar poluição no código de produção principal movendo ou restringindo estritamente a escopos de teste (`#[cfg(test)]`) os helpers e kernels de convolução que não são usados no caminho de áudio real.
+
+### Tarefas Técnicas da Sprint 6
+
+- [ ] **T6.1: Restringir helper `init_accum_with_bias_mixin` a testes**
+
+  - **Descrição:** Substituir o atributo genérico de `dead_code` por uma restrição direta de teste (`#[cfg(test)]`), já que a função serve estritamente aos testes causais unitários.
+  - **Arquivos envolvidos:**
+    - [conv_input.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv_input.rs#L14)
+  - **Responsável Sugerido:** `implementador`
+  - **Risco:** Baixo
+
+- [ ] **T6.2: Restringir métodos de convolução legados em `conv1d.rs`**
+
+  - **Descrição:** Mover os métodos `process_single_frame` e `process_block` de `Conv1d` para dentro de uma estrutura condicional `#[cfg(test)]` (ou migrá-los se aplicável), impedindo que façam parte do build final de produção do WaveNet (que utiliza `process_single_frame_with_mixin`).
+  - **Arquivos envolvidos:**
+    - [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs#L130-L208)
+  - **Responsável Sugerido:** `refatora-rust` / `implementador`
+  - **Risco:** Baixo
+
+### Critério de Aceite da Sprint 6
+
+- O código compila sem warnings de dead_code.
+- Nenhum teste causal unitário é quebrado ou removido de forma incorreta.

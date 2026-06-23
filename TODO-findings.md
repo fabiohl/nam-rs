@@ -459,7 +459,7 @@ skill `refatora-doc`.
 > A ordem sugerida respeita dependências (E1 estabelece o padrão de propagação de `M`
 > reutilizado por E2).
 
-### EPIC A — Unificação de Dispatch SIMD e Hot-Path WaveNet/A2 [DOING]
+### EPIC A — Unificação de Dispatch SIMD e Hot-Path WaveNet/A2 [DONE]
 
 **Findings:** F-01 (núcleo), F-02, F-08.
 **Objetivo:** Eliminar dispatch em runtime nas folhas, completar a monomorfização do
@@ -469,7 +469,7 @@ pipeline e corrigir a documentação correlata.
 sem regressão (idealmente com ganho); zero warnings.
 **Risco:** Médio-alto (toca o caminho mais quente) — **maior atenção da auditoria**.
 
-### EPIC B — Conformidade x86-64-v3 e Limpeza de Portabilidade
+### EPIC B — Conformidade x86-64-v3 e Limpeza de Portabilidade [DOING]
 
 **Findings:** F-03, F-04, F-07.
 **Objetivo:** Remover código morto não-x86, eliminar a transgressão `is_x86_feature_detected!("avx2")`
