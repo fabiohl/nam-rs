@@ -205,10 +205,6 @@ proptest! {
     fn test_tanh_pade_nr2_proptest_100k(x in -10.0f32..10.0f32) {
         use std::arch::x86_64::*;
 
-        if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-            return Ok(());
-        }
-
         let expected = (x as f64).tanh() as f32;
         let actual = unsafe {
             let vx = _mm256_set1_ps(x);

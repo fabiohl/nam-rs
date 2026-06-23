@@ -122,13 +122,13 @@ O **EPIC B** foca na consolidação definitiva da arquitetura `x86-64-v3` do pro
 
 ## Planejamento Ativo (EPIC B)
 
-## Sprint 4 — Conformidade de Testes e Remoção de CPU Detection Redundante (F-04) [TODO]
+## Sprint 4 — Conformidade de Testes e Remoção de CPU Detection Redundante (F-04) [DONE]
 
 **Objetivo:** Eliminar guards dinâmicos de detecção de CPU para features que são garantidas incondicionalmente pelo baseline mínimo do compilador (`x86-64-v3`), garantindo conformidade com a regra `rust.md §3`.
 
 ### Tarefas Técnicas da Sprint 4
 
-- [ ] **T4.1: Remover guards `is_x86_feature_detected!` para AVX2 e FMA em testes**
+- [x] **T4.1: Remover guards `is_x86_feature_detected!` para AVX2 e FMA em testes**
   - **Descrição:** Remover o bloco condicional `if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") { return Ok(()); }` do teste proptest em `activations_test.rs`, pois o baseline do compilador já garante essas instruções de forma incondicional.
   - **Arquivos envolvidos:**
     - [activations_test.rs](file:///home/fabio/nam-rs/src/math/activations/activations_test.rs#L208)
