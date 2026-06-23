@@ -112,6 +112,7 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
 /// equivalent result. The AVX2 kernel splits the summation across 4 independent
 /// accumulators for latency hiding; the AVX-512 kernel matches the scalar
 /// summation order exactly. Maximum observed deviation is < 2 ULP.
+#[allow(dead_code)] // Will be removed in T1.3
 #[inline(always)]
 pub(crate) fn dot_product_4x(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
     if is_x86_feature_detected!("avx512f") {
@@ -135,6 +136,7 @@ pub(crate) fn dot_product_4x(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
 /// equivalent result. The AVX2 kernel splits the summation across 4 independent
 /// accumulators for latency hiding; the AVX-512 kernel matches the scalar
 /// summation order exactly. Maximum observed deviation is < 2 ULP.
+#[allow(dead_code)] // Will be removed in T1.3
 #[inline(always)]
 pub(crate) fn dot_product_4x_dual(
     weights: &[[f32; 4]],

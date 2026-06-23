@@ -11,8 +11,9 @@
 //! This file is a cohesive unit: a single `impl Conv1d` block extending the
 //! static convolution with dual-frame (Temporal Tiling) processing.
 
-use super::conv_input::{dot_product_4x_dual, load_4_accums, store_4_accums};
+use super::conv_input::{load_4_accums, store_4_accums};
 use super::conv1d::Conv1d;
+use crate::math::common::SimdMath;
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Fused variant that processes two frames simultaneously, adding Mixin vectors
@@ -25,7 +26,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// `layer_buffer` and `mixin` must have appropriate sizes.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn process_dual_frame_with_mixin(
+    pub unsafe fn process_dual_frame_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         out_frame_f0: &mut [f32],
@@ -111,7 +112,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let (t_f0, t_f1) = dot_product_4x_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k]);
+                let (t_f0, t_f1) =
+                    unsafe { M::dot_product_4x_f32_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k]) };
 
                 r0_f0 += t_f0[0];
                 r1_f0 += t_f0[1];

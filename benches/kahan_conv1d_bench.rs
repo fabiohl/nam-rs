@@ -154,7 +154,7 @@ macro_rules! bench_conv1d_config {
                 let mut out = [0.0f32; $out_ch];
                 for f in 0..$n_frames {
                     unsafe {
-                        static_conv.process_single_frame_with_mixin(
+                        static_conv.process_single_frame_with_mixin::<Avx2Math>(
                             $input,
                             &mut out,
                             start_frame + f,
@@ -207,7 +207,12 @@ fn bench_full_conv1d_kahan_vs_nokahan(c: &mut Criterion) {
             b.iter(|| {
                 for f in 0..n_frames {
                     unsafe {
-                        dyn_conv.process_single_frame(&input, &mut out_dyn, start_frame + f, None);
+                        dyn_conv.process_single_frame::<Avx2Math>(
+                            &input,
+                            &mut out_dyn,
+                            start_frame + f,
+                            None,
+                        );
                     }
                 }
                 black_box(out_dyn[0])

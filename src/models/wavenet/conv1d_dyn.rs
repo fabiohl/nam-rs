@@ -7,7 +7,7 @@
 //! runtime-defined dimensions, serving as a foundation for A2 architecture
 //! stages and static WaveNet test/stress kernels.
 
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
 use super::common::MAX_KERNEL;
 
@@ -42,15 +42,13 @@ impl Conv1dDyn {
     /// The caller must guarantee that `layer_buffer` and `out_frame` have sizes
     /// compatible with the layer dimensions.
     #[inline(always)]
-    pub unsafe fn process_single_frame(
+    pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         out_frame: &mut [f32],
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
-        use crate::models::wavenet::conv_input::dot_product_4x;
-
         let num_blocks = self.num_blocks;
         let in_ch = self.in_ch;
         let out_ch = self.out_ch;
@@ -104,7 +102,7 @@ impl Conv1dDyn {
                         core::slice::from_raw_parts(ptr, in_ch)
                     };
                     let in_slice = core::slice::from_raw_parts(tap, in_ch);
-                    let [t0, t1, t2, t3] = dot_product_4x(w_slice, in_slice);
+                    let [t0, t1, t2, t3] = M::dot_product_4x_f32(w_slice, in_slice);
                     r0 += t0;
                     r1 += t1;
                     r2 += t2;
@@ -133,7 +131,7 @@ impl Conv1dDyn {
     /// Same dual-frame tiling as the generic block processing, but uses full-precision
     /// f32 weights and scalar dot products.
     #[inline(always)]
-    pub(crate) unsafe fn process_block(
+    pub(crate) unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
@@ -170,7 +168,7 @@ impl Conv1dDyn {
             };
 
             unsafe {
-                self.process_dual_frame(
+                self.process_dual_frame::<M>(
                     layer_buffer,
                     out_f0,
                     out_f1,
@@ -187,7 +185,7 @@ impl Conv1dDyn {
         if !rem.is_empty() {
             let m = mixin.map(|m| &m[i * self.out_ch..(i + 1) * self.out_ch]);
             unsafe {
-                self.process_single_frame(layer_buffer, rem, buffer_start + i, m);
+                self.process_single_frame::<M>(layer_buffer, rem, buffer_start + i, m);
             }
         }
     }

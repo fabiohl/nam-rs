@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::math::common::Avx2Math;
 
 #[test]
 fn test_conv1d_dyn_padding_non_multiple_of_4() {
@@ -59,7 +60,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
     let mut block = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut block, 4, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut block, 4, None);
     }
 
     let expected = vec![6.5, 12.5, 18.5, 24.5, 30.5, 36.5];
@@ -100,8 +101,16 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
     let mut out_f1 = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut out_f0, 9, None);
-        conv.process_dual_frame(&layer_buffer, &mut out_f0, &mut out_f1, 9, 10, None, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut out_f0, 9, None);
+        conv.process_dual_frame::<Avx2Math>(
+            &layer_buffer,
+            &mut out_f0,
+            &mut out_f1,
+            9,
+            10,
+            None,
+            None,
+        );
     }
 
     // Single frame calculation: bias (0.5) + 10 (taps) * 2 (channels) * 1.0 (input) * 1.0 (weight) = 20.5

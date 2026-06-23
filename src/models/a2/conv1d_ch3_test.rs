@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::math::common::AlignedVec;
+use crate::math::common::Avx2Math;
 use crate::models::a2::A2_DILATIONS;
 use crate::models::a2::conv1d_fallback::a2_conv1d_single_frame_fallback;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
@@ -492,7 +493,7 @@ fn test_ch3_unrolled_k6_vs_generic() {
 
     unsafe {
         conv.process_single_ch3_unrolled(&layer_buffer, &mut ch3_out, frame_idx, None);
-        conv.process_single_frame(&layer_buffer, &mut generic_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut generic_out, frame_idx, None);
     }
 
     for c in 0..3 {
@@ -536,7 +537,7 @@ fn test_ch3_unrolled_k15_vs_generic() {
 
     unsafe {
         conv.process_single_ch3_unrolled(&layer_buffer, &mut ch3_out, frame_idx, None);
-        conv.process_single_frame(&layer_buffer, &mut generic_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut generic_out, frame_idx, None);
     }
 
     for c in 0..3 {

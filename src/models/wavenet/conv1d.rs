@@ -11,10 +11,8 @@
 
 #[cfg(test)]
 use super::conv_input::init_accum_with_bias_mixin;
-use super::conv_input::{dot_product_4x, load_4_accums, store_4_accums};
-#[cfg(test)]
-use crate::math::common::SimdMath;
-use crate::math::common::{AlignedVec, PrefetchFn};
+use super::conv_input::{load_4_accums, store_4_accums};
+use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
 #[derive(Clone)]
@@ -42,7 +40,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// The caller must guarantee that `frame_idx`, `mixin`, `layer_buffer`,
     /// and `out_frame` have sizes compatible with the layer dimensions.
     #[inline(always)]
-    pub unsafe fn process_single_frame_with_mixin(
+    pub unsafe fn process_single_frame_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         out_frame: &mut [f32],
@@ -111,7 +109,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [t0, t1, t2, t3] = dot_product_4x(w_slice, in_slice);
+                let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_f32(w_slice, in_slice) };
                 r0 += t0;
                 r1 += t1;
                 r2 += t2;
@@ -189,7 +187,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [t0, t1, t2, t3] = dot_product_4x(w_slice, in_slice);
+                let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_f32(w_slice, in_slice) };
                 r0 += t0;
                 r1 += t1;
                 r2 += t2;

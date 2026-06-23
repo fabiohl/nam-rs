@@ -27,7 +27,21 @@ impl A2Conv1d {
         unsafe {
             match self {
                 Self::Standard(c) => {
-                    c.process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
+                    if is_x86_feature_detected!("avx512f") {
+                        c.process_single_frame::<crate::math::common::Avx512Math>(
+                            layer_buffer,
+                            out_frame,
+                            frame_idx,
+                            mixin,
+                        );
+                    } else {
+                        c.process_single_frame::<crate::math::common::Avx2Math>(
+                            layer_buffer,
+                            out_frame,
+                            frame_idx,
+                            mixin,
+                        );
+                    }
                 }
                 Self::Grouped(g) => {
                     g.process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
@@ -54,7 +68,23 @@ impl A2Conv1d {
         unsafe {
             match self {
                 Self::Standard(c) => {
-                    c.process_block(layer_buffer, block, buffer_start, num_frames, mixin);
+                    if is_x86_feature_detected!("avx512f") {
+                        c.process_block::<crate::math::common::Avx512Math>(
+                            layer_buffer,
+                            block,
+                            buffer_start,
+                            num_frames,
+                            mixin,
+                        );
+                    } else {
+                        c.process_block::<crate::math::common::Avx2Math>(
+                            layer_buffer,
+                            block,
+                            buffer_start,
+                            num_frames,
+                            mixin,
+                        );
+                    }
                 }
                 Self::Grouped(g) => {
                     g.process_block(layer_buffer, block, buffer_start, num_frames, mixin);

@@ -144,7 +144,7 @@ impl ConvNetBlock {
 
         let scratch_slice = &mut self.scratch[..num_frames * out_ch];
         unsafe {
-            self.conv.process_block(
+            self.conv.process_block::<M>(
                 &self.state.layer_buffer,
                 scratch_slice,
                 self.state.buffer_start,
@@ -202,7 +202,7 @@ impl ConvNetBlock {
 
         let scratch_slice = &mut self.scratch[..out_ch];
         unsafe {
-            self.conv.process_single_frame(
+            self.conv.process_single_frame::<M>(
                 &self.state.layer_buffer,
                 scratch_slice,
                 self.state.buffer_start,

@@ -67,7 +67,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 let mixin_f0 = mixin_out.get_unchecked(mix_idx_f0..mix_idx_f0 + CH);
                 let mixin_f1 = mixin_out.get_unchecked(mix_idx_f1..mix_idx_f1 + CH);
 
-                self.conv1d.process_dual_frame_with_mixin(
+                self.conv1d.process_dual_frame_with_mixin::<M>(
                     layer_buffer,
                     out_frame_f0,
                     out_frame_f1,
@@ -84,7 +84,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 let mix_idx = i * CH;
                 let mixin_slice = mixin_out.get_unchecked(mix_idx..mix_idx + CH);
 
-                self.conv1d.process_single_frame_with_mixin(
+                self.conv1d.process_single_frame_with_mixin::<M>(
                     layer_buffer,
                     rem,
                     buffer_start + i,
