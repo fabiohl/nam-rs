@@ -2,6 +2,10 @@
 name: documentador
 description: Technical and architectural documentation specialist. Ensures project knowledge (architecture and requirements) is always synchronized with the implementation.
 ---
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Skill: Documentador
 

@@ -59,7 +59,8 @@ Performance benchmarks using the `criterion` framework should be placed in the r
 
 Developers should use the following scripts under `utils/` before pushing commits:
 
-- `utils/tests-quick.sh`: Runs the unified QA suite — unit/integration tests, medium validation (C++ parity + proptests), builds the debug CLAP library with heap audits, and performs strict validation.
+- `utils/lints.sh`: cargo fmt, check and clippy. Very useful for quick corrections.
+- `utils/tests-quick.sh`: Runs the unified QA suite — unit/integration tests, medium validation (C++ parity + proptests), builds the debug CLAP library with heap audits, and performs strict validation. It's allowed to run once in IA tasks - as a final validation.
 - `utils/tests-long.sh`: Runs the decoupled 5-phase long-duration audit (Soak, Proptests, Parity/Heap-Audits, Release CLAP Validation, and Long Benchmarks), logging execution output to `target/logs/`. NEVER run it as a pass in IA tasks.
 
 ## 5. Code Requirements

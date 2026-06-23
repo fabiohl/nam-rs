@@ -2,6 +2,10 @@
 name: planejador-arquiteto
 description: Transform plans into Sprints and Technical Tasks. Multi-disciplinary panel (covering the disciplines involved in the demand) of scientists, architects, senior engineers, UX specialists, and business specialists.
 ---
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Skill: Planejador Arquiteto
 

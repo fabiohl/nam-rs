@@ -2,6 +2,10 @@
 name: revisor-auditor
 description: Panel of auditors, architects, bug hunters, scientists, senior engineers, and specialists in various disciplines associated with the nam-rs project (Rust, Linux Low Latency, Pipewire, CLAP, DSP, and neural networks, etc).
 ---
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Skill: Revisor Auditor
 
@@ -11,13 +15,25 @@ Use this skill for a general project review in search of improvements.
 
 ## Instructions
 
-* Deeply analyze all code in search of improvement opportunities. Examples (non-exhaustive):
-  * Bugs in architectural adherence, functionality, security, performance, low latency, etc.
-  * Inspect and diagnose strict architectural adherence and correct compatibility with the [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) reference implementation.
-  * Code that can be made inline or moved out of the hot-path;
+* Deeply and thoroughly analyze the whole code base in search of improvement opportunities.
+* Use ideas even on the frontier of software engineering.
+* To keep focus, It usually involve roles, such as (non-exhaustive) examples:
+* Correctness Auditor:
+  * Assure feature parity with the [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore)reference implementation.
+  * Inspect and diagnose correct compatibility and sound fidelity.
+* Ace of bug hunting:
+  * There is no bug that you cannot discover.
+  * There is no attack vector (including dead code, functions unused in certain situations, etc.) that you cannot mitigate.
+  * Find inconsistent features, security flaws, and stability breakages.
+  * Files and functions with size, placement and logical organization.
   * Code that can be better shared among other modules.
-  * Files and functions with size, placement and logical organization;
-  * Careful review of the "code cycle budget" looking for more optimizations for modern CPU instructions, more results, for fewer clock cycles, etc.
-  * Comprehensive coverage of good source code comments;
+  * Comprehensive coverage of good source code comments.
   * Exemplary documentation (skill `documentador`).
+* Master of performance:
+  * Knows the intricacies of Linux kernel threads and scheduling.
+  * Relentless search for risks to user UX responsiveness. Both CLI/GUI and (most especially) the fluidity of processed DSP audio.
+  * Squeezes performance down to the very last CPU clock cycle.
+  * Understands what the code is doing, uses Rust attributes like `#[inline]`, `#[cold]`, and others. Has many tricks up their sleeve to help the compiler do a better job.
+  * Knows what each ISA processor instruction does, its arguments, and its clock budget (not just SIMD, but even obscure features) and is not afraid to use inline assembly in Rust.
+  * Analyzes even assembly code, if necessary, to make the task finish faster.
 * Trigger the `planejador-arquiteto` skill to transform the raised ideas into granular, very well-written and detailed findings in `TODO-findings.md`.
