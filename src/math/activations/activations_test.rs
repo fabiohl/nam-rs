@@ -141,10 +141,6 @@ fn test_tanh_piecewise_odd_symmetry() {
 fn test_tanh_pade_nr2_sweep() {
     use std::arch::x86_64::*;
 
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
-
     let sweep: Vec<f32> = (0..2001).map(|i| -10.0_f32 + i as f32 * 0.01_f32).collect();
     let mut max_error: f32 = 0.0_f32;
 

@@ -18,9 +18,7 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
         return 0.0;
     }
 
-    if len < 8 {
-        return compute_energy_scalar(data);
-    }
+
 
     let mut i = 0;
     let mut sum0 = _mm256_setzero_ps();
@@ -70,9 +68,7 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
         return 0.0;
     }
 
-    if len < 8 {
-        return compute_energy_stereo_scalar(l, r);
-    }
+
 
     let mut i = 0;
     let mut sum_l0 = _mm256_setzero_ps();
@@ -199,29 +195,4 @@ pub unsafe fn compute_energy_avx512(data: &[f32]) -> f32 {
     total_sum / (len as f32)
 }
 
-// Scalar Fallbacks (Cold-Path)
-// ═══════════════════════════════════════════════════════════════
 
-#[cold]
-#[inline(never)]
-fn compute_energy_scalar(data: &[f32]) -> f32 {
-    let mut total_sum = 0.0;
-    for &x in data {
-        total_sum += x * x;
-    }
-    total_sum / (data.len() as f32)
-}
-
-#[cold]
-#[inline(never)]
-fn compute_energy_stereo_scalar(l: &[f32], r: &[f32]) -> f32 {
-    let mut total_sum_l = 0.0;
-    let mut total_sum_r = 0.0;
-    for i in 0..l.len() {
-        total_sum_l += l[i] * l[i];
-        total_sum_r += r[i] * r[i];
-    }
-    let energy_l = total_sum_l / (l.len() as f32);
-    let energy_r = total_sum_r / (l.len() as f32);
-    energy_l.max(energy_r)
-}

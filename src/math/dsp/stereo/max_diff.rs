@@ -18,9 +18,7 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
         return 0.0;
     }
 
-    if len < 8 {
-        return compute_max_diff_scalar(a, b);
-    }
+
 
     let mut i = 0;
     let mut max_v = _mm256_setzero_ps();
@@ -91,19 +89,4 @@ pub unsafe fn compute_max_diff_avx512(a: &[f32], b: &[f32]) -> f32 {
     max_diff
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Scalar Fallbacks (Cold-Path)
-// ═══════════════════════════════════════════════════════════════
 
-#[cold]
-#[inline(never)]
-fn compute_max_diff_scalar(a: &[f32], b: &[f32]) -> f32 {
-    let mut max_diff = 0.0f32;
-    for i in 0..a.len() {
-        let d = (a[i] - b[i]).abs();
-        if d > max_diff {
-            max_diff = d;
-        }
-    }
-    max_diff
-}

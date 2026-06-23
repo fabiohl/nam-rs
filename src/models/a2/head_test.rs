@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use std::arch::is_x86_feature_detected;
 
 fn make_test_weights(channels: usize) -> (AlignedVec<f32>, f32, f32) {
     let k = A2HeadConv::HEAD_KERNEL_SIZE;
@@ -286,9 +285,6 @@ fn test_a2_head_conv_ch3_stepping_write_pos() {
 
 #[test]
 fn test_a2_head_ch8_avx2_parity() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
@@ -341,9 +337,6 @@ fn test_a2_head_ch8_avx2_parity() {
 
 #[test]
 fn test_a2_head_ch8_avx2_parity_large_block() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
@@ -396,9 +389,6 @@ fn test_a2_head_ch8_avx2_parity_large_block() {
 
 #[test]
 fn test_a2_head_ch8_avx2_wraparound() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
@@ -451,9 +441,6 @@ fn test_a2_head_ch8_avx2_wraparound() {
 
 #[test]
 fn test_a2_head_ch3_sse_parity_wraparound() {
-    if !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let ch = 3;
     let (w, bias, scale) = make_test_weights(ch);

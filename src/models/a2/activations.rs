@@ -320,9 +320,6 @@ mod tests {
 
     #[test]
     fn test_hard_tanh_avx2_parity() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         #[target_feature(enable = "avx2")]
         unsafe fn scalar_ref(data: &mut [f32]) {
@@ -350,9 +347,6 @@ mod tests {
 
     #[test]
     fn test_hard_tanh_avx2_large_slice() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
         let mut expected = data.clone();
@@ -375,9 +369,6 @@ mod tests {
 
     #[test]
     fn test_hard_swish_avx2_parity() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         #[target_feature(enable = "avx2")]
         unsafe fn scalar_ref(data: &mut [f32]) {
@@ -406,9 +397,6 @@ mod tests {
 
     #[test]
     fn test_hard_swish_avx2_large_slice() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         let mut data: Vec<f32> = (0..1024).map(|i| (i as f32 - 512.0) * 0.01).collect();
         let mut expected = data.clone();
@@ -432,9 +420,6 @@ mod tests {
 
     #[test]
     fn test_leaky_hard_tanh_avx2_parity() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         let min_val = -1.0_f32;
         let max_val = 1.0_f32;
@@ -485,9 +470,6 @@ mod tests {
 
     #[test]
     fn test_leaky_hard_tanh_avx2_large_slice() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         let min_val = -1.5_f32;
         let max_val = 1.5_f32;
@@ -523,9 +505,6 @@ mod tests {
 
     #[test]
     fn test_fast_tanh_avx2_parity() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         #[target_feature(enable = "avx2")]
         #[allow(clippy::excessive_precision)]
@@ -562,9 +541,6 @@ mod tests {
 
     #[test]
     fn test_fast_tanh_avx2_large_slice() {
-        if !is_x86_feature_detected!("avx2") {
-            return;
-        }
 
         #[allow(clippy::excessive_precision)]
         fn fast_tanh_scalar(x: f32) -> f32 {

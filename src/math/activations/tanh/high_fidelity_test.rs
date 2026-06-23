@@ -18,9 +18,6 @@ const DENSE_SWEEP_POINTS: usize = 4001; // 0.01 step on [-20, 20]
 
 #[test]
 fn test_tanh_poly_avx2_sweep() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
         .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
@@ -85,9 +82,6 @@ fn test_tanh_poly_avx2_sweep() {
 
 #[test]
 fn test_sigmoid_poly_avx2_sweep() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
         .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
@@ -152,9 +146,6 @@ fn test_sigmoid_poly_avx2_sweep() {
 
 #[test]
 fn test_tanh_poly_edge_cases() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let test_vals: [f32; 9] = [-100.0, -20.0, -1.0, -0.0, 0.0, 1.0, 20.0, 100.0, f32::NAN];
 
@@ -180,9 +171,6 @@ fn test_tanh_poly_edge_cases() {
 
 #[test]
 fn test_sigmoid_poly_edge_cases() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let test_vals: [f32; 9] = [-100.0, -20.0, -1.0, -0.0, 0.0, 1.0, 20.0, 100.0, f32::NAN];
 
@@ -212,9 +200,6 @@ fn test_sigmoid_poly_edge_cases() {
 
 #[test]
 fn test_tanh_poly_saturation() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     unsafe {
         let mut result = [0.0_f32; 8];
@@ -241,9 +226,6 @@ fn test_tanh_poly_saturation() {
 
 #[test]
 fn test_sigmoid_poly_saturation() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     unsafe {
         let mut result = [0.0_f32; 8];
@@ -274,9 +256,6 @@ fn test_sigmoid_poly_saturation() {
 
 #[test]
 fn test_tanh_sigmoid_dual_poly_avx2() {
-    if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
-        return;
-    }
 
     let test_vals: [f32; 7] = [-10.0, -1.0, -0.1, 0.0, 0.1, 1.0, 10.0];
 

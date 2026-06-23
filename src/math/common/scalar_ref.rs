@@ -22,7 +22,8 @@
 //! The implementations here are faithful scalar translations of that reference code,
 //! used exclusively for internal validation.
 
-// Re-exports of Wavenet fallbacks.
+// Re-exports of Wavenet fallbacks (Test Only).
+#[cfg(test)]
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
     gated_activation_and_overwrite_block_fallback, tanh_and_accumulate_block_fallback,

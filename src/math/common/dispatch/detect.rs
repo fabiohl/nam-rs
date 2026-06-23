@@ -73,36 +73,25 @@ fn detect_best_simd() -> SimdMathConfig {
         // 3. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
         // The absolute minimum required to run NAM-rs (x86-64-v3 specification).
         // Intel Haswell (2013) or AMD Excavator (2015) processors and newer.
-        if is_x86_feature_detected!("avx2") {
-            return config_table!(
-                crate::math::common::Avx2Math,
-                InstructionSet::Avx2,
-                "AVX2",
-                false,
-                horizontal_sum_avx2,
-                {
-                    tanh_slice: crate::math::activations::tanh_slice_avx2,
-                    sigmoid_slice: crate::math::activations::sigmoid_slice_avx2,
-                    relu_slice: crate::math::activations::relu_slice_avx2,
-                    prelu_slice: crate::math::activations::prelu_slice_avx2,
-                    softsign_slice: crate::math::activations::softsign_slice_avx2,
-                    silu_slice: crate::math::activations::silu_slice_avx2,
-                    hard_tanh_slice: crate::math::activations::hard_tanh_slice_avx2,
-                    hard_swish_slice: crate::math::activations::hard_swish_slice_avx2,
-                    fast_tanh_slice: crate::math::activations::fast_tanh_slice_avx2,
-                    leaky_hard_tanh_slice: crate::math::activations::leaky_hard_tanh_slice_avx2,
-                }
-            );
-        }
+        // x86-64-v3 baseline: we assume AVX2+FMA unconditionally.
+        config_table!(
+            crate::math::common::Avx2Math,
+            InstructionSet::Avx2,
+            "AVX2",
+            false,
+            horizontal_sum_avx2,
+            {
+                tanh_slice: crate::math::activations::tanh_slice_avx2,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx2,
+                relu_slice: crate::math::activations::relu_slice_avx2,
+                prelu_slice: crate::math::activations::prelu_slice_avx2,
+                softsign_slice: crate::math::activations::softsign_slice_avx2,
+                silu_slice: crate::math::activations::silu_slice_avx2,
+                hard_tanh_slice: crate::math::activations::hard_tanh_slice_avx2,
+                hard_swish_slice: crate::math::activations::hard_swish_slice_avx2,
+                fast_tanh_slice: crate::math::activations::fast_tanh_slice_avx2,
+                leaky_hard_tanh_slice: crate::math::activations::leaky_hard_tanh_slice_avx2,
+            }
+        )
     }
-
-    // No compatible instruction set was detected.
-    // The project requires x86-64-v3 (AVX2+FMA) as the absolute minimum.
-    // Panicking here is intentional: it's better to fail fast at boot
-    // than to produce corrupted audio or invoke undefined behavior in the DSP.
-    panic!(
-        "[NAM-rs] Incompatible CPU: AVX2 not detected.\n\
-         This binary requires x86-64-v3 (AVX2 + FMA).\n\
-         Run on a processor released after ~2013 (Intel Haswell / AMD Ryzen)."
-    );
 }

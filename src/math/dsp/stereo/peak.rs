@@ -17,9 +17,7 @@ pub unsafe fn compute_peak_abs_stereo_avx2(left: &[f32], right: &[f32]) -> (f32,
     if len == 0 {
         return (0.0, 0.0);
     }
-    if len < 8 {
-        return compute_peak_abs_stereo_scalar(left, right);
-    }
+
 
     let mut i = 0;
     let mut max_l = _mm256_setzero_ps();
@@ -81,9 +79,7 @@ pub unsafe fn compute_peak_abs_stereo_avx512(left: &[f32], right: &[f32]) -> (f3
     if len == 0 {
         return (0.0, 0.0);
     }
-    if len < 16 {
-        return compute_peak_abs_stereo_scalar(left, right);
-    }
+
 
     let mut i = 0;
     let mut max_l = _mm512_setzero_ps();
@@ -118,25 +114,7 @@ pub unsafe fn compute_peak_abs_stereo_avx512(left: &[f32], right: &[f32]) -> (f3
     (peak_l, peak_r)
 }
 
-/// Scalar fallback for peak absolute calculation.
-#[cold]
-#[inline(never)]
-pub fn compute_peak_abs_stereo_scalar(left: &[f32], right: &[f32]) -> (f32, f32) {
-    let mut peak_l = 0.0f32;
-    let mut peak_r = 0.0f32;
-    let len = core::cmp::min(left.len(), right.len());
-    for i in 0..len {
-        let al = left[i].abs();
-        let ar = right[i].abs();
-        if al > peak_l {
-            peak_l = al;
-        }
-        if ar > peak_r {
-            peak_r = ar;
-        }
-    }
-    (peak_l, peak_r)
-}
+
 
 /// Mono peak absolute value via AVX2.
 /// Returns `max(|x_i|)`
@@ -150,9 +128,7 @@ pub unsafe fn compute_peak_abs_mono_avx2(data: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
-    if len < 8 {
-        return compute_peak_abs_mono_scalar(data);
-    }
+
 
     let mut i = 0;
     let mut max_v = _mm256_setzero_ps();
@@ -194,9 +170,7 @@ pub unsafe fn compute_peak_abs_mono_avx512(data: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
-    if len < 16 {
-        return compute_peak_abs_mono_scalar(data);
-    }
+
 
     let mut i = 0;
     let mut max_v = _mm512_setzero_ps();
@@ -222,16 +196,4 @@ pub unsafe fn compute_peak_abs_mono_avx512(data: &[f32]) -> f32 {
     peak
 }
 
-/// Mono peak absolute scalar fallback.
-#[cold]
-#[inline(never)]
-fn compute_peak_abs_mono_scalar(data: &[f32]) -> f32 {
-    let mut peak = 0.0f32;
-    for &x in data {
-        let a = x.abs();
-        if a > peak {
-            peak = a;
-        }
-    }
-    peak
-}
+

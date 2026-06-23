@@ -11,8 +11,10 @@
 mod avx2;
 mod avx512;
 mod kernel_macro;
-mod scalar;
+#[cfg(test)]
+pub mod scalar;
 
 pub use avx2::*;
 pub use avx512::*;
+#[cfg(test)]
 pub use scalar::*;
