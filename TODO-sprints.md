@@ -26,7 +26,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ---
 
-## Sprint 1 — Monomorfização da Convolução f32 e Eliminação de Dispatch por Chamada (F-01)
+## Sprint 1 — Monomorfização da Convolução f32 e Eliminação de Dispatch por Chamada (F-01) [DONE]
 
 **Objetivo:** Eliminar branches e funções de detecção de CPU (`is_x86_feature_detected!`) do hot-path interno, propagando o parâmetro de tipo genérico `M: SimdMath` até as folhas da convolução.
 
@@ -92,7 +92,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
 
 ### Tarefas Técnicas da Sprint 2
 
-- [ ] **T2.1: Migrar estágios do pipeline DSP para monomorfização estática**
+- [x] **T2.1: Migrar estágios do pipeline DSP para monomorfização estática**
 
   - **Descrição:** Envolver a execução do pipeline de captura em um bloco `dispatch_simd!` de Modo 1 (estático) no nível mais alto, passando `M` genérico para as funções de estágio (`apply_input_stage`, `apply_output_stage`, etc.).
   - **Arquivos envolvidos:**
@@ -101,6 +101,7 @@ O **EPIC A** visa otimizar e unificar o roteamento SIMD na base de código, elim
     - [output.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (Monomorfizar chamadas de ganho e proteção)
   - **Responsável Sugerido:** `planejador-arquiteto` / `implementador`
   - **Risco:** Alto (estágio crucial de tempo real)
+  - **Nota Pós-Execução (T2.1):** `capture_dsp_pipeline` agora despacha estaticamente via `match SIMD_MATH.instruction_set` e chama `capture_dsp_pipeline_inner::<M>` que propaga `M` para `apply_input_stage_inner::<M>` e `apply_output_stage_inner::<M>`. As funções públicas `apply_input_stage`/`apply_output_stage` foram mantidas como wrappers (gated por `cfg(test, clap-plugin)`) para compatibilidade com o CLAP e testes — elas também despacham estaticamente, mas com um dispatch por estágio (vs único no `capture_dsp_pipeline`). O Modo 3 (`dispatch_simd!` v-table) foi eliminado do hot-path do pipeline; a remoção completa da v-table (`SimdMathConfig`) será feita em T2.2.
 
 - [ ] **T2.2: Reduzir a struct `SimdMathConfig` e remover ponteiros de função**
 

@@ -18,6 +18,10 @@ pub(crate) use inference::run_inference;
 pub(crate) use input::DENORMAL_DITHER_OFFSET;
 #[cfg(feature = "testing")]
 pub use input::DISABLE_GATE;
+#[cfg(any(test, feature = "clap-plugin"))]
 pub(crate) use input::apply_input_stage;
+pub(crate) use input::apply_input_stage_inner;
 pub use input::handle_silence_bypass;
+#[cfg(any(test, feature = "clap-plugin"))]
 pub(crate) use output::apply_output_stage;
+pub(crate) use output::apply_output_stage_inner;
