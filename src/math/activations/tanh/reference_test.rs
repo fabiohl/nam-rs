@@ -8,7 +8,6 @@ const DENSE_POINTS: usize = 4001;
 
 #[test]
 fn test_pade_nr1_vs_div_precision_avx2() {
-
     let sweep: Vec<f32> = (0..DENSE_POINTS)
         .map(|i| -4.0_f32 + i as f32 * 0.002_f32)
         .collect();
@@ -64,7 +63,6 @@ fn test_pade_nr1_vs_div_precision_avx2() {
 
 #[test]
 fn test_pade_nr2_vs_nr1_precision_avx2() {
-
     let sweep: Vec<f32> = (0..DENSE_POINTS)
         .map(|i| -4.0_f32 + i as f32 * 0.002_f32)
         .collect();
@@ -158,7 +156,6 @@ fn test_pade_nr1_vs_div_precision_avx512() {
 
 #[test]
 fn test_pade_nr1_dual_vs_production_avx2() {
-
     let sweep: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.03125) - 4.0).collect();
     let mut max_nr1_vs_div: f32 = 0.0;
 

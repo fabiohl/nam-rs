@@ -18,8 +18,6 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
         return 0.0;
     }
 
-
-
     let mut i = 0;
     let mut max_v = _mm256_setzero_ps();
     let sign_mask = _mm256_set1_ps(-0.0f32);
@@ -88,5 +86,3 @@ pub unsafe fn compute_max_diff_avx512(a: &[f32], b: &[f32]) -> f32 {
 
     max_diff
 }
-
-

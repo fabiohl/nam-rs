@@ -285,7 +285,6 @@ fn test_a2_head_conv_ch3_stepping_write_pos() {
 
 #[test]
 fn test_a2_head_ch8_avx2_parity() {
-
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
 
@@ -337,7 +336,6 @@ fn test_a2_head_ch8_avx2_parity() {
 
 #[test]
 fn test_a2_head_ch8_avx2_parity_large_block() {
-
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
 
@@ -389,7 +387,6 @@ fn test_a2_head_ch8_avx2_parity_large_block() {
 
 #[test]
 fn test_a2_head_ch8_avx2_wraparound() {
-
     let ch = 8;
     let (w, bias, scale) = make_test_weights(ch);
 
@@ -441,7 +438,6 @@ fn test_a2_head_ch8_avx2_wraparound() {
 
 #[test]
 fn test_a2_head_ch3_sse_parity_wraparound() {
-
     let ch = 3;
     let (w, bias, scale) = make_test_weights(ch);
 

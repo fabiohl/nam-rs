@@ -18,7 +18,6 @@ pub unsafe fn compute_peak_abs_stereo_avx2(left: &[f32], right: &[f32]) -> (f32,
         return (0.0, 0.0);
     }
 
-
     let mut i = 0;
     let mut max_l = _mm256_setzero_ps();
     let mut max_r = _mm256_setzero_ps();
@@ -80,7 +79,6 @@ pub unsafe fn compute_peak_abs_stereo_avx512(left: &[f32], right: &[f32]) -> (f3
         return (0.0, 0.0);
     }
 
-
     let mut i = 0;
     let mut max_l = _mm512_setzero_ps();
     let mut max_r = _mm512_setzero_ps();
@@ -114,8 +112,6 @@ pub unsafe fn compute_peak_abs_stereo_avx512(left: &[f32], right: &[f32]) -> (f3
     (peak_l, peak_r)
 }
 
-
-
 /// Mono peak absolute value via AVX2.
 /// Returns `max(|x_i|)`
 ///
@@ -128,7 +124,6 @@ pub unsafe fn compute_peak_abs_mono_avx2(data: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
-
 
     let mut i = 0;
     let mut max_v = _mm256_setzero_ps();
@@ -171,7 +166,6 @@ pub unsafe fn compute_peak_abs_mono_avx512(data: &[f32]) -> f32 {
         return 0.0;
     }
 
-
     let mut i = 0;
     let mut max_v = _mm512_setzero_ps();
     let sign_mask = _mm512_set1_ps(-0.0f32);
@@ -195,5 +189,3 @@ pub unsafe fn compute_peak_abs_mono_avx512(data: &[f32]) -> f32 {
 
     peak
 }
-
-

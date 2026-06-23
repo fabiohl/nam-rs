@@ -18,8 +18,6 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
         return 0.0;
     }
 
-
-
     let mut i = 0;
     let mut sum0 = _mm256_setzero_ps();
     let mut sum1 = _mm256_setzero_ps();
@@ -67,8 +65,6 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
-
-
 
     let mut i = 0;
     let mut sum_l0 = _mm256_setzero_ps();
@@ -194,5 +190,3 @@ pub unsafe fn compute_energy_avx512(data: &[f32]) -> f32 {
 
     total_sum / (len as f32)
 }
-
-
