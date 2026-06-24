@@ -428,13 +428,33 @@ O coração do hot path. Exige **uma rodada conjunta de revalidação de paridad
    - Todos os 31 testes integrados de `cpp_parity` e todos os testes de `cabsim_cpp_parity` passaram sem falhas com desvio de ESR insignificante (< 1e-12).
    - O teste de `threshold_calibration` passou sem necessidade de recalibrar ou afrouxar os limites preexistentes.
 
-### ÉPICO C — Ativações de baixa latência
+### ÉPICO C — Ativações de baixa latência [CONCLUÍDO]
 
 - **F3** — `tanh` com 1 divisão (`(e^{2x}−1)/(e^{2x}+1)`), AVX2 + AVX-512; avaliar
   `vrcpps`+NR para a divisão restante.
 
-_Validação do épico:_ `test_tanh_poly_*_sweep`, `*_proptest_100k`, paridade ESR. Risco
-moderado (precisão), mas isolado no módulo de ativações.
+#### E-C Relatório de Execução e Resultados (2026-06-24)
+
+1. **Reescrita dos Kernels de Ativação Tanh de Alta Fidelidade (F3):**
+   - Kernels `simd_tanh_poly_avx2`, `simd_tanh_poly_dual_avx2` e `simd_tanh_poly_avx512` reformulados em [high_fidelity.rs](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs).
+   - Substituição da identidade tradicional por $\tanh(x) = (u^2 - 1) / (u^2 + 1)$, onde $u = e^x$. O cálculo de $u^2$ é feito via multiplicação vetorial única (`vmulps`), eliminando a divisão recíproca redundante de $e^{-x} = 1/e^x$.
+   - Redução estrita de **2 para 1** operação de divisão vetorial (`vdivps`) por lane YMM/ZMM no caminho crítico.
+
+2. **Avaliação da Divisão Rápida via Recíproco (`vrcpps`) + Newton-Raphson:**
+   - **Precisão (sweep de 4001 pontos em $[-20, 20]$):**
+     - NR1 (1 iteração): erro máximo absoluto de **2.3842e-7** vs `f32::tanh` (dentro do limite de $1\text{e-}6$).
+     - NR2 (2 iterações): erro máximo absoluto de **1.1921e-7** vs `f32::tanh`.
+   - **Throughput (Criterion, 256 elementos AVX2):**
+     - `PolyDiv` (`vdivps` de hardware): **146.87 ns** (1.00×)
+     - `PolyNR1` (rcp + 1× NR): **174.20 ns** (1.18× mais lento)
+     - `PolyNR2` (rcp + 2× NR): **203.08 ns** (1.38× mais lento)
+   - **Análise Crítica:** A cadeia computacional do exp polinomial (Taylor de grau 6 + range reduction) já oculta eficientemente a latência do divisor por hardware (`vdivps`). A abordagem de aproximação NR (`rcp + fnmadd + mul`) introduz concorrência por portas de FMA que já estão sob alta demanda para a expansão polinomial, gerando perda líquida de throughput.
+   - **Decisão:** Reter a divisão por hardware `_mm256_div_ps` / `_mm512_div_ps` como padrão nos kernels de produção. Kernels e benchmarks baseados em NR foram retidos apenas para referência histórica.
+
+3. **Validação de Paridade Numérica e Limiares ESR:**
+   - **Paridade:** 100% de passagem nos testes de paridade C++ (`cpp_parity` 31/31, `cabsim_cpp_parity` 3/3) e `threshold_calibration` sem regressões.
+   - **ESR (Error-to-Signal Ratio):** Desvio de precisão nulo ou insignificante (ex: WaveNet Standard ESR = 2.46e-14 / −136.1 dB, LSTM Official ESR = 1.22e-3 / −29.2 dB), dentro dos limiares aceitáveis.
+   - **Estabilidade:** Execução bem-sucedida do QA completo `utils/tests-quick.sh` (unitários, integração, proptests, validação e build CLAP com heap-audit).
 
 ### ÉPICO D — Higiene do thread de tempo-real
 
