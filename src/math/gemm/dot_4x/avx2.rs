@@ -42,11 +42,11 @@ pub unsafe fn dot_product_4x_avx2(
         let mut sum3_1 = _mm256_setzero_ps();
 
         dot4x_simd16_avx2!(i, len, {
-            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(w0.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(w1.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(w2.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(w3.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w0.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w1.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w2.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w3.as_ptr().wrapping_add(i + 32) as *const i8);
 
             let vs_0 = _mm256_loadu_ps(state.as_ptr().add(i));
             let vs_1 = _mm256_loadu_ps(state.as_ptr().add(i + 8));
@@ -136,9 +136,9 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
             i,
             len,
             {
-                _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 16) as *const i8);
-                _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 8) as *const i8);
-                _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 16) as *const i8);
+                _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().wrapping_add(i + 16) as *const i8);
+                _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 8) as *const i8);
+                _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 16) as *const i8);
 
                 let s0 = _mm256_broadcast_ss(&state[i]);
                 let s1 = _mm256_broadcast_ss(&state[i + 1]);

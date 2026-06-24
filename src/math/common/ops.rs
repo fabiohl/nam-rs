@@ -111,6 +111,34 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
 pub type PrefetchFn =
     unsafe fn(base_ptr: *const f32, step: usize, k: usize, k_limit: usize, dilation: usize);
 
+/// Safe speculative prefetch to L1 cache (T0 hint), avoiding pointer arithmetic UB.
+///
+/// # Safety
+/// The caller must ensure that the base pointer is valid.
+#[inline(always)]
+pub unsafe fn prefetch_t0<T>(base: *const T, offset: usize) {
+    // SAFETY: prefetch does not dereference the pointer, so using wrapping_add is UB-free even if the address goes out of bounds.
+    unsafe {
+        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+            base.wrapping_add(offset).cast(),
+        );
+    }
+}
+
+/// Safe speculative prefetch to L2 cache (T1 hint), avoiding pointer arithmetic UB.
+///
+/// # Safety
+/// The caller must ensure that the base pointer is valid.
+#[inline(always)]
+pub unsafe fn prefetch_t1<T>(base: *const T, offset: usize) {
+    // SAFETY: prefetch does not dereference the pointer, so using wrapping_add is UB-free even if the address goes out of bounds.
+    unsafe {
+        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(
+            base.wrapping_add(offset).cast(),
+        );
+    }
+}
+
 /// Simple prefetch strategy for small/medium dilations.
 ///
 /// # Safety
@@ -122,11 +150,9 @@ pub unsafe fn prefetch_strategy_simple(
     _k_limit: usize,
     _dilation: usize,
 ) {
-    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    // SAFETY: Speculative prefetch using wrapping_add is safe from out-of-bounds UB.
     unsafe {
-        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
-            base_ptr.add(16).cast(),
-        );
+        prefetch_t0(base_ptr, 16);
     }
 }
 
@@ -142,16 +168,12 @@ pub unsafe fn prefetch_strategy_2stage(
     _dilation: usize,
 ) {
     if k + 1 < k_limit {
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: Speculative prefetch using wrapping_add is safe from out-of-bounds UB.
         unsafe {
-            let ptr_n1 = base_ptr.add(step);
-            core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(ptr_n1.cast());
+            prefetch_t0(base_ptr, step);
 
             if k + 2 < k_limit {
-                let ptr_n2 = base_ptr.add(2 * step);
-                core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(
-                    ptr_n2.cast(),
-                );
+                prefetch_t1(base_ptr, 2 * step);
             }
         }
     }

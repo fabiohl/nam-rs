@@ -172,11 +172,11 @@ pub unsafe fn dot_product_batch_4x_avx2(
         let mut sum3 = _mm256_setzero_ps();
 
         dot4x_simd16_avx2!(i, len, {
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(h0.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(h1.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(h2.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(h3.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h0.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h1.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h2.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h3.as_ptr().wrapping_add(i + 32) as *const i8);
 
             let vw_0 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
 

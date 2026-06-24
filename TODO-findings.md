@@ -261,9 +261,9 @@ chama `set_max_buffer_size` no RT.
 
 ---
 
-## 🟠 F4 — Aritmética de ponteiro fora dos limites em prefetch SIMD (UB sob strict provenance)
+## 🟠 F4 — Aritmética de ponteiro fora dos limites em prefetch SIMD (UB sob strict provenance) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Locais (sistêmico):**
   - [`src/math/gemm/gemv/kernel_macro.rs:57,157`](src/math/gemm/gemv/kernel_macro.rs#L57)
   - [`src/math/gemm/gemv/f16_avx2.rs:40`](src/math/gemm/gemv/f16_avx2.rs#L40), `f16_avx512.rs:40`, `f32_avx512.rs:77,229`

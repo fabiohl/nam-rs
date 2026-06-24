@@ -75,7 +75,7 @@ pub unsafe fn gemv_with_bias_f32_avx512(
                 let mut in_c = 0;
                 while in_c + 8 <= in_len {
                     _mm_prefetch::<_MM_HINT_T0>(
-                        in_frames.as_ptr().add(f * in_len + in_c + 64) as *const i8
+                        in_frames.as_ptr().wrapping_add(f * in_len + in_c + 64) as *const i8,
                     );
 
                     let vs0 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
@@ -227,7 +227,7 @@ pub unsafe fn gemv_no_bias_f32_avx512(
                 let mut in_c = 0;
                 while in_c + 8 <= in_len {
                     _mm_prefetch::<_MM_HINT_T0>(
-                        in_frames.as_ptr().add(f * in_len + in_c + 64) as *const i8
+                        in_frames.as_ptr().wrapping_add(f * in_len + in_c + 64) as *const i8,
                     );
 
                     let vs0 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));

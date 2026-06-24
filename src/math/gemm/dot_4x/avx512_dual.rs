@@ -49,10 +49,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
         let mut sum1_b3 = _mm512_setzero_ps();
 
         while i + 32 <= len {
-            _mm_prefetch::<_MM_HINT_T0>(state_f0.as_ptr().add(i + 64) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(state_f1.as_ptr().add(i + 64) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 16) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(state_f0.as_ptr().wrapping_add(i + 64) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(state_f1.as_ptr().wrapping_add(i + 64) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 16) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 32) as *const i8);
 
             let w_a =
                 _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));

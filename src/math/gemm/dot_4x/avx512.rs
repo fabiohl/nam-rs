@@ -33,10 +33,10 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f
         let mut sum_b3 = _mm512_setzero_ps();
 
         while i + 32 <= len {
-            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 64) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 16) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 48) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().wrapping_add(i + 64) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 16) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().wrapping_add(i + 48) as *const i8);
 
             let s_a = _mm512_permutexvar_ps(
                 perm_idx,
