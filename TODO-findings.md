@@ -495,10 +495,10 @@ banco de coeficientes.
 
 ---
 
-## 🔵 F10 — Defaults `unimplemented!()` em métodos dual-frame de `SimdMath` (armadilha de panic RT latente)
+## 🔵 F10 — Defaults `unimplemented!()` em métodos dual-frame de `SimdMath` (armadilha de panic RT latente) [DONE]
 
-- **Status:** ⬜
-- **Local:** [`src/math/common/traits.rs:128-135,155-162`](src/math/common/traits.rs#L128) (`dot_product_8x_f32_dual`, `dot_product_16x_f32_dual`).
+- **Status:** ✅
+- **Local:** [`src/math/common/traits.rs`](src/math/common/traits.rs) (`dot_product_8x_f32_dual`, `dot_product_16x_f32_dual`).
 - **Severidade:** 🔵 Baixa (hoje inalcançável; todas as 3 impls sobrescrevem).
 
 ### F10 — Descrição
@@ -547,7 +547,7 @@ JSON, com erro diagnóstico.
 aritmética de tamanho checada; ordem validar→alocar; `From<Vec>` seguro; cobertura de CRC;
 validação de `sample_rate` no JSON; ampliar `proptest_parsers.rs`. **É o épico mais crítico.**
 
-### Épico E2 — Conformidade estrita de RT-Safety (Áudio)
+### Épico E2 — Conformidade estrita de RT-Safety (Áudio) [DONE]
 
 **Findings:** F3 (🟠), F10 (🔵).
 **Objetivo:** garantir zero-alloc/zero-syscall/zero-panic na thread de áudio sob todos os cenários.

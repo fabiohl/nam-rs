@@ -129,10 +129,7 @@ pub trait SimdMath {
         weights: &[[f32; 8]],
         state_f0: &[f32],
         state_f1: &[f32],
-    ) -> ([f32; 8], [f32; 8]) {
-        let _ = (weights, state_f0, state_f1);
-        unimplemented!()
-    }
+    ) -> ([f32; 8], [f32; 8]);
 
     /// Computes 16 simultaneous dot products with native f32 weights.
     ///
@@ -156,10 +153,7 @@ pub trait SimdMath {
         weights: &[[f32; 16]],
         state_f0: &[f32],
         state_f1: &[f32],
-    ) -> ([f32; 16], [f32; 16]) {
-        let _ = (weights, state_f0, state_f1);
-        unimplemented!()
-    }
+    ) -> ([f32; 16], [f32; 16]);
 
     /// Computes 4 simultaneous BF16 dot products with separate weight vectors.
     ///
