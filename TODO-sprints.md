@@ -196,7 +196,7 @@ graph TD
 
 ## 6. Detalhamento das Sprints e Tarefas Técnicas (Épico B)
 
-### SPRINT B.1 — Reescrita dos Kernels de Acumulação SIMD para Convolução Causal (F1)
+### SPRINT B.1 — Reescrita dos Kernels de Acumulação SIMD para Convolução Causal (F1) [DONE]
 
 Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-product para cada tap. O loop do tap é fundido de modo a realizar uma única redução horizontal no final.
 
@@ -264,7 +264,7 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
 
 ---
 
-### SPRINT B.2 — Otimização e Unificação de GEMV Robusto a Shape (F4)
+### SPRINT B.2 — Otimização e Unificação de GEMV Robusto a Shape (F4) [DONE]
 
 Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-input* e acumulação nas linhas de saída (accumulator-output), evitando reduções horizontais repetitivas e cauda escalar ineficiente.
 
@@ -295,10 +295,16 @@ Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-inpu
   * Eliminados todos os 3 fallbacks escalares (`out_len <= 4`, `5..=7` e cauda `out_c`).
   * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
-#### [MODIFY] Tarefa B.2.3: Atualização dos Kernels GEMV em AVX-512
+#### [MODIFY] Tarefa B.2.3: Atualização dos Kernels GEMV em AVX-512 [DONE]
 
 * **Objetivo:** Aplicar a mesma arquitetura de kernel unificado nas implementações AVX-512 correspondentes.
 * **Arquivo Alvo:** [f32_avx512.rs](file:///home/fabio/nam-rs/src/math/gemm/gemv/f32_avx512.rs)
+* **Conclusão (2026-06-24):** `gemv_with_bias_f32_avx512` e `gemv_no_bias_f32_avx512` reescritos como kernels unificados com 3 vias, eliminando todos os fallbacks escalares (`out_len <= 4`, `5..=15`, cauda `out_c`):
+  * **`in_len == 1`:** broadcast-multiply-add direto em blocos de 16 canais de saída (ZMM), com `_mm512_mask_storeu_ps`/`_mm512_maskz_loadu_ps` na cauda.
+  * **`out_len == 1`:** 16 frames em paralelo via 8 acumuladores ZMM (gather manual de `in[n..n+15][ic]` por iteração de 8 `in_c`), redução horizontal adiada (tree reduction); restante de frames via dot product ZMM per-frame com `_mm512_maskz_loadu_ps` na cauda de `in_c`.
+  * **Caminho geral (todos `out_len >= 1`):** 8-way unrolled broadcast-input sobre blocos de 16 canais de saída; bloco parcial final com `_mm512_maskz_loadu_ps` para pesos e `_mm512_mask_storeu_ps` para store, eliminando loops escalares de cauda para `out_c`.
+  * Eliminados todos os 3 fallbacks escalares (`out_len <= 4`, `5..=15`, cauda `out_c`) e o fallback genérico final.
+  * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
 ---
 
