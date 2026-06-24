@@ -31,7 +31,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 - **Risco:** Baixo-Médio. Requer atenção à corretude dos índices de leitura/acumuladores e alinhamento de memória.
 - **Referência:** [TODO-findings.md: NF-01, NF-05](file:///home/fabio/nam-rs/TODO-findings.md#NF-01).
 
-#### [ ] Tarefa E.1.2 — Refatorar o Dispatch de Traits em `avx2_impl.rs` (NF-01)
+#### [x] Tarefa E.1.2 — Refatorar o Dispatch de Traits em `avx2_impl.rs` (NF-01) ✅ Concluído: Dispatch de `dot_product_16x_f32` em `avx2_impl.rs:96-100` agora chama `dot_16x::dot_product_16x_f32_avx2` (kernel AVX2 explícito), substituindo o fallback escalar.
 
 - **Descrição:** Alterar `Avx2Math::dot_product_16x_f32` em [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs#L96).
 - **Detalhes Técnicos:** Substituir a chamada para a função de referência scalar pelo novo kernel explícito `crate::math::gemm::dot_16x::dot_product_16x_f32_avx2`.

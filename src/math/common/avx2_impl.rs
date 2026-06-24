@@ -94,9 +94,8 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn dot_product_16x_f32(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
-        // SAFETY: scalar reference uses bounds-checked access via get_unchecked;
-        // caller guarantees weights.len() >= state.len().
-        unsafe { super::scalar_ref::dot_product_16x_f32_scalar(weights, state) }
+        // SAFETY: arguments satisfy the function's documented invariants.
+        unsafe { super::super::gemm::dot_16x::dot_product_16x_f32_avx2(weights, state) }
     }
 
     #[inline(always)]
