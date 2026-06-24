@@ -7,7 +7,7 @@
 //! binary format with pre-transposed weights.
 
 use super::nam_json::{NamModelData, WeightsLayout};
-use super::namb::{FLAG_HAS_CRC32, NambHeader, crc32_ieee};
+use super::namb::{FLAG_HAS_CRC32, NambHeader, crc32_ieee, crc32_ieee_update};
 use super::transpose::{lstm::transpose_lstm_gate_major, wavenet::transpose_wavenet_interleaved4};
 use anyhow::Result;
 use std::io::Write;
@@ -49,7 +49,11 @@ pub fn encode_namb(
         reserved_v2: [0; 4],
         weights_offset: (std::mem::size_of::<NambHeader>() + json_bytes.len()) as u32,
         reserved1: [0; 2],
-        crc32: crc32_ieee(&weights_bytes),
+        crc32: if version < 2 {
+            crc32_ieee(&weights_bytes)
+        } else {
+            0
+        },
         reserved2: 0,
         version_str: [0; 32],
         sample_rate: data.sample_rate.unwrap_or(48000.0),
@@ -82,6 +86,14 @@ pub fn encode_namb(
     buffer.write_all(header_bytes)?;
     buffer.write_all(json_bytes)?;
     buffer.write_all(&weights_bytes)?;
+
+    // 5. Updates the CRC32 checksum for version >= 2
+    if version >= 2 {
+        let crc = crc32_ieee_update(0xFFFFFFFFu32, &buffer[..24]);
+        let crc = crc32_ieee_update(crc, &buffer[28..]);
+        let final_crc = crc ^ 0xFFFFFFFFu32;
+        buffer[24..28].copy_from_slice(&final_crc.to_le_bytes());
+    }
 
     Ok(buffer)
 }

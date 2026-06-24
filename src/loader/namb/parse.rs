@@ -71,7 +71,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         if header.flags & FLAG_HAS_CRC32 == 0 {
             return Err(NambError::CrcMissing { version }.into());
         }
-        check_crc(data, weights_offset, crc32_header)?;
+        check_crc(data, version, weights_offset, crc32_header)?;
     } else {
         let pesos_raw = &data[weights_offset..];
         let pesos_empty = pesos_raw.is_empty() || pesos_raw.iter().all(|&b| b == 0);
@@ -80,7 +80,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
                 "CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check"
             );
         } else {
-            check_crc(data, weights_offset, crc32_header)?;
+            check_crc(data, version, weights_offset, crc32_header)?;
         }
     }
 

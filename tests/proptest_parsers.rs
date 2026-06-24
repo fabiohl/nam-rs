@@ -5,7 +5,7 @@ use nam_rs::loader::nam_json::{
     NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
     get_wavenet_topology, parse_nam_json,
 };
-use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee, parse_namb};
+use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee_update, parse_namb};
 use proptest::prelude::*;
 use std::fs;
 
@@ -540,9 +540,6 @@ fn arbitrary_namb_bytes_strategy() -> impl Strategy<Value = Vec<u8>> {
                 data[7] = FLAG_HAS_CRC32;
                 // Weights offset = 80 (header only, no JSON)
                 data[12..16].copy_from_slice(&(offset as u32).to_le_bytes());
-                // CRC32 computed from the body
-                let crc = crc32_ieee(&body);
-                data[24..28].copy_from_slice(&crc.to_le_bytes());
                 // Version string
                 data[32..64].copy_from_slice(&version_str);
                 // Sample rate
@@ -554,6 +551,14 @@ fn arbitrary_namb_bytes_strategy() -> impl Strategy<Value = Vec<u8>> {
 
                 // Copy body into weights section
                 data[offset..].copy_from_slice(&body);
+
+                // Compute CRC32 of the entire file excluding CRC32 field itself
+                let crc = {
+                    let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+                    crc_val = crc32_ieee_update(crc_val, &data[28..]);
+                    crc_val ^ 0xFFFFFFFFu32
+                };
+                data[24..28].copy_from_slice(&crc.to_le_bytes());
 
                 data
             },

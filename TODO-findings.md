@@ -429,9 +429,9 @@ Contratos de segurança implícitos não documentados nem verificados (`unsafe f
 
 ---
 
-## 🔵 F7 — CRC32 do `.namb` cobre só os bytes de peso, não o JSON de metadados nem o header
+## 🔵 F7 — CRC32 do `.namb` cobre só os bytes de peso, não o JSON de metadados nem o header [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Locais:** [`src/loader/namb/parse.rs:67-85`](src/loader/namb/parse.rs#L67), [`src/loader/namb/header.rs`](src/loader/namb/header.rs) (`check_crc` calcula `crc32_ieee(&data[weights_offset..])`).
 - **Severidade:** 🔵 Baixa (completude de detecção de corrupção; CRC32 não é fronteira de autenticação).
 
@@ -449,6 +449,8 @@ Estender a cobertura do CRC para `header (exceto o campo crc) + JSON + pesos` (e
 `data[..offset_do_campo_crc]` concatenado com `data[apos_campo_crc..]`), mantendo retrocompat via
 flag de versão; **ou** documentar explicitamente a limitação no formato. Combinar com F2 (limites
 rígidos) garante que metadados corrompidos não causem alocações perigosas.
+
+**Conclusão:** CRC estendido para todo o arquivo exceto o campo crc a partir de `version >= 2`. Retrocompatibilidade de v1 (cobrindo apenas pesos) mantida.
 
 ---
 

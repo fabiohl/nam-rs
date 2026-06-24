@@ -69,7 +69,14 @@ mod tests {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
-        header.crc32 = crc32_ieee(&data[header_size..]);
+
+        // Compute whole-file CRC32
+        let crc = {
+            let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+            crc_val = crc32_ieee_update(crc_val, &data[28..]);
+            crc_val ^ 0xFFFFFFFFu32
+        };
+        header.crc32 = crc;
 
         let parsed = parse_namb(&data)?;
         // Ensures the program understood that this file needs a special reorganization.
@@ -102,11 +109,10 @@ mod tests {
     }
 
     #[test]
-    fn test_v2_crc32_zero_legitimate_passes() -> Result<()> {
-        // CRC32 of an empty slice is 0 (property of the IEEE 802.3 algorithm).
-        // With FLAG_HAS_CRC32 set and crc32=0 legitimate, the parser should accept.
+    fn test_v2_crc32_valid_passes() -> Result<()> {
+        // With FLAG_HAS_CRC32 set and valid whole-file CRC, the parser should accept.
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size]; // No weights → crc32_ieee(&[]) == 0
+        let mut data = vec![0u8; header_size];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
@@ -117,7 +123,13 @@ mod tests {
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
-        header.crc32 = 0; // Legitimate CRC32 for empty slice
+
+        let crc = {
+            let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+            crc_val = crc32_ieee_update(crc_val, &data[28..]);
+            crc_val ^ 0xFFFFFFFFu32
+        };
+        header.crc32 = crc;
 
         let parsed = parse_namb(&data)?;
         assert!(parsed.weights.is_empty());
@@ -433,7 +445,7 @@ mod tests {
     #[test]
     fn test_truncation_v2_header_boundary() {
         // v2 file truncated exactly at the header boundary (80 bytes),
-        // with FLAG_HAS_CRC32 set and valid CRC (empty weights → crc=0).
+        // with FLAG_HAS_CRC32 set and valid whole-file CRC.
         // Must parse successfully with 0 weights.
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size];
@@ -446,7 +458,13 @@ mod tests {
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
-        header.crc32 = 0; // crc32_ieee(&[]) == 0
+
+        let crc = {
+            let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+            crc_val = crc32_ieee_update(crc_val, &data[28..]);
+            crc_val ^ 0xFFFFFFFFu32
+        };
+        header.crc32 = crc;
 
         let parsed = parse_namb(&data).unwrap();
         assert!(parsed.weights.is_empty());
@@ -464,7 +482,13 @@ mod tests {
         header.version = 2;
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
-        header.crc32 = crc32_ieee(&data[header_size..]);
+
+        let crc = {
+            let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+            crc_val = crc32_ieee_update(crc_val, &data[28..]);
+            crc_val ^ 0xFFFFFFFFu32
+        };
+        header.crc32 = crc;
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -732,5 +756,136 @@ mod tests {
             "Expected InvalidHeaderField(output_level_dbu), got: {:?}",
             namb_err
         );
+    }
+
+    #[test]
+    fn test_v2_metadata_header_corruption_rejected() -> Result<()> {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let w = [0.1f32, 0.2f32];
+        let mut data = vec![0u8; header_size + w.len() * 4];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 2;
+        header.flags = FLAG_HAS_CRC32;
+        header.weights_offset = header_size as u32;
+        header.sample_rate = 48000.0;
+        header.input_level_dbu = 12.0;
+        header.output_level_dbu = -6.0;
+
+        for (i, &f) in w.iter().enumerate() {
+            let offset = header_size + i * 4;
+            data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+        }
+
+        // Calculate and set correct whole-file CRC
+        let crc = {
+            let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+            crc_val = crc32_ieee_update(crc_val, &data[28..]);
+            crc_val ^ 0xFFFFFFFFu32
+        };
+        header.crc32 = crc;
+
+        // Verify it parses successfully initially
+        let parsed = parse_namb(&data)?;
+        assert_eq!(parsed.weights.len(), 2);
+
+        // Now corrupt a header field (e.g. sample_rate which is after crc32 at offset 64)
+        let mut corrupted_header = data.clone();
+        corrupted_header[64] ^= 0xFF; // Flip bits in sample_rate
+        let err = parse_namb(&corrupted_header).unwrap_err();
+        let namb_err = err.downcast_ref::<NambError>().unwrap();
+        assert!(
+            matches!(namb_err, NambError::CrcMismatch { .. }),
+            "Expected CrcMismatch for corrupted sample_rate in v2, got {:?}",
+            namb_err
+        );
+
+        // Now corrupt weights
+        let mut corrupted_weights = data.clone();
+        corrupted_weights[header_size] ^= 0xFF; // Flip bits in weights section
+        let err2 = parse_namb(&corrupted_weights).unwrap_err();
+        let namb_err2 = err2.downcast_ref::<NambError>().unwrap();
+        assert!(
+            matches!(namb_err2, NambError::CrcMismatch { .. }),
+            "Expected CrcMismatch for corrupted weights in v2, got {:?}",
+            namb_err2
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_v1_vs_v2_metadata_header_corruption() -> Result<()> {
+        // v1: corrupting header field is NOT detected by CRC
+        {
+            let header_size = std::mem::size_of::<NambHeader>();
+            let w = [0.1f32, 0.2f32];
+            let mut data = vec![0u8; header_size + w.len() * 4];
+            let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+            header.magic = 0x4E414D42;
+            header.version = 1;
+            header.weights_offset = header_size as u32;
+            header.sample_rate = 48000.0;
+            header.input_level_dbu = 12.0;
+            header.output_level_dbu = -6.0;
+            header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+            for (i, &f) in w.iter().enumerate() {
+                let offset = header_size + i * 4;
+                data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+            }
+            header.crc32 = crc32_ieee(&data[header_size..]);
+
+            // Corrupt a header field: input_level_dbu (offset 68) from 12.0 to 13.0
+            // Since 13.0 is a finite valid f32, it won't fail header validation, but CRC shouldn't catch it either.
+            let mut corrupted = data.clone();
+            let corrupted_header = unsafe { &mut *corrupted.as_mut_ptr().cast::<NambHeader>() };
+            corrupted_header.input_level_dbu = 13.0;
+
+            // v1 parser should parse it successfully, but with the corrupted input level
+            let parsed = parse_namb(&corrupted)?;
+            assert_eq!(parsed.metadata.unwrap().input_level_dbu, Some(13.0));
+        }
+
+        // v2: corrupting header field IS detected by CRC
+        {
+            let header_size = std::mem::size_of::<NambHeader>();
+            let w = [0.1f32, 0.2f32];
+            let mut data = vec![0u8; header_size + w.len() * 4];
+            let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+            header.magic = 0x4E414D42;
+            header.version = 2;
+            header.flags = FLAG_HAS_CRC32;
+            header.weights_offset = header_size as u32;
+            header.sample_rate = 48000.0;
+            header.input_level_dbu = 12.0;
+            header.output_level_dbu = -6.0;
+
+            for (i, &f) in w.iter().enumerate() {
+                let offset = header_size + i * 4;
+                data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+            }
+            let crc = {
+                let mut crc_val = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+                crc_val = crc32_ieee_update(crc_val, &data[28..]);
+                crc_val ^ 0xFFFFFFFFu32
+            };
+            header.crc32 = crc;
+
+            // Corrupt input_level_dbu
+            let mut corrupted = data.clone();
+            let corrupted_header = unsafe { &mut *corrupted.as_mut_ptr().cast::<NambHeader>() };
+            corrupted_header.input_level_dbu = 13.0;
+
+            // v2 parser must fail with CrcMismatch
+            let err = parse_namb(&corrupted).unwrap_err();
+            let namb_err = err.downcast_ref::<NambError>().unwrap();
+            assert!(matches!(namb_err, NambError::CrcMismatch { .. }));
+        }
+
+        Ok(())
     }
 }

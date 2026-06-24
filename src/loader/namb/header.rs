@@ -6,10 +6,8 @@
 use super::super::nam_json::WeightsLayout;
 use super::error::NambError;
 
-/// Computes the CRC32 (IEEE 802.3) of a byte slice.
-/// Replaces the external `crc32fast` dependency with a lightweight software version.
-pub fn crc32_ieee(data: &[u8]) -> u32 {
-    let mut crc = 0xFFFFFFFFu32;
+/// Updates the CRC32 (IEEE 802.3) checksum with the given data.
+pub fn crc32_ieee_update(mut crc: u32, data: &[u8]) -> u32 {
     for &byte in data {
         crc ^= byte as u32;
         for _ in 0..8 {
@@ -17,12 +15,32 @@ pub fn crc32_ieee(data: &[u8]) -> u32 {
             crc = (crc >> 1) ^ (0xEDB88320u32 & mask);
         }
     }
-    crc ^ 0xFFFFFFFFu32
+    crc
 }
 
-/// Validates the CRC32 checksum of the weight section.
-pub fn check_crc(data: &[u8], weights_offset: usize, expected: u32) -> Result<(), NambError> {
-    let calculated = crc32_ieee(&data[weights_offset..]);
+/// Computes the CRC32 (IEEE 802.3) of a byte slice.
+/// Replaces the external `crc32fast` dependency with a lightweight software version.
+pub fn crc32_ieee(data: &[u8]) -> u32 {
+    crc32_ieee_update(0xFFFFFFFFu32, data) ^ 0xFFFFFFFFu32
+}
+
+/// Validates the CRC32 checksum of the file (or weight section depending on version).
+pub fn check_crc(
+    data: &[u8],
+    version: u16,
+    weights_offset: usize,
+    expected: u32,
+) -> Result<(), NambError> {
+    let calculated = if version >= 2 {
+        // v2+ covers header (except crc field) + JSON + weights.
+        // CRC32 field is at offset 24..28.
+        let crc = crc32_ieee_update(0xFFFFFFFFu32, &data[..24]);
+        let crc = crc32_ieee_update(crc, &data[28..]);
+        crc ^ 0xFFFFFFFFu32
+    } else {
+        crc32_ieee(&data[weights_offset..])
+    };
+
     if calculated != expected {
         return Err(NambError::CrcMismatch {
             got: calculated,

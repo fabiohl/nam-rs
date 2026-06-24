@@ -18,7 +18,7 @@ The header is a `#[repr(C, packed)]` struct — **without implicit padding**. Al
 | 0x08   | 4    | `reserved_v2`      | `[u8;4]`  | Reserved for future expansion                                                                               |
 | 0x0C   | 4    | `weights_offset`   | `u32`     | Offset of the start of the weights block from the beginning of the file. Must be `>= 0x50` (80).            |
 | 0x10   | 8    | `reserved1`        | `[u32;2]` | Reserved for future expansion                                                                               |
-| 0x18   | 4    | `crc32`            | `u32`     | IEEE 802.3 CRC32 of the weights block (range: `[weights_offset..EOF]`). Semantics vary by version (see §6). |
+| 0x18   | 4    | `crc32`            | `u32`     | IEEE 802.3 CRC32 of the file (see §6 for range details). Semantics vary by version.                        |
 | 0x1C   | 4    | `reserved2`        | `u32`     | Reserved for future expansion                                                                               |
 | 0x20   | 32   | `version_str`      | `[u8;32]` | Informational version string, null-terminated (e.g., `"NAMB v2 (GateMajorLstm)\0"`).                        |
 | 0x40   | 4    | `sample_rate`      | `f32`     | Default sample rate (e.g., `48000.0`)                                                                       |
@@ -225,7 +225,8 @@ The `f32` values are read via `f32::from_le_bytes()` in 4-byte chunks. There is 
 
 ### 6.2 Coverage Range
 
-The CRC32 covers **only the weights block** (`data[weights_offset..]`). The header and metadata JSON are **not** covered by the CRC.
+- **Version 1**: The CRC32 covers **only the weights block** (`data[weights_offset..]`). The header and metadata JSON are **not** covered by the CRC.
+- **Version 2+**: The CRC32 covers the **entire file** except the `crc32` field itself (i.e. `data[..24]` concatenated with `data[28..EOF]`).
 
 ### 6.3 Semantics by Version
 
