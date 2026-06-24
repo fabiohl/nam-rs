@@ -11,6 +11,10 @@ use crate::models::{NamModel, StaticModel};
 use super::super::bridge::MAX_RESAMP_BUF;
 use super::super::context::DspPipelineContext;
 
+/// Maximum number of WaveNet layer states to backup during double-pass crossfade.
+/// Worst-case: stereo (×2) × 8 arrays × 64 dilations = 1024 state entries.
+const WAVENET_CROSSFADE_MAX_STATES: usize = 1024;
+
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Updates model effective layers for soft-degrade based on the adaptive FSM state.
 /// Returns `true` if the LSTM model should be fully bypassed (Minimal passthrough).
@@ -220,7 +224,7 @@ pub(crate) fn run_inference(
 
             if old_eff_l != new_eff_l || (!*ctx.process_mono && old_eff_r != new_eff_r) {
                 // WaveNet crossfading: double-pass and blend
-                let mut backup_starts = [0usize; 64];
+                let mut backup_starts = [0usize; WAVENET_CROSSFADE_MAX_STATES];
                 let mut offset = 0;
 
                 // 1. Save buffer start pointers
@@ -386,7 +390,7 @@ pub(crate) fn run_inference(
 
             if old_eff_l != new_eff_l || (!*ctx.process_mono && old_eff_r != new_eff_r) {
                 // WaveNet crossfading: double-pass and blend
-                let mut backup_starts = [0usize; 64];
+                let mut backup_starts = [0usize; WAVENET_CROSSFADE_MAX_STATES];
                 let mut offset = 0;
 
                 // 1. Save buffer start pointers
