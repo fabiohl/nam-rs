@@ -53,10 +53,5 @@ Este épico foca exclusivamente no achado [F6](file:///home/fabio/nam-rs/TODO-fi
     - Atualizar a lógica do primeiro layer em [layer.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer.rs) (e [layer_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer_dyn.rs)) para usar essa nova operação se a semente estiver presente, ou `tanh_and_overwrite_block` caso contrário.
   - **Validação:** Executar testes unitários e de paridade do WaveNet para assegurar que a saída numérica permaneça idêntica bit-a-bit.
 
-- **[ ] Tarefa D2.2 — Validação de Estresse, Heap Audit e Estabilidade RT**
-  - **Foco:** Assegurar a total segurança e ausência de regressões numéricas ou de tempo de execução.
-  - **Ação:**
-    - Executar a suíte de validação rápida via `utils/tests-quick.sh`.
-    - Executar o soak test `pipeline_soak` com monitoramento de alocação de heap (`heap-audit`) habilitado.
-    - Testar a execução do host standalone PipeWire e monitorar por *xruns* sob latências baixas (buffer size ≤ 64).
-  - **Validação:** Garantir zero vazamento de heap, zero drops de heap no thread de áudio e 100% de passagem nos testes de integridade.
+- **[x] Tarefa D2.2 — Validação de Estresse, Heap Audit e Estabilidade RT**
+  - **Conclusão:** Validação completa aprovada em todos os níveis. **(1)** `utils/tests-quick.sh`: 5/5 fases aprovadas — testes unitários, C++ parity (31/31), proptest parsers (13/13), proptest math (3/3), build CLAP heap-audit, testes CLAP (76/77, 1 ignorado proposital), heap-audit (12/12: A2 ×2, cabsim ×4, resampler, diagnostic bundle), clap-validator (19/19 pass, 2 skip por ausência de note-ports). **(2)** Soak test `pipeline_soak`: 3/3 passaram (A1-Nano 10M frames, A2-Lite 5M, A2-Full 2M) — zero NaN/Inf, zero regressão de geração, variação RSS ≤3.7 MB (limite 10 MB), latência máx 65.5 µs (P99 32.8 µs). **(3)** Standalone PipeWire em buffer=64: inicialização correta, RT thread SCHED_FIFO prio=83 em core dedicado, mlockall + huge pages ativos, latência DSP máx 106 µs (gate ativo), 0 µs (gate fechado), **zero xruns**. **(4)** Testes zero-alloc (7/7): pipeline de captura, WaveNet estático/dinâmico, LSTM, container, modelos nondist — todos zero-alloc no hot-path. **RT-Safety confirmada:** zero heap drop, zero vazamento, 100% integridade numérica.
