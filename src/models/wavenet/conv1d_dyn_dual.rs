@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::common::MAX_KERNEL;
+use super::conv_input::{
+    load_4_accums, load_8_accums, load_16_accums, store_4_accums, store_8_accums, store_16_accums,
+};
 use super::conv1d_dyn::Conv1dDyn;
 use crate::math::common::SimdMath;
 
@@ -25,14 +28,8 @@ impl Conv1dDyn {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
-        if self.interleave_width != 4 {
-            unsafe {
-                self.process_single_frame::<M>(layer_buffer, out_f0, idx_f0, mixin_f0);
-                self.process_single_frame::<M>(layer_buffer, out_f1, idx_f1, mixin_f1);
-            }
-            return;
-        }
-        let num_blocks = self.num_blocks;
+        let iw = self.interleave_width;
+        let num_blocks = self.out_ch.div_ceil(iw);
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
@@ -65,106 +62,121 @@ impl Conv1dDyn {
         let kernel = self.kernel;
         let do_bias = self.do_bias;
 
+        // --- 1. Setup (Bias and Mixin) ---
         for b in 0..num_blocks {
-            let out_c = b * 4;
-            let (mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0);
-            let (mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1);
-
-            unsafe {
-                let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = Self::load_mixin_4(mixin_f0, out_c);
+            let off = b * iw;
+            let w = iw.min(self.out_ch - off);
+            for j in 0..w {
+                let m0 = if let Some(m) = mixin_f0 {
+                    if off + j < m.len() { m[off + j] } else { 0.0 }
+                } else {
+                    0.0
+                };
+                let m1 = if let Some(m) = mixin_f1 {
+                    if off + j < m.len() { m[off + j] } else { 0.0 }
+                } else {
+                    0.0
+                };
                 if do_bias {
-                    r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
-                    r1_f0 = if out_c + 1 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 1)
-                    } else {
-                        0.0
-                    } + mv1_f0;
-                    r2_f0 = if out_c + 2 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 2)
-                    } else {
-                        0.0
-                    } + mv2_f0;
-                    r3_f0 = if out_c + 3 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 3)
-                    } else {
-                        0.0
-                    } + mv3_f0;
+                    out_f0[off + j] = self.bias[off + j] + m0;
+                    out_f1[off + j] = self.bias[off + j] + m1;
                 } else {
-                    r0_f0 = mv0_f0;
-                    r1_f0 = mv1_f0;
-                    r2_f0 = mv2_f0;
-                    r3_f0 = mv3_f0;
+                    out_f0[off + j] = m0;
+                    out_f1[off + j] = m1;
                 }
+            }
+        }
 
-                let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = Self::load_mixin_4(mixin_f1, out_c);
-                if do_bias {
-                    r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
-                    r1_f1 = if out_c + 1 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 1)
-                    } else {
-                        0.0
-                    } + mv1_f1;
-                    r2_f1 = if out_c + 2 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 2)
-                    } else {
-                        0.0
-                    } + mv2_f1;
-                    r3_f1 = if out_c + 3 < self.out_ch {
-                        *self.bias.get_unchecked(out_c + 3)
-                    } else {
-                        0.0
-                    } + mv3_f1;
-                } else {
-                    r0_f1 = mv0_f1;
-                    r1_f1 = mv1_f1;
-                    r2_f1 = mv2_f1;
-                    r3_f1 = mv3_f1;
-                }
-
-                for k in 0..kernel {
-                    let tap_f0 = *tap_ptrs_f0.get_unchecked(k);
-                    let tap_f1 = *tap_ptrs_f1.get_unchecked(k);
-
-                    let w_start = (b * kernel + k) * in_ch * 4;
-                    let w_slice: &[[f32; 4]] = {
-                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                        core::slice::from_raw_parts(ptr, in_ch)
-                    };
-
-                    let in_f0 = core::slice::from_raw_parts(tap_f0, in_ch);
-                    let in_f1 = core::slice::from_raw_parts(tap_f1, in_ch);
-
-                    let (t_f0, t_f1) = M::dot_product_4x_f32_dual(w_slice, in_f0, in_f1);
-
-                    r0_f0 += t_f0[0];
-                    r1_f0 += t_f0[1];
-                    r2_f0 += t_f0[2];
-                    r3_f0 += t_f0[3];
-                    r0_f1 += t_f1[0];
-                    r1_f1 += t_f1[1];
-                    r2_f1 += t_f1[2];
-                    r3_f1 += t_f1[3];
-                }
-
-                if out_c + 3 < self.out_ch {
-                    *out_f0.get_unchecked_mut(out_c) = r0_f0;
-                    *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                    *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                    *out_f0.get_unchecked_mut(out_c + 3) = r3_f0;
-
-                    *out_f1.get_unchecked_mut(out_c) = r0_f1;
-                    *out_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                    *out_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                    *out_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-                } else {
-                    let r_f0 = [r0_f0, r1_f0, r2_f0, r3_f0];
-                    let r_f1 = [r0_f1, r1_f1, r2_f1, r3_f1];
-                    for lane in 0..4 {
-                        if out_c + lane < self.out_ch {
-                            *out_f0.get_unchecked_mut(out_c + lane) = r_f0[lane];
-                            *out_f1.get_unchecked_mut(out_c + lane) = r_f1[lane];
+        // --- 2. Central loop with f32 weights ---
+        match iw {
+            16 => {
+                for b in 0..num_blocks {
+                    let out_c = b * 16;
+                    let mut r_f0 = unsafe { load_16_accums(out_f0, out_c, self.out_ch) };
+                    let mut r_f1 = unsafe { load_16_accums(out_f1, out_c, self.out_ch) };
+                    let w = 16.min(self.out_ch - out_c);
+                    for k in 0..kernel {
+                        let tap_f0 = unsafe { *tap_ptrs_f0.get_unchecked(k) };
+                        let tap_f1 = unsafe { *tap_ptrs_f1.get_unchecked(k) };
+                        let w_start = (b * kernel + k) * in_ch * 16;
+                        let w_slice: &[[f32; 16]] = unsafe {
+                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                            core::slice::from_raw_parts(ptr, in_ch)
+                        };
+                        let in_f0 = unsafe { core::slice::from_raw_parts(tap_f0, in_ch) };
+                        let in_f1 = unsafe { core::slice::from_raw_parts(tap_f1, in_ch) };
+                        let (t_f0, t_f1) =
+                            unsafe { M::dot_product_16x_f32_dual(w_slice, in_f0, in_f1) };
+                        for i in 0..w {
+                            r_f0[i] += t_f0[i];
+                            r_f1[i] += t_f1[i];
                         }
                     }
+                    unsafe { store_16_accums(out_f0, out_c, r_f0, self.out_ch) };
+                    unsafe { store_16_accums(out_f1, out_c, r_f1, self.out_ch) };
+                }
+            }
+            8 => {
+                for b in 0..num_blocks {
+                    let out_c = b * 8;
+                    let mut r_f0 = unsafe { load_8_accums(out_f0, out_c, self.out_ch) };
+                    let mut r_f1 = unsafe { load_8_accums(out_f1, out_c, self.out_ch) };
+                    let w = 8.min(self.out_ch - out_c);
+                    for k in 0..kernel {
+                        let tap_f0 = unsafe { *tap_ptrs_f0.get_unchecked(k) };
+                        let tap_f1 = unsafe { *tap_ptrs_f1.get_unchecked(k) };
+                        let w_start = (b * kernel + k) * in_ch * 8;
+                        let w_slice: &[[f32; 8]] = unsafe {
+                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                            core::slice::from_raw_parts(ptr, in_ch)
+                        };
+                        let in_f0 = unsafe { core::slice::from_raw_parts(tap_f0, in_ch) };
+                        let in_f1 = unsafe { core::slice::from_raw_parts(tap_f1, in_ch) };
+                        let (t_f0, t_f1) =
+                            unsafe { M::dot_product_8x_f32_dual(w_slice, in_f0, in_f1) };
+                        for i in 0..w {
+                            r_f0[i] += t_f0[i];
+                            r_f1[i] += t_f1[i];
+                        }
+                    }
+                    unsafe { store_8_accums(out_f0, out_c, r_f0, self.out_ch) };
+                    unsafe { store_8_accums(out_f1, out_c, r_f1, self.out_ch) };
+                }
+            }
+            _ => {
+                for b in 0..num_blocks {
+                    let out_c = b * 4;
+                    let [mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0] =
+                        unsafe { load_4_accums(out_f0, out_c, self.out_ch) };
+                    let [mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1] =
+                        unsafe { load_4_accums(out_f1, out_c, self.out_ch) };
+                    for k in 0..kernel {
+                        let tap_f0 = unsafe { *tap_ptrs_f0.get_unchecked(k) };
+                        let tap_f1 = unsafe { *tap_ptrs_f1.get_unchecked(k) };
+                        let w_start = (b * kernel + k) * in_ch * 4;
+                        let w_slice: &[[f32; 4]] = unsafe {
+                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                            core::slice::from_raw_parts(ptr, in_ch)
+                        };
+                        let in_f0 = unsafe { core::slice::from_raw_parts(tap_f0, in_ch) };
+                        let in_f1 = unsafe { core::slice::from_raw_parts(tap_f1, in_ch) };
+                        let (t_f0, t_f1) =
+                            unsafe { M::dot_product_4x_f32_dual(w_slice, in_f0, in_f1) };
+                        r0_f0 += t_f0[0];
+                        r1_f0 += t_f0[1];
+                        r2_f0 += t_f0[2];
+                        r3_f0 += t_f0[3];
+                        r0_f1 += t_f1[0];
+                        r1_f1 += t_f1[1];
+                        r2_f1 += t_f1[2];
+                        r3_f1 += t_f1[3];
+                    }
+                    unsafe {
+                        store_4_accums(out_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], self.out_ch)
+                    };
+                    unsafe {
+                        store_4_accums(out_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], self.out_ch)
+                    };
                 }
             }
         }

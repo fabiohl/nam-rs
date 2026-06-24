@@ -103,7 +103,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
   - Atualizar a guarda inicial `if interleave_width != 4` para permitir a descida.
   - Implementar os branches `match interleave_width` para 8 e 16 usando `M::dot_product_8x_f32_dual` e `M::dot_product_16x_f32_dual` respectivamente, carregando e guardando os acumuladores correspondentes.
 
-#### [ ] Tarefa E.3.2 — Ativar Tiling Dual-Frame na Convolução WaveNet Dinâmica (NF-04)
+#### [x] Tarefa E.3.2 — Ativar Tiling Dual-Frame na Convolução WaveNet Dinâmica (NF-04) ✅ Concluído: Guarda `if self.interleave_width != 4` removida. `process_dual_frame` agora suporta `match iw` para 16, 8 e 4 com `dot_product_*_f32_dual`. Bias+mixin pre-inicializados via regular indexing. Load/store accums delegados a `conv_input`. 43/43 testes passando
 
 - **Descrição:** Fazer alteração correspondente em `process_dual` no arquivo [conv1d_dyn_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dyn_dual.rs).
 
