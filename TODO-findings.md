@@ -94,9 +94,9 @@ Adicionar teste `aligned_from_empty_vec_is_safe()` cobrindo `AlignedVec::<f32>::
 
 ---
 
-## 🟠 F2 — Dimensões de modelo sem limite superior + alocação antes da validação → DoS (e arit. sem checagem em release)
+## 🟠 F2 — Dimensões de modelo sem limite superior + alocação antes da validação → DoS (e arit. sem checagem em release) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅ Resolvido (2026-06-24)
 - **Locais principais:**
   - [`src/loader/nam_json/topology/wavenet.rs:203-233`](src/loader/nam_json/topology/wavenet.rs#L203) (`kernel_size`, nº de dilations, nº de arrays e `head_size` sem teto).
   - [`src/loader/nam_json/topology/convnet.rs:48-72`](src/loader/nam_json/topology/convnet.rs#L48) (`channels` **e** `kernel_size` **e** `dilations` sem teto).

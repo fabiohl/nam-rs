@@ -31,6 +31,8 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
     }
 }
 
+/// Checked arithmetic helpers (F2 — DoS/OOM prevention)
+pub(crate) mod checked_arith;
 /// SlimmableContainer model builder module
 pub mod container;
 /// ConvNet model builder module

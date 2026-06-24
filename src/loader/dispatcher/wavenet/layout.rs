@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::super::WeightCursor;
+use super::super::checked_arith;
 use super::traits::{ConvWeightsOutput, DenseWeightsOutput};
 use crate::math::common::AlignedVec;
 
@@ -20,50 +21,43 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
 ) -> anyhow::Result<T> {
     let width = select_interleave_width(out_size);
     let num_blocks = out_size.div_ceil(width);
-    let padded_total = num_blocks * width * in_size * k_size;
+    let padded_total =
+        checked_arith::checked_conv_padded_total(num_blocks, width, in_size, k_size)?;
     let interleaved = cursor.is_interleaved4();
 
-    let mut f32_weights = AlignedVec::new(padded_total, 0.0f32);
-
-    if interleaved {
-        let total_4wide = out_size.div_ceil(4) * 4 * in_size * k_size;
+    let f32_weights = if interleaved {
+        let total_4wide = checked_arith::checked_mul4(out_size.div_ceil(4), 4, in_size, k_size)?;
         let raw = cursor.read_slice(total_4wide)?;
+        let mut weights = AlignedVec::new(padded_total, 0.0f32);
         if width != 4 {
             let mut tmp = AlignedVec::new(total_4wide, 0.0f32);
             tmp.copy_from_slice(raw);
             match width {
-                16 => transpose_4wide_to_16wide(&tmp, &mut f32_weights, in_size, out_size, k_size),
-                8 => transpose_4wide_to_8wide(&tmp, &mut f32_weights, in_size, out_size, k_size),
+                16 => transpose_4wide_to_16wide(&tmp, &mut weights, in_size, out_size, k_size),
+                8 => transpose_4wide_to_8wide(&tmp, &mut weights, in_size, out_size, k_size),
                 _ => transpose_conv1d_interleaved_4wide(
                     &tmp,
-                    &mut f32_weights,
+                    &mut weights,
                     in_size,
                     out_size,
                     k_size,
                 ),
             }
         } else {
-            f32_weights.copy_from_slice(raw);
+            weights.copy_from_slice(raw);
         }
+        weights
     } else {
-        let total = out_size * in_size * k_size;
+        let total = checked_arith::checked_conv_total(out_size, in_size, k_size)?;
         let raw = cursor.read_slice(total)?;
+        let mut weights = AlignedVec::new(padded_total, 0.0f32);
         match width {
-            16 => transpose_conv1d_interleaved_16wide(
-                raw,
-                &mut f32_weights,
-                in_size,
-                out_size,
-                k_size,
-            ),
-            8 => {
-                transpose_conv1d_interleaved_8wide(raw, &mut f32_weights, in_size, out_size, k_size)
-            }
-            _ => {
-                transpose_conv1d_interleaved_4wide(raw, &mut f32_weights, in_size, out_size, k_size)
-            }
+            16 => transpose_conv1d_interleaved_16wide(raw, &mut weights, in_size, out_size, k_size),
+            8 => transpose_conv1d_interleaved_8wide(raw, &mut weights, in_size, out_size, k_size),
+            _ => transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size),
         }
-    }
+        weights
+    };
 
     let bias = if do_bias {
         AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
@@ -97,7 +91,7 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
     out_size: usize,
     do_bias: bool,
 ) -> anyhow::Result<T> {
-    let total = out_size * in_size;
+    let total = checked_arith::checked_dense_total(out_size, in_size)?;
     let raw = cursor.read_slice(total)?;
     let mut f32_weights = AlignedVec::new(total, 0.0f32);
     let interleaved = cursor.is_interleaved4();
@@ -123,7 +117,7 @@ pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
     out_size: usize,
     do_bias: bool,
 ) -> anyhow::Result<T> {
-    let total = out_size * in_size;
+    let total = checked_arith::checked_dense_total(out_size, in_size)?;
     let raw = cursor.read_slice(total)?;
     let mut f32_weights = AlignedVec::new(total, 0.0f32);
     let interleaved = cursor.is_interleaved4();

@@ -25,19 +25,49 @@ const MAX_SUBMODELS: usize = 8;
 // ── Topology bounds (DoS/OOM prevention — Sprint 5, Task 5.2) ──
 
 /// Maximum number of LSTM layers accepted from model config.
-pub(crate) const MAX_LSTM_LAYERS: usize = 16;
+pub const MAX_LSTM_LAYERS: usize = 16;
 
 /// Maximum LSTM hidden size accepted from model config.
-pub(crate) const MAX_LSTM_HIDDEN_SIZE: usize = 1024;
+pub const MAX_LSTM_HIDDEN_SIZE: usize = 1024;
 
 /// Maximum channels per layer-array for WaveNet A1 free-geometry (non-catalog SKU).
-pub(crate) const MAX_WAVENET_FREE_CHANNELS: usize = 512;
+pub const MAX_WAVENET_FREE_CHANNELS: usize = 512;
 
 /// Maximum channels for A2-Dynamic (A2 that doesn't fit the fast-path).
-pub(crate) const MAX_A2_DYN_CHANNELS: usize = 256;
+pub const MAX_A2_DYN_CHANNELS: usize = 256;
 
 /// Maximum bottleneck size for A2-Dynamic.
-pub(crate) const MAX_A2_DYN_BOTTLENECK: usize = 256;
+pub const MAX_A2_DYN_BOTTLENECK: usize = 256;
+
+// ── Topology bounds (DoS/OOM prevention — F2) ──
+
+/// Maximum kernel size accepted from model config.
+/// Larger values cause O(n³) all-pair computations in the hot-path.
+pub const MAX_KERNEL_SIZE: usize = 64;
+
+/// Maximum dilation factor accepted from model config.
+/// Unbounded dilations create oversized receptive fields and kernel striding.
+pub const MAX_DILATION: usize = 4096;
+
+/// Maximum number of dilations per layer-array.
+/// Each dilation adds a full Conv1D+activation stack.
+pub const MAX_DILATIONS_PER_ARRAY: usize = 64;
+
+/// Maximum number of WaveNet layer-arrays.
+pub const MAX_WAVENET_ARRAYS: usize = 8;
+
+/// Maximum head_size (head projection dimension) accepted from model config.
+pub const MAX_HEAD_SIZE: usize = 512;
+
+/// Maximum channels per block for ConvNet.
+pub const MAX_CONVNET_CHANNELS: usize = 512;
+
+/// Maximum kernel size per block for ConvNet.
+pub const MAX_CONVNET_KERNEL_SIZE: usize = 64;
+
+/// Maximum receptive field (in samples) for the Linear architecture.
+/// Limited by the weight array cap (MAX_WEIGHTS) plus a generous margin.
+pub const MAX_RECEPTIVE_FIELD: usize = 65536;
 
 /// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
 #[cfg(not(test))]

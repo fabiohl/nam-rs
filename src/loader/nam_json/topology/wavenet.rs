@@ -157,7 +157,10 @@ impl NamModelData {
 /// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid
 /// WaveNet A1 geometry, not only the four catalog SKUs.
 pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
-    use super::super::validation::MAX_WAVENET_FREE_CHANNELS;
+    use super::super::validation::{
+        MAX_DILATION, MAX_DILATIONS_PER_ARRAY, MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_WAVENET_ARRAYS,
+        MAX_WAVENET_FREE_CHANNELS,
+    };
 
     // ── Architecture gate ──
     if data.architecture != "WaveNet" {
@@ -167,6 +170,15 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     let layers = &data.config.layers;
     if layers.is_empty() {
         return WavenetTopologyResult::Rejected("WaveNet model has no layer arrays.".to_string());
+    }
+
+    if layers.len() > MAX_WAVENET_ARRAYS {
+        return WavenetTopologyResult::Rejected(format!(
+            "WaveNet model has {} layer arrays, exceeding maximum {} — \
+             DoS/OOM protection.",
+            layers.len(),
+            MAX_WAVENET_ARRAYS
+        ));
     }
 
     // ── Extract condition_size from first layer (all layers share the same value) ──
@@ -203,6 +215,15 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         let k = layer
             .kernel_size
             .and_then(|k| if k > 0 { Some(k) } else { None });
+        if let Some(k) = k
+            && k > MAX_KERNEL_SIZE
+        {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {} kernel_size ({}) exceeds maximum {} — \
+                 DoS/OOM protection.",
+                i, k, MAX_KERNEL_SIZE
+            ));
+        }
         let dils = match layer.dilations.as_deref() {
             Some(d) if !d.is_empty() => d.to_vec(),
             _ => {
@@ -212,6 +233,24 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
                 ));
             }
         };
+        if dils.len() > MAX_DILATIONS_PER_ARRAY {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {} has {} dilations, exceeding maximum {} — \
+                 DoS/OOM protection.",
+                i,
+                dils.len(),
+                MAX_DILATIONS_PER_ARRAY
+            ));
+        }
+        for (j, &d) in dils.iter().enumerate() {
+            if d > MAX_DILATION {
+                return WavenetTopologyResult::Rejected(format!(
+                    "Layer {} dilation[{}] ({}) exceeds maximum {} — \
+                     DoS/OOM protection.",
+                    i, j, d, MAX_DILATION
+                ));
+            }
+        }
 
         if i == 0 {
             first_channels = Some(ch);
@@ -224,6 +263,13 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
             return WavenetTopologyResult::Rejected(format!(
                 "Layer {} has invalid head_size=0.",
                 i
+            ));
+        }
+        if hd > MAX_HEAD_SIZE {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {} head_size ({}) exceeds maximum {} — \
+                 DoS/OOM protection.",
+                i, hd, MAX_HEAD_SIZE
             ));
         }
 

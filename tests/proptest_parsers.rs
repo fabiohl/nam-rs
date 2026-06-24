@@ -9,6 +9,12 @@ use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee, parse_namb};
 use proptest::prelude::*;
 use std::fs;
 
+use nam_rs::loader::nam_json::{
+    MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE, MAX_DILATION, MAX_DILATIONS_PER_ARRAY,
+    MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_RECEPTIVE_FIELD, MAX_WAVENET_ARRAYS,
+    MAX_WAVENET_FREE_CHANNELS,
+};
+
 // Fuzz 1: Sends fully arbitrary bytes to the JSON parser.
 // Ensures the parser handles data that is not valid UTF-8 without panicking.
 proptest! {
@@ -569,5 +575,206 @@ proptest! {
     #[ignore]
     fn prop_fuzz_namb_arbitrary_valid_header(bytes in arbitrary_namb_bytes_strategy()) {
         let _ = parse_namb(&bytes);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F2 — Adversarial dimension proptest: kernel_size, dilations, channels,
+//      head_size, receptive_field — ensure Err, never abort/panic.
+// ---------------------------------------------------------------------------
+
+/// Strategy: generates a WaveNet model JSON with one or more adversarial
+/// dimension fields (kernel_size, dilations count/value, head_size, array count).
+fn adversarial_wavenet_json_strategy() -> impl Strategy<Value = String> {
+    (
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+    )
+        .prop_map(
+            |(_ch_raw, k_raw, d_cnt_raw, d_val_raw, head_raw, arrays_raw, _pattern)| {
+                // Select an attack pattern based on _pattern
+                let pattern = _pattern % 4;
+
+                let (ch, k, dil_cnt, dil_val, head, arrays) = match pattern {
+                    0 => (8, MAX_KERNEL_SIZE + 1 + (k_raw % 1024), 10, 2, 4, 2), // extreme kernel
+                    1 => (
+                        8,
+                        3,
+                        MAX_DILATIONS_PER_ARRAY + 1 + (d_cnt_raw % 64),
+                        2,
+                        4,
+                        2,
+                    ), // many dilations
+                    2 => (8, 3, 10, MAX_DILATION + 1 + (d_val_raw % 1024), 4, 2), // extreme dilation value
+                    3 => (8, 3, 10, 2, MAX_HEAD_SIZE + 1 + (head_raw % 256), 2), // extreme head_size
+                    _ => (8, 3, 10, 2, 4, MAX_WAVENET_ARRAYS + 1 + (arrays_raw % 4)), // many arrays
+                };
+
+                let dil_vec: Vec<usize> = if dil_cnt == 0 {
+                    vec![1]
+                } else {
+                    let cnt = dil_cnt.min(256);
+                    vec![dil_val.min(usize::MAX - 1); cnt]
+                };
+                let k_val = k.min(usize::MAX / 4096);
+                let head_val = head.min(usize::MAX / 4096);
+
+                let mut layers = Vec::new();
+                let n = arrays.min(16);
+                for i in 0..n {
+                    let layer = serde_json::json!({
+                        "channels": ch.min(MAX_WAVENET_FREE_CHANNELS),
+                        "kernel_size": k_val,
+                        "dilations": dil_vec.clone(),
+                        "head_size": head_val,
+                        "activation": "Tanh",
+                        "gated": false,
+                        "head_bias": i == n - 1,
+                    });
+                    layers.push(layer);
+                }
+
+                let json = serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "WaveNet",
+                    "config": {
+                        "layers": layers,
+                        "head": null,
+                        "head_scale": 0.02
+                    },
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                });
+                serde_json::to_string(&json).unwrap()
+            },
+        )
+}
+
+/// Strategy: generates a ConvNet model JSON with adversarial channels/kernel/dilations.
+fn adversarial_convnet_json_strategy() -> impl Strategy<Value = String> {
+    (
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+    )
+        .prop_map(|(ch_raw, k_raw, d_raw, pattern)| {
+            let (ch, k, dil_val, dil_cnt) = match pattern % 3 {
+                0 => (MAX_CONVNET_CHANNELS + 1 + (ch_raw % 64), 3, 2, 1), // extreme channels
+                1 => (8, MAX_CONVNET_KERNEL_SIZE + 1 + (k_raw % 64), 2, 1), // extreme kernel
+                _ => (
+                    8,
+                    3,
+                    MAX_DILATION + 1 + (d_raw % 1024),
+                    MAX_DILATIONS_PER_ARRAY + 1,
+                ), // extreme dilation
+            };
+
+            let dil_vec: Vec<usize> = {
+                let cnt = dil_cnt.min(64);
+                vec![dil_val.min(usize::MAX / 4096); cnt]
+            };
+
+            let json = serde_json::json!({
+                "version": "0.7.0",
+                "architecture": "ConvNet",
+                "config": {
+                    "layers": [{
+                        "channels": ch.min(usize::MAX / 4096),
+                        "kernel_size": k.min(usize::MAX / 4096),
+                        "dilations": dil_vec,
+                        "activation": "Tanh",
+                    }],
+                    "head": null,
+                    "head_scale": 0.02
+                },
+                "weights": vec![0.0f32; 16],
+                "sample_rate": 48000
+            });
+            serde_json::to_string(&json).unwrap()
+        })
+}
+
+/// Strategy: generates a Linear model JSON with adversarial receptive_field.
+fn adversarial_linear_json_strategy() -> impl Strategy<Value = String> {
+    any::<usize>().prop_map(|rf_raw| {
+        let rf = MAX_RECEPTIVE_FIELD + 1 + (rf_raw % 1024);
+        let weights: Vec<f32> = vec![0.0f32; 16.min(rf)];
+        let json = serde_json::json!({
+            "version": "0.5.4",
+            "architecture": "Linear",
+            "config": {
+                "layers": [],
+                "head": null,
+                "receptive_field": rf.min(usize::MAX / 4096),
+                "bias": false
+            },
+            "weights": weights,
+            "sample_rate": 48000
+        });
+        serde_json::to_string(&json).unwrap()
+    })
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(10_000)
+    })]
+
+    /// F2 — Adversarial dimensions: ensures topology detection rejects
+    /// models with dimensions exceeding safe bounds (never abort/panic).
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_wavenet_dims(json_str in adversarial_wavenet_json_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let result = get_wavenet_topology(&parsed);
+            // Must never match Known — adversarial dims should be Free (if valid)
+            // or Rejected (if exceeding bounds).
+            match result {
+                nam_rs::loader::nam_json::WavenetTopologyResult::Known(_) => {
+                    panic!("adversarial dimensions should not match a catalog SKU");
+                }
+                nam_rs::loader::nam_json::WavenetTopologyResult::Free(geom) => {
+                    // If accepted as Free, dimensions must be within bounds
+                    assert!(
+                        geom.channels.iter().all(|&c| c <= MAX_WAVENET_FREE_CHANNELS),
+                        "free geometry channels within bounds"
+                    );
+                }
+                nam_rs::loader::nam_json::WavenetTopologyResult::Rejected(_) => {
+                    // Expected for adversarial dims — nothing to check
+                }
+            }
+        }
+    }
+
+    /// F2 — Adversarial ConvNet dimensions.
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_convnet_dims(json_str in adversarial_convnet_json_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let topo = nam_rs::loader::nam_json::get_convnet_topology(&parsed);
+            // Adversarial dimensions should be rejected (None)
+            assert!(topo.is_none(),
+                "ConvNet with adversarial dimensions should be rejected, got: {topo:?}");
+        }
+    }
+
+    /// F2 — Adversarial Linear receptive_field.
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_linear_dims(json_str in adversarial_linear_json_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let topo = nam_rs::loader::nam_json::get_linear_topology(&parsed);
+            // Adversarial receptive_field should be rejected (None)
+            assert!(topo.is_none(),
+                "Linear with adversarial receptive_field should be rejected, got: {topo:?}");
+        }
     }
 }

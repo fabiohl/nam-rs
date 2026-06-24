@@ -14,6 +14,7 @@ use crate::models::wavenet::post_stack_head::parse_activation;
 use anyhow::Context;
 use log::info;
 
+use crate::loader::dispatcher::checked_arith;
 use crate::loader::dispatcher::wavenet::layout;
 
 /// Builds a `Box<StaticModel::ConvNet>` from the parsed model data.
@@ -62,13 +63,13 @@ pub(crate) fn build_convnet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
 
         let interleaved = cursor.is_interleaved4();
         let num_blocks = out_ch.div_ceil(4);
-        let padded_total = num_blocks * kernel * in_ch * 4;
+        let padded_total = checked_arith::checked_conv_padded_total(num_blocks, 4, in_ch, kernel)?;
 
         if interleaved {
             let raw = cursor.read_slice(padded_total)?;
             block.set_conv_weights(raw);
         } else {
-            let total = out_ch * in_ch * kernel;
+            let total = checked_arith::checked_conv_total(out_ch, in_ch, kernel)?;
             let raw = cursor.read_slice(total)?;
             let mut interleaved_weights = AlignedVec::new(padded_total, 0.0f32);
             layout::transpose_conv1d_interleaved_4wide(
@@ -110,13 +111,13 @@ pub(crate) fn build_convnet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
         let out_ch = head.out_channels();
         let kernel = head.conv.kernel;
         let num_blocks = out_ch.div_ceil(4);
-        let padded_total = num_blocks * kernel * ch * 4;
+        let padded_total = checked_arith::checked_conv_padded_total(num_blocks, 4, ch, kernel)?;
 
         if cursor.is_interleaved4() {
             let raw = cursor.read_slice(padded_total)?;
             head.set_weights(raw);
         } else {
-            let total = out_ch * ch * kernel;
+            let total = checked_arith::checked_conv_total(out_ch, ch, kernel)?;
             let raw = cursor.read_slice(total)?;
             let mut interleaved = AlignedVec::new(padded_total, 0.0f32);
             layout::transpose_conv1d_interleaved_4wide(raw, &mut interleaved, ch, out_ch, kernel);

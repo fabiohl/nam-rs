@@ -13,6 +13,13 @@ pub mod parse;
 pub mod topology;
 pub(crate) mod validation;
 
+// Re-export validation constants for integration tests (F2 — adversarial dimension fuzzing)
+pub use validation::{
+    MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS, MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE,
+    MAX_DILATION, MAX_DILATIONS_PER_ARRAY, MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_LSTM_HIDDEN_SIZE,
+    MAX_LSTM_LAYERS, MAX_RECEPTIVE_FIELD, MAX_WAVENET_ARRAYS, MAX_WAVENET_FREE_CHANNELS,
+};
+
 pub use activation_parser::{
     LayerActivationConfig, parse_activations_from_json, parse_gating_modes_from_json,
     parse_layer_activations, parse_secondary_activations_from_json,

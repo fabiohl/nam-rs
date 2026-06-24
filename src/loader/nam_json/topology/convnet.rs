@@ -5,6 +5,9 @@
 
 use super::super::data::NamModelData;
 use super::super::model::HeadConfig;
+use super::super::validation::{
+    MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE, MAX_DILATION, MAX_DILATIONS_PER_ARRAY,
+};
 
 /// Detected ConvNet topology.
 ///
@@ -46,21 +49,58 @@ pub fn get_convnet_topology(data: &NamModelData) -> Option<ConvNetTopology> {
 
     for (i, layer) in layers.iter().enumerate() {
         let ch = match layer.channels {
-            Some(c) if c > 0 => c,
+            Some(c) if c > 0 => {
+                if c > MAX_CONVNET_CHANNELS {
+                    log::warn!(
+                        "ConvNet block {i}: channels ({c}) exceeds maximum {MAX_CONVNET_CHANNELS} \
+                         — OOM/DoS protection"
+                    );
+                    return None;
+                }
+                c
+            }
             _ => {
                 log::warn!("ConvNet block {i}: missing or invalid 'channels'");
                 return None;
             }
         };
         let k = match layer.kernel_size {
-            Some(k) if k > 0 => k,
+            Some(k) if k > 0 => {
+                if k > MAX_CONVNET_KERNEL_SIZE {
+                    log::warn!(
+                        "ConvNet block {i}: kernel_size ({k}) exceeds maximum \
+                         {MAX_CONVNET_KERNEL_SIZE} — OOM/DoS protection"
+                    );
+                    return None;
+                }
+                k
+            }
             _ => {
                 log::warn!("ConvNet block {i}: missing or invalid 'kernel_size'");
                 return None;
             }
         };
         let d = match layer.dilations.as_deref() {
-            Some(d) if !d.is_empty() => d.to_vec(),
+            Some(d) if !d.is_empty() => {
+                if d.len() > MAX_DILATIONS_PER_ARRAY {
+                    log::warn!(
+                        "ConvNet block {i}: {} dilations exceeds maximum \
+                         {MAX_DILATIONS_PER_ARRAY} — OOM/DoS protection",
+                        d.len()
+                    );
+                    return None;
+                }
+                for (j, &dil) in d.iter().enumerate() {
+                    if dil > MAX_DILATION {
+                        log::warn!(
+                            "ConvNet block {i} dilation[{j}] ({dil}) exceeds maximum \
+                             {MAX_DILATION} — OOM/DoS protection"
+                        );
+                        return None;
+                    }
+                }
+                d.to_vec()
+            }
             _ => {
                 log::warn!("ConvNet block {i}: missing or invalid 'dilations'");
                 return None;
