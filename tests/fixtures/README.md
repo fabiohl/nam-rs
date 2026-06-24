@@ -115,19 +115,19 @@ These models have real trained weights, excellent fidelity, and are certified fo
 
 These files contain synthetic weights or partial/invalid structures. They exist exclusively to validate boundary limits, error detection, and specific numerical regressions, with the goal of being progressively replaced by real, licensed models as they become available:
 
-| Model / Fixture             | Nature           | Architecture                                                   | Quality & Confidence                         | License & Provenance                                                     | Purpose in Tests                                                                                        |
-| --------------------------- | ---------------- | -------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam` (RF7, T2.4) | Artificially generated (2026-06-11).                                     | Legacy fixture; no longer used in active tests. Superseded by real community model. |
-| `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                 | Simple weights defined for testing. Apache-2.0.                          | Linear parity and linear_golden.                                                                        |
-| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.15). Apache-2.0.                       | Parity A2 fast-path (Full), container submodel.                                                         |
-| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                  | Calibrated weights (T2.5, peak ~0.19). Apache-2.0.                       | Parity A2 fast-path (Lite), container submodel.                                                         |
-| `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)                            | **High** (Functional parity)                 | Container joining the two submodels above. Apache-2.0.                   | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                          |
-| `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)                                  | N/A (Negative mock)                          | Clean structure without weights (legal mitigation). Apache-2.0.          | Tests graceful rejection of legacy Keras format (F13).                                                  |
-| `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                          | Empty model for failure testing. Apache-2.0.                             | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                           |
-| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                  | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU). Sprint 2.2.   |
-| `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                          | Model with custom dilations and channels. Apache-2.0.                    | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                       |
-| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=8` for now.                                           |
-| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)                                    | N/A (F2 Focus / Rejected)                    | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=3` for now.                                           |
+| Model / Fixture             | Nature           | Architecture                                                   | Quality & Confidence                                       | License & Provenance                                                     | Purpose in Tests                                                                                      |
+| --------------------------- | ---------------- | -------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam` (RF7, T2.4) | Artificially generated (2026-06-11).                                     | Legacy fixture; no longer used in active tests. Superseded by real community model.                   |
+| `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                               | Simple weights defined for testing. Apache-2.0.                          | Linear parity and linear_golden.                                                                      |
+| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights (T2.5, peak ~0.15). Apache-2.0.                       | Parity A2 fast-path (Full), container submodel.                                                       |
+| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights (T2.5, peak ~0.19). Apache-2.0.                       | Parity A2 fast-path (Lite), container submodel.                                                       |
+| `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)                            | **High** (Functional parity)                               | Container joining the two submodels above. Apache-2.0.                   | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                        |
+| `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)                                  | N/A (Negative mock)                                        | Clean structure without weights (legal mitigation). Apache-2.0.          | Tests graceful rejection of legacy Keras format (F13).                                                |
+| `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                                        | Empty model for failure testing. Apache-2.0.                             | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                         |
+| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                                | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU). Sprint 2.2. |
+| `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                                        | Model with custom dilations and channels. Apache-2.0.                    | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                     |
+| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (F2 Focus / Rejected)                                  | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=8` for now.                                         |
+| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)                                    | N/A (F2 Focus / Rejected)                                  | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=3` for now.                                         |
 
 #### 3. Non-Distributable Model Management (`tests/fixtures/models-nondist`)
 
@@ -181,11 +181,15 @@ sacrificing coverage of the WaveNet Lite golden cross-reference.
 To re-enable full WaveNet Lite golden coverage:
 
 1. Place `EVH-5150-Lite.nam` in your local `tests/fixtures/models-nondist/` directory.
+
 2. Regenerate golden vectors from the C++ reference:
+
    ```bash
    ./tests/fixtures/golden_gen_build.sh
    ```
+
 3. Run the golden tests:
+
    ```bash
    cargo test --test golden_vectors test_golden_vectors_wavenet_lite
    cargo test --test golden_vectors test_golden_vectors_v2_wavenet_lite -- --ignored
@@ -218,11 +222,11 @@ by the test suite.
 
 **v2 multi-SR files** (`golden_<model_id>_v2_<sr>.bin`): Stress Signal v2 (5s, 5 categories), generated by `golden_gen_build.sh`. See table below for SR coverage per model.
 
-| SR Coverage | Models                                                                                            |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| 48 kHz only | `wavenet_standard`, `lstm_official`, `wavenet_a2_full`, `wavenet_a2_lite`                         |
-| All 5 SRs   | `wavenet_feather`, `wavenet_nano`, `wavenet_lite`, `wavenet_a1_standard`, `lstm_1x16`, `lstm_2x8` |
-| Excl. 192k  | `lstm_1x16`, `lstm_2x8` (recurrent drift > 18 dB SNR at 192k over 960k samples)                   |
+| SR Coverage | Models                                                                                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 48 kHz only | `wavenet_standard`, `lstm_official`, `wavenet_a2_full`, `wavenet_a2_lite`                                                                                       |
+| All 5 SRs   | `wavenet_feather`, `wavenet_nano`, `wavenet_lite`, `wavenet_a1_standard`, `lstm_1x16`, `lstm_2x8`                                                               |
+| Excl. 192k  | `lstm_1x16`, `lstm_2x8` (recurrent drift > 18 dB SNR at 192k over 960k samples)                                                                                 |
 | 48 kHz only | `wavenet_dyn_free`, `lstm_dyn_test`, `a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*` (dynamic engines — intentional, see rationale below) |
 
 **v2 multi-SR coverage for dynamic engines:** The dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) only provide v1 golden vectors at 48 kHz. v2 multi-SR goldens are intentionally absent because: (a) dynamic engines handle arbitrary free geometries — the geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` already exercises multi-SR parity via the C++ toolchain for `wavenet_dyn_free` and `lstm_dyn_test`; (c) A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface for the fixed A2 fast-path and not part of the v2 golden pipeline. See `TODO-audit.md` RF3 and `docs/cpp_parity_map.md` §3.3.
