@@ -200,7 +200,7 @@ graph TD
 
 Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-product para cada tap. O loop do tap é fundido de modo a realizar uma única redução horizontal no final.
 
-#### [NEW] Tarefa B.1.1: Design e Assinatura dos Kernels no Trait SimdMath
+#### [NEW] Tarefa B.1.1: Design e Assinatura dos Kernels no Trait SimdMath [DONE]
 
 * **Objetivo:** Adicionar assinaturas de acumulação fundida no trait [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs).
 * **Descrição da Mudança:**
@@ -216,8 +216,9 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
     ) -> ([f32; 16], [f32; 16]);
     ```
 
-  * Declarar equivalentes de largura `8x` e `4x`. Os arrays `init_f0` / `init_f1` contêm a soma de bias + mixin.
+  * Declarar equivalentes de largura `8x` e `4x`, e também variantes single-frame (`_accumulate` sem dual). Os arrays `init_f0` / `init_f1` contêm a soma de bias + mixin.
 * **Precauções/Riscos:** Assegurar que os arrays de inicialização tenham alinhamento compatível com carregamentos SIMD não alinhados rápidos (`vmovups`).
+* **Conclusão (2026-06-24):** 6 novos métodos adicionados ao trait `SimdMath` (`dot_product_{4,8,16}x_f32_accumulate` + `dot_product_{4,8,16}x_f32_dual_accumulate`). Implementações provisionais (kernel existente + adição manual de init) em `Avx2Math`, `Avx512Math`, `Avx512VnniBf16Math`. Referências escalares em `scalar_ref/dot.rs`. `cargo check` limpo, 806 testes `cargo test --lib` passam. Os kernels SIMD totalmente fundidos serão escritos em B.1.2/B.1.3.
 
 #### [MODIFY] Tarefa B.1.2: Implementação dos Kernels de Acumulação em AVX2
 

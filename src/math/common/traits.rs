@@ -155,6 +155,95 @@ pub trait SimdMath {
         state_f1: &[f32],
     ) -> ([f32; 16], [f32; 16]);
 
+    /// Fused accumulate variant: computes 4 simultaneous dot products with native f32
+    /// weights and adds the `init` accumulator (bias + mixin).
+    ///
+    /// Equivalent to `dot_product_4x_f32(weights, state)` followed by element-wise
+    /// addition of `init`. Fusing both avoids an extra pass over the output array.
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= state.len()`.
+    unsafe fn dot_product_4x_f32_accumulate(
+        weights: &[[f32; 4]],
+        state: &[f32],
+        init: &[f32; 4],
+    ) -> [f32; 4];
+
+    /// Fused accumulate dual-frame variant: computes 4 simultaneous dot products for
+    /// 2 parallel frames and adds the respective `init_f0` / `init_f1` accumulators.
+    /// Returns `(results_f0, results_f1)`.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= max(state_f0.len(), state_f1.len())`.
+    unsafe fn dot_product_4x_f32_dual_accumulate(
+        weights: &[[f32; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+        init_f0: &[f32; 4],
+        init_f1: &[f32; 4],
+    ) -> ([f32; 4], [f32; 4]);
+
+    /// Fused accumulate variant: computes 8 simultaneous dot products with native f32
+    /// weights and adds the `init` accumulator.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= state.len()`.
+    unsafe fn dot_product_8x_f32_accumulate(
+        weights: &[[f32; 8]],
+        state: &[f32],
+        init: &[f32; 8],
+    ) -> [f32; 8];
+
+    /// Fused accumulate dual-frame variant: computes 8 simultaneous dot products for
+    /// 2 parallel frames and adds the respective `init_f0` / `init_f1` accumulators.
+    /// Returns `(results_f0, results_f1)`.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= max(state_f0.len(), state_f1.len())`.
+    unsafe fn dot_product_8x_f32_dual_accumulate(
+        weights: &[[f32; 8]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+        init_f0: &[f32; 8],
+        init_f1: &[f32; 8],
+    ) -> ([f32; 8], [f32; 8]);
+
+    /// Fused accumulate variant: computes 16 simultaneous dot products with native f32
+    /// weights and adds the `init` accumulator.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= state.len()`.
+    unsafe fn dot_product_16x_f32_accumulate(
+        weights: &[[f32; 16]],
+        state: &[f32],
+        init: &[f32; 16],
+    ) -> [f32; 16];
+
+    /// Fused accumulate dual-frame variant: computes 16 simultaneous dot products for
+    /// 2 parallel frames and adds the respective `init_f0` / `init_f1` accumulators.
+    /// Returns `(results_f0, results_f1)`.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `weights.len() >= max(state_f0.len(), state_f1.len())`.
+    unsafe fn dot_product_16x_f32_dual_accumulate(
+        weights: &[[f32; 16]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+        init_f0: &[f32; 16],
+        init_f1: &[f32; 16],
+    ) -> ([f32; 16], [f32; 16]);
+
     /// Computes 4 simultaneous BF16 dot products with separate weight vectors.
     ///
     /// No alignment required.

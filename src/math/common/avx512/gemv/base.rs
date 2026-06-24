@@ -87,6 +87,117 @@ macro_rules! impl_avx512_gemv {
             crate::math::gemm::dot_16x::dot_product_16x_f32_dual_avx512(weights, state_f0, state_f1)
         }
         #[inline(always)]
+        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        // Replaced by fully fused kernel in B.1.3.
+        unsafe fn dot_product_4x_f32_accumulate(
+            weights: &[[f32; 4]],
+            state: &[f32],
+            init: &[f32; 4],
+        ) -> [f32; 4] {
+            let r = Self::dot_product_4x_f32(weights, state);
+            [
+                init[0] + r[0],
+                init[1] + r[1],
+                init[2] + r[2],
+                init[3] + r[3],
+            ]
+        }
+        #[inline(always)]
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        unsafe fn dot_product_4x_f32_dual_accumulate(
+            weights: &[[f32; 4]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+            init_f0: &[f32; 4],
+            init_f1: &[f32; 4],
+        ) -> ([f32; 4], [f32; 4]) {
+            let (r0, r1) = Self::dot_product_4x_f32_dual(weights, state_f0, state_f1);
+            (
+                [
+                    init_f0[0] + r0[0],
+                    init_f0[1] + r0[1],
+                    init_f0[2] + r0[2],
+                    init_f0[3] + r0[3],
+                ],
+                [
+                    init_f1[0] + r1[0],
+                    init_f1[1] + r1[1],
+                    init_f1[2] + r1[2],
+                    init_f1[3] + r1[3],
+                ],
+            )
+        }
+        #[inline(always)]
+        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        unsafe fn dot_product_8x_f32_accumulate(
+            weights: &[[f32; 8]],
+            state: &[f32],
+            init: &[f32; 8],
+        ) -> [f32; 8] {
+            let r = Self::dot_product_8x_f32(weights, state);
+            let mut out = [0.0f32; 8];
+            for i in 0..8 {
+                out[i] = init[i] + r[i];
+            }
+            out
+        }
+        #[inline(always)]
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        unsafe fn dot_product_8x_f32_dual_accumulate(
+            weights: &[[f32; 8]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+            init_f0: &[f32; 8],
+            init_f1: &[f32; 8],
+        ) -> ([f32; 8], [f32; 8]) {
+            let (r0, r1) = Self::dot_product_8x_f32_dual(weights, state_f0, state_f1);
+            let mut out_f0 = [0.0f32; 8];
+            let mut out_f1 = [0.0f32; 8];
+            for i in 0..8 {
+                out_f0[i] = init_f0[i] + r0[i];
+                out_f1[i] = init_f1[i] + r1[i];
+            }
+            (out_f0, out_f1)
+        }
+        #[inline(always)]
+        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        unsafe fn dot_product_16x_f32_accumulate(
+            weights: &[[f32; 16]],
+            state: &[f32],
+            init: &[f32; 16],
+        ) -> [f32; 16] {
+            let r = Self::dot_product_16x_f32(weights, state);
+            let mut out = [0.0f32; 16];
+            for i in 0..16 {
+                out[i] = init[i] + r[i];
+            }
+            out
+        }
+        #[inline(always)]
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
+        // Provisional impl: delegates to existing kernel + manual init addition.
+        unsafe fn dot_product_16x_f32_dual_accumulate(
+            weights: &[[f32; 16]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+            init_f0: &[f32; 16],
+            init_f1: &[f32; 16],
+        ) -> ([f32; 16], [f32; 16]) {
+            let (r0, r1) = Self::dot_product_16x_f32_dual(weights, state_f0, state_f1);
+            let mut out_f0 = [0.0f32; 16];
+            let mut out_f1 = [0.0f32; 16];
+            for i in 0..16 {
+                out_f0[i] = init_f0[i] + r0[i];
+                out_f1[i] = init_f1[i] + r1[i];
+            }
+            (out_f0, out_f1)
+        }
+        #[inline(always)]
         // SAFETY: four weight slices and in_frame are valid u16 slices of equal length;
         // fallback path, no AVX-512 requirement.
         unsafe fn dot_product_bf16_4x(

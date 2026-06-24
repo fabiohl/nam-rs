@@ -409,6 +409,157 @@ pub unsafe fn dot_product_16x_f32_dual_scalar(
     (r0, r1)
 }
 
+/// F32-native 4-lane interleaved dot product with init accumulation
+/// (scalar reference for SIMD validation).
+///
+/// Computes `dot_product_4x_f32(weights, state)` then adds `init` element-wise.
+/// Uses `mul_add` (FMA3) to match the SIMD kernel rounding.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_4x_f32_accumulate_scalar(
+    weights: &[[f32; 4]],
+    state: &[f32],
+    init: &[f32; 4],
+) -> [f32; 4] {
+    let r = dot_product_4x_f32_scalar(weights, state);
+    [
+        init[0] + r[0],
+        init[1] + r[1],
+        init[2] + r[2],
+        init[3] + r[3],
+    ]
+}
+
+/// F32-native 4-lane interleaved dual-frame dot product with init accumulation
+/// (scalar reference for SIMD validation).
+///
+/// Computes `dot_product_4x_f32_dual(weights, state_f0, state_f1)` then adds
+/// `init_f0` / `init_f1` element-wise.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_4x_f32_dual_accumulate_scalar(
+    weights: &[[f32; 4]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+    init_f0: &[f32; 4],
+    init_f1: &[f32; 4],
+) -> ([f32; 4], [f32; 4]) {
+    let (r0, r1) = dot_product_4x_f32_dual_scalar(weights, state_f0, state_f1);
+    (
+        [
+            init_f0[0] + r0[0],
+            init_f0[1] + r0[1],
+            init_f0[2] + r0[2],
+            init_f0[3] + r0[3],
+        ],
+        [
+            init_f1[0] + r1[0],
+            init_f1[1] + r1[1],
+            init_f1[2] + r1[2],
+            init_f1[3] + r1[3],
+        ],
+    )
+}
+
+/// F32-native 8-lane interleaved dot product with init accumulation
+/// (scalar reference for SIMD validation).
+///
+/// Computes `dot_product_8x_f32(weights, state)` then adds `init` element-wise.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_8x_f32_accumulate_scalar(
+    weights: &[[f32; 8]],
+    state: &[f32],
+    init: &[f32; 8],
+) -> [f32; 8] {
+    let r = dot_product_8x_f32_scalar(weights, state);
+    let mut out = [0.0f32; 8];
+    for i in 0..8 {
+        out[i] = init[i] + r[i];
+    }
+    out
+}
+
+/// F32-native 8-lane interleaved dual-frame dot product with init accumulation
+/// (scalar reference for SIMD validation).
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_8x_f32_dual_accumulate_scalar(
+    weights: &[[f32; 8]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+    init_f0: &[f32; 8],
+    init_f1: &[f32; 8],
+) -> ([f32; 8], [f32; 8]) {
+    let (r0, r1) = dot_product_8x_f32_dual_scalar(weights, state_f0, state_f1);
+    let mut out_f0 = [0.0f32; 8];
+    let mut out_f1 = [0.0f32; 8];
+    for i in 0..8 {
+        out_f0[i] = init_f0[i] + r0[i];
+        out_f1[i] = init_f1[i] + r1[i];
+    }
+    (out_f0, out_f1)
+}
+
+/// F32-native 16-lane interleaved dot product with init accumulation
+/// (scalar oracle for SIMD validation).
+///
+/// This function serves exclusively as the correctness reference in test and
+/// benchmark suites. It MUST NOT be called from any production code path.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state.len()`.
+#[inline]
+pub unsafe fn dot_product_16x_f32_accumulate_scalar(
+    weights: &[[f32; 16]],
+    state: &[f32],
+    init: &[f32; 16],
+) -> [f32; 16] {
+    let r = dot_product_16x_f32_scalar(weights, state);
+    let mut out = [0.0f32; 16];
+    for i in 0..16 {
+        out[i] = init[i] + r[i];
+    }
+    out
+}
+
+/// F32-native 16-lane interleaved dual-frame dot product with init accumulation
+/// (scalar oracle for SIMD validation).
+///
+/// This function serves exclusively as the correctness reference in test and
+/// benchmark suites. It MUST NOT be called from any production code path.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_16x_f32_dual_accumulate_scalar(
+    weights: &[[f32; 16]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+    init_f0: &[f32; 16],
+    init_f1: &[f32; 16],
+) -> ([f32; 16], [f32; 16]) {
+    let (r0, r1) = dot_product_16x_f32_dual_scalar(weights, state_f0, state_f1);
+    let mut out_f0 = [0.0f32; 16];
+    let mut out_f1 = [0.0f32; 16];
+    for i in 0..16 {
+        out_f0[i] = init_f0[i] + r0[i];
+        out_f1[i] = init_f1[i] + r1[i];
+    }
+    (out_f0, out_f1)
+}
+
 /// Computes 4 dot products at once for BF16.
 /// This is a shortcut to call the single-line function 4 times.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
