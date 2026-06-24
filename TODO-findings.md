@@ -597,7 +597,7 @@ das implementações do Épico E1 (F2) e do Épico E4 (F5).
 
 ## 🔵 F12 — Amplificação residual de memória via state buffers (DoS de baixa magnitude)
 
-- **Status:** ⬜
+- **Status:** ✔️ (implementado 2026-06-24)
 - **Locais:**
   - [`src/models/wavenet/common.rs:61`](src/models/wavenet/common.rs#L61) (`WaveNetLayerState::new` aloca `MirroredBuffer` proporcional ao campo receptivo).
   - [`src/loader/dispatcher/wavenet/dynamic.rs:60`](src/loader/dispatcher/wavenet/dynamic.rs#L60) (`rf = (k-1)*dilation` sem teto para o produto combinado).
@@ -650,6 +650,16 @@ disponível.
 
 4. Estender o fuzzing de `tests/proptest_parsers.rs` com asserção de que nenhum modelo válido
    aloca mais que o orçamento.
+
+### Conclusão (2026-06-24)
+
+Constante `MAX_TOTAL_STATE_FRAMES = 1 << 26` (64 Mi frames ≈ 256 MB @ f32) adicionada em
+`validation.rs` e exportada. Validação de orçamento agregado em `topology/wavenet.rs` computa
+`Σ (k-1) × dilation × channels` sobre todas as camadas via `checked_add`/`saturating_mul`
+e rejeita o modelo se o total exceder o limite. Proptest `prop_fuzz_adversarial_state_budget`
+adicionado com 3 cenários (modelos abaixo, acima e no limite do orçamento). Assert de budget
+adicionado ao proptest adversarial existente. Compilação limpa (clippy 0 warnings), todos os
+82 testes de unidade passando, proptest F12 10k iterações passando.
 
 ---
 

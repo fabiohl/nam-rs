@@ -69,6 +69,11 @@ pub const MAX_CONVNET_KERNEL_SIZE: usize = 64;
 /// Limited by the weight array cap (MAX_WEIGHTS) plus a generous margin.
 pub const MAX_RECEPTIVE_FIELD: usize = 65536;
 
+/// Aggregate cap for all WaveNet layer state frames (pre-allocated mirrored buffers).
+/// Prevents DoS via receptive-field amplification. Default: 64 Mi frames ≈ 256 MB @ f32.
+/// Each "frame" represents one sample per channel across all layer delay-line buffers.
+pub const MAX_TOTAL_STATE_FRAMES: usize = 1 << 26;
+
 /// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
 #[cfg(not(test))]
 struct WeightsVisitor;

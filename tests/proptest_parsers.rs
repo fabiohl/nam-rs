@@ -11,8 +11,8 @@ use std::fs;
 
 use nam_rs::loader::nam_json::{
     MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE, MAX_DILATION, MAX_DILATIONS_PER_ARRAY,
-    MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_RECEPTIVE_FIELD, MAX_WAVENET_ARRAYS,
-    MAX_WAVENET_FREE_CHANNELS,
+    MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_RECEPTIVE_FIELD, MAX_TOTAL_STATE_FRAMES,
+    MAX_WAVENET_ARRAYS, MAX_WAVENET_FREE_CHANNELS,
 };
 
 // Fuzz 1: Sends fully arbitrary bytes to the JSON parser.
@@ -726,6 +726,118 @@ fn adversarial_linear_json_strategy() -> impl Strategy<Value = String> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// F12 — Adversarial state budget. Generates models that combine near-max
+//       kernel_size × dilation × channels × layer count to stress the new
+//       MAX_TOTAL_STATE_FRAMES bound.
+// ---------------------------------------------------------------------------
+
+/// Strategy: generates a WaveNet model JSON with high aggregate state budget.
+/// Targets the combination of kernel_size × dilation × channels across many
+/// layers — the F12 DoS vector that F2 individual bounds alone don't close.
+fn adversarial_state_budget_strategy() -> impl Strategy<Value = String> {
+    (
+        any::<usize>(), // pattern selector
+        any::<u8>(),    // jitter for near-max values
+    )
+        .prop_map(|(pattern, jitter)| {
+            let j = (jitter as usize) % 16;
+
+            match pattern % 3 {
+                // Case 0: just under the budget — should be Free (or Rejected if channels push over)
+                0 => {
+                    // Target ~60 Mi frames (under 64 Mi cap)
+                    // 8 arrays × 4 dilations × (63 × 256 × 512) ≈ 63 × 256 × 512 × 32 = ~264M
+                    // Too high. Let's use: 4 arrays, 8 dilations, k=16, d=1024, ch=128
+                    // => 4 × 8 × 15 × 1024 × 128 = 62,914,560 ≈ 60 Mi (under 64 Mi)
+                    let dil_vec: Vec<usize> = vec![1024usize.saturating_sub(j); 8];
+                    let layers: Vec<serde_json::Value> = (0..4)
+                        .map(|i| {
+                            serde_json::json!({
+                                "channels": 128,
+                                "kernel_size": 16,
+                                "dilations": dil_vec.clone(),
+                                "head_size": 4,
+                                "activation": "Tanh",
+                                "gated": false,
+                                "head_bias": i == 3,
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.5.4",
+                        "architecture": "WaveNet",
+                        "config": { "layers": layers, "head": null, "head_scale": 0.02 },
+                        "weights": vec![0.0f32; 16],
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // Case 1: over the budget — should be Rejected
+                1 => {
+                    // Target ~100 Mi frames (over 64 Mi cap)
+                    // 8 arrays × 4 dilations × (63 × 512 × 64) = 8 × 4 × 63 × 512 × 64 = ~262M
+                    // Too high. Use: 8 arrays, 4 dilations, high k, d, ch combo
+                    let cnt = (4 + j / 4).min(16);
+                    let dil_val = 2048usize.saturating_add(j * 128).min(MAX_DILATION);
+                    let dil_vec: Vec<usize> = vec![dil_val; cnt];
+                    let arrays = (3 + j / 8).min(8);
+                    let layers: Vec<serde_json::Value> = (0..arrays)
+                        .map(|i| {
+                            serde_json::json!({
+                                "channels": 128usize.saturating_add(j * 8).min(MAX_WAVENET_FREE_CHANNELS),
+                                "kernel_size": (32usize + j).min(MAX_KERNEL_SIZE),
+                                "dilations": dil_vec.clone(),
+                                "head_size": 4,
+                                "activation": "Tanh",
+                                "gated": false,
+                                "head_bias": i == arrays - 1,
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.5.4",
+                        "architecture": "WaveNet",
+                        "config": { "layers": layers, "head": null, "head_scale": 0.02 },
+                        "weights": vec![0.0f32; 16],
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // Case 2: channels=1 amplification — tiny weight file exploiting receptive field
+                _ => {
+                    // Worst case from F12 description: k=64, d=4096, ch=1, 8 arrays × 64 dilations
+                    // => 512 layers × ((63 * 4096) + 1600) × 1 = 512 × ~259,648 = ~133 Mi frames
+                    let dil_cnt = (MAX_DILATIONS_PER_ARRAY / 2 + j / 2).min(MAX_DILATIONS_PER_ARRAY);
+                    let dil_val = (MAX_DILATION / 2 + j * 128).min(MAX_DILATION);
+                    let dil_vec: Vec<usize> = vec![dil_val; dil_cnt];
+                    let arrays = 2usize.saturating_add(j / 4).min(MAX_WAVENET_ARRAYS);
+                    let layers: Vec<serde_json::Value> = (0..arrays)
+                        .map(|i| {
+                            serde_json::json!({
+                                "channels": 1,
+                                "kernel_size": (32usize + j).min(MAX_KERNEL_SIZE),
+                                "dilations": dil_vec.clone(),
+                                "head_size": 4,
+                                "activation": "Tanh",
+                                "gated": false,
+                                "head_bias": i == arrays - 1,
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.5.4",
+                        "architecture": "WaveNet",
+                        "config": { "layers": layers, "head": null, "head_scale": 0.02 },
+                        "weights": vec![0.0f32; 16],
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+            }
+        })
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
@@ -750,6 +862,25 @@ proptest! {
                     assert!(
                         geom.channels.iter().all(|&c| c <= MAX_WAVENET_FREE_CHANNELS),
                         "free geometry channels within bounds"
+                    );
+                    // F12: verify state budget — no Free model should exceed MAX_TOTAL_STATE_FRAMES
+                    let total_state = geom
+                        .dilations
+                        .iter()
+                        .zip(geom.kernel_sizes.iter())
+                        .zip(geom.channels.iter())
+                        .fold(0usize, |acc, ((dils, &k), &ch)| {
+                            let rf = k.saturating_sub(1);
+                            acc.wrapping_add(
+                                dils
+                                    .iter()
+                                    .map(|&d| rf.saturating_mul(d).saturating_mul(ch))
+                                    .sum::<usize>(),
+                            )
+                        });
+                    assert!(
+                        total_state <= MAX_TOTAL_STATE_FRAMES,
+                        "Free geometry exceeded state budget: {total_state} > {MAX_TOTAL_STATE_FRAMES}"
                     );
                 }
                 nam_rs::loader::nam_json::WavenetTopologyResult::Rejected(_) => {
@@ -780,6 +911,46 @@ proptest! {
             // Adversarial receptive_field should be rejected (None)
             assert!(topo.is_none(),
                 "Linear with adversarial receptive_field should be rejected, got: {topo:?}");
+        }
+    }
+
+    /// F12 — Adversarial state budget: ensures models exceeding
+    /// MAX_TOTAL_STATE_FRAMES are Rejected, while others may be Free or Rejected
+    /// but never cause panic or incorrect acceptance.
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_state_budget(json_str in adversarial_state_budget_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let result = get_wavenet_topology(&parsed);
+            match result {
+                nam_rs::loader::nam_json::WavenetTopologyResult::Known(_) => {
+                    panic!("adversarial state budget should not match a catalog SKU");
+                }
+                nam_rs::loader::nam_json::WavenetTopologyResult::Free(geom) => {
+                    // If accepted, must not exceed budget
+                    let total_state = geom
+                        .dilations
+                        .iter()
+                        .zip(geom.kernel_sizes.iter())
+                        .zip(geom.channels.iter())
+                        .fold(0usize, |acc, ((dils, &k), &ch)| {
+                            let rf = k.saturating_sub(1);
+                            acc.wrapping_add(
+                                dils
+                                    .iter()
+                                    .map(|&d| rf.saturating_mul(d).saturating_mul(ch))
+                                    .sum::<usize>(),
+                            )
+                        });
+                    assert!(
+                        total_state <= MAX_TOTAL_STATE_FRAMES,
+                        "Free geometry exceeded state budget: {total_state} > {MAX_TOTAL_STATE_FRAMES}"
+                    );
+                }
+                nam_rs::loader::nam_json::WavenetTopologyResult::Rejected(_) => {
+                    // Rejection is acceptable — some combos exceed budget
+                }
+            }
         }
     }
 }

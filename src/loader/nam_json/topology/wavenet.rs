@@ -158,8 +158,8 @@ impl NamModelData {
 /// WaveNet A1 geometry, not only the four catalog SKUs.
 pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     use super::super::validation::{
-        MAX_DILATION, MAX_DILATIONS_PER_ARRAY, MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_WAVENET_ARRAYS,
-        MAX_WAVENET_FREE_CHANNELS,
+        MAX_DILATION, MAX_DILATIONS_PER_ARRAY, MAX_HEAD_SIZE, MAX_KERNEL_SIZE,
+        MAX_TOTAL_STATE_FRAMES, MAX_WAVENET_ARRAYS, MAX_WAVENET_FREE_CHANNELS,
     };
 
     // ── Architecture gate ──
@@ -277,6 +277,30 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         kernel_sizes.push(k.unwrap_or(0));
         head_sizes.push(hd);
         dilations.push(dils);
+    }
+
+    // ── Aggregate state budget check ──
+    // Computes total receptive-field × channels across all layers.
+    // Prevents DoS via amplification: a tiny model file (few KB of weights
+    // with channels=1) can trigger ~1 GB of mirrored buffer allocation
+    // when kernel_size × dilation × layer_count is extreme (F12).
+    let total_state_frames: usize = dilations
+        .iter()
+        .zip(kernel_sizes.iter())
+        .zip(channels.iter())
+        .try_fold(0usize, |acc, ((dils, &k), &ch)| {
+            let rf = k.saturating_sub(1);
+            dils.iter().try_fold(acc, |a, &d| {
+                a.checked_add(rf.saturating_mul(d).saturating_mul(ch))
+            })
+        })
+        .unwrap_or(usize::MAX);
+    if total_state_frames > MAX_TOTAL_STATE_FRAMES {
+        return WavenetTopologyResult::Rejected(format!(
+            "Aggregate state budget exceeded: {} total state frames vs max {} — \
+             OOM/DoS protection (F12).",
+            total_state_frames, MAX_TOTAL_STATE_FRAMES
+        ));
     }
 
     let first_channels_val = match first_channels {
