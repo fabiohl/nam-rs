@@ -71,6 +71,32 @@ impl StaticModel {
         }
     }
 
+    /// Backs up WaveNet buffer starts. No-op for non-WaveNet models.
+    #[inline(always)]
+    pub fn backup_buffer_starts(&self, starts: &mut [usize], offset: &mut usize) {
+        match self {
+            Self::WavenetStandard(m) => m.backup_buffer_starts(starts, offset),
+            Self::WavenetLite(m) => m.backup_buffer_starts(starts, offset),
+            Self::WavenetFeather(m) => m.backup_buffer_starts(starts, offset),
+            Self::WavenetNano(m) => m.backup_buffer_starts(starts, offset),
+            Self::WavenetDyn(m) => m.backup_buffer_starts(starts, offset),
+            _ => {}
+        }
+    }
+
+    /// Restores WaveNet buffer starts. No-op for non-WaveNet models.
+    #[inline(always)]
+    pub fn restore_buffer_starts(&mut self, starts: &[usize], offset: &mut usize) {
+        match self {
+            Self::WavenetStandard(m) => m.restore_buffer_starts(starts, offset),
+            Self::WavenetLite(m) => m.restore_buffer_starts(starts, offset),
+            Self::WavenetFeather(m) => m.restore_buffer_starts(starts, offset),
+            Self::WavenetNano(m) => m.restore_buffer_starts(starts, offset),
+            Self::WavenetDyn(m) => m.restore_buffer_starts(starts, offset),
+            _ => {}
+        }
+    }
+
     /// Sets the slimmable quality level for `SlimmableModel` variants.
     ///
     /// Only applies to `Container`. Other variants are a no-op.

@@ -34,6 +34,40 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
         self.array2.set_effective_layers(n);
     }
 
+    /// Backs up the `buffer_start` pointers of both layer arrays into a slice.
+    #[inline(always)]
+    pub fn backup_buffer_starts(&self, starts: &mut [usize], offset: &mut usize) {
+        for state in &self.array1.states {
+            if *offset < starts.len() {
+                starts[*offset] = state.buffer_start;
+                *offset += 1;
+            }
+        }
+        for state in &self.array2.states {
+            if *offset < starts.len() {
+                starts[*offset] = state.buffer_start;
+                *offset += 1;
+            }
+        }
+    }
+
+    /// Restores the `buffer_start` pointers of both layer arrays from a slice.
+    #[inline(always)]
+    pub fn restore_buffer_starts(&mut self, starts: &[usize], offset: &mut usize) {
+        for state in &mut self.array1.states {
+            if *offset < starts.len() {
+                state.buffer_start = starts[*offset];
+                *offset += 1;
+            }
+        }
+        for state in &mut self.array2.states {
+            if *offset < starts.len() {
+                state.buffer_start = starts[*offset];
+                *offset += 1;
+            }
+        }
+    }
+
     /// Resolves the full forward pass and produces waveform samples in zero allocation (DSP).
     ///
     /// Combines the outputs of both arrays: `sum(head1) + sum(head2)` × `head_scale`.

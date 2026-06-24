@@ -185,5 +185,8 @@ pub(crate) unsafe fn apply_output_stage_inner<M: SimdMath>(
         resamp_out_r[..n_pw].copy_from_slice(&resamp_out_l[..n_pw]);
     }
 
-    adaptive.crossfade_multiplier(sample_rate, n_pw);
+    // Advance the crossfade clock. The return value (multiplier) is ignored here
+    // because the actual crossfade blending is performed in the inference stage
+    // to avoid redundant resampling passes.
+    let _ = adaptive.crossfade_multiplier(sample_rate, n_pw);
 }

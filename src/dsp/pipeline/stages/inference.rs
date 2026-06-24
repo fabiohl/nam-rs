@@ -145,12 +145,17 @@ pub(crate) fn run_inference(
     model_out_l: &mut [f32],
     model_out_r: &mut [f32],
 ) -> usize {
+    use crate::math::dsp::gain::crossfade_blend_mono_simd;
+
     let is_resamp_bypass = ctx.resampler.is_bypass();
     let n = n_samples.min(MAX_RESAMP_BUF);
 
     // Soft-degrade: configure model layers based on CPU pressure
     let lstm_passthrough =
         configure_adaptive_model(ctx.active_model_l, ctx.active_model_r, ctx.adaptive);
+
+    let is_wavenet = ctx.active_model_l.as_ref().is_some_and(|m| m.is_wavenet());
+    let is_crossfading_wavenet = is_wavenet && ctx.adaptive.is_crossfading();
 
     // PATH A: Quality adjustment off (Resampler in Bypass).
     if is_resamp_bypass {
@@ -167,6 +172,131 @@ pub(crate) fn run_inference(
             // LSTM Minimal: passthrough input with gain compensation
             m_out_l.copy_from_slice(model_in_l);
             m_out_r.copy_from_slice(model_in_r);
+        } else if is_crossfading_wavenet {
+            let old_eff_l = ctx
+                .active_model_l
+                .as_ref()
+                .map(|m| {
+                    ctx.adaptive.wavenet_effective_layers_for_state(
+                        ctx.adaptive.prev_state(),
+                        m.layer_count(),
+                    )
+                })
+                .unwrap_or(0);
+            let new_eff_l = ctx
+                .active_model_l
+                .as_ref()
+                .map(|m| {
+                    ctx.adaptive
+                        .wavenet_effective_layers_for_state(ctx.adaptive.state(), m.layer_count())
+                })
+                .unwrap_or(0);
+            let old_eff_r = if !*ctx.process_mono {
+                ctx.active_model_r
+                    .as_ref()
+                    .map(|m| {
+                        ctx.adaptive.wavenet_effective_layers_for_state(
+                            ctx.adaptive.prev_state(),
+                            m.layer_count(),
+                        )
+                    })
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let new_eff_r = if !*ctx.process_mono {
+                ctx.active_model_r
+                    .as_ref()
+                    .map(|m| {
+                        ctx.adaptive.wavenet_effective_layers_for_state(
+                            ctx.adaptive.state(),
+                            m.layer_count(),
+                        )
+                    })
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            if old_eff_l != new_eff_l || (!*ctx.process_mono && old_eff_r != new_eff_r) {
+                // WaveNet crossfading: double-pass and blend
+                let mut backup_starts = [0usize; 64];
+                let mut offset = 0;
+
+                // 1. Save buffer start pointers
+                if let Some(m) = ctx.active_model_l.as_ref() {
+                    m.backup_buffer_starts(&mut backup_starts, &mut offset);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_ref()) {
+                    m.backup_buffer_starts(&mut backup_starts, &mut offset);
+                }
+
+                // 2. Configure model for first pass (OLD layer count)
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.set_effective_layers(old_eff_l);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.set_effective_layers(old_eff_r);
+                }
+
+                // 3. First pass: run model with OLD layer count (outputs to destination)
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    m_out_l,
+                    m_out_r,
+                    *ctx.process_mono,
+                );
+
+                // 4. Restore buffer starts to pre-block state
+                let mut offset_restore = 0;
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.restore_buffer_starts(&backup_starts, &mut offset_restore);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.restore_buffer_starts(&backup_starts, &mut offset_restore);
+                }
+
+                // 5. Configure model for second pass (NEW layer count)
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.set_effective_layers(new_eff_l);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.set_effective_layers(new_eff_r);
+                }
+
+                // 6. Second pass: run model with NEW layer count (outputs to scratch)
+                let scratch_l = &mut model_out_l[..n];
+                let scratch_r = &mut model_out_r[..n];
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    scratch_l,
+                    scratch_r,
+                    *ctx.process_mono,
+                );
+
+                // 7. Blend: m_out (OLD) + t * (scratch (NEW) - m_out)
+                let t = ctx.adaptive.current_crossfade_multiplier();
+                crossfade_blend_mono_simd(m_out_l, scratch_l, t);
+                if !*ctx.process_mono {
+                    crossfade_blend_mono_simd(m_out_r, scratch_r, t);
+                }
+            } else {
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    m_out_l,
+                    m_out_r,
+                    *ctx.process_mono,
+                );
+            }
         } else {
             run_stereo_or_mono(
                 ctx.active_model_l,
@@ -208,6 +338,131 @@ pub(crate) fn run_inference(
         if lstm_passthrough {
             m_out_l.copy_from_slice(model_in_l);
             m_out_r.copy_from_slice(model_in_r);
+        } else if is_crossfading_wavenet {
+            let old_eff_l = ctx
+                .active_model_l
+                .as_ref()
+                .map(|m| {
+                    ctx.adaptive.wavenet_effective_layers_for_state(
+                        ctx.adaptive.prev_state(),
+                        m.layer_count(),
+                    )
+                })
+                .unwrap_or(0);
+            let new_eff_l = ctx
+                .active_model_l
+                .as_ref()
+                .map(|m| {
+                    ctx.adaptive
+                        .wavenet_effective_layers_for_state(ctx.adaptive.state(), m.layer_count())
+                })
+                .unwrap_or(0);
+            let old_eff_r = if !*ctx.process_mono {
+                ctx.active_model_r
+                    .as_ref()
+                    .map(|m| {
+                        ctx.adaptive.wavenet_effective_layers_for_state(
+                            ctx.adaptive.prev_state(),
+                            m.layer_count(),
+                        )
+                    })
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let new_eff_r = if !*ctx.process_mono {
+                ctx.active_model_r
+                    .as_ref()
+                    .map(|m| {
+                        ctx.adaptive.wavenet_effective_layers_for_state(
+                            ctx.adaptive.state(),
+                            m.layer_count(),
+                        )
+                    })
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            if old_eff_l != new_eff_l || (!*ctx.process_mono && old_eff_r != new_eff_r) {
+                // WaveNet crossfading: double-pass and blend
+                let mut backup_starts = [0usize; 64];
+                let mut offset = 0;
+
+                // 1. Save buffer start pointers
+                if let Some(m) = ctx.active_model_l.as_ref() {
+                    m.backup_buffer_starts(&mut backup_starts, &mut offset);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_ref()) {
+                    m.backup_buffer_starts(&mut backup_starts, &mut offset);
+                }
+
+                // 2. Configure model for first pass (OLD layer count)
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.set_effective_layers(old_eff_l);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.set_effective_layers(old_eff_r);
+                }
+
+                // 3. First pass: run model with OLD layer count (outputs to destination)
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    m_out_l,
+                    m_out_r,
+                    *ctx.process_mono,
+                );
+
+                // 4. Restore buffer starts to pre-block state
+                let mut offset_restore = 0;
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.restore_buffer_starts(&backup_starts, &mut offset_restore);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.restore_buffer_starts(&backup_starts, &mut offset_restore);
+                }
+
+                // 5. Configure model for second pass (NEW layer count)
+                if let Some(m) = ctx.active_model_l.as_mut() {
+                    m.set_effective_layers(new_eff_l);
+                }
+                if let (false, Some(m)) = (*ctx.process_mono, ctx.active_model_r.as_mut()) {
+                    m.set_effective_layers(new_eff_r);
+                }
+
+                // 6. Second pass: run model with NEW layer count (outputs to scratch)
+                let scratch_l = &mut resamp_out_l[..n_48k];
+                let scratch_r = &mut resamp_out_r[..n_48k];
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    scratch_l,
+                    scratch_r,
+                    *ctx.process_mono,
+                );
+
+                // 7. Blend: m_out (OLD) + t * (scratch (NEW) - m_out)
+                let t = ctx.adaptive.current_crossfade_multiplier();
+                crossfade_blend_mono_simd(m_out_l, scratch_l, t);
+                if !*ctx.process_mono {
+                    crossfade_blend_mono_simd(m_out_r, scratch_r, t);
+                }
+            } else {
+                run_stereo_or_mono(
+                    ctx.active_model_l,
+                    ctx.active_model_r,
+                    model_in_l,
+                    model_in_r,
+                    m_out_l,
+                    m_out_r,
+                    *ctx.process_mono,
+                );
+            }
         } else {
             run_stereo_or_mono(
                 ctx.active_model_l,

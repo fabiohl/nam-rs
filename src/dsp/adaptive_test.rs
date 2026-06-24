@@ -326,4 +326,48 @@ mod tests {
 
         assert!(!adaptive.is_crossfading());
     }
+
+    #[test]
+    fn test_crossfade_prev_state_and_multipliers() {
+        let flags = rt_flags();
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+        let budget = 1000;
+
+        assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+        assert_eq!(adaptive.state(), AdaptiveState::Full);
+        assert_eq!(adaptive.current_crossfade_multiplier(), 0.0);
+
+        // Go to Reduced (degrade)
+        for _ in 0..3 {
+            adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+        }
+        assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+        assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+        assert!(adaptive.is_crossfading());
+
+        // Check helper function for layer calculation
+        let total_layers = 16;
+        let old_layers =
+            adaptive.wavenet_effective_layers_for_state(adaptive.prev_state(), total_layers);
+        let new_layers =
+            adaptive.wavenet_effective_layers_for_state(adaptive.state(), total_layers);
+        assert_eq!(old_layers, 16); // Full: 0% skipped -> 16 layers
+        assert_eq!(new_layers, 12); // Reduced: 25% skipped -> 12 layers
+
+        // Read progress multiplier without advancing clock
+        let m0 = adaptive.current_crossfade_multiplier();
+        assert_eq!(m0, 0.0);
+        let m0_again = adaptive.current_crossfade_multiplier();
+        assert_eq!(m0_again, 0.0); // should not change
+
+        // Advance a bit
+        adaptive.crossfade_multiplier(48000, 512);
+        let m1 = adaptive.current_crossfade_multiplier();
+        assert!(m1 > 0.0 && m1 < 1.0);
+
+        // Complete crossfade
+        adaptive.crossfade_multiplier(48000, 1500);
+        assert!(!adaptive.is_crossfading());
+        assert_eq!(adaptive.current_crossfade_multiplier(), 1.0);
+    }
 }

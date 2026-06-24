@@ -122,6 +122,8 @@ enum CrossfadePhase {
 pub struct AdaptiveCompute {
     /// Current degradation state.
     state: AdaptiveState,
+    /// Previous degradation state (during crossfade).
+    prev_state: AdaptiveState,
     /// Consecutive overload counter for degradation.
     overload_counter: u32,
     /// Consecutive underload counter for recovery.
@@ -160,6 +162,7 @@ impl AdaptiveCompute {
     pub fn new(mode: AdaptiveComputeMode) -> Self {
         Self {
             state: AdaptiveState::Full,
+            prev_state: AdaptiveState::Full,
             overload_counter: 0,
             recovery_counter: 0,
             crossfade: CrossfadePhase::Idle,
@@ -177,6 +180,7 @@ impl AdaptiveCompute {
         self.mode = mode;
         if mode == AdaptiveComputeMode::Off {
             self.state = AdaptiveState::Full;
+            self.prev_state = AdaptiveState::Full;
             self.overload_counter = 0;
             self.recovery_counter = 0;
             self.crossfade = CrossfadePhase::Idle;
@@ -341,6 +345,7 @@ impl AdaptiveCompute {
             return;
         }
 
+        self.prev_state = self.state;
         self.state = new_state;
         self.overload_counter = 0;
         self.recovery_counter = 0;
@@ -472,6 +477,61 @@ impl AdaptiveCompute {
         } else {
             None
         }
+    }
+
+    /// Returns the previous degradation state.
+    #[inline(always)]
+    pub fn prev_state(&self) -> AdaptiveState {
+        self.prev_state
+    }
+
+    /// Returns the current crossfade gain (`crossfade_elapsed / total`) without side effects.
+    #[inline(always)]
+    pub fn current_crossfade_multiplier(&self) -> f32 {
+        match self.crossfade {
+            CrossfadePhase::Idle => {
+                if self.state() == AdaptiveState::Full {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+            CrossfadePhase::Active { remaining_samples } => {
+                let total = remaining_samples + self.crossfade_elapsed;
+                if total == 0 {
+                    1.0
+                } else {
+                    (self.crossfade_elapsed as f32 / total as f32).min(1.0)
+                }
+            }
+        }
+    }
+
+    /// Returns the fraction of WaveNet layers to skip for a given state: 0.0 (Full), 0.25 (Reduced), 0.50 (Minimal).
+    #[inline(always)]
+    pub fn wavenet_skip_fraction_for_state(&self, state: AdaptiveState) -> f32 {
+        match state {
+            AdaptiveState::Full => 0.0,
+            AdaptiveState::Reduced => 0.25,
+            AdaptiveState::Minimal => 0.50,
+        }
+    }
+
+    /// Effective number of WaveNet layers after reduction for a given state, respecting overrides.
+    #[inline(always)]
+    pub fn wavenet_effective_layers_for_state(
+        &self,
+        state: AdaptiveState,
+        total_layers: usize,
+    ) -> usize {
+        let state_to_use = match self.slim_override {
+            SlimOverride::ForceFull => AdaptiveState::Full,
+            SlimOverride::ForceLite => AdaptiveState::Reduced,
+            SlimOverride::Auto => state,
+        };
+        let skip = (total_layers as f32 * self.wavenet_skip_fraction_for_state(state_to_use))
+            .round() as usize;
+        total_layers.saturating_sub(skip).max(1)
     }
 }
 

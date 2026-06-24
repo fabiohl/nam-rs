@@ -107,6 +107,32 @@ impl WaveNetModelDyn {
         }
     }
 
+    /// Backs up the `buffer_start` pointers of all layer arrays into a slice.
+    #[inline(always)]
+    pub fn backup_buffer_starts(&self, starts: &mut [usize], offset: &mut usize) {
+        for array in &self.arrays {
+            for state in &array.states {
+                if *offset < starts.len() {
+                    starts[*offset] = state.buffer_start;
+                    *offset += 1;
+                }
+            }
+        }
+    }
+
+    /// Restores the `buffer_start` pointers of all layer arrays from a slice.
+    #[inline(always)]
+    pub fn restore_buffer_starts(&mut self, starts: &[usize], offset: &mut usize) {
+        for array in &mut self.arrays {
+            for state in &mut array.states {
+                if *offset < starts.len() {
+                    state.buffer_start = starts[*offset];
+                    *offset += 1;
+                }
+            }
+        }
+    }
+
     /// Creates a new `WaveNetModelDyn` with all internal channels reduced to
     /// `new_ch`. Delegates to [`crate::models::slimmable::slice_wavenet_model`].
     ///

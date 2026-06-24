@@ -323,9 +323,9 @@ por natureza, especulativos/fora de faixa.
 
 ---
 
-## 🟠 F5 — Degradação adaptativa do WaveNet não faz crossfade real; retorno de `crossfade_multiplier()` é descartado
+## 🟠 F5 — Degradação adaptativa do WaveNet não faz crossfade real; retorno de `crossfade_multiplier()` é descartado [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Locais:**
   - [`src/dsp/pipeline/stages/output.rs:188`](src/dsp/pipeline/stages/output.rs#L188) (valor descartado).
   - [`src/dsp/adaptive.rs:214-246`](src/dsp/adaptive.rs#L214) (`crossfade_multiplier`).
@@ -565,7 +565,7 @@ alinhar comportamento CLAP↔standalone; tornar métodos `SimdMath` obrigatório
 comprimento nos kernels multi-vetor/batch; load de `coeffs` unaligned ou static-assert; lane de
 **Miri** sobre kernels genéricos.
 
-### Épico E4 — Fidelidade da Degradação Adaptativa (Qualidade de áudio)
+### Épico E4 — Fidelidade da Degradação Adaptativa (Qualidade de áudio) [DONE]
 
 **Findings:** F5 (🟠).
 **Objetivo:** eliminar cliques nas transições do `AdaptiveCompute` no WaveNet e alinhar doc↔código.
