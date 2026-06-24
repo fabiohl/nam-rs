@@ -16,7 +16,7 @@ use super::conv_input::{
 };
 use super::conv1d::Conv1d;
 use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
-use crate::math::common::SimdMath;
+use crate::math::common::{SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple};
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Fused variant that processes two frames simultaneously, adding Mixin vectors
@@ -69,13 +69,23 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     .copy_from_slice(layer_buffer.get_unchecked(in_start_f0..in_start_f0 + IN));
                 in_taps_f1[k]
                     .copy_from_slice(layer_buffer.get_unchecked(in_start_f1..in_start_f1 + IN));
-                (self.prefetch_fn)(
-                    layer_buffer.as_ptr().add(in_start_f0),
-                    self.dilation * IN,
-                    k,
-                    K,
-                    self.dilation,
-                );
+                if self.dilation >= 128 {
+                    prefetch_strategy_2stage(
+                        layer_buffer.as_ptr().add(in_start_f0),
+                        self.dilation * IN,
+                        k,
+                        K,
+                        self.dilation,
+                    );
+                } else {
+                    prefetch_strategy_simple(
+                        layer_buffer.as_ptr().add(in_start_f0),
+                        self.dilation * IN,
+                        k,
+                        K,
+                        self.dilation,
+                    );
+                }
             }
         }
 

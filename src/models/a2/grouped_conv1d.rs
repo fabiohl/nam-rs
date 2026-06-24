@@ -31,7 +31,9 @@
 //! - `NAM/conv1d.cpp:55-252` (grouped weight loading + depthwise execution)
 //! - `NAM/film.h:28-85` (`_cond_to_scale_shift` pattern)
 
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::{
+    AlignedVec, PrefetchFn, prefetch_strategy_2stage, prefetch_strategy_simple,
+};
 use crate::models::wavenet::common::MAX_KERNEL;
 
 use core::arch::x86_64::*;
@@ -74,6 +76,7 @@ pub struct A2GroupedConv1d {
     /// Kernel size.
     pub kernel: usize,
     /// Pre-computed prefetch strategy.
+    #[allow(dead_code)]
     pub prefetch_fn: PrefetchFn,
 }
 
@@ -439,7 +442,11 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
         let in_start = ((frame_idx as isize) + offset) as usize * ch;
         unsafe {
             *tap = layer_buffer.as_ptr().add(in_start);
-            (conv.prefetch_fn)(*tap, dilation * ch, k, kernel, dilation);
+            if dilation >= 128 {
+                prefetch_strategy_2stage(*tap, dilation * ch, k, kernel, dilation);
+            } else {
+                prefetch_strategy_simple(*tap, dilation * ch, k, kernel, dilation);
+            }
         }
     }
 
@@ -617,7 +624,11 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
         let in_start = ((frame_idx as isize) + offset) as usize * in_ch;
         unsafe {
             *tap = layer_buffer.as_ptr().add(in_start);
-            (conv.prefetch_fn)(*tap, dilation * in_ch, k, kernel, dilation);
+            if dilation >= 128 {
+                prefetch_strategy_2stage(*tap, dilation * in_ch, k, kernel, dilation);
+            } else {
+                prefetch_strategy_simple(*tap, dilation * in_ch, k, kernel, dilation);
+            }
         }
     }
 

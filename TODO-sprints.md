@@ -60,7 +60,7 @@ Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno 
   * Adicionar a anotação `#[inline(always)]` às funções `prefetch_strategy_simple` e `prefetch_strategy_2stage`.
 * **Precauções/Riscos:** Nenhum risco numérico.
 
-#### [MODIFY] Tarefa A.1.2: Substituição de Ponteiro de Função por Dispatch Estático
+#### [MODIFY] Tarefa A.1.2: Substituição de Ponteiro de Função por Dispatch Estático [DONE]
 
 * **Objetivo:** Substituir a invocação dinâmica de `self.prefetch_fn` por chamadas estáticas inlinadas com base em um teste de dilatação.
 
@@ -89,6 +89,8 @@ Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno 
   * *Opcional:* Se possível sem quebrar a API pública de carregamento de pesos, avaliar a remoção completa do campo `prefetch_fn` e do tipo `PrefetchFn` para limpeza do código. Se mantidos para retrocompatibilidade do layout/loader, apenas ignorar o campo durante o processamento do hot path.
 
 * **Precauções/Riscos:** Assegurar que os argumentos passados para as funções inlinadas correspondam exatamente à assinatura original de `PrefetchFn`.
+
+* **Conclusão:** Todas as 7 chamadas indiretas via `(self.prefetch_fn)(...)` foram substituídas por dispatch estático com `if self.dilation >= 128` em 5 arquivos: `conv1d.rs` (2 sites), `conv1d_dual.rs` (1), `conv1d_dyn.rs` (1), `conv1d_dyn_dual.rs` (1), `grouped_conv1d.rs` (2). O campo `prefetch_fn` foi mantido nas structs (`Conv1d`, `Conv1dDyn`, `A2GroupedConv1d`) com `#[allow(dead_code)]` para preservar a API pública de loaders/constructors. `cargo check` limpo, `cargo test --lib` (407 unit tests) e 37 integration test binaries passam sem falhas.
 
 #### [VERIFY] Tarefa A.1.3: Auditoria de Emissão de `vzeroupper` (F7)
 

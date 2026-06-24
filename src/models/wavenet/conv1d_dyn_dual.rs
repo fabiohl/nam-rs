@@ -6,7 +6,7 @@ use super::conv_input::{
     load_4_accums, load_8_accums, load_16_accums, store_4_accums, store_8_accums, store_16_accums,
 };
 use super::conv1d_dyn::Conv1dDyn;
-use crate::math::common::SimdMath;
+use crate::math::common::{SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple};
 
 impl Conv1dDyn {
     /// F32-native dual-frame convolution (full-precision f32 weights).
@@ -48,13 +48,23 @@ impl Conv1dDyn {
                 *tap_f0 = layer_buffer.as_ptr().add(in_start_f0);
                 *tap_f1 = layer_buffer.as_ptr().add(in_start_f1);
 
-                (self.prefetch_fn)(
-                    *tap_f0,
-                    self.dilation * self.in_ch,
-                    k,
-                    self.kernel,
-                    self.dilation,
-                );
+                if self.dilation >= 128 {
+                    prefetch_strategy_2stage(
+                        *tap_f0,
+                        self.dilation * self.in_ch,
+                        k,
+                        self.kernel,
+                        self.dilation,
+                    );
+                } else {
+                    prefetch_strategy_simple(
+                        *tap_f0,
+                        self.dilation * self.in_ch,
+                        k,
+                        self.kernel,
+                        self.dilation,
+                    );
+                }
             }
         }
 
