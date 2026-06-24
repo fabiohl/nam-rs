@@ -208,6 +208,16 @@ pub unsafe fn gemv_overwrite_avx512(
 }
 
 /// Batch version of gemv_overwrite via AVX-512.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn gemv_overwrite_batch_avx512(
     in_frames: &[f32],
@@ -220,8 +230,14 @@ pub unsafe fn gemv_overwrite_batch_avx512(
     if num_frames == 0 {
         return;
     }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
     for i in 0..num_frames {
         let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
         let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];

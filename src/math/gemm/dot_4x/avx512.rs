@@ -15,9 +15,14 @@ use core::arch::x86_64::*;
 ///
 /// Each ZMM processes 4 state values (16 f32 lanes: 4 output channels × 4 replications).
 /// The 2 sets alternate every 16 state elements to keep the FMA pipeline saturated.
+///
+/// # Safety
+/// `weights` must have a length greater than or equal to `state.len()`.
+/// Both slices must be valid and accessible for reading.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
-    let len = core::cmp::min(weights.len(), state.len());
+    let len = state.len().min(weights.len());
+    debug_assert!(weights.len() >= len);
     let mut i = 0;
 
     unsafe {

@@ -10,6 +10,16 @@ use core::arch::x86_64::*;
 ///   broadcast one weight per `in_c` iteration.
 /// - OUT ≥ 16: vectorize across output channels (16 out_c per ZMM).
 /// - Otherwise: scalar fallback within the AVX-512 context.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_with_bias_f32_avx512(
     in_frames: &[f32],
@@ -21,8 +31,12 @@ pub unsafe fn gemv_with_bias_f32_avx512(
     if num_frames == 0 {
         return;
     }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    debug_assert!(bias.len() >= out_len);
 
     if out_len == 1 {
         for n in 0..num_frames {
@@ -163,6 +177,15 @@ pub unsafe fn gemv_with_bias_f32_avx512(
 ///   broadcast one weight per `in_c` iteration.
 /// - OUT ≥ 16: vectorize across output channels (16 out_c per ZMM).
 /// - Otherwise: scalar fallback within the AVX-512 context.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_no_bias_f32_avx512(
     in_frames: &[f32],
@@ -173,8 +196,11 @@ pub unsafe fn gemv_no_bias_f32_avx512(
     if num_frames == 0 {
         return;
     }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
 
     if out_len == 1 {
         for n in 0..num_frames {

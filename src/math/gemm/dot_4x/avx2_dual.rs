@@ -20,13 +20,18 @@ use core::arch::x86_64::*;
 /// that the weights have already been loaded into memory to apply them to two different audio
 /// blocks (f0 and f1) at the same time. This doubles processor throughput, since each loaded
 /// weight is "reused" immediately for two distinct computations.
+///
+/// # Safety
+/// `weights` must have a length greater than or equal to both `state_f0.len()` and `state_f1.len()`.
+/// All slices must be valid and accessible for reading.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     weights: &[[u16; 4]],
     state_f0: &[f32],
     state_f1: &[f32],
 ) -> ([f32; 4], [f32; 4]) {
-    let len = core::cmp::min(state_f0.len(), state_f1.len());
+    let len = state_f0.len().min(state_f1.len()).min(weights.len());
+    debug_assert!(weights.len() >= len);
     let mut i = 0;
 
     unsafe {
@@ -154,6 +159,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
 /// This function is the "do-it-all" of WaveNet and LSTM neural networks when we process
 /// audio in batch. It saves energy and time by not having to read
 /// the same weights from memory repeatedly.
+///
+/// # Safety
+/// `weights` must have a length greater than or equal to `h0.len()`, `h1.len()`, `h2.len()`, and `h3.len()`.
+/// All slices must be valid and accessible for reading.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_batch_4x_avx2(
     h0: &[f32],
@@ -162,7 +171,13 @@ pub unsafe fn dot_product_batch_4x_avx2(
     h3: &[f32],
     weights: &[u16],
 ) -> [f32; 4] {
-    let len = core::cmp::min(weights.len(), h0.len());
+    let len = weights
+        .len()
+        .min(h0.len())
+        .min(h1.len())
+        .min(h2.len())
+        .min(h3.len());
+    debug_assert!(h0.len() >= len && h1.len() >= len && h2.len() >= len && h3.len() >= len);
     let mut i = 0;
 
     unsafe {

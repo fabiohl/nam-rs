@@ -19,6 +19,16 @@ use core::arch::x86_64::*;
 /// Batch version of the fused operation Y = X_res + Bias + W * Z via AVX-512.
 /// This function is the performance "monster". It processes 8 audio frames simultaneously,
 /// each with 16 channels, totaling 128 calculations at once!
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_add_gemm_batch_avx512(
     in_frames: &[f32],
@@ -31,8 +41,14 @@ pub unsafe fn fused_add_gemm_batch_avx512(
     if num_frames == 0 {
         return;
     }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     // Try to process in groups of 8 frames at a time.
@@ -136,6 +152,18 @@ pub unsafe fn fused_add_gemm_batch_avx512(
 
 /// Fused residual GEMM kernel AVX-512.
 /// Similar to the previous one, but the "residual" (original unprocessed audio) comes from a different location.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `residual.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - `residual.len()` must be >= `out_frames.len()`.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_gemm_residual_batch_avx512(
     in_frames: &[f32],
@@ -146,8 +174,19 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
     num_frames: usize,
     do_bias: bool,
 ) {
+    if num_frames == 0 {
+        return;
+    }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
+    debug_assert_eq!(residual.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    debug_assert!(residual.len() >= out_frames.len());
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     // Processing in groups of 8 frames.
@@ -297,6 +336,18 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
 /// Identical to [`fused_gemm_residual_batch_avx512`] but accepts full-precision
 /// f32 weights instead of f16-quantized (u16) weights. Processes 8 audio frames
 /// simultaneously, each with 16 channels.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `residual.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - `residual.len()` must be >= `out_frames.len()`.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx512f,avx512vl,f16c")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx512(
     in_frames: &[f32],
@@ -307,8 +358,19 @@ pub unsafe fn fused_gemm_residual_batch_f32_avx512(
     num_frames: usize,
     do_bias: bool,
 ) {
+    if num_frames == 0 {
+        return;
+    }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
+    debug_assert_eq!(residual.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    debug_assert!(residual.len() >= out_frames.len());
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     while f + 8 <= num_frames {

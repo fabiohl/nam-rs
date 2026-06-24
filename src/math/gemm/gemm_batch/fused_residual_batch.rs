@@ -27,6 +27,18 @@ use core::arch::x86_64::*;
 /// Processes 2 input columns per iteration with 8 independent FMA accumulators
 /// (2 per frame: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
 /// doubling port utilization on x86-64-v3.
+///
+/// # Safety
+/// - `num_frames` must be > 0.
+/// - `in_frames.len()` must be a multiple of `num_frames`.
+/// - `out_frames.len()` must be a multiple of `num_frames`.
+/// - `residual.len()` must be a multiple of `num_frames`.
+/// - `weights.len()` must be >= `in_len * out_len` where `in_len = in_frames.len() / num_frames`
+///   and `out_len = out_frames.len() / num_frames`.
+/// - `residual.len()` must be >= `out_frames.len()`.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_avx2(
     in_frames: &[f32],
@@ -37,8 +49,19 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
     num_frames: usize,
     do_bias: bool,
 ) {
+    if num_frames == 0 {
+        return;
+    }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
+    debug_assert_eq!(residual.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    debug_assert!(residual.len() >= out_frames.len());
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     gemm_batch_frame_loop_avx2!(
@@ -202,6 +225,9 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
 /// Processes 2 input columns per iteration with 8 independent FMA accumulators
 /// (2 per frame: `acc_lo`/`acc_hi`), breaking the serial FMA dependency chain and
 /// doubling port utilization on x86-64-v3.
+/// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
+///
+/// All slices must be valid and accessible for reading/writing.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     in_frames: &[f32],
@@ -212,8 +238,19 @@ pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     num_frames: usize,
     do_bias: bool,
 ) {
+    if num_frames == 0 {
+        return;
+    }
+    debug_assert_eq!(in_frames.len() % num_frames, 0);
+    debug_assert_eq!(out_frames.len() % num_frames, 0);
+    debug_assert_eq!(residual.len() % num_frames, 0);
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
+    debug_assert!(weights.len() >= in_len * out_len);
+    debug_assert!(residual.len() >= out_frames.len());
+    if do_bias {
+        debug_assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     gemm_batch_frame_loop_avx2!(

@@ -15,16 +15,18 @@ use core::arch::x86_64::*;
 ///
 /// Reuses the same weight load for both frames (f0 and f1),
 /// doubling memory access efficiency.
+///
+/// # Safety
+/// `weights` must have a length greater than or equal to both `state_f0.len()` and `state_f1.len()`.
+/// All slices must be valid and accessible for reading.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
     weights: &[[u16; 4]],
     state_f0: &[f32],
     state_f1: &[f32],
 ) -> ([f32; 4], [f32; 4]) {
-    let len = core::cmp::min(
-        weights.len(),
-        core::cmp::min(state_f0.len(), state_f1.len()),
-    );
+    let len = weights.len().min(state_f0.len()).min(state_f1.len());
+    debug_assert!(weights.len() >= len);
     let mut i = 0;
 
     unsafe {

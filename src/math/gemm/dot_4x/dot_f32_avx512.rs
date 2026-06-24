@@ -48,10 +48,11 @@ unsafe fn make_state_m512(s0: f32, s1: f32, s2: f32, s3: f32) -> __m512 {
 ///
 /// # Safety
 /// Caller must ensure `weights.len() >= state.len()` and that memory regions
-/// are valid for unaligned load.
+/// are valid for unaligned load. Both slices must be accessible for reading.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_f32_avx512(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
-    let len = state.len();
+    let len = state.len().min(weights.len());
+    debug_assert!(weights.len() >= len);
     let mut acc512 = _mm512_setzero_ps();
     let mut i = 0;
 

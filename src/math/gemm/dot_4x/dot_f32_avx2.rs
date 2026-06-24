@@ -33,10 +33,11 @@ use core::arch::x86_64::*;
 ///
 /// # Safety
 /// Caller must ensure `weights.len() >= state.len()` and that the memory regions
-/// are valid for unaligned load.
+/// are valid for unaligned load. Both slices must be accessible for reading.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn dot_product_4x_f32_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
-    let len = state.len();
+    let len = state.len().min(weights.len());
+    debug_assert!(weights.len() >= len);
     let mut acc0 = _mm_setzero_ps();
     let mut acc1 = _mm_setzero_ps();
     let mut acc2 = _mm_setzero_ps();

@@ -20,6 +20,10 @@ use core::arch::x86_64::*;
 /// by 4 different sets of "weights". By doing all 4 computations at once, we keep
 /// the processor busy and take advantage of the fact that the "state" is already loaded
 /// to save memory time.
+///
+/// # Safety
+/// Each of `w0`, `w1`, `w2`, and `w3` must have a length greater than or equal to `state.len()`.
+/// All slices must be valid and accessible for reading.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_avx2(
     w0: &[u16],
@@ -28,7 +32,13 @@ pub unsafe fn dot_product_4x_avx2(
     w3: &[u16],
     state: &[f32],
 ) -> [f32; 4] {
-    let len = state.len();
+    let len = state
+        .len()
+        .min(w0.len())
+        .min(w1.len())
+        .min(w2.len())
+        .min(w3.len());
+    debug_assert!(w0.len() >= len && w1.len() >= len && w2.len() >= len && w3.len() >= len);
     let mut i = 0;
 
     unsafe {
@@ -121,9 +131,14 @@ pub unsafe fn dot_product_4x_avx2(
 /// (in groups of 4). This function uses "shuffling" tricks (broadcast and blend) to align
 /// the state data with these weights, enabling extremely fast and memory-access efficient
 /// (cache friendly) processing.
+///
+/// # Safety
+/// `weights` must have a length greater than or equal to `state.len()`.
+/// Both slices must be valid and accessible for reading.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
-    let len = state.len();
+    let len = state.len().min(weights.len());
+    debug_assert!(weights.len() >= len);
     let mut i = 0;
 
     unsafe {

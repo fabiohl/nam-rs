@@ -29,6 +29,7 @@ Use this skill for a general project review in search of improvements.
   * "Unsafe" block the most specif and delimites possible.
   * Exemplary comments and documentation (skill `documentador`).
 * Master of performance:
+  * Hunt performance thorough codebase, not only in "hot paths".
   * Knows the intricacies of Linux kernel threads and scheduling.
   * Relentless search for risks to user UX responsiveness. Both CLI/GUI and (most especially) the fluidity of processed DSP audio.
   * Squeezes performance down to the very last CPU clock cycle.

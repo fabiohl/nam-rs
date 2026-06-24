@@ -387,9 +387,9 @@ Decidir o comportamento pretendido e alinhar doc + código:
 
 ---
 
-## 🟡 F6 — Precondições de comprimento não documentadas em kernels SIMD multi-vetor (OOB latente)
+## 🟡 F6 — Precondições de comprimento não documentadas em kernels SIMD multi-vetor (OOB latente) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Locais:**
   - [`src/math/gemm/dot_4x/avx2.rs:24-31,54-72,105-112`](src/math/gemm/dot_4x/avx2.rs#L24) (`dot_product_4x_avx2`: usa `len = state.len()`, lê `w0..w3`).
   - [`src/math/gemm/dot_4x/avx2_dual.rs:165`](src/math/gemm/dot_4x/avx2_dual.rs#L165) (`dot_product_batch_4x_avx2`: só checa `h0.len()`).
