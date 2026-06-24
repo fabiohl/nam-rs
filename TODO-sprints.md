@@ -52,7 +52,7 @@ graph TD
 
 Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno de convolução, eliminando o overhead de desvio, salvamento de registradores e a inserção forçada de instruções `vzeroupper`.
 
-#### [NEW] Tarefa A.1.1: Inline das Estratégias de Prefetch
+#### [NEW] Tarefa A.1.1: Inline das Estratégias de Prefetch [DONE]
 
 * **Objetivo:** Garantir que o compilador inline as estratégias de prefetch diretamente no laço de convolução.
 * **Arquivo Alvo:** [ops.rs](file:///home/fabio/nam-rs/src/math/common/ops.rs#L142-L180)

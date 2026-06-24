@@ -143,6 +143,7 @@ pub unsafe fn prefetch_t1<T>(base: *const T, offset: usize) {
 ///
 /// # Safety
 /// The base pointer must be valid.
+#[inline(always)]
 pub unsafe fn prefetch_strategy_simple(
     base_ptr: *const f32,
     _step: usize,
@@ -160,6 +161,7 @@ pub unsafe fn prefetch_strategy_simple(
 ///
 /// # Safety
 /// The base pointer and computed offsets must be valid.
+#[inline(always)]
 pub unsafe fn prefetch_strategy_2stage(
     base_ptr: *const f32,
     step: usize,
