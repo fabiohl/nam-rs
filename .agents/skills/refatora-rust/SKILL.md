@@ -17,7 +17,7 @@ When the user requests structural refactoring of Rust source code without changi
 
 * It's PROHIBITED to make ligic or algorithmic changes.
 * Ensure files are relatively small, atomic, modular, reusable, and easy to understand and maintain.
-* Folder and file tree must be organized in an extremely logical layout for the project's purposes.
+* Folder and file placement tree must be organized in an extremely logical layout for the project's purposes.
 * Follow testing conventions in `.agents/rules/testing.md` (for example, move unit tests to separate `_test.rs` files if the refactored file reaches or exceeds 300 lines of code).
 * Remove dead/unused code, or useless text that no longer makes sense or serves any useful purpose.
 * Be extremely careful not to modify the logic itself. That is not the goal here. Regressions are strictly forbidden.

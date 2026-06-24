@@ -126,11 +126,11 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-02** (Dispatch de ISA per-frame no `WaveNetA2Dyn` degradando desempenho e quebrando princípios da arquitetura).
 
-#### [x] Tarefa F.1.1 — Monomorfizar `WaveNetA2Dyn::process` (NF-02) ✅ Concluído: `process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` contém o loop principal e propaga `M` via `layer_forward_dispatch<M>` → `process_frame_dyn<M>` → `A2Conv1d::process_single_frame::<M>`. Eliminado dispatch ISA per-frame no caminho dinâmico.
+#### [x] Tarefa F.1.1 — Monomorfizar `WaveNetA2Dyn::process` (NF-02) ✅ Concluído: `process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` contém o loop principal e propaga `M` via `layer_forward_dispatch<M>` → `process_frame_dyn<M>` → `A2Conv1d::process_single_frame::<M>`. Eliminado dispatch ISA per-frame no caminho dinâmico
 
-#### [x] Tarefa F.1.2 — Tornar `A2Conv1d::process_single_frame` Genérica (NF-02) ✅ Concluído: Assinatura alterada para `<M: SimdMath>`. Branch `is_x86_feature_detected!("avx512f")` removido do braço `Standard` — agora delega diretamente `c.process_single_frame::<M>(...)`. `process_block` (test-only) também monomorfizado.
+#### [x] Tarefa F.1.2 — Tornar `A2Conv1d::process_single_frame` Genérica (NF-02) ✅ Concluído: Assinatura alterada para `<M: SimdMath>`. Branch `is_x86_feature_detected!("avx512f")` removido do braço `Standard` — agora delega diretamente `c.process_single_frame::<M>(...)`. `process_block` (test-only) também monomorfizado
 
-#### [x] Tarefa F.1.3 — Ajustar Fallback Per-Frame do `WaveNetA2` Estático (NF-02) ✅ Concluído: `WaveNetA2::process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` e `layer_forward_dispatch<M>` propagam `M` ao fallback `#[cfg(any(test, feature = "dynamic-engine"))]`. Fast-path const-genérico (`A2Conv1dCh`) não afetado.
+#### [x] Tarefa F.1.3 — Ajustar Fallback Per-Frame do `WaveNetA2` Estático (NF-02) ✅ Concluído: `WaveNetA2::process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` e `layer_forward_dispatch<M>` propagam `M` ao fallback `#[cfg(any(test, feature = "dynamic-engine"))]`. Fast-path const-genérico (`A2Conv1dCh`) não afetado
 
 ---
 
@@ -138,7 +138,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-03** (Arquivos `dynamic.rs` com 959 linhas e `mod.rs` com 726 linhas violando princípios de arquivos pequenos/coesos).
 
-#### [ ] Tarefa F.2.1 — Modularizar `WaveNetA2Dyn` (NF-03)
+#### [x] Tarefa F.2.1 — Modularizar `WaveNetA2Dyn` (NF-03) ✅ Concluído: `dynamic.rs` (974 linhas) dividido em `dynamic/{mod,build,process,prewarm}.rs`. `mod.rs` (292 linhas): struct + construtores + getters + reset/set_max_buffer_size. `build.rs` (212 linhas): `set_weights` e helpers. `process.rs` (373 linhas): `process` + `process_internal` + `process_frame_dyn`. `prewarm.rs` (40 linhas): `prewarm`. Testes mantidos via `#[path = "../dynamic_test.rs"]`
 
 - **Descrição:** Dividir [dynamic.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic.rs) em submódulos sob `src/models/a2/model/dynamic/`.
 - **Arquivos a Criar:**

@@ -24,11 +24,9 @@ Use this skill for a general project review in search of improvements.
 * Ace of bug hunting:
   * There is no bug that you cannot discover.
   * There is no attack vector (including dead code, functions unused in certain situations, etc.) that you cannot mitigate.
-  * Find inconsistent features, security flaws, and stability breakages.
-  * Files and functions with size, placement and logical organization.
+  * Find inconsistent functioning, security flaws, and stability breakages.
   * Code that can be better shared among other modules.
-  * Comprehensive coverage of good source code comments.
-  * Exemplary documentation (skill `documentador`).
+  * Exemplary comments and documentation (skill `documentador`).
 * Master of performance:
   * Knows the intricacies of Linux kernel threads and scheduling.
   * Relentless search for risks to user UX responsiveness. Both CLI/GUI and (most especially) the fluidity of processed DSP audio.
