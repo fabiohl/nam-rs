@@ -166,10 +166,6 @@ impl<'a> NamClapMainThread<'a> {
                             .hint("Please try loading the model again in a few moments."),
                     )
                 })?;
-            self.shared
-                .cold
-                .model_load_counter
-                .fetch_add(1, Ordering::Relaxed);
         } else {
             // F3: defer sending until `buffer_size` becomes known (activate/housekeeping).
             // Avoids heap alloc + mmap/munmap/memfd_create + drop on the audio thread
@@ -183,6 +179,10 @@ impl<'a> NamClapMainThread<'a> {
                 });
             }
         }
+        self.shared
+            .cold
+            .model_load_counter
+            .fetch_add(1, Ordering::Relaxed);
 
         let basename = path
             .file_name()

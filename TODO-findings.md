@@ -454,9 +454,9 @@ rígidos) garante que metadados corrompidos não causem alocações perigosas.
 
 ---
 
-## 🔵 F8 — Sentinela de CRC do NAMB v1 permite pular verificação de integridade (pesos all-zero)
+## 🔵 F8 — Sentinela de CRC do NAMB v1 permite pular verificação de integridade (pesos all-zero) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Local:** [`src/loader/namb/parse.rs:75-85`](src/loader/namb/parse.rs#L75).
 - **Severidade:** 🔵 Baixa (retrocompat intencional; só afeta modelos degenerados vazios).
 
@@ -465,6 +465,8 @@ rígidos) garante que metadados corrompidos não causem alocações perigosas.
 Para `version < 2`, se `crc32 == 0` **e** a seção de pesos estiver vazia/all-zero, a verificação é
 pulada com `log::warn!`. É um caminho de compatibilidade com arquivos legados; modelos reais têm
 pesos não-triviais. Documentar e, idealmente, marcar como *deprecated* o NAMB v1 sem CRC.
+
+**Conclusão:** Documentado deprecamento do sentinel de CRC nulo no NAMB v1 em `docs/namb-spec.md` e emitido aviso de runtime explícito de deprecamento no log de warning. Além disso, corrigido teste CLAP que falhava ao carregar estados/presets com tamanho de buffer zerado.
 
 ---
 

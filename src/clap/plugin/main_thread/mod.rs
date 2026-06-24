@@ -103,13 +103,7 @@ impl<'a> NamClapMainThread<'a> {
             input_mult_adj,
             output_mult_adj,
         }) {
-            Ok(()) => {
-                self.shared
-                    .cold
-                    .model_load_counter
-                    .fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(_) => {
                 self.shared
                     .cold

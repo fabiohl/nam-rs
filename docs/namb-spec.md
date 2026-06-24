@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # NAMB Binary Format Specification
@@ -9,22 +10,22 @@ Specification of the `.namb` binary format for optimized distribution of NAM (Ne
 
 The header is a `#[repr(C, packed)]` struct — **without implicit padding**. All multi-byte integers are in **little-endian** format.
 
-| Offset | Size | Field              | Type      | Description                                                                                                 |
-|:------ |:---- |:------------------ |:--------- |:----------------------------------------------------------------------------------------------------------- |
-| 0x00   | 4    | `magic`            | `u32`     | Magic number `0x4E414D42` ("NAMB" in ASCII LE). Different values are rejected with `InvalidMagic`.          |
-| 0x04   | 2    | `version`          | `u16`     | Format version: `1` = legacy, `2` = pre-transposed                                                          |
-| 0x06   | 1    | `layout_type`      | `u8`      | Weight layout (active for `version >= 2`): `0` = Original, `1` = GateMajorLstm, `2` = Interleaved4WaveNet   |
-| 0x07   | 1    | `flags`            | `u8`      | Bitmask of feature flags (see §2)                                                                           |
-| 0x08   | 4    | `reserved_v2`      | `[u8;4]`  | Reserved for future expansion                                                                               |
-| 0x0C   | 4    | `weights_offset`   | `u32`     | Offset of the start of the weights block from the beginning of the file. Must be `>= 0x50` (80).            |
-| 0x10   | 8    | `reserved1`        | `[u32;2]` | Reserved for future expansion                                                                               |
-| 0x18   | 4    | `crc32`            | `u32`     | IEEE 802.3 CRC32 of the file (see §6 for range details). Semantics vary by version.                        |
-| 0x1C   | 4    | `reserved2`        | `u32`     | Reserved for future expansion                                                                               |
-| 0x20   | 32   | `version_str`      | `[u8;32]` | Informational version string, null-terminated (e.g., `"NAMB v2 (GateMajorLstm)\0"`).                        |
-| 0x40   | 4    | `sample_rate`      | `f32`     | Default sample rate (e.g., `48000.0`)                                                                       |
-| 0x44   | 4    | `input_level_dbu`  | `f32`     | Input level in dBu (e.g., `12.0`)                                                                           |
-| 0x48   | 4    | `output_level_dbu` | `f32`     | Output level in dBu (e.g., `-6.0`)                                                                          |
-| 0x4C   | 4    | `reserved3`        | `[u32;1]` | Reserved for future expansion                                                                               |
+| Offset | Size | Field              | Type      | Description                                                                                               |
+|:------ |:---- |:------------------ |:--------- |:--------------------------------------------------------------------------------------------------------- |
+| 0x00   | 4    | `magic`            | `u32`     | Magic number `0x4E414D42` ("NAMB" in ASCII LE). Different values are rejected with `InvalidMagic`.        |
+| 0x04   | 2    | `version`          | `u16`     | Format version: `1` = legacy, `2` = pre-transposed                                                        |
+| 0x06   | 1    | `layout_type`      | `u8`      | Weight layout (active for `version >= 2`): `0` = Original, `1` = GateMajorLstm, `2` = Interleaved4WaveNet |
+| 0x07   | 1    | `flags`            | `u8`      | Bitmask of feature flags (see §2)                                                                         |
+| 0x08   | 4    | `reserved_v2`      | `[u8;4]`  | Reserved for future expansion                                                                             |
+| 0x0C   | 4    | `weights_offset`   | `u32`     | Offset of the start of the weights block from the beginning of the file. Must be `>= 0x50` (80).          |
+| 0x10   | 8    | `reserved1`        | `[u32;2]` | Reserved for future expansion                                                                             |
+| 0x18   | 4    | `crc32`            | `u32`     | IEEE 802.3 CRC32 of the file (see §6 for range details). Semantics vary by version.                       |
+| 0x1C   | 4    | `reserved2`        | `u32`     | Reserved for future expansion                                                                             |
+| 0x20   | 32   | `version_str`      | `[u8;32]` | Informational version string, null-terminated (e.g., `"NAMB v2 (GateMajorLstm)\0"`).                      |
+| 0x40   | 4    | `sample_rate`      | `f32`     | Default sample rate (e.g., `48000.0`)                                                                     |
+| 0x44   | 4    | `input_level_dbu`  | `f32`     | Input level in dBu (e.g., `12.0`)                                                                         |
+| 0x48   | 4    | `output_level_dbu` | `f32`     | Output level in dBu (e.g., `-6.0`)                                                                        |
+| 0x4C   | 4    | `reserved3`        | `[u32;1]` | Reserved for future expansion                                                                             |
 
 **Total header size: 80 bytes (0x50).**
 
@@ -34,10 +35,10 @@ The canonical value is `0x4E414D42` (bytes `42 4D 41 4E` = `"NAMB"` in little-en
 
 ### 1.2 Versioning
 
-| Version | Description                                                                                                                                                                                                   |
-|:------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `1`     | Legacy format. No `flags` field — the byte at offset 0x07 is part of `reserved_v2: [u8;5]`. `layout_type` was part of the reserved region, treated as `0` (Original). Optional CRC via sentinel `crc32 == 0`. |
-| `2`     | Pre-transposed format. Byte 0x07 is `flags: u8`, `reserved_v2` reduced to 4 bytes. `layout_type` active. `FLAG_HAS_CRC32` is mandatory.                                                                       |
+| Version | Description                                                                                                                                                                                                                |
+|:------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1`     | Legacy format. No `flags` field — the byte at offset 0x07 is part of `reserved_v2: [u8;5]`. `layout_type` was part of the reserved region, treated as `0` (Original). Optional CRC via sentinel `crc32 == 0` (deprecated). |
+| `2`     | Pre-transposed format. Byte 0x07 is `flags: u8`, `reserved_v2` reduced to 4 bytes. `layout_type` active. `FLAG_HAS_CRC32` is mandatory.                                                                                    |
 
 Values of `version` other than `1` and `2` are rejected with `NambError::InvalidVersion`.
 
@@ -230,12 +231,12 @@ The `f32` values are read via `f32::from_le_bytes()` in 4-byte chunks. There is 
 
 ### 6.3 Semantics by Version
 
-| Condition                     | Behavior                                                                                  |
-|:----------------------------- |:----------------------------------------------------------------------------------------- |
-| v1, `crc32 == 0`              | CRC **ignored** (sentinel). Emits `log::warn!`. Compatibility with pre-flag files.        |
-| v1, `crc32 != 0`              | CRC **validated** normally.                                                               |
-| v2+, `FLAG_HAS_CRC32` not set | **Rejected** with `NambError::CrcMissing { version }`.                                    |
-| v2+, `FLAG_HAS_CRC32` set     | CRC **validated** always (treating `crc32 == 0` as a legitimate ~1/2³² coincidence case). |
+| Condition                     | Behavior                                                                                                            |
+|:----------------------------- |:------------------------------------------------------------------------------------------------------------------- |
+| v1, `crc32 == 0`              | CRC **ignored** (sentinel). Emits `log::warn!` deprecation warning. Compatibility with pre-flag files (deprecated). |
+| v1, `crc32 != 0`              | CRC **validated** normally.                                                                                         |
+| v2+, `FLAG_HAS_CRC32` not set | **Rejected** with `NambError::CrcMissing { version }`.                                                              |
+| v2+, `FLAG_HAS_CRC32` set     | CRC **validated** always (treating `crc32 == 0` as a legitimate ~1/2³² coincidence case).                           |
 
 ### 6.4 Encoder Behavior
 
@@ -352,7 +353,7 @@ Global limit: `MAX_MODEL_BYTES = 256 MiB`. Files larger than this limit are reje
 
 ### 9.1 Backward Compatibility
 
-- **v1**: maintained for reading legacy files. Optional CRC via sentinel `crc32 == 0`. In v1 headers, the byte at offset `0x07` is treated as reserved (part of `reserved_v2`) and must not be interpreted as feature flags (e.g. even if it is non-zero, it does not enable feature flags). This ensures forward-compatibility and prevents false interpretation of flags in legacy files.
+- **v1**: maintained for reading legacy files. Optional CRC via sentinel `crc32 == 0` (deprecated). In v1 headers, the byte at offset `0x07` is treated as reserved (part of `reserved_v2`) and must not be interpreted as feature flags (e.g. even if it is non-zero, it does not enable feature flags). This ensures forward-compatibility and prevents false interpretation of flags in legacy files.
 - **v2**: `FLAG_HAS_CRC32` mandatory. `layout_type` active.
 - **Interleaved-4 zero padding** (S3.T04): transparent change. NAMB v2 models produced before the fix remain valid (only affects geometries where `CO % 4 != 0`, which do not exist in the current catalog). Documented as an implicit bump without a version change.
 
