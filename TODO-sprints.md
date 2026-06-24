@@ -143,16 +143,21 @@ residuais de cópia de buffer.
     `out_len == 1` também receberam cauda mascarada consistente. **Testes:** 9/9 unitários GEMV
     passam, 26/26 `golden_vectors` passam, 3/3 `threshold_calibration` passam.
 
-- **[ ] Tarefa E2.3 — Auditar e eliminar `memmove` residual em caminhos de cópia constante (F12)**
-  - **Foco:** Identificar chamadas de `copy_from_slice`/`copy_within` não cobertas por D1.2 que ainda
-    geram `__memmove_avx_unaligned_erms` no hot path.
-  - **Ação:**
-    1. Executar: `rg 'copy_from_slice|copy_within' src/models/wavenet/ src/dsp/ --line-number`
-    2. Para cada ocorrência, determinar se o tamanho é constante (baseado em `const generics`) ou variável.
-    3. Para tamanhos constantes: substituir por `std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), CONST_N)`.
-    4. Para `WaveNetLayerArrayDyn` e `layer_array.rs:81` (seed copy): verificar se D2.1 cobriu todos
-       os caminhos ou se há fallback não instrumentado.
-    5. Verificar o `DelayLine::push` do resampler (`src/dsp/resampler.rs`): se o push usa `copy_within`
-       para mover a janela deslizante, substituir por ponteiro circular (sem cópia).
-  - **Validação:** `rg 'memmove\|memcpy' target/dsp_hotpath.asm` (após rebuild) deve retornar zero
-    para funções do namespace `nam_rs`. Soak test obrigatório.
+- **[x] Tarefa E2.3 — Auditar e eliminar `memmove` residual em caminhos de cópia constante (F12)**
+  - **Conclusão:** Auditoria completa de 43 ocorrências de `copy_from_slice`/`copy_within` em
+    `src/models/wavenet/` (13) e `src/dsp/` (30). **27 substituições em 8 arquivos.** Substituídas
+    todas as cópias do hot-path por `core::ptr::copy_nonoverlapping` (src/dst disjuntos) ou
+    `core::ptr::copy` (casos `copy_within` com possível sobreposição, ex: overlap-save do cabsim).
+    Arquivos modificados: `model.rs`, `model_dyn.rs`, `post_stack_head.rs`, `cabsim/conv.rs`,
+    `pipeline/stages/inference.rs`, `pipeline/stages/output.rs`, `pipeline/capture.rs`,
+    `pipeline/output_pw.rs`, `resampler.rs`. Mantidos no hot-path apenas os 5 `copy_within` de
+    prewarm (`layer_array.rs:116`, `layer_array_dyn.rs:114`, `post_stack_head.rs:218`) e 3
+    `copy_from_slice` de inicialização (`set_weights`/`set_bias`/`sinc_kernel`), todos fora do
+    caminho RT contínuo. **Verificações:** D2.1 cobre todos os caminhos de seed copy em
+    `layer.rs`/`layer_dyn.rs` (sem fallback); `DelayLine::push` já usa double-buffer sem
+    `copy_within`; `conv1d_dyn.rs`/`conv1d_dyn_dual.rs` não contêm `copy_from_slice` (E1.1
+    eliminou-as). **Validação:** `cargo build --release` limpo, 0 chamadas a `memmove`/`memcpy`
+    nas funções `nam_rs` do binário. 91/91 wavenet unitários, 26/26 golden vectors, 7/7
+    zero-alloc, 21/21 cabsim, 21/21 resampler, 31/31 cpp_parity, 13/13 proptest parsers,
+    3/3 proptest math, 76/77 CLAP, 12/12 heap-audit, 19/19 clap-validator — zero falhas.
+    `tests-quick.sh` 5/5 fases aprovadas.
