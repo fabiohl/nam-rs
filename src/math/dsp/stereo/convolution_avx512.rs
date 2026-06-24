@@ -22,11 +22,6 @@ macro_rules! avx512_zero {
         || _mm512_setzero_ps()
     };
 }
-macro_rules! avx512_load {
-    () => {
-        |p| _mm512_load_ps(p)
-    };
-}
 macro_rules! avx512_loadu {
     () => {
         |p| _mm512_loadu_ps(p)
@@ -51,7 +46,6 @@ impl_convolve_stereo!(
     AVX512_HALF_STEP,
     AVX512_ALIGN,
     avx512_zero!(),
-    avx512_load!(),
     avx512_loadu!(),
     avx512_fmadd!(),
     avx512_add!(),
@@ -66,7 +60,6 @@ impl_convolve_stereo_dual!(
     AVX512_HALF_STEP,
     AVX512_ALIGN,
     avx512_zero!(),
-    avx512_load!(),
     avx512_loadu!(),
     avx512_fmadd!(),
     avx512_add!(),
@@ -81,7 +74,6 @@ impl_convolve_mono_dual!(
     AVX512_HALF_STEP,
     AVX512_ALIGN,
     avx512_zero!(),
-    avx512_load!(),
     avx512_loadu!(),
     avx512_fmadd!(),
     avx512_add!(),
@@ -96,7 +88,6 @@ impl_convolve_mono!(
     AVX512_HALF_STEP,
     AVX512_ALIGN,
     avx512_zero!(),
-    avx512_load!(),
     avx512_loadu!(),
     avx512_fmadd!(),
     avx512_add!(),

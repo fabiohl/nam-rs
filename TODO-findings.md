@@ -470,9 +470,9 @@ pesos não-triviais. Documentar e, idealmente, marcar como *deprecated* o NAMB v
 
 ---
 
-## 🔵 F9 — Guarda de alinhamento de load SIMD é `debug_assert` (some em release) nos kernels de convolução estéreo
+## 🔵 F9 — Guarda de alinhamento de load SIMD é `debug_assert` (some em release) nos kernels de convolução estéreo [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Local:** [`src/math/dsp/stereo/conv_kernels.rs:28-32,106-115,...`](src/math/dsp/stereo/conv_kernels.rs#L28).
 - **Severidade:** 🔵 Baixa hoje (seguro para o resampler atual), 🟡 se mudar a configuração.
 
@@ -492,6 +492,8 @@ Opção mais robusta e barata: trocar o load de `coeffs` para **unaligned** (`_m
 Haswell+ a penalidade sobre dados já alinhados é nula. Alternativamente, transformar a invariante em
 `const { assert!(TAPS_PER_PHASE % 16 == 0) }` (static assert) e/ou `assert!` rígido no construtor do
 banco de coeficientes.
+
+**Conclusão:** Alterado o carregamento de coeficientes (`coeffs`, `coeffs0`, `coeffs1`) para carga não alinhada (`$loadu`) em todos os macros de convolução SIMD (`impl_convolve_stereo`, `impl_convolve_stereo_dual`, `impl_convolve_mono` e `impl_convolve_mono_dual`), eliminando riscos de SIGSEGV/GP fault por desalinhamento em release.
 
 ---
 
@@ -555,7 +557,7 @@ validação de `sample_rate` no JSON; ampliar `proptest_parsers.rs`. **É o épi
 alinhar comportamento CLAP↔standalone; tornar métodos `SimdMath` obrigatórios; heap-audit do cenário
 "state-load antes do activate".
 
-### Épico E3 — Soundness de kernels SIMD/unsafe (UB & contratos)
+### Épico E3 — Soundness de kernels SIMD/unsafe (UB & contratos) [DONE]
 
 **Findings:** F4 (🟠), F6 (🟡), F9 (🔵).
 **Objetivo:** eliminar UB latente e formalizar contratos `unsafe`.

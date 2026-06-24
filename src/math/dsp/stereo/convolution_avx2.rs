@@ -22,11 +22,6 @@ macro_rules! avx2_zero {
         || _mm256_setzero_ps()
     };
 }
-macro_rules! avx2_load {
-    () => {
-        |p| _mm256_load_ps(p)
-    };
-}
 macro_rules! avx2_loadu {
     () => {
         |p| _mm256_loadu_ps(p)
@@ -65,7 +60,6 @@ impl_convolve_stereo!(
     AVX2_HALF_STEP,
     AVX2_ALIGN,
     avx2_zero!(),
-    avx2_load!(),
     avx2_loadu!(),
     avx2_fmadd!(),
     avx2_add!(),
@@ -80,7 +74,6 @@ impl_convolve_stereo_dual!(
     AVX2_HALF_STEP,
     AVX2_ALIGN,
     avx2_zero!(),
-    avx2_load!(),
     avx2_loadu!(),
     avx2_fmadd!(),
     avx2_add!(),
@@ -95,7 +88,6 @@ impl_convolve_mono_dual!(
     AVX2_HALF_STEP,
     AVX2_ALIGN,
     avx2_zero!(),
-    avx2_load!(),
     avx2_loadu!(),
     avx2_fmadd!(),
     avx2_add!(),
@@ -110,7 +102,6 @@ impl_convolve_mono!(
     AVX2_HALF_STEP,
     AVX2_ALIGN,
     avx2_zero!(),
-    avx2_load!(),
     avx2_loadu!(),
     avx2_fmadd!(),
     avx2_add!(),

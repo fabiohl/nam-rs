@@ -12,7 +12,6 @@ macro_rules! impl_convolve_stereo {
         $fn_name:ident,
         $step_dbl:expr, $half_step:expr, $align:expr,
         $zero:expr,
-        $load:expr,
         $loadu:expr,
         $fmadd:expr,
         $add:expr,
@@ -37,13 +36,13 @@ macro_rules! impl_convolve_stereo {
             let mut i = 0;
 
             while i + $step_dbl <= taps {
-                let h0 = $load(coeffs.add(i));
+                let h0 = $loadu(coeffs.add(i));
                 let x0_l = $loadu(input_l.add(i));
                 let x0_r = $loadu(input_r.add(i));
                 sum_l0 = $fmadd(h0, x0_l, sum_l0);
                 sum_r0 = $fmadd(h0, x0_r, sum_r0);
 
-                let h1 = $load(coeffs.add(i + $half_step));
+                let h1 = $loadu(coeffs.add(i + $half_step));
                 let x1_l = $loadu(input_l.add(i + $half_step));
                 let x1_r = $loadu(input_r.add(i + $half_step));
                 sum_l1 = $fmadd(h1, x1_l, sum_l1);
@@ -53,7 +52,7 @@ macro_rules! impl_convolve_stereo {
             }
 
             while i + $half_step <= taps {
-                let h = $load(coeffs.add(i));
+                let h = $loadu(coeffs.add(i));
                 let x_l = $loadu(input_l.add(i));
                 let x_r = $loadu(input_r.add(i));
                 sum_l0 = $fmadd(h, x_l, sum_l0);
@@ -89,7 +88,6 @@ macro_rules! impl_convolve_stereo_dual {
         $fn_name:ident,
         $step_dbl:expr, $half_step:expr, $align:expr,
         $zero:expr,
-        $load:expr,
         $loadu:expr,
         $fmadd:expr,
         $add:expr,
@@ -129,22 +127,22 @@ macro_rules! impl_convolve_stereo_dual {
                 let x0_l = $loadu(input_l.add(i));
                 let x0_r = $loadu(input_r.add(i));
 
-                let h0_0 = $load(coeffs0.add(i));
+                let h0_0 = $loadu(coeffs0.add(i));
                 sum0_l0 = $fmadd(h0_0, x0_l, sum0_l0);
                 sum0_r0 = $fmadd(h0_0, x0_r, sum0_r0);
 
-                let h1_0 = $load(coeffs1.add(i));
+                let h1_0 = $loadu(coeffs1.add(i));
                 sum1_l0 = $fmadd(h1_0, x0_l, sum1_l0);
                 sum1_r0 = $fmadd(h1_0, x0_r, sum1_r0);
 
                 let x1_l = $loadu(input_l.add(i + $half_step));
                 let x1_r = $loadu(input_r.add(i + $half_step));
 
-                let h0_1 = $load(coeffs0.add(i + $half_step));
+                let h0_1 = $loadu(coeffs0.add(i + $half_step));
                 sum0_l1 = $fmadd(h0_1, x1_l, sum0_l1);
                 sum0_r1 = $fmadd(h0_1, x1_r, sum0_r1);
 
-                let h1_1 = $load(coeffs1.add(i + $half_step));
+                let h1_1 = $loadu(coeffs1.add(i + $half_step));
                 sum1_l1 = $fmadd(h1_1, x1_l, sum1_l1);
                 sum1_r1 = $fmadd(h1_1, x1_r, sum1_r1);
 
@@ -155,11 +153,11 @@ macro_rules! impl_convolve_stereo_dual {
                 let x_l = $loadu(input_l.add(i));
                 let x_r = $loadu(input_r.add(i));
 
-                let h0 = $load(coeffs0.add(i));
+                let h0 = $loadu(coeffs0.add(i));
                 sum0_l0 = $fmadd(h0, x_l, sum0_l0);
                 sum0_r0 = $fmadd(h0, x_r, sum0_r0);
 
-                let h1 = $load(coeffs1.add(i));
+                let h1 = $loadu(coeffs1.add(i));
                 sum1_l0 = $fmadd(h1, x_l, sum1_l0);
                 sum1_r0 = $fmadd(h1, x_r, sum1_r0);
 
@@ -204,7 +202,6 @@ macro_rules! impl_convolve_mono_dual {
         $fn_name:ident,
         $step_dbl:expr, $half_step:expr, $align:expr,
         $zero:expr,
-        $load:expr,
         $loadu:expr,
         $fmadd:expr,
         $add:expr,
@@ -236,18 +233,18 @@ macro_rules! impl_convolve_mono_dual {
             while i + $step_dbl <= taps {
                 let x0 = $loadu(input.add(i));
 
-                let h0_0 = $load(coeffs0.add(i));
+                let h0_0 = $loadu(coeffs0.add(i));
                 sum0_0 = $fmadd(h0_0, x0, sum0_0);
 
-                let h1_0 = $load(coeffs1.add(i));
+                let h1_0 = $loadu(coeffs1.add(i));
                 sum1_0 = $fmadd(h1_0, x0, sum1_0);
 
                 let x1 = $loadu(input.add(i + $half_step));
 
-                let h0_1 = $load(coeffs0.add(i + $half_step));
+                let h0_1 = $loadu(coeffs0.add(i + $half_step));
                 sum0_1 = $fmadd(h0_1, x1, sum0_1);
 
-                let h1_1 = $load(coeffs1.add(i + $half_step));
+                let h1_1 = $loadu(coeffs1.add(i + $half_step));
                 sum1_1 = $fmadd(h1_1, x1, sum1_1);
 
                 i += $step_dbl;
@@ -256,10 +253,10 @@ macro_rules! impl_convolve_mono_dual {
             while i + $half_step <= taps {
                 let x = $loadu(input.add(i));
 
-                let h0 = $load(coeffs0.add(i));
+                let h0 = $loadu(coeffs0.add(i));
                 sum0_0 = $fmadd(h0, x, sum0_0);
 
-                let h1 = $load(coeffs1.add(i));
+                let h1 = $loadu(coeffs1.add(i));
                 sum1_0 = $fmadd(h1, x, sum1_0);
 
                 i += $half_step;
@@ -293,7 +290,6 @@ macro_rules! impl_convolve_mono {
         $fn_name:ident,
         $step_dbl:expr, $half_step:expr, $align:expr,
         $zero:expr,
-        $load:expr,
         $loadu:expr,
         $fmadd:expr,
         $add:expr,
@@ -311,11 +307,11 @@ macro_rules! impl_convolve_mono {
             let mut i = 0;
 
             while i + $step_dbl <= taps {
-                let h0 = $load(coeffs.add(i));
+                let h0 = $loadu(coeffs.add(i));
                 let x0 = $loadu(input.add(i));
                 sum0 = $fmadd(h0, x0, sum0);
 
-                let h1 = $load(coeffs.add(i + $half_step));
+                let h1 = $loadu(coeffs.add(i + $half_step));
                 let x1 = $loadu(input.add(i + $half_step));
                 sum1 = $fmadd(h1, x1, sum1);
 
@@ -323,7 +319,7 @@ macro_rules! impl_convolve_mono {
             }
 
             while i + $half_step <= taps {
-                let h = $load(coeffs.add(i));
+                let h = $loadu(coeffs.add(i));
                 let x = $loadu(input.add(i));
                 sum0 = $fmadd(h, x, sum0);
                 i += $half_step;
