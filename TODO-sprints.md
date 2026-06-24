@@ -268,7 +268,7 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
 
 Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-input* e acumulação nas linhas de saída (accumulator-output), evitando reduções horizontais repetitivas e cauda escalar ineficiente.
 
-#### [MODIFY] Tarefa B.2.1: Implementação de GEMV com Bias Unificado em AVX2
+#### [MODIFY] Tarefa B.2.1: Implementação de GEMV com Bias Unificado em AVX2 [DONE]
 
 * **Objetivo:** Otimizar e unificar `gemv_with_bias_f32_avx2` para cobrir todos os shapes pequenos e caudas ímpares sem fallback escalar.
 * **Arquivo Alvo:** [f32_avx2.rs](file:///home/fabio/nam-rs/src/math/gemm/gemv/f32_avx2.rs)
@@ -277,6 +277,12 @@ Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-inpu
   * Utilizar uma cauda mascarada (masked tail) com `_mm256_maskstore_ps` (baseado em um vetor de máscara para `out_len % 8 != 0`) eliminando o loop escalar de cauda.
   * Adicionar atalho otimizado para `in_len == 1` que evita loops: `out = bias + broadcast(in) * weights`.
   * Adicionar atalho para `out_len == 1` que processe 8 frames simultaneamente usando registradores YMM, adiando a redução horizontal para depois do loop de frames.
+* **Conclusão (2026-06-24):** `gemv_with_bias_f32_avx2` reescrito como kernel unificado com 3 vias:
+  * **`in_len == 1`:** broadcast-multiply-add direto em blocos de 8 canais de saída, com maskstore na cauda.
+  * **`out_len == 1`:** 8 frames em paralelo via 8 acumuladores YMM (gather de `in[n..n+7][ic]` por iteração), redução horizontal adiada; restante de frames via dot product per-frame existente.
+  * **Caminho geral (todos `out_len >= 1`):** 8-way unrolled broadcast-input sobre blocos de 8 canais de saída (macro `gemv_f32_inner_loop_avx2!`); bloco parcial final com `_mm256_maskload_ps` para pesos e `_mm256_maskstore_ps` para store, eliminando loops escalares de cauda para `out_c`.
+  * Eliminados todos os 3 fallbacks escalares (`out_len <= 4`, `5..=7` e cauda `out_c`).
+  * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
 #### [MODIFY] Tarefa B.2.2: Implementação de GEMV sem Bias Unificado em AVX2
 
