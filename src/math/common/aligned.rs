@@ -216,13 +216,9 @@ impl<T: Clone> Clone for AlignedVec<T> {
 /// custom-fit dividers (64-byte alignment), preparing the data for
 /// high-speed processing.
 impl<T: Copy> From<Vec<T>> for AlignedVec<T> {
+    #[inline]
     fn from(v: Vec<T>) -> Self {
-        let mut aligned = Self::new(v.len(), v[0]); // v[0] works if len > 0
-        if v.is_empty() {
-            return Self::with_capacity(0);
-        }
-        aligned.copy_from_slice(&v);
-        aligned
+        Self::from_vec(v)
     }
 }
 
@@ -254,3 +250,34 @@ impl<T: Copy> AlignedVec<T> {
 unsafe impl<T: Send> Send for AlignedVec<T> {}
 // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 unsafe impl<T: Sync> Sync for AlignedVec<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::AlignedVec;
+
+    #[test]
+    fn aligned_from_empty_vec_is_safe() {
+        let v: Vec<f32> = Vec::new();
+        let aligned = AlignedVec::from(v);
+        assert!(aligned.is_empty());
+        assert_eq!(aligned.len(), 0);
+    }
+
+    #[test]
+    fn aligned_from_vec_preserves_data() {
+        let v = vec![1.0f32, 2.0, 3.0];
+        let aligned = AlignedVec::from(v);
+        assert_eq!(aligned.len(), 3);
+        assert_eq!(aligned[0], 1.0);
+        assert_eq!(aligned[1], 2.0);
+        assert_eq!(aligned[2], 3.0);
+    }
+
+    #[test]
+    fn aligned_from_vec_empty_capacity_zero() {
+        let v: Vec<f64> = Vec::new();
+        let aligned = AlignedVec::from(v);
+        assert!(aligned.is_empty());
+        assert_eq!(aligned.len(), 0);
+    }
+}

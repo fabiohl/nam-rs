@@ -30,9 +30,9 @@ Status legenda: ⬜ aberto · 🟦 em análise · ✅ resolvido.
 
 ---
 
-## 🔴 F1 — `AlignedVec::from(Vec<T>)` faz panic com vetor vazio (guarda em código morto)
+## 🔴 F1 — `AlignedVec::from(Vec<T>)` faz panic com vetor vazio (guarda em código morto) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Local:** [`src/math/common/aligned.rs:218-227`](src/math/common/aligned.rs#L218)
 - **Severidade:** 🔴 Crítica (panic determinístico; viola "Panic Prevention" de `.agents/rules/rust.md`).
 
