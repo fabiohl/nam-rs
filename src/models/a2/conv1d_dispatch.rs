@@ -3,6 +3,11 @@
 
 //! Inference dispatch for `A2Conv1d` — delegates to `Conv1dDyn` (groups=1) or
 //! `A2GroupedConv1d` (groups>1) with AVX2 depthwise fast‑path auto‑selection.
+//!
+//! All hot-path methods are monomorphized over `<M: SimdMath>`, receiving the ISA
+//! type from the top-level `dispatch_simd!` in the model's `process` method.
+
+use crate::math::common::SimdMath;
 
 use super::A2Conv1d;
 
@@ -12,12 +17,15 @@ impl A2Conv1d {
     /// Uses the SIMD-accelerated path: `Conv1dDyn` for groups=1,
     /// AVX2 grouped kernel (with depthwise dispatch) for groups>1.
     ///
+    /// `M` is the ISA monomorphization type propagated from the top-level
+    /// `dispatch_simd!` — eliminates per-frame `is_x86_feature_detected` branches.
+    ///
     /// # Safety
     /// `layer_buffer` must contain valid elements for the dilated tap indices.
     /// `out_frame` must have length at least `self.out_ch`.
     /// `frame_idx` must allow `kernel` lookback taps within `layer_buffer`.
     #[inline(always)]
-    pub unsafe fn process_single_frame(
+    pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         out_frame: &mut [f32],
@@ -27,21 +35,7 @@ impl A2Conv1d {
         unsafe {
             match self {
                 Self::Standard(c) => {
-                    if is_x86_feature_detected!("avx512f") {
-                        c.process_single_frame::<crate::math::common::Avx512Math>(
-                            layer_buffer,
-                            out_frame,
-                            frame_idx,
-                            mixin,
-                        );
-                    } else {
-                        c.process_single_frame::<crate::math::common::Avx2Math>(
-                            layer_buffer,
-                            out_frame,
-                            frame_idx,
-                            mixin,
-                        );
-                    }
+                    c.process_single_frame::<M>(layer_buffer, out_frame, frame_idx, mixin);
                 }
                 Self::Grouped(g) => {
                     g.process_single_frame(layer_buffer, out_frame, frame_idx, mixin);
@@ -52,12 +46,15 @@ impl A2Conv1d {
 
     /// Processes a block of `num_frames` consecutive frames (f32).
     ///
+    /// `M` is the ISA monomorphization type propagated from the top-level
+    /// `dispatch_simd!`.
+    ///
     /// # Safety
     /// `layer_buffer` must be large enough for `buffer_start..buffer_start + num_frames`
     /// plus kernel*dilation lookback. `block` must have size at least `num_frames * out_ch`.
     #[cfg(test)]
     #[inline(always)]
-    pub unsafe fn process_block(
+    pub unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
@@ -68,23 +65,7 @@ impl A2Conv1d {
         unsafe {
             match self {
                 Self::Standard(c) => {
-                    if is_x86_feature_detected!("avx512f") {
-                        c.process_block::<crate::math::common::Avx512Math>(
-                            layer_buffer,
-                            block,
-                            buffer_start,
-                            num_frames,
-                            mixin,
-                        );
-                    } else {
-                        c.process_block::<crate::math::common::Avx2Math>(
-                            layer_buffer,
-                            block,
-                            buffer_start,
-                            num_frames,
-                            mixin,
-                        );
-                    }
+                    c.process_block::<M>(layer_buffer, block, buffer_start, num_frames, mixin);
                 }
                 Self::Grouped(g) => {
                     g.process_block(layer_buffer, block, buffer_start, num_frames, mixin);

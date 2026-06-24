@@ -16,7 +16,7 @@ use super::conv1d::A2Conv1d;
 use super::conv1d_ch::A2Conv1dCh;
 use super::film::FiLMLayer;
 use super::params::A2_LEAKY_SLOPE;
-use crate::math::common::AlignedVec;
+use crate::math::common::{AlignedVec, SimdMath};
 
 /// CH-optimized conv wrapper (enum dispatch).
 ///
@@ -243,7 +243,7 @@ impl A2Layer {
     /// * `is_last` — layer 22 skips l1x1 residual.
     #[allow(clippy::too_many_arguments)]
     #[inline(always)]
-    pub fn process_single_frame(
+    pub fn process_single_frame<M: SimdMath>(
         &self,
         layer_history: &[f32],
         frame_idx: usize,
@@ -262,7 +262,7 @@ impl A2Layer {
         // 1. Dilated conv (no mixin — A2 adds mixin after conv).
         unsafe {
             self.conv
-                .process_single_frame(layer_history, z_buf, frame_idx, None);
+                .process_single_frame::<M>(layer_history, z_buf, frame_idx, None);
         }
 
         // 2. Input mixin: z_buf[c] += mixin_w[c] * input_cond.

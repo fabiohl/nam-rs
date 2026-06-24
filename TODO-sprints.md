@@ -112,7 +112,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 - **Descrição:** Escrever testes de validação em [dot_8x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_8x/dot_8x_test.rs) e [dot_16x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/dot_16x_test.rs).
 - **Detalhes Técnicos:** Certificar que os novos kernels batem bit a bit (ou com tolerância < 2 ULP) contra as implementações escalares correspondentes para múltiplos tamanhos e fracionamentos.
 
-#### [ ] Tarefa E.3.4 — Execução Completa de QA e Profiling / Benchmarking
+#### [x] Tarefa E.3.4 — Execução Completa de QA e Profiling / Benchmarking
 
 - **Descrição:** Executar o script unificado [utils/tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) e rodar benchmarks (`cargo bench --bench inference_bench`) para comprovar o ganho de throughput do temporal tiling nas larguras 8x e 16x.
 
@@ -126,24 +126,11 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-02** (Dispatch de ISA per-frame no `WaveNetA2Dyn` degradando desempenho e quebrando princípios da arquitetura).
 
-#### [ ] Tarefa F.1.1 — Monomorfizar `WaveNetA2Dyn::process` (NF-02)
+#### [x] Tarefa F.1.1 — Monomorfizar `WaveNetA2Dyn::process` (NF-02) ✅ Concluído: `process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` contém o loop principal e propaga `M` via `layer_forward_dispatch<M>` → `process_frame_dyn<M>` → `A2Conv1d::process_single_frame::<M>`. Eliminado dispatch ISA per-frame no caminho dinâmico.
 
-- **Descrição:** Atualizar o método `process` de `WaveNetA2Dyn` em [dynamic.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic.rs).
-- **Detalhes Técnicos:**
-  - Chamar `dispatch_simd!(self, process_internal, input, output)` no início de `process`.
-  - Definir `process_internal<M: SimdMath>(&mut self, ...)` para conter o loop principal e propagar `M` para os métodos subsequentes.
+#### [x] Tarefa F.1.2 — Tornar `A2Conv1d::process_single_frame` Genérica (NF-02) ✅ Concluído: Assinatura alterada para `<M: SimdMath>`. Branch `is_x86_feature_detected!("avx512f")` removido do braço `Standard` — agora delega diretamente `c.process_single_frame::<M>(...)`. `process_block` (test-only) também monomorfizado.
 
-#### [ ] Tarefa F.1.2 — Tornar `A2Conv1d::process_single_frame` Genérica (NF-02)
-
-- **Descrição:** Modificar o arquivo de dispatch [conv1d_dispatch.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_dispatch.rs).
-- **Detalhes Técnicos:**
-  - Alterar a assinatura para `pub unsafe fn process_single_frame<M: SimdMath>(&self, ...)`.
-  - Substituir o branch `is_x86_feature_detected!("avx512f")` por uma delegação mecânica: `c.process_single_frame::<M>(...)` no braço `Standard`.
-
-#### [ ] Tarefa F.1.3 — Ajustar Fallback Per-Frame do `WaveNetA2` Estático (NF-02)
-
-- **Descrição:** Atualizar o fallback de loop per-frame em [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/mod.rs#L518).
-- **Detalhes Técnicos:** Match no `SIMD_MATH.instruction_set` apenas uma vez no início do loop para despachar o tipo `M` estaticamente (evitando re-detecção interna na folha).
+#### [x] Tarefa F.1.3 — Ajustar Fallback Per-Frame do `WaveNetA2` Estático (NF-02) ✅ Concluído: `WaveNetA2::process` agora usa `dispatch_simd!(self, process_internal, input, output)`. `process_internal<M: SimdMath>` e `layer_forward_dispatch<M>` propagam `M` ao fallback `#[cfg(any(test, feature = "dynamic-engine"))]`. Fast-path const-genérico (`A2Conv1dCh`) não afetado.
 
 ---
 

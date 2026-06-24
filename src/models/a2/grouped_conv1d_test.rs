@@ -844,7 +844,7 @@ fn should_panic_process_block_mixin_too_short() {
     let dilation = 2;
     let groups = 2;
 
-    let (raw_weights, raw_bias) = make_test_weights_grouped(in_ch, out_ch, kernel, groups, 42);
+    let (raw_weights, raw_bias) = make_test_weights_grouped(in_ch, out_ch, kernel, groups, 43);
     let conv = A2GroupedConv1d::new(
         &raw_weights,
         &raw_bias,

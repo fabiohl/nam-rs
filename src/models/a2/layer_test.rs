@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::prefetch_strategy_simple;
+use crate::math::common::{Avx2Math, prefetch_strategy_simple};
 use crate::models::a2::A2_DILATIONS;
 
 fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
@@ -87,7 +87,7 @@ fn test_a2_layer_ch3_kernel6_parity() {
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f; // = wp (ring-write position) + f
             let lin_slice = &mut layer_in_simd[f * ch..(f + 1) * ch];
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -198,7 +198,7 @@ fn test_a2_layer_ch8_kernel15_parity() {
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f;
             let lin_slice = &mut layer_in_simd[f * ch..(f + 1) * ch];
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -300,7 +300,7 @@ fn test_a2_layer_first_middle_last_behavior() {
         let mut z_buf = vec![0.0f32; ch];
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f;
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -334,7 +334,7 @@ fn test_a2_layer_first_middle_last_behavior() {
         // First pass (is_first=true): head = layer output
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f;
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -351,7 +351,7 @@ fn test_a2_layer_first_middle_last_behavior() {
         // Second pass (is_first=false): should add more to head
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f;
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -386,7 +386,7 @@ fn test_a2_layer_first_middle_last_behavior() {
         let mut z_buf = vec![0.0f32; ch];
         for f in 0..num_frames {
             let frame_idx = hist_write_pos + f;
-            layer.process_single_frame(
+            layer.process_single_frame::<Avx2Math>(
                 &history,
                 frame_idx,
                 input_cond[f],
@@ -450,7 +450,7 @@ fn test_a2_layer_mixin_contribution() {
     let mut layer_in = vec![0.0f32; ch];
     let mut z_buf = vec![0.0f32; ch];
 
-    layer.process_single_frame(
+    layer.process_single_frame::<Avx2Math>(
         &history,
         frame_idx,
         2.0,
@@ -510,7 +510,7 @@ fn test_a2_layer_zero_weights_deterministic() {
     let mut layer_in = vec![0.0f32; ch];
     let mut z_buf = vec![0.0f32; ch];
 
-    layer.process_single_frame(
+    layer.process_single_frame::<Avx2Math>(
         &history,
         hist_write_pos,
         0.5,

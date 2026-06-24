@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::AlignedVec;
+use crate::math::common::{AlignedVec, Avx2Math};
 use crate::models::a2::A2_DILATIONS;
 use crate::models::a2::conv1d_fallback::a2_conv1d_single_frame_fallback;
 
@@ -69,7 +69,7 @@ fn test_a2_conv1d_kernel6_parity_single_frame() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -136,7 +136,7 @@ fn test_a2_conv1d_kernel15_parity_single_frame() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -203,7 +203,7 @@ fn test_a2_conv1d_first_layer_in_ch_1() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -278,7 +278,12 @@ fn test_a2_conv1d_with_mixin_kernel6() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, Some(&mixin));
+        conv.process_single_frame::<Avx2Math>(
+            &layer_buffer,
+            &mut simd_out,
+            frame_idx,
+            Some(&mixin),
+        );
     }
 
     a2_conv1d_single_frame_fallback(
@@ -354,7 +359,7 @@ fn test_a2_conv1d_all_dilations_kernel6() {
         let mut scalar_out = vec![0.0f32; out_ch];
 
         unsafe {
-            conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+            conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
         }
 
         a2_conv1d_single_frame_fallback(
@@ -423,7 +428,7 @@ fn test_a2_conv1d_block_processing_kernel15() {
         let mut scalar_block = vec![0.0f32; num_frames * out_ch];
 
         unsafe {
-            conv.process_block(
+            conv.process_block::<crate::math::common::Avx2Math>(
                 &layer_buffer,
                 &mut simd_block,
                 buffer_start,
@@ -499,7 +504,7 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     a2_conv1d_single_frame_fallback(
@@ -565,7 +570,7 @@ fn test_a2_conv1d_grouped_groups2_parity() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(
@@ -631,7 +636,7 @@ fn test_a2_conv1d_grouped_depthwise_parity() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, None);
+        conv.process_single_frame::<Avx2Math>(&layer_buffer, &mut simd_out, frame_idx, None);
     }
 
     crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(
@@ -731,7 +736,12 @@ fn test_a2_conv1d_grouped_with_mixin() {
     let mut scalar_out = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame(&layer_buffer, &mut simd_out, frame_idx, Some(&mixin));
+        conv.process_single_frame::<Avx2Math>(
+            &layer_buffer,
+            &mut simd_out,
+            frame_idx,
+            Some(&mixin),
+        );
     }
 
     crate::models::a2::grouped_conv1d::grouped_conv1d_single_frame_ref(

@@ -42,7 +42,7 @@ use super::head::A2HeadConv;
 use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
 use crate::dsp::mirror_buf::MirroredBuffer;
-use crate::math::common::{AlignedVec, Avx512Math, InstructionSet};
+use crate::math::common::{AlignedVec, Avx512Math, InstructionSet, SimdMath};
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use serde_json::Value;
 use std::sync::Arc;
@@ -298,7 +298,19 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// first `max_buffer_size` frames are processed and the remaining are left as zeros.
     /// This matches the CLAP/audio host contract which guarantees
     /// `block_size <= max_block_size` negotiated at activation.
+    ///
+    /// The `dispatch_simd!` macro evaluates the hardware once and monomorphizes
+    /// the full forward pass to the detected ISA (AVX2/AVX-512), eliminating
+    /// per-frame `is_x86_feature_detected` branches in the fallback path.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            crate::math::common::dispatch_simd!(self, process_internal, input, output);
+        }
+    }
+
+    /// Monomorphized inner loop — see [`process`](Self::process) for contract.
+    #[inline(always)]
+    unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let total = input.len();
         if total == 0 {
             return;
@@ -327,7 +339,7 @@ impl<const CH: usize> WaveNetA2<CH> {
 
             for li in 0..A2_NUM_LAYERS {
                 unsafe {
-                    self.layer_forward_dispatch(li, nf, input, pos, head_wp);
+                    self.layer_forward_dispatch::<M>(li, nf, input, pos, head_wp);
                 }
             }
 
@@ -389,7 +401,8 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
     /// accesses assume caller-verified buffer capacities.
     #[inline(always)]
-    unsafe fn layer_forward_dispatch(
+    #[allow(clippy::extra_unused_type_parameters)]
+    unsafe fn layer_forward_dispatch<M: SimdMath>(
         &mut self,
         li: usize,
         nf: usize,
@@ -525,7 +538,7 @@ impl<const CH: usize> WaveNetA2<CH> {
 
                     // 1. Dilated conv → z_buf.
                     unsafe {
-                        layer.conv.process_single_frame(
+                        layer.conv.process_single_frame::<M>(
                             history,
                             &mut self.z_scratch[..ch],
                             frame_idx,

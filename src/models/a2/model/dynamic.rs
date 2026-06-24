@@ -34,7 +34,7 @@
 //! are pre-allocated at construction time. Zero heap alloc on the hot-path.
 
 use crate::dsp::mirror_buf::MirroredBuffer;
-use crate::math::common::AlignedVec;
+use crate::math::common::{AlignedVec, SimdMath};
 use crate::models::a2::activations::{ActivationFn, ActivationType};
 use crate::models::a2::gating::{BlendingActivationConfig, GatingActivationConfig, GatingMode};
 use crate::models::a2::head::A2HeadConv;
@@ -577,7 +577,19 @@ impl WaveNetA2Dyn {
     /// # Block Size Contract
     /// Any input size ≤ `max_buffer_size` is safe: processing is internally chunked
     /// into sub-blocks of ≤ `WAVENET_MAX_NUM_FRAMES` (64).
+    ///
+    /// **SIMD Dispatch:** The `dispatch_simd!` macro evaluates the hardware once
+    /// and monomorphizes `process_internal` to the detected ISA (AVX2/AVX-512),
+    /// eliminating per-frame `is_x86_feature_detected` branches.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            crate::math::common::dispatch_simd!(self, process_internal, input, output);
+        }
+    }
+
+    /// Monomorphized inner loop — see [`process`](Self::process) for contract.
+    #[inline(always)]
+    unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let total = input.len();
         if total == 0 {
             return;
@@ -605,7 +617,7 @@ impl WaveNetA2Dyn {
             let head_wp = self.advance_head_ring(nf);
 
             for li in 0..self.num_layers {
-                self.layer_forward_dispatch(li, nf, input, pos, head_wp);
+                self.layer_forward_dispatch::<M>(li, nf, input, pos, head_wp);
             }
 
             self.head_finalize(head_wp, nf, &mut output[pos..pos + nf]);
@@ -653,7 +665,7 @@ impl WaveNetA2Dyn {
     /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
     /// accesses assume caller-verified buffer capacities.
     #[inline(always)]
-    fn layer_forward_dispatch(
+    fn layer_forward_dispatch<M: SimdMath>(
         &mut self,
         li: usize,
         nf: usize,
@@ -718,7 +730,7 @@ impl WaveNetA2Dyn {
             for f in 0..nf {
                 let bc = blending_config.as_deref_mut();
                 unsafe {
-                    process_frame_dyn(
+                    process_frame_dyn::<M>(
                         layer,
                         history,
                         f,
@@ -805,9 +817,12 @@ impl WaveNetA2Dyn {
 
 /// Per-frame inner core: conv, FiLM, mixin, activation/gating/blending,
 /// head accumulation, and l1x1 residual for a single frame in one layer.
+///
+/// `M` is the ISA monomorphization type propagated from the top-level
+/// `dispatch_simd!` in [`WaveNetA2Dyn::process`].
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
-unsafe fn process_frame_dyn(
+unsafe fn process_frame_dyn<M: SimdMath>(
     layer: &mut A2Layer,
     history: &[f32],
     f: usize,
@@ -844,7 +859,7 @@ unsafe fn process_frame_dyn(
     unsafe {
         layer
             .conv
-            .process_single_frame(history, &mut z_scratch[..z_out_ch], frame_idx, None);
+            .process_single_frame::<M>(history, &mut z_scratch[..z_out_ch], frame_idx, None);
     }
 
     // FiLM post-conv + pre-mixin.
