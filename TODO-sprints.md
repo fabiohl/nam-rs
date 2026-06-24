@@ -25,7 +25,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-#### `TC1` — Redução para Divisão Única no Kernel Tanh AVX2
+#### `TC1` — Redução para Divisão Única no Kernel Tanh AVX2 [DONE]
 
 **Arquivos:** `src/math/activations/tanh/high_fidelity.rs`
 **Prioridade:** Alta (Performance)
@@ -50,6 +50,9 @@ O kernel `simd_tanh_poly_avx2` realiza duas divisões vetoriais (`_mm256_div_ps`
 - Redução comprovada do número de `vdivps` por lane YMM de 2 para 1.
 - Passar no teste de precisão de varredura `test_tanh_poly_avx2_sweep` sem regressão.
 - Erro absoluto máximo mantido sob `1e-6` vs `f32::tanh`.
+
+> **TC1 CONCLUÍDO ✅ (2026-06-24):**
+> `simd_tanh_poly_avx2` e `simd_tanh_poly_dual_avx2` reformulados para `tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)`, reduzindo `vdivps` de 2 para 1 por lane YMM (substituindo uma divisão por `vmulps`). Sweep de erro (`test_tanh_poly_avx2_sweep`, 4001 pontos em [-20,20]), edge cases e saturação passam sem regressão. `cargo check` limpo. O benchmark `FastMath_tanh_AVX2_256elem` (kernel de produção) não é impactado por esta mudança (kernel high_fidelity separado).
 
 ---
 

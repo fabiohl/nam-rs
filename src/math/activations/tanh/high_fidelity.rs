@@ -7,13 +7,13 @@
 //! and integer range-reduction (`k = round(x·log₂e)`, `r = x − k·ln 2`).
 //!
 //! ```text
-//! tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)    (exp-based, branchless)
+//! tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)    (exp-based, single-division, branchless)
 //! σ(x)    = 1 / (1 + e⁻ˣ)
 //! ```
 //!
 //! - Max absolute error (tanh): ≤ 2.4e-7 vs `f32::tanh` on [-20, 20].
 //! - Max absolute error (sigmoid): ≤ 2.1e-7 vs `f32::exp` reference on [-20, 20].
-//! - Throughput (tanh): ~19 SIMD ops (1 exp + 2 div + add/sub + clamp).
+//! - Throughput (tanh): ~18 SIMD ops (1 exp + 1 div + 2 mul + 2 add/sub + clamp).
 //! - Throughput (sigmoid): ~17 SIMD ops (1 exp + 1 div + add + clamp).
 //!
 //! Coefficients in `crate::math::constants` (`POLY_*`).
@@ -70,10 +70,10 @@ unsafe fn simd_exp_poly_avx2(x: __m256) -> __m256 {
 // Public — polynomial Tanh kernels
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Polynomial `tanh(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
+/// Polynomial `tanh(x)` for `__m256` — exp-based, single-division (AVX2/FMA).
 ///
-/// Formula: `tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)`.
-/// Input clamped to [-20, 20] for overflow safety, then clamped to [-1, 1].
+/// Formula: `tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)`.
+/// Input clamped to [-20, 20] for overflow safety, output clamped to [-1, 1].
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
@@ -88,14 +88,14 @@ pub unsafe fn simd_tanh_poly_avx2(x: __m256) -> __m256 {
     let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
 
     let exp_x = unsafe { simd_exp_poly_avx2(x) };
-    let inv_exp_x = _mm256_div_ps(one, exp_x); // 1 / eˣ = e⁻ˣ
-    let num = _mm256_sub_ps(exp_x, inv_exp_x); // eˣ − e⁻ˣ
-    let den = _mm256_add_ps(exp_x, inv_exp_x); // eˣ + e⁻ˣ
+    let u2 = _mm256_mul_ps(exp_x, exp_x); // e²ˣ
+    let num = _mm256_sub_ps(u2, one); // e²ˣ − 1
+    let den = _mm256_add_ps(u2, one); // e²ˣ + 1
     let tanh_val = _mm256_div_ps(num, den);
     _mm256_max_ps(neg_one, _mm256_min_ps(one, tanh_val))
 }
 
-/// Polynomial `tanh(x)` — dual 16-float path (AVX2/FMA).
+/// Polynomial `tanh(x)` — dual 16-float path, single-division (AVX2/FMA).
 ///
 /// Evaluates two independent `__m256` registers sharing constant broadcasts.
 ///
@@ -115,13 +115,13 @@ pub unsafe fn simd_tanh_poly_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m25
     let exp1 = unsafe { simd_exp_poly_avx2(x1) };
     let exp2 = unsafe { simd_exp_poly_avx2(x2) };
 
-    let inv1 = _mm256_div_ps(one, exp1);
-    let inv2 = _mm256_div_ps(one, exp2);
+    let u2_1 = _mm256_mul_ps(exp1, exp1);
+    let u2_2 = _mm256_mul_ps(exp2, exp2);
 
-    let num1 = _mm256_sub_ps(exp1, inv1);
-    let den1 = _mm256_add_ps(exp1, inv1);
-    let num2 = _mm256_sub_ps(exp2, inv2);
-    let den2 = _mm256_add_ps(exp2, inv2);
+    let num1 = _mm256_sub_ps(u2_1, one);
+    let den1 = _mm256_add_ps(u2_1, one);
+    let num2 = _mm256_sub_ps(u2_2, one);
+    let den2 = _mm256_add_ps(u2_2, one);
 
     let res1 = _mm256_div_ps(num1, den1);
     let res2 = _mm256_div_ps(num2, den2);
