@@ -76,16 +76,10 @@ impl Conv1dDyn {
         unsafe {
             match self.interleave_width {
                 16 => {
-                    self.process_blocks_16_nocopy::<M>(
-                        out_frame, kernel, &tap_ptrs, in_ch, mixin,
-                    )
+                    self.process_blocks_16_nocopy::<M>(out_frame, kernel, &tap_ptrs, in_ch, mixin)
                 }
-                8 => self.process_blocks_8_nocopy::<M>(
-                    out_frame, kernel, &tap_ptrs, in_ch, mixin,
-                ),
-                _ => self.process_blocks_4_nocopy::<M>(
-                    out_frame, kernel, &tap_ptrs, in_ch, mixin,
-                ),
+                8 => self.process_blocks_8_nocopy::<M>(out_frame, kernel, &tap_ptrs, in_ch, mixin),
+                _ => self.process_blocks_4_nocopy::<M>(out_frame, kernel, &tap_ptrs, in_ch, mixin),
             }
         }
     }
@@ -141,8 +135,7 @@ impl Conv1dDyn {
                 };
                 let tap_slice =
                     unsafe { core::slice::from_raw_parts(*tap_ptrs.get_unchecked(k), in_ch) };
-                acc =
-                    unsafe { M::dot_product_4x_f32_accumulate(w_slice, tap_slice, &acc) };
+                acc = unsafe { M::dot_product_4x_f32_accumulate(w_slice, tap_slice, &acc) };
             }
 
             unsafe {
@@ -257,9 +250,7 @@ impl Conv1dDyn {
                 };
                 let tap_slice =
                     unsafe { core::slice::from_raw_parts(*tap_ptrs.get_unchecked(k), in_ch) };
-                acc = unsafe {
-                    M::dot_product_16x_f32_accumulate(w_slice, tap_slice, &acc)
-                };
+                acc = unsafe { M::dot_product_16x_f32_accumulate(w_slice, tap_slice, &acc) };
             }
 
             unsafe {

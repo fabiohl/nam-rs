@@ -66,8 +66,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             // any read (tanh activation). MaybeUninit avoids a second 4 KB memset.
             let mut conv_plus_mixin = MaybeUninit::<[f32; 1024]>::uninit();
             let conv_plus_mixin_ptr = conv_plus_mixin.as_mut_ptr() as *mut f32;
-            let conv_slice =
-                core::slice::from_raw_parts_mut(conv_plus_mixin_ptr, num_frames * CH);
+            let conv_slice = core::slice::from_raw_parts_mut(conv_plus_mixin_ptr, num_frames * CH);
 
             // Dual-Frame Tiling with f32-native Conv1D path
             let mut i = 0;

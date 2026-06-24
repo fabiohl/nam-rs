@@ -69,11 +69,8 @@ impl Conv1dDyn {
                     let w = 16.min(self.out_ch - out_c);
                     let mut acc_f0 = [0.0f32; 16];
                     let mut acc_f1 = [0.0f32; 16];
-                    for (j, (item_f0, item_f1)) in acc_f0
-                        .iter_mut()
-                        .zip(acc_f1.iter_mut())
-                        .enumerate()
-                        .take(w)
+                    for (j, (item_f0, item_f1)) in
+                        acc_f0.iter_mut().zip(acc_f1.iter_mut()).enumerate().take(w)
                     {
                         let m0 = if let Some(m) = mixin_f0 {
                             if out_c + j < m.len() {
@@ -115,11 +112,7 @@ impl Conv1dDyn {
                         };
                         let (r_f0, r_f1) = unsafe {
                             M::dot_product_16x_f32_dual_accumulate(
-                                w_slice,
-                                tap_f0,
-                                tap_f1,
-                                &acc_f0,
-                                &acc_f1,
+                                w_slice, tap_f0, tap_f1, &acc_f0, &acc_f1,
                             )
                         };
                         acc_f0 = r_f0;
@@ -141,11 +134,8 @@ impl Conv1dDyn {
                     let w = 8.min(self.out_ch - out_c);
                     let mut acc_f0 = [0.0f32; 8];
                     let mut acc_f1 = [0.0f32; 8];
-                    for (j, (item_f0, item_f1)) in acc_f0
-                        .iter_mut()
-                        .zip(acc_f1.iter_mut())
-                        .enumerate()
-                        .take(w)
+                    for (j, (item_f0, item_f1)) in
+                        acc_f0.iter_mut().zip(acc_f1.iter_mut()).enumerate().take(w)
                     {
                         let m0 = if let Some(m) = mixin_f0 {
                             if out_c + j < m.len() {
@@ -209,11 +199,8 @@ impl Conv1dDyn {
                     let w = 4.min(self.out_ch - out_c);
                     let mut acc_f0 = [0.0f32; 4];
                     let mut acc_f1 = [0.0f32; 4];
-                    for (j, (item_f0, item_f1)) in acc_f0
-                        .iter_mut()
-                        .zip(acc_f1.iter_mut())
-                        .enumerate()
-                        .take(w)
+                    for (j, (item_f0, item_f1)) in
+                        acc_f0.iter_mut().zip(acc_f1.iter_mut()).enumerate().take(w)
                     {
                         let m0 = if let Some(m) = mixin_f0 {
                             if out_c + j < m.len() {
