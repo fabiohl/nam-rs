@@ -449,3 +449,454 @@ fn test_tanh_sigmoid_dual_poly_avx512() {
         }
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TC3 — NR precision evaluation sweeps
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Evaluates whether rcp_ps + Newton-Raphson can match hardware division
+// within the 1e-6 error budget on [-20, 20].
+
+#[test]
+fn test_tanh_poly_nr1_vs_f32_tanh_avx2() {
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(8) {
+        unsafe {
+            let x = _mm256_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_poly_nr1_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(8).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 8];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm256_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_poly_nr1_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    eprintln!(
+        "[TC3] tanh_poly NR1 AVX2 sweep max error vs f32::tanh: {max_error:.4e} (limit 1e-6)"
+    );
+    assert!(
+        max_error <= 1e-6_f32,
+        "TC3 NR1 error {:.4e} > 1e-6",
+        max_error,
+    );
+}
+
+#[test]
+fn test_tanh_poly_nr2_vs_f32_tanh_avx2() {
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(8) {
+        unsafe {
+            let x = _mm256_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_poly_nr2_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(8).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 8];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm256_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_poly_nr2_avx2(x);
+            let mut result = [0.0_f32; 8];
+            _mm256_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    eprintln!(
+        "[TC3] tanh_poly NR2 AVX2 sweep max error vs f32::tanh: {max_error:.4e} (limit 1e-6)"
+    );
+    assert!(
+        max_error <= 1e-6_f32,
+        "TC3 NR2 error {:.4e} > 1e-6",
+        max_error,
+    );
+}
+
+#[test]
+fn test_tanh_poly_nr1_vs_div_avx2() {
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_delta: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(8) {
+        unsafe {
+            let x = _mm256_loadu_ps(chunk.as_ptr());
+            let y_nr1 = simd_tanh_poly_nr1_avx2(x);
+            let y_div = simd_tanh_poly_avx2(x);
+
+            let mut nr1 = [0.0_f32; 8];
+            let mut div = [0.0_f32; 8];
+            _mm256_storeu_ps(nr1.as_mut_ptr(), y_nr1);
+            _mm256_storeu_ps(div.as_mut_ptr(), y_div);
+
+            for j in 0..8 {
+                max_delta = max_delta.max((nr1[j] - div[j]).abs());
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(8).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 8];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm256_loadu_ps(batch.as_ptr());
+            let y_nr1 = simd_tanh_poly_nr1_avx2(x);
+            let y_div = simd_tanh_poly_avx2(x);
+            let mut nr1 = [0.0_f32; 8];
+            let mut div = [0.0_f32; 8];
+            _mm256_storeu_ps(nr1.as_mut_ptr(), y_nr1);
+            _mm256_storeu_ps(div.as_mut_ptr(), y_div);
+            for j in 0..remainder.len() {
+                max_delta = max_delta.max((nr1[j] - div[j]).abs());
+            }
+        }
+    }
+
+    eprintln!("[TC3] tanh_poly NR1 vs div_ps max delta: {max_delta:.4e}");
+}
+
+#[test]
+fn test_tanh_poly_nr2_vs_div_avx2() {
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_delta: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(8) {
+        unsafe {
+            let x = _mm256_loadu_ps(chunk.as_ptr());
+            let y_nr2 = simd_tanh_poly_nr2_avx2(x);
+            let y_div = simd_tanh_poly_avx2(x);
+
+            let mut nr2 = [0.0_f32; 8];
+            let mut div = [0.0_f32; 8];
+            _mm256_storeu_ps(nr2.as_mut_ptr(), y_nr2);
+            _mm256_storeu_ps(div.as_mut_ptr(), y_div);
+
+            for j in 0..8 {
+                max_delta = max_delta.max((nr2[j] - div[j]).abs());
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(8).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 8];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm256_loadu_ps(batch.as_ptr());
+            let y_nr2 = simd_tanh_poly_nr2_avx2(x);
+            let y_div = simd_tanh_poly_avx2(x);
+            let mut nr2 = [0.0_f32; 8];
+            let mut div = [0.0_f32; 8];
+            _mm256_storeu_ps(nr2.as_mut_ptr(), y_nr2);
+            _mm256_storeu_ps(div.as_mut_ptr(), y_div);
+            for j in 0..remainder.len() {
+                max_delta = max_delta.max((nr2[j] - div[j]).abs());
+            }
+        }
+    }
+
+    eprintln!("[TC3] tanh_poly NR2 vs div_ps max delta: {max_delta:.4e}");
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TC3 — NR precision evaluation sweeps (AVX-512)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_tanh_poly_nr1_vs_f32_tanh_avx512() {
+    if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(16) {
+        unsafe {
+            let x = _mm512_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_poly_nr1_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(16).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 16];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm512_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_poly_nr1_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    eprintln!(
+        "[TC3] tanh_poly NR1 AVX-512 sweep max error vs f32::tanh: {max_error:.4e} (limit 1e-6)"
+    );
+    assert!(
+        max_error <= 1e-6_f32,
+        "TC3 AVX-512 NR1 error {:.4e} > 1e-6",
+        max_error,
+    );
+}
+
+#[test]
+fn test_tanh_poly_nr2_vs_f32_tanh_avx512() {
+    if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_error: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(16) {
+        unsafe {
+            let x = _mm512_loadu_ps(chunk.as_ptr());
+            let y = simd_tanh_poly_nr2_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for (j, &input) in chunk.iter().enumerate() {
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(16).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 16];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm512_loadu_ps(batch.as_ptr());
+            let y = simd_tanh_poly_nr2_avx512(x);
+            let mut result = [0.0_f32; 16];
+            _mm512_storeu_ps(result.as_mut_ptr(), y);
+
+            for j in 0..remainder.len() {
+                let input = remainder[j];
+                let expected = input.tanh();
+                let error = (expected - result[j]).abs();
+                max_error = max_error.max(error);
+            }
+        }
+    }
+
+    eprintln!(
+        "[TC3] tanh_poly NR2 AVX-512 sweep max error vs f32::tanh: {max_error:.4e} (limit 1e-6)"
+    );
+    assert!(
+        max_error <= 1e-6_f32,
+        "TC3 AVX-512 NR2 error {:.4e} > 1e-6",
+        max_error,
+    );
+}
+
+#[test]
+fn test_tanh_poly_nr1_vs_div_avx512() {
+    if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_delta: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(16) {
+        unsafe {
+            let x = _mm512_loadu_ps(chunk.as_ptr());
+            let y_nr1 = simd_tanh_poly_nr1_avx512(x);
+            let y_div = simd_tanh_poly_avx512(x);
+
+            let mut nr1 = [0.0_f32; 16];
+            let mut div = [0.0_f32; 16];
+            _mm512_storeu_ps(nr1.as_mut_ptr(), y_nr1);
+            _mm512_storeu_ps(div.as_mut_ptr(), y_div);
+
+            for j in 0..16 {
+                max_delta = max_delta.max((nr1[j] - div[j]).abs());
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(16).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 16];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm512_loadu_ps(batch.as_ptr());
+            let y_nr1 = simd_tanh_poly_nr1_avx512(x);
+            let y_div = simd_tanh_poly_avx512(x);
+            let mut nr1 = [0.0_f32; 16];
+            let mut div = [0.0_f32; 16];
+            _mm512_storeu_ps(nr1.as_mut_ptr(), y_nr1);
+            _mm512_storeu_ps(div.as_mut_ptr(), y_div);
+            for j in 0..remainder.len() {
+                max_delta = max_delta.max((nr1[j] - div[j]).abs());
+            }
+        }
+    }
+
+    eprintln!("[TC3] tanh_poly NR1 vs div_ps AVX-512 max delta: {max_delta:.4e}");
+}
+
+#[test]
+fn test_tanh_poly_nr2_vs_div_avx512() {
+    if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
+        return;
+    }
+
+    let sweep: Vec<f32> = (0..DENSE_SWEEP_POINTS)
+        .map(|i| -20.0_f32 + i as f32 * 0.01_f32)
+        .collect();
+    let mut max_delta: f32 = 0.0_f32;
+
+    for chunk in sweep.chunks_exact(16) {
+        unsafe {
+            let x = _mm512_loadu_ps(chunk.as_ptr());
+            let y_nr2 = simd_tanh_poly_nr2_avx512(x);
+            let y_div = simd_tanh_poly_avx512(x);
+
+            let mut nr2 = [0.0_f32; 16];
+            let mut div = [0.0_f32; 16];
+            _mm512_storeu_ps(nr2.as_mut_ptr(), y_nr2);
+            _mm512_storeu_ps(div.as_mut_ptr(), y_div);
+
+            for j in 0..16 {
+                max_delta = max_delta.max((nr2[j] - div[j]).abs());
+            }
+        }
+    }
+
+    let remainder = sweep.chunks_exact(16).remainder();
+    if !remainder.is_empty() {
+        let mut batch = [0.0_f32; 16];
+        for (j, &input) in remainder.iter().enumerate() {
+            batch[j] = input;
+        }
+        for item in batch.iter_mut().skip(remainder.len()) {
+            *item = 0.0_f32;
+        }
+        unsafe {
+            let x = _mm512_loadu_ps(batch.as_ptr());
+            let y_nr2 = simd_tanh_poly_nr2_avx512(x);
+            let y_div = simd_tanh_poly_avx512(x);
+            let mut nr2 = [0.0_f32; 16];
+            let mut div = [0.0_f32; 16];
+            _mm512_storeu_ps(nr2.as_mut_ptr(), y_nr2);
+            _mm512_storeu_ps(div.as_mut_ptr(), y_div);
+            for j in 0..remainder.len() {
+                max_delta = max_delta.max((nr2[j] - div[j]).abs());
+            }
+        }
+    }
+
+    eprintln!("[TC3] tanh_poly NR2 vs div_ps AVX-512 max delta: {max_delta:.4e}");
+}

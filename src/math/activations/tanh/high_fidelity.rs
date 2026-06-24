@@ -133,6 +133,80 @@ pub unsafe fn simd_tanh_poly_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m25
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// NR experimental Tanh variants — reciprocal + Newton-Raphson
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// TC3: Evaluate whether `vrcpps` + Newton-Raphson can replace the remaining
+// `vdivps` in the polynomial tanh hot-path.  NR1 (~23-bit reciprocal) trades
+// ~1 ulp precision for potential throughput gain; NR2 (~48-bit) saturates the
+// f32 mantissa.
+//
+//   rcp_ps → y₀ ≈ 1/d          (~12-bit, ~3.6 decimal digits)
+//   NR1    → y₁ = y₀·(2−d·y₀)  (~23-bit, ~7.2 decimal digits)
+//   NR2    → y₂ = y₁·(2−d·y₁)  (~48-bit, saturates f32 mantissa)
+
+/// Polynomial `tanh(x)` - NR1, single Newton-Raphson on reciprocal (AVX2/FMA).
+///
+/// Experimental variant (TC3). Replaces `_mm256_div_ps` with `_mm256_rcp_ps` +
+/// 1×Newton-Raphson refinement (~23-bit reciprocal precision).
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_poly_nr1_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
+    let one = _mm256_set1_ps(1.0f32);
+    let neg_one = _mm256_set1_ps(-1.0f32);
+    let two = _mm256_set1_ps(2.0f32);
+
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
+
+    let exp_x = unsafe { simd_exp_poly_avx2(x) };
+    let u2 = _mm256_mul_ps(exp_x, exp_x);
+    let num = _mm256_sub_ps(u2, one);
+    let den = _mm256_add_ps(u2, one);
+
+    let mut r = _mm256_rcp_ps(den);
+    r = _mm256_mul_ps(r, _mm256_fnmadd_ps(den, r, two));
+
+    let tanh_val = _mm256_mul_ps(num, r);
+    _mm256_max_ps(neg_one, _mm256_min_ps(one, tanh_val))
+}
+
+/// Polynomial `tanh(x)` - NR2, double Newton-Raphson on reciprocal (AVX2/FMA).
+///
+/// Experimental variant (TC3). Replaces `_mm256_div_ps` with `_mm256_rcp_ps` +
+/// 2×Newton-Raphson refinement (saturates f32 mantissa).
+///
+/// # Safety
+/// The caller must guarantee AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_poly_nr2_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
+    let one = _mm256_set1_ps(1.0f32);
+    let neg_one = _mm256_set1_ps(-1.0f32);
+    let two = _mm256_set1_ps(2.0f32);
+
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
+
+    let exp_x = unsafe { simd_exp_poly_avx2(x) };
+    let u2 = _mm256_mul_ps(exp_x, exp_x);
+    let num = _mm256_sub_ps(u2, one);
+    let den = _mm256_add_ps(u2, one);
+
+    let mut r = _mm256_rcp_ps(den);
+    r = _mm256_mul_ps(r, _mm256_fnmadd_ps(den, r, two));
+    r = _mm256_mul_ps(r, _mm256_fnmadd_ps(den, r, two));
+
+    let tanh_val = _mm256_mul_ps(num, r);
+    _mm256_max_ps(neg_one, _mm256_min_ps(one, tanh_val))
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Public — polynomial Sigmoid kernels
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -358,6 +432,67 @@ pub unsafe fn simd_tanh_sigmoid_dual_poly_avx512(x1: __m512, x2: __m512) -> (__m
     let t1 = unsafe { simd_tanh_poly_avx512(x1) };
     let s2 = unsafe { simd_sigmoid_poly_avx512(x2) };
     (t1, s2)
+}
+
+/// Polynomial `tanh(x)` - NR1, single Newton-Raphson on reciprocal (AVX-512).
+///
+/// Experimental variant (TC3). Replaces `_mm512_div_ps` with `_mm512_rcp14_ps` +
+/// 1×Newton-Raphson refinement (~23-bit reciprocal precision).
+///
+/// # Safety
+/// The caller must guarantee AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_tanh_poly_nr1_avx512(x: __m512) -> __m512 {
+    let clamp_lo = _mm512_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm512_set1_ps(POLY_ACTIVATION_CLAMP);
+    let one = _mm512_set1_ps(1.0f32);
+    let neg_one = _mm512_set1_ps(-1.0f32);
+    let two = _mm512_set1_ps(2.0f32);
+
+    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
+
+    let exp_x = unsafe { simd_exp_poly_avx512(x) };
+    let u2 = _mm512_mul_ps(exp_x, exp_x);
+    let num = _mm512_sub_ps(u2, one);
+    let den = _mm512_add_ps(u2, one);
+
+    let mut r = _mm512_rcp14_ps(den);
+    r = _mm512_mul_ps(r, _mm512_fnmadd_ps(den, r, two));
+
+    let tanh_val = _mm512_mul_ps(num, r);
+    _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
+}
+
+/// Polynomial `tanh(x)` - NR2, double Newton-Raphson on reciprocal (AVX-512).
+///
+/// Experimental variant (TC3). Replaces `_mm512_div_ps` with `_mm512_rcp14_ps` +
+/// 2×Newton-Raphson refinement (saturates f32 mantissa).
+///
+/// # Safety
+/// The caller must guarantee AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_tanh_poly_nr2_avx512(x: __m512) -> __m512 {
+    let clamp_lo = _mm512_set1_ps(-POLY_ACTIVATION_CLAMP);
+    let clamp_hi = _mm512_set1_ps(POLY_ACTIVATION_CLAMP);
+    let one = _mm512_set1_ps(1.0f32);
+    let neg_one = _mm512_set1_ps(-1.0f32);
+    let two = _mm512_set1_ps(2.0f32);
+
+    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
+
+    let exp_x = unsafe { simd_exp_poly_avx512(x) };
+    let u2 = _mm512_mul_ps(exp_x, exp_x);
+    let num = _mm512_sub_ps(u2, one);
+    let den = _mm512_add_ps(u2, one);
+
+    let mut r = _mm512_rcp14_ps(den);
+    r = _mm512_mul_ps(r, _mm512_fnmadd_ps(den, r, two));
+    r = _mm512_mul_ps(r, _mm512_fnmadd_ps(den, r, two));
+
+    let tanh_val = _mm512_mul_ps(num, r);
+    _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
 }
 
 #[cfg(test)]

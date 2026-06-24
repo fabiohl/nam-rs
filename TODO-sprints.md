@@ -81,9 +81,9 @@ O kernel `simd_tanh_poly_avx2` realiza duas divisões vetoriais (`_mm256_div_ps`
 
 ---
 
-#### `TC3` — Avaliação da Divisão Rápida via Recíproco (`vrcpps`) + Newton-Raphson
+#### `TC3` — Avaliação da Divisão Rápida via Recíproco (`vrcpps`) + Newton-Raphson [DONE — DIV RETAINED]
 
-**Arquivos:** `src/math/activations/tanh/high_fidelity.rs`, `src/math/activations/tanh/high_fidelity_test.rs`
+**Arquivos:** `src/math/activations/tanh/high_fidelity.rs`, `src/math/activations/tanh/high_fidelity_test.rs`, `benches/inference_bench.rs`
 **Prioridade:** Média (Otimização Avançada)
 **Referência:** `TODO-findings.md` -> F3 (Opção Agressiva)
 
@@ -102,6 +102,27 @@ O kernel `simd_tanh_poly_avx2` realiza duas divisões vetoriais (`_mm256_div_ps`
 - Avaliação empírica do erro máximo absoluto de $1$ vs $2$ passos de NR documentada.
 - O erro de aproximação não deve estourar o limite de `1e-6` se o kernel NR for adotado.
 - Benchmark Criterion validando ganho ou neutralidade de throughput.
+
+> **TC3 CONCLUÍDO ✅ (2026-06-24) — DIV RETAINED:**
+>
+> **Precisão (AVX2 sweep, 4001 pts [-20,20]):**
+>
+> - NR1 max error vs `f32::tanh`: **2.3842e-7** (dentro de 1e-6)
+> - NR2 max error vs `f32::tanh`: **1.1921e-7** (dentro de 1e-6)
+> - NR1 vs div_ps max delta: 1.1921e-7 (~1 ulp em f32)
+> - NR2 vs div_ps max delta: 1.1921e-7 (satura f32 mantissa)
+>
+> **Throughput (Criterion, 256 elem AVX2):**
+>
+> | Variante               | Tempo         | vs Div           |
+> | ---------------------- | ------------- | ---------------- |
+> | `PolyDiv` (`vdivps`)   | **146.87 ns** | 1.00×            |
+> | `PolyNR1` (rcp + 1×NR) | 174.20 ns     | 1.18× mais lento |
+> | `PolyNR2` (rcp + 2×NR) | 203.08 ns     | 1.38× mais lento |
+>
+> **Análise:** Apesar da precisão adequada (ambos NR1 e NR2 dentro de 1e-6), a abordagem NR é contraproducente em throughput. O `vdivps` é bem-pipelined e sua latência (~11-14 ciclos) é escondida pela cadeia computacional pesada do exp polinomial (degree-6 Taylor + range reduction). A sequência `rcp + fnmadd + mul` do NR compete por portas de execução já saturadas com FMAs. Resultado consistente com a avaliação anterior do Padé NR1 (div_ps 1.77× mais rápido que NR1 em 256-elem).
+>
+> **Decisão:** Manter `_mm256_div_ps` / `_mm512_div_ps` como operador de divisão no hot-path do kernel `tanh` polinomial. Kernels NR experimentais (`simd_tanh_poly_nr{1,2}_avx{2,512}`) e benchmarks (`FastMath_tanh_Poly{NR1,NR2}*`) retidos para documentação histórica e futuras reavaliações de microarquitetura.
 
 ---
 

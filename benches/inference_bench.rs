@@ -380,6 +380,63 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
+/// TC3: Polynomial tanh with hardware division (AVX2).
+/// IEEE 754 full-precision division — baseline for NR evaluation.
+fn bench_tanh_poly_div_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PolyDiv_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_poly_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
+        });
+    });
+}
+
+/// TC3: Polynomial tanh with single Newton-Raphson on reciprocal (AVX2).
+/// Evaluates rcp_ps + 1×NR throughput vs hardware division.
+fn bench_tanh_poly_nr1_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PolyNR1_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_poly_nr1_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
+        });
+    });
+}
+
+/// TC3: Polynomial tanh with double Newton-Raphson on reciprocal (AVX2).
+/// Evaluates rcp_ps + 2×NR throughput vs NR1 and hardware division (oracle).
+fn bench_tanh_poly_nr2_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PolyNR2_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_poly_nr2_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
+        });
+    });
+}
+
 /// Benchmarks WaveNet Standard (P10) inference at small RT buffer sizes (1, 16, 64
 /// samples) covering the full RT range: 1 (per-sample minimum), 16 (small plugin
 /// buffer), 64 (common CLAP/JACK buffer).
@@ -1793,6 +1850,9 @@ criterion_group!(
     bench_tanh_pade_nr2_256,
     bench_tanh_pade_div_256,
     bench_sigmoid_slice_256,
+    bench_tanh_poly_div_256,
+    bench_tanh_poly_nr1_256,
+    bench_tanh_poly_nr2_256,
     bench_dot_product_avx2_256,
     bench_dot_product_avx2_64,
     bench_resampler_44100_to_48000_256samp,
