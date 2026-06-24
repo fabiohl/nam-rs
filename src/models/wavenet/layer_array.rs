@@ -54,8 +54,11 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
     /// Array's central processing. Fully shielded against allocations.
     ///
-    /// When `prev_head_outputs` is `Some`, it seeds `head_accum` before the layer
-    /// loop — all layers then accumulate on top of this seed instead of overwriting.
+    /// When `prev_head_outputs` is `Some`, it is passed as `seed` in the
+    /// first layer's `WavenetProcessContext` — the layer then fuses seed
+    /// accumulation with tanh in a single SIMD pass. This eliminates the
+    /// dedicated `copy_from_slice` of `num_frames * CH` bytes.
+    ///
     /// This implements the C++ cascaded head pattern (array N seeds its head
     /// accumulator with the post-head_rechannel output of array N−1).
     ///
@@ -72,16 +75,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
-        // [STEP 1: Seed Head Accumulator from Previous Array]
-        // C++ reference: array N copies the post-head_rechannel output of
-        // array N−1 into its _head_inputs before the layer loop, so all
-        // layers (including the first) accumulate on top of this seed.
-        let head_seeded = prev_head_outputs.is_some();
-        if let Some(seed) = prev_head_outputs {
-            self.head_accum[0..num_frames * CH].copy_from_slice(seed);
-        }
-
-        // [STEP 2: Dimensional Opening (Rechannel)]
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
@@ -143,7 +136,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0 && !head_seeded,
+                        is_first_layer: i == 0,
+                        seed: if i == 0 { prev_head_outputs } else { None },
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
@@ -159,7 +153,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0 && !head_seeded,
+                        is_first_layer: i == 0,
+                        seed: if i == 0 { prev_head_outputs } else { None },
                     });
                 }
 

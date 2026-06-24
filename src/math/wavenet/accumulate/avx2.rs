@@ -116,6 +116,38 @@ pub unsafe fn tanh_and_overwrite_block_avx2(head_input: &mut [f32], block: &mut 
     );
 }
 
+/// Fused Seed + Tanh + Head Accumulate using AVX2.
+///
+/// Computes `head_input[i] = seed[i] + tanh(block[i])`.
+/// Eliminates the separate `copy_from_slice(seed)` before `tanh_and_accumulate_block`.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn tanh_and_accumulate_with_seed_avx2(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    seed: &[f32],
+) {
+    let len = block.len();
+    let mut i = 0;
+    wavenet_simd_avx2!(
+        i,
+        len,
+        {
+            let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+            let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
+            _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
+
+            let vs = _mm256_loadu_ps(seed.as_ptr().add(i));
+            _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vs, vt));
+        },
+        {
+            let val = block[i].tanh();
+            block[i] = val;
+            let acc = seed[i] as f64 + val as f64;
+            head_input[i] = acc as f32;
+        }
+    );
+}
+
 /// Applies gated activation (tanh * sigmoid) in-place on block and overwrites head_input using AVX2.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn gated_activation_and_overwrite_block_avx2(

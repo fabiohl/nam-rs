@@ -80,7 +80,9 @@ impl WaveNetLayerDyn {
                 Some(mixin_out),
             );
 
-            if ctx.is_first_layer {
+            if let Some(s) = ctx.seed {
+                M::tanh_and_accumulate_with_seed(ctx.head_input, conv_slice, s);
+            } else if ctx.is_first_layer {
                 M::tanh_and_overwrite_block(ctx.head_input, conv_slice);
             } else {
                 M::tanh_and_accumulate_block(ctx.head_input, conv_slice);

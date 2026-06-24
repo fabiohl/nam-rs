@@ -187,8 +187,44 @@ fn test_accumulate_head() {
     }
 }
 
-/// Ensures that saving compact data (bfloat16) to memory is done
-/// without data loss or corruption.
+#[test]
+fn test_tanh_and_accumulate_with_seed() {
+    fn test_backend<M: SimdMath>() {
+        for len in [1, 4, 8, 15, 16, 17, 31, 32, 33, 64] {
+            let seed: Vec<f32> = (0..len).map(|i| (i as f32) * 0.1).collect();
+            let mut head_input = vec![0.0f32; len];
+            let mut block = vec![0.5f32; len];
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { M::tanh_and_accumulate_with_seed(&mut head_input, &mut block, &seed) };
+            let expected_tanh = 0.5f32.tanh();
+            for i in 0..len {
+                assert!(
+                    (block[i] - expected_tanh).abs() < 1e-6,
+                    "Length {} block[{}] failed: got {}, expected {}",
+                    len,
+                    i,
+                    block[i],
+                    expected_tanh
+                );
+                let expected_head = seed[i] + expected_tanh;
+                assert!(
+                    (head_input[i] - expected_head).abs() < 1e-6,
+                    "Length {} head_input[{}] failed: got {}, expected {}",
+                    len,
+                    i,
+                    head_input[i],
+                    expected_head
+                );
+            }
+        }
+    }
+
+    test_backend::<Avx2Math>();
+    if std::is_x86_feature_detected!("avx512f") {
+        test_backend::<Avx512Math>();
+    }
+}
+
 #[test]
 fn test_store_bf16_avx2() {
     let vals = [

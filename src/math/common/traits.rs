@@ -516,6 +516,22 @@ pub trait SimdMath {
     /// and must not alias.
     unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]);
 
+    /// Fused Seed + Tanh + Head Accumulate.
+    ///
+    /// Computes `head_input[i] = seed[i] + tanh(block[i])`.
+    /// Eliminates the separate `copy_from_slice(seed)` before
+    /// `tanh_and_accumulate_block` on the first layer of a cascaded array.
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `head_input.len() == block.len() == seed.len()`.
+    /// All slices must be valid and must not alias.
+    unsafe fn tanh_and_accumulate_with_seed(
+        head_input: &mut [f32],
+        block: &mut [f32],
+        seed: &[f32],
+    );
+
     /// Fused Gated Activation + Head Overwrite.
     ///
     /// For each channel group of size `ch`, applies `tanh` to the gated portion

@@ -148,3 +148,35 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
     }
 }
+
+/// Fused Seed + Tanh + Head Accumulate using AVX-512.
+///
+/// Computes `head_input[i] = seed[i] + tanh(block[i])`.
+/// Eliminates the separate `copy_from_slice(seed)` before `tanh_and_accumulate_block`.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn tanh_and_accumulate_with_seed_avx512(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    seed: &[f32],
+) {
+    let len = block.len();
+    let mut i = 0;
+    while i + 16 <= len {
+        let vb = _mm512_loadu_ps(block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
+        _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
+
+        let vs = _mm512_loadu_ps(seed.as_ptr().add(i));
+        _mm512_storeu_ps(head_input.as_mut_ptr().add(i), _mm512_add_ps(vs, vt));
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_poly_avx512(vb);
+        _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
+
+        let vs = _mm512_maskz_loadu_ps(mask, seed.as_ptr().add(i));
+        _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, _mm512_add_ps(vs, vt));
+    }
+}

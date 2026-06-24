@@ -72,6 +72,26 @@ pub unsafe fn tanh_and_overwrite_block_fallback(head_input: &mut [f32], block: &
     }
 }
 
+/// Fused Seed + Tanh + Head Accumulate.
+///
+/// Computes `head_input[i] = seed[i] + tanh(block[i])`.
+/// Equivalent to `copy_from_slice(seed)` followed by `tanh_and_accumulate_block`,
+/// fused into a single pass.
+pub unsafe fn tanh_and_accumulate_with_seed_fallback(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    seed: &[f32],
+) {
+    let len = head_input.len();
+    for i in 0..len {
+        let v = block[i];
+        let activated = v.tanh();
+        block[i] = activated;
+        let acc = seed[i] as f64 + activated as f64;
+        head_input[i] = acc as f32;
+    }
+}
+
 /// Gated Activation + Overwrite.
 pub unsafe fn gated_activation_and_overwrite_block_fallback(
     head_input: &mut [f32],

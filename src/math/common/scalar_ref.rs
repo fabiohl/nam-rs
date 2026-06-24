@@ -27,7 +27,7 @@
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
     gated_activation_and_overwrite_block_fallback, tanh_and_accumulate_block_fallback,
-    tanh_and_overwrite_block_fallback,
+    tanh_and_accumulate_with_seed_fallback, tanh_and_overwrite_block_fallback,
 };
 
 /// Convolution fallback implementations.

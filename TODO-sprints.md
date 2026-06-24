@@ -43,7 +43,8 @@ Este épico foca exclusivamente no achado [F6](file:///home/fabio/nam-rs/TODO-fi
 
 ### Sprint D2: Fused Accumulator Seeding e Validação de Estresse (F6)
 
-- **[ ] Tarefa D2.1 — Fusão do Seed Copy do head_accum no WaveNet**
+- **[x] Tarefa D2.1 — Fusão do Seed Copy do head_accum no WaveNet**
+  - **Conclusão:** Adicionado campo `seed: Option<&'a [f32]>` ao `WavenetProcessContext`. Implementada operação `tanh_and_accumulate_with_seed` (scalar, AVX2, AVX-512) que computa `head[i] = seed[i] + tanh(block[i])` em uma única passada SIMD, eliminando o `copy_from_slice` de `num_frames * CH` bytes no hot-path. O `layer_array.rs` e `layer_array_dyn.rs` agora passam `prev_head_outputs` como seed no contexto do primeiro layer, e o `layer.rs`/`layer_dyn.rs` despacham para a operação fundida quando seed está presente. 842 testes passam (0 falhas), incluindo 32 unitários do WaveNet, 18 de integração, 7 de zero-alloc, e o novo `test_tanh_and_accumulate_with_seed` cobrindo 10 comprimentos em AVX2 e AVX-512.
   - **Foco:** Eliminar a chamada `copy_from_slice` dedicada de `num_frames * CH` bytes no início do processamento de blocos de `WaveNetLayerArray`.
   - **Ação:**
     - Adicionar um campo opcional de semente `seed: Option<&'a [f32]>` na estrutura `WavenetProcessContext` em [common.rs](file:///home/fabio/nam-rs/src/models/wavenet/common.rs).

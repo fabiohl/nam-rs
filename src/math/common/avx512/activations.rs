@@ -50,6 +50,22 @@ macro_rules! impl_avx512_activations {
         }
 
         #[inline(always)]
+        // SAFETY: head_input, block, and seed are valid slices of equal length;
+        // CPU supports AVX-512F+VL (verified by dispatch).
+        unsafe fn tanh_and_accumulate_with_seed(
+            head_input: &mut [f32],
+            block: &mut [f32],
+            seed: &[f32],
+        ) {
+            // SAFETY: arguments satisfy the function's documented invariants.
+            unsafe {
+                crate::math::wavenet::accumulate::tanh_and_accumulate_with_seed_avx512(
+                    head_input, block, seed,
+                )
+            }
+        }
+
+        #[inline(always)]
         // SAFETY: head_input and block are valid mutable slices of equal length;
         // block.len() % ch == 0; CPU supports AVX-512F+VL (verified by dispatch).
         unsafe fn gated_activation_and_overwrite_block(
@@ -195,6 +211,17 @@ macro_rules! impl_avx512vnni_bf16_activations {
         // CPU supports AVX-512 VNNI+BF16.
         unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
             Avx512Math::tanh_and_overwrite_block(head_input, block)
+        }
+
+        #[inline(always)]
+        // SAFETY: head_input, block, and seed are valid slices of equal length;
+        // CPU supports AVX-512 VNNI+BF16.
+        unsafe fn tanh_and_accumulate_with_seed(
+            head_input: &mut [f32],
+            block: &mut [f32],
+            seed: &[f32],
+        ) {
+            Avx512Math::tanh_and_accumulate_with_seed(head_input, block, seed)
         }
 
         #[inline(always)]

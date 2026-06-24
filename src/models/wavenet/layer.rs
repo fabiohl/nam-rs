@@ -33,6 +33,8 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             layer_buffer,
             buffer_start,
             num_frames,
+            seed,
+            is_first_layer,
             ..
         } = ctx;
 
@@ -92,7 +94,9 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 );
             }
 
-            if ctx.is_first_layer {
+            if let Some(s) = seed {
+                M::tanh_and_accumulate_with_seed(head_input, conv_slice, s);
+            } else if is_first_layer {
                 M::tanh_and_overwrite_block(head_input, conv_slice);
             } else {
                 M::tanh_and_accumulate_block(head_input, conv_slice);

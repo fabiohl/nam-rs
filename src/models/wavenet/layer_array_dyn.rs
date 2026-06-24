@@ -55,8 +55,11 @@ impl WaveNetLayerArrayDyn {
 
     /// Array's central processing. Fully shielded against allocations.
     ///
-    /// When `prev_head_outputs` is `Some`, it seeds `head_accum` before the layer
-    /// loop — all layers then accumulate on top of this seed instead of overwriting.
+    /// When `prev_head_outputs` is `Some`, it is passed as `seed` in the
+    /// first layer's `WavenetProcessContext` — the layer then fuses seed
+    /// accumulation with tanh in a single SIMD pass. This eliminates the
+    /// dedicated `copy_from_slice` of `num_frames * ch` bytes.
+    ///
     /// This implements the C++ cascaded head pattern (array N seeds its head
     /// accumulator with the post-head_rechannel output of array N−1).
     ///
@@ -74,11 +77,6 @@ impl WaveNetLayerArrayDyn {
         let states_ptr = self.states.as_mut_ptr();
         let ch = self.ch;
         let head = self.head;
-
-        let head_seeded = prev_head_outputs.is_some();
-        if let Some(seed) = prev_head_outputs {
-            self.head_accum[0..num_frames * ch].copy_from_slice(seed);
-        }
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
@@ -133,7 +131,8 @@ impl WaveNetLayerArrayDyn {
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0 && !head_seeded,
+                        is_first_layer: i == 0,
+                        seed: if i == 0 { prev_head_outputs } else { None },
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
@@ -149,7 +148,8 @@ impl WaveNetLayerArrayDyn {
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
-                        is_first_layer: i == 0 && !head_seeded,
+                        is_first_layer: i == 0,
+                        seed: if i == 0 { prev_head_outputs } else { None },
                     });
                 }
 

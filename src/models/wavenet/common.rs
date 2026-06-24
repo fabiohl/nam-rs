@@ -31,6 +31,9 @@ pub struct WavenetProcessContext<'a> {
     pub block: &'a mut [f32],
     /// Indicates if this is the first layer of the array.
     pub is_first_layer: bool,
+    /// Optional seed for fused seed+tanh accumulation on the first layer.
+    /// Eliminates the separate `copy_from_slice` of `prev_head_outputs`.
+    pub seed: Option<&'a [f32]>,
 }
 
 /// Manages the buffer memory of a WaveNet cell.
