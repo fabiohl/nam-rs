@@ -88,7 +88,7 @@ residuais de cópia de buffer.
 - **[x] Tarefa E1.1 — Corrigir regressão WaveNet Dinâmico — taps não-contíguos (F9 / B.4.1)**
   - **Conclusão:** Implementada **Opção A** (K-taps sequencial sem buffer intermediário) como padrão para todo o caminho dinâmico. A cópia de taps não-contíguos para `tap_buf` (4 KB stack, `copy_from_slice`) foi eliminada de `conv1d_dyn.rs:process_single_frame` e `conv1d_dyn_dual.rs:process_dual_frame`. Cada tap é agora processado via chamada sequencial a `dot_product_*_accumulate` com fatia `in_ch`-sized diretamente do ponteiro do tap, acumulando K vezes no mesmo registrador. A constante `TAP_BUF_FLOATS` foi removida de ambos os arquivos. **Golden vectors (22/22):** bit-identical. **Wavenet unitários (91/91):** passam. **Zero-alloc (8/8):** RT-safe confirmada. **Criterion `WaveNet_Dynamic_CH5_64samp`:** 58.06 µs → **38.05 µs (-34.2%)**, razão Dynamic/A2Full caiu de 2.15× para **1.37×**. O remanescente (≈10 µs) é overhead estrutural do caminho dinâmico (dispatch, AlignedVec indireto, loops de bloco não-const) — endereçável via **Opção C** (especialização const-generic para CH3/CH5/CH8) em sprint futuro.
 
-- **[ ] Tarefa E1.2 — Eliminar PLT `memset` no prólogo de `WaveNetLayer` (F8)**
+- **[x] Tarefa E1.2 — Eliminar PLT `memset` no prólogo de `WaveNetLayer` (F8)**
   - **Foco:** Substituir a zeragem de 4 KB via PLT `callq *GOT/memset` a cada chamada de
     `WaveNetLayer::process_block_internal` por uma abordagem inline.
   - **Ação:**
@@ -104,6 +104,16 @@ residuais de cópia de buffer.
        `assume_init` / `MaybeUninit` e eliminar a zeragem.
   - **Validação:** Confirmar via `perf annotate` que o símbolo `__memset_avx2_unaligned_erms`
     desapareceu do hot path. Soak test + golden vectors obrigatórios.
+  - **Conclusão:** Substituídas as inicializações `[0.0f32; 1024]` de `mixin_out` e
+    `conv_plus_mixin` por `MaybeUninit::<[f32; 1024]>::uninit()` com slices via
+    `core::slice::from_raw_parts_mut`. Ambos os buffers são completamente escritos
+    (`input_mixin.process_block` e conv1d respectivamente) antes de qualquer leitura,
+    tornando a zeragem redundante. O caminho `is_first_layer` (`tanh_and_overwrite`)
+    também sobrescreve `head_input` sem leitura prévia, mas `head_input` já chega
+    zerado do alocador `AlignedVec::new(..., 0.0)`. **objdump release:** 0 chamadas
+    a `memset` no codegen unit de `layer.rs`. **Golden vectors (26/26):** passam.
+    **Wavenet unitários (91/91):** passam. **Zero-alloc (8/8):** RT-safe confirmada.
+    **Bench `Standard_CH16_cataloged`:** sem alteração de performance (46.94 µs).
 
 ---
 
