@@ -33,6 +33,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 * **Traceability**: Always point to the file or function in the source code (e.g., "See `src/diagnostics.rs`").
 * **DRY (Don't Repeat Your Code)**: Never duplicate code verbatim in documentation. Explain the concept and reference the file.
 * **Synchronization**: Keep the `Exxxx` error catalog synchronized between `docs/architecture.md` and the `NamErrorCode` enum.
+* **Technical Documentation Standardization:** Establish a uniform voice and structure across all code, comments, and reference materials to ensure flawless readability and seamless developer onboarding.
+  * Adopt a "docs-as-code" approach.
+  * Use an unified "voice and tone" style and "mood".
+  * Avoid style deviations, confusing terminology, or inconsistent code comments.
+  * Ensures that all technical assets read like a cohesive, single-authored masterpiece.
 
 ## Best Practices
 

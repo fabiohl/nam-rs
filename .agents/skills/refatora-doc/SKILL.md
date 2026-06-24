@@ -22,5 +22,5 @@ When the user requests a thorough review of documentation and source code commen
 * Remove irrelevant references that do not contribute strictly to understanding the code, such as "sprint X", "review done on DDMMYYYY", "requested by PO", etc.
 * Ensure internal links in Markdown documents work perfectly (using the relative references to the git repository).
 * In Rust files (`.rs`), ensure correct usage of `///` to document public items and `//` for internal structural comments.
+* Make the improvements, corrections and edits right now, as you go seeing them.
 * Orient yourself by the highest standards of the `documentador` skill.
-* Make the corrections and edits right now, as you go seeing them.
