@@ -1,0 +1,59 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
+
+# TODO-sprints.md — Planejamento Ágil dos Épicos
+
+Este documento organiza o trabalho técnico derivado de auditorias e propostas registradas em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md) em épicos, sprints e tarefas técnicas detalhadas.
+
+---
+
+## ÉPICO D — Higiene do thread de tempo-real
+
+### Visão Geral e Riscos
+
+Este épico foca exclusivamente no achado [F6](file:///home/fabio/nam-rs/TODO-findings.md#L309) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md). O objetivo é garantir o determinismo temporal absoluto do thread de tempo-real (RT), eliminando varreduras redundantes de memória e cópias de buffers desnecessárias no caminho crítico do PipeWire e do backbone WaveNet.
+
+> [!IMPORTANT]
+> **Risco de Regressão Crítico (RT-Safety):** Nenhuma alteração no thread de áudio pode introduzir alocações dinâmicas de heap (`malloc`/`free`), syscalls ou bloqueios (mutexes/locks). Qualquer quebra dessas premissas resultará em *xruns* (glitches de áudio). A paridade numérica dos testes unitários e de integração precisa ser mantida a 100%.
+
+---
+
+### Sprint D1: Box de Buffers e Fatoração de Cópias de Taps (F6)
+
+- **[ ] Tarefa D1.1 — Eliminar Varredura/Cópia de 196 KB na Callback PipeWire**
+  - **Foco:** Corrigir a cópia e varredura gerada pelo tamanho excessivo de `CaptureState` na pilha (devido a seis arrays estáticos `[f32; MAX_RESAMP_BUF]` de 32 KB cada).
+  - **Ação:**
+    - Modificar [state.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/state.rs) para alterar os buffers `resamp_mid_l`, `resamp_mid_r`, `resamp_out_l`, `resamp_out_r`, `model_out_l` e `model_out_r` do tipo `[f32; MAX_RESAMP_BUF]` para `Box<[f32]>` (ou `Box<[f32; MAX_RESAMP_BUF]>`).
+    - Alocar esses buffers no heap durante a inicialização em `CaptureState::init` (que roda fora do thread RT, sob o controle do main thread).
+    - Ajustar a passagem em [setup.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/setup.rs) para obter referências mutáveis aos fatiamentos via `&mut *state.resamp_mid_l`, etc.
+  - **Validação:** Compilar com `cargo check`. O tamanho do ambiente da closure deve cair de ~196 KB para menos de 1 KB.
+
+- **[ ] Tarefa D1.2 — Otimização de Cópia de Taps no Conv1D Estático**
+  - **Foco:** Evitar chamadas externas a `memcpy`/`memmove` em cópias de tamanho constante.
+  - **Ação:**
+    - Em [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs) e [conv1d_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dual.rs), substituir `in_tap.copy_from_slice(...)` e `in_taps_f0[k].copy_from_slice(...)` por `std::ptr::copy_nonoverlapping` com contagem constante igual ao generic parameter `IN`.
+    - Garantir que a otimização de propagação de constantes do LLVM abaixe a cópia diretamente para instruções `vmovups`/`vmovdqu` do AVX2, sem chamadas externas para `memcpy` da libc.
+  - **Validação:** Confirmar com `cargo build` e executar testes unitários do WaveNet.
+
+---
+
+### Sprint D2: Fused Accumulator Seeding e Validação de Estresse (F6)
+
+- **[ ] Tarefa D2.1 — Fusão do Seed Copy do head_accum no WaveNet**
+  - **Foco:** Eliminar a chamada `copy_from_slice` dedicada de `num_frames * CH` bytes no início do processamento de blocos de `WaveNetLayerArray`.
+  - **Ação:**
+    - Adicionar um campo opcional de semente `seed: Option<&'a [f32]>` na estrutura `WavenetProcessContext` em [common.rs](file:///home/fabio/nam-rs/src/models/wavenet/common.rs).
+    - Modificar a chamada do cascade de inferência em [layer_array.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer_array.rs) (e [layer_array_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer_array_dyn.rs)) para não copiar mais o seed diretamente em `self.head_accum`. Em vez disso, passar `prev_head_outputs` no contexto do primeiro layer (`i == 0`).
+    - Modificar a trait `SimdMath` em [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs) e suas implementações ([avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs), [avx512/activations.rs](file:///home/fabio/nam-rs/src/math/common/avx512/activations.rs) e [scalar_ref.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref.rs)) para incluir a operação fundida `tanh_and_accumulate_with_seed`.
+    - Atualizar a lógica do primeiro layer em [layer.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer.rs) (e [layer_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/layer_dyn.rs)) para usar essa nova operação se a semente estiver presente, ou `tanh_and_overwrite_block` caso contrário.
+  - **Validação:** Executar testes unitários e de paridade do WaveNet para assegurar que a saída numérica permaneça idêntica bit-a-bit.
+
+- **[ ] Tarefa D2.2 — Validação de Estresse, Heap Audit e Estabilidade RT**
+  - **Foco:** Assegurar a total segurança e ausência de regressões numéricas ou de tempo de execução.
+  - **Ação:**
+    - Executar a suíte de validação rápida via `utils/tests-quick.sh`.
+    - Executar o soak test `pipeline_soak` com monitoramento de alocação de heap (`heap-audit`) habilitado.
+    - Testar a execução do host standalone PipeWire e monitorar por *xruns* sob latências baixas (buffer size ≤ 64).
+  - **Validação:** Garantir zero vazamento de heap, zero drops de heap no thread de áudio e 100% de passagem nos testes de integridade.
