@@ -34,3 +34,6 @@ pub use f16_avx2::*;
 pub use f16_avx512::*;
 pub use f32_avx2::*;
 pub use f32_avx512::*;
+
+#[cfg(test)]
+mod gemv_test;

@@ -312,7 +312,7 @@ Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-inpu
 
 Focada em garantir que as alterações matemáticas mantenham estrita compatibilidade com o comportamento de referência e no levantamento de estatísticas detalhadas de ganhos de performance.
 
-#### [NEW] Tarefa B.3.1: Suíte de Testes Unitários de Paridade de Kernels
+#### [NEW] Tarefa B.3.1: Suíte de Testes Unitários de Paridade de Kernels [DONE]
 
 * **Objetivo:** Desenvolver testes exaustivos para verificar a paridade matemática e lógica dos novos kernels.
 * **Arquivos Alvos:**

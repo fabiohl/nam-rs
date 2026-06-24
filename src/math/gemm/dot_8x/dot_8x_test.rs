@@ -198,3 +198,138 @@ fn test_dot_8x_f32_dual_avx2_single_vs_dual_invariance() {
         }
     }
 }
+
+// ── Accumulate kernel tests (f32 weights + init) ─────────────────────────────
+
+fn make_f32_init_8() -> [f32; 8] {
+    [0.1, -0.25, 0.05, 0.4, -0.15, 0.3, -0.05, 0.2]
+}
+
+#[test]
+fn test_dot_8x_f32_accumulate_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let init = make_f32_init_8();
+    for &len in &sizes {
+        let (weights, state) = make_f32_8x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_8x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_8x_f32_accumulate_avx2(&weights, &state, &init) };
+        for j in 0..8 {
+            assert!(
+                (result[j] - expected[j]).abs() < 5e-4,
+                "len={} channel={}: avx2={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_8x_f32_accumulate_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    let init = make_f32_init_8();
+    for &len in &lengths {
+        let (weights, state) = make_f32_8x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_8x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_8x_f32_accumulate_avx2(&weights, &state, &init) };
+        for j in 0..8 {
+            assert!(
+                (result[j] - expected[j]).abs() < 2e-3,
+                "stress len={} channel={}: avx2={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+fn make_f32_init_dual_8() -> ([f32; 8], [f32; 8]) {
+    (
+        [0.1, -0.25, 0.05, 0.4, -0.15, 0.3, -0.05, 0.2],
+        [-0.15, 0.3, -0.05, 0.2, 0.1, -0.25, 0.05, 0.4],
+    )
+}
+
+#[test]
+fn test_dot_8x_f32_dual_accumulate_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let (init_f0, init_f1) = make_f32_init_dual_8();
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_8x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_8x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_8x_f32_dual_accumulate_avx2(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..8 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
+                "len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
+                "len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_8x_f32_dual_accumulate_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    let (init_f0, init_f1) = make_f32_init_dual_8();
+    for &len in &lengths {
+        let (weights, state_f0, state_f1) = make_f32_8x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_8x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_8x_f32_dual_accumulate_avx2(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..8 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 2e-3,
+                "stress len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 2e-3,
+                "stress len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}

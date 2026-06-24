@@ -455,3 +455,287 @@ fn test_dot_16x_f32_avx512_vs_4x_decompose() {
         );
     }
 }
+
+// ── Accumulate kernel tests (f32 weights + init) ─────────────────────────────
+
+fn make_f32_init_16() -> [f32; 16] {
+    [
+        0.1, -0.25, 0.05, 0.4, -0.15, 0.3, -0.05, 0.2, 0.35, -0.1, 0.15, -0.3, 0.25, -0.2, 0.1,
+        -0.35,
+    ]
+}
+
+#[test]
+fn test_dot_16x_f32_accumulate_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let init = make_f32_init_16();
+    for &len in &sizes {
+        let (weights, state) = make_f32_16x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_16x_f32_accumulate_avx2(&weights, &state, &init) };
+        for j in 0..16 {
+            assert!(
+                (result[j] - expected[j]).abs() < 5e-4,
+                "len={} channel={}: avx2={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_accumulate_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    let init = make_f32_init_16();
+    for &len in &lengths {
+        let (weights, state) = make_f32_16x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_16x_f32_accumulate_avx2(&weights, &state, &init) };
+        for j in 0..16 {
+            assert!(
+                (result[j] - expected[j]).abs() < 2e-3,
+                "stress len={} channel={}: avx2={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+fn make_f32_init_dual_16() -> ([f32; 16], [f32; 16]) {
+    (
+        [
+            0.1, -0.25, 0.05, 0.4, -0.15, 0.3, -0.05, 0.2, 0.35, -0.1, 0.15, -0.3, 0.25, -0.2, 0.1,
+            -0.35,
+        ],
+        [
+            -0.15, 0.3, -0.05, 0.2, 0.1, -0.25, 0.05, 0.4, -0.35, 0.1, -0.15, 0.3, -0.25, 0.2,
+            -0.1, 0.35,
+        ],
+    )
+}
+
+#[test]
+fn test_dot_16x_f32_dual_accumulate_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let (init_f0, init_f1) = make_f32_init_dual_16();
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_16x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_16x_f32_dual_accumulate_avx2(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
+                "len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
+                "len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_dual_accumulate_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    let (init_f0, init_f1) = make_f32_init_dual_16();
+    for &len in &lengths {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_16x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_16x_f32_dual_accumulate_avx2(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 2e-3,
+                "stress len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 2e-3,
+                "stress len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+// ── AVX-512 accumulate kernel tests (f32) ─────────────────────────────────
+
+#[test]
+fn test_dot_16x_f32_accumulate_avx512_vs_scalar() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let init = make_f32_init_16();
+    for &len in &sizes {
+        let (weights, state) = make_f32_16x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_16x_f32_accumulate_avx512(&weights, &state, &init) };
+        for j in 0..16 {
+            assert!(
+                (result[j] - expected[j]).abs() < 5e-4,
+                "len={} channel={}: avx512={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_accumulate_avx512_stress() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let lengths = [1024, 2048, 4096, 8192];
+    let init = make_f32_init_16();
+    for &len in &lengths {
+        let (weights, state) = make_f32_16x_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_accumulate_scalar(&weights, &state, &init) };
+        let result = unsafe { dot_product_16x_f32_accumulate_avx512(&weights, &state, &init) };
+        for j in 0..16 {
+            assert!(
+                (result[j] - expected[j]).abs() < 2e-3,
+                "stress len={} channel={}: avx512={}, scalar={}",
+                len,
+                j,
+                result[j],
+                expected[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_dual_accumulate_avx512_vs_scalar() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    let (init_f0, init_f1) = make_f32_init_dual_16();
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_16x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_16x_f32_dual_accumulate_avx512(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
+                "len={} f0 ch={}: avx512={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
+                "len={} f1 ch={}: avx512={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_dual_accumulate_avx512_stress() {
+    if !std::is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    let lengths = [1024, 2048, 4096, 8192];
+    let (init_f0, init_f1) = make_f32_init_dual_16();
+    for &len in &lengths {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected = unsafe {
+            scalar_ref::dot_product_16x_f32_dual_accumulate_scalar(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        let result = unsafe {
+            dot_product_16x_f32_dual_accumulate_avx512(
+                &weights, &state_f0, &state_f1, &init_f0, &init_f1,
+            )
+        };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 2e-3,
+                "stress len={} f0 ch={}: avx512={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 2e-3,
+                "stress len={} f1 ch={}: avx512={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
