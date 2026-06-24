@@ -75,6 +75,139 @@ fn test_dot_16x_f32_avx2_stress() {
 }
 
 #[test]
+fn test_dot_16x_f32_dual_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_16x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
+                "len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
+                "len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_dual_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    for &len in &lengths {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_16x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_16x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..16 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 2e-3,
+                "stress len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 2e-3,
+                "stress len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_dual_avx2_single_vs_dual_invariance() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_16x_dual_data(len);
+        let single_f0 = unsafe { dot_product_16x_f32_avx2(&weights, &state_f0) };
+        let single_f1 = unsafe { dot_product_16x_f32_avx2(&weights, &state_f1) };
+        let dual = unsafe { dot_product_16x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..16 {
+            assert!(
+                (dual.0[j] - single_f0[j]).abs() < 5e-6,
+                "len={} f0 ch={}: dual={}, single={}",
+                len,
+                j,
+                dual.0[j],
+                single_f0[j]
+            );
+            assert!(
+                (dual.1[j] - single_f1[j]).abs() < 5e-6,
+                "len={} f1 ch={}: dual={}, single={}",
+                len,
+                j,
+                dual.1[j],
+                single_f1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_16x_f32_avx2_decompose_vs_8x() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state) = make_f32_16x_data(len);
+        let result_16x = unsafe { dot_product_16x_f32_avx2(&weights, &state) };
+
+        let w0: Vec<[f32; 8]> = weights
+            .iter()
+            .map(|w| [w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]])
+            .collect();
+        let w1: Vec<[f32; 8]> = weights
+            .iter()
+            .map(|w| [w[8], w[9], w[10], w[11], w[12], w[13], w[14], w[15]])
+            .collect();
+        let r0 = unsafe { crate::math::gemm::dot_8x::dot_product_8x_f32_avx2(&w0, &state) };
+        let r1 = unsafe { crate::math::gemm::dot_8x::dot_product_8x_f32_avx2(&w1, &state) };
+        for j in 0..8 {
+            assert!(
+                (result_16x[j] - r0[j]).abs() < 5e-4,
+                "len={} ch={}: 16x={}, 8x_lo={}",
+                len,
+                j,
+                result_16x[j],
+                r0[j]
+            );
+        }
+        for j in 0..8 {
+            assert!(
+                (result_16x[j + 8] - r1[j]).abs() < 5e-4,
+                "len={} ch={}: 16x={}, 8x_hi={}",
+                len,
+                j + 8,
+                result_16x[j + 8],
+                r1[j]
+            );
+        }
+    }
+}
+
+#[test]
 fn test_dot_16x_f32_avx512_vs_scalar() {
     if !std::is_x86_feature_detected!("avx512f") {
         return;

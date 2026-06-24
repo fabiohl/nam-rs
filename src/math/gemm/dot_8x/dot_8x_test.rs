@@ -79,19 +79,122 @@ fn test_dot_8x_f32_avx2_decompose_vs_4x() {
         let w1: Vec<[f32; 4]> = weights.iter().map(|w| [w[4], w[5], w[6], w[7]]).collect();
         let r0 = unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(&w0, &state) };
         let r1 = unsafe { crate::math::gemm::dot_4x::dot_product_4x_f32_avx2(&w1, &state) };
-        assert!(
-            (result_8x[0] - r0[0]).abs() < 5e-4,
-            "len={}: 8x={}, 4x_0={}",
-            len,
-            result_8x[0],
-            r0[0]
-        );
-        assert!(
-            (result_8x[4] - r1[0]).abs() < 5e-4,
-            "len={}: 8x={}, 4x_1={}",
-            len,
-            result_8x[4],
-            r1[0]
-        );
+        for j in 0..4 {
+            assert!(
+                (result_8x[j] - r0[j]).abs() < 5e-4,
+                "len={} ch={}: 8x={}, 4x_lo={}",
+                len,
+                j,
+                result_8x[j],
+                r0[j]
+            );
+        }
+        for j in 0..4 {
+            assert!(
+                (result_8x[j + 4] - r1[j]).abs() < 5e-4,
+                "len={} ch={}: 8x={}, 4x_hi={}",
+                len,
+                j + 4,
+                result_8x[j + 4],
+                r1[j]
+            );
+        }
+    }
+}
+
+fn make_f32_8x_dual_data(len: usize) -> (Vec<[f32; 8]>, Vec<f32>, Vec<f32>) {
+    let (weights, state_f0) = make_f32_8x_data(len);
+    let state_f1: Vec<f32> = state_f0.iter().map(|&s| s * 0.8 + 0.1).collect();
+    (weights, state_f0, state_f1)
+}
+
+#[test]
+fn test_dot_8x_f32_dual_avx2_vs_scalar() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_8x_dual_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_8x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_8x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..8 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 5e-4,
+                "len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 5e-4,
+                "len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_8x_f32_dual_avx2_stress() {
+    let lengths = [1024, 2048, 4096, 8192];
+    for &len in &lengths {
+        let (weights, state_f0, state_f1) = make_f32_8x_dual_data(len);
+        let expected =
+            unsafe { scalar_ref::dot_product_8x_f32_dual_scalar(&weights, &state_f0, &state_f1) };
+        let result = unsafe { dot_product_8x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..8 {
+            assert!(
+                (result.0[j] - expected.0[j]).abs() < 2e-3,
+                "stress len={} f0 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.0[j],
+                expected.0[j]
+            );
+            assert!(
+                (result.1[j] - expected.1[j]).abs() < 2e-3,
+                "stress len={} f1 ch={}: avx2={}, scalar={}",
+                len,
+                j,
+                result.1[j],
+                expected.1[j]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dot_8x_f32_dual_avx2_single_vs_dual_invariance() {
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128, 255, 256, 512,
+    ];
+    for &len in &sizes {
+        let (weights, state_f0, state_f1) = make_f32_8x_dual_data(len);
+        let single_f0 = unsafe { dot_product_8x_f32_avx2(&weights, &state_f0) };
+        let single_f1 = unsafe { dot_product_8x_f32_avx2(&weights, &state_f1) };
+        let dual = unsafe { dot_product_8x_f32_dual_avx2(&weights, &state_f0, &state_f1) };
+        for j in 0..8 {
+            assert!(
+                (dual.0[j] - single_f0[j]).abs() < 5e-6,
+                "len={} f0 ch={}: dual={}, single={}",
+                len,
+                j,
+                dual.0[j],
+                single_f0[j]
+            );
+            assert!(
+                (dual.1[j] - single_f1[j]).abs() < 5e-6,
+                "len={} f1 ch={}: dual={}, single={}",
+                len,
+                j,
+                dual.1[j],
+                single_f1[j]
+            );
+        }
     }
 }

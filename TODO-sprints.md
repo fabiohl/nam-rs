@@ -107,7 +107,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 - **Descrição:** Fazer alteração correspondente em `process_dual` no arquivo [conv1d_dyn_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dyn_dual.rs).
 
-#### [ ] Tarefa E.3.3 — Criar Suítes de Testes Unitários de Convolução e Paridade
+#### [x] Tarefa E.3.3 — Criar Suítes de Testes Unitários de Convolução e Paridade ✅ Concluído: 7 novos testes de paridade adicionados — `dot_8x_test`: dual-avx2 vs scalar, dual stress, single-vs-dual invariance, decompose full 8ch vs 2×4x; `dot_16x_test`: dual-avx2 vs scalar, dual stress, dual single-vs-dual invariance, decompose 16x vs 2×8x. Total: 19 testes (6 dot_8x + 13 dot_16x) — todos passando. Tolerância <5e-4 (paridade) e <5e-6 (invariância single/dual). `utils/lints.sh` limpo.
 
 - **Descrição:** Escrever testes de validação em [dot_8x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_8x/dot_8x_test.rs) e [dot_16x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/dot_16x_test.rs).
 - **Detalhes Técnicos:** Certificar que os novos kernels batem bit a bit (ou com tolerância < 2 ULP) contra as implementações escalares correspondentes para múltiplos tamanhos e fracionamentos.
