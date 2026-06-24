@@ -20,7 +20,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-01** (Convolução 16-wide no baseline AVX2 rodando via kernel escalar lento de fallback).
 
-#### [ ] Tarefa E.1.1 — Implementar Kernel AVX2 16-wide Explícito (NF-01 / NF-05)
+#### [x] Tarefa E.1.1 — Implementar Kernel AVX2 16-wide Explícito (NF-01 / NF-05)
 
 - **Descrição:** Criar o arquivo [dot_f32_avx2.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/dot_f32_avx2.rs).
 - **Detalhes Técnicos:** Implementar `dot_product_16x_f32_avx2(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16]`.
