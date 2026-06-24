@@ -284,10 +284,16 @@ Substitui fallbacks escalares por um kernel unificado baseado em *broadcast-inpu
   * Eliminados todos os 3 fallbacks escalares (`out_len <= 4`, `5..=7` e cauda `out_c`).
   * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
-#### [MODIFY] Tarefa B.2.2: Implementação de GEMV sem Bias Unificado em AVX2
+#### [MODIFY] Tarefa B.2.2: Implementação de GEMV sem Bias Unificado em AVX2 [DONE]
 
 * **Objetivo:** Otimizar `gemv_no_bias_f32_avx2` com a mesma estratégia de broadcast-input, cauda mascarada e atalhos rápidos.
 * **Arquivo Alvo:** [f32_avx2.rs](file:///home/fabio/nam-rs/src/math/gemm/gemv/f32_avx2.rs)
+* **Conclusão (2026-06-24):** `gemv_no_bias_f32_avx2` reescrito como kernel unificado com 3 vias, eliminando todos os fallbacks escalares:
+  * **`in_len == 1`:** broadcast-multiply direto em blocos de 8 canais de saída, com maskstore na cauda.
+  * **`out_len == 1`:** 8 frames em paralelo via 8 acumuladores YMM (gather de `in[n..n+7][ic]` por iteração), redução horizontal adiada; restante de frames via dot product per-frame.
+  * **Caminho geral (todos `out_len >= 1`):** 8-way unrolled broadcast-input sobre blocos de 8 canais de saída (`gemv_f32_inner_loop_avx2!`); bloco parcial final com `_mm256_maskload_ps` para pesos e `_mm256_maskstore_ps` para store, eliminando loops escalares de cauda para `out_c`. Acumuladores iniciam de zero (sem bias).
+  * Eliminados todos os 3 fallbacks escalares (`out_len <= 4`, `5..=7` e cauda `out_c`).
+  * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
 #### [MODIFY] Tarefa B.2.3: Atualização dos Kernels GEMV em AVX-512
 
