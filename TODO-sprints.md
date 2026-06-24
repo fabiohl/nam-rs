@@ -48,7 +48,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 ---
 
-### SPRINT E.2 — Desenvolvimento de Kernels Dual-Frame (Tiling) 8-wide e 16-wide
+### SPRINT E.2 — Desenvolvimento de Kernels Dual-Frame (Tiling) 8-wide e 16-wide [DONE]
 
 **Foco:** Resolver o finding **NF-04** (Tiling temporal inativo para os modelos mais pesados WaveNet CH16 e A2 CH8).
 
@@ -96,7 +96,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Integrar os novos kernels na WaveNet e fechar a rodada com 100% de paridade numérica.
 
-#### [ ] Tarefa E.3.1 — Ativar Tiling Dual-Frame na Convolução WaveNet Estática (NF-04)
+#### [x] Tarefa E.3.1 — Ativar Tiling Dual-Frame na Convolução WaveNet Estática (NF-04) ✅ Concluído: `process_dual_frame_with_mixin` agora processa todos os `interleave_width` (4, 8, 16) com `match`. Guarda `if interleave_width != 4` removida. Branches 8 e 16 usam `M::dot_product_8x_f32_dual`/`M::dot_product_16x_f32_dual` com `load/store_8/16_accums`. Inicialização bias+mixin generalizada por bloco. 183 testes passando (80 conv1d + 91 wavenet + 12 dot)
 
 - **Descrição:** Modificar a função `process_dual_frame_with_mixin` em [conv1d_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dual.rs).
 - **Detalhes Técnicos:**
