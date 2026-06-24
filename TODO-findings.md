@@ -466,14 +466,234 @@ _xruns_. **RT-safety é mandatória** (zero heap/lock/syscall no hot path).
 
 ---
 
-### Matriz de priorização
+### Matriz de priorização (Épicos A–D)
 
-| Épico | Findings   | Ganho esperado | Risco de regressão | Esforço | Ordem sugerida |
-| ----- | ---------- | -------------- | ------------------ | ------- | -------------- |
-| A     | F2, F5, F7 | Médio-Alto     | **Baixo**          | Baixo   | **1º**         |
-| B     | F1, F4     | **Alto**       | Alto (ESR)         | Alto    | 2º             |
-| C     | F3         | Médio          | Médio (precisão)   | Baixo   | 3º             |
-| D     | F6         | Médio          | Alto (RT-safety)   | Médio   | 4º             |
+| Épico | Findings   | Ganho esperado | Risco de regressão | Esforço | Status       |
+| ----- | ---------- | -------------- | ------------------ | ------- | ------------ |
+| A     | F2, F5, F7 | Médio-Alto     | **Baixo**          | Baixo   | ✅ CONCLUÍDO |
+| B     | F1, F4     | **Alto**       | Alto (ESR)         | Alto    | ✅ CONCLUÍDO |
+| C     | F3         | Médio          | Médio (precisão)   | Baixo   | ✅ CONCLUÍDO |
+| D     | F6         | Médio          | Alto (RT-safety)   | Médio   | ✅ CONCLUÍDO |
 
 > O `TODO-sprints.md` (épicos → sprints → tarefas técnicas atômicas) deve ser gerado pela
 > skill `planejador-arquiteto` **somente quando solicitado**, referenciando estes findings.
+
+---
+
+## 4. Novos Findings — Pós-implementação dos Épicos A–D (2026-06-24)
+
+> Achados identificados na análise pós-implementação do `target/dsp_hotpath.asm` e
+> `target/logs/*` após a execução completa de `utils/build-release.sh` + `tests-long.sh`.
+> Contexto: performance geral do WaveNet Standard melhorou **−17,6%** (3.6214 ms → 2.9835 ms,
+> 46.91 µs/bloco-64, **3,52% do budget RT** a 48 kHz). Todos os 6 estágios de teste passaram.
+
+---
+
+### F8 — [MÉDIA] `WaveNetLayer::process_block_internal`: zeragem do `block_buffer` via PLT `memset` a cada chamada
+
+**Sintoma (asm — novo hotpath).**
+
+```asm
+195bce: leaq  0x1318(%rsp), %rdi   (ponteiro para block_buffer na pilha)
+195bd3: movl  $0x1000, %edx        (4096 bytes = 4 KB)
+195bd3: xorl  %esi, %esi            (valor = 0)
+195bd5: callq *0x1091fd(%rip)      # GOT/PLT → memset da libc
+```
+
+Aparece em 0,00% do perfil individual, mas é chamado ~20× por bloco-64 (10 camadas × 2 arrays).
+`__memset_avx2_unaligned_erms` aparece com **23% local** no ranking global de hot spots.
+
+**Causa-raiz.** Com o de-inlining de F5 (`#[inline]` em vez de `#[inline(always)]`),
+`WaveNetLayer::process_block_internal` tornou-se uma função independente e o compilador emite
+uma zeragem explícita do `block_buffer` no prólogo (o `block: &mut [f32]` referencia
+`self.block_buffer` que é reusado entre blocos e precisa ser zerado antes de acumulações).
+A chamada vai via PLT (ligação dinâmica) em vez de inline.
+
+**Impacto.** ~20 chamadas PLT + zero de 4 KB × 20 = ~80 KB zerado por bloco-64. A ~50 ns por
+chamada (overhead PLT + latência de memset), isso é **~1 µs/bloco** ou ~2,1% do orçamento RT
+consumidos em zeragem. Não aparece como hotspot isolado porque é diluído entre todas as chamadas,
+mas representa overhead real que nenhum outro finding anterior gerou.
+
+**Proposta de solução.**
+
+1. **Primeiro**: verificar se a zeragem é realmente necessária por completo, ou se o kernel já
+   inicializa cada posição antes de ler (no caso de `tanh_and_overwrite_block` para a primeira
+   camada, o bloco é completamente sobrescrito — a zeragem é redundante nesse caminho).
+2. Substituir o `callq *PLT` por `core::ptr::write_bytes` com tamanho constante
+   `num_frames * block_size * size_of::<f32>()` (const-propagation força inlining de `rep stosd`
+   ou `vmovdqa` em loop, sem overhead de PLT).
+3. **Alternativamente**: se o Épico B (F1) já garante que o bloco é inicializado com bias+mixin,
+   eliminar a zeragem prévia do `block_buffer` para camadas que usam o caminho `tanh_and_overwrite`
+   e substituir por `MaybeUninit` — zero-inicializar somente as posições de cauda não escritas.
+
+**Cuidados / validação.** Risco numérico: se qualquer posição do buffer for lida sem ser escrita,
+produzirá lixo. Cobrir com `golden_vectors`, `cpp_parity` e `soak_test` (que verifica ausência de
+NaN/Inf). RT-safe: `write_bytes` inlina para SIMD — sem heap, sem syscall.
+
+---
+
+### F9 — [ALTA] Regressão de performance em WaveNet Dinâmico para shapes pequenos (tarefa B.4.1 pendente)
+
+**Sintoma.** O Épico B documentou regressão de **+53% a +57%** em `WaveNet_Dynamic_CH5_64samp`
+(shapes pequenos). A tarefa `B.4.1` foi criada mas **não há registro de implementação** no
+`TODO-sprints.md`. O benchmark atual `WaveNet_Dynamic_CH5_64samp_48kHz` mede **58.06 µs** — enquanto
+`A2Full_CH8` (modelo mais pesado, mais canais) mede apenas **26.98 µs**. O dinâmico CH5 está **2,15×
+mais lento** que o A2Full CH8.
+
+**Causa-raiz (inferida do E-B).** A reescrita do kernel de acumulação fundida (F1) exige que os taps
+do convolution sejam contíguos para o processamento batch. Para dimensões dinâmicas (dimensões não
+conhecidas em tempo de compilação), os taps não-contíguos são copiados para um buffer temporário na
+pilha antes de chamar o novo kernel. Essa cópia, multiplicada por K taps × N camadas × M dual-frames,
+domina o custo para shapes pequenos onde o trabalho matemático é reduzido.
+
+**Impacto.** Modelos WaveNet Dinâmicos com poucas camadas ou canais (CH3, CH5) são os mais afetados:
+justamente os modelos que usuários carregarão em CPUs mais fracas (menor throughput) que precisam de
+**menor** custo por amostra. O caminho dinâmico é o mais utilizado para modelos `A2-Free`.
+
+**Proposta de solução.**
+
+- **Atalho por threshold**: Para `num_frames ≤ THRESHOLD` (ex: ≤ 2 frames), reverter ao caminho
+  K-taps-sequencial original (sem cópia para buffer intermediário), evitando a overhead de cópia
+  quando o ganho de fusão dos taps é menor que o custo de setup.
+- **Kernel com gather de taps**: Implementar versão do kernel de acumulação que aceita taps não-
+  contíguos diretamente (ponteiros separados por tap em vez de slice contíguo), eliminando a cópia
+  intermediária completamente.
+- **Especialização de shapes críticos**: Para CH3/CH5/CH8, avaliar adicionar monomorphizations
+  estáticas via `const generics` ou `[T; N]` arrays na camada dinâmica (análogo ao que o caminho
+  estático já faz), ao menos para os shapes de maior uso (distribuição real de modelos `.nam`).
+
+**Cuidados / validação.** Revalidar `golden_vectors` para variantes dinâmicas (`test_golden_vectors_wavenet_dyn_free`, `test_a2_dynamic_blended_ch3`, `test_a2_dynamic_gated_ch8`). Medir ganho relativo com Criterion para `WaveNet_Dynamic_CH5` e `WaveNet_Dynamic_CH8` antes e depois.
+
+---
+
+### F10 — [BAIXA] Fidelity Margin ≤ 0.5 dB em dois testes cross-validation LSTM (target >8.0 dB)
+
+**Sintoma.** Em `target/logs/phase2-proptests-parity.log`, dois testes de cross-validation reportam:
+
+```text
+Fidelity Margin = 0.5 dB (target > 8.0 dB) ✓
+Fidelity Margin = 0.4 dB (target > 8.0 dB) ✓
+```
+
+Ambos ainda marcados como `ok`, mas a margem é apenas **6% do target**. Ocorre em:
+`live_cross_validation_lstm_dyn_1x7 (v2)` @ 44100 Hz e `live_cross_validation_linear (v2)` @ 48000 Hz.
+Adicionalmente, múltiplos casos exibem `MR-STFT soft gate` excedendo o threshold conservador
+(ex: 8.21e-1 vs 1.50e-1).
+
+**Causa-raiz (a investigar).** A `Fidelity Margin` é calculada como `SNR_model − SNR_anchor`, onde
+`SNR_anchor` é a degradação esperada do modelo em si (não do nosso código). Uma margem de 0.4 dB
+pode ser pré-existente ao código atual (característica do modelo, não do runtime) **ou** pode indicar
+um pequeno desvio numérico introduzido pelas otimizações (reordenação de soma em F1/F4).
+
+**Impacto.** Baixo risco de regressão auditiva se pré-existente. Risco médio se novo: significa que
+as otimizações aproximaram o ESR ao limite do threshold calibrado — qualquer mudança adicional em
+kernels de ativação ou GEMV poderá ultrapassá-lo.
+
+**Proposta de solução.**
+
+- Executar os mesmos testes de cross-validation no commit anterior às otimizações dos Épicos B/C para
+  confirmar se é pré-existente ou introduzido.
+- Se novo: identificar o kernel específico (GEMV com bias vs. acumulador fundido) e verificar se a
+  diferença de ordem de soma em `fused_gemm_residual_batch_f32_avx2` ou nos novos kernels de
+  acumulação afeta o SNR para LSTM-Dyn.
+- Documentar o resultado no `threshold_calibration.rs` com comentário explicativo.
+
+**Cuidados / validação.** Comparação `git bisect` entre commit pré-Épico-B e atual, rodando apenas
+`cpp_parity` e `golden_vectors`. Não afrouxar os limiares sem confirmação de que é pré-existente.
+
+---
+
+### F11 — [BAIXA] Tail GEMV via `vinsertps` — 129 ocorrências no novo asm
+
+**Sintoma.** O novo asm tem **129 `vinsertps`** (zero antes). Hot spot: `gemv_with_bias_f32_avx2`
+linha `L42470` com **16,38%** local — `vinsertps $0x30, 0x14(%r15,%r8,4), %xmm9, %xmm9`.
+
+**Causa-raiz.** O handler de cauda do GEMV unificado (F4) usa `vinsertps` para inserir elementos
+individuais na posição correta de um XMM quando `out_len % 8 ≠ 0`. É funcionalmente correto e melhor
+que o antigo blend-storm (`vblendps`/`vshufps`), mas cada `vinsertps` é:
+
+- Instrução de 4 ciclos de latência (load + insert)
+- Não-pipelinada em sequências dependentes
+- Usada em loop para preencher 2-7 posições de cauda
+
+`_mm256_maskstore_ps` (AVX2) com máscara pré-calculada seria mais direto e geraria 1 instrução vs. N.
+
+**Impacto.** Baixo na maioria dos casos (cauda pequena em relação ao corpo), mas para o caso
+`out_len == 1` que ainda ocorre (projeção de head), a "cauda" É todo o output — resultando em muitas
+chamadas de `vinsertps` por frame.
+
+**Proposta de solução.**
+
+- Substituir o loop de `vinsertps` no tail do GEMV por:
+  1. Carregar o vetor com `_mm256_maskload_ps` (leitura segura com máscara).
+  2. Computar FMA mascarado.
+  3. Gravar com `_mm256_maskstore_ps`.
+  A máscara `(1 << tail_len) - 1` é computável em tempo de compilação para `out_len` constante.
+- Avaliar se o caminho `out_len == 1` ficou melhor com o frame-batching de F4 (`8 frames/YMM`)
+  ou se ainda passa por esse tail.
+
+**Cuidados / validação.** `_mm256_maskload_ps`/`maskstore_ps` fazem **leituras/escritas SIMD em
+regiões potencialmente não-alocadas** se a máscara não for ajustada corretamente — verificar que o
+buffer de saída tem pelo menos 8 floats ou que a leitura é feita via cópia de segurança. Testar com
+`golden_vectors` e `threshold_calibration`.
+
+---
+
+### F12 — [BAIXA] `__memmove_avx_unaligned_erms` residual ainda no hot path (72,88% local)
+
+**Sintoma.** No novo asm, `__memmove_avx_unaligned_erms` recebe 72,88% de amostras locais no hot spot
+(`vmovdqu %ymm1, 0x20(%rdi)`). A tarefa D1.2 substituiu as cópias de tap por `copy_nonoverlapping`,
+mas o memmove persiste.
+
+**Causa-raiz (a investigar).** A D1.2 cobriu as 4 chamadas de `copy_from_slice` em `conv1d.rs` e
+`conv1d_dual.rs`. Candidatos residuais:
+
+- `seed_copy` fundido em `tanh_and_accumulate_with_seed` (D2.1) — se `copy_from_slice` ainda for
+  usado para o seed em algum caminho não coberto.
+- `layer_array.rs:81`: `self.head_accum[0..num_frames * CH].copy_from_slice(seed)` — se o
+  `tanh_and_accumulate_with_seed` não cobrir o caminho de segundo array ou de modelos sem gating.
+- `WaveNetLayerArrayDyn` — o equivalente dinâmico pode ter caminhos não cobertos por D2.1.
+- Resampler `DelayLine::push` — cópia de delay line com tamanho variável.
+
+**Impacto.** Perda de oportunidade de cache para eliminação de memcpy implícitos. O `memmove`
+via libc tem overhead de chamada e não se beneficia de `const`-propagation do LLVM.
+
+**Proposta de solução.**
+
+- Auditar todas as chamadas de `copy_from_slice`/`copy_within` nos módulos `wavenet/` e `dsp/`:
+  `rg 'copy_from_slice|copy_within|copy_nonoverlapping' src/models/wavenet/ src/dsp/`
+- Para cópias de tamanho constante (baseadas em `CH`, `IN`, `HEAD`), substituir por
+  `ptr::copy_nonoverlapping(src, dst, CONST_SIZE)`.
+- Para cópias de tamanho variável mas limitado (`num_frames * CH`), usar `ptr::copy_nonoverlapping`
+  com tamanho calculado para manter-se in-register.
+
+**Cuidados / validação.** RT-safe. Nenhum risco numérico. Validar com `soak_test` e `*_heap_audit`.
+
+---
+
+## 5. Épico E — Refinamento Pós-Implementação (Findings F8–F12)
+
+> Agrupamento dos novos achados descobertos na análise pós-Épicos A–D.
+> Prioridade: resolver a regressão de performance (F9) e o overhead de memset (F8) antes dos
+> refinamentos cosméticos (F11, F12) e da investigação de paridade (F10).
+
+### ÉPICO E — "Fine-tuning: regressão dinâmica, zeragens e residuais"
+
+- **F8** — Eliminar PLT `memset` no prólogo de `WaveNetLayer` (4KB × 20× por bloco).
+- **F9** — Corrigir regressão WaveNet Dinâmico CH5 (tarefa B.4.1 — taps não-contíguos).
+- **F10** — Investigar Fidelity Margin ≤ 0.5 dB (LSTM-Dyn cross-validation).
+- **F11** — Tail GEMV via `_mm256_maskstore_ps` (eliminar `vinsertps` serial).
+- **F12** — Auditar e eliminar `memmove` residual em caminhos de cópia constante.
+
+_Validação do épico:_ `golden_vectors`, `cpp_parity`, `threshold_calibration`,
+`WaveNet_Dynamic_CH5` Criterion (deve igualar ou superar A2Full CH8). RT-safety obrigatória.
+
+### Matriz de priorização atualizada
+
+| Épico | Findings       | Ganho esperado | Risco             | Esforço | Status   |
+| ----- | -------------- | -------------- | ----------------- | ------- | -------- |
+| A     | F2, F5, F7     | Médio-Alto     | Baixo             | Baixo   | ✅       |
+| B     | F1, F4         | Alto           | Alto (ESR)        | Alto    | ✅       |
+| C     | F3             | Médio          | Médio             | Baixo   | ✅       |
+| D     | F6             | Médio          | Alto (RT-safety)  | Médio   | ✅       |
+| **E** | **F8–F12**     | **Baixo–Médio**| **Baixo–Médio**   | Baixo   | 🔲 Novo  |
