@@ -37,4 +37,5 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ## Best Practices
 
 * Justify critical decisions (e.g., why `SCHED_FIFO`? why `#[repr(align(128))]`?) to prevent regressions due to lack of historical context.
+* Never make irrelevant statements that do not contribute strictly to understanding the code, such as "sprint X", "review done on DDMMYYYY", "requested by PO", etc.
 * Follow the rules in `.agents/rules/`.

@@ -148,7 +148,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
   - `dynamic/prewarm.rs`: Implementação do método `prewarm`.
 - **Higiene:** Remover o arquivo original `dynamic.rs` e registrar o novo submódulo em `a2/model/mod.rs`.
 
-#### [ ] Tarefa F.2.2 — Modularizar `WaveNetA2` Estático (NF-03)
+#### [x] Tarefa F.2.2 — Modularizar `WaveNetA2` Estático (NF-03) ✅ Concluído: `mod.rs` (739 linhas) dividido em `static/{mod,process,prewarm}.rs`. `static/mod.rs` (221 linhas): struct + construtores + getters + reset/set_max_buffer_size. `static/process.rs` (310 linhas): `process` + `process_internal` + helpers. `static/prewarm.rs` (63 linhas): `prewarm`. `mod.rs` (~80 linhas): helpers comuns (`a2_receptive_field`, `a2_prewarm_common`) + declarações de submódulos. Testes mantidos via `#[path = "../model_test.rs"]`
 
 - **Descrição:** Dividir [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/mod.rs) em submódulos sob `src/models/a2/model/static/`.
 - **Arquivos a Criar:**

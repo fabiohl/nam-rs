@@ -21,3 +21,4 @@ When the user requests structural refactoring of Rust source code without changi
 * Follow testing conventions in `.agents/rules/testing.md` (for example, move unit tests to separate `_test.rs` files if the refactored file reaches or exceeds 300 lines of code).
 * Remove dead/unused code, or useless text that no longer makes sense or serves any useful purpose.
 * Be extremely careful not to modify the logic itself. That is not the goal here. Regressions are strictly forbidden.
+* Activate skill `planejador-arquiteto` to plan a safe corrections of all findings.

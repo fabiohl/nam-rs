@@ -23,3 +23,4 @@ When the user requests a thorough review of documentation and source code commen
 * Ensure internal links in Markdown documents work perfectly (using the relative references to the git repository).
 * In Rust files (`.rs`), ensure correct usage of `///` to document public items and `//` for internal structural comments.
 * Orient yourself by the highest standards of the `documentador` skill.
+* Make the corrections and edits right now, as you go seeing them.
