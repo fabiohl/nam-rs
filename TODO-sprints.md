@@ -131,19 +131,17 @@ residuais de cópia de buffer.
     4. Documentar o resultado com comentário no `threshold_calibration.rs`.
   - **Validação:** Decisão binária: pré-existente (documentar e fechar) ou novo (corrigir kernel).
 
-- **[ ] Tarefa E2.2 — Tail GEMV via `_mm256_maskstore_ps` (F11)**
-  - **Foco:** Substituir o loop de `vinsertps` no tratamento de cauda do GEMV por masked load/store
-    AVX2 (`_mm256_maskload_ps` / `_mm256_maskstore_ps`).
-  - **Ação:**
-    1. Em `src/math/gemm/gemv/f32_avx2.rs`: identificar o loop de `vinsertps` no tail handler do
-       caminho `out_len >= 8` (o trecho que trata `out_c` para `out_len % 8 ≠ 0`).
-    2. Substituir por máscara AVX2 pré-calculada: `let mask = _mm256_set_epi32(...)` baseado em
-       `tail_len = out_len % 8`, usando `_mm256_maskload_ps` para leitura segura e
-       `_mm256_maskstore_ps` para escrita mascarada.
-    3. Verificar se `_mm256_maskstore_ps` é seguro quando o buffer de saída tem exatamente `out_len`
-       floats (sem padding): pode exigir um buffer temporário de 8 floats ou ajuste de layout.
-    4. Aplicar o mesmo padrão ao `gemv_no_bias_f32_avx2`.
-  - **Validação:** Criterion `gemv_with_bias_*` e `gemv_no_bias_*`, `golden_vectors`, `threshold_calibration`.
+- **[x] Tarefa E2.2 — Tail GEMV via `_mm256_maskstore_ps` (F11)**
+  - **Conclusão:** Implementado como parte da unificação B.2.1/B.2.2 (commits `67f341f` + `019b37f`).
+    Ambos `gemv_with_bias_f32_avx2` e `gemv_no_bias_f32_avx2` são agora kernels unificados com tail
+    mascarada via `_mm256_maskload_ps` / `_mm256_maskstore_ps`. A cauda escalar para `out_c` (bloco
+    parcial quando `out_len % 8 ≠ 0`) foi substituída por máscara AVX2 construída com `mask_buf` de
+    8 `i32` (−1 nos primeiros `rem` elementos, 0 nos demais), eliminando o loop escalar triplo
+    (frame × channel × input) que existia no fallback anterior. `_mm256_maskstore_ps` é seguro sem
+    padding: a especificação Intel (VMASKMOVPS) suprime faults para as lanes com mask bit = 0,
+    portanto o buffer de saída pode ter exatamente `out_len` floats. Os caminhos `in_len == 1` e
+    `out_len == 1` também receberam cauda mascarada consistente. **Testes:** 9/9 unitários GEMV
+    passam, 26/26 `golden_vectors` passam, 3/3 `threshold_calibration` passam.
 
 - **[ ] Tarefa E2.3 — Auditar e eliminar `memmove` residual em caminhos de cópia constante (F12)**
   - **Foco:** Identificar chamadas de `copy_from_slice`/`copy_within` não cobertas por D1.2 que ainda

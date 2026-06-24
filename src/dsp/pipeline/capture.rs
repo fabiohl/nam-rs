@@ -129,12 +129,30 @@ unsafe fn capture_dsp_pipeline_inner<M: SimdMath>(
         let partition = conv.partition_size();
         if n_pw == partition {
             conv.process(&bufs.resamp_out_l[..n_pw], &mut bufs.model_out_l[..n_pw]);
-            bufs.resamp_out_l[..n_pw].copy_from_slice(&bufs.model_out_l[..n_pw]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    bufs.model_out_l.as_ptr(),
+                    bufs.resamp_out_l.as_mut_ptr(),
+                    n_pw,
+                );
+            }
             if !*ctx.process_mono {
                 conv.process(&bufs.resamp_out_r[..n_pw], &mut bufs.model_out_r[..n_pw]);
-                bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.model_out_r[..n_pw]);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        bufs.model_out_r.as_ptr(),
+                        bufs.resamp_out_r.as_mut_ptr(),
+                        n_pw,
+                    );
+                }
             } else {
-                bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        bufs.resamp_out_l.as_ptr(),
+                        bufs.resamp_out_r.as_mut_ptr(),
+                        n_pw,
+                    );
+                }
             }
         }
     }

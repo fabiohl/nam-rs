@@ -182,7 +182,9 @@ pub(crate) unsafe fn apply_output_stage_inner<M: SimdMath>(
     }
 
     if process_mono {
-        resamp_out_r[..n_pw].copy_from_slice(&resamp_out_l[..n_pw]);
+        unsafe {
+            core::ptr::copy_nonoverlapping(resamp_out_l.as_ptr(), resamp_out_r.as_mut_ptr(), n_pw);
+        }
     }
 
     // Advance the crossfade clock. The return value (multiplier) is ignored here

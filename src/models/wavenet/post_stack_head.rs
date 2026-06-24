@@ -153,8 +153,13 @@ impl PostStackHead {
         let input_len = num_frames * in_ch;
 
         let buf_start = self.state.buffer_start * in_ch;
-        self.state.layer_buffer[buf_start..buf_start + input_len]
-            .copy_from_slice(&input[..input_len]);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                input.as_ptr(),
+                self.state.layer_buffer.as_mut_ptr().add(buf_start),
+                input_len,
+            );
+        }
 
         let scratch_slice = &mut self.scratch[..num_frames * out_ch];
         unsafe {
@@ -169,7 +174,13 @@ impl PostStackHead {
 
         self.activation.apply(scratch_slice);
 
-        output[..num_frames * out_ch].copy_from_slice(scratch_slice);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                scratch_slice.as_ptr(),
+                output.as_mut_ptr(),
+                num_frames * out_ch,
+            );
+        }
 
         self.state.advance_frames(num_frames, in_ch);
     }

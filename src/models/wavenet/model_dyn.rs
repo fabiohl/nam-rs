@@ -234,14 +234,26 @@ impl WaveNetModelDyn {
                 }
                 let out_start = pos * out_ch;
                 let out_slice = &mut output[out_start..out_start + num_frames * out_ch];
-                out_slice.copy_from_slice(scratch);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        scratch.as_ptr(),
+                        out_slice.as_mut_ptr(),
+                        num_frames * out_ch,
+                    );
+                }
                 unsafe {
                     M::apply_gain(out_slice, self.head_scale);
                 }
             } else {
                 let out_start = pos * head_dim;
                 let out_slice = &mut output[out_start..out_start + num_frames * head_dim];
-                out_slice.copy_from_slice(last_head);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        last_head.as_ptr(),
+                        out_slice.as_mut_ptr(),
+                        num_frames * head_dim,
+                    );
+                }
                 unsafe {
                     M::apply_gain(out_slice, self.head_scale);
                 }

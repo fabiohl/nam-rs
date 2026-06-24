@@ -121,15 +121,33 @@ fn run_stereo_or_mono(
     if let Some(model_l) = active_model_l {
         model_l.process(model_in_l, m_out_l);
     } else {
-        m_out_l.copy_from_slice(model_in_l);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                model_in_l.as_ptr(),
+                m_out_l.as_mut_ptr(),
+                model_in_l.len().min(m_out_l.len()),
+            );
+        }
     }
 
     if process_mono {
-        m_out_r.copy_from_slice(m_out_l);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                m_out_l.as_ptr(),
+                m_out_r.as_mut_ptr(),
+                m_out_l.len().min(m_out_r.len()),
+            );
+        }
     } else if let Some(model_r) = active_model_r {
         model_r.process(model_in_r, m_out_r);
     } else {
-        m_out_r.copy_from_slice(model_in_r);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                model_in_r.as_ptr(),
+                m_out_r.as_mut_ptr(),
+                model_in_r.len().min(m_out_r.len()),
+            );
+        }
     }
 }
 
@@ -173,9 +191,18 @@ pub(crate) fn run_inference(
         let m_out_r = &mut resamp_out_r[..n];
 
         if lstm_passthrough {
-            // LSTM Minimal: passthrough input with gain compensation
-            m_out_l.copy_from_slice(model_in_l);
-            m_out_r.copy_from_slice(model_in_r);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    model_in_l.as_ptr(),
+                    m_out_l.as_mut_ptr(),
+                    m_out_l.len(),
+                );
+                core::ptr::copy_nonoverlapping(
+                    model_in_r.as_ptr(),
+                    m_out_r.as_mut_ptr(),
+                    m_out_r.len(),
+                );
+            }
         } else if is_crossfading_wavenet {
             let old_eff_l = ctx
                 .active_model_l
@@ -340,8 +367,18 @@ pub(crate) fn run_inference(
 
         // 2. Applies the amplifier simulation (Neural Model).
         if lstm_passthrough {
-            m_out_l.copy_from_slice(model_in_l);
-            m_out_r.copy_from_slice(model_in_r);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    model_in_l.as_ptr(),
+                    m_out_l.as_mut_ptr(),
+                    m_out_l.len(),
+                );
+                core::ptr::copy_nonoverlapping(
+                    model_in_r.as_ptr(),
+                    m_out_r.as_mut_ptr(),
+                    m_out_r.len(),
+                );
+            }
         } else if is_crossfading_wavenet {
             let old_eff_l = ctx
                 .active_model_l

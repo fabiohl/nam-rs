@@ -488,8 +488,10 @@ impl NamResampler {
     ) -> usize {
         let Some(ref mut core) = self.inner else {
             let n = in_l.len().min(out_l.len());
-            out_l[..n].copy_from_slice(&in_l[..n]);
-            out_r[..n].copy_from_slice(&in_r[..n]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_l.as_mut_ptr(), n);
+                core::ptr::copy_nonoverlapping(in_r.as_ptr(), out_r.as_mut_ptr(), n);
+            }
             return n;
         };
         (core.process_stereo)(core, in_l, in_r, out_l, out_r)
@@ -510,8 +512,10 @@ impl NamResampler {
     ) -> usize {
         let Some(ref mut core) = self.outer else {
             let n = in_l.len().min(out_l.len());
-            out_l[..n].copy_from_slice(&in_l[..n]);
-            out_r[..n].copy_from_slice(&in_r[..n]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_l.as_mut_ptr(), n);
+                core::ptr::copy_nonoverlapping(in_r.as_ptr(), out_r.as_mut_ptr(), n);
+            }
             return n;
         };
         (core.process_stereo)(core, in_l, in_r, out_l, out_r)
@@ -531,8 +535,10 @@ impl NamResampler {
     ) -> usize {
         let Some(ref mut core) = self.inner else {
             let n = in_l.len().min(out_l.len()).min(out_r.len());
-            out_l[..n].copy_from_slice(&in_l[..n]);
-            out_r[..n].copy_from_slice(&in_l[..n]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_l.as_mut_ptr(), n);
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_r.as_mut_ptr(), n);
+            }
             return n;
         };
         (core.process_mono)(core, in_l, out_l, out_r)
@@ -552,8 +558,10 @@ impl NamResampler {
     ) -> usize {
         let Some(ref mut core) = self.outer else {
             let n = in_l.len().min(out_l.len()).min(out_r.len());
-            out_l[..n].copy_from_slice(&in_l[..n]);
-            out_r[..n].copy_from_slice(&in_l[..n]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_l.as_mut_ptr(), n);
+                core::ptr::copy_nonoverlapping(in_l.as_ptr(), out_r.as_mut_ptr(), n);
+            }
             return n;
         };
         (core.process_mono)(core, in_l, out_l, out_r)

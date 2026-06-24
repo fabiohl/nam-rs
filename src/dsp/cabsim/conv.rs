@@ -222,18 +222,33 @@ impl ConvEngine {
         debug_assert_eq!(output.len(), self.partition_size);
 
         if self.num_partitions == 0 {
-            // Passthrough: no IR loaded
-            output.copy_from_slice(input);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    input.as_ptr(),
+                    output.as_mut_ptr(),
+                    self.partition_size,
+                );
+            }
             return;
         }
 
-        // ── Step 1: Shift input buffer (overlap-save) ──
         let in_len = self.fft_size;
         let out_start = self.output_start;
-        self.input_buf.copy_within(self.partition_size..in_len, 0);
+        unsafe {
+            core::ptr::copy(
+                self.input_buf.as_ptr().add(self.partition_size),
+                self.input_buf.as_mut_ptr(),
+                in_len - self.partition_size,
+            );
+        }
 
-        // Load new samples at the end
-        self.input_buf[out_start..in_len].copy_from_slice(input);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                input.as_ptr(),
+                self.input_buf.as_mut_ptr().add(out_start),
+                self.partition_size,
+            );
+        }
 
         // ── Step 2: Forward RFFT of input segment ──
         self.rfft
@@ -341,7 +356,13 @@ impl ConvEngine {
             .process_inverse(&mut self.acc_re, &mut self.acc_im, &mut self.output_buf);
 
         // ── Step 6: Extract valid output (overlap-save discard) ──
-        output.copy_from_slice(&self.output_buf[out_start..out_start + self.partition_size]);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.output_buf.as_ptr().add(out_start),
+                output.as_mut_ptr(),
+                self.partition_size,
+            );
+        }
 
         // ── Step 7: Advance FDL write index ──
         self.fdl_idx += 1;

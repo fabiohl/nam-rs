@@ -83,12 +83,16 @@ pub(crate) fn playback_dsp_cycle(
         if let Some(raw_l) = data_l.data() {
             let out_l =
                 unsafe { std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out) };
-            out_l.copy_from_slice(&buf_l[..n_out]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf_l.as_ptr(), out_l.as_mut_ptr(), n_out);
+            }
         }
         if let Some(raw_r) = data_r.data() {
             let out_r =
                 unsafe { std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out) };
-            out_r.copy_from_slice(&buf_r[..n_out]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf_r.as_ptr(), out_r.as_mut_ptr(), n_out);
+            }
         }
 
         // Informs the hardware exactly how much sound was delivered this time.
