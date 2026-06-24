@@ -75,7 +75,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 - **Descrição:** Implementar `dot_product_8x_f32_dual_scalar` e `dot_product_16x_f32_dual_scalar` em [dot.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/dot.rs) usando `mul_add` (FMA).
 
-#### [ ] Tarefa E.2.3 — Implementar Kernels Dual-Frame AVX2 (NF-04)
+#### [x] Tarefa E.2.3 — Implementar Kernels Dual-Frame AVX2 (NF-04) ✅ Concluído: `dot_product_8x_f32_dual_avx2` em `dot_8x/dot_f32_avx2.rs` (8 acumuladores independentes, 4-way unrolling), `dot_product_16x_f32_dual_avx2` em `dot_16x/dot_f32_avx2.rs` (16 acumuladores independentes, 4-way unrolling), dispatch em `avx2_impl.rs`. Compila e todos os testes existentes passam.
 
 - **Descrição:** Desenvolver as rotinas SIMD de temporal tiling sob a ISA AVX2.
 - **Detalhes Técnicos:**

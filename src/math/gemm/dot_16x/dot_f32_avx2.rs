@@ -100,3 +100,124 @@ pub unsafe fn dot_product_16x_f32_avx2(weights: &[[f32; 16]], state: &[f32]) -> 
         out
     }
 }
+
+/// Dual‑frame 16‑lane interleaved dot product (`weights: &[[f32; 16]]`,
+/// `state_f0: &[f32]`, `state_f1: &[f32]`) with AVX2/FMA.
+///
+/// # Strategy
+/// - 16 weights per row split into two `__m256` loads (lo `[0..8)`, hi `[8..16)`).
+/// - State scalars broadcast once per frame per iteration via `_mm256_set1_ps`.
+/// - Main loop processes 4 input samples per iteration using 4 independent
+///   pairs of `__m256` accumulators for each frame × half (`acc_f0_lo_0..3`,
+///   `acc_f0_hi_0..3`, `acc_f1_lo_0..3`, `acc_f1_hi_0..3`), totalling 16
+///   accumulator registers to break the FMA latency chain while computing
+///   both frames from two weight loads per row.
+/// - Tail (< 4 elements) falls back to single‑accumulator‑pair loop.
+/// - Final reduction: tree‑sum each frame’s lo/hi accumulators independently,
+///   then store as contiguous `([f32; 16], [f32; 16])`.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn dot_product_16x_f32_dual_avx2(
+    weights: &[[f32; 16]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 16], [f32; 16]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut acc_f0_lo0 = _mm256_setzero_ps();
+    let mut acc_f0_lo1 = _mm256_setzero_ps();
+    let mut acc_f0_lo2 = _mm256_setzero_ps();
+    let mut acc_f0_lo3 = _mm256_setzero_ps();
+    let mut acc_f0_hi0 = _mm256_setzero_ps();
+    let mut acc_f0_hi1 = _mm256_setzero_ps();
+    let mut acc_f0_hi2 = _mm256_setzero_ps();
+    let mut acc_f0_hi3 = _mm256_setzero_ps();
+    let mut acc_f1_lo0 = _mm256_setzero_ps();
+    let mut acc_f1_lo1 = _mm256_setzero_ps();
+    let mut acc_f1_lo2 = _mm256_setzero_ps();
+    let mut acc_f1_lo3 = _mm256_setzero_ps();
+    let mut acc_f1_hi0 = _mm256_setzero_ps();
+    let mut acc_f1_hi1 = _mm256_setzero_ps();
+    let mut acc_f1_hi2 = _mm256_setzero_ps();
+    let mut acc_f1_hi3 = _mm256_setzero_ps();
+    let mut i = 0;
+
+    unsafe {
+        dot4x_simd4!(i, len, {
+            let w0_lo = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w0_hi = _mm256_loadu_ps((weights.as_ptr().add(i) as *const f32).add(8));
+            let s_f0_0 = _mm256_set1_ps(*state_f0.get_unchecked(i));
+            let s_f1_0 = _mm256_set1_ps(*state_f1.get_unchecked(i));
+            acc_f0_lo0 = _mm256_fmadd_ps(w0_lo, s_f0_0, acc_f0_lo0);
+            acc_f0_hi0 = _mm256_fmadd_ps(w0_hi, s_f0_0, acc_f0_hi0);
+            acc_f1_lo0 = _mm256_fmadd_ps(w0_lo, s_f1_0, acc_f1_lo0);
+            acc_f1_hi0 = _mm256_fmadd_ps(w0_hi, s_f1_0, acc_f1_hi0);
+
+            let w1_lo = _mm256_loadu_ps(weights.as_ptr().add(i + 1) as *const f32);
+            let w1_hi = _mm256_loadu_ps((weights.as_ptr().add(i + 1) as *const f32).add(8));
+            let s_f0_1 = _mm256_set1_ps(*state_f0.get_unchecked(i + 1));
+            let s_f1_1 = _mm256_set1_ps(*state_f1.get_unchecked(i + 1));
+            acc_f0_lo1 = _mm256_fmadd_ps(w1_lo, s_f0_1, acc_f0_lo1);
+            acc_f0_hi1 = _mm256_fmadd_ps(w1_hi, s_f0_1, acc_f0_hi1);
+            acc_f1_lo1 = _mm256_fmadd_ps(w1_lo, s_f1_1, acc_f1_lo1);
+            acc_f1_hi1 = _mm256_fmadd_ps(w1_hi, s_f1_1, acc_f1_hi1);
+
+            let w2_lo = _mm256_loadu_ps(weights.as_ptr().add(i + 2) as *const f32);
+            let w2_hi = _mm256_loadu_ps((weights.as_ptr().add(i + 2) as *const f32).add(8));
+            let s_f0_2 = _mm256_set1_ps(*state_f0.get_unchecked(i + 2));
+            let s_f1_2 = _mm256_set1_ps(*state_f1.get_unchecked(i + 2));
+            acc_f0_lo2 = _mm256_fmadd_ps(w2_lo, s_f0_2, acc_f0_lo2);
+            acc_f0_hi2 = _mm256_fmadd_ps(w2_hi, s_f0_2, acc_f0_hi2);
+            acc_f1_lo2 = _mm256_fmadd_ps(w2_lo, s_f1_2, acc_f1_lo2);
+            acc_f1_hi2 = _mm256_fmadd_ps(w2_hi, s_f1_2, acc_f1_hi2);
+
+            let w3_lo = _mm256_loadu_ps(weights.as_ptr().add(i + 3) as *const f32);
+            let w3_hi = _mm256_loadu_ps((weights.as_ptr().add(i + 3) as *const f32).add(8));
+            let s_f0_3 = _mm256_set1_ps(*state_f0.get_unchecked(i + 3));
+            let s_f1_3 = _mm256_set1_ps(*state_f1.get_unchecked(i + 3));
+            acc_f0_lo3 = _mm256_fmadd_ps(w3_lo, s_f0_3, acc_f0_lo3);
+            acc_f0_hi3 = _mm256_fmadd_ps(w3_hi, s_f0_3, acc_f0_hi3);
+            acc_f1_lo3 = _mm256_fmadd_ps(w3_lo, s_f1_3, acc_f1_lo3);
+            acc_f1_hi3 = _mm256_fmadd_ps(w3_hi, s_f1_3, acc_f1_hi3);
+        });
+
+        while i < len {
+            let w_lo = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w_hi = _mm256_loadu_ps((weights.as_ptr().add(i) as *const f32).add(8));
+            let s_f0 = _mm256_set1_ps(*state_f0.get_unchecked(i));
+            let s_f1 = _mm256_set1_ps(*state_f1.get_unchecked(i));
+            acc_f0_lo0 = _mm256_fmadd_ps(w_lo, s_f0, acc_f0_lo0);
+            acc_f0_hi0 = _mm256_fmadd_ps(w_hi, s_f0, acc_f0_hi0);
+            acc_f1_lo0 = _mm256_fmadd_ps(w_lo, s_f1, acc_f1_lo0);
+            acc_f1_hi0 = _mm256_fmadd_ps(w_hi, s_f1, acc_f1_hi0);
+            i += 1;
+        }
+
+        acc_f0_lo0 = _mm256_add_ps(acc_f0_lo0, acc_f0_lo1);
+        acc_f0_lo2 = _mm256_add_ps(acc_f0_lo2, acc_f0_lo3);
+        acc_f0_lo0 = _mm256_add_ps(acc_f0_lo0, acc_f0_lo2);
+        acc_f0_hi0 = _mm256_add_ps(acc_f0_hi0, acc_f0_hi1);
+        acc_f0_hi2 = _mm256_add_ps(acc_f0_hi2, acc_f0_hi3);
+        acc_f0_hi0 = _mm256_add_ps(acc_f0_hi0, acc_f0_hi2);
+
+        acc_f1_lo0 = _mm256_add_ps(acc_f1_lo0, acc_f1_lo1);
+        acc_f1_lo2 = _mm256_add_ps(acc_f1_lo2, acc_f1_lo3);
+        acc_f1_lo0 = _mm256_add_ps(acc_f1_lo0, acc_f1_lo2);
+        acc_f1_hi0 = _mm256_add_ps(acc_f1_hi0, acc_f1_hi1);
+        acc_f1_hi2 = _mm256_add_ps(acc_f1_hi2, acc_f1_hi3);
+        acc_f1_hi0 = _mm256_add_ps(acc_f1_hi0, acc_f1_hi2);
+
+        let mut out_f0 = [0.0f32; 16];
+        let mut out_f1 = [0.0f32; 16];
+        _mm256_storeu_ps(out_f0.as_mut_ptr(), acc_f0_lo0);
+        _mm256_storeu_ps(out_f0.as_mut_ptr().add(8), acc_f0_hi0);
+        _mm256_storeu_ps(out_f1.as_mut_ptr(), acc_f1_lo0);
+        _mm256_storeu_ps(out_f1.as_mut_ptr().add(8), acc_f1_hi0);
+        (out_f0, out_f1)
+    }
+}

@@ -93,9 +93,35 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
+    unsafe fn dot_product_8x_f32_dual(
+        weights: &[[f32; 8]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 8], [f32; 8]) {
+        // SAFETY: arguments satisfy the function's documented invariants.
+        unsafe {
+            super::super::gemm::dot_8x::dot_product_8x_f32_dual_avx2(weights, state_f0, state_f1)
+        }
+    }
+
+    #[inline(always)]
+    // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn dot_product_16x_f32(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
         // SAFETY: arguments satisfy the function's documented invariants.
         unsafe { super::super::gemm::dot_16x::dot_product_16x_f32_avx2(weights, state) }
+    }
+
+    #[inline(always)]
+    // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
+    unsafe fn dot_product_16x_f32_dual(
+        weights: &[[f32; 16]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 16], [f32; 16]) {
+        // SAFETY: arguments satisfy the function's documented invariants.
+        unsafe {
+            super::super::gemm::dot_16x::dot_product_16x_f32_dual_avx2(weights, state_f0, state_f1)
+        }
     }
 
     #[inline(always)]
