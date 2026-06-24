@@ -77,24 +77,18 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             crate::math::gemm::dot_16x::dot_product_16x_f32_dual_avx512(weights, state_f0, state_f1)
         }
         #[inline(always)]
-        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state, init are valid slices; weights.len() >= state.len();
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
         unsafe fn dot_product_4x_f32_accumulate(
             weights: &[[f32; 4]],
             state: &[f32],
             init: &[f32; 4],
         ) -> [f32; 4] {
-            let r = Self::dot_product_4x_f32(weights, state);
-            [
-                init[0] + r[0],
-                init[1] + r[1],
-                init[2] + r[2],
-                init[3] + r[3],
-            ]
+            crate::math::gemm::dot_4x::dot_product_4x_f32_accumulate_avx512(weights, state, init)
         }
         #[inline(always)]
-        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid slices;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
         unsafe fn dot_product_4x_f32_dual_accumulate(
             weights: &[[f32; 4]],
             state_f0: &[f32],
@@ -102,40 +96,23 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             init_f0: &[f32; 4],
             init_f1: &[f32; 4],
         ) -> ([f32; 4], [f32; 4]) {
-            let (r0, r1) = Self::dot_product_4x_f32_dual(weights, state_f0, state_f1);
-            (
-                [
-                    init_f0[0] + r0[0],
-                    init_f0[1] + r0[1],
-                    init_f0[2] + r0[2],
-                    init_f0[3] + r0[3],
-                ],
-                [
-                    init_f1[0] + r1[0],
-                    init_f1[1] + r1[1],
-                    init_f1[2] + r1[2],
-                    init_f1[3] + r1[3],
-                ],
+            crate::math::gemm::dot_4x::dot_product_4x_f32_dual_accumulate_avx512(
+                weights, state_f0, state_f1, init_f0, init_f1,
             )
         }
         #[inline(always)]
-        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state, init are valid slices; weights.len() >= state.len();
+        // AVX-512 VNNI+BF16 implies AVX2/FMA — delegates to fused AVX2 8x accumulate.
         unsafe fn dot_product_8x_f32_accumulate(
             weights: &[[f32; 8]],
             state: &[f32],
             init: &[f32; 8],
         ) -> [f32; 8] {
-            let r = Self::dot_product_8x_f32(weights, state);
-            let mut out = [0.0f32; 8];
-            for i in 0..8 {
-                out[i] = init[i] + r[i];
-            }
-            out
+            crate::math::gemm::dot_8x::dot_product_8x_f32_accumulate_avx2(weights, state, init)
         }
         #[inline(always)]
-        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid slices;
+        // AVX-512 VNNI+BF16 implies AVX2/FMA — delegates to fused AVX2 8x dual accumulate.
         unsafe fn dot_product_8x_f32_dual_accumulate(
             weights: &[[f32; 8]],
             state_f0: &[f32],
@@ -143,33 +120,23 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             init_f0: &[f32; 8],
             init_f1: &[f32; 8],
         ) -> ([f32; 8], [f32; 8]) {
-            let (r0, r1) = Self::dot_product_8x_f32_dual(weights, state_f0, state_f1);
-            let mut out_f0 = [0.0f32; 8];
-            let mut out_f1 = [0.0f32; 8];
-            for i in 0..8 {
-                out_f0[i] = init_f0[i] + r0[i];
-                out_f1[i] = init_f1[i] + r1[i];
-            }
-            (out_f0, out_f1)
+            crate::math::gemm::dot_8x::dot_product_8x_f32_dual_accumulate_avx2(
+                weights, state_f0, state_f1, init_f0, init_f1,
+            )
         }
         #[inline(always)]
-        // SAFETY: weights and state are valid slices; weights.len() >= state.len();
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state, init are valid slices; weights.len() >= state.len();
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
         unsafe fn dot_product_16x_f32_accumulate(
             weights: &[[f32; 16]],
             state: &[f32],
             init: &[f32; 16],
         ) -> [f32; 16] {
-            let r = Self::dot_product_16x_f32(weights, state);
-            let mut out = [0.0f32; 16];
-            for i in 0..16 {
-                out[i] = init[i] + r[i];
-            }
-            out
+            crate::math::gemm::dot_16x::dot_product_16x_f32_accumulate_avx512(weights, state, init)
         }
         #[inline(always)]
-        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid;
-        // Provisional impl: delegates to existing kernel + manual init addition.
+        // SAFETY: weights, state_f0, state_f1, init_f0, init_f1 are valid slices;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
         unsafe fn dot_product_16x_f32_dual_accumulate(
             weights: &[[f32; 16]],
             state_f0: &[f32],
@@ -177,14 +144,9 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             init_f0: &[f32; 16],
             init_f1: &[f32; 16],
         ) -> ([f32; 16], [f32; 16]) {
-            let (r0, r1) = Self::dot_product_16x_f32_dual(weights, state_f0, state_f1);
-            let mut out_f0 = [0.0f32; 16];
-            let mut out_f1 = [0.0f32; 16];
-            for i in 0..16 {
-                out_f0[i] = init_f0[i] + r0[i];
-                out_f1[i] = init_f1[i] + r1[i];
-            }
-            (out_f0, out_f1)
+            crate::math::gemm::dot_16x::dot_product_16x_f32_dual_accumulate_avx512(
+                weights, state_f0, state_f1, init_f0, init_f1,
+            )
         }
         #[inline(always)]
         // SAFETY: four weight slices and in_frame are valid u16 slices of equal length.
