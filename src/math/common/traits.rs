@@ -80,11 +80,39 @@ pub trait SimdMath {
     /// Buffers must be valid. weights.len() >= state.len().
     unsafe fn dot_product_8x_f32(weights: &[[f32; 8]], state: &[f32]) -> [f32; 8];
 
+    /// Computes 8 simultaneous dot products with native f32 weights for 2 parallel frames.
+    /// Returns a tuple with the 8 results of frame 0 and the 8 results of frame 1.
+    ///
+    /// # Safety
+    /// Buffers must be valid. weights.len() >= state_f0.len() and weights.len() >= state_f1.len().
+    unsafe fn dot_product_8x_f32_dual(
+        weights: &[[f32; 8]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 8], [f32; 8]) {
+        let _ = (weights, state_f0, state_f1);
+        unimplemented!()
+    }
+
     /// Computes 16 simultaneous dot products with native f32 weights.
     ///
     /// # Safety
     /// Buffers must be valid. weights.len() >= state.len().
     unsafe fn dot_product_16x_f32(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16];
+
+    /// Computes 16 simultaneous dot products with native f32 weights for 2 parallel frames.
+    /// Returns a tuple with the 16 results of frame 0 and the 16 results of frame 1.
+    ///
+    /// # Safety
+    /// Buffers must be valid. weights.len() >= state_f0.len() and weights.len() >= state_f1.len().
+    unsafe fn dot_product_16x_f32_dual(
+        weights: &[[f32; 16]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 16], [f32; 16]) {
+        let _ = (weights, state_f0, state_f1);
+        unimplemented!()
+    }
 
     /// Computes 4 simultaneous BF16 dot products.
     ///

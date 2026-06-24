@@ -16,7 +16,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 ---
 
-### SPRINT E.1 — Redesign e Implementação do Kernel AVX2 16-wide Explícito
+### SPRINT E.1 — Redesign e Implementação do Kernel AVX2 16-wide Explícito [DONE]
 
 **Foco:** Resolver o finding **NF-01** (Convolução 16-wide no baseline AVX2 rodando via kernel escalar lento de fallback).
 
@@ -42,7 +42,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 - **Descrição:** Atualizar o arquivo [mod.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/mod.rs) da pasta `dot_16x`.
 - **Detalhes Técnicos:** Expor o novo módulo `pub mod dot_f32_avx2;` e re-exportar suas funções públicas.
 
-#### [x] Tarefa E.1.4 — Higiene do Kernel `_scalar` de Referência (NF-05) ✅ Concluído: `dot_16x/scalar.rs` e `scalar_ref/dot.rs` (`dot_product_16x_f32_scalar`) verificados como usados exclusivamente em testes/benchmarks (zero uso em dispatch de produção). Documentação atualizada nos dois módulos e no re-export de `gemm/mod.rs`. Adicionados testes de paridade AVX2 vs scalar (`test_dot_16x_f32_avx2_vs_scalar`, `test_dot_16x_f32_avx2_stress`).
+#### [x] Tarefa E.1.4 — Higiene do Kernel `_scalar` de Referência (NF-05) ✅ Concluído: `dot_16x/scalar.rs` e `scalar_ref/dot.rs` (`dot_product_16x_f32_scalar`) verificados como usados exclusivamente em testes/benchmarks (zero uso em dispatch de produção). Documentação atualizada nos dois módulos e no re-export de `gemm/mod.rs`. Adicionados testes de paridade AVX2 vs scalar (`test_dot_16x_f32_avx2_vs_scalar`, `test_dot_16x_f32_avx2_stress`)
 
 - **Descrição:** Garantir que o oráculo scalar [scalar.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/scalar.rs) e [dot.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/dot.rs) sejam usados exclusivamente em suites de teste/validação de paridade, documentando apropriadamente.
 
@@ -52,7 +52,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-04** (Tiling temporal inativo para os modelos mais pesados WaveNet CH16 e A2 CH8).
 
-#### [ ] Tarefa E.2.1 — Adicionar Assinaturas de Trait em `traits.rs` (NF-04)
+#### [x] Tarefa E.2.1 — Adicionar Assinaturas de Trait em `traits.rs` (NF-04) ✅ Concluído: `dot_product_8x_f32_dual` e `dot_product_16x_f32_dual` adicionados ao trait `SimdMath` com default `unimplemented!()` bodies
 
 - **Descrição:** Modificar o trait `SimdMath` em [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs).
 - **Detalhes Técnicos:** Adicionar os métodos:
