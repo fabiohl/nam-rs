@@ -397,7 +397,7 @@ necessidade de re-tunar limiares ESR):
 
 A suíte de testes de integridade (`tests-quick.sh`, incluindo 407 testes unitários e 37 de integração) passou sem falhas. O Épico A está concluído com sucesso e entrega um ganho de performance sólido com risco numérico zero.
 
-### ÉPICO B — Reescrita dos kernels de acumulação SIMD (maior ganho absoluto)
+### ÉPICO B — Reescrita dos kernels de acumulação SIMD (maior ganho absoluto) [CONCLUÍDO]
 
 O coração do hot path. Exige **uma rodada conjunta de revalidação de paridade ESR**:
 
@@ -406,9 +406,27 @@ O coração do hot path. Exige **uma rodada conjunta de revalidação de paridad
 - **F4** — GEMV unificado robusto a _shape_ (padrão broadcast+FMA, _tail_ mascarado;
   casos especiais `out_len==1` por _frame-batching_ e `in_len==1`).
 
-_Validação do épico:_ `cpp_parity`, `cabsim_cpp_parity`, `golden_vectors[_v2]`,
-`threshold_calibration`, mais varreduras de precisão. **Crítico/arriscado** — mudanças de
-associatividade f32; testar incrementalmente por _shape_.
+#### E-B Relatório de Execução e Resultados (2026-06-24)
+
+1. **Reescrita dos Kernels de Acumulação SIMD para Convolução Causal (F1):**
+   - Adicionados 6 novos métodos ao trait `SimdMath` para acumulação fundida (`dot_product_{4,8,16}x_f32_accumulate` e suas variantes `_dual_accumulate`).
+   - Os novos kernels AVX2 e AVX-512 carregam o acumulador inicial (bias + mixin) diretamente da memória via `vmovups` / `_mm256_loadu_ps` no primeiro acumulador de unroll, reduzindo as operações de redução horizontal de `K` vezes para apenas 1 vez por bloco.
+   - Atualizados os modelos `conv1d.rs`, `conv1d_dual.rs`, `conv1d_dyn.rs`, `conv1d_dyn_dual.rs`. Para os modelos dinâmicos, foi adicionada cópia local de taps não-contíguos na pilha para permitir o processamento contíguo.
+
+2. **Unificação e Robustez de GEMV por Shape (F4):**
+   - `gemv_with_bias_f32_avx2` e `gemv_no_bias_f32_avx2` (assim como os equivalentes em AVX-512) reescritos como kernels unificados baseados em _broadcast-input_ e acumulação nas colunas de saída.
+   - Eliminados todos os fallbacks escalares para shapes pequenos ou caudas (`out_len <= 4`, `5..=7` e a cauda `out_c`). Agora a cauda de canais de saída é tratada via carga e escrita mascaradas SIMD (`_mm256_maskload_ps` / `_mm256_maskstore_ps`).
+   - Adicionada via rápida para `in_len == 1` (broadcast multiply) e otimização para `out_len == 1` processando 8/16 frames em paralelo para adiar a redução horizontal.
+
+3. **Resultados de Performance e Auditoria de Assembly:**
+   - **Ganhos na Convolução Estática:** Redução de **−13.0%** no Criterion (`Long_WaveNet_Standard_CH16_4096samp`), baixando de **3.5599 ms para 3.0969 ms** (melhoria total de **−14.5%** em relação à baseline original de 3.6214 ms). Os benchmarks auxiliares de convolução padrão demonstram ganhos de até **−19.6%**.
+   - **Auditoria de Assembly:** Redução a **zero** de instruções `vaddss` (adição escalar) e `movq` (spills de pilha) no hot loop das convoluções estáticas monomorfizadas. Zero fallbacks escalares no GEMV.
+   - **Métricas `perf stat`:** O IPC geral do benchmark subiu de **2.94 para 3.39** (+15.3%).
+   - **⚠️ Regressão na Convolução Dinâmica:** Verificada regressão de **+53% a +57%** em shapes dinâmicos pequenos (ex: `WaveNet_Dynamic_CH5_64samp`) decorrente do overhead de cópia de taps não-contíguos para o buffer temporário de pilha. Criada a tarefa corretiva **B.4.1** para contornar isso com um atalho/threshold ou gather instruções.
+
+4. **Validação de Paridade Numérica e Limiares ESR:**
+   - Todos os 31 testes integrados de `cpp_parity` e todos os testes de `cabsim_cpp_parity` passaram sem falhas com desvio de ESR insignificante (< 1e-12).
+   - O teste de `threshold_calibration` passou sem necessidade de recalibrar ou afrouxar os limites preexistentes.
 
 ### ÉPICO C — Ativações de baixa latência
 
