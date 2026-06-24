@@ -8,6 +8,24 @@
 //! falling back to heuristic thresholds.
 //!
 //! Part of T3.3: formalizing the calibration infrastructure.
+//!
+//! ## F10 Investigation (E2.1 — 2026-06-24)
+//!
+//! Fidelity Margin ≤ 0.5 dB in `live_cross_validation_lstm_dyn_1x7 (v2)`
+//! and `live_cross_validation_linear (v2)` was investigated via `git bisect`
+//! between current HEAD and pre-Épico-B commit `ff8a500` ("épico a concluido").
+//!
+//! **Result: PRE-EXISTENT.** The Fidelity Margin values (0.5, 0.4, -0.9, -0.8 dB)
+//! are bit-identical between commits. They originate from golden_vectors tests
+//! (WaveNet A2-Full/Lite and LSTM models) where SNR(anchor) — the C++ model's
+//! own signal degradation — is close to the Rust/C++ parity SNR. The SIMD
+//! kernel rewrites (Épicos B/C: fused dot-product accumulate, unified GEMV,
+//! 1-div tanh) introduced zero regressão in Fidelity Margin.
+//!
+//! The cpp_parity tests originally cited (LSTM-Dyn 1×7 v2, Linear v2) show
+//! Fidelity Margin > 40 dB at both commits. The actual low-margin entries
+//! belong to the golden_vectors suite (WaveNet A2-Full/Lite, LSTM Official),
+//! which were already at those values before Épico B.
 
 use std::fs;
 use std::path::PathBuf;

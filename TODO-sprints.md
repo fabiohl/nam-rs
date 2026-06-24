@@ -119,7 +119,8 @@ residuais de cópia de buffer.
 
 ### Sprint E2: Paridade e Residuais (F10 + F11 + F12) — Média Prioridade
 
-- **[ ] Tarefa E2.1 — Investigar Fidelity Margin ≤ 0.5 dB (F10)**
+- **[x] Tarefa E2.1 — Investigar Fidelity Margin ≤ 0.5 dB (F10)**
+  - **Conclusão:** Investigação via `git bisect` entre HEAD e commit pré-Épico-B `ff8a500` ("épico a concluido"). Resultado: **PRÉ-EXISTENTE.** Os valores de Fidelity Margin (0.5, 0.4, −0.9, −0.8 dB) são bit-idênticos entre os dois commits. Originam-se dos testes `golden_vectors` (WaveNet A2-Full/Lite, LSTM Official) onde SNR(anchor) — a degradação do próprio modelo C++ — está próximo do SNR de paridade Rust/C++. As reescritas SIMD dos Épicos B/C (dot-product accumulate fundido, GEMV unificado, tanh 1-div) introduziram **zero** regressão de Fidelity Margin. Os testes `cpp_parity` originalmente citados (LSTM-Dyn 1×7 v2, Linear v2) exibem Fidelity Margin > 40 dB em ambos os commits. Documentado em `tests/threshold_calibration.rs`.
   - **Foco:** Determinar se a `Fidelity Margin` próxima de zero em `live_cross_validation_lstm_dyn_1x7 (v2)`
     e `live_cross_validation_linear (v2)` é pré-existente ou introduzida pelos Épicos B/C.
   - **Ação:**

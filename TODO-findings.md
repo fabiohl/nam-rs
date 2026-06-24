@@ -580,10 +580,13 @@ Ambos ainda marcados como `ok`, mas a margem é apenas **6% do target**. Ocorre 
 Adicionalmente, múltiplos casos exibem `MR-STFT soft gate` excedendo o threshold conservador
 (ex: 8.21e-1 vs 1.50e-1).
 
-**Causa-raiz (a investigar).** A `Fidelity Margin` é calculada como `SNR_model − SNR_anchor`, onde
-`SNR_anchor` é a degradação esperada do modelo em si (não do nosso código). Uma margem de 0.4 dB
-pode ser pré-existente ao código atual (característica do modelo, não do runtime) **ou** pode indicar
-um pequeno desvio numérico introduzido pelas otimizações (reordenação de soma em F1/F4).
+**Causa-raiz (confirmada via `git bisect` em E2.1, 2026-06-24).** **PRÉ-EXISTENTE.** A investigação
+comparou o commit pré-Épico-B `ff8a500` ("épico a concluido") com HEAD atual. Os valores de
+Fidelity Margin (0.5, 0.4, −0.9, −0.8 dB) são **bit-idênticos** entre os dois commits. As
+reescritas SIMD dos Épicos B/C (dot-product accumulate fundido, GEMV unificado, tanh 1-div)
+introduziram **zero** regressão de Fidelity Margin. Nota: o teste `live_cross_validation_linear (v2)`
+exibe `Fidelity Margin = inf dB` (perfeito) em ambos os commits — a menção a ele em F10 foi um
+erro de atribuição no log intercalado.
 
 **Impacto.** Baixo risco de regressão auditiva se pré-existente. Risco médio se novo: significa que
 as otimizações aproximaram o ESR ao limite do threshold calibrado — qualquer mudança adicional em
