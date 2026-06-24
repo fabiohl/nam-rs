@@ -790,7 +790,7 @@ mas isso indica que o **ótimo combinado** (16-wide **com** tiling dual-frame) e
 > NF-02 (monomorfização no topo) seja reaproveitado pelos demais. Rede de segurança:
 > `golden_vectors` + `cpp_parity` + `a2_heap_audit` + `utils/tests-long.sh`.
 
-### EPIC E — Maximização AVX2 (x86-64-v3) no caminho de convolução largo [CRÍTICO]
+### EPIC E — Maximização AVX2 (x86-64-v3) no caminho de convolução largo [CRÍTICO] [DONE]
 
 **Findings:** NF-01 (núcleo), NF-04, NF-05.
 **Objetivo:** Garantir que **todo** o caminho de convolução extraia o máximo do baseline AVX2

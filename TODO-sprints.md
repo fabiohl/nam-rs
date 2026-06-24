@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO-sprints.md — Planejamento Ágil (EPIC E)
+# TODO-sprints.md — Planejamento Ágil (EPICs E & F)
 
-Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para a execução do **EPIC E — Maximização AVX2 (x86-64-v3) no caminho de convolução largo [CRÍTICO]**, com base nas descobertas (Findings) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para a execução do **EPIC E — Maximização AVX2 (x86-64-v3) no caminho de convolução largo [CRÍTICO]** e **EPIC F — Monomorfização do A2 Dinâmico e Higiene Estrutural**, com base nas descobertas (Findings) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
@@ -20,7 +20,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-01** (Convolução 16-wide no baseline AVX2 rodando via kernel escalar lento de fallback).
 
-#### [x] Tarefa E.1.1 — Implementar Kernel AVX2 16-wide Explícito (NF-01 / NF-05)
+#### [ ] Tarefa E.1.1 — Implementar Kernel AVX2 16-wide Explícito (NF-01 / NF-05)
 
 - **Descrição:** Criar o arquivo [dot_f32_avx2.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/dot_f32_avx2.rs).
 - **Detalhes Técnicos:** Implementar `dot_product_16x_f32_avx2(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16]`.
@@ -107,7 +107,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 - **Descrição:** Fazer alteração correspondente em `process_dual` no arquivo [conv1d_dyn_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dyn_dual.rs).
 
-#### [x] Tarefa E.3.3 — Criar Suítes de Testes Unitários de Convolução e Paridade ✅ Concluído: 7 novos testes de paridade adicionados — `dot_8x_test`: dual-avx2 vs scalar, dual stress, single-vs-dual invariance, decompose full 8ch vs 2×4x; `dot_16x_test`: dual-avx2 vs scalar, dual stress, dual single-vs-dual invariance, decompose 16x vs 2×8x. Total: 19 testes (6 dot_8x + 13 dot_16x) — todos passando. Tolerância <5e-4 (paridade) e <5e-6 (invariância single/dual). `utils/lints.sh` limpo.
+#### [x] Tarefa E.3.3 — Criar Suítes de Testes Unitários de Convolução e Paridade ✅ Concluído: 7 novos testes de paridade adicionados — `dot_8x_test`: dual-avx2 vs scalar, dual stress, single-vs-dual invariance, decompose full 8ch vs 2×4x; `dot_16x_test`: dual-avx2 vs scalar, dual stress, dual single-vs-dual invariance, decompose 16x vs 2×8x. Total: 19 testes (6 dot_8x + 13 dot_16x) — todos passando. Tolerância <5e-4 (paridade) e <5e-6 (invariância single/dual). `utils/lints.sh` limpo
 
 - **Descrição:** Escrever testes de validação em [dot_8x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_8x/dot_8x_test.rs) e [dot_16x_test.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/dot_16x_test.rs).
 - **Detalhes Técnicos:** Certificar que os novos kernels batem bit a bit (ou com tolerância < 2 ULP) contra as implementações escalares correspondentes para múltiplos tamanhos e fracionamentos.
@@ -115,3 +115,75 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 #### [ ] Tarefa E.3.4 — Execução Completa de QA e Profiling / Benchmarking
 
 - **Descrição:** Executar o script unificado [utils/tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) e rodar benchmarks (`cargo bench --bench inference_bench`) para comprovar o ganho de throughput do temporal tiling nas larguras 8x e 16x.
+
+---
+
+## Estrutura de Execução: EPIC F
+
+**Objetivo:** Eliminar o dispatch ISA por-frame do `WaveNetA2Dyn`, dividir os arquivos A2 inflados em submódulos coesos e pequenos, e fechar pendências de microbenchmarks/documentação.
+
+### SPRINT F.1 — Monomorfização no Topo e Remoção de Dispatch Per-Frame no A2 Dinâmico
+
+**Foco:** Resolver o finding **NF-02** (Dispatch de ISA per-frame no `WaveNetA2Dyn` degradando desempenho e quebrando princípios da arquitetura).
+
+#### [ ] Tarefa F.1.1 — Monomorfizar `WaveNetA2Dyn::process` (NF-02)
+
+- **Descrição:** Atualizar o método `process` de `WaveNetA2Dyn` em [dynamic.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic.rs).
+- **Detalhes Técnicos:**
+  - Chamar `dispatch_simd!(self, process_internal, input, output)` no início de `process`.
+  - Definir `process_internal<M: SimdMath>(&mut self, ...)` para conter o loop principal e propagar `M` para os métodos subsequentes.
+
+#### [ ] Tarefa F.1.2 — Tornar `A2Conv1d::process_single_frame` Genérica (NF-02)
+
+- **Descrição:** Modificar o arquivo de dispatch [conv1d_dispatch.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_dispatch.rs).
+- **Detalhes Técnicos:**
+  - Alterar a assinatura para `pub unsafe fn process_single_frame<M: SimdMath>(&self, ...)`.
+  - Substituir o branch `is_x86_feature_detected!("avx512f")` por uma delegação mecânica: `c.process_single_frame::<M>(...)` no braço `Standard`.
+
+#### [ ] Tarefa F.1.3 — Ajustar Fallback Per-Frame do `WaveNetA2` Estático (NF-02)
+
+- **Descrição:** Atualizar o fallback de loop per-frame em [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/mod.rs#L518).
+- **Detalhes Técnicos:** Match no `SIMD_MATH.instruction_set` apenas uma vez no início do loop para despachar o tipo `M` estaticamente (evitando re-detecção interna na folha).
+
+---
+
+### SPRINT F.2 — Higiene Estrutural e Modularização do A2 (Estático e Dinâmico)
+
+**Foco:** Resolver o finding **NF-03** (Arquivos `dynamic.rs` com 959 linhas e `mod.rs` com 726 linhas violando princípios de arquivos pequenos/coesos).
+
+#### [ ] Tarefa F.2.1 — Modularizar `WaveNetA2Dyn` (NF-03)
+
+- **Descrição:** Dividir [dynamic.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic.rs) em submódulos sob `src/models/a2/model/dynamic/`.
+- **Arquivos a Criar:**
+  - `dynamic/mod.rs`: Definição da struct `WaveNetA2Dyn`, construtores e getters.
+  - `dynamic/build.rs`: Função de setup de pesos (`set_weights` e helpers relacionados).
+  - `dynamic/process.rs`: Funções de processamento (`process`, `process_internal`, `process_frame_dyn`).
+  - `dynamic/prewarm.rs`: Implementação do método `prewarm`.
+- **Higiene:** Remover o arquivo original `dynamic.rs` e registrar o novo submódulo em `a2/model/mod.rs`.
+
+#### [ ] Tarefa F.2.2 — Modularizar `WaveNetA2` Estático (NF-03)
+
+- **Descrição:** Dividir [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/mod.rs) em submódulos sob `src/models/a2/model/static/`.
+- **Arquivos a Criar:**
+  - `static/mod.rs`: Struct `WaveNetA2`, construtores e getters.
+  - `static/process.rs`: Métodos de inferência (`process` / `process_internal`).
+  - `static/prewarm.rs`: Prewarming.
+- **Higiene:** Reduzir o `mod.rs` do modelo de forma coesa.
+
+---
+
+### SPRINT F.3 — Ajustes de Documentação, Criterion e Validação Geral
+
+**Foco:** Resolver o finding **NF-06** (Ruídos Criterion e comentários `SAFETY` genéricos).
+
+#### [ ] Tarefa F.3.1 — Revisar Comentários `SAFETY` no Trait SIMD (NF-06)
+
+- **Descrição:** Atualizar o arquivo [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs) de forma a documentar precondições explícitas de memória e alinhamento (substituindo o comentário genérico repetido).
+
+#### [ ] Tarefa F.3.2 — Re-baselinar Benchmarks (NF-06)
+
+- **Descrição:** Rodar e salvar um novo baseline Criterion (`cargo bench -- --save-baseline`) para mitigar alarmes falsos de regressões térmicas.
+
+#### [ ] Tarefa F.3.3 — Execução de Validação Global
+
+- **Descrição:** Rodar `utils/tests-quick.sh` garantindo 0 warnings e 100% dos testes/golden vectors válidos.
