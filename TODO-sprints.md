@@ -31,18 +31,18 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 - **Risco:** Baixo-Médio. Requer atenção à corretude dos índices de leitura/acumuladores e alinhamento de memória.
 - **Referência:** [TODO-findings.md: NF-01, NF-05](file:///home/fabio/nam-rs/TODO-findings.md#NF-01).
 
-#### [x] Tarefa E.1.2 — Refatorar o Dispatch de Traits em `avx2_impl.rs` (NF-01) ✅ Concluído: Dispatch de `dot_product_16x_f32` em `avx2_impl.rs:96-100` agora chama `dot_16x::dot_product_16x_f32_avx2` (kernel AVX2 explícito), substituindo o fallback escalar.
+#### [x] Tarefa E.1.2 — Refatorar o Dispatch de Traits em `avx2_impl.rs` (NF-01) ✅ Concluído: Dispatch de `dot_product_16x_f32` em `avx2_impl.rs:96-100` agora chama `dot_16x::dot_product_16x_f32_avx2` (kernel AVX2 explícito), substituindo o fallback escalar
 
 - **Descrição:** Alterar `Avx2Math::dot_product_16x_f32` em [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs#L96).
 - **Detalhes Técnicos:** Substituir a chamada para a função de referência scalar pelo novo kernel explícito `crate::math::gemm::dot_16x::dot_product_16x_f32_avx2`.
 - **Referência:** [TODO-findings.md: NF-01](file:///home/fabio/nam-rs/TODO-findings.md#NF-01).
 
-#### [ ] Tarefa E.1.3 — Modificar a Estrutura do Módulo `dot_16x` (NF-05)
+#### [x] Tarefa E.1.3 — Modificar a Estrutura do Módulo `dot_16x` (NF-05) ✅ Concluído: `mod.rs` já expõe `pub mod dot_f32_avx2;` e re-exporta com `pub use dot_f32_avx2::*;`. Módulo integrado ao dispatch em `avx2_impl.rs:98`
 
 - **Descrição:** Atualizar o arquivo [mod.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/mod.rs) da pasta `dot_16x`.
 - **Detalhes Técnicos:** Expor o novo módulo `pub mod dot_f32_avx2;` e re-exportar suas funções públicas.
 
-#### [ ] Tarefa E.1.4 — Higiene do Kernel `_scalar` de Referência (NF-05)
+#### [x] Tarefa E.1.4 — Higiene do Kernel `_scalar` de Referência (NF-05) ✅ Concluído: `dot_16x/scalar.rs` e `scalar_ref/dot.rs` (`dot_product_16x_f32_scalar`) verificados como usados exclusivamente em testes/benchmarks (zero uso em dispatch de produção). Documentação atualizada nos dois módulos e no re-export de `gemm/mod.rs`. Adicionados testes de paridade AVX2 vs scalar (`test_dot_16x_f32_avx2_vs_scalar`, `test_dot_16x_f32_avx2_stress`).
 
 - **Descrição:** Garantir que o oráculo scalar [scalar.rs](file:///home/fabio/nam-rs/src/math/gemm/dot_16x/scalar.rs) e [dot.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/dot.rs) sejam usados exclusivamente em suites de teste/validação de paridade, documentando apropriadamente.
 

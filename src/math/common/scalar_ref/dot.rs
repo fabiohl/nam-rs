@@ -266,10 +266,13 @@ pub unsafe fn dot_product_8x_f32_scalar(weights: &[[f32; 8]], state: &[f32]) -> 
     r
 }
 
-/// F32-native 16-lane interleaved dot product (scalar reference for SIMD validation).
+/// F32-native 16-lane interleaved dot product (scalar oracle for SIMD validation).
 ///
 /// Uses `mul_add` (FMA3 fused multiply-add) to match the instruction set of the
-/// AVX‑512 kernel (`dot_product_16x_f32_avx512`).
+/// AVX‑512 kernel (`dot_product_16x_f32_avx512`) and the AVX2/FMA kernel
+/// (`dot_product_16x_f32_avx2`). This function serves exclusively as the
+/// correctness reference in test and benchmark suites. It MUST NOT be called
+/// from any production code path (trait implementations, model inference loops).
 ///
 /// # Safety
 /// Caller must ensure `weights.len() >= state.len()`.
