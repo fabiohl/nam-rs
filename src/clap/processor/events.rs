@@ -11,7 +11,7 @@ use crate::clap::extensions::params::{
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
-use crate::models::{NamModel, StaticModel};
+use crate::models::StaticModel;
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
 use std::sync::atomic::Ordering;
@@ -176,14 +176,10 @@ impl<'a> NamClapProcessor<'a> {
         }
         if let Some(ref mut model) = self.model_l {
             model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
-            // RT-SAFETY: `load.rs` pre-sizes the model on the main thread when `buffer_size > 0`
-            // at load time (B2 fix). This call is a defensive fallback for hosts that load state
-            // (preset/restore) before `activate()`, leaving `buffer_size == 0` on the main thread.
-            // `set_max_buffer_size` is a no-op when `max_buf <= self.max_buffer_size`
-            // (src/models/a2/model/dynamic.rs:488), making this allocation-free in ≥99% of calls.
-            // The remaining case (first invocation on a larger quantum) is a cold-path, one-time
-            // exception accepted per the RT-safety audit (B2.1).
-            let _ = model.set_max_buffer_size(self.max_frames_count);
+            // F3: buffer sizing is guaranteed on the main thread before SPSC delivery
+            // (load.rs when buffer_size > 0, or flush_pending_model() in activate/housekeeping
+            // when buffer_size was 0). set_max_buffer_size is NEVER called here anymore.
+            // The heap-audit CI lane catches any regression.
         }
 
         let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);

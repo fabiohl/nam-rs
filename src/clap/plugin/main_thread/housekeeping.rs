@@ -14,6 +14,12 @@ use std::sync::atomic::Ordering;
 impl<'a> NamClapMainThread<'a> {
     /// GC drain, status flag mirroring, hugepage sync, pending model load, latency notification.
     pub(crate) fn housekeeping(&mut self) {
+        // Flush any model deferred by load_model() (F3 fix).
+        // Primary mechanism is activate(), this is a fallback for hosts
+        // that call state-load between activate() and the first process().
+        // Errors set RT_STATUS_MODEL_LOAD_FAILED internally; housekeeping is void.
+        let _ = self.flush_pending_model();
+
         // Drain obsolete models to free memory outside RT.
         let drained = drain_gc_channels(
             &mut self.gc_rx,

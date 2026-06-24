@@ -12,15 +12,15 @@ mod housekeeping;
 mod load;
 mod logging;
 
-use super::shared::{ClapParamPayload, NamClapShared};
+use super::shared::{ClapParamPayload, NamClapShared, PendingModel};
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::params::NamPluginParams;
-use crate::common::spsc::GcItem;
-use crate::models::StaticModel;
+use crate::common::spsc::{self, GcItem};
+use crate::models::{NamModel, StaticModel};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Main thread exclusive state (model loading, state save/load).
 pub struct NamClapMainThread<'a> {
@@ -51,6 +51,76 @@ pub struct NamClapMainThread<'a> {
 }
 
 impl<'a> NamClapMainThread<'a> {
+    /// Flushes any model deferred by `load_model()` when `buffer_size == 0`
+    /// (state-restore-before-activate scenario). Pre-sizes the model on the
+    /// main thread and sends it to the audio thread via SPSC.
+    ///
+    /// F3 fix: this ensures heap alloc + mmap/munmap/memfd_create + drop
+    /// never happen on the audio thread.
+    pub fn flush_pending_model(&mut self) -> Result<(), PluginError> {
+        let pending = if let Ok(mut guard) = self.shared.cold.pending_model.lock() {
+            guard.take()
+        } else {
+            return Ok(());
+        };
+        let Some(p) = pending else { return Ok(()) };
+
+        let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed) as usize;
+        if buffer_size == 0 {
+            // Still no buffer_size — store model back for later retry.
+            if let Ok(mut guard) = self.shared.cold.pending_model.lock() {
+                *guard = Some(p);
+            }
+            return Ok(());
+        }
+
+        let PendingModel {
+            model: mut model_l,
+            resampler: new_resampler,
+            input_mult_adj,
+            output_mult_adj,
+        } = p;
+
+        if let Some(ref mut model) = model_l
+            && let Err(e) = model.set_max_buffer_size(buffer_size)
+        {
+            self.shared
+                .cold
+                .rt_status
+                .set_flag(spsc::RT_STATUS_MODEL_LOAD_FAILED);
+            return Err(PluginError::Message(Box::leak(
+                format!(
+                    "Failed to resize deferred model buffers for host buffer size ({}): {}",
+                    buffer_size, e
+                )
+                .into_boxed_str(),
+            )));
+        }
+
+        match self.param_tx.push(ClapParamPayload::LoadModel {
+            model_l,
+            new_resampler,
+            input_mult_adj,
+            output_mult_adj,
+        }) {
+            Ok(()) => {
+                self.shared
+                    .cold
+                    .model_load_counter
+                    .fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            }
+            Err(_) => {
+                self.shared
+                    .cold
+                    .rt_status
+                    .set_flag(spsc::RT_STATUS_MODEL_LOAD_FAILED);
+                Err(PluginError::Message(
+                    "Failed to send deferred model: SPSC channel full",
+                ))
+            }
+        }
+    }
     /// Synchronises atomic values from the audio thread and cold state into `self.params`
     /// before serialisation. Shared by `state.rs` and `state_context.rs`.
     pub(crate) fn snapshot_params(&mut self) {

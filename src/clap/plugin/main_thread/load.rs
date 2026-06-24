@@ -3,7 +3,7 @@
 
 //! Model loading (main thread only).
 
-use super::super::shared::{ClapParamPayload, NamModelMetadata};
+use super::super::shared::{ClapParamPayload, NamModelMetadata, PendingModel};
 use super::NamClapMainThread;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::dsp::resampler::NamResampler;
@@ -139,32 +139,50 @@ impl<'a> NamClapMainThread<'a> {
         }
 
         let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed) as usize;
-        if buffer_size > 0
-            && let Some(ref mut model) = model_l
-            && let Err(e) = model.set_max_buffer_size(buffer_size)
-        {
-            return Err(Box::new(
-                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
-                    .message("Failed to resize model buffers for host buffer size")
-                    .param("buffer_size", buffer_size.to_string())
-                    .param("error", e.to_string()),
-            ));
-        }
+        if buffer_size > 0 {
+            // Main path: buffer_size known, pre-size and send immediately.
+            if let Some(ref mut model) = model_l
+                && let Err(e) = model.set_max_buffer_size(buffer_size)
+            {
+                return Err(Box::new(
+                    NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                        .message("Failed to resize model buffers for host buffer size")
+                        .param("buffer_size", buffer_size.to_string())
+                        .param("error", e.to_string()),
+                ));
+            }
 
-        self.param_tx
-            .push(ClapParamPayload::LoadModel {
-                model_l,
-                new_resampler,
-                input_mult_adj,
-                output_mult_adj,
-            })
-            .map_err(|_| {
-                Box::new(
-                    NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
-                        .message("The communication channel with the audio thread is full.")
-                        .hint("Please try loading the model again in a few moments."),
-                )
-            })?;
+            self.param_tx
+                .push(ClapParamPayload::LoadModel {
+                    model_l,
+                    new_resampler,
+                    input_mult_adj,
+                    output_mult_adj,
+                })
+                .map_err(|_| {
+                    Box::new(
+                        NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
+                            .message("The communication channel with the audio thread is full.")
+                            .hint("Please try loading the model again in a few moments."),
+                    )
+                })?;
+            self.shared
+                .cold
+                .model_load_counter
+                .fetch_add(1, Ordering::Relaxed);
+        } else {
+            // F3: defer sending until `buffer_size` becomes known (activate/housekeeping).
+            // Avoids heap alloc + mmap/munmap/memfd_create + drop on the audio thread
+            // (state-restore-before-activate scenario).
+            if let Ok(mut pending_guard) = self.shared.cold.pending_model.lock() {
+                *pending_guard = Some(PendingModel {
+                    model: model_l,
+                    resampler: new_resampler,
+                    input_mult_adj,
+                    output_mult_adj,
+                });
+            }
+        }
 
         let basename = path
             .file_name()
@@ -174,10 +192,6 @@ impl<'a> NamClapMainThread<'a> {
         if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
             *name_guard = basename;
         }
-        self.shared
-            .cold
-            .model_load_counter
-            .fetch_add(1, Ordering::Relaxed);
 
         if let Some(params_ext) = self
             .host

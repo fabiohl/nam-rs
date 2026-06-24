@@ -83,6 +83,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             slimmable_tx: Mutex::new(Some(slimmable_tx)),
             slimmable_rx: Mutex::new(Some(slimmable_rx)),
             full_wavenet_model: Mutex::new(None),
+            pending_model: Mutex::new(None),
         },
     }
 }

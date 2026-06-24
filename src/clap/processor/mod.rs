@@ -40,7 +40,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     /// `activate` is the ONLY allocation site — kept out of `process`.
     fn activate(
         _host: HostAudioProcessorHandle<'a>,
-        _main_thread: &mut NamClapMainThread<'a>,
+        main_thread: &mut NamClapMainThread<'a>,
         shared: &'a NamClapShared,
         audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
@@ -156,6 +156,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .cold
             .buffer_size
             .store(audio_config.max_frames_count, Ordering::Relaxed);
+
+        // F3: flush any model deferred by load_model() (state-restore-before-activate).
+        // This calls set_max_buffer_size on the main thread before process() starts.
+        main_thread.flush_pending_model()?;
 
         Ok(Self {
             model_l: None,

@@ -187,14 +187,28 @@ let raw = cursor.read_slice(total_4wide)?;                   // só DEPOIS valid
 
 ---
 
-## 🟠 F3 — Alocação de heap + syscalls + `drop` na thread de áudio (`set_max_buffer_size` no RT)
+## 🟢 F3 — Alocação de heap + syscalls + `drop` na thread de áudio (`set_max_buffer_size` no RT) ✅ [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅ (resolvido 2026-06-24)
 - **Locais:**
-  - [`src/clap/processor/events.rs:186`](src/clap/processor/events.rs#L186) (chamada no RT).
-  - [`src/models/a2/model/static/mod.rs:182-213`](src/models/a2/model/static/mod.rs#L182) (alocações).
-  - Variante dinâmica equivalente em `src/models/a2/model/dynamic/mod.rs`.
-- **Severidade:** 🟠 Alta (viola "Zero Heap Drop" e "Zero Blocking I/O" de `.agents/rules/rust.md`).
+  - [`src/clap/processor/events.rs:186`](src/clap/processor/events.rs#L186) (chamada no RT — REMOVIDA).
+  - [`src/clap/plugin/main_thread/load.rs:141-181`](src/clap/plugin/main_thread/load.rs#L141) (defer quando `buffer_size == 0`).
+  - [`src/clap/processor/mod.rs:161`](src/clap/processor/mod.rs#L161) (`activate()` chama `flush_pending_model()`).
+  - [`src/clap/plugin/main_thread/housekeeping.rs:18`](src/clap/plugin/main_thread/housekeeping.rs#L18) (fallback flush).
+- **Severidade:** 🟢 Resolvida.
+
+### F3 — Solução aplicada
+
+Abordagem (ver proposta original na linha 237):
+
+1. **`load_model()`** (main thread): quando `buffer_size == 0` (state-restore antes de `activate()`),
+   armazena model+l, resampler e calibração em `ColdShared::pending_model` no lugar de enviar
+   imediatamente via SPSC.
+2. **`activate()`** e **`housekeeping()`**: chamam `NamClapMainThread::flush_pending_model()`,
+   que pre-dimensiona (`set_max_buffer_size`) e envia o modelo via SPSC após `buffer_size`
+   já ser conhecido.
+3. **RT path** (`events.rs:cold_load_model`): a chamada de `set_max_buffer_size` foi removida.
+   O modelo sempre chega pré-dimensionado. Regressão detectável por `heap-audit`.
 
 ### F3 — Descrição
 

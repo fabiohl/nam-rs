@@ -5,7 +5,7 @@
 
 mod shared;
 pub use shared::{
-    ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata,
+    ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, PendingModel,
     RENDER_MODE_OFFLINE, RENDER_MODE_REALTIME, RtToUi, UiToRt,
 };
 
@@ -133,6 +133,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 slimmable_tx: Mutex::new(Some(slimmable_tx)),
                 slimmable_rx: Mutex::new(Some(slimmable_rx)),
                 full_wavenet_model: Mutex::new(None),
+                pending_model: Mutex::new(None),
             },
         })
     }

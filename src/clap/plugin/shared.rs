@@ -187,6 +187,24 @@ pub struct ColdShared {
     /// When a WaveNet model is loaded, a clone is stored here so the main thread
     /// can create slimmed variants without touching the audio thread.
     pub full_wavenet_model: Mutex<Option<Box<StaticModel>>>,
+    /// Model loaded before `activate()` (state restore while `buffer_size == 0`),
+    /// deferred to avoid heap allocation on the audio thread (F3 fix).
+    /// See `flush_pending_model()` in load.rs and housekeeping.rs.
+    pub pending_model: Mutex<Option<PendingModel>>,
+}
+
+/// Model payload deferred from the main thread until `buffer_size` is known
+/// (state-restore-before-activate scenario). Carries all fields of a
+/// `ClapParamPayload::LoadModel` for deferred SPSC delivery.
+pub struct PendingModel {
+    /// The encapsulated model for neural inference (Left Channel).
+    pub model: Option<Box<StaticModel>>,
+    /// Polyphase sinc resampler.
+    pub resampler: Box<NamResampler>,
+    /// Model input gain calibration multiplier.
+    pub input_mult_adj: f32,
+    /// Model output gain calibration multiplier.
+    pub output_mult_adj: f32,
 }
 
 // ---------------------------------------------------------------------------
