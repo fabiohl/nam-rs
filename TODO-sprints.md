@@ -71,7 +71,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
   ) -> ([f32; 16], [f32; 16]);
   ```
 
-#### [ ] Tarefa E.2.2 — Adicionar Referências de Cálculo Escalar em `dot.rs` (NF-04)
+#### [x] Tarefa E.2.2 — Adicionar Referências de Cálculo Escalar em `dot.rs` (NF-04) ✅ Concluído: `dot_product_8x_f32_dual_scalar` e `dot_product_16x_f32_dual_scalar` implementados em `dot.rs:269-370` usando `mul_add` (FMA3). Seguem o mesmo padrão de `dot_product_4x_f32_dual_scalar` existente
 
 - **Descrição:** Implementar `dot_product_8x_f32_dual_scalar` e `dot_product_16x_f32_dual_scalar` em [dot.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/dot.rs) usando `mul_add` (FMA).
 

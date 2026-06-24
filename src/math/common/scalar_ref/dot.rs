@@ -303,6 +303,112 @@ pub unsafe fn dot_product_16x_f32_scalar(weights: &[[f32; 16]], state: &[f32]) -
     r
 }
 
+/// F32-native 8-lane interleaved dual-frame dot product (scalar reference).
+///
+/// Processes two state vectors against the same weight slice using `mul_add`
+/// (FMA3) to match the rounding of the AVX2/FMA kernel.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_8x_f32_dual_scalar(
+    weights: &[[f32; 8]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 8], [f32; 8]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut r0 = [0.0f32; 8];
+    let mut r1 = [0.0f32; 8];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s0 = state_f0.get_unchecked(i);
+        let s1 = state_f1.get_unchecked(i);
+        r0[0] = (*w.get_unchecked(0)).mul_add(*s0, r0[0]);
+        r0[1] = (*w.get_unchecked(1)).mul_add(*s0, r0[1]);
+        r0[2] = (*w.get_unchecked(2)).mul_add(*s0, r0[2]);
+        r0[3] = (*w.get_unchecked(3)).mul_add(*s0, r0[3]);
+        r0[4] = (*w.get_unchecked(4)).mul_add(*s0, r0[4]);
+        r0[5] = (*w.get_unchecked(5)).mul_add(*s0, r0[5]);
+        r0[6] = (*w.get_unchecked(6)).mul_add(*s0, r0[6]);
+        r0[7] = (*w.get_unchecked(7)).mul_add(*s0, r0[7]);
+        r1[0] = (*w.get_unchecked(0)).mul_add(*s1, r1[0]);
+        r1[1] = (*w.get_unchecked(1)).mul_add(*s1, r1[1]);
+        r1[2] = (*w.get_unchecked(2)).mul_add(*s1, r1[2]);
+        r1[3] = (*w.get_unchecked(3)).mul_add(*s1, r1[3]);
+        r1[4] = (*w.get_unchecked(4)).mul_add(*s1, r1[4]);
+        r1[5] = (*w.get_unchecked(5)).mul_add(*s1, r1[5]);
+        r1[6] = (*w.get_unchecked(6)).mul_add(*s1, r1[6]);
+        r1[7] = (*w.get_unchecked(7)).mul_add(*s1, r1[7]);
+    }
+    (r0, r1)
+}
+
+/// F32-native 16-lane interleaved dual-frame dot product (scalar reference).
+///
+/// Processes two state vectors against the same weight slice using `mul_add`
+/// (FMA3) to match the rounding of the AVX2/FMA and AVX-512 kernels.
+/// This function serves exclusively as the correctness reference in test and
+/// benchmark suites. It MUST NOT be called from any production code path.
+///
+/// # Safety
+/// Caller must ensure `weights.len() >= state_f0.len()` and
+/// `weights.len() >= state_f1.len()`.
+#[inline]
+pub unsafe fn dot_product_16x_f32_dual_scalar(
+    weights: &[[f32; 16]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 16], [f32; 16]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut r0 = [0.0f32; 16];
+    let mut r1 = [0.0f32; 16];
+    for i in 0..len {
+        let w = weights.get_unchecked(i);
+        let s0 = state_f0.get_unchecked(i);
+        let s1 = state_f1.get_unchecked(i);
+        r0[0] = (*w.get_unchecked(0)).mul_add(*s0, r0[0]);
+        r0[1] = (*w.get_unchecked(1)).mul_add(*s0, r0[1]);
+        r0[2] = (*w.get_unchecked(2)).mul_add(*s0, r0[2]);
+        r0[3] = (*w.get_unchecked(3)).mul_add(*s0, r0[3]);
+        r0[4] = (*w.get_unchecked(4)).mul_add(*s0, r0[4]);
+        r0[5] = (*w.get_unchecked(5)).mul_add(*s0, r0[5]);
+        r0[6] = (*w.get_unchecked(6)).mul_add(*s0, r0[6]);
+        r0[7] = (*w.get_unchecked(7)).mul_add(*s0, r0[7]);
+        r0[8] = (*w.get_unchecked(8)).mul_add(*s0, r0[8]);
+        r0[9] = (*w.get_unchecked(9)).mul_add(*s0, r0[9]);
+        r0[10] = (*w.get_unchecked(10)).mul_add(*s0, r0[10]);
+        r0[11] = (*w.get_unchecked(11)).mul_add(*s0, r0[11]);
+        r0[12] = (*w.get_unchecked(12)).mul_add(*s0, r0[12]);
+        r0[13] = (*w.get_unchecked(13)).mul_add(*s0, r0[13]);
+        r0[14] = (*w.get_unchecked(14)).mul_add(*s0, r0[14]);
+        r0[15] = (*w.get_unchecked(15)).mul_add(*s0, r0[15]);
+        r1[0] = (*w.get_unchecked(0)).mul_add(*s1, r1[0]);
+        r1[1] = (*w.get_unchecked(1)).mul_add(*s1, r1[1]);
+        r1[2] = (*w.get_unchecked(2)).mul_add(*s1, r1[2]);
+        r1[3] = (*w.get_unchecked(3)).mul_add(*s1, r1[3]);
+        r1[4] = (*w.get_unchecked(4)).mul_add(*s1, r1[4]);
+        r1[5] = (*w.get_unchecked(5)).mul_add(*s1, r1[5]);
+        r1[6] = (*w.get_unchecked(6)).mul_add(*s1, r1[6]);
+        r1[7] = (*w.get_unchecked(7)).mul_add(*s1, r1[7]);
+        r1[8] = (*w.get_unchecked(8)).mul_add(*s1, r1[8]);
+        r1[9] = (*w.get_unchecked(9)).mul_add(*s1, r1[9]);
+        r1[10] = (*w.get_unchecked(10)).mul_add(*s1, r1[10]);
+        r1[11] = (*w.get_unchecked(11)).mul_add(*s1, r1[11]);
+        r1[12] = (*w.get_unchecked(12)).mul_add(*s1, r1[12]);
+        r1[13] = (*w.get_unchecked(13)).mul_add(*s1, r1[13]);
+        r1[14] = (*w.get_unchecked(14)).mul_add(*s1, r1[14]);
+        r1[15] = (*w.get_unchecked(15)).mul_add(*s1, r1[15]);
+    }
+    (r0, r1)
+}
+
 /// Computes 4 dot products at once for BF16.
 /// This is a shortcut to call the single-line function 4 times.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
