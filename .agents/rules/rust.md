@@ -24,6 +24,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 * **Denormals:** Configure FTZ+DAZ at the start of the processing loop. Alternatively, zero states with `if val.abs() < 1e-15 { val = 0.0; }`.
 * **FastMath:** Native `f32::tanh()`/`exp()` are prohibitive on the hot-path. Use Minimax/Padé approximations with error < −80 dB (~1e-4).
 * **Casting:** Avoid frequent `as` between `f32` and integers. Use `.round()`, `.floor()`, or vectorized operations.
+* **Unsafety:** Do your best to keep "unsafe" block the most restrict possible.
 
 ---
 

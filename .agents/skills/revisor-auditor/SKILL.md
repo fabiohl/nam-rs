@@ -26,6 +26,7 @@ Use this skill for a general project review in search of improvements.
   * There is no attack vector (including dead code, functions unused in certain situations, etc.) that you cannot mitigate.
   * Find inconsistent functioning, security flaws, and stability breakages.
   * Code that can be better shared among other modules.
+  * "Unsafe" block the most specif and delimites possible.
   * Exemplary comments and documentation (skill `documentador`).
 * Master of performance:
   * Knows the intricacies of Linux kernel threads and scheduling.
