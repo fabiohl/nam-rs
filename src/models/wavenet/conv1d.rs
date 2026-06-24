@@ -58,8 +58,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
             unsafe {
-                in_tap.copy_from_slice(
-                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
+                std::ptr::copy_nonoverlapping(
+                    layer_buffer.as_ptr().add(in_slice_start),
+                    in_tap.as_mut_ptr(),
+                    IN,
                 );
             }
             unsafe {
@@ -164,8 +166,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
             unsafe {
-                in_tap.copy_from_slice(
-                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
+                std::ptr::copy_nonoverlapping(
+                    layer_buffer.as_ptr().add(in_slice_start),
+                    in_tap.as_mut_ptr(),
+                    IN,
                 );
             }
             unsafe {

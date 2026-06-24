@@ -31,7 +31,8 @@ Este épico foca exclusivamente no achado [F6](file:///home/fabio/nam-rs/TODO-fi
     - Ajustar a passagem em [setup.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/setup.rs) para obter referências mutáveis aos fatiamentos via `&mut *state.resamp_mid_l`, etc.
   - **Validação:** Compilar com `cargo check`. O tamanho do ambiente da closure deve cair de ~196 KB para menos de 1 KB.
 
-- **[ ] Tarefa D1.2 — Otimização de Cópia de Taps no Conv1D Estático**
+- **[x] Tarefa D1.2 — Otimização de Cópia de Taps no Conv1D Estático**
+  - **Conclusão:** As 4 chamadas de `copy_from_slice` (2 em `conv1d.rs`, 2 em `conv1d_dual.rs`) foram substituídas por `std::ptr::copy_nonoverlapping` com contagem constante igual ao generic parameter `IN`. A otimização de propagação de constantes do LLVM agora expande a cópia diretamente para instruções SIMD (`vmovups`/`vmovdqu`), eliminando a chamada externa a `memcpy` da libc do caminho crítico RT. `cargo check` limpo (sem warnings), 91 testes unitários do WaveNet passaram.
   - **Foco:** Evitar chamadas externas a `memcpy`/`memmove` em cópias de tamanho constante.
   - **Ação:**
     - Em [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs) e [conv1d_dual.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d_dual.rs), substituir `in_tap.copy_from_slice(...)` e `in_taps_f0[k].copy_from_slice(...)` por `std::ptr::copy_nonoverlapping` com contagem constante igual ao generic parameter `IN`.

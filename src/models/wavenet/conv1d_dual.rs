@@ -49,10 +49,16 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let in_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
             let in_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
             unsafe {
-                in_taps_f0[k]
-                    .copy_from_slice(layer_buffer.get_unchecked(in_start_f0..in_start_f0 + IN));
-                in_taps_f1[k]
-                    .copy_from_slice(layer_buffer.get_unchecked(in_start_f1..in_start_f1 + IN));
+                std::ptr::copy_nonoverlapping(
+                    layer_buffer.as_ptr().add(in_start_f0),
+                    in_taps_f0[k].as_mut_ptr(),
+                    IN,
+                );
+                std::ptr::copy_nonoverlapping(
+                    layer_buffer.as_ptr().add(in_start_f1),
+                    in_taps_f1[k].as_mut_ptr(),
+                    IN,
+                );
                 if self.dilation >= 128 {
                     prefetch_strategy_2stage(
                         layer_buffer.as_ptr().add(in_start_f0),
