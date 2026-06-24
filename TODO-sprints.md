@@ -220,7 +220,7 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
 * **Precauções/Riscos:** Assegurar que os arrays de inicialização tenham alinhamento compatível com carregamentos SIMD não alinhados rápidos (`vmovups`).
 * **Conclusão (2026-06-24):** 6 novos métodos adicionados ao trait `SimdMath` (`dot_product_{4,8,16}x_f32_accumulate` + `dot_product_{4,8,16}x_f32_dual_accumulate`). Implementações provisionais (kernel existente + adição manual de init) em `Avx2Math`, `Avx512Math`, `Avx512VnniBf16Math`. Referências escalares em `scalar_ref/dot.rs`. `cargo check` limpo, 806 testes `cargo test --lib` passam. Os kernels SIMD totalmente fundidos serão escritos em B.1.2/B.1.3.
 
-#### [MODIFY] Tarefa B.1.2: Implementação dos Kernels de Acumulação em AVX2
+#### [MODIFY] Tarefa B.1.2: Implementação dos Kernels de Acumulação em AVX2 [DONE]
 
 * **Objetivo:** Implementar os novos kernels de acumulação em AVX2.
 * **Arquivos Alvos:**
@@ -231,6 +231,7 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
   * Carregar `init_f0` e `init_f1` para os primeiros registradores acumuladores (`acc_f0_lo0`, `acc_f0_hi0`, `acc_f1_lo0`, `acc_f1_hi0`). Os outros acumuladores da malha de unroll (1..3) são inicializados com zero.
   * Executar a acumulação FMA3 linear de tamanho `K * IN`.
   * No final, realizar o somatório de redução em árvore e armazenar contiguamente.
+* **Conclusão (2026-06-24):** 6 kernels AVX2 totalmente fundidos implementados: `dot_product_{4,8,16}x_f32_accumulate_avx2` + `dot_product_{4,8,16}x_f32_dual_accumulate_avx2`. O primeiro registrador acumulador por cadeia de unroll carrega `init`/`init_f0`/`init_f1` via `_mm_loadu_ps`/`_mm256_loadu_ps` em vez de `_mm_setzero_ps`. Acumuladores 1..3 permanecem zero. Redução em árvore e armazenamento contíguo idênticos aos kernels base. `avx2_impl.rs` atualizado para delegar aos kernels fundidos. `cargo check` limpo, 806 testes `cargo test --lib` passam, 3 testes `fixture_b1_2_smoke` passam.
 
 #### [MODIFY] Tarefa B.1.3: Implementação em AVX-512 e Referência Escalar (Fallback)
 

@@ -125,8 +125,6 @@ impl SimdMath for Avx2Math {
     }
 
     // --- Fused accumulate dot products (bias+mixin base init) ---
-    // These are provisional implementations that reuse the existing kernels
-    // plus a manual init addition. Replaced by fully fused SIMD kernels in B.1.2/B.1.3.
 
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
@@ -136,13 +134,9 @@ impl SimdMath for Avx2Math {
         init: &[f32; 4],
     ) -> [f32; 4] {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let r = unsafe { Self::dot_product_4x_f32(weights, state) };
-        [
-            init[0] + r[0],
-            init[1] + r[1],
-            init[2] + r[2],
-            init[3] + r[3],
-        ]
+        unsafe {
+            super::super::gemm::dot_4x::dot_product_4x_f32_accumulate_avx2(weights, state, init)
+        }
     }
 
     #[inline(always)]
@@ -155,21 +149,11 @@ impl SimdMath for Avx2Math {
         init_f1: &[f32; 4],
     ) -> ([f32; 4], [f32; 4]) {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let (r0, r1) = unsafe { Self::dot_product_4x_f32_dual(weights, state_f0, state_f1) };
-        (
-            [
-                init_f0[0] + r0[0],
-                init_f0[1] + r0[1],
-                init_f0[2] + r0[2],
-                init_f0[3] + r0[3],
-            ],
-            [
-                init_f1[0] + r1[0],
-                init_f1[1] + r1[1],
-                init_f1[2] + r1[2],
-                init_f1[3] + r1[3],
-            ],
-        )
+        unsafe {
+            super::super::gemm::dot_4x::dot_product_4x_f32_dual_accumulate_avx2(
+                weights, state_f0, state_f1, init_f0, init_f1,
+            )
+        }
     }
 
     #[inline(always)]
@@ -180,12 +164,9 @@ impl SimdMath for Avx2Math {
         init: &[f32; 8],
     ) -> [f32; 8] {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let r = unsafe { Self::dot_product_8x_f32(weights, state) };
-        let mut out = [0.0f32; 8];
-        for i in 0..8 {
-            out[i] = init[i] + r[i];
+        unsafe {
+            super::super::gemm::dot_8x::dot_product_8x_f32_accumulate_avx2(weights, state, init)
         }
-        out
     }
 
     #[inline(always)]
@@ -198,14 +179,11 @@ impl SimdMath for Avx2Math {
         init_f1: &[f32; 8],
     ) -> ([f32; 8], [f32; 8]) {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let (r0, r1) = unsafe { Self::dot_product_8x_f32_dual(weights, state_f0, state_f1) };
-        let mut out_f0 = [0.0f32; 8];
-        let mut out_f1 = [0.0f32; 8];
-        for i in 0..8 {
-            out_f0[i] = init_f0[i] + r0[i];
-            out_f1[i] = init_f1[i] + r1[i];
+        unsafe {
+            super::super::gemm::dot_8x::dot_product_8x_f32_dual_accumulate_avx2(
+                weights, state_f0, state_f1, init_f0, init_f1,
+            )
         }
-        (out_f0, out_f1)
     }
 
     #[inline(always)]
@@ -216,12 +194,9 @@ impl SimdMath for Avx2Math {
         init: &[f32; 16],
     ) -> [f32; 16] {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let r = unsafe { Self::dot_product_16x_f32(weights, state) };
-        let mut out = [0.0f32; 16];
-        for i in 0..16 {
-            out[i] = init[i] + r[i];
+        unsafe {
+            super::super::gemm::dot_16x::dot_product_16x_f32_accumulate_avx2(weights, state, init)
         }
-        out
     }
 
     #[inline(always)]
@@ -234,14 +209,11 @@ impl SimdMath for Avx2Math {
         init_f1: &[f32; 16],
     ) -> ([f32; 16], [f32; 16]) {
         // SAFETY: arguments satisfy the function's documented invariants.
-        let (r0, r1) = unsafe { Self::dot_product_16x_f32_dual(weights, state_f0, state_f1) };
-        let mut out_f0 = [0.0f32; 16];
-        let mut out_f1 = [0.0f32; 16];
-        for i in 0..16 {
-            out_f0[i] = init_f0[i] + r0[i];
-            out_f1[i] = init_f1[i] + r1[i];
+        unsafe {
+            super::super::gemm::dot_16x::dot_product_16x_f32_dual_accumulate_avx2(
+                weights, state_f0, state_f1, init_f0, init_f1,
+            )
         }
-        (out_f0, out_f1)
     }
 
     #[inline(always)]
