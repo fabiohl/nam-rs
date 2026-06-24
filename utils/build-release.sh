@@ -20,9 +20,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}${BOLD}===================================================================================${NC}"
-echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 9 minutes - cold run)   ${NC}"
-echo -e "${BLUE}${BOLD}===================================================================================${NC}"
+echo -e "${BLUE}${BOLD}========================================================================${NC}"
+echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 8 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}========================================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -149,8 +149,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sudo sysctl -w kernel.perf_event_paranoid=1
-PARANOID_MODIFIED=true
+if [ "$ORIG_PARANOID" -gt 1 ]; then
+    echo -e "  kernel.perf_event_paranoid is $ORIG_PARANOID. Attempting to set to 1..."
+    if command -v sudo &>/dev/null; then
+        if sudo -n sysctl -w kernel.perf_event_paranoid=1 &>/dev/null; then
+            sudo sysctl -w kernel.perf_event_paranoid=1
+            PARANOID_MODIFIED=true
+            echo -e "  ${GREEN}✓${NC} paranoid level set to 1."
+        else
+            echo -e "${YELLOW}Warning: Passwordless sudo not available. Trying interactive sudo...${NC}"
+            if [ -t 0 ]; then
+                if sudo sysctl -w kernel.perf_event_paranoid=1; then
+                    PARANOID_MODIFIED=true
+                    echo -e "  ${GREEN}✓${NC} paranoid level set to 1."
+                else
+                    echo -e "${YELLOW}Warning: Failed to set paranoid level to 1. BOLT profiling might be skipped.${NC}"
+                fi
+            else
+                echo -e "${YELLOW}Warning: Non-interactive shell, cannot prompt for sudo password. BOLT profiling might be skipped.${NC}"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}Warning: 'sudo' command not found. BOLT profiling might be skipped.${NC}"
+    fi
+fi
 
 HAS_PERF=false
 if command -v perf &>/dev/null; then
@@ -176,27 +198,8 @@ fi
     export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-generate=$PROFRAW_DIR"
     echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
 
-    echo -e "  Compiling and running inference workload (inference_bench)..."
-    # To keep PGO profile generation fast yet highly representative, we run:
-    # 1. Standard end-to-end models at 64 samples buffer size (filter: "64samp")
-    #   - ConvNet models (ConvNet_MultiChannel/LargeKernel/Dilated_64samp) — Added by Épico E
-    #   - Dynamic engines (WaveNet_Dynamic_CH5_64samp, LSTM_Dynamic_1x7_64samp) — Added by Épico E
-    # 2. Vectorized SIMD/FastMath kernels (filter: "AVX")
-    # 3. Resampler configurations (filter: "Resampler")
-    # Using "--profile-time 1" avoids slow statistical analysis and plots.
-    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "64samp"
-    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "AVX"
-    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "Resampler"
-
-    echo -e "  Compiling and running SIMD kernels (dot_4x_bench)..."
-    # Profile only the active SIMD lanes, skipping the fallback scalar paths.
-    # Note: Criterion filters by substring match. Since the group name contains "avx512",
-    # filtering by "avx" matches "fallback" as well. We filter specifically by "avx2",
-    # and if the host CPU supports AVX-512, we also profile "avx512".
-    cargo bench --features clap-plugin --bench dot_4x_bench -- --profile-time 1 "avx2"
-    if grep -q "avx512" /proc/cpuinfo; then
-        cargo bench --features clap-plugin --bench dot_4x_bench -- --profile-time 1 "avx512"
-    fi
+    echo -e "  Compiling and running real-world PGO profiling workload..."
+    cargo run --release --features "clap-plugin,testing" --bin pgo_profiling_workload
 
     PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" 2>/dev/null | wc -l)
     if [ "$PROFRAW_COUNT" -eq 0 ]; then
@@ -428,5 +431,8 @@ fi
 echo -e "${GREEN}${BOLD}==============================================================${NC}"
 echo -e "${GREEN}${BOLD}   Pipeline completed! Artifacts ready for distribution.   ${NC}"
 echo -e "${GREEN}${BOLD}==============================================================${NC}"
-ls -lath "$BIN_TARGET" "$CLAP_TARGET" target/dsp_hotpath.asm
+ls -lath "$BIN_TARGET" "$CLAP_TARGET"
+if [ -f "target/dsp_hotpath.asm" ]; then
+    ls -lath "target/dsp_hotpath.asm"
+fi
 echo -e "${GREEN}${BOLD}================================================================${NC}"

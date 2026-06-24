@@ -6,6 +6,8 @@
 //! Consolidates ~700 lines of boilerplate extracted from `processor_test.rs`
 //! and reusable by `inference_bench.rs`.
 
+#![allow(missing_docs)]
+
 use crate::clap::NamClapPlugin;
 use crate::common::params::NamPluginParams;
 use crate::dsp::pipeline::test_util::infra::{TrackingGuard, get_alloc_count};

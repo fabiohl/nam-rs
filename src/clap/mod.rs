@@ -26,5 +26,5 @@ clack_export_entry!(entry::NamEntry);
 #[path = "preset_discovery_test.rs"]
 mod preset_discovery_test;
 
-#[cfg(test)]
-pub(crate) mod test_util;
+#[cfg(any(test, feature = "testing"))]
+pub mod test_util;

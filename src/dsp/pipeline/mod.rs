@@ -56,10 +56,13 @@ pub use output_pw::PipewireHostConfig;
 #[cfg(feature = "standalone")]
 pub(crate) use output_pw::{build_spa_format_pod, playback_dsp_cycle};
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
+#[allow(unused_imports)]
 pub(crate) mod test_util {
     pub mod infra {
-        pub use crate::common::alloc_audit::{CountingAllocator, TrackingGuard, get_alloc_count};
+        #[cfg(test)]
+        pub use crate::common::alloc_audit::CountingAllocator;
+        pub use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
     }
 }
 

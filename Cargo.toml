@@ -35,6 +35,7 @@ glow      = { version = "0.17.0",  optional = true }
 baseview  = { version = "0.1.4", optional = true }
 rfd       = { version = "0.17.2",  optional = true }
 keyboard-types = { version = "0.6", default-features = false, optional = true }
+clack-host = { version = "0.1", features = ["clack-plugin"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
@@ -63,7 +64,7 @@ harness = false
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]
-clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
+clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types", "dep:clack-host"]
 stereo = []
 testing = []
 heap-audit = []
@@ -85,6 +86,11 @@ required-features = ["testing"]
 name = "wav_to_golden"
 path = "src/bin/wav_to_golden.rs"
 required-features = ["testing"]
+
+[[bin]]
+name = "pgo_profiling_workload"
+path = "src/bin/pgo_profiling_workload.rs"
+required-features = ["clap-plugin", "testing"]
 
 [lib]
 name = "nam_rs"
