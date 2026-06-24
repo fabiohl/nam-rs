@@ -324,12 +324,18 @@ Focada em garantir que as alterações matemáticas mantenham estrita compatibil
   * Criar testes que gerem dados randômicos e comparem o resultado exato dos kernels de acumulação fundida contra as execuções sucessivas do fallback escalar.
   * Validar shapes diversos de GEMV para `out_len ∈ {1..16}` e `in_len ∈ {1..128}`.
 
-#### [VERIFY] Tarefa B.3.2: Validação de Paridade com NeuralAmpModelerCore e Calibração de ESR
+#### [DONE] Tarefa B.3.2: Validação de Paridade com NeuralAmpModelerCore e Calibração de ESR [DONE]
 
 * **Objetivo:** Rodar testes integrados em nível de modelo e recalibrar limites ESR.
 * **Descrição da Mudança:**
   * Executar a suíte de testes de paridade externa `cpp_parity` e `cabsim_cpp_parity`.
   * Executar `threshold_calibration.rs` para avaliar o impacto da associatividade de float. Se o ESR de alguma camada diferir da baseline histórica, calibrar os limiares de aceitação na configuração de testes.
+* **Conclusão (2026-06-24):** Toda a suíte de validação passa sem recalibração necessária:
+  * `cargo test --test threshold_calibration`: 3/3 passam (todas as entradas calibradas existem e são anti-placebo).
+  * `cargo test --test cpp_parity -- --ignored --nocapture`: **31/31 passam** — v1 + v2 multi-SR (44.1k/48k/88.2k/96k/192k Hz) para WaveNet Standard/Feather/Nano/Lite, A1-Standard, A2-Full/Lite, Condition DSP, LSTM 1×16/2×8/Official, WaveNetDyn Free-Shape, LSTM-Dyn 1×7, Linear RF=4, APP-EVH, Boss BD-2, SLAMMIN MARSHALL, e modelos nondist.
+  * `cargo test --test cabsim_cpp_parity -- --ignored --nocapture`: **3/3 passam** (short/medium/long, ESR < 1e-12 em todos).
+  * Todos os ESR medidos estão dentro dos limiares calibrados — nenhuma recalibração necessária.
+  * `cargo check` limpo sem warnings.
 
 #### [VERIFY] Tarefa B.3.3: Benchmarks de Performance com Criterion e perf stat
 
