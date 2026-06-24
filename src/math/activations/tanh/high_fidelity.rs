@@ -298,9 +298,9 @@ unsafe fn simd_exp_poly_avx512(x: __m512) -> __m512 {
     _mm512_mul_ps(p, scale)
 }
 
-/// Polynomial `tanh(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
+/// Polynomial `tanh(x)` for `__m512` — exp-based, single-division (AVX-512F/VL).
 ///
-/// Formula: `tanh(x) = (eˣ − e⁻ˣ) / (eˣ + e⁻ˣ)`.
+/// Formula: `tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)`.
 /// Input clamped to [-20, 20] for overflow safety, output clamped to [-1, 1].
 ///
 /// # Safety
@@ -316,9 +316,9 @@ pub unsafe fn simd_tanh_poly_avx512(x: __m512) -> __m512 {
     let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
 
     let exp_x = unsafe { simd_exp_poly_avx512(x) };
-    let inv_exp_x = _mm512_div_ps(one, exp_x);
-    let num = _mm512_sub_ps(exp_x, inv_exp_x);
-    let den = _mm512_add_ps(exp_x, inv_exp_x);
+    let u2 = _mm512_mul_ps(exp_x, exp_x); // e²ˣ
+    let num = _mm512_sub_ps(u2, one); // e²ˣ − 1
+    let den = _mm512_add_ps(u2, one); // e²ˣ + 1
     let tanh_val = _mm512_div_ps(num, den);
     _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
 }
