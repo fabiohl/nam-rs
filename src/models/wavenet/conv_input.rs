@@ -7,6 +7,7 @@
 /// # Safety
 /// `out_c` must be < `out.len()`. On the fast path (`out_n` multiple of 4 or
 /// `out_c + 3 < out_n`), `out_c + 3` must be < `out.len()`.
+#[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn load_4_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 4] {
     let r0 = unsafe { *out.get_unchecked(out_c) };
@@ -68,6 +69,7 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
 ///
 /// # Safety
 /// `out_c` must be < `out.len()`. On the fast path, `out_c + 7 < out_n`.
+#[allow(dead_code)]
 #[inline(always)]
 #[allow(clippy::needless_range_loop)]
 pub(crate) unsafe fn load_8_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 8] {
@@ -126,6 +128,7 @@ pub(crate) unsafe fn store_8_accums(out: &mut [f32], out_c: usize, r: [f32; 8], 
 ///
 /// # Safety
 /// `out_c` must be < `out.len()`. On the fast path, `out_c + 15 < out_n`.
+#[allow(dead_code)]
 #[inline(always)]
 #[allow(clippy::needless_range_loop)]
 pub(crate) unsafe fn load_16_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 16] {

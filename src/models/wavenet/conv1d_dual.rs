@@ -11,9 +11,7 @@
 //! This file is a cohesive unit: a single `impl Conv1d` block extending the
 //! static convolution with dual-frame (Temporal Tiling) processing.
 
-use super::conv_input::{
-    load_4_accums, load_8_accums, load_16_accums, store_4_accums, store_8_accums, store_16_accums,
-};
+use super::conv_input::{store_4_accums, store_8_accums, store_16_accums};
 use super::conv1d::Conv1d;
 use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::{SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple};
@@ -23,7 +21,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// (conditioning) directly to the accumulators.
     /// This approach maximizes the utilization of weights loaded into registers (Temporal Tiling).
     ///
-    /// Uses full-precision f32 weights via `M::dot_product_4x_f32_dual` (AVX2/FMA or AVX-512 kernel).
+    /// Uses full-precision f32 weights via `M::dot_product_*_f32_dual_accumulate`
+    /// (AVX2/FMA or AVX-512 kernel) with fused bias+mixin initialization and
+    /// K-tap accumulation in a single SIMD kernel call.
     ///
     /// # Safety
     /// `layer_buffer` and `mixin` must have appropriate sizes.
@@ -42,22 +42,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
 
-        // --- 1. Setup (Bias and Mixin) ---
-        for b in 0..num_blocks {
-            let off = b * interleave_width;
-            let w = interleave_width.min(OUT - off);
-            for j in 0..w {
-                if self.do_bias {
-                    out_frame_f0[off + j] = self.bias[off + j] + mixin_f0[off + j];
-                    out_frame_f1[off + j] = self.bias[off + j] + mixin_f1[off + j];
-                } else {
-                    out_frame_f0[off + j] = mixin_f0[off + j];
-                    out_frame_f1[off + j] = mixin_f1[off + j];
-                }
-            }
-        }
-
-        // --- 2. Preload taps ---
         let mut in_taps_f0 = [[0.0f32; IN]; K];
         let mut in_taps_f1 = [[0.0f32; IN]; K];
         for k in 0..K {
@@ -89,81 +73,115 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
-        // --- 3. Central loop with f32 weights ---
+        let flat_taps_f0: &[f32] =
+            unsafe { core::slice::from_raw_parts(in_taps_f0.as_ptr() as *const f32, K * IN) };
+        let flat_taps_f1: &[f32] =
+            unsafe { core::slice::from_raw_parts(in_taps_f1.as_ptr() as *const f32, K * IN) };
+
         for b in 0..num_blocks {
             let out_c = b * interleave_width;
             let w = interleave_width.min(OUT - out_c);
+            let w_start = b * K * IN * interleave_width;
 
             match interleave_width {
                 16 => {
-                    let mut r_f0 = unsafe { load_16_accums(out_frame_f0, out_c, OUT) };
-                    let mut r_f1 = unsafe { load_16_accums(out_frame_f1, out_c, OUT) };
-                    for k in 0..K {
-                        let w_start = (b * K + k) * IN * 16;
-                        let w_slice: &[[f32; 16]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let (t_f0, t_f1) = unsafe {
-                            M::dot_product_16x_f32_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k])
-                        };
-                        for i in 0..w {
-                            r_f0[i] += t_f0[i];
-                            r_f1[i] += t_f1[i];
+                    let mut init_f0 = [0.0f32; 16];
+                    let mut init_f1 = [0.0f32; 16];
+                    for (j, (item_f0, item_f1)) in init_f0
+                        .iter_mut()
+                        .zip(init_f1.iter_mut())
+                        .enumerate()
+                        .take(w)
+                    {
+                        if self.do_bias {
+                            *item_f0 = self.bias[out_c + j] + mixin_f0[out_c + j];
+                            *item_f1 = self.bias[out_c + j] + mixin_f1[out_c + j];
+                        } else {
+                            *item_f0 = mixin_f0[out_c + j];
+                            *item_f1 = mixin_f1[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 16]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let (r_f0, r_f1) = unsafe {
+                        M::dot_product_16x_f32_dual_accumulate(
+                            w_slice,
+                            flat_taps_f0,
+                            flat_taps_f1,
+                            &init_f0,
+                            &init_f1,
+                        )
+                    };
                     unsafe { store_16_accums(out_frame_f0, out_c, r_f0, OUT) };
                     unsafe { store_16_accums(out_frame_f1, out_c, r_f1, OUT) };
                 }
                 8 => {
-                    let mut r_f0 = unsafe { load_8_accums(out_frame_f0, out_c, OUT) };
-                    let mut r_f1 = unsafe { load_8_accums(out_frame_f1, out_c, OUT) };
-                    for k in 0..K {
-                        let w_start = (b * K + k) * IN * 8;
-                        let w_slice: &[[f32; 8]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let (t_f0, t_f1) = unsafe {
-                            M::dot_product_8x_f32_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k])
-                        };
-                        for i in 0..w {
-                            r_f0[i] += t_f0[i];
-                            r_f1[i] += t_f1[i];
+                    let mut init_f0 = [0.0f32; 8];
+                    let mut init_f1 = [0.0f32; 8];
+                    for (j, (item_f0, item_f1)) in init_f0
+                        .iter_mut()
+                        .zip(init_f1.iter_mut())
+                        .enumerate()
+                        .take(w)
+                    {
+                        if self.do_bias {
+                            *item_f0 = self.bias[out_c + j] + mixin_f0[out_c + j];
+                            *item_f1 = self.bias[out_c + j] + mixin_f1[out_c + j];
+                        } else {
+                            *item_f0 = mixin_f0[out_c + j];
+                            *item_f1 = mixin_f1[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 8]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let (r_f0, r_f1) = unsafe {
+                        M::dot_product_8x_f32_dual_accumulate(
+                            w_slice,
+                            flat_taps_f0,
+                            flat_taps_f1,
+                            &init_f0,
+                            &init_f1,
+                        )
+                    };
                     unsafe { store_8_accums(out_frame_f0, out_c, r_f0, OUT) };
                     unsafe { store_8_accums(out_frame_f1, out_c, r_f1, OUT) };
                 }
                 _ => {
-                    let [mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0] =
-                        unsafe { load_4_accums(out_frame_f0, out_c, OUT) };
-                    let [mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1] =
-                        unsafe { load_4_accums(out_frame_f1, out_c, OUT) };
-                    for k in 0..K {
-                        let w_start = (b * K + k) * IN * 4;
-                        let w_slice: &[[f32; 4]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let (t_f0, t_f1) = unsafe {
-                            M::dot_product_4x_f32_dual(w_slice, &in_taps_f0[k], &in_taps_f1[k])
-                        };
-                        r0_f0 += t_f0[0];
-                        r1_f0 += t_f0[1];
-                        r2_f0 += t_f0[2];
-                        r3_f0 += t_f0[3];
-                        r0_f1 += t_f1[0];
-                        r1_f1 += t_f1[1];
-                        r2_f1 += t_f1[2];
-                        r3_f1 += t_f1[3];
+                    let mut init_f0 = [0.0f32; 4];
+                    let mut init_f1 = [0.0f32; 4];
+                    for (j, (item_f0, item_f1)) in init_f0
+                        .iter_mut()
+                        .zip(init_f1.iter_mut())
+                        .enumerate()
+                        .take(w)
+                    {
+                        if self.do_bias {
+                            *item_f0 = self.bias[out_c + j] + mixin_f0[out_c + j];
+                            *item_f1 = self.bias[out_c + j] + mixin_f1[out_c + j];
+                        } else {
+                            *item_f0 = mixin_f0[out_c + j];
+                            *item_f1 = mixin_f1[out_c + j];
+                        }
                     }
-                    unsafe {
-                        store_4_accums(out_frame_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], OUT)
+                    let w_slice: &[[f32; 4]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                        core::slice::from_raw_parts(ptr, K * IN)
                     };
-                    unsafe {
-                        store_4_accums(out_frame_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], OUT)
+                    let (r_f0, r_f1) = unsafe {
+                        M::dot_product_4x_f32_dual_accumulate(
+                            w_slice,
+                            flat_taps_f0,
+                            flat_taps_f1,
+                            &init_f0,
+                            &init_f1,
+                        )
                     };
+                    unsafe { store_4_accums(out_frame_f0, out_c, r_f0, OUT) };
+                    unsafe { store_4_accums(out_frame_f1, out_c, r_f1, OUT) };
                 }
             }
         }

@@ -13,6 +13,8 @@ use crate::math::common::{
 
 use super::common::MAX_KERNEL;
 
+const TAP_BUF_FLOATS: usize = MAX_KERNEL * 64;
+
 /// Structure for causal 1D convolution with dynamic dimensions.
 #[derive(Clone)]
 #[repr(align(64))]
@@ -74,17 +76,22 @@ impl Conv1dDyn {
             }
         }
 
+        let tap_total = kernel * in_ch;
+        debug_assert!(tap_total <= TAP_BUF_FLOATS);
+        let mut tap_buf = [0.0f32; TAP_BUF_FLOATS];
+        for k in 0..kernel {
+            let src = unsafe { core::slice::from_raw_parts(tap_ptrs[k], in_ch) };
+            tap_buf[k * in_ch..(k + 1) * in_ch].copy_from_slice(src);
+        }
+        let flat_taps: &[f32] = &tap_buf[..tap_total];
+
         unsafe {
             match self.interleave_width {
-                16 => self.process_blocks_16::<M>(
-                    out_frame, out_ch, kernel, &tap_ptrs, k_limit, in_ch, mixin,
-                ),
-                8 => self.process_blocks_8::<M>(
-                    out_frame, out_ch, kernel, &tap_ptrs, k_limit, in_ch, mixin,
-                ),
-                _ => self.process_blocks_4::<M>(
-                    out_frame, out_ch, kernel, &tap_ptrs, k_limit, in_ch, mixin,
-                ),
+                16 => {
+                    self.process_blocks_16::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin)
+                }
+                8 => self.process_blocks_8::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin),
+                _ => self.process_blocks_4::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin),
             }
         }
     }
@@ -96,67 +103,59 @@ impl Conv1dDyn {
         out_frame: &mut [f32],
         out_ch: usize,
         kernel: usize,
-        tap_ptrs: &[*const f32; MAX_KERNEL],
-        _k_limit: usize,
+        flat_taps: &[f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
         let num_blocks = out_ch.div_ceil(4);
         for b in 0..num_blocks {
             let out_c = b * 4;
+            let w = 4.min(out_ch - out_c);
             let (mu0, mu1, mu2, mu3) = unsafe { Self::load_mixin_4(mixin, out_c) };
-            let (mut r0, mut r1, mut r2, mut r3);
+
+            let mut init = [0.0f32; 4];
             unsafe {
                 if self.do_bias {
-                    r0 = *self.bias.get_unchecked(out_c) + mu0;
-                    r1 = if out_c + 1 < out_ch {
+                    init[0] = *self.bias.get_unchecked(out_c) + mu0;
+                    init[1] = if out_c + 1 < out_ch {
                         *self.bias.get_unchecked(out_c + 1)
                     } else {
                         0.0
                     } + mu1;
-                    r2 = if out_c + 2 < out_ch {
+                    init[2] = if out_c + 2 < out_ch {
                         *self.bias.get_unchecked(out_c + 2)
                     } else {
                         0.0
                     } + mu2;
-                    r3 = if out_c + 3 < out_ch {
+                    init[3] = if out_c + 3 < out_ch {
                         *self.bias.get_unchecked(out_c + 3)
                     } else {
                         0.0
                     } + mu3;
                 } else {
-                    r0 = mu0;
-                    r1 = mu1;
-                    r2 = mu2;
-                    r3 = mu3;
+                    init[0] = mu0;
+                    init[1] = mu1;
+                    init[2] = mu2;
+                    init[3] = mu3;
                 }
+            }
 
-                for k in 0..kernel {
-                    let tap = *tap_ptrs.get_unchecked(k);
-                    let w_start = (b * kernel + k) * in_ch * 4;
-                    let w_slice: &[[f32; 4]] = {
-                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                        core::slice::from_raw_parts(ptr, in_ch)
-                    };
-                    let in_slice = core::slice::from_raw_parts(tap, in_ch);
-                    let [t0, t1, t2, t3] = M::dot_product_4x_f32(w_slice, in_slice);
-                    r0 += t0;
-                    r1 += t1;
-                    r2 += t2;
-                    r3 += t3;
-                }
+            let w_start = b * kernel * in_ch * 4;
+            let w_slice: &[[f32; 4]] = unsafe {
+                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                core::slice::from_raw_parts(ptr, kernel * in_ch)
+            };
+            let r = unsafe { M::dot_product_4x_f32_accumulate(w_slice, flat_taps, &init) };
 
+            unsafe {
                 if out_c + 3 < out_ch {
-                    *out_frame.get_unchecked_mut(out_c) = r0;
-                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                    *out_frame.get_unchecked_mut(out_c) = r[0];
+                    *out_frame.get_unchecked_mut(out_c + 1) = r[1];
+                    *out_frame.get_unchecked_mut(out_c + 2) = r[2];
+                    *out_frame.get_unchecked_mut(out_c + 3) = r[3];
                 } else {
-                    let r = [r0, r1, r2, r3];
-                    for (lane, &val) in r.iter().enumerate() {
-                        if out_c + lane < out_ch {
-                            *out_frame.get_unchecked_mut(out_c + lane) = val;
-                        }
+                    for (lane, &val) in r.iter().enumerate().take(w) {
+                        *out_frame.get_unchecked_mut(out_c + lane) = val;
                     }
                 }
             }
@@ -170,17 +169,17 @@ impl Conv1dDyn {
         out_frame: &mut [f32],
         out_ch: usize,
         kernel: usize,
-        tap_ptrs: &[*const f32; MAX_KERNEL],
-        _k_limit: usize,
+        flat_taps: &[f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
         let num_blocks = out_ch.div_ceil(8);
         for b in 0..num_blocks {
             let out_c = b * 8;
-            let mut r = [0.0f32; 8];
+            let w = 8.min(out_ch - out_c);
+            let mut init = [0.0f32; 8];
             unsafe {
-                for (j, v) in r.iter_mut().enumerate().take(8.min(out_ch - out_c)) {
+                for (j, item) in init.iter_mut().enumerate().take(w) {
                     let v_bias = if self.do_bias {
                         *self.bias.get_unchecked(out_c + j)
                     } else {
@@ -195,25 +194,20 @@ impl Conv1dDyn {
                     } else {
                         0.0
                     };
-                    *v = v_bias + v_mixin;
+                    *item = v_bias + v_mixin;
                 }
+            }
 
-                for k in 0..kernel {
-                    let tap = *tap_ptrs.get_unchecked(k);
-                    let w_start = (b * kernel + k) * in_ch * 8;
-                    let w_slice: &[[f32; 8]] = {
-                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
-                        core::slice::from_raw_parts(ptr, in_ch)
-                    };
-                    let in_slice = core::slice::from_raw_parts(tap, in_ch);
-                    let t = M::dot_product_8x_f32(w_slice, in_slice);
-                    for (j, v) in r.iter_mut().enumerate().take(8) {
-                        *v += t[j];
-                    }
-                }
+            let w_start = b * kernel * in_ch * 8;
+            let w_slice: &[[f32; 8]] = unsafe {
+                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                core::slice::from_raw_parts(ptr, kernel * in_ch)
+            };
+            let r = unsafe { M::dot_product_8x_f32_accumulate(w_slice, flat_taps, &init) };
 
-                for (j, &v) in r.iter().enumerate().take(8.min(out_ch - out_c)) {
-                    *out_frame.get_unchecked_mut(out_c + j) = v;
+            unsafe {
+                for (j, &item) in r.iter().enumerate().take(w) {
+                    *out_frame.get_unchecked_mut(out_c + j) = item;
                 }
             }
         }
@@ -226,17 +220,17 @@ impl Conv1dDyn {
         out_frame: &mut [f32],
         out_ch: usize,
         kernel: usize,
-        tap_ptrs: &[*const f32; MAX_KERNEL],
-        _k_limit: usize,
+        flat_taps: &[f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
         let num_blocks = out_ch.div_ceil(16);
         for b in 0..num_blocks {
             let out_c = b * 16;
-            let mut r = [0.0f32; 16];
+            let w = 16.min(out_ch - out_c);
+            let mut init = [0.0f32; 16];
             unsafe {
-                for (j, v) in r.iter_mut().enumerate().take(16.min(out_ch - out_c)) {
+                for (j, item) in init.iter_mut().enumerate().take(w) {
                     let v_bias = if self.do_bias {
                         *self.bias.get_unchecked(out_c + j)
                     } else {
@@ -251,25 +245,20 @@ impl Conv1dDyn {
                     } else {
                         0.0
                     };
-                    *v = v_bias + v_mixin;
+                    *item = v_bias + v_mixin;
                 }
+            }
 
-                for k in 0..kernel {
-                    let tap = *tap_ptrs.get_unchecked(k);
-                    let w_start = (b * kernel + k) * in_ch * 16;
-                    let w_slice: &[[f32; 16]] = {
-                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
-                        core::slice::from_raw_parts(ptr, in_ch)
-                    };
-                    let in_slice = core::slice::from_raw_parts(tap, in_ch);
-                    let t = M::dot_product_16x_f32(w_slice, in_slice);
-                    for (j, v) in r.iter_mut().enumerate().take(16) {
-                        *v += t[j];
-                    }
-                }
+            let w_start = b * kernel * in_ch * 16;
+            let w_slice: &[[f32; 16]] = unsafe {
+                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                core::slice::from_raw_parts(ptr, kernel * in_ch)
+            };
+            let r = unsafe { M::dot_product_16x_f32_accumulate(w_slice, flat_taps, &init) };
 
-                for (j, &v) in r.iter().enumerate().take(16.min(out_ch - out_c)) {
-                    *out_frame.get_unchecked_mut(out_c + j) = v;
+            unsafe {
+                for (j, &item) in r.iter().enumerate().take(w) {
+                    *out_frame.get_unchecked_mut(out_c + j) = item;
                 }
             }
         }

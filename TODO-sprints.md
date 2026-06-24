@@ -243,7 +243,7 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
 * **Descrição da Mudança:**
   * Garantir o mesmo comportamento matemático nas três implementações do backend.
 
-#### [MODIFY] Tarefa B.1.4: Integração nos Modelos de Convolução (Static e Dynamic)
+#### [MODIFY] Tarefa B.1.4: Integração nos Modelos de Convolução (Static e Dynamic) [DONE]
 
 * **Objetivo:** Substituir a chamada e o loop escalar no modelo de convolução causal de 1D.
 * **Arquivos Alvos:**
@@ -254,6 +254,13 @@ Esta sprint ataca a acumulação escalar ineficiente entre as chamadas do dot-pr
   * Na convolução estática, alimentar diretamente a fatia de peso contínua de tamanho `K * IN` e o flat array de taps na pilha (que já é contíguo).
   * Na convolução dinâmica (`conv1d_dyn_dual.rs`), realizar uma cópia preliminar rápida dos taps não-contíguos para um buffer temporário de pilha e chamar o mesmo kernel de acumulação fundida contíguo.
   * Passar a inicialização `bias + mixin` já combinada como parâmetro de inicialização.
+* **Conclusão (2026-06-24):** Os 4 arquivos de convolução foram atualizados para usar os kernels `_accumulate` / `_dual_accumulate` com fusão de `K * IN` taps em uma única chamada SIMD:
+  * **Estático single-frame** (`conv1d.rs`): `in_taps` já é contíguo `[[f32; IN]; K]` → flatten para `[f32; K*IN]` via `core::slice::from_raw_parts`. Bloco de pesos de `K * IN` linhas passa direto para `dot_product_{4,8,16}x_f32_accumulate`. Eliminados: loop de init `bias+mixin` + loop per-tap `for k in 0..K` + loop `r[i] += t[i]`.
+  * **Estático dual-frame** (`conv1d_dual.rs`): mesmo padrão com `_dual_accumulate`. Dois frames processados simultaneamente com 1 chamada SIMD por bloco (antes: `K` chamadas `dot_product` + `K * 2 * w` adições).
+  * **Dinâmico single-frame** (`conv1d_dyn.rs`): taps não-contíguos copiados para buffer de pilha `tap_buf[K*IN]` (limitado a `MAX_KERNEL * 64 = 1024 f32 = 4 KB`). `process_blocks_{4,8,16}` simplificados: recebem `&[f32]` flat e chamam `_accumulate` com `kernel * in_ch` linhas de pesos.
+  * **Dinâmico dual-frame** (`conv1d_dyn_dual.rs`): dois buffers de pilha separados (f0, f1) com cópia de taps não-contíguos. `_dual_accumulate` por bloco elimina `load_*_accums` + loop per-tap + store.
+  * Funções `load_{4,8,16}_accums` marcadas `#[allow(dead_code)]` para possível uso futuro.
+  * `cargo check` limpo sem warnings, 806 testes `cargo test --lib` passam, integração (`cpp_parity`, `nam_infer_test`, `nondist_validation`, `namb_v2_validation`, `cabsim_cpp_parity`) sem regressões.
 
 ---
 

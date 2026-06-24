@@ -9,9 +9,7 @@
 //! Further splitting the single-frame kernel would break the locality
 //! of `unsafe` aliasing contracts and plain accumulators.
 
-use super::conv_input::{
-    load_4_accums, load_8_accums, load_16_accums, store_4_accums, store_8_accums, store_16_accums,
-};
+use super::conv_input::{store_4_accums, store_8_accums, store_16_accums};
 use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::{
     AlignedVec, PrefetchFn, SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple,
@@ -55,22 +53,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
 
-        let init_block = |out_frame: &mut [f32], off: usize, w: usize| {
-            for j in 0..w {
-                if self.do_bias {
-                    out_frame[off + j] = self.bias[off + j] + mixin[off + j];
-                } else {
-                    out_frame[off + j] = mixin[off + j];
-                }
-            }
-        };
-
-        for b in 0..num_blocks {
-            let off = b * interleave_width;
-            let w = interleave_width.min(OUT - off);
-            init_block(out_frame, off, w);
-        }
-
         let mut in_taps = [[0.0f32; IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
@@ -101,57 +83,62 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
+        let flat_taps: &[f32] =
+            unsafe { core::slice::from_raw_parts(in_taps.as_ptr() as *const f32, K * IN) };
+
         for b in 0..num_blocks {
             let out_c = b * interleave_width;
             let w = interleave_width.min(OUT - out_c);
+            let w_start = b * K * IN * interleave_width;
 
             match interleave_width {
                 16 => {
-                    let mut r = unsafe { load_16_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 16;
-                        let w_slice: &[[f32; 16]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let t = unsafe { M::dot_product_16x_f32(w_slice, in_slice) };
-                        for i in 0..w {
-                            r[i] += t[i];
+                    let mut init = [0.0f32; 16];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j] + mixin[out_c + j];
+                        } else {
+                            *item = mixin[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 16]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_16x_f32_accumulate(w_slice, flat_taps, &init) };
                     unsafe { store_16_accums(out_frame, out_c, r, OUT) };
                 }
                 8 => {
-                    let mut r = unsafe { load_8_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 8;
-                        let w_slice: &[[f32; 8]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let t = unsafe { M::dot_product_8x_f32(w_slice, in_slice) };
-                        for i in 0..w {
-                            r[i] += t[i];
+                    let mut init = [0.0f32; 8];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j] + mixin[out_c + j];
+                        } else {
+                            *item = mixin[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 8]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_8x_f32_accumulate(w_slice, flat_taps, &init) };
                     unsafe { store_8_accums(out_frame, out_c, r, OUT) };
                 }
                 _ => {
-                    let [mut r0, mut r1, mut r2, mut r3] =
-                        unsafe { load_4_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 4;
-                        let w_slice: &[[f32; 4]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_f32(w_slice, in_slice) };
-                        r0 += t0;
-                        r1 += t1;
-                        r2 += t2;
-                        r3 += t3;
+                    let mut init = [0.0f32; 4];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j] + mixin[out_c + j];
+                        } else {
+                            *item = mixin[out_c + j];
+                        }
                     }
-                    unsafe { store_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT) };
+                    let w_slice: &[[f32; 4]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_4x_f32_accumulate(w_slice, flat_taps, &init) };
+                    unsafe { store_4_accums(out_frame, out_c, r, OUT) };
                 }
             }
         }
@@ -172,22 +159,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
 
-        let init_block_bias = |out_frame: &mut [f32], off: usize, w: usize| {
-            for j in 0..w {
-                if self.do_bias {
-                    out_frame[off + j] = self.bias[off + j];
-                } else {
-                    out_frame[off + j] = 0.0;
-                }
-            }
-        };
-
-        for b in 0..num_blocks {
-            let off = b * interleave_width;
-            let w = interleave_width.min(OUT - off);
-            init_block_bias(out_frame, off, w);
-        }
-
         let mut in_taps = [[0.0f32; IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
@@ -218,57 +189,56 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
+        let flat_taps: &[f32] =
+            unsafe { core::slice::from_raw_parts(in_taps.as_ptr() as *const f32, K * IN) };
+
         for b in 0..num_blocks {
             let out_c = b * interleave_width;
             let w = interleave_width.min(OUT - out_c);
+            let w_start = b * K * IN * interleave_width;
 
             match interleave_width {
                 16 => {
-                    let mut r = unsafe { load_16_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 16;
-                        let w_slice: &[[f32; 16]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let t = unsafe { M::dot_product_16x_f32(w_slice, in_slice) };
-                        for i in 0..w {
-                            r[i] += t[i];
+                    let mut init = [0.0f32; 16];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 16]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_16x_f32_accumulate(w_slice, flat_taps, &init) };
                     unsafe { store_16_accums(out_frame, out_c, r, OUT) };
                 }
                 8 => {
-                    let mut r = unsafe { load_8_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 8;
-                        let w_slice: &[[f32; 8]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let t = unsafe { M::dot_product_8x_f32(w_slice, in_slice) };
-                        for i in 0..w {
-                            r[i] += t[i];
+                    let mut init = [0.0f32; 8];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j];
                         }
                     }
+                    let w_slice: &[[f32; 8]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_8x_f32_accumulate(w_slice, flat_taps, &init) };
                     unsafe { store_8_accums(out_frame, out_c, r, OUT) };
                 }
                 _ => {
-                    let [mut r0, mut r1, mut r2, mut r3] =
-                        unsafe { load_4_accums(out_frame, out_c, OUT) };
-                    for (k, in_slice) in in_taps.iter().enumerate() {
-                        let w_start = (b * K + k) * IN * 4;
-                        let w_slice: &[[f32; 4]] = unsafe {
-                            let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                            core::slice::from_raw_parts(ptr, IN)
-                        };
-                        let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_f32(w_slice, in_slice) };
-                        r0 += t0;
-                        r1 += t1;
-                        r2 += t2;
-                        r3 += t3;
+                    let mut init = [0.0f32; 4];
+                    for (j, item) in init.iter_mut().enumerate().take(w) {
+                        if self.do_bias {
+                            *item = self.bias[out_c + j];
+                        }
                     }
-                    unsafe { store_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT) };
+                    let w_slice: &[[f32; 4]] = unsafe {
+                        let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                        core::slice::from_raw_parts(ptr, K * IN)
+                    };
+                    let r = unsafe { M::dot_product_4x_f32_accumulate(w_slice, flat_taps, &init) };
+                    unsafe { store_4_accums(out_frame, out_c, r, OUT) };
                 }
             }
         }
