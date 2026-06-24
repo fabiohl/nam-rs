@@ -134,7 +134,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 ---
 
-### SPRINT F.2 — Higiene Estrutural e Modularização do A2 (Estático e Dinâmico)
+### SPRINT F.2 — Higiene Estrutural e Modularização do A2 (Estático e Dinâmico) [DONE]
 
 **Foco:** Resolver o finding **NF-03** (Arquivos `dynamic.rs` com 959 linhas e `mod.rs` com 726 linhas violando princípios de arquivos pequenos/coesos).
 
@@ -163,7 +163,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 **Foco:** Resolver o finding **NF-06** (Ruídos Criterion e comentários `SAFETY` genéricos).
 
-#### [ ] Tarefa F.3.1 — Revisar Comentários `SAFETY` no Trait SIMD (NF-06)
+#### [x] Tarefa F.3.1 — Revisar Comentários `SAFETY` no Trait SIMD (NF-06)
 
 - **Descrição:** Atualizar o arquivo [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs) de forma a documentar precondições explícitas de memória e alinhamento (substituindo o comentário genérico repetido).
 
