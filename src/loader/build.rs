@@ -127,6 +127,9 @@ pub fn load_and_build_model(
                     NamErrorCode::NamJsonSubmodelsTooDeep
                 }
                 nam_json::JsonError::WeightNotFinite { .. } => NamErrorCode::NamJsonWeightNotFinite,
+                nam_json::JsonError::InvalidSampleRate { .. } => {
+                    NamErrorCode::NamJsonInvalidSampleRate
+                }
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)

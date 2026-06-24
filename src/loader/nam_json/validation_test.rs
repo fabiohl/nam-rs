@@ -274,3 +274,151 @@ fn test_submodels_exceed_limit_rejected() {
         "error should mention submodels: {err_msg}"
     );
 }
+
+// — Sample rate visitor tests ————————————————————————————————————————
+
+#[derive(Debug, serde::Deserialize)]
+struct SampleRateWrapper {
+    #[serde(
+        default,
+        deserialize_with = "super::validation::deserialize_sample_rate"
+    )]
+    sample_rate: Option<f32>,
+}
+
+#[test]
+fn test_sample_rate_absence_is_none() {
+    let json = r#"{}"#;
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
+}
+
+#[test]
+fn test_sample_rate_null_is_none() {
+    let json = r#"{"sample_rate": null}"#;
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
+}
+
+#[test]
+fn test_sample_rate_valid_is_ok() {
+    let json = r#"{"sample_rate": 48000.0}"#;
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.sample_rate, Some(48000.0));
+}
+
+#[test]
+fn test_sample_rate_zero_rejected() {
+    let json = r#"{"sample_rate": 0.0}"#;
+    let result: Result<SampleRateWrapper, _> = serde_json::from_str(json);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
+        "error should mention sample rate: {err_msg}"
+    );
+}
+
+#[test]
+fn test_sample_rate_negative_rejected() {
+    let json = r#"{"sample_rate": -44100.0}"#;
+    let result: Result<SampleRateWrapper, _> = serde_json::from_str(json);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
+        "error should mention sample rate: {err_msg}"
+    );
+}
+
+struct MockDeserializer {
+    val: Option<f32>,
+}
+
+impl<'de> serde::Deserializer<'de> for MockDeserializer {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        unimplemented!()
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match self.val {
+            Some(v) => visitor.visit_some(MockFloatDeserializer(v)),
+            None => visitor.visit_none(),
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct enum identifier ignored_any
+    }
+}
+
+struct MockFloatDeserializer(f32);
+
+impl<'de> serde::Deserializer<'de> for MockFloatDeserializer {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_f32(self.0)
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct enum identifier ignored_any
+    }
+}
+
+#[test]
+fn test_sample_rate_infinity_rejected() {
+    let deser = MockDeserializer {
+        val: Some(f32::INFINITY),
+    };
+    let result = super::validation::deserialize_sample_rate(deser);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
+        "error should contain sample rate info, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_sample_rate_neg_infinity_rejected() {
+    let deser = MockDeserializer {
+        val: Some(f32::NEG_INFINITY),
+    };
+    let result = super::validation::deserialize_sample_rate(deser);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
+        "error should contain sample rate info, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_sample_rate_nan_rejected() {
+    let deser = MockDeserializer {
+        val: Some(f32::NAN),
+    };
+    let result = super::validation::deserialize_sample_rate(deser);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
+        "error should contain sample rate info, got: {err_msg}"
+    );
+}

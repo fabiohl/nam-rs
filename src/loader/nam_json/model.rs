@@ -7,7 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::validation::{deserialize_submodels, deserialize_training, deserialize_weights};
+use super::validation::{
+    deserialize_sample_rate, deserialize_submodels, deserialize_training, deserialize_weights,
+};
 
 /// Structure representing a date and time associated with the model's metadata.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
@@ -281,6 +283,7 @@ pub struct NamModelData {
     #[serde(deserialize_with = "deserialize_weights")]
     pub weights: Vec<f32>,
     /// Original sample rate projected by the modeling (always ideal reference 48 kHz).
+    #[serde(default, deserialize_with = "deserialize_sample_rate")]
     pub sample_rate: Option<f32>,
     /// Extra physical-acoustic properties associated.
     pub metadata: Option<NamMetadata>,

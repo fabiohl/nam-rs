@@ -48,6 +48,13 @@ pub enum JsonError {
         /// The non-finite value.
         value: f32,
     },
+    /// The sample rate is invalid (non-finite or <= 0.0).
+    InvalidSampleRate {
+        /// The invalid sample rate value.
+        value: f32,
+        /// Reason why it is invalid.
+        reason: &'static str,
+    },
     /// Generic serde_json parse error.
     Serde(String),
 }
@@ -95,6 +102,13 @@ impl std::fmt::Display for JsonError {
                     f,
                     "weight at index {} is not finite (value: {:e})",
                     index, value
+                )
+            }
+            Self::InvalidSampleRate { value, reason } => {
+                write!(
+                    f,
+                    "sample rate is invalid (value: {}, reason: {})",
+                    value, reason
                 )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),

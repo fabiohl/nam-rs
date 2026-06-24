@@ -411,3 +411,55 @@ impl<'de> serde::de::Visitor<'de> for SubmodelsOptionVisitor {
         Ok(Some(arr))
     }
 }
+
+/// Custom deserializer for `sample_rate: Option<f32>` that ensures it is finite and > 0.0.
+pub(crate) fn deserialize_sample_rate<'de, D>(deserializer: D) -> Result<Option<f32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct SampleRateOptionVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for SampleRateOptionVisitor {
+        type Value = Option<f32>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an optional f32 sample rate")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let val = f32::deserialize(deserializer)?;
+            if !val.is_finite() {
+                return Err(serde::de::Error::custom(JsonError::InvalidSampleRate {
+                    value: val,
+                    reason: "must be finite",
+                }));
+            }
+            if val <= 0.0 {
+                return Err(serde::de::Error::custom(JsonError::InvalidSampleRate {
+                    value: val,
+                    reason: "must be > 0.0",
+                }));
+            }
+            Ok(Some(val))
+        }
+    }
+
+    deserializer.deserialize_option(SampleRateOptionVisitor)
+}

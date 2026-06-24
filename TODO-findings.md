@@ -518,9 +518,9 @@ mesmo necessário, que ele delegue para a versão escalar de referência em vez 
 
 ---
 
-## 🔵 F11 — Caminho `.nam` (JSON) não valida `sample_rate` (presente no `.namb`)
+## 🔵 F11 — Caminho `.nam` (JSON) não valida `sample_rate` (presente no `.namb`) [DONE]
 
-- **Status:** ⬜
+- **Status:** ✅
 - **Locais:** validação presente em [`src/loader/namb/parse.rs:125-140`](src/loader/namb/parse.rs#L125); ausente no caminho JSON ([`src/loader/nam_json/`](src/loader/nam_json/)); consumo em `build.rs:148` (`as u32`).
 - **Severidade:** 🔵 Baixa (robustez lógica; sem unsafe).
 
@@ -539,7 +539,7 @@ JSON, com erro diagnóstico.
 > A criação do `TODO-sprints.md` (épicos → sprints → tarefas) deve ser feita **sob demanda** pela
 > skill `planejador-arquiteto`.
 
-### Épico E1 — Blindagem do Loader contra entrada não confiável (Segurança)
+### Épico E1 — Blindagem do Loader contra entrada não confiável (Segurança) [DONE]
 
 **Findings:** F2 (🟠), F1 (🔴, ramo A2), F7 (🔵), F8 (🔵), F11 (🔵).
 **Objetivo:** fechar a superfície de ataque de arquivos `.nam`/`.namb` maliciosos/corrompidos.
