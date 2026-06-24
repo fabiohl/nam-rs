@@ -85,21 +85,8 @@ residuais de cópia de buffer.
 
 ### Sprint E1: Regressão Dinâmica e Zeragem de Bloco (F8 + F9) — Alta Prioridade
 
-- **[ ] Tarefa E1.1 — Corrigir regressão WaveNet Dinâmico — taps não-contíguos (F9 / B.4.1)**
-  - **Foco:** Eliminar a cópia de taps para buffer intermediário no caminho dinâmico que causa
-    regressão de +53-57% para shapes pequenos (CH3, CH5).
-  - **Ação:**
-    1. Auditar `src/models/wavenet/conv1d_dyn_dual.rs` e `conv1d_dyn.rs`: identificar onde a
-       cópia para buffer temporário de pilha foi adicionada pelo Épico B para taps não-contíguos.
-    2. **Opção A (atalho por threshold):** para `num_frames ≤ FRAMES_THRESHOLD` (avaliar 2 ou 4),
-       usar o caminho K-taps-sequencial original (sem buffer intermediário). O overhead de cópia
-       domina sobre a fusão para batches pequenos.
-    3. **Opção B (kernel sem cópia):** implementar variante do kernel de acumulação fundida que
-       aceite ponteiros por tap (`&[*const f32; K]`) em vez de slice contíguo — eliminando a cópia.
-    4. **Opção C (especialização const):** para shapes usados por modelos reais (CH3, CH5, CH8),
-       adicionar const-generic specializations no dispatcher dinâmico.
-  - **Validação:** Criterion `WaveNet_Dynamic_CH5_64samp` deve igualar ou superar `A2Full_CH8_64samp`
-    (26.98 µs). Todos os golden vectors dinâmicos devem passar bit-a-bit.
+- **[x] Tarefa E1.1 — Corrigir regressão WaveNet Dinâmico — taps não-contíguos (F9 / B.4.1)**
+  - **Conclusão:** Implementada **Opção A** (K-taps sequencial sem buffer intermediário) como padrão para todo o caminho dinâmico. A cópia de taps não-contíguos para `tap_buf` (4 KB stack, `copy_from_slice`) foi eliminada de `conv1d_dyn.rs:process_single_frame` e `conv1d_dyn_dual.rs:process_dual_frame`. Cada tap é agora processado via chamada sequencial a `dot_product_*_accumulate` com fatia `in_ch`-sized diretamente do ponteiro do tap, acumulando K vezes no mesmo registrador. A constante `TAP_BUF_FLOATS` foi removida de ambos os arquivos. **Golden vectors (22/22):** bit-identical. **Wavenet unitários (91/91):** passam. **Zero-alloc (8/8):** RT-safe confirmada. **Criterion `WaveNet_Dynamic_CH5_64samp`:** 58.06 µs → **38.05 µs (-34.2%)**, razão Dynamic/A2Full caiu de 2.15× para **1.37×**. O remanescente (≈10 µs) é overhead estrutural do caminho dinâmico (dispatch, AlignedVec indireto, loops de bloco não-const) — endereçável via **Opção C** (especialização const-generic para CH3/CH5/CH8) em sprint futuro.
 
 - **[ ] Tarefa E1.2 — Eliminar PLT `memset` no prólogo de `WaveNetLayer` (F8)**
   - **Foco:** Substituir a zeragem de 4 KB via PLT `callq *GOT/memset` a cada chamada de

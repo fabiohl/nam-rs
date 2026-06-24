@@ -13,8 +13,6 @@ use crate::math::common::{
 
 use super::common::MAX_KERNEL;
 
-const TAP_BUF_FLOATS: usize = MAX_KERNEL * 64;
-
 /// Structure for causal 1D convolution with dynamic dimensions.
 #[derive(Clone)]
 #[repr(align(64))]
@@ -58,7 +56,6 @@ impl Conv1dDyn {
         mixin: Option<&[f32]>,
     ) {
         let in_ch = self.in_ch;
-        let out_ch = self.out_ch;
         let kernel = self.kernel;
         let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
         let k_limit = kernel.min(MAX_KERNEL);
@@ -76,85 +73,86 @@ impl Conv1dDyn {
             }
         }
 
-        let tap_total = kernel * in_ch;
-        debug_assert!(tap_total <= TAP_BUF_FLOATS);
-        let mut tap_buf = [0.0f32; TAP_BUF_FLOATS];
-        for k in 0..kernel {
-            let src = unsafe { core::slice::from_raw_parts(tap_ptrs[k], in_ch) };
-            tap_buf[k * in_ch..(k + 1) * in_ch].copy_from_slice(src);
-        }
-        let flat_taps: &[f32] = &tap_buf[..tap_total];
-
         unsafe {
             match self.interleave_width {
                 16 => {
-                    self.process_blocks_16::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin)
+                    self.process_blocks_16_nocopy::<M>(
+                        out_frame, kernel, &tap_ptrs, in_ch, mixin,
+                    )
                 }
-                8 => self.process_blocks_8::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin),
-                _ => self.process_blocks_4::<M>(out_frame, out_ch, kernel, flat_taps, in_ch, mixin),
+                8 => self.process_blocks_8_nocopy::<M>(
+                    out_frame, kernel, &tap_ptrs, in_ch, mixin,
+                ),
+                _ => self.process_blocks_4_nocopy::<M>(
+                    out_frame, kernel, &tap_ptrs, in_ch, mixin,
+                ),
             }
         }
     }
 
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn process_blocks_4<M: SimdMath>(
+    unsafe fn process_blocks_4_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],
-        out_ch: usize,
         kernel: usize,
-        flat_taps: &[f32],
+        tap_ptrs: &[*const f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
-        let num_blocks = out_ch.div_ceil(4);
+        let num_blocks = self.out_ch.div_ceil(4);
         for b in 0..num_blocks {
             let out_c = b * 4;
-            let w = 4.min(out_ch - out_c);
+            let w = 4.min(self.out_ch - out_c);
             let (mu0, mu1, mu2, mu3) = unsafe { Self::load_mixin_4(mixin, out_c) };
 
-            let mut init = [0.0f32; 4];
+            let mut acc = [0.0f32; 4];
             unsafe {
                 if self.do_bias {
-                    init[0] = *self.bias.get_unchecked(out_c) + mu0;
-                    init[1] = if out_c + 1 < out_ch {
+                    acc[0] = *self.bias.get_unchecked(out_c) + mu0;
+                    acc[1] = if out_c + 1 < self.out_ch {
                         *self.bias.get_unchecked(out_c + 1)
                     } else {
                         0.0
                     } + mu1;
-                    init[2] = if out_c + 2 < out_ch {
+                    acc[2] = if out_c + 2 < self.out_ch {
                         *self.bias.get_unchecked(out_c + 2)
                     } else {
                         0.0
                     } + mu2;
-                    init[3] = if out_c + 3 < out_ch {
+                    acc[3] = if out_c + 3 < self.out_ch {
                         *self.bias.get_unchecked(out_c + 3)
                     } else {
                         0.0
                     } + mu3;
                 } else {
-                    init[0] = mu0;
-                    init[1] = mu1;
-                    init[2] = mu2;
-                    init[3] = mu3;
+                    acc[0] = mu0;
+                    acc[1] = mu1;
+                    acc[2] = mu2;
+                    acc[3] = mu3;
                 }
             }
 
-            let w_start = b * kernel * in_ch * 4;
-            let w_slice: &[[f32; 4]] = unsafe {
-                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
-                core::slice::from_raw_parts(ptr, kernel * in_ch)
-            };
-            let r = unsafe { M::dot_product_4x_f32_accumulate(w_slice, flat_taps, &init) };
+            for k in 0..kernel {
+                let w_start = b * kernel * in_ch * 4 + k * in_ch * 4;
+                let w_slice: &[[f32; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 4];
+                    core::slice::from_raw_parts(ptr, in_ch)
+                };
+                let tap_slice =
+                    unsafe { core::slice::from_raw_parts(*tap_ptrs.get_unchecked(k), in_ch) };
+                acc =
+                    unsafe { M::dot_product_4x_f32_accumulate(w_slice, tap_slice, &acc) };
+            }
 
             unsafe {
-                if out_c + 3 < out_ch {
-                    *out_frame.get_unchecked_mut(out_c) = r[0];
-                    *out_frame.get_unchecked_mut(out_c + 1) = r[1];
-                    *out_frame.get_unchecked_mut(out_c + 2) = r[2];
-                    *out_frame.get_unchecked_mut(out_c + 3) = r[3];
+                if out_c + 3 < self.out_ch {
+                    *out_frame.get_unchecked_mut(out_c) = acc[0];
+                    *out_frame.get_unchecked_mut(out_c + 1) = acc[1];
+                    *out_frame.get_unchecked_mut(out_c + 2) = acc[2];
+                    *out_frame.get_unchecked_mut(out_c + 3) = acc[3];
                 } else {
-                    for (lane, &val) in r.iter().enumerate().take(w) {
+                    for (lane, &val) in acc.iter().enumerate().take(w) {
                         *out_frame.get_unchecked_mut(out_c + lane) = val;
                     }
                 }
@@ -164,22 +162,21 @@ impl Conv1dDyn {
 
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn process_blocks_8<M: SimdMath>(
+    unsafe fn process_blocks_8_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],
-        out_ch: usize,
         kernel: usize,
-        flat_taps: &[f32],
+        tap_ptrs: &[*const f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
-        let num_blocks = out_ch.div_ceil(8);
+        let num_blocks = self.out_ch.div_ceil(8);
         for b in 0..num_blocks {
             let out_c = b * 8;
-            let w = 8.min(out_ch - out_c);
-            let mut init = [0.0f32; 8];
+            let w = 8.min(self.out_ch - out_c);
+            let mut acc = [0.0f32; 8];
             unsafe {
-                for (j, item) in init.iter_mut().enumerate().take(w) {
+                for (j, item) in acc.iter_mut().enumerate().take(w) {
                     let v_bias = if self.do_bias {
                         *self.bias.get_unchecked(out_c + j)
                     } else {
@@ -198,15 +195,19 @@ impl Conv1dDyn {
                 }
             }
 
-            let w_start = b * kernel * in_ch * 8;
-            let w_slice: &[[f32; 8]] = unsafe {
-                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
-                core::slice::from_raw_parts(ptr, kernel * in_ch)
-            };
-            let r = unsafe { M::dot_product_8x_f32_accumulate(w_slice, flat_taps, &init) };
+            for k in 0..kernel {
+                let w_start = b * kernel * in_ch * 8 + k * in_ch * 8;
+                let w_slice: &[[f32; 8]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 8];
+                    core::slice::from_raw_parts(ptr, in_ch)
+                };
+                let tap_slice =
+                    unsafe { core::slice::from_raw_parts(*tap_ptrs.get_unchecked(k), in_ch) };
+                acc = unsafe { M::dot_product_8x_f32_accumulate(w_slice, tap_slice, &acc) };
+            }
 
             unsafe {
-                for (j, &item) in r.iter().enumerate().take(w) {
+                for (j, &item) in acc.iter().enumerate().take(w) {
                     *out_frame.get_unchecked_mut(out_c + j) = item;
                 }
             }
@@ -215,22 +216,21 @@ impl Conv1dDyn {
 
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn process_blocks_16<M: SimdMath>(
+    unsafe fn process_blocks_16_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],
-        out_ch: usize,
         kernel: usize,
-        flat_taps: &[f32],
+        tap_ptrs: &[*const f32],
         in_ch: usize,
         mixin: Option<&[f32]>,
     ) {
-        let num_blocks = out_ch.div_ceil(16);
+        let num_blocks = self.out_ch.div_ceil(16);
         for b in 0..num_blocks {
             let out_c = b * 16;
-            let w = 16.min(out_ch - out_c);
-            let mut init = [0.0f32; 16];
+            let w = 16.min(self.out_ch - out_c);
+            let mut acc = [0.0f32; 16];
             unsafe {
-                for (j, item) in init.iter_mut().enumerate().take(w) {
+                for (j, item) in acc.iter_mut().enumerate().take(w) {
                     let v_bias = if self.do_bias {
                         *self.bias.get_unchecked(out_c + j)
                     } else {
@@ -249,15 +249,21 @@ impl Conv1dDyn {
                 }
             }
 
-            let w_start = b * kernel * in_ch * 16;
-            let w_slice: &[[f32; 16]] = unsafe {
-                let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
-                core::slice::from_raw_parts(ptr, kernel * in_ch)
-            };
-            let r = unsafe { M::dot_product_16x_f32_accumulate(w_slice, flat_taps, &init) };
+            for k in 0..kernel {
+                let w_start = b * kernel * in_ch * 16 + k * in_ch * 16;
+                let w_slice: &[[f32; 16]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [f32; 16];
+                    core::slice::from_raw_parts(ptr, in_ch)
+                };
+                let tap_slice =
+                    unsafe { core::slice::from_raw_parts(*tap_ptrs.get_unchecked(k), in_ch) };
+                acc = unsafe {
+                    M::dot_product_16x_f32_accumulate(w_slice, tap_slice, &acc)
+                };
+            }
 
             unsafe {
-                for (j, &item) in r.iter().enumerate().take(w) {
+                for (j, &item) in acc.iter().enumerate().take(w) {
                     *out_frame.get_unchecked_mut(out_c + j) = item;
                 }
             }
