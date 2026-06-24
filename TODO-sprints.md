@@ -48,7 +48,7 @@ graph TD
 
 ## 3. Detalhamento das Sprints e Tarefas Técnicas
 
-### SPRINT A.1 — Otimização de Prefetch e Eliminação de `vzeroupper` (F2, F7)
+### SPRINT A.1 — Otimização de Prefetch e Eliminação de `vzeroupper` (F2, F7) [DONE]
 
 Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno de convolução, eliminando o overhead de desvio, salvamento de registradores e a inserção forçada de instruções `vzeroupper`.
 
@@ -92,13 +92,22 @@ Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno 
 
 * **Conclusão:** Todas as 7 chamadas indiretas via `(self.prefetch_fn)(...)` foram substituídas por dispatch estático com `if self.dilation >= 128` em 5 arquivos: `conv1d.rs` (2 sites), `conv1d_dual.rs` (1), `conv1d_dyn.rs` (1), `conv1d_dyn_dual.rs` (1), `grouped_conv1d.rs` (2). O campo `prefetch_fn` foi mantido nas structs (`Conv1d`, `Conv1dDyn`, `A2GroupedConv1d`) com `#[allow(dead_code)]` para preservar a API pública de loaders/constructors. `cargo check` limpo, `cargo test --lib` (407 unit tests) e 37 integration test binaries passam sem falhas.
 
-#### [VERIFY] Tarefa A.1.3: Auditoria de Emissão de `vzeroupper` (F7)
+#### [VERIFY] Tarefa A.1.3: Auditoria de Emissão de `vzeroupper` (F7) [DONE]
 
 * **Objetivo:** Validar que as instruções `vzeroupper` e `callq` indiretas no disassembly do monólito foram eliminadas ou reduzidas drasticamente.
 * **Descrição da Mudança:**
   * Compilar a crate em modo release com suporte a AVX2 (`RUSTFLAGS="-C target-feature=+avx2"` ou via script de build oficial).
   * Obter o disassembly da função `WaveNetModel::process` (ex: via `objdump`, `cargo-show-asm` ou `perf annotate`) e auditar a contagem de instruções `vzeroupper` e `callq` associadas ao prefetch.
 * **Critério de Sucesso:** Eliminação total de `callq` no laço interno de convolução e redução expressiva da contagem global de `vzeroupper` no monólito.
+* **Resultado da Auditoria (2026-06-24):**
+  * Binário analisado: `target/release/nam-rs` (release, `x86-64-v3`, LTO fat, symbols preserved).
+  * **Monólito WaveNetModel::process** (maior variante estática, ~59 KB):
+    * `vzeroupper`: **85** (baseline: 152 → **redução de 44%**).
+    * `call` (total): **198** (baseline: 263 → **redução de 25%**).
+    * Chamadas indiretas (`call *`): **32** — todas para libc (`memset`: 24, `memcpy`: 6, `tanhf`: 2). **Nenhuma chamada indireta para `prefetch_strategy_*`**.
+  * **Lib `libnam_rs.so`**: **0 `vzeroupper`** em todo o `.text` (zerou completamente os guardas SSE/AVX).
+  * **Símbolos `prefetch_strategy_simple`/`prefetch_strategy_2stage`**: existem no binário (não-eliminados pelo linker) mas **não são chamados** de nenhum dos 4 monomorfismos de `WaveNetModel::process` nem dos 2 de `WaveNetA2::process`.
+  * **Conclusão:** Sprint A.1 atinge ambos os critérios de sucesso. O laço interno de convolução está livre de `callq` indiretas e a contagem de `vzeroupper` caiu 44% no monólito principal.
 
 ---
 
@@ -106,7 +115,7 @@ Esta sprint ataca a chamada indireta `(self.prefetch_fn)(...)` no laço interno 
 
 Esta sprint ataca a pressão sobre os registradores e pilha causada pelo inlining agressivo de todas as camadas dentro de uma única pilha monolítica de ~10 KB em `WaveNetModel::process`.
 
-#### [MODIFY] Tarefa A.2.1: Flexibilização do Inlining na Fronteira de Camada
+#### [MODIFY] Tarefa A.2.1: Flexibilização do Inlining na Fronteira de Camada [DONE]
 
 * **Objetivo:** Permitir ao compilador criar limites de chamada reais entre as camadas de processamento para evitar que variáveis locais de múltiplas camadas ocupem os mesmos registradores físicos e pilha simultaneamente.
 * **Arquivos Alvos:**

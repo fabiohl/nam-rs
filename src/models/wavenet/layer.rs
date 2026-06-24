@@ -24,7 +24,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     ///
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,

@@ -61,7 +61,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     ///
     /// # Safety
     /// State pointers iterate internally without bounds checks.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn process_block_internal<M: SimdMath, const PREWARM: bool>(
         &mut self,
         layer_inputs: &[f32],
