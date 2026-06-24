@@ -263,13 +263,17 @@ chama `set_max_buffer_size` no RT.
 
 ## 🟠 F4 — Aritmética de ponteiro fora dos limites em prefetch SIMD (UB sob strict provenance) [DONE]
 
-- **Status:** ✅
-- **Locais (sistêmico):**
+- **Status:** ✅ Resolvido (2026-06-24). **Nota pós-auditoria de correção:** os locais originalmente
+  listados foram todos corrigidos com `wrapping_add`. Os sites `layer_array.rs:131,134` e
+  `layer_array_dyn.rs:121,124` — que usam `.add(i+1)` / `.add(i+2)` — são **falsos positivos**:
+  ambos são protegidos por guards `if i+1 < num_layers` / `if i+2 < num_layers` antes do `.add()`,
+  mantendo o ponteiro dentro dos limites do array em todos os casos de execução.
+- **Locais corrigidos (via `wrapping_add`):**
   - [`src/math/gemm/gemv/kernel_macro.rs:57,157`](src/math/gemm/gemv/kernel_macro.rs#L57)
-  - [`src/math/gemm/gemv/f16_avx2.rs:40`](src/math/gemm/gemv/f16_avx2.rs#L40), `f16_avx512.rs:40`, `f32_avx512.rs:77,229`
-  - [`src/math/gemm/dot_4x/avx2.rs:45-49,139-141`](src/math/gemm/dot_4x/avx2.rs#L45), `avx2_dual.rs:175-179`, `avx512.rs:36-39`, `avx512_dual.rs:52-55`
-  - [`src/math/common/ops.rs:128,147,151`](src/math/common/ops.rs#L128) (`base_ptr.add(16)` / `add(step)` / `add(2*step)`)
-- **Severidade:** 🟠 Alta como *soundness* (UB latente), baixa probabilidade prática em x86 hoje.
+  - [`src/math/gemm/gemv/f16_avx512.rs:40`](src/math/gemm/gemv/f16_avx512.rs#L40), `f32_avx512.rs:91,255`
+  - [`src/math/gemm/dot_4x/avx2.rs:55-59,154-156`](src/math/gemm/dot_4x/avx2.rs#L55), `avx2_dual.rs:190-194`, `avx512.rs:41-44`, `avx512_dual.rs:54-57`
+  - [`src/math/common/ops.rs`](src/math/common/ops.rs) (`prefetch_strategy_simple` / `prefetch_strategy_2stage` usam `base_ptr.wrapping_add`)
+- **Severidade original:** 🟠 Alta como *soundness* (UB latente), baixa probabilidade prática em x86 hoje.
 
 ### F4 — Descrição
 
@@ -572,6 +576,139 @@ comprimento nos kernels multi-vetor/batch; load de `coeffs` unaligned ou static-
 **Itens-chave:** decidir entre crossfade real (Opção A) ou hold-only documentado (Opção B); remover
 retorno morto; teste de descontinuidade inter-bloco.
 
+### Épico E5 — Proteções residuais pós-F2 (DoS de segunda ordem) ⬜
+
+**Findings:** F12 (🔵), F13 (🟡).
+**Objetivo:** fechar os dois vetores de segurança descobertos durante a **auditoria de correção**
+das implementações do Épico E1 (F2) e do Épico E4 (F5).
+**Itens-chave:**
+
+- **F12:** Adicionar `MAX_TOTAL_STATE_FRAMES` em `validation.rs` e verificar o orçamento agregado
+  de estado (`(k-1)×dilation` acumulado × `channels`) durante a detecção de topologia WaveNet,
+  antes de qualquer alocação. Estender `proptest_parsers.rs` para garantir que nenhum input válido
+  exceda o orçamento.
+- **F13:** Redimensionar `backup_starts` de `[0usize; 64]` para `[0usize; MAX_WAVENET_ARRAYS × MAX_DILATIONS_PER_ARRAY]`
+  (= 512 entradas, 4 KB de stack) em `inference.rs:223,389`. Adicionar `debug_assert_eq!` de
+  completude após o backup. Considerar failsafe que degrade para hold-only sem corrupção de estado
+  se capacidade insuficiente.
+**Prioridade:** F13 > F12 (F13 causa saída de áudio incorreta; F12 é DoS de menor magnitude).
+
+---
+
+## 🔵 F12 — Amplificação residual de memória via state buffers (DoS de baixa magnitude)
+
+- **Status:** ⬜
+- **Locais:**
+  - [`src/models/wavenet/common.rs:61`](src/models/wavenet/common.rs#L61) (`WaveNetLayerState::new` aloca `MirroredBuffer` proporcional ao campo receptivo).
+  - [`src/loader/dispatcher/wavenet/dynamic.rs:60`](src/loader/dispatcher/wavenet/dynamic.rs#L60) (`rf = (k-1)*dilation` sem teto para o produto combinado).
+- **Severidade:** 🔵 Baixa (melhoria F2; amplificação muito menor que o caso irrestrito anterior).
+
+### Descrição
+
+A proteção F2 adicionou limites individuais: `MAX_KERNEL_SIZE=64`, `MAX_DILATION=4096`,
+`MAX_DILATIONS_PER_ARRAY=64`, `MAX_WAVENET_ARRAYS=8`, `MAX_WAVENET_FREE_CHANNELS=512`. Porém
+**não existe um limite para o produto total** de memória de estado resultante. Cada camada aloca
+um `MirroredBuffer` de tamanho `(k-1)*dilation + max_buf + padding` × `channels` × 2
+(por ser espelho virtual).
+
+Pior caso com os novos limites: `k=64, d=4096, ch=1, 8 arrays × 64 dilações = 512 camadas`.
+Campo receptivo por camada: `(64-1)*4096 = 258048 frames` → buffer `≈ (258048+25+1) × 1 × 2 × 4 bytes ≈ 2 MB` por
+camada → **512 camadas × 2 MB ≈ 1 GB de estado** a partir de um arquivo de modelo de tamanho
+mínimo (poucos KB de pesos com ch=1). A ratio de amplificação é ≈ 28.000×.
+
+Este é um **DoS por amplificação de memória**, não por peso, não coberto pela defesa atual de
+`MAX_FLOAT_COUNT / MAX_WEIGHTS`. Comparado ao caso pré-F2 (amplificação ilimitada), é uma
+melhoria significativa, mas ainda permite um arquivo de ~36 KB crashar um sistema com 1 GB
+disponível.
+
+### Proposta de solução
+
+1. Calcular o **orçamento total de estado** durante a validação de topologia. Adicionar
+   `checked_mul(receptive_field, channels)` acumulado sobre todas as camadas e rejeitar se
+   exceder `MAX_TOTAL_STATE_FRAMES` (ex.: `1 << 26` = 64 M frames = 256 MB para `f32`).
+2. Expor o orçamento como constante documentada em `validation.rs`:
+
+   ```rust
+   /// Aggregate cap for all WaveNet layer state frames (pre-allocated mirrored buffers).
+   /// Prevents DoS via receptive-field amplification. Default: 64 Mi frames ≈ 256 MB @ f32.
+   pub const MAX_TOTAL_STATE_FRAMES: usize = 1 << 26;
+   ```
+
+3. Aplicar a verificação em `topology/wavenet.rs` após construir todas as camadas:
+
+   ```rust
+   let total_state: usize = dilations.iter().flatten()
+       .zip(kernel_sizes.iter().cycle())
+       .try_fold(0usize, |acc, (&d, &k)| {
+           acc.checked_add(k.saturating_sub(1).saturating_mul(d))
+       })
+       .ok_or("State overflow")?;
+   if total_state > MAX_TOTAL_STATE_FRAMES / max(channels) {
+       return WavenetTopologyResult::Rejected("Aggregate state budget exceeded");
+   }
+   ```
+
+4. Estender o fuzzing de `tests/proptest_parsers.rs` com asserção de que nenhum modelo válido
+   aloca mais que o orçamento.
+
+---
+
+## 🟡 F13 — Buffer de backup de estado para crossfade WaveNet dimensionado para 64 entradas, mas max é 512
+
+- **Status:** ⬜
+- **Locais:**
+  - [`src/dsp/pipeline/stages/inference.rs:223,389`](src/dsp/pipeline/stages/inference.rs#L223) (`backup_starts = [0usize; 64]`).
+  - [`src/models/wavenet/model_dyn.rs:116`](src/models/wavenet/model_dyn.rs#L116) (`if *offset < starts.len()` — truncamento silencioso).
+  - [`src/models/wavenet/model.rs`](src/models/wavenet/model.rs) — mesma proteção de guarda.
+- **Severidade:** 🟡 Média (produz saída de áudio incorreta, não crash; só ativa em WaveNet dinâmico
+  com >64 camadas + degradação adaptativa ativa).
+
+### Descrição
+
+O crossfade double-pass do WaveNet (fix F5) usa um array de stack `[0usize; 64]` para salvar e
+restaurar os `buffer_start` de todas as camadas entre as duas passagens. `backup_buffer_starts`
+itera sobre `array.states` e para de salvar quando `offset >= starts.len()` — truncamento
+**silencioso** sem erro, sem log.
+
+Com os novos limites F2 (`MAX_WAVENET_ARRAYS=8`, `MAX_DILATIONS_PER_ARRAY=64`), um modelo
+dinâmico pode ter até `8 × 64 = 512 camadas`. Para qualquer modelo com mais de 64 camadas, as
+camadas `65..N` não têm seus `buffer_start` salvos. Quando o segundo passe (NEW layer count)
+executa, essas camadas encontram `buffer_start` **avançado** pela primeira passagem (OLD), lendo
+posições incorretas do delay-line. O blend resultante mistura amostras temporalmente
+dessincronizadas, produzindo artefatos audíveis (pré-eco / ghost signal) durante a transição
+adaptativa, e também **avança permanentemente** os ponteiros de estado das camadas afetadas,
+introduzindo deriva de estado para os blocos subsequentes.
+
+### Impacto detalhado
+
+| Condição | Efeito |
+|:---------|:-------|
+| Modelo com ≤ 64 camadas (todos os SKUs de catálogo: max 23 cam.) | Sem efeito — catálogo sempre seguro |
+| Modelo WaveNetDyn com > 64 cam. + AdaptiveCompute **desligado** | Sem efeito (crossfade nunca ativa) |
+| Modelo WaveNetDyn com > 64 cam. + AdaptiveCompute **ligado** | Estado corrompido durante crossfade; drift permanente |
+
+O cenário é exótico mas explicitamente habilitado pelos novos limites do F2.
+
+### Proposta de solução
+
+1. **Solução mínima (recomendada):** dimensionar `backup_starts` pelo máximo teórico de camadas,
+   computado a partir dos limites de topologia:
+
+   ```rust
+   // MAX_WAVENET_ARRAYS * MAX_DILATIONS_PER_ARRAY = 8 * 64 = 512
+   const MAX_WAVENET_BACKUP_STARTS: usize =
+       crate::loader::nam_json::validation::MAX_WAVENET_ARRAYS *
+       crate::loader::nam_json::validation::MAX_DILATIONS_PER_ARRAY;
+   let mut backup_starts = [0usize; MAX_WAVENET_BACKUP_STARTS];
+   ```
+
+   Custo: 512 × 8 bytes = 4 KB de stack (aceitável; o double-pass já é uma operação pesada).
+2. **Alternativa (solução robusta):** adicionar um `debug_assert_eq!(final_offset, total_layers)`
+   após o backup para detectar divergências em testes.
+3. **Alternativa (preventiva):** tornar o backup/restore uma operação infallível que retorna `Result`
+   e aborta o crossfade se a capacidade for insuficiente (degradando para o comportamento hold-only
+   anterior sem artefatos de estado corrompido).
+
 ---
 
 ## Apêndice — Achados investigados e **descartados** (para rastreabilidade)
@@ -584,3 +721,13 @@ retorno morto; teste de descontinuidade inter-bloco.
   (Release/Acquire) — protocolos lock-free **revisados e corretos**.
 - Ring buffers `MirroredBuffer`/A2 head-ring, FDL do UPOLS (cabsim), FSM do gate — lógica de
   wrap/índices **verificada e correta**.
+- `DspBridge.dropped_frames` usa `Ordering::Relaxed` para `current_gen` — isso é **correto** para
+  um contador de telemetria sem dependência de dados; não há risco de correção.
+- `HugePageVec::Drop` não chama `drop_in_place` nos elementos T — o único uso real é `T = f32`
+  (Copy, sem Drop), portanto inofensivo na prática atual.
+- `drain_slimmable_models` "double-pop" no R channel — o pop condicional é protegido por
+  `if active_model_r.is_some()` e falha graciosamente se o canal estiver vazio; **não é bug**.
+- Sites de prefetch em `layer_array.rs:131,134` e `layer_array_dyn.rs:121,124` usam `.add(i+1)` e
+  `.add(i+2)` — esses sites são **protegidos por guards** `if i+1 < num_layers` /
+  `if i+2 < num_layers` que garantem o ponteiro in-bounds quando executado; **não são UB**.
+  (Os demais sites de prefetch nos kernels math/ já foram corrigidos para `wrapping_add` no fix F4.)
