@@ -75,7 +75,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
 
 - **Descrição:** Implementar `dot_product_8x_f32_dual_scalar` e `dot_product_16x_f32_dual_scalar` em [dot.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/dot.rs) usando `mul_add` (FMA).
 
-#### [x] Tarefa E.2.3 — Implementar Kernels Dual-Frame AVX2 (NF-04) ✅ Concluído: `dot_product_8x_f32_dual_avx2` em `dot_8x/dot_f32_avx2.rs` (8 acumuladores independentes, 4-way unrolling), `dot_product_16x_f32_dual_avx2` em `dot_16x/dot_f32_avx2.rs` (16 acumuladores independentes, 4-way unrolling), dispatch em `avx2_impl.rs`. Compila e todos os testes existentes passam.
+#### [x] Tarefa E.2.3 — Implementar Kernels Dual-Frame AVX2 (NF-04) ✅ Concluído: `dot_product_8x_f32_dual_avx2` em `dot_8x/dot_f32_avx2.rs` (8 acumuladores independentes, 4-way unrolling), `dot_product_16x_f32_dual_avx2` em `dot_16x/dot_f32_avx2.rs` (16 acumuladores independentes, 4-way unrolling), dispatch em `avx2_impl.rs`. Compila e todos os testes existentes passam
 
 - **Descrição:** Desenvolver as rotinas SIMD de temporal tiling sob a ISA AVX2.
 - **Detalhes Técnicos:**
@@ -83,7 +83,7 @@ Este documento descreve o detalhamento ágil de sprints e tarefas técnicas para
   - Em `dot_16x/dot_f32_avx2.rs`: criar `dot_product_16x_f32_dual_avx2` usando o mesmo padrão duplicado de leitura (lo/hi).
   - Atualizar [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs) para delegar a esses novos kernels.
 
-#### [ ] Tarefa E.2.4 — Implementar Kernels Dual-Frame AVX-512 (NF-04)
+#### [x] Tarefa E.2.4 — Implementar Kernels Dual-Frame AVX-512 (NF-04) ✅ Concluído: `dot_product_16x_f32_dual_avx512` implementado em `dot_16x/dot_f32_avx512.rs` usando 2-way unrolling com `__m512` (4 acumuladores: acc_f0_0, acc_f0_1, acc_f1_0, acc_f1_1). Dispatch adicionado em `base.rs` e `vnni_bf16.rs` para `dot_product_8x_f32_dual` (→ AVX2 kernel) e `dot_product_16x_f32_dual` (→ AVX-512 kernel). 4 novos testes de paridade (vs scalar, vs avx2, single-vs-dual invariance, stress) no `dot_16x_test.rs` — 9/9 passando
 
 - **Descrição:** Adaptar os traits e macros de execução de ponta (Sapphire Rapids/AVX-512) para manter compatibilidade.
 - **Detalhes Técnicos:**

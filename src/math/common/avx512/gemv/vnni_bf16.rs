@@ -51,9 +51,30 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             crate::math::gemm::dot_8x::dot_product_8x_f32_avx2(weights, state)
         }
         #[inline(always)]
+        // SAFETY: weights, state_f0, state_f1 are valid slices;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch). AVX-512 implies AVX2/FMA,
+        // so the 8x dual-frame AVX2 kernel is valid to call from this context.
+        unsafe fn dot_product_8x_f32_dual(
+            weights: &[[f32; 8]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+        ) -> ([f32; 8], [f32; 8]) {
+            crate::math::gemm::dot_8x::dot_product_8x_f32_dual_avx2(weights, state_f0, state_f1)
+        }
+        #[inline(always)]
         // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
         unsafe fn dot_product_16x_f32(weights: &[[f32; 16]], state: &[f32]) -> [f32; 16] {
             crate::math::gemm::dot_16x::dot_product_16x_f32_avx512(weights, state)
+        }
+        #[inline(always)]
+        // SAFETY: weights, state_f0, state_f1 are valid slices;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
+        unsafe fn dot_product_16x_f32_dual(
+            weights: &[[f32; 16]],
+            state_f0: &[f32],
+            state_f1: &[f32],
+        ) -> ([f32; 16], [f32; 16]) {
+            crate::math::gemm::dot_16x::dot_product_16x_f32_dual_avx512(weights, state_f0, state_f1)
         }
         #[inline(always)]
         // SAFETY: four weight slices and in_frame are valid u16 slices of equal length.
