@@ -22,7 +22,8 @@ Este épico foca exclusivamente no achado [F6](file:///home/fabio/nam-rs/TODO-fi
 
 ### Sprint D1: Box de Buffers e Fatoração de Cópias de Taps (F6)
 
-- **[ ] Tarefa D1.1 — Eliminar Varredura/Cópia de 196 KB na Callback PipeWire**
+- **[x] Tarefa D1.1 — Eliminar Varredura/Cópia de 196 KB na Callback PipeWire**
+  - **Conclusão:** Seis buffers `[f32; 8192]` em `CaptureState` convertidos para `Box<[f32; 8192]>`, alocados no heap durante `CaptureState::init` (main thread). O `DspBuffers` em `setup.rs` agora usa `&mut *state.resamp_mid_l` para dereferenciar o `Box`. O tamanho do ambiente da closure caiu de ~196 KB para ~1 KB (apenas 6 ponteiros de 8 bytes = 48 bytes + campos escalares). `cargo check`, `cargo test` (pipeline, gate, zero_alloc) — todos passam. RT-safe: zero alocação no hot-path.
   - **Foco:** Corrigir a cópia e varredura gerada pelo tamanho excessivo de `CaptureState` na pilha (devido a seis arrays estáticos `[f32; MAX_RESAMP_BUF]` de 32 KB cada).
   - **Ação:**
     - Modificar [state.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/state.rs) para alterar os buffers `resamp_mid_l`, `resamp_mid_r`, `resamp_out_l`, `resamp_out_r`, `model_out_l` e `model_out_r` do tipo `[f32; MAX_RESAMP_BUF]` para `Box<[f32]>` (ou `Box<[f32; MAX_RESAMP_BUF]>`).

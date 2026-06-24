@@ -3,9 +3,10 @@
 
 //! DSP state aggregated from the preamble of `setup_capture_stream`.
 //!
-//! Groups all stack-allocated locals initialized before the RT `process()` closure.
-//! The struct is captured by `move` into the closure — all fields remain on the
-//! stack, with no heap indirection, preserving RT safety.
+//! Groups all locals initialized before the RT `process()` closure.
+//! Large working buffers (>32 KB each) are boxed on the heap during `init`,
+//! which runs in the main thread. The `Box` pointers remain on the stack,
+//! preserving RT safety by avoiding dynamic allocation in the audio thread.
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::common::params::AdaptiveComputeMode;
@@ -27,12 +28,12 @@ pub struct CaptureState {
     pub resampler: Box<NamResampler>,
     pub active_cabsim: Option<Box<ConvEngine>>,
     pub current_nam_rate: u32,
-    pub resamp_mid_l: [f32; MAX_RESAMP_BUF],
-    pub resamp_out_l: [f32; MAX_RESAMP_BUF],
-    pub resamp_mid_r: [f32; MAX_RESAMP_BUF],
-    pub resamp_out_r: [f32; MAX_RESAMP_BUF],
-    pub model_out_l: [f32; MAX_RESAMP_BUF],
-    pub model_out_r: [f32; MAX_RESAMP_BUF],
+    pub resamp_mid_l: Box<[f32; MAX_RESAMP_BUF]>,
+    pub resamp_out_l: Box<[f32; MAX_RESAMP_BUF]>,
+    pub resamp_mid_r: Box<[f32; MAX_RESAMP_BUF]>,
+    pub resamp_out_r: Box<[f32; MAX_RESAMP_BUF]>,
+    pub model_out_l: Box<[f32; MAX_RESAMP_BUF]>,
+    pub model_out_r: Box<[f32; MAX_RESAMP_BUF]>,
     pub user_input_gain_mult: f32,
     pub user_output_gain_mult: f32,
     pub model_input_mult_adj: f32,
@@ -77,12 +78,12 @@ impl CaptureState {
             resampler: Box::new(resampler),
             active_cabsim: None,
             current_nam_rate: 48_000,
-            resamp_mid_l: [0.0f32; MAX_RESAMP_BUF],
-            resamp_out_l: [0.0f32; MAX_RESAMP_BUF],
-            resamp_mid_r: [0.0f32; MAX_RESAMP_BUF],
-            resamp_out_r: [0.0f32; MAX_RESAMP_BUF],
-            model_out_l: [0.0f32; MAX_RESAMP_BUF],
-            model_out_r: [0.0f32; MAX_RESAMP_BUF],
+            resamp_mid_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            resamp_out_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            resamp_mid_r: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            resamp_out_r: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            model_out_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            model_out_r: Box::new([0.0f32; MAX_RESAMP_BUF]),
             user_input_gain_mult: 1.0,
             user_output_gain_mult: 1.0,
             model_input_mult_adj: 1.0,
