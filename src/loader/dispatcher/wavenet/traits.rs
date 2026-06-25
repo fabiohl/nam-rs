@@ -34,6 +34,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
         _k_size: usize,
         prefetch_fn: PrefetchFn,
     ) -> Self {
+        let interleave_width = select_interleave_width(OUT);
+        let num_blocks = OUT.div_ceil(interleave_width);
+        let padded_total = num_blocks * interleave_width * IN * K;
+        assert!(
+            weights.len() >= padded_total,
+            "Conv1d weights buffer is too small"
+        );
         Conv1d {
             weights,
             bias,
@@ -46,7 +53,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
 
 impl ConvWeightsOutput for Conv1dDyn {
     #[inline(always)]
-    #[allow(unused_variables)]
     fn from_parts(
         weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
@@ -58,6 +64,12 @@ impl ConvWeightsOutput for Conv1dDyn {
         prefetch_fn: PrefetchFn,
     ) -> Self {
         let interleave_width = select_interleave_width(out_ch);
+        let num_blocks_effective = out_ch.div_ceil(interleave_width);
+        let padded_total = num_blocks_effective * interleave_width * in_ch * k_size;
+        assert!(
+            weights.len() >= padded_total,
+            "Conv1d weights buffer is too small"
+        );
         Conv1dDyn {
             weights,
             bias,

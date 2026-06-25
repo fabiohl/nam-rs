@@ -18,7 +18,7 @@ pub(crate) mod layout;
 pub(crate) mod lite;
 pub(crate) mod nano;
 pub(crate) mod standard;
-mod traits;
+pub(crate) mod traits;
 
 pub use layout::transpose_conv1d_interleaved_4wide;
 

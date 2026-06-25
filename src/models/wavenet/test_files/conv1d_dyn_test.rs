@@ -123,3 +123,37 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
         assert!((val - 20.5).abs() < 1e-4);
     }
 }
+
+/// Verifies that `Conv1dDyn::from_parts` panics when the weights buffer
+/// is smaller than the SIMD-padded total required by the interleaved layout.
+/// This hardening protects against silent UB caused by out-of-bounds reads
+/// in the SIMD convolution kernels for runtime-dimensional models.
+#[test]
+#[should_panic(expected = "Conv1d weights buffer is too small")]
+fn test_conv1d_dyn_from_parts_subdimensioned_weights() {
+    use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
+    use crate::loader::dispatcher::wavenet::traits::ConvWeightsOutput;
+    use crate::math::common::AlignedVec;
+
+    let in_ch = 2;
+    let out_ch: usize = 6;
+    let k_size = 3;
+    let interleave_width = select_interleave_width(out_ch);
+    let num_blocks = out_ch.div_ceil(interleave_width);
+    let padded_total = num_blocks * interleave_width * in_ch * k_size;
+
+    let undersized = padded_total / 2;
+    let weights = AlignedVec::new(undersized, 0.0f32);
+    let bias = AlignedVec::new(out_ch, 0.0f32);
+
+    Conv1dDyn::from_parts(
+        weights,
+        bias,
+        false,
+        1,
+        in_ch,
+        out_ch,
+        k_size,
+        crate::math::common::prefetch_strategy_simple,
+    );
+}

@@ -30,7 +30,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 * **Critério de Aceitação:**
   * Teste unitário adicionado que valida buffers assimétricos copiando com segurança no ramo bypass sem pânico ou UB.
 
-#### 📋 Tarefa E2.2: Hardening dos invariantes de padding SIMD em release (F-08)
+#### 📋 Tarefa E2.2: Hardening dos invariantes de padding SIMD em release (F-08) [DONE]
 
 * **Objetivo:** Promover a checagem de alocação de padding SIMD de `debug_assert!` para `assert!` em tempo de execução frio (carga do modelo).
 * **Componente:** Model Loader / WaveNet Kernels
