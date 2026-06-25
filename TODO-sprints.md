@@ -64,7 +64,7 @@ Foco em remover riscos imediatos de pânico/alocação de memória no caminho de
 
 Foco em otimizar a escrita de memória na FDL e modelar a infraestrutura necessária para suportar múltiplos kernels SIMD (AVX2 e AVX-512) no processamento do Cab Sim.
 
-### Tarefa A3 (P2.2) — Cópia Vetorizada para a FDL
+### ✅ Tarefa A3 (P2.2) — Cópia Vetorizada para a FDL [DONE]
 
 * **Prioridade:** P2
 * **Complexidade/Esforço:** Baixo
@@ -87,6 +87,7 @@ Foco em otimizar a escrita de memória na FDL e modelar a infraestrutura necess�
   Isso permite que o compilador utilize instruções de cópia de bloco altamente otimizadas (`memcpy` vetorizado).
 * **Estratégia de Validação:**
   * `cargo test` para garantir integridade.
+* **Conclusão (2026-06-25):** Loop escalar substituído por `copy_from_slice` no Step 3 de `ConvEngine::process()`. Todos os 152 testes passam sem regressão.
 
 ### Tarefa A4 (P2.1 - Infra) — Trait SimdMath com Operações Complexas
 

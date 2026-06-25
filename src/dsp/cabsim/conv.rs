@@ -256,10 +256,10 @@ impl ConvEngine {
 
         // ── Step 3: Store in FDL (circular buffer) ──
         let fdl_base = self.fdl_idx * self.n_bins;
-        for k in 0..self.n_bins {
-            self.fdl_re[fdl_base + k] = self.fft_buf_re[k];
-            self.fdl_im[fdl_base + k] = self.fft_buf_im[k];
-        }
+        self.fdl_re[fdl_base..fdl_base + self.n_bins]
+            .copy_from_slice(&self.fft_buf_re[..self.n_bins]);
+        self.fdl_im[fdl_base..fdl_base + self.n_bins]
+            .copy_from_slice(&self.fft_buf_im[..self.n_bins]);
 
         // ── Step 4: Frequency-domain MAC over all partitions ──
         let p_count = self.num_partitions;
