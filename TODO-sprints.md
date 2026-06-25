@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Sprints de Engenharia — Resolução dos Épicos E2 e E3
+# Sprints de Engenharia — Resolução dos Épicos E1, E2 e E3
 
-Este documento apresenta o planejamento ágil para as sprints de implementação e hardening dos Épicos **E2** e **E3** identificados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento apresenta o planejamento ágil para as sprints de implementação e hardening dos Épicos **E1**, **E2** e **E3** identificados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
@@ -125,3 +125,48 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 * **Risco:** BAIXO.
 * **Critério de Aceitação:**
   * Verificação via logs de execução standalone e CLAP que identificam transparent hugepages vs hugetlb corretamente.
+
+---
+
+## Épico E1 — Correção de artefatos de áudio no caminho de transição (DSP) 🔴
+
+### Sprint 4: Continuidade de Ganhos e Fades (F-01, F-02 & F-05)
+
+#### 📋 Tarefa E1.1: Suavização na reversão de fade do noise gate (F-01)
+
+* **Objetivo:** Corrigir a lógica de inversão de ganho na transição mútua `FadingOut` ↔ `FadingIn` para preservar o valor de `fade_counter`, evitando degraus de ganho instantâneos de até 0,7.
+* **Componente:** DSP / Gate
+* **Arquivos afetados:**
+  * [src/dsp/gate.rs](file:///home/fabio/nam-rs/src/dsp/gate.rs) (linhas ~183 e ~250)
+* **Mudança proposta:**
+  * Remover a operação de inversão complementar `params.fade_frames.saturating_sub(self.fade_counter)`.
+  * Manter o `fade_counter` intacto para garantir rampa contínua a partir do multiplicador real-time corrente.
+* **Risco:** ALTO. Requer alteração de testes unitários que codificam o comportamento bugado.
+* **Critério de Aceitação:**
+  * Atualização de `gate_test.rs:116` para exigir multiplicador contínuo (`0.7` em vez de `0.1`).
+  * Inclusão de testes unitários e parametrizações com `gate_fsm_proptest` para provar a continuidade do envelope em qualquer reversão.
+
+#### 📋 Tarefa E1.2: Ajuste linear na curva de crossfade adaptativo (F-02)
+
+* **Objetivo:** Eliminar o salto de ganho abrupto de ~0,5 para 1,0 no último bloco de transições adaptativas.
+* **Componente:** DSP / Adaptive
+* **Arquivos afetados:**
+  * [src/dsp/adaptive.rs](file:///home/fabio/nam-rs/src/dsp/adaptive.rs) (funções `crossfade_multiplier` e `current_crossfade_multiplier`)
+* **Mudança proposta (Opção B):**
+  * Armazenar a duração total do crossfade em um campo estruturado dedicado (`crossfade_total: usize`).
+  * Calcular o progresso como a razão direta entre amostras decorridas e o total (`crossfade_elapsed / crossfade_total`), eliminando a soma dinâmica instável com `remaining_samples`.
+* **Risco:** MÉDIO. Requer alteração de campos na struct `Adaptive` e cuidado redobrado na consistência do getter read-only.
+* **Critério de Aceitação:**
+  * Novos asserts em `adaptive_test.rs` validando linearidade em frações de tempo específicas (ponto médio `≈ 0.5`, final `> 0.9` antes do descarte).
+
+#### 📋 Tarefa E1.3: Re-baseamento de crossfade em transições consecutivas rápidas (F-05)
+
+* **Objetivo:** Impedir cliques sob transições sucessivas curtas, re-baseando continuamente o crossfade ativo com base no multiplicador corrente.
+* **Componente:** DSP / Adaptive
+* **Arquivos afetados:**
+  * [src/dsp/adaptive.rs](file:///home/fabio/nam-rs/src/dsp/adaptive.rs) (função `transition_to`)
+* **Mudança proposta:**
+  * Ao interromper um crossfade pendente, calcular a contribuição acumulada e remapear o início da nova rampa a partir do nível de blend atual, em vez de zerar `crossfade_elapsed` abruptamente.
+* **Risco:** MÉDIO.
+* **Critério de Aceitação:**
+  * Teste unitário forçando as transições rápidas `Full → Reduced → Minimal` e garantindo desvios do envelope de ganho limitados por um passo infinitesimal.
