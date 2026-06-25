@@ -105,6 +105,25 @@ fn verify_fsm_step(
         );
     }
 
+    // 3b. Envelope continuity on reversal: the multiplier jump must be
+    // bounded by the block step size (no large discontinuity).
+    {
+        let max_step = n_samples as f32 * params.inv_fade_frames;
+        let is_reversal = (prev_state == GateState::FadingOut && state == GateState::FadingIn)
+            || (prev_state == GateState::FadingIn && state == GateState::FadingOut);
+        if is_reversal {
+            assert!(
+                (mult - prev_mult).abs() <= max_step + 1e-6,
+                "Reversal discontinuity: {} -> {} (from {:?} to {:?}, max_step={})",
+                prev_mult,
+                mult,
+                prev_state,
+                state,
+                max_step
+            );
+        }
+    }
+
     // 4. Valid state transitions check
     match prev_state {
         GateState::Open => {

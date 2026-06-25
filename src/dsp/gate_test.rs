@@ -8,6 +8,7 @@
 /// when we want to mute specific parts of the audio.
 mod tests {
     use crate::dsp::gate::*;
+    use proptest::prelude::*;
 
     /// Verifies that the noise gate default settings are correct.
     #[test]
@@ -113,7 +114,7 @@ mod tests {
         // Sound drops out again. It starts closing immediately.
         dh.update(0.1, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingOut);
-        assert_eq!(dh.multiplier(), 0.1);
+        assert_eq!(dh.multiplier(), 0.7);
     }
 
     /// Verifies that volume smoothing (gain ramp) is being correctly applied to the audio.
@@ -283,5 +284,83 @@ mod tests {
             (buffer[0] - 0.5).abs() < 1e-6,
             "The ramp start multiplier for this block was 0.5"
         );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(
+                proptest::test_runner::FileFailurePersistence::SourceParallel(
+                    "tests/proptest-regressions"
+                )
+            )),
+            .. ProptestConfig::with_cases(10_000)
+        })]
+
+        #[test]
+        #[ignore]
+        fn gate_envelope_continuity_on_reversal(
+            fade_frames in 4usize..256,
+            n_samples in 1usize..256,
+        ) {
+            let params = GateParams::new(-70.0, -80.0, 1, fade_frames, 1e-4);
+            let th_open = 1.0;
+            let th_close = 0.5;
+            let inv = params.inv_fade_frames;
+            let max_step = n_samples as f32 * inv;
+
+            // FadingOut→FadingIn reversal: advance fade_out to target, then reverse
+            {
+                let mut dh = DynamicHysteresis::new();
+                // Enter FadingOut
+                dh.update(0.0, th_open, th_close, &params, params.hold_frames.max(1));
+                assert_eq!(dh.state(), GateState::FadingOut, "must enter FadingOut");
+                // Advance to half-fade
+                let target_fc = fade_frames / 2;
+                let elapsed = fade_frames.saturating_sub(target_fc);
+                dh.update(0.0, th_open, th_close, &params, elapsed);
+                if dh.state() == GateState::Closed {
+                    // Overshoot: not a meaningful mid-fade reversal test
+                    return Ok(());
+                }
+                let prev_mult = dh.multiplier();
+                dh.update(2.0, th_open, th_close, &params, n_samples);
+                let new_mult = dh.multiplier();
+                assert!(
+                    (new_mult - prev_mult).abs() <= max_step + 1e-6,
+                    "FadingOut→FadingIn discontinuity: prev={prev_mult}, new={new_mult}, max_step={max_step}"
+                );
+            }
+
+            // FadingIn→FadingOut reversal: advance fade_in to target, then reverse
+            {
+                let mut dh = DynamicHysteresis::new();
+                // Enter FadingOut then finish to Closed
+                dh.update(0.0, th_open, th_close, &params, params.hold_frames.max(1));
+                if dh.state() == GateState::FadingOut {
+                    dh.update(0.0, th_open, th_close, &params, params.fade_frames);
+                }
+                // Enter FadingIn
+                dh.update(2.0, th_open, th_close, &params, 1);
+                if dh.state() != GateState::FadingIn {
+                    return Ok(());
+                }
+                // Advance to ~3/4 of fade_in
+                let target_fc = fade_frames * 3 / 4;
+                let remaining = target_fc.saturating_sub(1);
+                if remaining > 0 {
+                    dh.update(2.0, th_open, th_close, &params, remaining);
+                }
+                if dh.state() != GateState::FadingIn {
+                    return Ok(());
+                }
+                let prev_mult = dh.multiplier();
+                dh.update(0.0, th_open, th_close, &params, n_samples);
+                let new_mult = dh.multiplier();
+                assert!(
+                    (new_mult - prev_mult).abs() <= max_step + 1e-6,
+                    "FadingIn→FadingOut discontinuity: prev={prev_mult}, new={new_mult}, max_step={max_step}"
+                );
+            }
+        }
     }
 }

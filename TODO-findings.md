@@ -28,7 +28,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 | ID   | Severidade | Módulo                       | Título curto                                                                       |
 |:---- |:---------- |:---------------------------- |:---------------------------------------------------------------------------------- |
-| F-01 | 🔴 ALTA    | `dsp/gate.rs`                | Reversão de _fade_ do gate **inverte** o multiplicador de ganho (`m → 1 − m`)      |
+| F-01 | 🟢 RESOLVIDO | `dsp/gate.rs`                | Reversão de _fade_ do gate **inverte** o multiplicador de ganho (`m → 1 − m`) — ✅ E1.1 |
 | F-02 | 🟠 MÉDIA   | `dsp/adaptive.rs`            | Curva de _crossfade_ adaptativo só atinge ~0,5 e depois **salta** para 1,0         |
 | F-03 | 🟡 BAIXA   | `dsp/resampler.rs`           | _Bypass_ estéreo não valida limites do canal R (contrato `unsafe` inconsistente)   |
 | F-04 | 🟡 BAIXA   | `common/spsc/status.rs`      | Handshake flag→dado entre threads usa `Relaxed` (latente fora de x86-TSO)          |
@@ -39,7 +39,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## F-01 — 🔴 ALTA — Reversão de _fade_ do gate inverte o multiplicador de ganho
+## F-01 — 🟢 RESOLVIDO (E1.1) — Reversão de _fade_ do gate inverte o multiplicador de ganho
 
 ### F-01 — Localização
 

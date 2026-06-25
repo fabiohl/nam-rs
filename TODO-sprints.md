@@ -132,7 +132,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 
 ### Sprint 4: Continuidade de Ganhos e Fades (F-01, F-02 & F-05)
 
-#### 📋 Tarefa E1.1: Suavização na reversão de fade do noise gate (F-01)
+#### 📋 Tarefa E1.1: Suavização na reversão de fade do noise gate (F-01) [DONE]
 
 * **Objetivo:** Corrigir a lógica de inversão de ganho na transição mútua `FadingOut` ↔ `FadingIn` para preservar o valor de `fade_counter`, evitando degraus de ganho instantâneos de até 0,7.
 * **Componente:** DSP / Gate
@@ -145,6 +145,12 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 * **Critério de Aceitação:**
   * Atualização de `gate_test.rs:116` para exigir multiplicador contínuo (`0.7` em vez de `0.1`).
   * Inclusão de testes unitários e parametrizações com `gate_fsm_proptest` para provar a continuidade do envelope em qualquer reversão.
+* **✅ CONCLUÍDO (2026-06-25):**
+  * Removidas as duas linhas de inversão `fade_counter = fade_frames.saturating_sub(fade_counter)` em `gate.rs:183` e `gate.rs:250`.
+  * `gate_test.rs:116`: assert alterado de `0.1` para `0.7` (multiplicador contínuo).
+  * Adicionado proptest `gate_envelope_continuity_on_reversal` (10k casos, `#[ignore]`) em `gate_test.rs`.
+  * Adicionado invariante de continuidade de envelope em reversões à função `verify_fsm_step` do `gate_fsm_proptest.rs` (3×10k casos passam).
+  * `cargo test --lib`: 846 pass, 0 fail. `cargo test --test gate_fsm_proptest -- --include-ignored`: 3 pass.
 
 #### 📋 Tarefa E1.2: Ajuste linear na curva de crossfade adaptativo (F-02)
 

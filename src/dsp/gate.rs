@@ -180,7 +180,6 @@ impl DynamicHysteresis {
     ) {
         if value >= threshold_open {
             self.state = GateState::FadingIn;
-            self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
             if self.fade_counter + n_samples < params.fade_frames {
                 self.fade_counter += n_samples;
                 self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
@@ -247,7 +246,6 @@ impl DynamicHysteresis {
     ) {
         if value < threshold_close {
             self.state = GateState::FadingOut;
-            self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
             if self.fade_counter > n_samples {
                 self.fade_counter -= n_samples;
                 self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
