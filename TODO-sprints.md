@@ -3,181 +3,204 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Sprints de Engenharia — Resolução dos Épicos E1, E2 e E3
+# TODO-sprints — Cab Sim de alta performance (Épico A)
 
-Este documento apresenta o planejamento ágil para as sprints de implementação e hardening dos Épicos **E1**, **E2** e **E3** identificados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento define o planejamento de sprints e tarefas técnicas para a execução do **Épico A — "Cab Sim de alta performance"**, agrupando e detalhando os achados **P1**, **P2** e **P9** descritos no arquivo [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
----
-
-## Épico E2 — Endurecimento de contratos `unsafe` e ordenação de memória 🟡
-
-### Sprint 1: Robustez de Buffers e SIMD (F-03 & F-08)
-
-#### 📋 Tarefa E2.1: Proteção de limites no bypass estéreo do Resampler (F-03) [DONE]
-
-* **Objetivo:** Impedir leituras/escritas fora dos limites (UB) no resampler quando o canal direito for assíncrono ou assimétrico.
-* **Componente:** DSP / Resampler
-* **Arquivos afetados:**
-  * [src/dsp/resampler.rs](file:///home/fabio/nam-rs/src/dsp/resampler.rs) (linhas ~490 e ~514)
-* **Mudança proposta:**
-  * No `process_input` e `process_output` (ramos bypass), calcular `n` incluindo ambos os canais (`in_l`, `in_r`, `out_l`, `out_r`):
-
-    ```rust
-    let n = in_l.len().min(in_r.len()).min(out_l.len()).min(out_r.len());
-    ```
-
-* **Risco:** BAIXO.
-* **Critério de Aceitação:**
-  * Teste unitário adicionado que valida buffers assimétricos copiando com segurança no ramo bypass sem pânico ou UB.
-
-#### 📋 Tarefa E2.2: Hardening dos invariantes de padding SIMD em release (F-08) [DONE]
-
-* **Objetivo:** Promover a checagem de alocação de padding SIMD de `debug_assert!` para `assert!` em tempo de execução frio (carga do modelo).
-* **Componente:** Model Loader / WaveNet Kernels
-* **Arquivos afetados:**
-  * [src/loader/dispatcher/wavenet/traits.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/wavenet/traits.rs)
-* **Mudança proposta:**
-  * No construtor `from_parts` de `Conv1d` e `Conv1dDyn`, recalcular o total padded esperado (`num_blocks * interleave_width * in_ch * k_size`) e aplicar assertiva estrita:
-
-    ```rust
-    assert!(weights.len() >= padded_total, "Conv1d weights buffer is too small");
-    ```
-
-* **Risco:** BAIXO (não afeta o hot-path real-time).
-* **Critério de Aceitação:**
-  * Teste unitário em `traits_test.rs` (ou correspondente) que força a construção de um `Conv1d` subdimensionado e assegura que ele provoca pânico seguro em release.
+O objetivo deste épico é otimizar o simulador de gabinete (UPOLS Convolution Engine e FFT/IFFT associados), que representa a maior reserva de CPU do projeto fora dos modelos neurais. As tarefas estão ordenadas de forma incremental para maximizar o ganho de performance e minimizar riscos de regressão matemática (SNR) ou estabilidade RT.
 
 ---
 
-### Sprint 2: Ordenação Concorrente RT↔Main (F-04)
+## Estrutura de Sprints
 
-#### 📋 Tarefa E2.3: Sincronização SPSC Status Flags com Barreiras Acquire-Release (F-04) [DONE]
-
-* **Concluído:** 2026-06-25
-* **Resumo:**
-  * Adicionados métodos `set_flag_release`, `check_flag_acquire`, `clear_flag_release` em `RtStatusFlags` (`status.rs:191-218`).
-  * Chamadas de handshake de dados (`NEEDS_RESAMPLER_REBUILD`, `NEEDS_CABSIM_REBUILD`, `NEEDS_SLIMMABLE_REBUILD`) migradas para Acquire/Release.
-  * Flags de telemetria (`HAS_CLIPPED`, `IS_SILENT`, `GC_OVERFLOW`, etc.) mantidas com `Relaxed`.
-  * Produtor RT: `rate_sync.rs`, `capture/setup.rs`, `commands.rs`, `events.rs`.
-  * Consumidor Main: `run.rs`, `housekeeping.rs`.
-  * `cargo check`, `cargo clippy --all-targets --all-features`, testes SPSC e pipeline sem regressão.
-
-* **Objetivo:** Garantir a coerência de dados transferidos via variáveis atômicas `requested_*` entre a thread RT (produtora) e a thread Main (consumidora) eliminando ordenação `Relaxed` nos handshakes.
-* **Componente:** Concorrência SPSC
-* **Arquivos afetados:**
-  * [src/common/spsc/status.rs](file:///home/fabio/nam-rs/src/common/spsc/status.rs)
-  * [src/clap/processor/events.rs](file:///home/fabio/nam-rs/src/clap/processor/events.rs)
-  * [src/standalone/pw_host/rt_callback/commands.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/rt_callback/commands.rs)
-  * [src/clap/plugin/main_thread/housekeeping.rs](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs)
-  * [src/standalone/pw_host/run.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/run.rs)
-* **Mudança proposta:**
-  * Adicionar métodos Acquire/Release específicos na `RtStatusFlags` em [status.rs](file:///home/fabio/nam-rs/src/common/spsc/status.rs):
-    * `set_flag_release(&self, flag: u64)` -> usa `fetch_or(flag, Ordering::Release)`
-    * `check_flag_acquire(&self, flag: u64)` -> usa `load(Ordering::Acquire)`
-    * `clear_flag_release(&self, flag: u64)` -> usa `fetch_and(!flag, Ordering::Release)`
-  * Substituir chamadas de handshake de dados (rebuilds de slimmable, cabsim, resampler) para usar estes novos métodos de barreira, mantendo as flags puras de telemetria com a ordenação `Relaxed`.
-* **Risco:** MÉDIO. Requer precisão e auditoria rigorosa de cada ponto de controle atômico.
-* **Critério de Aceitação:**
-  * Compilação limpa, sem regressões nos testes concorrentes de SPSC.
-  * Validação teórica e estrutural da sincronização e ausência de cache reordering em arquiteturas de memória fraca.
+```mermaid
+graph TD
+    S1[Sprint 1: Estabilidade RT & Quick Wins] --> S2[Sprint 2: Infraestrutura SIMD & FDL]
+    S2 --> S3[Sprint 3: Kernels SIMD MAC & Despacho]
+    S3 --> S4[Sprint 4: Vetorização Avançada do FFT]
+```
 
 ---
 
-## Épico E3 — Honestidade de telemetria e _test oracles_ 🟡
+## Sprint 1: Estabilidade Real-Time e Quick Wins (P9 & P1.1)
 
-### Sprint 3: Verificação de Qualidade e Observabilidade Genuínas
+Foco em remover riscos imediatos de pânico/alocação de memória no caminho de áudio real-time e obter ganhos rápidos e de baixo risco no FFT.
 
-#### 📋 Tarefa E3.1: Correção do Fidelity Margin check honesto em validation.rs (F-06) [DONE]
+### Tarefa A1 (P9) — Rebaixamento de Asserts no FFT
 
-* **Objetivo:** Fazer com que o marcador `✓` de margem de fidelidade perceptual reflita genuinamente se o delta SNR supera o alvo de 8.0 dB.
-* **Componente:** Test Oracles / QA
-* **Arquivos afetados:**
-  * [tests/common/validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) (linha ~242)
-* **Mudança proposta:**
-  * Alterar a definição de `is_satisfactory` no teste de margem de fidelidade para depender unicamente do alvo:
+* **Prioridade:** P1
+* **Complexidade/Esforço:** Baixo (Trivial)
+* **Risco:** Mínimo
+* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs)
+* **Descrição:**
+  Substituir todas as ocorrências de `assert_eq!` no caminho quente do FFT por `debug_assert_eq!`. Em particular:
+  * `FftPlanner::process` (linhas 187-188)
+  * `FftPlanner::process_inverse` (linhas 237-238)
+  * `RfftPlanner::process_forward` (linhas 376-378)
+  * `RfftPlanner::process_inverse` (linhas 439-441)
+  *Justificativa:* Evitar risco de pânico com *stack unwinding* (que aloca memória e quebra o determinismo RT) na thread de áudio. Os tamanhos dos buffers são invariantes garantidos na inicialização (`ConvEngine::new`).
+* **Estratégia de Validação:**
+  * `cargo test` (valida em modo debug que as asserções ainda passam).
+  * Revisar estaticamente se os construtores de `ConvEngine` garantem tamanhos compatíveis com o planejado.
 
-    ```rust
-    let is_satisfactory = delta_snr > 8.0;
-    ```
+### Tarefa A2 (P1.1) — Eliminação de Bounds Checks no FFT Escalar
 
-* **Risco:** BAIXO.
-* **Critério de Aceitação:**
-  * Execução dos testes de validação com logs honestos. Modelos com margem de fidelidade abaixo de 8.0 dB devem exibir `?` ao invés de `✓`, enquanto a asserção rígida de `min_snr_db` continua sendo exigida no final da validação.
-
-#### 📋 Tarefa E3.2: Separação de estados de alocação de Huge Page (HugeTLB vs THP) (F-07) [DONE]
-
-* **Objetivo:** Diferenciar telemetria e diagnóstico entre HugeTLB estrito (páginas físicas garantidas) de Transparent Huge Pages (THP, apenas hint do kernel).
-* **Componente:** Telemetria & OS Integration
-* **Arquivos afetados:**
-  * [src/common/spsc/status.rs](file:///home/fabio/nam-rs/src/common/spsc/status.rs) (adicionar flag `RT_STATUS_THP_ACTIVE`)
-  * [src/dsp/mirror_buf.rs](file:///home/fabio/nam-rs/src/dsp/mirror_buf.rs)
-  * [src/dsp/mirror_buf/alloc.rs](file:///home/fabio/nam-rs/src/dsp/mirror_buf/alloc.rs)
-  * [src/common/diagnostics/snapshot.rs](file:///home/fabio/nam-rs/src/common/diagnostics/snapshot.rs)
-  * [src/common/diagnostics/bundle.rs](file:///home/fabio/nam-rs/src/common/diagnostics/bundle.rs)
-  * [src/standalone/rt_setup/telemetry.rs](file:///home/fabio/nam-rs/src/standalone/rt_setup/telemetry.rs)
-  * [src/clap/plugin/main_thread/logging.rs](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs)
-* **Mudança proposta:**
-  * Definir `RT_STATUS_THP_ACTIVE = 1 << 18` em `status.rs`.
-  * Rastrear o tipo de alocação usando um `MIRROR_BUF_HUGEPAGE_STATE: AtomicU8` em `mirror_buf.rs` (0 = Standard, 1 = THP, 2 = HugeTLB).
-  * Propagar a flag correspondente na inicialização via `sync_huge_page_flag`.
-  * Atualizar o `snapshot.rs` para incluir o campo de diagnóstico `huge_page_mode` e preenchê-lo adequadamente.
-  * Formatar o log e bundle para refletir o modo exato em uso.
-* **Risco:** BAIXO.
-* **Critério de Aceitação:**
-  * Verificação via logs de execução standalone e CLAP que identificam transparent hugepages vs hugetlb corretamente.
+* **Prioridade:** P1
+* **Complexidade/Esforço:** Médio (Quick Win)
+* **Risco:** Baixo
+* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs)
+* **Descrição:**
+  Substituir indexações diretas com checagem de limites (`re[idx]` e `im[idx]`) por acessos inseguros usando `get_unchecked` e `get_unchecked_mut`.
+  * Aplicar na permutação de bit-reversal (`bit_reverse[i]`, `re.swap`, `im.swap`).
+  * Aplicar no loop interno das borboletas Radix-2 DIT (acessos a `twiddle_re`, `twiddle_im`, `re[idx1]`, `re[idx2]`, `im[idx1]`, `im[idx2]`).
+  * Documentar cada bloco inseguro com o comentário `// SAFETY:` demonstrando que `idx1, idx2 < n` e `w_idx < n/2` são garantidos pelas invariantes do tamanho `N` (potência de dois).
+* **Estratégia de Validação:**
+  * `cargo test` para verificar a paridade matemática (saída bit-a-bit idêntica contra a referência escalar antiga).
+  * Comparar tempo de execução usando o benchmark de convolução atual.
 
 ---
 
-## Épico E1 — Correção de artefatos de áudio no caminho de transição (DSP) 🔴
+## Sprint 2: Otimização da Cópia do FDL e Abstração de Multiplicação Complexa (P2.2 & P2.1 - Infra)
 
-### Sprint 4: Continuidade de Ganhos e Fades (F-01, F-02 & F-05)
+Foco em otimizar a escrita de memória na FDL e modelar a infraestrutura necessária para suportar múltiplos kernels SIMD (AVX2 e AVX-512) no processamento do Cab Sim.
 
-#### 📋 Tarefa E1.1: Suavização na reversão de fade do noise gate (F-01) [DONE]
+### Tarefa A3 (P2.2) — Cópia Vetorizada para a FDL
 
-* **Objetivo:** Corrigir a lógica de inversão de ganho na transição mútua `FadingOut` ↔ `FadingIn` para preservar o valor de `fade_counter`, evitando degraus de ganho instantâneos de até 0,7.
-* **Componente:** DSP / Gate
-* **Arquivos afetados:**
-  * [src/dsp/gate.rs](file:///home/fabio/nam-rs/src/dsp/gate.rs) (linhas ~183 e ~250)
-* **Mudança proposta:**
-  * Remover a operação de inversão complementar `params.fade_frames.saturating_sub(self.fade_counter)`.
-  * Manter o `fade_counter` intacto para garantir rampa contínua a partir do multiplicador real-time corrente.
-* **Risco:** ALTO. Requer alteração de testes unitários que codificam o comportamento bugado.
-* **Critério de Aceitação:**
-  * Atualização de `gate_test.rs:116` para exigir multiplicador contínuo (`0.7` em vez de `0.1`).
-  * Inclusão de testes unitários e parametrizações com `gate_fsm_proptest` para provar a continuidade do envelope em qualquer reversão.
-* **✅ CONCLUÍDO (2026-06-25):**
-  * Removidas as duas linhas de inversão `fade_counter = fade_frames.saturating_sub(fade_counter)` em `gate.rs:183` e `gate.rs:250`.
-  * `gate_test.rs:116`: assert alterado de `0.1` para `0.7` (multiplicador contínuo).
-  * Adicionado proptest `gate_envelope_continuity_on_reversal` (10k casos, `#[ignore]`) em `gate_test.rs`.
-  * Adicionado invariante de continuidade de envelope em reversões à função `verify_fsm_step` do `gate_fsm_proptest.rs` (3×10k casos passam).
-  * `cargo test --lib`: 846 pass, 0 fail. `cargo test --test gate_fsm_proptest -- --include-ignored`: 3 pass.
+* **Prioridade:** P2
+* **Complexidade/Esforço:** Baixo
+* **Risco:** Mínimo
+* **Arquivos Afetados:** [conv.rs](file:///home/fabio/nam-rs/src/dsp/cabsim/conv.rs)
+* **Descrição:**
+  Substituir o loop escalar que transfere o espectro de entrada do FFT para a Frequency Delay Line (circular buffer) por `copy_from_slice`:
 
-#### 📋 Tarefa E1.2: Ajuste linear na curva de crossfade adaptativo (F-02) [DONE]
+  ```rust
+  // De:
+  for k in 0..self.n_bins {
+      self.fdl_re[fdl_base + k] = self.fft_buf_re[k];
+      self.fdl_im[fdl_base + k] = self.fft_buf_im[k];
+  }
+  // Para:
+  self.fdl_re[fdl_base..fdl_base + n_bins].copy_from_slice(&self.fft_buf_re[..n_bins]);
+  self.fdl_im[fdl_base..fdl_base + n_bins].copy_from_slice(&self.fft_buf_im[..n_bins]);
+  ```
 
-* **Objetivo:** Eliminar o salto de ganho abrupto de ~0,5 para 1,0 no último bloco de transições adaptativas.
-* **Componente:** DSP / Adaptive
-* **Arquivos afetados:**
-  * [src/dsp/adaptive.rs](file:///home/fabio/nam-rs/src/dsp/adaptive.rs) (funções `crossfade_multiplier` e `current_crossfade_multiplier`)
-* **Mudança proposta (Opção B):**
-  * Armazenar a duração total do crossfade em um campo estruturado dedicado (`crossfade_total: usize`).
-  * Calcular o progresso como a razão direta entre amostras decorridas e o total (`crossfade_elapsed / crossfade_total`), eliminando a soma dinâmica instável com `remaining_samples`.
-* **Risco:** MÉDIO. Requer alteração de campos na struct `Adaptive` e cuidado redobrado na consistência do getter read-only.
-* **Critério de Aceitação:**
-  * Novos asserts em `adaptive_test.rs` validando linearidade em frações de tempo específicas (ponto médio `≈ 0.5`, final `> 0.9` antes do descarte).
+  Isso permite que o compilador utilize instruções de cópia de bloco altamente otimizadas (`memcpy` vetorizado).
+* **Estratégia de Validação:**
+  * `cargo test` para garantir integridade.
 
-#### 📋 Tarefa E1.3: Re-baseamento de crossfade em transições consecutivas rápidas (F-05) [DONE]
+### Tarefa A4 (P2.1 - Infra) — Trait SimdMath com Operações Complexas
 
-* **Objetivo:** Impedir cliques sob transições sucessivas curtas, re-baseando continuamente o crossfade ativo com base no multiplicador corrente.
-* **Componente:** DSP / Adaptive
-* **Arquivos afetados:**
-  * [src/dsp/adaptive.rs](file:///home/fabio/nam-rs/src/dsp/adaptive.rs) (função `transition_to`)
-  * [src/dsp/adaptive_test.rs](file:///home/fabio/nam-rs/src/dsp/adaptive_test.rs) (novo teste `crossfade_rebased_on_rapid_consecutive_transitions`)
-* **Mudança proposta:**
-  * Ao interromper um crossfade pendente, calcular a contribuição acumulada e remapear o início da nova rampa a partir do nível de blend atual, em vez de zerar `crossfade_elapsed` abruptamente.
-* **Risco:** MÉDIO.
-* **Critério de Aceitação:**
-  * Teste unitário forçando as transições rápidas `Full → Reduced → Minimal` e garantindo desvios do envelope de ganho limitados por um passo infinitesimal.
-* **✅ CONCLUÍDO (2026-06-25):**
-  * `transition_to`: adicionado cálculo de `current_progress` a partir do crossfade ativo; `crossfade_elapsed` re-baseado como `current_progress * new_total` em vez de reset para `0`.
-  * Novo teste `crossfade_rebased_on_rapid_consecutive_transitions`: avança crossfade Full→Reduced até ≈33%, dispara Reduced→Minimal, verifica continuidade do multiplicador com passo < 0.05.
-  * `cargo test --lib`: 849 pass, 0 fail. `cargo test --test adaptive_fsm_proptest -- --include-ignored`: 5 pass. `cargo clippy --all-targets --all-features`: limpo.
+* **Prioridade:** P2
+* **Complexidade/Esforço:** Médio
+* **Risco:** Baixo
+* **Arquivos Afetados:** [traits.rs](file:///home/fabio/nam-rs/src/math/common/traits.rs)
+* **Descrição:**
+  Estender o trait `SimdMath` para definir a operação de multiplicação-acumulação espectral complexa (MAC).
+  Adicionar os seguintes métodos (ou equivalentes):
+  * `complex_mac_overwrite`: multiplica dois vetores complexos e escreve o resultado no destino.
+  * `complex_mac_accumulate`: multiplica dois vetores complexos e adiciona ao acumulador de destino.
+  Assinaturas planejadas:
+
+  ```rust
+  unsafe fn complex_mac_overwrite(
+      h_re: &[f32], h_im: &[f32],
+      x_re: &[f32], x_im: &[f32],
+      out_re: &mut [f32], out_im: &mut [f32]
+  );
+
+  unsafe fn complex_mac_accumulate(
+      h_re: &[f32], h_im: &[f32],
+      x_re: &[f32], x_im: &[f32],
+      acc_re: &mut [f32], acc_im: &mut [f32]
+  );
+  ```
+
+* **Estratégia de Validação:**
+  * `cargo check` para garantir consistência de tipos.
+
+---
+
+## Sprint 3: Implementação de Kernels SIMD Complex MAC e Despacho Integrado (P2.1 - Kernels)
+
+Foco em implementar a vetorização nos backends e integrá-la ao motor de convolução do simulador de gabinete.
+
+### Tarefa A5 (P2.1 - AVX2) — Kernel MAC Complexo no Backend AVX2
+
+* **Prioridade:** P2
+* **Complexidade/Esforço:** Médio
+* **Risco:** Médio (Cuidado com alinhamento e precisão FMA)
+* **Arquivos Afetados:** [avx2_impl.rs](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs)
+* **Descrição:**
+  Implementar os métodos de multiplicação complexa no bloco `impl SimdMath for Avx2Math` usando intrínsecos de AVX2/FMA (`_mm256_fmadd_ps`, `_mm256_fnmadd_ps`, etc.).
+  O loop deve processar chunks contíguos de 8 bins por iteração e tratar o restante de forma escalar.
+* **Estratégia de Validação:**
+  * Testes unitários inline para comparar a saída do kernel AVX2 contra a lógica de multiplicação complexa pura do Rust.
+
+### Tarefa A6 (P2.1 - AVX-512) — Kernel MAC Complexo no Backend AVX-512
+
+* **Prioridade:** P2
+* **Complexidade/Esforço:** Médio
+* **Risco:** Médio
+* **Arquivos Afetados:** [mod.rs](file:///home/fabio/nam-rs/src/math/common/avx512/mod.rs)
+* **Descrição:**
+  Implementar os métodos correspondentes no bloco `impl SimdMath for Avx512Math` e `Avx512VnniBf16Math` utilizando as extensões AVX-512 (processando 16 bins por iteração).
+* **Estratégia de Validação:**
+  * Teste de paridade de codegen e checagem de corretude matemática.
+
+### Tarefa A7 (P2.1 - Integração) — Integração e Despacho Dinâmico em ConvEngine
+
+* **Prioridade:** P1
+* **Complexidade/Esforço:** Médio-Alto
+* **Risco:** Médio
+* **Arquivos Afetados:** [conv.rs](file:///home/fabio/nam-rs/src/dsp/cabsim/conv.rs)
+* **Descrição:**
+  Integrar o despacho dinâmico no `ConvEngine`.
+  * Guardar uma representação da ISA (ou um ponteiro de função estático/objeto dinâmico) em `ConvEngine` na sua criação (`ConvEngine::new`) para evitar validações de CPU em tempo de áudio.
+  * Substituir o bloco `unsafe` com AVX2 hardcoded em `ConvEngine::process` por uma chamada aos novos métodos do trait `SimdMath` selecionados para a ISA ativa.
+* **Estratégia de Validação:**
+  * Medição do SNR do sinal de saída para garantir que a convolução com dispatch dinâmico produz o mesmo resultado (SNR ≥ 120 dB).
+  * Benchmarks comparativos de `ConvEngine::process` com diferentes contagens de partição.
+
+---
+
+## Sprint 4: Vetorização Avançada do FFT (P1.2 & P1.3)
+
+Investigação e desenvolvimento de vetorização profunda no cálculo do FFT/IFFT para diminuir ainda mais o custo de execução por bloco.
+
+### Tarefa A8 (P1.2) — Vetorização das Borboletas do FFT
+
+* **Prioridade:** P9 (Desejável)
+* **Complexidade/Esforço:** Alto
+* **Risco:** Alto (Potencial instabilidade numérica)
+* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs)
+* **Descrição:**
+  Vetorizar o loop do FFT nos estágios em que `half >= LARGURA_SIMD` (ex.: `half >= 8` em AVX2).
+  * *Problema:* O twiddle factor varia no laço interno com padrão strided (`w_idx = j * step`).
+  * *Solução:* Reorganizar a tabela de twiddles (pré-computar twiddles organizados de forma contígua por estágio na inicialização de `FftPlanner`), permitindo cargas SIMD contíguas.
+  * Onde `half < LARGURA_SIMD` (primeiros estágios da transformada direta / últimos da inversa), manter a execução escalar acelerada (ou vetorização pequena se viável).
+* **Estratégia de Validação:**
+  * Testes em `fft_test.rs` de paridade absoluta contra a transformada original e transformada matemática `f64`.
+  * Medições de SNR em todo o Cab Sim.
+
+### Tarefa A9 (P1.3) — Algoritmos Avançados de Transformada (Opcional/Pesquisa)
+
+* **Prioridade:** P9 (Desejável)
+* **Complexidade/Esforço:** Alto
+* **Risco:** Alto
+* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs)
+* **Descrição:**
+  Avaliar se a transição para outros layouts de FFT (como Radix-4, Split-Radix ou Stockham que dispensa bit-reversal no início) traz ganhos que justificam a complexidade acrescida.
+* **Estratégia de Validação:**
+  * Benchmarking rigoroso contra a implementação resultante da Tarefa A8.
+
+---
+
+## Critério de Pronto Geral (Definition of Done)
+
+Para considerar o Épico A finalizado, os seguintes requisitos devem ser atendidos:
+
+1. **Compilação Limpa:** Sem avisos (warnings) ou erros em `cargo build` e `cargo clippy`.
+2. **Qualidade de Sinal (SNR):** SNR da resposta convolucional do simulador de gabinete contra a versão escalar inicial deve ser ≥ 120 dB (paridade numérica).
+3. **Desempenho Comprovado:** Benches de `ConvEngine::process` devem mostrar melhoria clara e consistente proporcional à ISA disponível (AVX2 vs AVX-512).
+4. **RT-Safety:** Garantir que nenhuma alocação de memória ou chamada bloqueante ocorra no caminho quente.
+5. **Políticas de Código:** Preservar licenças SPDX e direitos autorais nos cabeçalhos dos arquivos modificados.
