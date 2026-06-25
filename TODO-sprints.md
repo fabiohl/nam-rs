@@ -150,7 +150,7 @@ Foco em implementar a vetorização nos backends e integrá-la ao motor de convo
   * Teste de paridade de codegen e checagem de corretude matemática.
 * **Conclusão (2026-06-25):** Kernels AVX-512 (`_mm512_fmsub_ps`/`_mm512_fmadd_ps`, 16 bins) já implementados nos macros `impl_avx512_dsp!()` (base) e `impl_avx512vnni_bf16_dsp!()` (delegação para `Avx512Math`). Adicionadas funções de referência escalar (`complex_mac_overwrite_scalar`/`complex_mac_accumulate_scalar`) e testes de paridade (`test_complex_mac_overwrite_parity`/`test_complex_mac_accumulate_parity`) com 14 tamanhos (0–256). `cargo test -- math::common::common_test` passa com 31/31.
 
-### Tarefa A7 (P2.1 - Integração) — Integração e Despacho Dinâmico em ConvEngine
+### Tarefa A7 (P2.1 - Integração) — Integração e Despacho Dinâmico em ConvEngine [DONE]
 
 * **Prioridade:** P1
 * **Complexidade/Esforço:** Médio-Alto
@@ -163,6 +163,7 @@ Foco em implementar a vetorização nos backends e integrá-la ao motor de convo
 * **Estratégia de Validação:**
   * Medição do SNR do sinal de saída para garantir que a convolução com dispatch dinâmico produz o mesmo resultado (SNR ≥ 120 dB).
   * Benchmarks comparativos de `ConvEngine::process` com diferentes contagens de partição.
+* **Conclusão (2026-06-25):** Campo `isa: InstructionSet` adicionado ao `ConvEngine`, capturado via `SimdMathConfig::current().instruction_set` em `ConvEngine::new`. Bloco `unsafe` AVX2 hardcoded do Step 4 substituído por despacho dinâmico via `match self.isa` chamando `SimdMath::complex_mac_overwrite` (1 partição) ou `SimdMath::complex_mac_accumulate` (N partições) nos backends `Avx2Math`/`Avx512Math`/`Avx512VnniBf16Math`. Todos os 21 testes de cabsim e 46 de math::common passam sem regressão. `cargo clippy` limpo sem warnings.
 
 ---
 

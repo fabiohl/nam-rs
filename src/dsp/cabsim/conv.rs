@@ -24,6 +24,12 @@
 //! JAES Vol. 43, No. 3, 1995 March.
 
 use crate::math::common::AlignedVec;
+use crate::math::common::Avx2Math;
+use crate::math::common::Avx512Math;
+use crate::math::common::Avx512VnniBf16Math;
+use crate::math::common::dispatch::InstructionSet;
+use crate::math::common::dispatch::SimdMathConfig;
+use crate::math::common::traits::SimdMath;
 use crate::math::dsp::fft::RfftPlanner;
 
 /// Uniform-Partitioned Overlap-Save convolution engine.
@@ -76,6 +82,9 @@ pub struct ConvEngine {
     output_buf: AlignedVec<f32>,
     /// Cached output start index (= fft_size - partition_size).
     output_start: usize,
+    /// Instruction set captured at construction time to avoid runtime CPU
+    /// feature checks in the audio hot path.
+    isa: InstructionSet,
 }
 
 impl ConvEngine {
@@ -148,6 +157,7 @@ impl ConvEngine {
         let acc_re = AlignedVec::new(n_bins, 0.0_f32);
         let acc_im = AlignedVec::new(n_bins, 0.0_f32);
         let output_buf = AlignedVec::new(fft_size, 0.0_f32);
+        let isa = SimdMathConfig::current().instruction_set;
 
         Self {
             fft_size,
@@ -167,6 +177,7 @@ impl ConvEngine {
             acc_im,
             output_buf,
             output_start,
+            isa,
         }
     }
 
@@ -265,84 +276,77 @@ impl ConvEngine {
         let p_count = self.num_partitions;
         let n_bins = self.n_bins;
 
-        // Zero the accumulator
-        self.acc_re.fill(0.0);
-        self.acc_im.fill(0.0);
-
-        use core::arch::x86_64::{
-            _mm256_add_ps, _mm256_fmadd_ps, _mm256_fnmadd_ps, _mm256_loadu_ps, _mm256_mul_ps,
-            _mm256_storeu_ps,
-        };
-        // SAFETY: AlignedVec guarantees 64-byte alignment. _mm256_loadu_ps
-        // has no alignment requirement. All indices are bounded by
-        // pre-allocated buffer sizes.
-        // Note: we use _mm256_loadu_ps/_mm256_storeu_ps (unaligned)
-        // because n_bins = fft_size/2 + 1 may not be a multiple of 8,
-        // so p * n_bins + k can be unaligned for odd p.
-        unsafe {
-            if p_count == 1 {
-                let fdl_start = self.fdl_idx * self.n_bins;
-                let mut k = 0usize;
-                while k + 8 <= n_bins {
-                    let h_re = _mm256_loadu_ps(self.h_fdl_re.as_ptr().add(k));
-                    let h_im = _mm256_loadu_ps(self.h_fdl_im.as_ptr().add(k));
-                    let x_re = _mm256_loadu_ps(self.fdl_re.as_ptr().add(fdl_start + k));
-                    let x_im = _mm256_loadu_ps(self.fdl_im.as_ptr().add(fdl_start + k));
-
-                    let re_prod = _mm256_mul_ps(h_re, x_re);
-                    let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
-
-                    let im_prod = _mm256_mul_ps(h_re, x_im);
-                    let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
-
-                    _mm256_storeu_ps(self.acc_re.as_mut_ptr().add(k), re_res);
-                    _mm256_storeu_ps(self.acc_im.as_mut_ptr().add(k), im_res);
-
-                    k += 8;
+        if p_count == 1 {
+            let fdl_start = self.fdl_idx * self.n_bins;
+            // SAFETY: all slices have length n_bins, guaranteed by construction.
+            // ISA detection was performed once at ConvEngine::new.
+            unsafe {
+                match self.isa {
+                    InstructionSet::Avx512VnniBf16 => Avx512VnniBf16Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..n_bins],
+                        &self.h_fdl_im[..n_bins],
+                        &self.fdl_re[fdl_start..fdl_start + n_bins],
+                        &self.fdl_im[fdl_start..fdl_start + n_bins],
+                        &mut self.acc_re[..n_bins],
+                        &mut self.acc_im[..n_bins],
+                    ),
+                    InstructionSet::Avx512 => Avx512Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..n_bins],
+                        &self.h_fdl_im[..n_bins],
+                        &self.fdl_re[fdl_start..fdl_start + n_bins],
+                        &self.fdl_im[fdl_start..fdl_start + n_bins],
+                        &mut self.acc_re[..n_bins],
+                        &mut self.acc_im[..n_bins],
+                    ),
+                    InstructionSet::Avx2 => Avx2Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..n_bins],
+                        &self.h_fdl_im[..n_bins],
+                        &self.fdl_re[fdl_start..fdl_start + n_bins],
+                        &self.fdl_im[fdl_start..fdl_start + n_bins],
+                        &mut self.acc_re[..n_bins],
+                        &mut self.acc_im[..n_bins],
+                    ),
                 }
-                for k in k..n_bins {
-                    let h_re = self.h_fdl_re[k];
-                    let h_im = self.h_fdl_im[k];
-                    let x_re = self.fdl_re[fdl_start + k];
-                    let x_im = self.fdl_im[fdl_start + k];
-                    self.acc_re[k] = h_re * x_re - h_im * x_im;
-                    self.acc_im[k] = h_re * x_im + h_im * x_re;
-                }
-            } else {
-                for p in 0..p_count {
-                    let fdl_p = (self.fdl_idx + p_count - p) % p_count;
-                    let fdl_start = fdl_p * self.n_bins;
-                    let h_start = p * self.n_bins;
+            }
+        } else {
+            self.acc_re[..n_bins].fill(0.0);
+            self.acc_im[..n_bins].fill(0.0);
 
-                    let mut k = 0usize;
-                    while k + 8 <= n_bins {
-                        let h_re = _mm256_loadu_ps(self.h_fdl_re.as_ptr().add(h_start + k));
-                        let h_im = _mm256_loadu_ps(self.h_fdl_im.as_ptr().add(h_start + k));
-                        let x_re = _mm256_loadu_ps(self.fdl_re.as_ptr().add(fdl_start + k));
-                        let x_im = _mm256_loadu_ps(self.fdl_im.as_ptr().add(fdl_start + k));
-                        let acc_re_curr = _mm256_loadu_ps(self.acc_re.as_ptr().add(k));
-                        let acc_im_curr = _mm256_loadu_ps(self.acc_im.as_ptr().add(k));
+            for p in 0..p_count {
+                let fdl_p = (self.fdl_idx + p_count - p) % p_count;
+                let fdl_start = fdl_p * self.n_bins;
+                let h_start = p * self.n_bins;
 
-                        let re_prod = _mm256_mul_ps(h_re, x_re);
-                        let re_res = _mm256_fnmadd_ps(h_im, x_im, re_prod);
-                        let re_sum = _mm256_add_ps(acc_re_curr, re_res);
-
-                        let im_prod = _mm256_mul_ps(h_re, x_im);
-                        let im_res = _mm256_fmadd_ps(h_im, x_re, im_prod);
-                        let im_sum = _mm256_add_ps(acc_im_curr, im_res);
-
-                        _mm256_storeu_ps(self.acc_re.as_mut_ptr().add(k), re_sum);
-                        _mm256_storeu_ps(self.acc_im.as_mut_ptr().add(k), im_sum);
-
-                        k += 8;
-                    }
-                    for k in k..n_bins {
-                        let h_re = self.h_fdl_re[h_start + k];
-                        let h_im = self.h_fdl_im[h_start + k];
-                        let x_re = self.fdl_re[fdl_start + k];
-                        let x_im = self.fdl_im[fdl_start + k];
-                        self.acc_re[k] += h_re * x_re - h_im * x_im;
-                        self.acc_im[k] += h_re * x_im + h_im * x_re;
+                // SAFETY: all slices have length n_bins, guaranteed by construction.
+                // ISA detection was performed once at ConvEngine::new.
+                unsafe {
+                    match self.isa {
+                        InstructionSet::Avx512VnniBf16 => {
+                            Avx512VnniBf16Math::complex_mac_accumulate(
+                                &self.h_fdl_re[h_start..h_start + n_bins],
+                                &self.h_fdl_im[h_start..h_start + n_bins],
+                                &self.fdl_re[fdl_start..fdl_start + n_bins],
+                                &self.fdl_im[fdl_start..fdl_start + n_bins],
+                                &mut self.acc_re[..n_bins],
+                                &mut self.acc_im[..n_bins],
+                            )
+                        }
+                        InstructionSet::Avx512 => Avx512Math::complex_mac_accumulate(
+                            &self.h_fdl_re[h_start..h_start + n_bins],
+                            &self.h_fdl_im[h_start..h_start + n_bins],
+                            &self.fdl_re[fdl_start..fdl_start + n_bins],
+                            &self.fdl_im[fdl_start..fdl_start + n_bins],
+                            &mut self.acc_re[..n_bins],
+                            &mut self.acc_im[..n_bins],
+                        ),
+                        InstructionSet::Avx2 => Avx2Math::complex_mac_accumulate(
+                            &self.h_fdl_re[h_start..h_start + n_bins],
+                            &self.h_fdl_im[h_start..h_start + n_bins],
+                            &self.fdl_re[fdl_start..fdl_start + n_bins],
+                            &self.fdl_im[fdl_start..fdl_start + n_bins],
+                            &mut self.acc_re[..n_bins],
+                            &mut self.acc_im[..n_bins],
+                        ),
                     }
                 }
             }
