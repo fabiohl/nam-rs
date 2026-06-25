@@ -852,4 +852,50 @@ pub trait SimdMath {
     /// # Safety
     /// `data` must be a valid mutable slice.
     unsafe fn apply_dither_add(data: &mut [f32], offset: f32);
+
+    // --- (F) Complex MAC ---
+
+    /// Complex multiply-accumulate (overwrite): spectral kernel.
+    ///
+    /// Computes the element-wise complex multiplication of two vectors
+    /// `(h_re, h_im)` and `(x_re, x_im)` writing the result to `(out_re, out_im)`.
+    ///
+    /// `out_re[i] = h_re[i] * x_re[i] - h_im[i] * x_im[i]`
+    /// `out_im[i] = h_re[i] * x_im[i] + h_im[i] * x_re[i]`
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `n = h_re.len() == h_im.len() == x_re.len() == x_im.len() == out_re.len() == out_im.len()`.
+    /// All slices must be valid and must not alias.
+    unsafe fn complex_mac_overwrite(
+        h_re: &[f32],
+        h_im: &[f32],
+        x_re: &[f32],
+        x_im: &[f32],
+        out_re: &mut [f32],
+        out_im: &mut [f32],
+    );
+
+    /// Complex multiply-accumulate (accumulate): spectral kernel.
+    ///
+    /// Computes the element-wise complex multiplication of two vectors
+    /// `(h_re, h_im)` and `(x_re, x_im)` adding the result to `(acc_re, acc_im)`.
+    ///
+    /// `acc_re[i] += h_re[i] * x_re[i] - h_im[i] * x_im[i]`
+    /// `acc_im[i] += h_re[i] * x_im[i] + h_im[i] * x_re[i]`
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `n = h_re.len() == h_im.len() == x_re.len() == x_im.len() == acc_re.len() == acc_im.len()`.
+    /// All slices must be valid and must not alias.
+    unsafe fn complex_mac_accumulate(
+        h_re: &[f32],
+        h_im: &[f32],
+        x_re: &[f32],
+        x_im: &[f32],
+        acc_re: &mut [f32],
+        acc_im: &mut [f32],
+    );
 }

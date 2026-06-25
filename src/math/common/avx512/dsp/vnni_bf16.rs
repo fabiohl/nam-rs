@@ -110,5 +110,33 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         unsafe fn crossfade_blend_mono(out: &mut [f32], pending: &[f32], t: f32) {
             Avx512Math::crossfade_blend_mono(out, pending, t)
         }
+
+        #[inline(always)]
+        // SAFETY: all 6 slices are valid f32 slices of equal length;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
+        unsafe fn complex_mac_overwrite(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            out_re: &mut [f32],
+            out_im: &mut [f32],
+        ) {
+            Avx512Math::complex_mac_overwrite(h_re, h_im, x_re, x_im, out_re, out_im)
+        }
+
+        #[inline(always)]
+        // SAFETY: all 6 slices are valid f32 slices of equal length;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
+        unsafe fn complex_mac_accumulate(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            acc_re: &mut [f32],
+            acc_im: &mut [f32],
+        ) {
+            Avx512Math::complex_mac_accumulate(h_re, h_im, x_re, x_im, acc_re, acc_im)
+        }
     };
 }

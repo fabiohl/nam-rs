@@ -89,7 +89,7 @@ Foco em otimizar a escrita de memória na FDL e modelar a infraestrutura necess�
   * `cargo test` para garantir integridade.
 * **Conclusão (2026-06-25):** Loop escalar substituído por `copy_from_slice` no Step 3 de `ConvEngine::process()`. Todos os 152 testes passam sem regressão.
 
-### Tarefa A4 (P2.1 - Infra) — Trait SimdMath com Operações Complexas
+### Tarefa A4 (P2.1 - Infra) — Trait SimdMath com Operações Complexas [DONE]
 
 * **Prioridade:** P2
 * **Complexidade/Esforço:** Médio
@@ -118,6 +118,7 @@ Foco em otimizar a escrita de memória na FDL e modelar a infraestrutura necess�
 
 * **Estratégia de Validação:**
   * `cargo check` para garantir consistência de tipos.
+  * **Conclusão (2026-06-25):** `complex_mac_overwrite` e `complex_mac_accumulate` adicionados ao trait `SimdMath` com implementações inline SIMD nos três backends (AVX2, AVX-512F, AVX-512 VNNI+BF16). `cargo check` limpo sem warnings.
 
 ---
 

@@ -135,5 +135,83 @@ macro_rules! impl_avx512_dsp {
             // SAFETY: out, pending, and t satisfy function invariants.
             unsafe { crate::math::dsp::gain::crossfade_blend_mono_avx512(out, pending, t) }
         }
+
+        #[inline(always)]
+        // SAFETY: all 6 slices are valid f32 slices of equal length n; CPU supports AVX-512F
+        // (verified by dispatch). No aliasing between slices.
+        unsafe fn complex_mac_overwrite(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            out_re: &mut [f32],
+            out_im: &mut [f32],
+        ) {
+            let n = h_re.len();
+            let mut i = 0;
+            while i + 16 <= n {
+                // SAFETY: i is bounds-checked (i+16 <= n); unaligned 512-bit loads/stores valid
+                // for f32 slices.
+                unsafe {
+                    let hr = _mm512_loadu_ps(h_re.as_ptr().add(i));
+                    let hi = _mm512_loadu_ps(h_im.as_ptr().add(i));
+                    let xr = _mm512_loadu_ps(x_re.as_ptr().add(i));
+                    let xi = _mm512_loadu_ps(x_im.as_ptr().add(i));
+                    let prod_re = _mm512_fmsub_ps(hr, xr, _mm512_mul_ps(hi, xi));
+                    let prod_im = _mm512_fmadd_ps(hr, xi, _mm512_mul_ps(hi, xr));
+                    _mm512_storeu_ps(out_re.as_mut_ptr().add(i), prod_re);
+                    _mm512_storeu_ps(out_im.as_mut_ptr().add(i), prod_im);
+                }
+                i += 16;
+            }
+            for j in i..n {
+                let hr = *h_re.get_unchecked(j);
+                let hi = *h_im.get_unchecked(j);
+                let xr = *x_re.get_unchecked(j);
+                let xi = *x_im.get_unchecked(j);
+                *out_re.get_unchecked_mut(j) = f32::mul_add(hr, xr, -hi * xi);
+                *out_im.get_unchecked_mut(j) = f32::mul_add(hr, xi, hi * xr);
+            }
+        }
+
+        #[inline(always)]
+        // SAFETY: all 6 slices are valid f32 slices of equal length n; CPU supports AVX-512F
+        // (verified by dispatch). No aliasing between slices.
+        unsafe fn complex_mac_accumulate(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            acc_re: &mut [f32],
+            acc_im: &mut [f32],
+        ) {
+            let n = h_re.len();
+            let mut i = 0;
+            while i + 16 <= n {
+                // SAFETY: i is bounds-checked (i+16 <= n); unaligned 512-bit loads/stores valid
+                // for f32 slices.
+                unsafe {
+                    let hr = _mm512_loadu_ps(h_re.as_ptr().add(i));
+                    let hi = _mm512_loadu_ps(h_im.as_ptr().add(i));
+                    let xr = _mm512_loadu_ps(x_re.as_ptr().add(i));
+                    let xi = _mm512_loadu_ps(x_im.as_ptr().add(i));
+                    let prod_re = _mm512_fmsub_ps(hr, xr, _mm512_mul_ps(hi, xi));
+                    let prod_im = _mm512_fmadd_ps(hr, xi, _mm512_mul_ps(hi, xr));
+                    let cur_re = _mm512_loadu_ps(acc_re.as_ptr().add(i));
+                    let cur_im = _mm512_loadu_ps(acc_im.as_ptr().add(i));
+                    _mm512_storeu_ps(acc_re.as_mut_ptr().add(i), _mm512_add_ps(cur_re, prod_re));
+                    _mm512_storeu_ps(acc_im.as_mut_ptr().add(i), _mm512_add_ps(cur_im, prod_im));
+                }
+                i += 16;
+            }
+            for j in i..n {
+                let hr = *h_re.get_unchecked(j);
+                let hi = *h_im.get_unchecked(j);
+                let xr = *x_re.get_unchecked(j);
+                let xi = *x_im.get_unchecked(j);
+                *acc_re.get_unchecked_mut(j) += f32::mul_add(hr, xr, -hi * xi);
+                *acc_im.get_unchecked_mut(j) += f32::mul_add(hr, xi, hi * xr);
+            }
+        }
     };
 }
