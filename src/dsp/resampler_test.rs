@@ -4,6 +4,38 @@
 use super::*;
 
 #[test]
+fn test_bypass_asymmetric_buffers() {
+    // E2.1 — asymmetric stereo buffers must not cause UB/panic in bypass.
+    let mut rs = NamResampler::new(48_000, 48_000, 256).expect("new failed");
+    assert!(rs.is_bypass());
+
+    let in_full = [1.0f32; 8];
+    let in_short = [2.0f32; 3];
+    let mut out_full = [0.0f32; 8];
+    let mut out_short = [0.0f32; 3];
+
+    let n = rs.process_input(&in_full, &in_short, &mut out_full, &mut out_short);
+    assert_eq!(n, 3);
+    assert_eq!(&out_full[..3], &in_full[..3]);
+    assert_eq!(&out_short[..3], &in_short[..3]);
+
+    let n = rs.process_input(&in_short, &in_full, &mut out_full, &mut out_short);
+    assert_eq!(n, 3);
+    assert_eq!(&out_full[..3], &in_short[..3]);
+    assert_eq!(&out_short[..3], &in_full[..3]);
+
+    let n = rs.process_output(&in_full, &in_short, &mut out_full, &mut out_short);
+    assert_eq!(n, 3);
+    assert_eq!(&out_full[..3], &in_full[..3]);
+    assert_eq!(&out_short[..3], &in_short[..3]);
+
+    let n = rs.process_output(&in_short, &in_full, &mut out_full, &mut out_short);
+    assert_eq!(n, 3);
+    assert_eq!(&out_full[..3], &in_short[..3]);
+    assert_eq!(&out_short[..3], &in_full[..3]);
+}
+
+#[test]
 fn test_bypass_48k() {
     // When input rate equals output rate (e.g., 48kHz to 48kHz),
     // the system enters "Bypass" mode (shortcut), just copying sound without processing.

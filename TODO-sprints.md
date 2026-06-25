@@ -13,7 +13,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 
 ### Sprint 1: Robustez de Buffers e SIMD (F-03 & F-08)
 
-#### 📋 Tarefa E2.1: Proteção de limites no bypass estéreo do Resampler (F-03)
+#### 📋 Tarefa E2.1: Proteção de limites no bypass estéreo do Resampler (F-03) [DONE]
 
 * **Objetivo:** Impedir leituras/escritas fora dos limites (UB) no resampler quando o canal direito for assíncrono ou assimétrico.
 * **Componente:** DSP / Resampler
