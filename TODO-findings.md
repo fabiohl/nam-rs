@@ -528,7 +528,7 @@ opcional (baixo risco de regressão no caminho neural). Sequência sugerida:
    **Critério de pronto:** SNR do cabsim ≥ atual; bench `ConvEngine::process` com ganho
    demonstrável por nº de partições em AVX2 e AVX-512.
 
-### Épico B — "Dispatch monomorfizado de ponta a ponta" (P4, P3) [TO-DO]
+### Épico B — "Dispatch monomorfizado de ponta a ponta" (P4, P3) [DONE]
 
 Elimina re-dispatch redundante e o gather/scatter do BatchNorm, unificando o padrão
 `<M: SimdMath>` em A2-geral/ConvNet/gating. Sequência:

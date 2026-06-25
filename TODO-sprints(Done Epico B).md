@@ -105,7 +105,7 @@ Foco em reescrever o kernel do BatchNorm para eliminar a transposição ineficie
 * **Estratégia de Validação:**
   * Adicionar testes unitários de paridade comparando os novos kernels vetorizados contra a referência escalar sob diferentes dimensões de canais (ex.: 8, 16, 24, e tamanhos ímpares ou não-alinhados) e número de frames.
 
-### Tarefa B4 (P3 - Integração) — Integração e Despacho no BatchNorm1D
+### Tarefa B4 (P3 - Integração) — Integração e Despacho no BatchNorm1D [DONE]
 
 * **Prioridade:** Alta
 * **Complexidade/Esforço:** Médio
@@ -121,6 +121,7 @@ Foco em reescrever o kernel do BatchNorm para eliminar a transposição ineficie
 * **Estratégia de Validação:**
   * `cargo test` para verificar se os testes existentes de block ConvNet e BatchNorm continuam passando com a nova infraestrutura.
   * Executar benchmarks comparativos do motor ConvNet para demonstrar a diminuição na latência.
+  * **Conclusão:** `#[inline(never)]` removido; `process_simd<M: SimdMath>` adicionado a `BatchNorm1D`, delegando a `M::batch_norm_process`; `process()` legado atualizado para despachar via `dispatch_simd!`; `process_block_internal<M>` e `prewarm_internal<M>` em `block.rs` migrados para `process_simd::<M>()`. Antigo kernel `process_avx2` (gather/scatter escalar) removido. 886 lib tests passam (0 falhas), `cargo check` limpo.
 
 ---
 

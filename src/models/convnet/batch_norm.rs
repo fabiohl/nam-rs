@@ -14,7 +14,7 @@
 //! These are precomputed at construction time so the hot-path is a single
 //! FMA per element (lowered to `vfmadd231ps` on x86-64-v3).
 
-use crate::math::common::AlignedVec;
+use crate::math::common::{AlignedVec, SimdMath};
 
 /// 1-Dimensional Batch Normalization layer (inference-only).
 ///
@@ -98,7 +98,7 @@ impl BatchNorm1D {
         }
     }
 
-    /// Applies the batch normalization affine transform in-place.
+    /// Applies the batch normalization affine transform in-place, via SIMD dispatch.
     ///
     /// `data` layout: `[f0_c0, f0_c1, ..., f0_c{n_ch-1}, f1_c0, ...]`.
     /// `data.len()` must be `num_frames * num_channels`.
@@ -108,8 +108,21 @@ impl BatchNorm1D {
     #[inline(always)]
     pub unsafe fn process(&self, data: &mut [f32], num_frames: usize) {
         debug_assert_eq!(data.len(), num_frames * self.num_channels);
+        unsafe { crate::math::common::dispatch_simd!(self, process_simd, data, num_frames) };
+    }
+
+    /// Monomorphized batch normalization affine transform.
+    ///
+    /// Delegates directly to `M::batch_norm_process` for compile-time
+    /// dispatch with no dynamic ISA lookup.
+    ///
+    /// # Safety
+    /// `data.len() == num_frames * self.num_channels`.
+    #[inline(always)]
+    pub unsafe fn process_simd<M: SimdMath>(&self, data: &mut [f32], num_frames: usize) {
+        debug_assert_eq!(data.len(), num_frames * self.num_channels);
         unsafe {
-            process_avx2(
+            M::batch_norm_process(
                 data,
                 &self.scale,
                 &self.offset,
@@ -133,58 +146,6 @@ impl BatchNorm1D {
                 self.num_channels,
                 num_frames,
             );
-        }
-    }
-}
-
-/// AVX2+FMA kernel: 8 frames per channel, strided by `n_ch`.
-///
-/// For each channel, broadcasts `scale[c]` and `offset[c]` into SIMD
-/// registers and processes frames in chunks of 8 using `vfmadd231ps`.
-///
-/// # Safety
-/// `data.len()` must equal `num_frames * n_ch`. `scale` and `offset` must
-/// each have at least `n_ch` elements.
-#[target_feature(enable = "avx2,fma")]
-#[inline(never)]
-unsafe fn process_avx2(
-    data: &mut [f32],
-    scale: &[f32],
-    offset: &[f32],
-    n_ch: usize,
-    num_frames: usize,
-) {
-    use core::arch::x86_64::*;
-
-    let mut gather_buf = [0.0f32; 8];
-
-    for ch in 0..n_ch {
-        let s = unsafe { _mm256_set1_ps(*scale.get_unchecked(ch)) };
-        let o = unsafe { _mm256_set1_ps(*offset.get_unchecked(ch)) };
-
-        let mut f = 0usize;
-        while f + 8 <= num_frames {
-            let base = ch + f * n_ch;
-            unsafe {
-                for lane in 0..8 {
-                    *gather_buf.get_unchecked_mut(lane) = *data.get_unchecked(base + lane * n_ch);
-                }
-                let xv = _mm256_loadu_ps(gather_buf.as_ptr());
-                let yv = _mm256_fmadd_ps(xv, s, o);
-                _mm256_storeu_ps(gather_buf.as_mut_ptr(), yv);
-                for lane in 0..8 {
-                    *data.get_unchecked_mut(base + lane * n_ch) = *gather_buf.get_unchecked(lane);
-                }
-            }
-            f += 8;
-        }
-
-        for f in f..num_frames {
-            let idx = ch + f * n_ch;
-            unsafe {
-                *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx))
-                    .mul_add(*scale.get_unchecked(ch), *offset.get_unchecked(ch));
-            }
         }
     }
 }

@@ -155,7 +155,7 @@ impl ConvNetBlock {
         }
 
         unsafe {
-            self.bn.process(scratch_slice, num_frames);
+            self.bn.process_simd::<M>(scratch_slice, num_frames);
         }
 
         unsafe {
@@ -213,7 +213,7 @@ impl ConvNetBlock {
             );
         }
         unsafe {
-            self.bn.process(scratch_slice, 1);
+            self.bn.process_simd::<M>(scratch_slice, 1);
         }
         unsafe {
             self.activation.apply_simd::<M>(scratch_slice);
