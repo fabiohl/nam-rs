@@ -30,7 +30,7 @@
 //! are pre-allocated at construction time. Zero heap alloc on the hot-path.
 
 use crate::math::common::SimdMath;
-use crate::models::a2::activations::{ActivationFn, ActivationType};
+use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::{BlendingActivationConfig, GatingActivationConfig, GatingMode};
 use crate::models::a2::layer::A2Layer;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
@@ -333,16 +333,22 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     // 3. Activation or Gating/Blending.
     if use_gating {
         if let Some(gc) = gating_config {
-            gc.apply_gating(&mut z_scratch[..z_out_ch]);
+            unsafe {
+                gc.apply_gating_simd::<M>(&mut z_scratch[..z_out_ch]);
+            }
         }
         z_len = bottleneck;
     } else if use_blending {
         if let Some(bc) = blending_config {
-            bc.apply_blending(&mut z_scratch[..z_out_ch]);
+            unsafe {
+                bc.apply_blending_simd::<M>(&mut z_scratch[..z_out_ch]);
+            }
         }
         z_len = bottleneck;
     } else {
-        activation.apply(&mut z_scratch[..bottleneck]);
+        unsafe {
+            activation.apply_simd::<M>(&mut z_scratch[..bottleneck]);
+        }
         z_len = bottleneck;
     }
 

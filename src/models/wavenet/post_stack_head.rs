@@ -3,7 +3,6 @@
 
 use crate::math::common::AlignedVec;
 use crate::math::common::SimdMath;
-use crate::models::a2::activations::ActivationFn;
 use crate::models::a2::activations::ActivationType;
 
 use super::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -172,7 +171,9 @@ impl PostStackHead {
             );
         }
 
-        self.activation.apply(scratch_slice);
+        unsafe {
+            self.activation.apply_simd::<M>(scratch_slice);
+        }
 
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -227,7 +228,9 @@ impl PostStackHead {
                 None,
             );
         }
-        self.activation.apply(scratch_slice);
+        unsafe {
+            self.activation.apply_simd::<M>(scratch_slice);
+        }
 
         self.state.advance_frames(1, in_ch);
     }

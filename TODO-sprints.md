@@ -46,7 +46,7 @@ Foco em prover a infraestrutura no trait `SimdMath` para determinar a ISA em tem
   * `cargo check` e `cargo test` para certificar que compila e preserva toda a corretude matemática do A2.
   * Inspecionar o assembly de `layer_forward_dispatch` em build de release para validar que a condicional `match M::ISA` foi eliminada via otimização de tempo de compilação (DCE).
 
-### Tarefa B2 (P4b) — Ativações Monomorfizadas e Remoção do Re-despacho no Gating
+### Tarefa B2 (P4b) — Ativações Monomorfizadas e Remoção do Re-despacho no Gating [DONE]
 
 * **Prioridade:** Alta
 * **Complexidade/Esforço:** Médio

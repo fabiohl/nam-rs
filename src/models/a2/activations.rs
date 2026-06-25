@@ -73,10 +73,74 @@ pub enum ActivationType {
     Softsign,
 }
 
+use crate::math::common::SimdMath;
+
 /// Trait for applying activation functions on audio buffers.
 pub trait ActivationFn {
     /// Applies the activation function in-place on the provided buffer.
     fn apply(&self, data: &mut [f32]);
+}
+
+impl ActivationType {
+    /// Applies the activation function using the monomorphized SIMD backend `M`.
+    ///
+    /// Calls `M`'s associated functions directly, bypassing the dynamic
+    /// `dispatch_simd!` macro used by the free functions in `crate::math::activations`.
+    /// When `M` is known at compile time (e.g., inside a `process_internal<M: SimdMath>`
+    /// method), this eliminates runtime redispatch on every activation call.
+    ///
+    /// # Safety
+    /// `data` must be a valid mutable slice. The caller must ensure `M` matches
+    /// the CPU ISA capabilities (guaranteed by the top-level `dispatch_simd!`).
+    #[inline(always)]
+    pub unsafe fn apply_simd<M: SimdMath>(&self, data: &mut [f32]) {
+        match self {
+            Self::Tanh => unsafe {
+                M::tanh_slice(data);
+            },
+            Self::HardTanh => unsafe {
+                M::hard_tanh_slice(data);
+            },
+            Self::FastTanh => unsafe {
+                M::fast_tanh_slice(data);
+            },
+            Self::ReLU => unsafe {
+                M::relu_slice(data);
+            },
+            Self::LeakyReLU { negative_slope } => unsafe {
+                let slopes = [*negative_slope];
+                M::prelu_slice(data, &slopes);
+            },
+            Self::PReLU { negative_slopes } => {
+                if negative_slopes.is_empty() {
+                    return;
+                }
+                unsafe {
+                    M::prelu_slice(data, negative_slopes);
+                }
+            }
+            Self::Sigmoid => unsafe {
+                M::sigmoid_slice(data);
+            },
+            Self::SiLU => unsafe {
+                M::silu_slice(data);
+            },
+            Self::HardSwish => unsafe {
+                M::hard_swish_slice(data);
+            },
+            Self::LeakyHardTanh {
+                min_val,
+                max_val,
+                min_slope,
+                max_slope,
+            } => unsafe {
+                M::leaky_hard_tanh_slice(data, *min_val, *max_val, *min_slope, *max_slope);
+            },
+            Self::Softsign => unsafe {
+                M::softsign_slice(data);
+            },
+        }
+    }
 }
 
 impl ActivationFn for ActivationType {

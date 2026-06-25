@@ -9,6 +9,7 @@
 
 use super::activations::{ActivationFn, ActivationType};
 use crate::math::common::AlignedVec;
+use crate::math::common::SimdMath;
 
 /// Gating modes for WaveNet layers.
 ///
@@ -68,6 +69,31 @@ impl GatingActivationConfig {
 
         self.input_activation.apply(&mut buf[..ch]);
         self.gating_activation.apply(&mut buf[ch..]);
+
+        for i in 0..ch {
+            buf[i] *= buf[ch + i];
+        }
+    }
+
+    /// Applies gating in-place using the monomorphized SIMD backend `M`.
+    ///
+    /// Same semantics as [`apply_gating`](Self::apply_gating) but calls
+    /// `apply_simd::<M>` on both activations, eliminating runtime redispatch.
+    ///
+    /// # Safety
+    /// `buf` must be valid and `M` must match the CPU ISA capabilities.
+    #[inline(always)]
+    pub unsafe fn apply_gating_simd<M: SimdMath>(&self, buf: &mut [f32]) {
+        let ch = buf.len() / 2;
+        debug_assert!(
+            ch * 2 == buf.len(),
+            "gating: buf length must be even (2×ch)"
+        );
+
+        unsafe {
+            self.input_activation.apply_simd::<M>(&mut buf[..ch]);
+            self.gating_activation.apply_simd::<M>(&mut buf[ch..]);
+        }
 
         for i in 0..ch {
             buf[i] *= buf[ch + i];
@@ -161,6 +187,41 @@ impl BlendingActivationConfig {
     #[inline]
     pub fn channels(&self) -> usize {
         self.scratch.len()
+    }
+
+    /// Applies blending in-place using the monomorphized SIMD backend `M`.
+    ///
+    /// Same semantics as [`apply_blending`](Self::apply_blending) but calls
+    /// `apply_simd::<M>` on both activations, eliminating runtime redispatch.
+    ///
+    /// # Safety
+    /// `buf` must be valid and `M` must match the CPU ISA capabilities.
+    /// Panics in debug if `buf.len()` exceeds scratch capacity.
+    #[inline(always)]
+    pub unsafe fn apply_blending_simd<M: SimdMath>(&mut self, buf: &mut [f32]) {
+        let ch = buf.len() / 2;
+        debug_assert!(
+            ch * 2 == buf.len(),
+            "blending: buf length must be even (2×ch)"
+        );
+        debug_assert!(
+            self.scratch.len() >= ch,
+            "blending: scratch too small ({}) for ch={}",
+            self.scratch.len(),
+            ch
+        );
+
+        self.scratch[..ch].copy_from_slice(&buf[..ch]);
+
+        unsafe {
+            self.input_activation.apply_simd::<M>(&mut buf[..ch]);
+            self.blending_activation.apply_simd::<M>(&mut buf[ch..]);
+        }
+
+        for i in 0..ch {
+            let alpha = buf[ch + i];
+            buf[i] = (buf[i] - self.scratch[i]).mul_add(alpha, self.scratch[i]);
+        }
     }
 }
 

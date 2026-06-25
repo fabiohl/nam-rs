@@ -8,7 +8,7 @@
 //! into the next block or the post-stack head.
 
 use crate::math::common::{AlignedVec, SimdMath};
-use crate::models::a2::activations::{ActivationFn, ActivationType};
+use crate::models::a2::activations::ActivationType;
 use crate::models::wavenet::Conv1dDyn;
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 
@@ -158,7 +158,9 @@ impl ConvNetBlock {
             self.bn.process(scratch_slice, num_frames);
         }
 
-        self.activation.apply(scratch_slice);
+        unsafe {
+            self.activation.apply_simd::<M>(scratch_slice);
+        }
 
         output[..num_frames * out_ch].copy_from_slice(scratch_slice);
 
@@ -213,7 +215,9 @@ impl ConvNetBlock {
         unsafe {
             self.bn.process(scratch_slice, 1);
         }
-        self.activation.apply(scratch_slice);
+        unsafe {
+            self.activation.apply_simd::<M>(scratch_slice);
+        }
 
         self.state.advance_frames(1, in_ch);
     }
