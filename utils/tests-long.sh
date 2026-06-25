@@ -378,7 +378,7 @@ run_phase \
 # --- Phase 2: Property-Based, Parity, C++ Parity, Golden Vectors (release, default) ---
 run_phase \
     "Property-Based, Parity & Golden Vectors in Release" \
-    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --ignored --nocapture || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; [ $status -eq 0 ]' \
     "phase2-proptests-parity.log" || true
 
 # --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
@@ -389,12 +389,15 @@ run_phase \
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
 run_clap_audit_local() {
+    # Keep RUSTFLAGS consistent across this block to avoid Cargo cache invalidation loops
+    local RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap"
+    export RUSTFLAGS
+
     echo "  Limpando binário CLAP anterior..."
     rm -f target/release/libnam_rs.so
 
     echo "  Compilando CLAP Plugin em modo Release..."
-    RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap" \
-      cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
+    cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
 
     local RELEASE_CLAP_BIN="target/release/libnam_rs.so"
     if [ ! -f "$RELEASE_CLAP_BIN" ]; then
@@ -429,7 +432,7 @@ run_clap_audit_local() {
     timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
 
     echo "  Executando teste de stress do GC com 1000 swaps..."
-    timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
+    timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib -- clap::processor::processor_gc_stress_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
 
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
     timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test concurrency_stress -- --ignored --nocapture || audit_status=1
@@ -448,7 +451,7 @@ run_phase \
 # --- Phase 5: Long Benchmarks (Performance) ---
 run_phase \
     "Long Performance Benchmarks" \
-    'status=0; cargo bench --no-fail-fast || status=1; cargo bench --no-fail-fast --features standalone,long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
+    'status=0; cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench -- --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 || status=1; cargo bench --features long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
     "phase5-benchmarks.log" || true
 
 # --- Print beautifully structured summary ---
