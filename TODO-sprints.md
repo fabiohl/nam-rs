@@ -171,7 +171,7 @@ Foco em implementar a vetorização nos backends e integrá-la ao motor de convo
 
 Investigação e desenvolvimento de vetorização profunda no cálculo do FFT/IFFT para diminuir ainda mais o custo de execução por bloco.
 
-### Tarefa A8 (P1.2) — Vetorização das Borboletas do FFT
+### Tarefa A8 (P1.2) — Vetorização das Borboletas do FFT [DONE]
 
 * **Prioridade:** P9 (Desejável)
 * **Complexidade/Esforço:** Alto
@@ -185,6 +185,7 @@ Investigação e desenvolvimento de vetorização profunda no cálculo do FFT/IF
 * **Estratégia de Validação:**
   * Testes em `fft_test.rs` de paridade absoluta contra a transformada original e transformada matemática `f64`.
   * Medições de SNR em todo o Cab Sim.
+* **Conclusão (2026-06-25):** Implementada vetorização SIMD das borboletas Radix-2 DIT via novo método `fft_butterfly_stage` no trait `SimdMath`, com implementações AVX2 (`_mm256_fmsub_ps`/`_mm256_fmadd_ps`, 8 borboletas/ciclo) e AVX-512 (`_mm512_fmsub_ps`/`_mm512_fmadd_ps`, 16 borboletas/ciclo). Tabelas de twiddles reorganizadas por estágio (`stage_twiddle_re`/`stage_twiddle_im`) para cargas SIMD contíguas. Despacho dinâmico via `dispatch_simd!` ocorre quando `half >= 8` e `T = f32`; estágios iniciais e `f64` mantêm caminho escalar com `mul_add`. Adicionados 12 testes de paridade (SIMD × escalar, SIMD × referência `f64`, roundtrip, linearidade, impulso DC) em N ∈ {256, 512, 1024}. Todos os 49 testes FFT passam, `cargo clippy` limpo sem warnings. Função escalar de referência `fft_butterfly_stage_scalar` adicionada em `scalar_ref/utility.rs`.
 
 ### Tarefa A9 (P1.3) — Algoritmos Avançados de Transformada (Opcional/Pesquisa)
 

@@ -220,3 +220,44 @@ pub fn complex_mac_accumulate_scalar(
         acc_im[i] += f32::mul_add(hr, xi, hi * xr);
     }
 }
+
+/// Scalar Radix-2 DIT FFT butterfly stage for one group.
+///
+/// See `SimdMath::fft_butterfly_stage` for semantics.
+///
+/// # Safety
+/// See `SimdMath::fft_butterfly_stage`.
+#[inline]
+pub unsafe fn fft_butterfly_stage_scalar(
+    re: *mut f32,
+    im: *mut f32,
+    half: usize,
+    tw_re: *const f32,
+    tw_im: *const f32,
+    group_start: usize,
+    inverse: bool,
+) {
+    let top = group_start;
+    let bot = group_start + half;
+    for j in 0..half {
+        let w_re = *tw_re.add(j);
+        let w_im = if inverse {
+            -(*tw_im.add(j))
+        } else {
+            *tw_im.add(j)
+        };
+
+        let re_top = *re.add(top + j);
+        let im_top = *im.add(top + j);
+        let re_bot = *re.add(bot + j);
+        let im_bot = *im.add(bot + j);
+
+        let t_re = f32::mul_add(w_re, re_bot, -w_im * im_bot);
+        let t_im = f32::mul_add(w_re, im_bot, w_im * re_bot);
+
+        *re.add(bot + j) = re_top - t_re;
+        *im.add(bot + j) = im_top - t_im;
+        *re.add(top + j) = re_top + t_re;
+        *im.add(top + j) = im_top + t_im;
+    }
+}

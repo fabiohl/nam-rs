@@ -898,4 +898,42 @@ pub trait SimdMath {
         acc_re: &mut [f32],
         acc_im: &mut [f32],
     );
+
+    // --- (G) FFT Butterfly ---
+
+    /// SIMD Radix-2 DIT FFT butterfly stage for one group.
+    ///
+    /// Processes `half` butterflies for a single group starting at
+    /// `group_start`. Each butterfly kernel computes:
+    ///
+    /// ```text
+    /// t_re = w_re * re_bot - w_im * im_bot
+    /// t_im = w_re * im_bot + w_im * re_bot
+    /// re[top] = re[top] + t_re    re[bot] = re[top] - t_re
+    /// im[top] = im[top] + t_im    im[bot] = im[top] - t_im
+    /// ```
+    ///
+    /// where `top = group_start + j`, `bot = group_start + j + half`,
+    /// and the twiddle factors `(w_re, w_im)` for `j = 0..half` are
+    /// stored contiguously in `tw_re`/`tw_im`.
+    ///
+    /// When `inverse` is `true`, the twiddle imaginary part is
+    /// conjugated (`w_im = -w_im`) before multiplication.
+    ///
+    /// # Safety
+    /// - `re` and `im` point to `n` valid `f32` values.
+    /// - `tw_re`/`tw_im` point to `half` valid `f32` values each.
+    /// - `group_start + 2 * half <= n`.
+    /// - CPU supports the required SIMD ISA (verified by dispatch).
+    /// - Source and destination may alias within the same array
+    ///   (in-place butterfly).
+    unsafe fn fft_butterfly_stage(
+        re: *mut f32,
+        im: *mut f32,
+        half: usize,
+        tw_re: *const f32,
+        tw_im: *const f32,
+        group_start: usize,
+        inverse: bool,
+    );
 }

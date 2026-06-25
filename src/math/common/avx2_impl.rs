@@ -850,6 +850,75 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: re, im, tw_re, tw_im are valid for the described ranges;
+    // CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
+    // In-place butterfly: re/im read from and written to the same array.
+    unsafe fn fft_butterfly_stage(
+        re: *mut f32,
+        im: *mut f32,
+        half: usize,
+        tw_re: *const f32,
+        tw_im: *const f32,
+        group_start: usize,
+        inverse: bool,
+    ) {
+        let top = group_start;
+        let bot = group_start + half;
+        let zero = _mm256_setzero_ps();
+        let mut j = 0;
+        while j + 8 <= half {
+            // SAFETY: j+8 <= half, pointers are advanced by j and
+            // top/bot indices are in bounds.
+            unsafe {
+                let w_re = _mm256_loadu_ps(tw_re.add(j));
+                let w_im = if inverse {
+                    _mm256_sub_ps(zero, _mm256_loadu_ps(tw_im.add(j)))
+                } else {
+                    _mm256_loadu_ps(tw_im.add(j))
+                };
+
+                let re_top = _mm256_loadu_ps(re.add(top + j));
+                let im_top = _mm256_loadu_ps(im.add(top + j));
+                let re_bot = _mm256_loadu_ps(re.add(bot + j));
+                let im_bot = _mm256_loadu_ps(im.add(bot + j));
+
+                let t_re = _mm256_fmsub_ps(w_re, re_bot, _mm256_mul_ps(w_im, im_bot));
+                let t_im = _mm256_fmadd_ps(w_re, im_bot, _mm256_mul_ps(w_im, re_bot));
+
+                _mm256_storeu_ps(re.add(bot + j), _mm256_sub_ps(re_top, t_re));
+                _mm256_storeu_ps(im.add(bot + j), _mm256_sub_ps(im_top, t_im));
+                _mm256_storeu_ps(re.add(top + j), _mm256_add_ps(re_top, t_re));
+                _mm256_storeu_ps(im.add(top + j), _mm256_add_ps(im_top, t_im));
+            }
+            j += 8;
+        }
+        for j in j..half {
+            // SAFETY: j < half, both top+j and bot+j are in bounds.
+            unsafe {
+                let w_re = *tw_re.add(j);
+                let w_im = if inverse {
+                    -(*tw_im.add(j))
+                } else {
+                    *tw_im.add(j)
+                };
+
+                let re_idx1 = *re.add(top + j);
+                let im_idx1 = *im.add(top + j);
+                let re_idx2 = *re.add(bot + j);
+                let im_idx2 = *im.add(bot + j);
+
+                let t_re = f32::mul_add(w_re, re_idx2, -w_im * im_idx2);
+                let t_im = f32::mul_add(w_re, im_idx2, w_im * re_idx2);
+
+                *re.add(bot + j) = re_idx1 - t_re;
+                *im.add(bot + j) = im_idx1 - t_im;
+                *re.add(top + j) = re_idx1 + t_re;
+                *im.add(top + j) = im_idx1 + t_im;
+            }
+        }
+    }
+
+    #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],

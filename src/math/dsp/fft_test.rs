@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::dispatch_simd;
 
 /// Tolerance for floating-point comparisons.
 const EPS_F32: f32 = 1e-5;
@@ -778,4 +779,431 @@ fn irfft_parity_vs_complex_f32() {
 
         assert_slice_approx_eq_f32(&out, &input, 1e-4);
     }
+}
+
+// =================================================================
+// SIMD Butterfly parity tests
+// =================================================================
+
+#[test]
+fn fft_butterfly_scalar_reference_n8() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let half = 4;
+    let tw_re: Vec<f32> = (0..half).map(|j| (j as f32).cos()).collect();
+    let tw_im: Vec<f32> = (0..half).map(|j| -((j as f32).sin())).collect();
+
+    let mut re_simd = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let mut im_simd = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let re_ptr = re_simd.as_mut_ptr();
+    let im_ptr = im_simd.as_mut_ptr();
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    dispatch_simd!(fft_butterfly_stage(
+        re_ptr, im_ptr, half, tw_re_ptr, tw_im_ptr, 0, false
+    ));
+
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            false,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
+}
+
+#[test]
+fn fft_butterfly_scalar_reference_n16() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let half = 8;
+    let n = 16;
+    let tw_re: Vec<f32> = (0..half).map(|j| (j as f32 * 0.7).cos()).collect();
+    let tw_im: Vec<f32> = (0..half).map(|j| -((j as f32 * 0.7).sin())).collect();
+
+    let mut re_simd = vec![0.0f32; n];
+    let mut im_simd = vec![0.0f32; n];
+    for i in 0..n {
+        re_simd[i] = (i as f32 * 0.3).sin();
+        im_simd[i] = (i as f32 * 0.5).cos();
+    }
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let re_ptr = re_simd.as_mut_ptr();
+    let im_ptr = im_simd.as_mut_ptr();
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    dispatch_simd!(fft_butterfly_stage(
+        re_ptr, im_ptr, half, tw_re_ptr, tw_im_ptr, 0, false
+    ));
+
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            false,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
+}
+
+#[test]
+fn fft_butterfly_scalar_reference_n16_inverse() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let half = 8;
+    let n = 16;
+    let tw_re: Vec<f32> = (0..half).map(|j| (j as f32 * 0.8).cos()).collect();
+    let tw_im: Vec<f32> = (0..half).map(|j| -((j as f32 * 0.8).sin())).collect();
+
+    let mut re_simd = vec![0.0f32; n];
+    let mut im_simd = vec![0.0f32; n];
+    for i in 0..n {
+        re_simd[i] = (i as f32).cos();
+        im_simd[i] = -(i as f32).sin();
+    }
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let re_ptr = re_simd.as_mut_ptr();
+    let im_ptr = im_simd.as_mut_ptr();
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    dispatch_simd!(fft_butterfly_stage(
+        re_ptr, im_ptr, half, tw_re_ptr, tw_im_ptr, 0, true
+    ));
+
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            true,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
+}
+
+#[test]
+fn fft_butterfly_scalar_reference_n32() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let half = 16;
+    let n = 32;
+    let tw_re: Vec<f32> = (0..half)
+        .map(|j| (j as f32 * std::f32::consts::TAU / n as f32).cos())
+        .collect();
+    let tw_im: Vec<f32> = (0..half)
+        .map(|j| -((j as f32 * std::f32::consts::TAU / n as f32).sin()))
+        .collect();
+
+    let mut re_simd = vec![0.0f32; n];
+    let mut im_simd = vec![0.0f32; n];
+    for i in 0..n {
+        re_simd[i] = ((i as f32 / n as f32) * std::f32::consts::TAU).cos();
+        im_simd[i] = ((i as f32 / n as f32) * std::f32::consts::TAU).sin();
+    }
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let re_ptr = re_simd.as_mut_ptr();
+    let im_ptr = im_simd.as_mut_ptr();
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    dispatch_simd!(fft_butterfly_stage(
+        re_ptr, im_ptr, half, tw_re_ptr, tw_im_ptr, 0, false
+    ));
+
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            false,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
+}
+
+#[test]
+fn fft_butterfly_scalar_reference_n32_inverse() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let half = 16;
+    let tw_re: Vec<f32> = (0..half).map(|j| (j as f32).cos()).collect();
+    let tw_im: Vec<f32> = (0..half).map(|j| -(j as f32).sin()).collect();
+    let n = 32;
+
+    let mut re_simd = vec![0.0f32; n];
+    let mut im_simd = vec![0.0f32; n];
+    for i in 0..n {
+        re_simd[i] = (i as f32 * 0.2).sin();
+        im_simd[i] = -(i as f32 * 0.2).cos();
+    }
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let re_ptr = re_simd.as_mut_ptr();
+    let im_ptr = im_simd.as_mut_ptr();
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    dispatch_simd!(fft_butterfly_stage(
+        re_ptr, im_ptr, half, tw_re_ptr, tw_im_ptr, 0, true
+    ));
+
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            true,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
+}
+
+// =================================================================
+// Full FFT SIMD parity: f32 scalar loop reference vs SIMD path
+// =================================================================
+
+#[test]
+fn fft_simd_parity_f32_large() {
+    for n in [256, 512, 1024] {
+        let fft = FftPlanner::<f32>::new(n);
+        let input_re: Vec<f32> = (0..n).map(|i| (i as f32 * 0.1).sin()).collect();
+        let input_im: Vec<f32> = (0..n).map(|i| (i as f32 * 0.15).cos()).collect();
+
+        let mut simd_re = input_re.clone();
+        let mut simd_im = input_im.clone();
+
+        fft.process(&mut simd_re, &mut simd_im);
+
+        {
+            let fft_ref = FftPlanner::<f64>::new(n);
+            let mut ref_re: Vec<f64> = input_re.iter().map(|&x| x as f64).collect();
+            let mut ref_im: Vec<f64> = input_im.iter().map(|&x| x as f64).collect();
+            fft_ref.process(&mut ref_re, &mut ref_im);
+            let scalar_re: Vec<f32> = ref_re.iter().map(|&x| x as f32).collect();
+            let scalar_im: Vec<f32> = ref_im.iter().map(|&x| x as f32).collect();
+
+            assert_slice_approx_eq_f32(&simd_re, &scalar_re, 1e-3 * n as f32);
+            assert_slice_approx_eq_f32(&simd_im, &scalar_im, 1e-3 * n as f32);
+        }
+    }
+}
+
+#[test]
+fn fft_simd_parity_inverse_f32_large() {
+    for n in [256, 512, 1024] {
+        let fft = FftPlanner::<f32>::new(n);
+        let input_re: Vec<f32> = (0..n)
+            .map(|i| ((i as f32) / n as f32 * std::f32::consts::TAU).cos())
+            .collect();
+        let input_im: Vec<f32> = (0..n)
+            .map(|i| ((i as f32) / n as f32 * std::f32::consts::TAU).sin())
+            .collect();
+
+        let mut simd_re = input_re.clone();
+        let mut simd_im = input_im.clone();
+
+        fft.process_inverse(&mut simd_re, &mut simd_im);
+
+        {
+            let fft_ref = FftPlanner::<f64>::new(n);
+            let mut ref_re: Vec<f64> = input_re.iter().map(|&x| x as f64).collect();
+            let mut ref_im: Vec<f64> = input_im.iter().map(|&x| x as f64).collect();
+            fft_ref.process_inverse(&mut ref_re, &mut ref_im);
+            let scalar_re: Vec<f32> = ref_re.iter().map(|&x| x as f32).collect();
+            let scalar_im: Vec<f32> = ref_im.iter().map(|&x| x as f32).collect();
+
+            assert_slice_approx_eq_f32(&simd_re, &scalar_re, 1e-3 * n as f32);
+            assert_slice_approx_eq_f32(&simd_im, &scalar_im, 1e-3 * n as f32);
+        }
+    }
+}
+
+#[test]
+fn fft_simd_roundtrip_f32_large() {
+    for n in [256, 512, 1024] {
+        let fft = FftPlanner::<f32>::new(n);
+        let original_re: Vec<f32> = (0..n).map(|i| (i as f32 * 0.1).sin()).collect();
+        let original_im: Vec<f32> = (0..n).map(|i| (i as f32 * 0.13).cos()).collect();
+
+        let mut re = original_re.clone();
+        let mut im = original_im.clone();
+
+        fft.process(&mut re, &mut im);
+        fft.process_inverse(&mut re, &mut im);
+
+        assert_slice_approx_eq_f32(&re, &original_re, 1e-3 * n as f32);
+        assert_slice_approx_eq_f32(&im, &original_im, 1e-3 * n as f32);
+    }
+}
+
+#[test]
+fn fft_simd_impulse_dc_f32_large() {
+    for n in [256, 512, 1024] {
+        let fft = FftPlanner::<f32>::new(n);
+        let mut re = vec![0.0f32; n];
+        let mut im = vec![0.0f32; n];
+        re[0] = 1.0;
+        fft.process(&mut re, &mut im);
+        let expected = vec![1.0f32; n];
+        assert_slice_approx_eq_f32(&re, &expected, 1e-4);
+        let expected_im = vec![0.0f32; n];
+        assert_slice_approx_eq_f32(&im, &expected_im, 1e-4);
+    }
+}
+
+#[test]
+fn fft_simd_known_n16_f32() {
+    let n = 16;
+    let fft = FftPlanner::<f32>::new(n);
+    let fft_ref = FftPlanner::<f64>::new(n);
+
+    let mut re_f32 = vec![0.0f32; n];
+    let mut im_f32 = vec![0.0f32; n];
+    for i in 0..n {
+        re_f32[i] = (i as f32).sin();
+        im_f32[i] = (i as f32).cos();
+    }
+
+    let mut re_f64: Vec<f64> = re_f32.iter().map(|&x| x as f64).collect();
+    let mut im_f64: Vec<f64> = im_f32.iter().map(|&x| x as f64).collect();
+
+    fft.process(&mut re_f32, &mut im_f32);
+    fft_ref.process(&mut re_f64, &mut im_f64);
+
+    let ref_re: Vec<f32> = re_f64.iter().map(|&x| x as f32).collect();
+    let ref_im: Vec<f32> = im_f64.iter().map(|&x| x as f32).collect();
+
+    assert_slice_approx_eq_f32(&re_f32, &ref_re, 1e-4);
+    assert_slice_approx_eq_f32(&im_f32, &ref_im, 1e-4);
+}
+
+#[test]
+fn fft_simd_linearity_f32_large() {
+    let n = 256;
+    let fft = FftPlanner::<f32>::new(n);
+
+    let a_re: Vec<f32> = (0..n).map(|i| (i as f32 * 0.2).sin()).collect();
+    let a_im: Vec<f32> = (0..n).map(|i| (i as f32 * 0.3).cos()).collect();
+    let b_re: Vec<f32> = (0..n).map(|i| (2.0 * i as f32).cos()).collect();
+    let b_im: Vec<f32> = (0..n).map(|i| (3.0 * i as f32).sin()).collect();
+
+    let mut fa_re = a_re.clone();
+    let mut fa_im = a_im.clone();
+    fft.process(&mut fa_re, &mut fa_im);
+
+    let mut fb_re = b_re.clone();
+    let mut fb_im = b_im.clone();
+    fft.process(&mut fb_re, &mut fb_im);
+
+    let mut sum_re: Vec<f32> = a_re.iter().zip(&b_re).map(|(x, y)| x + y).collect();
+    let mut sum_im: Vec<f32> = a_im.iter().zip(&b_im).map(|(x, y)| x + y).collect();
+    fft.process(&mut sum_re, &mut sum_im);
+
+    for i in 0..n {
+        let expected_re = fa_re[i] + fb_re[i];
+        let expected_im = fa_im[i] + fb_im[i];
+        assert!(
+            (sum_re[i] - expected_re).abs() < 1e-3,
+            "linearity re[{i}]: {} vs {}",
+            sum_re[i],
+            expected_re
+        );
+        assert!(
+            (sum_im[i] - expected_im).abs() < 1e-3,
+            "linearity im[{i}]: {} vs {}",
+            sum_im[i],
+            expected_im
+        );
+    }
+}
+
+// =================================================================
+// Multi-Group SIMD test (full FFT-like stage with 2 groups)
+// =================================================================
+
+#[test]
+fn fft_butterfly_two_groups_n16() {
+    use crate::math::common::scalar_ref::utility::fft_butterfly_stage_scalar;
+    let n = 16;
+    let half = 8;
+
+    let tw_re: Vec<f32> = (0..half)
+        .map(|j| ((j as f32 / n as f32) * std::f32::consts::TAU).cos())
+        .collect();
+    let tw_im: Vec<f32> = (0..half)
+        .map(|j| -((j as f32 / n as f32) * std::f32::consts::TAU).sin())
+        .collect();
+
+    let mut re_simd = vec![0.0f32; n];
+    let mut im_simd = vec![0.0f32; n];
+    for i in 0..n {
+        re_simd[i] = (i as f32 * 0.5).sin();
+        im_simd[i] = (i as f32 * 0.3).cos();
+    }
+    let mut re_scalar = re_simd.clone();
+    let mut im_scalar = im_simd.clone();
+
+    let tw_re_ptr = tw_re.as_ptr();
+    let tw_im_ptr = tw_im.as_ptr();
+
+    // group 0
+    dispatch_simd!(fft_butterfly_stage(
+        re_simd.as_mut_ptr(),
+        im_simd.as_mut_ptr(),
+        half,
+        tw_re_ptr,
+        tw_im_ptr,
+        0,
+        false
+    ));
+    unsafe {
+        fft_butterfly_stage_scalar(
+            re_scalar.as_mut_ptr(),
+            im_scalar.as_mut_ptr(),
+            half,
+            tw_re_ptr,
+            tw_im_ptr,
+            0,
+            false,
+        );
+    }
+
+    assert_slice_approx_eq_f32(&re_simd, &re_scalar, 1e-6);
+    assert_slice_approx_eq_f32(&im_simd, &im_scalar, 1e-6);
 }

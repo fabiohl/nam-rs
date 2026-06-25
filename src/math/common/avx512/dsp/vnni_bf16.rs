@@ -138,5 +138,20 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         ) {
             Avx512Math::complex_mac_accumulate(h_re, h_im, x_re, x_im, acc_re, acc_im)
         }
+
+        #[inline(always)]
+        // SAFETY: re, im, tw_re, tw_im are valid for the described ranges;
+        // CPU supports AVX-512 VNNI+BF16 (verified by dispatch).
+        unsafe fn fft_butterfly_stage(
+            re: *mut f32,
+            im: *mut f32,
+            half: usize,
+            tw_re: *const f32,
+            tw_im: *const f32,
+            group_start: usize,
+            inverse: bool,
+        ) {
+            Avx512Math::fft_butterfly_stage(re, im, half, tw_re, tw_im, group_start, inverse)
+        }
     };
 }
