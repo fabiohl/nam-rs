@@ -51,7 +51,16 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 
 ### Sprint 2: Ordenação Concorrente RT↔Main (F-04)
 
-#### 📋 Tarefa E2.3: Sincronização SPSC Status Flags com Barreiras Acquire-Release (F-04)
+#### 📋 Tarefa E2.3: Sincronização SPSC Status Flags com Barreiras Acquire-Release (F-04) [DONE]
+
+* **Concluído:** 2026-06-25
+* **Resumo:**
+  * Adicionados métodos `set_flag_release`, `check_flag_acquire`, `clear_flag_release` em `RtStatusFlags` (`status.rs:191-218`).
+  * Chamadas de handshake de dados (`NEEDS_RESAMPLER_REBUILD`, `NEEDS_CABSIM_REBUILD`, `NEEDS_SLIMMABLE_REBUILD`) migradas para Acquire/Release.
+  * Flags de telemetria (`HAS_CLIPPED`, `IS_SILENT`, `GC_OVERFLOW`, etc.) mantidas com `Relaxed`.
+  * Produtor RT: `rate_sync.rs`, `capture/setup.rs`, `commands.rs`, `events.rs`.
+  * Consumidor Main: `run.rs`, `housekeeping.rs`.
+  * `cargo check`, `cargo clippy --all-targets --all-features`, testes SPSC e pipeline sem regressão.
 
 * **Objetivo:** Garantir a coerência de dados transferidos via variáveis atômicas `requested_*` entre a thread RT (produtora) e a thread Main (consumidora) eliminando ordenação `Relaxed` nos handshakes.
 * **Componente:** Concorrência SPSC

@@ -122,7 +122,7 @@ pub fn try_slimmable_rebuild(adaptive: &mut AdaptiveCompute, rt_status: &RtStatu
     rt_status
         .requested_slimmable_ch
         .store(target_ch as u32, Ordering::Relaxed);
-    rt_status.set_flag(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+    rt_status.set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
 }
 
 /// Drains slimmable-rebuilt models delivered by the main thread via SPSC.

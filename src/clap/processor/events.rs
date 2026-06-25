@@ -216,7 +216,7 @@ impl<'a> NamClapProcessor<'a> {
             .requested_slimmable_ch
             .store(target_ch as u32, Ordering::Relaxed);
         self.rt_status
-            .set_flag(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
     }
 
     /// Drains slimmable-rebuilt models delivered by the main thread via SPSC.

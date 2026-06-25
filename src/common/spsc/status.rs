@@ -188,6 +188,35 @@ impl RtStatusFlags {
         (self.status_bits.load(Ordering::Relaxed) & flag) != 0
     }
 
+    /// Sets one or more flags with Release ordering (for data handshakes).
+    ///
+    /// Use this when the flag signals that associated data (e.g. `requested_pw_rate`,
+    /// `requested_slimmable_ch`) is ready to be read by the consumer. The Release barrier
+    /// guarantees all prior writes on this thread are visible to any thread that reads
+    /// the flag with Acquire ordering.
+    #[inline(always)]
+    pub fn set_flag_release(&self, flag: u64) {
+        self.status_bits.fetch_or(flag, Ordering::Release);
+    }
+
+    /// Clears one or more flags with Release ordering (for data handshakes).
+    ///
+    /// Pair with [`check_flag_acquire`] in the consumer handshake.
+    #[inline(always)]
+    pub fn clear_flag_release(&self, flag: u64) {
+        self.status_bits.fetch_and(!flag, Ordering::Release);
+    }
+
+    /// Checks whether a flag is active with Acquire ordering (for reading handshake data).
+    ///
+    /// Use this when the flag gates access to data written by the producer. The Acquire
+    /// barrier guarantees all writes sequenced-before the corresponding Release store
+    /// are visible on this thread.
+    #[inline(always)]
+    pub fn check_flag_acquire(&self, flag: u64) -> bool {
+        (self.status_bits.load(Ordering::Acquire) & flag) != 0
+    }
+
     /// Checks whether a flag is active and clears it atomically in a single operation.
     /// Returns `true` if the flag was active.
     #[inline(always)]

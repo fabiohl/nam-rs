@@ -60,7 +60,7 @@ impl<'a> NamClapMainThread<'a> {
             .shared
             .cold
             .rt_status
-            .check_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD)
+            .check_flag_acquire(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD)
         {
             let target_ch = self
                 .shared
@@ -109,7 +109,7 @@ impl<'a> NamClapMainThread<'a> {
             self.shared
                 .cold
                 .rt_status
-                .clear_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+                .clear_flag_release(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
         // Check if there is a pending model sent by the UI

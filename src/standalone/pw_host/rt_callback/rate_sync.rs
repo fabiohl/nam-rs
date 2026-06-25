@@ -40,7 +40,8 @@ pub fn sync_rate(
         rt_status_for_process
             .requested_nam_rate
             .store(current_nam_rate, Ordering::Relaxed);
-        rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+        rt_status_for_process
+            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
         rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
     }
 

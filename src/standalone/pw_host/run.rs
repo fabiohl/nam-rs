@@ -139,15 +139,16 @@ pub fn run_pipewire_host(
             crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(active, Ordering::Relaxed);
         }
 
-        if rt_status.check_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
+        if rt_status.check_flag_acquire(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
             let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
             let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
 
             if target_pw_rate != 0 && target_nam_rate != 0 {
                 match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
-                        rt_status
-                            .clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
+                        rt_status.clear_flag_release(
+                            crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED,
+                        );
 
                         log::info!(
                             "{} Sample rate updated: PW={} Hz, NAM={} Hz (bypass={})",
@@ -193,11 +194,12 @@ pub fn run_pipewire_host(
                         rt_status.set_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
                     }
                 }
-                rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+                rt_status
+                    .clear_flag_release(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
             }
         }
 
-        if rt_status.check_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD) {
+        if rt_status.check_flag_acquire(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD) {
             let partition_size = rt_status
                 .requested_cabsim_partition_size
                 .load(Ordering::Relaxed) as usize;
@@ -223,13 +225,13 @@ pub fn run_pipewire_host(
                         .emit_warning();
                     }
                 }
-                rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
+                rt_status.clear_flag_release(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
             }
         }
 
         // WaveNet slimmable rebuild: main thread performs all allocation,
         // prewarm, and mmap outside the audio-thread callback.
-        if rt_status.check_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD) {
+        if rt_status.check_flag_acquire(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD) {
             let target_ch = rt_status.requested_slimmable_ch.load(Ordering::Relaxed) as usize;
             if target_ch >= 4
                 && let Some(ref m) = full_wavenet_model
@@ -258,7 +260,7 @@ pub fn run_pipewire_host(
                     }
                 }
             }
-            rt_status.clear_flag(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+            rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
         (was_silent, was_fading) =
