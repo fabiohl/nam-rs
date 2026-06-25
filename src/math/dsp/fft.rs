@@ -184,17 +184,21 @@ impl<T: FftFloat> FftPlanner<T> {
     /// Buffers `re` and `im` must each have length `n`.
     /// No heap allocations occur inside this method.
     pub fn process(&self, re: &mut [T], im: &mut [T]) {
-        assert_eq!(re.len(), self.n, "re length mismatch");
-        assert_eq!(im.len(), self.n, "im length mismatch");
+        debug_assert_eq!(re.len(), self.n, "re length mismatch");
+        debug_assert_eq!(im.len(), self.n, "im length mismatch");
 
         let n = self.n;
 
         // 1. Bit-reversal permutation
+        // SAFETY: bit_reverse has length n, and i ∈ 0..n.
         for i in 0..n {
-            let j = self.bit_reverse[i];
+            let j = unsafe { *self.bit_reverse.get_unchecked(i) };
             if i < j {
-                re.swap(i, j);
-                im.swap(i, j);
+                // SAFETY: i < j < n by bit-reversal property; both indices are in bounds.
+                unsafe {
+                    std::ptr::swap(re.get_unchecked_mut(i), re.get_unchecked_mut(j));
+                    std::ptr::swap(im.get_unchecked_mut(i), im.get_unchecked_mut(j));
+                }
             }
         }
 
@@ -206,20 +210,32 @@ impl<T: FftFloat> FftPlanner<T> {
             for k in (0..n).step_by(len) {
                 for j in 0..half {
                     let w_idx = j * step;
-                    // SAFETY: w_idx < n/2 ≤ twiddle capacity (guaranteed by construction)
-                    let w_re = self.twiddle_re[w_idx];
-                    let w_im = self.twiddle_im[w_idx];
+                    // SAFETY: w_idx = j*step < half*(n/len) = (len/2)*(n/len) = n/2;
+                    // twiddle tables have capacity n/2, so w_idx is in bounds.
+                    let w_re = unsafe { *self.twiddle_re.get_unchecked(w_idx) };
+                    let w_im = unsafe { *self.twiddle_im.get_unchecked(w_idx) };
 
                     let idx1 = k + j;
                     let idx2 = k + j + half;
+                    // SAFETY: k < n (step by len, last k = n-len), j < half,
+                    // len ≤ n, so idx1 = k+j < n and idx2 = k+j+half < n.
+                    let (re_idx2, im_idx2, re_idx1, im_idx1) = unsafe {
+                        let r2 = *re.get_unchecked(idx2);
+                        let i2 = *im.get_unchecked(idx2);
+                        let r1 = *re.get_unchecked(idx1);
+                        let i1 = *im.get_unchecked(idx1);
+                        (r2, i2, r1, i1)
+                    };
 
-                    let t_re = w_re.mul_add(re[idx2], -w_im * im[idx2]);
-                    let t_im = w_re.mul_add(im[idx2], w_im * re[idx2]);
+                    let t_re = w_re.mul_add(re_idx2, -w_im * im_idx2);
+                    let t_im = w_re.mul_add(im_idx2, w_im * re_idx2);
 
-                    re[idx2] = re[idx1] - t_re;
-                    im[idx2] = im[idx1] - t_im;
-                    re[idx1] = re[idx1] + t_re;
-                    im[idx1] = im[idx1] + t_im;
+                    unsafe {
+                        *re.get_unchecked_mut(idx2) = re_idx1 - t_re;
+                        *im.get_unchecked_mut(idx2) = im_idx1 - t_im;
+                        *re.get_unchecked_mut(idx1) = re_idx1 + t_re;
+                        *im.get_unchecked_mut(idx1) = im_idx1 + t_im;
+                    }
                 }
             }
             len <<= 1;
@@ -234,17 +250,21 @@ impl<T: FftFloat> FftPlanner<T> {
     /// Buffers `re` and `im` must each have length `n`.
     /// No heap allocations occur inside this method.
     pub fn process_inverse(&self, re: &mut [T], im: &mut [T]) {
-        assert_eq!(re.len(), self.n, "re length mismatch");
-        assert_eq!(im.len(), self.n, "im length mismatch");
+        debug_assert_eq!(re.len(), self.n, "re length mismatch");
+        debug_assert_eq!(im.len(), self.n, "im length mismatch");
 
         let n = self.n;
 
         // 1. Bit-reversal permutation
+        // SAFETY: bit_reverse has length n, and i ∈ 0..n.
         for i in 0..n {
-            let j = self.bit_reverse[i];
+            let j = unsafe { *self.bit_reverse.get_unchecked(i) };
             if i < j {
-                re.swap(i, j);
-                im.swap(i, j);
+                // SAFETY: i < j < n by bit-reversal property; both indices are in bounds.
+                unsafe {
+                    std::ptr::swap(re.get_unchecked_mut(i), re.get_unchecked_mut(j));
+                    std::ptr::swap(im.get_unchecked_mut(i), im.get_unchecked_mut(j));
+                }
             }
         }
 
@@ -256,19 +276,31 @@ impl<T: FftFloat> FftPlanner<T> {
             for k in (0..n).step_by(len) {
                 for j in 0..half {
                     let w_idx = j * step;
-                    let w_re = self.twiddle_re[w_idx];
-                    let w_im = -self.twiddle_im[w_idx]; // conjugate
+                    // SAFETY: w_idx = j*step < half*(n/len) = n/2;
+                    // twiddle tables have capacity n/2, so w_idx is in bounds.
+                    let w_re = unsafe { *self.twiddle_re.get_unchecked(w_idx) };
+                    let w_im = unsafe { -*self.twiddle_im.get_unchecked(w_idx) }; // conjugate
 
                     let idx1 = k + j;
                     let idx2 = k + j + half;
+                    // SAFETY: idx1, idx2 < n (k < n, j < half, len ≤ n).
+                    let (re_idx2, im_idx2, re_idx1, im_idx1) = unsafe {
+                        let r2 = *re.get_unchecked(idx2);
+                        let i2 = *im.get_unchecked(idx2);
+                        let r1 = *re.get_unchecked(idx1);
+                        let i1 = *im.get_unchecked(idx1);
+                        (r2, i2, r1, i1)
+                    };
 
-                    let t_re = w_re.mul_add(re[idx2], -w_im * im[idx2]);
-                    let t_im = w_re.mul_add(im[idx2], w_im * re[idx2]);
+                    let t_re = w_re.mul_add(re_idx2, -w_im * im_idx2);
+                    let t_im = w_re.mul_add(im_idx2, w_im * re_idx2);
 
-                    re[idx2] = re[idx1] - t_re;
-                    im[idx2] = im[idx1] - t_im;
-                    re[idx1] = re[idx1] + t_re;
-                    im[idx1] = im[idx1] + t_im;
+                    unsafe {
+                        *re.get_unchecked_mut(idx2) = re_idx1 - t_re;
+                        *im.get_unchecked_mut(idx2) = im_idx1 - t_im;
+                        *re.get_unchecked_mut(idx1) = re_idx1 + t_re;
+                        *im.get_unchecked_mut(idx1) = im_idx1 + t_im;
+                    }
                 }
             }
             len <<= 1;
@@ -373,9 +405,9 @@ impl<T: FftFloat> RfftPlanner<T> {
         let n = self.n;
         let n_half = n / 2;
         let expected = n_half + 1;
-        assert_eq!(input.len(), n, "input length mismatch");
-        assert_eq!(out_re.len(), expected, "out_re length mismatch");
-        assert_eq!(out_im.len(), expected, "out_im length mismatch");
+        debug_assert_eq!(input.len(), n, "input length mismatch");
+        debug_assert_eq!(out_re.len(), expected, "out_re length mismatch");
+        debug_assert_eq!(out_im.len(), expected, "out_im length mismatch");
 
         // 1. Pack even/odd samples into scratch complex array of size N/2
         for i in 0..n_half {
@@ -436,9 +468,9 @@ impl<T: FftFloat> RfftPlanner<T> {
         let n = self.n;
         let n_half = n / 2;
         let expected = n_half + 1;
-        assert_eq!(in_re.len(), expected, "in_re length mismatch");
-        assert_eq!(in_im.len(), expected, "in_im length mismatch");
-        assert_eq!(out.len(), n, "output length mismatch");
+        debug_assert_eq!(in_re.len(), expected, "in_re length mismatch");
+        debug_assert_eq!(in_im.len(), expected, "in_im length mismatch");
+        debug_assert_eq!(out.len(), n, "output length mismatch");
 
         let two = T::from_usize(2);
         let half = two.recip();

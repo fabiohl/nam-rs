@@ -26,7 +26,7 @@ graph TD
 
 Foco em remover riscos imediatos de pânico/alocação de memória no caminho de áudio real-time e obter ganhos rápidos e de baixo risco no FFT.
 
-### Tarefa A1 (P9) — Rebaixamento de Asserts no FFT
+### Tarefa A1 (P9) — Rebaixamento de Asserts no FFT [DONE]
 
 * **Prioridade:** P1
 * **Complexidade/Esforço:** Baixo (Trivial)
@@ -43,7 +43,7 @@ Foco em remover riscos imediatos de pânico/alocação de memória no caminho de
   * `cargo test` (valida em modo debug que as asserções ainda passam).
   * Revisar estaticamente se os construtores de `ConvEngine` garantem tamanhos compatíveis com o planejado.
 
-### Tarefa A2 (P1.1) — Eliminação de Bounds Checks no FFT Escalar
+### Tarefa A2 (P1.1) — Eliminação de Bounds Checks no FFT Escalar [DONE]
 
 * **Prioridade:** P1
 * **Complexidade/Esforço:** Médio (Quick Win)
