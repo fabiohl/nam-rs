@@ -349,6 +349,13 @@ impl AdaptiveCompute {
             return;
         }
 
+        let current_progress = match self.crossfade {
+            CrossfadePhase::Active { .. } if self.crossfade_total > 0 => {
+                (self.crossfade_elapsed as f32 / self.crossfade_total as f32).min(1.0)
+            }
+            _ => 0.0,
+        };
+
         self.prev_state = self.state;
         self.state = new_state;
         self.overload_counter = 0;
@@ -356,11 +363,12 @@ impl AdaptiveCompute {
 
         let crossfade_samples =
             (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
+        let new_total = crossfade_samples.max(1);
         self.crossfade = CrossfadePhase::Active {
-            remaining_samples: crossfade_samples.max(1),
+            remaining_samples: new_total,
         };
-        self.crossfade_total = crossfade_samples.max(1);
-        self.crossfade_elapsed = 0;
+        self.crossfade_total = new_total;
+        self.crossfade_elapsed = (current_progress * new_total as f32).round() as usize;
 
         rt_status
             .degrade_transitions_total

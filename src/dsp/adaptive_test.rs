@@ -417,4 +417,48 @@ mod tests {
             "expected progress > 0.9 at 90% of total, got {progress}"
         );
     }
+
+    #[test]
+    fn crossfade_rebased_on_rapid_consecutive_transitions() {
+        let flags = rt_flags();
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+        let budget = 1000;
+
+        // Full → Reduced transition
+        for _ in 0..3 {
+            adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+        }
+        assert!(adaptive.is_crossfading());
+        assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+        assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+
+        // Advance crossfade 9 × 64 = 576 frames, total = 1536, progress ≈ 1/3
+        let mut prev_multiplier = 0.0;
+        for _ in 0..9 {
+            prev_multiplier = adaptive.crossfade_multiplier(48000, 64);
+        }
+        assert!(adaptive.is_crossfading());
+        assert!(
+            (prev_multiplier - 1.0 / 3.0).abs() < 0.01,
+            "expected multiplier ≈ 1/3, got {}",
+            prev_multiplier
+        );
+
+        // Rapid second transition: Reduced → Minimal while crossfade still active
+        for _ in 0..3 {
+            adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
+        }
+        assert_eq!(adaptive.state(), AdaptiveState::Minimal);
+        assert_eq!(adaptive.prev_state(), AdaptiveState::Reduced);
+        assert!(adaptive.is_crossfading());
+
+        // Envelope continuity: new multiplier must not jump from the previous value
+        let m_after = adaptive.current_crossfade_multiplier();
+        let step = (m_after - prev_multiplier).abs();
+        assert!(
+            step < 0.05,
+            "envelope discontinuity after rapid re-base: \
+             prev={prev_multiplier:.4}, after={m_after:.4}, step={step:.4}"
+        );
+    }
 }

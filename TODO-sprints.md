@@ -165,14 +165,19 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 * **Critério de Aceitação:**
   * Novos asserts em `adaptive_test.rs` validando linearidade em frações de tempo específicas (ponto médio `≈ 0.5`, final `> 0.9` antes do descarte).
 
-#### 📋 Tarefa E1.3: Re-baseamento de crossfade em transições consecutivas rápidas (F-05)
+#### 📋 Tarefa E1.3: Re-baseamento de crossfade em transições consecutivas rápidas (F-05) [DONE]
 
 * **Objetivo:** Impedir cliques sob transições sucessivas curtas, re-baseando continuamente o crossfade ativo com base no multiplicador corrente.
 * **Componente:** DSP / Adaptive
 * **Arquivos afetados:**
   * [src/dsp/adaptive.rs](file:///home/fabio/nam-rs/src/dsp/adaptive.rs) (função `transition_to`)
+  * [src/dsp/adaptive_test.rs](file:///home/fabio/nam-rs/src/dsp/adaptive_test.rs) (novo teste `crossfade_rebased_on_rapid_consecutive_transitions`)
 * **Mudança proposta:**
   * Ao interromper um crossfade pendente, calcular a contribuição acumulada e remapear o início da nova rampa a partir do nível de blend atual, em vez de zerar `crossfade_elapsed` abruptamente.
 * **Risco:** MÉDIO.
 * **Critério de Aceitação:**
   * Teste unitário forçando as transições rápidas `Full → Reduced → Minimal` e garantindo desvios do envelope de ganho limitados por um passo infinitesimal.
+* **✅ CONCLUÍDO (2026-06-25):**
+  * `transition_to`: adicionado cálculo de `current_progress` a partir do crossfade ativo; `crossfade_elapsed` re-baseado como `current_progress * new_total` em vez de reset para `0`.
+  * Novo teste `crossfade_rebased_on_rapid_consecutive_transitions`: avança crossfade Full→Reduced até ≈33%, dispara Reduced→Minimal, verifica continuidade do multiplicador com passo < 0.05.
+  * `cargo test --lib`: 849 pass, 0 fail. `cargo test --test adaptive_fsm_proptest -- --include-ignored`: 5 pass. `cargo clippy --all-targets --all-features`: limpo.
