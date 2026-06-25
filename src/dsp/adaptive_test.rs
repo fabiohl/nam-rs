@@ -370,4 +370,51 @@ mod tests {
         assert!(!adaptive.is_crossfading());
         assert_eq!(adaptive.current_crossfade_multiplier(), 1.0);
     }
+
+    #[test]
+    fn crossfade_linearity_midpoint() {
+        let flags = rt_flags();
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+        let budget = 1000;
+
+        for _ in 0..3 {
+            adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+        }
+        assert!(adaptive.is_crossfading());
+
+        // 12 × 64 = 768, total = 1536, progress = 0.5
+        for _ in 0..12 {
+            adaptive.crossfade_multiplier(48000, 64);
+        }
+        let progress = adaptive.current_crossfade_multiplier();
+        assert!(
+            (progress - 0.5).abs() < 1e-6,
+            "expected progress ≈ 0.5 at midpoint, got {progress}"
+        );
+    }
+
+    #[test]
+    fn crossfade_linearity_near_end() {
+        let flags = rt_flags();
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+        let budget = 1000;
+
+        for _ in 0..3 {
+            adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+        }
+        assert!(adaptive.is_crossfading());
+
+        // 21 × 64 + 39 = 1383, total = 1536, progress ≈ 0.9004
+        for _ in 0..21 {
+            adaptive.crossfade_multiplier(48000, 64);
+        }
+        adaptive.crossfade_multiplier(48000, 39);
+
+        assert!(adaptive.is_crossfading());
+        let progress = adaptive.current_crossfade_multiplier();
+        assert!(
+            progress > 0.9,
+            "expected progress > 0.9 at 90% of total, got {progress}"
+        );
+    }
 }

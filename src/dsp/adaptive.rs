@@ -132,6 +132,8 @@ pub struct AdaptiveCompute {
     crossfade: CrossfadePhase,
     /// Current user mode.
     mode: AdaptiveComputeMode,
+    /// Crossfade total samples (fixed duration for linear progress).
+    crossfade_total: usize,
     /// Crossfade elapsed samples.
     crossfade_elapsed: usize,
     /// Manual slim override (Auto = FSM decides).
@@ -167,6 +169,7 @@ impl AdaptiveCompute {
             recovery_counter: 0,
             crossfade: CrossfadePhase::Idle,
             mode,
+            crossfade_total: 0,
             crossfade_elapsed: 0,
             slim_override: SlimOverride::Auto,
             wavenet_full_ch: None,
@@ -184,6 +187,7 @@ impl AdaptiveCompute {
             self.overload_counter = 0;
             self.recovery_counter = 0;
             self.crossfade = CrossfadePhase::Idle;
+            self.crossfade_total = 0;
             self.crossfade_elapsed = 0;
             rt_status.clear_flag(crate::common::spsc::RT_STATUS_DEGRADE_REDUCED);
             rt_status.clear_flag(crate::common::spsc::RT_STATUS_DEGRADE_MINIMAL);
@@ -229,15 +233,15 @@ impl AdaptiveCompute {
                     1.0
                 }
             }
-            CrossfadePhase::Active { remaining_samples } => {
-                let total = remaining_samples + self.crossfade_elapsed;
+            CrossfadePhase::Active { .. } => {
+                let total = self.crossfade_total;
                 let progress = if total == 0 {
                     1.0
                 } else {
                     (self.crossfade_elapsed as f32 / total as f32).min(1.0)
                 };
 
-                if self.crossfade_elapsed + frame_advance >= remaining_samples {
+                if self.crossfade_elapsed + frame_advance >= total {
                     self.crossfade = CrossfadePhase::Idle;
                     self.crossfade_elapsed = 0;
                     1.0
@@ -355,6 +359,7 @@ impl AdaptiveCompute {
         self.crossfade = CrossfadePhase::Active {
             remaining_samples: crossfade_samples.max(1),
         };
+        self.crossfade_total = crossfade_samples.max(1);
         self.crossfade_elapsed = 0;
 
         rt_status
@@ -496,8 +501,8 @@ impl AdaptiveCompute {
                     1.0
                 }
             }
-            CrossfadePhase::Active { remaining_samples } => {
-                let total = remaining_samples + self.crossfade_elapsed;
+            CrossfadePhase::Active { .. } => {
+                let total = self.crossfade_total;
                 if total == 0 {
                     1.0
                 } else {

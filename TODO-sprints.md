@@ -152,7 +152,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
   * Adicionado invariante de continuidade de envelope em reversões à função `verify_fsm_step` do `gate_fsm_proptest.rs` (3×10k casos passam).
   * `cargo test --lib`: 846 pass, 0 fail. `cargo test --test gate_fsm_proptest -- --include-ignored`: 3 pass.
 
-#### 📋 Tarefa E1.2: Ajuste linear na curva de crossfade adaptativo (F-02)
+#### 📋 Tarefa E1.2: Ajuste linear na curva de crossfade adaptativo (F-02) [DONE]
 
 * **Objetivo:** Eliminar o salto de ganho abrupto de ~0,5 para 1,0 no último bloco de transições adaptativas.
 * **Componente:** DSP / Adaptive
