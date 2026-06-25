@@ -172,3 +172,51 @@ pub unsafe fn crossfade_blend_mono_fallback(out: &mut [f32], pending: &[f32], t:
             *out.get_unchecked(i) * one_minus_t + *pending.get_unchecked(i) * t;
     }
 }
+
+/// Complex multiply-accumulate (overwrite): scalar reference.
+///
+/// `out_re[i] = h_re[i] * x_re[i] - h_im[i] * x_im[i]`
+/// `out_im[i] = h_re[i] * x_im[i] + h_im[i] * x_re[i]`
+#[inline]
+pub fn complex_mac_overwrite_scalar(
+    h_re: &[f32],
+    h_im: &[f32],
+    x_re: &[f32],
+    x_im: &[f32],
+    out_re: &mut [f32],
+    out_im: &mut [f32],
+) {
+    let n = h_re.len();
+    for i in 0..n {
+        let hr = h_re[i];
+        let hi = h_im[i];
+        let xr = x_re[i];
+        let xi = x_im[i];
+        out_re[i] = f32::mul_add(hr, xr, -hi * xi);
+        out_im[i] = f32::mul_add(hr, xi, hi * xr);
+    }
+}
+
+/// Complex multiply-accumulate (accumulate): scalar reference.
+///
+/// `acc_re[i] += h_re[i] * x_re[i] - h_im[i] * x_im[i]`
+/// `acc_im[i] += h_re[i] * x_im[i] + h_im[i] * x_re[i]`
+#[inline]
+pub fn complex_mac_accumulate_scalar(
+    h_re: &[f32],
+    h_im: &[f32],
+    x_re: &[f32],
+    x_im: &[f32],
+    acc_re: &mut [f32],
+    acc_im: &mut [f32],
+) {
+    let n = h_re.len();
+    for i in 0..n {
+        let hr = h_re[i];
+        let hi = h_im[i];
+        let xr = x_re[i];
+        let xi = x_im[i];
+        acc_re[i] += f32::mul_add(hr, xr, -hi * xi);
+        acc_im[i] += f32::mul_add(hr, xi, hi * xr);
+    }
+}

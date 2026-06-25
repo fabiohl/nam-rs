@@ -138,7 +138,7 @@ Foco em implementar a vetorização nos backends e integrá-la ao motor de convo
 * **Estratégia de Validação:**
   * Testes unitários inline para comparar a saída do kernel AVX2 contra a lógica de multiplicação complexa pura do Rust.
 
-### Tarefa A6 (P2.1 - AVX-512) — Kernel MAC Complexo no Backend AVX-512
+### Tarefa A6 (P2.1 - AVX-512) — Kernel MAC Complexo no Backend AVX-512 [DONE]
 
 * **Prioridade:** P2
 * **Complexidade/Esforço:** Médio
@@ -148,6 +148,7 @@ Foco em implementar a vetorização nos backends e integrá-la ao motor de convo
   Implementar os métodos correspondentes no bloco `impl SimdMath for Avx512Math` e `Avx512VnniBf16Math` utilizando as extensões AVX-512 (processando 16 bins por iteração).
 * **Estratégia de Validação:**
   * Teste de paridade de codegen e checagem de corretude matemática.
+* **Conclusão (2026-06-25):** Kernels AVX-512 (`_mm512_fmsub_ps`/`_mm512_fmadd_ps`, 16 bins) já implementados nos macros `impl_avx512_dsp!()` (base) e `impl_avx512vnni_bf16_dsp!()` (delegação para `Avx512Math`). Adicionadas funções de referência escalar (`complex_mac_overwrite_scalar`/`complex_mac_accumulate_scalar`) e testes de paridade (`test_complex_mac_overwrite_parity`/`test_complex_mac_accumulate_parity`) com 14 tamanhos (0–256). `cargo test -- math::common::common_test` passa com 31/31.
 
 ### Tarefa A7 (P2.1 - Integração) — Integração e Despacho Dinâmico em ConvEngine
 

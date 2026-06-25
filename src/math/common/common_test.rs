@@ -734,6 +734,149 @@ fn test_gated_activation_and_overwrite_block() {
     }
 }
 
+#[test]
+fn test_complex_mac_overwrite_parity() {
+    let sizes = [0, 1, 3, 8, 15, 16, 17, 31, 32, 33, 64, 128, 255, 256];
+    for &len in &sizes {
+        let h_re: Vec<f32> = (0..len).map(|i| (i as f32 * 0.07).sin()).collect();
+        let h_im: Vec<f32> = (0..len).map(|i| (i as f32 * 0.11).cos()).collect();
+        let x_re: Vec<f32> = (0..len).map(|i| (i as f32 * 1.3).sin()).collect();
+        let x_im: Vec<f32> = (0..len).map(|i| (i as f32 * 0.9).cos()).collect();
+        let mut scalar_re = vec![0.0f32; len];
+        let mut scalar_im = vec![0.0f32; len];
+        // SAFETY: slices are valid, no aliasing.
+        crate::math::common::complex_mac_overwrite_scalar(
+            &h_re,
+            &h_im,
+            &x_re,
+            &x_im,
+            &mut scalar_re,
+            &mut scalar_im,
+        );
+
+        #[allow(clippy::too_many_arguments)]
+        fn test_simd<M: SimdMath>(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            expected_re: &[f32],
+            expected_im: &[f32],
+            len: usize,
+            label: &str,
+        ) {
+            let mut simd_re = vec![9.9f32; len];
+            let mut simd_im = vec![9.9f32; len];
+            // SAFETY: slices are valid, and SimdMath preconditions hold.
+            unsafe { M::complex_mac_overwrite(h_re, h_im, x_re, x_im, &mut simd_re, &mut simd_im) };
+            for i in 0..len {
+                assert!(
+                    (simd_re[i] - expected_re[i]).abs() < 1e-6,
+                    "{} overwrite re[{}] len={}: simd={}, ref={}",
+                    label,
+                    i,
+                    len,
+                    simd_re[i],
+                    expected_re[i]
+                );
+                assert!(
+                    (simd_im[i] - expected_im[i]).abs() < 1e-6,
+                    "{} overwrite im[{}] len={}: simd={}, ref={}",
+                    label,
+                    i,
+                    len,
+                    simd_im[i],
+                    expected_im[i]
+                );
+            }
+        }
+
+        test_simd::<Avx2Math>(
+            &h_re, &h_im, &x_re, &x_im, &scalar_re, &scalar_im, len, "AVX2",
+        );
+        if is_x86_feature_detected!("avx512f") {
+            test_simd::<Avx512Math>(
+                &h_re, &h_im, &x_re, &x_im, &scalar_re, &scalar_im, len, "AVX-512",
+            );
+        }
+    }
+}
+
+#[test]
+fn test_complex_mac_accumulate_parity() {
+    let sizes = [0, 1, 3, 8, 15, 16, 17, 31, 32, 33, 64, 128, 255, 256];
+    for &len in &sizes {
+        let h_re: Vec<f32> = (0..len).map(|i| (i as f32 * 0.07).sin()).collect();
+        let h_im: Vec<f32> = (0..len).map(|i| (i as f32 * 0.11).cos()).collect();
+        let x_re: Vec<f32> = (0..len).map(|i| (i as f32 * 1.3).sin()).collect();
+        let x_im: Vec<f32> = (0..len).map(|i| (i as f32 * 0.9).cos()).collect();
+        let init_re: Vec<f32> = (0..len).map(|i| (i as f32 * 0.03).sin()).collect();
+        let init_im: Vec<f32> = (0..len).map(|i| (i as f32 * 0.05).cos()).collect();
+        let mut scalar_re = init_re.clone();
+        let mut scalar_im = init_im.clone();
+        // SAFETY: slices are valid — pure scalar fallback computation.
+        crate::math::common::complex_mac_accumulate_scalar(
+            &h_re,
+            &h_im,
+            &x_re,
+            &x_im,
+            &mut scalar_re,
+            &mut scalar_im,
+        );
+
+        #[allow(clippy::too_many_arguments)]
+        fn test_simd<M: SimdMath>(
+            h_re: &[f32],
+            h_im: &[f32],
+            x_re: &[f32],
+            x_im: &[f32],
+            init_re: &[f32],
+            init_im: &[f32],
+            expected_re: &[f32],
+            expected_im: &[f32],
+            len: usize,
+            label: &str,
+        ) {
+            let mut simd_re = init_re.to_vec();
+            let mut simd_im = init_im.to_vec();
+            // SAFETY: slices are valid; SimdMath preconditions hold.
+            unsafe {
+                M::complex_mac_accumulate(h_re, h_im, x_re, x_im, &mut simd_re, &mut simd_im)
+            };
+            for i in 0..len {
+                assert!(
+                    (simd_re[i] - expected_re[i]).abs() < 1e-6,
+                    "{} accumulate re[{}] len={}: simd={}, ref={}",
+                    label,
+                    i,
+                    len,
+                    simd_re[i],
+                    expected_re[i]
+                );
+                assert!(
+                    (simd_im[i] - expected_im[i]).abs() < 1e-6,
+                    "{} accumulate im[{}] len={}: simd={}, ref={}",
+                    label,
+                    i,
+                    len,
+                    simd_im[i],
+                    expected_im[i]
+                );
+            }
+        }
+
+        test_simd::<Avx2Math>(
+            &h_re, &h_im, &x_re, &x_im, &init_re, &init_im, &scalar_re, &scalar_im, len, "AVX2",
+        );
+        if is_x86_feature_detected!("avx512f") {
+            test_simd::<Avx512Math>(
+                &h_re, &h_im, &x_re, &x_im, &init_re, &init_im, &scalar_re, &scalar_im, len,
+                "AVX-512",
+            );
+        }
+    }
+}
+
 mod huge_alloc_tests {
     use crate::math::common::huge_alloc::{
         HugePageStatus, HugePageVec, allocate_huge_pages, deallocate_huge,
