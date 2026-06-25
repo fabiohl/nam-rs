@@ -542,7 +542,7 @@ usado no loader (`layout.rs`) e no kernel (`conv1d.rs`); as checagens de comprim
 
 > Ordenados por relação risco×esforço. Referências apontam para os achados acima.
 
-## E1 — Correção de artefatos de áudio no caminho de transição (DSP) 🔴
+## E1 — Correção de artefatos de áudio no caminho de transição (DSP) 🔴 [TO-DO]
 
 **Achados:** F-01, F-02, F-05.
 **Justificativa de agrupamento:** os três são defeitos de **continuidade de ganho/blend** em
@@ -555,7 +555,7 @@ o comportamento bugado** (`gate_test.rs:116`; novos asserts de linearidade em
 `adaptive_test.rs`). Validar que nenhuma regressão de _parity_ surge.
 **Ordem sugerida:** F-01 → F-02 → F-05.
 
-## E2 — Endurecimento de contratos `unsafe` e ordenação de memória 🟡
+## E2 — Endurecimento de contratos `unsafe` e ordenação de memória 🟡 [DOING]
 
 **Achados:** F-03, F-04, F-08.
 **Justificativa de agrupamento:** todos são _hardening_ defensivo (sem bug ativo em x86-64):
@@ -565,7 +565,7 @@ contrato `unsafe` do _bypass_ do resampler (F-03), _happens-before_ dos handshak
 flags de **handshake de dado** (passam a `Release`/`Acquire`) para não onerar o _hot-path_.
 **Ordem sugerida:** F-03 → F-08 → F-04.
 
-## E3 — Honestidade de telemetria e _test oracles_ 🟡
+## E3 — Honestidade de telemetria e _test oracles_ 🟡 [DOING]
 
 **Achados:** F-06, F-07.
 **Justificativa de agrupamento:** ambos são "relatórios que mentem" — o _gate_ de fidelidade que
