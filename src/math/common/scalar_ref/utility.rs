@@ -64,6 +64,15 @@ pub unsafe fn apply_dither_add_fallback(data: &mut [f32], offset: f32) {
     }
 }
 
+/// Fused gain + dither: `data[i] = data[i] * gain + offset` (scalar fallback).
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
+pub unsafe fn apply_gain_then_dither_fallback(data: &mut [f32], gain: f32, offset: f32) {
+    for x in data.iter_mut() {
+        *x = f32::mul_add(*x, gain, offset);
+    }
+}
+
 /// Applies a volume (gain) by multiplying each sample by the desired value.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]

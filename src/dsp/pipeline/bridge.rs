@@ -137,7 +137,13 @@ impl DspBridgeWriter {
     }
 
     /// Writes a stereo sample block into the bridge's active back-buffer.
-    pub fn write_block(&self, resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize) {
+    pub fn write_block(
+        &self,
+        resamp_out_l: &[f32],
+        resamp_out_r: &[f32],
+        n_pw: usize,
+        process_mono: bool,
+    ) {
         // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
@@ -150,11 +156,19 @@ impl DspBridgeWriter {
                 back_buf.buf_l.as_mut_ptr(),
                 n_bridge,
             );
-            core::ptr::copy_nonoverlapping(
-                resamp_out_r.as_ptr(),
-                back_buf.buf_r.as_mut_ptr(),
-                n_bridge,
-            );
+            if process_mono {
+                core::ptr::copy_nonoverlapping(
+                    resamp_out_l.as_ptr(),
+                    back_buf.buf_r.as_mut_ptr(),
+                    n_bridge,
+                );
+            } else {
+                core::ptr::copy_nonoverlapping(
+                    resamp_out_r.as_ptr(),
+                    back_buf.buf_r.as_mut_ptr(),
+                    n_bridge,
+                );
+            }
             back_buf.n_samples = n_bridge as u32;
 
             bridge.active_read_idx.store(back_idx, Ordering::Release);

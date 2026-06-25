@@ -91,6 +91,14 @@ pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
     unsafe { apply_ramp(buffer, start, step) };
 }
 
+/// Fused gain + dither: `data[i] = data[i] * gain + offset` in a single pass via SIMD dispatch.
+///
+/// # Safety
+/// The buffer must be valid.
+pub unsafe fn apply_gain_then_dither(data: &mut [f32], gain: f32, offset: f32) {
+    crate::math::common::dispatch_simd!(apply_gain_then_dither(data, gain, offset))
+}
+
 /// Adds a broadcast constant (dither offset) to every element of a mono buffer.
 ///
 /// # Safety

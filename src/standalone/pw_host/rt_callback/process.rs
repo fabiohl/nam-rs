@@ -117,9 +117,12 @@ pub fn process_dsp_buffer(
                         }
                     }
 
-                    rt_status_for_process
-                        .last_n_samples
-                        .store(n_samples as u32, Ordering::Relaxed);
+                    let n = n_samples as u32;
+                    if rt_status_for_process.last_n_samples.load(Ordering::Relaxed) != n {
+                        rt_status_for_process
+                            .last_n_samples
+                            .store(n, Ordering::Relaxed);
+                    }
                 }
             }
         }

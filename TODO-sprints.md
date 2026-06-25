@@ -65,7 +65,7 @@ Foco na otimização fina dos kernels neurais do LSTM e do DenseLayer (GEMV), el
 
 Foco em reduzir passagens repetidas sobre buffers na thread de tempo real, remover cópias mono supérfluas, eliminar escritas atômicas espúrias em loops quentes e adotar o perfil de build `panic = "abort"` para distribuição.
 
-### Tarefa D1 (P8) — Otimização do Pipeline DSP (Input Stage & Mono & Atoms)
+### Tarefa D1 (P8) — Otimização do Pipeline DSP (Input Stage & Mono & Atoms) [DONE]
 
 * **Prioridade:** Média
 * **Complexidade/Esforço:** Médio

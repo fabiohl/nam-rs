@@ -24,7 +24,9 @@ pub(super) fn extract_channels<'a>(
     let pair_r = channel_iter.next();
 
     let channel_count = if pair_r.is_some() { 2 } else { 1 };
-    active_channel_count.store(channel_count, Ordering::Relaxed);
+    if active_channel_count.load(Ordering::Relaxed) != channel_count {
+        active_channel_count.store(channel_count, Ordering::Relaxed);
+    }
     *process_mono = true;
 
     let mut out_l: Option<&mut [f32]> = None;

@@ -853,6 +853,18 @@ pub trait SimdMath {
     /// `left` and `right` must be valid mutable slices.
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32);
 
+    /// Fused gain + dither: `data[i] = data[i] * gain + offset` in a single pass.
+    ///
+    /// Eliminates the overhead of two separate passes (`apply_gain` then
+    /// `apply_dither_add`) on the same buffer. Uses FMA for single-rounding
+    /// precision where the ISA supports it.
+    ///
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `data` must be a valid mutable slice.
+    unsafe fn apply_gain_then_dither(data: &mut [f32], gain: f32, offset: f32);
+
     /// Adds a broadcast constant (dither offset) to every element of a mono buffer.
     ///
     /// No alignment required.

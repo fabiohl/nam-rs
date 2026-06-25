@@ -12,6 +12,28 @@ use crate::gain_kernel_avx512_scalar;
 use crate::gain_simd_avx512;
 use core::arch::x86_64::*;
 
+/// Fused gain + dither: `data[i] = data[i] * gain + offset` in a single pass using AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_gain_then_dither_avx512(data: &mut [f32], gain: f32, offset: f32) {
+    let len = data.len();
+    let vg = _mm512_set1_ps(gain);
+    let vo = _mm512_set1_ps(offset);
+    let mut i = 0;
+    gain_kernel_avx512_masked!(
+        i,
+        len,
+        {
+            let v = _mm512_loadu_ps(data.as_ptr().add(i));
+            _mm512_storeu_ps(data.as_mut_ptr().add(i), _mm512_fmadd_ps(v, vg, vo));
+        },
+        {
+            let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+            let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
+            _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_fmadd_ps(v, vg, vo));
+        }
+    );
+}
+
 /// Adds a broadcast constant to every element of a mono buffer using AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn apply_dither_add_avx512(data: &mut [f32], offset: f32) {

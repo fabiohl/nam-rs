@@ -121,6 +121,14 @@ macro_rules! impl_avx512_dsp {
         }
 
         #[inline(always)]
+        // SAFETY: data is a valid mutable f32 slice; gain and offset are finite f32 values;
+        // CPU supports AVX-512F (verified by dispatch). Kernel uses unaligned 512-bit loads/stores.
+        unsafe fn apply_gain_then_dither(data: &mut [f32], gain: f32, offset: f32) {
+            // SAFETY: data, gain, and offset satisfy function invariants.
+            unsafe { crate::math::dsp::gain::apply_gain_then_dither_avx512(data, gain, offset) }
+        }
+
+        #[inline(always)]
         // SAFETY: data is a valid mutable f32 slice; offset is a finite f32;
         // CPU supports AVX-512F.
         unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {

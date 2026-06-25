@@ -98,6 +98,13 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         }
 
         #[inline(always)]
+        // SAFETY: data is a valid mutable f32 slice; gain and offset are finite f32;
+        // CPU supports AVX-512 VNNI+BF16.
+        unsafe fn apply_gain_then_dither(data: &mut [f32], gain: f32, offset: f32) {
+            Avx512Math::apply_gain_then_dither(data, gain, offset)
+        }
+
+        #[inline(always)]
         // SAFETY: data is a valid mutable f32 slice; offset is a finite f32;
         // CPU supports AVX-512 VNNI+BF16.
         unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {

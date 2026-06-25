@@ -12,6 +12,7 @@ impl<'a> NamClapProcessor<'a> {
         out_l: &mut Option<&mut [f32]>,
         out_r: &mut Option<&mut [f32]>,
         n_out: usize,
+        process_mono: bool,
     ) -> (f32, f32) {
         let mut peak_l = 0.0f32;
         let mut peak_r = 0.0f32;
@@ -25,9 +26,16 @@ impl<'a> NamClapProcessor<'a> {
         if let Some(o_r) = out_r {
             let n = n_out.min(o_r.len());
             #[cfg(feature = "stereo")]
-            o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
+            if process_mono {
+                o_r[..n].copy_from_slice(&self.buf_out_l[..n]);
+            } else {
+                o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
+            }
             #[cfg(not(feature = "stereo"))]
-            o_r[..n].copy_from_slice(&self.buf_out_l[..n]);
+            {
+                let _ = process_mono;
+                o_r[..n].copy_from_slice(&self.buf_out_l[..n]);
+            }
             len_r = n;
         }
 
@@ -35,8 +43,6 @@ impl<'a> NamClapProcessor<'a> {
         {
             if len_l > 0 && len_r > 0 {
                 let n = len_l.min(len_r);
-                // SAFETY: both slices are trimmed to the same length `n = len_l.min(len_r)`
-                // and reference valid self-owned buffers.
                 let (p_l, p_r) = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_stereo(
                         &self.buf_out_l[..n],
@@ -46,8 +52,6 @@ impl<'a> NamClapProcessor<'a> {
                 peak_l = p_l;
                 peak_r = p_r;
             } else if len_l > 0 {
-                // SAFETY: both arguments reference the same valid self-owned buffer
-                // with identical length `len_l`, satisfying the equal-length requirement.
                 let (p_l, _) = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_stereo(
                         &self.buf_out_l[..len_l],
@@ -56,8 +60,6 @@ impl<'a> NamClapProcessor<'a> {
                 };
                 peak_l = p_l;
             } else if len_r > 0 {
-                // SAFETY: both arguments reference the same valid self-owned buffer
-                // with identical length `len_r`, satisfying the equal-length requirement.
                 let (_, p_r) = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_stereo(
                         &self.buf_out_r[..len_r],
@@ -70,15 +72,12 @@ impl<'a> NamClapProcessor<'a> {
         #[cfg(not(feature = "stereo"))]
         {
             if len_l > 0 {
-                // SAFETY: the slice references a valid self-owned buffer.
                 let p = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_mono(&self.buf_out_l[..len_l])
                 };
                 peak_l = p;
                 peak_r = p;
             } else if len_r > 0 {
-                // SAFETY: in mono mode all output goes through `buf_out_l`;
-                // the slice references a valid self-owned buffer.
                 let p = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_mono(&self.buf_out_l[..len_r])
                 };

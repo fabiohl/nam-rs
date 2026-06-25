@@ -139,26 +139,37 @@ pub(crate) unsafe fn apply_input_stage_inner<M: SimdMath>(
         *ctx.process_mono = true;
     }
 
-    // 3. INPUT VOLUME ADJUSTMENT (GAIN)
+    // 3. INPUT VOLUME ADJUSTMENT (GAIN) + DENORMAL SUPPRESSION (FUSED WHEN POSSIBLE)
+    // SAFETY: slice is valid; gain and offset are finite f32.
     if (ctx.input_gain_mult - 1.0).abs() >= 1e-6 {
-        // SAFETY: slice is valid and gain is finite.
-        unsafe { M::apply_gain(&mut samples_l[..n_samples], ctx.input_gain_mult) };
+        unsafe {
+            M::apply_gain_then_dither(
+                &mut samples_l[..n_samples],
+                ctx.input_gain_mult,
+                DENORMAL_DITHER_OFFSET,
+            )
+        };
 
         #[cfg(feature = "stereo")]
         if !*ctx.process_mono {
-            // SAFETY: slice is valid and gain is finite.
-            unsafe { M::apply_gain(&mut samples_r[..n_samples], ctx.input_gain_mult) };
+            // SAFETY: slice is valid; gain and offset are finite f32.
+            unsafe {
+                M::apply_gain_then_dither(
+                    &mut samples_r[..n_samples],
+                    ctx.input_gain_mult,
+                    DENORMAL_DITHER_OFFSET,
+                )
+            };
         }
-    }
-
-    // 4. DENORMAL SUPPRESSION: Inject ultra-low DC offset
-    // SAFETY: slice is valid and offset is a finite f32.
-    unsafe { M::apply_dither_add(&mut samples_l[..n_samples], DENORMAL_DITHER_OFFSET) };
-
-    #[cfg(feature = "stereo")]
-    if !*ctx.process_mono {
+    } else {
         // SAFETY: slice is valid and offset is a finite f32.
-        unsafe { M::apply_dither_add(&mut samples_r[..n_samples], DENORMAL_DITHER_OFFSET) };
+        unsafe { M::apply_dither_add(&mut samples_l[..n_samples], DENORMAL_DITHER_OFFSET) };
+
+        #[cfg(feature = "stereo")]
+        if !*ctx.process_mono {
+            // SAFETY: slice is valid and offset is a finite f32.
+            unsafe { M::apply_dither_add(&mut samples_r[..n_samples], DENORMAL_DITHER_OFFSET) };
+        }
     }
 
     ctx.silence_hysteresis.state()

@@ -168,6 +168,26 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
     }
 }
 
+/// Fused gain + dither: `data[i] = data[i] * gain + offset` in a single pass using AVX2+FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn apply_gain_then_dither_avx2(data: &mut [f32], gain: f32, offset: f32) {
+    let len = data.len();
+    let vg = _mm256_set1_ps(gain);
+    let vo = _mm256_set1_ps(offset);
+    let mut i = 0;
+    gain_kernel_avx2!(
+        i,
+        len,
+        {
+            let v = _mm256_loadu_ps(data.as_ptr().add(i));
+            _mm256_storeu_ps(data.as_mut_ptr().add(i), _mm256_fmadd_ps(v, vg, vo));
+        },
+        {
+            *data.get_unchecked_mut(i) = f32::mul_add(*data.get_unchecked(i), gain, offset);
+        }
+    );
+}
+
 /// Adds a broadcast constant to every element of a mono buffer using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_dither_add_avx2(data: &mut [f32], offset: f32) {

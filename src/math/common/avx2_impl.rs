@@ -764,6 +764,13 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
+    unsafe fn apply_gain_then_dither(data: &mut [f32], gain: f32, offset: f32) {
+        // SAFETY: arguments satisfy the function's documented invariants.
+        unsafe { super::super::dsp::gain::apply_gain_then_dither_avx2(data, gain, offset) }
+    }
+
+    #[inline(always)]
+    // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
         // SAFETY: arguments satisfy the function's documented invariants.
         unsafe { super::super::dsp::gain::apply_dither_add_avx2(data, offset) }

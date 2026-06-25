@@ -23,9 +23,10 @@ impl<'a> NamClapProcessor<'a> {
             if n_samples == 0 {
                 continue;
             }
-            self.rt_status
-                .last_n_samples
-                .store(n_samples as u32, Ordering::Relaxed);
+            let n = n_samples as u32;
+            if self.rt_status.last_n_samples.load(Ordering::Relaxed) != n {
+                self.rt_status.last_n_samples.store(n, Ordering::Relaxed);
+            }
 
             if self.process_bypass(&mut port_pair, n_samples)? {
                 continue;
@@ -134,7 +135,8 @@ impl<'a> NamClapProcessor<'a> {
 
             self.apply_output_gain(n_out);
 
-            let (peak_l, peak_r) = self.compute_output_peaks(&mut out_l, &mut out_r, n_out);
+            let (peak_l, peak_r) =
+                self.compute_output_peaks(&mut out_l, &mut out_r, n_out, self.process_mono);
             peaks::store_peaks(self.shared, peak_l, peak_r);
         }
 

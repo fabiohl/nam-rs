@@ -179,5 +179,6 @@ unsafe fn capture_dsp_pipeline_inner<M: SimdMath>(
         bufs.resamp_out_r,
         n_pw,
         ctx.bridge_writer,
+        *ctx.process_mono,
     );
 }
