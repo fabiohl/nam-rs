@@ -106,12 +106,15 @@ pub enum AdaptiveState {
 }
 
 /// Crossfade phase between degradation stages.
+///
+/// Duration and progress are tracked by `crossfade_total` and `crossfade_elapsed`
+/// on `AdaptiveCompute` directly; no payload is needed in the variant.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CrossfadePhase {
     /// No crossfade in progress.
     Idle,
-    /// Actively crossfading.
-    Active { remaining_samples: usize },
+    /// Actively crossfading; see `crossfade_total` / `crossfade_elapsed`.
+    Active,
 }
 
 /// Hysteresis-driven adaptive compute FSM.
@@ -233,7 +236,7 @@ impl AdaptiveCompute {
                     1.0
                 }
             }
-            CrossfadePhase::Active { .. } => {
+            CrossfadePhase::Active => {
                 let total = self.crossfade_total;
                 let progress = if total == 0 {
                     1.0
@@ -350,7 +353,7 @@ impl AdaptiveCompute {
         }
 
         let current_progress = match self.crossfade {
-            CrossfadePhase::Active { .. } if self.crossfade_total > 0 => {
+            CrossfadePhase::Active if self.crossfade_total > 0 => {
                 (self.crossfade_elapsed as f32 / self.crossfade_total as f32).min(1.0)
             }
             _ => 0.0,
@@ -364,9 +367,7 @@ impl AdaptiveCompute {
         let crossfade_samples =
             (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
         let new_total = crossfade_samples.max(1);
-        self.crossfade = CrossfadePhase::Active {
-            remaining_samples: new_total,
-        };
+        self.crossfade = CrossfadePhase::Active;
         self.crossfade_total = new_total;
         self.crossfade_elapsed = (current_progress * new_total as f32).round() as usize;
 
@@ -509,7 +510,7 @@ impl AdaptiveCompute {
                     1.0
                 }
             }
-            CrossfadePhase::Active { .. } => {
+            CrossfadePhase::Active => {
                 let total = self.crossfade_total;
                 if total == 0 {
                     1.0

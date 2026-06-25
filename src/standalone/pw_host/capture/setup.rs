@@ -234,11 +234,13 @@ pub fn setup_capture_stream<'c>(
                     && cabsim.partition_size() != n_samples
                     && state.ir_raw_samples.is_some()
                 {
-                    rt_status_for_process
-                        .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
+                    // Write data BEFORE raising the flag (Release barrier must cover
+                    // the preceding store so the consumer sees the correct value).
                     rt_status_for_process
                         .requested_cabsim_partition_size
                         .store(n_samples as u32, Ordering::Relaxed);
+                    rt_status_for_process
+                        .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
                 }
             }
         })
