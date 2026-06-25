@@ -13,6 +13,49 @@ use crate::models::{NamModel, StaticModel};
 /// at runtime, enabling arbitrary geometry loading without compile-time
 /// specialization.
 ///
+/// # Performance Characteristics — Dynamic vs. Static Path (2026-06-24)
+///
+/// The dynamic path has a **structural performance gap** relative to the static
+/// const-generic path (`WaveNetModel<CH, K, HEAD>`). This gap was characterized and
+/// partially addressed, but a residual overhead remains.
+///
+/// ## What was measured and evaluated
+///
+/// Benchmark: `WaveNet_Dynamic_CH5_64samp_48kHz` vs `A2Full_CH8_64samp_48kHz`:
+/// - Dynamic CH5: **37.58 µs** (2.82% of RT budget @ 48kHz/64samp)
+/// - A2Full CH8:  **27.16 µs** (2.04% of RT budget) — **38% faster** with more channels
+///
+/// **Root cause of the residual gap:** the dynamic convolution kernels
+/// (`conv1d_dyn.rs`, `conv1d_dyn_dual.rs`) cannot use the fused SIMD K-tap accumulation
+/// kernel (`dot_product_*x_accumulate`) because the channel count is not known at
+/// compile time. Instead, they use runtime-dimensioned scalar accumulators
+/// (`[0.0f32; 16]` per block, scalar init and accumulate), which prevents the compiler
+/// from generating fully-vectorized code without the LLVM const-propagation that
+/// drives the static path.
+///
+/// **What E1.1 fixed:** eliminated the 4KB intermediate tap-copy buffer that was
+/// copying each tap's data into a contiguous stack array before processing — that
+/// was a +53-57% regression introduced by Épico B. E1.1 switched to direct pointer
+/// accumulation, recovering most of the loss.
+///
+/// **What remains unfixed:** the accumulator scalar init + K sequential scalar
+/// accumulations across K taps (instead of 1 fused SIMD pass). Addressable via:
+///   - Option C: const-generic specializations for CH3/CH5/CH8 at the dispatcher level
+///     (similar to how LSTM static profiles work for common hidden sizes)
+///
+/// ## Decision: not a priority (2026-06-24)
+///
+/// The dynamic path (`WaveNetModelDyn`) is a **fallback** for models whose geometry
+/// does not match any of the static profiles. In practice, the standard NAM trainers
+/// produce models with standard shapes (CH=4/8/12/16 for A1, CH=3/8 for A2), so
+/// `WaveNetModelDyn` handles rare edge cases.
+///
+/// At 37.58 µs / 2.82% of RT budget on x86-64-v3 (AVX2), the dynamic path is
+/// still very capable for real-time use. This issue should only be revisited if:
+///   - Models with non-standard channel counts become common in the NAM ecosystem
+///   - A new A2-Free trainer variant produces CH5/CH6/CH7 models at scale
+///   - A user-reported use case requires better dynamic model performance
+///
 /// ## C++ Parity
 ///
 /// Head scale is the **last** f32 read from the weights file

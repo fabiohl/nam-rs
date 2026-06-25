@@ -1,6 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! Dual-frame convolution for the dynamic (runtime-dimensional) WaveNet path.
+//!
+//! # Performance note — scalar accumulation (2026-06-24)
+//!
+//! Unlike the static path (`conv1d_dual.rs`), which uses fused SIMD K-tap accumulation
+//! kernels (`dot_product_*x_f32_accumulate`) that keep accumulators in YMM registers
+//! across K taps and perform a single reduction + store, this dynamic path is limited
+//! to **scalar-init accumulators** (`[0.0f32; iw]`) because the channel count (`out_ch`)
+//! is not known at compile-time and cannot drive LLVM const-propagation.
+//!
+//! The intermediate tap-copy buffer (4KB, `copy_from_slice` per tap) was eliminated
+//! in E1.1 (2026-06-24) — each tap now accumulates directly via raw pointer into the
+//! per-tap slice, without copying the tap data first. This recovered the +53-57%
+//! regression introduced for small dynamic shapes (e.g., CH5).
+//!
+//! Remaining overhead vs static path: ~38% slower per block at CH5/64samp.
+//! Root cause: scalar acc init + K scalar partial sums per interleave block.
+//! Future fix: Option C — const-generic dispatch for common shapes (CH3/CH5/CH8)
+//! at the loader level (see `model_dyn.rs`).
+//!
+//! **Decision**: not a priority. Dynamic models are rare in the NAM ecosystem.
+//! The standard trainers produce CH=3/8 (A2) or CH=4/8/12/16 (A1), which all
+//! hit const-generic static paths. Revisit only if non-standard shapes become common.
+
 use super::common::MAX_KERNEL;
 use super::conv1d_dyn::Conv1dDyn;
 use crate::math::common::{SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple};
