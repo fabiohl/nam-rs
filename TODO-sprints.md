@@ -87,7 +87,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 
 ### Sprint 3: Verificação de Qualidade e Observabilidade Genuínas
 
-#### 📋 Tarefa E3.1: Correção do Fidelity Margin check honesto em validation.rs (F-06)
+#### 📋 Tarefa E3.1: Correção do Fidelity Margin check honesto em validation.rs (F-06) [DONE]
 
 * **Objetivo:** Fazer com que o marcador `✓` de margem de fidelidade perceptual reflita genuinamente se o delta SNR supera o alvo de 8.0 dB.
 * **Componente:** Test Oracles / QA

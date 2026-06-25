@@ -239,7 +239,7 @@ fn report_dsp_fidelity_impl(
         }
         if anchor_snr_db.is_finite() {
             let delta_snr = snr - anchor_snr_db;
-            let is_satisfactory = delta_snr > 8.0 || snr >= min_snr_db;
+            let is_satisfactory = delta_snr > 8.0;
             println!("  SNR(anchor) = {anchor_snr_db:.1} dB (degradation reference)");
             println!(
                 "  Fidelity Margin = {delta_snr:.1} dB (target > 8.0 dB) {}",
