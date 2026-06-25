@@ -4,6 +4,8 @@
 use crate::gemv_f32_inner_loop_avx2;
 use core::arch::x86_64::*;
 
+const SMALL_IN_LEN_THRESHOLD_AVX2: usize = 4;
+
 // ── Batched f32 GEMV ──────────────────────────────────────────────────────────
 
 /// Batch GEMV overwrite with bias using native f32 weights via AVX2.
@@ -83,85 +85,91 @@ pub unsafe fn gemv_with_bias_f32_avx2(
     // ── out_len == 1: batch 8 frames per YMM ────────────────────────────
     if out_len == 1 {
         let mut n = 0;
-        while n + 8 <= num_frames {
-            let mut acc0 = _mm256_setzero_ps();
-            let mut acc1 = _mm256_setzero_ps();
-            let mut acc2 = _mm256_setzero_ps();
-            let mut acc3 = _mm256_setzero_ps();
-            let mut acc4 = _mm256_setzero_ps();
-            let mut acc5 = _mm256_setzero_ps();
-            let mut acc6 = _mm256_setzero_ps();
-            let mut acc7 = _mm256_setzero_ps();
-            let mut ic = 0;
-            while ic + 8 <= in_len {
-                let v_w0 = _mm256_set1_ps(*weights.get_unchecked(ic));
-                let v_w1 = _mm256_set1_ps(*weights.get_unchecked(ic + 1));
-                let v_w2 = _mm256_set1_ps(*weights.get_unchecked(ic + 2));
-                let v_w3 = _mm256_set1_ps(*weights.get_unchecked(ic + 3));
-                let v_w4 = _mm256_set1_ps(*weights.get_unchecked(ic + 4));
-                let v_w5 = _mm256_set1_ps(*weights.get_unchecked(ic + 5));
-                let v_w6 = _mm256_set1_ps(*weights.get_unchecked(ic + 6));
-                let v_w7 = _mm256_set1_ps(*weights.get_unchecked(ic + 7));
-                let mut buf0 = [0.0f32; 8];
-                let mut buf1 = [0.0f32; 8];
-                let mut buf2 = [0.0f32; 8];
-                let mut buf3 = [0.0f32; 8];
-                let mut buf4 = [0.0f32; 8];
-                let mut buf5 = [0.0f32; 8];
-                let mut buf6 = [0.0f32; 8];
-                let mut buf7 = [0.0f32; 8];
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..8 {
-                    let base = (n + j) * in_len;
-                    buf0[j] = *in_frames.get_unchecked(base + ic);
-                    buf1[j] = *in_frames.get_unchecked(base + ic + 1);
-                    buf2[j] = *in_frames.get_unchecked(base + ic + 2);
-                    buf3[j] = *in_frames.get_unchecked(base + ic + 3);
-                    buf4[j] = *in_frames.get_unchecked(base + ic + 4);
-                    buf5[j] = *in_frames.get_unchecked(base + ic + 5);
-                    buf6[j] = *in_frames.get_unchecked(base + ic + 6);
-                    buf7[j] = *in_frames.get_unchecked(base + ic + 7);
+        if in_len > SMALL_IN_LEN_THRESHOLD_AVX2 {
+            while n + 8 <= num_frames {
+                let mut acc0 = _mm256_setzero_ps();
+                let mut acc1 = _mm256_setzero_ps();
+                let mut acc2 = _mm256_setzero_ps();
+                let mut acc3 = _mm256_setzero_ps();
+                let mut acc4 = _mm256_setzero_ps();
+                let mut acc5 = _mm256_setzero_ps();
+                let mut acc6 = _mm256_setzero_ps();
+                let mut acc7 = _mm256_setzero_ps();
+                let mut ic = 0;
+                while ic + 8 <= in_len {
+                    let v_w0 = _mm256_set1_ps(*weights.get_unchecked(ic));
+                    let v_w1 = _mm256_set1_ps(*weights.get_unchecked(ic + 1));
+                    let v_w2 = _mm256_set1_ps(*weights.get_unchecked(ic + 2));
+                    let v_w3 = _mm256_set1_ps(*weights.get_unchecked(ic + 3));
+                    let v_w4 = _mm256_set1_ps(*weights.get_unchecked(ic + 4));
+                    let v_w5 = _mm256_set1_ps(*weights.get_unchecked(ic + 5));
+                    let v_w6 = _mm256_set1_ps(*weights.get_unchecked(ic + 6));
+                    let v_w7 = _mm256_set1_ps(*weights.get_unchecked(ic + 7));
+                    let row0 = _mm256_loadu_ps(in_frames.as_ptr().add((n) * in_len + ic));
+                    let row1 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 1) * in_len + ic));
+                    let row2 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 2) * in_len + ic));
+                    let row3 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 3) * in_len + ic));
+                    let row4 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 4) * in_len + ic));
+                    let row5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 5) * in_len + ic));
+                    let row6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 6) * in_len + ic));
+                    let row7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 7) * in_len + ic));
+                    let t0 = _mm256_unpacklo_ps(row0, row1);
+                    let t1 = _mm256_unpackhi_ps(row0, row1);
+                    let t2 = _mm256_unpacklo_ps(row2, row3);
+                    let t3 = _mm256_unpackhi_ps(row2, row3);
+                    let t4 = _mm256_unpacklo_ps(row4, row5);
+                    let t5 = _mm256_unpackhi_ps(row4, row5);
+                    let t6 = _mm256_unpacklo_ps(row6, row7);
+                    let t7 = _mm256_unpackhi_ps(row6, row7);
+                    let s0 = _mm256_shuffle_ps(t0, t2, 0x44);
+                    let s1 = _mm256_shuffle_ps(t0, t2, 0xEE);
+                    let s2 = _mm256_shuffle_ps(t1, t3, 0x44);
+                    let s3 = _mm256_shuffle_ps(t1, t3, 0xEE);
+                    let s4 = _mm256_shuffle_ps(t4, t6, 0x44);
+                    let s5 = _mm256_shuffle_ps(t4, t6, 0xEE);
+                    let s6 = _mm256_shuffle_ps(t5, t7, 0x44);
+                    let s7 = _mm256_shuffle_ps(t5, t7, 0xEE);
+                    let v_in0 = _mm256_permute2f128_ps(s0, s4, 0x20);
+                    let v_in1 = _mm256_permute2f128_ps(s1, s5, 0x20);
+                    let v_in2 = _mm256_permute2f128_ps(s2, s6, 0x20);
+                    let v_in3 = _mm256_permute2f128_ps(s3, s7, 0x20);
+                    let v_in4 = _mm256_permute2f128_ps(s0, s4, 0x31);
+                    let v_in5 = _mm256_permute2f128_ps(s1, s5, 0x31);
+                    let v_in6 = _mm256_permute2f128_ps(s2, s6, 0x31);
+                    let v_in7 = _mm256_permute2f128_ps(s3, s7, 0x31);
+                    acc0 = _mm256_fmadd_ps(v_in0, v_w0, acc0);
+                    acc1 = _mm256_fmadd_ps(v_in1, v_w1, acc1);
+                    acc2 = _mm256_fmadd_ps(v_in2, v_w2, acc2);
+                    acc3 = _mm256_fmadd_ps(v_in3, v_w3, acc3);
+                    acc4 = _mm256_fmadd_ps(v_in4, v_w4, acc4);
+                    acc5 = _mm256_fmadd_ps(v_in5, v_w5, acc5);
+                    acc6 = _mm256_fmadd_ps(v_in6, v_w6, acc6);
+                    acc7 = _mm256_fmadd_ps(v_in7, v_w7, acc7);
+                    ic += 8;
                 }
-                let v_in0 = _mm256_loadu_ps(buf0.as_ptr());
-                let v_in1 = _mm256_loadu_ps(buf1.as_ptr());
-                let v_in2 = _mm256_loadu_ps(buf2.as_ptr());
-                let v_in3 = _mm256_loadu_ps(buf3.as_ptr());
-                let v_in4 = _mm256_loadu_ps(buf4.as_ptr());
-                let v_in5 = _mm256_loadu_ps(buf5.as_ptr());
-                let v_in6 = _mm256_loadu_ps(buf6.as_ptr());
-                let v_in7 = _mm256_loadu_ps(buf7.as_ptr());
-                acc0 = _mm256_fmadd_ps(v_in0, v_w0, acc0);
-                acc1 = _mm256_fmadd_ps(v_in1, v_w1, acc1);
-                acc2 = _mm256_fmadd_ps(v_in2, v_w2, acc2);
-                acc3 = _mm256_fmadd_ps(v_in3, v_w3, acc3);
-                acc4 = _mm256_fmadd_ps(v_in4, v_w4, acc4);
-                acc5 = _mm256_fmadd_ps(v_in5, v_w5, acc5);
-                acc6 = _mm256_fmadd_ps(v_in6, v_w6, acc6);
-                acc7 = _mm256_fmadd_ps(v_in7, v_w7, acc7);
-                ic += 8;
-            }
-            acc0 = _mm256_add_ps(acc0, acc1);
-            acc2 = _mm256_add_ps(acc2, acc3);
-            acc4 = _mm256_add_ps(acc4, acc5);
-            acc6 = _mm256_add_ps(acc6, acc7);
-            acc0 = _mm256_add_ps(acc0, acc2);
-            acc4 = _mm256_add_ps(acc4, acc6);
-            acc0 = _mm256_add_ps(acc0, acc4);
-            while ic < in_len {
-                let v_w = _mm256_set1_ps(*weights.get_unchecked(ic));
-                let mut buf = [0.0f32; 8];
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..8 {
-                    buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
+                acc0 = _mm256_add_ps(acc0, acc1);
+                acc2 = _mm256_add_ps(acc2, acc3);
+                acc4 = _mm256_add_ps(acc4, acc5);
+                acc6 = _mm256_add_ps(acc6, acc7);
+                acc0 = _mm256_add_ps(acc0, acc2);
+                acc4 = _mm256_add_ps(acc4, acc6);
+                acc0 = _mm256_add_ps(acc0, acc4);
+                while ic < in_len {
+                    let v_w = _mm256_set1_ps(*weights.get_unchecked(ic));
+                    let mut buf = [0.0f32; 8];
+                    #[allow(clippy::needless_range_loop)]
+                    for j in 0..8 {
+                        buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
+                    }
+                    let v_in = _mm256_loadu_ps(buf.as_ptr());
+                    acc0 = _mm256_fmadd_ps(v_in, v_w, acc0);
+                    ic += 1;
                 }
-                let v_in = _mm256_loadu_ps(buf.as_ptr());
-                acc0 = _mm256_fmadd_ps(v_in, v_w, acc0);
-                ic += 1;
+                let v_b = _mm256_set1_ps(*bias.get_unchecked(0));
+                acc0 = _mm256_add_ps(acc0, v_b);
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add(n), acc0);
+                n += 8;
             }
-            let v_b = _mm256_set1_ps(*bias.get_unchecked(0));
-            acc0 = _mm256_add_ps(acc0, v_b);
-            _mm256_storeu_ps(out_frames.as_mut_ptr().add(n), acc0);
-            n += 8;
         }
         for n in n..num_frames {
             let mut acc = _mm256_setzero_ps();
@@ -173,9 +181,9 @@ pub unsafe fn gemv_with_bias_f32_avx2(
                 ic += 8;
             }
             if ic < in_len {
+                let rem = in_len - ic;
                 let mut buf_in = [0.0f32; 8];
                 let mut buf_w = [0.0f32; 8];
-                let rem = in_len - ic;
                 for i in 0..rem {
                     buf_in[i] = *in_frames.get_unchecked(n * in_len + ic + i);
                     buf_w[i] = *weights.get_unchecked(ic + i);
@@ -364,83 +372,89 @@ pub unsafe fn gemv_no_bias_f32_avx2(
     // ── out_len == 1: batch 8 frames per YMM ────────────────────────────
     if out_len == 1 {
         let mut n = 0;
-        while n + 8 <= num_frames {
-            let mut acc0 = _mm256_setzero_ps();
-            let mut acc1 = _mm256_setzero_ps();
-            let mut acc2 = _mm256_setzero_ps();
-            let mut acc3 = _mm256_setzero_ps();
-            let mut acc4 = _mm256_setzero_ps();
-            let mut acc5 = _mm256_setzero_ps();
-            let mut acc6 = _mm256_setzero_ps();
-            let mut acc7 = _mm256_setzero_ps();
-            let mut ic = 0;
-            while ic + 8 <= in_len {
-                let v_w0 = _mm256_set1_ps(*weights.get_unchecked(ic));
-                let v_w1 = _mm256_set1_ps(*weights.get_unchecked(ic + 1));
-                let v_w2 = _mm256_set1_ps(*weights.get_unchecked(ic + 2));
-                let v_w3 = _mm256_set1_ps(*weights.get_unchecked(ic + 3));
-                let v_w4 = _mm256_set1_ps(*weights.get_unchecked(ic + 4));
-                let v_w5 = _mm256_set1_ps(*weights.get_unchecked(ic + 5));
-                let v_w6 = _mm256_set1_ps(*weights.get_unchecked(ic + 6));
-                let v_w7 = _mm256_set1_ps(*weights.get_unchecked(ic + 7));
-                let mut buf0 = [0.0f32; 8];
-                let mut buf1 = [0.0f32; 8];
-                let mut buf2 = [0.0f32; 8];
-                let mut buf3 = [0.0f32; 8];
-                let mut buf4 = [0.0f32; 8];
-                let mut buf5 = [0.0f32; 8];
-                let mut buf6 = [0.0f32; 8];
-                let mut buf7 = [0.0f32; 8];
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..8 {
-                    let base = (n + j) * in_len;
-                    buf0[j] = *in_frames.get_unchecked(base + ic);
-                    buf1[j] = *in_frames.get_unchecked(base + ic + 1);
-                    buf2[j] = *in_frames.get_unchecked(base + ic + 2);
-                    buf3[j] = *in_frames.get_unchecked(base + ic + 3);
-                    buf4[j] = *in_frames.get_unchecked(base + ic + 4);
-                    buf5[j] = *in_frames.get_unchecked(base + ic + 5);
-                    buf6[j] = *in_frames.get_unchecked(base + ic + 6);
-                    buf7[j] = *in_frames.get_unchecked(base + ic + 7);
+        if in_len > SMALL_IN_LEN_THRESHOLD_AVX2 {
+            while n + 8 <= num_frames {
+                let mut acc0 = _mm256_setzero_ps();
+                let mut acc1 = _mm256_setzero_ps();
+                let mut acc2 = _mm256_setzero_ps();
+                let mut acc3 = _mm256_setzero_ps();
+                let mut acc4 = _mm256_setzero_ps();
+                let mut acc5 = _mm256_setzero_ps();
+                let mut acc6 = _mm256_setzero_ps();
+                let mut acc7 = _mm256_setzero_ps();
+                let mut ic = 0;
+                while ic + 8 <= in_len {
+                    let v_w0 = _mm256_set1_ps(*weights.get_unchecked(ic));
+                    let v_w1 = _mm256_set1_ps(*weights.get_unchecked(ic + 1));
+                    let v_w2 = _mm256_set1_ps(*weights.get_unchecked(ic + 2));
+                    let v_w3 = _mm256_set1_ps(*weights.get_unchecked(ic + 3));
+                    let v_w4 = _mm256_set1_ps(*weights.get_unchecked(ic + 4));
+                    let v_w5 = _mm256_set1_ps(*weights.get_unchecked(ic + 5));
+                    let v_w6 = _mm256_set1_ps(*weights.get_unchecked(ic + 6));
+                    let v_w7 = _mm256_set1_ps(*weights.get_unchecked(ic + 7));
+                    let row0 = _mm256_loadu_ps(in_frames.as_ptr().add((n) * in_len + ic));
+                    let row1 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 1) * in_len + ic));
+                    let row2 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 2) * in_len + ic));
+                    let row3 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 3) * in_len + ic));
+                    let row4 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 4) * in_len + ic));
+                    let row5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 5) * in_len + ic));
+                    let row6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 6) * in_len + ic));
+                    let row7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 7) * in_len + ic));
+                    let t0 = _mm256_unpacklo_ps(row0, row1);
+                    let t1 = _mm256_unpackhi_ps(row0, row1);
+                    let t2 = _mm256_unpacklo_ps(row2, row3);
+                    let t3 = _mm256_unpackhi_ps(row2, row3);
+                    let t4 = _mm256_unpacklo_ps(row4, row5);
+                    let t5 = _mm256_unpackhi_ps(row4, row5);
+                    let t6 = _mm256_unpacklo_ps(row6, row7);
+                    let t7 = _mm256_unpackhi_ps(row6, row7);
+                    let s0 = _mm256_shuffle_ps(t0, t2, 0x44);
+                    let s1 = _mm256_shuffle_ps(t0, t2, 0xEE);
+                    let s2 = _mm256_shuffle_ps(t1, t3, 0x44);
+                    let s3 = _mm256_shuffle_ps(t1, t3, 0xEE);
+                    let s4 = _mm256_shuffle_ps(t4, t6, 0x44);
+                    let s5 = _mm256_shuffle_ps(t4, t6, 0xEE);
+                    let s6 = _mm256_shuffle_ps(t5, t7, 0x44);
+                    let s7 = _mm256_shuffle_ps(t5, t7, 0xEE);
+                    let v_in0 = _mm256_permute2f128_ps(s0, s4, 0x20);
+                    let v_in1 = _mm256_permute2f128_ps(s1, s5, 0x20);
+                    let v_in2 = _mm256_permute2f128_ps(s2, s6, 0x20);
+                    let v_in3 = _mm256_permute2f128_ps(s3, s7, 0x20);
+                    let v_in4 = _mm256_permute2f128_ps(s0, s4, 0x31);
+                    let v_in5 = _mm256_permute2f128_ps(s1, s5, 0x31);
+                    let v_in6 = _mm256_permute2f128_ps(s2, s6, 0x31);
+                    let v_in7 = _mm256_permute2f128_ps(s3, s7, 0x31);
+                    acc0 = _mm256_fmadd_ps(v_in0, v_w0, acc0);
+                    acc1 = _mm256_fmadd_ps(v_in1, v_w1, acc1);
+                    acc2 = _mm256_fmadd_ps(v_in2, v_w2, acc2);
+                    acc3 = _mm256_fmadd_ps(v_in3, v_w3, acc3);
+                    acc4 = _mm256_fmadd_ps(v_in4, v_w4, acc4);
+                    acc5 = _mm256_fmadd_ps(v_in5, v_w5, acc5);
+                    acc6 = _mm256_fmadd_ps(v_in6, v_w6, acc6);
+                    acc7 = _mm256_fmadd_ps(v_in7, v_w7, acc7);
+                    ic += 8;
                 }
-                let v_in0 = _mm256_loadu_ps(buf0.as_ptr());
-                let v_in1 = _mm256_loadu_ps(buf1.as_ptr());
-                let v_in2 = _mm256_loadu_ps(buf2.as_ptr());
-                let v_in3 = _mm256_loadu_ps(buf3.as_ptr());
-                let v_in4 = _mm256_loadu_ps(buf4.as_ptr());
-                let v_in5 = _mm256_loadu_ps(buf5.as_ptr());
-                let v_in6 = _mm256_loadu_ps(buf6.as_ptr());
-                let v_in7 = _mm256_loadu_ps(buf7.as_ptr());
-                acc0 = _mm256_fmadd_ps(v_in0, v_w0, acc0);
-                acc1 = _mm256_fmadd_ps(v_in1, v_w1, acc1);
-                acc2 = _mm256_fmadd_ps(v_in2, v_w2, acc2);
-                acc3 = _mm256_fmadd_ps(v_in3, v_w3, acc3);
-                acc4 = _mm256_fmadd_ps(v_in4, v_w4, acc4);
-                acc5 = _mm256_fmadd_ps(v_in5, v_w5, acc5);
-                acc6 = _mm256_fmadd_ps(v_in6, v_w6, acc6);
-                acc7 = _mm256_fmadd_ps(v_in7, v_w7, acc7);
-                ic += 8;
-            }
-            acc0 = _mm256_add_ps(acc0, acc1);
-            acc2 = _mm256_add_ps(acc2, acc3);
-            acc4 = _mm256_add_ps(acc4, acc5);
-            acc6 = _mm256_add_ps(acc6, acc7);
-            acc0 = _mm256_add_ps(acc0, acc2);
-            acc4 = _mm256_add_ps(acc4, acc6);
-            acc0 = _mm256_add_ps(acc0, acc4);
-            while ic < in_len {
-                let v_w = _mm256_set1_ps(*weights.get_unchecked(ic));
-                let mut buf = [0.0f32; 8];
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..8 {
-                    buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
+                acc0 = _mm256_add_ps(acc0, acc1);
+                acc2 = _mm256_add_ps(acc2, acc3);
+                acc4 = _mm256_add_ps(acc4, acc5);
+                acc6 = _mm256_add_ps(acc6, acc7);
+                acc0 = _mm256_add_ps(acc0, acc2);
+                acc4 = _mm256_add_ps(acc4, acc6);
+                acc0 = _mm256_add_ps(acc0, acc4);
+                while ic < in_len {
+                    let v_w = _mm256_set1_ps(*weights.get_unchecked(ic));
+                    let mut buf = [0.0f32; 8];
+                    #[allow(clippy::needless_range_loop)]
+                    for j in 0..8 {
+                        buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
+                    }
+                    let v_in = _mm256_loadu_ps(buf.as_ptr());
+                    acc0 = _mm256_fmadd_ps(v_in, v_w, acc0);
+                    ic += 1;
                 }
-                let v_in = _mm256_loadu_ps(buf.as_ptr());
-                acc0 = _mm256_fmadd_ps(v_in, v_w, acc0);
-                ic += 1;
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add(n), acc0);
+                n += 8;
             }
-            _mm256_storeu_ps(out_frames.as_mut_ptr().add(n), acc0);
-            n += 8;
         }
         for n in n..num_frames {
             let mut acc = _mm256_setzero_ps();

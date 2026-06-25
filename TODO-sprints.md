@@ -43,7 +43,7 @@ Foco na otimização fina dos kernels neurais do LSTM e do DenseLayer (GEMV), el
   * Comparação em microbenchmarks (`cargo bench -- lstm`) para avaliar o ganho de ciclos no processamento sequencial.
 * **Conclusão:** Branch `use_f32_head` hoisted para fora do laço per-sample em todos os 3 modelos (define_lstm1_process!, define_lstm2_process_pipelined!, e 3 kernels inline do LstmModelDyn). Macro `compute_lstm_head_simd!` removida; dot product inlined diretamente nos dois caminhos. 22 testes LSTM + todos os integration tests passam. Benchmarks estáveis (sem regressão significativa). Clippy limpo.
 
-### Tarefa C2 (P5) — GEMV `out_len == 1` sem Transposição na Pilha
+### Tarefa C2 (P5) — GEMV `out_len == 1` sem Transposição na Pilha ✅ [DONE]
 
 * **Prioridade:** Média
 * **Complexidade/Esforço:** Médio
@@ -57,6 +57,7 @@ Foco na otimização fina dos kernels neurais do LSTM e do DenseLayer (GEMV), el
 * **Estratégia de Validação:**
   * `cargo test -- math::gemm::gemv` para validar todas as variantes de GEMV contra a referência escalar fallback.
   * Executar benchmarks Criterion dedicados ao GEMV e medir flutuações de performance conforme `in_len`.
+* **Conclusão:** Stack buffers eliminados nos 4 paths (gemv_with_bias_f32 / gemv_no_bias_f32, AVX2 + AVX-512). AVX2 usa transpose 8×8 totalmente em registradores via `_mm256_loadu_ps` + 8× `_mm256_unpacklo/hi_ps` + 8× `_mm256_shuffle_ps` + 8× `_mm256_permute2f128_ps`. AVX-512 usa 2× transpose 8×8 independentes (frames 0-7 e 8-15) com `_mm256_loadu_ps` e depois combina via `_mm512_insertf32x8`. Threshold `SMALL_IN_LEN_THRESHOLD = 4` definido via benchmark: para `in_len ≤ 4`, o batch loop é bypassado em favor do processamento per-frame (onde a sobrecarga de transpose não compensa). Benchmarks Criterion (`head_rechannel_fp32`): DenseLayer_8x1_64f_AVX2: -52% (77.7ns), DenseLayer_16x1_64f_AVX2: -41% (113.5ns). 8 testes GEMV passam (bit-a-bit contra fallback escalar). Todos integration tests (golden_vectors, linear_golden, cpp_parity, lstm_*, self_consistency, nam_infer) passam. Clippy limpo.
 
 ---
 
