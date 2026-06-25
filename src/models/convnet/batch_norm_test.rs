@@ -300,3 +300,297 @@ fn test_clone_preserves_behavior() {
 fn test_struct_alignment() {
     assert_eq!(std::mem::align_of::<BatchNorm1D>(), 64);
 }
+
+/// Parity tests for the new frame-major SIMD batch_norm_process kernels
+/// against the scalar fallback reference.
+#[cfg(test)]
+mod batch_norm_simd_parity {
+    use crate::math::common::scalar_ref::utility::batch_norm_process_fallback;
+    use crate::math::common::traits::SimdMath;
+
+    #[test]
+    fn avx2_vs_scalar_8_channels() {
+        let n_ch = 8;
+        let num_frames = 10;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 0.5 + (i as f32) * 0.1).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|i| -1.0 + (i as f32) * 0.2).collect();
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32) * 0.1 - 5.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_16_channels() {
+        let n_ch = 16;
+        let num_frames = 8;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 0.8 + (i as f32) * 0.05).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|i| (i as f32) * 0.15 - 0.5).collect();
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32) * 0.05 - 3.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_24_channels_unaligned() {
+        let n_ch = 24;
+        let num_frames = 12;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 1.0 + (i as f32) * 0.03).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|i| -0.2 * (i as f32)).collect();
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32) * 0.07 - 2.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_odd_channels() {
+        let n_ch = 7;
+        let num_frames = 20;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 0.7 + (i as f32) * 0.15).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|i| 0.3 - (i as f32) * 0.1).collect();
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32) * 0.12 - 1.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_single_channel() {
+        let n_ch = 1;
+        let num_frames = 50;
+        let scale = vec![2.5];
+        let offset = vec![-1.0];
+
+        let original: Vec<f32> = (0..num_frames).map(|i| (i as f32) * 0.1).collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_many_frames() {
+        let n_ch = 3;
+        let num_frames = 200;
+        let scale = vec![0.5, 1.2, 0.8];
+        let offset = vec![0.1, -0.3, 0.0];
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32).sin() * 2.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn avx2_vs_scalar_single_frame() {
+        let n_ch = 9;
+        let num_frames = 1;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 0.2 + (i as f32) * 0.1).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|_i| 0.0).collect();
+
+        let original: Vec<f32> = (0..n_ch).map(|i| (i as f32) * 0.5).collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx2Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    /// Tests AVX-512 parity when AVX-512F is supported at runtime.
+    #[test]
+    fn avx512_vs_scalar() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        let n_ch = 16;
+        let num_frames = 8;
+        let scale: Vec<f32> = (0..n_ch).map(|i| 0.8 + (i as f32) * 0.05).collect();
+        let offset: Vec<f32> = (0..n_ch).map(|i| (i as f32) * 0.15 - 0.5).collect();
+
+        let original: Vec<f32> = (0..n_ch * num_frames)
+            .map(|i| (i as f32) * 0.05 - 3.0)
+            .collect();
+
+        let mut simd = original.clone();
+        unsafe {
+            crate::math::common::Avx512Math::batch_norm_process(
+                &mut simd, &scale, &offset, n_ch, num_frames,
+            );
+        }
+
+        let mut scalar = original;
+        unsafe {
+            batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+        }
+
+        for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+            assert!(
+                (a - b).abs() < 1e-6,
+                "AVX-512 n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+            );
+        }
+    }
+
+    /// Tests AVX-512 parity with 32 channels and unaligned channel count (35).
+    #[test]
+    fn avx512_vs_scalar_32ch_and_35ch() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            return;
+        }
+
+        for n_ch in [32, 35] {
+            let num_frames = 6;
+            let scale: Vec<f32> = (0..n_ch).map(|i| 0.5 + (i as f32) * 0.04).collect();
+            let offset: Vec<f32> = (0..n_ch).map(|i| -0.1 * (i as f32)).collect();
+
+            let original: Vec<f32> = (0..n_ch * num_frames)
+                .map(|i| (i as f32) * 0.03 - 1.0)
+                .collect();
+
+            let mut simd = original.clone();
+            unsafe {
+                crate::math::common::Avx512Math::batch_norm_process(
+                    &mut simd, &scale, &offset, n_ch, num_frames,
+                );
+            }
+
+            let mut scalar = original;
+            unsafe {
+                batch_norm_process_fallback(&mut scalar, &scale, &offset, n_ch, num_frames);
+            }
+
+            for (i, (&a, &b)) in simd.iter().zip(scalar.iter()).enumerate() {
+                assert!(
+                    (a - b).abs() < 1e-6,
+                    "AVX-512 n_ch={n_ch} num_frames={num_frames} idx={i}: simd={a} != scalar={b}"
+                );
+            }
+        }
+    }
+}

@@ -36,6 +36,9 @@ use super::InstructionSet;
 /// - **(C) Activations**: Tanh/sigmoid activation functions and gated fusions (e.g., `tanh_slice`).
 /// - **(D) Conversions**: f32 ↔ bf16 conversion utilities (e.g., `f32_to_bf16`).
 /// - **(E) LSTM Gates**: Specific kernels for LSTM cell gates (e.g., `fused_lstm_gates_dyn`).
+/// - **(F) Complex MAC**: Complex multiply-accumulate spectral kernels.
+/// - **(G) FFT Butterfly**: SIMD Radix-2 DIT FFT butterfly stages.
+/// - **(H) BatchNorm**: Frame-major batch normalization affine transform.
 pub trait SimdMath {
     /// SIMD register type used (e.g.: __m256 or __m512).
     type V: Copy;
@@ -940,5 +943,24 @@ pub trait SimdMath {
         tw_im: *const f32,
         group_start: usize,
         inverse: bool,
+    );
+
+    // --- (H) BatchNorm ---
+
+    /// Frame-major batch normalization affine transform.
+    ///
+    /// Computes `data[f * n_ch + c] = data[f * n_ch + c] * scale[c] + offset[c]`
+    /// for all frames and channels in a single pass.
+    /// Processes frames in the outer loop for contiguous channel access.
+    ///
+    /// # Safety
+    /// `data.len() == num_frames * n_ch`. `scale` and `offset` must each have
+    /// at least `n_ch` elements. `num_frames > 0`.
+    unsafe fn batch_norm_process(
+        data: &mut [f32],
+        scale: &[f32],
+        offset: &[f32],
+        n_ch: usize,
+        num_frames: usize,
     );
 }

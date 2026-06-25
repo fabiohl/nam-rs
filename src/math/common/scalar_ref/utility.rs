@@ -221,6 +221,31 @@ pub fn complex_mac_accumulate_scalar(
     }
 }
 
+/// Frame-major scalar reference for batch normalization affine transform.
+///
+/// Computes `data[f*n_ch + c] = data[f*n_ch + c] * scale[c] + offset[c]`
+/// traversing frames in the outer loop for contiguous channel access.
+///
+/// # Safety
+/// `data.len() == num_frames * n_ch`. `scale` and `offset` must each have at least `n_ch` elements.
+#[inline]
+pub unsafe fn batch_norm_process_fallback(
+    data: &mut [f32],
+    scale: &[f32],
+    offset: &[f32],
+    n_ch: usize,
+    num_frames: usize,
+) {
+    for f in 0..num_frames {
+        let frame_start = f * n_ch;
+        for c in 0..n_ch {
+            let idx = frame_start + c;
+            *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx))
+                .mul_add(*scale.get_unchecked(c), *offset.get_unchecked(c));
+        }
+    }
+}
+
 /// Scalar Radix-2 DIT FFT butterfly stage for one group.
 ///
 /// See `SimdMath::fft_butterfly_stage` for semantics.

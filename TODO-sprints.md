@@ -75,7 +75,7 @@ Foco em prover a infraestrutura no trait `SimdMath` para determinar a ISA em tem
 
 Foco em reescrever o kernel do BatchNorm para eliminar a transposição ineficiente via pilha (gather/scatter escalar) e unificar o despacho do BatchNorm com o pipeline monomorfizado.
 
-### Tarefa B3 (P3 - Kernels) — Nova Abstração e Implementação de BatchNorm no Trait SimdMath
+### Tarefa B3 (P3 - Kernels) — Nova Abstração e Implementação de BatchNorm no Trait SimdMath [DONE]
 
 * **Prioridade:** Alta
 * **Complexidade/Esforço:** Médio-Alto
@@ -101,6 +101,7 @@ Foco em reescrever o kernel do BatchNorm para eliminar a transposição ineficie
   2. Em [utility.rs](file:///home/fabio/nam-rs/src/math/common/scalar_ref/utility.rs), implementar a referência escalar contígua (processamento frame-major) `batch_norm_process_fallback`.
   3. No backend `Avx2Math`, implementar a otimização contígua frame-major em chunks de 8 elementos (adequado para canais múltiplos de 8 ou processamento geral). No caso especial de canais contíguos de áudio, carregar `scale` e `offset` e computar `FMA` sem transposição na pilha. Tratar as sobras do fim do frame com aritmética escalar.
   4. No backend `Avx512Math`/`Avx512VnniBf16Math`, implementar a mesma lógica, mas com largura de 16 elementos por registrador.
+  * **Conclusão:** `batch_norm_process` adicionado ao trait `SimdMath` (Grupo H - BatchNorm) com implementações frame-major contíguas em todos os 3 backends (`Avx2Math`, `Avx512Math`, `Avx512VnniBf16Math`) e referência escalar `batch_norm_process_fallback`. O kernel itera frame-by-frame (loop externo), processando canais contíguos em chunks de 8 (AVX2) ou 16 (AVX-512) com `vfmadd231ps`, tratando sobras com aritmética escalar. Nove testes de paridade cobrem canais 1, 7, 8, 9, 16, 24, 32, 35 com diversos frame counts (1–200), incluindo o teste condicional AVX-512 com 32/35 canais. 886 lib tests passam (0 falhas), `cargo check` limpo. O método permanece não integrado — a integração com `BatchNorm1D::process_simd<M>` será feita na Tarefa B4.
 * **Estratégia de Validação:**
   * Adicionar testes unitários de paridade comparando os novos kernels vetorizados contra a referência escalar sob diferentes dimensões de canais (ex.: 8, 16, 24, e tamanhos ímpares ou não-alinhados) e número de frames.
 

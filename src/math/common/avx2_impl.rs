@@ -978,4 +978,41 @@ impl SimdMath for Avx2Math {
             )
         }
     }
+
+    #[inline(always)]
+    // SAFETY: data, scale, offset are valid f32 slices; n_ch * num_frames == data.len();
+    // CPU supports AVX2+FMA (x86-64-v3, verified by dispatch). Kernel uses unaligned loads/stores.
+    unsafe fn batch_norm_process(
+        data: &mut [f32],
+        scale: &[f32],
+        offset: &[f32],
+        n_ch: usize,
+        num_frames: usize,
+    ) {
+        for f in 0..num_frames {
+            let frame_start = f * n_ch;
+            let mut c = 0;
+            while c + 8 <= n_ch {
+                // SAFETY: c is bounds-checked (c+8 <= n_ch); frame_start+c is within data
+                // bounds (n_ch * num_frames). Unaligned 256-bit loads/stores valid for f32.
+                unsafe {
+                    let x = _mm256_loadu_ps(data.as_ptr().add(frame_start + c));
+                    let s = _mm256_loadu_ps(scale.as_ptr().add(c));
+                    let o = _mm256_loadu_ps(offset.as_ptr().add(c));
+                    let y = _mm256_fmadd_ps(x, s, o);
+                    _mm256_storeu_ps(data.as_mut_ptr().add(frame_start + c), y);
+                }
+                c += 8;
+            }
+            for c in c..n_ch {
+                let idx = frame_start + c;
+                // SAFETY: c < n_ch ensures idx is within data bounds; scale/offset have
+                // at least n_ch elements (caller invariant).
+                unsafe {
+                    *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx))
+                        .mul_add(*scale.get_unchecked(c), *offset.get_unchecked(c));
+                }
+            }
+        }
+    }
 }

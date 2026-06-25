@@ -153,5 +153,17 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         ) {
             Avx512Math::fft_butterfly_stage(re, im, half, tw_re, tw_im, group_start, inverse)
         }
+
+        #[inline(always)]
+        // SAFETY: valid f32 slices; delegates to Avx512Math for f32 batch norm.
+        unsafe fn batch_norm_process(
+            data: &mut [f32],
+            scale: &[f32],
+            offset: &[f32],
+            n_ch: usize,
+            num_frames: usize,
+        ) {
+            Avx512Math::batch_norm_process(data, scale, offset, n_ch, num_frames)
+        }
     };
 }
