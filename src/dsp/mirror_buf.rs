@@ -40,12 +40,12 @@
 //! ## Huge Page Support
 //! Attempts 2 MB huge pages (MAP_HUGETLB / MFD_HUGETLB) for the mirror buffer to reduce
 //! TLB pressure in the DSP hot-path. Falls back to regular pages + `madvise(MADV_HUGEPAGE)`.
-//! Status is tracked via `MIRROR_BUF_HUGEPAGE_ACTIVE` global to avoid inflating the
+//! Status is tracked via `MIRROR_BUF_HUGEPAGE_STATE` global to avoid inflating the
 //! struct layout (which would affect hot-path cache performance).
 use libc::{c_void, munmap};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU8;
 
 mod alloc;
 
@@ -53,15 +53,29 @@ thread_local! {
     pub(crate) static SIMULATE_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Global flag: set to `true` when any MirroredBuffer successfully uses huge pages.
-/// The main thread reads this to set `RT_STATUS_HUGEPAGE_OK`.
-static MIRROR_BUF_HUGEPAGE_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Huge-page state constants for `MIRROR_BUF_HUGEPAGE_STATE`.
+pub const HUGEPAGE_STATE_STANDARD: u8 = 0;
+/// State indicating Transparent Huge Pages (madvise MADV_HUGEPAGE) were used.
+pub const HUGEPAGE_STATE_THP: u8 = 1;
+/// State indicating explicit 2 MB HugeTLB pages (MAP_HUGETLB) are active.
+pub const HUGEPAGE_STATE_HUGETLB: u8 = 2;
+
+/// Global flag tracking the highest huge-page mode achieved by any MirroredBuffer.
+/// 0 = Standard, 1 = THP (madvise), 2 = HugeTLB (explicit 2 MB pages).
+static MIRROR_BUF_HUGEPAGE_STATE: AtomicU8 = AtomicU8::new(HUGEPAGE_STATE_STANDARD);
 
 /// Synchronizes the mirror buffer huge-page status to the RT status flag.
 /// Call once during main-thread initialization.
 pub fn sync_huge_page_flag(rt_status: &crate::common::spsc::RtStatusFlags) {
-    if MIRROR_BUF_HUGEPAGE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
-        rt_status.set_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK);
+    let state = MIRROR_BUF_HUGEPAGE_STATE.load(std::sync::atomic::Ordering::Relaxed);
+    match state {
+        HUGEPAGE_STATE_HUGETLB => {
+            rt_status.set_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK);
+        }
+        HUGEPAGE_STATE_THP => {
+            rt_status.set_flag(crate::common::spsc::RT_STATUS_THP_ACTIVE);
+        }
+        _ => {}
     }
 }
 
@@ -76,9 +90,19 @@ pub enum MirrorHugePageStatus {
     Standard,
 }
 
-/// Returns whether any mirror buffer has huge pages active.
+/// Returns whether any mirror buffer has huge pages active (THP or HugeTLB).
 pub fn is_huge_page_active() -> bool {
-    MIRROR_BUF_HUGEPAGE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+    let state = MIRROR_BUF_HUGEPAGE_STATE.load(std::sync::atomic::Ordering::Relaxed);
+    state == HUGEPAGE_STATE_THP || state == HUGEPAGE_STATE_HUGETLB
+}
+
+/// Returns the current `MirrorHugePageStatus` for diagnostics.
+pub fn huge_page_status() -> MirrorHugePageStatus {
+    match MIRROR_BUF_HUGEPAGE_STATE.load(std::sync::atomic::Ordering::Relaxed) {
+        HUGEPAGE_STATE_HUGETLB => MirrorHugePageStatus::Explicit2MB,
+        HUGEPAGE_STATE_THP => MirrorHugePageStatus::Transparent,
+        _ => MirrorHugePageStatus::Standard,
+    }
 }
 
 /// A Mirrored Buffer that uses mirrored memory mapping.

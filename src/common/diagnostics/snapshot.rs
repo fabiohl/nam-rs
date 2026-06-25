@@ -69,6 +69,8 @@ pub struct RtInfo {
     pub cpu_pinned: Option<usize>,
     /// Whether transparent huge pages / hugetlb pages are active.
     pub huge_pages_active: bool,
+    /// Huge page allocation mode: "off", "thp", or "hugetlb".
+    pub huge_page_mode: String,
 }
 
 impl Default for RtInfo {
@@ -78,6 +80,7 @@ impl Default for RtInfo {
             scheduler: "UNKNOWN".to_string(),
             cpu_pinned: None,
             huge_pages_active: false,
+            huge_page_mode: "off".to_string(),
         }
     }
 }
@@ -183,16 +186,29 @@ impl HasRuntimeSnapshot for crate::common::spsc::RtStatusFlags {
 
         let cpu = self.rt_cpu.load(Ordering::Relaxed);
         let cpu_pinned = if cpu >= 0 { Some(cpu as usize) } else { None };
-        let huge_pages_active = self.check_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
+        let huge_tlb = self.check_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
             || (self.flags_seen.load(Ordering::Relaxed)
                 & crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
                 != 0;
+        let thp_active = self.check_flag(crate::common::spsc::RT_STATUS_THP_ACTIVE)
+            || (self.flags_seen.load(Ordering::Relaxed)
+                & crate::common::spsc::RT_STATUS_THP_ACTIVE)
+                != 0;
+        let huge_pages_active = huge_tlb || thp_active;
+        let huge_page_mode = if huge_tlb {
+            "hugetlb".to_string()
+        } else if thp_active {
+            "thp".to_string()
+        } else {
+            "off".to_string()
+        };
 
         RtInfo {
             thread_priority,
             scheduler,
             cpu_pinned,
             huge_pages_active,
+            huge_page_mode,
         }
     }
 

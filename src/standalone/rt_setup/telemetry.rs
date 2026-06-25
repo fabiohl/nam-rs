@@ -97,8 +97,14 @@ pub fn poll_rt_status(
     }
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK) {
         log::info!(
-            "{} Huge pages (2MB) active — reduced TLB pressure on DSP thread.",
+            "{} HugeTLB explicit 2 MB pages active — reduced TLB pressure on DSP thread.",
             "✅".green()
+        );
+    }
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_THP_ACTIVE) {
+        log::info!(
+            "{} Transparent Huge Pages (THP) advice active — kernel may promote to 2 MB.",
+            "ℹ️".green()
         );
     }
 

@@ -80,7 +80,20 @@ impl<'a> NamClapMainThread<'a> {
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
             {
                 let msg = CString::new(
-                    "NAM-rs: Huge pages (2MB) active — reduced TLB pressure on DSP thread.",
+                    "NAM-rs: HugeTLB explicit 2 MB pages active — reduced TLB pressure on DSP thread.",
+                )
+                .unwrap_or_default();
+                log.log(&shared, LogSeverity::Info, &msg);
+            }
+
+            if self
+                .shared
+                .cold
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_THP_ACTIVE)
+            {
+                let msg = CString::new(
+                    "NAM-rs: Transparent Huge Pages (THP) advice active — kernel may promote to 2 MB.",
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);

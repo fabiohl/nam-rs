@@ -51,6 +51,9 @@ pub const RT_STATUS_A2_FALLBACK_TRIGGERED: u64 = 1 << 15;
 pub const RT_STATUS_SLIMMABLE_SLICE_FAILED: u64 = 1 << 16;
 /// Flag indicating that a WaveNet slimmable rebuild is needed (set by RT, cleared by main).
 pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
+/// Flag indicating that Transparent Huge Pages (THP) advice was used
+/// (madvise MADV_HUGEPAGE), as opposed to explicit HugeTLB 2 MB pages.
+pub const RT_STATUS_THP_ACTIVE: u64 = 1 << 18;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -80,6 +83,7 @@ pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
 /// | 15 | `A2_FALLBACK_TRIGGERED` | A2 static variant fell back to scalar zero-output path |
 /// | 16 | `SLIMMABLE_SLICE_FAILED` | WaveNet slimmable slice_channels rebuild failed |
 /// | 17 | `NEEDS_SLIMMABLE_REBUILD` | DSP thread requests slimmable model rebuild |
+/// | 18 | `THP_ACTIVE` | Transparent huge pages(madvise) active — not explicit HugeTLB |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

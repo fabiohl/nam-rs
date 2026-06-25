@@ -3,7 +3,10 @@
 // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
 #![warn(clippy::undocumented_unsafe_blocks)]
 
-use super::{MIRROR_BUF_HUGEPAGE_ACTIVE, MirroredBuffer, SIMULATE_FAIL};
+use super::{
+    HUGEPAGE_STATE_HUGETLB, HUGEPAGE_STATE_THP, MIRROR_BUF_HUGEPAGE_STATE, MirroredBuffer,
+    SIMULATE_FAIL,
+};
 use crate::math::common::huge_alloc::{HUGE_PAGE_2M, create_backing_fd, try_mmap_huge};
 use libc::{
     MADV_HUGEPAGE, MAP_FAILED, MAP_FIXED, MAP_SHARED, PROT_READ, PROT_WRITE, c_void, mmap, munmap,
@@ -116,7 +119,8 @@ impl<T> MirroredBuffer<T> {
         if total_chunk >= HUGE_PAGE_2M {
             let huge_res = Self::try_new_huge_aligned(requested_bytes, HUGE_PAGE_2M, elem_stride);
             if let Ok(buf) = huge_res {
-                MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+                MIRROR_BUF_HUGEPAGE_STATE
+                    .store(HUGEPAGE_STATE_HUGETLB, std::sync::atomic::Ordering::Relaxed);
                 return Ok(buf);
             }
         }
@@ -228,7 +232,7 @@ impl<T> MirroredBuffer<T> {
         unsafe {
             libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE);
         }
-        MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+        MIRROR_BUF_HUGEPAGE_STATE.store(HUGEPAGE_STATE_THP, std::sync::atomic::Ordering::Relaxed);
 
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { libc::close(fd) };

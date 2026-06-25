@@ -209,6 +209,7 @@ impl DiagnosticBundle {
              rt.scheduler={}\n\
              rt.cpu_pinned={}\n\
              rt.huge_pages_active={}\n\
+             rt.huge_page_mode={}\n\
              telemetry.p50_us={}\n\
              telemetry.p99_us={}\n\
              telemetry.p999_us={}\n\
@@ -229,6 +230,7 @@ impl DiagnosticBundle {
                 .map(|c| c.to_string())
                 .unwrap_or_else(|| "none".to_string()),
             self.runtime.rt.huge_pages_active,
+            self.runtime.rt.huge_page_mode,
             self.runtime.telemetry.p50_us,
             self.runtime.telemetry.p99_us,
             self.runtime.telemetry.p999_us,

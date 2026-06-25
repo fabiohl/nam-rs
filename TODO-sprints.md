@@ -104,7 +104,7 @@ Este documento apresenta o planejamento ágil para as sprints de implementação
 * **Critério de Aceitação:**
   * Execução dos testes de validação com logs honestos. Modelos com margem de fidelidade abaixo de 8.0 dB devem exibir `?` ao invés de `✓`, enquanto a asserção rígida de `min_snr_db` continua sendo exigida no final da validação.
 
-#### 📋 Tarefa E3.2: Separação de estados de alocação de Huge Page (HugeTLB vs THP) (F-07)
+#### 📋 Tarefa E3.2: Separação de estados de alocação de Huge Page (HugeTLB vs THP) (F-07) [DONE]
 
 * **Objetivo:** Diferenciar telemetria e diagnóstico entre HugeTLB estrito (páginas físicas garantidas) de Transparent Huge Pages (THP, apenas hint do kernel).
 * **Componente:** Telemetria & OS Integration

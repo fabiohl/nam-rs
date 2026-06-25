@@ -68,6 +68,7 @@ fn test_diagnostic_bundle_with_mock_provider() {
             scheduler: "FIFO".to_string(),
             cpu_pinned: Some(3),
             huge_pages_active: true,
+            huge_page_mode: "hugetlb".to_string(),
         },
         telemetry: TelemetrySnapshot {
             p50_us: 120,
@@ -337,6 +338,7 @@ fn test_diagnostic_bundle_path_redaction() {
             scheduler: "FIFO".to_string(),
             cpu_pinned: Some(3),
             huge_pages_active: true,
+            huge_page_mode: "thp".to_string(),
         },
         telemetry: TelemetrySnapshot::default(),
         flags: 0,
@@ -467,6 +469,7 @@ fn test_diagnostic_bundle_regex_roundtrip() {
             scheduler: "FIFO".to_string(),
             cpu_pinned: Some(1),
             huge_pages_active: false,
+            huge_page_mode: "off".to_string(),
         },
         telemetry: TelemetrySnapshot {
             p50_us: 10,
@@ -534,6 +537,10 @@ fn test_diagnostic_bundle_regex_roundtrip() {
         keys.get("rt.huge_pages_active").map(|s| s.as_str()),
         Some("false")
     );
+    assert_eq!(
+        keys.get("rt.huge_page_mode").map(|s| s.as_str()),
+        Some("off")
+    );
 
     assert_eq!(keys.get("telemetry.p50_us").map(|s| s.as_str()), Some("10"));
     assert_eq!(keys.get("telemetry.p99_us").map(|s| s.as_str()), Some("20"));
@@ -588,6 +595,7 @@ fn test_diagnostic_bundle_model_sample_rate_mismatch() {
             scheduler: "FIFO".to_string(),
             cpu_pinned: Some(2),
             huge_pages_active: false,
+            huge_page_mode: "off".to_string(),
         },
         telemetry: TelemetrySnapshot::default(),
         flags: 0,
