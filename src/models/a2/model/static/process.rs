@@ -12,9 +12,10 @@
 //! This matches the CLAP/audio host contract which guarantees
 //! `block_size <= max_block_size` negotiated at activation.
 //!
-//! The `dispatch_simd!` macro evaluates the hardware once and monomorphizes
-//! the full forward pass to the detected ISA (AVX2/AVX-512), eliminating
-//! per-frame `is_x86_feature_detected` branches in the fallback path.
+//! The `dispatch_simd!` macro evaluates `M::ISA` (compile-time constant
+//! through the `SimdMath` trait) to monomorphize the full forward pass,
+//! eliminating per-frame `is_x86_feature_detected` branches and the dynamic
+//! read of `SIMD_MATH` in the inner loop.
 
 use crate::math::common::SimdMath;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
@@ -222,12 +223,11 @@ impl<const CH: usize> WaveNetA2<CH> {
                         );
                     },
                     super::super::super::layer::A2ConvCh::Ch8(ch8_conv) => unsafe {
-                        let isa = crate::math::common::SIMD_MATH.instruction_set;
-                        match isa {
+                        match M::ISA {
                             crate::math::common::InstructionSet::Avx512
                             | crate::math::common::InstructionSet::Avx512VnniBf16 => {
                                 super::super::super::conv1d_ch8::layer_forward_ch8_block_simdmath::<
-                                    crate::math::common::Avx512Math,
+                                    M,
                                 >(
                                     ch8_conv,
                                     mixin_w,

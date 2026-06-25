@@ -24,7 +24,7 @@ graph TD
 
 Foco em prover a infraestrutura no trait `SimdMath` para determinar a ISA em tempo de compilação e migrar os blocos de ativação e de despacho de convolução A2 para usarem caminhos 100% monomorfizados, livrando-se de reads dinâmicos de `SIMD_MATH` no loop interno.
 
-### Tarefa B1 (P4a) — Identificação Estática de ISA em SimdMath
+### Tarefa B1 (P4a) — Identificação Estática de ISA em SimdMath [DONE]
 
 * **Prioridade:** Alta
 * **Complexidade/Esforço:** Baixo

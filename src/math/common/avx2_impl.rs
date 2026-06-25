@@ -14,6 +14,7 @@
 //! Methods delegate to kernel functions in `math::gemm`, `math::wavenet`,
 //! `math::lstm`, `math::dsp`, and `math::common::utility`.
 
+use crate::math::common::InstructionSet;
 use crate::math::common::traits::SimdMath;
 use core::arch::x86_64::*;
 
@@ -26,6 +27,8 @@ pub struct Avx2Math;
 
 impl SimdMath for Avx2Math {
     type V = __m256;
+
+    const ISA: InstructionSet = InstructionSet::Avx2;
 
     // Dot Product: Multiplies weights by signal and sums the result (the "DNA" of neural networks).
     // In AVX2, we use 256-bit registers that process 8 numbers at once.

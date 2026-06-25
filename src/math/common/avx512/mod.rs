@@ -29,6 +29,7 @@ mod dsp;
 mod gemv;
 mod reduce;
 
+use crate::math::common::InstructionSet;
 use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
 use core::arch::x86_64::*;
@@ -47,6 +48,8 @@ pub struct Avx512VnniBf16Math;
 impl SimdMath for Avx512Math {
     type V = __m512;
 
+    const ISA: InstructionSet = InstructionSet::Avx512;
+
     gemv::impl_avx512_gemv!();
     activations::impl_avx512_activations!();
     bf16::impl_avx512_bf16!();
@@ -58,6 +61,8 @@ impl SimdMath for Avx512Math {
 
 impl SimdMath for Avx512VnniBf16Math {
     type V = __m512;
+
+    const ISA: InstructionSet = InstructionSet::Avx512VnniBf16;
 
     gemv::impl_avx512vnni_bf16_gemv!();
     activations::impl_avx512vnni_bf16_activations!();

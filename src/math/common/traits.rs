@@ -3,6 +3,8 @@
 
 //! [Definition of the abstract interface for SIMD operations.
 
+use super::InstructionSet;
+
 /// Abstraction trait for static dispatch of SIMD mathematical operations.
 ///
 /// # Safety
@@ -40,6 +42,9 @@ pub trait SimdMath {
 
     /// Indicates whether this implementation uses weights and signals in BF16 format.
     const IS_BF16: bool = false;
+
+    /// ISA that this implementation targets (compile-time constant for monomorphization).
+    const ISA: InstructionSet;
 
     // --- (A) Dot Products ---
 
