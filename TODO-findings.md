@@ -539,7 +539,7 @@ Elimina re-dispatch redundante e o gather/scatter do BatchNorm, unificando o pad
    **Critério de pronto:** asm sem leitura de `SIMD_MATH` nos laços por camada/bloco;
    paridade dos modelos preservada.
 
-### Épico C — "Kernels GEMV/LSTM afinados" (P5, P6) [TO-DO]
+### Épico C — "Kernels GEMV/LSTM afinados" (P5, P6) [DONE]
 
 Micro-otimizações nos kernels de projeção. Independentes do resto; bom candidato a
 paralelizar. Sequência:
@@ -550,7 +550,7 @@ paralelizar. Sequência:
    **Critério de pronto:** benches LSTM e GEMV (`out_len=1`) com ganho e paridade
    contra fallback.
 
-### Épico D — "Higiene de pipeline e build" (P8, P7) [TO-DO]
+### Épico D — "Higiene de pipeline e build" (P8, P7) [DONE]
 
 Itens de baixo risco e baixo esforço, agrupados para uma sprint de polimento.
 

@@ -109,6 +109,10 @@ opt-level = 3     # Maximum optimization level
 codegen-units = 1 # Reduce parallel codegen (slower build, better optimization)
 panic = "unwind"  # Use unwind to maintain compatibility with bench/test harnesses
 
+[profile.dist]
+inherits = "release"
+panic = "abort"
+
 [profile.dev]
 debug = 1                    # Line tables only (faster than full debug info)
 opt-level = 0                # No optimizations for max build speed

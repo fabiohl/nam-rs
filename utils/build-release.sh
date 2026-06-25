@@ -47,7 +47,7 @@ mkdir -p "$PROFRAW_DIR" "$BOLT_DIR"
 export CARGO_TARGET_DIR="$PGO_BUILD_TARGET_DIR"
 
 # Temporarily disable symbol stripping during release/bench compilation so BOLT can optimize
-export CARGO_PROFILE_RELEASE_STRIP="false"
+export CARGO_PROFILE_DIST_STRIP="false"
 export CARGO_PROFILE_BENCH_STRIP="false"
 
 # Read rustflags from .cargo/config.toml to avoid overriding them when we set RUSTFLAGS env var
@@ -199,7 +199,7 @@ fi
     echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
 
     echo -e "  Compiling and running real-world PGO profiling workload..."
-    cargo run --release --features "clap-plugin,testing" --bin pgo_profiling_workload
+    cargo run --profile dist --features "clap-plugin,testing" --bin pgo_profiling_workload
 
     PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" 2>/dev/null | wc -l)
     if [ "$PROFRAW_COUNT" -eq 0 ]; then
@@ -224,20 +224,20 @@ fi
 
     echo -e "  Building standalone executable..."
     # Pass relocations flag to emit relocation symbols required for BOLT
-    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --release --features "standalone,pgo" --bin nam-rs
+    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --profile dist --features "standalone,pgo" --bin nam-rs
 
     echo -e "  Building CLAP plugin..."
     CLAP_RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-soname,nam-rs.clap"
     echo -e "  Using RUSTFLAGS (CLAP): ${BOLD}$CLAP_RUSTFLAGS${NC}"
-    RUSTFLAGS="$CLAP_RUSTFLAGS" cargo build --release --target-dir "$PGO_CLAP_TARGET_DIR" --no-default-features --features "clap-plugin,pgo" --lib
+    RUSTFLAGS="$CLAP_RUSTFLAGS" cargo build --profile dist --target-dir "$PGO_CLAP_TARGET_DIR" --no-default-features --features "clap-plugin,pgo" --lib
 
     # Confirm binaries compiled
-    if [ ! -f "$PGO_BUILD_TARGET_DIR/release/nam-rs" ]; then
-        echo -e "${RED}Error: Failed to find compiled standalone binary at $PGO_BUILD_TARGET_DIR/release/nam-rs${NC}"
+    if [ ! -f "$PGO_BUILD_TARGET_DIR/dist/nam-rs" ]; then
+        echo -e "${RED}Error: Failed to find compiled standalone binary at $PGO_BUILD_TARGET_DIR/dist/nam-rs${NC}"
         exit 1
     fi
-    if [ ! -f "$PGO_CLAP_TARGET_DIR/release/libnam_rs.so" ]; then
-        echo -e "${RED}Error: Failed to find compiled CLAP plugin library at $PGO_CLAP_TARGET_DIR/release/libnam_rs.so${NC}"
+    if [ ! -f "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" ]; then
+        echo -e "${RED}Error: Failed to find compiled CLAP plugin library at $PGO_CLAP_TARGET_DIR/dist/libnam_rs.so${NC}"
         exit 1
     fi
     echo -e "  ${GREEN}✓${NC} PGO compilation completed successfully."
@@ -290,7 +290,7 @@ with wave.open('$TEST_WAV', 'w') as w:
         fi
 
         # Start standalone in background using the correct model path argument flag and disabling the gate
-        NAM_DISABLE_GATE=1 "$PGO_BUILD_TARGET_DIR/release/nam-rs" -m "$MODEL_FILE" -b 64 &
+        NAM_DISABLE_GATE=1 "$PGO_BUILD_TARGET_DIR/dist/nam-rs" -m "$MODEL_FILE" -b 64 &
         NAM_PID=$!
         sleep 1.0
 
@@ -335,7 +335,7 @@ with wave.open('$TEST_WAV', 'w') as w:
             fi
 
             # Convert profile and optimize standalone binary
-            NAM_RS_BIN="$PGO_BUILD_TARGET_DIR/release/nam-rs"
+            NAM_RS_BIN="$PGO_BUILD_TARGET_DIR/dist/nam-rs"
             if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
                 echo -e "  Converting profile with perf2bolt..."
 
@@ -348,7 +348,7 @@ with wave.open('$TEST_WAV', 'w') as w:
                 if "$PERF2BOLT" "${PERF2BOLT_FLAGS[@]}" -p "$BOLT_DIR/perf.data" "$NAM_RS_BIN" -o "$BOLT_DIR/perf.fdata" --ignore-build-id > "$BOLT_DIR/perf2bolt.log" 2>&1; then
                     echo -e "  Optimizing binary with llvm-bolt..."
                     if "$LLVM_BOLT" "$NAM_RS_BIN" \
-                        -o "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" \
+                        -o "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" \
                         -data "$BOLT_DIR/perf.fdata" \
                         --reorder-blocks=ext-tsp \
                         --reorder-functions=hfsort \
@@ -397,12 +397,12 @@ mkdir -p "$CLAP_INSTALL_DIR"
 
 # Deliver standalone binary
 rm -f "$BIN_TARGET"
-if [ "$BOLT_APPLIED" = true ] && [ -f "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" ]; then
-    cp "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" "$BIN_TARGET"
+if [ "$BOLT_APPLIED" = true ] && [ -f "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" ]; then
+    cp "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" "$BIN_TARGET"
     strip --strip-all "$BIN_TARGET"
     echo -e "  Installed executable (PGO + BOLT): $BIN_TARGET"
 else
-    cp "$PGO_BUILD_TARGET_DIR/release/nam-rs" "$BIN_TARGET"
+    cp "$PGO_BUILD_TARGET_DIR/dist/nam-rs" "$BIN_TARGET"
     strip --strip-all "$BIN_TARGET"
     echo -e "  Installed executable (PGO only): $BIN_TARGET"
 fi
@@ -410,7 +410,7 @@ chmod +x "$BIN_TARGET"
 
 # Deliver CLAP plugin
 rm -f "$CLAP_TARGET"
-cp "$PGO_CLAP_TARGET_DIR/release/libnam_rs.so" "$CLAP_TARGET"
+cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" "$CLAP_TARGET"
 strip --strip-unneeded "$CLAP_TARGET"
 echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
 

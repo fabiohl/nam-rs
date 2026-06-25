@@ -61,7 +61,7 @@ Foco na otimização fina dos kernels neurais do LSTM e do DenseLayer (GEMV), el
 
 ---
 
-## Sprint 2: Higiene e Otimização do Pipeline (Épico D)
+## Sprint 2: Higiene e Otimização do Pipeline (Épico D) ✅ [DONE]
 
 Foco em reduzir passagens repetidas sobre buffers na thread de tempo real, remover cópias mono supérfluas, eliminar escritas atômicas espúrias em loops quentes e adotar o perfil de build `panic = "abort"` para distribuição.
 
@@ -91,7 +91,7 @@ Foco em reduzir passagens repetidas sobre buffers na thread de tempo real, remov
   * `cargo test` em toda a suíte do pipeline DSP para garantir que o processamento estéreo e mono permaneça idêntico.
   * Teste manual e análise estática das escritas atômicas.
 
-### Tarefa D2 (P7) — Perfil de Distribuição com Panic = Abort
+### Tarefa D2 (P7) — Perfil de Distribuição com Panic = Abort [DONE]
 
 * **Prioridade:** Média
 * **Complexidade/Esforço:** Baixo
@@ -107,6 +107,7 @@ Foco em reduzir passagens repetidas sobre buffers na thread de tempo real, remov
   * Executar `./utils/build-release.sh` completo e verificar se todos os binários (standalone e CLAP) são compilados com sucesso.
   * Comparar tamanho em bytes dos binários gerados.
   * Carregar o plugin gerado em hosts CLAP e realizar smoke test básico.
+* **Conclusão:** Perfil `[profile.dist]` criado herdando de `release` com `panic = "abort"`. Perfis `[profile.test]` e `[profile.bench]` não precisam de configuração explícita — o compilador força `unwind` para ambos independentemente. `build-release.sh` atualizado: todos os comandos `cargo` usam `--profile dist` e todos os paths apontam para `target/dist/`. Env var `CARGO_PROFILE_RELEASE_STRIP` renomeada para `CARGO_PROFILE_DIST_STRIP`. Pipeline completo executado com sucesso — PGO + BOLT aplicados. Binário standalone `dist` (panic=abort) sem strip: 2.73 MB vs 2.87 MB (`release` panic=unwind) — redução de ~4.8% (137 KB). `cargo check --profile dist` limpo, sem warnings.
 
 ---
 
