@@ -14,51 +14,54 @@ macro_rules! define_lstm2_process_pipelined {
         $dot_prod:path,
         $get_h2:ident
     ) => {
-        // NOTE: Injects #[inline(always)] for AVX2 or #[target_feature] for extensions.
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
                 let len = input.len();
                 if len >= 1 {
-                    // --- Pipelining Technique (Assembly Line) ---
-                    // For maximum speed, we process the two LSTM layers in parallel.
-                    // While Layer 2 finishes the previous sound, Layer 1 already begins the next.
-
-                    // 1. Prologue: Process the very first frame only in Layer 1.
-                    self.layer1.$layer_proc(&[input[0]]);
-                    let mut prev_h1 = [0.0; H];
-                    prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-
-                    // 2. Main Loop: Where the 'teamwork' happens.
-                    // Layer 1 and Layer 2 operate independently on different frames (i and i-1).
-                    for i in 1..len {
-                        let current_input = [input[i]];
-
-                        // These two calls now run without depending on each other in this cycle!
-                        self.layer1.$layer_proc(&current_input);
-                        self.layer2.$layer_proc(&prev_h1);
-
-                        // 3. Output Projection: Convert the Layer 2 neuron 'vote'
-                        // into a real audio value using a Dot Product.
-                        output[i - 1] = $crate::compute_lstm_head_simd!(
-                            self,
-                            self.layer2.$get_h2(),
-                            self.layer2.get_hidden_state(),
-                            $dot_prod
-                        );
-
-                        // Save Layer 1's result for Layer 2 to use on the next iteration.
+                    if self.use_f32_head {
+                        self.layer1.$layer_proc(&[input[0]]);
+                        let mut prev_h1 = [0.0; H];
                         prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-                    }
 
-                    // 4. Epilogue: Process the last remaining frame in Layer 2.
-                    self.layer2.$layer_proc(&prev_h1);
-                    output[len - 1] = $crate::compute_lstm_head_simd!(
-                        self,
-                        self.layer2.$get_h2(),
-                        self.layer2.get_hidden_state(),
-                        $dot_prod
-                    );
+                        for i in 1..len {
+                            self.layer1.$layer_proc(&[input[i]]);
+                            self.layer2.$layer_proc(&prev_h1);
+                            let h_f32 = self.layer2.get_hidden_state();
+                            output[i - 1] = $crate::math::common::scalar_ref::dot_product_f32_native(
+                                h_f32,
+                                &self.head_weights_f32,
+                            ) + self.head_bias;
+                            prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+                        }
+
+                        self.layer2.$layer_proc(&prev_h1);
+                        let h_f32 = self.layer2.get_hidden_state();
+                        output[len - 1] = $crate::math::common::scalar_ref::dot_product_f32_native(
+                            h_f32,
+                            &self.head_weights_f32,
+                        ) + self.head_bias;
+                    } else {
+                        self.layer1.$layer_proc(&[input[0]]);
+                        let mut prev_h1 = [0.0; H];
+                        prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+
+                        for i in 1..len {
+                            self.layer1.$layer_proc(&[input[i]]);
+                            self.layer2.$layer_proc(&prev_h1);
+                            output[i - 1] = $dot_prod(
+                                self.layer2.$get_h2(),
+                                &self.head_weights,
+                            ) + self.head_bias;
+                            prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+                        }
+
+                        self.layer2.$layer_proc(&prev_h1);
+                        output[len - 1] = $dot_prod(
+                            self.layer2.$get_h2(),
+                            &self.head_weights,
+                        ) + self.head_bias;
+                    }
                 }
             }
         }
