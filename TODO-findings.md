@@ -516,7 +516,7 @@ chamadores garantem os tamanhos.
 > Agrupamento pensado para **maximizar ganho com risco controlado** e permitir
 > entregas atômicas e verificáveis. Cada épico referencia os achados (P#) acima.
 
-### Épico A — "Cab Sim de alta performance" (P1, P2, P9) [DOING]
+### Épico A — "Cab Sim de alta performance" (P1, P2, P9) [DONE]
 
 Maior reserva de CPU do projeto fora dos modelos neurais e isolada num subsistema
 opcional (baixo risco de regressão no caminho neural). Sequência sugerida:

@@ -187,16 +187,35 @@ Investigação e desenvolvimento de vetorização profunda no cálculo do FFT/IF
   * Medições de SNR em todo o Cab Sim.
 * **Conclusão (2026-06-25):** Implementada vetorização SIMD das borboletas Radix-2 DIT via novo método `fft_butterfly_stage` no trait `SimdMath`, com implementações AVX2 (`_mm256_fmsub_ps`/`_mm256_fmadd_ps`, 8 borboletas/ciclo) e AVX-512 (`_mm512_fmsub_ps`/`_mm512_fmadd_ps`, 16 borboletas/ciclo). Tabelas de twiddles reorganizadas por estágio (`stage_twiddle_re`/`stage_twiddle_im`) para cargas SIMD contíguas. Despacho dinâmico via `dispatch_simd!` ocorre quando `half >= 8` e `T = f32`; estágios iniciais e `f64` mantêm caminho escalar com `mul_add`. Adicionados 12 testes de paridade (SIMD × escalar, SIMD × referência `f64`, roundtrip, linearidade, impulso DC) em N ∈ {256, 512, 1024}. Todos os 49 testes FFT passam, `cargo clippy` limpo sem warnings. Função escalar de referência `fft_butterfly_stage_scalar` adicionada em `scalar_ref/utility.rs`.
 
-### Tarefa A9 (P1.3) — Algoritmos Avançados de Transformada (Opcional/Pesquisa)
+### Tarefa A9 (P1.3) — Algoritmos Avançados de Transformada (Opcional/Pesquisa) [DONE — NÃO IMPLEMENTAR]
 
 * **Prioridade:** P9 (Desejável)
 * **Complexidade/Esforço:** Alto
 * **Risco:** Alto
-* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs)
+* **Arquivos Afetados:** [fft.rs](file:///home/fabio/nam-rs/src/math/dsp/fft.rs), [fft_radix4.rs](file:///home/fabio/nam-rs/src/math/dsp/fft_radix4.rs) (protótipo), [benches/fft_radix4_bench.rs](file:///home/fabio/nam-rs/benches/fft_radix4_bench.rs)
 * **Descrição:**
   Avaliar se a transição para outros layouts de FFT (como Radix-4, Split-Radix ou Stockham que dispensa bit-reversal no início) traz ganhos que justificam a complexidade acrescida.
 * **Estratégia de Validação:**
   * Benchmarking rigoroso contra a implementação resultante da Tarefa A8.
+* **Conclusão (2026-06-25):** Radix-4, Split-Radix e Stockham **não trazem ganhos** que justifiquem a complexidade. Foi implementado protótipo funcional de Radix-4 DIT (`FftPlannerRadix4`) com 14 testes passando (paridade forward × Radix-2, roundtrip, impulso, f64) e benchmarks criterion:
+
+| Algoritmo       | N=256 forward | N=256 inverse | N=1024 forward | N=1024 inverse |
+|-----------------|---------------|---------------|----------------|----------------|
+| **Radix-2 DIT** | 1.04 µs       | 1.08 µs       | 4.58 µs        | 4.57 µs        |
+| **Radix-4 DIT** | 1.12 µs (+7%) | 1.15 µs (+7%) | 5.40 µs (+18%) | 5.43 µs (+19%) |
+
+Radix-4 é **consistentemente mais lento** que Radix-2 (7–19%), apesar de ter metade dos estágios. Causas:
+
+  1. **3× mais acessos a twiddles** por butterfly (W^1, W^2, W^3), sobrecarregando cache.
+  2. **Padrão de acesso strided** (L, 2L, 3L), prejudicando prefetch de memória.
+  3. **Butterfly interno mais complexo**: 30 operações para 4 elementos vs 8 operações para 2 elementos no Radix-2 (razão 3.75:4 ops/elemento, mas pior na prática por pressão de registrador e branching).
+  4. **Branch condicional** (`if inverse`) no laço interno dificulta otimização do compilador e pipelining.
+
+**Stockham (auto-sort):** Eliminaria a permutação O(N) de bit-reversal, mas adiciona double-buffering (cópia extra de array de tamanho N). Para N≤1024, o bit-reversal representa <2% do tempo total, não justificando o custo de memória adicional.
+
+**Split-Radix:** Padrão de acesso irregular torna impossível vetorização SIMD eficiente; a redução teórica de multiplicações (~N/3·log₂N) é anulada pelo custo de shuffles/permutes.
+
+**Recomendação:** Manter o Radix-2 DIT com SIMD (Tarefa A8) como algoritmo canônico. O protótipo `fft_radix4.rs` e o benchmark `fft_radix4_bench.rs` são preservados como artefatos de pesquisa para referência futura.
 
 ---
 

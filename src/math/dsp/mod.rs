@@ -16,6 +16,9 @@
 //! energy calculations, correlations, and filters.
 
 pub mod fft;
+// Research artifact — Task A9 (Spr.4). Prototype only; Radix-2 SIMD is canonical.
+// See module-level docs in fft_radix4.rs for decision rationale and benchmarks.
+pub mod fft_radix4;
 pub mod gain;
 pub mod gain_lut;
 pub mod stereo;

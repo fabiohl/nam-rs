@@ -61,6 +61,12 @@ harness = false
 name = "kahan_conv1d_bench"
 harness = false
 
+[[bench]]
+name = "fft_radix4_bench"
+harness = false
+# Research artifact. Preserva reprodutibilidade dos benchmarks
+# que embasaram a decisão de não adotar Radix-4/Stockham/Split-Radix.
+
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]
