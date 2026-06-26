@@ -66,9 +66,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 5. [TEST] Copiar e Integrar `A2.nam` como Fixture Oficial (F6)
+### Tarefa 5. [TEST] Copiar e Integrar `A2.nam` como Fixture Oficial (F6) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — `A2.nam` copiado para `tests/fixtures/models/a2_example.nam`. Teste de determinismo `test_auto_consistency_a2_example_slimmable` adicionado em `tests/self_consistency.rs`.
 - **Arquivos Alvo:**
   - `tests/fixtures/models/a2_example.nam` (Novo arquivo - cópia)
   - [`tests/self_consistency.rs`](file:///home/fabio/nam-rs/tests/self_consistency.rs)

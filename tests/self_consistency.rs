@@ -26,7 +26,8 @@
 //! |                         | Lite (CH=12, deterministic post-P1 fix),            |
 //! |                         | A1 Standard Official,                               |
 //! |                         | Official (CH=3 free geom, dynamic path)            |
-//! | WaveNet A2              | Full (CH=8), Lite (CH=3), Container (both)         |
+//! | WaveNet A2              | Full (CH=8), Lite (CH=3), Container (both),         |
+//! |                         | SlimmableContainer A2 Example (CH=3→6)               |
 //! | LSTM                    | 1×16, 2×8, Official                                |
 //! | Linear                  | linear_test (RF=16)                                |
 //! | CabSim (UPOLS)          | `tests/cabsim_golden.rs::test_cabsim_bitwise_determinism` |
@@ -186,6 +187,17 @@ fn test_auto_consistency_wavenet_a2_container() {
     assert_model_determinism(
         &model_path("wavenet_a2_container.nam"),
         "WaveNet A2 Container",
+    );
+}
+
+#[test]
+fn test_auto_consistency_a2_example_slimmable() {
+    if !model_exists("a2_example.nam") {
+        return;
+    }
+    assert_model_determinism(
+        &model_path("a2_example.nam"),
+        "SlimmableContainer A2 Example (CH=3→6)",
     );
 }
 
