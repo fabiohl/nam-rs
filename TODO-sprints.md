@@ -1,0 +1,612 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
+
+# TODO-sprints.md — Planejamento Ágil de Sprints (NAM-rs)
+
+Planejamento ágil derivado de [`TODO-findings.md`](file:///home/fabio/nam-rs/TODO-findings.md)
+(Parte I — auditoria de bug-hunting `F-1…F-4` / `D-1…D-2`; Parte II — pesquisa de precisão & qualidade
+sonora `P-1…P-8`, com as **Resoluções das Notas do PO** já incorporadas). Cada tarefa é atômica,
+rastreável ao seu finding e direcionada a um especialista.
+
+**Princípio reitor:** _não se corrige o que não se mede._ Por isso a instrumentação de medição (E5)
+precede as correções de qualidade sonora (E4), e o diagnóstico confiável (E1) precede tudo.
+
+> **Convenções obrigatórias (ver `.agents/rules/`):**
+>
+> - **Copyright** (`copyright.md`): todo arquivo novo/modificado leva o cabeçalho SPDX no topo.
+> - **RT-safety** (`rust.md`): no hot-path, zero heap-drop (transferir via SPSC GC), zero I/O/locks,
+>   zero `unwrap`/`expect`, FTZ+DAZ ativos, `AlignedVec` (64 B), baseline `x86-64-v3` (AVX2/FMA nativos;
+>   dispatch dinâmico só para AVX-512+).
+> - **Testes** (`testing.md`): unit inline < 300 linhas, `_test.rs` se ≥ 300; integração em `tests/`;
+>   pesado com `#[ignore]` → `utils/tests-long.sh`; heap-audit com `CountingAllocator`.
+> - **Encerramento** (`linting.md`): `cargo check`/`clippy`/`test` (e `bench` se houver meta de perf);
+>   acionar `documentador` se houver mudança arquitetural; remover artefatos temporários.
+
+---
+
+## Mapa de Sprints — Sequência Lógica e Segura
+
+| Sprint | Épico | Tema                                                | Findings                          | Risco            | Depende de |
+|:------:|:-----:|:--------------------------------------------------- |:--------------------------------- |:----------------:|:----------:|
+| **S1** | E1    | Diagnóstico de paridade confiável sob falha         | F-1, F-4                          | 🟢 Baixo         | —          |
+| **S2** | E5    | Instrumentação de medição & QA científica           | P-3, P-4, P-6, P-7, P-8, ASR(P-1) | 🟢🟡 Baixo-Médio | S1         |
+| **S3** | E2    | Fechar o ponto cego de fidelidade perceptual        | F-2                               | 🟡 Médio         | S1, S2     |
+| **S4** | E3    | Confiança do loop rápido + higiene de relatório     | F-3, D-2                          | 🟢 Baixo         | S3         |
+| **S5** | E4    | Qualidade sonora: anti-aliasing & fidelidade (+ UX) | P-1, P-2, P-5                     | 🔴 Médio-Alto    | S2         |
+| **S6** | E6    | Documentação & referência técnica                   | (todos)                           | 🟢 Baixo         | S1–S5      |
+
+**Racional da ordem.** S1 torna os logs de falha legíveis → desbloqueia o debug de tudo. S2 constrói os
+**instrumentos** (oráculo f64, ASR, THD/IMD/FR, true-peak, LUFS pleno, gates de perf, matriz ISA) —
+pré-requisito para o RCA de S3 **e** para validar/barrar regressão em S5. S3 endurece os gates já munido das
+ferramentas. S4 leva um subconjunto barato ao loop rápido. S5 (maior risco — toca o hot-path DSP) só ocorre
+com métricas para **provar ganho e barrar regressão**, e inclui a **superfície de controle (CLI+GUI)** pedida
+pelo PO. S6 sincroniza a "fonte de verdade" e registra a referência técnica/científica.
+
+> **Documentação contínua:** além do Sprint **S6** (consolidação + bibliografia anotada), cada sprint com
+> impacto arquitetural tem uma tarefa `[DOC]` que aciona a skill `documentador` (`linting.md` §2).
+
+---
+
+## Sprint S1: Épico E1 — Diagnóstico de Paridade Confiável sob Falha (F-1, F-4)
+
+**Escopo:** Tornar o relatório de cross-validation C++ legível, contíguo e atribuível **sob falha**,
+eliminando a intercalação byte-a-byte de stdout (subprocessos C++ + `println!` multi-thread), e completar o
+veredito visual do gate primário (ESR).
+**Objetivo:** Que qualquer falha de paridade identifique inequivocamente o modelo culpado e exiba suas
+métricas de forma íntegra.
+**Estimativa:** 0,5–1 sprint.
+**Risco Geral:** 🟢 Baixo — mudanças restritas a `tests/`; nenhum efeito no código de produção/RT.
+
+---
+
+### Tarefa 1.1 [TEST/INFRA] Capturar stdout/stderr do render C++ em vez de herdar ([F-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`run_render_comparison`, ≈ linha 267)
+- **Descrição:**
+  - **Causa-raiz:** `Command::new(&bin)…​.status()` **herda** o fd de stdout do processo de teste; com o
+    harness multi-thread, N subprocessos C++ e os `println!` do Rust escrevem **concorrentemente** no mesmo
+    fd → tearing byte-a-byte (ex.: `testes.log:1561`, `1970`).
+  - **Correção:** substituir `.status()` por `.output()`, capturando `stdout`/`stderr` em buffers. Em
+    **sucesso** (`status.success()`), descartar a saída do filho. Em **falha/skip**, anexar
+    `String::from_utf8_lossy(&out.stderr)` (e stdout se útil) à mensagem do `eprintln!`/pânico.
+  - Preservar o `BUILD_LOCK: Mutex<()>` existente (≈ linha 92-93) para a etapa de _build_ do render tool.
+  - Aplicar o mesmo padrão a `cabsim_cpp_parity.rs` se houver invocação equivalente.
+- **Critérios de Aceite:**
+  - `cargo test --release --test cpp_parity -- --ignored --nocapture` **não** exibe linhas
+    `Loading model…`/`Wrote N samples…` intercaladas; a saída do filho só aparece em falha/skip.
+  - Nenhuma regressão no número de testes que passam.
+- **Risco:** Baixo.
+
+### Tarefa 1.2 [TEST/INFRA] Emissão atômica do relatório de fidelidade ([F-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (`report_dsp_fidelity_impl`, ≈ 180-250)
+- **Descrição:**
+  - Hoje o relatório é emitido em **~20 `println!` separados** (cabeçalho MSE/SNR/ESR e rodapé
+    MR-STFT/LUFS/Fidelity em chamadas distintas) → rodapés órfãos quando outra thread intercala.
+  - **Correção:** construir o bloco inteiro numa única `String` (via `use std::fmt::Write; write!(buf, …)`)
+    e emiti-lo com **uma** escrita atômica, protegida por um `static REPORT_LOCK: Mutex<()>` no módulo.
+  - O lock cobre **apenas a emissão** (`print!`/`io::stdout().lock().write_all`), **nunca** a computação das
+    métricas — para não serializar o cálculo nem reduzir paralelismo de teste.
+  - Manter exatamente o mesmo conteúdo/format atual das linhas (não alterar parsing de quem lê o log).
+- **Critérios de Aceite:** cada relatório aparece como **bloco contíguo** (cabeçalho+rodapé juntos), 1 por
+  modelo, mesmo com `--test-threads` > 1; nenhum rodapé destacado do seu cabeçalho.
+- **Risco:** Baixo (atenção a não manter o lock através de chamadas de FFT/`compute_*`).
+
+### Tarefa 1.3 [TEST] Veredito ✓/✗ explícito para o gate primário ESR ([F-4](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (linha de ESR, ≈ 205-214; `assert!` ESR ≈ 260-265)
+- **Descrição:**
+  - A linha de **ESR** é impressa **sem** marcador ✓/✗, embora ESR seja o gate **primário** scale-robust
+    (T16.4, `docs/perceptual_validation.md:82-89`) — enquanto MSE/SNR (secundários) exibem ✓/✗.
+  - Adicionar o limiar e o marcador: `… (threshold < {limit:.1e}) {✓|✗}`, espelhando MSE (≈ :184) e SNR
+    (≈ :190), usando o mesmo `max_esr` do `assert!`. Destacar visualmente que ESR é o gate decisivo.
+- **Critérios de Aceite:** todo bloco mostra ✓/✗ para ESR **coerente** com o `assert!` real (validation.rs:260-265).
+- **Risco:** Trivial.
+
+### Tarefa 1.4 [QA] Validação de lints e prova de legibilidade sob falha (E1)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** repositório / `utils/lints.sh`, `utils/tests-quick.sh`
+- **Descrição:** rodar `utils/lints.sh`; **prova de conceito**: introduzir uma falha **sintética** (ex.:
+  perturbar 1 amostra de um golden) e confirmar que o pânico nomeia o modelo e imprime o bloco de métricas
+  íntegro; **reverter** a perturbação ao final.
+- **Critérios de Aceite:** zero warnings; trecho do log legível sob falha colado na **Conclusão** da tarefa.
+- **Risco:** Baixo.
+
+---
+
+## Sprint S2: Épico E5 — Instrumentação de Medição & QA Científica (P-3, P-4, P-6, P-7, P-8, ASR)
+
+**Escopo:** Construir os instrumentos que medem **corretamente** aliasing, distorção harmônica/IMD, resposta
+em frequência, loudness/true-peak, performance e determinismo — com dados confiáveis e **validados contra
+referências externas**.
+**Objetivo de Referência:** cada métrica é validada contra padrão externo (vetores EBU/AES, goldens
+Python/Farina, PyTorch f64) para garantir que **o próprio instrumento** está correto antes de usá-lo como gate.
+**Estimativa:** 2 sprints (suíte ampla; tudo off-RT em `src/testing/` + `tests/` + `benches/`).
+**Risco Geral:** 🟢🟡 Baixo-Médio — código de medição fora do hot-path; o risco principal é a **corretude das
+próprias métricas** (mitigado pela validação contra referência externa).
+
+---
+
+### Tarefa 2.1 [TEST/MATH] Oráculo de referência f64 + validação externa ([P-4](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/`](file:///home/fabio/nam-rs/src/testing) (novo `reference_oracle.rs`)
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) (novo)
+  - [`tests/fixtures/scripts/`](file:///home/fabio/nam-rs/tests/fixtures/scripts) (script Python de validação, novo)
+- **Conceito (resolução da Nota do PO, ver P-4):** a verdade-terreno é a **matemática ideal do modelo**, não
+  o NAMCore (f32) nem o NAM-rs. O oráculo é uma implementação **independente** da mesma topologia, em **f64**,
+  com **ativações exatas** e **acúmulo f64/Kahan** — não compartilha nenhuma fonte de erro do f32. Mantemos
+  **duas referências**: NAMCore f32 (paridade/interop) e oráculo f64 (correção absoluta + decomposição).
+- **Descrição:**
+  - Implementar o forward de WaveNet/A2/LSTM em **f64**, reusando as topologias via genéricos sobre um trait
+    `Float` (`f32`/`f64`) ou um caminho f64 paralelo; usar `f64::tanh`/`f64::exp` exatos e acúmulo **Kahan/
+    Neumaier** no head/skip e no estado recorrente.
+  - Reportar, por modelo, `ESR(produção f32 vs oráculo f64)` — o **piso absoluto de erro** do nam-rs.
+  - **Decomposição de fontes** (método: ligar/desligar cada fonte isoladamente): (a) pesos f64+exato+f64-acc
+    = oráculo; (b) trocar pesos por f16/bf16 → ΔESR de quantização; (c) trocar ativação exata por Padé →
+    ΔESR de ativação; (d) trocar acúmulo f64 por f32+FMA → ΔESR de acúmulo. Com **pesos reais** (goldens),
+    cumprindo a recomendação pendente de `docs/fastmath-approximations.md:162`.
+  - **Validação externa do oráculo (anti-circularidade):** script Python que roda a rede original em
+    **PyTorch/NumPy f64** para ≥ 1 modelo por família (WaveNet/LSTM/A2) e compara com o oráculo Rust-f64.
+    Casando dentro de ~1e-12, o oráculo fica **ancorado** e dispensa o PyTorch no CI.
+- **Critérios de Aceite:**
+  - Tabela por modelo: ESR(f32 vs f64) + decomposição (peso/ativação/acúmulo).
+  - Oráculo determinístico e validado vs PyTorch-f64 (≤ ~1e-12) para ≥ 1 modelo por família.
+  - Resultado documentado em `docs/perceptual_validation.md` (Tarefa 2.8/S6).
+- **Risco:** Médio (corretude do oráculo é crítica — daí a validação externa obrigatória).
+
+### Tarefa 2.2 [TEST/DSP] Métrica ASR — Aliasing-to-Signal Ratio ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/`](file:///home/fabio/nam-rs/src/testing) (novo `aliasing.rs`)
+  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (novo)
+- **Descrição (Sato & Smith, DAFx 2025):**
+  - Gerar senoides puras em pitches musicais (ex.: E2≈82 Hz … E5, mais um estresse agudo ≥ 2 kHz, alto ganho),
+    processar pelo modelo, aplicar janela (Blackman-Harris) e FFT longa (reusar `FftPlanner`, `src/math/dsp/fft/`).
+  - **Classificar bins:** harmônicos = múltiplos inteiros de `f0` dentro de tolerância de bin; demais picos
+    acima do piso de ruído = **aliased** (componentes que não são `k·f0` nem caem onde deveriam). Calcular
+    `ASR = Σ E_aliased / Σ E_harmônico` por nota; reportar curva ASR(f0) e agregado por SKU.
+  - Opcional: complementar com NMR (noise-to-mask ratio) perceptual.
+- **Critérios de Aceite:**
+  - Validação em casos conhecidos: waveshaper hard-clip com `f0` alto → ASR alto; sistema linear → ASR ≈ 0.
+  - Fingerprint ASR por SKU versionado; função pública reusável por S5 (baseline e gate).
+- **Risco:** Médio (definição rigorosa de bins harmônicos vs aliased; cuidado com vazamento espectral).
+
+### Tarefa 2.3 [TEST/DSP] Suíte espectral: THD/THD+N, IMD e resposta em frequência (Farina) ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/`](file:///home/fabio/nam-rs/src/testing) (novo `spectral.rs`)
+  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs)
+- **Descrição:**
+  - **Resposta em frequência + THD por ordem** via **varredura senoidal exponencial (Farina, AES 2000)**:
+    gerar sweep 20 Hz→Nyquist, processar pelo modelo, deconvoluir com o filtro inverso (sweep invertido no
+    tempo com correção de amplitude). Os harmônicos separam-se em **time-lags distintos** no IR resultante →
+    extrair magnitude por ordem e compor THD(f). Capturar também a FR linear (magnitude/fase).
+  - **THD+N @ 997 Hz (AES17):** tom puro 997 Hz; notch (Q≈5) no fundamental; THD+N = RMS(restante)/RMS(total).
+  - **IMD SMPTE/DIN:** dois tons 60 Hz + 7 kHz (4:1); medir bandas laterais em torno de 7 kHz.
+- **Critérios de Aceite:** valores validados num caso de distorção **conhecido** (ex.: clip que produz 6,4 %
+  THD); fingerprint espectral (FR/THD/IMD) por SKU; funções reusáveis por S5.
+- **Risco:** Médio (corretude da deconvolução de Farina; sincronismo do sweep).
+
+### Tarefa 2.4 [DSP/TEST] True-peak (BS.1770-4) + detecção de clipping inter-sample ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (medição QA de true-peak)
+  - [`src/dsp/pipeline/stages/output.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (`apply_gain_and_detect_clipping_*`)
+  - [`src/dsp/gate_flags.rs`](file:///home/fabio/nam-rs/src/dsp/gate_flags.rs) (`RT_STATUS_HAS_CLIPPED`)
+- **Descrição:**
+  - **QA:** medir **true-peak (dBTP)** por 4× oversampling com o FIR do **Anexo 2 da BS.1770-4** (48 taps,
+    4 fases polifásicas de 12 taps) ou reusando a polifásica existente; reportar dBTP e posições de _overs_.
+  - **Produção:** a detecção atual é **sample-peak** (ignora _overs_ inter-amostrais). **Avaliar** elevar a
+    flag para true-peak respeitando RT-safety (FIR 4× = buffers pré-alocados `AlignedVec`, zero heap, custo
+    medido em P-7). **Decisão por dado:** se o custo RT for proibitivo, manter sample-peak no hot-path e
+    expor true-peak apenas na telemetria/QA off-RT.
+- **Critérios de Aceite:** QA detecta _overs_ inter-amostrais sintéticos (sinal entre amostras > 0 dBFS);
+  decisão RT documentada com número de bench (ligada a P-7).
+- **Risco:** Médio (toca o hot-path se a flag mudar — exige bench e disciplina RT).
+
+### Tarefa 2.5 [TEST] LUFS completo ITU-R BS.1770-4 (2 passes) + LRA ([P-6](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (`compute_lufs`, ≈ 217-273)
+- **Descrição:**
+  - Substituir o gate de 1 passe por **gating de 2 passes**: blocos de **400 ms** com **75 % de overlap**,
+    K-weighting (reusar os biquads existentes), gate **absoluto −70 LUFS** e depois **relativo −10 LU** sobre
+    a média ungated. Reportar **LUFS integrado**.
+  - **LRA (EBU Tech 3342):** distribuição de loudness de _short-term_ (3 s); LRA = P95 − P10.
+  - Integrar **true-peak** (Tarefa 2.4) ao relatório de loudness.
+- **Critérios de Aceite:** LUFS integrado validado contra **vetores de referência EBU** (±0,1 LU); LRA e dBTP
+  reportados; habilita reavaliar o gate de plausibilidade (D-2 / Tarefa 4.2).
+- **Risco:** Baixo-Médio (corretude do gating; usar vetores EBU oficiais).
+
+### Tarefa 2.6 [BENCH/QA] Gates de regressão de performance e de deadline RT ([P-7](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`benches/`](file:///home/fabio/nam-rs/benches) (baselines salvos + amostragem adequada)
+  - [`tests/rt_deadline.rs`](file:///home/fabio/nam-rs/tests/rt_deadline.rs) (novo)
+  - [`src/dsp/telemetry.rs`](file:///home/fabio/nam-rs/src/dsp/telemetry.rs) (`LatencyHistogram`)
+- **Descrição:**
+  - **Gate de deadline RT:** assert `p99(tempo de process de 64 amostras) < 1,33 ms @ 48 kHz` para **todos
+    os SKUs** (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM, Linear, ConvNet) e **todos os estados
+    adaptativos** (Full/Reduced/Minimal) — promovendo a aferição já existente (`tests/nam_infer_test.rs:686-704`)
+    a `assert!`. Bloco de aquecimento + N iterações; reportar p50/p99/exact_max.
+  - **Gate de regressão:** baselines persistidos (baseline do Criterion ou JSON próprio), execução em core
+    fixado (`taskset`/affinity), substituindo os parâmetros estatisticamente fracos do `tests-quick`
+    (`--sample-size 10 --measurement-time 0.5`, `testes.log:3636`). Falhar se Δ > limiar (p < 0,05).
+  - **Jitter/xrun sob pressão:** rodar com _stressors_ de CPU concorrentes; contar overruns e medir a cauda.
+- **Critérios de Aceite:** CI reprova em regressão estatística ou p99 > deadline; relatório de jitter sob carga.
+- **Risco:** Médio (ruído de medição; exige core pinning e ambiente controlado).
+
+### Tarefa 2.7 [TEST] Matriz de determinismo cruzado entre ISAs ([P-8](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/isa_parity.rs`](file:///home/fabio/nam-rs/tests/isa_parity.rs) (novo)
+- **Descrição:**
+  - Rodar os golden vectors forçando cada caminho — **scalar** (referência), **AVX2**, **AVX-512** e
+    **VNNI-bf16** quando disponíveis — via o ponto de dispatch existente, e **asserir paridade de saída de
+    modelo entre ISAs** dentro de um orçamento ULP/ESR **calibrado por modelo** (documentar o piso real).
+  - Onde o runner não suportar AVX-512/VNNI, marcar como `#[ignore]`/condicional (rodar no `tests-long.sh`
+    em hardware compatível).
+  - Reportar o **piso de erro SIMD-vs-scalar** (dado de aferição de precisão útil para P-4/decomposição).
+- **Critérios de Aceite:** verde com orçamento documentado por modelo; CI cobre ≥ scalar+AVX2; nota sobre
+  contração de FMA / ordem de redução quando relevante.
+- **Risco:** Médio.
+
+### Tarefa 2.8 [DOC] Documentar o framework de medição (documentador)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
+  - [`docs/testing.md`](file:///home/fabio/nam-rs/docs/testing.md)
+- **Descrição:** documentar ASR, THD/THD+N/IMD, FR (Farina), true-peak, LUFS/LRA, **oráculo f64 + as duas
+  referências** (paridade vs correção absoluta) e os gates de perf/ISA: o _porquê_, a fórmula e como
+  interpretar. Apontar para os arquivos-fonte (DRY; não duplicar código).
+- **Critérios de Aceite:** docs coerentes com a implementação; cada métrica com fórmula + referência + arquivo.
+- **Risco:** Baixo.
+
+### Tarefa 2.9 [QA] Validação de lints e testes (E5)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`
+- **Descrição:** rodar lints e suíte rápida; métricas pesadas (sweeps longos, validação PyTorch) marcadas
+  `#[ignore]` → `utils/tests-long.sh`. Confirmar zero alocação onde aplicável (CountingAllocator).
+- **Critérios de Aceite:** zero warnings; suíte verde; novas suítes pesadas integradas ao `tests-long.sh`.
+- **Risco:** Baixo.
+
+---
+
+## Sprint S3: Épico E2 — Fechar o Ponto Cego de Fidelidade Perceptual (F-2)
+
+**Escopo:** Promover MR-STFT a gate hard calibrado (≥ 44.1/48 kHz), limitar o piso de relaxamento dos gates
+hard, e fazer o RCA da divergência espectral em taxa nativa (MR-STFT 0,87 / Fidelity Margin 0,4 dB @ 48 kHz),
+**usando** os instrumentos do S2.
+**Objetivo:** Que regressões perceptuais/espectrais **reprovem** o CI nas taxas nativas.
+**Estimativa:** 1 sprint.
+**Risco Geral:** 🟡 Médio — apertar gates pode **expor divergências reais** (o objetivo!); mitigado pelo
+oráculo f64 e pela suíte espectral (S2).
+
+---
+
+### Tarefa 3.1 [TEST] MR-STFT como gate hard calibrado @ 44.1/48 kHz ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (`MRSTFT_SOFT_THRESHOLD`, ≈ 216-225)
+  - [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs) (anti-placebo)
+- **Descrição:**
+  - Estender a tupla calibrada (`get_calibrated_threshold`) com `mrstft_max` **por modelo × taxa**, medido
+    em condições controladas. Tornar MR-STFT **assertivo** (`assert!`) em 44.1/48 kHz; **manter soft-gate**
+    em 88.2/96/192 kHz enquanto a sensibilidade de LSTM por SR é caracterizada (Tarefa 3.3).
+  - Estender o teste **anti-placebo** (`test_all_thresholds_anti_placebo`) para cobrir o novo gate (impedir
+    limiar frouxo demais).
+- **Critérios de Aceite:** `mrstft_max` asserido p/ todos os goldens @ 44.1/48 kHz; anti-placebo cobre o novo
+  gate; uma regressão sintética de MR-STFT (ex.: filtro passa-baixa leve na saída) **reprova**.
+- **Risco:** Médio.
+
+### Tarefa 3.2 [TEST] Limitar o piso de relaxamento dos gates hard por sample rate ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (relaxação v2, ≈ 320-352)
+- **Descrição:**
+  - Hoje LSTM pode relaxar até `min_snr_db = 7.0` e `max_esr ×10` (192 kHz); WaveNet ×2,5; +resampling.
+    Impor **teto absoluto** à relaxação (ex.: `max_esr` nunca acima do baseline A1-Std `6,23e-3`), para que
+    "passar" continue significando **paridade**, não apenas "não totalmente quebrado".
+  - Revisar os casos 88.2/96/192 kHz sob o novo teto; o que falhar vira **achado** (não mascarar).
+- **Critérios de Aceite:** relaxação limitada e documentada; lista dos casos que passam a falhar (se houver)
+  encaminhada à Tarefa 3.3.
+- **Risco:** Médio (pode expor falhas reais de LSTM em SR extremo — tratar como insumo, não regressão a esconder).
+
+### Tarefa 3.3 [DEBUG] RCA do caso `MR-STFT 0,87 / margin 0,4 dB @ 48 kHz` ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** (investigação) `tests/cpp_parity.rs`, suíte espectral (S2.3), ASR (S2.2), oráculo f64 (S2.1)
+- **Descrição:**
+  - Usar FR/THD/ASR + oráculo f64 para localizar a divergência espectral em taxa **nativa** (48 kHz, onde
+    não há desculpa de OOD). Hipóteses a testar: conteúdo de borda de banda, dither de denormal, **aliasing
+    da não-linearidade** (P-1), ou o próprio caminho de resample do harness de teste.
+  - Determinar se a divergência é vs **NAMCore** (interop) ou vs **oráculo f64** (correção) — diferenciando
+    "ambos divergem do ideal" de "nam-rs diverge do NAMCore".
+  - Acionar a skill `debugger` se a causa for não-trivial.
+- **Critérios de Aceite:** causa-raiz identificada e documentada; correção aplicada **ou** justificativa
+  registrada (e, se for caso, ajuste do gate correspondente).
+- **Risco:** Médio (incógnita; pode escalar para correção de DSP — possivelmente convergindo com S5).
+
+### Tarefa 3.4 [DOC] Atualizar a política de gates perceptuais (documentador)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
+- **Descrição:** documentar o gate MR-STFT calibrado, o teto de relaxamento por SR e o resultado do RCA
+  (incluindo a distinção interop-vs-correção quando aplicável).
+- **Critérios de Aceite:** doc coerente com `validation.rs` / `cpp_parity.rs`.
+- **Risco:** Baixo.
+
+### Tarefa 3.5 [QA] Validação de lints e testes (E2)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`; paridade longa (`utils/tests-long.sh` Fase 3, local)
+- **Descrição:** lints + suíte rápida; rodar a paridade longa **localmente** (nunca como passo de IA) para
+  confirmar que os novos gates não reprovam falsamente os modelos legítimos.
+- **Critérios de Aceite:** zero warnings; paridade verde com os novos gates.
+- **Risco:** Baixo.
+
+---
+
+## Sprint S4: Épico E3 — Confiança do Loop Rápido + Higiene de Relatório (F-3, D-2)
+
+**Escopo:** Levar um subconjunto representativo de paridade hard @ 48 kHz para o `tests-quick.sh` e reduzir o
+ruído cosmético "GOLDEN DEFECT" em runs verdes.
+**Objetivo:** Que o ciclo de ~3 min detecte regressões de paridade nas condições onde os bugs aparecem.
+**Estimativa:** 0,5 sprint.
+**Risco Geral:** 🟢 Baixo.
+
+---
+
+### Tarefa 4.1 [TEST] Subconjunto de paridade hard @ 48 kHz no loop rápido ([F-3](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`utils/tests-quick.sh`](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+  - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) / [`tests/golden_vectors.rs`](file:///home/fabio/nam-rs/tests/golden_vectors.rs)
+- **Descrição:**
+  - Hoje o loop rápido roda só `wavenet_nano` de cross-validation (32/33 `#[ignore]`). Selecionar um
+    subconjunto representativo @ 48 kHz: **1 LSTM + 1 WaveNet CH16 + 1 A2** com sinal curto (~2048), com o
+    **gate MR-STFT de S3 ativo**. Reusar o cache do render C++ (`BUILD_LOCK`) para não recompilar.
+  - Implementar via um filtro/grupo de testes não-ignorados ou um alvo dedicado no script.
+- **Critérios de Aceite:** ≥ 3 cross-validations hard @ 48 kHz em **< +30 s** do orçamento total do
+  `tests-quick`; tempo medido e registrado.
+- **Risco:** Baixo (vigiar o orçamento de tempo do loop rápido).
+
+### Tarefa 4.2 [TEST] Reduzir ruído cosmético "GOLDEN DEFECT" e reavaliar o gate ([D-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (≈ 234, 268-282)
+- **Descrição:**
+  - Quando `check_lufs_gate=false` (goldens de convolução-IR — comportamento **legítimo**), exibir `ⓘ`
+    informativo em vez de "✗ — GOLDEN DEFECT" (evita "vermelho cosmético" em runs verdes).
+  - Com o **LUFS pleno** de S2 (Tarefa 2.5), reavaliar **promover** o gate de plausibilidade a real onde fizer
+    sentido; preservar a lição **T2.5** (gate real onde `check_lufs_gate=true`).
+- **Critérios de Aceite:** runs verdes sem "GOLDEN DEFECT" cosmético; gate real intacto; comportamento
+  documentado.
+- **Risco:** Baixo.
+
+### Tarefa 4.3 [QA] Validação de lints e orçamento de tempo (E3)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`
+- **Descrição:** confirmar que o `tests-quick` permanece dentro do orçamento (~2,5–3 min) com o novo subconjunto.
+- **Critérios de Aceite:** suíte verde; tempo total medido e registrado na Conclusão.
+- **Risco:** Baixo.
+
+---
+
+## Sprint S5: Épico E4 — Qualidade Sonora: Anti-aliasing & Fidelidade (P-1, P-2, P-5)
+
+**Escopo:** Reduzir aliasing das não-linearidades e melhorar a fidelidade espectral (resampler + topo de
+banda), via modos **HQ/offline** opcionais, **sem** comprometer o caminho _live_ de baixa latência — e expor
+**controles claros (CLI + GUI)** conforme as Notas do PO (P-1, P-2).
+**Objetivo de Qualidade:** ASR e THD comprovadamente menores em entrada agressiva; ripple de banda-passante
+do resampler < 0,1 dB; ESR sem regressão; controles de usuário simples e seguros.
+**Estimativa:** 2 sprints.
+**Risco Geral:** 🔴 Médio-Alto — toca o **hot-path DSP** e o trade-off latência×qualidade. Mitigações:
+feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por S2 (ASR/THD/FR + benches P-7).
+**Pré-condição:** **S2 verde.**
+
+---
+
+### Tarefa 5.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (S2.2/2.3)
+- **Descrição:** registrar **ASR/THD/FR de baseline por SKU** em entrada agressiva (fundamental ≥ 2 kHz,
+  alto ganho) e em uso típico, para servir de referência de ganho/regressão das tarefas 5.2–5.4.
+- **Critérios de Aceite:** baseline versionado, determinístico e reproduzível (fixture commitada).
+- **Risco:** Baixo.
+
+### Tarefa 5.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/dsp/pipeline/stages/inference.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/inference.rs) (inserção up/down ao redor do modelo)
+  - [`src/dsp/resampler.rs`](file:///home/fabio/nam-rs/src/dsp/resampler.rs), [`src/dsp/sinc_kernel.rs`](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs) (filtros meia-banda)
+  - [`Cargo.toml`](file:///home/fabio/nam-rs/Cargo.toml) (se necessário feature/flag de build)
+- **Descrição:**
+  - Inserir **upsample → modelo → downsample** com filtros **meia-banda** anti-imagem/anti-alias projetados
+    conforme **Kahles, Esqueda & Välimäki (JAES 2019)**. Fatores **2×/4×**; **OFF por padrão** (live).
+  - **RT-safety (obrigatória):** buffers pré-alocados (`AlignedVec`), **zero heap-drop** no `process`, FTZ/DAZ,
+    sem `unwrap`; o estado do modelo continua na taxa nativa, apenas o I/O do estágio é oversampled.
+  - **Troca de fator off-RT:** mudar o fator **realoca** filtros e buffers → fazer via a mesma via do
+    hot-swap de modelo (rebuild no main thread + swap atômico / GC SPSC); **nunca** mid-`process`.
+  - **Alternativa de menor custo:** avaliar **ADAA 1ª/2ª ordem** (Parker 2016; Bilbao 2017; Holters 2019 p/
+    estado) nas ativações memoryless — comparar custo×ASR vs oversampling.
+  - Medir custo (P-7) e ASR/THD (5.1) com e sem o recurso.
+- **Critérios de Aceite:**
+  - Modo HQ reduz **ASR ≥ X dB** vs baseline (5.1) em entrada agressiva; **ESR estável** (sem regressão).
+  - Caminho **live** com **0** de custo/latência adicional; `cargo bench` sem regressão no live.
+  - **heap-audit** verde com oversampling ativo (zero alocação no hot-path).
+- **Risco:** **Alto** (hot-path). Recomenda-se prototipar com 1 modelo antes de generalizar.
+
+### Tarefa 5.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/math/activations/tanh/high_fidelity.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs) (já existe, ~2,4e-7)
+  - [`src/math/activations/`](file:///home/fabio/nam-rs/src/math/activations) (dispatch do modo)
+- **Descrição:**
+  - **Primeiro medir** (com o oráculo f64, S2.1) a contribuição da Padé ao **ESR e ao ASR** com **pesos
+    reais** — cumprindo a recomendação pendente (`fastmath-approximations.md:162`), que a medição sintética
+    (S1.T1.4) subestimou.
+  - Expor **modo "exato/HF" opt-in** (high_fidelity ou `f32::tanh`) para offline/mixdown — duplo ganho:
+    menor erro **e** menor aliasing (ativação mais suave, P-1). Reusar a superfície de controle da Tarefa 5.5.
+  - Complementar: reportar **ESR com pré-ênfase** (A-weighting, Wright & Välimäki 2020) ao lado do ESR plano.
+- **Critérios de Aceite:** tabela "Padé vs HF/exato" (ESR/ASR) por **modelo real**; modo selecionável com
+  custo medido (bench); decisão de _default_ por arquitetura documentada.
+- **Risco:** Médio.
+
+### Tarefa 5.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/dsp/sinc_kernel.rs`](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs), [`src/dsp/resampler.rs`](file:///home/fabio/nam-rs/src/dsp/resampler.rs)
+  - [`src/dsp/resampler_test.rs`](file:///home/fabio/nam-rs/src/dsp/resampler_test.rs) (gate ≈ 384-390)
+- **Descrição:**
+  - Reprojetar o filtro: **mais taps** (32→48/64) e/ou desenho **half-band** otimizado; **verificar** se a
+    transformada minimum-phase via cepstrum (`sinc_kernel.rs:156-223`) injeta **ripple de magnitude**
+    (comparar magnitude pré/pós-cepstrum). Oferecer **opção linear-phase** para offline.
+  - **Medir** FR/ripple/stopband/aliasing por sweep (Farina, S2.3) contra o **ideal analítico** (não só vs
+    soxr) e **elevar progressivamente** o gate de 20 dB do `resampler_test.rs` conforme a qualidade real
+    (o próprio teste pede isso em :389-390).
+  - **Custo (resolução PO/P-2):** medir Δμs por bloco (44.1→48 e 96→48) via P-7. Se desprezível → **HQ vira
+    o padrão**. Se considerável → expor "Resampler Quality: Standard/HQ" via a Tarefa 5.5 (CLI+GUI), troca off-RT.
+- **Critérios de Aceite:** ripple de banda-passante < 0,1 dB até 0,45×Nyquist; stopband ≥ 100 dB medido;
+  gate do teste elevado coerente com a medição; **doc reconciliada** (eliminar a discrepância 24 dB vs
+  120 dB); _default_ definido por dado e registrado na Conclusão.
+- **Risco:** Médio.
+
+### Tarefa 5.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/standalone/cli.rs`](file:///home/fabio/nam-rs/src/standalone/cli.rs) (`CliArgs`, `print_help`, parsing `lexopt`)
+  - [`src/clap/processor/params.rs`](file:///home/fabio/nam-rs/src/clap/processor/params.rs), [`src/clap/processor/events.rs`](file:///home/fabio/nam-rs/src/clap/processor/events.rs)
+  - [`src/clap/extensions/params.rs`](file:///home/fabio/nam-rs/src/clap/extensions/params.rs), [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs) (persistência)
+  - [`src/clap/gui/ui/`](file:///home/fabio/nam-rs/src/clap/gui/ui) (combo/segmented control)
+- **Descrição (atende diretamente às Notas do PO de P-1 e P-2):**
+  - **Standalone (CLI):** adicionar `--oversample off|2x|4x` (alias `--os`) e, se a Tarefa 5.4 concluir que é
+    necessário, `--resampler standard|hq` — **no mesmo molde do já existente `--slim auto|full|lite`**
+    (`CliArgs` + linha em `print_help`). Defaults: `oversample=off`; `resampler` = decisão de 5.4.
+  - **CLAP (GUI + automação):** parâmetro(s) _stepped_ "Oversampling" {Off,2×,4×} (e "Resampler Quality"
+    {Standard,HQ} se aplicável), **no molde de `AdaptiveComputeMode::from_f32`** (`params.rs` / `events.rs`),
+    exibidos na GUI como combo/segmented control (`gui/ui/`), **persistidos no estado** (`extensions/state.rs`)
+    com migração de versão (default seguro ao carregar presets antigos).
+  - **Aplicação off-RT:** a mudança do parâmetro sinaliza re-preparação (rebuild dos resamplers/buffers no
+    main thread + swap atômico), respeitando RT-safety; marcar como não-automatável amostra-a-amostra.
+  - Tooltips/`--help` claros explicando o trade-off latência×qualidade (live vs offline).
+- **Critérios de Aceite:** alternar OS/resampler via CLI e via GUI funciona, persiste no estado do plugin,
+  passa pelo `clap-validator` (state reproducibility) e **não** causa alocação no hot-path (heap-audit);
+  default = live/baixa latência.
+- **Risco:** Médio (integração GUI/estado; cuidado com migração de presets e troca off-RT).
+
+### Tarefa 5.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md)
+  - [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md)
+  - [`README.md`](file:///home/fabio/nam-rs/README.md) (uso dos novos controles)
+- **Descrição:** justificar o _porquê_ das decisões (trade-off latência×aliasing, modos HQ/live, taps do
+  resampler, modo de ativação) e os números medidos; documentar a UX (CLI/GUI). Referenciar as fontes (S6).
+- **Critérios de Aceite:** docs coerentes com o código; decisões críticas justificadas (anti-regressão histórica).
+- **Risco:** Baixo.
+
+### Tarefa 5.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `benches/`, suítes heap-audit
+- **Descrição:** lints + suíte rápida + `cargo bench` (caminho **live** sem regressão; modo HQ com custo
+  documentado); **heap-audit** confirmando **zero alocação** no hot-path com oversampling/HQ ativos;
+  `clap-validator` verde (estado/params).
+- **Critérios de Aceite:** zero warnings; zero regressão no live; zero heap no RT; validator verde.
+- **Risco:** Médio.
+
+---
+
+## Sprint S6: Épico E6 — Documentação & Referência Técnica (documentador)
+
+**Escopo:** Consolidar a "fonte de verdade" e **registrar a referência técnica/científica** que embasa as
+decisões dos sprints S1–S5.
+**Objetivo:** Conhecimento do projeto sincronizado com a implementação; rastreabilidade científica completa.
+**Estimativa:** 0,5 sprint.
+**Risco Geral:** 🟢 Baixo.
+
+---
+
+### Tarefa 6.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`docs/research-references.md`](file:///home/fabio/nam-rs/docs/research-references.md) (novo)
+- **Descrição:**
+  - Catalogar, com **anotação do _porquê é relevante para o nam-rs_**, as fontes da Parte II de
+    `TODO-findings.md`: Sato & Smith (DAFx 2025, **ASR**); Carson/Wright/Bilbao (DAFx 2025, anti-aliasing por
+    fine-tuning); Kahles/Esqueda/Välimäki (JAES 2019, filtros de oversampling); Parker/Zavalishin/Le Bivic
+    (DAFx-16) e Bilbao et al. (IEEE SPL 2017) + Holters (DAFx-19) — **ADAA**; Wright & Välimäki (ICASSP 2020,
+    pré-ênfase A-weighting); Wright et al. (Appl. Sci. 2020, **ESR**); Farina (AES 2000, sweep/THD); **AES17**
+    (THD+N); **ITU-R BS.1770-4** + **EBU R128/Tech 3342** (LUFS/true-peak/LRA).
+  - Vincular cada referência ao(s) finding(s) `P-x` e ao(s) módulo(s)/tarefa(s) correspondentes (rastreabilidade
+    bidirecional).
+- **Critérios de Aceite:** cada referência com citação completa + relevância + link para finding(s) e arquivo(s).
+- **Risco:** Baixo.
+
+### Tarefa 6.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md)
+- **Descrição:** refletir o estágio de **oversampling opcional**, a detecção **true-peak**, o **framework de
+  medição** (ASR/THD/FR/LUFS/oráculo f64) e a **superfície de controle** (CLI/GUI); manter hierarquia e
+  catálogo `Exxxx` sincronizados; apontar para os arquivos-fonte (DRY).
+- **Critérios de Aceite:** arquitetura coerente com a implementação pós-S1–S5.
+- **Risco:** Baixo.
+
+### Tarefa 6.3 [DOC] Atualizar `README.md` e `.agents/` (padrões)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`README.md`](file:///home/fabio/nam-rs/README.md), [`.agents/`](file:///home/fabio/nam-rs/.agents)
+- **Descrição:** documentar os modos HQ/offline (CLI/GUI) e o framework de QA para usuários/builders; se os
+  padrões de implementação mudaram (nova convenção de métricas/testes/controles), atualizar as regras/skills
+  relevantes em `.agents/`.
+- **Critérios de Aceite:** README e `.agents/` coerentes; voz/tom unificados (`documentador`).
+- **Risco:** Baixo.
+
+### Tarefa 6.4 [QA] Revisão final de documentação (refatora-doc)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `docs/`, comentários de fonte tocados em S1–S5
+- **Descrição:** acionar a skill `refatora-doc` para revisar markdown e comentários (voz única, sem deriva de
+  estilo, sem afirmações irrelevantes do tipo "sprint X"/datas, conforme `documentador`).
+- **Critérios de Aceite:** documentação lê-se como obra coesa e de autor único.
+- **Risco:** Baixo.
+
+---
+
+## Notas de Encerramento
+
+- **Rastreabilidade:** cada tarefa referencia seu finding em
+  [`TODO-findings.md`](file:///home/fabio/nam-rs/TODO-findings.md) (incl. as **Resoluções das Notas do PO**).
+  Ao concluir, registrar a **Conclusão** (como no histórico do projeto) e, se houver impacto em tarefas
+  futuras, deixar nota no ponto apropriado (skill `tarefa`).
+- **Sincronia com os findings:** as Notas do PO de **P-1/P-2** entram como a **Tarefa 5.5 [UX/CLAP]**
+  (controles CLI+GUI, troca off-RT); a de **P-4** entra como o **passo de validação externa do oráculo** na
+  **Tarefa 2.1**. Qualquer novo finding deve replicar este vínculo bidirecional.
+- **Segurança da sequência:** **não iniciar S5** (hot-path DSP) antes de **S2** estar verde — é a salvaguarda
+  central deste plano (medir antes de corrigir).
+- **Próximo passo sugerido:** executar **S1** (baixo risco, alto desbloqueio) via skill `tarefa` → `implementador`.
