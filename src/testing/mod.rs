@@ -11,5 +11,6 @@
 
 pub mod mushra;
 pub mod perceptual;
+pub mod reference_oracle;
 pub mod stress;
 pub mod wav;

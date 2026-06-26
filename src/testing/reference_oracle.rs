@@ -1,0 +1,816 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Reference oracle in f64 — absolute ground truth for the NAM mathematical model.
+#![allow(missing_docs)]
+//!
+//! Computes the **ideal forward pass** of WaveNet, LSTM, and A2 topologies
+//! using double-precision (f64) arithmetic, exact activation functions
+//! (`f64::tanh`, `f64::exp`), and Kahan/Neumaier compensated accumulation.
+//!
+//! # Purpose
+//! The production path (f32 + Padé tanh + minimax sigmoid + FMA accumulation)
+//! shares the same limitations as the C++ NAMCore (also f32). The oracle
+//! provides an **independent** high-precision reference that:
+//! - Measures the **absolute error floor** of the f32 production path.
+//! - Permits **source decomposition** — isolating the contribution of each
+//!   approximation (weight quantization, activation, accumulation) to total error.
+
+use crate::loader::nam_json::model::NamModelData;
+use crate::math::common::half::f16_bits_to_f32;
+
+// =============================================================================
+// Precision Configuration
+// =============================================================================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeightPrecision {
+    /// Full f64 precision (weights converted from f32).
+    F64Exact,
+    /// Weights quantized to f16c (binary16) then converted to f64.
+    F16C,
+    /// Weights quantized to bf16 then converted to f64.
+    BF16,
+    /// Weights kept in f32 precision (cast to f64 at compute time).
+    F32,
+}
+
+/// Activation function precision mode for source decomposition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActivationMode {
+    /// Exact: `f64::tanh`, `f64` exp-based sigmoid.
+    Exact,
+    /// Approximate: Padé [5,4] tanh, minimax degree-17 sigmoid.
+    PadeMinimax,
+}
+
+/// Accumulation mode for dot products and residual sums.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccumulationMode {
+    /// Plain f64 accumulation (no compensation).
+    F64Plain,
+    /// Kahan compensated summation.
+    Kahan,
+    /// Neumaier compensated summation.
+    Neumaier,
+    /// Accumulation in f32 to simulate f32 error.
+    F32Plain,
+}
+
+/// Precision configuration for one oracle run.
+#[derive(Clone, Copy, Debug)]
+pub struct PrecisionConfig {
+    /// Weight representation precision.
+    pub weight_precision: WeightPrecision,
+    /// Activation function approximation mode.
+    pub activation: ActivationMode,
+    /// Accumulation algorithm.
+    pub accumulation: AccumulationMode,
+}
+
+impl Default for PrecisionConfig {
+    fn default() -> Self {
+        Self {
+            weight_precision: WeightPrecision::F64Exact,
+            activation: ActivationMode::Exact,
+            accumulation: AccumulationMode::Neumaier,
+        }
+    }
+}
+
+// =============================================================================
+// f64 Activation Functions
+// =============================================================================
+
+/// Padé [5,4] rational approximant for tanh in f64.
+#[inline]
+pub fn pade_tanh_f64(x: f64) -> f64 {
+    let x = x.clamp(-4.0, 4.0);
+    let x2 = x * x;
+    let num = x * (x2 + 105.0).mul_add(x2, 945.0);
+    let den = (15.0f64.mul_add(x2, 420.0)).mul_add(x2, 945.0);
+    (num / den).clamp(-1.0, 1.0)
+}
+
+#[inline]
+pub fn exact_tanh_f64(x: f64) -> f64 {
+    x.tanh()
+}
+
+#[inline]
+pub fn oracle_tanh(x: f64, mode: ActivationMode) -> f64 {
+    match mode {
+        ActivationMode::Exact => exact_tanh_f64(x),
+        ActivationMode::PadeMinimax => pade_tanh_f64(x),
+    }
+}
+
+#[inline]
+pub fn exact_sigmoid_f64(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+#[inline]
+pub fn minimax_sigmoid_f64(x: f64) -> f64 {
+    let c0 = 2.4885319190e-01_f64;
+    let c1 = -1.9318685012e-02_f64;
+    let c2 = 1.4623214305e-03_f64;
+    let c3 = -7.9953400187e-05_f64;
+    let c4 = 2.9140652422e-06_f64;
+    let c5 = -6.8000246432e-08_f64;
+    let c6 = 9.6897239158e-10_f64;
+    let c7 = -7.6498626314e-12_f64;
+    let c8 = 2.5585471676e-14_f64;
+    let xc = x.clamp(-8.0, 8.0);
+    let x2 = xc * xc;
+    let p = c8.mul_add(x2, c7);
+    let p = p.mul_add(x2, c6);
+    let p = p.mul_add(x2, c5);
+    let p = p.mul_add(x2, c4);
+    let p = p.mul_add(x2, c3);
+    let p = p.mul_add(x2, c2);
+    let p = p.mul_add(x2, c1);
+    let p = p.mul_add(x2, c0);
+    (xc.mul_add(p, 0.5)).clamp(0.0, 1.0)
+}
+
+#[inline]
+pub fn oracle_sigmoid(x: f64, mode: ActivationMode) -> f64 {
+    match mode {
+        ActivationMode::Exact => exact_sigmoid_f64(x),
+        ActivationMode::PadeMinimax => minimax_sigmoid_f64(x),
+    }
+}
+
+// =============================================================================
+// Weight Conversion
+// =============================================================================
+
+#[allow(dead_code)]
+#[inline]
+fn weight_f32_to_f64(w: f32, mode: WeightPrecision) -> f64 {
+    match mode {
+        WeightPrecision::F64Exact | WeightPrecision::F32 => w as f64,
+        WeightPrecision::F16C => {
+            let bits = crate::math::common::half::f32_to_f16_bits(w);
+            crate::math::common::half::f16_bits_to_f32(bits) as f64
+        }
+        WeightPrecision::BF16 => {
+            let bits = w.to_bits();
+            let bf16_bits = (bits >> 16) as u16;
+            f32::from_bits((bf16_bits as u32) << 16) as f64
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[inline]
+fn weight_f16c_to_f64(w: u16, _mode: WeightPrecision) -> f64 {
+    f16_bits_to_f32(w) as f64
+}
+
+/// Simple weight stream cursor.
+struct Cursor<'a> {
+    data: &'a [f32],
+    pos: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(data: &'a [f32]) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    fn read_f64(&mut self, count: usize) -> Vec<f64> {
+        let end = self.pos + count;
+        let out: Vec<f64> = self.data[self.pos..end].iter().map(|&x| x as f64).collect();
+        self.pos = end;
+        out
+    }
+
+    fn read_one_f64(&mut self) -> f64 {
+        let v = self.data[self.pos] as f64;
+        self.pos += 1;
+        v
+    }
+}
+
+// =============================================================================
+// ESR
+// =============================================================================
+
+pub fn compute_esr_f64(reference: &[f64], test: &[f64]) -> f64 {
+    let len = reference.len().min(test.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut noise = 0.0f64;
+    let mut signal = 0.0f64;
+    for i in 0..len {
+        let diff = reference[i] - test[i];
+        noise += diff * diff;
+        signal += reference[i] * reference[i];
+    }
+    if signal == 0.0 {
+        if noise == 0.0 { 0.0 } else { f64::INFINITY }
+    } else {
+        noise / signal
+    }
+}
+
+pub fn esr_to_db_f64(esr: f64) -> f64 {
+    if esr <= 0.0 {
+        f64::NEG_INFINITY
+    } else {
+        10.0 * esr.log10()
+    }
+}
+
+// =============================================================================
+// Top-level Oracle Dispatcher
+// =============================================================================
+
+pub fn oracle_forward(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    match model_data.architecture.as_str() {
+        "WaveNet" => {
+            if is_a2_model(model_data) {
+                oracle_a2_forward(model_data, input, config)
+            } else {
+                oracle_wavenet_forward(model_data, input, config)
+            }
+        }
+        "LSTM" => oracle_lstm_forward(model_data, input, config),
+        _ => vec![0.0; input.len()],
+    }
+}
+
+fn is_a2_model(model_data: &NamModelData) -> bool {
+    let layers = &model_data.config.layers;
+    if layers.len() != 1 {
+        return false;
+    }
+    let l0 = &layers[0];
+    l0.kernel_size.is_none() && l0.channels.is_some()
+}
+
+// =============================================================================
+// WaveNet Oracle
+// =============================================================================
+
+fn oracle_wavenet_forward(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    let layers = &model_data.config.layers;
+    let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
+    let mut cursor = Cursor::new(&model_data.weights);
+    let num_frames = input.len();
+
+    if layers.is_empty() {
+        return vec![0.0; num_frames];
+    }
+
+    // Parse array configs from layers
+    struct ArrayConfig {
+        in_ch: usize,
+        ch: usize,
+        head_ch: usize,
+        k_size: usize,
+        dilations: Vec<usize>,
+        cond_size: usize,
+    }
+
+    let mut arrays: Vec<ArrayConfig> = Vec::new();
+    let mut prev_head = 1usize;
+    for lc in layers {
+        let ch = lc.channels.unwrap_or(16);
+        let head_ch = lc.head_size.unwrap_or(8);
+        let k = lc.kernel_size.unwrap_or(3);
+        let cond = lc.condition_size.unwrap_or(1);
+        let dilations = lc.dilations.clone().unwrap_or_else(|| vec![1, 2, 4, 8]);
+
+        arrays.push(ArrayConfig {
+            in_ch: prev_head,
+            ch,
+            head_ch,
+            k_size: k,
+            dilations,
+            cond_size: cond,
+        });
+        prev_head = head_ch;
+    }
+
+    let max_rf: usize = arrays
+        .iter()
+        .map(|a| {
+            let k = a.k_size;
+            a.dilations.iter().map(move |&d| (k - 1) * d).sum::<usize>()
+        })
+        .max()
+        .unwrap_or(0)
+        + 64;
+    let ch_max = arrays.iter().map(|a| a.ch).max().unwrap_or(16);
+
+    let mut output = vec![0.0f64; num_frames];
+    let mut layer_buffer = vec![0.0f64; max_rf * ch_max * 2 + num_frames * ch_max * 2 + 4096];
+    let mut array_output: Vec<f64> = Vec::new(); // previous array's head output
+
+    for (ai, arr) in arrays.iter().enumerate() {
+        let ch = arr.ch;
+        let head_ch = arr.head_ch;
+        let in_ch = arr.in_ch;
+        let k = arr.k_size;
+
+        // Read array weights
+        let rechannel_w = cursor.read_f64(in_ch * ch);
+
+        struct LayerW {
+            conv_w: Vec<f64>,
+            conv_b: Vec<f64>,
+            mixin_w: Vec<f64>,
+            l1x1_w: Vec<f64>,
+            l1x1_b: Vec<f64>,
+            dilation: usize,
+        }
+        let mut lws: Vec<LayerW> = Vec::new();
+        for &dil in &arr.dilations {
+            let conv_w = cursor.read_f64(ch * ch * k);
+            let conv_b = cursor.read_f64(ch);
+            let mixin_w = cursor.read_f64(arr.cond_size * ch);
+            let l1x1_w = cursor.read_f64(ch * ch);
+            let l1x1_b = cursor.read_f64(ch);
+            lws.push(LayerW {
+                conv_w,
+                conv_b,
+                mixin_w,
+                l1x1_w,
+                l1x1_b,
+                dilation: dil,
+            });
+        }
+
+        let head_w = cursor.read_f64(ch * head_ch);
+        let has_head_bias = ai == arrays.len() - 1;
+        let head_b: Vec<f64> = if has_head_bias {
+            cursor.read_f64(head_ch)
+        } else {
+            vec![0.0; head_ch]
+        };
+
+        let _rf: usize = arr.dilations.iter().map(|&d| (k - 1) * d).sum();
+        let bs = max_rf;
+
+        // Input to this array: previous array's output (multi-channel) or original input (mono)
+        let array_input: Vec<f64> = if ai == 0 {
+            input.to_vec()
+        } else {
+            array_output.clone() // previous array's head output (multi-channel)
+        };
+        let _input_frames = array_input.len() / in_ch;
+
+        // Fill buffer from array input
+        for f in 0..num_frames {
+            let idx = bs + f;
+            for c in 0..ch {
+                let mut sum = 0.0f64;
+                for ic in 0..in_ch {
+                    let src_idx = f * in_ch + ic;
+                    if src_idx < array_input.len() {
+                        sum += array_input[src_idx] * rechannel_w[ic * ch + c];
+                    }
+                }
+                layer_buffer[idx * ch + c] = sum;
+            }
+        }
+
+        // Forward
+        for (f, out_val) in output.iter_mut().enumerate().take(num_frames) {
+            let idx = bs + f;
+            let mut current: Vec<f64> = layer_buffer[idx * ch..idx * ch + ch].to_vec();
+
+            for lw in &lws {
+                // Conv1d
+                let mut conv_out = vec![0.0f64; ch];
+                for (oc, cv) in conv_out.iter_mut().enumerate() {
+                    let mut sum = lw.conv_b[oc];
+                    let wb = oc * k * ch;
+                    for kt in 0..k {
+                        let off = (lw.dilation as isize) * ((kt as isize) + 1 - (k as isize));
+                        let ins = ((idx as isize) + off) as usize * ch;
+                        let ws = wb + kt * ch;
+                        for ic in 0..ch {
+                            if ins + ic < layer_buffer.len() {
+                                sum += layer_buffer[ins + ic] * lw.conv_w[ws + ic];
+                            }
+                        }
+                    }
+                    *cv = sum;
+                }
+
+                // Mixin (cond[0])
+                let cond = layer_buffer[idx * ch];
+                for (c, cv) in conv_out.iter_mut().enumerate() {
+                    *cv += cond * lw.mixin_w[c];
+                }
+
+                // Tanh
+                for cv in conv_out.iter_mut() {
+                    *cv = oracle_tanh(*cv, config.activation);
+                }
+
+                // 1x1 residual
+                let mut new_conv_out = conv_out.clone();
+                for (oc, cv) in new_conv_out.iter_mut().enumerate() {
+                    let mut sum = lw.l1x1_b[oc];
+                    for (ic, &cv_ic) in conv_out.iter().enumerate() {
+                        sum += cv_ic * lw.l1x1_w[oc * ch + ic];
+                    }
+                    *cv = current[oc] + sum;
+                }
+                current = new_conv_out;
+            }
+
+            // Head
+            let mut head_out = vec![0.0f64; head_ch];
+            #[allow(clippy::needless_range_loop)]
+            for hc in 0..head_ch {
+                let mut sum = head_b[hc];
+                for (c, &cur_c) in current.iter().enumerate() {
+                    sum += cur_c * head_w[c * head_ch + hc];
+                }
+                head_out[hc] = sum;
+            }
+            if ai == arrays.len() - 1 {
+                *out_val = head_out[0] * head_scale;
+            } else {
+                for &ho in &head_out {
+                    array_output.push(ho);
+                }
+            }
+        }
+    }
+
+    // Apply head_scale to scalar output
+    if arrays.len() == 1 || arrays.last().map(|a| a.head_ch).unwrap_or(1) == 1 {
+        for o in output.iter_mut() {
+            *o *= head_scale;
+        }
+    }
+
+    output
+}
+
+// =============================================================================
+// A2 Oracle
+// =============================================================================
+
+const A2_NUM_LAYERS: usize = 23;
+const A2_HEAD_KERNEL: usize = 16;
+const A2_KS: [usize; 23] = [
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
+];
+const A2_DIL: [usize; 23] = [
+    1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
+];
+
+fn oracle_a2_forward(
+    model_data: &NamModelData,
+    input: &[f64],
+    _config: &PrecisionConfig,
+) -> Vec<f64> {
+    let ch = model_data
+        .config
+        .layers
+        .first()
+        .and_then(|l| l.channels)
+        .unwrap_or(8);
+    let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
+    let mut cursor = Cursor::new(&model_data.weights);
+    let num_frames = input.len();
+
+    // Rechannel: CH f32
+    let rechannel_w = cursor.read_f64(ch);
+
+    // Per-layer weights
+    struct A2LW {
+        conv_w: Vec<f64>,
+        conv_b: Vec<f64>,
+        mixin_w: Vec<f64>,
+        l1x1_w: Vec<f64>,
+        l1x1_b: Vec<f64>,
+        ks: usize,
+        dil: usize,
+    }
+    let mut lws: Vec<A2LW> = Vec::new();
+    for li in 0..A2_NUM_LAYERS {
+        let ks = A2_KS[li];
+        let dil = A2_DIL[li];
+        let conv_w = cursor.read_f64(ch * ch * ks);
+        let conv_b = cursor.read_f64(ch);
+        let mixin_w = cursor.read_f64(ch);
+        let l1x1_w = cursor.read_f64(ch * ch);
+        let l1x1_b = cursor.read_f64(ch);
+        lws.push(A2LW {
+            conv_w,
+            conv_b,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+            ks,
+            dil,
+        });
+    }
+
+    // Head: 16*CH + 1 weight
+    let head_w = cursor.read_f64(A2_HEAD_KERNEL * ch);
+    let head_b = cursor.read_one_f64();
+
+    // Buffer allocation
+    let max_dil: usize = *A2_DIL.iter().max().unwrap_or(&1);
+    let max_ks: usize = *A2_KS.iter().max().unwrap_or(&6);
+    let max_rf = (max_ks - 1) * max_dil + 64;
+    let hist_size = max_rf + num_frames + 64;
+    let mut history = vec![0.0f64; hist_size * ch];
+    let bs = max_rf;
+
+    // Head accumulator ring
+    let hr_len = (max_rf + num_frames + 64).next_power_of_two();
+    let mut head_acc = vec![0.0f64; hr_len * ch];
+    let ring_mask = hr_len - 1;
+    let mut head_wp = 0usize;
+
+    let mut output = vec![0.0f64; num_frames];
+
+    #[allow(clippy::explicit_counter_loop)]
+    for (f, out_val) in output.iter_mut().enumerate() {
+        let fi = bs + f;
+        let x = input[f];
+
+        // Rechannel: layer_in[c] = x * rechannel_w[c]
+        let mut layer_in = vec![0.0f64; ch];
+        for (c, li) in layer_in.iter_mut().enumerate() {
+            *li = x * rechannel_w[c];
+            history[fi * ch + c] = *li;
+        }
+
+        let head_col = head_wp;
+        head_wp += 1;
+
+        for (li, lw) in lws.iter().enumerate() {
+            // Conv1d
+            let mut z = vec![0.0f64; ch];
+            for (oc, zv) in z.iter_mut().enumerate() {
+                let mut sum = lw.conv_b[oc];
+                let wb = oc * lw.ks * ch;
+                for kt in 0..lw.ks {
+                    let off = (lw.dil as isize) * ((kt as isize) + 1 - (lw.ks as isize));
+                    let ins = ((fi as isize) + off) as usize * ch;
+                    let ws = wb + kt * ch;
+                    for ic in 0..ch {
+                        if ins + ic < history.len() {
+                            sum += history[ins + ic] * lw.conv_w[ws + ic];
+                        }
+                    }
+                }
+                *zv = sum;
+            }
+
+            // Mixin
+            for (c, zv) in z.iter_mut().enumerate() {
+                *zv += lw.mixin_w[c] * x;
+            }
+
+            // LeakyReLU(0.01)
+            for zv in z.iter_mut().take(ch) {
+                if *zv < 0.0 {
+                    *zv *= 0.01;
+                }
+            }
+
+            // Head accumulate
+            let ho = head_col * ch;
+            if li == 0 {
+                head_acc[ho..ho + ch].copy_from_slice(&z[..ch]);
+            } else {
+                for (c, &zv) in z.iter().enumerate() {
+                    head_acc[ho + c] += zv;
+                }
+            }
+
+            // L1x1 residual (skip last)
+            if li < A2_NUM_LAYERS - 1 {
+                let mut next = vec![0.0f64; ch];
+                for (oc, nv) in next.iter_mut().enumerate() {
+                    let mut sum = lw.l1x1_b[oc];
+                    for (ic, &zv) in z.iter().enumerate() {
+                        sum += zv * lw.l1x1_w[oc * ch + ic];
+                    }
+                    *nv = layer_in[oc] + sum;
+                }
+                layer_in = next;
+            }
+        }
+
+        // Head finalize
+        let k = A2_HEAD_KERNEL;
+        let cb = head_col.wrapping_sub(k - 1);
+        let mut y = head_b;
+        for t in 0..k {
+            let col = cb.wrapping_add(t) & ring_mask;
+            let so = col * ch;
+            let wo = t * ch;
+            for c in 0..ch {
+                y += head_w[wo + c] * head_acc[so + c];
+            }
+        }
+        *out_val = y * head_scale;
+    }
+
+    output
+}
+
+// =============================================================================
+// LSTM Oracle
+// =============================================================================
+
+fn oracle_lstm_forward(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    let h = model_data.config.hidden_size.unwrap_or(16);
+    let nlayers = model_data.config.num_layers.unwrap_or(1);
+    let mut cursor = Cursor::new(&model_data.weights);
+
+    struct LstmLW {
+        ih_w: Vec<Vec<Vec<f64>>>, // [gate=4][row=ih][col=h]
+        bias: Vec<f64>,
+        hidden: Vec<f64>,
+        cell: Vec<f64>,
+        in_size: usize,
+    }
+
+    // Flattened: [gate=4][row=ih][col=h] = 4 * IH * H f32s
+    let mut ll: Vec<LstmLW> = Vec::new();
+    for l in 0..nlayers {
+        let ins = if l == 0 { 1 } else { h };
+        let ih = ins + h;
+        let raw = cursor.read_f64(4 * ih * h);
+        let bias = cursor.read_f64(4 * h);
+        let hidden = cursor.read_f64(h);
+        let cell = cursor.read_f64(h);
+
+        // Build weight matrix [gate][row][col]
+        let mut wh = vec![vec![vec![0.0f64; h]; ih]; 4];
+        for g in 0..4 {
+            for r in 0..ih {
+                for c in 0..h {
+                    wh[g][r][c] = raw[g * ih * h + r * h + c];
+                }
+            }
+        }
+
+        ll.push(LstmLW {
+            ih_w: wh,
+            bias,
+            hidden,
+            cell,
+            in_size: ins,
+        });
+    }
+
+    let head_w = cursor.read_f64(h);
+    let head_b = cursor.read_one_f64();
+
+    let num_frames = input.len();
+    let mut output = vec![0.0f64; num_frames];
+
+    // Clone cell states for independent runs (decomposition needs fresh state)
+    let _orig_cell: Vec<Vec<f64>> = ll.iter().map(|l| l.cell.clone()).collect();
+    let _orig_hidden: Vec<Vec<f64>> = ll.iter().map(|l| l.hidden.clone()).collect();
+
+    #[allow(clippy::needless_range_loop)]
+    for f in 0..num_frames {
+        let x = input[f];
+
+        // Reset states to initial for each frame? No — LSTM is recurrent.
+        // We process sequentially.
+
+        for l in 0..nlayers {
+            let ins = ll[l].in_size;
+            let ih = ins + h;
+
+            // Build state: [input_part; hidden]
+            let mut state = vec![0.0f64; ih];
+            if l == 0 {
+                state[0] = x;
+            } else {
+                state[..ins].copy_from_slice(&ll[l - 1].hidden[..ins]);
+            }
+            state[ins..ins + h].copy_from_slice(&ll[l].hidden[..h]);
+
+            // GEMV: gates[g*h + i] = bias[g*h + i] + Σ_j state[j] * wh[g][j][i]
+            let mut gates = vec![0.0f64; 4 * h];
+            for g in 0..4 {
+                for i in 0..h {
+                    let mut sum = ll[l].bias[g * h + i];
+                    for j in 0..ih {
+                        sum += state[j] * ll[l].ih_w[g][j][i];
+                    }
+                    gates[g * h + i] = sum;
+                }
+            }
+
+            // Fused gates
+            for i in 0..h {
+                let gi = gates[i];
+                let gf = gates[h + i];
+                let gg = gates[2 * h + i];
+                let go = gates[3 * h + i];
+
+                let fg = oracle_sigmoid(gf, config.activation);
+                let ig = oracle_sigmoid(gi, config.activation);
+                let gv = oracle_tanh(gg, config.activation);
+                let og = oracle_sigmoid(go, config.activation);
+
+                let nc = fg * ll[l].cell[i] + ig * gv;
+                let hv = og * oracle_tanh(nc, config.activation);
+
+                ll[l].cell[i] = nc;
+                ll[l].hidden[i] = hv;
+            }
+        }
+
+        // Head
+        let last_h = &ll.last().unwrap().hidden;
+        let mut y = head_b;
+        for i in 0..h {
+            y += last_h[i] * head_w[i];
+        }
+        output[f] = y;
+    }
+
+    output
+}
+
+// =============================================================================
+// Decomposition
+// =============================================================================
+
+#[derive(Debug)]
+pub struct DecompositionResult {
+    pub label: String,
+    pub architecture: String,
+    pub esr_f32_vs_f64: f64,
+    pub esr_quant_f16c: Option<f64>,
+    pub esr_quant_bf16: Option<f64>,
+    pub esr_activation: Option<f64>,
+    pub esr_accumulation: Option<f64>,
+}
+
+pub fn run_decomposition(
+    label: &str,
+    architecture: &str,
+    model_data: &NamModelData,
+    production_output: &[f64],
+    input_signal: &[f64],
+) -> DecompositionResult {
+    let oracle_cfg = PrecisionConfig::default();
+
+    let oracle_out = oracle_forward(model_data, input_signal, &oracle_cfg);
+    let esr_f32_vs_f64 = compute_esr_f64(&oracle_out, production_output);
+
+    let mut cfg_f16c = oracle_cfg;
+    cfg_f16c.weight_precision = WeightPrecision::F16C;
+    let out_f16c = oracle_forward(model_data, input_signal, &cfg_f16c);
+    let esr_f16c = compute_esr_f64(&oracle_out, &out_f16c);
+
+    let mut cfg_bf16 = oracle_cfg;
+    cfg_bf16.weight_precision = WeightPrecision::BF16;
+    let out_bf16 = oracle_forward(model_data, input_signal, &cfg_bf16);
+    let esr_bf16 = compute_esr_f64(&oracle_out, &out_bf16);
+
+    let mut cfg_act = oracle_cfg;
+    cfg_act.activation = ActivationMode::PadeMinimax;
+    let out_act = oracle_forward(model_data, input_signal, &cfg_act);
+    let esr_act = compute_esr_f64(&oracle_out, &out_act);
+
+    let mut cfg_acc = oracle_cfg;
+    cfg_acc.accumulation = AccumulationMode::F32Plain;
+    let out_acc = oracle_forward(model_data, input_signal, &cfg_acc);
+    let esr_acc = compute_esr_f64(&oracle_out, &out_acc);
+
+    DecompositionResult {
+        label: label.to_string(),
+        architecture: architecture.to_string(),
+        esr_f32_vs_f64,
+        esr_quant_f16c: Some(esr_f16c),
+        esr_quant_bf16: Some(esr_bf16),
+        esr_activation: Some(esr_act),
+        esr_accumulation: Some(esr_acc),
+    }
+}
