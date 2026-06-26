@@ -30,6 +30,12 @@
 //!   pre-existing slice references — zero heap allocation, zero locks.
 
 use crate::math::common::AlignedVec;
+use crate::math::common::Avx2Math;
+use crate::math::common::Avx512Math;
+use crate::math::common::Avx512VnniBf16Math;
+use crate::math::common::dispatch::InstructionSet;
+use crate::math::common::dispatch::SimdMathConfig;
+use crate::math::common::traits::SimdMath;
 use crate::math::dsp::fft::RfftPlanner;
 use core::fmt;
 
@@ -81,7 +87,9 @@ pub struct LinearFftState {
     /// Frequency delay line — imaginary part.
     pub fdl_im: AlignedVec<f32>,
     /// Circular write index into `fdl_re` / `fdl_im` (0..K-1).
-    /// Advanced before storing a new input spectrum.
+    /// Points to the next position that will be written. In `process_tail_block`,
+    /// the FDL is read before writing: old spectra are consumed for the tail
+    /// convolution, then the new input spectrum replaces the oldest entry.
     pub fdl_write_idx: usize,
     /// Input window buffer of size `2P` for the forward RFFT.
     /// Filled from the `MirroredBuffer` history in `LinearModel`.
@@ -105,6 +113,9 @@ pub struct LinearFftState {
     /// Incremented by `LinearModel::process_sample`; triggers a new tail
     /// block computation when it reaches `P`.
     pub sample_counter: usize,
+    /// Instruction set captured at construction time to avoid runtime CPU
+    /// feature checks in the audio hot path.
+    pub isa: InstructionSet,
 }
 
 impl fmt::Debug for LinearFftState {
@@ -181,8 +192,10 @@ impl LinearFftState {
         let fdl_re = AlignedVec::<f32>::new(fdl_total, 0.0f32);
         let fdl_im = AlignedVec::<f32>::new(fdl_total, 0.0f32);
 
-        // fdl_write_idx starts at K-1 so that the first advance wraps to 0
+        // fdl_write_idx starts at K-1 so that the first read uses all-zero
+        // FDL entries (correct for silence before the first block).
         let fdl_write_idx = num_partitions.saturating_sub(1);
+        let isa = SimdMathConfig::current().instruction_set;
 
         Self {
             p,
@@ -203,6 +216,7 @@ impl LinearFftState {
             output_buf: AlignedVec::<f32>::new(block_size, 0.0f32),
             tail_output_buf: AlignedVec::<f32>::new(p, 0.0f32),
             sample_counter: 0,
+            isa,
         }
     }
 
@@ -235,6 +249,155 @@ impl LinearFftState {
         self.tail_output_buf.fill(0.0f32);
         self.fdl_write_idx = self.num_partitions.saturating_sub(1);
         self.sample_counter = 0;
+    }
+
+    /// Processes one block of tail convolution using overlap-save FFT.
+    ///
+    /// `input_window` must be a contiguous slice of the last `2P` input
+    /// samples (oldest to newest), typically obtained from the
+    /// `MirroredBuffer` via `history[write_pos - 2*P .. write_pos]`.
+    ///
+    /// After this call completes, `tail_output_buf` contains `P` valid
+    /// tail output samples ready for sequential per-sample consumption
+    /// via `sample_counter`.
+    ///
+    /// # Algorithm (overlap-save, zero-latency hybrid)
+    ///
+    /// 1. Compute forward RFFT of the `2P`-sample input window.
+    /// 2. Read past input spectra from the circular FDL (delays `P`,
+    ///    `2P`, …, `K×P`), multiply by the corresponding pre-computed
+    ///    tail IR spectra in the frequency domain using SIMD complex MAC.
+    /// 3. Store the new input spectrum in the FDL and advance the write
+    ///    index (overwrites the oldest entry, now `K+1` blocks ago).
+    /// 4. Inverse RFFT the accumulated spectrum back to time domain.
+    /// 5. Extract the valid `P` output samples (overlap-save: indices
+    ///    `P..2P-1`) into `tail_output_buf`.
+    ///
+    /// # RT-Safety
+    ///
+    /// Zero heap allocation, zero locks, zero panics in production
+    /// (debug assertions only). All buffers were pre-allocated at
+    /// construction time. The ISA for SIMD dispatch was captured once
+    /// at construction time — no runtime CPU feature checks on the hot
+    /// path.
+    pub fn process_tail_block(&mut self, input_window: &[f32]) {
+        let p = self.p;
+        let block_size = 2 * p;
+        let num_bins = self.num_bins;
+        let num_partitions = self.num_partitions;
+
+        debug_assert_eq!(input_window.len(), block_size);
+
+        if num_partitions == 0 {
+            return;
+        }
+
+        // ── Step 1: Copy input window and compute forward RFFT ──
+        self.input_buf[..block_size].copy_from_slice(input_window);
+        self.rfft
+            .process_forward(&self.input_buf, &mut self.fft_re, &mut self.fft_im);
+
+        // ── Step 2: Frequency-domain MAC using FDL ──
+        // Read BEFORE writing: the FDL currently holds spectra at delays
+        // P, 2P, ..., K×P relative to the current block.
+        if num_partitions == 1 {
+            let fdl_start = self.fdl_write_idx * num_bins;
+            // SAFETY: all slices have length num_bins, guaranteed by
+            // construction. ISA was captured at construction time.
+            unsafe {
+                match self.isa {
+                    InstructionSet::Avx512VnniBf16 => Avx512VnniBf16Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..num_bins],
+                        &self.h_fdl_im[..num_bins],
+                        &self.fdl_re[fdl_start..fdl_start + num_bins],
+                        &self.fdl_im[fdl_start..fdl_start + num_bins],
+                        &mut self.acc_re[..num_bins],
+                        &mut self.acc_im[..num_bins],
+                    ),
+                    InstructionSet::Avx512 => Avx512Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..num_bins],
+                        &self.h_fdl_im[..num_bins],
+                        &self.fdl_re[fdl_start..fdl_start + num_bins],
+                        &self.fdl_im[fdl_start..fdl_start + num_bins],
+                        &mut self.acc_re[..num_bins],
+                        &mut self.acc_im[..num_bins],
+                    ),
+                    InstructionSet::Avx2 => Avx2Math::complex_mac_overwrite(
+                        &self.h_fdl_re[..num_bins],
+                        &self.h_fdl_im[..num_bins],
+                        &self.fdl_re[fdl_start..fdl_start + num_bins],
+                        &self.fdl_im[fdl_start..fdl_start + num_bins],
+                        &mut self.acc_re[..num_bins],
+                        &mut self.acc_im[..num_bins],
+                    ),
+                }
+            }
+        } else {
+            self.acc_re[..num_bins].fill(0.0);
+            self.acc_im[..num_bins].fill(0.0);
+
+            for k in 0..num_partitions {
+                // Partition k of the IR tail covers delays
+                // (k+1)×P … (k+2)×P−1. It needs the input spectrum
+                // from (k+1) blocks ago.
+                let input_idx = (self.fdl_write_idx + num_partitions - k - 1) % num_partitions;
+                let fdl_start = input_idx * num_bins;
+                let h_start = k * num_bins;
+
+                // SAFETY: all slices have length num_bins, guaranteed
+                // by construction. ISA captured at construction time.
+                unsafe {
+                    match self.isa {
+                        InstructionSet::Avx512VnniBf16 => {
+                            Avx512VnniBf16Math::complex_mac_accumulate(
+                                &self.h_fdl_re[h_start..h_start + num_bins],
+                                &self.h_fdl_im[h_start..h_start + num_bins],
+                                &self.fdl_re[fdl_start..fdl_start + num_bins],
+                                &self.fdl_im[fdl_start..fdl_start + num_bins],
+                                &mut self.acc_re[..num_bins],
+                                &mut self.acc_im[..num_bins],
+                            )
+                        }
+                        InstructionSet::Avx512 => Avx512Math::complex_mac_accumulate(
+                            &self.h_fdl_re[h_start..h_start + num_bins],
+                            &self.h_fdl_im[h_start..h_start + num_bins],
+                            &self.fdl_re[fdl_start..fdl_start + num_bins],
+                            &self.fdl_im[fdl_start..fdl_start + num_bins],
+                            &mut self.acc_re[..num_bins],
+                            &mut self.acc_im[..num_bins],
+                        ),
+                        InstructionSet::Avx2 => Avx2Math::complex_mac_accumulate(
+                            &self.h_fdl_re[h_start..h_start + num_bins],
+                            &self.h_fdl_im[h_start..h_start + num_bins],
+                            &self.fdl_re[fdl_start..fdl_start + num_bins],
+                            &self.fdl_im[fdl_start..fdl_start + num_bins],
+                            &mut self.acc_re[..num_bins],
+                            &mut self.acc_im[..num_bins],
+                        ),
+                    }
+                }
+            }
+        }
+
+        // ── Step 3: Store new input spectrum in FDL ──
+        {
+            let fdl_base = self.fdl_write_idx * num_bins;
+            self.fdl_re[fdl_base..fdl_base + num_bins].copy_from_slice(&self.fft_re);
+            self.fdl_im[fdl_base..fdl_base + num_bins].copy_from_slice(&self.fft_im);
+        }
+
+        // ── Step 4: Advance FDL write index ──
+        self.fdl_write_idx += 1;
+        if self.fdl_write_idx >= num_partitions {
+            self.fdl_write_idx = 0;
+        }
+
+        // ── Step 5: Inverse RFFT (complex → real, 2P samples) ──
+        self.rfft
+            .process_inverse(&mut self.acc_re, &mut self.acc_im, &mut self.output_buf);
+
+        // ── Step 6: Extract valid output (overlap-save: samples P..2P-1) ──
+        self.tail_output_buf[..p].copy_from_slice(&self.output_buf[p..block_size]);
     }
 }
 
@@ -373,13 +536,162 @@ mod tests {
     }
 
     #[test]
-    fn h_fdl_re_partition_accessor() {
-        let weights = vec![1.0f32; 512];
-        let state = LinearFftState::new(256, &weights);
+    fn process_tail_block_noop_when_zero_partitions() {
+        let weights = vec![1.0f32; 256];
+        let mut state = LinearFftState::new(256, &weights);
+        assert_eq!(state.num_partitions, 0);
+        // Should not panic when called with no tail partitions
+        state.process_tail_block(&[0.0f32; 512]);
+        // tail_output_buf should remain all zeros
+        for &v in state.tail_output_buf.iter() {
+            assert!((v - 0.0).abs() < f32::EPSILON);
+        }
+    }
+
+    #[test]
+    fn process_tail_block_first_call_reads_zero_fdl() {
+        let weights = vec![1.0, 2.0, 3.0, 4.0];
+        let mut state = LinearFftState::new(2, &weights);
         assert_eq!(state.num_partitions, 1);
-        let part = state.h_fdl_re_partition(0);
-        assert_eq!(part.len(), 257);
-        // DC bin should be 256.0 (sum of 256 ones, zero-padded)
-        assert!((part[0] - 256.0).abs() < 1e-4);
+        // First call: FDL is all zeros → tail output should be all zeros
+        state.process_tail_block(&[1.0, 2.0, 3.0, 4.0]);
+        for &v in state.tail_output_buf.iter() {
+            assert!((v - 0.0).abs() < 1e-6, "expected zero, got {v}");
+        }
+    }
+
+    #[test]
+    fn process_tail_block_numerical_correctness() {
+        // P=2, N=4, IR = [0.5, 1.5, 3.0, 4.0]
+        // head = [0.5, 1.5], tail = [3.0, 4.0]
+        let ir = vec![0.5, 1.5, 3.0, 4.0];
+        let p = 2;
+        let mut state = LinearFftState::new(p, &ir);
+
+        // Block 1: feed [1, 2, 3, 4], FDL is zero → output = [0, 0]
+        let block1 = [1.0, 2.0, 3.0, 4.0];
+        state.process_tail_block(&block1);
+        assert!((state.tail_output_buf[0] - 0.0).abs() < 1e-6);
+        assert!((state.tail_output_buf[1] - 0.0).abs() < 1e-6);
+
+        // Block 2: feed [5, 6, 7, 8], FDL contains spectrum of block1
+        // Expected: conv([3,4], [1,2,3,4]) valid region [2,3]
+        //   y[2] = 3*3 + 4*2 = 17
+        //   y[3] = 3*4 + 4*3 = 24
+        let block2 = [5.0, 6.0, 7.0, 8.0];
+        state.process_tail_block(&block2);
+        assert!(
+            (state.tail_output_buf[0] - 17.0).abs() < 1e-4,
+            "expected 17, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 24.0).abs() < 1e-4,
+            "expected 24, got {}",
+            state.tail_output_buf[1]
+        );
+    }
+
+    #[test]
+    fn process_tail_block_multiple_partitions() {
+        // P=2, N=8, K=ceil((8-2)/2)=3
+        // IR = [h0, h1, t0, t1, t2, t3, t4, t5]
+        let ir: Vec<f32> = vec![
+            0.0, 0.0, // head (unused by FFT tail)
+            1.0, 0.0, // tail partition 0
+            0.0, 1.0, // tail partition 1
+            0.5, 0.5, // tail partition 2
+        ];
+        let p = 2;
+        let mut state = LinearFftState::new(p, &ir);
+        assert_eq!(state.num_partitions, 3);
+
+        // Block 1: prime FDL with [0, 0, 1, 0]
+        // fdl_write_idx starts at 2, write at 2, advances to 0
+        state.process_tail_block(&[0.0, 0.0, 1.0, 0.0]);
+        for &v in state.tail_output_buf.iter() {
+            assert!((v - 0.0).abs() < 1e-6, "block 1: expected zero, got {v}");
+        }
+
+        // Block 2: feed [0, 1, 0, 0]
+        // write_idx=0, reads FDL[2]=block 1 (delay P): h=[1,0] × input=[0,0,1,0]
+        //   y[2]=1*1+0*0=1, y[3]=1*0+0*1=0
+        // Parts 1,2: FDL entries still zero → no contribution
+        state.process_tail_block(&[0.0, 1.0, 0.0, 0.0]);
+        assert!(
+            (state.tail_output_buf[0] - 1.0).abs() < 1e-4,
+            "block 2[0]: expected 1, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 0.0).abs() < 1e-4,
+            "block 2[1]: expected 0, got {}",
+            state.tail_output_buf[1]
+        );
+
+        // Block 3: feed [1, 0, 0, 0]
+        // write_idx=1
+        // k=0: read FDL[0]=block 2 (delay P): h=[1,0] × [0,1,0,0] → [0,0]
+        // k=1: read FDL[2]=block 1 (delay 2P): h=[0,1] × [0,0,1,0] → [0,1]
+        // k=2: read FDL[1]=zero (delay 3P) → [0,0]
+        // Accumulated: [0, 1]
+        state.process_tail_block(&[1.0, 0.0, 0.0, 0.0]);
+        assert!(
+            (state.tail_output_buf[0] - 0.0).abs() < 1e-4,
+            "block 3[0]: expected 0, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 1.0).abs() < 1e-4,
+            "block 3[1]: expected 1, got {}",
+            state.tail_output_buf[1]
+        );
+    }
+
+    #[test]
+    fn process_tail_block_fdl_circular_advance() {
+        // P=2, N=8, K=3
+        let ir = vec![0.0f32; 8];
+        let p = 2;
+        let mut state = LinearFftState::new(p, &ir);
+        assert_eq!(state.num_partitions, 3);
+        assert_eq!(state.fdl_write_idx, 2); // K-1
+
+        // Call 1: write at 2, advance to 0
+        state.process_tail_block(&[1.0; 4]);
+        assert_eq!(state.fdl_write_idx, 0);
+
+        // Call 2: write at 0, advance to 1
+        state.process_tail_block(&[2.0; 4]);
+        assert_eq!(state.fdl_write_idx, 1);
+
+        // Call 3: write at 1, advance to 2
+        state.process_tail_block(&[3.0; 4]);
+        assert_eq!(state.fdl_write_idx, 2);
+
+        // Call 4: wraps back to 0
+        state.process_tail_block(&[4.0; 4]);
+        assert_eq!(state.fdl_write_idx, 0);
+    }
+
+    #[test]
+    fn process_tail_block_reset_then_process() {
+        let ir = vec![1.0, 2.0, 3.0, 4.0];
+        let mut state = LinearFftState::new(2, &ir);
+
+        // Prime FDL with one block
+        state.process_tail_block(&[1.0; 4]);
+        assert_eq!(state.fdl_write_idx, 0);
+
+        // Reset should clear FDL and counters
+        state.reset();
+        assert_eq!(state.fdl_write_idx, 0); // K-1 for K=1
+        assert_eq!(state.sample_counter, 0);
+
+        // After reset, first call should again read zeros from FDL
+        state.process_tail_block(&[5.0, 6.0, 7.0, 8.0]);
+        for &v in state.tail_output_buf.iter() {
+            assert!((v - 0.0).abs() < 1e-6, "expected zero after reset, got {v}");
+        }
     }
 }

@@ -76,9 +76,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - 9 testes unitários cobrindo: P==N, N==2P, IR 8192, partição irregular, pânico em P não-potência-de-2, pânico em P>N, reset, Debug, verificação de espectros.
 - **Risco:** 🟡 Médio. Requer precisão nos buffers de alinhamento e determinação do tamanho da partição `P` com base no receptive field (256, 512, 1024).
 
-#### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1)
+#### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs)
 - **Descrição:**
   - Implementar o método `process_tail_block` em `LinearFftState` para rodar na fronteira de blocos:
