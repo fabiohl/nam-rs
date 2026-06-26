@@ -18,9 +18,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 1. [MODEL] Reset Seletivo de Sub-Modelos no `ContainerModel` (F9) [TODO]
+### Tarefa 1. [MODEL] Reset Seletivo de Sub-Modelos no `ContainerModel` (F9) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
 - **Descrição:**

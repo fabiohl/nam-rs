@@ -197,9 +197,11 @@ impl NamModel for ContainerModel {
         self.crossfade_duration =
             (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
         for (_, model) in &mut self.submodels {
-            model.reset(sample_rate, max_buffer_size)?;
+            model.set_max_buffer_size(max_buffer_size)?;
         }
-        Ok(())
+        self.submodels[self.active_index]
+            .1
+            .reset(sample_rate, max_buffer_size)
     }
 
     fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
