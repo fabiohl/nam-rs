@@ -181,9 +181,27 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// of the negotiated CLAP/audio host block size so that internal ring
     /// buffers are sized correctly.
     ///
-    /// If `max_buf` is smaller than or equal to the current capacity, this is a no-op.
+    /// If `max_buf` is smaller than the current capacity, this is a no-op.
+    /// If `max_buf` equals the current capacity, state variables are reset
+    /// and all buffers are zero-filled in-place — avoiding heap allocation
+    /// on the RT thread (F9 / RT-Safety).
     pub fn set_max_buffer_size(&mut self, max_buf: usize) -> anyhow::Result<()> {
-        if max_buf <= self.max_buffer_size {
+        if max_buf < self.max_buffer_size {
+            return Ok(());
+        }
+        if max_buf == self.max_buffer_size {
+            let rf = self.receptive_field_size;
+            let ha_len = self.head_accum.len();
+            self.head_accum[..ha_len].fill(0.0);
+            self.head_write_pos = rf;
+            for buf in self.layer_buffers.iter_mut() {
+                let len = buf.size();
+                buf[..len].fill(0.0);
+            }
+            self.layer_buffer_starts
+                .copy_from_slice(&self.layer_ring_sizes);
+            let li_len = self.layer_in.len();
+            self.layer_in[..li_len].fill(0.0);
             return Ok(());
         }
         self.max_buffer_size = max_buf;

@@ -35,9 +35,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 2. [MODEL] Otimizar `set_max_buffer_size` em `WaveNetA2` para Evitar Alocações (F9 / RT-Safety) [TODO]
+### Tarefa 2. [MODEL] Otimizar `set_max_buffer_size` em `WaveNetA2` para Evitar Alocações (F9 / RT-Safety) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/models/a2/model/static/mod.rs`](file:///home/fabio/nam-rs/src/models/a2/model/static/mod.rs)
   - [`src/models/a2/model/dynamic/mod.rs`](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs)
@@ -46,6 +46,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Se o `max_buf` solicitado for igual ao `self.max_buffer_size` atual e a estrutura já estiver inicializada, redefinir as variáveis de estado e preencher os buffers existentes com zero (`fill(0.0)`) em vez de liberar e realocar `MirroredBuffer` e `AlignedVec`.
   - Isso remove qualquer alocação de memória do caminho de chamada de `reset()` no thread RT.
 - **Risco:** Médio. Exige validação cuidadosa de que todos os estados/ponteiros (como `head_write_pos` e `layer_buffer_starts`) foram redefinidos perfeitamente sem fugas.
+- **Nota de conclusão:** Implementado. `set_max_buffer_size` agora possui três caminhos: (1) `max_buf < self.max_buffer_size` → no-op; (2) `max_buf == self.max_buffer_size` → zero-fill in-place de `head_accum`, `layer_buffers` (MirroredBuffer) e `layer_in`, reset de `head_write_pos`=rf e `layer_buffer_starts`=ring_sizes, sem nenhuma alocação no heap; (3) `max_buf > self.max_buffer_size` → realocação completa como antes. Testes existentes (`test_wavenet_a2_set_max_buffer_size_noop_on_smaller`, `test_wavenet_a2_set_max_buffer_size_grows`, `test_wavenet_a2_reset_reallocates_and_prewarms`, e equivalentes dyn) passam. A condição `has_weights()` sugerida na descrição original não foi necessária — o zero-fill in-place é sempre seguro e evita branches na decisão de RT.
 
 ---
 
