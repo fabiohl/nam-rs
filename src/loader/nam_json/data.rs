@@ -7,5 +7,6 @@
 
 pub use super::error::JsonError;
 pub use super::model::{
-    NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
+    LinearImplementation, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData,
+    WeightsLayout,
 };

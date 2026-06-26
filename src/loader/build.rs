@@ -231,7 +231,7 @@ pub fn load_and_build_model(
         }
     } else if architecture == "Linear" {
         match nam_json::get_linear_topology(&model_data) {
-            Some((rf, has_bias)) => {
+            Some((rf, has_bias, _impl)) => {
                 if has_bias {
                     format!("RF{} (biased)", rf)
                 } else {

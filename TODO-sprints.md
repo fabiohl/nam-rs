@@ -18,13 +18,11 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Quadro de Tarefas Técnicas
+### Sprint 3: Fase 1 — Arquitetura, Parser JSON e Modelagem (F1, F12)
 
-#### Sprint 3: Fase 1 — Arquitetura, Parser JSON e Modelagem (F1, F12)
+#### 1. [LOADER] Adicionar Enum `LinearImplementation` e Desserialização no JSON (F12) [DONE]
 
-##### 1. [LOADER] Adicionar Enum `LinearImplementation` e Desserialização no JSON (F12)
-
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivos Alvo:**
   - [`src/loader/nam_json/model.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
   - [`src/loader/nam_json/topology/linear.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs)
@@ -34,7 +32,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Atualizar [`get_linear_topology`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs) para ler e expor a flag de implementação de forma limpa.
 - **Risco:** 🟢 Baixo. Alteração puramente estrutural no parsing JSON do modelo.
 
-##### 2. [LOADER] Propagar Configuração de Implementação para o Dispatcher (F12)
+#### 2. [LOADER] Propagar Configuração de Implementação para o Dispatcher (F12)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/loader/dispatcher/linear/mod.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs)
@@ -43,7 +41,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Ajustar [`build_linear`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs) para aceitar e propagar a opção de implementação durante a chamada de criação do `LinearModel`.
 - **Risco:** 🟢 Baixo. Conexão mecânica entre componentes.
 
-##### 3. [MODEL] Definir Variantes de Modo no `LinearModel` (F1)
+#### 3. [MODEL] Definir Variantes de Modo no `LinearModel` (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
@@ -55,9 +53,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-#### Sprint 4: Fase 2 — Core do Motor de Convolução FFT Zero-Latência (F1)
+### Sprint 4: Fase 2 — Core do Motor de Convolução FFT Zero-Latência (F1)
 
-##### 4. [MODEL] Desenhar e Estruturar o `LinearFftState` (F1)
+#### 4. [MODEL] Desenhar e Estruturar o `LinearFftState` (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs) (Novo arquivo)
@@ -73,7 +71,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     - `sample_counter`: índice de leitura interno do bloco de cauda (0 a `P-1`).
 - **Risco:** 🟡 Médio. Requer precisão nos buffers de alinhamento e determinação do tamanho da partição `P` com base no receptive field (256, 512, 1024).
 
-##### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1)
+#### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs)
@@ -85,7 +83,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     - Executar o IFFT e armazenar a cauda válida (amostras `P..2P-1`) no `tail_output_buf`.
 - **Risco:** 🔴 Alto. Hot-path precisa ser rigorosamente RT-Safe: zero heap drops, zero locks, zero loops sem eliminação estática de bounds checks.
 
-##### 6. [MODEL] Integrar o Despacho no Hot-path do `LinearModel` (F1)
+#### 6. [MODEL] Integrar o Despacho no Hot-path do `LinearModel` (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
@@ -101,9 +99,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-#### Sprint 5: Fase 3 — Paridade, Testes de Extremo e Benchmarks (F1)
+### Sprint 5: Fase 3 — Paridade, Testes de Extremo e Benchmarks (F1)
 
-##### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1)
+#### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs) (ou arquivo separado de teste)
@@ -112,7 +110,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Garantir tratamento correto das regras de tamanho de arquivos de testes (inline vs `_test.rs`) de acordo com a quantidade de linhas do arquivo final.
 - **Risco:** 🟢 Baixo. Validação da corretude matemática básica.
 
-##### 8. [TEST] Criar Fixtures de Integração e Golden Tests vs C++ v0.5.4 (F1)
+#### 8. [TEST] Criar Fixtures de Integração e Golden Tests vs C++ v0.5.4 (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** `tests/linear_fft_test.rs` (Novo arquivo)
@@ -122,7 +120,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Certificar execução e passagem total no QA pipeline via `utils/tests-quick.sh`.
 - **Risco:** 🟡 Médio. Eventuais desvios de arredondamento de float em FFTs longas precisam ser inspecionados.
 
-##### 9. [BENCH] Benchmark de Performance e Ajuste de Limiar (F1)
+#### 9. [BENCH] Benchmark de Performance e Ajuste de Limiar (F1)
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** `benches/linear.rs` (Novo arquivo)

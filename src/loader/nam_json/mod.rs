@@ -26,7 +26,8 @@ pub use activation_parser::{
     parse_layer_activations, parse_secondary_activations_from_json,
 };
 pub use data::{
-    JsonError, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
+    JsonError, LinearImplementation, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData,
+    WeightsLayout,
 };
 pub use parse::parse_nam_json;
 #[cfg(test)]

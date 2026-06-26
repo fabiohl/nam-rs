@@ -3,11 +3,11 @@
 
 //! Detection of Linear topologies from model data.
 
-use super::super::data::NamModelData;
+use super::super::data::{LinearImplementation, NamModelData};
 use super::super::validation::MAX_RECEPTIVE_FIELD;
 
-/// Checks and returns the Linear geometry (receptive_field, has_bias).
-pub fn get_linear_topology(data: &NamModelData) -> Option<(usize, bool)> {
+/// Checks and returns the Linear geometry (receptive_field, has_bias, implementation).
+pub fn get_linear_topology(data: &NamModelData) -> Option<(usize, bool, LinearImplementation)> {
     if data.architecture != "Linear" {
         return None;
     }
@@ -21,5 +21,11 @@ pub fn get_linear_topology(data: &NamModelData) -> Option<(usize, bool)> {
         return None;
     }
     let has_bias = data.config.bias.unwrap_or(false);
-    Some((receptive_field, has_bias))
+    let implementation = data
+        .config
+        .implementation
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_default();
+    Some((receptive_field, has_bias, implementation))
 }

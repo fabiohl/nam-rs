@@ -159,6 +159,33 @@ impl<'de> Deserialize<'de> for NamLayerConfig {
     }
 }
 
+/// Implementation mode for Linear architecture convolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LinearImplementation {
+    /// Auto-select based on receptive field size.
+    #[default]
+    Auto,
+    /// Direct time-domain convolution (full receptive field dot product).
+    Direct,
+    /// FFT partitioned convolution (zero-latency hybrid: direct head + FFT tail).
+    Fft,
+}
+
+impl LinearImplementation {}
+
+impl std::str::FromStr for LinearImplementation {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Auto" => Ok(Self::Auto),
+            "Direct" => Ok(Self::Direct),
+            "Fft" => Ok(Self::Fft),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Weight layout options supported in the `.namb` format.
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
@@ -232,6 +259,9 @@ pub struct NamConfig {
     /// (C++ `_process_condition()` mirror, wavenet/model.cpp:692-722).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition_dsp: Option<serde_json::Value>,
+    /// Linear convolution implementation mode ("Auto", "Direct", "Fft").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation: Option<String>,
 }
 
 impl NamConfig {

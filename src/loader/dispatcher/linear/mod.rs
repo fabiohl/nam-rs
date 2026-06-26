@@ -11,8 +11,9 @@ use anyhow::Context;
 use log::info;
 
 pub(crate) fn build_linear(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
-    let (receptive_field, has_bias) = crate::loader::nam_json::get_linear_topology(data)
-        .context("Linear topology not detectable (check receptive_field and bias)")?;
+    let (receptive_field, has_bias, _implementation) =
+        crate::loader::nam_json::get_linear_topology(data)
+            .context("Linear topology not detectable (check receptive_field and bias)")?;
 
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
