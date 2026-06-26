@@ -24,8 +24,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ## Document Hierarchy
 
 1. **`docs/architecture.md`** — Architecture bible and primary source of truth.
-2. **`README.md`** — Overview, installation, and usage.
-3. **`.agents/`** — AI definitions. Should be updated if there are changes in implementation patterns.
+2. **`docs/*.md`** — Various important technical references.
+3. **`README.md`** — Overview, installation, and usage.
+4. **`.agents/`** — AI definitions. Should be updated if there are changes in implementation patterns.
 
 ## Documentation Principles
 

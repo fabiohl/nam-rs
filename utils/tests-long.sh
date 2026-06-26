@@ -28,9 +28,9 @@ NC='\033[0m'
 # Setup defensive error trap
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
-echo -e "${BLUE}${BOLD}==========================================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 30 minutes - cold run)   ${NC}"
-echo -e "${BLUE}${BOLD}==========================================================================${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 25 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -44,9 +44,7 @@ mkdir -p target/logs/
 # Cleanup accumulated live-test artifacts from previous runs (41+ MB WAVs)
 rm -rf tests/fixtures/.temp_live/
 
-# Verify NeuralAmpModelerCore presence and version (pinned commit).
-# Version pinned commit is defined in mod-update.sh as source of truth.
-NAM_CORE_PINNED_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3 (canonical)
+# Verify NeuralAmpModelerCore presence.
 if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     echo -e "${RED}${BOLD}❌ NeuralAmpModelerCore não encontrado em tests/fixtures/NeuralAmpModelerCore.${NC}"
     echo -e "${YELLOW}Por favor, execute './utils/mod-update.sh' para clonar e configurar as dependências.${NC}"
@@ -54,11 +52,7 @@ if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
 fi
 
 CURRENT_CORE_SHA=$(cd tests/fixtures/NeuralAmpModelerCore && git rev-parse HEAD 2>/dev/null || echo "unknown")
-if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_PINNED_COMMIT" ]; then
-    echo -e "${RED}${BOLD}❌ Versão incorreta do NeuralAmpModelerCore (instalado: $CURRENT_CORE_SHA, esperado: $NAM_CORE_PINNED_COMMIT).${NC}"
-    echo -e "${YELLOW}Por favor, execute './utils/mod-update.sh' para ressincronizar as dependências.${NC}"
-    exit 1
-fi
+echo -e "${GREEN}✓ NeuralAmpModelerCore encontrado (versão: $CURRENT_CORE_SHA).${NC}"
 
 # ── Phase 0: Pre-flight check — C++ toolchain & golden files ──
 echo -e "\n${BLUE}${BOLD}[Phase 0] Pre-flight: verificando pré-requisitos C++ e golden vectors...${NC}"

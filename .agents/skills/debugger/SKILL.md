@@ -22,6 +22,7 @@ Also triggered by the `diagnostico` skill when the user pastes a support block.
 * Error codes `Exxxx` and support block format: `src/common/diagnostics/error_codes.rs` (`NamErrorCode`), `src/common/diagnostics/diagnostic.rs` (`NamDiagnostic`).
 * RT-safe and DSP guidelines: `.agents/rules/rust.md`.
 * General architecture: `docs/architecture.md`.
+* Documentations: `docs/*`.
 
 ### Evidence-Based Diagnosis
 
