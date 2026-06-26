@@ -55,9 +55,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 4. [TEST] Cobertura de Testes para Slimmable Breakpoints (F5)
+### Tarefa 4. [TEST] Cobertura de Testes para Slimmable Breakpoints (F5) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — 10 testes adicionados em `tests/container_slimmable.rs`: unitários com LSTM dummy (1/2/3 submodelos, não-Container, roundtrip via NamModel/SlimmableModel/inerente, edge cases) + integração com A2 fixtures. Todos os caminhos cobertos: `SlimmableModel::slimmable_breakpoints()` direto, `NamModel::slimmable_breakpoints()` via `StaticModel::Container`, e método inerente de `StaticModel`.
 - **Arquivos Alvo:**
   - [`tests/container_slimmable.rs`](file:///home/fabio/nam-rs/tests/container_slimmable.rs)
 - **Descrição:**

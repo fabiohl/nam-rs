@@ -19,6 +19,10 @@ use std::fs;
 mod common;
 use common::*;
 
+fn make_lstm() -> Box<StaticModel> {
+    Box::new(StaticModel::Lstm1x8(Box::default()))
+}
+
 // =============================================================================
 // Helpers — Relative Step & Energy Continuity
 // =============================================================================
@@ -48,6 +52,162 @@ fn signal_energy(signal: &[f32], start: usize, len: usize) -> f32 {
         energy += s * s;
     }
     energy
+}
+
+// =============================================================================
+// Slimmable Breakpoints Coverage (Tarefa 4 — F5)
+// =============================================================================
+
+/// Test 4.1: Single submodel — breakpoints must be empty.
+#[test]
+fn test_breakpoints_single_submodel() {
+    let submodels = vec![(1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+    assert!(
+        bps.is_empty(),
+        "Single submodel must have empty breakpoints"
+    );
+}
+
+/// Test 4.2: Two submodels — returns first max_value as breakpoint.
+#[test]
+fn test_breakpoints_two_submodels() {
+    let submodels = vec![(0.4, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+    assert_eq!(bps.len(), 1, "Two submodels must have 1 breakpoint");
+    assert!(
+        (bps[0] - 0.4f32 as f64).abs() < 1e-9,
+        "Breakpoint must be ~0.4"
+    );
+}
+
+/// Test 4.3: Three submodels — returns first two max_values as breakpoints.
+#[test]
+fn test_breakpoints_three_submodels() {
+    let submodels = vec![(0.25, make_lstm()), (0.55, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+    assert_eq!(bps.len(), 2, "Three submodels must have 2 breakpoints");
+    assert!((bps[0] - 0.25f32 as f64).abs() < 1e-9);
+    assert!((bps[1] - 0.55f32 as f64).abs() < 1e-9);
+}
+
+/// Test 4.4: Non-Container StaticModel returns empty breakpoints
+/// via inherent method and NamModel trait.
+#[test]
+fn test_breakpoints_non_container() {
+    let lstm = StaticModel::Lstm1x8(Box::default());
+    let bps_inherent = lstm.slimmable_breakpoints();
+    assert!(
+        bps_inherent.is_empty(),
+        "Non-container inherent method must be empty"
+    );
+    let bps_trait = lstm.slimmable_breakpoints(); // via NamModel trait
+    assert!(
+        bps_trait.is_empty(),
+        "Non-container NamModel trait must be empty"
+    );
+}
+
+/// Test 4.5: Breakpoints via StaticModel::Container inherent method.
+#[test]
+fn test_breakpoints_via_staticmodel_inherent() {
+    let submodels = vec![(0.3, make_lstm()), (0.7, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let model = StaticModel::Container(Box::new(container));
+    let bps = model.slimmable_breakpoints(); // inherent method
+    assert_eq!(bps.len(), 2);
+    assert!((bps[0] - 0.3f32 as f64).abs() < 1e-9);
+}
+
+/// Test 4.6: Breakpoints via NamModel trait on StaticModel::Container.
+#[test]
+fn test_breakpoints_via_nam_model_trait() {
+    let submodels = vec![(0.3, make_lstm()), (0.7, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let model = StaticModel::Container(Box::new(container));
+    let bps: Vec<f64> = NamModel::slimmable_breakpoints(&model); // trait method
+    assert_eq!(bps.len(), 2);
+}
+
+/// Test 4.7: Breakpoints via SlimmableModel trait on ContainerModel directly.
+#[test]
+fn test_breakpoints_via_slimmable_trait() {
+    let submodels = vec![(0.3, make_lstm()), (0.7, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+    assert_eq!(bps.len(), 2);
+}
+
+/// Test 4.8: Breakpoints roundtrip via ContainerModel → StaticModel::Container
+/// → inherent → NamModel trait (all paths agree).
+#[test]
+fn test_breakpoints_roundtrip_consistency() {
+    let container = ContainerModel::new(
+        vec![(0.35, make_lstm()), (0.80, make_lstm()), (1.0, make_lstm())],
+        48000,
+    )
+    .unwrap();
+    let bps_direct: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+
+    let model = StaticModel::Container(Box::new(container));
+    let bps_inherent = model.slimmable_breakpoints();
+    assert_eq!(
+        bps_direct, bps_inherent,
+        "Direct (SlimmableModel) must match inherent method"
+    );
+
+    let container2 = ContainerModel::new(
+        vec![(0.35, make_lstm()), (0.80, make_lstm()), (1.0, make_lstm())],
+        48000,
+    )
+    .unwrap();
+    let model2 = StaticModel::Container(Box::new(container2));
+    let bps_trait: Vec<f64> = NamModel::slimmable_breakpoints(&model2);
+    assert_eq!(
+        bps_direct, bps_trait,
+        "Direct (SlimmableModel) must match NamModel trait"
+    );
+}
+
+/// Test 4.9: Edge case — values near float boundaries.
+#[test]
+fn test_breakpoints_edge_cases() {
+    let submodels = vec![(f32::MIN_POSITIVE, make_lstm()), (1.0, make_lstm())];
+    let container = ContainerModel::new(submodels, 48000).unwrap();
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+    assert_eq!(bps.len(), 1, "MIN_POSITIVE / 1.0 must have 1 breakpoint");
+}
+
+/// Test 4.10: Integration test using real A2 fixture files (if available).
+#[test]
+fn test_breakpoints_a2_fixture() {
+    let full_path = model_path("wavenet_a2_full.nam");
+    let lite_path = model_path("wavenet_a2_lite.nam");
+    if !full_path.exists() || !lite_path.exists() {
+        eprintln!("SKIP: A2 model files not found.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container =
+        ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sample_rate).unwrap();
+
+    let bps: Vec<f64> = SlimmableModel::slimmable_breakpoints(&container);
+
+    let expected: Vec<f64> = vec![0.5];
+    assert_eq!(bps, expected, "A2 breakpoints must be [0.5]");
 }
 
 // =============================================================================
