@@ -78,15 +78,16 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 5. [DOC] Documentar Divergência Intencional de Staging de `SlimmableWavenet` (F10) [TODO]
+### Tarefa 5. [DOC] Documentar Divergência Intencional de Staging de `SlimmableWavenet` (F10) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/models/slimmable.rs`](file:///home/fabio/nam-rs/src/models/slimmable.rs)
 - **Descrição:**
   - Adicionar documentação detalhada (comentários de módulo ou de struct) explicando que o NAM-rs diverge intencionalmente do design de staging de C++ `SlimmableWavenet` (que usa `std::atomic<shared_ptr>`).
   - Documentar que o NAM-rs usa o canal de comunicação SPSC GC (Single Producer Single Consumer Garbage Collector) para transferir a desalocação do modelo antigo para a thread principal de housekeeping/Pipewire, mantendo o thread de áudio livre de locks e contenção.
 - **Risco:** Baixo. Apenas documentação e alinhamento de design.
+- **Nota de conclusão:** Documentação de módulo expandida com seção "Architectural divergence from C++ NAM — SlimmableWavenet staging" (~44 linhas). Cobre: (1) problema do `std::atomic<shared_ptr<WaveNet>>` do C++ (destrutor pode rodar na thread RT); (2) pipeline SPSC GC do NAM-rs (`gc_cascade` → `drain_gc_channels`) com RT thread como produtor e main thread como consumer; (3) mecanismo de overflow via `parking_lot` de 16 slots; (4) lifecycle completo de um swap slimmable (slice → replace → gc_cascade). Apenas comentários de documentação, sem alterações de código.
 
 ---
 

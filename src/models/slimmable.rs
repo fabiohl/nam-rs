@@ -6,6 +6,50 @@
 //!
 //! This is the official NAM architecture for runtime quality scaling.
 //!
+//! ## Architectural divergence from C++ NAM — `SlimmableWavenet` staging
+//!
+//! The C++ reference implementation (`NeuralAmpModelerCore`) uses
+//! `std::atomic<shared_ptr<WaveNet>>` for model staging: the DSP thread
+//! atomically swaps the `shared_ptr` and the old model's reference count is
+//! decremented inline. If the count reaches zero, the destructor runs on the
+//! audio thread — potentially triggering `WaveNet`'s heap deallocation
+//! (hundreds of KB to MB) inside the real-time callback.
+//!
+//! NAM-rs **intentionally diverges** from this design to guarantee strict
+//! zero-heap-deallocation on the DSP hot-path. The old model is never dropped
+//! on the audio thread. Instead, it is packed into a `GcItem::Model(…)` and
+//! routed through the **SPSC GC pipeline**:
+//!
+//! - **RT thread (producer)**: `gc_cascade(item, &mut producer, &mut parking_lot)`
+//!   attempts to push the `GcItem` into a lock-free `rtrb` SPSC ring buffer.
+//!   If full, the item cascades into a small fixed-size `parking_lot` overflow
+//!   array (16 slots, also lock-free). If the parking lot is exhausted, the
+//!   item is safely dropped on the RT thread as a last-resort fallback (this
+//!   should never occur under normal operation).
+//!
+//! - **Main thread (consumer)**: Pumps the GC channel periodically via
+//!   `drain_gc_channels(&mut consumer, &overflow, &rt_status)`, pulling all
+//!   pending `GcItem`s and dropping them outside the real-time callback —
+//!   typically during Pipewire housekeeping cycles or CLAP plugin idle
+//!   callbacks.
+//!
+//! This architecture removes all `std::sync::atomic`, `std::shared_ptr`,
+//! and reference-counting contention from the audio path. The only
+//! synchronization between the two threads is the SPSC ring buffer's atomic
+//! head/tail indices — a single `fetch_add` on the producer side, no CAS loops,
+//! no lock contention, and zero heap deallocation on the RT thread.
+//!
+//! ### Lifecycle of a slimmable swap
+//!
+//! 1. Async/main thread calls `model.slice_channels(target_ch)` to build a
+//!    new `WaveNetModelDyn` with reduced channel count (allocating weights and
+//!    states). Prewarm stabilizes the convolutional state.
+//!
+//! 2. The new model replaces the old via `Option<Box<StaticModel>>::replace()`
+//!    — a simple pointer swap, no atomics needed on the stack-local `Option`.
+//!
+//! 3. The old `Box<StaticModel>` is handed to `gc_cascade` for non-RT disposal.
+//!
 //! ## Channel slicing infrastructure
 //!
 //! The extraction/slicing functions below allow the instantiation engine to
