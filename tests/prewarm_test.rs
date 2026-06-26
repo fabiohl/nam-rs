@@ -7,6 +7,8 @@
 //! 1. `prewarm: Some(false)` skips the initial prewarm during loading.
 //! 2. `reset()` with `prewarm_on_reset == false` does not execute prewarm.
 //! 3. `set_prewarm_on_reset(false)` propagates through ContainerModel submodels.
+//! 4. LSTM `prewarm_samples()` returns values proportional to `expected_sample_rate`.
+//! 5. LSTM reset with `prewarm_on_reset = true` produces deterministic, stabilized output.
 
 use nam_rs::common::diagnostics::SystemSnapshot;
 use nam_rs::loader::dispatcher::build_model;
@@ -277,4 +279,224 @@ fn test_container_load_skip_propagation() {
             );
         }
     }
+}
+
+// =============================================================================
+// Test 4: LSTM prewarm_samples() changes with expected_sample_rate
+// =============================================================================
+
+/// Verify that `prewarm_samples()` returns a value proportional to the
+/// `expected_sample_rate` stored in the LSTM model. For LSTM models,
+/// `prewarm_samples() == (0.5 * expected_sample_rate)`.
+///
+/// Tests both static (H=3) and dynamic (H=7) LSTM variants.
+#[test]
+fn test_lstm_prewarm_samples_scales_with_sample_rate() {
+    let lstm_static_path = model_path("lstm.nam");
+    let lstm_dyn_path = model_path("lstm_dyn_test.nam");
+
+    let cases: &[(&str, Option<f32>, usize)] = &[
+        ("48kHz (explicit)", Some(48000.0), 24000),
+        ("44.1kHz", Some(44100.0), 22050),
+        ("None → DEFAULT_SAMPLE_RATE (48000)", None, 24000),
+    ];
+
+    for (model_name, model_path) in [
+        ("static H=3", lstm_static_path),
+        ("dynamic H=7", lstm_dyn_path),
+    ] {
+        if !model_path.exists() {
+            eprintln!(
+                "SKIP: {} model file not found for prewarm_samples test.",
+                model_name
+            );
+            continue;
+        }
+
+        let json = std::fs::read_to_string(&model_path).expect("Failed to read LSTM model file");
+        let mut data = parse_nam_json(&json).expect("Failed to parse LSTM model JSON");
+
+        for &(label, sr, expected) in cases {
+            data.sample_rate = sr;
+            let model = build_model(&data).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to build {} model with sample_rate={:?}: {}",
+                    model_name, sr, e
+                )
+            });
+
+            let actual = model.prewarm_samples();
+            assert_eq!(
+                actual, expected,
+                "[{}] prewarm_samples() mismatch for {}: expected {}, got {}",
+                model_name, label, expected, actual
+            );
+        }
+    }
+}
+
+/// Confirm that the edge case `sample_rate = 1.0` yields at least 1 sample
+/// (the `result <= 0 → 1` safety floor).
+#[test]
+fn test_lstm_prewarm_samples_minimum() {
+    let path = model_path("lstm.nam");
+    if !path.exists() {
+        eprintln!("SKIP: lstm.nam not found.");
+        return;
+    }
+
+    let json = std::fs::read_to_string(&path).expect("Failed to read lstm.nam");
+    let mut data = parse_nam_json(&json).expect("Failed to parse lstm.nam");
+
+    data.sample_rate = Some(1.0);
+    let model = build_model(&data).expect("Failed to build LSTM with sample_rate=1.0");
+
+    assert_eq!(
+        model.prewarm_samples(),
+        1,
+        "prewarm_samples() should floor at 1 when 0.5 * sample_rate < 1"
+    );
+}
+
+// =============================================================================
+// Test 5: LSTM reset with prewarm_on_reset=true stabilizes recurrent state
+// =============================================================================
+
+/// Build two LSTM instances from the same weights, process different audio
+/// through each to create divergent internal states, then reset both with
+/// `prewarm_on_reset = true`. After reset, processing identical input must
+/// yield identical output — proving deterministic stabilization.
+#[test]
+fn test_lstm_reset_deterministic_after_prewarm() {
+    let path = model_path("lstm.nam");
+    if !path.exists() {
+        eprintln!("SKIP: lstm.nam not found.");
+        return;
+    }
+
+    let json = std::fs::read_to_string(&path).expect("Failed to read lstm.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse lstm.nam");
+
+    let mut model_a = build_model(&data).expect("Failed to build LSTM model A");
+    let mut model_b = build_model(&data).expect("Failed to build LSTM model B");
+
+    let oil_input = {
+        let mut v = vec![0.0f32; BLOCK_SIZE * 8];
+        for (i, s) in v.iter_mut().enumerate() {
+            *s = (i as f32 * 0.1).sin() * 0.5;
+        }
+        v
+    };
+    let water_input = {
+        let mut v = vec![0.0f32; BLOCK_SIZE * 8];
+        for (i, s) in v.iter_mut().enumerate() {
+            *s = (i as f32 * 0.13).cos() * 0.7;
+        }
+        v
+    };
+    let test_input = {
+        let mut v = vec![0.0f32; BLOCK_SIZE * 4];
+        for (i, s) in v.iter_mut().enumerate() {
+            *s = (i as f32 * 0.06).sin() * 0.35;
+        }
+        v
+    };
+
+    let mut dummy = vec![0.0f32; oil_input.len()];
+
+    process_in_blocks(&mut model_a, &oil_input, &mut dummy, BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &water_input, &mut dummy, BLOCK_SIZE);
+
+    model_a
+        .reset(48000, BLOCK_SIZE)
+        .expect("reset A with prewarm should succeed");
+    model_b
+        .reset(48000, BLOCK_SIZE)
+        .expect("reset B with prewarm should succeed");
+
+    let mut out_a = vec![0.0f32; test_input.len()];
+    let mut out_b = vec![0.0f32; test_input.len()];
+
+    process_in_blocks(&mut model_a, &test_input, &mut out_a, BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &test_input, &mut out_b, BLOCK_SIZE);
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert!(
+            a.is_finite(),
+            "Output A sample[{}] should be finite after prewarm reset",
+            i
+        );
+        assert!(
+            b.is_finite(),
+            "Output B sample[{}] should be finite after prewarm reset",
+            i
+        );
+        assert!(
+            (a - b).abs() < 1e-6,
+            "LSTM after prewarm reset: outputs must be deterministic; mismatch at sample[{}]: {} vs {}",
+            i,
+            a,
+            b
+        );
+    }
+}
+
+/// Verify that resetting an LSTM with `prewarm_on_reset = false` does NOT
+/// stabilize the state — diverging priors persist, yielding different outputs.
+/// This is the LSTM counterpart of the Linear test
+/// `test_reset_outcome_differs_prewarm_vs_noprewarm`.
+#[test]
+fn test_lstm_reset_differs_prewarm_vs_noprewarm() {
+    let path = model_path("lstm.nam");
+    if !path.exists() {
+        eprintln!("SKIP: lstm.nam not found.");
+        return;
+    }
+
+    let json = std::fs::read_to_string(&path).expect("Failed to read lstm.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse lstm.nam");
+
+    let mut model_a = build_model(&data).expect("Failed to build LSTM model A");
+    let mut model_b = build_model(&data).expect("Failed to build LSTM model B");
+
+    let input = {
+        let mut v = vec![0.0f32; BLOCK_SIZE * 8];
+        for (i, s) in v.iter_mut().enumerate() {
+            *s = (i as f32 * 0.1).sin() * 0.5;
+        }
+        v
+    };
+    let mut dummy = vec![0.0f32; input.len()];
+
+    process_in_blocks(&mut model_a, &input, &mut dummy, BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut dummy, BLOCK_SIZE);
+
+    model_a.set_prewarm_on_reset(true);
+    model_a.reset(48000, BLOCK_SIZE).unwrap();
+    let mut out_a = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model_a, &input, &mut out_a, BLOCK_SIZE);
+
+    model_b.set_prewarm_on_reset(false);
+    model_b.reset(48000, BLOCK_SIZE).unwrap();
+    let mut out_b = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model_b, &input, &mut out_b, BLOCK_SIZE);
+
+    let mut any_differ = false;
+    for (&a, &b) in out_a.iter().zip(out_b.iter()) {
+        if (a - b).abs() > 1e-6 {
+            any_differ = true;
+        }
+        assert!(
+            a.is_finite(),
+            "Output A should be finite after prewarm reset"
+        );
+        assert!(
+            b.is_finite(),
+            "Output B should be finite after no-prewarm reset"
+        );
+    }
+    assert!(
+        any_differ,
+        "LSTM: prewarm vs no-prewarm reset should produce different outputs"
+    );
 }

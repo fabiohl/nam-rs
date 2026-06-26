@@ -97,14 +97,11 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### 5. [TEST] Criar Cobertura de Teste de Integração para Prewarm do LSTM (F8)
+### 5. [TEST] Criar Cobertura de Teste de Integração para Prewarm do LSTM (F8) [DONE]
 
-- **Status:** `[ ]`
-- **Arquivos Alvo:**
-  - [`tests/prewarm_test.rs`](file:///home/fabio/nam-rs/tests/prewarm_test.rs)
-- **Descrição:**
-  - Adicionar testes de integração cobrindo o comportamento do LSTM:
-    1. Garantir que o valor retornado por `prewarm_samples()` mude conforme a sample rate gravada no modelo (ex.: 24000 samples para 48kHz, 22050 para 44.1kHz).
-    2. Validar que um modelo LSTM resetado com `prewarm_on_reset = true` processe e estabilize o estado interno, produzindo saídas determinísticas e válidas.
-  - Rodar o script `utils/tests-quick.sh` para verificar a suite de lints e qualidade.
-- **Risco:** Baixo.
+- **Status:** `[X]` **Concluído** — 4 novos testes de integração adicionados em `tests/prewarm_test.rs`:
+  - `test_lstm_prewarm_samples_scales_with_sample_rate`: valida que `prewarm_samples()` retorna 24000 (48kHz) e 22050 (44.1kHz) para LSTM estático (H=3) e dinâmico (H=7), e que o fallback `DEFAULT_SAMPLE_RATE` (48000) é aplicado quando `sample_rate` é `None`.
+  - `test_lstm_prewarm_samples_minimum`: edge case com `sample_rate = 1.0` → `prewarm_samples()` floor = 1.
+  - `test_lstm_reset_deterministic_after_prewarm`: dois modelos LSTM com estados internos divergentes → reset com `prewarm_on_reset=true` → outputs deterministicamente idênticos (tolerância 1e-6).
+  - `test_lstm_reset_differs_prewarm_vs_noprewarm`: valida que reset com e sem prewarm produzem outputs diferentes (LSTM), complementando o teste Linear já existente.
+- **Suite completa:** `utils/tests-quick.sh` executada — todas as 5 fases passaram (incluindo clap-validator).
