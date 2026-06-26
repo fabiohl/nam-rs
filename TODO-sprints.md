@@ -116,9 +116,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
       - Chamar `m.prewarm(m.prewarm_samples().max(2048))` no processo de build do loader.
 - **Risco:** Baixo. Refatoração simples de assinatura pública.
 
-#### 6. [PLUGINS / BINS] Atualizar Chamadas Existentes de `load_and_build_model` (F3)
+#### 6. [PLUGINS / BINS] Atualizar Chamadas Existentes de `load_and_build_model` (F3) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]`
 - **Arquivos Alvo:**
   - [`src/bin/pgo_profiling_workload.rs`](file:///home/fabio/nam-rs/src/bin/pgo_profiling_workload.rs)
   - [`src/main.rs`](file:///home/fabio/nam-rs/src/main.rs)
@@ -129,9 +129,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Garantir que o comportamento padrão não seja alterado de forma inesperada.
 - **Risco:** Baixo. Mudança de aridade de função simples.
 
-#### 7. [TEST] Criar Cobertura de Teste de Integração para Prewarm Opcional
+#### 7. [TEST] Criar Cobertura de Teste de Integração para Prewarm Opcional [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]`
 - **Arquivo Alvo:** [`tests/prewarm_test.rs`](file:///home/fabio/nam-rs/tests/prewarm_test.rs) (Novo arquivo de teste)
 - **Descrição:**
   - Adicionar cobertura automatizada garantindo que:
