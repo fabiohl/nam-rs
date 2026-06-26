@@ -57,6 +57,7 @@ pub(crate) fn build_lstm_dynamic(
         head_weights_f32,
         head_bias,
         use_f32_head: true,
+        prewarm_on_reset: true,
     };
 
     info!(

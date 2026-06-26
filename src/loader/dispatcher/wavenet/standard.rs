@@ -70,6 +70,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
         array2,
         head_scale,
         receptive_field_size: rf,
+        prewarm_on_reset: true,
     };
 
     info!(

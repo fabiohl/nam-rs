@@ -85,6 +85,14 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
     fn prewarm_samples(&self) -> usize {
         self.array1.receptive_field_size
     }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+    }
 }
 
 // =============================================================================
@@ -116,6 +124,14 @@ impl NamModel for model_dyn::WaveNetModelDyn {
             cond_dsp.set_max_buffer_size(max_buf)?;
         }
         Ok(())
+    }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
     }
 }
 

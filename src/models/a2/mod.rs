@@ -95,6 +95,14 @@ impl<const CH: usize> NamModel for model::WaveNetA2<CH> {
     fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset(_sample_rate, max_buffer_size)
     }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+    }
 }
 
 impl sealed::Sealed for model::dynamic::WaveNetA2Dyn {}
@@ -118,6 +126,14 @@ impl NamModel for model::dynamic::WaveNetA2Dyn {
 
     fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset(_sample_rate, max_buffer_size)
+    }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
     }
 }
 

@@ -23,6 +23,7 @@ fn build_single_block_model() -> ConvNetModel {
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     }
 }
 
@@ -62,6 +63,7 @@ fn test_empty_model_outputs_silence() {
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     };
 
     let input = [0.5f32, -0.3];
@@ -113,6 +115,7 @@ fn test_two_block_chain() {
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_a: AlignedVec::new(2 * WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     };
 
     let mut model = model;
@@ -161,6 +164,7 @@ fn test_post_stack_head_integration() {
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     };
 
     let mut model = model;
@@ -201,6 +205,7 @@ fn test_prewarm_with_head() {
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     };
 
     model

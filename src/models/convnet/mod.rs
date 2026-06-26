@@ -35,4 +35,12 @@ impl NamModel for ConvNetModel {
     fn set_max_buffer_size(&mut self, _max_buf: usize) -> anyhow::Result<()> {
         Ok(())
     }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+    }
 }

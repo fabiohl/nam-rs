@@ -45,9 +45,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 - **Risco:** Baixo. Sem impacto na compatibilidade com implementações existentes.
 
-#### 2. [MODEL] Adicionar Armazenamento do Flag `prewarm_on_reset` nos Modelos Concretos (F2)
+#### 2. [MODEL] Adicionar Armazenamento do Flag `prewarm_on_reset` nos Modelos Concretos (F2) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]`
 - **Arquivos Alvo:**
   - [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
   - [`src/models/convnet/model.rs`](file:///home/fabio/nam-rs/src/models/convnet/model.rs)

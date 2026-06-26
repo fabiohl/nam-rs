@@ -158,6 +158,7 @@ pub(crate) fn build_convnet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
         head_output_scratch,
         scratch_a,
         scratch_b,
+        prewarm_on_reset: true,
     };
 
     info!(

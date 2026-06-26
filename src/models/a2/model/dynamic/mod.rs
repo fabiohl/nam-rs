@@ -115,6 +115,8 @@ pub struct WaveNetA2Dyn {
 
     /// Scratch buffer for head1x1 projection output (channels elements).
     pub head1x1_scratch: AlignedVec<f32>,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl WaveNetA2Dyn {
@@ -247,6 +249,7 @@ impl WaveNetA2Dyn {
             condition_size: 1,
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32),
             head1x1_scratch,
+            prewarm_on_reset: true,
         })
     }
 
@@ -311,7 +314,9 @@ impl WaveNetA2Dyn {
     /// Resets internal state for a new sample rate and max buffer size.
     pub fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.set_max_buffer_size(max_buffer_size)?;
-        self.prewarm();
+        if self.prewarm_on_reset {
+            self.prewarm();
+        }
         Ok(())
     }
 }

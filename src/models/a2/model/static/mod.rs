@@ -101,6 +101,8 @@ pub struct WaveNetA2<const CH: usize> {
 
     /// `RtStatusFlags` for silent RT→Main telemetry (RF8).
     pub rt_status: Option<Arc<crate::common::spsc::RtStatusFlags>>,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -150,6 +152,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             layer_raw: None,
             z_scratch: AlignedVec::new(CH, 0.0f32),
             rt_status: None,
+            prewarm_on_reset: true,
         })
     }
 
@@ -215,7 +218,9 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Resets internal state for a new sample rate and max buffer size.
     pub fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         self.set_max_buffer_size(max_buffer_size)?;
-        self.prewarm();
+        if self.prewarm_on_reset {
+            self.prewarm();
+        }
         Ok(())
     }
 

@@ -121,6 +121,8 @@ pub struct WaveNetModelDyn {
     /// Size: `out_ch × WAVENET_MAX_NUM_FRAMES`, where `out_ch` is the head's
     /// output channel count (defaults to 1 for mono).
     pub head_output_scratch: AlignedVec<f32>,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl Clone for WaveNetModelDyn {
@@ -137,6 +139,7 @@ impl Clone for WaveNetModelDyn {
             condition_dsp_output: self.condition_dsp_output.clone(),
             post_stack_head: self.post_stack_head.clone(),
             head_output_scratch: self.head_output_scratch.clone(),
+            prewarm_on_reset: self.prewarm_on_reset,
         }
     }
 }

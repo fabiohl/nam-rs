@@ -33,6 +33,8 @@ pub struct ConvNetModel {
     /// Ping-pong scratch buffers for block-to-block signal relay.
     pub(crate) scratch_a: AlignedVec<f32>,
     pub(crate) scratch_b: AlignedVec<f32>,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl ConvNetModel {

@@ -317,6 +317,7 @@ fn build_wavenet_dynamic_inner(
         condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
         post_stack_head,
         head_output_scratch,
+        prewarm_on_reset: true,
     };
 
     info!(

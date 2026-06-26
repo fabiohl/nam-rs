@@ -82,6 +82,8 @@ pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     pub head_bias: f32,
     /// Whether to use f32 head weights instead of quantized.
     pub use_f32_head: bool,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
@@ -96,6 +98,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             head_weights_f32: [0.0f32; H],
             head_bias: 0.0,
             use_f32_head: false,
+            prewarm_on_reset: true,
         }
     }
     define_lstm2_process_pipelined!(

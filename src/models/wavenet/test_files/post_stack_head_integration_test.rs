@@ -132,6 +132,7 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
         condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
         post_stack_head: Some(post_stack_head),
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        prewarm_on_reset: true,
     }
 }
 
@@ -403,6 +404,7 @@ fn test_post_stack_head_multi_array_determinism() {
             condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
             post_stack_head: Some(post),
             head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            prewarm_on_reset: true,
         }
     }
 

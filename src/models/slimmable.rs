@@ -306,6 +306,7 @@ pub fn slice_wavenet_model(
         condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
         post_stack_head: model.post_stack_head.clone(),
         head_output_scratch,
+        prewarm_on_reset: model.prewarm_on_reset,
     })
 }
 

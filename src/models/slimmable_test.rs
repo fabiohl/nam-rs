@@ -123,6 +123,7 @@ fn make_full_model(ch: usize, head: usize) -> WaveNetModelDyn {
         condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
         post_stack_head: None,
         head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        prewarm_on_reset: true,
     }
 }
 

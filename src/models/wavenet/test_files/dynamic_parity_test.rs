@@ -181,6 +181,7 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
         array2,
         head_scale: 0.02,
         receptive_field_size: rf1.max(rf2),
+        prewarm_on_reset: true,
     }
 }
 
@@ -297,6 +298,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         condition_dsp_output: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         post_stack_head: None,
         head_output_scratch: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        prewarm_on_reset: true,
     }
 }
 

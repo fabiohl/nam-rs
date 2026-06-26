@@ -48,6 +48,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
         head_weights_f32,
         head_bias,
         use_f32_head: true,
+        prewarm_on_reset: true,
     };
 
     info!(
@@ -98,6 +99,7 @@ pub(crate) fn build_lstm_2layer<
         head_weights_f32,
         head_bias,
         use_f32_head: true,
+        prewarm_on_reset: true,
     };
 
     info!(

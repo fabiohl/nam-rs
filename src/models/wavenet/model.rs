@@ -24,6 +24,8 @@ pub struct WaveNetModel<const CH: usize, const K: usize, const HEAD: usize> {
     pub head_scale: f32,
     /// Largest circular buffer required at the Kernel's temporal root.
     pub receptive_field_size: usize,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEAD> {

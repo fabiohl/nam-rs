@@ -53,6 +53,8 @@ pub struct LinearModel {
     pub receptive_field: usize,
     /// Precalculated limit * 2 to avoid runtime multiplication overflow checks.
     double_limit: usize,
+    /// Whether to execute prewarm during `reset()`. Default: `true`.
+    pub prewarm_on_reset: bool,
 }
 
 impl LinearModel {
@@ -84,6 +86,7 @@ impl LinearModel {
             write_pos: limit,
             receptive_field,
             double_limit,
+            prewarm_on_reset: true,
         })
     }
 
@@ -170,12 +173,22 @@ impl NamModel for LinearModel {
     }
 
     fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
-        self.reset(sample_rate, max_buffer_size);
+        if self.prewarm_on_reset {
+            self.reset(sample_rate, max_buffer_size);
+        }
         Ok(())
     }
 
     fn prewarm_samples(&self) -> usize {
         0
+    }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
     }
 }
 

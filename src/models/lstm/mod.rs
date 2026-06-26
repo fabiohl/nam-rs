@@ -129,6 +129,14 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
         self.reset_states();
         Ok(())
     }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+    }
 }
 
 // =============================================================================
@@ -155,6 +163,14 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         self.reset_states();
         Ok(())
     }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+    }
 }
 
 // =============================================================================
@@ -177,6 +193,14 @@ impl NamModel for LstmModelDyn {
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
         Ok(())
+    }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
     }
 }
 
