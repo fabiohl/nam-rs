@@ -32,9 +32,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### 2. [MODEL] Implementar `prewarm_samples` no Trait `NamModel` para LSTMs (F8)
+### 2. [MODEL] Implementar `prewarm_samples` no Trait `NamModel` para LSTMs (F8) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]` **Concluído** — Método `prewarm_samples(&self) -> usize` sobrescrito nos blocos `impl NamModel` de `LstmModel1`, `LstmModel2` e `LstmModelDyn`. Retorna `(0.5 * expected_sample_rate) as usize`, com fallback seguro para `1` caso o cálculo resulte ≤ 0. 22 testes LSTM passando.
 - **Arquivo Alvo:**
   - [`src/models/lstm/mod.rs`](file:///home/fabio/nam-rs/src/models/lstm/mod.rs)
 - **Descrição:**

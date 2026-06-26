@@ -130,6 +130,11 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
         Ok(())
     }
 
+    fn prewarm_samples(&self) -> usize {
+        let result = (0.5 * self.expected_sample_rate) as isize;
+        if result <= 0 { 1 } else { result as usize }
+    }
+
     fn prewarm_on_reset(&self) -> bool {
         self.prewarm_on_reset
     }
@@ -164,6 +169,11 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         Ok(())
     }
 
+    fn prewarm_samples(&self) -> usize {
+        let result = (0.5 * self.expected_sample_rate) as isize;
+        if result <= 0 { 1 } else { result as usize }
+    }
+
     fn prewarm_on_reset(&self) -> bool {
         self.prewarm_on_reset
     }
@@ -193,6 +203,11 @@ impl NamModel for LstmModelDyn {
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
         Ok(())
+    }
+
+    fn prewarm_samples(&self) -> usize {
+        let result = (0.5 * self.expected_sample_rate) as isize;
+        if result <= 0 { 1 } else { result as usize }
     }
 
     fn prewarm_on_reset(&self) -> bool {
