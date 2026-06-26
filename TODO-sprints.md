@@ -106,7 +106,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ### Sprint 5: Fase 3 — Paridade, Testes de Extremo e Benchmarks (F1)
 
-#### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1)
+#### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1) [DONE]
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs) (ou arquivo separado de teste)

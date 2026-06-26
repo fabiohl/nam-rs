@@ -297,84 +297,77 @@ impl LinearFftState {
         self.rfft
             .process_forward(&self.input_buf, &mut self.fft_re, &mut self.fft_im);
 
-        // ── Step 2: Frequency-domain MAC using FDL ──
-        // Read BEFORE writing: the FDL currently holds spectra at delays
-        // P, 2P, ..., K×P relative to the current block.
-        if num_partitions == 1 {
-            let fdl_start = self.fdl_write_idx * num_bins;
-            // SAFETY: all slices have length num_bins, guaranteed by
-            // construction. ISA was captured at construction time.
+        // ── Step 2: Frequency-domain MAC ──
+        // The tail output for the NEXT block needs the current input spectrum
+        // (block B) for partition 0 (delay P) and FDL entries (blocks B-1,
+        // B-2, ...) for partitions 1..K-1 (delays 2P, 3P, ..., K×P).
+        // SAFETY: all slices have length num_bins, guaranteed by construction.
+        // ISA was captured at construction time.
+        self.acc_re[..num_bins].fill(0.0);
+        self.acc_im[..num_bins].fill(0.0);
+
+        // Partition 0 (delays P..2P−1): uses the current block's input spectrum.
+        unsafe {
+            match self.isa {
+                InstructionSet::Avx512VnniBf16 => Avx512VnniBf16Math::complex_mac_accumulate(
+                    &self.h_fdl_re[..num_bins],
+                    &self.h_fdl_im[..num_bins],
+                    &self.fft_re[..num_bins],
+                    &self.fft_im[..num_bins],
+                    &mut self.acc_re[..num_bins],
+                    &mut self.acc_im[..num_bins],
+                ),
+                InstructionSet::Avx512 => Avx512Math::complex_mac_accumulate(
+                    &self.h_fdl_re[..num_bins],
+                    &self.h_fdl_im[..num_bins],
+                    &self.fft_re[..num_bins],
+                    &self.fft_im[..num_bins],
+                    &mut self.acc_re[..num_bins],
+                    &mut self.acc_im[..num_bins],
+                ),
+                InstructionSet::Avx2 => Avx2Math::complex_mac_accumulate(
+                    &self.h_fdl_re[..num_bins],
+                    &self.h_fdl_im[..num_bins],
+                    &self.fft_re[..num_bins],
+                    &self.fft_im[..num_bins],
+                    &mut self.acc_re[..num_bins],
+                    &mut self.acc_im[..num_bins],
+                ),
+            }
+        }
+
+        // Partitions 1..K−1 (delays 2P..K×P): use past input spectra from FDL.
+        for k in 1..num_partitions {
+            let input_idx = (self.fdl_write_idx + num_partitions - k) % num_partitions;
+            let fdl_start = input_idx * num_bins;
+            let h_start = k * num_bins;
+
             unsafe {
                 match self.isa {
-                    InstructionSet::Avx512VnniBf16 => Avx512VnniBf16Math::complex_mac_overwrite(
-                        &self.h_fdl_re[..num_bins],
-                        &self.h_fdl_im[..num_bins],
+                    InstructionSet::Avx512VnniBf16 => Avx512VnniBf16Math::complex_mac_accumulate(
+                        &self.h_fdl_re[h_start..h_start + num_bins],
+                        &self.h_fdl_im[h_start..h_start + num_bins],
                         &self.fdl_re[fdl_start..fdl_start + num_bins],
                         &self.fdl_im[fdl_start..fdl_start + num_bins],
                         &mut self.acc_re[..num_bins],
                         &mut self.acc_im[..num_bins],
                     ),
-                    InstructionSet::Avx512 => Avx512Math::complex_mac_overwrite(
-                        &self.h_fdl_re[..num_bins],
-                        &self.h_fdl_im[..num_bins],
+                    InstructionSet::Avx512 => Avx512Math::complex_mac_accumulate(
+                        &self.h_fdl_re[h_start..h_start + num_bins],
+                        &self.h_fdl_im[h_start..h_start + num_bins],
                         &self.fdl_re[fdl_start..fdl_start + num_bins],
                         &self.fdl_im[fdl_start..fdl_start + num_bins],
                         &mut self.acc_re[..num_bins],
                         &mut self.acc_im[..num_bins],
                     ),
-                    InstructionSet::Avx2 => Avx2Math::complex_mac_overwrite(
-                        &self.h_fdl_re[..num_bins],
-                        &self.h_fdl_im[..num_bins],
+                    InstructionSet::Avx2 => Avx2Math::complex_mac_accumulate(
+                        &self.h_fdl_re[h_start..h_start + num_bins],
+                        &self.h_fdl_im[h_start..h_start + num_bins],
                         &self.fdl_re[fdl_start..fdl_start + num_bins],
                         &self.fdl_im[fdl_start..fdl_start + num_bins],
                         &mut self.acc_re[..num_bins],
                         &mut self.acc_im[..num_bins],
                     ),
-                }
-            }
-        } else {
-            self.acc_re[..num_bins].fill(0.0);
-            self.acc_im[..num_bins].fill(0.0);
-
-            for k in 0..num_partitions {
-                // Partition k of the IR tail covers delays
-                // (k+1)×P … (k+2)×P−1. It needs the input spectrum
-                // from (k+1) blocks ago.
-                let input_idx = (self.fdl_write_idx + num_partitions - k - 1) % num_partitions;
-                let fdl_start = input_idx * num_bins;
-                let h_start = k * num_bins;
-
-                // SAFETY: all slices have length num_bins, guaranteed
-                // by construction. ISA captured at construction time.
-                unsafe {
-                    match self.isa {
-                        InstructionSet::Avx512VnniBf16 => {
-                            Avx512VnniBf16Math::complex_mac_accumulate(
-                                &self.h_fdl_re[h_start..h_start + num_bins],
-                                &self.h_fdl_im[h_start..h_start + num_bins],
-                                &self.fdl_re[fdl_start..fdl_start + num_bins],
-                                &self.fdl_im[fdl_start..fdl_start + num_bins],
-                                &mut self.acc_re[..num_bins],
-                                &mut self.acc_im[..num_bins],
-                            )
-                        }
-                        InstructionSet::Avx512 => Avx512Math::complex_mac_accumulate(
-                            &self.h_fdl_re[h_start..h_start + num_bins],
-                            &self.h_fdl_im[h_start..h_start + num_bins],
-                            &self.fdl_re[fdl_start..fdl_start + num_bins],
-                            &self.fdl_im[fdl_start..fdl_start + num_bins],
-                            &mut self.acc_re[..num_bins],
-                            &mut self.acc_im[..num_bins],
-                        ),
-                        InstructionSet::Avx2 => Avx2Math::complex_mac_accumulate(
-                            &self.h_fdl_re[h_start..h_start + num_bins],
-                            &self.h_fdl_im[h_start..h_start + num_bins],
-                            &self.fdl_re[fdl_start..fdl_start + num_bins],
-                            &self.fdl_im[fdl_start..fdl_start + num_bins],
-                            &mut self.acc_re[..num_bins],
-                            &mut self.acc_im[..num_bins],
-                        ),
-                    }
                 }
             }
         }
@@ -549,37 +542,14 @@ mod tests {
     }
 
     #[test]
-    fn process_tail_block_first_call_reads_zero_fdl() {
+    fn process_tail_block_first_call_uses_current_spectrum() {
+        // P=2, N=4, IR=[1.0, 2.0, 3.0, 4.0], tail=[3.0, 4.0]
         let weights = vec![1.0, 2.0, 3.0, 4.0];
         let mut state = LinearFftState::new(2, &weights);
         assert_eq!(state.num_partitions, 1);
-        // First call: FDL is all zeros → tail output should be all zeros
+        // Fix: first call uses current input spectrum.
+        // conv([3,4], [1,2,3,4]) at positions [2,3] = [3*3+4*2=17, 3*4+4*3=24]
         state.process_tail_block(&[1.0, 2.0, 3.0, 4.0]);
-        for &v in state.tail_output_buf.iter() {
-            assert!((v - 0.0).abs() < 1e-6, "expected zero, got {v}");
-        }
-    }
-
-    #[test]
-    fn process_tail_block_numerical_correctness() {
-        // P=2, N=4, IR = [0.5, 1.5, 3.0, 4.0]
-        // head = [0.5, 1.5], tail = [3.0, 4.0]
-        let ir = vec![0.5, 1.5, 3.0, 4.0];
-        let p = 2;
-        let mut state = LinearFftState::new(p, &ir);
-
-        // Block 1: feed [1, 2, 3, 4], FDL is zero → output = [0, 0]
-        let block1 = [1.0, 2.0, 3.0, 4.0];
-        state.process_tail_block(&block1);
-        assert!((state.tail_output_buf[0] - 0.0).abs() < 1e-6);
-        assert!((state.tail_output_buf[1] - 0.0).abs() < 1e-6);
-
-        // Block 2: feed [5, 6, 7, 8], FDL contains spectrum of block1
-        // Expected: conv([3,4], [1,2,3,4]) valid region [2,3]
-        //   y[2] = 3*3 + 4*2 = 17
-        //   y[3] = 3*4 + 4*3 = 24
-        let block2 = [5.0, 6.0, 7.0, 8.0];
-        state.process_tail_block(&block2);
         assert!(
             (state.tail_output_buf[0] - 17.0).abs() < 1e-4,
             "expected 17, got {}",
@@ -593,57 +563,104 @@ mod tests {
     }
 
     #[test]
+    fn process_tail_block_numerical_correctness() {
+        // P=2, N=4, IR = [0.5, 1.5, 3.0, 4.0]
+        // head = [0.5, 1.5], tail = [3.0, 4.0]
+        let ir = vec![0.5, 1.5, 3.0, 4.0];
+        let p = 2;
+        let mut state = LinearFftState::new(p, &ir);
+
+        // Block 1: feed [1, 2, 3, 4] — uses current input spectrum.
+        // conv([3,4], [1,2,3,4]) valid region [2,3] = [17, 24]
+        let block1 = [1.0, 2.0, 3.0, 4.0];
+        state.process_tail_block(&block1);
+        assert!(
+            (state.tail_output_buf[0] - 17.0).abs() < 1e-4,
+            "block 1[0]: expected 17, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 24.0).abs() < 1e-4,
+            "block 1[1]: expected 24, got {}",
+            state.tail_output_buf[1]
+        );
+
+        // Block 2: feed [5, 6, 7, 8] — uses current input spectrum.
+        // conv([3,4], [5,6,7,8]) valid region [2,3] = [45, 52]
+        let block2 = [5.0, 6.0, 7.0, 8.0];
+        state.process_tail_block(&block2);
+        assert!(
+            (state.tail_output_buf[0] - 45.0).abs() < 1e-4,
+            "block 2[0]: expected 45, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 52.0).abs() < 1e-4,
+            "block 2[1]: expected 52, got {}",
+            state.tail_output_buf[1]
+        );
+    }
+
+    #[test]
     fn process_tail_block_multiple_partitions() {
         // P=2, N=8, K=ceil((8-2)/2)=3
         // IR = [h0, h1, t0, t1, t2, t3, t4, t5]
         let ir: Vec<f32> = vec![
             0.0, 0.0, // head (unused by FFT tail)
-            1.0, 0.0, // tail partition 0
-            0.0, 1.0, // tail partition 1
-            0.5, 0.5, // tail partition 2
+            1.0, 0.0, // tail partition 0 (delays 2,3)
+            0.0, 1.0, // tail partition 1 (delays 4,5)
+            0.5, 0.5, // tail partition 2 (delays 6,7)
         ];
         let p = 2;
         let mut state = LinearFftState::new(p, &ir);
         assert_eq!(state.num_partitions, 3);
 
-        // Block 1: prime FDL with [0, 0, 1, 0]
-        // fdl_write_idx starts at 2, write at 2, advances to 0
+        // Block 1: feed [0, 0, 1, 0]
+        // k=0: conv([1,0], [0,0,1,0]) at [2,3] = [1, 0]
+        // k=1: FDL zeros → [0, 0]
+        // k=2: FDL zeros → [0, 0]
         state.process_tail_block(&[0.0, 0.0, 1.0, 0.0]);
-        for &v in state.tail_output_buf.iter() {
-            assert!((v - 0.0).abs() < 1e-6, "block 1: expected zero, got {v}");
-        }
-
-        // Block 2: feed [0, 1, 0, 0]
-        // write_idx=0, reads FDL[2]=block 1 (delay P): h=[1,0] × input=[0,0,1,0]
-        //   y[2]=1*1+0*0=1, y[3]=1*0+0*1=0
-        // Parts 1,2: FDL entries still zero → no contribution
-        state.process_tail_block(&[0.0, 1.0, 0.0, 0.0]);
         assert!(
             (state.tail_output_buf[0] - 1.0).abs() < 1e-4,
-            "block 2[0]: expected 1, got {}",
+            "block 1[0]: expected 1, got {}",
             state.tail_output_buf[0]
         );
         assert!(
             (state.tail_output_buf[1] - 0.0).abs() < 1e-4,
-            "block 2[1]: expected 0, got {}",
+            "block 1[1]: expected 0, got {}",
             state.tail_output_buf[1]
         );
 
-        // Block 3: feed [1, 0, 0, 0]
-        // write_idx=1
-        // k=0: read FDL[0]=block 2 (delay P): h=[1,0] × [0,1,0,0] → [0,0]
-        // k=1: read FDL[2]=block 1 (delay 2P): h=[0,1] × [0,0,1,0] → [0,1]
-        // k=2: read FDL[1]=zero (delay 3P) → [0,0]
-        // Accumulated: [0, 1]
-        state.process_tail_block(&[1.0, 0.0, 0.0, 0.0]);
+        // Block 2: feed [0, 1, 0, 0]
+        // k=0: conv([1,0], [0,1,0,0]) at [2,3] = [0, 0]
+        // k=1: FDL[2]=block 1's [0,0,1,0]. conv([0,1], [0,0,1,0]) at [2,3] = [0, 1]
+        // k=2: FDL zeros → [0, 0]
+        state.process_tail_block(&[0.0, 1.0, 0.0, 0.0]);
         assert!(
             (state.tail_output_buf[0] - 0.0).abs() < 1e-4,
-            "block 3[0]: expected 0, got {}",
+            "block 2[0]: expected 0, got {}",
             state.tail_output_buf[0]
         );
         assert!(
             (state.tail_output_buf[1] - 1.0).abs() < 1e-4,
-            "block 3[1]: expected 1, got {}",
+            "block 2[1]: expected 1, got {}",
+            state.tail_output_buf[1]
+        );
+
+        // Block 3: feed [1, 0, 0, 0]
+        // k=0: conv([1,0], [1,0,0,0]) at [2,3] = [0, 0]
+        // k=1: FDL[0]=block 2's [0,1,0,0]. conv([0,1], [0,1,0,0]) at [2,3] = [1, 0]
+        // k=2: FDL[2]=block 1's [0,0,1,0]. conv([0.5,0.5], [0,0,1,0]) at [2,3] = [0.5, 0.5]
+        // Total: [1.5, 0.5]
+        state.process_tail_block(&[1.0, 0.0, 0.0, 0.0]);
+        assert!(
+            (state.tail_output_buf[0] - 1.5).abs() < 1e-4,
+            "block 3[0]: expected 1.5, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 0.5).abs() < 1e-4,
+            "block 3[1]: expected 0.5, got {}",
             state.tail_output_buf[1]
         );
     }
@@ -688,10 +705,18 @@ mod tests {
         assert_eq!(state.fdl_write_idx, 0); // K-1 for K=1
         assert_eq!(state.sample_counter, 0);
 
-        // After reset, first call should again read zeros from FDL
+        // After reset, first call uses current spectrum.
+        // conv([3,4], [5,6,7,8]) at [2,3] = [3*7+4*6=45, 3*8+4*7=52]
         state.process_tail_block(&[5.0, 6.0, 7.0, 8.0]);
-        for &v in state.tail_output_buf.iter() {
-            assert!((v - 0.0).abs() < 1e-6, "expected zero after reset, got {v}");
-        }
+        assert!(
+            (state.tail_output_buf[0] - 45.0).abs() < 1e-4,
+            "expected 45, got {}",
+            state.tail_output_buf[0]
+        );
+        assert!(
+            (state.tail_output_buf[1] - 52.0).abs() < 1e-4,
+            "expected 52, got {}",
+            state.tail_output_buf[1]
+        );
     }
 }
