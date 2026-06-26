@@ -81,6 +81,18 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     fn prewarm_samples(&self) -> usize {
         0
     }
+
+    /// Returns the breakpoints at which slimmable quality transitions occur.
+    ///
+    /// Each breakpoint represents a normalized value in `[0.0, 1.0]` where the
+    /// model switches to a different submodel or internal quality tier. Hosts
+    /// and plugins can use these to map and snap discrete quality parameters.
+    ///
+    /// Delegates to the inner model when applicable (e.g., `ContainerModel`).
+    /// Defaults to an empty vector for models without discrete breakpoints.
+    fn slimmable_breakpoints(&self) -> Vec<f64> {
+        vec![]
+    }
 }
 
 /// Wrapper enum for trained model variants.

@@ -42,9 +42,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 3. [MODEL] Delegar Breakpoints no `StaticModel` e `NamModel` (F5)
+### Tarefa 3. [MODEL] Delegar Breakpoints no `StaticModel` e `NamModel` (F5) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — `fn slimmable_breakpoints(&self) -> Vec<f64>` adicionado ao trait `NamModel` com default `vec![]`. Método inerente e trait-implementado em `StaticModel` delegando para `ContainerModel` via `SlimmableModel::slimmable_breakpoints()`, retornando `vec![]` para demais variantes.
 - **Arquivos Alvo:**
   - [`src/models/static_model.rs`](file:///home/fabio/nam-rs/src/models/static_model.rs)
   - [`src/models/mod.rs`](file:///home/fabio/nam-rs/src/models/mod.rs)

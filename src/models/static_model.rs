@@ -107,6 +107,18 @@ impl StaticModel {
         }
     }
 
+    /// Returns the slimmable quality breakpoints for this model.
+    ///
+    /// Delegates to `ContainerModel::slimmable_breakpoints()` when this is a
+    /// `Container` variant. Returns an empty vector for all other variants.
+    pub fn slimmable_breakpoints(&self) -> Vec<f64> {
+        if let Self::Container(c) = self {
+            SlimmableModel::slimmable_breakpoints(c.as_ref())
+        } else {
+            vec![]
+        }
+    }
+
     /// Returns the total number of layers for the model (0 for non-WaveNet).
     /// Used by the adaptive FSM to compute how many to keep.
     #[inline(always)]
@@ -505,6 +517,14 @@ impl NamModel for StaticModel {
             Self::LstmDyn(m) => m.prewarm_samples(),
             Self::Linear(m) => m.prewarm_samples(),
             Self::ConvNet(m) => m.prewarm_samples(),
+        }
+    }
+
+    fn slimmable_breakpoints(&self) -> Vec<f64> {
+        if let Self::Container(c) = self {
+            SlimmableModel::slimmable_breakpoints(c.as_ref())
+        } else {
+            vec![]
         }
     }
 }
