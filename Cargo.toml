@@ -67,6 +67,10 @@ harness = false
 # Research artifact. Preserva reprodutibilidade dos benchmarks
 # que embasaram a decisão de não adotar Radix-4/Stockham/Split-Radix.
 
+[[bench]]
+name = "linear"
+harness = false
+
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]

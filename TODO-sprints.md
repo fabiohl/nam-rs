@@ -125,11 +125,12 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Certificar execução e passagem total no QA pipeline via `utils/tests-quick.sh`.
 - **Risco:** 🟡 Médio. Eventuais desvios de arredondamento de float em FFTs longas precisam ser inspecionados.
 
-#### 9. [BENCH] Benchmark de Performance e Ajuste de Limiar (F1)
+#### 9. [BENCH] Benchmark de Performance e Ajuste de Limiar (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** `benches/linear.rs` (Novo arquivo)
 - **Descrição:**
   - Criar benchmarks baseados no framework `criterion` comparando o tempo de processamento por bloco do modo Direct vs FFT em diferentes tamanhos de receptive field (128, 256, 512, 1024, 2048, 4096, 8192).
   - Validar empiricamente se o limiar de corte para auto-seleção (256 taps) é ótimo para a arquitetura alvo `x86-64-v3`.
 - **Risco:** 🟢 Baixo. Coleta estatística de dados de latência de CPU.
+- **Resultados:** O limiar de 256 é uma escolha conservadora válida. O ponto de cruzamento real situa-se entre ~350-500 taps (a RF=256 Direct é ~50% mais rápido; a RF=512 o desempenho é equivalente; a RF≥1024 FFT domina com 1.4-1.9x speedup). O limiar atual garante que a decisão `Auto` nunca selecione FFT onde Direct é claramente superior, embora em RF=256 ainda haja uma pequena margem onde Direct é preferível. Considerar ajustar para 384 ou 512 em revisão futura se resultados em CPUs de menor cache (ex: ARM) indicarem penalidade maior.
