@@ -522,7 +522,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ## Épicos de Implementação
 
-### Épico D — "Convolução FFT Particionada para Linear" (F1)
+### Épico D — "Convolução FFT Particionada para Linear" (F1) [DONE]
 
 **Escopo:** Implementar convolução FFT zero-latência particionada para o modelo Linear, com auto-seleção baseada no tamanho do receptive field.
 
@@ -594,7 +594,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico J — "Container Reset Seletivo + Staging" (F9, F10)
+### Épico J — "Container Reset Seletivo + Staging" (F9, F10) [DOING]
 
 **Escopo:** Implementar reset seletivo apenas do sub-modelo ativo no ContainerModel, armazenar `external_sample_rate`/`max_buffer_size` para uso em `set_slimmable_size()`, e verificar propagação de prewarm no SlimmableWavenet.
 
