@@ -234,6 +234,16 @@ impl NamModel for ContainerModel {
 }
 
 impl SlimmableModel for ContainerModel {
+    fn slimmable_breakpoints(&self) -> Vec<f64> {
+        if self.submodels.len() <= 1 {
+            return vec![];
+        }
+        self.submodels[..self.submodels.len() - 1]
+            .iter()
+            .map(|(max_value, _)| *max_value as f64)
+            .collect()
+    }
+
     fn set_slimmable_size(&mut self, val: f32) {
         let mut next = self.submodels.len() - 1;
 

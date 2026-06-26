@@ -18,7 +18,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 1. [MODEL] Definir a API de Breakpoints no Trait `SlimmableModel` (F5)
+### Tarefa 1. [MODEL] Definir a API de Breakpoints no Trait `SlimmableModel` (F5) [DONE]
 
 - **Status:** `[x]` **Concluída** — `fn slimmable_breakpoints(&self) -> Vec<f64>` adicionado ao trait `SlimmableModel` com default `vec![]`.
 - **Arquivos Alvo:**
@@ -30,9 +30,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 2. [MODEL] Implementar Breakpoints em `ContainerModel` (F5)
+### Tarefa 2. [MODEL] Implementar Breakpoints em `ContainerModel` (F5) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — `slimmable_breakpoints()` implementado em `impl SlimmableModel for ContainerModel`, retornando `max_value` de todos submodelos (exceto o último) convertidos para `f64`. Paridade com `ContainerModel::GetSlimmableSizeBreakpoints()` do C++.
 - **Arquivos Alvo:**
   - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
 - **Descrição:**
