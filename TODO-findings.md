@@ -546,7 +546,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico F — "API Slimmable Breakpoints" (F5)
+### Épico F — "API Slimmable Breakpoints" (F5) [DOING]
 
 **Escopo:** Expor breakpoints de transição do SlimmableModel para uso em plugins CLAP.
 
@@ -570,7 +570,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico H — "Fixture de Teste A2 Slimmable" (F6)
+### Épico H — "Fixture de Teste A2 Slimmable" (F6) [DOING]
 
 **Escopo:** Adicionar o modelo de exemplo `A2.nam` como fixture de teste de paridade C++.
 
@@ -606,7 +606,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico K — "Metadados e Parser Linear" (F11, F12)
+### Épico K — "Metadados e Parser Linear" (F11, F12) [DOING]
 
 **Escopo:** Expor API completa de metadados (loudness, input/output levels) e adicionar parsing do campo `implementation` no JSON do modelo Linear.
 

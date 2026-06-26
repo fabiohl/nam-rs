@@ -5,102 +5,125 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # TODO-sprints.md — Planejamento Ágil de Sprints (NAM-rs)
 
-Este documento contém o planejamento de sprints e tarefas técnicas estruturadas para o desenvolvimento do NAM-rs, garantindo paridade total com o NeuralAmpModelerCore v0.5.4.
+Este documento contém o planejamento de sprints e tarefas técnicas estruturadas para o desenvolvimento do NAM-rs, garantindo paridade total com o NeuralAmpModelerCore v0.5.4 para os Épicos F, H e K.
 
 ---
 
-## Sprint 3: Épico J — "Container Reset Seletivo + Staging" (F9, F10)
+## Sprint 4: Épicos F e H — "API Slimmable Breakpoints e Fixture A2" (F5, F6)
 
-**Escopo:** Implementar reset seletivo apenas do sub-modelo ativo no ContainerModel, armazenar `sample_rate`/`max_buffer_size` para uso em `set_slimmable_size()`, e verificar propagação de prewarm no SlimmableWavenet.
-**Objetivo de Paridade:** Garantir que a troca de sub-modelos de qualidade (Slimmable) seja livre de clicks e de alocações de memória no thread de tempo real, realizando o reset/prewarm correto do modelo destino no instante de sua ativação.
+**Escopo:** Expor os breakpoints de transição do `SlimmableModel` para uso em hosts e plugins CLAP, e introduzir o modelo oficial `A2.nam` como fixture para testes de integração de paridade C++ e consistência.
+**Objetivo de Paridade:** Permitir que o plugin identifique onde as transições de qualidade ocorrem, permitindo mapeamento e snapping preciso de parâmetros discretos de tamanho do modelo, além de garantir que a nova topologia slimmable seja testada contra o comportamento de referência do C++.
 **Estimativa:** 1 sprint.
-**Risco Geral:** 🟡 Médio — Requer garantia estrita de zero alocação no thread de tempo real (RT-Safety) ao chamar `reset` e `prewarm` na transição do `ContainerModel`.
+**Risco Geral:** 🟢 Baixo — Alterações locais focadas na API de breakpoints e adição de fixtures de teste, sem interferência no hot-path de processamento de áudio existente.
 
 ---
 
-### Tarefa 1. [MODEL] Reset Seletivo de Sub-Modelos no `ContainerModel` (F9) [DONE]
+### Tarefa 1. [MODEL] Definir a API de Breakpoints no Trait `SlimmableModel` (F5)
 
-- **Status:** `[X]` **Concluída**
-- **Arquivos Alvo:**
-  - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
-- **Descrição:**
-  - Modificar o método `reset` do bloco `impl NamModel for ContainerModel`.
-  - Em vez de resetar todos os sub-modelos em um loop (`for (_, model) in &mut self.submodels`), o método deve:
-    1. Atualizar os campos locais `self.sample_rate` e `self.max_buffer_size`.
-    2. Redimensionar o `scratch_buffer` local.
-    3. Atualizar a `crossfade_duration`.
-    4. Propagar a chamada de `set_max_buffer_size(max_buffer_size)` para todos os sub-modelos para garantir que os tamanhos de buffer estejam corretos.
-    5. Chamar `reset(sample_rate, max_buffer_size)` apenas no sub-modelo ativo atual (`self.submodels[self.active_index].1.reset(sample_rate, max_buffer_size)`).
-- **Risco:** Baixo. Modificação local e alinhada com o comportamento do C++.
-
----
-
-### Tarefa 2. [MODEL] Otimizar `set_max_buffer_size` em `WaveNetA2` para Evitar Alocações (F9 / RT-Safety) [DONE]
-
-- **Status:** `[X]` **Concluída**
-- **Arquivos Alvo:**
-  - [`src/models/a2/model/static/mod.rs`](file:///home/fabio/nam-rs/src/models/a2/model/static/mod.rs)
-  - [`src/models/a2/model/dynamic/mod.rs`](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs)
-- **Descrição:**
-  - Modificar `set_max_buffer_size` nas implementações estática e dinâmica de `WaveNetA2`.
-  - Se o `max_buf` solicitado for igual ao `self.max_buffer_size` atual e a estrutura já estiver inicializada, redefinir as variáveis de estado e preencher os buffers existentes com zero (`fill(0.0)`) em vez de liberar e realocar `MirroredBuffer` e `AlignedVec`.
-  - Isso remove qualquer alocação de memória do caminho de chamada de `reset()` no thread RT.
-- **Risco:** Médio. Exige validação cuidadosa de que todos os estados/ponteiros (como `head_write_pos` e `layer_buffer_starts`) foram redefinidos perfeitamente sem fugas.
-- **Nota de conclusão:** Implementado. `set_max_buffer_size` agora possui três caminhos: (1) `max_buf < self.max_buffer_size` → no-op; (2) `max_buf == self.max_buffer_size` → zero-fill in-place de `head_accum`, `layer_buffers` (MirroredBuffer) e `layer_in`, reset de `head_write_pos`=rf e `layer_buffer_starts`=ring_sizes, sem nenhuma alocação no heap; (3) `max_buf > self.max_buffer_size` → realocação completa como antes. Testes existentes (`test_wavenet_a2_set_max_buffer_size_noop_on_smaller`, `test_wavenet_a2_set_max_buffer_size_grows`, `test_wavenet_a2_reset_reallocates_and_prewarms`, e equivalentes dyn) passam. A condição `has_weights()` sugerida na descrição original não foi necessária — o zero-fill in-place é sempre seguro e evita branches na decisão de RT.
-
----
-
-### Tarefa 3. [MODEL] Reset e Prewarm Seletivo em `ContainerModel::set_slimmable_size` (F9) [DONE]
-
-- **Status:** `[X]` **Concluída**
-- **Arquivos Alvo:**
-  - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
-- **Descrição:**
-  - No método `set_slimmable_size(&mut self, val: f32)`, identificar se haverá uma transição de sub-modelo (quando o sub-modelo correspondente ao novo valor `val` for diferente do ativo e do pendente).
-  - Antes de definir `self.pending_index = Some(next);`, chamar o método `reset(self.sample_rate, self.max_buffer_size)` no sub-modelo de destino (`self.submodels[next].1`).
-  - Isso garante que o sub-modelo destino esteja limpo e pré-aquecido no sample rate e tamanho de buffer vigentes antes do início do crossfade, eliminando artefatos.
-- **Risco:** Baixo a Médio. Depende da garantia de que o `reset()` do modelo destino seja RT-safe (livre de alocações).
-- **Nota de conclusão:** Implementado. `set_slimmable_size` agora chama `reset()` no sub-modelo destino antes de definir `pending_index`. Para garantir zero-alocação, `ContainerModel::new()` foi modificado para chamar `set_max_buffer_size(default_buf)` em todos os sub-modelos na inicialização, evitando realocação tardia no `reset()` do destino. O `reset()` interno do A2 é RT-safe graças às otimizações das Tarefas 2 (set_max_buffer_size igual → zero-fill) e 4 (prewarm com stack arrays).
-
----
-
-### Tarefa 4. [MODEL] Otimizar `prewarm` dos Modelos A2 para Evitar Alocações no Thread RT (RT-Safety) [DONE]
-
-- **Status:** `[X]` **Concluída**
-- **Arquivos Alvo:**
-  - [`src/models/a2/model/static/prewarm.rs`](file:///home/fabio/nam-rs/src/models/a2/model/static/prewarm.rs)
-  - [`src/models/a2/model/dynamic/prewarm.rs`](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/prewarm.rs)
-- **Descrição:**
-  - Substituir o uso de `vec![0.0f32; block]` por um buffer estático/de pilha de tamanho fixo `[0.0f32; WAVENET_MAX_NUM_FRAMES]` nos métodos `prewarm` dos modelos A2.
-  - Isso evita alocação e desalocação de vetores no heap durante a fase de pré-aquecimento.
-- **Risco:** Baixo. Apenas alteração mecânica de tipo de buffer.
-- **Nota de conclusão:** Implementado. `vec![0.0f32; block]` substituído por `[0.0f32; WAVENET_MAX_NUM_FRAMES]` (64 elementos, 256 bytes) em ambos `prewarm.rs` (static e dynamic). Testes de prewarm, wavenet, golden vectors, zero-alloc e container_slimmable passam sem regressões.
-
----
-
-### Tarefa 5. [DOC] Documentar Divergência Intencional de Staging de `SlimmableWavenet` (F10) [DONE]
-
-- **Status:** `[X]` **Concluída**
+- **Status:** `[ ]` **Não Iniciada**
 - **Arquivos Alvo:**
   - [`src/models/slimmable.rs`](file:///home/fabio/nam-rs/src/models/slimmable.rs)
 - **Descrição:**
-  - Adicionar documentação detalhada (comentários de módulo ou de struct) explicando que o NAM-rs diverge intencionalmente do design de staging de C++ `SlimmableWavenet` (que usa `std::atomic<shared_ptr>`).
-  - Documentar que o NAM-rs usa o canal de comunicação SPSC GC (Single Producer Single Consumer Garbage Collector) para transferir a desalocação do modelo antigo para a thread principal de housekeeping/Pipewire, mantendo o thread de áudio livre de locks e contenção.
-- **Risco:** Baixo. Apenas documentação e alinhamento de design.
-- **Nota de conclusão:** Documentação de módulo expandida com seção "Architectural divergence from C++ NAM — SlimmableWavenet staging" (~44 linhas). Cobre: (1) problema do `std::atomic<shared_ptr<WaveNet>>` do C++ (destrutor pode rodar na thread RT); (2) pipeline SPSC GC do NAM-rs (`gc_cascade` → `drain_gc_channels`) com RT thread como produtor e main thread como consumer; (3) mecanismo de overflow via `parking_lot` de 16 slots; (4) lifecycle completo de um swap slimmable (slice → replace → gc_cascade). Apenas comentários de documentação, sem alterações de código.
+  - Adicionar a assinatura `fn slimmable_breakpoints(&self) -> Vec<f64>` ao trait `SlimmableModel`.
+  - Definir o retorno padrão como `vec![]` para manter a compatibilidade com modelos que não utilizam submodelos ou breakpoints discretos.
+- **Risco:** Baixo. Modificação simples de interface.
 
 ---
 
-### Tarefa 6. [TEST] Testes de Integração de Reset Seletivo e Zero-Alloc para ContainerModel (F9, F10) [DONE]
+### Tarefa 2. [MODEL] Implementar Breakpoints em `ContainerModel` (F5)
 
-- **Status:** `[X]` **Concluída**
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
+- **Descrição:**
+  - Implementar o método `slimmable_breakpoints` para `ContainerModel` no bloco `impl SlimmableModel for ContainerModel`.
+  - Retornar os limites (`max_value`) dos submodelos ordenados, exceto o último, convertidos para `f64`, em total paridade com `ContainerModel::GetSlimmableSizeBreakpoints()` do C++.
+- **Risco:** Baixo. A lista `submodels` já é validada e ordenada na construção do `ContainerModel`.
+
+---
+
+### Tarefa 3. [MODEL] Delegar Breakpoints no `StaticModel` e `NamModel` (F5)
+
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - [`src/models/static_model.rs`](file:///home/fabio/nam-rs/src/models/static_model.rs)
+  - [`src/models/mod.rs`](file:///home/fabio/nam-rs/src/models/mod.rs)
+- **Descrição:**
+  - Adicionar `fn slimmable_breakpoints(&self) -> Vec<f64>` ao trait `NamModel` (com padrão `vec![]`).
+  - Adicionar o método público/delegado correspondente em `StaticModel`. Se o modelo for `StaticModel::Container(c)`, delegar para o container; caso contrário, retornar `vec![]`.
+- **Risco:** Baixo.
+
+---
+
+### Tarefa 4. [TEST] Cobertura de Testes para Slimmable Breakpoints (F5)
+
+- **Status:** `[ ]` **Não Iniciada**
 - **Arquivos Alvo:**
   - [`tests/container_slimmable.rs`](file:///home/fabio/nam-rs/tests/container_slimmable.rs)
-  - [`tests/zero_alloc_infer.rs`](file:///home/fabio/nam-rs/tests/zero_alloc_infer.rs)
 - **Descrição:**
-  - Criar novos testes ou expandir os testes existentes para assegurar que:
-     1. O `ContainerModel::reset` redefina apenas o sub-modelo ativo.
-     2. A mudança de tamanho através de `set_slimmable_size` resete o modelo destino com sucesso.
-     3. Nenhuma alocação ocorra no heap ao mudar de modelo através do `set_slimmable_size` (garantido pelo teste com `TrackingGuard`).
+  - Criar testes de unidade ou integração para instanciar um `ContainerModel` (ou usar fixtures existentes) e certificar-se de que `slimmable_breakpoints()` retorna os valores corretos.
 - **Risco:** Baixo.
-- **Nota de conclusão:** Três novos testes implementados. `test_container_reset_only_active_submodel` (tests/container_slimmable.rs) verifica que após `ContainerModel::reset`, apenas o submodelo ativo foi prewarmed (head_accum com valores não-zero de bias), enquanto o inativo ficou apenas com zero-fill de `set_max_buffer_size` (head_accum todo zero, head_write_pos = rf). `test_set_slimmable_size_resets_target` (tests/container_slimmable.rs) verifica que `set_slimmable_size` chama `reset()` no submodelo destino antes de defini-lo como pending, apagando sentinel values preenchidos manualmente, enquanto o submodelo ativo corrente NÃO é resetado. `test_zero_alloc_set_slimmable_size` (tests/zero_alloc_infer.rs) verifica que a chamada isolada de `set_slimmable_size` (sem process blocks) não causa nenhuma alocação no heap. Todos os 12 testes de integração (4 container_slimmable + 8 zero_alloc_infer) e 14 unitários passam sem regressões. Clippy limpo.
+
+---
+
+### Tarefa 5. [TEST] Copiar e Integrar `A2.nam` como Fixture Oficial (F6)
+
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - `tests/fixtures/models/a2_example.nam` (Novo arquivo - cópia)
+  - [`tests/self_consistency.rs`](file:///home/fabio/nam-rs/tests/self_consistency.rs)
+- **Descrição:**
+  - Copiar o modelo de exemplo original `A2.nam` de `tests/fixtures/NeuralAmpModelerCore/example_models/A2.nam` para `tests/fixtures/models/a2_example.nam`.
+  - Registrar e mapear esse modelo em `tests/self_consistency.rs` para validar que o loader do NAM-rs analisa perfeitamente a estrutura de `SlimmableContainer` oficial distribuída no core do C++.
+- **Risco:** Baixo.
+
+---
+
+## Sprint 5: Épico K — "Metadados e Parser Linear" (F11, F12)
+
+**Escopo:** Expor a API de metadados de loudness e níveis (input/output level) e implementar o parser do campo `implementation` no modelo Linear de forma case-insensível.
+**Objetivo de Paridade:** Garantir que o host DAW ou plugins possam inspecionar os níveis RMS de calibração originais do modelo, e corrigir o parser de Linear para aceitar `"auto"`, `"direct"`, `"fft"`, `"legacy"` em letras minúsculas (como gerado oficialmente pelo exportador do C++).
+**Estimativa:** 1 sprint.
+**Risco Geral:** 🟢 Baixo — Focado em melhorias de parsing e adição de métodos de leitura à API pública.
+
+---
+
+### Tarefa 1. [MODEL/LOADER] Corrigir Parser de `LinearImplementation` para Case-Insensitive (F12)
+
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - [`src/loader/nam_json/model.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
+- **Descrição:**
+  - Modificar a implementação de `std::str::FromStr` para `LinearImplementation`.
+  - Converter a string de entrada para lowercase antes do match, permitindo que `"auto"`, `"direct"` e `"fft"` (em minúsculas, conforme o JSON real de exportação) sejam interpretados corretamente.
+- **Risco:** Baixo. Corrige o bug de fallback silencioso para `Auto` quando as strings do JSON vêm em minúsculas.
+
+---
+
+### Tarefa 2. [LOADER] Expor Metadados de Níveis em `LoadedModelPair` (F11)
+
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - [`src/loader/loaded_model_pair.rs`](file:///home/fabio/nam-rs/src/loader/loaded_model_pair.rs)
+- **Descrição:**
+  - Implementar métodos auxiliares de leitura em `LoadedModelPair`:
+    - `pub fn loudness(&self) -> Option<f32>`
+    - `pub fn input_level_dbu(&self) -> Option<f32>`
+    - `pub fn output_level_dbu(&self) -> Option<f32>`
+    - `pub fn has_loudness(&self) -> bool`
+    - `pub fn has_input_level_dbu(&self) -> bool`
+    - `pub fn has_output_level_dbu(&self) -> bool`
+  - Estes métodos extraem diretamente os valores de `self.metadata` quando disponíveis.
+- **Risco:** Baixo. Sem qualquer impacto no pipeline de processamento RT.
+
+---
+
+### Tarefa 3. [TEST] Testar Metadados e Parser Case-Insensitive (F11, F12)
+
+- **Status:** `[ ]` **Não Iniciada**
+- **Arquivos Alvo:**
+  - [`src/loader/nam_json_test.rs`](file:///home/fabio/nam-rs/src/loader/nam_json_test.rs)
+- **Descrição:**
+  - Escrever testes unitários verificando se metadados de calibração são expostos corretamente através das novas funções públicas.
+  - Testar o parser de Linear com `"implementation": "auto"` (minúsculo) e confirmar que o enum `LinearImplementation::Auto` é mapeado com sucesso em vez de falhar.
+- **Risco:** Baixo.
