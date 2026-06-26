@@ -1147,3 +1147,206 @@ fn test_a2_dyn_accepts_max_channels_and_bottleneck() {
         "Max channels/bottleneck should not trigger OOM/DoS rejection, got: {err_msg}"
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Tarefa 3 — Metadados e Parser Case-Insensitive (F11, F12)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── F11: LoadedModelPair metadata methods ──
+
+use crate::loader::loaded_model_pair::LoadedModelPair;
+use crate::loader::nam_json::NamMetadata;
+
+fn make_metadata(
+    loudness_val: Option<f32>,
+    in_level: Option<f32>,
+    out_level: Option<f32>,
+) -> NamMetadata {
+    NamMetadata {
+        loudness: loudness_val,
+        input_level_dbu: in_level,
+        output_level_dbu: out_level,
+        ..Default::default()
+    }
+}
+
+fn make_pair(meta: Option<NamMetadata>) -> LoadedModelPair {
+    LoadedModelPair {
+        model_l: None,
+        model_r: None,
+        input_mult_adj: 1.0,
+        output_mult_adj: 1.0,
+        sample_rate: 48000,
+        architecture: "LSTM".to_string(),
+        topology: "2x16".to_string(),
+        metadata: meta,
+        weights_layout: "Original".to_string(),
+    }
+}
+
+#[test]
+fn test_metadata_all_present() {
+    let meta = make_metadata(Some(-18.0), Some(12.0), Some(11.5));
+    let pair = make_pair(Some(meta));
+    assert_eq!(pair.loudness(), Some(-18.0));
+    assert_eq!(pair.input_level_dbu(), Some(12.0));
+    assert_eq!(pair.output_level_dbu(), Some(11.5));
+    assert!(pair.has_loudness());
+    assert!(pair.has_input_level_dbu());
+    assert!(pair.has_output_level_dbu());
+}
+
+#[test]
+fn test_metadata_all_absent() {
+    let meta = make_metadata(None, None, None);
+    let pair = make_pair(Some(meta));
+    assert_eq!(pair.loudness(), None);
+    assert_eq!(pair.input_level_dbu(), None);
+    assert_eq!(pair.output_level_dbu(), None);
+    assert!(!pair.has_loudness());
+    assert!(!pair.has_input_level_dbu());
+    assert!(!pair.has_output_level_dbu());
+}
+
+#[test]
+fn test_metadata_none() {
+    let pair = make_pair(None);
+    assert_eq!(pair.loudness(), None);
+    assert_eq!(pair.input_level_dbu(), None);
+    assert_eq!(pair.output_level_dbu(), None);
+    assert!(!pair.has_loudness());
+    assert!(!pair.has_input_level_dbu());
+    assert!(!pair.has_output_level_dbu());
+}
+
+#[test]
+fn test_metadata_partial_only_loudness() {
+    let meta = make_metadata(Some(-24.0), None, None);
+    let pair = make_pair(Some(meta));
+    assert_eq!(pair.loudness(), Some(-24.0));
+    assert_eq!(pair.input_level_dbu(), None);
+    assert_eq!(pair.output_level_dbu(), None);
+    assert!(pair.has_loudness());
+    assert!(!pair.has_input_level_dbu());
+    assert!(!pair.has_output_level_dbu());
+}
+
+#[test]
+fn test_metadata_partial_only_input() {
+    let meta = make_metadata(None, Some(6.0), None);
+    let pair = make_pair(Some(meta));
+    assert_eq!(pair.loudness(), None);
+    assert_eq!(pair.input_level_dbu(), Some(6.0));
+    assert_eq!(pair.output_level_dbu(), None);
+    assert!(!pair.has_loudness());
+    assert!(pair.has_input_level_dbu());
+    assert!(!pair.has_output_level_dbu());
+}
+
+#[test]
+fn test_metadata_partial_only_output() {
+    let meta = make_metadata(None, None, Some(-3.0));
+    let pair = make_pair(Some(meta));
+    assert_eq!(pair.loudness(), None);
+    assert_eq!(pair.input_level_dbu(), None);
+    assert_eq!(pair.output_level_dbu(), Some(-3.0));
+    assert!(!pair.has_loudness());
+    assert!(!pair.has_input_level_dbu());
+    assert!(pair.has_output_level_dbu());
+}
+
+// ── F12: Linear case-insensitive implementation via get_linear_topology ──
+
+/// Helper: builds a minimal Linear JSON with the given implementation string.
+fn make_linear_json(implementation: &str, receptive_field: usize) -> String {
+    format!(
+        r#"{{
+            "version": "0.5.4",
+            "architecture": "Linear",
+            "config": {{
+                "layers": [],
+                "head": null,
+                "receptive_field": {receptive_field},
+                "bias": true,
+                "implementation": "{implementation}"
+            }},
+            "weights": [0.0, 1.0]
+        }}"#
+    )
+}
+
+#[test]
+fn test_linear_implementation_case_insensitive_roundtrip() {
+    // "auto" lowercase (as exported by C++ trainer) → LinearImplementation::Auto
+    let json = make_linear_json("auto", 128);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let (rf, has_bias, imp) = get_linear_topology(&parsed).expect("Linear topology");
+    assert_eq!(rf, 128);
+    assert!(has_bias);
+    assert_eq!(imp, LinearImplementation::Auto);
+}
+
+#[test]
+fn test_linear_implementation_all_variants_lowercase() {
+    for (input, expected) in &[
+        ("auto", LinearImplementation::Auto),
+        ("direct", LinearImplementation::Direct),
+        ("fft", LinearImplementation::Fft),
+    ] {
+        let json = make_linear_json(input, 64);
+        let parsed = parse_nam_json(&json).expect("parse");
+        let (_, _, imp) = get_linear_topology(&parsed).expect("Linear topology");
+        assert_eq!(
+            imp, *expected,
+            "implementation=\"{input}\" should parse as {expected:?}, got {imp:?}"
+        );
+    }
+}
+
+#[test]
+fn test_linear_implementation_mixed_case_roundtrip() {
+    for (input, expected) in &[
+        ("Auto", LinearImplementation::Auto),
+        ("AUTO", LinearImplementation::Auto),
+        ("Direct", LinearImplementation::Direct),
+        ("DIRECT", LinearImplementation::Direct),
+        ("Fft", LinearImplementation::Fft),
+        ("FFT", LinearImplementation::Fft),
+    ] {
+        let json = make_linear_json(input, 32);
+        let parsed = parse_nam_json(&json).expect("parse");
+        let (_, _, imp) = get_linear_topology(&parsed).expect("Linear topology");
+        assert_eq!(
+            imp, *expected,
+            "implementation=\"{input}\" should parse as {expected:?}, got {imp:?}"
+        );
+    }
+}
+
+#[test]
+fn test_linear_implementation_missing_defaults_to_auto() {
+    // JSON without the "implementation" field → defaults to Auto
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "Linear",
+        "config": {
+            "layers": [],
+            "head": null,
+            "receptive_field": 256,
+            "bias": false
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let (_, _, imp) = get_linear_topology(&parsed).expect("Linear topology");
+    assert_eq!(imp, LinearImplementation::Auto);
+}
+
+#[test]
+fn test_linear_implementation_invalid_falls_back_to_auto() {
+    // Legacy/unexpected values should fallback to Auto (via unwrap_or_default)
+    let json = make_linear_json("legacy", 100);
+    let parsed = parse_nam_json(&json).expect("parse");
+    let (_, _, imp) = get_linear_topology(&parsed).expect("Linear topology");
+    assert_eq!(imp, LinearImplementation::Auto);
+}

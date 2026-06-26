@@ -128,9 +128,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 3. [TEST] Testar Metadados e Parser Case-Insensitive (F11, F12)
+### Tarefa 3. [TEST] Testar Metadados e Parser Case-Insensitive (F11, F12) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — 10 testes adicionados em `nam_json_test.rs`: 6 testes para `LoadedModelPair` (todos presentes, todos ausentes, metadata `None`, 3 cenários parciais), 4 testes para Linear case-insensitive (roundtrip `"auto"`, `"direct"`, `"fft"` minúsculos, mixed-case, missing defaults to Auto, invalid fallback to Auto).
 - **Arquivos Alvo:**
   - [`src/loader/nam_json_test.rs`](file:///home/fabio/nam-rs/src/loader/nam_json_test.rs)
 - **Descrição:**
