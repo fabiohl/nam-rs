@@ -11,6 +11,7 @@ pub mod container;
 /// ConvNet feed-forward architecture (F4).
 pub mod convnet;
 pub mod linear;
+pub mod linear_fft;
 pub mod lstm;
 pub mod slimmable;
 pub mod wavenet;

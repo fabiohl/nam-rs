@@ -41,9 +41,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Ajustar [`build_linear`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs) para aceitar e propagar a opção de implementação durante a chamada de criação do `LinearModel`.
 - **Risco:** 🟢 Baixo. Conexão mecânica entre componentes.
 
-#### 3. [MODEL] Definir Variantes de Modo no `LinearModel` (F1)
+#### 3. [MODEL] Definir Variantes de Modo no `LinearModel` (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
 - **Descrição:**
   - Criar o enum `LinearMode` contendo as variantes `Direct` e `Fft(Box<LinearFftState>)` para o modelo Linear.

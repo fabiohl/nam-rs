@@ -23,10 +23,23 @@
 //! without tanh or head_scale (those are exclusive to WaveNet).
 
 use super::NamModel;
+use super::linear_fft::LinearFftState;
 use super::sealed;
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::loader::nam_json::LinearImplementation;
 use crate::math::common::AlignedVec;
+
+/// Runtime convolution mode for the Linear model.
+///
+/// Controls whether the model uses direct time-domain convolution or
+/// zero-latency partitioned FFT (hybrid: direct head + FFT tail).
+#[derive(Debug)]
+pub enum LinearMode {
+    /// Direct time-domain convolution — dot product over the full receptive field.
+    Direct,
+    /// FFT partitioned convolution with `LinearFftState` for the tail.
+    Fft(Box<LinearFftState>),
+}
 
 /// Linear Model — lightweight FIR-based neural model.
 ///
@@ -58,6 +71,8 @@ pub struct LinearModel {
     pub prewarm_on_reset: bool,
     /// Convolution implementation mode as configured in the JSON.
     pub implementation: LinearImplementation,
+    /// Runtime convolution mode — `Direct` or `Fft` with partitioned FFT state.
+    pub mode: LinearMode,
 }
 
 impl LinearModel {
@@ -99,6 +114,7 @@ impl LinearModel {
             double_limit,
             prewarm_on_reset: true,
             implementation,
+            mode: LinearMode::Direct,
         })
     }
 
