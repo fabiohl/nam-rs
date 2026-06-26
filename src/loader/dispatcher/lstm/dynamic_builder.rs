@@ -3,6 +3,7 @@
 
 use super::super::WeightCursor;
 use super::weights::read_lstm_layer_dyn;
+use crate::loader::loaded_model_pair::DEFAULT_SAMPLE_RATE;
 use crate::loader::nam_json::NamModelData;
 use crate::math::common::quantize_weight;
 use crate::math::common::{InstructionSet, SimdMathConfig};
@@ -31,6 +32,7 @@ pub(crate) fn build_lstm_dynamic(
 ) -> anyhow::Result<LstmModelDyn> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
     let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
+    let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     let mut layers = Vec::with_capacity(num_layers);
     for i in 0..num_layers {
@@ -58,7 +60,7 @@ pub(crate) fn build_lstm_dynamic(
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
-        expected_sample_rate: 48000.0,
+        expected_sample_rate: sample_rate,
     };
 
     info!(

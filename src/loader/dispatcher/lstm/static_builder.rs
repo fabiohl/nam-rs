@@ -3,6 +3,7 @@
 
 use super::super::WeightCursor;
 use super::weights::read_lstm_layer;
+use crate::loader::loaded_model_pair::DEFAULT_SAMPLE_RATE;
 use crate::loader::nam_json::NamModelData;
 use crate::math::common::quantize_weight;
 use crate::math::common::{InstructionSet, SimdMathConfig};
@@ -26,6 +27,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
 ) -> anyhow::Result<LstmModel1<H, H1_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
     let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
+    let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     // Layer 1: input_size=1
     let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
@@ -49,7 +51,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
-        expected_sample_rate: 48000.0,
+        expected_sample_rate: sample_rate,
     };
 
     info!(
@@ -74,6 +76,7 @@ pub(crate) fn build_lstm_2layer<
 ) -> anyhow::Result<LstmModel2<H, H1_IH, H2_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
     let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
+    let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     // Layer 1: input_size=1
     let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
@@ -101,7 +104,7 @@ pub(crate) fn build_lstm_2layer<
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
-        expected_sample_rate: 48000.0,
+        expected_sample_rate: sample_rate,
     };
 
     info!(

@@ -78,9 +78,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### 4. [LOADER] Propagar `expected_sample_rate` nos Builders de LSTM (F8)
+### 4. [LOADER] Propagar `expected_sample_rate` nos Builders de LSTM (F8) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]` **Concluído** — `build_lstm_1layer`, `build_lstm_2layer` e `build_lstm_dynamic` agora extraem `sample_rate` de `NamModelData` (com fallback `DEFAULT_SAMPLE_RATE = 48000.0`) e propagam como `expected_sample_rate: f64` na construção das structs LSTM.
 - **Arquivos Alvo:**
   - [`src/loader/dispatcher/lstm/static_builder.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/lstm/static_builder.rs)
   - [`src/loader/dispatcher/lstm/dynamic_builder.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/lstm/dynamic_builder.rs)
