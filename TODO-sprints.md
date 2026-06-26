@@ -108,16 +108,16 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 #### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs) (ou arquivo separado de teste)
 - **Descrição:**
   - Escrever testes unitários em `tests` validando que as saídas geradas em Direct e FFT sob o mesmo modelo e sinal de teste são numericamente idênticas dentro de uma tolerância estrita de `1e-6`.
   - Garantir tratamento correto das regras de tamanho de arquivos de testes (inline vs `_test.rs`) de acordo com a quantidade de linhas do arquivo final.
 - **Risco:** 🟢 Baixo. Validação da corretude matemática básica.
 
-#### 8. [TEST] Criar Fixtures de Integração e Golden Tests vs C++ v0.5.4 (F1)
+#### 8. [TEST] Criar Fixtures de Integração e Golden Tests vs C++ v0.5.4 (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** `tests/linear_fft_test.rs` (Novo arquivo)
 - **Descrição:**
   - Adicionar fixture de teste contendo IRs de comprimento longo (ex: 2048, 4096, 8192 taps).
