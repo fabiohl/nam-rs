@@ -84,9 +84,9 @@ métricas de forma íntegra.
   mensagem de skip. `cabsim_cpp_parity.rs` não possui invocação equivalente (lê goldens pré-gerados, sem
   `Command`). Teste `wavenet_nano` passa sem intercalação; lints verdes.
 
-### Tarefa 1.2 [TEST/INFRA] Emissão atômica do relatório de fidelidade ([F-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 1.2 [TEST/INFRA] Emissão atômica do relatório de fidelidade ([F-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída
 - **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (`report_dsp_fidelity_impl`, ≈ 180-250)
 - **Descrição:**
   - Hoje o relatório é emitido em **~20 `println!` separados** (cabeçalho MSE/SNR/ESR e rodapé
@@ -99,6 +99,10 @@ métricas de forma íntegra.
 - **Critérios de Aceite:** cada relatório aparece como **bloco contíguo** (cabeçalho+rodapé juntos), 1 por
   modelo, mesmo com `--test-threads` > 1; nenhum rodapé destacado do seu cabeçalho.
 - **Risco:** Baixo (atenção a não manter o lock através de chamadas de FFT/`compute_*`).
+- **Conclusão:** Substituídos todos os `println!` do bloco de relatório (linhas 187-257) por `write!(buf, …)`
+  em um `String::with_capacity(1024)` + emissão atômica via `REPORT_LOCK.lock().unwrap()` + `print!("{buf}")`.
+  O lock envolve apenas a escrita final (fora da computação de métricas). Teste `wavenet_nano` exibe bloco
+  contíguo; `cargo check` e `cargo clippy --tests` sem warnings.
 
 ### Tarefa 1.3 [TEST] Veredito ✓/✗ explícito para o gate primário ESR ([F-4](file:///home/fabio/nam-rs/TODO-findings.md))
 

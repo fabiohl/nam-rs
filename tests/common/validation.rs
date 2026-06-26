@@ -3,6 +3,13 @@
 
 #![allow(dead_code)]
 
+use std::fmt::Write;
+
+/// Lock serializing report emission across threads so that each model's
+/// fidelity report (header + all metrics + footer) prints as a contiguous
+/// block even under `--test-threads > 1` (F-1, Tarefa 1.2).
+static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Plausible LUFS range for golden reference output (lightweight sanity gate).
 ///
 /// Guitar/amp model output at typical stress-signal levels falls between −35 and 0 LUFS.
@@ -177,77 +184,116 @@ fn report_dsp_fidelity_impl(
         nam_rs::testing::perceptual::compute_snr_db(reference, &anchor)
     };
 
-    println!();
-    println!("[NeuralAmpModelerCore × NAM-rs — {label}]");
-    println!(
+    // Build the entire report into a single String buffer so that the block
+    // (header + all metrics + footer) is emitted atomically.
+    // Protected by REPORT_LOCK to prevent interleaving across threads
+    // even under --test-threads > 1 (F-1, Tarefa 1.2).
+    let mut buf = String::with_capacity(1024);
+    writeln!(buf).unwrap();
+    writeln!(buf, "[NeuralAmpModelerCore × NAM-rs — {label}]").unwrap();
+    writeln!(
+        buf,
         "  MSE     = {mse:.2e}      (threshold < {mse_limit:.1e})  {}",
         if mse < mse_limit { "✓" } else { "✗" }
-    );
-    println!("  MAE     = {mae:.2e}");
+    )
+    .unwrap();
+    writeln!(buf, "  MAE     = {mae:.2e}").unwrap();
     if snr.is_finite() {
-        println!(
+        writeln!(
+            buf,
             "  SNR     = {snr:.1} dB       (threshold ≥ {min_snr_db:.1} dB)   {}",
             if snr >= min_snr_db { "✓" } else { "✗" }
-        );
+        )
+        .unwrap();
     } else {
-        println!("  SNR     = ∞ dB");
+        writeln!(buf, "  SNR     = ∞ dB").unwrap();
     }
     if psnr.is_finite() {
-        println!("  PSNR    = {psnr:.1} dB");
+        writeln!(buf, "  PSNR    = {psnr:.1} dB").unwrap();
     } else {
-        println!("  PSNR    = ∞ dB");
+        writeln!(buf, "  PSNR    = ∞ dB").unwrap();
     }
     if bits.is_finite() {
-        println!("  Bits    = {bits:.2} bits equiv.");
+        writeln!(buf, "  Bits    = {bits:.2} bits equiv.").unwrap();
     } else {
-        println!("  Bits    = ∞ bits equiv.");
+        writeln!(buf, "  Bits    = ∞ bits equiv.").unwrap();
     }
     if esr_linear.is_finite() {
-        println!(
+        writeln!(
+            buf,
             "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}, A2-Lite: {a2lite:.2e}]",
             a1std = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN,
             a2full = nam_rs::testing::perceptual::A2ESR_A2_FULL_MEDIAN,
             a2lite = nam_rs::testing::perceptual::A2ESR_A2_LITE_MEDIAN,
-        );
+        )
+        .unwrap();
     } else {
-        println!("  ESR     = ∞  (identical)");
+        writeln!(buf, "  ESR     = ∞  (identical)").unwrap();
     }
 
     // MR-STFT — T3.3 perceptual complement for difficult cases (soft gate, informational)
     let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(reference, test);
-    println!("  MR-STFT = {mr_stft:.4e}      (relative)");
+    writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (relative)").unwrap();
     const MRSTFT_SOFT_THRESHOLD: f64 = 0.15;
     if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
-        println!(
+        writeln!(
+            buf,
             "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds conservative threshold {MRSTFT_SOFT_THRESHOLD:.2e}"
-        );
-        println!("     (T3.3 perceptual complement — informational, not a hard assertion)");
+        )
+        .unwrap();
+        writeln!(
+            buf,
+            "     (T3.3 perceptual complement — informational, not a hard assertion)"
+        )
+        .unwrap();
     }
 
     if lufs_test.is_finite() {
         if lufs_ref.is_finite() {
-            println!(
+            writeln!(
+                buf,
                 "  LUFS    = {lufs_ref:.1} LUFS    (reference)   [plausible: {LUFS_PLAUSIBLE_MIN:.0}..{LUFS_PLAUSIBLE_MAX:.0}]  {}",
                 if lufs_plausible {
                     "✓"
                 } else {
                     "✗ — GOLDEN DEFECT (T2.5 lesson)"
                 }
-            );
+            )
+            .unwrap();
         } else {
-            println!("  LUFS    = {lufs_test:.1} LUFS    (test — reference silent)");
+            writeln!(
+                buf,
+                "  LUFS    = {lufs_test:.1} LUFS    (test — reference silent)"
+            )
+            .unwrap();
         }
         if anchor_snr_db.is_finite() {
             let delta_snr = snr - anchor_snr_db;
             let is_satisfactory = delta_snr > 8.0;
-            println!("  SNR(anchor) = {anchor_snr_db:.1} dB (degradation reference)");
-            println!(
+            writeln!(
+                buf,
+                "  SNR(anchor) = {anchor_snr_db:.1} dB (degradation reference)"
+            )
+            .unwrap();
+            writeln!(
+                buf,
                 "  Fidelity Margin = {delta_snr:.1} dB (target > 8.0 dB) {}",
                 if is_satisfactory { "✓" } else { "?" }
-            );
+            )
+            .unwrap();
         }
     }
-    println!("  Samples = {} @ {sr} Hz (stress signal)", reference.len());
+    writeln!(
+        buf,
+        "  Samples = {} @ {sr} Hz (stress signal)",
+        reference.len()
+    )
+    .unwrap();
+
+    {
+        let _lock = REPORT_LOCK.lock().unwrap();
+        print!("{buf}");
+    }
 
     assert!(
         mse < mse_limit,
