@@ -24,3 +24,4 @@ When the user requests a thorough review of documentation and source code commen
 * In Rust files (`.rs`), ensure correct usage of `///` to document public items and `//` for internal structural comments.
 * Make the improvements, corrections and edits right now, as you go seeing them.
 * Orient yourself by the highest standards of the `documentador` skill.
+* Activate skill `planejador-arquiteto` to plan a safe corrections of all findings.
