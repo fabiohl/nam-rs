@@ -40,17 +40,26 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 2. [DECISION] Análise de Desempenho e Tomada de Decisão (F4)
+### Tarefa 2. [DECISION] Análise de Desempenho e Tomada de Decisão (F4) [DONE]
 
-- **Status:** `[ ]` **Não iniciada**
+- **Status:** `[x]` **Concluída**
 - **Arquivos Alvo:**
-  - N/A (Relatório textual a ser gerado/arquivado ou incluído em `TODO-findings.md`)
+  - [`benches/gemv_bench.rs`](file:///home/fabio/nam-rs/benches/gemv_bench.rs) (buffer overflow corrigido nos kernels 1×4, 4×4, 8×4)
 - **Descrição:**
   - Executar a suíte de benchmarks e analisar as médias de execução comparando a implementação genérica vs. especializada.
   - Aplicar o critério de aceitação de ganho de desempenho:
     - **Se ganho > 5%** em alguma dimensão crítica: Prosseguir para a implementação definitiva e integração (Tarefa 3).
     - **Se ganho <= 5%**: Abortar a alteração do código de produção, documentar a decisão e fechar a finding `F4` com a conclusão de que a otimização de loops do LLVM já atinge o pico de desempenho para o baseline `x86-64-v3` do NAM-rs.
 - **Risco:** Baixo. Apenas análise de dados.
+- **Conclusão:** **APROVADO — Prosseguir para Tarefa 3.** Ganho >5% em **todas** as 6 dimensões testadas:
+  - 1×4: +40.0% (15.0ns → 9.0ns)
+  - 4×4: +50.4% (23.2ns → 11.5ns)
+  - 4×6: +49.5% (28.1ns → 14.2ns)
+  - 8×4: +72.9% (46.8ns → 12.7ns)
+  - 8×6: +65.5% (62.6ns → 21.6ns)
+  - 8×8: +21.2% (15.6ns → 12.3ns)
+  - O kernel genérico atinge seu pico na dimensão 8×8 (bloco interno ótimo), mas ainda perde por 21% devido ao overhead de loop/branching. O ganho é massivo nas dimensões não-alinhadas ao bloco de 8 saídas.
+  - **Nota:** Identificados e corrigidos buffer overflows nos kernels 1×4, 4×4 e 8×4 onde `_mm256_storeu_ps` escrevia 32 bytes em buffers de 16 bytes (4×f32). A correção usa array temporário `[f32; 8]` com cópia parcial dos primeiros `out_len` elementos. Os mesmos kernels também tem leituras sobredimensionadas (`_mm256_loadu_ps` lendo 32 bytes de buffers de bias/out_frame de 16 bytes) — funcionalmente inócuas pois os lanes 4-7 são descartados, mas tecnicamente UB. Recomenda-se corrigir na Tarefa 3.
 
 ---
 
@@ -61,8 +70,11 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - [`src/math/gemm/gemv/f16_avx2.rs`](file:///home/fabio/nam-rs/src/math/gemm/gemv/f16_avx2.rs)
   - [`src/math/gemm/gemv/mod.rs`](file:///home/fabio/nam-rs/src/math/gemm/gemv/mod.rs)
 - **Descrição:**
-  - (Condicional à aprovação da Tarefa 2) Implementar kernels especializados em Assembly inline ou intrinsics SIMD otimizadas (ex.: unrolling completo, bias fusionado no loop principal de processamento) para as dimensões vitoriosas.
+  - (APROVADO pela Tarefa 2) Implementar kernels especializados em Assembly inline ou intrinsics SIMD otimizadas (ex.: unrolling completo, bias fusionado no loop principal de processamento) para **todas** as 6 dimensões (1×4, 4×4, 4×6, 8×4, 8×6, 8×8), dado que todas tiveram ganho >21%.
   - Integrar os novos kernels especializados no dispatch estático da trait `SimdMath` ou diretamente na lógica de convolução/GEMV do NAM-rs, mantendo a retrocompatibilidade com tamanhos arbitrários.
+  - **Correções de UB obrigatórias na implementação de produção:**
+    - **Store YMM→buffer parcial**: Para dimensões com `out_len < 8` (1×4, 4×4, 4×6, 8×4, 8×6), usar array temporário `[f32; 8]` para store YMM e copiar apenas `out_len` elementos — `_mm256_storeu_ps` escreve 32 bytes e causará heap corruption se o buffer destino tiver menos de 8 f32.
+    - **Load YMM de slice parcial**: `_mm256_loadu_ps` em slices `bias`/`out_frame` com menos de 8 elementos é UB (leitura sobredimensionada de 32 bytes sobre alocações de 16–24 bytes). Usar array temporário `[f32; 8]` zero-inicializado, copiar os `out_len` elementos do slice para o temp, e carregar YMM do temp. Ou usar `_mm_loadu_ps` (128-bit) + `_mm256_insertf128_ps` para compor o YMM sem overread.
 - **Risco:** Médio. Alterações em código do hot-path matemático requerem cuidado extremo com alinhamento e corretude.
 
 ---

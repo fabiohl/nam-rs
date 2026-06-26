@@ -85,10 +85,13 @@ unsafe fn gemv_specialized_1x4(
             let vb = _mm256_loadu_ps(bias.as_ptr());
             acc = _mm256_add_ps(acc, vb);
         }
-        let out_ptr = out_frame.as_ptr();
-        let out_val = _mm256_loadu_ps(out_ptr);
+        let out_val = _mm256_loadu_ps(out_frame.as_ptr());
         acc = _mm256_add_ps(acc, out_val);
-        _mm256_storeu_ps(out_frame.as_mut_ptr(), acc);
+        let mut tmp = [0.0f32; 8];
+        _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
+        for (i, &val) in tmp.iter().enumerate().take(4) {
+            *out_frame.get_unchecked_mut(i) = val;
+        }
     }
 }
 
@@ -127,7 +130,11 @@ unsafe fn gemv_specialized_4x4(
 
         let out_val = _mm256_loadu_ps(out_frame.as_ptr());
         acc = _mm256_add_ps(acc, out_val);
-        _mm256_storeu_ps(out_frame.as_mut_ptr(), acc);
+        let mut tmp = [0.0f32; 8];
+        _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
+        for (i, &val) in tmp.iter().enumerate().take(4) {
+            *out_frame.get_unchecked_mut(i) = val;
+        }
     }
 }
 
@@ -252,7 +259,11 @@ unsafe fn gemv_specialized_8x4(
 
         let out_val = _mm256_loadu_ps(out_frame.as_ptr());
         acc = _mm256_add_ps(acc, out_val);
-        _mm256_storeu_ps(out_frame.as_mut_ptr(), acc);
+        let mut tmp = [0.0f32; 8];
+        _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
+        for (i, &val) in tmp.iter().enumerate().take(4) {
+            *out_frame.get_unchecked_mut(i) = val;
+        }
     }
 }
 

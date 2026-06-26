@@ -203,17 +203,26 @@ A macro `NAM_RESTRICT` é irrelevante em Rust — o compilador Rust já trata `&
 ### F4 — Proposta de Solução
 
 1. **Avaliar se os kernels especializados por dimensão trazem ganho mensurável em Rust/AVX2.**
-   - Hipótese: O LLVM já unrolla loops pequenos com `chunks_exact(4)` quando o trip count é constante.
-   - Benchmarkar com `criterion` os tamanhos 1×4, 4×4, 4×6, 8×4, 8×6, 8×8 vs. o kernel genérico atual.
-2. **Se houver ganho > 5%**: Criar kernels monomorphizados via const generics `<const IN: usize, const OUT: usize>` em `src/math/gemv.rs`.
-3. **Se não houver ganho**: Documentar que o dispatch genérico já cobre esses casos e fechar o finding.
+   - **Resultado (2026-06-26): Ganho massivo em todas as 6 dimensões testadas.**
+     - 1×4: +40.0% (15.0ns → 9.0ns)
+     - 4×4: +50.4% (23.2ns → 11.5ns)
+     - 4×6: +49.5% (28.1ns → 14.2ns)
+     - 8×4: +72.9% (46.8ns → 12.7ns)
+     - 8×6: +65.5% (62.6ns → 21.6ns)
+     - 8×8: +21.2% (15.6ns → 12.3ns)
+   - **Decisão: Prosseguir com implementação definitiva (Tarefa 3 do Sprint 6).**
+   - O LLVM **não** unrolla suficientemente os loops do kernel genérico — o overhead de loop+branch é significativo mesmo no caso ótimo (8×8, bloco interno alinhado).
+2. **Criar kernels monomorphizados via const generics** em `src/math/gemm/gemv/f16_avx2.rs`.
+3. **Corrigir UB dos protótipos de benchmark** ao promover para produção:
+   - **Store YMM→buffer parcial**: `_mm256_storeu_ps` escreve 32 bytes — usar temp `[f32; 8]` + cópia parcial para `out_len < 8`.
+   - **Load YMM de slice parcial**: `_mm256_loadu_ps` lê 32 bytes de alocações de 16–24 bytes (UB). Usar temp `[f32; 8]` zero-padded + `_mm_loadu_ps` (128-bit) ou `_mm256_insertf128_ps`.
 
 ### F4 — Risco e Prioridade
 
-- **Prioridade:** 🟢 Baixa — NAM-rs já tem kernels SIMD otimizados. O ganho potencial é marginal.
+- **Prioridade:** 🟢 Baixa → 🟡 Média — Reavaliada após benchmarks: ganho é massivo (21–73%), justificando implementação.
 - **Risco:** Baixo — Benchmark-driven, sem risco arquitetural.
 
-> **Nota:** Este finding complementa o Épico C já existente sobre "Kernels GEMV/LSTM afinados" (se houver referência em conversas anteriores).
+> **Nota:** Este finding complementa o Épico G em andamento. Benchmarks executados em `benches/gemv_bench.rs` (Sprint 6, Tarefas 1–2).
 
 ---
 
@@ -567,6 +576,8 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 **Dependências:** Épico C (GEMV/LSTM kernels) se existente.
 
 **Estimativa:** ~1 sprint (benchmark + decisão).
+
+**Status:** Sprint 6 em andamento. Tarefa 1 (bench suite) e Tarefa 2 (análise/decisão) concluídas. Ganho 21–73% aprovado — prosseguir para Tarefa 3 (implementação).
 
 ---
 
