@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use super::f16_avx2_specialized;
 use crate::gemv_kernel;
 use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
@@ -26,6 +27,41 @@ pub unsafe fn fused_add_gemv_avx2(
 ) {
     let out_len = out_frame.len();
     let in_len = in_frame.len();
+
+    // Dispatch to specialized kernel for known dimensions (Épico G, Sprint 6).
+    match (in_len, out_len) {
+        (1, 4) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_1x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (4, 4) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_4x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (4, 6) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_4x6(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 4) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_8x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 6) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_8x6(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 8) => {
+            return f16_avx2_specialized::fused_add_gemv_avx2_8x8(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        _ => {}
+    }
 
     unsafe {
         let mut out_c = 0;
@@ -76,6 +112,41 @@ pub unsafe fn gemv_overwrite_avx2(
 ) {
     let out_len = out_frame.len();
     let in_len = in_frame.len();
+
+    // Dispatch to specialized kernel for known dimensions (Épico G, Sprint 6).
+    match (in_len, out_len) {
+        (1, 4) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_1x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (4, 4) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_4x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (4, 6) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_4x6(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 4) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_8x4(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 6) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_8x6(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        (8, 8) => {
+            return f16_avx2_specialized::gemv_overwrite_avx2_8x8(
+                in_frame, weights, bias, out_frame, do_bias,
+            );
+        }
+        _ => {}
+    }
 
     unsafe {
         let mut out_c = 0;

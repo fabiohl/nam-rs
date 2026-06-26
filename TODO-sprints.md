@@ -63,9 +63,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 3. [MODEL/MATH] Implementação de Kernels GEMV Especializados (F4)
+### Tarefa 3. [MODEL/MATH] Implementação de Kernels GEMV Especializados (F4) [DONE]
 
-- **Status:** `[ ]` **Não iniciada**
+- **Status:** `[x]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/math/gemm/gemv/f16_avx2.rs`](file:///home/fabio/nam-rs/src/math/gemm/gemv/f16_avx2.rs)
   - [`src/math/gemm/gemv/mod.rs`](file:///home/fabio/nam-rs/src/math/gemm/gemv/mod.rs)
@@ -76,6 +76,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     - **Store YMM→buffer parcial**: Para dimensões com `out_len < 8` (1×4, 4×4, 4×6, 8×4, 8×6), usar array temporário `[f32; 8]` para store YMM e copiar apenas `out_len` elementos — `_mm256_storeu_ps` escreve 32 bytes e causará heap corruption se o buffer destino tiver menos de 8 f32.
     - **Load YMM de slice parcial**: `_mm256_loadu_ps` em slices `bias`/`out_frame` com menos de 8 elementos é UB (leitura sobredimensionada de 32 bytes sobre alocações de 16–24 bytes). Usar array temporário `[f32; 8]` zero-inicializado, copiar os `out_len` elementos do slice para o temp, e carregar YMM do temp. Ou usar `_mm_loadu_ps` (128-bit) + `_mm256_insertf128_ps` para compor o YMM sem overread.
 - **Risco:** Médio. Alterações em código do hot-path matemático requerem cuidado extremo com alinhamento e corretude.
+- **Conclusão:** Arquivo `src/math/gemm/gemv/f16_avx2_specialized.rs` criado com 12 kernels (6 dimensões × 2 modos: `fused_add_gemv` e `gemv_overwrite`). Dispatch integrado diretamente em `fused_add_gemv_avx2` e `gemv_overwrite_avx2` via `match (in_len, out_len)` no topo de cada função — sem alterar a trait `SimdMath`, mantendo retrocompatibilidade para tamanhos arbitrários via fallback ao kernel genérico. UB corrigidos: helpers `load_partial_ymm` e `store_partial_ymm` para slices de bias/out_frame < 8 elementos; `load_partial_f16_ymm` para pesos com linhas < 8 f16. 941 testes passam, 0 falhas.
 
 ---
 
