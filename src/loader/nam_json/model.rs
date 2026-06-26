@@ -177,12 +177,38 @@ impl std::str::FromStr for LinearImplementation {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Auto" => Ok(Self::Auto),
-            "Direct" => Ok(Self::Direct),
-            "Fft" => Ok(Self::Fft),
+        let lower = s.to_lowercase();
+        match lower.as_str() {
+            "auto" => Ok(Self::Auto),
+            "direct" => Ok(Self::Direct),
+            "fft" => Ok(Self::Fft),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_linear_implementation_case_insensitive() {
+        assert_eq!("auto".parse(), Ok(LinearImplementation::Auto));
+        assert_eq!("Auto".parse(), Ok(LinearImplementation::Auto));
+        assert_eq!("AUTO".parse(), Ok(LinearImplementation::Auto));
+        assert_eq!("direct".parse(), Ok(LinearImplementation::Direct));
+        assert_eq!("Direct".parse(), Ok(LinearImplementation::Direct));
+        assert_eq!("DIRECT".parse(), Ok(LinearImplementation::Direct));
+        assert_eq!("fft".parse(), Ok(LinearImplementation::Fft));
+        assert_eq!("Fft".parse(), Ok(LinearImplementation::Fft));
+        assert_eq!("FFT".parse(), Ok(LinearImplementation::Fft));
+    }
+
+    #[test]
+    fn parse_linear_implementation_invalid() {
+        assert_eq!("legacy".parse::<LinearImplementation>(), Err(()));
+        assert_eq!("unknown".parse::<LinearImplementation>(), Err(()));
+        assert_eq!("".parse::<LinearImplementation>(), Err(()));
     }
 }
 

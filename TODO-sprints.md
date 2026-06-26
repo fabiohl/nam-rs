@@ -98,9 +98,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 1. [MODEL/LOADER] Corrigir Parser de `LinearImplementation` para Case-Insensitive (F12)
+### Tarefa 1. [MODEL/LOADER] Corrigir Parser de `LinearImplementation` para Case-Insensitive (F12) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — `from_str` agora converte para lowercase antes do match; testes unitários cobrem `"auto"/"Auto"/"AUTO"`, `"direct"/"Direct"/"DIRECT"`, `"fft"/"Fft"/"FFT"` e casos inválidos.
 - **Arquivos Alvo:**
   - [`src/loader/nam_json/model.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
 - **Descrição:**
