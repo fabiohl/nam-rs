@@ -77,7 +77,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - **WaveNetModelDyn:** Se `condition_dsp` estiver presente, propagar a chamada para o sub-modelo interno `condition_dsp`.
 - **Risco:** 🟡 Médio — Requer atenção para garantir que a propagação ocorra recursivamente em qualquer nível de aninhamento.
 
-#### 4. [MODEL] Atualizar a Implementação do Wrapper `StaticModel` (F2, F7)
+#### 4. [MODEL] Atualizar a Implementação do Wrapper `StaticModel` (F2, F7) [DONE]
 
 - **Status:** `[X]`
 - **Arquivo Alvo:** [`src/models/static_model.rs`](file:///home/fabio/nam-rs/src/models/static_model.rs)
@@ -86,7 +86,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 - **Risco:** Baixo. Apenas despacho de padrão estático.
 - **Nota de conclusão:** Adicionados `prewarm_on_reset()` e `set_prewarm_on_reset()` ao `impl NamModel for StaticModel` com delegação para todas as 23 variantes. Compilação limpa, 381 testes passam.
 
-#### 5. [LOADER] Definir Estrutura `LoadOptions` e Integrar no Módulo Loader (F3)
+#### 5. [LOADER] Definir Estrutura `LoadOptions` e Integrar no Módulo Loader (F3) [DONE]
 
 - **Status:** `[ ]`
 - **Arquivos Alvo:**

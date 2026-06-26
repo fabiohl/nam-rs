@@ -70,8 +70,13 @@ mod tests {
         // ── Load model directly and verify calibration multipliers ──
         use crate::models::NamModel;
         let sys = crate::common::diagnostics::SystemSnapshot::capture();
-        let model_pair = crate::loader::build::load_and_build_model(&model_path, &sys, true)
-            .expect("Failed to load model directly");
+        let model_pair = crate::loader::build::load_and_build_model(
+            &model_path,
+            &sys,
+            true,
+            crate::loader::LoadOptions::default(),
+        )
+        .expect("Failed to load model directly");
         let mut direct_model = model_pair.model_l.expect("Failed to build direct model");
         let input_mult = model_pair.input_mult_adj;
         let output_mult = model_pair.output_mult_adj;

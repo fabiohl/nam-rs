@@ -142,7 +142,7 @@ fn main() -> anyhow::Result<()> {
     let mut full_wavenet_model: Option<Box<StaticModel>> = None;
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
-        match loader::load_and_build_model(path, &sys, true) {
+        match loader::load_and_build_model(path, &sys, true, loader::LoadOptions::default()) {
             Ok(loaded) => {
                 // Populate active model path and sample rate
                 if let Ok(mut name) = nam_rs::diagnostics::ACTIVE_MODEL_NAME.write() {

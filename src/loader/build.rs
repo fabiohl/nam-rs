@@ -71,6 +71,7 @@ pub fn load_and_build_model(
     path: &Path,
     sys: &SystemSnapshot,
     stereo: bool,
+    options: crate::loader::LoadOptions,
 ) -> anyhow::Result<LoadedModelPair> {
     let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -164,7 +165,11 @@ pub fn load_and_build_model(
         })
         .ok();
     if let Some(ref mut m) = model_l {
-        m.prewarm(m.prewarm_samples().max(2048));
+        if options.prewarm == Some(false) {
+            m.set_prewarm_on_reset(false);
+        } else {
+            m.prewarm(m.prewarm_samples().max(2048));
+        }
     }
 
     let model_r = if stereo {
@@ -177,7 +182,11 @@ pub fn load_and_build_model(
             })
             .ok();
         if let Some(ref mut model) = m {
-            model.prewarm(model.prewarm_samples().max(2048));
+            if options.prewarm == Some(false) {
+                model.set_prewarm_on_reset(false);
+            } else {
+                model.prewarm(model.prewarm_samples().max(2048));
+            }
         }
         m
     } else {

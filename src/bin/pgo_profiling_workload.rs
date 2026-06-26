@@ -175,7 +175,8 @@ fn profile_standalone_model(
     model_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Replicates how standalone loads and runs inference using the standard dispatcher
-    let loaded = loader::load_and_build_model(model_path, sys, true)?;
+    let loaded =
+        loader::load_and_build_model(model_path, sys, true, loader::LoadOptions::default())?;
 
     if let Some(mut model) = loaded.model_l {
         model.prewarm(2048);

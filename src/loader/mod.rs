@@ -18,3 +18,15 @@ pub mod transpose;
 
 pub use build::load_and_build_model;
 pub use loaded_model_pair::*;
+
+/// Controls loading behaviour and model initialization.
+///
+/// Produced by the main/UI thread and consumed by the loader before passing
+/// the ready-to-render model pair to the RT thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LoadOptions {
+    /// `None`  → use default (prewarm runs normally).
+    /// `Some(false)` → skip the initial prewarm pass (fast preview / preset browsing).
+    /// `Some(true)`  → force prewarm on (explicit override).
+    pub prewarm: Option<bool>,
+}
