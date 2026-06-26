@@ -55,10 +55,10 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ### Sprint 4: Fase 2 — Core do Motor de Convolução FFT Zero-Latência (F1)
 
-#### 4. [MODEL] Desenhar e Estruturar o `LinearFftState` (F1)
+#### 4. [MODEL] Desenhar e Estruturar o `LinearFftState` (F1) [DONE]
 
-- **Status:** `[ ]`
-- **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs) (Novo arquivo)
+- **Status:** `[x]`
+- **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs)
 - **Descrição:**
   - Criar o arquivo `linear_fft.rs` incluindo cabeçalho SPDX e copyright obrigatório.
   - Implementar a estrutura `LinearFftState` com todos os buffers necessários para overlap-save zero-latência pré-alocados via `AlignedVec<f32>` (para compatibilidade SIMD x86-64-v3):
@@ -66,9 +66,14 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     - `h_fdl_re`, `h_fdl_im`: espectros das partições de cauda (IR de `P` a `N-1`).
     - `fdl_re`, `fdl_im`: Frequency Delay Line circular.
     - `input_buf`: buffer de entrada de tamanho `2P`.
-    - `output_buf`: buffer de saída complexo transformado e IFFT'd.
+    - `fft_re`, `fft_im`: saída do forward RFFT (`P+1` bins).
+    - `acc_re`, `acc_im`: buffers de acumulação complexa.
+    - `output_buf`: buffer de saída IFFT (`2P`).
     - `tail_output_buf`: buffer circular com os resultados prontos para leitura direta por sample.
     - `sample_counter`: índice de leitura interno do bloco de cauda (0 a `P-1`).
+  - Construtor `LinearFftState::new(p, weights)` que pré-computa os espectros `h_fdl_*` das partições de cauda e aloca todos os buffers.
+  - Método `reset()` que zera buffers de runtime sem realocar (allocation-free).
+  - 9 testes unitários cobrindo: P==N, N==2P, IR 8192, partição irregular, pânico em P não-potência-de-2, pânico em P>N, reset, Debug, verificação de espectros.
 - **Risco:** 🟡 Médio. Requer precisão nos buffers de alinhamento e determinação do tamanho da partição `P` com base no receptive field (256, 512, 1024).
 
 #### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1)
