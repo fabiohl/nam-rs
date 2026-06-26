@@ -132,6 +132,9 @@ impl NamModel for model_dyn::WaveNetModelDyn {
 
     fn set_prewarm_on_reset(&mut self, val: bool) {
         self.prewarm_on_reset = val;
+        if let Some(ref mut cond_dsp) = self.condition_dsp {
+            cond_dsp.set_prewarm_on_reset(val);
+        }
     }
 }
 

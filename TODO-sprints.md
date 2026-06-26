@@ -64,9 +64,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Sobrescrever os métodos `prewarm_on_reset` e `set_prewarm_on_reset` do trait `NamModel` para ler e escrever nesse campo.
 - **Risco:** Baixo. Alterações puramente mecânicas de structs e construtores.
 
-#### 3. [MODEL] Implementar Propagação do Flag em Modelos Compostos e Containers (F7)
+#### 3. [MODEL] Implementar Propagação do Flag em Modelos Compostos e Containers (F7) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]`
 - **Arquivos Alvo:**
   - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
   - [`src/models/slimmable.rs`](file:///home/fabio/nam-rs/src/models/slimmable.rs)

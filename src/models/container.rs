@@ -45,6 +45,7 @@ pub struct ContainerModel {
     scratch_buffer: Vec<f32>,
     sample_rate: u32,
     max_buffer_size: usize,
+    prewarm_on_reset: bool,
 }
 
 impl ContainerModel {
@@ -102,6 +103,7 @@ impl ContainerModel {
             scratch_buffer: vec![0.0f32; default_buf],
             sample_rate,
             max_buffer_size: default_buf,
+            prewarm_on_reset: true,
         };
 
         container.prewarm(4096);
@@ -211,6 +213,17 @@ impl NamModel for ContainerModel {
 
     fn prewarm_samples(&self) -> usize {
         self.active().prewarm_samples()
+    }
+
+    fn prewarm_on_reset(&self) -> bool {
+        self.prewarm_on_reset
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        self.prewarm_on_reset = val;
+        for (_, model) in &mut self.submodels {
+            model.set_prewarm_on_reset(val);
+        }
     }
 }
 
