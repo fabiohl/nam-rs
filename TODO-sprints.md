@@ -20,7 +20,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ### Tarefa 1. [MODEL] Definir a API de Breakpoints no Trait `SlimmableModel` (F5)
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — `fn slimmable_breakpoints(&self) -> Vec<f64>` adicionado ao trait `SlimmableModel` com default `vec![]`.
 - **Arquivos Alvo:**
   - [`src/models/slimmable.rs`](file:///home/fabio/nam-rs/src/models/slimmable.rs)
 - **Descrição:**

@@ -86,6 +86,17 @@ pub trait SlimmableModel {
     ///
     /// `val` is in `[0.0, 1.0]` where `0.0` = minimum quality and `1.0` = full quality.
     fn set_slimmable_size(&mut self, val: f32);
+
+    /// Returns the breakpoints at which slimmable quality transitions occur.
+    ///
+    /// Each breakpoint represents a normalized value in `[0.0, 1.0]` where the
+    /// model switches to a different submodel or internal quality tier. Hosts
+    /// and plugins can use these to map and snap discrete quality parameters.
+    ///
+    /// Defaults to an empty vector for models without discrete breakpoints.
+    fn slimmable_breakpoints(&self) -> Vec<f64> {
+        vec![]
+    }
 }
 
 // =============================================================================
