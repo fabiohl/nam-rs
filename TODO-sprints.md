@@ -91,15 +91,16 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 6. [TEST] Testes de Integração de Reset Seletivo e Zero-Alloc para ContainerModel (F9, F10) [TODO]
+### Tarefa 6. [TEST] Testes de Integração de Reset Seletivo e Zero-Alloc para ContainerModel (F9, F10) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`tests/container_slimmable.rs`](file:///home/fabio/nam-rs/tests/container_slimmable.rs)
   - [`tests/zero_alloc_infer.rs`](file:///home/fabio/nam-rs/tests/zero_alloc_infer.rs)
 - **Descrição:**
   - Criar novos testes ou expandir os testes existentes para assegurar que:
-    1. O `ContainerModel::reset` redefina apenas o sub-modelo ativo.
-    2. A mudança de tamanho através de `set_slimmable_size` resete o modelo destino com sucesso.
-    3. Nenhuma alocação ocorra no heap ao mudar de modelo através do `set_slimmable_size` (garantido pelo teste com `TrackingGuard`).
+     1. O `ContainerModel::reset` redefina apenas o sub-modelo ativo.
+     2. A mudança de tamanho através de `set_slimmable_size` resete o modelo destino com sucesso.
+     3. Nenhuma alocação ocorra no heap ao mudar de modelo através do `set_slimmable_size` (garantido pelo teste com `TrackingGuard`).
 - **Risco:** Baixo.
+- **Nota de conclusão:** Três novos testes implementados. `test_container_reset_only_active_submodel` (tests/container_slimmable.rs) verifica que após `ContainerModel::reset`, apenas o submodelo ativo foi prewarmed (head_accum com valores não-zero de bias), enquanto o inativo ficou apenas com zero-fill de `set_max_buffer_size` (head_accum todo zero, head_write_pos = rf). `test_set_slimmable_size_resets_target` (tests/container_slimmable.rs) verifica que `set_slimmable_size` chama `reset()` no submodelo destino antes de defini-lo como pending, apagando sentinel values preenchidos manualmente, enquanto o submodelo ativo corrente NÃO é resetado. `test_zero_alloc_set_slimmable_size` (tests/zero_alloc_infer.rs) verifica que a chamada isolada de `set_slimmable_size` (sem process blocks) não causa nenhuma alocação no heap. Todos os 12 testes de integração (4 container_slimmable + 8 zero_alloc_infer) e 14 unitários passam sem regressões. Clippy limpo.

@@ -11,6 +11,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
+use nam_rs::models::container::ContainerModel;
 use nam_rs::models::slimmable::SlimmableModel;
 use nam_rs::models::{NamModel, StaticModel};
 use std::fs;
@@ -287,4 +288,237 @@ fn test_container_crossfade_continuity() {
         "Container crossfade OK — rel_step: cf={:.4} abrupt={:.4}, energy_ratio: cf={:.4} abrupt={:.4}",
         rel_step_a, rel_step_b, ratio_a, ratio_b
     );
+}
+
+// =============================================================================
+// Selective Reset Verification — Tarefa 6 (F9)
+// =============================================================================
+
+/// Test T6.1: `ContainerModel::reset` resets only the active submodel,
+/// not all submodels (F9 — selective reset via `set_max_buffer_size` on all,
+/// full `reset`+`prewarm` only on the active one).
+///
+/// After `reset()`, the active submodel must have been prewarmed (non-zero
+/// head_accum from bias-driven zero-input pass), while the inactive submodel
+/// must have only been zero-filled by `set_max_buffer_size` — no prewarm pass.
+#[test]
+fn test_container_reset_only_active_submodel() {
+    let full_path = model_path("wavenet_a2_full.nam");
+    let lite_path = model_path("wavenet_a2_lite.nam");
+    if !full_path.exists() || !lite_path.exists() {
+        eprintln!("SKIP: A2 model files not found.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let mut container =
+        ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sample_rate)
+            .expect("Failed to create ContainerModel");
+
+    // Active is index 1 (Full), inactive is index 0 (Lite).
+    // Process audio to dirty the internal state of both submodels.
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    {
+        let sub = container.submodels_mut();
+        sub[1].1.process(&input, &mut output);
+        sub[0].1.process(&input, &mut output);
+    }
+
+    // Verify both submodels have non-zero head_accum (dirty state).
+    {
+        let sub = container.submodels_mut();
+        if let StaticModel::WavenetA2Full(full) = &*sub[1].1 {
+            let has_nonzero = full.head_accum.iter().any(|&v| v.abs() > 1e-9);
+            assert!(
+                has_nonzero,
+                "Active A2-Full should have non-zero head_accum after processing (dirty state)"
+            );
+        } else {
+            panic!("Expected WavenetA2Full at index 1");
+        }
+        if let StaticModel::WavenetA2Lite(lite) = &*sub[0].1 {
+            let has_nonzero = lite.head_accum.iter().any(|&v| v.abs() > 1e-9);
+            assert!(
+                has_nonzero,
+                "Inactive A2-Lite should have non-zero head_accum after processing (dirty state)"
+            );
+        } else {
+            panic!("Expected WavenetA2Lite at index 0");
+        }
+    }
+
+    // Call reset — only active submodel (Full) should be fully reset.
+    // Use 4096 (matching the ContainerModel::new default_buf) so
+    // set_max_buffer_size triggers the equal-size zero-fill path.
+    container
+        .reset(sample_rate, 4096)
+        .expect("Container reset failed");
+
+    // Verify active submodel (Full): must have non-zero head_accum (prewarmed),
+    // and head_write_pos != receptive_field_size (advanced by prewarm pass).
+    {
+        let sub = container.submodels_mut();
+        if let StaticModel::WavenetA2Full(full) = &*sub[1].1 {
+            let has_nonzero = full.head_accum.iter().any(|&v| v.abs() > 1e-9);
+            assert!(
+                has_nonzero,
+                "Active A2-Full should have non-zero head_accum after reset+prewarm"
+            );
+            assert_ne!(
+                full.head_write_pos, full.receptive_field_size,
+                "Active A2-Full head_write_pos should have advanced past rf via prewarm (was {}, rf={})",
+                full.head_write_pos, full.receptive_field_size
+            );
+        } else {
+            panic!("Expected WavenetA2Full at index 1 after reset");
+        }
+        // Verify inactive submodel (Lite): must have ALL-ZERO head_accum
+        // (set_max_buffer_size zero-filled but no prewarm pass).
+        if let StaticModel::WavenetA2Lite(lite) = &*sub[0].1 {
+            let all_zero = lite.head_accum.iter().all(|&v| v.abs() < 1e-9);
+            assert!(
+                all_zero,
+                "Inactive A2-Lite should have all-zero head_accum after reset (only set_max_buffer_size, no prewarm)"
+            );
+            assert_eq!(
+                lite.head_write_pos, lite.receptive_field_size,
+                "Inactive A2-Lite head_write_pos should equal rf after set_max_buffer_size (was {}, rf={})",
+                lite.head_write_pos, lite.receptive_field_size
+            );
+        } else {
+            panic!("Expected WavenetA2Lite at index 0 after reset");
+        }
+    }
+}
+
+/// Test T6.2: `ContainerModel::set_slimmable_size` resets the target submodel
+/// before setting it as pending (F9 — reset-before-activation).
+///
+/// Verifies that when `set_slimmable_size(val)` triggers a submodel transition,
+/// the target submodel receives a full `reset()` (set_max_buffer_size + prewarm),
+/// while the current active submodel is NOT reset.
+#[test]
+fn test_set_slimmable_size_resets_target() {
+    let full_path = model_path("wavenet_a2_full.nam");
+    let lite_path = model_path("wavenet_a2_lite.nam");
+    if !full_path.exists() || !lite_path.exists() {
+        eprintln!("SKIP: A2 model files not found.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let mut container =
+        ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sample_rate)
+            .expect("Failed to create ContainerModel");
+
+    // Active is Full (index 1), inactive is Lite (index 0).
+    // Manually dirty the Lite submodel state to a known non-zero pattern.
+    {
+        let sub = container.submodels_mut();
+        if let StaticModel::WavenetA2Lite(lite) = &mut *sub[0].1 {
+            // Fill with a sentinel value distinct from zero and from bias output.
+            for v in lite.head_accum.iter_mut() {
+                *v = 0.5;
+            }
+            lite.head_write_pos = 42; // arbitrary non-rf value
+            for buf in &mut lite.layer_buffers {
+                let len = buf.size();
+                (&mut buf[..])[..len].fill(0.5);
+            }
+        } else {
+            panic!("Expected WavenetA2Lite at index 0");
+        }
+    }
+
+    // Also dirty the Full submodel.
+    {
+        let sub = container.submodels_mut();
+        if let StaticModel::WavenetA2Full(full) = &mut *sub[1].1 {
+            for v in full.head_accum.iter_mut() {
+                *v = 0.75;
+            }
+            full.head_write_pos = 99;
+        }
+    }
+
+    // Set prewarm_on_reset = true on both (default, but be explicit).
+    {
+        let sub = container.submodels_mut();
+        sub[0].1.set_prewarm_on_reset(true);
+        sub[1].1.set_prewarm_on_reset(true);
+    }
+
+    // Trigger transition to Lite (index 0). This must call reset() on Lite.
+    container.set_slimmable_size(0.25);
+
+    // Verify Lite (target/pending) was reset:
+    //   - head_accum must NOT be 0.5 (dirty value was overwritten)
+    //   - head_write_pos must NOT be 42 (was reset to rf then advanced by prewarm)
+    //   - layer_buffers must NOT be 0.5
+    {
+        let sub = container.submodels_mut();
+        if let StaticModel::WavenetA2Lite(lite) = &*sub[0].1 {
+            let has_sentinel = lite.head_accum.iter().any(|&v| (v - 0.5).abs() < 1e-6);
+            assert!(
+                !has_sentinel,
+                "Target A2-Lite head_accum still contains sentinel 0.5 — reset was NOT called"
+            );
+            let has_nonzero = lite.head_accum.iter().any(|&v| v.abs() > 1e-9);
+            assert!(
+                has_nonzero,
+                "Target A2-Lite should have non-zero head_accum after reset+prewarm (bias-derived)"
+            );
+            assert_ne!(
+                lite.head_write_pos, 42,
+                "Target A2-Lite head_write_pos still 42 — reset was NOT called"
+            );
+            // Layer buffers should be zeroed (set_max_buffer_size), then possibly
+            // contain bias-derivatives from prewarm. At minimum no 0.5 sentinel.
+            for buf in &lite.layer_buffers {
+                let len = buf.size();
+                let has_sentinel = buf[..len].iter().any(|&v| (v - 0.5).abs() < 1e-6);
+                assert!(
+                    !has_sentinel,
+                    "Target A2-Lite layer_buffer still contains sentinel 0.5 — reset was NOT called"
+                );
+            }
+        } else {
+            panic!("Expected WavenetA2Lite at index 0 after set_slimmable_size");
+        }
+
+        // Verify active (Full, index 1) was NOT reset:
+        //   - head_accum should still have 0.75 sentinel values
+        //   - head_write_pos should still be 99
+        if let StaticModel::WavenetA2Full(full) = &*sub[1].1 {
+            let has_sentinel = full.head_accum.iter().any(|&v| (v - 0.75).abs() < 1e-6);
+            assert!(
+                has_sentinel,
+                "Active A2-Full lost sentinel 0.75 — was unexpectedly reset"
+            );
+            assert_eq!(
+                full.head_write_pos, 99,
+                "Active A2-Full head_write_pos changed from 99 to {} — was unexpectedly reset",
+                full.head_write_pos
+            );
+        }
+    }
 }

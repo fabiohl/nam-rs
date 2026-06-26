@@ -239,6 +239,57 @@ fn test_zero_alloc_capture_pipeline() {
     );
 }
 
+/// Zero-Allocation Verification Test for `ContainerModel::set_slimmable_size()` alone.
+///
+/// Proves that `set_slimmable_size` (which calls `reset()` on the target submodel)
+/// performs zero heap allocations — a prerequisite for RT-Safety (F9, F10).
+#[test]
+fn test_zero_alloc_set_slimmable_size() {
+    use nam_rs::models::StaticModel;
+    use nam_rs::models::container::ContainerModel;
+    use nam_rs::models::slimmable::SlimmableModel;
+
+    let full_nam_path = model_path("wavenet_a2_full.nam");
+    let lite_nam_path = model_path("wavenet_a2_lite.nam");
+    if !full_nam_path.exists() || !lite_nam_path.exists() {
+        eprintln!("SKIP: A2 model files not found.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container = ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sample_rate)
+        .expect("Failed to create ContainerModel");
+
+    // Pre-run one block to ensure all internal buffers are allocated/sized.
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    let mut model = StaticModel::Container(Box::new(container));
+    model.process(&input, &mut output);
+
+    let count = {
+        let _guard = TrackingGuard::new();
+        if let StaticModel::Container(ref mut c) = model {
+            c.set_slimmable_size(0.25);
+        }
+        get_alloc_count()
+    };
+
+    assert_eq!(
+        count, 0,
+        "Allocations detected during set_slimmable_size()! count={}",
+        count
+    );
+}
+
 /// Zero-Allocation Verification Test for ContainerModel Submodel Transition (RT-Safety).
 #[test]
 fn test_zero_alloc_container_transition() {
