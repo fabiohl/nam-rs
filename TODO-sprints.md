@@ -68,10 +68,20 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ### Tarefa 5. [TEST] Copiar e Integrar `A2.nam` como Fixture Oficial (F6) [DONE]
 
-- **Status:** `[x]` **Concluída** — `A2.nam` copiado para `tests/fixtures/models/a2_example.nam`. Teste de determinismo `test_auto_consistency_a2_example_slimmable` adicionado em `tests/self_consistency.rs`.
+- **Status:** `[x]` **Concluída** — `A2.nam` copiado para `tests/fixtures/models/a2_example.nam`. Golden gerado (`golden_a2_example.bin`, 81.5 dB SNR). Testes:
+  - `test_auto_consistency_a2_example_slimmable` em `tests/self_consistency.rs`
+  - `test_golden_vectors_a2_example_slimmable` em `tests/golden_vectors.rs`
+  - `live_cross_validation_a2_example_slimmable` em `tests/cpp_parity.rs`
+  - Modelo adicionado ao `golden_gen_build.sh`. Substituiu `sdatkinson Deluxe Reverb.nam` (idêntico, removido de `models-nondist/` e `manifest.json`).
 - **Arquivos Alvo:**
   - `tests/fixtures/models/a2_example.nam` (Novo arquivo - cópia)
+  - `tests/fixtures/golden_a2_example.bin` (Novo arquivo - golden C++ v0.5.3)
   - [`tests/self_consistency.rs`](file:///home/fabio/nam-rs/tests/self_consistency.rs)
+  - [`tests/golden_vectors.rs`](file:///home/fabio/nam-rs/tests/golden_vectors.rs)
+  - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs)
+  - [`tests/fixtures/golden_gen_build.sh`](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  - [`src/bin/pgo_profiling_workload.rs`](file:///home/fabio/nam-rs/src/bin/pgo_profiling_workload.rs)
+  - [`tests/fixtures/models-nondist/manifest.json`](file:///home/fabio/nam-rs/tests/fixtures/models-nondist/manifest.json)
 - **Descrição:**
   - Copiar o modelo de exemplo original `A2.nam` de `tests/fixtures/NeuralAmpModelerCore/example_models/A2.nam` para `tests/fixtures/models/a2_example.nam`.
   - Registrar e mapear esse modelo em `tests/self_consistency.rs` para validar que o loader do NAM-rs analisa perfeitamente a estrutura de `SlimmableContainer` oficial distribuída no core do C++.

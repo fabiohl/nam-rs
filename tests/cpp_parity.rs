@@ -551,6 +551,17 @@ fn live_cross_validation_wavenet_condition_dsp() {
     );
 }
 
+#[test]
+#[ignore]
+fn live_cross_validation_a2_example_slimmable() {
+    run_v1(
+        "a2_example.nam",
+        "a2_example",
+        "Live SlimmableContainer A2 Example (CH=3→6)",
+        true,
+    );
+}
+
 // --- v2 (multi-SR, comprehensive) ---
 
 #[test]

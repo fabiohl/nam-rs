@@ -73,23 +73,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Selects 3 models in popular formats/topologies for profiling.
 fn select_models(manifest_dir: &Path) -> Vec<PathBuf> {
-    let mut models = Vec::new();
-
     // 1. WaveNet A1 Standard (Git-versioned CC0)
-    models.push(manifest_dir.join("tests/fixtures/models/wavenet_a1_standard.nam"));
-
-    // 2. Deluxe Reverb (Non-distributable community WaveNet standard; falls back safely to BossWN-standard)
-    let deluxe = manifest_dir.join("tests/fixtures/models-nondist/sdatkinson Deluxe Reverb.nam");
-    if deluxe.exists() {
-        models.push(deluxe);
-    } else {
-        models.push(manifest_dir.join("tests/fixtures/models/BossWN-standard.nam"));
-    }
-
+    // 2. SlimmableContainer A2 Example (Git-versioned CC0, identical to Deluxe Reverb)
     // 3. LSTM model (Git-versioned CC0)
-    models.push(manifest_dir.join("tests/fixtures/models/lstm.nam"));
-
-    models
+    vec![
+        manifest_dir.join("tests/fixtures/models/wavenet_a1_standard.nam"),
+        manifest_dir.join("tests/fixtures/models/a2_example.nam"),
+        manifest_dir.join("tests/fixtures/models/lstm.nam"),
+    ]
 }
 
 /// Emulates a host running the CLAP plugin on the given audio.

@@ -852,6 +852,53 @@ fn test_golden_vectors_wavenet_a2_container() {
     }
 }
 
+/// Test 8j: Golden Vectors SlimmableContainer A2 Example — Tarefa 5 (F6).
+///
+/// Reads `tests/fixtures/golden_a2_example.bin`, builds the `StaticModel`
+/// from `a2_example.nam` (official C++ `example_models/A2.nam` —
+/// SlimmableContainer with 2 WaveNet A2 submodels, CH=3→6),
+/// runs prewarm + processing, and compares the output against the
+/// C++ reference (NeuralAmpModelerCore v0.5.3, A2_FAST enabled).
+#[test]
+fn test_golden_vectors_a2_example_slimmable() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_a2_example.bin");
+
+    if !golden_path.exists() {
+        eprintln!("SKIP: golden_a2_example.bin not found at {golden_path:?}.");
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_a2_example.bin");
+
+    let nam_path = model_path("a2_example.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: a2_example.nam not found at {nam_path:?}.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read a2_example model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build a2_example for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "a2_example");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        "SlimmableContainer A2 Example (CH=3→6) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
 /// Test 8k: Loader Gap WaveNet A2 Max — T3.2: this model requires a full A2 dynamic
 /// engine (FiLM, gating, heterogeneous activations, bottleneck, condition_dsp with
 /// A2 sub-model). The A2 secondary detector (`is_wavenet_a2()`) flags it via

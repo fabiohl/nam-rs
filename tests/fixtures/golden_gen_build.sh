@@ -227,6 +227,7 @@ MODELS=(
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
     "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3)"
+    "a2_example.nam:golden_a2_example:SlimmableContainer A2 Example (CH=3→6)"
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod"
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45"

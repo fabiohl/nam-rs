@@ -518,6 +518,14 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 80.0;
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-9)))
         }
+        // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
+        // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
+        // Measured: SNR=81.5 dB, ESR=7.12e-9 (2026-06-26)
+        // Margin: SNR - 11.5 dB, ESR factor ~1.1x
+        "a2_example" => {
+            let snr_db = 70.0;
+            Some((1e30, snr_db, Some(8.0e-9)))
+        }
         // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
         // Self-golden consistency test — no C++ golden available (NAM Core
         // v0.5.3 incompatible with NAM 0.5.4 multi-block ConvNet).
