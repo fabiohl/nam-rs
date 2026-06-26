@@ -18,7 +18,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ### Quadro de Tarefas Técnicas
 
-#### 1. [MODEL] Modificar o Trait `NamModel` para Suportar Prewarm Controlável (F2)
+#### 1. [MODEL] Modificar o Trait `NamModel` para Suportar Prewarm Controlável (F2) [DONE]
 
 - **Status:** `[ ]`
 - **Arquivo Alvo:** [`src/models/mod.rs`](file:///home/fabio/nam-rs/src/models/mod.rs)

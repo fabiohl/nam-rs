@@ -39,14 +39,27 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     /// "Heats up" the virtual tubes of the neural engine (`prewarm`).
     fn prewarm(&mut self, num_samples: usize);
 
+    /// Returns whether prewarm should be executed on `reset()`.
+    ///
+    /// Default: `true` (prewarm on every reset).
+    fn prewarm_on_reset(&self) -> bool {
+        true
+    }
+
+    /// Sets whether prewarm should be executed on `reset()`.
+    ///
+    /// Default: no-op (fixed-size models ignore this flag).
+    fn set_prewarm_on_reset(&mut self, _val: bool) {}
+
     /// Resets the model's internal state with a new sample rate and max buffer size.
     ///
-    /// The default implementation calls `prewarm(max_buffer_size)`, which is suitable for
-    /// architectures like WaveNet that need to fill the receptive field with silence.
-    /// Architectures with recurrent state (LSTM) may override this for a lighter
-    /// reset (only zero the internal states without reprocessing a full prewarm).
+    /// The default implementation calls `prewarm(max_buffer_size)` if `prewarm_on_reset()`
+    /// returns `true`. Architectures with recurrent state (LSTM) may override this
+    /// for a lighter reset (only zero the internal states without reprocessing a full prewarm).
     fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
-        self.prewarm(max_buffer_size);
+        if self.prewarm_on_reset() {
+            self.prewarm(max_buffer_size);
+        }
         Ok(())
     }
 
