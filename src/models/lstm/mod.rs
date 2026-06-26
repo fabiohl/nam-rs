@@ -123,10 +123,13 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
         lstm_prewarm_common(self, num_samples);
     }
 
-    /// Light reset for LSTM: only zeros internal states without reprocessing
-    /// the full prewarm with silence.
+    /// LSTM reset: zeros internal states and executes prewarm to stabilize
+    /// recurrent state, matching C++ `Reset()` → `prewarm(GetPrewarmSamples())`.
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
+        if self.prewarm_on_reset() {
+            self.prewarm(self.prewarm_samples());
+        }
         Ok(())
     }
 
@@ -162,10 +165,13 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         lstm_prewarm_common(self, num_samples);
     }
 
-    /// Light reset for 2-layer LSTM: only zeros internal states without
-    /// reprocessing the full prewarm with silence.
+    /// LSTM reset: zeros internal states and executes prewarm to stabilize
+    /// recurrent state, matching C++ `Reset()` → `prewarm(GetPrewarmSamples())`.
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
+        if self.prewarm_on_reset() {
+            self.prewarm(self.prewarm_samples());
+        }
         Ok(())
     }
 
@@ -199,9 +205,13 @@ impl NamModel for LstmModelDyn {
         lstm_prewarm_common(self, num_samples);
     }
 
-    /// Light reset: zeros all layers' internal states.
+    /// LSTM reset: zeros all layers' internal states and executes prewarm
+    /// to stabilize recurrent state, matching C++ behavior.
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
         self.reset_states();
+        if self.prewarm_on_reset() {
+            self.prewarm(self.prewarm_samples());
+        }
         Ok(())
     }
 

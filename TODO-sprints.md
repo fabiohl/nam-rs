@@ -56,9 +56,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### 3. [MODEL] Atualizar Lógica de `reset()` nos LSTMs para Executar Prewarm (F8)
+### 3. [MODEL] Atualizar Lógica de `reset()` nos LSTMs para Executar Prewarm (F8) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]` **Concluído** — `reset()` nos três modelos LSTM (`LstmModel1`, `LstmModel2`, `LstmModelDyn`) agora executa `reset_states()` seguido de `prewarm(prewarm_samples())` quando `prewarm_on_reset() == true`, idêntico ao C++ (`Reset()` → `prewarm(GetPrewarmSamples())`). 22 testes LSTM passando.
 - **Arquivo Alvo:**
   - [`src/models/lstm/mod.rs`](file:///home/fabio/nam-rs/src/models/lstm/mod.rs)
 - **Descrição:**
