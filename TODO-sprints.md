@@ -18,9 +18,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### 1. [MODEL] Adicionar Campo `expected_sample_rate` nos Structs LSTM (F8)
+### 1. [MODEL] Adicionar Campo `expected_sample_rate` nos Structs LSTM (F8) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[X]` **Concluído** — Campo `pub expected_sample_rate: f64` adicionado a `LstmModel1`, `LstmModel2` e `LstmModelDyn`. Inicializado com `48000.0` em `new()` e nos builders (`static_builder.rs`, `dynamic_builder.rs`). Task 4 propagará o valor real do JSON.
 - **Arquivos Alvo:**
   - [`src/models/lstm/model1.rs`](file:///home/fabio/nam-rs/src/models/lstm/model1.rs)
   - [`src/models/lstm/model2.rs`](file:///home/fabio/nam-rs/src/models/lstm/model2.rs)

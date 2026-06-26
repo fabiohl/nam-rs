@@ -39,6 +39,8 @@ pub struct LstmModelDyn {
     pub use_f32_head: bool,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
+    /// Expected sample rate (Hz) for prewarm calculation. Default: `48000.0`.
+    pub expected_sample_rate: f64,
 }
 
 impl LstmModelDyn {
@@ -61,6 +63,7 @@ impl LstmModelDyn {
             head_bias: 0.0,
             use_f32_head: false,
             prewarm_on_reset: true,
+            expected_sample_rate: 48000.0,
         }
     }
 

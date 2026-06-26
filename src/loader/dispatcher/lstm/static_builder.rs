@@ -49,6 +49,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
+        expected_sample_rate: 48000.0,
     };
 
     info!(
@@ -100,6 +101,7 @@ pub(crate) fn build_lstm_2layer<
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
+        expected_sample_rate: 48000.0,
     };
 
     info!(

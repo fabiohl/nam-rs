@@ -58,6 +58,7 @@ pub(crate) fn build_lstm_dynamic(
         head_bias,
         use_f32_head: true,
         prewarm_on_reset: true,
+        expected_sample_rate: 48000.0,
     };
 
     info!(

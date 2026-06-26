@@ -84,6 +84,8 @@ pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     pub use_f32_head: bool,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
+    /// Expected sample rate (Hz) for prewarm calculation. Default: `48000.0`.
+    pub expected_sample_rate: f64,
 }
 
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
@@ -99,6 +101,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             head_bias: 0.0,
             use_f32_head: false,
             prewarm_on_reset: true,
+            expected_sample_rate: 48000.0,
         }
     }
     define_lstm2_process_pipelined!(
