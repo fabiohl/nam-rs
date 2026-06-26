@@ -373,6 +373,60 @@ impl NamModel for StaticModel {
         }
     }
 
+    fn prewarm_on_reset(&self) -> bool {
+        match self {
+            Self::WavenetStandard(m) => m.prewarm_on_reset(),
+            Self::WavenetLite(m) => m.prewarm_on_reset(),
+            Self::WavenetFeather(m) => m.prewarm_on_reset(),
+            Self::WavenetNano(m) => m.prewarm_on_reset(),
+            Self::WavenetA2Full(m) => m.prewarm_on_reset(),
+            Self::WavenetA2Lite(m) => m.prewarm_on_reset(),
+            Self::WavenetA2Dyn(m) => m.prewarm_on_reset(),
+            Self::WavenetDyn(m) => m.prewarm_on_reset(),
+            Self::Container(m) => m.prewarm_on_reset(),
+            Self::Lstm1x3(m) => m.prewarm_on_reset(),
+            Self::Lstm1x8(m) => m.prewarm_on_reset(),
+            Self::Lstm1x12(m) => m.prewarm_on_reset(),
+            Self::Lstm1x16(m) => m.prewarm_on_reset(),
+            Self::Lstm1x24(m) => m.prewarm_on_reset(),
+            Self::Lstm2x8(m) => m.prewarm_on_reset(),
+            Self::Lstm2x12(m) => m.prewarm_on_reset(),
+            Self::Lstm2x16(m) => m.prewarm_on_reset(),
+            Self::Lstm1x40(m) => m.prewarm_on_reset(),
+            Self::Lstm2x24(m) => m.prewarm_on_reset(),
+            Self::LstmDyn(m) => m.prewarm_on_reset(),
+            Self::Linear(m) => m.prewarm_on_reset(),
+            Self::ConvNet(m) => m.prewarm_on_reset(),
+        }
+    }
+
+    fn set_prewarm_on_reset(&mut self, val: bool) {
+        match self {
+            Self::WavenetStandard(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetLite(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetFeather(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetNano(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetA2Full(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetA2Lite(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetA2Dyn(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetDyn(m) => m.set_prewarm_on_reset(val),
+            Self::Container(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x3(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x8(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x12(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x16(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x24(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm2x8(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm2x12(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm2x16(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm1x40(m) => m.set_prewarm_on_reset(val),
+            Self::Lstm2x24(m) => m.set_prewarm_on_reset(val),
+            Self::LstmDyn(m) => m.set_prewarm_on_reset(val),
+            Self::Linear(m) => m.set_prewarm_on_reset(val),
+            Self::ConvNet(m) => m.set_prewarm_on_reset(val),
+        }
+    }
+
     fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
         match self {
             Self::WavenetStandard(m) => m.reset(sample_rate, max_buffer_size),
