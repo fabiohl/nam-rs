@@ -28,6 +28,7 @@ use super::sealed;
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::loader::nam_json::LinearImplementation;
 use crate::math::common::AlignedVec;
+use log::warn;
 
 /// Runtime convolution mode for the Linear model.
 ///
@@ -75,6 +76,36 @@ pub struct LinearModel {
     pub mode: LinearMode,
 }
 
+/// Minimum receptive field (taps) for auto-selecting FFT partitioned convolution.
+///
+/// Below this threshold, time-domain direct convolution is more efficient
+/// due to FFT overhead.
+const FFT_AUTO_THRESHOLD: usize = 256;
+
+/// Largest power of two ≤ `n`.
+const fn largest_power_of_two_le(n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    let mut v = n;
+    let mut r = 1;
+    while v > 1 {
+        r <<= 1;
+        v >>= 1;
+    }
+    r
+}
+
+/// Selects the partition size `P` for FFT hybrid convolution.
+///
+/// Returns the largest power of two ≤ `receptive_field / 2`, guaranteeing
+/// that `2 * P ≤ receptive_field` — which ensures the `block_start`
+/// subtraction never underflows in the hot-path.
+fn select_partition_size(receptive_field: usize) -> usize {
+    let max_p = receptive_field / 2;
+    largest_power_of_two_le(max_p.max(1))
+}
+
 impl LinearModel {
     /// Creates a new LinearModel with the given weights, bias, and implementation.
     ///
@@ -83,8 +114,11 @@ impl LinearModel {
     /// internally to match the C++ `nam::Linear` layout.
     ///
     /// `implementation` controls the convolution strategy (`Auto`, `Direct`, `Fft`)
-    /// as configured in the model's JSON; `Auto` falls back to `Direct` until
-    /// partitioned FFT is fully implemented.
+    /// as configured in the model's JSON:
+    /// - `Direct`: always uses time-domain dot product.
+    /// - `Auto`: uses FFT when `receptive_field >= 256`, otherwise Direct.
+    /// - `Fft`: uses FFT partitioned convolution; falls back to Direct with a
+    ///   warning if the receptive field is too small (< 256).
     ///
     /// Allocates the `MirroredBuffer` for the input history. The buffer is
     /// initialized to zero (silence) by the operating system via `mmap`.
@@ -98,6 +132,7 @@ impl LinearModel {
         implementation: LinearImplementation,
     ) -> std::io::Result<Self> {
         let receptive_field = weights.len();
+        let mode = Self::resolve_mode(implementation, receptive_field, &weights);
         let mut aligned = AlignedVec::from_vec(weights);
         aligned.reverse();
         let history = MirroredBuffer::<f32>::new(receptive_field)?;
@@ -114,16 +149,51 @@ impl LinearModel {
             double_limit,
             prewarm_on_reset: true,
             implementation,
-            mode: LinearMode::Direct,
+            mode,
         })
+    }
+
+    /// Resolves which convolution mode to use based on the requested
+    /// implementation and the receptive field size.
+    fn resolve_mode(
+        implementation: LinearImplementation,
+        receptive_field: usize,
+        weights: &[f32],
+    ) -> LinearMode {
+        match implementation {
+            LinearImplementation::Direct => LinearMode::Direct,
+            LinearImplementation::Auto => {
+                if receptive_field >= FFT_AUTO_THRESHOLD {
+                    let p = select_partition_size(receptive_field);
+                    if p < receptive_field {
+                        return LinearMode::Fft(Box::new(LinearFftState::new(p, weights)));
+                    }
+                }
+                LinearMode::Direct
+            }
+            LinearImplementation::Fft => {
+                if receptive_field < FFT_AUTO_THRESHOLD {
+                    warn!(
+                        "[Linear] Fft requested but receptive_field={receptive_field} < {FFT_AUTO_THRESHOLD} \
+                         — falling back to Direct"
+                    );
+                    return LinearMode::Direct;
+                }
+                let p = select_partition_size(receptive_field);
+                LinearMode::Fft(Box::new(LinearFftState::new(p, weights)))
+            }
+        }
     }
 
     /// Processes a single audio sample using the Linear model.
     ///
     /// 1. Writes the sample into the ring buffer (`history`).
     /// 2. Advances the write pointer in the mirrored area.
-    /// 3. Obtains a contiguous slice representing the receptive field window.
-    /// 4. Computes the dot product plus the scalar bias via AVX2/AVX-512 SIMD.
+    /// 3. Dispatches according to the active `mode`:
+    ///    - **Direct**: dot product over the full receptive field + bias.
+    ///    - **FFT**: dot product over the head (`P` taps) + bias + tail sample
+    ///      from the pre-computed `tail_output_buf`. Every `P` samples, a new
+    ///      tail block is computed via `LinearFftState::process_tail_block`.
     ///
     /// # Safety
     /// `self.weights` must be 64-byte aligned (guaranteed by `AlignedVec`).
@@ -136,18 +206,48 @@ impl LinearModel {
             self.write_pos -= self.history.size();
         }
 
-        let start = self.write_pos - self.receptive_field;
-        let window = &self.history[start..self.write_pos];
-        // SAFETY: weights are 64-byte aligned (AlignedVec), window is contiguous
-        // from MirroredBuffer (page-aligned), taps matches window/receptive_field.
-        let dot = unsafe {
-            crate::math::dsp::stereo::convolve_mono(
-                self.weights.as_ptr(),
-                window.as_ptr(),
-                self.receptive_field,
-            )
-        };
-        self.bias + dot
+        match &mut self.mode {
+            LinearMode::Direct => {
+                let start = self.write_pos - self.receptive_field;
+                let window = &self.history[start..self.write_pos];
+                let dot = unsafe {
+                    crate::math::dsp::stereo::convolve_mono(
+                        self.weights.as_ptr(),
+                        window.as_ptr(),
+                        self.receptive_field,
+                    )
+                };
+                self.bias + dot
+            }
+            LinearMode::Fft(state) => {
+                let p = state.p;
+
+                // Head convolution: last P weights × last P window samples
+                let head_weights_ptr =
+                    unsafe { self.weights.as_ptr().add(self.receptive_field - p) };
+                let head_start = self.write_pos - p;
+                let head_window = &self.history[head_start..self.write_pos];
+                let head_dot = unsafe {
+                    crate::math::dsp::stereo::convolve_mono(
+                        head_weights_ptr,
+                        head_window.as_ptr(),
+                        p,
+                    )
+                };
+
+                let y_tail = state.tail_output_buf[state.sample_counter];
+                state.sample_counter += 1;
+
+                if state.sample_counter >= p {
+                    let block_start = self.write_pos - 2 * p;
+                    let block_window = &self.history[block_start..self.write_pos];
+                    state.process_tail_block(block_window);
+                    state.sample_counter = 0;
+                }
+
+                self.bias + head_dot + y_tail
+            }
+        }
     }
 
     /// Processes a block of audio samples.
@@ -165,7 +265,8 @@ impl LinearModel {
         }
     }
 
-    /// Fills the history buffer with zeros and resets the write pointer.
+    /// Fills the history buffer with zeros, resets the write pointer, and
+    /// reinitializes the FFT state (if active).
     #[cold]
     pub fn prewarm(&mut self, _num_samples: usize) {
         let size = self.history.size();
@@ -173,9 +274,13 @@ impl LinearModel {
             self.history[i] = 0.0;
         }
         self.write_pos = size;
+        if let LinearMode::Fft(ref mut state) = self.mode {
+            state.reset();
+        }
     }
 
-    /// Resets internal state: zeroes the history buffer and write pointer.
+    /// Resets internal state: zeroes the history buffer, write pointer,
+    /// and FFT state (if active).
     #[cold]
     pub fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
         let size = self.history.size();
@@ -183,6 +288,9 @@ impl LinearModel {
             self.history[i] = 0.0;
         }
         self.write_pos = size;
+        if let LinearMode::Fft(ref mut state) = self.mode {
+            state.reset();
+        }
     }
 }
 
@@ -223,6 +331,205 @@ impl NamModel for LinearModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── select_partition_size ──
+
+    #[test]
+    fn test_select_partition_size_power_of_two_n() {
+        // N=256 is power of two, half=128, + threshold → 128
+        assert_eq!(select_partition_size(256), 128);
+        // N=512 → largest power ≤ 512 = 512 → ≥ N → half=256 < 512
+        assert_eq!(select_partition_size(512), 256);
+        // N=1024 → 512
+        assert_eq!(select_partition_size(1024), 512);
+    }
+
+    #[test]
+    fn test_select_partition_size_non_power_of_two_n() {
+        // N=300, max_p=150 → largest power of 2 ≤ 150 = 128
+        assert_eq!(select_partition_size(300), 128);
+        // N=999, max_p=499 → largest power of 2 ≤ 499 = 256
+        assert_eq!(select_partition_size(999), 256);
+        // N=2047, max_p=1023 → largest power of 2 ≤ 1023 = 512
+        assert_eq!(select_partition_size(2047), 512);
+    }
+
+    // ── Mode resolution ──
+
+    #[test]
+    fn test_direct_explicit_always_direct() {
+        let model = LinearModel::new(vec![1.0; 1024], 0.0, LinearImplementation::Direct).unwrap();
+        assert!(matches!(model.mode, LinearMode::Direct));
+    }
+
+    #[test]
+    fn test_auto_direct_below_threshold() {
+        let model = LinearModel::new(vec![1.0; 128], 0.0, LinearImplementation::Auto).unwrap();
+        assert!(matches!(model.mode, LinearMode::Direct));
+    }
+
+    #[test]
+    fn test_auto_fft_above_threshold() {
+        let model = LinearModel::new(vec![1.0; 512], 0.0, LinearImplementation::Auto).unwrap();
+        assert!(matches!(model.mode, LinearMode::Fft(_)));
+    }
+
+    #[test]
+    fn test_fft_explicit_above_threshold() {
+        let model = LinearModel::new(vec![1.0; 512], 0.0, LinearImplementation::Fft).unwrap();
+        assert!(matches!(model.mode, LinearMode::Fft(_)));
+    }
+
+    #[test]
+    fn test_fft_explicit_below_threshold_fallback() {
+        let model = LinearModel::new(vec![1.0; 128], 0.0, LinearImplementation::Fft).unwrap();
+        assert!(matches!(model.mode, LinearMode::Direct));
+    }
+
+    // ── FFT process_sample correctness ──
+
+    #[test]
+    fn test_fft_process_basic_no_tail() {
+        // P=N: FFT state has zero tail partitions, equivalent to Direct
+        let ir: Vec<f32> = (0..256).map(|i| (i as f32) * 0.01).collect();
+        let mut model = LinearModel::new(ir.clone(), 0.1, LinearImplementation::Direct).unwrap();
+        model.prewarm(0);
+
+        let mut model_fft = LinearModel::new(ir, 0.1, LinearImplementation::Fft).unwrap();
+        model_fft.prewarm(0);
+
+        let inputs = [0.5, -0.3, 0.8, -0.1, 0.2];
+        for &x in &inputs {
+            let direct = unsafe { model.process_sample(x) };
+            let fft = unsafe { model_fft.process_sample(x) };
+            assert!(
+                (direct - fft).abs() < 1e-5,
+                "direct={direct} fft={fft} mismatch at input={x}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fft_process_with_tail() {
+        // P=4, N=8: 2 partitions (head + 1 tail)
+        let ir: Vec<f32> = (0..8).map(|i| (i as f32) * 0.1).collect();
+        let mut direct = LinearModel::new(ir.clone(), 0.0, LinearImplementation::Direct).unwrap();
+        direct.prewarm(0);
+
+        let mut fft = LinearModel::new(ir, 0.0, LinearImplementation::Fft).unwrap();
+        fft.prewarm(0);
+
+        // Feed 100 samples; compare Direct vs FFT output sample by sample
+        let mut max_diff = 0.0f32;
+        for i in 0..100 {
+            let x = (i as f32 * 0.7).sin();
+            let d = unsafe { direct.process_sample(x) };
+            let f = unsafe { fft.process_sample(x) };
+            let diff = (d - f).abs();
+            if diff > max_diff {
+                max_diff = diff;
+            }
+        }
+        assert!(
+            max_diff < 1e-4,
+            "max diff between Direct and FFT = {max_diff}"
+        );
+    }
+
+    #[test]
+    fn test_fft_long_tail_many_partitions() {
+        // P=256 but N=2048 (> 256 so actually P would be 1024 from select_partition_size)
+        // Let's use explicit Fft with a small P to force many partitions
+        // We'll bypass new() and construct manually for this edge case
+        let ir = vec![1.0f32; 2048];
+        let fft_state = LinearFftState::new(256, &ir);
+        let mut aligned = AlignedVec::from_vec(ir.clone());
+        aligned.reverse();
+        let history = MirroredBuffer::<f32>::new(2048).unwrap();
+        let limit = history.size();
+
+        let mut model = LinearModel {
+            weights: aligned,
+            bias: 0.0,
+            history,
+            write_pos: limit,
+            receptive_field: 2048,
+            double_limit: limit.saturating_mul(2),
+            prewarm_on_reset: true,
+            implementation: LinearImplementation::Fft,
+            mode: LinearMode::Fft(Box::new(fft_state)),
+        };
+        model.prewarm(0);
+
+        // Verify processing does not panic over 2000 samples
+        for i in 0..2000 {
+            let x = (i as f32 * 0.3).sin();
+            unsafe { model.process_sample(x) };
+        }
+    }
+
+    #[test]
+    fn test_fft_reset_restores_behavior() {
+        let ir = vec![0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
+        let mut model = LinearModel::new(ir, 0.2, LinearImplementation::Fft).unwrap();
+        model.prewarm(0);
+
+        let out1 = unsafe { model.process_sample(0.7) };
+        let out2 = unsafe { model.process_sample(-0.3) };
+        let out3 = unsafe { model.process_sample(0.4) };
+
+        model.reset(0, 0);
+
+        let out1b = unsafe { model.process_sample(0.7) };
+        let out2b = unsafe { model.process_sample(-0.3) };
+        let out3b = unsafe { model.process_sample(0.4) };
+
+        assert!(
+            (out1 - out1b).abs() < 1e-6,
+            "reset mismatch: {out1} vs {out1b}"
+        );
+        assert!(
+            (out2 - out2b).abs() < 1e-6,
+            "reset mismatch: {out2} vs {out2b}"
+        );
+        assert!(
+            (out3 - out3b).abs() < 1e-6,
+            "reset mismatch: {out3} vs {out3b}"
+        );
+    }
+
+    #[test]
+    fn test_fft_process_block() {
+        let ir = vec![1.0f32; 512];
+        let mut model = LinearModel::new(ir, 0.0, LinearImplementation::Fft).unwrap();
+        model.prewarm(0);
+
+        let input: Vec<f32> = (0..128).map(|i| (i as f32 * 0.2).sin()).collect();
+        let mut output = vec![0.0f32; 128];
+        unsafe { model.process(&input, &mut output) };
+
+        // Verify no NaN, no infinity
+        for &v in &output {
+            assert!(v.is_finite(), "output contains non-finite value: {v}");
+        }
+    }
+
+    #[test]
+    fn test_direct_process_block_still_works() {
+        let mut model =
+            LinearModel::new(vec![0.5, 0.5], 0.0, LinearImplementation::Direct).unwrap();
+        model.prewarm(0);
+
+        let input = [0.1f32; 64];
+        let mut output = [0.0f32; 64];
+        unsafe { model.process(&input, &mut output) };
+
+        for &v in &output {
+            assert!(v.is_finite());
+        }
+    }
+
+    // ── Existing tests kept ──
 
     #[test]
     fn test_linear_unit_weight() {

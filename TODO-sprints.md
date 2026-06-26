@@ -88,9 +88,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     - Executar o IFFT e armazenar a cauda válida (amostras `P..2P-1`) no `tail_output_buf`.
 - **Risco:** 🔴 Alto. Hot-path precisa ser rigorosamente RT-Safe: zero heap drops, zero locks, zero loops sem eliminação estática de bounds checks.
 
-#### 6. [MODEL] Integrar o Despacho no Hot-path do `LinearModel` (F1)
+#### 6. [MODEL] Integrar o Despacho no Hot-path do `LinearModel` (F1) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
 - **Descrição:**
   - Adaptar o hot-path do `process_sample` do `LinearModel` para realizar o despacho:
