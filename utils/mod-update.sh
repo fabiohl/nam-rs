@@ -51,8 +51,8 @@ echo -e "\n${BLUE}${BOLD}[4.1/4] Sincronizando fixtures do NeuralAmpModelerCore.
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
 
 # Canonical tag and pinned SHA (T5.2 — single reference for all goldens)
-NAM_CORE_TAG="v0.5.3"
-NAM_CORE_SHA="9c7b185de346fe0725dea537bcee4bc38b5bb6d6"
+NAM_CORE_TAG="v0.5.4"
+NAM_CORE_SHA="1f42f88535884450104b8711d7595019afa0495b"
 
 if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."

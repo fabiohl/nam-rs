@@ -16,7 +16,7 @@ categories = [
 ]
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 thiserror = "2.0"
 libc = "0.2.186"
 pipewire = { version = "0.10.0", optional = true }
@@ -25,7 +25,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 lexopt = "0.3.2"
 log = "0.4.33"
-env_logger = { version = "0.11.10", default-features = false }
+env_logger = { version = "0.11.11", default-features = false }
 clack-common = { version = "0.1", optional = true }
 clack-plugin = { version = "0.1", optional = true }
 clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info", "remote-controls", "param-indication", "clack-host", "preset-discovery", "render", "state-context"] }
