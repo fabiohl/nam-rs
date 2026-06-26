@@ -68,6 +68,10 @@ harness = false
 # que embasaram a decisão de não adotar Radix-4/Stockham/Split-Radix.
 
 [[bench]]
+name = "gemv_bench"
+harness = false
+
+[[bench]]
 name = "linear"
 harness = false
 

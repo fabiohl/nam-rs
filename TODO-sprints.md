@@ -18,9 +18,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 1. [BENCH] Micro-benchmarks de Kernels GEMV (F4)
+### Tarefa 1. [BENCH] Micro-benchmarks de Kernels GEMV (F4) [DONE]
 
-- **Status:** `[ ]` **Não iniciada**
+- **Status:** `[x]` **Concluída**
 - **Arquivos Alvo:**
   - [`benches/gemv_bench.rs`](file:///home/fabio/nam-rs/benches/gemv_bench.rs) (Novo arquivo)
 - **Descrição:**
@@ -36,6 +36,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
     1. O kernel genérico atual do NAM-rs (`fused_add_gemv_avx2`).
     2. Protótipos de kernels especializados escritos via unrolling estático/const generics.
 - **Risco:** Baixo. Requer apenas isolar a execução matemática de multiplicação matriz-vetor sem alterar caminhos de áudio de produção.
+- **Conclusão:** Suite criada em `benches/gemv_bench.rs`. Seis kernels especializados unrolled (1×4, 4×4, 4×6, 8×4, 8×6, 8×8) comparados contra `fused_add_gemv_avx2` genérico e `fused_add_gemv_fallback` escalar de referência. Sem alterações no código de produção.
 
 ---
 
