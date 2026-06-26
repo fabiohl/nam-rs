@@ -32,9 +32,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Atualizar [`get_linear_topology`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs) para ler e expor a flag de implementação de forma limpa.
 - **Risco:** 🟢 Baixo. Alteração puramente estrutural no parsing JSON do modelo.
 
-#### 2. [LOADER] Propagar Configuração de Implementação para o Dispatcher (F12)
+#### 2. [LOADER] Propagar Configuração de Implementação para o Dispatcher (F12) [DONE]
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Arquivo Alvo:** [`src/loader/dispatcher/linear/mod.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs)
 - **Descrição:**
   - Atualizar o retorno de [`get_linear_topology`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs) para passar o enum de implementação.

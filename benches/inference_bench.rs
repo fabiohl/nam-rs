@@ -1491,7 +1491,12 @@ fn bench_linear_model_dot_product(c: &mut Criterion) {
     let rf = 256;
     let weights: Vec<f32> = (0..rf).map(|i| (i as f32 * 0.01).sin()).collect();
     let bias = 0.1;
-    let mut model = LinearModel::new(weights, bias).unwrap();
+    let mut model = LinearModel::new(
+        weights,
+        bias,
+        nam_rs::loader::nam_json::LinearImplementation::default(),
+    )
+    .unwrap();
     model.prewarm(0);
 
     let input = (0..64)

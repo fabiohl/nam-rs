@@ -15,6 +15,7 @@
 mod common;
 
 use common::signals::generate_sine_440hz;
+use nam_rs::loader::nam_json::LinearImplementation;
 use nam_rs::models::linear::LinearModel;
 use nam_rs::models::{NamModel, StaticModel};
 
@@ -115,7 +116,12 @@ fn verify_linear_golden(
     let reference = linear_reference(input, weights_forward, bias);
 
     let mut model = StaticModel::Linear(Box::new(
-        LinearModel::new(weights_forward.to_vec(), bias).expect("Linear model creation"),
+        LinearModel::new(
+            weights_forward.to_vec(),
+            bias,
+            LinearImplementation::default(),
+        )
+        .expect("Linear model creation"),
     ));
     model.prewarm(input.len());
     let mut output = vec![0.0f32; input.len()];
@@ -254,10 +260,12 @@ fn test_linear_bitwise_determinism() {
     let input = synth_signal(512, &mut rng);
 
     let mut model1 = StaticModel::Linear(Box::new(
-        LinearModel::new(weights.clone(), bias).expect("Linear model creation"),
+        LinearModel::new(weights.clone(), bias, LinearImplementation::default())
+            .expect("Linear model creation"),
     ));
     let mut model2 = StaticModel::Linear(Box::new(
-        LinearModel::new(weights, bias).expect("Linear model creation"),
+        LinearModel::new(weights, bias, LinearImplementation::default())
+            .expect("Linear model creation"),
     ));
 
     model1.prewarm(input.len());
@@ -287,7 +295,12 @@ fn test_linear_reset_reproduces() {
     let reference = linear_reference(&input, &weights_forward, bias);
 
     let mut model = StaticModel::Linear(Box::new(
-        LinearModel::new(weights_forward.clone(), bias).expect("Linear model creation"),
+        LinearModel::new(
+            weights_forward.clone(),
+            bias,
+            LinearImplementation::default(),
+        )
+        .expect("Linear model creation"),
     ));
 
     model.prewarm(input.len());

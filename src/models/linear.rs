@@ -25,6 +25,7 @@
 use super::NamModel;
 use super::sealed;
 use crate::dsp::mirror_buf::MirroredBuffer;
+use crate::loader::nam_json::LinearImplementation;
 use crate::math::common::AlignedVec;
 
 /// Linear Model — lightweight FIR-based neural model.
@@ -55,14 +56,20 @@ pub struct LinearModel {
     double_limit: usize,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
+    /// Convolution implementation mode as configured in the JSON.
+    pub implementation: LinearImplementation,
 }
 
 impl LinearModel {
-    /// Creates a new LinearModel with the given weights, bias.
+    /// Creates a new LinearModel with the given weights, bias, and implementation.
     ///
     /// Weights are expected in **forward-time order** as stored in the `.nam`
     /// JSON (w[0] is the response at the current sample). They are reversed
     /// internally to match the C++ `nam::Linear` layout.
+    ///
+    /// `implementation` controls the convolution strategy (`Auto`, `Direct`, `Fft`)
+    /// as configured in the model's JSON; `Auto` falls back to `Direct` until
+    /// partitioned FFT is fully implemented.
     ///
     /// Allocates the `MirroredBuffer` for the input history. The buffer is
     /// initialized to zero (silence) by the operating system via `mmap`.
@@ -70,7 +77,11 @@ impl LinearModel {
     /// # Errors
     /// Returns `std::io::Error` if the `MirroredBuffer` allocation fails
     /// (e.g., out of memory or virtual address space).
-    pub fn new(weights: Vec<f32>, bias: f32) -> std::io::Result<Self> {
+    pub fn new(
+        weights: Vec<f32>,
+        bias: f32,
+        implementation: LinearImplementation,
+    ) -> std::io::Result<Self> {
         let receptive_field = weights.len();
         let mut aligned = AlignedVec::from_vec(weights);
         aligned.reverse();
@@ -87,6 +98,7 @@ impl LinearModel {
             receptive_field,
             double_limit,
             prewarm_on_reset: true,
+            implementation,
         })
     }
 
@@ -198,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_linear_unit_weight() {
-        let model = LinearModel::new(vec![1.0], 0.0).unwrap();
+        let model = LinearModel::new(vec![1.0], 0.0, LinearImplementation::default()).unwrap();
         assert_eq!(model.receptive_field, 1);
         assert_eq!(model.weights.len(), 1);
     }
@@ -207,7 +219,7 @@ mod tests {
     fn test_linear_known_output() {
         let weights = vec![0.2, 0.3, 0.5];
         let bias = 0.1;
-        let mut model = LinearModel::new(weights, bias).unwrap();
+        let mut model = LinearModel::new(weights, bias, LinearImplementation::default()).unwrap();
 
         model.prewarm(0);
 
@@ -242,7 +254,8 @@ mod tests {
 
     #[test]
     fn test_linear_zero_output() {
-        let mut model = LinearModel::new(vec![0.0, 0.0, 0.0], 0.0).unwrap();
+        let mut model =
+            LinearModel::new(vec![0.0, 0.0, 0.0], 0.0, LinearImplementation::default()).unwrap();
         model.prewarm(0);
         let out = unsafe { model.process_sample(5.0) };
         assert!((out - 0.0).abs() < 1e-6);
@@ -250,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_linear_process_block() {
-        let mut model = LinearModel::new(vec![1.0], 0.0).unwrap();
+        let mut model = LinearModel::new(vec![1.0], 0.0, LinearImplementation::default()).unwrap();
         model.prewarm(0);
 
         let input = [0.1, 0.2, 0.3];
@@ -270,7 +283,8 @@ mod tests {
 
     #[test]
     fn test_linear_reset() {
-        let mut model = LinearModel::new(vec![0.5, 0.5], 0.0).unwrap();
+        let mut model =
+            LinearModel::new(vec![0.5, 0.5], 0.0, LinearImplementation::default()).unwrap();
         model.prewarm(0);
 
         let out1 = unsafe { model.process_sample(1.0) };
@@ -285,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_linear_prewarm_samples_zero() {
-        let model = LinearModel::new(vec![1.0; 16], 0.0).unwrap();
+        let model = LinearModel::new(vec![1.0; 16], 0.0, LinearImplementation::default()).unwrap();
         assert_eq!(model.prewarm_samples(), 0);
     }
 }

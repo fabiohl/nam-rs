@@ -11,7 +11,7 @@ use anyhow::Context;
 use log::info;
 
 pub(crate) fn build_linear(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
-    let (receptive_field, has_bias, _implementation) =
+    let (receptive_field, has_bias, implementation) =
         crate::loader::nam_json::get_linear_topology(data)
             .context("Linear topology not detectable (check receptive_field and bias)")?;
 
@@ -28,12 +28,14 @@ pub(crate) fn build_linear(data: &NamModelData) -> anyhow::Result<Box<StaticMode
 
     cursor.verify_exhausted()?;
 
-    let model = LinearModel::new(weights, bias).context("Failed to create LinearModel")?;
+    let model =
+        LinearModel::new(weights, bias, implementation).context("Failed to create LinearModel")?;
 
     info!(
-        "[Dispatcher] Linear built — receptive_field={}, has_bias={}, weights_count={}",
+        "[Dispatcher] Linear built — receptive_field={}, has_bias={}, implementation={:?}, weights_count={}",
         receptive_field,
         has_bias,
+        implementation,
         data.weights.len()
     );
 
