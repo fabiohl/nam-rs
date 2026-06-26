@@ -61,9 +61,9 @@ métricas de forma íntegra.
 
 ---
 
-### Tarefa 1.1 [TEST/INFRA] Capturar stdout/stderr do render C++ em vez de herdar ([F-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 1.1 [TEST/INFRA] Capturar stdout/stderr do render C++ em vez de herdar ([F-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída
 - **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`run_render_comparison`, ≈ linha 267)
 - **Descrição:**
   - **Causa-raiz:** `Command::new(&bin)…​.status()` **herda** o fd de stdout do processo de teste; com o
@@ -79,6 +79,10 @@ métricas de forma íntegra.
     `Loading model…`/`Wrote N samples…` intercaladas; a saída do filho só aparece em falha/skip.
   - Nenhuma regressão no número de testes que passam.
 - **Risco:** Baixo.
+- **Conclusão:** `.status()` → `.output()` em `run_render_comparison` (`tests/cpp_parity.rs:268-294`). Em
+  sucesso, a saída do filho C++ é descartada silenciosamente; em falha, stderr+stdout são anexados à
+  mensagem de skip. `cabsim_cpp_parity.rs` não possui invocação equivalente (lê goldens pré-gerados, sem
+  `Command`). Teste `wavenet_nano` passa sem intercalação; lints verdes.
 
 ### Tarefa 1.2 [TEST/INFRA] Emissão atômica do relatório de fidelidade ([F-1](file:///home/fabio/nam-rs/TODO-findings.md))
 

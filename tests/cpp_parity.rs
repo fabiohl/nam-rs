@@ -262,20 +262,31 @@ fn run_render_comparison(
 
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
 
-    // Execute render tool
+    // Execute render tool — capture stdout/stderr to prevent interleaving
+    // with the Rust test harness output (F-1 fix).
     let bin = render_bin();
-    let status = Command::new(&bin)
+    let output = Command::new(&bin)
         .arg(model_path.to_str().unwrap())
         .arg(stress_wav.to_str().unwrap())
         .arg(output_wav.to_str().unwrap())
-        .status();
+        .output();
 
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
+    match output {
+        Ok(o) if o.status.success() => { /* silence on success */ }
+        Ok(o) => {
+            let stderr_msg = String::from_utf8_lossy(&o.stderr);
+            let stdout_msg = if o.stdout.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "--- render stdout ---\n{}\n",
+                    String::from_utf8_lossy(&o.stdout)
+                )
+            };
             eprintln!(
-                "SKIP: {label} — render returned exit code {}",
-                s.code().unwrap_or(-1)
+                "SKIP: {label} — render returned exit code {}\n\
+                 --- render stderr ---\n{stderr_msg}{stdout_msg}",
+                o.status.code().unwrap_or(-1)
             );
             return;
         }
