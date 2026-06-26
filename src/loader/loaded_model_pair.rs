@@ -37,6 +37,36 @@ pub struct LoadedModelPair {
 }
 
 impl LoadedModelPair {
+    /// Overall recorded loudness from model metadata, if available.
+    pub fn loudness(&self) -> Option<f32> {
+        self.metadata.as_ref().and_then(|m| m.loudness)
+    }
+
+    /// Expected input level (dBu) for proper gain staging, if available.
+    pub fn input_level_dbu(&self) -> Option<f32> {
+        self.metadata.as_ref().and_then(|m| m.input_level_dbu)
+    }
+
+    /// Expected output level (dBu) for the model, if available.
+    pub fn output_level_dbu(&self) -> Option<f32> {
+        self.metadata.as_ref().and_then(|m| m.output_level_dbu)
+    }
+
+    /// Whether the model metadata contains a loudness value.
+    pub fn has_loudness(&self) -> bool {
+        self.loudness().is_some()
+    }
+
+    /// Whether the model metadata contains an input level (dBu) value.
+    pub fn has_input_level_dbu(&self) -> bool {
+        self.input_level_dbu().is_some()
+    }
+
+    /// Whether the model metadata contains an output level (dBu) value.
+    pub fn has_output_level_dbu(&self) -> bool {
+        self.output_level_dbu().is_some()
+    }
+
     /// Builds a [`ModelInfo`] snapshot from this loaded pair and the source file path.
     pub fn model_info(&self, path: &Path) -> ModelInfo {
         ModelInfo {

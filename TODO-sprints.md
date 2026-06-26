@@ -110,9 +110,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 2. [LOADER] Expor Metadados de Níveis em `LoadedModelPair` (F11)
+### Tarefa 2. [LOADER] Expor Metadados de Níveis em `LoadedModelPair` (F11) [DONE]
 
-- **Status:** `[ ]` **Não Iniciada**
+- **Status:** `[x]` **Concluída** — Todos os 6 métodos implementados em `LoadedModelPair`; `cargo check` sem warnings; 126 testes passam.
 - **Arquivos Alvo:**
   - [`src/loader/loaded_model_pair.rs`](file:///home/fabio/nam-rs/src/loader/loaded_model_pair.rs)
 - **Descrição:**
