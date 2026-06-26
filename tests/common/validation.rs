@@ -49,7 +49,7 @@ const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 ///   SNR     = 10.1 dB       (threshold ≥ 9.0 dB)   ✓
 ///   PSNR    = 14.9 dB
 ///   Bits    = 2.5 bits equiv.
-///   ESR     = 1.23e-05       (−49.1 dB)   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
+///   ESR     = 1.23e-05       (−49.1 dB)   (threshold < 1.0e-1)  ✓   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
 ///   MR-STFT = 0.0042         (relative)
 ///   LUFS    = −23.4 LUFS    (reference)   [plausible: −50.0..+10.0]  ✓
 ///   Samples = 2048 @ 48 kHz (stress signal)
@@ -219,14 +219,23 @@ fn report_dsp_fidelity_impl(
         writeln!(buf, "  Bits    = ∞ bits equiv.").unwrap();
     }
     if esr_linear.is_finite() {
-        writeln!(
-            buf,
-            "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}, A2-Lite: {a2lite:.2e}]",
-            a1std = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN,
-            a2full = nam_rs::testing::perceptual::A2ESR_A2_FULL_MEDIAN,
-            a2lite = nam_rs::testing::perceptual::A2ESR_A2_LITE_MEDIAN,
-        )
-        .unwrap();
+        let a1std = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
+        let a2full = nam_rs::testing::perceptual::A2ESR_A2_FULL_MEDIAN;
+        let a2lite = nam_rs::testing::perceptual::A2ESR_A2_LITE_MEDIAN;
+        if let Some(limit) = max_esr {
+            writeln!(
+                buf,
+                "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   (threshold < {limit:.1e})  {}   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}, A2-Lite: {a2lite:.2e}]",
+                if esr_linear < limit { "✓" } else { "✗" },
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                buf,
+                "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}, A2-Lite: {a2lite:.2e}]",
+            )
+            .unwrap();
+        }
     } else {
         writeln!(buf, "  ESR     = ∞  (identical)").unwrap();
     }

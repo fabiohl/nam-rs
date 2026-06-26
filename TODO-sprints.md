@@ -104,9 +104,9 @@ métricas de forma íntegra.
   O lock envolve apenas a escrita final (fora da computação de métricas). Teste `wavenet_nano` exibe bloco
   contíguo; `cargo check` e `cargo clippy --tests` sem warnings.
 
-### Tarefa 1.3 [TEST] Veredito ✓/✗ explícito para o gate primário ESR ([F-4](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 1.3 [TEST] Veredito ✓/✗ explícito para o gate primário ESR ([F-4](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída
 - **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (linha de ESR, ≈ 205-214; `assert!` ESR ≈ 260-265)
 - **Descrição:**
   - A linha de **ESR** é impressa **sem** marcador ✓/✗, embora ESR seja o gate **primário** scale-robust
@@ -115,6 +115,10 @@ métricas de forma íntegra.
     (≈ :190), usando o mesmo `max_esr` do `assert!`. Destacar visualmente que ESR é o gate decisivo.
 - **Critérios de Aceite:** todo bloco mostra ✓/✗ para ESR **coerente** com o `assert!` real (validation.rs:260-265).
 - **Risco:** Trivial.
+- **Conclusão:** Adicionado `(threshold < {limit:.1e})  {✓|✗}` à linha ESR em `tests/common/validation.rs:222-244`,
+  espelhando o padrão MSE/SNR. Quando `max_esr` é `None` (gate não aplicado), o veredito é omitido, mantendo
+  coerência com o `assert!`. Doc comment atualizado. `cargo check`, `cargo clippy --tests` e `cargo test --test
+  golden_vectors` sem warnings; saída verificada com `--nocapture` exibindo `✓` para `BossWN-nano`.
 
 ### Tarefa 1.4 [QA] Validação de lints e prova de legibilidade sob falha (E1)
 
