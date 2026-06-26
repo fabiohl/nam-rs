@@ -9,99 +9,124 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-## Sprint 2: Épico I — "LSTM Prewarm por Sample Rate" (F8)
+## Sprints 3, 4 e 5: Épico D — "Convolução FFT Particionada para Linear" (F1, F12)
 
-**Escopo:** Armazenar `expected_sample_rate` nos structs LSTM, implementar `prewarm_samples()` retornando `0.5s × SR`, e alinhar `reset()` com o comportamento do C++ (`Reset()` → `prewarm(GetPrewarmSamples())`).
-**Objetivo de Paridade:** Estabilizar o estado recorrente do LSTM após resets e mudanças de sample rate (sound frequency), evitando artefatos audíveis (clicks, DC offsets) devido a uma inicialização sem pré-aquecimento.
-**Estimativa:** 1 sprint.
-**Risco Geral:** 🟢 Baixo — Mudanças bem localizadas nos modelos e construtores de LSTM, sem alterações nos kernels críticos de processamento.
+**Escopo:** Implementar a convolução FFT particionada com latência zero para o modelo Linear, com auto-seleção inteligente baseada no tamanho do receptive field e suporte ao controle de implementação via JSON.
+**Objetivo de Paridade:** Processar eficientemente Impulse Responses (IRs) longas (como cab sims de 2048 a 8192+ amostras) sem comprometer o orçamento de CPU de tempo real (RT-Safety), enquanto mantém a latência estritamente zerada usando convolução híbrida (Direct Head + FFT Tail).
+**Estimativa Total:** 3 Sprints (1 de setup/modelagem, 1 de core do motor de convolução FFT, 1 de paridade/testes/benchmarks).
+**Risco Geral:** 🟡 Médio — Requer sincronização temporal perfeita e livre de aliasing entre o bloco de convolução direta (Head) e os blocos calculados via FFT no domínio da frequência (Tail), além de estrita garantia de segurança em tempo real (RT-Safety).
 
 ---
 
-### 1. [MODEL] Adicionar Campo `expected_sample_rate` nos Structs LSTM (F8) [DONE]
+### Quadro de Tarefas Técnicas
 
-- **Status:** `[X]` **Concluído** — Campo `pub expected_sample_rate: f64` adicionado a `LstmModel1`, `LstmModel2` e `LstmModelDyn`. Inicializado com `48000.0` em `new()` e nos builders (`static_builder.rs`, `dynamic_builder.rs`). Task 4 propagará o valor real do JSON.
+#### Sprint 3: Fase 1 — Arquitetura, Parser JSON e Modelagem (F1, F12)
+
+##### 1. [LOADER] Adicionar Enum `LinearImplementation` e Desserialização no JSON (F12)
+
+- **Status:** `[ ]`
 - **Arquivos Alvo:**
-  - [`src/models/lstm/model1.rs`](file:///home/fabio/nam-rs/src/models/lstm/model1.rs)
-  - [`src/models/lstm/model2.rs`](file:///home/fabio/nam-rs/src/models/lstm/model2.rs)
-  - [`src/models/lstm/model_dyn.rs`](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs)
+  - [`src/loader/nam_json/model.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
+  - [`src/loader/nam_json/topology/linear.rs`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs)
 - **Descrição:**
-  - Adicionar o campo `pub expected_sample_rate: f64` nas structs [`LstmModel1`](file:///home/fabio/nam-rs/src/models/lstm/model1.rs), [`LstmModel2`](file:///home/fabio/nam-rs/src/models/lstm/model2.rs) e [`LstmModelDyn`](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs).
-  - Inicializar `expected_sample_rate: 48000.0` nos métodos `new()` associados para garantir um fallback seguro.
-- **Risco:** Baixo. Alteração trivial de estrutura de dados.
+  - Definir o enum `LinearImplementation` com suporte a `Auto`, `Direct` e `Fft`.
+  - Adicionar o campo opcional `implementation: Option<String>` na struct `NamConfig`.
+  - Atualizar [`get_linear_topology`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs) para ler e expor a flag de implementação de forma limpa.
+- **Risco:** 🟢 Baixo. Alteração puramente estrutural no parsing JSON do modelo.
+
+##### 2. [LOADER] Propagar Configuração de Implementação para o Dispatcher (F12)
+
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/loader/dispatcher/linear/mod.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs)
+- **Descrição:**
+  - Atualizar o retorno de [`get_linear_topology`](file:///home/fabio/nam-rs/src/loader/nam_json/topology/linear.rs) para passar o enum de implementação.
+  - Ajustar [`build_linear`](file:///home/fabio/nam-rs/src/loader/dispatcher/linear/mod.rs) para aceitar e propagar a opção de implementação durante a chamada de criação do `LinearModel`.
+- **Risco:** 🟢 Baixo. Conexão mecânica entre componentes.
+
+##### 3. [MODEL] Definir Variantes de Modo no `LinearModel` (F1)
+
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
+- **Descrição:**
+  - Criar o enum `LinearMode` contendo as variantes `Direct` e `Fft(Box<LinearFftState>)` para o modelo Linear.
+  - Adicionar o campo `mode: LinearMode` na struct `LinearModel`.
+  - Integrar a assinatura do construtor `LinearModel::new` para aceitar a opção de implementação e configurar o modo direto inicial/fallback.
+- **Risco:** 🟢 Baixo. Modificação de setup sem alteração no processamento ativo.
 
 ---
 
-### 2. [MODEL] Implementar `prewarm_samples` no Trait `NamModel` para LSTMs (F8) [DONE]
+#### Sprint 4: Fase 2 — Core do Motor de Convolução FFT Zero-Latência (F1)
 
-- **Status:** `[X]` **Concluído** — Método `prewarm_samples(&self) -> usize` sobrescrito nos blocos `impl NamModel` de `LstmModel1`, `LstmModel2` e `LstmModelDyn`. Retorna `(0.5 * expected_sample_rate) as usize`, com fallback seguro para `1` caso o cálculo resulte ≤ 0. 22 testes LSTM passando.
-- **Arquivo Alvo:**
-  - [`src/models/lstm/mod.rs`](file:///home/fabio/nam-rs/src/models/lstm/mod.rs)
+##### 4. [MODEL] Desenhar e Estruturar o `LinearFftState` (F1)
+
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs) (Novo arquivo)
 - **Descrição:**
-  - Sobrescrever o método `prewarm_samples(&self) -> usize` no bloco `impl NamModel` de [`LstmModel1`](file:///home/fabio/nam-rs/src/models/lstm/model1.rs), [`LstmModel2`](file:///home/fabio/nam-rs/src/models/lstm/model2.rs) e [`LstmModelDyn`](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs).
-  - Utilizar a lógica de paridade com o C++:
+  - Criar o arquivo `linear_fft.rs` incluindo cabeçalho SPDX e copyright obrigatório.
+  - Implementar a estrutura `LinearFftState` com todos os buffers necessários para overlap-save zero-latência pré-alocados via `AlignedVec<f32>` (para compatibilidade SIMD x86-64-v3):
+    - `rfft`: `RfftPlanner<f32>` do NAM-rs.
+    - `h_fdl_re`, `h_fdl_im`: espectros das partições de cauda (IR de `P` a `N-1`).
+    - `fdl_re`, `fdl_im`: Frequency Delay Line circular.
+    - `input_buf`: buffer de entrada de tamanho `2P`.
+    - `output_buf`: buffer de saída complexo transformado e IFFT'd.
+    - `tail_output_buf`: buffer circular com os resultados prontos para leitura direta por sample.
+    - `sample_counter`: índice de leitura interno do bloco de cauda (0 a `P-1`).
+- **Risco:** 🟡 Médio. Requer precisão nos buffers de alinhamento e determinação do tamanho da partição `P` com base no receptive field (256, 512, 1024).
 
-    ```rust
-    fn prewarm_samples(&self) -> usize {
-        let result = (0.5 * self.expected_sample_rate) as isize;
-        if result <= 0 {
-            1
-        } else {
-            result as usize
-        }
-    }
-    ```
+##### 5. [MODEL] Implementar o Loop de Processamento e FFT de Cauda (F1)
 
-- **Risco:** Baixo. Sem impacto nos loops de áudio do hot-path.
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/models/linear_fft.rs`](file:///home/fabio/nam-rs/src/models/linear_fft.rs)
+- **Descrição:**
+  - Implementar o método `process_tail_block` em `LinearFftState` para rodar na fronteira de blocos:
+    - Copiar a janela de tamanho `2P` correspondente das últimas amostras contíguas diretamente do `MirroredBuffer` para `input_buf`.
+    - Computar o forward RFFT de `input_buf`.
+    - Atualizar a FDL e realizar o acúmulo no domínio da frequência usando dispatch SIMD (`complex_mac_overwrite` / `complex_mac_accumulate`) conforme suporte ISA (`Avx2` ou `Avx512`).
+    - Executar o IFFT e armazenar a cauda válida (amostras `P..2P-1`) no `tail_output_buf`.
+- **Risco:** 🔴 Alto. Hot-path precisa ser rigorosamente RT-Safe: zero heap drops, zero locks, zero loops sem eliminação estática de bounds checks.
+
+##### 6. [MODEL] Integrar o Despacho no Hot-path do `LinearModel` (F1)
+
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs)
+- **Descrição:**
+  - Adaptar o hot-path do `process_sample` do `LinearModel` para realizar o despacho:
+    - **Modo Direct:** Executa o dot product SIMD de todo o receptive field.
+    - **Modo FFT:**
+      - Computa o dot product da parte Head (tamanho `P`) de forma direta (tempo-real/latência zero).
+      - Soma o bias do modelo e o valor correspondente da cauda: `y_tail = tail_output_buf[sample_counter]`.
+      - Incrementa `sample_counter`. Se atingir `P`, invoca a computação do próximo bloco via `process_tail_block` e reseta o contador.
+  - Atualizar os métodos `reset` e `prewarm` do `LinearModel` para reinicializar os estados do `LinearFftState` de forma determinística e livre de alocações.
+- **Risco:** 🔴 Alto. Risco de falha de paridade de processamento se o timing de leitura/escrita do buffer circular estiver deslocado por 1 sample.
 
 ---
 
-### 3. [MODEL] Atualizar Lógica de `reset()` nos LSTMs para Executar Prewarm (F8) [DONE]
+#### Sprint 5: Fase 3 — Paridade, Testes de Extremo e Benchmarks (F1)
 
-- **Status:** `[X]` **Concluído** — `reset()` nos três modelos LSTM (`LstmModel1`, `LstmModel2`, `LstmModelDyn`) agora executa `reset_states()` seguido de `prewarm(prewarm_samples())` quando `prewarm_on_reset() == true`, idêntico ao C++ (`Reset()` → `prewarm(GetPrewarmSamples())`). 22 testes LSTM passando.
-- **Arquivo Alvo:**
-  - [`src/models/lstm/mod.rs`](file:///home/fabio/nam-rs/src/models/lstm/mod.rs)
+##### 7. [TEST] Escrever Testes Unitários de Equivalência Numérica (F1)
+
+- **Status:** `[ ]`
+- **Arquivo Alvo:** [`src/models/linear.rs`](file:///home/fabio/nam-rs/src/models/linear.rs) (ou arquivo separado de teste)
 - **Descrição:**
-  - Alterar o método `reset` nos blocos `impl NamModel` de [`LstmModel1`](file:///home/fabio/nam-rs/src/models/lstm/model1.rs), [`LstmModel2`](file:///home/fabio/nam-rs/src/models/lstm/model2.rs) e [`LstmModelDyn`](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs):
+  - Escrever testes unitários em `tests` validando que as saídas geradas em Direct e FFT sob o mesmo modelo e sinal de teste são numericamente idênticas dentro de uma tolerância estrita de `1e-6`.
+  - Garantir tratamento correto das regras de tamanho de arquivos de testes (inline vs `_test.rs`) de acordo com a quantidade de linhas do arquivo final.
+- **Risco:** 🟢 Baixo. Validação da corretude matemática básica.
 
-    ```rust
-    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) -> anyhow::Result<()> {
-        self.reset_states();
-        if self.prewarm_on_reset() {
-            self.prewarm(self.prewarm_samples());
-        }
-        Ok(())
-    }
-    ```
+##### 8. [TEST] Criar Fixtures de Integração e Golden Tests vs C++ v0.5.4 (F1)
 
-- **Risco:** Baixo. Garante a paridade do fluxo de inicialização do LSTM do C++.
-
----
-
-### 4. [LOADER] Propagar `expected_sample_rate` nos Builders de LSTM (F8) [DONE]
-
-- **Status:** `[X]` **Concluído** — `build_lstm_1layer`, `build_lstm_2layer` e `build_lstm_dynamic` agora extraem `sample_rate` de `NamModelData` (com fallback `DEFAULT_SAMPLE_RATE = 48000.0`) e propagam como `expected_sample_rate: f64` na construção das structs LSTM.
-- **Arquivos Alvo:**
-  - [`src/loader/dispatcher/lstm/static_builder.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/lstm/static_builder.rs)
-  - [`src/loader/dispatcher/lstm/dynamic_builder.rs`](file:///home/fabio/nam-rs/src/loader/dispatcher/lstm/dynamic_builder.rs)
+- **Status:** `[ ]`
+- **Arquivo Alvo:** `tests/linear_fft_test.rs` (Novo arquivo)
 - **Descrição:**
-  - Obter a `sample_rate` informada no JSON do modelo NAM:
+  - Adicionar fixture de teste contendo IRs de comprimento longo (ex: 2048, 4096, 8192 taps).
+  - Alimentar os modelos no NAM-rs e comparar o output final amostra por amostra com a saída gerada pela biblioteca de referência C++.
+  - Certificar execução e passagem total no QA pipeline via `utils/tests-quick.sh`.
+- **Risco:** 🟡 Médio. Eventuais desvios de arredondamento de float em FFTs longas precisam ser inspecionados.
 
-    ```rust
-    let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
-    ```
+##### 9. [BENCH] Benchmark de Performance e Ajuste de Limiar (F1)
 
-    *(Nota: importar `DEFAULT_SAMPLE_RATE` do loader se necessário).*
-  - Passar essa sample rate durante a instanciação das structs de LSTM dentro de `build_lstm_1layer`, `build_lstm_2layer` e `build_lstm_dynamic`.
-- **Risco:** Baixo. Alteração puramente mecânica na rotina de construção/despacho do loader.
-
----
-
-### 5. [TEST] Criar Cobertura de Teste de Integração para Prewarm do LSTM (F8) [DONE]
-
-- **Status:** `[X]` **Concluído** — 4 novos testes de integração adicionados em `tests/prewarm_test.rs`:
-  - `test_lstm_prewarm_samples_scales_with_sample_rate`: valida que `prewarm_samples()` retorna 24000 (48kHz) e 22050 (44.1kHz) para LSTM estático (H=3) e dinâmico (H=7), e que o fallback `DEFAULT_SAMPLE_RATE` (48000) é aplicado quando `sample_rate` é `None`.
-  - `test_lstm_prewarm_samples_minimum`: edge case com `sample_rate = 1.0` → `prewarm_samples()` floor = 1.
-  - `test_lstm_reset_deterministic_after_prewarm`: dois modelos LSTM com estados internos divergentes → reset com `prewarm_on_reset=true` → outputs deterministicamente idênticos (tolerância 1e-6).
-  - `test_lstm_reset_differs_prewarm_vs_noprewarm`: valida que reset com e sem prewarm produzem outputs diferentes (LSTM), complementando o teste Linear já existente.
-- **Suite completa:** `utils/tests-quick.sh` executada — todas as 5 fases passaram (incluindo clap-validator).
+- **Status:** `[ ]`
+- **Arquivo Alvo:** `benches/linear.rs` (Novo arquivo)
+- **Descrição:**
+  - Criar benchmarks baseados no framework `criterion` comparando o tempo de processamento por bloco do modo Direct vs FFT em diferentes tamanhos de receptive field (128, 256, 512, 1024, 2048, 4096, 8192).
+  - Validar empiricamente se o limiar de corte para auto-seleção (256 taps) é ótimo para a arquitetura alvo `x86-64-v3`.
+- **Risco:** 🟢 Baixo. Coleta estatística de dados de latência de CPU.

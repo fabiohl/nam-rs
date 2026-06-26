@@ -582,7 +582,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico I — "LSTM Prewarm por Sample Rate" (F8)
+### Épico I — "LSTM Prewarm por Sample Rate" (F8) [DONE]
 
 **Escopo:** Armazenar `expected_sample_rate` nos structs LSTM, implementar `prewarm_samples()` retornando `0.5s × SR`, e alinhar `reset()` com o comportamento do C++ (`Reset()` → `prewarm(GetPrewarmSamples())`).
 
