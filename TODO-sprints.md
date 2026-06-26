@@ -80,15 +80,16 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 4. [TEST] Testes Unitários de Consistência e Paridade Matemática (F4)
+### Tarefa 4. [TEST] Testes Unitários de Consistência e Paridade Matemática (F4) [DONE]
 
-- **Status:** `[ ]` **Não iniciada**
+- **Status:** `[x]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/math/gemm/gemv/gemv_test.rs`](file:///home/fabio/nam-rs/src/math/gemm/gemv/gemv_test.rs)
 - **Descrição:**
   - Implementar testes unitários exaustivos comparando a saída de cada novo kernel especializado contra a referência de precisão (ou contra o kernel genérico existente).
   - Cobrir casos com e sem bias (`do_bias: true` / `false`), além de testar condições de contorno de floats (ex.: valores pequenos, denormais, etc.).
 - **Risco:** Baixo. Essencial para garantir a ausência de regressões matemáticas no áudio.
+- **Conclusão:** Suíte de testes implementada em `src/math/gemm/gemv/gemv_test.rs` com 7 novos testes totalizando cobertura para todas as 12 kernels especializadas (6 dimensões × 2 modos). Cada kernel comparada contra `scalar_ref::fused_add_gemv_fallback` / `scalar_ref::gemv_overwrite_fallback` com ambos modos `do_bias=true/false` e epsilon `5e-4`. Condições de contorno cobertas: subnormais f16 em pesos, denormais f32 nos inputs, zeros universais, e valores grandes (1e25) com tolerância relativa. 948 testes passam, 0 falhas.
 
 ---
 
