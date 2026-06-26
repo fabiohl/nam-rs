@@ -93,11 +93,12 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 5. [QA] Validação de Lints e Integração de Qualidade (F4)
+### Tarefa 5. [QA] Validação de Lints e Integração de Qualidade (F4) [DONE]
 
-- **Status:** `[ ]` **Não iniciada**
+- **Status:** `[x]` **Concluída**
 - **Arquivos Alvo:**
   - Repositório Geral / Scripts de QA
 - **Descrição:**
   - Executar a suíte de qualidade do NAM-rs (`utils/lints.sh` e `utils/tests-quick.sh`) para garantir que nenhuma nova otimização de baixo nível quebre diretrizes de compilação ou cause warnings de clippy no projeto.
 - **Risco:** Baixo.
+- **Conclusão:** `utils/lints.sh` passou em todas as 4 fases (format, cargo check × 4 configs, clippy × 4 configs com `-D warnings`, anti-pattern check) — zero warnings. `utils/tests-quick.sh` passou em todas as 5 fases: unitários/integração, cpp_parity (32/32), proptest_parsers (13/13), proptest_math (3/3), build CLAP com heap-audit, testes de integração CLAP/heap-audit (76+2+4+1+3+1+1 passaram), clap-validator (21 tests, 19 passed, 0 failed, 2 skipped). Nenhuma regressão introduzida pelos kernels GEMV especializados da Sprint 6.

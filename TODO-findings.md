@@ -567,7 +567,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico G — "Benchmark Kernels GEMV Especializados" (F4)
+### Épico G — "Benchmark Kernels GEMV Especializados" (F4) [DONE]
 
 **Escopo:** Benchmark-driven investigation: medir se kernels especializados por dimensão (1×4, 4×4, 4×6, 8×4, 8×6, 8×8) superam os kernels genéricos do NAM-rs. Implementar apenas se ganho > 5%.
 
