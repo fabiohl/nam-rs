@@ -534,7 +534,7 @@ O parser de Linear no NAM-rs ([`topology/linear.rs`](file:///home/fabio/nam-rs/s
 
 ---
 
-### Épico E — "Controle de Prewarm e LoadOptions" (F2, F3, F7)
+### Épico E — "Controle de Prewarm e LoadOptions" (F2, F3, F7) [DONE]
 
 **Escopo:** Implementar flag `prewarm_on_reset` nos modelos, `LoadOptions` no loader, e propagação para Container/Slimmable/WaveNet com condition_dsp.
 
