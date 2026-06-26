@@ -106,6 +106,10 @@ impl ContainerModel {
             prewarm_on_reset: true,
         };
 
+        for (_, model) in &mut container.submodels {
+            model.set_max_buffer_size(default_buf)?;
+        }
+
         container.prewarm(4096);
 
         Ok(container)
@@ -257,6 +261,18 @@ impl SlimmableModel for ContainerModel {
 
         if let Some(idx) = self.pending_index {
             self.active_index = idx;
+        }
+
+        if let Err(e) = self.submodels[next]
+            .1
+            .reset(self.sample_rate, self.max_buffer_size)
+        {
+            log::error!(
+                "ContainerModel::set_slimmable_size: reset(submodel {}) failed: {}",
+                next,
+                e
+            );
+            return;
         }
 
         self.pending_index = Some(next);

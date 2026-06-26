@@ -44,8 +44,8 @@ impl<const CH: usize> WaveNetA2<CH> {
         if self.has_weights() {
             let prewarm_samples = self.receptive_field_size;
             let block = WAVENET_MAX_NUM_FRAMES;
-            let zeros = vec![0.0f32; block];
-            let mut discard = vec![0.0f32; block];
+            let zeros = [0.0f32; WAVENET_MAX_NUM_FRAMES];
+            let mut discard = [0.0f32; WAVENET_MAX_NUM_FRAMES];
             let mut remaining = prewarm_samples;
             while remaining > 0 {
                 let nf = remaining.min(block);

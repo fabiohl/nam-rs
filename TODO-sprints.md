@@ -50,9 +50,9 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
 
 ---
 
-### Tarefa 3. [MODEL] Reset e Prewarm Seletivo em `ContainerModel::set_slimmable_size` (F9) [TODO]
+### Tarefa 3. [MODEL] Reset e Prewarm Seletivo em `ContainerModel::set_slimmable_size` (F9) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/models/container.rs`](file:///home/fabio/nam-rs/src/models/container.rs)
 - **Descrição:**
@@ -60,12 +60,13 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Antes de definir `self.pending_index = Some(next);`, chamar o método `reset(self.sample_rate, self.max_buffer_size)` no sub-modelo de destino (`self.submodels[next].1`).
   - Isso garante que o sub-modelo destino esteja limpo e pré-aquecido no sample rate e tamanho de buffer vigentes antes do início do crossfade, eliminando artefatos.
 - **Risco:** Baixo a Médio. Depende da garantia de que o `reset()` do modelo destino seja RT-safe (livre de alocações).
+- **Nota de conclusão:** Implementado. `set_slimmable_size` agora chama `reset()` no sub-modelo destino antes de definir `pending_index`. Para garantir zero-alocação, `ContainerModel::new()` foi modificado para chamar `set_max_buffer_size(default_buf)` em todos os sub-modelos na inicialização, evitando realocação tardia no `reset()` do destino. O `reset()` interno do A2 é RT-safe graças às otimizações das Tarefas 2 (set_max_buffer_size igual → zero-fill) e 4 (prewarm com stack arrays).
 
 ---
 
-### Tarefa 4. [MODEL] Otimizar `prewarm` dos Modelos A2 para Evitar Alocações no Thread RT (RT-Safety) [TODO]
+### Tarefa 4. [MODEL] Otimizar `prewarm` dos Modelos A2 para Evitar Alocações no Thread RT (RT-Safety) [DONE]
 
-- **Status:** `[ ]` **Pendente**
+- **Status:** `[X]` **Concluída**
 - **Arquivos Alvo:**
   - [`src/models/a2/model/static/prewarm.rs`](file:///home/fabio/nam-rs/src/models/a2/model/static/prewarm.rs)
   - [`src/models/a2/model/dynamic/prewarm.rs`](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/prewarm.rs)
@@ -73,6 +74,7 @@ Este documento contém o planejamento de sprints e tarefas técnicas estruturada
   - Substituir o uso de `vec![0.0f32; block]` por um buffer estático/de pilha de tamanho fixo `[0.0f32; WAVENET_MAX_NUM_FRAMES]` nos métodos `prewarm` dos modelos A2.
   - Isso evita alocação e desalocação de vetores no heap durante a fase de pré-aquecimento.
 - **Risco:** Baixo. Apenas alteração mecânica de tipo de buffer.
+- **Nota de conclusão:** Implementado. `vec![0.0f32; block]` substituído por `[0.0f32; WAVENET_MAX_NUM_FRAMES]` (64 elementos, 256 bytes) em ambos `prewarm.rs` (static e dynamic). Testes de prewarm, wavenet, golden vectors, zero-alloc e container_slimmable passam sem regressões.
 
 ---
 
