@@ -52,13 +52,13 @@
 # Daily workflow (recommended)
 # ----------------------------
 #   # 1. Before starting a new branch: ensure the current baseline is clean.
-#   utils/regression-check.sh --check
+#   utils/tests-performance-regression.sh --check
 #
 #   # 2. Develop your changes. Run lints and quick tests frequently.
 #   utils/lints.sh && utils/tests-quick.sh
 #
 #   # 3. Before committing/pushing: re-run the regression gate.
-#   utils/regression-check.sh --check
+#   utils/tests-performance-regression.sh --check
 #
 #   # 4. If the gate reports PASSED, you are safe to commit/push.
 #   #    If it reports REGRESSION, investigate before proceeding.
@@ -66,7 +66,7 @@
 #   # 5. Only when you intentionally change behavior that affects performance
 #   #    (e.g., adding a new feature with an understood, acceptable cost),
 #   #    and all other tests pass, update the baseline:
-#   utils/regression-check.sh --save
+#   utils/tests-performance-regression.sh --save
 #
 # First-time setup
 # ----------------
@@ -97,9 +97,9 @@
 #
 # Usage
 # ------
-#   utils/regression-check.sh              # --check (default)
-#   utils/regression-check.sh --check      # explicit check mode
-#   utils/regression-check.sh --save       # persist new baseline
+#   utils/tests-performance-regression.sh              # --check (default)
+#   utils/tests-performance-regression.sh --check      # explicit check mode
+#   utils/tests-performance-regression.sh --save       # persist new baseline
 #
 # =============================================================================
 
@@ -167,7 +167,7 @@ case "$MODE" in
             echo -e "\n${RED}${BOLD}❌ PERFORMANCE REGRESSION DETECTED${NC}"
             echo -e "  Review target/logs/regression-check.log for details."
             echo -e "  If the regression is intentional (e.g., new feature with\n  acceptable cost), re-save the baseline with:"
-            echo -e "    ${YELLOW}utils/regression-check.sh --save${NC}"
+            echo -e "    ${YELLOW}utils/tests-performance-regression.sh --save${NC}"
             exit 1
         fi
 

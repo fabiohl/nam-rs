@@ -177,12 +177,12 @@ utils/tests-quick.sh
 utils/tests-long.sh
 
 # 4. Performance Regression Gate (Criterion baseline comparison with core pinning)
-utils/regression-check.sh          # --check (default) — fails CI on regression (p < 0.05)
-utils/regression-check.sh --save   # persist new baseline after verified change
+utils/tests-performance-regression.sh          # --check (default) — fails CI on regression (p < 0.05)
+utils/tests-performance-regression.sh --save   # persist new baseline after verified change
 ```
 
 > [!IMPORTANT]
-> **Run `utils/regression-check.sh --check` before every push.** The RT deadline test (`tests/rt_deadline.rs`)
+> **Run `utils/tests-performance-regression.sh --check` before every push.** The RT deadline test (`tests/rt_deadline.rs`)
 > asserts the absolute ceiling (p99 < 1.33 ms), but the regression gate catches *relative* slowdowns within
 > the safe zone — a model slowing from 100 μs to 150 μs is still under 1.33 ms but is a 50% degradation.
 > See [`docs/benchmarks.md`](docs/benchmarks.md) for the full daily workflow.

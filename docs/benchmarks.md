@@ -69,7 +69,7 @@ All historical tracking metrics are recorded in local files within your project 
 
 ## Regression Gate — Catching Latency Degradation Before It Ships
 
-The project maintains a **performance regression gate** (`utils/regression-check.sh`) that acts as a CI guard: it compares the current build against a persisted statistical baseline and fails the pipeline if a slowdown is detected. This is your primary tool to ensure that no commit silently pushes latency toward the 1.33 ms real-time deadline.
+The project maintains a **performance regression gate** (`utils/tests-performance-regression.sh`) that acts as a CI guard: it compares the current build against a persisted statistical baseline and fails the pipeline if a slowdown is detected. This is your primary tool to ensure that no commit silently pushes latency toward the 1.33 ms real-time deadline.
 
 ### How It Works
 
@@ -82,13 +82,13 @@ The project maintains a **performance regression gate** (`utils/regression-check
 
 ```sh
 # 1. Before starting work: confirm the current baseline is clean.
-utils/regression-check.sh --check
+utils/tests-performance-regression.sh --check
 
 # 2. Develop your changes. Run lints and quick tests frequently.
 utils/lints.sh && utils/tests-quick.sh
 
 # 3. Before committing: re-run the regression gate.
-utils/regression-check.sh --check
+utils/tests-performance-regression.sh --check
 
 # 4. GREEN  → safe to commit/push.
 #    RED    → investigate the regression before proceeding.
@@ -96,7 +96,7 @@ utils/regression-check.sh --check
 # 5. Only update the baseline when you intentionally changed performance
 #    (e.g., adding a feature with a measured, understood, acceptable cost)
 #    and all other tests pass:
-utils/regression-check.sh --save
+utils/tests-performance-regression.sh --save
 ```
 
 ### First-Time Setup
@@ -105,10 +105,10 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 
 ### Script Modes
 
-| Mode                | Command                                  | Purpose                                                                            |
-|:------------------- |:---------------------------------------- |:---------------------------------------------------------------------------------- |
-| **Check** (default) | `utils/regression-check.sh` or `--check` | Compare against baseline; fail on statistically significant regression (p < 0.05). |
-| **Save**            | `utils/regression-check.sh --save`       | Persist current measurements as the new official baseline.                         |
+| Mode                | Command                                              | Purpose                                                                            |
+|:------------------- |:---------------------------------------------------- |:---------------------------------------------------------------------------------- |
+| **Check** (default) | `utils/tests-performance-regression.sh` or `--check` | Compare against baseline; fail on statistically significant regression (p < 0.05). |
+| **Save**            | `utils/tests-performance-regression.sh --save`       | Persist current measurements as the new official baseline.                         |
 
 ### Environment Variables
 
@@ -119,12 +119,12 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 
 ### Relationship to Other QA Tools
 
-| Tool                          | Role                                                                                                                                               |
-|:----------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/rt_deadline.rs`        | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                     |
-| `utils/regression-check.sh`   | **Relative guard** — catches degradations *within* the safe zone (e.g., a model slowing from 100 μs to 150 μs, still under 1.33 ms but 50% worse). |
-| `utils/tests-long.sh` Phase 5 | Runs all benches (including `regression_gate`) as part of the full ~38 min audit suite.                                                            |
-| `utils/tests-quick.sh`        | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use this script directly for perf checks.                     |
+| Tool                                    | Role                                                                                                                                               |
+|:--------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rt_deadline.rs`                  | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                     |
+| `utils/tests-performance-regression.sh` | **Relative guard** — catches degradations *within* the safe zone (e.g., a model slowing from 100 μs to 150 μs, still under 1.33 ms but 50% worse). |
+| `utils/tests-long.sh` Phase 5           | Runs all benches (including `regression_gate`) as part of the full ~38 min audit suite.                                                            |
+| `utils/tests-quick.sh`                  | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use this script directly for perf checks.                     |
 
 > [!IMPORTANT]
 > **Always run `--check` before pushing.** A passing `tests-quick.sh` and `tests-long.sh` does

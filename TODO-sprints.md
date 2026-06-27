@@ -330,12 +330,12 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - [`tests/rt_deadline.rs`](file:///home/fabio/nam-rs/tests/rt_deadline.rs) ✅ implementado
   - [`tests/rt_jitter.rs`](file:///home/fabio/nam-rs/tests/rt_jitter.rs) ✅ implementado
   - [`benches/regression_gate.rs`](file:///home/fabio/nam-rs/benches/regression_gate.rs) ✅ implementado
-  - [`utils/regression-check.sh`](file:///home/fabio/nam-rs/utils/regression-check.sh) ✅ implementado
+  - [`utils/tests-performance-regression.sh`](file:///home/fabio/nam-rs/utils/tests-performance-regression.sh) ✅ implementado
   - [`utils/tests-long.sh`](file:///home/fabio/nam-rs/utils/tests-long.sh) (parâmetros de bench atualizados, Fase 6 adicionada)
   - [`Cargo.toml`](file:///home/fabio/nam-rs/Cargo.toml) (nova entrada `[[bench]]` para `regression_gate`)
 - **Descrição:**
   - **Gate de deadline RT:** `tests/rt_deadline.rs` com 14 testes cobrindo todos os SKUs disponíveis: WaveNet (Standard/Feather/Lite/Nano + Dynamic), A2 (Full/Lite + Dynamic Gated), LSTM (1x16/2x8 + Dynamic), Linear, ConvNet. Também cobre os 3 estados adaptativos (Full/Reduced/Minimal) via Container. Cada teste aquece 256 blocos, mede 2048 blocos com `LatencyHistogram`, e em release faz `assert!(p99 < 1330μs)`. Em debug, reporta estatísticas sem assert.
-  - **Gate de regressão:** `benches/regression_gate.rs` com 10 benches (sample_size=100, measurement_time=5s, warm_up_time=1s, noise_threshold=0.02), contra `--sample-size 10 --measurement-time 0.5` anterior. `utils/regression-check.sh` orquestra `taskset -c 0 cargo bench -- --save-baseline/--baseline ci-baseline` e falha CI se Criterion reportar regressão estatística.
+  - **Gate de regressão:** `benches/regression_gate.rs` com 10 benches (sample_size=100, measurement_time=5s, warm_up_time=1s, noise_threshold=0.02), contra `--sample-size 10 --measurement-time 0.5` anterior. `utils/tests-performance-regression.sh` orquestra `taskset -c 0 cargo bench -- --save-baseline/--baseline ci-baseline` e falha CI se Criterion reportar regressão estatística.
   - **Jitter/xrun sob pressão:** `tests/rt_jitter.rs` executa o DSP enquanto N threads queimam CPU (Taylor sin/cos em f64). Testes incluem baseline (0 stress), stress-1-thread (não-ignorado), stress-2/saturate (ignorado — long-suite). Reporta P50/P99/P99.9/exact_max + contagem de violações do deadline.
   - `tests-long.sh` Fase 5: parâmetros de bench elevados (`--sample-size 100 --measurement-time 5 --warm-up-time 1`); Fase 6 nova: RT deadline + jitter stress.
 - **Critérios de Aceite:** 14/14 testes `rt_deadline` passam em debug com relatório P50/P99/exact_max por SKU; convnet tratado com dimensionamento correto de buffer de saída. `cargo clippy --tests` zero warnings. `cargo check` verde.
@@ -523,7 +523,7 @@ meta-test quebrado. Lints limpos.
 - `tests-quick.sh` 5/5 fases verdes (~6 min): 1020 unit/integration, 33/33 cpp_parity (release), 13 proptest parsers, 3 proptest math, CLAP 76 + heap-audit + clap-validator 19/21
 - `tests-long.sh`: ~~Phase 3~~ — golden_vectors v2 corrigidos (15/15 ok); demais fases pendentes de re-execução completa
 - `utils/lints.sh`: zero warnings, `clippy -D warnings` limpo
-- `regression-check.sh`: 10/10 benchmarks sem panic, baseline salvo
+- `tests-performance-regression.sh`: 10/10 benchmarks sem panic, baseline salvo
 - `threshold_calibration`: 3/3 ok (anti-placebo, golden-coverage, measurement-comments)
 
 **⚠️ Nota corrigida pela auditoria pós-S3 (2026-06-27):** `wavenet_condition_dsp` em v2 @ 48000 Hz produz
