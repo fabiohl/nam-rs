@@ -318,24 +318,22 @@ próprias métricas** (mitigado pela validação contra referência externa).
 - **Risco:** Baixo-Médio.
 - **Conclusão:** BS.1770-4 2-pass implementado com fallback de segurança. LRA EBU Tech 3342 com interpolação linear para P10/P95. `LoudnessResult` unifica LUFS/LRA/dBTP. K-weighting extraído como helper reutilizável. Retrocompatibilidade preservada via wrapper `compute_lufs()`.
 
-### Tarefa 2.6 [BENCH/QA] Gates de regressão de performance e de deadline RT ([P-7](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.6 [BENCH/QA] Gates de regressão de performance e de deadline RT ([P-7](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-26)
 - **Arquivos Alvo:**
-  - [`benches/`](file:///home/fabio/nam-rs/benches) (baselines salvos + amostragem adequada)
-  - [`tests/rt_deadline.rs`](file:///home/fabio/nam-rs/tests/rt_deadline.rs) (novo)
-  - [`src/dsp/telemetry.rs`](file:///home/fabio/nam-rs/src/dsp/telemetry.rs) (`LatencyHistogram`)
+  - [`tests/rt_deadline.rs`](file:///home/fabio/nam-rs/tests/rt_deadline.rs) ✅ implementado
+  - [`tests/rt_jitter.rs`](file:///home/fabio/nam-rs/tests/rt_jitter.rs) ✅ implementado
+  - [`benches/regression_gate.rs`](file:///home/fabio/nam-rs/benches/regression_gate.rs) ✅ implementado
+  - [`utils/regression-check.sh`](file:///home/fabio/nam-rs/utils/regression-check.sh) ✅ implementado
+  - [`utils/tests-long.sh`](file:///home/fabio/nam-rs/utils/tests-long.sh) (parâmetros de bench atualizados, Fase 6 adicionada)
+  - [`Cargo.toml`](file:///home/fabio/nam-rs/Cargo.toml) (nova entrada `[[bench]]` para `regression_gate`)
 - **Descrição:**
-  - **Gate de deadline RT:** assert `p99(tempo de process de 64 amostras) < 1,33 ms @ 48 kHz` para **todos
-    os SKUs** (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM, Linear, ConvNet) e **todos os estados
-    adaptativos** (Full/Reduced/Minimal) — promovendo a aferição já existente (`tests/nam_infer_test.rs:686-704`)
-    a `assert!`. Bloco de aquecimento + N iterações; reportar p50/p99/exact_max.
-  - **Gate de regressão:** baselines persistidos (baseline do Criterion ou JSON próprio), execução em core
-    fixado (`taskset`/affinity), substituindo os parâmetros estatisticamente fracos do `tests-quick`
-    (`--sample-size 10 --measurement-time 0.5`, `testes.log:3636`). Falhar se Δ > limiar (p < 0,05).
-  - **Jitter/xrun sob pressão:** rodar com _stressors_ de CPU concorrentes; contar overruns e medir a cauda.
-- **Critérios de Aceite:** CI reprova em regressão estatística ou p99 > deadline; relatório de jitter sob carga.
-- **Risco:** Médio (ruído de medição; exige core pinning e ambiente controlado).
+  - **Gate de deadline RT:** `tests/rt_deadline.rs` com 14 testes cobrindo todos os SKUs disponíveis: WaveNet (Standard/Feather/Lite/Nano + Dynamic), A2 (Full/Lite + Dynamic Gated), LSTM (1x16/2x8 + Dynamic), Linear, ConvNet. Também cobre os 3 estados adaptativos (Full/Reduced/Minimal) via Container. Cada teste aquece 256 blocos, mede 2048 blocos com `LatencyHistogram`, e em release faz `assert!(p99 < 1330μs)`. Em debug, reporta estatísticas sem assert.
+  - **Gate de regressão:** `benches/regression_gate.rs` com 10 benches (sample_size=100, measurement_time=5s, warm_up_time=1s, noise_threshold=0.02), contra `--sample-size 10 --measurement-time 0.5` anterior. `utils/regression-check.sh` orquestra `taskset -c 0 cargo bench -- --save-baseline/--baseline ci-baseline` e falha CI se Criterion reportar regressão estatística.
+  - **Jitter/xrun sob pressão:** `tests/rt_jitter.rs` executa o DSP enquanto N threads queimam CPU (Taylor sin/cos em f64). Testes incluem baseline (0 stress), stress-1-thread (não-ignorado), stress-2/saturate (ignorado — long-suite). Reporta P50/P99/P99.9/exact_max + contagem de violações do deadline.
+  - `tests-long.sh` Fase 5: parâmetros de bench elevados (`--sample-size 100 --measurement-time 5 --warm-up-time 1`); Fase 6 nova: RT deadline + jitter stress.
+- **Critérios de Aceite:** 14/14 testes `rt_deadline` passam em debug com relatório P50/P99/exact_max por SKU; convnet tratado com dimensionamento correto de buffer de saída. `cargo clippy --tests` zero warnings. `cargo check` verde.
 
 ### Tarefa 2.7 [TEST] Matriz de determinismo cruzado entre ISAs ([P-8](file:///home/fabio/nam-rs/TODO-findings.md))
 

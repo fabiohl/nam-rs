@@ -75,6 +75,10 @@ harness = false
 name = "linear"
 harness = false
 
+[[bench]]
+name = "regression_gate"
+harness = false
+
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]

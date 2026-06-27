@@ -445,8 +445,14 @@ run_phase \
 # --- Phase 5: Long Benchmarks (Performance) ---
 run_phase \
     "Long Performance Benchmarks" \
-    'status=0; cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench -- --sample-size 10 --measurement-time 0.5 --warm-up-time 0.2 || status=1; cargo bench --features long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
+    'status=0; cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1; cargo bench --features long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
     "phase5-benchmarks.log" || true
+
+# --- Phase 6: RT Deadline Gate + Jitter/Stress ---
+run_phase \
+    "RT Deadline Gate & Jitter Stress" \
+    'status=0; timed_cargo_test "rt_deadline" --release --no-fail-fast --test rt_deadline -- --nocapture || status=1; timed_cargo_test "rt_jitter" --release --no-fail-fast --test rt_jitter -- --ignored --nocapture || status=1; [ $status -eq 0 ]' \
+    "phase6-rt-deadline.log" || true
 
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"

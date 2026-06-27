@@ -67,6 +67,80 @@ All historical tracking metrics are recorded in local files within your project 
 
 *(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
+## Regression Gate — Catching Latency Degradation Before It Ships
+
+The project maintains a **performance regression gate** (`utils/regression-check.sh`) that acts as a CI guard: it compares the current build against a persisted statistical baseline and fails the pipeline if a slowdown is detected. This is your primary tool to ensure that no commit silently pushes latency toward the 1.33 ms real-time deadline.
+
+### How It Works
+
+1. **Core pinning** — The script uses `taskset -c 0` (configurable via `NAM_BENCH_CORE`) to lock the benchmark to a single CPU core, eliminating scheduler noise and cache-line bouncing between cores.
+2. **Statistical rigor** — The `regression_gate` bench suite runs each model (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM 1x16/2x8, Linear, ConvNet) with `sample_size=100, measurement_time=5s, noise_threshold=0.02`, replacing the old weak parameters (`--sample-size 10 --measurement-time 0.5`).
+3. **Baseline comparison** — Criterion performs a two-sample t-test between the current run and the stored baseline. If it detects a statistically significant regression (p < 0.05), the script exits with code 1.
+4. **Baseline storage** — Snapshots live under `target/criterion/<baseline-name>/` (default: `ci-baseline`). Multiple baselines can coexist for different machines or CPU generations.
+
+### Daily Workflow
+
+```sh
+# 1. Before starting work: confirm the current baseline is clean.
+utils/regression-check.sh --check
+
+# 2. Develop your changes. Run lints and quick tests frequently.
+utils/lints.sh && utils/tests-quick.sh
+
+# 3. Before committing: re-run the regression gate.
+utils/regression-check.sh --check
+
+# 4. GREEN  → safe to commit/push.
+#    RED    → investigate the regression before proceeding.
+
+# 5. Only update the baseline when you intentionally changed performance
+#    (e.g., adding a feature with a measured, understood, acceptable cost)
+#    and all other tests pass:
+utils/regression-check.sh --save
+```
+
+### First-Time Setup
+
+On the first `--check` invocation (or if the baseline directory is missing), the script automatically runs `--save` to create the initial baseline. Run `--check` again afterward to activate the gate.
+
+### Script Modes
+
+| Mode                | Command                                  | Purpose                                                                            |
+|:------------------- |:---------------------------------------- |:---------------------------------------------------------------------------------- |
+| **Check** (default) | `utils/regression-check.sh` or `--check` | Compare against baseline; fail on statistically significant regression (p < 0.05). |
+| **Save**            | `utils/regression-check.sh --save`       | Persist current measurements as the new official baseline.                         |
+
+### Environment Variables
+
+| Variable            | Default       | Purpose                                                 |
+|:------------------- |:------------- |:------------------------------------------------------- |
+| `NAM_BENCH_CORE`    | `0`           | CPU core number to pin benchmarks to via `taskset`.     |
+| `NAM_BASELINE_NAME` | `ci-baseline` | Criterion baseline name (allows per-machine baselines). |
+
+### Relationship to Other QA Tools
+
+| Tool                          | Role                                                                                                                                               |
+|:----------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rt_deadline.rs`        | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                     |
+| `utils/regression-check.sh`   | **Relative guard** — catches degradations *within* the safe zone (e.g., a model slowing from 100 μs to 150 μs, still under 1.33 ms but 50% worse). |
+| `utils/tests-long.sh` Phase 5 | Runs all benches (including `regression_gate`) as part of the full ~38 min audit suite.                                                            |
+| `utils/tests-quick.sh`        | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use this script directly for perf checks.                     |
+
+> [!IMPORTANT]
+> **Always run `--check` before pushing.** A passing `tests-quick.sh` and `tests-long.sh` does
+> **not** guarantee the absence of performance regression — only the regression gate provides
+> a statistical comparison against the known-good baseline.
+
+### Interpreting a Failed Gate
+
+If the script exits with `❌ PERFORMANCE REGRESSION DETECTED`:
+
+1. Open `target/logs/regression-check.log` and locate the `"regressed"` entry.
+2. Look at the reported confidence interval for the regressed benchmark(s) — how many μs and what percentage?
+3. Re-run `cargo bench --bench regression_gate -- --baseline ci-baseline` to confirm the result is reproducible (not noise from a transient system load spike).
+4. If the regression is real and unintentional: bisect your recent changes to find the cause.
+5. If the regression is intentional (e.g., a new feature with a measured, accepted overhead): re-save the baseline with `--save` **and document the change and its measured cost** in your commit message.
+
 ## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates T3)
 
 Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
