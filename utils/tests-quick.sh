@@ -87,8 +87,8 @@ fi
 if [ "$GOLDENS_OK" -eq 1 ]; then
     MEDIUM_STATUS=0
 
-    echo -e "  ${BLUE}→ C++ Parity (todos os modelos ignorados)...${NC}"
-    cargo test --release --test cpp_parity -- --ignored --nocapture || MEDIUM_STATUS=1
+    echo -e "  ${BLUE}→ C++ Parity (subconjunto rápido: LSTM + WaveNet CH16 + A2 @ 48 kHz)...${NC}"
+    cargo test --release --test cpp_parity -- quick_parity --nocapture || MEDIUM_STATUS=1
 
     echo -e "  ${BLUE}→ Proptest Parsers (fuzzing de loaders)...${NC}"
     cargo test --release --test proptest_parsers -- --ignored --nocapture || MEDIUM_STATUS=1

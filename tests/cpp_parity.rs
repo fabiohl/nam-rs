@@ -523,6 +523,42 @@ fn run_v2_multi_sr(
 }
 
 // =============================================================================
+// Tests — Quick Parity Subset (non-ignored, 48 kHz, v1 short signal)
+// =============================================================================
+//
+// Sprint S4, Tarefa 4.1 (F-3): representative subset of 3 cross-validations
+// running in the ~3 min quick loop. Uses v1 stress signal (2048 samples, 48 kHz)
+// with MR-STFT hard gate from S3. BUILD_LOCK caches the C++ render tool.
+//
+// Selected models: 1 LSTM (BossLSTM-1x16), 1 WaveNet CH16 (BossWN-standard),
+// 1 A2 (wavenet_a2_full) — covering the three main architectures.
+
+#[test]
+fn quick_parity_lstm_1x16() {
+    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Quick LSTM 1×16", true);
+}
+
+#[test]
+fn quick_parity_wavenet_ch16() {
+    run_v1(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Quick WaveNet CH16",
+        true,
+    );
+}
+
+#[test]
+fn quick_parity_a2_full() {
+    run_v1(
+        "wavenet_a2_full.nam",
+        "wavenet_a2_full",
+        "Quick A2-Full",
+        true,
+    );
+}
+
+// =============================================================================
 // Tests — #[ignore] (require C++ toolchain)
 // =============================================================================
 

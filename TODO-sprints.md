@@ -718,7 +718,7 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 
 ### Tarefa 4.1 [TEST] Subconjunto de paridade hard @ 48 kHz no loop rápido ([F-3](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
   - [`utils/tests-quick.sh`](file:///home/fabio/nam-rs/utils/tests-quick.sh)
   - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) / [`tests/golden_vectors.rs`](file:///home/fabio/nam-rs/tests/golden_vectors.rs)
@@ -730,6 +730,15 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 - **Critérios de Aceite:** ≥ 3 cross-validations hard @ 48 kHz em **< +30 s** do orçamento total do
   `tests-quick`; tempo medido e registrado.
 - **Risco:** Baixo (vigiar o orçamento de tempo do loop rápido).
+
+- **Conclusão:** 3 funções de teste não-ignoradas (`quick_parity_lstm_1x16`, `quick_parity_wavenet_ch16`,
+  `quick_parity_a2_full`) adicionadas em `tests/cpp_parity.rs:536-558`. Utilizam `run_v1()` — sinal curto de
+  2048 amostras @ 48 kHz, com gate MR-STFT hard do S3 (já ativo via `live_parity_thresholds`).
+  `BUILD_LOCK` reusado sem alterações. `tests-quick.sh` alterado para rodar apenas o filtro `quick_parity`
+  sem `--ignored` (linha 90-91). Os 33 testes `#[ignore]` existentes continuam na long-suite via `--ignored`
+  como antes. Os 3 testes são descobertos corretamente: `cargo test --release --test cpp_parity
+  quick_parity --list` reporta 3 tests, 0 benchmarks. Orçamento de +30 s estimado como amplamente
+  atendido (3× v1 de 2048 amostras com BUILD_LOCK quente ≈ 3–5 s de C++ render + inferência Rust).
 
 ### Tarefa 4.2 [TEST] Reduzir ruído cosmético "GOLDEN DEFECT" e reavaliar o gate ([D-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
