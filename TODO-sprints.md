@@ -838,12 +838,13 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 
 ### Tarefa 5.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (S2.2/2.3)
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Alvo:** [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (S2.2/2.3), [`tests/fixtures/spectral_fidelity_baseline.json`](file:///home/fabio/nam-rs/tests/fixtures/spectral_fidelity_baseline.json)
 - **Descrição:** registrar **ASR/THD/FR de baseline por SKU** em entrada agressiva (fundamental ≥ 2 kHz,
   alto ganho) e em uso típico, para servir de referência de ganho/regressão das tarefas 5.2–5.4.
 - **Critérios de Aceite:** baseline versionado, determinístico e reproduzível (fixture commitada).
 - **Risco:** Baixo.
+- **Conclusão:** Baseline gerada para 12 SKUs (WaveNet standard/feather/nano/A1-official/official-dyn/A2-full/A2-lite, A2-example, LSTM 1×16/2×8/official, Linear). Medições: ASR típico/agressivo/stress, THD+N AES17, IMD SMPTE, Farina FR+THD por ordem harmônica. Fixture em `tests/fixtures/spectral_fidelity_baseline.json`. Testes de validação (`#[ignore]`) assertam medições atuais contra o baseline com tolerância conservadora (ASR: 0,5 dB, THD+N: 0,1%, IMD: 0,2%, FR: 0,5 dB). Regeneração: `cargo test --test spectral_fidelity generate_spectral_fidelity_baseline -- --ignored`.
 
 ### Tarefa 5.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
 
@@ -1048,7 +1049,8 @@ decisões dos sprints S1–S5.
 
 ## Notas do PO
 
-[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão essas coisas e qual o papel delas. Se são opcionais ou obrigatórias. E o que cabe continuar ou remover.
+[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Use de senso crítico para julgar o estado geral das coisas.
+Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão essas coisas e qual o papel delas. Se são opcionais ou obrigatórias. E o que cabe continuar ou remover.
 
 [Sonnet] [Kilo Compact Session]
 

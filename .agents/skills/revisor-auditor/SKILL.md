@@ -26,8 +26,8 @@ Use this skill for a general project review in search of improvements.
   * There is no bug that you cannot discover.
   * There is no attack vector (including dead code, functions unused in certain situations, etc.) that you cannot mitigate.
   * Find inconsistent functioning, security flaws, and stability breakages.
-  * Code that can be better shared among other modules.
-  * "Unsafe" block the most specif and delimites possible.
+  * Code that can be better shared among other modules. Homegeneity in how solve problems (into the bestter way!).
+  * "Unsafe" block into the most specific and delimited way possible.
   * Exemplary comments and documentation (skill `documentador`).
 * Master of performance:
   * Hunt performance thorough codebase, not only in "hot paths".
