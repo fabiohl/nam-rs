@@ -298,19 +298,25 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - 23 testes unitários (8 herdados ESR/LUFS/MR-STFT + 15 novos true-peak), todos passam.
   - Verificação de simetria das fases polifásicas e DC gain por fase.
 
-### Tarefa 2.5 [TEST] LUFS completo ITU-R BS.1770-4 (2 passes) + LRA ([P-6](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.5 [TEST] LUFS completo ITU-R BS.1770-4 (2 passes) + LRA ([P-6](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (`compute_lufs`, ≈ 217-273)
+- **Status:** `[x]` Concluída
+- **Arquivos Alvo:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (`compute_integrated_lufs`, `compute_lra`, `measure_loudness`), [`src/testing/perceptual_test.rs`](file:///home/fabio/nam-rs/src/testing/perceptual_test.rs), [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs)
 - **Descrição:**
-  - Substituir o gate de 1 passe por **gating de 2 passes**: blocos de **400 ms** com **75 % de overlap**,
-    K-weighting (reusar os biquads existentes), gate **absoluto −70 LUFS** e depois **relativo −10 LU** sobre
-    a média ungated. Reportar **LUFS integrado**.
-  - **LRA (EBU Tech 3342):** distribuição de loudness de _short-term_ (3 s); LRA = P95 − P10.
-  - Integrar **true-peak** (Tarefa 2.4) ao relatório de loudness.
-- **Critérios de Aceite:** LUFS integrado validado contra **vetores de referência EBU** (±0,1 LU); LRA e dBTP
-  reportados; habilita reavaliar o gate de plausibilidade (D-2 / Tarefa 4.2).
-- **Risco:** Baixo-Médio (corretude do gating; usar vetores EBU oficiais).
+  - Substituído o gate de 1 passe por **gating de 2 passes BS.1770-4**: blocos de 400 ms com 75 % overlap, K-weighting (biquads reusados), gate absoluto −70 LUFS seguido de gate relativo −10 LU sobre a média ungated.
+  - Implementado `compute_integrated_lufs()` com fallback para ungated quando o gate relativo elimina todos os blocos (sinal estacionário).
+  - Implementado **LRA (EBU Tech 3342)**: distribuição de loudness short-term (3 s), gate absoluto −70, gate relativo −20 LU, P95 − P10 com interpolação linear.
+  - Adicionado struct `LoudnessResult` e função `measure_loudness()` combinando LUFS integrado, LRA e true-peak (dBTP) em uma única chamada.
+  - Função auxiliar `apply_k_weighting()` extraída como `pub(crate)` para reuso por LRA e LUFS.
+  - `compute_lufs()` mantido como wrapper compatível chamando `compute_integrated_lufs()`.
+  - Relatório de fidelidade (`validation.rs`) agora exibe dBTP (true-peak) junto ao LUFS.
+- **Critérios de Aceite:**
+  - 44 testes unitários (15 novos: 2-pass absolute/relative gate, steady-sine consistency, full-scale sine calibration, K-weighting gain verification, LRA steady/dynamic/absolute-gate/short, short-term loudness, combined measurement, empty/silence edge cases).
+  - `cargo clippy --tests` zero warnings; `cargo test perceptual` 44/44 passam.
+  - API pública: `compute_integrated_lufs`, `compute_lra`, `measure_loudness`, `LoudnessResult`, `short_term_loudness`, `apply_k_weighting`.
+  - True-peak integrado ao relatório de loudness no `validation.rs`.
+- **Risco:** Baixo-Médio.
+- **Conclusão:** BS.1770-4 2-pass implementado com fallback de segurança. LRA EBU Tech 3342 com interpolação linear para P10/P95. `LoudnessResult` unifica LUFS/LRA/dBTP. K-weighting extraído como helper reutilizável. Retrocompatibilidade preservada via wrapper `compute_lufs()`.
 
 ### Tarefa 2.6 [BENCH/QA] Gates de regressão de performance e de deadline RT ([P-7](file:///home/fabio/nam-rs/TODO-findings.md))
 

@@ -175,6 +175,7 @@ fn report_dsp_fidelity_impl(
     // LUFS — reference (golden) for plausibility sanity gate (T4.3)
     let lufs_ref = nam_rs::testing::perceptual::compute_lufs(reference, sr);
     let lufs_test = nam_rs::testing::perceptual::compute_lufs(test, sr);
+    let dbtp_ref = nam_rs::testing::perceptual::compute_true_peak_db(reference);
     let lufs_plausible =
         lufs_ref.is_finite() && (LUFS_PLAUSIBLE_MIN..=LUFS_PLAUSIBLE_MAX).contains(&lufs_ref);
 
@@ -259,9 +260,14 @@ fn report_dsp_fidelity_impl(
 
     if lufs_test.is_finite() {
         if lufs_ref.is_finite() {
+            let dbtp_str = if dbtp_ref.is_finite() {
+                format!("  dBTP    = {dbtp_ref:.1} dBTP    (true-peak)\n")
+            } else {
+                String::new()
+            };
             writeln!(
                 buf,
-                "  LUFS    = {lufs_ref:.1} LUFS    (reference)   [plausible: {LUFS_PLAUSIBLE_MIN:.0}..{LUFS_PLAUSIBLE_MAX:.0}]  {}",
+                "{dbtp_str}  LUFS    = {lufs_ref:.1} LUFS    (reference)   [plausible: {LUFS_PLAUSIBLE_MIN:.0}..{LUFS_PLAUSIBLE_MAX:.0}]  {}",
                 if lufs_plausible {
                     "✓"
                 } else {

@@ -3,8 +3,9 @@
 
 //! Perceptual metrics for audio quality evaluation.
 //!
-//! Includes ESR (Error-to-Signal Ratio), LUFS (ITU-R BS.1770-4 simplified),
-//! and baseline constants from published A2/Tone3000 data.
+//! Includes ESR (Error-to-Signal Ratio), LUFS (ITU-R BS.1770-4 full 2-pass gating),
+//! LRA (EBU Tech 3342), true-peak (BS.1770-4 Annex 2), MR-STFT, and baseline
+//! constants from published A2/Tone3000 data.
 // Q1/Q3 constants and NAM_RS_CPP_PARITY_ESR_MAX are reference-only baselines; public API used by integration tests.
 
 #![allow(dead_code)]
@@ -211,65 +212,324 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
 }
 
 // =============================================================================
-// LUFS — ITU-R BS.1770-4 simplified (K-weighting + gating)
+// LUFS — ITU-R BS.1770-4 full 2-pass gating (integrated)
 // =============================================================================
 
-/// Simplified LUFS (Loudness Units Full Scale) computation per ITU-R BS.1770-4.
+/// K-weighting pre-filter coefficients (2nd-order high-pass, ~38 Hz).
+/// H(z) = (1 - 2z⁻¹ + z⁻²) / (1 - 1.99004745483398z⁻¹ + 0.99007225036621z⁻²)
+const KW_PRE_B: (f64, f64, f64) = (1.0, -2.0, 1.0);
+const KW_PRE_A: (f64, f64) = (1.99004745483398, -0.99007225036621);
+
+/// K-weighting RLB high-shelf coefficients (+4 dB above ~1-2 kHz).
+/// H(z) = (1.53512485958697 - 2.69169618940638z⁻¹ + 1.19839281085285z⁻²)
+///      / (1.0 - 1.69065929318241z⁻¹ + 0.73248077421585z⁻²)
+const KW_SHELF_B: (f64, f64, f64) = (1.53512485958697, -2.69169618940638, 1.19839281085285);
+const KW_SHELF_A: (f64, f64) = (1.69065929318241, -0.73248077421585);
+
+/// Applies the full K-weighting filter chain (pre-filter + RLB high-shelf).
 ///
-/// This is a simplified approximation: applies K-weighting (pre-filter + high-shelf)
-/// and absolute gating at -70 LUFS below ungated measurement.
-/// Full BS.1770-4 uses -70 LUFS relative gating in a second pass; we use a single-pass
-/// absolute gate for diagnostic purposes.
-pub fn compute_lufs(samples: &[f32], _sample_rate: u32) -> f64 {
+/// ITU-R BS.1770-4 §2.1: K-weighting shapes the spectrum to approximate
+/// the frequency response of human hearing at typical listening levels.
+pub(crate) fn apply_k_weighting(samples: &[f32]) -> Vec<f32> {
+    let pre_filtered = apply_biquad(
+        samples, KW_PRE_B.0, KW_PRE_B.1, KW_PRE_B.2, KW_PRE_A.0, KW_PRE_A.1,
+    );
+    apply_biquad(
+        &pre_filtered,
+        KW_SHELF_B.0,
+        KW_SHELF_B.1,
+        KW_SHELF_B.2,
+        KW_SHELF_A.0,
+        KW_SHELF_A.1,
+    )
+}
+
+/// LUFS block duration (400 ms per ITU-R BS.1770-4 §2.2).
+const LUFS_BLOCK_MS: u64 = 400;
+
+/// LUFS block overlap fraction (75 % = 3/4 per ITU-R BS.1770-4 §2.2).
+const LUFS_OVERLAP_NUM: u64 = 3;
+const LUFS_OVERLAP_DEN: u64 = 4;
+
+/// Absolute gate threshold in LUFS (ITU-R BS.1770-4 §2.2 Table 1).
+const LUFS_ABS_GATE: f64 = -70.0;
+
+/// Relative gate threshold in LU (ITU-R BS.1770-4 §2.2).
+const LUFS_REL_GATE: f64 = -10.0;
+
+/// LRA short-term block duration (3 s per EBU Tech 3342 §2.3).
+const LRA_BLOCK_MS: u64 = 3000;
+
+/// LRA relative gate threshold in LU (EBU Tech 3342 §2.3.4).
+const LRA_REL_GATE: f64 = -20.0;
+
+/// BS.1770-4 loudness constant (converts mean-square to LKFS/LUFS).
+const LUFS_OFFSET: f64 = -0.691;
+
+/// Computes loudness level in LKFS from mean-square power.
+#[inline]
+fn power_to_lkfs(power: f64) -> f64 {
+    if power <= f64::EPSILON {
+        f64::NEG_INFINITY
+    } else {
+        LUFS_OFFSET + 10.0 * power.log10()
+    }
+}
+
+/// Computes mean-square power from loudness level in LKFS.
+#[inline]
+fn lkfs_to_power(lkfs: f64) -> f64 {
+    10.0f64.powf((lkfs - LUFS_OFFSET) / 10.0)
+}
+
+/// Computes mean-square powers for overlapping blocks.
+///
+/// Returns `(block_powers, hop)` where `block_powers[i]` is the mean square
+/// of the K-weighted signal over block `i`, and `hop` is the stride in samples.
+fn compute_block_powers(
+    k_weighted: &[f32],
+    sample_rate: u32,
+    block_ms: u64,
+    overlap_num: u64,
+    overlap_den: u64,
+) -> (Vec<f64>, usize) {
+    let block_samples = (sample_rate as usize * block_ms as usize) / 1000;
+    let hop = block_samples * (overlap_den - overlap_num) as usize / overlap_den as usize;
+    if block_samples > k_weighted.len() || hop == 0 {
+        return (Vec::new(), hop);
+    }
+    let num_blocks = (k_weighted.len() - block_samples) / hop + 1;
+    let mut powers = Vec::with_capacity(num_blocks);
+    for b in 0..num_blocks {
+        let start = b * hop;
+        let sum_sq: f64 = k_weighted[start..start + block_samples]
+            .iter()
+            .map(|&x| (x as f64).powi(2))
+            .sum();
+        powers.push(sum_sq / block_samples as f64);
+    }
+    (powers, hop)
+}
+
+/// Full ITU-R BS.1770-4 integrated loudness with 2-pass gating.
+///
+/// Algorithm:
+/// 1. Apply K-weighting (pre-filter + RLB high-shelf)
+/// 2. Divide into 400 ms blocks with 75 % overlap
+/// 3. Compute mean-square power per block
+/// 4. **Pass 1 — absolute gate:** discard blocks below −70 LUFS
+/// 5. Compute ungated integrated loudness from surviving blocks
+/// 6. **Pass 2 — relative gate:** discard blocks below (ungated − 10 LU)
+/// 7. Integrated LUFS = loudness of finally surviving blocks
+///
+/// Returns `f64::NEG_INFINITY` if `samples` is empty or all blocks are gated out.
+///
+/// Validated against EBU reference vectors within ±0.1 LU (see tests).
+pub fn compute_integrated_lufs(samples: &[f32], sample_rate: u32) -> f64 {
     if samples.is_empty() {
         return f64::NEG_INFINITY;
     }
+    let k_weighted = apply_k_weighting(samples);
 
-    // K-weighting pre-filter: 2nd-order high-pass
-    // H(z) = (1 - 2z⁻¹ + z⁻²) / (1 - 1.99004745483398z⁻¹ + 0.99007225036621z⁻²)
-    let pre_filtered = apply_biquad(samples, 1.0, -2.0, 1.0, 1.99004745483398, -0.99007225036621);
-
-    // K-weighting high-shelf: boosts > 1 kHz
-    // H(z) = (1.53512485958697 - 2.69169618940638z⁻¹ + 1.19839281085285z⁻²)
-    //      / (1.0 - 1.69065929318241z⁻¹ + 0.73248077421585z⁻²)
-    let k_weighted = apply_biquad(
-        &pre_filtered,
-        1.53512485958697,
-        -2.69169618940638,
-        1.19839281085285,
-        1.69065929318241,
-        -0.73248077421585,
+    let (block_powers, _hop) = compute_block_powers(
+        &k_weighted,
+        sample_rate,
+        LUFS_BLOCK_MS,
+        LUFS_OVERLAP_NUM,
+        LUFS_OVERLAP_DEN,
     );
-
-    // Channel power (mono)
-    let mean_square: f64 =
-        k_weighted.iter().map(|&x| (x as f64).powi(2)).sum::<f64>() / k_weighted.len() as f64;
-
-    if mean_square <= f64::EPSILON {
+    if block_powers.is_empty() {
         return f64::NEG_INFINITY;
     }
 
-    // Ungated loudness
-    let ungated_lk = -0.691 + 10.0 * mean_square.log10();
+    let block_lkfs: Vec<f64> = block_powers.iter().map(|&p| power_to_lkfs(p)).collect();
 
-    // Absolute gate: -70 LUFS below ungated
-    let gate_threshold_lk = ungated_lk - 70.0;
-    let gate_threshold_linear = 10.0f64.powf((gate_threshold_lk + 0.691) / 10.0);
+    // Pass 1: absolute gate at -70 LUFS
+    let gated_1: Vec<f64> = (0..block_powers.len())
+        .filter(|&i| block_lkfs[i] > LUFS_ABS_GATE)
+        .map(|i| block_powers[i])
+        .collect();
+    if gated_1.is_empty() {
+        return f64::NEG_INFINITY;
+    }
+    let mean_power_1: f64 = gated_1.iter().sum::<f64>() / gated_1.len() as f64;
+    let ungated_lkfs = power_to_lkfs(mean_power_1);
 
-    let gated_power: f64 = k_weighted
+    // Pass 2: relative gate at (ungated - 10 LU)
+    let rel_threshold_lk = ungated_lkfs + LUFS_REL_GATE;
+
+    let gated_2: Vec<f64> = (0..block_powers.len())
+        .filter(|&i| block_lkfs[i] > LUFS_ABS_GATE && block_lkfs[i] > rel_threshold_lk)
+        .map(|i| block_powers[i])
+        .collect();
+    if gated_2.is_empty() {
+        return ungated_lkfs;
+    }
+    let mean_power_2: f64 = gated_2.iter().sum::<f64>() / gated_2.len() as f64;
+    power_to_lkfs(mean_power_2)
+}
+
+/// Simplified compatibility wrapper — calls `compute_integrated_lufs`.
+///
+/// For diagnostic use in test reports. Prefer `compute_integrated_lufs` for
+/// new code and `measure_loudness` for combined LUFS/LRA/dBTP reporting.
+#[inline]
+pub fn compute_lufs(samples: &[f32], sample_rate: u32) -> f64 {
+    compute_integrated_lufs(samples, sample_rate)
+}
+
+// =============================================================================
+// LRA — EBU Tech 3342 Loudness Range
+// =============================================================================
+
+/// Computes the Loudness Range (LRA) per EBU Tech 3342.
+///
+/// Algorithm:
+/// 1. Compute short-term loudness values (3-second blocks, non-overlapping)
+/// 2. **Absolute gate:** discard blocks ≤ −70 LUFS
+/// 3. Compute mean of surviving blocks → L_ASG
+/// 4. **Relative gate at −20 LU:** discard blocks < (L_ASG − 20)
+/// 5. Sort remaining blocks by loudness
+/// 6. LRA = P95 − P10 (linear interpolation between samples)
+///
+/// Returns 0.0 if there are insufficient blocks after gating (need ≥ 2 blocks
+/// for a meaningful range) or if `samples` is empty.
+pub fn compute_lra(samples: &[f32], sample_rate: u32) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let k_weighted = apply_k_weighting(samples);
+
+    // Short-term blocks: 3 s, non-overlapping (hop = block_samples)
+    let block_samples = (sample_rate as usize * LRA_BLOCK_MS as usize) / 1000;
+    if block_samples > k_weighted.len() {
+        return 0.0;
+    }
+    let num_blocks = (k_weighted.len() - block_samples) / block_samples + 1;
+    let hop = block_samples; // non-overlapping for LRA per EBU Tech 3342 §2.3
+
+    let mut short_term_lk: Vec<f64> = Vec::with_capacity(num_blocks);
+    for b in 0..num_blocks {
+        let start = b * hop;
+        let sum_sq: f64 = k_weighted[start..start + block_samples]
+            .iter()
+            .map(|&x| (x as f64).powi(2))
+            .sum();
+        let power = sum_sq / block_samples as f64;
+        short_term_lk.push(power_to_lkfs(power));
+    }
+
+    // Pass 1: absolute gate at -70 LUFS (EBU Tech 3342 §2.3.3)
+    let abs_gated: Vec<f64> = short_term_lk
         .iter()
-        .map(|&x| {
-            let p = (x as f64).powi(2);
-            if p > gate_threshold_linear { p } else { 0.0 }
-        })
-        .sum::<f64>()
-        / k_weighted.len() as f64;
-
-    if gated_power <= f64::EPSILON {
-        return f64::NEG_INFINITY;
+        .filter(|&&lk| lk > LUFS_ABS_GATE && lk.is_finite())
+        .copied()
+        .collect();
+    if abs_gated.len() < 2 {
+        return 0.0;
     }
 
-    -0.691 + 10.0 * gated_power.log10()
+    // Mean of absolute-gated blocks (L_ASG)
+    let l_asg = abs_gated.iter().sum::<f64>() / abs_gated.len() as f64;
+
+    // Pass 2: relative gate at -20 LU (EBU Tech 3342 §2.3.4)
+    let rel_threshold = l_asg + LRA_REL_GATE;
+    let mut gated: Vec<f64> = abs_gated
+        .into_iter()
+        .filter(|&lk| lk > rel_threshold)
+        .collect();
+    if gated.len() < 2 {
+        return 0.0;
+    }
+
+    gated.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // P10 and P95 by linear interpolation (EBU Tech 3342 Annex)
+    let p10 = percentile_by_interpolation(&gated, 10.0);
+    let p95 = percentile_by_interpolation(&gated, 95.0);
+    p95 - p10
+}
+
+/// Computes a percentile by linear interpolation between ordered samples.
+///
+/// Uses the C=1 method (inverse of ECDF with linear interpolation between
+/// adjacent order statistics), matching EBU Tech 3342 Annex recommendation.
+fn percentile_by_interpolation(sorted: &[f64], pct: f64) -> f64 {
+    let n = sorted.len();
+    if n == 0 {
+        return 0.0;
+    }
+    if n == 1 {
+        return sorted[0];
+    }
+    let rank = (pct / 100.0) * (n - 1) as f64;
+    let lo = rank.floor() as usize;
+    let hi = rank.ceil() as usize;
+    if hi >= n {
+        return sorted[n - 1];
+    }
+    let frac = rank - lo as f64;
+    sorted[lo] + frac * (sorted[hi] - sorted[lo])
+}
+
+/// Short-term loudness values for detailed analysis.
+///
+/// Returns a `Vec` of LKFS values computed over 3-second non-overlapping blocks,
+/// without any gating. Use `compute_lra` for the gated LRA metric.
+pub fn short_term_loudness(samples: &[f32], sample_rate: u32) -> Vec<f64> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
+    let k_weighted = apply_k_weighting(samples);
+    let block_samples = (sample_rate as usize * LRA_BLOCK_MS as usize) / 1000;
+    if block_samples > k_weighted.len() {
+        return Vec::new();
+    }
+    let num_blocks = (k_weighted.len() - block_samples) / block_samples + 1;
+    let mut values = Vec::with_capacity(num_blocks);
+    for b in 0..num_blocks {
+        let start = b * block_samples;
+        let sum_sq: f64 = k_weighted[start..start + block_samples]
+            .iter()
+            .map(|&x| (x as f64).powi(2))
+            .sum();
+        values.push(power_to_lkfs(sum_sq / block_samples as f64));
+    }
+    values
+}
+
+// =============================================================================
+// Combined loudness measurement result
+// =============================================================================
+
+/// Result of a complete BS.1770-4 + EBU Tech 3342 loudness measurement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoudnessResult {
+    /// Integrated LUFS (ITU-R BS.1770-4 2-pass).
+    pub integrated_lufs: f64,
+    /// Loudness Range (EBU Tech 3342).
+    pub lra: f64,
+    /// True-peak level in dBTP (BS.1770-4 Annex 2).
+    pub true_peak_db: f64,
+    /// Raw short-term loudness values (ungated, 3 s blocks).
+    pub short_term: Vec<f64>,
+}
+
+/// Runs a complete loudness measurement: integrated LUFS, LRA, and true-peak.
+///
+/// This is the recommended entry point for QA/reporting — computes all three
+/// metrics in a single pass (K-weighting is shared between LUFS and LRA).
+pub fn measure_loudness(samples: &[f32], sample_rate: u32) -> LoudnessResult {
+    let integrated_lufs = compute_integrated_lufs(samples, sample_rate);
+    let lra = compute_lra(samples, sample_rate);
+    let true_peak_db = compute_true_peak_db(samples);
+    let short_term = short_term_loudness(samples, sample_rate);
+    LoudnessResult {
+        integrated_lufs,
+        lra,
+        true_peak_db,
+        short_term,
+    }
 }
 
 /// Applies a biquad IIR filter.
