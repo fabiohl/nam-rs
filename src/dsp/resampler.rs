@@ -32,7 +32,8 @@ use anyhow::{Result, bail};
 
 use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
 use crate::math::common::{
-    AlignedVec, Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SIMD_MATH, SimdMath,
+    AlignedVec, Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SimdMath,
+    effective_instruction_set,
 };
 
 /// Delay line size (double-buffer) to ensure contiguous access.
@@ -192,7 +193,7 @@ impl ResamplerCore {
         // Cache the ISA-dispatched function pointers once, instead of
         // matching on the global `SIMD_MATH` on every hot-path call.
         // Micro-opt [T18.5c].
-        let (process_stereo, process_mono) = match SIMD_MATH.instruction_set {
+        let (process_stereo, process_mono) = match effective_instruction_set() {
             InstructionSet::Avx2 => (
                 process_internal_avx2 as ProcessFn,
                 process_internal_mono_avx2 as ProcessMonoFn,

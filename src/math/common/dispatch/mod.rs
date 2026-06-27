@@ -12,6 +12,8 @@ pub mod instruction_set;
 
 pub use config::SimdMathConfig;
 pub use detect::SIMD_MATH;
+pub use detect::TEST_ISA_OVERRIDE;
+pub use detect::{decode_isa_override, effective_instruction_set, encode_isa_override};
 pub use instruction_set::InstructionSet;
 
 /// Generates a `SimdMathConfig` with static descriptive fields only.

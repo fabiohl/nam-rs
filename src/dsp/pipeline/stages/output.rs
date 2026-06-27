@@ -31,9 +31,9 @@ pub(crate) fn apply_output_stage(
     sample_rate: u32,
 ) {
     use crate::math::common::{
-        Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SIMD_MATH,
+        Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, effective_instruction_set,
     };
-    match SIMD_MATH.instruction_set {
+    match effective_instruction_set() {
         InstructionSet::Avx512VnniBf16 => {
             // SAFETY: inner invariants upheld by caller.
             unsafe {

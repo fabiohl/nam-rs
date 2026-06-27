@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::detect::SIMD_MATH;
+use super::detect::{SIMD_MATH, TEST_ISA_OVERRIDE, decode_isa_override};
 use super::instruction_set::InstructionSet;
+use std::sync::atomic::Ordering;
 
 /// Static SIMD configuration — descriptive data only, no v-table.
 ///
@@ -21,9 +22,23 @@ pub struct SimdMathConfig {
 }
 
 impl SimdMathConfig {
-    /// Returns the active global SIMD configuration.
+    /// Returns the active global SIMD configuration, respecting any
+    /// `TEST_ISA_OVERRIDE` that may be set by integration tests.
     pub fn current() -> Self {
-        *SIMD_MATH
+        let raw = TEST_ISA_OVERRIDE.load(Ordering::Relaxed);
+        if let Some(isa) = decode_isa_override(raw) {
+            Self {
+                instruction_set: isa,
+                name: match isa {
+                    InstructionSet::Avx2 => "AVX2 (overridden)",
+                    InstructionSet::Avx512 => "AVX-512 (overridden)",
+                    InstructionSet::Avx512VnniBf16 => "AVX-512 VNNI+BF16 (overridden)",
+                },
+                is_avx512: matches!(isa, InstructionSet::Avx512 | InstructionSet::Avx512VnniBf16),
+            }
+        } else {
+            *SIMD_MATH
+        }
     }
 
     /// Alias for current().

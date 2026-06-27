@@ -35,7 +35,8 @@ pub use aligned::Aligned64;
 pub use aligned::AlignedVec;
 pub use avx2_impl::Avx2Math;
 pub use avx512::{Avx512Math, Avx512VnniBf16Math};
-pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
+pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig, TEST_ISA_OVERRIDE};
+pub use dispatch::{decode_isa_override, effective_instruction_set, encode_isa_override};
 pub use kahan::{Kahan4F32, KahanF32, kahan_add};
 pub use ops::*;
 pub use scalar_ref::*;
@@ -43,13 +44,19 @@ pub use traits::SimdMath;
 pub use utility::*;
 
 /// Macro for dynamic SIMD dispatch based on global configuration.
+///
+/// Checks `TEST_ISA_OVERRIDE` (u8::MAX = disabled) before consulting
+/// `SIMD_MATH.instruction_set`. This allows integration tests to force a
+/// specific ISA path (AVX2, AVX-512, VNNI+BF16) and measure cross-ISA
+/// determinism.
 #[macro_export]
 macro_rules! dispatch_simd {
     // Mode 2: Dispatch to specific methods of an object (e.g.: lstm.rs)
     (@ $target:expr, $m512bf16:ident, $m512:ident, $m256:ident $(, $arg:expr)*) => {
         {
-            use $crate::math::common::{SIMD_MATH, InstructionSet};
-            match SIMD_MATH.instruction_set {
+            use $crate::math::common::InstructionSet;
+            let __isa = $crate::math::common::effective_instruction_set();
+            match __isa {
                 InstructionSet::Avx512VnniBf16 => $target.$m512bf16($($arg),*),
                 InstructionSet::Avx512 => $target.$m512($($arg),*),
                 InstructionSet::Avx2 => $target.$m256($($arg),*),
@@ -60,8 +67,9 @@ macro_rules! dispatch_simd {
     // Mode 1: Dispatch to generic method of an object (e.g.: wavenet.rs)
     ($target:expr, $method:ident $(, $arg:expr)*) => {
         {
-            use $crate::math::common::{SIMD_MATH, InstructionSet};
-            match SIMD_MATH.instruction_set {
+            use $crate::math::common::InstructionSet;
+            let __isa = $crate::math::common::effective_instruction_set();
+            match __isa {
                 InstructionSet::Avx512VnniBf16 => {
                     $target.$method::<$crate::math::common::Avx512VnniBf16Math>($($arg),*)
                 }
@@ -78,12 +86,13 @@ macro_rules! dispatch_simd {
     // Mode 3: Static dispatch to SimdMath trait associated functions
     ($method:ident ($($arg:expr),*)) => {
         {
-            use $crate::math::common::{SIMD_MATH, InstructionSet};
+            use $crate::math::common::InstructionSet;
             use $crate::math::common::traits::SimdMath;
+            let __isa = $crate::math::common::effective_instruction_set();
             // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             #[allow(clippy::macro_metavars_in_unsafe)]
             unsafe {
-                match SIMD_MATH.instruction_set {
+                match __isa {
                     InstructionSet::Avx512VnniBf16 => {
                         $crate::math::common::Avx512VnniBf16Math::$method($($arg),*)
                     }

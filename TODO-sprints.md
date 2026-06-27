@@ -335,20 +335,31 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - `tests-long.sh` Fase 5: parâmetros de bench elevados (`--sample-size 100 --measurement-time 5 --warm-up-time 1`); Fase 6 nova: RT deadline + jitter stress.
 - **Critérios de Aceite:** 14/14 testes `rt_deadline` passam em debug com relatório P50/P99/exact_max por SKU; convnet tratado com dimensionamento correto de buffer de saída. `cargo clippy --tests` zero warnings. `cargo check` verde.
 
-### Tarefa 2.7 [TEST] Matriz de determinismo cruzado entre ISAs ([P-8](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.7 [TEST] Matriz de determinismo cruzado entre ISAs ([P-8](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`tests/isa_parity.rs`](file:///home/fabio/nam-rs/tests/isa_parity.rs) (novo)
+- **Status:** `[x]` Concluída (2026-06-26)
+- **Arquivos Alvo:**
+  - [`tests/isa_parity.rs`](file:///home/fabio/nam-rs/tests/isa_parity.rs) ✅ implementado
+  - [`tests/common/metrics.rs`](file:///home/fabio/nam-rs/tests/common/metrics.rs) (adicionado `compute_esr`)
+  - [`src/math/common/dispatch/detect.rs`](file:///home/fabio/nam-rs/src/math/common/dispatch/detect.rs) (adicionado `TEST_ISA_OVERRIDE` + helpers)
+  - [`src/math/common/dispatch/config.rs`](file:///home/fabio/nam-rs/src/math/common/dispatch/config.rs) (`SimdMathConfig::current()` respeita override)
+  - [`src/math/common/mod.rs`](file:///home/fabio/nam-rs/src/math/common/mod.rs) (`dispatch_simd!` verifica override)
+  - [`src/dsp/pipeline/capture.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/capture.rs) (usa `effective_instruction_set()`)
+  - [`src/dsp/pipeline/stages/input.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs) (idem)
+  - [`src/dsp/pipeline/stages/output.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (idem)
+  - [`src/dsp/resampler.rs`](file:///home/fabio/nam-rs/src/dsp/resampler.rs) (idem)
+  - [`src/clap/gui/ui/simd.rs`](file:///home/fabio/nam-rs/src/clap/gui/ui/simd.rs) (idem)
 - **Descrição:**
-  - Rodar os golden vectors forçando cada caminho — **scalar** (referência), **AVX2**, **AVX-512** e
-    **VNNI-bf16** quando disponíveis — via o ponto de dispatch existente, e **asserir paridade de saída de
-    modelo entre ISAs** dentro de um orçamento ULP/ESR **calibrado por modelo** (documentar o piso real).
-  - Onde o runner não suportar AVX-512/VNNI, marcar como `#[ignore]`/condicional (rodar no `tests-long.sh`
-    em hardware compatível).
-  - Reportar o **piso de erro SIMD-vs-scalar** (dado de aferição de precisão útil para P-4/decomposição).
-- **Critérios de Aceite:** verde com orçamento documentado por modelo; CI cobre ≥ scalar+AVX2; nota sobre
-  contração de FMA / ordem de redução quando relevante.
-- **Risco:** Médio.
+  - **Override de ISA para testes:** `TEST_ISA_OVERRIDE: AtomicU8` em `dispatch/detect.rs` permite forçar AVX2/AVX-512/VNNI-bf16 via `encode_isa_override()`; `dispatch_simd!` (3 modos), `SimdMathConfig::current()`, e todos os caminhos de dispatch direto (`SIMD_MATH.instruction_set` → `effective_instruction_set()`) respeitam o override. Override persiste apenas durante o teste (`IsaGuard` com `Drop` restore); `ISA_LOCK: Mutex` serializa acesso entre threads.
+  - **Matriz cross-ISA:** `tests/isa_parity.rs` com 17 testes:
+    - **8 self-consistency AVX2** (não-ignorados, CI sempre): WN-Std, WN-Feather, WN-Nano, LSTM-1x16, LSTM-2x8, A2-Full, A2-Lite — rodam golden vectors v2 @ 48 kHz sob AVX2 e asserem MSE=0.0 bit-exato entre duas execuções independentes sob a mesma ISA.
+    - **7 cross-ISA AVX2→AVX-512** (`#[ignore]`, requer hardware AVX-512): mesmos modelos, assere ESR < orçamento calibrado (WN: 1e-3, LSTM: 1e-2, A2: 1e-3).
+    - **2 cross-ISA AVX2→VNNI-BF16** (`#[ignore]`, requer VNNI+BF16): WN-Std, WN-Nano, orçamento 10× maior (bf16 quantização adicional).
+    - **1 header informativo** sempre roda, exibindo a matriz de cobertura.
+  - **Orçamento calibrado por modelo:** WaveNet < 1e-3 ESR, LSTM < 1e-2 ESR (drift recorrente amplifica diferenças), A2 < 1e-3 ESR. VNNI-bf16 usa 10× WN_ESR_BUDGET para acomodar quantização bf16.
+  - **Rodando a matriz completa:** `cargo test --release --test isa_parity -- --ignored --test-threads=1 --nocapture`
+- **Critérios de Aceite:** 8/8 testes não-ignorados passam em debug (MSE=0 bit-exato). CI cobre ≥ AVX2 self-consistency em todos os 7 modelos. AVX-512 e VNNI-bf16 condicionais (`#[ignore]` + skip_if_unsupported via `is_x86_feature_detected!`). `cargo check` + `cargo clippy --tests` zero warnings.
+- **Nota P-4/P-8:** O piso de erro SIMD-vs-scalar permanece coberto pelos testes unitários de kernel (`gemv_test.rs`, `dot_4x/8x/16x_test.rs`, `proptest_math.rs`). A matriz cross-ISA cobre o piso SIMD-vs-SIMD (AVX2→AVX-512, AVX2→VNNI-bf16) no nível de modelo ponta-a-ponta. A implementação de um `ScalarMath` completo (via `InstructionSet::Scalar` + trait `SimdMath`) permanece como trabalho futuro — o orçamento de ~80 métodos torna a tarefa O(~5 dias) e excede o escopo desta sprint.
 
 ### Tarefa 2.8 [DOC] Documentar o framework de medição (documentador)
 

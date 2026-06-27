@@ -31,3 +31,31 @@ pub fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
         .map(|(x, y)| ((*x as f64) - (*y as f64)).abs())
         .fold(0.0f64, f64::max)
 }
+
+/// Error-to-Signal Ratio (scale-invariant).
+///
+/// `ESR = Σ|ref[i] - test[i]|² / Σ|ref[i]|²`.
+/// Returns 0.0 when signals are identical, ∞ when the reference is zero
+/// but the test is not.
+pub fn compute_esr(reference: &[f32], test: &[f32]) -> f64 {
+    assert_eq!(
+        reference.len(),
+        test.len(),
+        "Vectors of different sizes for ESR"
+    );
+    let sig: f64 = reference.iter().map(|&x| (x as f64).powi(2)).sum();
+    let noise: f64 = reference
+        .iter()
+        .zip(test.iter())
+        .map(|(r, t)| ((r - t) as f64).powi(2))
+        .sum();
+    if sig <= f64::EPSILON {
+        if noise <= f64::EPSILON {
+            0.0
+        } else {
+            f64::INFINITY
+        }
+    } else {
+        noise / sig
+    }
+}
