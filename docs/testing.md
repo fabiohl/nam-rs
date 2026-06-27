@@ -202,8 +202,13 @@ assessment, documented in detail in [perceptual_validation.md](perceptual_valida
 - **ISA parity:** End-to-end cross-ISA determinism via `TEST_ISA_OVERRIDE`.
   Self-consistency (same ISA) asserts bit-exact output; cross-ISA asserts ESR
   within calibrated per-architecture budgets.
-- **Soft gates:** MR-STFT (<0.15) and ASR are informational/diagnostic only —
-  not hard CI assertions.
+- **MR-STFT dual gate:** Hard gate at 44.1/48 kHz (`mrstft_max` calibrated per model in
+  `get_calibrated_threshold()`); soft informational gate at 88.2/96/192 kHz while LSTM
+  SR-sensitivity is characterized. ASR is informational/diagnostic only.
+- **MR-STFT sensitivity caveat:** Spectrally sparse signals (many near-zero bins, e.g.,
+  `wavenet_condition_dsp`) can exhibit elevated MR-STFT even with near-perfect ESR. ESR
+  is the decisive gate; `mrstft_max` for such models is calibrated loosely. See
+  [`perceptual_validation.md`](perceptual_validation.md) "MR-STFT Sensitivity Caveat".
 - **RT-safety:** All metrics run off-RT. True-peak with 48-tap polyphase FIR
   is QA/telemetry only. RT hot-path uses sample-peak only.
 
@@ -225,3 +230,65 @@ cargo test --release --test isa_parity -- --ignored --test-threads=1 --nocapture
 # f64 oracle decomposition
 cargo test --release --test reference_oracle_f64
 ```
+
+---
+
+## 8. Test Value Hierarchy
+
+This section establishes which categories of tests provide genuine quality guarantees
+versus which serve as regression locators or consistency checks — guiding decisions on
+CI placement (`tests-quick.sh` Phase 1–2) versus long-suite deferral.
+
+### Three Independent Oracles
+
+The suite maintains three reference systems that answer **complementary, insubstitutable** questions:
+
+| Oracle                | Source                         | Question answered                                                        | Status                                                                       |
+|:--------------------- |:------------------------------ |:------------------------------------------------------------------------ |:---------------------------------------------------------------------------- |
+| **NAMCore f32**       | `cpp_parity`, `golden_vectors` | Does our output match the reference player? (interop)                    | ✅ Complete                                                                  |
+| **f64 Oracle**        | `reference_oracle_f64`         | How far from mathematical ideal, and which source dominates? (precision) | ✅ Structurally correct — LSTM/WaveNet/A2 functional; f16c residual expected |
+| **ISA Parity Matrix** | `isa_parity`                   | Do all CPU ISAs produce consistent results? (determinism)                | ✅ CI: AVX2 self-consistency; long-suite: cross-ISA                          |
+
+These oracles cannot be collapsed: passing NAMCore parity does not imply low absolute error;
+low absolute error does not imply cross-ISA determinism.
+
+### Tier Classification
+
+| Tier    | Category                                                      | Tests           | Guarantee                                                  | CI placement         |
+|:-------:|:------------------------------------------------------------- |:--------------- |:---------------------------------------------------------- |:-------------------- |
+| **1🔴** | NAMCore parity (golden_vectors + cpp_parity)                  | ~70 non-ignored | Interop with the NAM ecosystem                             | Phase 1–2            |
+| **1🔴** | RT-safety (heap-audit, zero-alloc)                            | ~20             | No heap allocation on the audio thread                     | Phase 4              |
+| **1🔴** | Parser robustness (namb/nam_json fuzz, CRC)                   | ~60             | Security and format integrity                              | Phase 1              |
+| **2🟠** | Spectral quality (ASR, Farina FR+THD, THD+N AES17, IMD SMPTE) | ~30             | Aliasing and distortion fingerprint                        | Phase 1–2            |
+| **2🟠** | Activation correctness (vs `f32::tanh` / `f64::tanh`)         | ~15             | Approximation within specification                         | Phase 1              |
+| **2🟠** | f64 Oracle, ISA parity, RT deadline                           | ~35             | Absolute precision + cross-ISA + latency budget            | Phase 1–2            |
+| **3🟡** | Kernel `avx2_vs_scalar` (dot, GEMV, conv)                     | ~60             | Regression **locators** — narrow down where failures occur | Phase 1              |
+| **3🟡** | Approx-vs-approx (`nr1_vs_div`, `nr2_vs_nr1`, etc.)           | ~10             | **Relative consistency only** — not correctness            | Long-suite (Phase 2) |
+| **3🟡** | Proptests (mathematical invariants, FSM sweeps)               | ~25             | Stochastic exploration of edge cases                       | Phase 2 + Long-suite |
+
+### Critical Distinction: Correctness vs. Consistency
+
+**Tier 2 (keep in CI):** tests comparing against a mathematical ground truth —
+`f32::tanh`, `f64::tanh`, or analytically derived expected values. These answer
+"is the approximation correct?"
+
+**Tier 3 / long-suite:** tests comparing two approximations against each other —
+`Padé+NR1 vs Padé+div`, `nr2_vs_nr1`, `dual_vs_production`. They verify that two
+approximate paths agree, but neither may be the ground truth. With the f64 Oracle
+providing absolute precision, these are redundant as quality gates; they run in the
+long-suite for regression detection only.
+
+### Consolidated Approx-vs-Approx Tests (Tier 3 → Long-Suite, via Tarefa 4.4)
+
+After the f64 Oracle became structurally complete for WaveNet/A2 (T-CR2), the following
+tests were migrated to `#[ignore]` with the reason
+`"consistency-only: oráculo f64 fornece correção absoluta; roda em long-suite"`:
+
+- `math::activations::tanh::high_fidelity::*::test_tanh_poly_nr1_vs_div_*` (AVX2 + AVX-512)
+- `math::activations::tanh::high_fidelity::*::test_tanh_poly_nr2_vs_div_*` (AVX2 + AVX-512)
+- `math::activations::tanh::high_fidelity::*::test_sigmoid_poly_avx{2,512}_sweep`
+- `math::activations::tanh::reference::reference_test::test_pade_nr{1,2}_vs_{div,nr1}_*`
+- `math::activations::tanh::reference::reference_test::test_pade_nr1_dual_vs_production_avx2`
+
+**Remain in CI (Tier 2):** All `*_vs_f32_tanh*`, `*_vs_f64*`, and sweep tests with
+analytically expected error values — these compare against mathematical ground truth.
