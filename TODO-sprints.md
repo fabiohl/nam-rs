@@ -740,7 +740,7 @@ reflita apenas testes com valor de **correção** — não de consistência rela
   quick_parity --list` reporta 3 tests, 0 benchmarks. Orçamento de +30 s estimado como amplamente
   atendido (3× v1 de 2048 amostras com BUILD_LOCK quente ≈ 3–5 s de C++ render + inferência Rust).
 
-### Tarefa 4.2 [TEST] Reduzir ruído cosmético "GOLDEN DEFECT" e reavaliar o gate ([D-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 4.2 [TEST] Reduzir ruído cosmético "GOLDEN DEFECT" e reavaliar o gate ([D-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (≈ 234, 268-282)
@@ -768,13 +768,22 @@ reflita apenas testes com valor de **correção** — não de consistência rela
   - `cargo clippy --tests` zero warnings; `cargo test --lib` 1020/1020 passam; `cargo test --test
     golden_vectors` 28/28 passam; `cargo test --test threshold_calibration` 3/3 passam.
 
-### Tarefa 4.3 [QA] Validação de lints e orçamento de tempo (E3)
+### Tarefa 4.3 [QA] Validação de lints e orçamento de tempo (E3) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`
 - **Descrição:** confirmar que o `tests-quick` permanece dentro do orçamento (~2,5–3 min) com o novo subconjunto.
 - **Critérios de Aceite:** suíte verde; tempo total medido e registrado na Conclusão.
 - **Risco:** Baixo.
+- **Conclusão:**
+  - **`utils/lints.sh`:** zero warnings — 4/4 etapas verdes (fmt, check 4×, clippy 4×, anti-pattern) em 2.3s.
+  - **`utils/tests-quick.sh`:** 5/5 fases verdes:
+    - Fase 1 (unit/integration): 1020 pass, 0 fail, 2 ignored (17s)
+    - Fase 2 (medium validation): quick_parity 3/3 ✓ + proptest_parsers 13/13 ✓ + proptest_math 3/3 ✓
+    - Fase 3 (CLAP build + heap-audit): OK
+    - Fase 4 (CLAP integration + heap audit): 12/13 pass, 1 ignored — zero alocação confirmada
+    - Fase 5 (clap-validator): 19/21 pass, 0 fail, 2 skipped (note-ports não implementado)
+  - **Tempo total medido: 4m39s** (wall clock, cold run). Acima do orçamento original de ~2.5–3 min, porém dentro do observado historicamente na T3.5 (~6 min). O novo subconjunto `quick_parity` (T4.1) contribui com **0.02s de teste + ~37s de compilação release** — custo marginal insignificante em termos de execução, mas a recompilação release (repetida 3× para cpp_parity, proptest_parsers, proptest_math) domina o orçamento. Com caching de CI a estimativa realista é ~3.5–4 min. O gargalo principal é o `isa_self_consistency_wavenet_standard_avx2` (80s em debug na Fase 1), herdado do Sprint S2.
 
 ### Tarefa 4.4 [TEST] Migrar testes de consistência relativa para long-suite (Análise de Consolidação)
 
