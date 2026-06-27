@@ -474,18 +474,23 @@ oráculo f64 e pela suíte espectral (S2).
 
 **🎯 Conclusão T3.3:** A divergência espectral do LSTM é _inerente à combinação da arquitetura recorrente com quantização f16c de pesos_, compartilhada com o NAMCore. Não é uma regressão do nam-rs, não é corrigível sem alterar o formato do modelo (e perder interoperabilidade). O `ABSOLUTE_ESR_CAP` de 6.23e-3 (A1-Std baseline) introduzido em T3.2 cumpre seu papel de sentinela: mantém visível o custo real da quantização, impedindo que "passar" se torne "qualquer coisa abaixo do caos". Ações de mitigação de longo prazo (acúmulo compensado Kahan no head do LSTM, oversampling do estado recorrente) são encaminhadas ao Épico E4 (S5).
 
-### Tarefa 3.4 [DOC] Atualizar a política de gates perceptuais (documentador)
+### Tarefa 3.4 [DOC] Atualizar a política de gates perceptuais [documentador] (DONE)
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
-- **Descrição:** documentar o gate MR-STFT calibrado, o teto de relaxamento por SR e o resultado do RCA
-  (incluindo a distinção interop-vs-correção quando aplicável).
-- **Critérios de Aceite:** doc coerente com `validation.rs` / `cpp_parity.rs`.
-- **Risco:** Baixo.
+- **Descrição executada:** `perceptual_validation.md` completamente atualizado:
+  - Seção "Conservative Parity Gate" substituída por **"3-Tier Gate Hierarchy"** (Tiers 1–3: calibrated thresholds → SR-relaxation → ABSOLUTE_ESR_CAP sentinel)
+  - Tabela de thresholds calibrados expandida de 11 para **24 modelos**, com coluna `mrstft_max`
+  - MR-STFT atualizado de "Soft Gate" para **"Hard + Soft Dual Gate"** (hard @ 44.1/48 kHz, soft @ demais taxas)
+  - Nova seção: **"LSTM Recurrent State Quantization Drift"** — mecanismo, evidência empírica, hipóteses refutadas, classificação interop-vs-correção
+  - Seção "Two References — Parity vs Actual" agora inclui cross-reference ao LSTM drift
+  - Seção LUFS expandida com T2.5 lesson, short-signal tolerance, opt-out
+  - Correção de 5 line-numbers desatualizados (validation.rs, reference_oracle_f64.rs)
+- **Critérios de Aceite:** ✅ doc coerente com `validation.rs` / `cpp_parity.rs`. Todas as 17 lacunas identificadas resolvidas.
 
-### Tarefa 3.5 [QA] Validação de lints e testes (E2)
+### Tarefa 3.5 [QA] Validação de lints e testes (E2) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Feita conjuntamente com a avaliação da sprint.
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`; paridade longa (`utils/tests-long.sh` Fase 3, local)
 - **Descrição:** lints + suíte rápida; rodar a paridade longa **localmente** (nunca como passo de IA) para
   confirmar que os novos gates não reprovam falsamente os modelos legítimos.
@@ -495,9 +500,15 @@ oráculo f64 e pela suíte espectral (S2).
 ---
 
 **Nota do PO:** Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3.
-Aproveite também para analisar vários resultados de testes(salvos em "testes.log"), como pede a "Tarefa 3.5" com fonte de insoght úteis.
-Avalie meticulosamente a perfeição do que foi feito até aqui ("Sprint S3" do "TODO-sprints.md"). Se necessário, propondo correções de rumo.
-Dúvida: Agora que a "Sprint S2" criou um sistema de checagem de precisão de altíssimo nível, veio-me uma questão. Agora temos uma referência super precisa em f64 (para o mais alto nível de precisão) e temos o NAMcore (que é com quem sempre seremos comparados e não podemos fugir disto). Mas também há outros testes autorreferenciados com escalares, etc. Não caberia uma simplificação do número de testes aqui para o que realmente interessa. Claro, quanto mais melhor! Porém, o que realmente agrega valor real e o que apenas um "deixa ai só precaução"?
+Aproveite também para analisar vários resultados de testes(salvos em "testes.log"), como pede a "Tarefa 3.5" como fonte de insights úteis.
+Avalie meticulosamente a perfeição do que foi feito até aqui ("Sprint S3" do "TODO-sprints.md").
+Se necessário, propondo correções de rumo.
+
+Agora que a "Sprint S2" criou um sistema de checagem de precisão de altíssimo nível, veio-me uma questão.
+Agora temos uma referência super precisa em f64 (para o mais alto nível de precisão) e temos o NAMcore (que é com quem sempre seremos comparados e não podemos fugir disto).
+Mas também há outros testes autorreferenciados com escalares, etc.
+Não caberia uma simplificação do número de testes aqui para o que realmente interessa.
+Claro, quanto mais melhor! Porém, o que realmente agrega valor real e o que apenas um "deixa ai só precaução"?
 
 ---
 

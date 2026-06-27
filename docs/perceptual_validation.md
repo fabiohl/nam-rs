@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Perceptual Validation & Measurement Framework
@@ -58,38 +59,89 @@ all parity gates.
 | ~6e-3 (median) | A1-Standard modeling error vs analog hardware   |
 | > 1.0          | Complete divergence                             |
 
-### Per-Model Calibrated Thresholds
+## 3-Tier Gate Hierarchy
 
-Defined in `tests/common/validation.rs:409` (`get_calibrated_threshold`).
-Fine-tuned thresholds per architecture, channel count, and model family.
+NAM-rs validation uses a three-tier gate system that governs how thresholds evolve from tight per-model
+values through sample-rate and stress-signal relaxation, ultimately bounded by absolute sentinels.
+See `tests/common/validation.rs:435` (`get_calibrated_threshold`) and `tests/cpp_parity.rs:334-385`.
 
-| Model            | Ch  | ESR max | SNR min | Gate Type   |
-| ---------------- | --- | ------- | ------- | ----------- |
-| WaveNet Standard | 16  | 3.0e-11 | 105 dB  | Golden only |
-| WaveNet Feather  | 8   | 1.0e-10 | 100 dB  | Golden only |
-| WaveNet Nano     | 4   | 3.0e-10 | 95 dB   | Golden only |
-| A2-Full          | 8   | 8.0e-8  | 70 dB   | Golden      |
-| A2-Lite          | 3   | 6.0e-9  | 80 dB   | Golden      |
-| WaveNet Official | 3   | 3.5e-2  | 14 dB   | Live parity |
-| LSTM 1×16        | 1   | 6.5e-2  | 12 dB   | Live parity |
-| LSTM 2×8         | 2   | 2.0e-2  | 18 dB   | Live parity |
-| LSTM Official    | 1   | 6.0e-3  | 22 dB   | Live parity |
-| WaveNet Lite     | 12  | 3.5e-11 | 105 dB  | Golden only |
-| Linear           | —   | 1e-10   | 140 dB  | Both        |
+### Tier 1 — Per-Model Calibrated Thresholds
 
-### Conservative Parity Gate
+Defined in `tests/common/validation.rs:435` (`get_calibrated_threshold`). Each model entry stores
+empirically measured `(mse_limit, min_snr_db, max_esr, mrstft_max)` at 48 kHz with 2048-sample v1
+stress signal. Source measurements are documented in code comments.
+
+| Model                                | SNR dB | ESR max | MR-STFT max | Notes                                       |
+| ------------------------------------ | ------ | ------- | ----------- | ------------------------------------------- |
+| WaveNet Standard (CH=16)             | 105    | 3.0e-11 | 0.05        | Golden only                                 |
+| WaveNet A1 Standard / Official CH=16 | 85     | 3.0e-9  | 0.05        | Live parity                                 |
+| WaveNet Feather (CH=8)               | 100    | 1.0e-10 | 0.05        | Golden only                                 |
+| WaveNet Nano (CH=4)                  | 95     | 3.0e-10 | 0.05        | Golden only                                 |
+| WaveNet Lite (CH=12)                 | 105    | 3.5e-11 | 0.05        | Golden only                                 |
+| WaveNet Official (CH=3)              | 14     | 3.5e-2  | 0.05        | Live parity, extreme compression            |
+| WaveNet Cond-DSP                     | 100    | 1.0e-10 | 0.05        | cond=3, dynamic path                        |
+| WaveNet Dyn Free-Shape               | 90     | 1.0e-11 | 0.05        | CH=7→4, head_scale=0.02                     |
+| Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall        |
+| A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                            |
+| A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                 |
+| A2-FiLM-Lite (CH=3)                  | 12     | 2.0e-2  | 0.60        | FiLM active, RF1                            |
+| A2-FiLM-Full (CH=8)                  | 30     | 5.0e-4  | 0.55        | FiLM active, RF1                            |
+| A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                            |
+| A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                             |
+| A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                          |
+| ConvNet Test                         | 140    | 1.0e-10 | 0.05        | Self-golden consistency                     |
+| LSTM 1×16                            | 12     | 6.5e-2  | 0.15        | Recurrent drift (see §LSTM Recurrent Drift) |
+| LSTM 2×8                             | 18     | 2.0e-2  | 0.12        | Recurrent drift                             |
+| LSTM Official (H=3)                  | 22     | 6.0e-3  | 0.22        | Recurrent drift                             |
+| LSTM-Dyn 1×7                         | 80     | 3.5e-9  | 0.08        | Non-catalog geometry, 48 kHz only           |
+| Linear                               | 140    | 1.0e-10 | —           | Bit-exact proxy                             |
+
+Fallback formulas (when a model has no calibrated entry):
+
+- **Golden vectors** (`topology_thresholds`, `validation.rs:642`): LSTM `snr = (30 - complexity×0.65)`
+- **Live parity** (`live_parity_thresholds`, `validation.rs:684`): LSTM `snr = (85 - complexity×1.0)`
+  Both are stricter than calibrated values and gated by Tier 3.
+
+### Tier 2 — Stress Signal × Sample-Rate Relaxation
+
+Applied only in v2 multi-SR tests (`cpp_parity.rs:334-363`). Compensates for numerical accumulation
+over the 100× longer stress signal (5s vs 42.7ms) and for higher sample rates:
 
 ```text
-NAM_RS_CPP_PARITY_ESR_MAX = 1e-3 (≈ −30 dB)
+sr_ratio = sample_rate / 48000
+
+LSTM:     snr_relaxation = (3.5 × sr_ratio).min(10.0)   // capped at 10 dB
+WaveNet:  snr_relaxation = (1.5 × sr_ratio).min(4.0)    // capped at 4 dB
+Resample: snr -= 1.5; mse ×= 1.5; esr ×= 1.5            // only when actual_sr ≠ model_sr
 ```
 
-~6× (~8 dB) below A1-Standard median (6.23e-3). Deliberately loose to tolerate
-variation in less-covered sample rates (44.1k, 192k) while catching major
-implementation regressions.
+- LSTM gets a steeper relaxation because recurrent state drift is proportional to step count
+  (see §LSTM Recurrent Drift below). Full formula: `min_snr -= snr_relaxation; mse ×= 10^(snr_relax/10); esr ×= 10^(snr_relax/10)`
+- At 96 kHz: LSTM relaxes 7.0 dB; at 192 kHz: 10.0 dB (capped).
+- The relaxation is **deliberate** — it exists to distinguish "expected format limitation"
+  from "unexpected engine regression." Tier 3 is the backstop.
+
+### Tier 3 — ABSOLUTE_ESR_CAP / ABSOLUTE_SNR_FLOOR Sentinel
+
+After all Tier 2 relaxation, absolute sentinels (`cpp_parity.rs:374-384`) clamp the result:
+
+```text
+ABSOLUTE_ESR_CAP  = A2ESR_A1_STANDARD_MEDIAN = 6.23e-3   // baseline "good" from t3k-mushra
+ABSOLUTE_SNR_FLOOR = 5.0 dB                              // absolute minimum SNR meaning
+```
+
+If `max_esr > ABSOLUTE_ESR_CAP` after relaxation, it is scaled back to 6.23e-3 and `mse_limit`
+is proportionally tightened. `min_snr_db` is clamped to at least 5.0 dB.
+
+**Purpose:** The cap acts as a sentinel, not a pass/fail criterion expected to always succeed.
+When a model exceeds it (as all LSTM models do in v2), the test **intentionally fails** and
+routes the case to T3.3 triage (see `docs/lstm_recurrent_drift.md` for the RCA conclusion).
+This ensures that "passing" always means "at least as precise as WaveNet A1-Std f32 native" —
+preventing the relaxation chain from silently absorbing real regressions.
 
 ---
 
-## MR-STFT — Multi-Resolution STFT Loss (Soft Spectral Gate)
+## MR-STFT — Multi-Resolution STFT Loss (Hard + Soft Spectral Gate)
 
 **File:** `src/testing/perceptual.rs:126`
 
@@ -112,11 +164,22 @@ trade-off. MR-STFT combines three window sizes to capture narrow-band and
 transient errors simultaneously. This metric correlates more strongly with
 perceived audio quality than ESR alone.
 
-### Soft Gate
+### Dual Gate System
 
-`MRSTFT_SOFT_THRESHOLD = 0.15` (`tests/common/validation.rs:247`). Informational
-only — not a hard assertion. Values above 0.15 suggest spectral artifacts warrant
-investigation.
+MR-STFT uses a per-model calibrated threshold with a dual enforcement strategy
+(`tests/common/validation.rs:252-277`, `342-349`):
+
+**Hard gate — 44.1/48 kHz (native rates):** MR-STFT < `mrstft_max` from the
+calibrated threshold table (§3-Tier Gate Hierarchy, Tier 1). Failures at these
+rates **assert-panic** the test — there is no excuse for spectral degradation
+at the model's training sample rate. Per-model `mrstft_max` values range from
+0.05 (WaveNet SKU, near bit-exact) to 0.22 (LSTM Official, recurrent drift).
+
+**Soft gate — 88.2/96/192 kHz (elevated rates):** `MRSTFT_SOFT_THRESHOLD = 0.15`
+(`tests/common/validation.rs:264`). Informational only — not a hard assertion.
+Higher sample rates accumulate more recurrent artifacts in LSTM architectures
+(see §LSTM Recurrent Drift), making a hard gate inappropriate until S5 characterizes
+the relationship precisely.
 
 FFT via `crate::math::dsp::fft::FftPlanner` (native, SoA, zero-alloc). Purely
 scalar (non-RT), suitable for test validation.
@@ -339,7 +402,19 @@ gate on golden reference output — implausible LUFS values indicate upstream bu
 `LUFS_PLAUSIBLE_MIN = −50.0`, `LUFS_PLAUSIBLE_MAX = +10.0`
 (`tests/common/validation.rs:22-23`).
 
-Tests: `src/testing/perceptual_test.rs:30-170`.
+The gate was introduced after T2.5: a golden vector with LUFS −67 (near-silence)
+passed all time-domain checks undetected — the signal was structurally valid
+but perceptually meaningless. Now any reference signal outside [−50, +10] LUFS
+triggers a "GOLDEN DEFECT" warning.
+
+**Short-signal tolerance:** Signals shorter than 400ms (below one BS.1770-4
+integration block) bypass the LUFS gate — the measurement produces non-finite
+values. This is automatic in `report_dsp_fidelity` (`validation.rs:183-187`).
+
+**Opt-out:** `report_dsp_fidelity_no_lufs` (`validation.rs:85`) skips the gate
+for IR convolution goldens, where input is an impulse and high amplitude is
+legitimate. The gate is also informational (`ⓘ`, not `✗`) when explicitly
+`check_lufs_gate=false` (`validation.rs:361-365`).
 
 ---
 
@@ -461,43 +536,116 @@ under 5 configurations and returns a `DecompositionResult` (`src/testing/referen
 
 | Reference         | Type     | What it measures                      | Typical target         |
 | ----------------- | -------- | ------------------------------------- | ---------------------- |
-| C++ NAMCore (f32) | Parity   | Implementation agreement (shared f32) | ESR < 1e-3 (loose)     |
+| C++ NAMCore (f32) | Parity   | Implementation agreement (shared f32) | < mse_limit (Tier 1–3) |
 | f64 Oracle        | Absolute | Intrinsic quality loss from f32 path  | Varies by architecture |
 
 The parity reference answers "Is our f32 code compatible with upstream?" The
 absolute reference answers "How much quality did we lose by using f32?"
 
+**Interop-vs-Correction in practice:** For WaveNet, ESR(vs NAMCore) ≈ 1e-13
+and ESR(vs f64 oracle) ≈ 1e-7 — the shared f32+f16c representation dominates.
+For LSTM, ESR(vs NAMCore) ≈ 2.6e-2 (v2, 5s) while ESR(vs f64 oracle) ≈ 1.0
+from the first 512 samples — **both** nam-rs and NAMCore diverge from the ideal
+by similar amounts. The per-model calibrated thresholds reflect this reality:
+LSTM entries are orders of magnitude looser because the f16c model format itself
+is the bottleneck, not the engine implementation. See `docs/lstm_recurrent_drift.md`.
+
 Tests: `tests/reference_oracle_f64.rs:67-268`.
+
+---
+
+## LSTM Recurrent State Quantization Drift
+
+LSTM models (`BossLSTM-1×16`, `BossLSTM-2×8`, `LSTM Official H=3`) exhibit
+ESR significantly above the WaveNet A1-Std baseline (6.23e-3), even at native
+sample rates where no resampling is involved. This is **not a NAM-rs regression**
+— the limitation is inherent to the `.nam` format with f16c-quantized weights in
+recurrent architectures.
+
+### Mechanism
+
+The LSTM cell state update accumulates f16c quantization error across time steps:
+
+```text
+cₜ = fₜ · cₜ₋₁ + iₜ · gₜ
+hₜ = oₜ · tanh(cₜ)
+```
+
+All four gates are computed via 4-way GEMV using f16c-quantized weights
+(`src/models/lstm/layer.rs:11` — `[[[u16; H]; IH]; 4]`). Each time step injects
+~2.3e-3 per-gate quantization error into `cₜ`. The forget gate `fₜ` (typically
+0.9–0.99 in trained networks) partially decays old errors, limiting the
+accumulation to a steady-state: `⟨ESR⟩ ∝ σ²ε / (1 − ⟨f⟩²)`.
+
+### Empirical evidence
+
+| Sequence           | LSTM Steps | ESR (vs NAMCore) | MR-STFT | Notes            |
+| ------------------ | ---------- | ---------------- | ------- | ---------------- |
+| 2,048 (42.7ms, v1) | 2,048      | 1.04e-2          | 0.098   | Passes all gates |
+| 240,000 (5s, v2)   | 240,000    | 2.61e-2          | 0.87    | Fails Tier 3 cap |
+| 480,000            | 480,000    | 6.09e-2          | 1.38    | Fails all gates  |
+| 960,000            | 960,000    | 1.42e-1          | 1.93    | Worst case       |
+
+The ESR grows sub-quadratically (not ∝N²), confirming the forget gate limits
+accumulation to a rate-dependent steady-state.
+
+### Hypotheses ruled out
+
+Systematic testing ruled out: band-edge filtering (no DC-block in pipeline),
+denormal dither (±1e-11 symmetric, −220 dBFS), aliasing from non-linearity
+(ASR = −68.8 dB at 48 kHz), and harness resample path (48 kHz bypasses resampler).
+None of these contribute significantly to the observed ESR.
+
+### Classification
+
+The divergence is **interop** (nam-rs vs NAMCore), not a nam-rs-specific
+regression. Both engines converge closely (ESR 2.61e-2 between them) but diverge
+far more from the f64 ideal (ESR ≈ 1.0). The f16c model format is the bottleneck,
+not the engine implementation.
+
+### Impact on gates
+
+- **Tier 1 thresholds** for LSTM models (6.5e-2, 2.0e-2, 6.0e-3) are calibrated
+  from empirical measurements and reflect this format limitation.
+- **Tier 3 cap** (6.23e-3) is lower than all LSTM measurements in v2 — these models
+  **systematically fail** the absolute sentinel, intentionally. The cap acts as a
+  visible gating mechanism, not a pass/fail expected to always succeed.
+- **MR-STFT hard gate** at 44.1/48 kHz also fails for LSTM in v2 due to broadband
+  spectral error from quantization noise in the recurrent state.
+
+For full RCA documentation, see `docs/lstm_recurrent_drift.md`.
 
 ---
 
 ## Fidelity Report — Multi-Metric Pass
 
-**File:** `tests/common/validation.rs:58` (`report_dsp_fidelity`)
+**File:** `tests/common/validation.rs:55` (`report_dsp_fidelity`)
 
 Single-pass multi-metric report for golden vector and parity validation.
 Computes in one traversal over reference/test signals:
 
-| Metric           | Computation                                     | Gate / Target            |
-| ---------------- | ----------------------------------------------- | ------------------------ |
-| MSE              | noise_power / n                                 | < mse_limit              |
-| MAE              | max absolute difference                         | informational            |
-| SNR              | 10 · log₁₀(signal_power / noise_power)          | > min_snr_db             |
-| PSNR             | 10 · log₁₀(peak_ref² / mse)                     | informational            |
-| Equivalent Bits  | −0.5 · log₂(mse / signal_avg_power)             | informational            |
-| ESR              | noise_power / signal_power                      | < max_esr (primary gate) |
-| MR-STFT          | multi-resolution spectral loss                  | < 0.15 (soft)            |
-| LUFS (reference) | integrated loudness gate                        | [−50, +10] plausibility  |
-| dBTP (reference) | true-peak measurement                           | informational            |
-| Anchor SNR       | SNR of test against 3.5 kHz 1-pole LP reference | degradation baseline     |
-| Fidelity Margin  | SNR − anchor_SNR                                | > 8.0 dB target          |
+| Metric           | Computation                                     | Gate / Target                                        |
+| ---------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| MSE              | noise_power / n                                 | < mse_limit (Tier 1–3 relaxed)                       |
+| MAE              | max absolute difference                         | informational                                        |
+| SNR              | 10 · log₁₀(signal_power / noise_power)          | > min_snr_db (Tier 1–3 relaxed)                      |
+| PSNR             | 10 · log₁₀(peak_ref² / mse)                     | informational                                        |
+| Equivalent Bits  | −0.5 · log₂(mse / signal_avg_power)             | informational                                        |
+| ESR              | noise_power / signal_power                      | < max_esr (primary gate, Tier 1–3)                   |
+| MR-STFT          | multi-resolution spectral loss                  | < mrstft_max (hard @ 44.1/48k, soft @ higher rates)  |
+| LUFS (reference) | integrated loudness (BS.1770-4 2-pass)          | [−50, +10] plausibility (skipped for <400ms signals) |
+| dBTP (reference) | true-peak (BS.1770-4 Annex 2, 4× polyphase)     | informational                                        |
+| Anchor SNR       | SNR of test against 3.5 kHz 1-pole LP reference | degradation baseline                                 |
+| Fidelity Margin  | SNR − anchor_SNR                                | > 8.0 dB target                                      |
 
 `Fidelity Margin` quantifies how much better the test signal matches the reference
 than a degraded anchor (3.5 kHz low-pass). Target > 8.0 dB ensures meaningful
 fidelity above a low-quality baseline.
 
 Variant `report_dsp_fidelity_no_lufs` (`tests/common/validation.rs:85`) skips
-LUFS gate for cases where high signal amplitude is legitimate (e.g., IR convolution).
+LUFS gate for cases where high signal amplitude is legitimate (e.g., IR convolution
+goldens). Short signals (<400ms, shorter than one BS.1770-4 integration block)
+also bypass the LUFS gate automatically.
 
 ---
 
@@ -612,7 +760,7 @@ numerical noise, not training error.
 | ----------------- | ------------------------------------- | -------------------------------------------------------------------- |
 | ESR (f32)         | `src/testing/perceptual.rs:51`        | `tests/common/metrics.rs:40`                                         |
 | ESR (f64)         | `src/testing/reference_oracle.rs:201` | `tests/reference_oracle_f64.rs:67`                                   |
-| MR-STFT           | `src/testing/perceptual.rs:126`       | `tests/common/validation.rs:245`                                     |
+| MR-STFT           | `src/testing/perceptual.rs:126`       | `tests/common/validation.rs:264`                                     |
 | ASR               | `src/testing/aliasing.rs:133`         | `src/testing/aliasing_test.rs:*`, `tests/spectral_fidelity.rs:34`    |
 | Farina FR+THD     | `src/testing/spectral.rs:224`         | `src/testing/spectral_test.rs:108`, `tests/spectral_fidelity.rs:401` |
 | THD+N AES17       | `src/testing/spectral.rs:456`         | `src/testing/spectral_test.rs:248`, `tests/spectral_fidelity.rs:441` |
@@ -622,7 +770,7 @@ numerical noise, not training error.
 | True-Peak dBTP    | `src/testing/perceptual.rs:652`       | `src/testing/perceptual_test.rs:462`                                 |
 | Combined Loudness | `src/testing/perceptual.rs:522`       | `src/testing/perceptual_test.rs:346`                                 |
 | f64 Oracle        | `src/testing/reference_oracle.rs:232` | `tests/reference_oracle_f64.rs:67`                                   |
-| Fidelity Report   | `tests/common/validation.rs:58`       | `tests/cpp_parity.rs`, `tests/golden_vectors.rs`                     |
+| Fidelity Report   | `tests/common/validation.rs:55`       | `tests/cpp_parity.rs`, `tests/golden_vectors.rs`                     |
 | ISA Parity        | `tests/isa_parity.rs:144`             | `tests/isa_parity.rs:257`                                            |
 | RT Telemetry      | `src/dsp/telemetry.rs:41`             | `src/dsp/telemetry.rs:114`                                           |
 | Stress Signals    | `src/testing/stress.rs:40,92`         | `src/testing/stress_test.rs`                                         |
