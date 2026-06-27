@@ -247,12 +247,12 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - 4 testes model-specific `#[ignore]` (WaveNet Std/Nano, LSTM 2×8, A2) prontos para fingerprint.
   - API pública reusável por S5 (baseline e gate de regressão).
 
-### Tarefa 2.3 [TEST/DSP] Suíte espectral: THD/THD+N, IMD e resposta em frequência (Farina) ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.3 [TEST/DSP] Suíte espectral: THD/THD+N, IMD e resposta em frequência (Farina) ([P-3](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída
 - **Arquivos Alvo:**
-  - [`src/testing/`](file:///home/fabio/nam-rs/src/testing) (novo `spectral.rs`)
-  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs)
+  - [`src/testing/spectral.rs`](file:///home/fabio/nam-rs/src/testing/spectral.rs) (novo)
+  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (ampliado)
 - **Descrição:**
   - **Resposta em frequência + THD por ordem** via **varredura senoidal exponencial (Farina, AES 2000)**:
     gerar sweep 20 Hz→Nyquist, processar pelo modelo, deconvoluir com o filtro inverso (sweep invertido no
@@ -263,6 +263,22 @@ próprias métricas** (mitigado pela validação contra referência externa).
 - **Critérios de Aceite:** valores validados num caso de distorção **conhecido** (ex.: clip que produz 6,4 %
   THD); fingerprint espectral (FR/THD/IMD) por SKU; funções reusáveis por S5.
 - **Risco:** Médio (corretude da deconvolução de Farina; sincronismo do sweep).
+- **Conclusão:** Módulo `src/testing/spectral.rs` implementado com:
+  - `generate_farina_sweep()` — varredura senoidal exponencial (20 Hz → Nyquist).
+  - `generate_farina_inverse_filter()` — filtro inverso via domínio da frequência (`F[k] = conj(S[k])/|S[k]|²`),
+    validado com teste de autocorrelação (side-lobe < −20 dB).
+  - `farina_measure()` — pipeline completo: gera sweep, deconvolui via FFT circular, extrai IR linear,
+    FR magnitude/fase (dB + rad), e THD por ordem harmônica (2–5) com separação por time-lag.
+  - `measure_thdn()` — THD+N AES17: tom 997 Hz, notch biquad Q=5, descarte de transiente de 2000 amostras,
+    THD+N = RMS(notched)/RMS(total).
+  - `measure_smpte_imd()` — IMD SMPTE/DIN: tons 60 Hz + 7 kHz (4:1), FFT com janela Blackman-Harris,
+    detecção de portadora e bandas laterais (±6 ordens).
+  - **Validação:** hard-clip (threshold 0,5) produz THD+N ≈ 23 % e THD por Farina nos harmônicos ímpares
+    detectáveis; sistema linear (ganho 2×) apresenta THD+N < 2 % e THD total desprezível.
+  - 12 unit tests + 7 integration tests (5 fast validation + 2 não-modelo) — todos passam, zero warnings.
+  - 4 testes model-specific `#[ignore]` para fingerprint espectral (WaveNet Std + Nano):
+    Farina FR+THD, THD+N AES17 e IMD SMPTE prontos para S5.
+  - API pública compatível com `Sprint S5` (funções genéricas sobre `FnOnce(&[f64]) -> Vec<f32>`).
 
 ### Tarefa 2.4 [DSP/TEST] True-peak (BS.1770-4) + detecção de clipping inter-sample ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
 

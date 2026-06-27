@@ -14,5 +14,6 @@ pub mod aliasing;
 pub mod mushra;
 pub mod perceptual;
 pub mod reference_oracle;
+pub mod spectral;
 pub mod stress;
 pub mod wav;
