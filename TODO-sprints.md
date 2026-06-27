@@ -588,9 +588,9 @@ O oráculo LSTM é funcional (ESR 1.06, ΔESR Padé = 1.39e-4 confirmado). WaveN
 - ESR residual dominado por quantização f16c (padrão consistente com LSTM).
 - Ver Tarefa T-CR2 para detalhes completos.
 
-#### CR-3 — 🟡 Médio | Documentar a sensibilidade do MR-STFT em sinais condicionados
+#### CR-3 — ✅ Resolvido (2026-06-27) | Documentar a sensibilidade do MR-STFT em sinais condicionados
 
-A equivocada caracterização "possível bug" do condition_dsp foi corrigida factualmente. Mas o padrão tem implicações mais amplas: **qualquer modelo com output espectralmente esparso (silência em muitos bins) terá MR-STFT artificialmente alto em sinais longos**, mesmo com ESR perfeito. Isso não é bug do modelo — é limitação conhecida da métrica de log-magnitude. Ação: documentar esta caveat em `docs/perceptual_validation.md` como subcaso do MR-STFT "Dual Gate" (Tarefa 3.4 pode ser reaberta ou nota incluída no T-CR3).
+A equivocada caracterização "possível bug" do condition_dsp foi corrigida factualmente. Mas o padrão tem implicações mais amplas: **qualquer modelo com output espectralmente esparso (silência em muitos bins) terá MR-STFT artificialmente alto em sinais longos**, mesmo com ESR perfeito. Isso não é bug do modelo — é limitação conhecida da métrica de log-magnitude. ~~Ação: documentar esta caveat em `docs/perceptual_validation.md` como subcaso do MR-STFT "Dual Gate" (Tarefa 3.4 pode ser reaberta ou nota incluída no T-CR3).~~ → T-CR3 concluída: seção "MR-STFT Sensitivity Caveat" adicionada em `docs/perceptual_validation.md`.
 
 #### CR-4 — 🟡 Médio | Cap 0.2 ESR para LSTM — tolerância muito alta sem caracterização perceptual
 
@@ -638,9 +638,9 @@ A equivocada caracterização "possível bug" do condition_dsp foi corrigida fac
     de 3 dimensões que o `run_decomposition` atual não suporta em um único forward).
 - **Risco:** Médio. Pode exigir engenharia reversa do layout de pesos.
 
-### Tarefa T-CR3 [DOC] Documentar caveat de sensibilidade do MR-STFT em sinais espectralmente esparsos
+### Tarefa T-CR3 [DOC] Documentar caveat de sensibilidade do MR-STFT em sinais espectralmente esparsos ✅
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
 - **Descrição:** Adicionar seção "MR-STFT Sensitivity Caveat" documentando que modelos com output
   espectralmente esparso (bins próximos de zero em muitos frames — ex.: `wavenet_condition_dsp`) podem
@@ -649,6 +649,12 @@ A equivocada caracterização "possível bug" do condition_dsp foi corrigida fac
   frouxo, **ESR é o gate decisivo**. Referenciar os dados de `testes.log` (ESR 8.93e-15 vs MR-STFT 0.336).
 - **Critérios de Aceite:** doc atualizado; seção inclui a tabela de thresholds de `condition_dsp` com nota.
 - **Risco:** Baixo.
+- **Conclusão:** Seção "MR-STFT Sensitivity Caveat — Spectrally Sparse Signals" adicionada em
+  `docs/perceptual_validation.md` como subseção do MR-STFT Dual Gate System, com explicação do mecanismo
+  (log-ratio divergence em bins near-zero), tabela comparativa v1/v2 do `wavenet_condition_dsp`
+  (ESR 8.93e-15 vs MR-STFT 0.336), tabela de thresholds calibrados (v1: 0.35, v2 relaxed: 0.698),
+  e orientação prática (ESR é o gate decisivo, calibrar `mrstft_max` por modelo). Entry da Tier 1
+  atualizado para `mrstft_max=0.35` com referência à seção.
 
 ---
 
@@ -945,7 +951,7 @@ decisões dos sprints S1–S5.
 
 ## Notas do PO
 
-[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais.
+[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão essas coisas e qual o papel delas. Se são opcionais ou obrigatórias. E o que cabe continuar ou remover.
 
 [Sonnet] [Kilo Compact Session]
 
