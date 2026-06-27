@@ -362,6 +362,28 @@ fn run_render_comparison(
         }
     }
 
+    if use_v2 {
+        // Tarefa 3.2 (F-2): Impor teto absoluto à relaxação.
+        // Após toda a relaxação (v2 + resampling), os gates hard não podem
+        // afrouxar além de limites absolutos, para que "passar" continue
+        // significando paridade, não apenas "não totalmente quebrado".
+        // - ESR nunca acima do baseline A1-Std (6.23e-3)
+        // - SNR nunca abaixo de 5.0 dB (piso absoluto)
+        // Casos de 88.2/96/192 kHz que falharem sob este teto viram achados
+        // encaminhados à Tarefa 3.3 — não mascarar.
+        const ABSOLUTE_ESR_CAP: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
+        const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
+
+        min_snr_db = min_snr_db.max(ABSOLUTE_SNR_FLOOR);
+        if let Some(ref mut esr) = max_esr
+            && *esr > ABSOLUTE_ESR_CAP
+        {
+            let scale_back = ABSOLUTE_ESR_CAP / *esr;
+            *esr = ABSOLUTE_ESR_CAP;
+            mse_limit *= scale_back;
+        }
+    }
+
     let mut model = build_model(&model_data).expect("Dispatcher failed");
 
     model.prewarm(2048);

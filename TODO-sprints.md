@@ -420,8 +420,8 @@ oráculo f64 e pela suíte espectral (S2).
 
 ### Tarefa 3.2 [TEST] Limitar o piso de relaxamento dos gates hard por sample rate ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (relaxação v2, ≈ 320-352)
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Alvo:** [`tests/cpp_parity.rs:365-385`](file:///home/fabio/nam-rs/tests/cpp_parity.rs#L365) (teto absoluto pós-relaxação)
 - **Descrição:**
   - Hoje LSTM pode relaxar até `min_snr_db = 7.0` e `max_esr ×10` (192 kHz); WaveNet ×2,5; +resampling.
     Impor **teto absoluto** à relaxação (ex.: `max_esr` nunca acima do baseline A1-Std `6,23e-3`), para que
@@ -430,12 +430,34 @@ oráculo f64 e pela suíte espectral (S2).
 - **Critérios de Aceite:** relaxação limitada e documentada; lista dos casos que passam a falhar (se houver)
   encaminhada à Tarefa 3.3.
 - **Risco:** Médio (pode expor falhas reais de LSTM em SR extremo — tratar como insumo, não regressão a esconder).
+- **Implementação:**
+  - Adicionado bloco de teto absoluto em `tests/cpp_parity.rs:365-385`, após toda relaxação (v2 + resampling):
+    - `ABSOLUTE_ESR_CAP = 6.23e-3` (A1-Std baseline): `max_esr` nunca acima deste valor
+    - `ABSOLUTE_SNR_FLOOR = 5.0 dB`: `min_snr_db` nunca abaixo de 5 dB
+    - Quando ESR é clamped, `mse_limit` é escalado proporcionalmente para manter consistência
+  - WaveNet: **nenhum** modelo afetado pelo teto — ESR calibrado é ordens de grandeza abaixo do cap
+  - **Achados (casos que passam a falhar sob o novo teto):**
+    - `LSTM 1×16` — ESR acima do cap em **todas** as taxas (44.1k a 192k): 2.39e-2 a 1.42e-1
+    - `LSTM 2×8` — ESR acima do cap em 88.2k (1.18e-2), 96k (1.45e-2), 192k (4.20e-2);
+      44.1k/48k já falham no MR-STFT (T3.1)
+    - `LSTM Official` — 48k falha no MR-STFT (T3.1); ESR ok em todas as taxas
+    - `LSTM-Dyn 1×7` — 48k falha no MR-STFT (T3.1); ESR ok em todas as taxas
+  - **Descoberta crítica:** LSTM 1×16 não atinge paridade com baseline A1-Std nem em taxa nativa
+    (44.1k), indicando divergência estrutural de fidelidade (recurrent state drift), não apenas
+    artefato de taxa extrema — encaminhado à T3.3.
 
-### Tarefa 3.3 [DEBUG] RCA do caso `MR-STFT 0,87 / margin 0,4 dB @ 48 kHz` ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 3.3 [DEBUG] RCA do caso `MR-STFT 0,87 / margin 0,4 dB @ 48 kHz` + ESR de LSTM acima do baseline ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
 - **Status:** `[ ]` Não iniciada
 - **Arquivos Alvo:** (investigação) `tests/cpp_parity.rs`, suíte espectral (S2.3), ASR (S2.2), oráculo f64 (S2.1)
 - **Descrição:**
+  - **(a) Caso original F-2:** MR-STFT 0,87 / margin 0,4 dB @ 48 kHz (LSTM 1×16).
+  - **(b) Achados T3.2 — ESR de LSTM acima do baseline A1-Std (6.23e-3):**
+    - `LSTM 1×16`: ESR = 2.39e-2 a 1.42e-1 (todas as taxas 44.1k–192k) — **não atinge paridade nem em taxa nativa**
+    - `LSTM 2×8`: ESR = 1.18e-2 a 4.20e-2 (88.2k–192k); 44.1k/48k ESR ok mas MR-STFT falha
+    - Hipótese: _recurrent state drift_ — acúmulo de erro de quantização no estado recorrente do LSTM
+      é proporcional à duração do sinal (100× mais longo no v2) e às iterações/SR (mais iterações a taxas
+      mais altas). Confirmar via RCA.
   - Usar FR/THD/ASR + oráculo f64 para localizar a divergência espectral em taxa **nativa** (48 kHz, onde
     não há desculpa de OOD). Hipóteses a testar: conteúdo de borda de banda, dither de denormal, **aliasing
     da não-linearidade** (P-1), ou o próprio caminho de resample do harness de teste.
