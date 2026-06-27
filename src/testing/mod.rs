@@ -7,8 +7,10 @@
 //! - Deterministic stress signal generators (v1 for fast CI, v2 for comprehensive validation)
 //! - Audio primitives ported from t3k-mushra (MIT-licensed)
 //! - Perceptual metrics (ESR, LUFS) calibrated against published baselines
+//! - ASR (Aliasing-to-Signal Ratio) metric per Sato & Smith DAFx 2025
 //! - WAV I/O helpers for test fixtures
 
+pub mod aliasing;
 pub mod mushra;
 pub mod perceptual;
 pub mod reference_oracle;

@@ -216,12 +216,13 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - Resultado documentado em `docs/perceptual_validation.md` (Tarefa 2.8/S6).
 - **Risco:** Médio (corretude do oráculo é crítica — daí a validação externa obrigatória).
 
-### Tarefa 2.2 [TEST/DSP] Métrica ASR — Aliasing-to-Signal Ratio ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.2 [TEST/DSP] Métrica ASR — Aliasing-to-Signal Ratio ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída
 - **Arquivos Alvo:**
-  - [`src/testing/`](file:///home/fabio/nam-rs/src/testing) (novo `aliasing.rs`)
-  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (novo)
+  - [`src/testing/aliasing.rs`](file:///home/fabio/nam-rs/src/testing/aliasing.rs) ✅ implementado
+  - [`src/testing/aliasing_test.rs`](file:///home/fabio/nam-rs/src/testing/aliasing_test.rs) ✅ 17 unit tests
+  - [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) ✅ 6 fast + 4 model (ignored)
 - **Descrição (Sato & Smith, DAFx 2025):**
   - Gerar senoides puras em pitches musicais (ex.: E2≈82 Hz … E5, mais um estresse agudo ≥ 2 kHz, alto ganho),
     processar pelo modelo, aplicar janela (Blackman-Harris) e FFT longa (reusar `FftPlanner`, `src/math/dsp/fft/`).
@@ -233,6 +234,18 @@ próprias métricas** (mitigado pela validação contra referência externa).
   - Validação em casos conhecidos: waveshaper hard-clip com `f0` alto → ASR alto; sistema linear → ASR ≈ 0.
   - Fingerprint ASR por SKU versionado; função pública reusável por S5 (baseline e gate).
 - **Risco:** Médio (definição rigorosa de bins harmônicos vs aliased; cuidado com vazamento espectral).
+- **Conclusão:** Módulo `src/testing/aliasing.rs` implementado com:
+  - Geração de seno puro (`generate_sine`) com ganho configurável.
+  - Janela Blackman-Harris 4-term (Nuttall 1981, −92 dB side-lobe).
+  - `compute_asr()`: FFT via `RfftPlanner<f64>`, noise floor via mediana das magnitudes, detecção de picos
+    com threshold `max(noise_floor×6, peak×1e-4)`, classificação harmônico/aliased com tolerância de 1.5 bins.
+  - Tabela `MUSICAL_PITCHES` (E2–E5) + `STRESS_F0` (2 kHz) + ganhos `STANDARD_GAIN`/`HIGH_GAIN`.
+  - `asr_sweep()`, `asr_aggregate()`, `asr_worst_case()` para fingerprint por SKU.
+  - **Validação:** hard-clip (f0=2017 Hz incommensurate, para evitar fold-back coincidente) → ASR alto
+    detectado; linear gain → ASR≈0 confirmado; tanh < hard-clip ASR (ativação mais suave → menos aliasing).
+  - 17 unit tests + 6 fast integration tests (todos passam, zero warnings de clippy).
+  - 4 testes model-specific `#[ignore]` (WaveNet Std/Nano, LSTM 2×8, A2) prontos para fingerprint.
+  - API pública reusável por S5 (baseline e gate de regressão).
 
 ### Tarefa 2.3 [TEST/DSP] Suíte espectral: THD/THD+N, IMD e resposta em frequência (Farina) ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
 
