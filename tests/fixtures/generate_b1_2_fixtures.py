@@ -59,6 +59,10 @@ CONVNET_SCALES = {
 }
 
 
+CONVNET_HEAD_OUT_CH = 1
+CONVNET_HEAD_KERNEL = 1
+
+
 def count_convnet_weights() -> int:
     count = 0
     for i, ch in enumerate(CONVNET_CHANNELS):
@@ -67,6 +71,9 @@ def count_convnet_weights() -> int:
         count += ch  # conv_b
         count += ch  # bn_scale
         count += ch  # bn_offset
+    # post-stack head (reduces to 1 channel, no bias)
+    last_ch = CONVNET_CHANNELS[-1]
+    count += last_ch * CONVNET_HEAD_OUT_CH * CONVNET_HEAD_KERNEL  # head.conv_w
     count += 1  # head_scale
     return count
 
@@ -84,6 +91,9 @@ def generate_convnet_weights(rng: random.Random) -> List[float]:
         weights.extend([max(0.9, min(1.1, rng.uniform(0.97, 1.03))) for _ in range(ch)])
         # BatchNorm offset (near 0.0)
         weights.extend(gen_weights(ch, rng, sc["bn_o"]))
+    # post-stack head: Conv1D(in_ch=4, out_ch=1, kernel=1, bias=false, activation=Tanh)
+    last_ch = CONVNET_CHANNELS[-1]
+    weights.extend(gen_weights(last_ch * CONVNET_HEAD_OUT_CH * CONVNET_HEAD_KERNEL, rng, 0.3))
     weights.append(CONVNET_HEAD_SCALE)
     return weights
 
@@ -102,11 +112,18 @@ def build_convnet_nam(weights: List[float]) -> dict:
                 }
                 for i in range(len(CONVNET_CHANNELS))
             ],
+            "head": {
+                "channels": CONVNET_CHANNELS[-1],
+                "out_channels": CONVNET_HEAD_OUT_CH,
+                "kernel_size": CONVNET_HEAD_KERNEL,
+                "bias": False,
+                "activation": CONVNET_ACTIVATION,
+            },
             "head_scale": CONVNET_HEAD_SCALE,
         },
         "weights": weights,
         "metadata": {
-            "name": "ConvNet Test Fixture (2 blocks, CH=8→4)",
+            "name": "ConvNet Test Fixture (2 blocks, CH=8→4, head 4→1)",
             "modeled_by": "tests/fixtures/generate_b1_2_fixtures.py",
         },
         "sample_rate": 48000,

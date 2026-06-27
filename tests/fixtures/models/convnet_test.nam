@@ -24,6 +24,13 @@
         "activation": "Tanh"
       }
     ],
+    "head": {
+      "channels": 4,
+      "out_channels": 1,
+      "kernel_size": 1,
+      "bias": false,
+      "activation": "Tanh"
+    },
     "head_scale": 0.02
   },
   "weights": [
@@ -183,10 +190,14 @@
     -0.0076326668486292526,
     -0.016844415582932034,
     0.007005534202788457,
+    -0.21297792730823764,
+    -0.08426362605615852,
+    0.16893307281747524,
+    -0.2706024160439595,
     0.02
   ],
   "metadata": {
-    "name": "ConvNet Test Fixture (2 blocks, CH=8\u21924)",
+    "name": "ConvNet Test Fixture (2 blocks, CH=8\u21924, head 4\u21921)",
     "modeled_by": "tests/fixtures/generate_b1_2_fixtures.py"
   },
   "sample_rate": 48000
