@@ -375,12 +375,18 @@ próprias métricas** (mitigado pela validação contra referência externa).
 
 ### Tarefa 2.9 [QA] Validação de lints e testes (E5)
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-26)
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`
 - **Descrição:** rodar lints e suíte rápida; métricas pesadas (sweeps longos, validação PyTorch) marcadas
   `#[ignore]` → `utils/tests-long.sh`. Confirmar zero alocação onde aplicável (CountingAllocator).
 - **Critérios de Aceite:** zero warnings; suíte verde; novas suítes pesadas integradas ao `tests-long.sh`.
 - **Risco:** Baixo.
+- **Correções aplicadas:**
+  - `tests/cpp_parity.rs:488`: adicionado `#[ignore]` ao `live_cross_validation_wavenet_nano` (estava sem o ignore, ao contrário dos demais 32 testes live cross-validation)
+  - `tests/common/validation.rs:179-180`: gate LUFS agora tolera sinais < 400 ms (LUFS retorna −∞ mas o golden não está defeituoso — é apenas curto demais para o bloco de integração BS.1770-4)
+  - Heap audit: 7/7 testes passam (a2, cabsim, resampler, diagnostic_bundle lifecycle, state_migration, multi_instance) — zero alocação confirmada
+  - `tests-long.sh` já cobre todas as suítes pesadas (Phase 1–6); nenhuma adição necessária
+  - Suíte rápida: 100% verde (1020 unit + CLAP integration + heap audit + clap-validator 19/19)
 
 ---
 

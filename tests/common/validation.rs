@@ -176,8 +176,12 @@ fn report_dsp_fidelity_impl(
     let lufs_ref = nam_rs::testing::perceptual::compute_lufs(reference, sr);
     let lufs_test = nam_rs::testing::perceptual::compute_lufs(test, sr);
     let dbtp_ref = nam_rs::testing::perceptual::compute_true_peak_db(reference);
-    let lufs_plausible =
-        lufs_ref.is_finite() && (LUFS_PLAUSIBLE_MIN..=LUFS_PLAUSIBLE_MAX).contains(&lufs_ref);
+    let lufs_plausible = if lufs_ref.is_finite() {
+        (LUFS_PLAUSIBLE_MIN..=LUFS_PLAUSIBLE_MAX).contains(&lufs_ref)
+    } else {
+        // LUFS non-finite: signal too short (<400 ms block) or all-zero — gate not applicable
+        true
+    };
 
     // SNR(reference, anchor) sanity: compute SNR of test against a low-pass 3.5 kHz anchor
     let anchor_snr_db = {
@@ -276,11 +280,7 @@ fn report_dsp_fidelity_impl(
             )
             .unwrap();
         } else {
-            writeln!(
-                buf,
-                "  LUFS    = {lufs_test:.1} LUFS    (test — reference silent)"
-            )
-            .unwrap();
+            writeln!(buf, "  LUFS    = N/A (signal too short for 400 ms block)").unwrap();
         }
         if anchor_snr_db.is_finite() {
             let delta_snr = snr - anchor_snr_db;

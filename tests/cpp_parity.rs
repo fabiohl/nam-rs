@@ -485,6 +485,7 @@ fn live_cross_validation_wavenet_feather() {
 }
 
 #[test]
+#[ignore]
 fn live_cross_validation_wavenet_nano() {
     run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano", true);
 }
