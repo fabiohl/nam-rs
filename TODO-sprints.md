@@ -785,13 +785,20 @@ reflita apenas testes com valor de **correção** — não de consistência rela
     - Fase 5 (clap-validator): 19/21 pass, 0 fail, 2 skipped (note-ports não implementado)
   - **Tempo total medido: 4m39s** (wall clock, cold run). Acima do orçamento original de ~2.5–3 min, porém dentro do observado historicamente na T3.5 (~6 min). O novo subconjunto `quick_parity` (T4.1) contribui com **0.02s de teste + ~37s de compilação release** — custo marginal insignificante em termos de execução, mas a recompilação release (repetida 3× para cpp_parity, proptest_parsers, proptest_math) domina o orçamento. Com caching de CI a estimativa realista é ~3.5–4 min. O gargalo principal é o `isa_self_consistency_wavenet_standard_avx2` (80s em debug na Fase 1), herdado do Sprint S2.
 
-### Tarefa 4.4 [TEST] Migrar testes de consistência relativa para long-suite (Análise de Consolidação)
+### Tarefa 4.4 [TEST] Migrar testes de consistência relativa para long-suite (Análise de Consolidação) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
-  - [`src/math/activations/tanh/high_fidelity.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs) (testes `nr*_vs_div`, `sigmoid_poly_*_sweep`)
-  - [`src/math/activations/tanh/reference.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/reference.rs) (testes `pade_nr*_vs_nr*`, `pade_nr1_dual_vs_production_*`)
+  - [`src/math/activations/tanh/high_fidelity_test.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity_test.rs) (testes `nr*_vs_div`, `sigmoid_poly_*_sweep`)
+  - [`src/math/activations/tanh/reference_test.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/reference_test.rs) (testes `pade_nr*_vs_nr*`, `pade_nr1_dual_vs_production_*`)
   - [`docs/testing.md`](file:///home/fabio/nam-rs/docs/testing.md) (atualizar tabela §5 "Ignored Tests Mapping Matrix")
+  - **Conclusão:**
+    - 10 testes migrados para `#[ignore = "consistency-only: oráculo f64 fornece correção absoluta; roda em long-suite"]`:
+      - `high_fidelity_test.rs`: `test_sigmoid_poly_avx2_sweep`, `test_sigmoid_poly_avx512_sweep`, `test_tanh_poly_nr1_vs_div_avx2`, `test_tanh_poly_nr1_vs_div_avx512`, `test_tanh_poly_nr2_vs_div_avx2`, `test_tanh_poly_nr2_vs_div_avx512`
+      - `reference_test.rs`: `test_pade_nr1_vs_div_precision_avx2`, `test_pade_nr2_vs_nr1_precision_avx2`, `test_pade_nr1_vs_div_precision_avx512`, `test_pade_nr1_dual_vs_production_avx2`
+    - Mantidos em CI (Tier 2): todos `*_vs_f32_tanh*`, `*_vs_f64*`, sweeps com ground truth (`test_tanh_poly_avx2_sweep`, `test_tanh_poly_avx512_sweep`), edge/saturation/dual
+    - `docs/testing.md`: nova linha na tabela §5 "Ignored Tests Mapping Matrix" documentando o subconjunto
+    - Ignored tests executados explicitamente com `--ignored`: 10/10 pass
 - **Descrição:**
   - Com T-CR2 concluído, o oráculo f64 provê correção absoluta para WaveNet/A2. Os testes que
     **comparam duas aproximações entre si** (sem ground truth) tornam-se redundantes como guardiões de
