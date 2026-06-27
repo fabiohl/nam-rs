@@ -37,4 +37,5 @@ Use this skill for a general project review in search of improvements.
   * Understands what the code is doing, uses Rust attributes like `#[inline]`, `#[cold]`, and others. Has many tricks up their sleeve to help the compiler do a better job.
   * Knows what each ISA processor instruction does, its arguments, and its clock budget (not just SIMD, but even obscure features) and is not afraid to use inline assembly in Rust.
   * Analyzes even assembly code, if necessary, to make the task finish faster.
+  * It's strictly PROHIBITED any kind of regression on correctness or quality of the sound.
 * Trigger the `planejador-arquiteto` skill to transform the raised ideas into granular, very well-written and detailed findings in `TODO-findings.md`.

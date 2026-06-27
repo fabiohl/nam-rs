@@ -63,7 +63,7 @@ pub fn setup_capture_stream<'c>(
 
     let capture_stream = pw::stream::StreamBox::new(core, "NAM-rs", capture_props)?;
 
-    let mut state = CaptureState::init(sys);
+    let mut state = CaptureState::init(sys, crate::dsp::oversample::OversampleFactor::Off);
     state.ir_raw_samples = ir_raw_samples;
     state.slimmable_rx = Some(slimmable_consumer);
     let rate_for_param = state.shared_target_rate.clone();
@@ -179,6 +179,8 @@ pub fn setup_capture_stream<'c>(
                 stream,
                 DspPipelineContext {
                     resampler: &mut state.resampler,
+                    os_l: &mut state.os_l,
+                    os_r: &mut state.os_r,
                     active_model_l: &mut state.active_model_l,
                     active_model_r: &mut state.active_model_r,
                     input_gain_mult: state.input_gain_mult,
@@ -201,6 +203,10 @@ pub fn setup_capture_stream<'c>(
                     resamp_out_r: &mut *state.resamp_out_r,
                     model_out_l: &mut *state.model_out_l,
                     model_out_r: &mut *state.model_out_r,
+                    os_in_l: &mut *state.os_in_l,
+                    os_in_r: &mut *state.os_in_r,
+                    os_model_l: &mut *state.os_model_l,
+                    os_model_r: &mut *state.os_model_r,
                 },
                 current_pw_rate,
                 &mut state.frame_count,

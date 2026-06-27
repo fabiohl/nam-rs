@@ -14,6 +14,7 @@ use crate::common::spsc::GcItem;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::cabsim::conv::ConvEngine;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
+use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::math::dsp::gain_lut;
@@ -22,10 +23,15 @@ use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 
+/// Max oversampled buffer size: MAX_RESAMP_BUF × 4 (for X4 oversampling).
+const MAX_OS_BUF: usize = MAX_RESAMP_BUF * 4;
+
 pub struct CaptureState {
     pub active_model_l: Option<Box<crate::models::StaticModel>>,
     pub active_model_r: Option<Box<crate::models::StaticModel>>,
     pub resampler: Box<NamResampler>,
+    pub os_l: OversampleEngine,
+    pub os_r: OversampleEngine,
     pub active_cabsim: Option<Box<ConvEngine>>,
     pub current_nam_rate: u32,
     pub resamp_mid_l: Box<[f32; MAX_RESAMP_BUF]>,
@@ -34,6 +40,10 @@ pub struct CaptureState {
     pub resamp_out_r: Box<[f32; MAX_RESAMP_BUF]>,
     pub model_out_l: Box<[f32; MAX_RESAMP_BUF]>,
     pub model_out_r: Box<[f32; MAX_RESAMP_BUF]>,
+    pub os_in_l: Box<[f32; MAX_OS_BUF]>,
+    pub os_in_r: Box<[f32; MAX_OS_BUF]>,
+    pub os_model_l: Box<[f32; MAX_OS_BUF]>,
+    pub os_model_r: Box<[f32; MAX_OS_BUF]>,
     pub user_input_gain_mult: f32,
     pub user_output_gain_mult: f32,
     pub model_input_mult_adj: f32,
@@ -56,7 +66,7 @@ pub struct CaptureState {
 }
 
 impl CaptureState {
-    pub fn init(sys: &crate::common::diagnostics::SystemSnapshot) -> Self {
+    pub fn init(sys: &crate::common::diagnostics::SystemSnapshot, os: OversampleFactor) -> Self {
         let resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
             NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, sys)
                 .message("Failed to create initial NamResampler (using 48k bypass).")
@@ -76,6 +86,8 @@ impl CaptureState {
             active_model_l: None,
             active_model_r: None,
             resampler: Box::new(resampler),
+            os_l: OversampleEngine::new(os, MAX_RESAMP_BUF),
+            os_r: OversampleEngine::new(os, MAX_RESAMP_BUF),
             active_cabsim: None,
             current_nam_rate: 48_000,
             resamp_mid_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
@@ -84,6 +96,10 @@ impl CaptureState {
             resamp_out_r: Box::new([0.0f32; MAX_RESAMP_BUF]),
             model_out_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
             model_out_r: Box::new([0.0f32; MAX_RESAMP_BUF]),
+            os_in_l: Box::new([0.0f32; MAX_OS_BUF]),
+            os_in_r: Box::new([0.0f32; MAX_OS_BUF]),
+            os_model_l: Box::new([0.0f32; MAX_OS_BUF]),
+            os_model_r: Box::new([0.0f32; MAX_OS_BUF]),
             user_input_gain_mult: 1.0,
             user_output_gain_mult: 1.0,
             model_input_mult_adj: 1.0,

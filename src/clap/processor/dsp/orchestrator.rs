@@ -65,6 +65,8 @@ impl<'a> NamClapProcessor<'a> {
             // pipeline context — enforcing parity with the standalone.
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
+                os_l: &mut self.os_l,
+                os_r: &mut self.os_r,
                 active_model_l: &mut self.model_l,
                 active_model_r: &mut None,
                 input_gain_mult: self.model_input_mult_adj,
@@ -119,6 +121,10 @@ impl<'a> NamClapProcessor<'a> {
                 &mut self.buf_out_r,
                 &mut self.buf_model_l,
                 &mut self.buf_model_r,
+                &mut self.buf_os_in_l,
+                &mut self.buf_os_in_r,
+                &mut self.buf_os_model_l,
+                &mut self.buf_os_model_r,
             );
 
             apply_output_stage(

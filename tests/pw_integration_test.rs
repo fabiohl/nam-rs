@@ -74,6 +74,7 @@ fn test_pipewire_integration() {
                 ir_raw_samples: None,
                 full_wavenet_model: None,
                 slimmable_producer: sl_prod,
+                oversample: nam_rs::dsp::oversample::OversampleFactor::Off,
             },
             gc_cons,
             sl_cons,

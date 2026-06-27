@@ -30,4 +30,7 @@ pub enum ParamPayload {
     GateConfig(crate::dsp::gate::GateParams),
     /// Sets the manual slim override quality level.
     SlimOverride(SlimOverride),
+    /// Sets the oversampling factor for the neural stage.
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    SetOversample(crate::dsp::oversample::OversampleFactor),
 }

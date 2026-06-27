@@ -189,6 +189,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let _ = producer.push(ParamPayload::SlimOverride(args.slim_override));
+    let _ = producer.push(ParamPayload::SetOversample(args.oversample));
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.
     // Executed here (outside the cold-path of the first DSP frame) to avoid
@@ -211,6 +212,7 @@ fn main() -> anyhow::Result<()> {
             ir_raw_samples,
             full_wavenet_model,
             slimmable_producer,
+            oversample: args.oversample,
         },
         gc_consumer,
         slimmable_consumer,

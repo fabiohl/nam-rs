@@ -105,6 +105,13 @@ pub fn receive_commands(
             ParamPayload::SlimOverride(ov) => {
                 adaptive.set_slim_override(ov);
             }
+            ParamPayload::SetOversample(_factor) => {
+                // Oversample factor change requires rebuilding the engines
+                // (allocation of new buffers), which must happen off-RT.
+                // The initial factor is set at CaptureState::init() time.
+                // ToDo: wire up via main-thread rebuild + SPSC swap (same
+                // pattern as resampler/model hot-swap).
+            }
         }
     }
     param_changed

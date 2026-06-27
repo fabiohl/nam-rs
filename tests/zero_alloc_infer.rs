@@ -138,6 +138,7 @@ fn test_zero_alloc_process_wavenet_dynamic() {
 fn test_zero_alloc_capture_pipeline() {
     use nam_rs::common::spsc::RtStatusFlags;
     use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
+    use nam_rs::dsp::oversample::{OversampleEngine, OversampleFactor};
     use nam_rs::dsp::pipeline::{
         BridgeBuffer, DspBridge, DspBridgeWriter, DspPipelineContext, MAX_BRIDGE_BUF,
         MAX_RESAMP_BUF, capture_dsp_pipeline,
@@ -200,8 +201,13 @@ fn test_zero_alloc_capture_pipeline() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut opt_model_l,
         active_model_r: &mut opt_model_r,
         input_gain_mult: 1.0,
@@ -218,6 +224,11 @@ fn test_zero_alloc_capture_pipeline() {
         conv: None,
     };
 
+    let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs = nam_rs::dsp::pipeline::DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -225,6 +236,10 @@ fn test_zero_alloc_capture_pipeline() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice,
+        os_in_r: os_in_r_slice,
+        os_model_l: os_model_l_slice,
+        os_model_r: os_model_r_slice,
     };
 
     {

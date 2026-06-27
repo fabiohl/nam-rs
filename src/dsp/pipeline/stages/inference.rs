@@ -152,6 +152,72 @@ fn run_stereo_or_mono(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Processes stereo/mono through neural models with optional half-band oversampling.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn model_process_stereo_with_os(
+    os_l: &mut crate::dsp::oversample::OversampleEngine,
+    os_r: &mut crate::dsp::oversample::OversampleEngine,
+    active_model_l: &mut Option<Box<StaticModel>>,
+    active_model_r: &mut Option<Box<StaticModel>>,
+    model_in_l: &[f32],
+    model_in_r: &[f32],
+    os_buf_l: &mut [f32],
+    os_buf_r: &mut [f32],
+    os_model_l: &mut [f32],
+    os_model_r: &mut [f32],
+    native_out_l: &mut [f32],
+    native_out_r: &mut [f32],
+    process_mono: bool,
+) {
+    // L channel
+    if os_l.is_bypass() {
+        if let Some(m) = active_model_l {
+            m.process(model_in_l, native_out_l);
+        } else {
+            passthru(model_in_l, native_out_l);
+        }
+    } else {
+        let n_os = os_l.upsample(model_in_l, os_buf_l);
+        if let Some(m) = active_model_l {
+            m.process(&os_buf_l[..n_os], &mut os_model_l[..n_os]);
+        } else {
+            passthru(&os_buf_l[..n_os], &mut os_model_l[..n_os]);
+        }
+        os_l.downsample(&os_model_l[..n_os], native_out_l);
+    }
+
+    // R channel (or mono copy)
+    if process_mono {
+        passthru(native_out_l, native_out_r);
+    } else if os_r.is_bypass() {
+        if let Some(m) = active_model_r {
+            m.process(model_in_r, native_out_r);
+        } else {
+            passthru(model_in_r, native_out_r);
+        }
+    } else {
+        let n_os = os_r.upsample(model_in_r, os_buf_r);
+        if let Some(m) = active_model_r {
+            m.process(&os_buf_r[..n_os], &mut os_model_r[..n_os]);
+        } else {
+            passthru(&os_buf_r[..n_os], &mut os_model_r[..n_os]);
+        }
+        os_r.downsample(&os_model_r[..n_os], native_out_r);
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Copies `model_in` through to `model_out` when no model is active.
+#[inline(always)]
+fn passthru(in_buf: &[f32], out_buf: &mut [f32]) {
+    let n = in_buf.len().min(out_buf.len());
+    unsafe {
+        core::ptr::copy_nonoverlapping(in_buf.as_ptr(), out_buf.as_mut_ptr(), n);
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Stage 2: Neural Inference and Resampling.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
@@ -166,6 +232,10 @@ pub(crate) fn run_inference(
     resamp_out_r: &mut [f32],
     model_out_l: &mut [f32],
     model_out_r: &mut [f32],
+    os_in_l: &mut [f32],
+    os_in_r: &mut [f32],
+    os_model_l: &mut [f32],
+    os_model_r: &mut [f32],
 ) -> usize {
     use crate::math::dsp::gain::crossfade_blend_mono_simd;
 
@@ -318,22 +388,34 @@ pub(crate) fn run_inference(
                     crossfade_blend_mono_simd(m_out_r, scratch_r, t);
                 }
             } else {
-                run_stereo_or_mono(
+                model_process_stereo_with_os(
+                    ctx.os_l,
+                    ctx.os_r,
                     ctx.active_model_l,
                     ctx.active_model_r,
                     model_in_l,
                     model_in_r,
+                    os_in_l,
+                    os_in_r,
+                    os_model_l,
+                    os_model_r,
                     m_out_l,
                     m_out_r,
                     *ctx.process_mono,
                 );
             }
         } else {
-            run_stereo_or_mono(
+            model_process_stereo_with_os(
+                ctx.os_l,
+                ctx.os_r,
                 ctx.active_model_l,
                 ctx.active_model_r,
                 model_in_l,
                 model_in_r,
+                os_in_l,
+                os_in_r,
+                os_model_l,
+                os_model_r,
                 m_out_l,
                 m_out_r,
                 *ctx.process_mono,
@@ -494,22 +576,34 @@ pub(crate) fn run_inference(
                     crossfade_blend_mono_simd(m_out_r, scratch_r, t);
                 }
             } else {
-                run_stereo_or_mono(
+                model_process_stereo_with_os(
+                    ctx.os_l,
+                    ctx.os_r,
                     ctx.active_model_l,
                     ctx.active_model_r,
                     model_in_l,
                     model_in_r,
+                    os_in_l,
+                    os_in_r,
+                    os_model_l,
+                    os_model_r,
                     m_out_l,
                     m_out_r,
                     *ctx.process_mono,
                 );
             }
         } else {
-            run_stereo_or_mono(
+            model_process_stereo_with_os(
+                ctx.os_l,
+                ctx.os_r,
                 ctx.active_model_l,
                 ctx.active_model_r,
                 model_in_l,
                 model_in_r,
+                os_in_l,
+                os_in_r,
+                os_model_l,
+                os_model_r,
                 m_out_l,
                 m_out_r,
                 *ctx.process_mono,

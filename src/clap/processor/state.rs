@@ -9,6 +9,7 @@ use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::cabsim::conv::ConvEngine;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
+use crate::dsp::oversample::OversampleEngine;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
@@ -29,6 +30,10 @@ pub struct NamClapProcessor<'a> {
     /// Polyphase sinc resampler (bypass when sample_rate == 48000).
     /// Held in Box for RT-safe disposal without allocation.
     pub(crate) resampler: Box<NamResampler>,
+    /// Half-band oversampling engine for the left channel.
+    pub(crate) os_l: OversampleEngine,
+    /// Half-band oversampling engine for the right channel.
+    pub(crate) os_r: OversampleEngine,
     /// Current parameters on the audio thread (snapshotted from SPSC at each process()).
     pub(crate) params: RtPluginParams,
 
@@ -45,6 +50,12 @@ pub struct NamClapProcessor<'a> {
     /// 4. Post-resampler output / Final (variable sample_rate)
     pub(crate) buf_out_l: AlignedVec<f32>,
     pub(crate) buf_out_r: AlignedVec<f32>,
+    /// 5. Oversampled input buffers (pre-model, at 2×/4× rate).
+    pub(crate) buf_os_in_l: AlignedVec<f32>,
+    pub(crate) buf_os_in_r: AlignedVec<f32>,
+    /// 6. Oversampled model output buffers (post-model, at 2×/4× rate).
+    pub(crate) buf_os_model_l: AlignedVec<f32>,
+    pub(crate) buf_os_model_r: AlignedVec<f32>,
 
     /// Hysteresis for absolute silence detection.
     pub(crate) silence_hyst: DynamicHysteresis,

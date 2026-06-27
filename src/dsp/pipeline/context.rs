@@ -17,12 +17,18 @@ use crate::dsp::resampler::NamResampler;
 use crate::models::StaticModel;
 
 use super::bridge::DspBridgeWriter;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::oversample::OversampleEngine;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Data context for the DSP pipeline hot-path.
 pub struct DspPipelineContext<'a> {
     /// Active resampler for sample rate conversion.
     pub resampler: &'a mut NamResampler,
+    /// Optional half-band oversampling engine for the left channel.
+    pub os_l: &'a mut OversampleEngine,
+    /// Optional half-band oversampling engine for the right channel.
+    pub os_r: &'a mut OversampleEngine,
     /// Active model for the left channel.
     pub active_model_l: &'a mut Option<Box<StaticModel>>,
     /// Active model for the right channel.
@@ -77,4 +83,16 @@ pub struct DspBuffers<'a> {
     pub model_out_l: &'a mut [f32],
     /// Model output buffer R.
     pub model_out_r: &'a mut [f32],
+    /// Oversampled input buffer L (pre-model, at 2×/4× rate).
+    #[allow(unused)]
+    pub os_in_l: &'a mut [f32],
+    /// Oversampled input buffer R.
+    #[allow(unused)]
+    pub os_in_r: &'a mut [f32],
+    /// Oversampled model output buffer L (post-model, at 2×/4× rate).
+    #[allow(unused)]
+    pub os_model_l: &'a mut [f32],
+    /// Oversampled model output buffer R.
+    #[allow(unused)]
+    pub os_model_r: &'a mut [f32],
 }

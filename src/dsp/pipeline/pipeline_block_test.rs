@@ -9,6 +9,7 @@ mod block_tests {
     use crate::common::spsc::RtStatusFlags;
     use crate::dsp::adaptive::AdaptiveCompute;
     use crate::dsp::gate::{DynamicHysteresis, GateParams};
+    use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
     use crate::dsp::resampler::NamResampler;
     use crate::loader::dispatcher::build_model;
     use crate::loader::nam_json::parse_nam_json;
@@ -115,9 +116,14 @@ mod block_tests {
         let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
         for _ in 0..iterations {
+            let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+            let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
             // The Context (ctx) groups all the tools the pipeline needs to work.
             let ctx = DspPipelineContext {
                 resampler: &mut resampler,
+                os_l: &mut os_engine_l,
+                os_r: &mut os_engine_r,
                 active_model_l: &mut model,
                 active_model_r: &mut None,
                 input_gain_mult: 1.0,
@@ -137,6 +143,11 @@ mod block_tests {
                 conv: None,
             };
 
+            let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+            let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+            let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+            let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
             let bufs = DspBuffers {
                 resamp_mid_l: &mut resamp_mid_l,
                 resamp_mid_r: &mut resamp_mid_r,
@@ -144,6 +155,10 @@ mod block_tests {
                 resamp_out_r: &mut resamp_out_r,
                 model_out_l: &mut model_out_l,
                 model_out_r: &mut model_out_r,
+                os_in_l: os_in_l_slice,
+                os_in_r: os_in_r_slice,
+                os_model_l: os_model_l_slice,
+                os_model_r: os_model_r_slice,
             };
 
             // We run the main pipeline that orchestrates all NAM-rs DSP.

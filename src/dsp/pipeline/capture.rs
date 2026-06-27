@@ -122,6 +122,10 @@ unsafe fn capture_dsp_pipeline_inner<M: SimdMath>(
         bufs.resamp_out_r,
         bufs.model_out_l,
         bufs.model_out_r,
+        bufs.os_in_l,
+        bufs.os_in_r,
+        bufs.os_model_l,
+        bufs.os_model_r,
     );
 
     // STAGE 3: CAB-SIM (OPTIONAL IR CONVOLUTION)

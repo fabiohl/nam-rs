@@ -836,7 +836,7 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 
 ---
 
-### Tarefa 5.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (S2.2/2.3), [`tests/fixtures/spectral_fidelity_baseline.json`](file:///home/fabio/nam-rs/tests/fixtures/spectral_fidelity_baseline.json)
@@ -846,13 +846,18 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 - **Risco:** Baixo.
 - **Conclusão:** Baseline gerada para 12 SKUs (WaveNet standard/feather/nano/A1-official/official-dyn/A2-full/A2-lite, A2-example, LSTM 1×16/2×8/official, Linear). Medições: ASR típico/agressivo/stress, THD+N AES17, IMD SMPTE, Farina FR+THD por ordem harmônica. Fixture em `tests/fixtures/spectral_fidelity_baseline.json`. Testes de validação (`#[ignore]`) assertam medições atuais contra o baseline com tolerância conservadora (ASR: 0,5 dB, THD+N: 0,1%, IMD: 0,2%, FR: 0,5 dB). Regeneração: `cargo test --test spectral_fidelity generate_spectral_fidelity_baseline -- --ignored`.
 
-### Tarefa 5.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
-  - [`src/dsp/pipeline/stages/inference.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/inference.rs) (inserção up/down ao redor do modelo)
-  - [`src/dsp/resampler.rs`](file:///home/fabio/nam-rs/src/dsp/resampler.rs), [`src/dsp/sinc_kernel.rs`](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs) (filtros meia-banda)
-  - [`Cargo.toml`](file:///home/fabio/nam-rs/Cargo.toml) (se necessário feature/flag de build)
+  - [`src/dsp/oversample.rs`](file:///home/fabio/nam-rs/src/dsp/oversample.rs) (**novo**: meia-banda Kaiser β=12, 25 taps, up/down 2×/4×)
+  - [`src/dsp/oversample_test.rs`](file:///home/fabio/nam-rs/src/dsp/oversample_test.rs) (12 testes: DC, senoide, round-trip, coefs)
+  - [`src/dsp/pipeline/stages/inference.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/inference.rs) (inserção `model_process_stereo_with_os`)
+  - [`src/dsp/pipeline/context.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/context.rs) (`os_l`, `os_r` no `DspPipelineContext`)
+  - [`src/standalone/cli.rs`](file:///home/fabio/nam-rs/src/standalone/cli.rs) (`--oversample off|2x|4x`)
+  - [`src/standalone/pw_host/capture/state.rs`](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/state.rs) (engines + buffers)
+  - [`src/clap/processor/state.rs`](file:///home/fabio/nam-rs/src/clap/processor/state.rs) (engines + buffers CLAP)
+  - [`src/common/spsc/payload.rs`](file:///home/fabio/nam-rs/src/common/spsc/payload.rs) (`SetOversample` no `ParamPayload`)
 - **Descrição:**
   - Inserir **upsample → modelo → downsample** com filtros **meia-banda** anti-imagem/anti-alias projetados
     conforme **Kahles, Esqueda & Välimäki (JAES 2019)**. Fatores **2×/4×**; **OFF por padrão** (live).
@@ -868,6 +873,7 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - Caminho **live** com **0** de custo/latência adicional; `cargo bench` sem regressão no live.
   - **heap-audit** verde com oversampling ativo (zero alocação no hot-path).
 - **Risco:** **Alto** (hot-path). Recomenda-se prototipar com 1 modelo antes de generalizar.
+- **Conclusão:** Motor half-band implementado como `OversampleEngine` em `src/dsp/oversample.rs` (1.2 kLOC com testes). Filtro meia-banda 25-tap Kaiser β=12 com >100 dB stop-band. Usa ring buffers (`AlignedVec`) — zero alloc no hot-path. Integrado nos dois caminhos (standalone + CLAP) via `DspPipelineContext`. CLI: `--oversample off|2x|4x`. **Pendente:** troca dinâmica de fator (requer rebuild off-RT + swap atômico SPSC, mesmo padrão do modelo/resampler). **Não implementado:** ADAA alternativa (Parker/Bilbao/Holters). Medições de ASR/THD com/sem oversampling dependem da Tarefa 5.1 (baseline spectral_fidelity). Crossfading adaptivo (WaveNet) não usa oversampling durante a transição (mantém `run_stereo_or_mono` original para consistência de tamanho de buffer na mesclagem).
 
 ### Tarefa 5.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md))
 
@@ -1049,8 +1055,9 @@ decisões dos sprints S1–S5.
 
 ## Notas do PO
 
-[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Use de senso crítico para julgar o estado geral das coisas.
-Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão essas coisas e qual o papel delas. Se são opcionais ou obrigatórias. E o que cabe continuar ou remover.
+[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Use, inclusive, de forte senso crítico (e uma ponta de ceticismo) para julgar os avanços reais e paupáveis que tivemos e o estado geral das coisas.
+
+[Sonnet]/documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (mesmo as não mencionadas aqui, outras coisas semelhantes presentes no código) e qual o papel delas. Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM). Tudo isso e são opcionais ou obrigatórias. E o que cabe continuar ou remover. Precisamos ter uma visão clara deste fatores de degradação ou aprimoramento "por design". De preferência devidamente documentado à parte para acompanhamento Inclusive, migre as informações do docs/f16c_compression_analysis.md para ele. Unificando as coisas. Faça o mesmo para outras coisas similares espalhados em outros documentos.
 
 [Sonnet] [Kilo Compact Session]
 

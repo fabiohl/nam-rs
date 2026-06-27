@@ -4,6 +4,8 @@
 //! PipeWire output DSP pipeline and host configuration (standalone).
 
 use super::bridge::DspBridgeReader;
+#[cfg(feature = "standalone")]
+use crate::dsp::oversample::OversampleFactor;
 
 #[cfg(feature = "standalone")]
 use crate::common::diagnostics::SystemSnapshot;
@@ -40,6 +42,8 @@ pub struct PipewireHostConfig {
     pub full_wavenet_model: Option<Box<crate::models::StaticModel>>,
     /// Producer to send slimmable-rebuilt models to the audio thread.
     pub slimmable_producer: rtrb::Producer<Option<Box<crate::models::StaticModel>>>,
+    /// Initial oversampling factor for the neural stage.
+    pub oversample: OversampleFactor,
 }
 
 /// Playback DSP Pipeline (Bridge → Hardware).

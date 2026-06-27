@@ -25,6 +25,7 @@ use crate::common::params::RtPluginParams;
 use crate::common::tsc::rdtsc_nanos;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
+use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
@@ -91,6 +92,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let buf_out_l = AlignedVec::new(buf_capacity, 0.0f32);
         let buf_out_r = AlignedVec::new(buf_capacity, 0.0f32);
 
+        // 2b. Oversample buffer pre-allocation (MAX_RESAMP_BUF * 4 for X4)
+        let os_capacity = MAX_RESAMP_BUF * 4;
+        let buf_os_in_l = AlignedVec::new(os_capacity, 0.0f32);
+        let buf_os_in_r = AlignedVec::new(os_capacity, 0.0f32);
+        let buf_os_model_l = AlignedVec::new(os_capacity, 0.0f32);
+        let buf_os_model_r = AlignedVec::new(os_capacity, 0.0f32);
+
         // 3. DSP component initialization
         let model_rate = shared.cold.model_sample_rate.load(Ordering::Relaxed);
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
@@ -136,6 +144,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
         let conv_engine = None;
 
+        // 4b. Oversample engines (Off by default, swapped on factor change).
+        let os_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+        let os_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
         // 5. Report initial latency to shared state
         let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -165,6 +177,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             model_l: None,
             conv_engine,
             resampler,
+            os_l,
+            os_r,
             params: RtPluginParams::default(),
             buf_host_l,
             buf_host_r,
@@ -174,6 +188,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_model_r,
             buf_out_l,
             buf_out_r,
+            buf_os_in_l,
+            buf_os_in_r,
+            buf_os_model_l,
+            buf_os_model_r,
             silence_hyst,
             mono_hyst,
             process_mono: true,

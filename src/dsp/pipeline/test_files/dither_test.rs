@@ -6,6 +6,7 @@ use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::RtStatusFlags;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
+use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
 use crate::dsp::pipeline::test_util::infra::{TrackingGuard, get_alloc_count};
 use crate::dsp::resampler::NamResampler;
 
@@ -25,8 +26,13 @@ fn test_denormal_dither_mono_symmetry() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     let mut ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,

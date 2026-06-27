@@ -9,6 +9,7 @@
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 
 use crate::dsp::adaptive::SlimOverride;
+use crate::dsp::oversample::OversampleFactor;
 use crate::standalone::colors::Colorize;
 use lexopt::prelude::*;
 
@@ -41,6 +42,10 @@ pub fn print_help() {
     println!(
         "      --slim auto|full|lite  Force quality level (overrides adaptive FSM) [default: auto]"
     );
+    println!(
+        "      --oversample off|2x|4x Half-band oversampling around neural stage [default: off]"
+    );
+    println!("      --os off|2x|4x       Short alias for --oversample");
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -70,6 +75,8 @@ pub struct CliArgs {
     pub diagnose_full: bool,
     /// Manual slim override quality level.
     pub slim_override: SlimOverride,
+    /// Oversampling factor for the neural stage (off, 2x, 4x).
+    pub oversample: OversampleFactor,
 }
 
 /// Parses command-line arguments.
@@ -87,6 +94,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut diagnose = false;
     let mut diagnose_full = false;
     let mut slim_override = SlimOverride::Auto;
+    let mut oversample = OversampleFactor::Off;
     let mut has_args = false;
 
     while let Some(arg) = parser.next().unwrap_or_else(|e| exit_with_error(e)) {
@@ -113,6 +121,21 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     "lite" => SlimOverride::ForceLite,
                     other => exit_with_error(format!(
                         "Invalid slim override: '{}'. Expected 'auto', 'full', or 'lite'.",
+                        other
+                    )),
+                };
+            }
+            Long("oversample") | Long("os") => {
+                let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
+                let val_str = val
+                    .into_string()
+                    .unwrap_or_else(|_| exit_with_error("Invalid oversample value."));
+                oversample = match val_str.to_lowercase().as_str() {
+                    "off" | "0" => OversampleFactor::Off,
+                    "2x" | "2" => OversampleFactor::X2,
+                    "4x" | "4" => OversampleFactor::X4,
+                    other => exit_with_error(format!(
+                        "Invalid oversample factor: '{}'. Expected 'off', '2x', or '4x'.",
                         other
                     )),
                 };
@@ -220,6 +243,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
         diagnose,
         diagnose_full,
         slim_override,
+        oversample,
     }
 }
 

@@ -57,6 +57,7 @@ pub fn run_pipewire_host(
         ir_raw_samples,
         full_wavenet_model,
         mut slimmable_producer,
+        oversample: _os,
     } = config;
 
     let full_wavenet_model = full_wavenet_model;

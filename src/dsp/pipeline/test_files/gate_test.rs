@@ -6,6 +6,7 @@ use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::RtStatusFlags;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
+use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
 use crate::dsp::pipeline::test_util::infra::{TrackingGuard, get_alloc_count};
 use crate::dsp::resampler::NamResampler;
 use std::sync::atomic::Ordering;
@@ -63,9 +64,14 @@ fn test_hotpath_gate_closed_and_silence() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     // We group everything into the "Context" for processing.
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,
@@ -82,6 +88,11 @@ fn test_hotpath_gate_closed_and_silence() {
         conv: None,
     };
 
+    let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs = DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -89,6 +100,10 @@ fn test_hotpath_gate_closed_and_silence() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice,
+        os_in_r: os_in_r_slice,
+        os_model_l: os_model_l_slice,
+        os_model_r: os_model_r_slice,
     };
 
     // Memory allocation watchdog.
@@ -172,8 +187,13 @@ fn test_hotpath_gate_fading() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,
@@ -190,6 +210,11 @@ fn test_hotpath_gate_fading() {
         conv: None,
     };
 
+    let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs = DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -197,6 +222,10 @@ fn test_hotpath_gate_fading() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice,
+        os_in_r: os_in_r_slice,
+        os_model_l: os_model_l_slice,
+        os_model_r: os_model_r_slice,
     };
 
     let _guard = TrackingGuard::new();
@@ -262,8 +291,13 @@ fn test_hotpath_clipping_detection() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,
@@ -280,6 +314,11 @@ fn test_hotpath_clipping_detection() {
         conv: None,
     };
 
+    let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs = DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -287,6 +326,10 @@ fn test_hotpath_clipping_detection() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice,
+        os_in_r: os_in_r_slice,
+        os_model_l: os_model_l_slice,
+        os_model_r: os_model_r_slice,
     };
 
     let _guard = TrackingGuard::new();
@@ -347,8 +390,13 @@ fn test_hotpath_dropped_frames() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l,
+        os_r: &mut os_engine_r,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,
@@ -365,6 +413,11 @@ fn test_hotpath_dropped_frames() {
         conv: None,
     };
 
+    let mut os_buf: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice, rest) = os_buf.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice, rest) = rest.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice, os_model_r_slice) = rest.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs = DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -372,6 +425,10 @@ fn test_hotpath_dropped_frames() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice,
+        os_in_r: os_in_r_slice,
+        os_model_l: os_model_l_slice,
+        os_model_r: os_model_r_slice,
     };
     capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
 
@@ -380,8 +437,12 @@ fn test_hotpath_dropped_frames() {
     let mut process_mono2 = false;
     let mut samples_l2 = vec![1.0; n];
     let mut samples_r2 = vec![1.0; n];
+    let mut os_engine_l2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_r2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
     let ctx2 = DspPipelineContext {
         resampler: &mut resampler,
+        os_l: &mut os_engine_l2,
+        os_r: &mut os_engine_r2,
         active_model_l: &mut None,
         active_model_r: &mut None,
         input_gain_mult: 1.0,
@@ -398,6 +459,11 @@ fn test_hotpath_dropped_frames() {
         conv: None,
     };
 
+    let mut os_buf2: [f32; MAX_RESAMP_BUF * 4] = [0.0f32; MAX_RESAMP_BUF * 4];
+    let (os_in_l_slice2, rest2) = os_buf2.split_at_mut(MAX_RESAMP_BUF);
+    let (os_in_r_slice2, rest2) = rest2.split_at_mut(MAX_RESAMP_BUF);
+    let (os_model_l_slice2, os_model_r_slice2) = rest2.split_at_mut(MAX_RESAMP_BUF);
+
     let bufs2 = DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
@@ -405,6 +471,10 @@ fn test_hotpath_dropped_frames() {
         resamp_out_r: &mut resamp_out_r,
         model_out_l: &mut model_out_l,
         model_out_r: &mut model_out_r,
+        os_in_l: os_in_l_slice2,
+        os_in_r: os_in_r_slice2,
+        os_model_l: os_model_l_slice2,
+        os_model_r: os_model_r_slice2,
     };
 
     let _guard = TrackingGuard::new();

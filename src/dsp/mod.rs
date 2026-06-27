@@ -10,6 +10,8 @@ pub mod cabsim;
 pub mod gate;
 pub mod gate_flags;
 pub mod mirror_buf;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+pub mod oversample;
 pub mod pipeline;
 pub mod resampler;
 pub mod sinc_kernel;
