@@ -409,7 +409,7 @@ oráculo f64 e pela suíte espectral (S2).
 
 ### Tarefa 3.1 [TEST] MR-STFT como gate hard calibrado @ 44.1/48 kHz ([F-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída — gate `mrstft_max` calibrado por modelo implementado em `validation.rs` e relaxação v2/resampling em `cpp_parity.rs` / `golden_vectors.rs` nas iterações 3–5 de T3.5 (ver tabela T3.5)
 - **Arquivos Alvo:**
   - [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (`MRSTFT_SOFT_THRESHOLD`, ≈ 216-225)
   - [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs) (anti-placebo)
@@ -526,14 +526,19 @@ meta-test quebrado. Lints limpos.
 - `regression-check.sh`: 10/10 benchmarks sem panic, baseline salvo
 - `threshold_calibration`: 3/3 ok (anti-placebo, golden-coverage, measurement-comments)
 
-**Achados para investigação futura (Tarefa 3.3):** `wavenet_condition_dsp` em v2 @ 48000 Hz nativo produz
-MR-STFT=0.336 (v1=0.021, fator 16×). O sub-modelo `condition_dsp` acumula drift significativo sobre 5s
-de stress signal mesmo em sample rate nativa. Possível bug de estado interno ou acúmulo de erro
-numérico no condition_dsp — não investigado no escopo desta tarefa.
+**⚠️ Nota corrigida pela auditoria pós-S3 (2026-06-27):** `wavenet_condition_dsp` em v2 @ 48000 Hz produz
+MR-STFT=0.336 (v1=0.021, fator 16×), mas **ESR = 8.93e-15 (−140.5 dB) e SNR = 140.5 dB — ambos melhores
+que o v1 (ESR=1.13e-14, SNR=139.5 dB)**. Portanto, **não há drift de áudio real**. A paridade temporal é
+virtualmente perfeita. O MR-STFT elevado é um artefato de sensibilidade métrica: bins espectrais próximos
+de zero (comuns no output do condition_dsp sob sinal de condicionamento) produzem log-ratios grandes mesmo
+com diferenças absolutas infinitesimais. Correto: threshold `mrstft_max=0.698` está adequado para este
+modelo em v2 @ 48 kHz — não é bug, não é drift. Ver análise completa na Avaliação de Rota S1–S3 abaixo.
 
 ---
 
-**Nota do PO:** Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3.
+**Nota do PO (preservada para rastreabilidade):** Avaliação de rota S1–S3 + questão sobre consolidação da suíte de testes. _Respondida e documentada na seção "Avaliação de Rota" abaixo._
+
+Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3.
 Aproveite também para analisar vários resultados de testes (salvos em "testes.log"), como pede a "Tarefa 3.5" como fonte de insights úteis.
 Avalie meticulosamente a perfeição do que foi feito até aqui ("Sprint S3" do "TODO-sprints.md").
 Se necessário, propondo correções de rumo.
@@ -544,6 +549,124 @@ Agora temos uma referência super precisa em f64 (para o mais alto nível de pre
 Mas também há outros testes autorreferenciados com escalares, etc.
 Não caberia uma simplificação do número de testes aqui para o que realmente interessa.
 Claro, quanto mais melhor! Porém, o que realmente agrega valor real e o que apenas um "deixa ai só precaução"?
+
+## Avaliação de Rota S1–S3 (2026-06-27)
+
+> _Auditoria baseada nas Conclusões de cada tarefa, na tabela de 5 iterações de T3.5, e em
+> análise cruzada com `testes.log` (3686 linhas, 2026-06-26)._
+
+### Veredito geral
+
+| Sprint | Entrega                   | Qualidade    | Observação                                                                                        |
+|:------:|:------------------------- |:------------:|:------------------------------------------------------------------------------------------------- |
+| **S1** | Diagnóstico de paridade   | ✅ Excelente | Prova real de legibilidade sob falha; 3 gates ✗ contíguos                                         |
+| **S2** | Instrumentação de medição | ✅ Boa       | ASR/Farina/BS.1770-4/ISA/RT sólidos; oracle LSTM funcional; **WaveNet/A2 incompletos**            |
+| **S3** | Fidelidade perceptual     | ✅ Boa       | Causa-raiz LSTM correta; **T3.5 risco subestimado** (classificado Baixo, mostrou-se Alto/5 iters) |
+
+### Análise de `testes.log` — insights ocultos
+
+**T3.5 era alto risco.** Cinco iterações de correção em cascata indicam que apertar gates perceptuais gera efeitos colaterais não triviais:
+cada gate expõe o próximo gargalo. O padrão refletido no log: `cpp_parity:6 falhas → benchmark panic → threshold_calibration quebrado → anti-placebo rejeitando LSTM → golden_vectors v2:4 falhas`. O plano deve classificar tarefas de gate-hardening como **🟠 Médio** por padrão, nunca Baixo.
+
+**condition_dsp MR-STFT 16× não é drift.** `testes.log` mostra condition_dsp v2 @ 48 kHz: **ESR = 8.93e-15 (melhor que v1)**, SNR = 140.5 dB. O MR-STFT alto (0.336) é artefato de log-ratio em bins próximos de zero do output condicionado, não degradação de áudio. A nota T3.5 "possível bug de estado interno" foi **incorreta** — corrigida acima.
+
+**LSTM negative Fidelity Margin confirma o T3.3.** `testes.log:2136,2281` mostra LSTM Official v2 @ 48/96 kHz com Fidelity Margin = −0.8/−0.9 dB (output NAMCore vs nam-rs diverge _mais_ que o âncora de degradação deliberada). Isso é coerente com o `ABSOLUTE_ESR_CAP` WaveNet=6.23e-3 / LSTM=0.2: são arquiteturas fundamentalmente diferentes em termos de tolerância a deriva f16c recorrente.
+
+---
+
+### Correções de rota (CR-1 a CR-4)
+
+#### CR-1 — Trivial | T3.1 status inconsistente ✅ já corrigido acima
+
+#### CR-2 — 🔴 Crítico para S5 | Oráculo f64 incompleto (WaveNet / A2)
+
+O oráculo LSTM é funcional (ESR 1.06, ΔESR Padé = 1.39e-4 confirmado). WaveNet (ESR ~8e2) e A2 (ESR ~2.09) têm erros estruturais de layout de pesos — não corridos no escopo de S2. As tarefas **S5.1** (baseline de aliasing/THD) e **S5.3** (medição Padé vs HF sob pesos reais) **dependem do oráculo** para WaveNet/A2. Sem ele, operam cegas na arquitetura mais importante. Ação: **Tarefa T-CR2** antes de S5.
+
+#### CR-3 — 🟡 Médio | Documentar a sensibilidade do MR-STFT em sinais condicionados
+
+A equivocada caracterização "possível bug" do condition_dsp foi corrigida factualmente. Mas o padrão tem implicações mais amplas: **qualquer modelo com output espectralmente esparso (silência em muitos bins) terá MR-STFT artificialmente alto em sinais longos**, mesmo com ESR perfeito. Isso não é bug do modelo — é limitação conhecida da métrica de log-magnitude. Ação: documentar esta caveat em `docs/perceptual_validation.md` como subcaso do MR-STFT "Dual Gate" (Tarefa 3.4 pode ser reaberta ou nota incluída no T-CR3).
+
+#### CR-4 — 🟡 Médio | Cap 0.2 ESR para LSTM — tolerância muito alta sem caracterização perceptual
+
+`testes.log:2519` mostra LSTM 1×16 @ 192 kHz com SNR = 8.5 dB (ESR = 1.42e-1). Com cap=0.2, um SNR tão baixo quanto 7 dB é tolerado. O âncora de degradação deliberada (low-pass 3.5 kHz) tem SNR(anchor) ≈ 8 dB neste regime — logo o LSTM 1×16 @ 192 kHz está **na fronteira do audível**. A T3.3 justifica como "inerente ao formato", mas sem quantificar o impacto perceptual. Ação: nota em `docs/perceptual_validation.md` com a medição `SNR(anchor)` como proxy de audibilidade.
+
+---
+
+### Tarefas de correção pré-S5
+
+### Tarefa T-CR2 [MATH] Completar oráculo f64 para WaveNet e A2 (pré-condição de S5)
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs) (WaveNet multi-array layout, A2 conv indexing)
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
+- **Descrição:**
+  - **WaveNet (ESR ~8e2):** depurar a correspondência de layout de pesos entre o builder dinâmico e o
+    oráculo. O erro estrutural está na forma como os pesos são lidos para o forward multi-array (stride,
+    offset, ou ordem de layers). Comparar pesos carregados no oráculo vs no modelo de produção
+    (`tests/common/model_fixture.rs` ou `build_model()`), verificar `WeightCursor` vs layout esperado.
+  - **A2 (ESR ~2.09):** investigar o layout interleaved 4-wide (`conv1d_ch3` e `conv1d_ch8`) vs
+    row-major do oráculo; revisar também o indexing do head ring buffer (`head_pos`, `head_lag`).
+  - Implementar os flags `WeightPrecision::F16C/BF16` e `AccumulationMode::F32Plain` no cursor de pesos
+    (dead-code identificado no T2.1) para habilitar a decomposição real de fontes.
+  - Executar o script Python de validação externa (`validate_oracle_f64.py`) para ancorar o oráculo LSTM
+    já funcional — e ao completar WaveNet/A2, ancorá-los também.
+- **Critérios de Aceite:** ESR(oráculo WaveNet vs produção) < 1e-2 (tolerando diferença numérica f32/f64);
+  ESR(oráculo A2 vs produção) < 1e-2; decomposição de fontes funcional para os 3 modelos; oráculo LSTM
+  ancorado no Python < 1e-12.
+- **Risco:** Médio. Pode exigir engenharia reversa do layout de pesos.
+
+### Tarefa T-CR3 [DOC] Documentar caveat de sensibilidade do MR-STFT em sinais espectralmente esparsos
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
+- **Descrição:** Adicionar seção "MR-STFT Sensitivity Caveat" documentando que modelos com output
+  espectralmente esparso (bins próximos de zero em muitos frames — ex.: `wavenet_condition_dsp`) podem
+  apresentar MR-STFT elevado mesmo com ESR/SNR perfeitos. Explicar o mecanismo (log-ratio em near-zero
+  bins) e a corrreta interpretação: threshold `mrstft_max` para esses modelos deve ser calibrado mais
+  frouxo, **ESR é o gate decisivo**. Referenciar os dados de `testes.log` (ESR 8.93e-15 vs MR-STFT 0.336).
+- **Critérios de Aceite:** doc atualizado; seção inclui a tabela de thresholds de `condition_dsp` com nota.
+- **Risco:** Baixo.
+
+---
+
+### Análise de consolidação da suíte de testes (resposta direta à questão do PO)
+
+**Contexto:** a suíte passou de 948 testes (antes de S1) para ~1020 com as implementações de S2. O PO pergunta: com NAMCore f32 + oráculo f64 + matriz ISA, o que realmente agrega vs "deixa aí só precaução"?
+
+**Os três oráculos fazem perguntas diferentes:**
+
+| Oráculo                                   | Pergunta respondida                               | Estado atual                                 |
+|:----------------------------------------- |:------------------------------------------------- |:-------------------------------------------- |
+| NAMCore f32 (golden_vectors + cpp_parity) | "Soa idêntico ao reference player da comunidade?" | ✅ Completo, 33/33 testes                    |
+| Oráculo f64 (reference_oracle_f64)        | "Qual o erro vs ideal matemático? De onde vem?"   | ⚠️ Parcial (LSTM ok; WaveNet/A2 quebrados)   |
+| Matriz ISA (isa_parity)                   | "Todas as ISAs produzem o mesmo resultado?"       | ✅ Self-consistency; cross-ISA em long-suite |
+
+**Hierarquia de valor dos testes:**
+
+| Tier | Categoria                                                    | Valor                                                                                        | Ação                                                        |
+|:----:|:------------------------------------------------------------ |:--------------------------------------------------------------------------------------------:|:----------------------------------------------------------- |
+| 1🔴  | golden_vectors + cpp_parity (NAMCore)                        | Insubstituível — garante interop com o ecossistema                                           | Manter íntegro                                              |
+| 1🔴  | heap-audit, zero-alloc                                       | Garante RT-safety — não tem substituto                                                       | Manter                                                      |
+| 1🔴  | Parser fuzz, CRC, format (namb/nam_json)                     | Segurança e robustez                                                                         | Manter                                                      |
+| 2🟠  | ASR, THD/IMD/FR espectral                                    | Novo eixo sem cobertura antes; baseado em ciência                                            | Manter                                                      |
+| 2🟠  | Precisão de ativação vs `f32::tanh` / `f64::tanh`            | Testa **correção**, não só consistência                                                      | Manter                                                      |
+| 2🟠  | Oráculo f64, ISA parity, deadline RT                         | Novos eixos necessários                                                                      | Manter (completar WaveNet/A2)                               |
+| 3🟡  | Kernel `avx2_vs_scalar` (dot, GEMV, conv)                    | Localizadores de regressão, não oráculos de correção                                         | Manter por enquanto¹                                        |
+| 3🟡  | Consistência entre aproximações (`nr1_vs_div`, `nr2_vs_nr1`) | Detecta se refactoring mudou o resultado _relativo_ — não detecta se o resultado é _correto_ | Migrar para `#[ignore]` quando oráculo WaveNet/A2 completo² |
+| 3🟡  | Proptests (já `#[ignore]` em sua maioria)                    | Exploração estocástica — correto em long-suite                                               | Estrutura atual correta                                     |
+
+**¹** Os testes `avx2_vs_scalar` permanecem necessários como _localizadores_: quando um golden test falha, eles indicam qual kernel está quebrado. Reduzir para 1 teste representativo por família (dot/GEMV/conv/activation) é razoável, mas só após o oráculo f64 cobrir WaveNet/A2 de ponta-a-ponta.
+
+**²** Candidatos concretos para migrar para `#[ignore]` (long-suite) após T-CR2:
+
+- `math::activations::tanh::high_fidelity::*::test_tanh_poly_nr1_vs_div_*` — compara Padé+NR1 vs Padé+div (ambos aproximações, nenhum é ground truth; com o oráculo f64 a comparação contra `f64::tanh` torna isto redundante)
+- `math::activations::tanh::reference::reference_test::test_pade_nr*_vs_nr*` — mesma razão
+- Estimativa: ~12–15 testes
+
+**Veredicto sobre "quanto mais melhor":** a suíte atual de ~1020 testes **não está bloated** — a estrutura quick/long está correta e a maioria tem razão clara de existir. A consolidação real se resume a ~12–15 testes do tipo "aprovação-vs-aprovação" que se tornam redundantes quando o oráculo WaveNet/A2 estiver completo. **Não remover agora** — antes do oráculo, esses testes são os únicos que detectam divergências de aproximação em WaveNet/A2.
+
+**Distinção crítica:** testes que comparam contra `f32::tanh` ou `f64::tanh` testam **correção absoluta** (Tier 2, manter). Testes que comparam duas aproximações entre si testam apenas **consistência relativa** (Tier 3, candidatos a migrar). Nunca confundir os dois.
 
 ---
 
