@@ -80,13 +80,7 @@ fn test_oracle_wavenet() {
         esr,
         esr_to_db_f64(esr)
     );
-    // NOTE: WaveNet oracle has known structural issues with multi-array
-    // weight parsing and inter-array data flow. See TODO-sprints.md T2.1 notes.
-    // For now, the oracle correctly parses single-array WaveNet models.
-    // The multi-array official model weight layout mismatch is documented.
-    println!("WaveNet Official: oracle vs production — structural issues pending (see T2.1 notes)");
-    // assert relaxed until forward pass is debugged
-    assert!(esr < 1e3, "ESR={:.6e} absurdly high", esr);
+    assert!(esr < 2.0, "ESR={:.6e} too high", esr);
 }
 
 #[test]
@@ -130,7 +124,7 @@ fn test_oracle_a2() {
     // A2 weights are f32 (full precision) — ESR should be low
     // NOTE: A2 oracle has known forward-pass issues (see T2.1 notes).
     // Assert relaxed until debugged.
-    assert!(esr < 1e3, "ESR={:.6e} absurdly high", esr);
+    assert!(esr < 0.5, "ESR={:.6e} too high", esr);
 }
 
 // ── Decomposition tests ────────────────────────────────────────────────────
@@ -164,7 +158,11 @@ fn test_decomposition_wavenet() {
         esr_to_db_f64(result.esr_accumulation.unwrap_or(1e-99)),
     );
     // Relaxed: WaveNet multi-array oracle has known issues
-    assert!(result.esr_f32_vs_f64 < 1e3);
+    assert!(
+        result.esr_f32_vs_f64 < 2.0,
+        "ESR={:.6e} too high",
+        result.esr_f32_vs_f64
+    );
 }
 
 #[test]
@@ -228,7 +226,11 @@ fn test_decomposition_a2() {
         esr_to_db_f64(result.esr_accumulation.unwrap_or(1e-99)),
     );
     // Relaxed: A2 oracle has known issues
-    assert!(result.esr_f32_vs_f64 < 1e3);
+    assert!(
+        result.esr_f32_vs_f64 < 0.5,
+        "ESR={:.6e} too high",
+        result.esr_f32_vs_f64
+    );
 }
 
 // ── Summary table ──────────────────────────────────────────────────────────

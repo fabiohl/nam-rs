@@ -146,7 +146,6 @@ pub fn oracle_sigmoid(x: f64, mode: ActivationMode) -> f64 {
 // Weight Conversion
 // =============================================================================
 
-#[allow(dead_code)]
 #[inline]
 fn weight_f32_to_f64(w: f32, mode: WeightPrecision) -> f64 {
     match mode {
@@ -163,34 +162,70 @@ fn weight_f32_to_f64(w: f32, mode: WeightPrecision) -> f64 {
     }
 }
 
+/// Converts a u16 f16c weight to f64 (for binary-format models with pre-quantized weights).
 #[allow(dead_code)]
 #[inline]
 fn weight_f16c_to_f64(w: u16, _mode: WeightPrecision) -> f64 {
     f16_bits_to_f32(w) as f64
 }
 
-/// Simple weight stream cursor.
+/// Simple weight stream cursor with optional weight-precision quantization.
 struct Cursor<'a> {
     data: &'a [f32],
     pos: usize,
+    weight_mode: WeightPrecision,
 }
 
 impl<'a> Cursor<'a> {
-    fn new(data: &'a [f32]) -> Self {
-        Self { data, pos: 0 }
+    fn new(data: &'a [f32], weight_mode: WeightPrecision) -> Self {
+        Self {
+            data,
+            pos: 0,
+            weight_mode,
+        }
     }
 
     fn read_f64(&mut self, count: usize) -> Vec<f64> {
         let end = self.pos + count;
-        let out: Vec<f64> = self.data[self.pos..end].iter().map(|&x| x as f64).collect();
+        let out: Vec<f64> = self.data[self.pos..end]
+            .iter()
+            .map(|&x| weight_f32_to_f64(x, self.weight_mode))
+            .collect();
         self.pos = end;
         out
     }
 
     fn read_one_f64(&mut self) -> f64 {
-        let v = self.data[self.pos] as f64;
+        let v = weight_f32_to_f64(self.data[self.pos], self.weight_mode);
         self.pos += 1;
         v
+    }
+}
+
+/// Helper for accumulation mode: optionally casts through f32 to simulate f32 error.
+#[inline]
+fn accum_f64(a: f64, b: f64, mode: AccumulationMode) -> f64 {
+    match mode {
+        AccumulationMode::F64Plain | AccumulationMode::Kahan | AccumulationMode::Neumaier => a + b,
+        AccumulationMode::F32Plain => {
+            let s = (a as f32) + (b as f32);
+            s as f64
+        }
+    }
+}
+
+/// Multiply-add with optional f32 accumulation.
+#[inline]
+fn mul_add_f64(a: f64, b: f64, c: f64, mode: AccumulationMode) -> f64 {
+    match mode {
+        AccumulationMode::F64Plain | AccumulationMode::Kahan | AccumulationMode::Neumaier => {
+            a.mul_add(b, c)
+        }
+        AccumulationMode::F32Plain => {
+            let p = (a as f32) * (b as f32);
+            let s = p + (c as f32);
+            s as f64
+        }
     }
 }
 
@@ -267,7 +302,7 @@ fn oracle_wavenet_forward(
 ) -> Vec<f64> {
     let layers = &model_data.config.layers;
     let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
-    let mut cursor = Cursor::new(&model_data.weights);
+    let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let num_frames = input.len();
 
     if layers.is_empty() {
@@ -314,6 +349,7 @@ fn oracle_wavenet_forward(
         .unwrap_or(0)
         + 64;
     let ch_max = arrays.iter().map(|a| a.ch).max().unwrap_or(16);
+    let acc_mode = config.accumulation;
 
     let mut output = vec![0.0f64; num_frames];
     let mut layer_buffer = vec![0.0f64; max_rf * ch_max * 2 + num_frames * ch_max * 2 + 4096];
@@ -380,7 +416,12 @@ fn oracle_wavenet_forward(
                 for ic in 0..in_ch {
                     let src_idx = f * in_ch + ic;
                     if src_idx < array_input.len() {
-                        sum += array_input[src_idx] * rechannel_w[ic * ch + c];
+                        sum = mul_add_f64(
+                            array_input[src_idx],
+                            rechannel_w[ic * ch + c],
+                            sum,
+                            acc_mode,
+                        );
                     }
                 }
                 layer_buffer[idx * ch + c] = sum;
@@ -404,7 +445,12 @@ fn oracle_wavenet_forward(
                         let ws = wb + kt * ch;
                         for ic in 0..ch {
                             if ins + ic < layer_buffer.len() {
-                                sum += layer_buffer[ins + ic] * lw.conv_w[ws + ic];
+                                sum = mul_add_f64(
+                                    layer_buffer[ins + ic],
+                                    lw.conv_w[ws + ic],
+                                    sum,
+                                    acc_mode,
+                                );
                             }
                         }
                     }
@@ -414,7 +460,7 @@ fn oracle_wavenet_forward(
                 // Mixin (cond[0])
                 let cond = layer_buffer[idx * ch];
                 for (c, cv) in conv_out.iter_mut().enumerate() {
-                    *cv += cond * lw.mixin_w[c];
+                    *cv = mul_add_f64(cond, lw.mixin_w[c], *cv, acc_mode);
                 }
 
                 // Tanh
@@ -427,9 +473,9 @@ fn oracle_wavenet_forward(
                 for (oc, cv) in new_conv_out.iter_mut().enumerate() {
                     let mut sum = lw.l1x1_b[oc];
                     for (ic, &cv_ic) in conv_out.iter().enumerate() {
-                        sum += cv_ic * lw.l1x1_w[oc * ch + ic];
+                        sum = mul_add_f64(cv_ic, lw.l1x1_w[oc * ch + ic], sum, acc_mode);
                     }
-                    *cv = current[oc] + sum;
+                    *cv = accum_f64(current[oc], sum, acc_mode);
                 }
                 current = new_conv_out;
             }
@@ -440,7 +486,7 @@ fn oracle_wavenet_forward(
             for hc in 0..head_ch {
                 let mut sum = head_b[hc];
                 for (c, &cur_c) in current.iter().enumerate() {
-                    sum += cur_c * head_w[c * head_ch + hc];
+                    sum = mul_add_f64(cur_c, head_w[c * head_ch + hc], sum, acc_mode);
                 }
                 head_out[hc] = sum;
             }
@@ -451,13 +497,6 @@ fn oracle_wavenet_forward(
                     array_output.push(ho);
                 }
             }
-        }
-    }
-
-    // Apply head_scale to scalar output
-    if arrays.len() == 1 || arrays.last().map(|a| a.head_ch).unwrap_or(1) == 1 {
-        for o in output.iter_mut() {
-            *o *= head_scale;
         }
     }
 
@@ -480,7 +519,7 @@ const A2_DIL: [usize; 23] = [
 fn oracle_a2_forward(
     model_data: &NamModelData,
     input: &[f64],
-    _config: &PrecisionConfig,
+    config: &PrecisionConfig,
 ) -> Vec<f64> {
     let ch = model_data
         .config
@@ -489,7 +528,7 @@ fn oracle_a2_forward(
         .and_then(|l| l.channels)
         .unwrap_or(8);
     let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
-    let mut cursor = Cursor::new(&model_data.weights);
+    let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let num_frames = input.len();
 
     // Rechannel: CH f32
@@ -526,8 +565,17 @@ fn oracle_a2_forward(
     }
 
     // Head: 16*CH + 1 weight
-    let head_w = cursor.read_f64(A2_HEAD_KERNEL * ch);
+    // Raw NAM JSON stores [channel][tap]; production transposes to [tap][channel].
+    let head_w_raw = cursor.read_f64(A2_HEAD_KERNEL * ch);
+    let mut head_w = vec![0.0f64; A2_HEAD_KERNEL * ch];
+    for tap in 0..A2_HEAD_KERNEL {
+        for c in 0..ch {
+            head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_KERNEL + tap];
+        }
+    }
     let head_b = cursor.read_one_f64();
+
+    let acc_mode = config.accumulation;
 
     // Buffer allocation
     let max_dil: usize = *A2_DIL.iter().max().unwrap_or(&1);
@@ -572,7 +620,7 @@ fn oracle_a2_forward(
                     let ws = wb + kt * ch;
                     for ic in 0..ch {
                         if ins + ic < history.len() {
-                            sum += history[ins + ic] * lw.conv_w[ws + ic];
+                            sum = mul_add_f64(history[ins + ic], lw.conv_w[ws + ic], sum, acc_mode);
                         }
                     }
                 }
@@ -581,7 +629,7 @@ fn oracle_a2_forward(
 
             // Mixin
             for (c, zv) in z.iter_mut().enumerate() {
-                *zv += lw.mixin_w[c] * x;
+                *zv = mul_add_f64(lw.mixin_w[c], x, *zv, acc_mode);
             }
 
             // LeakyReLU(0.01)
@@ -597,7 +645,7 @@ fn oracle_a2_forward(
                 head_acc[ho..ho + ch].copy_from_slice(&z[..ch]);
             } else {
                 for (c, &zv) in z.iter().enumerate() {
-                    head_acc[ho + c] += zv;
+                    head_acc[ho + c] = accum_f64(head_acc[ho + c], zv, acc_mode);
                 }
             }
 
@@ -607,9 +655,9 @@ fn oracle_a2_forward(
                 for (oc, nv) in next.iter_mut().enumerate() {
                     let mut sum = lw.l1x1_b[oc];
                     for (ic, &zv) in z.iter().enumerate() {
-                        sum += zv * lw.l1x1_w[oc * ch + ic];
+                        sum = mul_add_f64(zv, lw.l1x1_w[oc * ch + ic], sum, acc_mode);
                     }
-                    *nv = layer_in[oc] + sum;
+                    *nv = accum_f64(layer_in[oc], sum, acc_mode);
                 }
                 layer_in = next;
             }
@@ -624,7 +672,7 @@ fn oracle_a2_forward(
             let so = col * ch;
             let wo = t * ch;
             for c in 0..ch {
-                y += head_w[wo + c] * head_acc[so + c];
+                y = mul_add_f64(head_w[wo + c], head_acc[so + c], y, acc_mode);
             }
         }
         *out_val = y * head_scale;
@@ -644,7 +692,7 @@ fn oracle_lstm_forward(
 ) -> Vec<f64> {
     let h = model_data.config.hidden_size.unwrap_or(16);
     let nlayers = model_data.config.num_layers.unwrap_or(1);
-    let mut cursor = Cursor::new(&model_data.weights);
+    let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
 
     struct LstmLW {
         ih_w: Vec<Vec<Vec<f64>>>, // [gate=4][row=ih][col=h]
@@ -688,6 +736,7 @@ fn oracle_lstm_forward(
 
     let num_frames = input.len();
     let mut output = vec![0.0f64; num_frames];
+    let acc_mode = config.accumulation;
 
     // Clone cell states for independent runs (decomposition needs fresh state)
     let _orig_cell: Vec<Vec<f64>> = ll.iter().map(|l| l.cell.clone()).collect();
@@ -719,7 +768,7 @@ fn oracle_lstm_forward(
                 for i in 0..h {
                     let mut sum = ll[l].bias[g * h + i];
                     for j in 0..ih {
-                        sum += state[j] * ll[l].ih_w[g][j][i];
+                        sum = mul_add_f64(state[j], ll[l].ih_w[g][j][i], sum, acc_mode);
                     }
                     gates[g * h + i] = sum;
                 }
@@ -749,7 +798,7 @@ fn oracle_lstm_forward(
         let last_h = &ll.last().unwrap().hidden;
         let mut y = head_b;
         for i in 0..h {
-            y += last_h[i] * head_w[i];
+            y = mul_add_f64(last_h[i], head_w[i], y, acc_mode);
         }
         output[f] = y;
     }
