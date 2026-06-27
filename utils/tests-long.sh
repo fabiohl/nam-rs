@@ -29,7 +29,7 @@ NC='\033[0m'
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 25 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 37 minutes)   ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory

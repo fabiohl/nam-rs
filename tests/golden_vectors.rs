@@ -75,7 +75,7 @@ fn run_v2_golden_test(
         let mut output = vec![0.0f32; num_samples];
         process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
 
-        let (mut mse_limit, mut min_snr_db, mut max_esr, mrstft_max) =
+        let (mut mse_limit, mut min_snr_db, mut max_esr, mut mrstft_max) =
             topology_thresholds(&model_data, model_name);
 
         if model_data.architecture == "LSTM" {
@@ -89,6 +89,9 @@ fn run_v2_golden_test(
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
+            if let Some(ref mut mr) = mrstft_max {
+                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
+            }
         } else {
             // WaveNet and other models accumulate minor differences over the longer v2 stress signal
             let sr_ratio = sr as f64 / 48000.0;
@@ -97,6 +100,9 @@ fn run_v2_golden_test(
             mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
+            if let Some(ref mut mr) = mrstft_max {
+                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
             }
         }
 

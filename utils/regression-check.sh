@@ -122,6 +122,7 @@ MODE="${1:---check}"
 
 echo -e "${BLUE}${BOLD}  Performance Regression Gate${NC}"
 echo -e "  Core: ${YELLOW}${BENCH_CORE}${NC}  Baseline: ${YELLOW}${BASELINE_NAME}${NC}"
+echo -e "${BLUE}${BOLD}  Estimeted Time: ± 2,0 minutes${NC}"
 
 # Verify taskset is available
 if ! command -v taskset >/dev/null 2>&1; then
