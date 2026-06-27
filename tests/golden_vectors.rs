@@ -75,7 +75,7 @@ fn run_v2_golden_test(
         let mut output = vec![0.0f32; num_samples];
         process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
 
-        let (mut mse_limit, mut min_snr_db, mut max_esr) =
+        let (mut mse_limit, mut min_snr_db, mut max_esr, mrstft_max) =
             topology_thresholds(&model_data, model_name);
 
         if model_data.architecture == "LSTM" {
@@ -106,6 +106,7 @@ fn run_v2_golden_test(
             mse_limit,
             min_snr_db,
             max_esr,
+            mrstft_max,
             &format!("{label} @ {sr} Hz (v2)"),
             sr,
         );
@@ -173,13 +174,15 @@ fn test_golden_vectors_wavenet() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-standard");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "BossWN-standard");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "BossWN-standard",
         STRESS_SAMPLE_RATE,
     );
@@ -230,13 +233,15 @@ fn test_golden_vectors_lstm_1x16() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossLSTM-1x16");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "BossLSTM-1x16");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "BossLSTM-1x16",
         STRESS_SAMPLE_RATE,
     );
@@ -279,13 +284,15 @@ fn test_golden_vectors_lstm_2x8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossLSTM-2x8");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "BossLSTM-2x8");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "BossLSTM-2x8",
         STRESS_SAMPLE_RATE,
     );
@@ -322,13 +329,15 @@ fn test_golden_vectors_wavenet_a1_standard() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a1_standard");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a1_standard");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "wavenet_a1_standard (Official)",
         STRESS_SAMPLE_RATE,
     );
@@ -361,13 +370,15 @@ fn test_golden_vectors_lstm_official() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "lstm (Official)");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "lstm (Official)");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "lstm (Official)",
         STRESS_SAMPLE_RATE,
     );
@@ -409,13 +420,15 @@ fn test_golden_vectors_wavenet_feather() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-feather");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "BossWN-feather");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "BossWN-feather",
         STRESS_SAMPLE_RATE,
     );
@@ -457,13 +470,15 @@ fn test_golden_vectors_wavenet_nano() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "BossWN-nano");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "BossWN-nano");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "BossWN-nano",
         STRESS_SAMPLE_RATE,
     );
@@ -516,13 +531,15 @@ fn test_golden_vectors_wavenet_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "EVH-5150-Lite");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "EVH-5150-Lite");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "EVH-5150-Lite",
         STRESS_SAMPLE_RATE,
     );
@@ -566,13 +583,15 @@ fn test_golden_vectors_wavenet_a2_full() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_full");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_full");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2-Full (CH=8) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -616,13 +635,15 @@ fn test_golden_vectors_wavenet_a2_lite() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_lite");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_lite");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2-Lite (CH=3) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -685,13 +706,15 @@ fn test_golden_vectors_container_a2_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&full_data, "wavenet_a2_full");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&full_data, "wavenet_a2_full");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "Container A2-Full (CH=8) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -754,13 +777,15 @@ fn test_golden_vectors_container_a2_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&lite_data, "wavenet_a2_lite");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&lite_data, "wavenet_a2_lite");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "Container A2-Lite (CH=3) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -808,7 +833,7 @@ fn test_golden_vectors_wavenet_a2_container() {
         let mut output = vec![0.0f32; input.len()];
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-        let (mse_limit, min_snr_db, max_esr) =
+        let (mse_limit, min_snr_db, max_esr, mrstft_max) =
             topology_thresholds(&container_data, "wavenet_a2_lite");
         report_dsp_fidelity(
             &expected,
@@ -816,6 +841,7 @@ fn test_golden_vectors_wavenet_a2_container() {
             mse_limit,
             min_snr_db,
             max_esr,
+            mrstft_max,
             "Container File A2-Lite (CH=3) C++ cross-reference",
             STRESS_SAMPLE_RATE,
         );
@@ -838,7 +864,7 @@ fn test_golden_vectors_wavenet_a2_container() {
         let mut output = vec![0.0f32; input.len()];
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-        let (mse_limit, min_snr_db, max_esr) =
+        let (mse_limit, min_snr_db, max_esr, mrstft_max) =
             topology_thresholds(&container_data, "wavenet_a2_full");
         report_dsp_fidelity(
             &expected,
@@ -846,6 +872,7 @@ fn test_golden_vectors_wavenet_a2_container() {
             mse_limit,
             min_snr_db,
             max_esr,
+            mrstft_max,
             "Container File A2-Full (CH=8) C++ cross-reference",
             STRESS_SAMPLE_RATE,
         );
@@ -887,13 +914,15 @@ fn test_golden_vectors_a2_example_slimmable() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "a2_example");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "a2_example");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "SlimmableContainer A2 Example (CH=3→6) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -967,7 +996,7 @@ fn test_golden_vectors_wavenet_condition_dsp() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) =
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_condition_dsp");
     report_dsp_fidelity(
         &expected,
@@ -975,6 +1004,7 @@ fn test_golden_vectors_wavenet_condition_dsp() {
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1021,13 +1051,15 @@ fn test_golden_vectors_wavenet_official() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_official");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_official");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet Official (CH=3, dynamic path) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1338,6 +1370,7 @@ fn test_poly_regression_gate_wavenet_standard() {
         POLY_MSE_MAX,
         POLY_SNR_MIN,
         Some(POLY_ESR_MAX),
+        None,
         "T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
@@ -1390,6 +1423,7 @@ fn test_poly_regression_gate_wavenet_a2_full() {
         POLY_A2_MSE_MAX,
         POLY_A2_SNR_MIN,
         Some(POLY_A2_ESR_MAX),
+        None,
         "T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
@@ -1448,13 +1482,15 @@ fn test_golden_vectors_a2_dynamic_gated_ch8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "a2_dynamic_gated_ch8");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "a2_dynamic_gated_ch8");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1501,7 +1537,7 @@ fn test_golden_vectors_a2_dynamic_blended_ch3() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) =
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "a2_dynamic_blended_ch3");
     report_dsp_fidelity(
         &expected,
@@ -1509,6 +1545,7 @@ fn test_golden_vectors_a2_dynamic_blended_ch3() {
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1558,13 +1595,15 @@ fn test_golden_vectors_wavenet_a2_film_lite() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_film_lite");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_film_lite");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1614,13 +1653,15 @@ fn test_golden_vectors_wavenet_a2_film_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_a2_film_full");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_film_full");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1676,13 +1717,15 @@ fn test_golden_vectors_wavenet_dyn_free() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "wavenet_dyn_free");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_dyn_free");
     report_dsp_fidelity_no_lufs(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1726,13 +1769,15 @@ fn test_golden_vectors_lstm_dyn_test() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "lstm_dyn_test");
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "lstm_dyn_test");
     report_dsp_fidelity(
         &expected,
         &output,
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         "LSTM-Dyn 1×7 (dynamic path) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
@@ -1820,7 +1865,8 @@ fn test_golden_vectors_convnet_test() {
         10.0 * (signal_power / noise_power).log10()
     };
 
-    let (mse_limit, min_snr_db, max_esr) = topology_thresholds(&model_data, "convnet_test");
+    let (mse_limit, min_snr_db, max_esr, _mrstft_max) =
+        topology_thresholds(&model_data, "convnet_test");
     let mse = noise_power;
 
     println!();
@@ -1858,4 +1904,76 @@ fn test_golden_vectors_convnet_test() {
             "ConvNet self-golden ESR={esr:.2e} exceeds threshold {esr_limit:.1e}"
         );
     }
+}
+
+/// Tarefa 3.1 (F-2): Synthetic MR-STFT regression — mild low-pass filter
+/// on model output must trigger the hard MR-STFT gate at 48 kHz.
+///
+/// A 1-pole low-pass at 2 kHz applied to the Rust output induces spectral
+/// divergence that the calibrated mrstft_max gate catches at native
+/// sample rate, proving the gate is not a placebo.
+#[test]
+fn test_mrstft_hard_gate_catches_regression() {
+    // Use WaveNet A1 Standard — always available golden fixture
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a1_standard.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a1_standard.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, _expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a1_standard.bin");
+
+    let nam_path = model_path("wavenet_a1_standard.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_a1_standard.nam not found at {nam_path:?}."
+    );
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A1 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet A1 for MR-STFT regression test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    // Synthetic degradation: mild low-pass filter (2 kHz cutoff)
+    // This should elevate MR-STFT above the calibrated threshold (0.05)
+    let degraded = nam_rs::testing::mushra::low_pass_1pole(&output, 2000.0, 48000);
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a1_standard");
+
+    // Verify MR-STFT is indeed elevated above the calibrated gate
+    let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(&output, &degraded);
+    assert!(
+        mr_stft > mrstft_max.unwrap(),
+        "MR-STFT regression test precondition: MR-STFT ({mr_stft:.4e}) must exceed \
+         calibrated threshold ({:.2e}) for the assert to be meaningful. \
+         Increase low-pass cutoff or use a stronger degradation.",
+        mrstft_max.unwrap(),
+    );
+
+    // This should panic because MR-STFT exceeds the hard gate at 48 kHz
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        report_dsp_fidelity(
+            &output,
+            &degraded,
+            mse_limit,
+            min_snr_db,
+            max_esr,
+            mrstft_max,
+            "T3.1: MR-STFT regression gate (synthetic)",
+            48000,
+        );
+    }));
+    assert!(
+        result.is_err(),
+        "MR-STFT hard gate did NOT catch the synthetic spectral regression. \
+         MR-STFT={mr_stft:.4e} should exceed calibrated threshold."
+    );
 }

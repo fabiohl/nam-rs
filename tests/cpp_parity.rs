@@ -328,7 +328,7 @@ fn run_render_comparison(
         }
     }
 
-    let (mut mse_limit, mut min_snr_db, mut max_esr) =
+    let (mut mse_limit, mut min_snr_db, mut max_esr, mrstft_max) =
         live_parity_thresholds(&model_data, golden_name);
     if use_v2 {
         if model_data.architecture == "LSTM" {
@@ -395,11 +395,11 @@ fn run_render_comparison(
     let rust_slice = &rust_output[..min_len];
     if check_lufs_gate {
         report_dsp_fidelity(
-            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, label, actual_sr,
+            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, mrstft_max, label, actual_sr,
         );
     } else {
         report_dsp_fidelity_no_lufs(
-            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, label, actual_sr,
+            cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, mrstft_max, label, actual_sr,
         );
     }
 

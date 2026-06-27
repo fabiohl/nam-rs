@@ -21,6 +21,7 @@ Use this skill for a general project review in search of improvements.
 * Correctness Auditor:
   * Assure feature parity with the [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore)reference implementation.
   * Inspect and diagnose correct compatibility and sound fidelity.
+  * Ensure that the suite of tests (`utils/`) uses most correct and strict practices possible. They're the "warrior" of the nam-rs quality.
 * Ace of bug hunting:
   * There is no bug that you cannot discover.
   * There is no attack vector (including dead code, functions unused in certain situations, etc.) that you cannot mitigate.

@@ -95,7 +95,7 @@ fn test_all_golden_models_have_calibrated_thresholds() {
                  Add an entry with // Measured: SNR=..., ESR=... and recalibrated floors."
             );
 
-            let (_mse, snr_db, esr_opt) = threshold.unwrap();
+            let (_mse, snr_db, esr_opt, _mrstft) = threshold.unwrap();
             // Reject fully-neutralized thresholds (SNR ≤ 0 and no ESR gate)
             if let Some(esr) = esr_opt {
                 assert!(
@@ -205,6 +205,10 @@ fn test_all_calibrated_entries_have_measurement_comments() {
 ///    The A2 Full/Lite models intentionally set `mse_limit = 1e30`
 ///    because their ESR gates are ultra-strict (≤ 8e-8), making
 ///    MSE redundant.
+/// 4. `mrstft_max ≥ 0.5` → MR-STFT gate is neutralized (never catches
+///    spectral regressions). MR-STFT is a relative metric bounded [0,1];
+///    a threshold ≥ 0.5 would allow severe spectral divergence.
+///    (Tarefa 3.1, F-2)
 ///
 /// ## Principle: "todo golden pode falhar"
 ///
@@ -237,7 +241,7 @@ fn test_all_thresholds_anti_placebo() {
                 "Model '{model_name}' has NO calibrated entry for anti-placebo check."
             );
 
-            let (mse_limit, snr_db, esr_opt) = threshold.unwrap();
+            let (mse_limit, snr_db, esr_opt, mrstft_opt) = threshold.unwrap();
 
             // Rule 1: SNR ≤ 0 → placebo, regardless of other gates.
             assert!(
@@ -266,6 +270,19 @@ fn test_all_thresholds_anti_placebo() {
                      A2 Full/Lite intentionally use mse_limit = 1e30 because \
                      their ESR gates are ultra-strict (≤ 8e-8). \
                      To bypass MSE, SNR must be ≥ 40 dB and ESR must be < 0.1."
+                );
+            }
+
+            // Rule 4 (Tarefa 3.1): MR-STFT ≥ 0.5 → placebo.
+            // MR-STFT is a relative metric bounded [0,1]; values approaching 1.0
+            // indicate spectral collapse. A gate with threshold ≥ 0.5 would never
+            // catch meaningful regressions.
+            if let Some(mrstft) = mrstft_opt {
+                assert!(
+                    mrstft < 0.5,
+                    "Model '{model_name}' has MR-STFT = {mrstft} ≥ 0.5 — \
+                     placebo gate (Tarefa 3.1). MR-STFT must be < 0.5 to catch \
+                     spectral regressions. Calibrate from real measurements."
                 );
             }
 

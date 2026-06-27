@@ -164,6 +164,7 @@ fn compare_golden_cpp(scenario: &CppScenario) {
         5e-2,
         10.0,
         Some(1e-3),
+        None,
         &format!("cabsim_{label}", label = scenario.label),
         48000,
     );

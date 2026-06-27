@@ -31,15 +31,10 @@ const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 /// - `mse_limit` — maximum allowed MSE threshold
 /// - `min_snr_db` — minimum SNR in dB that must be achieved
 /// - `max_esr`   — optional maximum ESR threshold for regression gating (default `None`)
+/// - `mrstft_max` — optional maximum MR-STFT gate; asserted as hard gate at
+///   44.1/48 kHz, informational at higher rates (Tarefa 3.1, F-2)
 /// - `label`     — label for identification in diagnostic messages
-/// - `sample_rate` — sample rate in Hz (used for LUFS and anchor SNR diagnostics)
-///
-/// # Gates
-/// - **MSE** — absolute error gate (fail if exceeded)
-/// - **SNR** — signal-to-noise ratio gate (fail if below minimum)
-/// - **ESR** — scale-invariant error gate (fail if exceeded; primary gate for A2)
-/// - **LUFS plausibility** — lightweight sanity gate on reference output (T4.3);
-///   fails if reference LUFS is outside `[{LUFS_PLAUSIBLE_MIN}, {LUFS_PLAUSIBLE_MAX}]`
+/// - `sample_rate` — sample rate in Hz (used for LUFS, MR-STFT gate severity, and anchor SNR diagnostics)
 ///
 /// # Output format
 /// ```text
@@ -50,17 +45,20 @@ const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 ///   PSNR    = 14.9 dB
 ///   Bits    = 2.5 bits equiv.
 ///   ESR     = 1.23e-05       (−49.1 dB)   (threshold < 1.0e-1)  ✓   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
-///   MR-STFT = 0.0042         (relative)
+///   MR-STFT = 0.0042         (relative)                      ✓   [hard gate ≤ 0.05 @ 44.1/48 kHz]
 ///   LUFS    = −23.4 LUFS    (reference)   [plausible: −50.0..+10.0]  ✓
+///   Fidelity Margin = 48.2 dB (target > 8.0 dB) ✓
 ///   Samples = 2048 @ 48 kHz (stress signal)
 /// ```
 #[track_caller]
+#[allow(clippy::too_many_arguments)]
 pub fn report_dsp_fidelity(
     reference: &[f32],
     test: &[f32],
     mse_limit: f64,
     min_snr_db: f64,
     max_esr: Option<f64>,
+    mrstft_max: Option<f64>,
     label: &str,
     sample_rate: u32,
 ) {
@@ -70,6 +68,7 @@ pub fn report_dsp_fidelity(
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         label,
         sample_rate,
         true,
@@ -82,12 +81,14 @@ pub fn report_dsp_fidelity(
 /// indicate a defect (e.g., IR convolution goldens where synthetic signal +
 /// IR can legitimately produce LUFS above +10).
 #[track_caller]
+#[allow(clippy::too_many_arguments)]
 pub fn report_dsp_fidelity_no_lufs(
     reference: &[f32],
     test: &[f32],
     mse_limit: f64,
     min_snr_db: f64,
     max_esr: Option<f64>,
+    mrstft_max: Option<f64>,
     label: &str,
     sample_rate: u32,
 ) {
@@ -97,6 +98,7 @@ pub fn report_dsp_fidelity_no_lufs(
         mse_limit,
         min_snr_db,
         max_esr,
+        mrstft_max,
         label,
         sample_rate,
         false,
@@ -111,6 +113,7 @@ fn report_dsp_fidelity_impl(
     mse_limit: f64,
     min_snr_db: f64,
     max_esr: Option<f64>,
+    mrstft_max: Option<f64>,
     label: &str,
     sample_rate: u32,
     check_lufs_gate: bool,
@@ -245,21 +248,32 @@ fn report_dsp_fidelity_impl(
         writeln!(buf, "  ESR     = ∞  (identical)").unwrap();
     }
 
-    // MR-STFT — T3.3 perceptual complement for difficult cases (soft gate, informational)
+    // MR-STFT — hard gate at 44.1/48 kHz (Tarefa 3.1, F-2), soft gate at higher rates
     let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(reference, test);
-    writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (relative)").unwrap();
-    const MRSTFT_SOFT_THRESHOLD: f64 = 0.15;
-    if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
+    let mrstft_hard = mrstft_max.is_some() && (sample_rate == 44100 || sample_rate == 48000);
+    if mrstft_hard {
+        let limit = mrstft_max.unwrap();
         writeln!(
             buf,
-            "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds conservative threshold {MRSTFT_SOFT_THRESHOLD:.2e}"
+            "  MR-STFT = {mr_stft:.4e}      (threshold < {limit:.2e})  {}   [hard gate @ {sample_rate} Hz]",
+            if mr_stft.is_finite() && mr_stft < limit { "✓" } else { "✗" },
         )
         .unwrap();
-        writeln!(
-            buf,
-            "     (T3.3 perceptual complement — informational, not a hard assertion)"
-        )
-        .unwrap();
+    } else {
+        writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (relative)").unwrap();
+        const MRSTFT_SOFT_THRESHOLD: f64 = 0.15;
+        if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
+            writeln!(
+                buf,
+                "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds conservative threshold {MRSTFT_SOFT_THRESHOLD:.2e}"
+            )
+            .unwrap();
+            writeln!(
+                buf,
+                "     (informational, not a hard assertion @ {sample_rate} Hz)"
+            )
+            .unwrap();
+        }
     }
 
     if lufs_test.is_finite() {
@@ -322,6 +336,15 @@ fn report_dsp_fidelity_impl(
         assert!(
             esr_linear < limit,
             "[{label}] ESR={esr_linear:.6e} exceeds threshold {limit:.1e} (ESR dB={esr_db:.1})"
+        );
+    }
+    // Tarefa 3.1 (F-2): MR-STFT hard gate at 44.1/48 kHz
+    if mrstft_hard {
+        let limit = mrstft_max.unwrap();
+        assert!(
+            mr_stft.is_finite() && mr_stft < limit,
+            "[{label}] MR-STFT={mr_stft:.4e} exceeds threshold {limit:.2e} @ {sample_rate} Hz \
+             (Tarefa 3.1 hard gate — spectral fidelity regression detected)"
         );
     }
     // T4.3 LUFS plausibility sanity gate — catch near-silence / implausible golden output.
@@ -406,7 +429,10 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 ///
 /// Every model with a committed golden `.bin` fixture MUST have an entry here.
 /// The meta-test `tests/threshold_calibration.rs` enforces this invariant.
-pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>)> {
+///
+/// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)`.
+/// `mrstft_max` is asserted as a hard gate at 44.1/48 kHz (Tarefa 3.1, F-2).
+pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>, Option<f64>)> {
     let base_name = if let Some(idx) = model_name.find("_v2_") {
         &model_name[..idx]
     } else {
@@ -416,30 +442,31 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // --- WaveNet Standard (CH=16) ---
         // Measured: SNR=134.6 dB (live v1), SNR=123.0 dB (v2 worst @ 88.2 kHz), ESR=4.99e-13
         // pós-nuke f32. Floor: SNR - 18 dB margin from v2 worst, ESR factor ~60x
+        // Tarefa 3.1: MR-STFT gate @ 44.1/48 kHz — mrstft_max calibrated conservatively
         "BossWN-standard" | "wavenet_standard" => {
             let snr_db = 105.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet Feather (CH=8) ---
         // Measured: SNR=133.1 dB (live v1), SNR=117.6 dB (v2 worst @ 192 kHz), ESR=1.74e-12
         // pós-nuke f32. Floor: SNR - 17 dB margin from v2 worst, ESR factor ~57x
         "BossWN-feather" | "wavenet_feather" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- WaveNet Nano (CH=4) ---
         // Measured: SNR=132.0 dB (live v1), SNR=114.6 dB (v2 worst @ 192 kHz), ESR=3.46e-12
         // pós-nuke f32. Floor: SNR - 19 dB margin from v2 worst, ESR factor ~87x
         "BossWN-nano" | "wavenet_nano" => {
             let snr_db = 95.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-10)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-10), Some(0.05)))
         }
         // --- WaveNet A1 Standard (Official) (CH=16) ---
         // Measured: SNR=123.4 dB (live v1), SNR=101.8 dB (v2 worst @ 192 kHz), ESR=6.62e-11
         // pós-nuke f32. Floor: SNR - 16 dB margin from v2 worst, ESR factor ~45x
         "wavenet_a1_standard" => {
             let snr_db = 85.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-9)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-9), Some(0.05)))
         }
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
         // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
@@ -448,7 +475,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Thresholds preserved from pre-fix calibration; now provide ~116 dB margin.
         "wavenet_official" => {
             let snr_db = 14.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.05)))
         }
         // --- LSTM 1x16 ---
         // T3.3 triage: (a) Inherent — LSTM recurrent state accumulates quantization error
@@ -456,9 +483,10 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // v2 relaxation formula (golden_vectors.rs:79-85) handles 96 kHz properly.
         // Measured: SNR=19.8 dB (v1 2048 samples), ESR=1.04e-2
         // v2: SNR=12.2 dB / ESR=6.1e-2 @ 96 kHz (recurrent drift). Margin: 7.8/0.2 dB (v1/v2).
+        // Tarefa 3.1: MR-STFT gate relaxed for LSTM (recurrent spectral drift is inherent)
         "BossLSTM-1x16" | "lstm_1x16" => {
             let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2)))
+            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2), Some(0.15)))
         }
         // --- LSTM 2x8 ---
         // T3.3 triage: (a) Inherent — same recurrent accumulation mechanism as LSTM 1x16.
@@ -467,35 +495,36 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz (recurrent drift). Margin: 7.7/0.4 dB (v1/v2).
         "BossLSTM-2x8" | "lstm_2x8" => {
             let snr_db = 18.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2)))
+            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2), Some(0.12)))
         }
         // --- LSTM Official (H=3) ---
         // Measured: SNR = 29.7 dB, ESR = 1.08e-3
+        // Tarefa 3.1: MR-STFT measured 1.84e-1 (recurrent spectral drift), gate at 2.2e-1 (19% margin)
         // Margin: SNR - 7.7 dB, ESR factor ~5.5x
         "lstm (Official)" | "lstm_official" => {
             let snr_db = 22.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3)))
+            Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3), Some(0.22)))
         }
         // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
         // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration).
         // Floor: SNR - 17.3 dB margin, ESR factor ~60x
         "EVH-5150-Lite" | "wavenet_lite" => {
             let snr_db = 105.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet A2 Full (CH=8) ---
         // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5)
         // Margin: SNR - 9.2 dB, ESR factor ~6.6x
         "wavenet_a2_full" => {
             let snr_db = 70.0;
-            Some((1e30, snr_db, Some(8.0e-8)))
+            Some((1e30, snr_db, Some(8.0e-8), Some(0.08)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
         // Measured: SNR = 90.7 dB, ESR = 8.58e-10 (realistic-amplitude fixture, T2.5)
         // Margin: SNR - 10.7 dB, ESR factor ~7.0x
         "wavenet_a2_lite" => {
             let snr_db = 80.0;
-            Some((1e30, snr_db, Some(6.0e-9)))
+            Some((1e30, snr_db, Some(6.0e-9), Some(0.08)))
         }
         // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
         // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel
@@ -504,7 +533,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 39.5 dB margin, ESR factor ~8800x
         "wavenet_condition_dsp" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- Nondist Models ---
         "APP-EVH-Stealth100-Dialled-xSTD"
@@ -517,7 +546,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         | "wavenet_boss_bd2"
         | "wavenet_slammin_marshall" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- WaveNet A2-FiLM-Lite (CH=3, FiLM active, RF1 🔴) ---
         // FiLM modulation adds per-frame conditioning (FiLM gamma/beta) that diverges
@@ -525,19 +554,21 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // natively; C++ a2_fast.cpp rejects FiLM and falls back to Eigen-based generic
         // WaveNet. The divergence is inherent — not an engine regression.
         // Measured: SNR=18.1 dB, ESR=1.54e-2 (2026-06-21)
+        // Tarefa 3.1: MR-STFT measured 4.97e-1 (FiLM vs generic), gate at 6.0e-1 (20% margin)
         // Margin: SNR - 6.1 dB, ESR factor ~1.3x
         "wavenet_a2_film_lite" => {
             let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2)))
+            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2), Some(0.60)))
         }
         // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
         // FiLM modulation on 8-channel A2 model. C++ routes to generic WaveNet
         // (Eigen), Rust routes to WaveNetA2Dyn with native FiLM support.
         // Measured: SNR=36.0 dB, ESR=2.50e-4 (2026-06-21)
+        // Tarefa 3.1: MR-STFT measured 4.65e-1 (FiLM vs generic), gate at 5.5e-1 (18% margin)
         // Margin: SNR - 6.0 dB, ESR factor ~2.0x
         "wavenet_a2_film_full" => {
             let snr_db = 30.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4)))
+            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4), Some(0.55)))
         }
         // --- WaveNet A2 Dynamic Gated CH=8 (Task 3.3) ---
         // Gating doubles conv output (channels × 2*bottleneck) and applies
@@ -547,7 +578,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 18.0 dB, ESR factor ~20x
         "a2_dynamic_gated_ch8" => {
             let snr_db = 85.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-9)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-9), Some(0.05)))
         }
         // --- WaveNet A2 Dynamic Blended CH=3 (Task 3.3) ---
         // Blending mixes main activation (LeakyReLU) with Tanh gate via linear
@@ -557,7 +588,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 23.0 dB, ESR factor ~20x
         "a2_dynamic_blended_ch3" => {
             let snr_db = 110.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12), Some(0.05)))
         }
         // --- WaveNetDyn Free-Shape (CH=7→4, Sprint B.2.2) ---
         // Free-geometry dynamic path, 2 arrays, Tanh activation, head_scale=0.02.
@@ -567,7 +598,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 34.2 dB, ESR factor ~26x
         "wavenet_dyn_free" => {
             let snr_db = 90.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(0.05)))
         }
         // --- LSTM-Dyn 1×7 (Sprint B.2.2) ---
         // Single-layer LSTM with hidden_size=7, non-catalog geometry routed to
@@ -577,7 +608,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 10.8 dB, ESR factor ~4x
         "lstm_dyn_test" => {
             let snr_db = 80.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-9)))
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-9), Some(0.08)))
         }
         // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
         // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
@@ -585,7 +616,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 11.5 dB, ESR factor ~1.1x
         "a2_example" => {
             let snr_db = 70.0;
-            Some((1e30, snr_db, Some(8.0e-9)))
+            Some((1e30, snr_db, Some(8.0e-9), Some(0.08)))
         }
         // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
         // Self-golden consistency test — no C++ golden available (NAM Core
@@ -594,7 +625,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // thresholds reflect expected perfect self-consistency.
         "convnet_test" => {
             let snr_db = 140.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10)))
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
         _ => None,
     }
@@ -605,12 +636,13 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
 /// For live cpp_parity cross-validation, use `live_parity_thresholds()`
 /// which applies tighter LSTM floors reflecting the 50–97 dB live SNR.
 ///
-/// Returns `(mse_limit, min_snr_db, max_esr)` — T16.4 adds relative
+/// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)` — T16.4 adds relative
 /// ESR gate as primary threshold (robust to scale mismatch).
+/// Tarefa 3.1: mrstft_max asserted as hard gate at 44.1/48 kHz (F-2).
 pub fn topology_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,
-) -> (f64, f64, Option<f64>) {
+) -> (f64, f64, Option<f64>, Option<f64>) {
     if let Some(thresholds) = get_calibrated_threshold(model_name) {
         return thresholds;
     }
@@ -623,7 +655,7 @@ pub fn topology_thresholds(
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
             let (mse, snr, esr) = wavenet_thresholds(channels as u32);
-            (mse, snr, esr)
+            (mse, snr, esr, None)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -632,10 +664,10 @@ pub fn topology_thresholds(
             let snr_db = (30.0 - complexity * 0.65).clamp(12.0, 30.0);
             let mse = snr_to_mse(snr_db);
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
-            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr))
+            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 140.0, Some(1e-10)),
-        _ => (5e-2, 9.0, Some(1e-3)),
+        "Linear" => (1e-10, 140.0, Some(1e-10), None),
+        _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }
 
@@ -647,11 +679,12 @@ pub fn topology_thresholds(
 ///
 /// T16.4: ESR gate added as primary threshold (robust to scale mismatch).
 ///
-/// Returns `(mse_limit, min_snr_db, max_esr)`.
+/// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)`.
+/// Tarefa 3.1: mrstft_max asserted as hard gate at 44.1/48 kHz (F-2).
 pub fn live_parity_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,
-) -> (f64, f64, Option<f64>) {
+) -> (f64, f64, Option<f64>, Option<f64>) {
     if let Some(thresholds) = get_calibrated_threshold(model_name) {
         return thresholds;
     }
@@ -664,7 +697,7 @@ pub fn live_parity_thresholds(
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
             let (mse, snr, esr) = wavenet_thresholds(channels as u32);
-            (mse, snr, esr)
+            (mse, snr, esr, None)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -673,9 +706,9 @@ pub fn live_parity_thresholds(
             let snr_db = (85.0 - complexity * 1.0).clamp(45.0, 75.0);
             let mse = snr_to_mse(snr_db);
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
-            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr))
+            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 140.0, Some(1e-10)),
-        _ => (5e-2, 9.0, Some(1e-3)),
+        "Linear" => (1e-10, 140.0, Some(1e-10), None),
+        _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }

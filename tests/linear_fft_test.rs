@@ -135,7 +135,16 @@ fn verify_against_oracle(label: &str, weights_forward: &[f32], bias: f32, input:
     // Use ESR as primary gate (scale-invariant, robust for FFT precision).
     // LUFS plausibility gate is disabled — IR convolution with large weights
     // legitimately produces output above +10 LUFS (same pattern as cabsim goldens).
-    report_dsp_fidelity_no_lufs(&reference, &output, 1e-6, 60.0, Some(1e-6), label, 48000);
+    report_dsp_fidelity_no_lufs(
+        &reference,
+        &output,
+        1e-6,
+        60.0,
+        Some(1e-6),
+        None,
+        label,
+        48000,
+    );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -339,7 +348,16 @@ fn verify_nam_file_against_oracle(nam_filename: &str, label: &str, input: &[f32]
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity_no_lufs(&reference, &output, 1e-6, 60.0, Some(1e-6), label, 48000);
+    report_dsp_fidelity_no_lufs(
+        &reference,
+        &output,
+        1e-6,
+        60.0,
+        Some(1e-6),
+        None,
+        label,
+        48000,
+    );
 }
 
 #[test]
@@ -523,10 +541,10 @@ fn run_fft_golden_bin_test(model_filename: &str, golden_filename: &str, label: &
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    let (mse_limit, min_snr_db, max_esr) =
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         common::validation::topology_thresholds(&model_data, model_filename);
     report_dsp_fidelity(
-        &expected, &output, mse_limit, min_snr_db, max_esr, label, 48000,
+        &expected, &output, mse_limit, min_snr_db, max_esr, mrstft_max, label, 48000,
     );
 }
 

@@ -373,7 +373,7 @@ próprias métricas** (mitigado pela validação contra referência externa).
 - **Critérios de Aceite:** docs coerentes com a implementação; cada métrica com fórmula + referência + arquivo.
 - **Risco:** Baixo.
 
-### Tarefa 2.9 [QA] Validação de lints e testes (E5)
+### Tarefa 2.9 [QA] Validação de lints e testes (E5) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-26)
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`
@@ -402,7 +402,7 @@ oráculo f64 e pela suíte espectral (S2).
 
 ---
 
-### Tarefa 3.1 [TEST] MR-STFT como gate hard calibrado @ 44.1/48 kHz ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 3.1 [TEST] MR-STFT como gate hard calibrado @ 44.1/48 kHz ([F-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[ ]` Não iniciada
 - **Arquivos Alvo:**
@@ -466,7 +466,7 @@ oráculo f64 e pela suíte espectral (S2).
 
 ---
 
-**Nota do PO:** Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3.
+**Nota do PO:** Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3. Avalie meticulosamente a perfeição do que foi feito aqui, se necessário propondo correções de rumo. Agora que a "Sprint S2" criou um sistema de checagem de precisão de altíssimo nível, veio-me uma questão. Agora temos uma referência super precisa em f64 (para o mais alto nível de precisão) e temos o NAMcore (que é com quem sempre seremos comparados e não podemos fugir disto). Mas também há outros testes autorreferenciados com escalares, etc. Não caberia uma simplificação do número de testes aqui para o que realmente interessa. Claro, quanto mais melhor! Porém, o que realmente agrega valor real e o que apenas um "deixa ai só precaução"?
 
 ---
 
