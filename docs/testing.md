@@ -174,3 +174,54 @@ To align test execution with developer workflows and integration schedules, the 
   - Sub-commands are chained using a custom tracking variable (`status=0; cmd1 || status=1; cmd2 || status=1; [ $status -eq 0 ]`) to capture failures without aborting the sequence early.
   - A beautiful audit summary table is compiled and printed at the end.
   - If any phase failed, the script exits with a non-zero code (`1`) at the very end.
+
+---
+
+## 7. Measurement & Perceptual Validation Framework
+
+The project includes a comprehensive measurement framework for audio fidelity
+assessment, documented in detail in [perceptual_validation.md](perceptual_validation.md).
+
+### Measurement Integration with the Test Suite
+
+| Test Target                 | Metrics Used                                           |
+|:--------------------------- |:------------------------------------------------------ |
+| **`cpp_parity`**            | ESR, SNR, PSNR, Fidelity Report (MSE, MAE, anchor SNR) |
+| **`golden_vectors`**        | ESR (per-model calibrated thresholds), MSE, SNR        |
+| **`isa_parity`**            | ESR cross-ISA budgets, self-consistency MSE=0          |
+| **`spectral_fidelity`**     | ASR, Farina FR+THD, THD+N (AES17), IMD (SMPTE)         |
+| **`reference_oracle_f64`**  | ESR (f64 vs f32, decomposition by error source)        |
+| **`threshold_calibration`** | Per-model ESR/SNR thresholds, Fidelity Margin          |
+
+### Key Concepts
+
+- **Two references:** Parity (C++ NAMCore f32) measures implementation agreement;
+  absolute (f64 Oracle) measures intrinsic quality loss from f32 approximations.
+- **ESR as primary gate:** Normalizes error by reference energy — invariant to
+  linear scale mismatch, unlike absolute MSE.
+- **ISA parity:** End-to-end cross-ISA determinism via `TEST_ISA_OVERRIDE`.
+  Self-consistency (same ISA) asserts bit-exact output; cross-ISA asserts ESR
+  within calibrated per-architecture budgets.
+- **Soft gates:** MR-STFT (<0.15) and ASR are informational/diagnostic only —
+  not hard CI assertions.
+- **RT-safety:** All metrics run off-RT. True-peak with 48-tap polyphase FIR
+  is QA/telemetry only. RT hot-path uses sample-peak only.
+
+### Running Measurement Tests
+
+```sh
+# Fast validation (ESR, SNR, PSNR — CI)
+cargo test --release --test cpp_parity --test golden_vectors
+
+# Spectral fidelity (ASR, Farina, THD+N, IMD)
+cargo test --release --test spectral_fidelity
+
+# ISA parity (AVX2 self-consistency, CI-safe)
+cargo test --release --test isa_parity -- --test-threads=1
+
+# Full ISA matrix (requires AVX-512 + VNNI-BF16 hardware)
+cargo test --release --test isa_parity -- --ignored --test-threads=1 --nocapture
+
+# f64 oracle decomposition
+cargo test --release --test reference_oracle_f64
+```

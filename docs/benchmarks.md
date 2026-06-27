@@ -321,6 +321,7 @@ cargo bench --bench inference_bench -- "Cabsim_MediumIR_2048_256"
 
 # Construction cost benchmarks
 cargo bench --bench inference_bench -- "Cabsim_Engine_Construction"
+``
 
 ## Investigação T13.2: Custo do Kahan por-tap no Conv1d [RESOLVIDO — Kahan removido]
 
@@ -368,27 +369,27 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
 
 | Config              | Static No-Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
 |:--------------------|---------------------:|------------------:|------:|
-| IN=8,  OUT=8,  K=3 | 1.09                 | 2.46              | 2.24× |
-| IN=8,  OUT=16, K=3 | 2.22                 | 4.16              | 1.87× |
-| IN=16, OUT=16, K=3 | 4.74                 | 6.46              | 1.36× |
-| IN=12, OUT=12, K=3 | 1.86                 | 4.06              | 2.18× |
+| IN=8,  OUT=8,  K=3  | 1.09                 | 2.46              | 2.24× |
+| IN=8,  OUT=16, K=3  | 2.22                 | 4.16              | 1.87× |
+| IN=16, OUT=16, K=3  | 4.74                 | 6.46              | 1.36× |
+| IN=12, OUT=12, K=3  | 1.86                 | 4.06              | 2.18× |
 
 ### Análise numérica
 
 **Para K = 3 taps com f32 (ε ≈ 1.19×10⁻⁷):**
 
-- Erro worst-case por canal: 3 × ε ≈ 3.6×10⁻⁷ absoluto
-- Em dBFS (sinal de magnitude 1.0): 20×log₁₀(3.6×10⁻⁷) ≈ **−129 dB**
-- Limiar de percepção humana: ~0.1 dB a −80 dBFS
-- Ruído de quantização 16-bit: −96 dBFS
-- **Conclusão:** O erro de soma simples para K=3 está 33 dB abaixo do ruído de 16-bit
+* Erro worst-case por canal: 3 × ε ≈ 3.6×10⁻⁷ absoluto
+* Em dBFS (sinal de magnitude 1.0): 20×log₁₀(3.6×10⁻⁷) ≈ **−129 dB**
+* Limiar de percepção humana: ~0.1 dB a −80 dBFS
+* Ruído de quantização 16-bit: −96 dBFS
+* **Conclusão:** O erro de soma simples para K=3 está 33 dB abaixo do ruído de 16-bit
   e 49 dB abaixo do limiar perceptivo.
 
 **Cadeia completa de 10 camadas WaveNet A1 (IN=16, K=3, 300 adições sequenciais):**
 
-- Erro worst-case sem Kahan: 300 × ε ≈ 3.6×10⁻⁵
-- Em dBFS: 20×log₁₀(3.6×10⁻⁵) ≈ **−89 dB**
-- **Ainda abaixo do ruído de 16-bit (−96 dB)**, mas com margem reduzida (7 dB).
+* Erro worst-case sem Kahan: 300 × ε ≈ 3.6×10⁻⁵
+* Em dBFS: 20×log₁₀(3.6×10⁻⁵) ≈ **−89 dB**
+* **Ainda abaixo do ruído de 16-bit (−96 dB)**, mas com margem reduzida (7 dB).
 
 > [!NOTE]
 > O worst-case acima assume acumulação monotônica (todos os termos com mesmo sinal),
@@ -409,10 +410,10 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
    (K ≤ 3 taps)" como caso de não-uso.
 
 A remoção foi aplicada em T18.4 (2026-06-13):
-- `src/models/wavenet/conv1d.rs`: `kahan_add` → `+=`, compensação removida
-- `src/models/wavenet/conv1d_dual.rs`: idem
-- `src/models/wavenet/conv_input.rs`: `store_kahan_4_accums` renomeada para `store_4_accums`
-- Goldens mantidos verdes.
+* `src/models/wavenet/conv1d.rs`: `kahan_add` → `+=`, compensação removida
+* `src/models/wavenet/conv1d_dual.rs`: idem
+* `src/models/wavenet/conv_input.rs`: `store_kahan_4_accums` renomeada para `store_4_accums`
+* Goldens mantidos verdes.
 
 ### Como executar o benchmark
 

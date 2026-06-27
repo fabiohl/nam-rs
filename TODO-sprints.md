@@ -361,9 +361,9 @@ próprias métricas** (mitigado pela validação contra referência externa).
 - **Critérios de Aceite:** 8/8 testes não-ignorados passam em debug (MSE=0 bit-exato). CI cobre ≥ AVX2 self-consistency em todos os 7 modelos. AVX-512 e VNNI-bf16 condicionais (`#[ignore]` + skip_if_unsupported via `is_x86_feature_detected!`). `cargo check` + `cargo clippy --tests` zero warnings.
 - **Nota P-4/P-8:** O piso de erro SIMD-vs-scalar permanece coberto pelos testes unitários de kernel (`gemv_test.rs`, `dot_4x/8x/16x_test.rs`, `proptest_math.rs`). A matriz cross-ISA cobre o piso SIMD-vs-SIMD (AVX2→AVX-512, AVX2→VNNI-bf16) no nível de modelo ponta-a-ponta. A implementação de um `ScalarMath` completo (via `InstructionSet::Scalar` + trait `SimdMath`) permanece como trabalho futuro — o orçamento de ~80 métodos torna a tarefa O(~5 dias) e excede o escopo desta sprint.
 
-### Tarefa 2.8 [DOC] Documentar o framework de medição (documentador)
+### Tarefa 2.8 [DOC] Documentar o framework de medição (documentador) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-26)
 - **Arquivos Alvo:**
   - [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
   - [`docs/testing.md`](file:///home/fabio/nam-rs/docs/testing.md)
@@ -457,6 +457,10 @@ oráculo f64 e pela suíte espectral (S2).
   confirmar que os novos gates não reprovam falsamente os modelos legítimos.
 - **Critérios de Aceite:** zero warnings; paridade verde com os novos gates.
 - **Risco:** Baixo.
+
+---
+
+**Nota do PO:** Aqui é um momento oportuno de avaliação e correção de rota do que foi feito até o Sprint S3.
 
 ---
 
