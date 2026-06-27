@@ -267,3 +267,85 @@ fn test_summary_table() {
     }
     println!("{}", "-".repeat(72));
 }
+
+// ── T3.3 RCA diagnostic: recurrent state drift ───────────────────────────────
+
+#[test]
+#[ignore]
+fn t33_diagnostic_recurrent_drift_lstm_1x16() {
+    use nam_rs::testing::perceptual::compute_esr;
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let path = models_dir().join("BossLSTM-1x16.nam");
+    let md = load_and_parse(&path);
+
+    let sample_rate = 48000;
+    let stress_signal = generate_stress_signal_v2_default(sample_rate);
+
+    let mut output: Vec<f32> = vec![0.0f32; stress_signal.len()];
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    model.prewarm(24_000);
+    let mut pos = 0;
+    while pos < stress_signal.len() {
+        let nf = (stress_signal.len() - pos).min(64);
+        model.process(&stress_signal[pos..pos + nf], &mut output[pos..pos + nf]);
+        pos += nf;
+    }
+
+    let input_f64: Vec<f64> = stress_signal.iter().map(|&x| x as f64).collect();
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let oracle_f32: Vec<f32> = oracle.iter().map(|&x| x as f32).collect();
+
+    // NAMCore golden comparison skipped here — already handled in cpp_parity.
+    // Golden files available at: {models_dir}/../../fixtures/golden_lstm_1x16_v2_48000.bin
+
+    let segment_sizes = &[
+        512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 120000, 240000,
+    ];
+
+    println!("\n=== T3.3 — Recurrent State Drift Analysis ===");
+    println!("Model:   BossLSTM-1×16");
+    println!("Signal:  v2 stress, 5s @ 48 kHz (240k samples)");
+    println!("Baseline A1-Std ESR: 6.23e-3");
+    println!(
+        "{:<12} {:<18} {:<12} {:<18}",
+        "Samples", "ESR(vs oracle)", "ESR dB", "Time (ms)"
+    );
+    println!("{}", "-".repeat(60));
+
+    for &n_samples in segment_sizes.iter() {
+        let n = n_samples.min(stress_signal.len());
+
+        let mut segment_out = vec![0.0f32; n];
+        let mut model_fresh =
+            nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+        model_fresh.prewarm(24_000);
+        let mut pos = 0;
+        while pos < n {
+            let nf = (n - pos).min(64);
+            model_fresh.process(
+                &stress_signal[pos..pos + nf],
+                &mut segment_out[pos..pos + nf],
+            );
+            pos += nf;
+        }
+
+        let esr_vs_oracle = compute_esr(&oracle_f32[..n], &segment_out[..n]);
+        let time_ms = n as f64 / 48.0; // ms
+        println!(
+            "{:<12} {:<18.6e} {:<12.1} {:<18.1}",
+            n,
+            esr_vs_oracle,
+            10.0 * esr_vs_oracle.log10(),
+            time_ms
+        );
+    }
+
+    // Final comparison: full output vs oracle
+    let esr_full = compute_esr(&oracle_f32, &output);
+    println!(
+        "\nFull 240k: ESR={:.6e} ({:.1} dB)",
+        esr_full,
+        10.0 * esr_full.log10()
+    );
+}

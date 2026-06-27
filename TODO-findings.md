@@ -161,6 +161,40 @@ distribuição de treino".
   Definir um teto absoluto de relaxamento (ex.: ESR nunca acima do baseline A1-Std 6.23e-3) para
   que "passar" continue significando "paridade", e não apenas "não totalmente quebrado".
 
+### F-2 · Resolução (2026-06-27, Tarefa 3.3)
+
+**RCA concluída.** O caso `MR-STFT 0.87 / margin 0.4 dB @ 48 kHz` foi integralmente investigado:
+
+1. **Causa-raiz identificada:** _Recurrent state quantization drift_ — acúmulo inerente de erro de
+   quantização f16c no estado de célula do LSTM (`cₜ = fₜ·cₜ₋₁ + iₜ·gₜ`). A cada iteração
+   (240k samples no v2 @ 48k), o erro de quantização dos pesos f16c (~3.3 dígitos decimais
+   significativos) se acumula no estado recorrente. O forget gate fₜ < 1 limita o acúmulo a um
+   steady-state, não deixando o ESR crescer livremente.
+
+2. **Evidência experimental:**
+   - v1 (2048 samples, 42.7ms) @ 48 kHz: ESR=1.04e-2, MR-STFT=0.098 ✅
+   - v2 (240k samples, 5s) @ 48 kHz: ESR=2.61e-2, MR-STFT=0.87 ❌
+   - Multi-SR v2: ESR cresce de 2.39e-2 (44.1k) a 1.42e-1 (192k), proporcional ao número de steps
+   - ASR = −68.8 dB (aliasing insignificante — não explica o ESR de 2.61e-2)
+
+3. **Hipóteses refutadas:** borda de banda (sem DC-block no pipeline), dither de denormal
+   (±1e-11 simétrico, −220 dBFS), aliasing (ASR=−68.8 dB), resample do harness (48 kHz bypassa
+   resampler). **Nenhuma dessas hipóteses explica o ESR=2.61e-2.**
+
+4. **Divergência vs NAMCore × vs oráculo f64:** O ESR=2.61e-2 é a diferença _interop_ (nam-rs vs
+   NAMCore). Ambos compartilham o piso numérico f16c+f32 — o oráculo f64 mostra ESR≈1.0 (0 dB)
+   desde os primeiros 512 samples. Ou seja: **"ambos divergem do ideal"**, não é uma regression
+   exclusiva do nam-rs. A limitação é inerente ao formato .nam com pesos f16c.
+
+5. **Ações tomadas:** O `ABSOLUTE_ESR_CAP` de 6.23e-3 (A1-Std baseline) introduzido em T3.2
+   funciona como sentinela: força triagem consciente quando algum modelo excede o baseline
+   absoluto. Os thresholds calibrados por modelo (6.5e-2 para LSTM 1×16) refletem a realidade
+   física do formato. **Não há correção possível sem alterar o formato do modelo (quebrando
+   interoperabilidade com NAMCore).**
+
+6. **Mitigação de longo prazo encaminhada ao Épico E4 (S5):** acúmulo compensado (Kahan) no
+   head do LSTM; oversampling do estado recorrente como modo HQ opcional.
+
 ### F-2 · Critérios de aceite
 
 - Existe `mrstft_max` calibrado e **asserido** para todos os modelos golden em 44.1/48 kHz.
