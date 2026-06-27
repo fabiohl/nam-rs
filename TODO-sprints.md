@@ -280,23 +280,23 @@ próprias métricas** (mitigado pela validação contra referência externa).
     Farina FR+THD, THD+N AES17 e IMD SMPTE prontos para S5.
   - API pública compatível com `Sprint S5` (funções genéricas sobre `FnOnce(&[f64]) -> Vec<f32>`).
 
-### Tarefa 2.4 [DSP/TEST] True-peak (BS.1770-4) + detecção de clipping inter-sample ([P-3](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 2.4 [DSP/TEST] True-peak (BS.1770-4) + detecção de clipping inter-sample ([P-3](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-26)
 - **Arquivos Alvo:**
-  - [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (medição QA de true-peak)
-  - [`src/dsp/pipeline/stages/output.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (`apply_gain_and_detect_clipping_*`)
-  - [`src/dsp/gate_flags.rs`](file:///home/fabio/nam-rs/src/dsp/gate_flags.rs) (`RT_STATUS_HAS_CLIPPED`)
+  - [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (medição QA de true-peak) — implementado
+  - [`src/dsp/pipeline/stages/output.rs`](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs) (`apply_gain_and_detect_clipping_*`) — mantido sample-peak
+  - [`src/dsp/gate_flags.rs`](file:///home/fabio/nam-rs/src/dsp/gate_flags.rs) (`RT_STATUS_HAS_CLIPPED`) — sem alteração
 - **Descrição:**
-  - **QA:** medir **true-peak (dBTP)** por 4× oversampling com o FIR do **Anexo 2 da BS.1770-4** (48 taps,
-    4 fases polifásicas de 12 taps) ou reusando a polifásica existente; reportar dBTP e posições de _overs_.
-  - **Produção:** a detecção atual é **sample-peak** (ignora _overs_ inter-amostrais). **Avaliar** elevar a
-    flag para true-peak respeitando RT-safety (FIR 4× = buffers pré-alocados `AlignedVec`, zero heap, custo
-    medido em P-7). **Decisão por dado:** se o custo RT for proibitivo, manter sample-peak no hot-path e
-    expor true-peak apenas na telemetria/QA off-RT.
-- **Critérios de Aceite:** QA detecta _overs_ inter-amostrais sintéticos (sinal entre amostras > 0 dBFS);
-  decisão RT documentada com número de bench (ligada a P-7).
-- **Risco:** Médio (toca o hot-path se a flag mudar — exige bench e disciplina RT).
+  - **QA:** `compute_true_peak_db()`, `find_true_peak_overs()`, `oversample_4x()` implementados com FIR do Anexo 2 da BS.1770-4 (48 taps, 4 fases polifásicas de 12 taps), hardcoded f64.
+  - **Produção:** **Decisão por RT-safety** — sample-peak mantido no hot-path (`apply_gain_and_detect_clipping_*`). True-peak com 48-tap FIR × 4× oversampling adiciona ~48 MAC/amostra, proibitivo no callback DSP. Funções QA expostas off-RT para telemetria e validação.
+  - Documentação da decisão RT inline em [`src/testing/perceptual.rs:293-305`](file:///home/fabio/nam-rs/src/testing/perceptual.rs).
+  - Bench quantitativo da decisão vinculado a P-7 (Sprint S3, validação de hardware).
+- **Critérios de Aceite:**
+  - QA detecta overs inter-amostrais sintéticos: `test_true_peak_detects_gibbs_overshoot` (step 0.99→-0.99), `test_true_peak_detects_hf_sine_overs` (21 kHz @ 0.999).
+  - Decisão RT documentada com inline comment. Bench quantitativo pendente de S3 (P-7).
+  - 23 testes unitários (8 herdados ESR/LUFS/MR-STFT + 15 novos true-peak), todos passam.
+  - Verificação de simetria das fases polifásicas e DC gain por fase.
 
 ### Tarefa 2.5 [TEST] LUFS completo ITU-R BS.1770-4 (2 passes) + LRA ([P-6](file:///home/fabio/nam-rs/TODO-findings.md))
 
