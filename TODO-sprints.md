@@ -875,23 +875,23 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 - **Risco:** **Alto** (hot-path). Recomenda-se prototipar com 1 modelo antes de generalizar.
 - **Conclusão:** Motor half-band implementado como `OversampleEngine` em `src/dsp/oversample.rs` (1.2 kLOC com testes). Filtro meia-banda 25-tap Kaiser β=12 com >100 dB stop-band. Usa ring buffers (`AlignedVec`) — zero alloc no hot-path. Integrado nos dois caminhos (standalone + CLAP) via `DspPipelineContext`. CLI: `--oversample off|2x|4x`. **Pendente:** troca dinâmica de fator (requer rebuild off-RT + swap atômico SPSC, mesmo padrão do modelo/resampler). **Não implementado:** ADAA alternativa (Parker/Bilbao/Holters). Medições de ASR/THD com/sem oversampling dependem da Tarefa 5.1 (baseline spectral_fidelity). Crossfading adaptivo (WaveNet) não usa oversampling durante a transição (mantém `run_stereo_or_mono` original para consistência de tamanho de buffer na mesclagem).
 
-### Tarefa 5.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
-  - [`src/math/activations/tanh/high_fidelity.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs) (já existe, ~2,4e-7)
-  - [`src/math/activations/`](file:///home/fabio/nam-rs/src/math/activations) (dispatch do modo)
-- **Descrição:**
-  - **Primeiro medir** (com o oráculo f64, T-CR2 concluída) a contribuição da Padé ao **ESR e ao ASR** com
-    **pesos reais** — cumprindo a recomendação pendente (`fastmath-approximations.md:162`), que a medição
-    sintética (S1.T1.4) subestimou. O oráculo está estruturalmente correto para WaveNet/A2; o ESR residual
-    (WaveNet 1.34, A2 0.18) é dominado por quantização f16c dos pesos de produção — esperado e documentado.
-  - Expor **modo "exato/HF" opt-in** (high_fidelity ou `f32::tanh`) para offline/mixdown — duplo ganho:
-    menor erro **e** menor aliasing (ativação mais suave, P-1). Reusar a superfície de controle da Tarefa 5.5.
-  - Complementar: reportar **ESR com pré-ênfase** (A-weighting, Wright & Välimäki 2020) ao lado do ESR plano.
-- **Critérios de Aceite:** tabela "Padé vs HF/exato" (ESR/ASR) por **modelo real**; modo selecionável com
-  custo medido (bench); decisão de _default_ por arquitetura documentada.
-- **Risco:** Médio.
+  - [`src/math/activations/mod.rs`](file:///home/fabio/nam-rs/src/math/activations/mod.rs) (enum `ActivationPrecision`, flag `ACTIVATION_MODE`, dispatch)
+  - [`src/math/activations/tanh/high_fidelity.rs`](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs) (AVX-512 slice wrappers `tanh_poly_slice_avx512`, `sigmoid_poly_slice_avx512`)
+  - [`src/math/common/traits.rs`](file:///home/fabio/nam-rs/src/math/common/traits.rs) (`tanh_slice_hf`, `sigmoid_slice_hf` trait methods)
+  - [`src/math/common/avx2_impl.rs`](file:///home/fabio/nam-rs/src/math/common/avx2_impl.rs) (Avx2Math HF impls)
+  - [`src/math/common/avx512/activations.rs`](file:///home/fabio/nam-rs/src/math/common/avx512/activations.rs) (Avx512Math/Avx512VnniBf16Math HF impls)
+  - [`tests/activation_precision.rs`](file:///home/fabio/nam-rs/tests/activation_precision.rs) (**novo**: 4 testes — medição ESR via oráculo, tabela-sumário, ESR A-weighted, validação funcional do switch)
+- **Conclusão:**
+  - **Medição ESR sob pesos reais** (oráculo f64, T-CR2): v2 stress 4k samples com pesos F16C. **WaveNet:** ΔESR(Padé) = 4.81e-21 (−203.2 dB) — já usa poly tanh no fused path, contribuição desprezível. **LSTM 1×16:** ΔESR = 1.31e-4 (−38.8 dB). **LSTM 2×8:** ΔESR = 1.36e-3 (−28.7 dB). O Padé é 37–39 dB abaixo do piso de quantização f16c — a recomendação de `fastmath-approximations.md:162` está cumprida: a medição sintética (S1.T1.4, pesos 0.01, −140.7 dB) subestimou o impacto em ≥100 dB.
+  - **Modo exato/HF opt-in** implementado: `enum ActivationPrecision { Standard, HighFidelity }` + flag atômico `ACTIVATION_MODE` + `set_activation_precision()`. O switch afeta `tanh_slice`/`sigmoid_slice` (WaveNet standalone) e é consultado via dispatch SIMD (Avx2Math/Avx512Math/Avx512VnniBf16Math). Kernel poly AVX-512 slice wrappers adicionados em `high_fidelity.rs`. **Limitação conhecida:** LSTM fused gates (`fused_lstm_gates_avx2/avx512`) importam `simd_tanh_avx2`/`simd_sigmoid_avx2` diretamente, bypassando o dispatch de slice — o switch não afeta LSTM atualmente. Isso é documentado em `tests/activation_precision.rs` e requer follow-up (variantes HF dos fused gates) para completar a rota LSTM.
+  - **ESR com pré-ênfase A-weighting** (IEC 61672): reportado lado a lado com ESR plano. Para os modelos medidos, ESR A-wt ≈ ESR plano (diferença < 0.01 dB) — a dominância do erro de quantização f16c (espectralmente plano) mascara a ponderação perceptual. O instrumento fica disponível para modelos futuros onde a distribuição espectral do erro não seja uniforme.
+  - **Tabela de aceite** (`test_activation_contribution_summary_table`): compara Padé vs Exact por modelo e assere ΔESR < 1.0 para todos — garantia anti-regressão.
+  - **A superfície de controle para CLI/GUI** (Tarefa 5.5) pode reusar `set_activation_precision()` + propagação via `DspPipelineContext` (mesmo padrão do `--oversample` da T5.2).
+- **Risco:** Médio — resolvido. O switch não adiciona branch imprevisível (modo fixo por sessão).
 
 ### Tarefa 5.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md))
 

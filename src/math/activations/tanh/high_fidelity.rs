@@ -495,6 +495,52 @@ pub unsafe fn simd_tanh_poly_nr2_avx512(x: __m512) -> __m512 {
     _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
 }
 
+/// Applies polynomial Tanh activation to a slice of f32 using AVX-512.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn tanh_poly_slice_avx512(slice: &mut [f32]) {
+    let mut i = 0;
+    let len = slice.len();
+
+    unsafe {
+        crate::activation_simd_avx512!(i, len, {
+            let x = _mm512_loadu_ps(slice.as_ptr().add(i));
+            let y = simd_tanh_poly_avx512(x);
+            _mm512_storeu_ps(slice.as_mut_ptr().add(i), y);
+        });
+    }
+
+    for item in slice.iter_mut().skip(i) {
+        *item = scalar_tanh_poly(*item);
+    }
+}
+
+/// Applies polynomial Sigmoid activation to a slice of f32 using AVX-512.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn sigmoid_poly_slice_avx512(slice: &mut [f32]) {
+    let mut i = 0;
+    let len = slice.len();
+
+    unsafe {
+        crate::activation_simd_avx512!(i, len, {
+            let x = _mm512_loadu_ps(slice.as_ptr().add(i));
+            let y = simd_sigmoid_poly_avx512(x);
+            _mm512_storeu_ps(slice.as_mut_ptr().add(i), y);
+        });
+    }
+
+    for item in slice.iter_mut().skip(i) {
+        *item = scalar_sigmoid_poly(*item);
+    }
+}
+
 #[cfg(test)]
 #[path = "high_fidelity_test.rs"]
 mod high_fidelity_test;

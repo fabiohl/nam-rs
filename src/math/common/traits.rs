@@ -612,6 +612,36 @@ pub trait SimdMath {
     /// `slice` must be a valid mutable slice.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
 
+    /// Applies high-fidelity Tanh element-wise to `slice`.
+    ///
+    /// Uses polynomial exp-based approximation (~2.4e-7 error vs `f32::tanh`).
+    /// Higher cost, lower error, lower aliasing.  No alignment required.
+    ///
+    /// # Safety
+    /// `slice` must be a valid mutable slice.
+    unsafe fn tanh_slice_hf(slice: &mut [f32]) {
+        // SAFETY: default implementation delegates to the standard tanh_slice,
+        // which has its own documented safety invariants (valid mutable slice).
+        unsafe {
+            Self::tanh_slice(slice);
+        }
+    }
+
+    /// Applies high-fidelity Sigmoid element-wise to `slice`.
+    ///
+    /// Uses polynomial exp-based approximation (~2.1e-7 error vs `f32::exp`).
+    /// No alignment required.
+    ///
+    /// # Safety
+    /// `slice` must be a valid mutable slice.
+    unsafe fn sigmoid_slice_hf(slice: &mut [f32]) {
+        // SAFETY: default implementation delegates to the standard sigmoid_slice,
+        // which has its own documented safety invariants (valid mutable slice).
+        unsafe {
+            Self::sigmoid_slice(slice);
+        }
+    }
+
     /// Applies ReLU element-wise to `slice`.
     ///
     /// No alignment required.

@@ -94,6 +94,18 @@ macro_rules! impl_avx512_activations {
         }
 
         #[inline(always)]
+        // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512F+VL (verified by dispatch).
+        unsafe fn tanh_slice_hf(slice: &mut [f32]) {
+            crate::math::activations::tanh::high_fidelity::tanh_poly_slice_avx512(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512F+VL (verified by dispatch).
+        unsafe fn sigmoid_slice_hf(slice: &mut [f32]) {
+            crate::math::activations::tanh::high_fidelity::sigmoid_poly_slice_avx512(slice)
+        }
+
+        #[inline(always)]
         // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512F (verified by dispatch).
         unsafe fn relu_slice(slice: &mut [f32]) {
             crate::math::activations::relu_slice_avx512(slice)
@@ -245,6 +257,18 @@ macro_rules! impl_avx512vnni_bf16_activations {
         // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512 VNNI+BF16.
         unsafe fn sigmoid_slice(slice: &mut [f32]) {
             Avx512Math::sigmoid_slice(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512 VNNI+BF16.
+        unsafe fn tanh_slice_hf(slice: &mut [f32]) {
+            Avx512Math::tanh_slice_hf(slice)
+        }
+
+        #[inline(always)]
+        // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512 VNNI+BF16.
+        unsafe fn sigmoid_slice_hf(slice: &mut [f32]) {
+            Avx512Math::sigmoid_slice_hf(slice)
         }
 
         #[inline(always)]
