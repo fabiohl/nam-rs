@@ -10,7 +10,7 @@ use std::fmt::Write;
 /// block even under `--test-threads > 1` (F-1, Tarefa 1.2).
 static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Plausible LUFS range for golden reference output (lightweight sanity gate).
+/// Plausible LUFS range for golden reference output (sanity gate — BS.1770-4 2-pass, T2.5).
 ///
 /// Guitar/amp model output at typical stress-signal levels falls between −35 and 0 LUFS.
 /// The lower bound of −50 LUFS is intentionally generous — it only catches egregious
@@ -18,7 +18,10 @@ static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// The upper bound of +10 LUFS guards against output saturation/clipping that would also
 /// indicate a defective golden.
 ///
-/// Part of T4.3: metrics perceptuais como guard-rail.
+/// Backed by BS.1770-4 full 2-pass gating (absolute −70 LUFS → relative −10 LU) as of T2.5,
+/// providing accurate integrated LUFS for the plausibility assert.
+///
+/// Part of T4.2 / T4.3: metrics perceptuais como guard-rail.
 const LUFS_PLAUSIBLE_MIN: f64 = -50.0;
 const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 
@@ -47,6 +50,7 @@ const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 ///   ESR     = 1.23e-05       (−49.1 dB)   (threshold < 1.0e-1)  ✓   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
 ///   MR-STFT = 0.0042         (relative)                      ✓   [hard gate ≤ 0.05 @ 44.1/48 kHz]
 ///   LUFS    = −23.4 LUFS    (reference)   [plausible: −50.0..+10.0]  ✓
+///   LUFS    = −65.0 LUFS    (reference)   [plausible: −50.0..+10.0]  ⓘ informational (gate opt-out — expected)
 ///   Fidelity Margin = 48.2 dB (target > 8.0 dB) ✓
 ///   Samples = 2048 @ 48 kHz (stress signal)
 /// ```
@@ -77,9 +81,16 @@ pub fn report_dsp_fidelity(
 
 /// Like [`report_dsp_fidelity`] but skips the LUFS plausibility gate.
 ///
-/// Use when the reference signal is known to have high amplitude that doesn't
-/// indicate a defect (e.g., IR convolution goldens where synthetic signal +
-/// IR can legitimately produce LUFS above +10).
+/// Use when the reference signal has LUFS outside the plausible range for
+/// legitimate reasons, not indicating a defect:
+/// - IR convolution goldens (synthetic signal + IR can legitimately produce
+///   LUFS above +10 or below −50)
+/// - Dynamic/free-shape models with low head_scale (e.g., WaveNetDyn
+///   Free-Shape at ~−65 LUFS, LSTM-Dyn at ~−55 LUFS)
+///
+/// With BS.1770-4 full LUFS (T2.5), the measurement is accurate — these
+/// are genuine opt-outs for models whose output loudness is inherently
+/// outside the [−50, +10] range, not a workaround for measurement error.
 #[track_caller]
 #[allow(clippy::too_many_arguments)]
 pub fn report_dsp_fidelity_no_lufs(
@@ -288,8 +299,10 @@ fn report_dsp_fidelity_impl(
                 "{dbtp_str}  LUFS    = {lufs_ref:.1} LUFS    (reference)   [plausible: {LUFS_PLAUSIBLE_MIN:.0}..{LUFS_PLAUSIBLE_MAX:.0}]  {}",
                 if lufs_plausible {
                     "✓"
-                } else {
+                } else if check_lufs_gate {
                     "✗ — GOLDEN DEFECT (T2.5 lesson)"
+                } else {
+                    "ⓘ informational (gate opt-out — expected)"
                 }
             )
             .unwrap();
@@ -361,7 +374,8 @@ fn report_dsp_fidelity_impl(
         eprintln!(
             "  ⓘ  LUFS gate skipped for [{label}]: reference LUFS={lufs_ref:.1} \
              outside [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}] — \
-             expected for IR convolution goldens"
+             expected for IR convolution / dynamic free-shape goldens \
+             (gate opt-out, Tarefa 4.2)"
         );
     }
 }

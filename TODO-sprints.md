@@ -716,7 +716,7 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 
 ---
 
-### Tarefa 4.1 [TEST] Subconjunto de paridade hard @ 48 kHz no loop rápido ([F-3](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 4.1 [TEST] Subconjunto de paridade hard @ 48 kHz no loop rápido ([F-3](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
@@ -742,7 +742,7 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 
 ### Tarefa 4.2 [TEST] Reduzir ruído cosmético "GOLDEN DEFECT" e reavaliar o gate ([D-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (≈ 234, 268-282)
 - **Descrição:**
   - Quando `check_lufs_gate=false` (goldens de convolução-IR — comportamento **legítimo**), exibir `ⓘ`
@@ -752,6 +752,21 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 - **Critérios de Aceite:** runs verdes sem "GOLDEN DEFECT" cosmético; gate real intacto; comportamento
   documentado.
 - **Risco:** Baixo.
+- **Conclusão:**
+  - **Display condicional** (`validation.rs:297-306`): quando `lufs_plausible=false` e
+    `check_lufs_gate=false`, o relatório inline agora exibe `ⓘ informational (gate opt-out — expected)`
+    em vez de `✗ — GOLDEN DEFECT (T2.5 lesson)`. Quando `check_lufs_gate=true`, mantém-se o marcador
+    `✗ — GOLDEN DEFECT` original (gate real preservado).
+  - **Doc comments atualizados:** `LUFS_PLAUSIBLE` agora documenta o backend BS.1770-4 2-pass (T2.5);
+    `report_dsp_fidelity_no_lufs` lista as categorias de opt-out (IR convolution + dynamic free-shape);
+    mensagem stderr do gate skip generalizada para cobrir ambas as categorias.
+  - **Reavaliação de promoção do gate:** com BS.1770-4 pleno, o gate já é `assert!` hard para todos os
+    modelos com `check_lufs_gate=true` (27/28 modelos golden + todos os cpp_parity não-dinâmicos). Os
+    opt-outs são legítimos e documentados: WaveNetDyn Free-Shape (head_scale=0.02 → ~−65 LUFS),
+    LSTM-Dyn 1×7, cabsim IR convolution, e linear_fft IR convolution. O gate está em sua forma final
+    — não requer promoção adicional.
+  - `cargo clippy --tests` zero warnings; `cargo test --lib` 1020/1020 passam; `cargo test --test
+    golden_vectors` 28/28 passam; `cargo test --test threshold_calibration` 3/3 passam.
 
 ### Tarefa 4.3 [QA] Validação de lints e orçamento de tempo (E3)
 
