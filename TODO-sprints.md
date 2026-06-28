@@ -34,17 +34,20 @@ precede as correções de qualidade sonora (E4), e o diagnóstico confiável (E1
 | **S2** | E5    | Instrumentação de medição & QA científica           | P-3, P-4, P-6, P-7, P-8, ASR(P-1) | 🟢🟡 Baixo-Médio | S1         |
 | **S3** | E2    | Fechar o ponto cego de fidelidade perceptual        | F-2                               | 🟡 Médio         | S1, S2     |
 | **S4** | E3    | Confiança do loop rápido + higiene de relatório     | F-3, D-2                          | 🟢 Baixo         | S3         |
-| **S5** | E4    | Qualidade sonora: anti-aliasing & fidelidade (+ UX) | P-1, P-2, P-5                     | 🔴 Médio-Alto    | S2         |
-| **S6** | E6    | Documentação & referência técnica                   | (todos)                           | 🟢 Baixo         | S1–S5      |
+| **S5** | E7    | Validação do Oráculo & Recalibração de Gates        | AC-1, AC-2, AC-3, AC-5            | 🟡 Médio         | S2, S4     |
+| **S6** | E4    | Qualidade sonora: anti-aliasing & fidelidade (+ UX) | P-1, P-2, P-5                     | 🔴 Médio-Alto    | S5         |
+| **S7** | E6    | Documentação & referência técnica                   | (todos)                           | 🟢 Baixo         | S1–S6      |
 
 **Racional da ordem.** S1 torna os logs de falha legíveis → desbloqueia o debug de tudo. S2 constrói os
 **instrumentos** (oráculo f64, ASR, THD/IMD/FR, true-peak, LUFS pleno, gates de perf, matriz ISA) —
-pré-requisito para o RCA de S3 **e** para validar/barrar regressão em S5. S3 endurece os gates já munido das
-ferramentas. S4 leva um subconjunto barato ao loop rápido. S5 (maior risco — toca o hot-path DSP) só ocorre
-com métricas para **provar ganho e barrar regressão**, e inclui a **superfície de controle (CLI+GUI)** pedida
-pelo PO. S6 sincroniza a "fonte de verdade" e registra a referência técnica/científica.
+pré-requisito para o RCA de S3 **e** para validar/barrar regressão em S6. S3 endurece os gates já munido das
+ferramentas. S4 leva um subconjunto barato ao loop rápido. S5 (Épico E7) valida e ancora o oráculo f64 e
+recalibra honestamente os gates de LSTM antes que sejam usados como instrumento de ground truth em S6. S6
+(maior risco — toca o hot-path DSP) só ocorre com métricas validadas para **provar ganho e barrar regressão**,
+e inclui a **superfície de controle (CLI+GUI)** pedida pelo PO. S7 sincroniza a "fonte de verdade" e registra
+a referência técnica/científica.
 
-> **Documentação contínua:** além do Sprint **S6** (consolidação + bibliografia anotada), cada sprint com
+> **Documentação contínua:** além do Sprint **S7** (consolidação + bibliografia anotada), cada sprint com
 > impacto arquitetural tem uma tarefa `[DOC]` que aciona a skill `documentador` (`linting.md` §2).
 
 ---
@@ -673,7 +676,7 @@ A equivocada caracterização "possível bug" do condition_dsp foi corrigida fac
 | Oráculo                                   | Pergunta respondida                               | Estado atual                                                                                                                         |
 |:----------------------------------------- |:------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------f----- |
 | NAMCore f32 (golden_vectors + cpp_parity) | "Soa idêntico ao reference player da comunidade?" | ✅ Completo, 33/33 testes                                                                                                            |
-| Oráculo f64 (reference_oracle_f64)        | "Qual o erro vs ideal matemático? De onde vem?"   | ✅ Estruturalmente correto (T-CR2): LSTM/WaveNet/A2 funcionais; ESR residual dominado por f16c (esperado); ancoragem Python pendente |
+| Oráculo f64 (reference_oracle_f64)        | "Qual o erro vs ideal matemático? De onde vem?"   | ⚠️ **NÃO-VALIDADO** (ver AC-1, Parte III): implementado mas asserts placebo (`< 2.0`); âncora externa nunca executada; ESR não-corroborado. **Não confiável como verdade-terreno ainda.** |
 | Matriz ISA (isa_parity)                   | "Todas as ISAs produzem o mesmo resultado?"       | ✅ Self-consistency; cross-ISA em long-suite                                                                                         |
 
 **Hierarquia de valor dos testes:**
@@ -828,7 +831,86 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 
 ---
 
-## Sprint S5: Épico E4 — Qualidade Sonora: Anti-aliasing & Fidelidade (P-1, P-2, P-5)
+---
+
+## Sprint S5: Épico E7 — Validação do Oráculo & Recalibração de Gates (AC-1, AC-2, AC-3, AC-5)
+
+**Escopo:** Validar, ancorar e corrigir o oráculo f64 para torná-lo um instrumento de ground truth confiável; validar LUFS contra o padrão EBU; recalibrar honestamente os gates de LSTM eliminando isenções genéricas por string no teste anti-placebo; e adotar uma política estrita e documentada de calibração.
+**Objetivo de Qualidade:** Oráculo f64 de WaveNet, LSTM e A2 100% verificado contra NumPy/PyTorch (< 1e-12); medição de LUFS em conformidade EBU Tech 3341 (±0,1 LU); gates perceptuais de LSTM baseados no piso numérico ideal calibrado sem isenções de string.
+**Estimativa:** 1–1.5 sprints.
+**Risco Geral:** 🟡 Médio — envolve correções numéricas de indexação de pesos e buffers; o risco reside em descobrir desvios físicos em modelos que exijam investigações matemáticas profundas.
+**Pré-condições:** **S2 verde** (instrumentação básica de medição já no repositório) e **S4 concluído** (testes consolidados).
+
+---
+
+### Tarefa 5.1 [TEST/MATH] Correção estrutural do oráculo f64 (WaveNet & A2) ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs), [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
+- **Descrição:**
+  - Investigar e depurar a causa de falhas de precisão estrutural no forward f64 das famílias WaveNet (ESR ~8e2 vs produção) e A2 (ESR ~2.09).
+  - Corrigir a correspondência de layout de pesos convolucionais (interleaved 4-wide do SIMD vs row-major do oráculo) e a indexação do buffer circular no head da rede A2.
+- **Critérios de Aceite:**
+  - Oráculo calcula o forward f64 para WaveNet and A2 e converge com o motor f32 em modo de precisão simples com ESR < 1e-2.
+- **Risco:** Médio (complexidade do alinhamento de arrays/tensors).
+
+### Tarefa 5.2 [TEST/MATH] Cursor de pesos e modos de precisão combinados no oráculo ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs)
+- **Descrição:**
+  - Habilitar e implementar de verdade a quantização real de pesos (`WeightPrecision::F16C/BF16/F32Plain`) no cursor de pesos do oráculo (atualmente inativo/dead-code).
+  - Suportar a simulação combinada de `F16C` + `PadeMinimax` + `F32Plain` em um único forward do oráculo f64 para provar que a produção converge à simulação com ESR < 1e-2.
+- **Critérios de Aceite:**
+  - Decomposição de erro (`run_decomposition`) plenamente ativa e reportando contribuição real de cada fator; teste funcional passa.
+- **Risco:** Baixo.
+
+### Tarefa 5.3 [TEST/MATH] Ancoragem externa do oráculo f64 vs PyTorch/NumPy ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/fixtures/scripts/validate_oracle_f64.py`](file:///home/fabio/nam-rs/tests/fixtures/scripts/validate_oracle_f64.py), [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
+- **Descrição:**
+  - Executar e integrar a validação externa contra PyTorch/NumPy f64 (rodando o script `validate_oracle_f64.py` fora do CI ou importando fixtures f64 geradas e salvas no repositório).
+  - Asserir que o oráculo f64 do Rust bate com o PyTorch f64 ideal com ESR < 1e-12 para WaveNet, LSTM e A2.
+  - Substituir os asserts placebo de `< 2.0` no `reference_oracle_f64.rs` por gates e limites rígidos de erro de fidelidade calibrados pós-ancoragem.
+- **Critérios de Aceite:**
+  - Prova de bit-exactness com PyTorch f64 (< 1e-12) bem-sucedida; asserts placebo `< 2.0` de fidelidade removidos de `reference_oracle_f64.rs`.
+- **Risco:** Médio.
+
+### Tarefa 5.4 [TEST] Validação de LUFS contra sequências EBU Tech 3341 ([AC-3](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs), [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs)
+- **Descrição:**
+  - Obter/vendorizar sequências oficiais curtas de teste de conformidade EBU Tech 3341 (ex.: tom estável a −23 LUFS, e testes dinâmicos de 18 LUFS).
+  - Adicionar teste de conformidade que assere que a implementação BS.1770-4 de LUFS do projeto reporta valores dentro de ±0,1 LU da referência EBU.
+- **Critérios de Aceite:**
+  - Suíte de conformidade LUFS integrada e passando no CI; conformidade estrita comprovada.
+- **Risco:** Baixo.
+
+### Tarefa 5.5 [TEST] Recalibração de gates LSTM & remoção de exceção no anti-placebo ([AC-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs), [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs)
+- **Descrição:**
+  - Com o oráculo f64 validado, re-derivar os thresholds de LSTM com base no piso numérico ideal do formato.
+  - Remover a isenção de string (`starts_with("BossLSTM") || starts_with("lstm")`) do teste anti-placebo (`tests/threshold_calibration.rs:284`), permitindo que os novos thresholds calibrados passem no gate anti-placebo de maneira uniforme.
+- **Critérios de Aceite:**
+  - Testes de calibragem e anti-placebo verdes sem isenções de strings de LSTM; gates de LSTM re-calibrados fisicamente.
+- **Risco:** Médio.
+
+### Tarefa 5.6 [QA/PROCESS] Padronização de Calibração (Política de Gates) & Lints ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs), [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs)
+- **Descrição:**
+  - Aplicar a nova Política de Calibração: todo threshold na tabela de calibração de `validation.rs` deve documentar sua proveniência usando o comentário obrigatório `// Measured: ESR=..., MRSTFT=...`.
+  - Executar as ferramentas de verificação final `utils/lints.sh` e `utils/tests-quick.sh`.
+- **Critérios de Aceite:**
+  - Todos os thresholds calibrados em `validation.rs` possuem comentário de proveniência; zero lints; testes rápidos passando perfeitamente.
+- **Risco:** Baixo.
+
+## Sprint S6: Épico E4 — Qualidade Sonora: Anti-aliasing & Fidelidade (P-1, P-2, P-5)
 
 **Escopo:** Reduzir aliasing das não-linearidades e melhorar a fidelidade espectral (resampler + topo de
 banda), via modos **HQ/offline** opcionais, **sem** comprometer o caminho _live_ de baixa latência — e expor
@@ -842,17 +924,17 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 
 ---
 
-### Tarefa 5.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+### Tarefa 6.1 [DSP/TEST] Baseline de aliasing/THD/FR antes de qualquer mudança ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:** [`tests/spectral_fidelity.rs`](file:///home/fabio/nam-rs/tests/spectral_fidelity.rs) (S2.2/2.3), [`tests/fixtures/spectral_fidelity_baseline.json`](file:///home/fabio/nam-rs/tests/fixtures/spectral_fidelity_baseline.json)
 - **Descrição:** registrar **ASR/THD/FR de baseline por SKU** em entrada agressiva (fundamental ≥ 2 kHz,
-  alto ganho) e em uso típico, para servir de referência de ganho/regressão das tarefas 5.2–5.4.
+  alto ganho) e em uso típico, para servir de referência de ganho/regressão das tarefas 6.2–6.4.
 - **Critérios de Aceite:** baseline versionado, determinístico e reproduzível (fixture commitada).
 - **Risco:** Baixo.
 - **Conclusão:** Baseline gerada para 12 SKUs (WaveNet standard/feather/nano/A1-official/official-dyn/A2-full/A2-lite, A2-example, LSTM 1×16/2×8/official, Linear). Medições: ASR típico/agressivo/stress, THD+N AES17, IMD SMPTE, Farina FR+THD por ordem harmônica. Fixture em `tests/fixtures/spectral_fidelity_baseline.json`. Testes de validação (`#[ignore]`) assertam medições atuais contra o baseline com tolerância conservadora (ASR: 0,5 dB, THD+N: 0,1%, IMD: 0,2%, FR: 0,5 dB). Regeneração: `cargo test --test spectral_fidelity generate_spectral_fidelity_baseline -- --ignored`.
 
-### Tarefa 5.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+### Tarefa 6.2 [DSP] Oversampling opcional 2×/4× no estágio neural ([P-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
@@ -873,15 +955,15 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
     hot-swap de modelo (rebuild no main thread + swap atômico / GC SPSC); **nunca** mid-`process`.
   - **Alternativa de menor custo:** avaliar **ADAA 1ª/2ª ordem** (Parker 2016; Bilbao 2017; Holters 2019 p/
     estado) nas ativações memoryless — comparar custo×ASR vs oversampling.
-  - Medir custo (P-7) e ASR/THD (5.1) com e sem o recurso.
+  - Medir custo (P-7) e ASR/THD (6.1) com e sem o recurso.
 - **Critérios de Aceite:**
-  - Modo HQ reduz **ASR ≥ X dB** vs baseline (5.1) em entrada agressiva; **ESR estável** (sem regressão).
+  - Modo HQ reduz **ASR ≥ X dB** vs baseline (6.1) em entrada agressiva; **ESR estável** (sem regressão).
   - Caminho **live** com **0** de custo/latência adicional; `cargo bench` sem regressão no live.
   - **heap-audit** verde com oversampling ativo (zero alocação no hot-path).
 - **Risco:** **Alto** (hot-path). Recomenda-se prototipar com 1 modelo antes de generalizar.
-- **Conclusão:** Motor half-band implementado como `OversampleEngine` em `src/dsp/oversample.rs` (1.2 kLOC com testes). Filtro meia-banda 25-tap Kaiser β=12 com >100 dB stop-band. Usa ring buffers (`AlignedVec`) — zero alloc no hot-path. Integrado nos dois caminhos (standalone + CLAP) via `DspPipelineContext`. CLI: `--oversample off|2x|4x`. **Pendente:** troca dinâmica de fator (requer rebuild off-RT + swap atômico SPSC, mesmo padrão do modelo/resampler). **Não implementado:** ADAA alternativa (Parker/Bilbao/Holters). Medições de ASR/THD com/sem oversampling dependem da Tarefa 5.1 (baseline spectral_fidelity). Crossfading adaptivo (WaveNet) não usa oversampling durante a transição (mantém `run_stereo_or_mono` original para consistência de tamanho de buffer na mesclagem).
+- **Conclusão:** Motor half-band implementado como `OversampleEngine` em `src/dsp/oversample.rs` (1.2 kLOC com testes). Filtro meia-banda 25-tap Kaiser β=12 com >100 dB stop-band. Usa ring buffers (`AlignedVec`) — zero alloc no hot-path. Integrado nos dois caminhos (standalone + CLAP) via `DspPipelineContext`. CLI: `--oversample off|2x|4x`. **Pendente:** troca dinâmica de fator (requer rebuild off-RT + swap atômico SPSC, mesmo padrão do modelo/resampler). **Não implementado:** ADAA alternativa (Parker/Bilbao/Holters). Medições de ASR/THD com/sem oversampling dependem da Tarefa 6.1 (baseline spectral_fidelity). Crossfading adaptivo (WaveNet) não usa oversampling durante a transição (mantém `run_stereo_or_mono` original para consistência de tamanho de buffer na mesclagem).
 
-### Tarefa 5.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+### Tarefa 6.3 [MATH] Medir ativação sob pesos reais + modo exato/alta-fidelidade opt-in ([P-5](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
@@ -896,10 +978,10 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - **Modo exato/HF opt-in** implementado: `enum ActivationPrecision { Standard, HighFidelity }` + flag atômico `ACTIVATION_MODE` + `set_activation_precision()`. O switch afeta `tanh_slice`/`sigmoid_slice` (WaveNet standalone) e é consultado via dispatch SIMD (Avx2Math/Avx512Math/Avx512VnniBf16Math). Kernel poly AVX-512 slice wrappers adicionados em `high_fidelity.rs`. **Limitação conhecida:** LSTM fused gates (`fused_lstm_gates_avx2/avx512`) importam `simd_tanh_avx2`/`simd_sigmoid_avx2` diretamente, bypassando o dispatch de slice — o switch não afeta LSTM atualmente. Isso é documentado em `tests/activation_precision.rs` e requer follow-up (variantes HF dos fused gates) para completar a rota LSTM.
   - **ESR com pré-ênfase A-weighting** (IEC 61672): reportado lado a lado com ESR plano. Para os modelos medidos, ESR A-wt ≈ ESR plano (diferença < 0.01 dB) — a dominância do erro de quantização f16c (espectralmente plano) mascara a ponderação perceptual. O instrumento fica disponível para modelos futuros onde a distribuição espectral do erro não seja uniforme.
   - **Tabela de aceite** (`test_activation_contribution_summary_table`): compara Padé vs Exact por modelo e assere ΔESR < 1.0 para todos — garantia anti-regressão.
-  - **A superfície de controle para CLI/GUI** (Tarefa 5.5) pode reusar `set_activation_precision()` + propagação via `DspPipelineContext` (mesmo padrão do `--oversample` da T5.2).
+  - **A superfície de controle para CLI/GUI** (Tarefa 6.5) pode reusar `set_activation_precision()` + propagação via `DspPipelineContext` (mesmo padrão do `--oversample` da T6.2).
 - **Risco:** Médio — resolvido. O switch não adiciona branch imprevisível (modo fixo por sessão).
 
-### Tarefa 5.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+### Tarefa 6.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
@@ -910,14 +992,14 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - **TAPS_PER_PHASE 32→64** (de 8192 para 16384 taps no protótipo). O banco polifásico dobra de ~64 KB para ~128 KB por banco (×2 = 256 KB total para input+output). A linha de delay vai de 64 para 128 samples (`DELAY_LINE_LEN = TAPS_PER_PHASE * 2`, auto-ajustado). A latência dobra: de ~31 para ~61 amostras a 44.1 kHz.
   - **Cepstrum ripple medido**: com 64 taps e FFT 65536 (4×16384), o ripple máximo no passband (< 60 dB de atenuação) é **≤ 0.06 dB** — a transformada minimum-phase é magnitude-preserving como esperado. O resultado encerra a suspeita de que o cepstrum injetava ripple significativo.
   - **Linear-phase option**: `NamResampler::new_linear()` implementado via `generate_polyphase_bank_linear()` (sem cepstrum). Disponível para offline/mixdown onde pre-ringing não é crítico.
-  - **SNR contra libsoxr (T5.4)**: Min-phase com 64 taps atinge ~31 dB (era ~24 dB com 32 taps). Gate elevado de 20 dB → 25 dB com margem. Linear-phase atinge os mesmos ~31 dB. A melhoria limitada (+7 dB) é atribuída à **normalização per-fase** — necessária para ganho DC plano mas que, em filtros min-phase (energia concentrada nas fases iniciais), introduz ripple de magnitude pela dispersão de ganho entre fases. Aumentar fases (256→1024/4096) mitigaria mas duplicaria/escalaria 16× o uso de RAM (128 KB→512 KB/2 MB por banco). **A normalização per-fase é um trade-off fundamental da arquitetura polifásica com interpolação linear.**
+  - **SNR contra libsoxr (T6.4)**: Min-phase com 64 taps atinge ~31 dB (era ~24 dB com 32 taps). Gate elevado de 20 dB → 25 dB com margem. Linear-phase atinge os mesmos ~31 dB. A melhoria limitada (+7 dB) é atribuída à **normalização per-fase** — necessária para ganho DC plano mas que, em filtros min-phase (energia concentrada nas fases iniciais), introduz ripple de magnitude pela dispersão de ganho entre fases. Aumentar fases (256→1024/4096) mitigaria mas duplicaria/escalaria 16× o uso de RAM (128 KB→512 KB/2 MB por banco). **A normalização per-fase é um trade-off fundamental da arquitetura polifásica com interpolação linear.**
   - **QA instrumental**: Adicionado `measure_cepstrum_ripple()` para medição pré/pós-cepstrum no passband (≥ −60 dB). Testes de roundtrip linear-phase e SNR linear-phase adicionados. Tentativas de medição absoluta de FR via Goertzel (passband/stopband) foram removidas — o Goertzel absoluto é sensível ao alinhamento de janela e não robusto como instrumento de QA para magnitude absoluta.
-  - **Docs reconciliadas**: Removidas as alegações de ">120 dB" e "quality > 120 dB SNR" dos doc-comments de `sinc_kernel.rs` e `resampler.rs`. Substituídas por tabela com medições reais do Task 5.4.
-  - **Custo (resolução PO/P-2)**: O custo computacional dobra ~proporcionalmente aos taps (4 iterações AVX2 por convolução vs 2). O custo do resampler é <1% do pipeline total quando o modelo neural está ativo (o bypass a 48 kHz é maioria dos casos). A medição quantitativa de Δμs fica pendente para benchmark dedicado (Tarefa 5.7).
-  - **Default**: Mantém-se minimum-phase (`NamResampler::new()`) como padrão para live (menor latência, zero pre-ringing). O linear-phase (`new_linear()`) fica disponível como opção para offline. A decisão de expor "Resampler Quality" via CLI/GUI (Tarefa 5.5) fica a critério da medição de Δμs na Tarefa 5.7 — se o custo for desprezível, não há necessidade de parâmetro de usuário (HQ já é o padrão com 64 taps).
+  - **Docs reconciliadas**: Removidas as alegações de ">120 dB" e "quality > 120 dB SNR" dos doc-comments de `sinc_kernel.rs` e `resampler.rs`. Substituídas por tabela com medições reais do Task 6.4.
+  - **Custo (resolução PO/P-2)**: O custo computacional dobra ~proporcionalmente aos taps (4 iterações AVX2 por convolução vs 2). O custo do resampler é <1% do pipeline total quando o modelo neural está ativo (o bypass a 48 kHz é maioria dos casos). A medição quantitativa de Δμs fica pendente para benchmark dedicado (Tarefa 6.7).
+  - **Default**: Mantém-se minimum-phase (`NamResampler::new()`) como padrão para live (menor latência, zero pre-ringing). O linear-phase (`new_linear()`) fica disponível como opção para offline. A decisão de expor "Resampler Quality" via CLI/GUI (Tarefa 6.5) fica a critério da medição de Δμs na Tarefa 6.7 — se o custo for desprezível, não há necessidade de parâmetro de usuário (HQ já é o padrão com 64 taps).
 - **Risco:** Médio — resolvido. A latência dobrou (~0.7→1.4 ms a 44.1 kHz), dentro do aceitável para live monitoring.
 
-### Tarefa 5.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+### Tarefa 6.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
@@ -935,34 +1017,34 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - [`src/clap/processor/events.rs`](file:///home/fabio/nam-rs/src/clap/processor/events.rs) — host event `PARAM_OVERSAMPLE`, GUI sync, SPSC drain `SetOversample` → `cold_load_os()`
   - [`src/clap/gui/ui/zones/controls.rs`](file:///home/fabio/nam-rs/src/clap/gui/ui/zones/controls.rs) — segmented control "OS: Off | 2× | 4×" com `selectable_value`, dots de indicação de mapeamento, gestos CLAP
 - **Conclusão:**
-  - **CLI `--oversample off|2x|4x`**: já implementado em S5 (Tarefa 5.2); `--oversample` e `--os` parseados em `cli.rs`, propagados via `ParamPayload::SetOversample`. **Sem alterações nesta tarefa.**
-  - **CLI `--resampler standard|hq`**: **NÃO implementado**. Conforme conclusão da Tarefa 5.4, HQ (64 taps, minimum-phase) já é o default — o custo de 64 taps é <1% do pipeline com modelo ativo. A decisão de expor o parâmetro fica para a Tarefa 5.7 (benchmark Δμs). Se T5.7 mostrar custo desprezível → não há necessidade de parâmetro. Se custo for considerável → parâmetro a ser adicionado seguindo o mesmo molde do `PARAM_OVERSAMPLE`.
+  - **CLI `--oversample off|2x|4x`**: já implementado em S5 (Tarefa 6.2); `--oversample` e `--os` parseados em `cli.rs`, propagados via `ParamPayload::SetOversample`. **Sem alterações nesta tarefa.**
+  - **CLI `--resampler standard|hq`**: **NÃO implementado**. Conforme conclusão da Tarefa 6.4, HQ (64 taps, minimum-phase) já é o default — o custo de 64 taps é <1% do pipeline com modelo ativo. A decisão de expor o parâmetro fica para a Tarefa 6.7 (benchmark Δμs). Se T6.7 mostrar custo desprezível → não há necessidade de parâmetro. Se custo for considerável → parâmetro a ser adicionado seguindo o mesmo molde do `PARAM_OVERSAMPLE`.
   - **CLAP Oversampling parameter**: `PARAM_OVERSAMPLE` (ID=7), stepped {0=Off, 1=2×, 2=4×}, default 0 (Off = live/baixa latência). `IS_AUTOMATABLE | IS_STEPPED` — hosts podem automatizar, mas a troca dispara rebuild off-RT (não sample-accurate). Persistido no estado v1 (compatível com presets antigos via `#[serde(default)]` = Off).
   - **CLAP Resampler Quality parameter**: **NÃO implementado** (mesma justificativa do CLI acima).
   - **GUI**: segmented control "OS: Off | 2× | 4×" na Zone 2 (controls), abaixo dos knobs. Usa `egui::selectable_value` com dots de indicação de mapeamento. Gera gestos CLAP (`set_gesture` + `bump_generation`).
   - **RT-Safety**: a troca de fator de OS é off-RT. Audio thread seta `RT_STATUS_NEEDS_OS_REBUILD` + `requested_os_factor`. Main thread (housekeeping) constrói novos `OversampleEngine` (alocação de filtros/buffers) e entrega via `ClapParamPayload::SetOversample`. Audio thread recebe e faz swap inline (`cold_load_os`). Zero alocação no hot-path.
   - **Testes**: 1022+ pass, 0 falhas. State migration verificada (v0/v1 preservam default Off).
   - **Risco:** Médio — resolvido. A troca off-RT segue o mesmo padrão maduro do hot-swap de modelo (`LoadModel`) e slimmable rebuild (`NEEDS_SLIMMABLE_REBUILD`).
-- **Resampler Quality pendente:** Se Tarefa 5.7 (benchmark) mostrar custo considerável, adicionar `PARAM_RESAMPLER_QUALITY` (ID=8) stepped {Standard=0, HQ=1} + `--resampler standard|hq` CLI seguindo o mesmo molde do `PARAM_OVERSAMPLE`. Se custo for desprezível, encerrar sem ação — HQ já é o padrão com 64 taps.
+- **Resampler Quality pendente:** Se Tarefa 6.7 (benchmark) mostrar custo considerável, adicionar `PARAM_RESAMPLER_QUALITY` (ID=8) stepped {Standard=0, HQ=1} + `--resampler standard|hq` CLI seguindo o mesmo molde do `PARAM_OVERSAMPLE`. Se custo for desprezível, encerrar sem ação — HQ já é o padrão com 64 taps.
 
-### Tarefa 5.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador) [DONE]
+### Tarefa 6.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
-  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md) — adicionada seção §5.0O (Oversampling Engine), seção Activation Precision Modes em §2, seção §8.2.3 (Oversampling Control CLI+GUI); atualizada seção §5 (DSP & Native Resampling) com métricas T5.4 (64 taps, cepstrum ripple ≤ 0.06 dB, bypass 48 kHz, HQ default).
+  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md) — adicionada seção §5.0O (Oversampling Engine), seção Activation Precision Modes em §2, seção §8.2.3 (Oversampling Control CLI+GUI); atualizada seção §5 (DSP & Native Resampling) com métricas T6.4 (64 taps, cepstrum ripple ≤ 0.06 dB, bypass 48 kHz, HQ default).
   - [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md) — adicionada seção §10 (Activation Precision Modes — Standard vs. HighFidelity) com tabelas de erro, interação com oversampling, limitação LSTM fused gates, cross-references.
   - [`README.md`](file:///home/fabio/nam-rs/README.md) — adicionada seção Usage com CLI `--oversample off|2x|4x` e CLAP Oversampling control; atualizada lista de docs.
 - **Conclusão:**
   - **Oversampling:** Documentada arquitetura half-band Kaiser β=12 (25 taps, >100 dB), modos Off/2×/4×, trade-off latência×aliasing, protocolo off-RT rebuild (SPSC + GC cascade), decisão de não adotar ADAA.
   - **Ativações:** Documentados modos Standard (Padé [5,4], ~2.32e-3) vs. HighFidelity (polynomial exp, ~2.4e-7), dispatch atômico, interação com oversampling (residual aliasing), limitação LSTM fused gates.
-  - **Resampler:** Atualizada seção existente com métricas QA T5.4 (tabela rate-pair, SNR vs soxr, arch polyphase 256×64, cepstrum ripple, linear-phase option, bypass 48 kHz, HQ default 64 taps).
+  - **Resampler:** Atualizada seção existente com métricas QA T6.4 (tabela rate-pair, SNR vs soxr, arch polyphase 256×64, cepstrum ripple, linear-phase option, bypass 48 kHz, HQ default 64 taps).
   - **Controles:** Documentado CLI `--oversample` (off/2x/4x) + CLAP GUI segmented control (Zone 2, PARAM_OVERSAMPLE ID=7, host automation IS_STEPPED, off-RT rebuild via SPSC GC cascade).
   - Justificativas de decisões críticas registradas (anti-regressão histórica): trade-off latência vs aliasing (live=Off default, offline=4× HQ); rejeição ADAA por conflito arquitetural com dispatch polimórfico; normalização per-fase como trade-off fundamental da arquitetura polifásica; HQ 64 taps como default (custo <1% com modelo ativo).
   - **Risco:** Baixo — concluído.
 
-### Tarefa 5.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4) [DONE]
+### Tarefa 6.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4) [DONE]
 
-- **Status:** `[x]` Feito conjuntamente com a Tarefa 5.5.
+- **Status:** `[x]` Feito conjuntamente com a Tarefa 6.5.
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `benches/`, suítes heap-audit
 - **Descrição:** lints + suíte rápida + `cargo bench` (caminho **live** sem regressão; modo HQ com custo
   documentado); **heap-audit** confirmando **zero alocação** no hot-path com oversampling/HQ ativos;
@@ -972,17 +1054,17 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 
 ---
 
-## Sprint S6: Épico E6 — Documentação & Referência Técnica (documentador)
+## Sprint S7: Épico E6 — Documentação & Referência Técnica (documentador)
 
 **Escopo:** Consolidar a "fonte de verdade" e **registrar a referência técnica/científica** que embasa as
-decisões dos sprints S1–S5.
+decisões dos sprints S1–S6.
 **Objetivo:** Conhecimento do projeto sincronizado com a implementação; rastreabilidade científica completa.
 **Estimativa:** 0,5 sprint.
 **Risco Geral:** 🟢 Baixo.
 
 ---
 
-### Tarefa 6.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada [DONE]
+### Tarefa 7.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
@@ -1003,11 +1085,11 @@ decisões dos sprints S1–S5.
   - Cada referência contém: citação completa (autor, título, venue, ano, arXiv/DOI quando aplicável),
     anotação do _porquê é relevante para o nam-rs_ com contexto de decisão arquitetural, e tabela de
     rastreabilidade (Finding / Sprints / Files).
-  - Índices de referência cruzada incluídos: por Finding (P-1 a P-8, F-2) e por Sprint (S1–S6), garantindo
+  - Índices de referência cruzada incluídos: por Finding (P-1 a P-8, F-2) e por Sprint (S1–S7), garantindo
     rastreabilidade bidirecional completa.
 - **Risco:** Baixo.
 
-### Tarefa 6.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles) [DONE]
+### Tarefa 7.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
@@ -1015,11 +1097,11 @@ decisões dos sprints S1–S5.
 - **Conclusão:**
   - **Measurement framework (§5.3):** Documentados ASR (Sato & Smith DAFx 2025), THD+N AES17 + Farina FR+THD per harmonic, SMPTE/DIN IMD, LUFS BS.1770-4 (2-pass gating) + LRA EBU Tech 3342, true-peak BS.1770-4 Annex 2 (4× polyphase FIR, 48 taps, off-RT only), f64 reference oracle (double-precision forward pass + error source decomposition), stress signals v1/v2, WAV I/O. Inclui tabela de módulos (com paths DRY), métricas e gates, decisão RT-safety de true-peak off-RT, mapeamento de testes de integração.
   - **Control surface (§8.2.3):** Expandida de apenas oversampling para matriz completa de parâmetros unificada CLI+CLAP (10 parâmetros: model, cab, input/output gain, gate threshold, bypass, buffer size, slim override, oversampling, diagnose). Documentadas 5 zonas GUI (identity, controls, meters, bypass, status bar), protocolo CLAP gesture, e rebuild off-RT via SPSC+GC cascade.
-  - **Catálogo Exxxx (§9):** Atualizado com entradas pós-S1–S5: E2001 DEADLINE_EXCEEDED, E2200 RESAMPLER_BUILD_FAILED, E3102 GC_CORRUPTED, E4102 CTRL_C_HANDLER_FAILED, E4103 IR_LOAD_FAILED, E1300 UNSUPPORTED_ARCHITECTURE, E1304 MODEL_TOO_LARGE. Nota adicionada apontando para o catálogo completo em `src/common/diagnostics/error_codes.rs`.
+  - **Catálogo Exxxx (§9):** Atualizado com entradas pós-S1–S6: E2001 DEADLINE_EXCEEDED, E2200 RESAMPLER_BUILD_FAILED, E3102 GC_CORRUPTED, E4102 CTRL_C_HANDLER_FAILED, E4103 IR_LOAD_FAILED, E1300 UNSUPPORTED_ARCHITECTURE, E1304 MODEL_TOO_LARGE. Nota adicionada apontando para o catálogo completo em `src/common/diagnostics/error_codes.rs`.
   - **Hierarquia:** Mantida coerente — §5.3 encaixa entre DSP (§5.2 IR Cabsim) e Testing (§6); referências DRY para todos os arquivos-fonte; sem duplicação de conteúdo de código.
 - **Risco:** Baixo — concluído.
 
-### Tarefa 6.3 [DOC] Atualizar `README.md` e `.agents/` (padrões) [DONE]
+### Tarefa 7.3 [DOC] Atualizar `README.md` e `.agents/` (padrões) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
@@ -1032,16 +1114,16 @@ decisões dos sprints S1–S5.
   - **Coerência de voz/tom:** Todas as seções seguem o estilo `documentador` — concisas, com referências DRY para arquivos-fonte, sem duplicação de código, sem afirmações irrelevantes. Linguagem unificada entre README, arquitetura e regras.
 - **Risco:** Baixo — concluído.
 
-### Tarefa 6.4 [QA] Revisão final de documentação (refatora-doc) [DONE]
+### Tarefa 7.4 [QA] Revisão final de documentação (refatora-doc) [DONE]
 
 - **Status:** `[X]` Concluida
-- **Arquivos Alvo:** `docs/`, comentários de fonte tocados em S1–S5
+- **Arquivos Alvo:** `docs/`, comentários de fonte tocados em S1–S6
 - **Descrição:** acionar a skill `refatora-doc` para revisar markdown e comentários (voz única, sem deriva de
   estilo, sem afirmações irrelevantes do tipo "sprint X"/datas, conforme `documentador`).
 - **Critérios de Aceite:** documentação lê-se como obra coesa e de autor único.
 - **Risco:** Baixo.
 
-### Tarefa 6.5 [DOC] Documentar a hierarquia de valor da suíte de testes em `docs/testing.md` [DONE]
+### Tarefa 7.5 [DOC] Documentar a hierarquia de valor da suíte de testes em `docs/testing.md` [DONE]
 
 - **Status:** `[X]` Concluida
 - **Arquivos Alvo:** [`docs/testing.md`](file:///home/fabio/nam-rs/docs/testing.md)
@@ -1069,10 +1151,10 @@ decisões dos sprints S1–S5.
   [`TODO-findings.md`](file:///home/fabio/nam-rs/TODO-findings.md) (incl. as **Resoluções das Notas do PO**).
   Ao concluir, registrar a **Conclusão** (como no histórico do projeto) e, se houver impacto em tarefas
   futuras, deixar nota no ponto apropriado (skill `tarefa`).
-- **Sincronia com os findings:** as Notas do PO de **P-1/P-2** entram como a **Tarefa 5.5 [UX/CLAP]**
+- **Sincronia com os findings:** as Notas do PO de **P-1/P-2** entram como a **Tarefa 6.5 [UX/CLAP]**
   (controles CLI+GUI, troca off-RT); a de **P-4** entra como o **passo de validação externa do oráculo** na
   **Tarefa 2.1**. Qualquer novo finding deve replicar este vínculo bidirecional.
-- **Segurança da sequência:** **não iniciar S5** (hot-path DSP) antes de **S2** estar verde — é a salvaguarda
+- **Segurança da sequência:** **não iniciar S6** (hot-path DSP) antes de **S2** estar verde — é a salvaguarda
   central deste plano (medir antes de corrigir).
 - **Próximo passo sugerido:** executar **S4** (baixo risco, ganho imediato no loop rápido + consolidação da suíte) via skill `tarefa` → `implementador`. S4 é o único sprint sem dependências pendentes — T-CR2, T-CR3 e todas as CRs estão concluídas.
 
@@ -1100,12 +1182,7 @@ Execução do comando `utils/tests-long.sh`. Resultado resumido (7 fases, ~42 mi
 
 ---
 
-## Notas do PO
-
-Momento da verdade final sobre tudo o que foi feito aqui. Verifique se todo o trabalho está exemplarmente correto ou se precisa de correções adicionais. Use, inclusive, de forte senso crítico (e uma ponta de ceticismo) para julgar os avanços reais e paupáveis que tivemos e o estado geral das coisas.
-Use também o resultado anexo dos testes longos como subsídio.
-Este trabalho aqui acabou sendo uma skill "revisor-auditor" com role "Correctness Auditor" muito interessante e produtiva. Acredito valer muito a pena concluírmos com uma nova revisão geral neste mesmo nível de qualidade.
-Acione o "planejador-arquiteto" para organizar eventuais novos achados.
+## Conclusão final
 
 /documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (muito especialmente as que não foram trabalhadas aqui neste TODO-sprints.md) e qual o papel delas.
 Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM). Identifique se são opcionais ou obrigatórias. Se podem ser removidas ou tornadas opcionais. Se estão bem documentados ou com questões pendentes a resolver.

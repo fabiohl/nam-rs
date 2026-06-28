@@ -661,12 +661,175 @@ menos scalar+AVX2 (AVX-512/VNNI quando o runner suportar).
 
 ---
 
+## Parte III — Auditoria de Correção Final (pós-S1–S3, role "Correctness Auditor")
+
+> **Contexto:** auditoria cética de tudo entregue em S1–S3 (+ CRs e consolidação), cruzando as
+> Conclusões auto-reportadas com **verificação direta no código-fonte** e com o resultado da
+> `tests-long.sh` (7/7 fases PASSED, ± 37 min). Princípio: _suíte verde cujos gates foram calibrados
+> para passar não é o mesmo que correção validada._ Achados `AC-1…AC-5`.
+
+## Balanço honesto — o que é avanço **real e palpável**
+
+Antes das ressalvas, o que está **genuinamente** sólido (validado contra referência independente, não
+auto-calibrado):
+
+- **Interop vs NAMCore (a joia da coroa):** nam-rs reproduz o reference player. condition_dsp casa a
+  ESR = 1e-14; gates WaveNet apertados (1e-10). É o que mais importa ao usuário — som fiel à referência.
+- **S1 — diagnóstico sob falha:** provado com falha sintética (bloco de métricas íntegro + modelo nomeado).
+- **Gate de deadline RT** (`tests/rt_deadline.rs`): `p99 < 1,33 ms` asserido em **todos os SKUs** e
+  **estados adaptativos** — proteção nova, genuína, "warrior" (long-suite Fase 7 PASSED, 97 s).
+- **heap-audit zero-alloc, soak (estabilidade numérica), ISA self-consistency bit-exata, clap-validator
+  19/21:** todos passam por mérito próprio, não por calibração.
+- **Suíte espectral (ASR/THD/IMD):** validada contra casos sintéticos **conhecidos** (hard-clip → ASR
+  alto; linear → ASR ≈ 0). Instrumento correto.
+- **CR-3 (condition_dsp):** diagnóstico do artefato métrico (ESR 8.93e-15) foi excelente trabalho de auditoria.
+
+O que segue **não invalida** o acima — mas impede declarar "perfeito" o eixo de **fidelidade absoluta**.
+
+---
+
+### AC-1 · 🔴 CRÍTICO — O oráculo f64 está **não-validado**, seus asserts são placebo, e seu output foi usado como base de decisão
+
+**Evidência verificada no código:**
+
+- Asserts dos testes do oráculo: `tests/reference_oracle_f64.rs:83,104` → `assert!(esr < 2.0)`;
+  `:127` → `< 0.5`; `:197` (decomposição) → `esr_f32_vs_f64 < 2.0`.
+- A **própria** meta-regra anti-placebo do projeto (`tests/threshold_calibration.rs:253-258`, Regra 2)
+  declara **ESR ≥ 1.0 = placebo** ("must be < 1.0 to catch regressions"). Ou seja: **o oráculo asserta
+  um teto (< 2.0) acima da própria linha de placebo do projeto.** Não protege contra nada.
+- **Âncora externa nunca executada:** `tests/fixtures/scripts/validate_oracle_f64.py` existe, mas numpy
+  está "indisponível no ambiente" (notas de T2.1/T-CR2). O oráculo **jamais** foi confrontado com
+  PyTorch/NumPy f64 — exatamente o passo anti-circularidade que a Resolução de P-4 prometeu.
+- **Números não corroborados e em tensão com o cpp_parity:** ESR(produção vs oráculo) = WaveNet **1.34**,
+  A2 **0.18**, LSTM **1.06** — enquanto no cpp_parity esses mesmos modelos casam com o NAMCore a
+  1e-3…1e-14. A explicação "dominado por f16c" **nunca foi demonstrada ponta-a-ponta**: a própria nota de
+  T-CR2 admite que o modo combinado (`F16C`+`PadeMinimax`+`F32Plain`) "não é suportado num único forward".
+- A decomposição `run_decomposition` (`src/testing/reference_oracle.rs:824`) — o **valor central** do
+  oráculo ("de onde vem o erro?") — apenas **imprime** os ΔESR; o único assert é o placebo `< 2.0`.
+
+**Análise crítica.** A peça central de S2 — a "referência de máxima precisão" e a resposta direta à
+dúvida do PO ("qual o sentido de usar a si mesmo como referência?") — encontra-se hoje **exatamente na
+condição que o PO temia**: um cálculo sem âncora externa, com gates tão frouxos que não pegam nada. Pior:
+seu output não-validado foi usado como **evidência load-bearing** em T3.3 (conclusão "drift inerente") e
+para **afrouxar os gates de LSTM** (ver AC-2). A afirmação de T-CR2 "estruturalmente correto" está
+**superestimada** — o correto é "implementado, porém não-validado".
+
+**Impacto.** Não há, hoje, prova de que o eixo de **fidelidade absoluta** funcione; ele oferece ~zero
+proteção contra regressão; e decisões de calibração repousam sobre números não-ancorados.
+
+**Proposta de solução.**
+
+1. **Ancorar de verdade:** vendorizar vetores de referência f64 por família (gerados 1× com NumPy/PyTorch
+   fora do CI) **ou** prover numpy em um container de long-suite; asserir oráculo-Rust-f64 vs anchor < 1e-12.
+2. **Provar convergência em precisão-casada:** demonstrar end-to-end que o oráculo com
+   `F16C`+`PadeMinimax`+`F32Plain` **simultâneos** converge à produção dentro de ESR < 1e-2 — só então a
+   narrativa "dominado por f16c" é legítima. Requer suportar os 3 modos num único forward.
+3. **Separar smoke-test de gate de fidelidade:** os `< 2.0` são, no máximo, "o oráculo não explodiu".
+   Renomear/documentar como tal; criar gates reais (pós-âncora) com bounds calibrados.
+4. **Enquanto não-ancorado:** marcar a saída do oráculo como **provisória** nos docs e **não** usá-la como
+   única base para afrouxar gates de produção.
+
+**Esforço:** Médio-Alto (âncora + modo combinado: ~3–5 dias).
+
+---
+
+### AC-2 · 🟠 ALTO — Gates perceptuais de LSTM **calibrados-para-passar**; guarda anti-placebo recebeu carve-out de LSTM
+
+**Evidência verificada:**
+
+- `tests/cpp_parity.rs:391` → `ABSOLUTE_ESR_CAP_LSTM = 0.2` (vs `:390` WaveNet = `6.23e-3`): **32× mais
+  frouxo**; ESR 0.2 ≈ −7 dB de SNR tolerado.
+- `tests/threshold_calibration.rs:284` → a Regra 4 (MR-STFT ≥ 0.5 = placebo) foi **emendada para isentar
+  LSTM**: `&& !(model_name.starts_with("BossLSTM") || model_name.starts_with("lstm"))`. Resultado: LSTM
+  1×16 usa `mrstft_max = 0.85` — um valor que a própria regra define como "gate que nunca pega colapso
+  espectral".
+- T3.5 (tabela de 5 iterações): thresholds **elevados progressivamente** (0.15→0.85; 0.05→0.45) até a
+  suíte ficar verde.
+
+**Análise crítica.** A meta-test cujo trabalho é **impedir gates neutralizados** foi alterada para
+**permitir** um gate neutralizado em LSTM — justificada pelo argumento "drift inerente", que por sua vez
+depende do oráculo **não-validado** (AC-1). É uma cadeia **circular**: oráculo não-ancorado → "drift é
+inerente" → afrouxa gate → emenda o anti-placebo para aceitar o gate frouxo.
+
+**Impacto.** Para LSTM, o "hard gate" que S3 prometia entregar é, na prática, um **detector de catástrofe**,
+não de fidelidade: uma regressão perceptual real de LSTM até MR-STFT 0.85 / ESR 0.2 passaria **silenciosa**.
+O ponto-cego que S3 visava fechar está **apenas parcialmente fechado** para LSTM. (Para WaveNet/A2,
+os gates seguem apertados e legítimos — a ressalva é específica de LSTM.)
+
+**Proposta.** Após AC-1: re-derivar os thresholds de LSTM do **piso absoluto validado** (não de "output
+atual + margem"); **remover** a isenção genérica de LSTM no anti-placebo, trocando por um bound específico,
+justificado e versionado com a proveniência da medição; tratar a **mitigação real** (Kahan no head do
+LSTM / opção de pesos f32 — já listada em E4) como a correção, não o afrouxamento do gate.
+
+**Esforço:** Médio (depende de AC-1).
+
+---
+
+### AC-3 · 🟡 MÉDIO — LUFS **auto-calibrado**, não validado contra vetores EBU; critério de aceite de T2.5 não cumprido à letra
+
+**Evidência:** `src/testing/perceptual_test.rs:42,73` validam apenas seno→nível-conhecido
+("~-23 LUFS"/"~-3 LUFS"); **não há** sequências de compliance EBU Tech 3341. O critério de T2.5 prometia
+"validado contra vetores de referência EBU (±0,1 LU)".
+
+**Impacto.** A implementação BS.1770-4 (2 passes + LRA) é provavelmente correta, mas a garantia é
+**auto-referente** (calibração por seno analítico), não compliance oficial. Risco baixo, mas o critério
+de aceite foi declarado cumprido sem sê-lo à letra.
+
+**Proposta.** Vendorizar um subconjunto das sequências EBU Tech 3341 e asserir ±0,1 LU; **ou** corrigir o
+texto do critério para "calibração analítica por seno" (honestidade de escopo).
+
+**Esforço:** Baixo.
+
+---
+
+### AC-4 · 🟢 BAIXO (conhecido/deferido) — Matriz ISA sem caminho **escalar**; true-peak não cobre **produção**
+
+**Evidência:** T2.7 difere o `ScalarMath` completo ("~5 dias", trabalho futuro) — a "matriz cross-ISA"
+cobre só AVX2 self-consistency (CI) + AVX2↔AVX-512/VNNI (`#[ignore]`, hardware-dependente). T2.4 manteve
+**sample-peak** no hot-path (decisão RT consciente) — _overs_ inter-amostrais **não** são sinalizados ao
+host; true-peak existe só em QA.
+
+**Impacto.** Lacunas conscientes, não bugs. Mas a ausência do piso escalar significa que **nenhum** teste
+de modelo ponta-a-ponta valida o caminho scalar (só kernels unitários); e o LED de clip do usuário ainda
+ignora _overs_ inter-amostrais.
+
+**Proposta.** Rastrear como escopo deferido explícito (não "concluído"); documentar no manual do usuário
+que a detecção de clip é sample-peak; agendar o `ScalarMath` quando houver orçamento.
+
+**Esforço:** Baixo (rastreio/doc) + Médio (ScalarMath, se priorizado).
+
+---
+
+### AC-5 · 🟡 MÉDIO (processo) — Metodologia "calibrar até passar" inverte o propósito do teste
+
+**Evidência:** a cascata de 5 iterações de T3.5 elevou repetidamente thresholds (mrstft_max, ESR cap por
+arquitetura) e **emendou a própria meta-test anti-placebo** até a suíte ficar verde.
+
+**Análise crítica.** O fluxo correto é: medir num **referencial independente** → fixar o threshold →
+exigir que a implementação o cumpra. O fluxo observado foi o inverso: ajustar o threshold ao output atual.
+Isso transforma o gate em fotografia do presente — incapaz de pegar deriva futura **em direção a pior**,
+que é justamente o que `revisor-auditor` proíbe ("é estritamente PROIBIDA qualquer regressão de qualidade
+de som").
+
+**Proposta — Política de Calibração de Gates (a adotar):**
+
+1. Todo threshold deriva de `(piso medido em referência validada) × (margem fixa documentada)`.
+2. A proveniência da medição fica registrada junto ao threshold (já há o `// Measured:` — torná-lo obrigatório).
+3. O anti-placebo **não** admite exceções por-modelo via `starts_with(...)`; apenas bounds parametrizados
+   e justificados por uma medição independente linkada.
+4. Qualquer afrouxamento exige PR-nota apontando a medição que o justifica (não "o output atual passa").
+
+**Esforço:** Baixo (política) + recalibração coberta por AC-2.
+
+---
+
 ## Épicos (agrupamento para resolução rápida, segura e ordenada)
 
 > Sequência otimizada (Parte I): **E1 primeiro** (desbloqueia o debug de tudo o mais), depois **E2**
 > (fecha o ponto cego de correção), depois **E3** (processo/clareza). **Parte II:** **E5 (medição)
 > antes de E4 (correção sonora)** — não se corrige o que não se mede; o ASR/THD/oráculo f64 precedem o
-> oversampling e o reprojeto do resampler.
+> oversampling e o reprojeto do resampler. **Parte III:** **E7 (validação do oráculo) é pré-requisito de
+> E4/S5** — não se valida ganho sonoro com um instrumento não-ancorado.
 
 ### Épico E1 — "Diagnóstico de paridade confiável sob falha"  _(desbloqueador)_
 
@@ -712,12 +875,27 @@ menos scalar+AVX2 (AVX-512/VNNI quando o runner suportar).
   exata/HF opt-in).
 - **Objetivo:** reduzir aliasing e melhorar a fidelidade espectral (resampler + topo de banda) com
   modos HQ/offline, sem comprometer o caminho live de baixa latência.
-- **Depende de:** **E5** (precisa de ASR/THD/FR/true-peak para provar ganho e evitar regressão).
+- **Depende de:** **E5** (instrumentos) **e E7** (instrumentos **validados** — ver abaixo).
 - **Risco:** **médio-alto** — toca o hot-path DSP e o trade-off latência×qualidade; tratar com
   feature-flags (live vs offline) e benchmarks (P-7).
 
+### Épico E7 — "Validação do Oráculo & Recalibração Honesta de Gates"  _(pré-requisito de E4/S5)_
+
+- **Findings:** AC-1 (crítico — ancorar o oráculo f64), AC-2 (alto — re-derivar gates de LSTM e remover
+  carve-out anti-placebo), AC-5 (processo — política de calibração), AC-3 (médio — vetores EBU).
+- **Objetivo:** transformar o oráculo f64 de **scaffold não-validado** em **instrumento confiável**:
+  ancorá-lo a referência externa (NumPy/PyTorch f64), provar convergência em precisão-casada, e então
+  recalibrar os gates de LSTM a partir do piso **validado** — removendo os afrouxamentos "calibrados-para-passar".
+- **Por que é pré-requisito de E4/S5:** S5 usa o oráculo para baseline de aliasing (5.1) e medição da
+  contribuição Padé (5.3). **Usar um oráculo não-ancorado para "provar ganho sonoro" propagaria erro** e
+  poderia validar uma falsa melhoria. A pré-condição de S5 ("oráculo estruturalmente correto") **não está
+  realmente satisfeita** até E7.
+- **Depende de:** E5 (o oráculo já existe; falta validá-lo).
+- **Risco:** **médio** — majoritariamente engenharia de teste/medição; o risco real é **descobrir** que o
+  piso de erro do LSTM é menor que o assumido (o que reabriria AC-2 como bug, não como "inerente").
+
 ---
 
-_Findings produzidos pelas skills `revisor-auditor` (Parte I) e `pesquisador-inovador` (Parte II).
-Para transformá-los em sprints/tasks ágeis, acione a skill `planejador-arquiteto` para gerar
-`TODO-sprints.md` referenciando os Épicos E1–E5 acima._
+_Findings produzidos pelas skills `revisor-auditor` (Partes I e III) e `pesquisador-inovador` (Parte II).
+Para transformá-los em sprints/tasks ágeis, acione a skill `planejador-arquiteto` para gerar/atualizar
+`TODO-sprints.md`. **A Parte III recomenda inserir o Épico E7 antes de S5.**_
