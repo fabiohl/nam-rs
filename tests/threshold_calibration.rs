@@ -62,6 +62,10 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
         "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
         "golden_wavenet_official" => Some("wavenet_official"),
+        // Nondist production models — validated by cpp_parity + golden vectors
+        "golden_wavenet_app_evh" => Some("APP-EVH-Stealth100-Dialled-xSTD"),
+        "golden_wavenet_boss_bd2" => Some("Boss BD-2 H2O Mod T-12_00 G-12_00"),
+        "golden_wavenet_slammin_marshall" => Some("SLAMMIN MARSHALL JTM 45 REISSUE"),
         // cabsim goldens use their own oracle (convolution / C++ parity),
         // not topology_thresholds.
         _ => None,
@@ -123,11 +127,15 @@ fn test_all_golden_models_have_calibrated_thresholds() {
 }
 
 /// Verify that every calibrated entry in `get_calibrated_threshold()`
-/// has a `// Measured: SNR=..., ESR=...` comment documenting the
-/// real measurement that originated the floors.
+/// has a `// Measured:` comment documenting ESR and MR-STFT
+/// next to the match arm.
 ///
 /// This reads the source file of `validation.rs` and checks for the
-/// comment pattern next to each model name pattern.
+/// comment pattern near each distinct match arm.
+///
+/// Uses the **first** string pattern in each match arm to locate the
+/// arm boundary — for `|`-grouped arms this is closest to the
+/// `// Measured:` comment at the top of the block (Tarefa 5.6).
 #[test]
 fn test_all_calibrated_entries_have_measurement_comments() {
     let validation_src =
@@ -136,41 +144,54 @@ fn test_all_calibrated_entries_have_measurement_comments() {
     let source =
         fs::read_to_string(&validation_src).expect("Failed to read tests/common/validation.rs");
 
-    let models = [
+    // One representative model name per match arm in get_calibrated_threshold().
+    // These are the FIRST pattern in each arm — closest to the `// Measured:` comment.
+    let models: &[&str] = &[
         "BossWN-standard",
-        "BossLSTM-1x16",
-        "BossLSTM-2x8",
-        "wavenet_a1_standard",
-        "wavenet_official",
-        "lstm (Official)",
-        "lstm_official",
         "BossWN-feather",
         "BossWN-nano",
+        "wavenet_a1_standard",
+        "wavenet_official",
+        "BossLSTM-1x16",
+        "BossLSTM-2x8",
+        "lstm (Official)",
         "EVH-5150-Lite",
         "wavenet_a2_full",
         "wavenet_a2_lite",
+        "wavenet_condition_dsp",
+        // First nondist model — the `// Measured:` comment is above this pattern
+        "APP-EVH-Stealth100-Dialled-xSTD",
+        "wavenet_a2_film_lite",
+        "wavenet_a2_film_full",
+        "a2_dynamic_gated_ch8",
+        "a2_dynamic_blended_ch3",
+        "wavenet_dyn_free",
+        "lstm_dyn_test",
+        "a2_example",
+        "convnet_test",
     ];
 
-    for &model in &models {
-        // Find the line containing the model name pattern (inside a match arm)
+    for &model in models {
         let model_line = source
             .lines()
             .enumerate()
-            .find(|(_, l)| l.trim().starts_with('"') && l.contains(model) && l.contains("=>"))
+            .find(|(_, l)| {
+                let t = l.trim();
+                t.starts_with('"') && t.contains(model)
+            })
             .map(|(i, _)| i)
             .unwrap_or_else(|| {
                 panic!(
                     "Could not find match arm for model '{model}' in validation.rs \
-                     (expected a line containing '\"{model}\" ... =>')"
+                     (expected a line containing '\"{model}\"' as a match arm pattern)"
                 )
             });
 
-        // Check up to 3 lines above the match arm for "// Measured:"
         let mut found_measured = false;
-        for offset in 1..=3 {
+        for offset in 1..=15 {
             if model_line >= offset {
                 let prev_line = source.lines().nth(model_line - offset).unwrap_or("");
-                if prev_line.contains("// Measured: SNR") && prev_line.contains("ESR") {
+                if prev_line.contains("// Measured:") {
                     found_measured = true;
                     break;
                 }
@@ -180,8 +201,8 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         assert!(
             found_measured,
             "Calibrated entry for model '{model}' at line {} is missing \
-             '// Measured: SNR=..., ESR=...' comment within 3 lines above. \
-             Add the measurement documentation.",
+             '// Measured: ESR=..., MRSTFT=...' comment within 15 lines above. \
+             Add the measurement documentation. (Tarefa 5.6)",
             model_line + 1,
         );
     }

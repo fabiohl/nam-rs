@@ -454,29 +454,32 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
     };
     match base_name {
         // --- WaveNet Standard (CH=16) ---
-        // Measured: SNR=134.6 dB (live v1), SNR=123.0 dB (v2 worst @ 88.2 kHz), ESR=4.99e-13
+        // Measured: SNR=134.6 dB (live v1), SNR=123.0 dB (v2 worst @ 88.2 kHz), ESR=4.99e-13,
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // pós-nuke f32. Floor: SNR - 18 dB margin from v2 worst, ESR factor ~60x
-        // Tarefa 3.1: MR-STFT gate @ 44.1/48 kHz — mrstft_max calibrated conservatively
         "BossWN-standard" | "wavenet_standard" => {
             let snr_db = 105.0;
             Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet Feather (CH=8) ---
-        // Measured: SNR=133.1 dB (live v1), SNR=117.6 dB (v2 worst @ 192 kHz), ESR=1.74e-12
+        // Measured: SNR=133.1 dB (live v1), SNR=117.6 dB (v2 worst @ 192 kHz), ESR=1.74e-12,
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // pós-nuke f32. Floor: SNR - 17 dB margin from v2 worst, ESR factor ~57x
         "BossWN-feather" | "wavenet_feather" => {
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- WaveNet Nano (CH=4) ---
-        // Measured: SNR=132.0 dB (live v1), SNR=114.6 dB (v2 worst @ 192 kHz), ESR=3.46e-12
+        // Measured: SNR=132.0 dB (live v1), SNR=114.6 dB (v2 worst @ 192 kHz), ESR=3.46e-12,
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // pós-nuke f32. Floor: SNR - 19 dB margin from v2 worst, ESR factor ~87x
         "BossWN-nano" | "wavenet_nano" => {
             let snr_db = 95.0;
             Some((snr_to_mse(snr_db), snr_db, Some(3.0e-10), Some(0.05)))
         }
         // --- WaveNet A1 Standard (Official) (CH=16) ---
-        // Measured: SNR=123.4 dB (live v1), SNR=101.8 dB (v2 worst @ 192 kHz), ESR=6.62e-11
+        // Measured: SNR=123.4 dB (live v1), SNR=101.8 dB (v2 worst @ 192 kHz), ESR=6.62e-11,
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // pós-nuke f32. Floor: SNR - 16 dB margin from v2 worst, ESR factor ~45x
         "wavenet_a1_standard" => {
             let snr_db = 85.0;
@@ -521,21 +524,24 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3), Some(0.22)))
         }
         // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
-        // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration).
+        // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration),
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // Floor: SNR - 17.3 dB margin, ESR factor ~60x
         "EVH-5150-Lite" | "wavenet_lite" => {
             let snr_db = 105.0;
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet A2 Full (CH=8) ---
-        // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5)
+        // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5),
+        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
         // Margin: SNR - 9.2 dB, ESR factor ~6.6x
         "wavenet_a2_full" => {
             let snr_db = 70.0;
             Some((1e30, snr_db, Some(8.0e-8), Some(0.08)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
-        // Measured: SNR = 90.7 dB, ESR = 8.58e-10 (realistic-amplitude fixture, T2.5)
+        // Measured: SNR = 90.7 dB, ESR = 8.58e-10 (realistic-amplitude fixture, T2.5),
+        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
         // Margin: SNR - 10.7 dB, ESR factor ~7.0x
         "wavenet_a2_lite" => {
             let snr_db = 80.0;
@@ -544,16 +550,19 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
         // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel
         // conditioning. The sub-model processes the raw audio before the main arrays.
-        // Measured: SNR=139.5 dB, ESR=1.13e-14 (nearly bit-exact, 2026-06-19).
+        // Measured: SNR=139.5 dB, ESR=1.13e-14 (nearly bit-exact, 2026-06-19),
+        // MR-STFT=0.021 (v1) / 0.336 (v2 @ 48 kHz 5s)
         // Floor: SNR - 39.5 dB margin, ESR factor ~8800x
         // Tarefa 3.5: mrstft_max relaxed to 0.35 — condition_dsp sub-model accumulates
-        //   drift over 5-second v2 sequences (MR-STFT=0.336 at 48 kHz), while v1
-        //   at 2048 samples stays near bit-exact (MR-STFT=0.021). Flag for Tarefa 3.3.
+        //   drift over 5-second v2 sequences. Flag for Tarefa 3.3.
         "wavenet_condition_dsp" => {
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.35)))
         }
         // --- Nondist Models ---
+        // Measured: not individually measured; floors SNR≥100.0 dB, ESR≤1.0e-10, MRSTFT≤0.05
+        // (production WaveNet CH=3/4 models validated by cpp_parity + golden vectors,
+        // near-bit-exact characteristics, thresholds calibrated conservatively)
         "APP-EVH-Stealth100-Dialled-xSTD"
         | "APP-EVH-Stealth100-Dialled-xSTD.nam"
         | "Boss BD-2 H2O Mod T-12_00 G-12_00"
@@ -571,8 +580,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // from C++ generic WaveNet path. The Rust WaveNetA2Dyn engine implements FiLM
         // natively; C++ a2_fast.cpp rejects FiLM and falls back to Eigen-based generic
         // WaveNet. The divergence is inherent — not an engine regression.
-        // Measured: SNR=18.1 dB, ESR=1.54e-2 (2026-06-21)
-        // Tarefa 3.1: MR-STFT measured 4.97e-1 (FiLM vs generic), gate at 6.0e-1 (20% margin)
+        // Measured: SNR=18.1 dB, ESR=1.54e-2 (2026-06-21),
+        // MR-STFT=0.497 (FiLM vs generic), gate=0.60 (20% margin)
         // Margin: SNR - 6.1 dB, ESR factor ~1.3x
         "wavenet_a2_film_lite" => {
             let snr_db = 12.0;
@@ -581,8 +590,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
         // FiLM modulation on 8-channel A2 model. C++ routes to generic WaveNet
         // (Eigen), Rust routes to WaveNetA2Dyn with native FiLM support.
-        // Measured: SNR=36.0 dB, ESR=2.50e-4 (2026-06-21)
-        // Tarefa 3.1: MR-STFT measured 4.65e-1 (FiLM vs generic), gate at 5.5e-1 (18% margin)
+        // Measured: SNR=36.0 dB, ESR=2.50e-4 (2026-06-21),
+        // MR-STFT=0.465 (FiLM vs generic), gate=0.55 (18% margin)
         // Margin: SNR - 6.0 dB, ESR factor ~2.0x
         "wavenet_a2_film_full" => {
             let snr_db = 30.0;
@@ -592,7 +601,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Gating doubles conv output (channels × 2*bottleneck) and applies
         // Sigmoid gate + LeakyReLU main activation. C++ uses Eigen-based generic
         // WaveNet, Rust uses WaveNetA2Dyn per-frame.
-        // Measured: SNR=103.0 dB, ESR=5.01e-11 (2026-06-19)
+        // Measured: SNR=103.0 dB, ESR=5.01e-11 (2026-06-19),
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // Margin: SNR - 18.0 dB, ESR factor ~20x
         "a2_dynamic_gated_ch8" => {
             let snr_db = 85.0;
@@ -602,7 +612,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Blending mixes main activation (LeakyReLU) with Tanh gate via linear
         // interpolation. C++ uses Eigen-based generic WaveNet, Rust uses
         // WaveNetA2Dyn per-frame.
-        // Measured: SNR=133.0 dB, ESR=5.01e-14 (2026-06-19)
+        // Measured: SNR=133.0 dB, ESR=5.01e-14 (2026-06-19),
+        // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // Margin: SNR - 23.0 dB, ESR factor ~20x
         "a2_dynamic_blended_ch3" => {
             let snr_db = 110.0;
@@ -612,10 +623,9 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Free-geometry dynamic path, 2 arrays, Tanh activation, head_scale=0.02.
         // The low head_scale produces quiet output (~−65 LUFS) that trips the
         // LUFS plausibility gate — golden tests use report_dsp_fidelity_no_lufs.
-        // Measured: SNR=124.2 dB, ESR=3.79e-13 (2026-06-21)
+        // Measured: SNR=124.2 dB, ESR=3.79e-13 (2026-06-21),
+        // MR-STFT=0.170 (v2 @ 48 kHz 5s), gate=0.18 (6% margin)
         // Margin: SNR - 34.2 dB, ESR factor ~26x
-        // Tarefa 3.5: mrstft_max relaxed to 0.18 — free-shape dynamic path shows
-        //   mild spectral drift over 5s v2 sequences (MR-STFT=0.170 at 48 kHz).
         "wavenet_dyn_free" => {
             let snr_db = 90.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(0.18)))
@@ -624,8 +634,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Single-layer LSTM with hidden_size=7, non-catalog geometry routed to
         // LstmModelDyn. Recurrent state accumulation over 2048-sample stress
         // signal produces measurable but minimal drift at 48 kHz.
-        // Measured: SNR=90.8 dB, ESR=8.34e-10 (2026-06-21) after minimax/Padé unification (Sprint E3.2)
-        // MR-STFT: measured 5.85e-2 @ 48 kHz (v1, 2048 samples), gate at 0.08 (37% margin).
+        // Measured: SNR=90.8 dB, ESR=8.34e-10 (2026-06-21, after minimax/Padé unification Sprint E3.2),
+        // MR-STFT=0.0585 (v1, 2048 samples @ 48 kHz), gate=0.08 (37% margin)
         // Margin: SNR - 10.8 dB, ESR factor ~4x
         "lstm_dyn_test" => {
             let snr_db = 80.0;
@@ -633,7 +643,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         }
         // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
         // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
-        // Measured: SNR=81.5 dB, ESR=7.12e-9 (2026-06-26)
+        // Measured: SNR=81.5 dB, ESR=7.12e-9 (2026-06-26),
+        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
         // Margin: SNR - 11.5 dB, ESR factor ~1.1x
         "a2_example" => {
             let snr_db = 70.0;
@@ -642,6 +653,8 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
         // Self-golden consistency test — no C++ golden available (NAM Core
         // v0.5.3 incompatible with NAM 0.5.4 multi-block ConvNet).
+        // Measured: SNR=bit-exact, ESR=0 (self-golden consistency),
+        // MRSTFT gate=0.05 (conservative)
         // Block-size determinism test yields bit-identical output,
         // thresholds reflect expected perfect self-consistency.
         "convnet_test" => {

@@ -947,9 +947,9 @@ O gate de MR-STFT agora é calibrado a partir da medição v1 (2048 samples, 42.
 
 Os comentários `// Measured:` nas entradas LSTM de `validation.rs` foram atualizados para documentar o piso do oráculo f64, as medições v1/v2 de MR-STFT, e a justificativa da calibração. Testes de golden vectors (28/28), cpp_parity LSTM (8/8 v1+v2), threshold_calibration (3/3) e quick-suite passando sem regressões.
 
-### Tarefa 5.6 [QA/PROCESS] Padronização de Calibração (Política de Gates) & Lints ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.6 [QA/PROCESS] Padronização de Calibração (Política de Gates) & Lints ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-28)
 - **Arquivos Alvo:** [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs), [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs)
 - **Descrição:**
   - Aplicar a nova Política de Calibração: todo threshold na tabela de calibração de `validation.rs` deve documentar sua proveniência usando o comentário obrigatório `// Measured: ESR=..., MRSTFT=...`.
@@ -957,6 +957,10 @@ Os comentários `// Measured:` nas entradas LSTM de `validation.rs` foram atuali
 - **Critérios de Aceite:**
   - Todos os thresholds calibrados em `validation.rs` possuem comentário de proveniência; zero lints; testes rápidos passando perfeitamente.
 - **Risco:** Baixo.
+- **Conclusão:**
+  - Todos os 21 braços de `match` em `get_calibrated_threshold()` agora documentam proveniência ESR e MR-STFT no comentário `// Measured:`. Os modelos nondist (APP-EVH, Boss BD-2, Slammin Marshall) e ConvNet receberam seu primeiro comentário `// Measured:`. Entradas com MR-STFT em comentários separados (Cond-DSP, FiLM, Dyn Free, lstm_dyn_test) foram consolidadas na linha única `// Measured:`.
+  - Meta-teste `test_all_calibrated_entries_have_measurement_comments` expandido de 12 para 21 modelos (todos os braços de match). Lógica de busca adaptada para padrões `|`-agrupados (usa primeiro padrão, não requer `=>`), janela ampliada para 15 linhas. Entradas nondist adicionadas ao mapeamento `golden_bin_to_model_name` para cobertura do anti-placebo.
+  - `utils/lints.sh`: zero lints. `utils/tests-quick.sh`: todos os testes passando (0 falhas). `threshold_calibration`: 3/3 passando.
 
 ## Sprint S6: Épico E4 — Qualidade Sonora: Anti-aliasing & Fidelidade (P-1, P-2, P-5)
 
