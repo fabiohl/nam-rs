@@ -28,15 +28,16 @@ precede as correções de qualidade sonora (E4), e o diagnóstico confiável (E1
 
 ## Mapa de Sprints — Sequência Lógica e Segura
 
-| Sprint | Épico | Tema                                                | Findings                          | Risco            | Depende de |
-|:------:|:-----:|:--------------------------------------------------- |:--------------------------------- |:----------------:|:----------:|
-| **S1** | E1    | Diagnóstico de paridade confiável sob falha         | F-1, F-4                          | 🟢 Baixo         | —          |
-| **S2** | E5    | Instrumentação de medição & QA científica           | P-3, P-4, P-6, P-7, P-8, ASR(P-1) | 🟢🟡 Baixo-Médio | S1         |
-| **S3** | E2    | Fechar o ponto cego de fidelidade perceptual        | F-2                               | 🟡 Médio         | S1, S2     |
-| **S4** | E3    | Confiança do loop rápido + higiene de relatório     | F-3, D-2                          | 🟢 Baixo         | S3         |
-| **S5** | E7    | Validação do Oráculo & Recalibração de Gates        | AC-1, AC-2, AC-3, AC-5            | 🟡 Médio         | S2, S4     |
-| **S6** | E4    | Qualidade sonora: anti-aliasing & fidelidade (+ UX) | P-1, P-2, P-5                     | 🔴 Médio-Alto    | S5         |
-| **S7** | E6    | Documentação & referência técnica                   | (todos)                           | 🟢 Baixo         | S1–S6      |
+| Sprint | Épico | Tema                                                                | Findings                           | Risco            | Depende de |
+|:------:|:-----:|:------------------------------------------------------------------- |:---------------------------------- |:----------------:|:----------:|
+| **S1** | E1    | Diagnóstico de paridade confiável sob falha                         | F-1, F-4                           | 🟢 Baixo         | —          |
+| **S2** | E5    | Instrumentação de medição & QA científica                           | P-3, P-4, P-6, P-7, P-8, ASR(P-1)  | 🟢🟡 Baixo-Médio | S1         |
+| **S3** | E2    | Fechar o ponto cego de fidelidade perceptual                        | F-2                                | 🟡 Médio         | S1, S2     |
+| **S4** | E3    | Confiança do loop rápido + higiene de relatório                     | F-3, D-2                           | 🟢 Baixo         | S3         |
+| **S5** | E7    | Validação do Oráculo & Recalibração de Gates                        | AC-1, AC-2, AC-3, AC-5             | 🟡 Médio         | S2, S4     |
+| **S6** | E4    | Qualidade sonora: anti-aliasing & fidelidade (+ UX)                 | P-1, P-2, P-5                      | 🔴 Médio-Alto    | S5         |
+| **S7** | E6    | Documentação & referência técnica                                   | (todos)                            | 🟢 Baixo         | S1–S6      |
+| **S8** | E8+   | Acerto pós-auditoria: oráculo fiel, gates honestos, shipping seguro | AC-6, AC-7, AC-3, AC-5, AC-8, AC-9 | 🟡 Médio         | S5, S7     |
 
 **Racional da ordem.** S1 torna os logs de falha legíveis → desbloqueia o debug de tudo. S2 constrói os
 **instrumentos** (oráculo f64, ASR, THD/IMD/FR, true-peak, LUFS pleno, gates de perf, matriz ISA) —
@@ -45,7 +46,8 @@ ferramentas. S4 leva um subconjunto barato ao loop rápido. S5 (Épico E7) valid
 recalibra honestamente os gates de LSTM antes que sejam usados como instrumento de ground truth em S6. S6
 (maior risco — toca o hot-path DSP) só ocorre com métricas validadas para **provar ganho e barrar regressão**,
 e inclui a **superfície de controle (CLI+GUI)** pedida pelo PO. S7 sincroniza a "fonte de verdade" e registra
-a referência técnica/científica.
+a referência técnica/científica. **S8 é o acerto pós-auditoria:** fecha os residuais das auditorias cíclicas,
+tornando o oráculo fiel à produção, os gates honestos e o artefato distribuído seguro.
 
 > **Documentação contínua:** além do Sprint **S7** (consolidação + bibliografia anotada), cada sprint com
 > impacto arquitetural tem uma tarefa `[DOC]` que aciona a skill `documentador` (`linting.md` §2).
@@ -676,7 +678,7 @@ A equivocada caracterização "possível bug" do condition_dsp foi corrigida fac
 | Oráculo                                   | Pergunta respondida                               | Estado atual                                                                                                                         |
 |:----------------------------------------- |:------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------f----- |
 | NAMCore f32 (golden_vectors + cpp_parity) | "Soa idêntico ao reference player da comunidade?" | ✅ Completo, 33/33 testes                                                                                                            |
-| Oráculo f64 (reference_oracle_f64)        | "Qual o erro vs ideal matemático? De onde vem?"   | ⚠️ **NÃO-VALIDADO** (ver AC-1, Parte III): implementado mas asserts placebo (`< 2.0`); âncora externa nunca executada; ESR não-corroborado. **Não confiável como verdade-terreno ainda.** |
+| Oráculo f64 (reference_oracle_f64)        | "Qual o erro vs ideal matemático? De onde vem?"   | ⚠️ **PARCIAL** (ver AC-6, Parte IV): âncora externa OK (NumPy f64 < 1e-12) e **ΔESR relativos válidos**; porém o **ESR absoluto produção-vs-oráculo é divergência arquitetural** (WaveNet 2.47 vs Σprecisão 9.6e-7), **não** fidelidade. Gates do oráculo (3.5/1.8) ainda placebo. **Não usar números absolutos até E8.** |
 | Matriz ISA (isa_parity)                   | "Todas as ISAs produzem o mesmo resultado?"       | ✅ Self-consistency; cross-ISA em long-suite                                                                                         |
 
 **Hierarquia de valor dos testes:**
@@ -972,7 +974,7 @@ do resampler < 0,1 dB; ESR sem regressão; controles de usuário simples e segur
 **Estimativa:** 2 sprints.
 **Risco Geral:** 🔴 Médio-Alto — toca o **hot-path DSP** e o trade-off latência×qualidade. Mitigações:
 feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por S2 (ASR/THD/FR + benches P-7).
-**Pré-condições:** **S2 verde** e **T-CR2 concluída** (oráculo f64 estruturalmente correto para WaveNet/A2 — ESR residual de f16c é esperado, não estrutural).
+**Pré-condições:** **S2 verde**. ⚠️ **Revisão pós-auditoria (Parte IV/AC-6):** a afirmação anterior — "oráculo estruturalmente correto, ESR residual de f16c esperado/não estrutural" — foi **REFUTADA pela decomposição** (WaveNet: gap 2.47 vs Σprecisão 9.6e-7 → ~100 % é divergência **arquitetural**). As tarefas de S6 que dependem do **ESR absoluto** do oráculo (P-5 sob pesos reais) ficam **provisórias até E8** (fidelidade do oráculo). As que dependem de ASR/THD/decomposição-relativa permanecem válidas.
 
 ---
 
@@ -1197,6 +1199,363 @@ decisões dos sprints S1–S6.
 
 ---
 
+## Sprint S8: Épicos E8 + Acertos Pós-Auditoria — Oráculo Fiel, Gates Honestos, Shipping Seguro
+
+**Origem:** achados `AC-6…AC-9` (Partes III e IV de [`TODO-findings.md`](file:///home/fabio/nam-rs/TODO-findings.md)),
+descobertos por auditorias críticas com verificação direta no código-fonte e medição empírica. Esta sprint
+consolida **todo o trabalho residual** das últimas iterações de auditoria, organizado em 6 grupos de risco.
+
+**O achado central que origina esta sprint (AC-6, medido):** o `test_combined_simulation_wavenet` do oráculo
+imprime textualmente `ΔESR(combined vs oracle): 9.60e-7` mas `ESR(combined vs production): 2.47e0`. Ou seja:
+a soma de **todas** as fontes de precisão modeladas (f16c + bf16 + Padé + acúmulo f32) explica apenas
+`9.6e-7` do gap — que é `2.47`, seis ordens de grandeza maior. **~100 % do gap é "divergência arquitetural"
+não modelada.** Isso invalida como ground-truth confiável os números absolutos do oráculo, os gates
+`WAVENET_ESR_LIMIT = 3.5` e `LSTM_ESR_LIMIT = 1.8` (piores que os placebos que substituíram), e a afirmação
+de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM é `3.05e-6`).
+
+**Sequência interna:** Grupo A (E8, oracle fidelity) → Grupo B (gates/policy) → Grupos C, D, E em paralelo
+→ Grupo F (QA). Grupos C–E não dependem do Grupo A e podem ser executados em qualquer ordem.
+
+**Risco Geral:** 🟡 Médio (Grupo A) + 🟢 Baixo (Grupos B–F).
+
+---
+
+### Grupo A — Épico E8: Fidelidade do Oráculo à Produção _(pré-requisito dos números absolutos do oráculo)_
+
+### Tarefa 8.1 [DEBUG/TEST] Diagnosticar a divergência arquitetural oráculo↔produção ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md), [AC-7](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) (testes `test_combined_simulation_*`)
+  - [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs) (`oracle_forward`, lógica de prewarm)
+- **Descrição:**
+  - A comparação atual usa `gen_sweep(256)` — **apenas 256 amostras sem prewarm**. A produção faz prewarm
+    (`model.prewarm(24_000)` em `nam_infer_test.rs`). Se o oráculo inicia estado zerado mas a produção já
+    tem estado pré-aquecido, a comparação de 256 amostras é dominada pelo **transiente de inicialização**,
+    que inflaciona o ESR artificialmente.
+  - **Experimento (custo zero):** criar `test_oracle_warmup_paired` que (1) aquece produção **e** oráculo com
+    as mesmas 24k amostras de prewarm, (2) mede ESR sobre as 256 amostras de sweep subsequentes. Se
+    `ESR(combined vs production)` cair para < 0.1, a hipótese do prewarm está confirmada.
+  - Se o prewarm não resolver, investigar: (a) topologia two-array do WaveNet (head_scale, mixin, skip
+    ordering — já houve fix em `20b97a7`, verificar resíduo); (b) fator de escala/ganho de saída.
+- **Critérios de Aceite:** hipótese identificada e confirmada com teste reproduzível; causa do gap documentada;
+  próximo passo claro para T8.2.
+- **Risco:** Médio — aceitar o resultado com imparcialidade; pode confirmar que T3.3 estava correto.
+
+### Tarefa 8.2 [TEST/MATH] Fechar ESR(combined vs production) < 1e-2 para WaveNet, LSTM e A2 ([AC-7](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+
+- **Arquivos Alvo:**
+
+  - [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs) (`oracle_forward`)
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) (`test_combined_simulation_*`)
+
+- **Descrição:**
+
+  - Implementar a correção identificada em T8.1 (ex.: prewarm pareado — alimentar oráculo com o mesmo sinal
+    de prewarm antes do sweep de medição; ou corrigir topologia/escala residual).
+
+  - **Meta dura:** `ESR(combined vs production) < 1e-2` para WaveNet, LSTM e A2 sob `F16C+PadeMinimax+F32Plain`.
+    Só então o oráculo **modela** de fato o que a produção executa, e seus números absolutos são confiáveis.
+
+  - Atualizar `test_combined_simulation_*` com `assert!(esr_combined_vs_prod < 1e-2)` — transformando a
+    impressão diagnóstica atual em gate real. Exemplo:
+
+    ```rust
+    assert!(
+        esr_combined_vs_prod < 1e-2,
+        "Oracle does not faithfully model production: ESR {:.2e} ≥ 1e-2. \
+         Root-cause prewarm/topology gap (see AC-7, T8.1).",
+        esr_combined_vs_prod
+    );
+    ```
+
+  - Se a correção não fechar o gap abaixo de 1e-2, documentar o resíduo como "irreducível e quantificado"
+    com proveniência, em vez de fingir que está resolvido.
+
+- **Critérios de Aceite:** `ESR(combined vs production) < 1e-2` nos 3 asserts; `cargo test --release --test
+  reference_oracle_f64` verde; o comentário "gap = architectural divergence" desaparece ou é substituído por
+  número documentado e justificado.
+
+- **Risco:** Médio. Depende de T8.1.
+
+### Tarefa 8.3 [TEST] Re-derivar gates do oráculo abaixo da linha de placebo ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+
+- **Arquivos Alvo:** [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
+  (constantes `WAVENET_ESR_LIMIT = 3.5`, `LSTM_ESR_LIMIT = 1.8`, `A2_ESR_LIMIT = 0.35`)
+
+- **Descrição:**
+
+  - Os gates atuais foram derivados do ESR contaminado por divergência arquitetural:
+    `WAVENET_ESR_LIMIT = 3.5` ("2.47 medido + 40 %"), `LSTM_ESR_LIMIT = 1.8` ("1.06 + 70 %") — ambos **acima
+    da linha de placebo do projeto (ESR ≥ 1.0)** e piores que os placebos `< 2.0` que substituíram.
+
+  - Após T8.2 (oráculo fiel), re-medir `ESR(produção f32 vs oráculo f64)` com o oráculo corrigido e re-derivar
+    os limites: `limite = medido × 2` (margem conservadora), garantindo **< 1.0** para todas as famílias.
+
+  - Atualizar as constantes e o bloco de comentários com proveniência:
+
+    ```rust
+    // Measured (post-T8.2, prewarm-paired, 256-sample sweep @ 48 kHz):
+    //   WaveNet: ESR = X.XXe-Y  →  WAVENET_ESR_LIMIT = X.XXe-Y × 2
+    //   LSTM:    ESR = Y.YYe-Z  →  LSTM_ESR_LIMIT    = Y.YYe-Z × 2
+    //   A2:      ESR = Z.ZZe-W  →  A2_ESR_LIMIT      = Z.ZZe-W × 2
+    const WAVENET_ESR_LIMIT: f64 = /* < 1.0 */;
+    ```
+
+- **Critérios de Aceite:** `WAVENET_ESR_LIMIT < 1.0`, `LSTM_ESR_LIMIT < 1.0`, `A2_ESR_LIMIT < 1.0`;
+  proveniência `// Measured:` presente; meta-test de T8.6 passa.
+
+- **Risco:** Baixo (depende de T8.2).
+
+### Tarefa 8.4 [TEST] Recalibrar ABSOLUTE_ESR_CAP_LSTM com o piso de precisão real ([AC-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`ABSOLUTE_ESR_CAP_LSTM = 0.2`)
+- **Descrição:**
+  - O cap `0.2` foi definido para fazer passar os testes (T3.5, iter 3), não a partir de um piso de precisão
+    medido. O ΔESR f16c real do LSTM é `3.05e-6` (medido pelo oráculo). O ESR de 2.61e-2 (nam-rs vs NAMCore,
+    v2/240k) é **drift recorrente observado** — não piso de precisão.
+  - Após T8.2, re-avaliar: se o oráculo corrigido mostrar que o drift de 2.61e-2 é real (confirmando T3.3),
+    derivar o cap de `(2.61e-2) × 3 = ~0.08` (margem para degradação futura), não de "o que faz passar o
+    teste atual". Se mostrar que era artefato de prewarm, o cap pode ser ainda mais apertado.
+  - Documentar a distinção no código: **cap vs NAMCore paridade** (drift recorrente real) vs **cap vs oráculo
+    ideal** (piso de precisão ~1e-4 depois de T8.2).
+- **Critérios de Aceite:** cap derivado de medição real + margem documentada com `// Measured:`; diferenciação
+  explícita paridade-vs-NAMCore / correção-vs-ideal; cpp_parity verde.
+- **Risco:** Médio (depende de T8.2; o valor exato do cap novo ainda é incógnita).
+
+### Tarefa 8.5 [DOC] Revisar e qualificar as conclusões de T3.3 à luz do oráculo fiel ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md) (seção "LSTM Recurrent State Quantization Drift")
+  - [`TODO-sprints.md`](file:///home/fabio/nam-rs/TODO-sprints.md) (T3.3 conclusão, linhas ≈ 457-483)
+- **Descrição:**
+  - A T3.3 afirmou: "ESR ≈ 1.0 vs ideal = piso inerente de quantização f16c". A auditoria AC-6 mostrou que o
+    ΔESR f16c do LSTM é **3.05e-6**, não ~1.0 — o 1.06 era artefato arquitetural do oráculo. T8.2 vai revelar
+    o piso real.
+  - Após T8.2, atualizar `perceptual_validation.md`:
+    - O que permanece correto (oracle-independente): evidência experimental de ESR 2.5× entre v1 e v2,
+      plateau confirmando steady-state, ASR baixo descartando aliasing, dither descartado. O **mecanismo** do
+      drift recorrente está correto; apenas o número absoluto "vs ideal" estava inflado pelo oráculo.
+    - O que muda: substituir "ESR ≈ 1.0 = piso f16c" por "ESR ≈ [valor de T8.2] = piso real; o 1.0 anterior
+      era divergência arquitetural do oráculo não-pareado com prewarm (corrigido em T8.2)".
+  - Qualificar a conclusão "Não é corrigível sem alterar o formato": ainda pode ser verdade se o drift de
+    2.61e-2 vs NAMCore persistir após T8.2 — confirmar ou refutar.
+- **Critérios de Aceite:** `perceptual_validation.md` atualizado com números do oráculo corrigido; afirmação
+  "1.0" qualificada; sem contradições internas; doc coerente com T8.2/T8.3/T8.4.
+- **Risco:** Baixo (documentação; depende de T8.2).
+
+---
+
+### Grupo B — Gate Hygiene & Policy: Anti-Placebo no Oráculo + Política de Calibração
+
+### Tarefa 8.6 [TEST] Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo ([AC-9](file:///home/fabio/nam-rs/TODO-findings.md), [AC-5](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+
+- **Arquivos Alvo:**
+
+  - [`tests/threshold_calibration.rs`](file:///home/fabio/nam-rs/tests/threshold_calibration.rs)
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
+
+- **Descrição:**
+
+  - Adicionar um meta-teste em `threshold_calibration.rs` que lê as constantes `WAVENET_ESR_LIMIT`,
+    `LSTM_ESR_LIMIT`, `A2_ESR_LIMIT` de `reference_oracle_f64.rs` (via `pub const` exportada) e asserta que
+    **todas** são `< 1.0` — a linha de placebo da Regra 2 do projeto:
+
+    ```rust
+    #[test]
+    fn test_oracle_gates_below_placebo_threshold() {
+        assert!(WAVENET_ESR_LIMIT < 1.0, "WaveNet oracle gate is placebo (≥ 1.0)");
+        assert!(LSTM_ESR_LIMIT    < 1.0, "LSTM oracle gate is placebo (≥ 1.0)");
+        assert!(A2_ESR_LIMIT      < 1.0, "A2 oracle gate is placebo (≥ 1.0)");
+    }
+    ```
+
+  - Este teste é o **guarda** que impede que rodadas futuras de "calibrar até passar" elevem os limites do
+    oráculo de volta à zona de placebo. Ele falha _durante_ T8.3 (antes de fixar os limites) e passa _após_.
+
+- **Critérios de Aceite:** meta-teste presente, verde após T8.3; falha se qualquer limite ≥ 1.0; `cargo test
+  threshold_calibration` verde.
+
+- **Risco:** Baixo (depende de T8.3).
+
+### Tarefa 8.7 [DOC] Formalizar a Política de Calibração de Gates ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md), [AC-9](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
+  (nova seção "Gate Calibration Policy")
+- **Descrição:**
+  - Documentar as 5 regras da Política de Calibração (extraídas de AC-5 + AC-9), com exemplos de correto e
+    incorreto (usando os gates placebo 3.5/1.8 como exemplo canônico do que NÃO fazer):
+    1. Nenhum gate pode ser derivado de uma métrica cuja **validade** não esteja estabelecida.
+    2. Gates de fidelidade **nunca** ultrapassam a linha de placebo (ESR < 1.0; MR-STFT < 0.5).
+    3. Obrigatório: `// Measured: <valor> @ <condições>  →  limit = <valor × margem>`.
+    4. Qualquer afrouxamento exige link à medição independente que o justifica (não "o output atual passa").
+    5. Sanity-check obrigatório antes de declarar "concluído": `Σ ΔESR fontes modeladas ≈ ESR(prod vs oracle)`;
+       se divergir > 10×, o número absoluto é suspeito e não pode ser gate.
+  - Referenciar esta política nos comentários de `reference_oracle_f64.rs` e `threshold_calibration.rs`.
+- **Critérios de Aceite:** seção presente no doc; referenciada em 2+ arquivos de código; `refatora-doc` revisada.
+- **Risco:** Baixo.
+
+---
+
+### Grupo C — Measurement Completeness: LUFS Compliance EBU
+
+### Tarefa 8.8 [TEST] Validar LUFS contra vetores EBU Tech 3341 ou corrigir critério de aceite ([AC-3](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`src/testing/perceptual_test.rs`](file:///home/fabio/nam-rs/src/testing/perceptual_test.rs) (testes LUFS)
+  - [`tests/fixtures/`](file:///home/fabio/nam-rs/tests/fixtures) (eventuais fixtures EBU)
+- **Descrição:**
+  - O critério de aceite de T2.5 prometia "validado contra vetores EBU (±0,1 LU)"; a validação real foi
+    "calibração por seno analítico" — critério auto-referente, não compliance oficial.
+  - **Opção A (recomendada):** vendorizar sequências de compliance EBU Tech 3341 (arquivos de teste públicos
+    da EBU, curtos, sem dependência externa). Asserir `|computed - expected| < 0.1 LU` para cada sequência.
+    Se a Opção A revelar falhas, há um bug real na implementação de 2 passes.
+  - **Opção B (honestidade de escopo, fallback rápido):** corrigir o critério de aceite de T2.5 para
+    "calibração analítica por seno (não compliance EBU)" e abrir issue explícito para compliance futura.
+  - Preferir Opção A. Estimar: encontrar/gerar as sequências EBU Tech 3341 leva ~1 h; implementar os asserts
+    leva ~2 h.
+- **Critérios de Aceite:** critério de aceite de T2.5 alinhado com o que foi validado; se Opção A: ≥ 3
+  sequências EBU passam dentro de ±0,1 LU.
+- **Risco:** Baixo.
+
+---
+
+### Grupo D — Release Pipeline Hardening: Artefato Distribuído Seguro (AC-8)
+
+### Tarefa 8.9 [BUILD] Gate de símbolo/SONAME/validator no artefato real de distribuição ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+
+- **Arquivos Alvo:** [`utils/build-release.sh`](file:///home/fabio/nam-rs/utils/build-release.sh)
+  (Phase 5/5 "Installing and validating artifacts", linha 392+)
+
+- **Descrição:**
+
+  - **Lacuna identificada pelo peer review:** `build-release.sh` verifica apenas `[ -f "$PGO_CLAP_TARGET_DIR/
+    dist/libnam_rs.so" ]` (linha 239) antes de fazer `strip --strip-unneeded` + `cp`. O artefato real
+    distribuído (`~/.clap/nam-rs.clap`) **nunca** passa por `nm -D | grep clap_entry`, `readelf | grep SONAME`,
+    nem pelo `clap-validator`. O audit (Phase 5 da long-suite) valida um binário **diferente** (`profile.release`,
+    sem PGO, sem `x86-64-v3`).
+
+  - Adicionar, após o `strip --strip-unneeded` e **antes** do `cp` final em `build-release.sh`:
+
+    ```bash
+    LOCAL_CLAP="$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so"
+    # Gate 1: clap_entry deve sobreviver ao strip
+    nm -D "$LOCAL_CLAP" | grep -q "clap_entry" \
+        || { echo -e "${RED}Erro: clap_entry ausente após strip!${NC}"; exit 1; }
+    # Gate 2: SONAME deve estar presente
+    readelf -d "$LOCAL_CLAP" | grep -q SONAME \
+        || { echo -e "${RED}Erro: SONAME ausente!${NC}"; exit 1; }
+    # Gate 3: clap-validator (quando disponível)
+    if command -v clap-validator >/dev/null 2>&1; then
+        clap-validator validate "$LOCAL_CLAP" \
+            || { echo -e "${RED}Erro: clap-validator reprovou o artefato de distribuição!${NC}"; exit 1; }
+    fi
+    ```
+
+  - Esta é a **única mudança** que garante que o binário que o usuário carrega no DAW está correto — o audit
+    de Phase 5 não cobre este caminho (divergência de profile/PGO/ISA/features documentada no AC-8).
+
+- **Critérios de Aceite:** `build-release.sh` falha explicitamente se `clap_entry` ausente, SONAME ausente,
+  ou clap-validator reprova; script testado manualmente com um binário de release limpo.
+
+- **Risco:** Baixo.
+
+### Tarefa 8.10 [BUILD] Fortalecer o knob CARGO_INCREMENTAL no audit (Phase 5) ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+
+- **Arquivos Alvo:** [`utils/tests-long.sh`](file:///home/fabio/nam-rs/utils/tests-long.sh)
+  (função `run_clap_audit_local`, linha ≈ 393)
+
+- **Descrição:**
+
+  - A correção atual usa `CARGO_BUILD_INCREMENTAL=false` — o **knob de menor precedência**. Se um dev/CI
+    tiver `CARGO_INCREMENTAL=1` exportado no ambiente, ele sobrepõe `CARGO_BUILD_INCREMENTAL` e o bug de
+    cache stale pode reincidir (`target/release/incremental/` ainda existe no ambiente de dev).
+
+  - Correção dupla:
+
+    1. Substituir por `CARGO_INCREMENTAL=0` (precedência maior, sempre vence):
+
+       ```bash
+       # ANTES: CARGO_BUILD_INCREMENTAL=false cargo build ...
+       CARGO_INCREMENTAL=0 cargo build --release ...
+       ```
+
+    2. Limpar o cache stale antes do build:
+
+       ```bash
+       rm -rf target/release/incremental/
+       CARGO_INCREMENTAL=0 cargo build --release ...
+       ```
+
+  - Isso torna o audit **robusto** a qualquer estado residual de builds anteriores.
+
+- **Critérios de Aceite:** `run_clap_audit_local` usa `CARGO_INCREMENTAL=0` + limpa `target/release/
+  incremental/`; Phase 5 da long-suite verde mesmo se `CARGO_INCREMENTAL=1` estiver exportado no ambiente.
+
+- **Risco:** Baixo.
+
+---
+
+### Grupo E — Long-Suite Residual: Issues do Diagnóstico de 2026-06-28
+
+### Tarefa 8.11 [TEST] Investigar e resolver linear_test.nam 88200 Hz LUFS=13.5 ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:**
+  - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`live_cross_validation_v2_linear`)
+  - [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (gate LUFS)
+  - [`tests/fixtures/models/linear_test.nam`](file:///home/fabio/nam-rs/tests/fixtures/models/linear_test.nam)
+- **Descrição:**
+  - O diagnóstico de `tests-long.sh` (2026-06-28) registrou falha em `live_cross_validation_v2_linear` @
+    88200 Hz: LUFS=13.5 no render C++ — acima do limiar `[-50, +10]`. O gate LUFS detectou dado de referência
+    suspeito (gain excessivo ou clipping no C++ para modelo linear RF=4 em 88200 Hz).
+  - **Investigar:** executar o render C++ isolado para `linear_test.nam` @ 88200 Hz e medir LUFS do output.
+    Se for clipping real do C++ (gain excessivo ao upsample): documentar como "GOLDEN DEFECT" para este
+    modelo/taxa específico e usar `check_lufs_gate=false` (padrão dos goldens de convolução-IR — D-2 da Parte I).
+    Se for bug no fixture: regenerar `linear_test.nam` com gain correto.
+  - Garantir que `live_cross_validation_v2_linear` passa na long-suite Phase 3 após a correção.
+- **Critérios de Aceite:** causa identificada e documentada; Phase 3 da long-suite verde para `v2_linear`;
+  comportamento registrado no threshold entry do modelo.
+- **Risco:** Baixo.
+
+---
+
+### Grupo F — Encerramento e Validação
+
+### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md))
+
+- **Status:** `[ ]` Não iniciada
+- **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `utils/tests-long.sh`
+- **Descrição:**
+  - **Pré-condição:** T8.1–T8.11 concluídas (ou explicitamente deferidas com justificativa documentada).
+  - Rodar `utils/lints.sh` → zero warnings.
+  - Rodar `utils/tests-quick.sh` → suíte rápida verde.
+  - Rodar `utils/tests-long.sh` → **7/7 fases PASSED**, incluindo:
+    - Phase 3: `live_cross_validation_v2_linear` @ 88200 Hz verde (T8.11).
+    - Phase 5: `clap_entry` presente no binário do audit, Phase verde.
+    - Meta-test `test_oracle_gates_below_placebo_threshold` (T8.6) verde.
+    - Testes `test_combined_simulation_*` com `assert!(esr_combined_vs_prod < 1e-2)` (T8.2) verdes.
+  - Registrar o resultado final na Conclusão desta tarefa (como feito nas sprints anteriores).
+- **Critérios de Aceite:** `tests-long.sh` 7/7 PASSED; zero clippy warnings; todos os meta-testes anti-placebo
+  verdes; nenhum gate do oráculo ≥ 1.0.
+- **Risco:** Baixo (validação de fechamento).
+
+---
+
 ## Notas de Encerramento
 
 - **Rastreabilidade:** cada tarefa referencia seu finding em
@@ -1206,9 +1565,12 @@ decisões dos sprints S1–S6.
 - **Sincronia com os findings:** as Notas do PO de **P-1/P-2** entram como a **Tarefa 6.5 [UX/CLAP]**
   (controles CLI+GUI, troca off-RT); a de **P-4** entra como o **passo de validação externa do oráculo** na
   **Tarefa 2.1**. Qualquer novo finding deve replicar este vínculo bidirecional.
-- **Segurança da sequência:** **não iniciar S6** (hot-path DSP) antes de **S2** estar verde — é a salvaguarda
-  central deste plano (medir antes de corrigir).
-- **Próximo passo sugerido:** executar **S4** (baixo risco, ganho imediato no loop rápido + consolidação da suíte) via skill `tarefa` → `implementador`. S4 é o único sprint sem dependências pendentes — T-CR2, T-CR3 e todas as CRs estão concluídas.
+- **Segurança da sequência:** dentro de S8, **T8.1 → T8.2 → T8.3/T8.4 → T8.5/T8.6** formam a cadeia crítica
+  do Grupo A; Grupos C–E são independentes e podem correr em paralelo. Não executar T8.3 (re-derivação dos
+  gates) antes de T8.2 estar verde — re-derivar com oráculo não-fiel perpetua o ciclo de calibração viciada.
+- **Próximo passo sugerido:** executar **S8 / Tarefa 8.1** (diagnóstico do prewarm — baixo custo, alto
+  impacto) via skill `tarefa` → `implementador`. É o nó crítico que desbloqueia T8.2–T8.5 e responde de
+  forma definitiva se o drift do LSTM é real ou artefato do oráculo.
 
 ### Diagnóstico da Execução dos Testes Longos (2026-06-28)
 
@@ -1231,16 +1593,3 @@ Execução do comando `utils/tests-long.sh`. Resultado resumido (7 fases, ~42 mi
 **Fase 5 — CLAP Release Validation:** Símbolo `clap_entry` ausente no binário de Release. **Causa provável:** o build foi feito com `--lib`, gerando `libnam_rs.so`. O macro `clack_export_entry!(entry::NamEntry)` em `src/clap/mod.rs:23` deve exportar o símbolo. A falha pode ser de ambiente de build (cache corrompido, versão do `clack_plugin` com bug de linkagem, ou `strip` automático do linker). **Não é regressão** do código da engine DSP — a falha ocorre na camada de empacotamento CLAP, isolada da engine de inferência e resample.
 
 **Recomendação:** reexecutar `run_clap_audit_local` isoladamente após `cargo clean` para isolar se é falha de build cache ou bug no crate `clack_plugin`. Se persistir, verificar com `nm -D --defined-only` e `objdump -T` se o símbolo existe com nome diferente (ex: `clap_plugin_entry`).
-
----
-
-## Conclusão final
-
-Atividades propostas concluídas. Faça a mesma análise crítica aqui: Desta rodadas de ajustes e do "quadro geral das coisas".
-Segue anexo o resultado dos testes longos para coleta de insights.
-Obs: Este erro registrado no "Phase 5" já foi encaminhado para tratamento em outra atividade - possivelmente já resolvido neste momento.
-
-/documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (muito especialmente as que não foram trabalhadas aqui neste TODO-sprints.md) e qual o papel delas. Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM).
-Identifique se tudo isso é opcional ou obrigatório. Se podem ser removidas ou tornadas opcionais. Se estão bem documentados ou com questões pendentes a resolver.
-Identifique este fatores que são alheios à especificação estrita do NAM e podem afetar performance e, muito especialmente, qualidade sonora.
-Precisamos ter uma visão clara deste fatores de degradação ou aprimoramento "por design". De preferência devidamente documentado à parte para acompanhamento. Inclusive, migre as informações do docs/f16c_compression_analysis.md para ele. Unificando as coisas. Faça o mesmo para outras coisas similares espalhados em outros documentos.

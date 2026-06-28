@@ -172,6 +172,7 @@ distribuição de treino".
    steady-state, não deixando o ESR crescer livremente.
 
 2. **Evidência experimental:**
+
    - v1 (2048 samples, 42.7ms) @ 48 kHz: ESR=1.04e-2, MR-STFT=0.098 ✅
    - v2 (240k samples, 5s) @ 48 kHz: ESR=2.61e-2, MR-STFT=0.87 ❌
    - Multi-SR v2: ESR cresce de 2.39e-2 (44.1k) a 1.42e-1 (192k), proporcional ao número de steps
@@ -563,6 +564,7 @@ e, portanto, **compartilham as mesmas limitações**. Três esclarecimentos:
    é prática-padrão em computação numérica (cf. MPFR/double-double) — **não** é circularidade.
 
 3. **Duas referências complementares, para duas perguntas distintas** (mantemos as duas):
+
    - **NAMCore f32** → _"Paridade/Interop"_: o nam-rs soa idêntico ao player de referência da comunidade?
    - **Oráculo f64** → _"Correção absoluta"_: qual o erro numérico **próprio** do caminho f32 vs a
      matemática ideal — e a **decomposição** por fonte (peso × ativação × acúmulo), que o C++ **não**
@@ -828,8 +830,205 @@ de som").
 
 ---
 
+## Parte IV — Auditoria pós-S5–S7 (role "Correctness Auditor", 2ª passada)
+
+> **Contexto:** auditoria cética da rodada que executou E7 (S5, oráculo) + E4 (S6, qualidade sonora) +
+> E6 (S7, docs). Cruzei os commits, a `tests-long.sh` (6/7 PASSED; Phase 5 falhou — ver AC-8) e
+> **reproduzi diretamente** `cargo test --release --test reference_oracle_f64 -- --nocapture` para medir,
+> não inferir. Achados `AC-6…AC-9`.
+
+## Balanço honesto — avanços reais desta rodada
+
+- **Âncora externa do oráculo (excelente):** `tests/reference_oracle_f64.rs` agora valida o oráculo
+  Rust-f64 contra vetores NumPy f64 pré-gerados (`tests/fixtures/f64_anchors/`) — medido **5.0e-16
+  (WaveNet/A2), 9.97e-32 (LSTM)**. O oráculo é, comprovadamente, uma implementação f64 **correta da
+  topologia que modela**. Era exatamente o passo anti-circularidade que faltava (AC-1).
+- **AC-2 (pior parte) corrigida:** o carve-out anti-placebo de LSTM foi **removido** —
+  `threshold_calibration.rs:305-309` aplica `mrstft < 0.5` a **todos** os modelos; os `mrstft_max` de
+  LSTM foram re-derivados do piso v1 (< 0.5) com a relaxação v2 explícita e capada.
+- **Infra de decomposição + combined-sim construída:** `run_decomposition` + `test_combined_simulation_*`
+  isolam f16c/bf16/Padé/acúmulo. É a ferramenta certa — e é **ela** que permite o diagnóstico abaixo.
+- **Bugs reais encontrados e corrigidos:** indexação de pesos conv do oráculo (`20b91a7`), **erro de
+  ganho 112×** no protótipo do resampler (`fa89590`) — este último **agora guardado** por
+  `test_sinc_kaiser_dc_unity` (DC = 1.0 ± 1e-10). S6 entregou oversampling 2×/4×, taps 32→64, modo HF,
+  parâmetro CLAP Oversampling + GUI, baseline espectral.
+- **A long-suite cumpriu seu papel:** pegou o release-break do `clap_entry` (Phase 5).
+
+O que segue **não apaga** o acima — mas mostra que o eixo de **correção absoluta** ainda não mede o que diz medir.
+
+---
+
+### AC-6 · 🔴 CRÍTICO — O oráculo mede **divergência arquitetural**, não precisão; a narrativa "dominado por f16c" é **refutada pela própria decomposição**
+
+**Evidência medida (reproduzida agora: `cargo test --release --test reference_oracle_f64 -- --nocapture`):**
+
+| Modelo  | ESR(produção vs oráculo) | Σ TODAS fontes de precisão (combined ΔESR) | ΔESR f16c isolado | Razão gap/precisão |
+|:------- |:------------------------:|:------------------------------------------:|:-----------------:|:------------------:|
+| WaveNet | **2.47** (3.9 dB)        | **9.60e-7** (−60 dB)                       | 9.47e-7           | **~2.6 milhões ×** |
+| LSTM    | **1.06** (0.3 dB)        | **1.18e-4** (−39 dB)                       | 3.05e-6           | **~9.000 ×**       |
+| A2      | **0.126** (−9 dB)        | **6.69e-8** (−72 dB)                       | 6.69e-8           | **~1.9 milhões ×** |
+
+O `test_combined_simulation_wavenet` imprime, textualmente:
+`ΔESR(combined vs oracle): 9.60e-7` mas `ESR(combined vs production): 2.47e0 (gap = architectural divergence)`.
+
+**Análise crítica.** A soma de **todas** as fontes de precisão que o oráculo modela (f16c + bf16 + Padé +
+acúmulo f32) explica **9.6e-7** do erro do WaveNet. O gap real produção-vs-oráculo é **2.47** — **seis
+ordens de grandeza maior**. Ou seja: **~100 % do gap é "divergência arquitetural" não-modelada** — o
+oráculo computa algo estruturalmente diferente da produção. Isso **refuta**, com a ferramenta da própria
+casa:
+
+- **T-CR2** ("ESR 1.34 estruturalmente correto, dominado por f16c") — falso: f16c contribui 9.5e-7.
+- **T3.3** ("ESR ≈ 1.0 vs ideal = piso inerente de quantização f16c recorrente do LSTM") — falso: o
+  piso de precisão do LSTM é **1.18e-4**, não ~1.0; o 1.06 é artefato arquitetural do oráculo.
+  (A predição do próprio Épico E7 — "o risco real é descobrir que o piso de erro do LSTM é menor que o
+  assumido" — **concretizou-se**.)
+
+**Pior:** os "gates de fidelidade pós-anchoring" foram calibrados a partir desses números contaminados —
+`WAVENET_ESR_LIMIT = 3.5` ("2.47 medido + 40 %") e `LSTM_ESR_LIMIT = 1.8` ("1.06 + 70 %")
+(`reference_oracle_f64.rs:210-211`). Ambos estão **acima da linha de placebo do próprio projeto**
+(anti-placebo Regra 2: ESR ≥ 1.0 = placebo) e o de WaveNet (3.5) é **mais frouxo que o placebo `< 2.0`
+que substituiu**. O comentário afirma que "substituem os asserts placebo" — mas são placebos piores.
+
+**Nuance de justiça (importante):** os **ΔESR relativos** da decomposição (ex.: Padé LSTM = 1.39e-4,
+WaveNet = 1.85e-10) **são válidos** — são deltas oráculo-vs-oráculo, onde a divergência arquitetural se
+cancela. Logo a conclusão de **P-5** ("Padé é desprezível sob pesos reais") **permanece de pé**. O que
+está quebrado é **somente o ESR absoluto produção-vs-oráculo** (e tudo calibrado a partir dele).
+
+**Impacto.** Após **quatro** rodadas (P-4 → T2.1 → T-CR2 → E7), o eixo de "correção absoluta" — a peça
+central de S2 e a resposta à dúvida do PO — **ainda não mede a fidelidade da produção ao ideal**. O
+oráculo é um calculador f64 correto de uma topologia que **diverge da produção por 2.47**. S6 (qualidade
+sonora) já foi executado apoiando-se parcialmente neste instrumento.
+
+**Proposta.** Ver AC-7 (root-cause) + AC-9 (processo). Em resumo: **não tratar E7 como concluído**;
+marcar os gates do oráculo e as conclusões de T-CR2/T3.3 como **provisórios/retratados** até a divergência
+arquitetural ser fechada.
+
+**Esforço:** coberto por AC-7.
+
+---
+
+### AC-7 · 🟠 ALTO — Root-cause da "divergência arquitetural" oráculo↔produção (antes de qualquer uso como ground-truth)
+
+**Hipóteses prioritárias (a divergência é estrutural, não de precisão — AC-6):**
+
+1. **Transiente/prewarm não-pareado (principal suspeita):** a comparação usa `gen_sweep(256)` — **256
+   amostras**. WaveNet/LSTM têm campo receptivo/estado longo; se a produção faz prewarm (ex.: 24k
+   amostras) e o oráculo não (ou inicia estado diferente), a ESR em 256 amostras é dominada pelo
+   transiente de inicialização — explicando gaps grandes em **todas** as famílias.
+2. **Topologia/head/skip:** soma de skips, mixin de head, ou a topologia two-array (já tocada em
+   `20b91a7`, mas o gap persiste) podem diferir entre oráculo e produção.
+3. **Escala/ganho:** um fator de escala (head_scale, normalização de saída) infla ESR.
+
+**Proposta de solução.**
+
+- Diagnosticar com sinal **longo + prewarm idêntico** ao da produção; comparar **estado estacionário**
+  (descartar transiente). Meta dura: **`ESR(combined vs production) < 1e-2`** — só então o oráculo modela
+  a produção e seus números absolutos significam algo.
+- Enquanto a meta não for atingida: **retratar** os gates do oráculo (3.5/1.8) e as conclusões
+  quantitativas de T-CR2/T3.3; manter apenas os **ΔESR relativos** (válidos) e a **âncora externa** (válida).
+- Após fechar o gap: re-derivar gates de fidelidade **< 1.0** (abaixo da linha de placebo) e reabrir a
+  questão do `ABSOLUTE_ESR_CAP_LSTM = 0.2` (que AC-2 deixou intacto) com base no piso **real** (~1e-4).
+
+**Critérios de aceite:** `ESR(combined vs production) < 1e-2` para as 3 famílias; gates do oráculo < 1.0;
+T3.3 reescrita à luz do piso real; nota em `docs/perceptual_validation.md`.
+
+**Esforço:** Médio (diagnóstico de prewarm/topologia) — pode revelar que o LSTM drift é menor que o
+documentado (bom: menos "inerente", mais tratável).
+
+---
+
+### AC-8 · 🟡 MÉDIO — `clap_entry` em Release: **PEER REVIEW — parcialmente resolvido** (audit verde, mas binário enviado fica sem gate)
+
+**Veredito do peer review (verificado empiricamente):** a correção `4fd66ee` faz o **audit (Phase 5)
+passar**, mas (a) seu mecanismo declarado é duvidoso e (b) **valida um binário que ninguém distribui** —
+o real gap permanece aberto.
+
+**Evidência empírica (reproduzida agora):**
+
+- ✅ Build do audit (`RUSTFLAGS=-Clink-arg=-Wl,-soname,nam-rs.clap CARGO_BUILD_INCREMENTAL=false cargo
+  build --release --no-default-features --features clap-plugin,heap-audit,testing --lib`) produz
+  `clap_entry` (símbolo dinâmico `D`) + SONAME `nam-rs.clap`. **Audit hoje passa.**
+- ✅ `clap_entry` **sobrevive** a `strip --strip-unneeded` (o strip que `build-release.sh:414` aplica) —
+  logo o binário enviado, **se** compilado limpo, retém o símbolo.
+
+**Por que a correção é frágil como root-cause:**
+
+1. `[profile.release]` **não** habilita incremental (só `[profile.dev]`), e `CARGO_INCREMENTAL`/
+   `CARGO_BUILD_INCREMENTAL` estão **unset** no ambiente → `CARGO_BUILD_INCREMENTAL=false` é provavelmente
+   **no-op** no profile release. A falha original provavelmente **não** foi incremental no build que
+   falhou, mas consumo de estado stale pré-existente (há `target/release/incremental/` deixado por um
+   build incremental anterior) — e `rm -f` só removeu o `.so`, não o cache.
+2. A correção usa o **knob de menor precedência** (`CARGO_BUILD_INCREMENTAL`): se algum dev/CI exportar
+   `CARGO_INCREMENTAL=1` (precedência maior), a correção é **sobreposta** e o bug pode reincidir.
+
+**O real gap (mais grave que o sintoma): o binário DISTRIBUÍDO não é auditado.**
+`utils/build-release.sh` constrói o `.clap` por um caminho **divergente** do audit e **sem nenhum gate de
+símbolo/SONAME/validator**:
+
+| Aspecto                                   | Audit (Phase 5)                                      | Shipping (`build-release.sh`)                    |
+|:----------------------------------------- |:---------------------------------------------------- |:------------------------------------------------ |
+| Profile                                   | `release`                                            | **`dist`** (panic=abort)                         |
+| Target dir                                | `target/release` (compartilhado, suscetível a stale) | `target/pgo-clap` (isolado, `rm -rf` limpo)      |
+| Features                                  | `clap-plugin,heap-audit,testing`                     | **`clap-plugin,pgo`**                            |
+| Otimização                                | LTO fat                                              | **PGO** (`-Cprofile-use`)                        |
+| ISA flags                                 | RUSTFLAGS **dropa** `-Ctarget-cpu=x86-64-v3`         | reconstrói CONFIG_RUSTFLAGS (linhas 53-70)       |
+| Pós-processo                              | —                                                    | `strip --strip-unneeded` → `~/.clap/nam-rs.clap` |
+| **Gate de `clap_entry`/SONAME/validator** | **✅ sim** (`nm -D`, `readelf`, clap-validator)      | **❌ NÃO** (só `[ -f ... ]`, linha 239)          |
+
+Ou seja: **o audit valida `target/release/libnam_rs.so` (profile release, sem PGO, sem `x86-64-v3`), mas
+o usuário recebe `~/.clap/nam-rs.clap` (profile dist + PGO + strip) que nunca passa por `nm`/SONAME/
+validator.** Uma regressão de export específica do profile `dist` (panic=abort + PGO + LTO) passaria
+despercebida.
+
+**Proposta de solução.**
+
+1. **(Prioritário) Gate de símbolo no caminho de shipping:** em `build-release.sh`, após o `strip` e
+   antes de instalar, validar o **artefato real** (`~/.clap/nam-rs.clap`): `nm -D | grep clap_entry`,
+   SONAME via `readelf -d`, e — idealmente — `clap-validator validate "$CLAP_TARGET"`. É o binário que
+   o usuário carrega; é ele que precisa do gate.
+2. **Root-cause honesto do audit:** trocar `CARGO_BUILD_INCREMENTAL=false` por `CARGO_INCREMENTAL=0`
+   (knob autoritativo) **e/ou** `rm -rf target/release/incremental` (limpa a fonte stale), em vez de
+   confiar no knob de menor precedência.
+3. **Convergir audit ↔ shipping:** auditar o artefato `--profile dist` (ou rodar o mesmo gate de
+   símbolo/validator dentro de `build-release.sh`), eliminando a divergência profile/features/PGO/ISA —
+   hoje o audit "aprova" um binário diferente do entregue (inclusive sem o baseline `x86-64-v3`).
+
+**Esforço:** Baixo (gate em `build-release.sh` + ajuste do knob) — alto valor (fecha o gap no binário real).
+
+---
+
+### AC-9 · 🟡 MÉDIO (processo, **meta-achado**) — O padrão "calibrar até passar + declarar pronto" reincidiu no nível do oráculo
+
+**Evidência do padrão, ao longo de 4 rodadas:** T3.5 (mrstft 0.15→0.85 até verde) → T-CR2
+("estruturalmente correto" com bug de indexação ainda presente) → E7 (gates placebo 2.0 → **3.5**, ainda
+mais frouxos, com rótulo "calibrados"). Cada rodada de auditoria pega o over-claim da anterior.
+
+**Análise crítica.** A infra de decomposição construída nesta rodada é o **antídoto** — ela mostra
+claramente que o gap é arquitetural (9.6e-7 vs 2.47). Mas **sua saída foi ignorada** ao definir os gates
+(calibrados ao 2.47 contaminado). O problema não é falta de ferramenta; é **não interrogar se o número
+calibrado significa o que se afirma** antes de declarar "pronto".
+
+**Proposta — reforço da Política de Calibração (estende AC-5):**
+
+1. Nenhum gate pode ser derivado de uma métrica cuja **validade** não esteja independentemente
+   estabelecida (ex.: ESR absoluto só vira gate **após** `combined vs production < 1e-2`).
+2. **Proibido** gate de fidelidade ≥ linha de placebo do projeto (ESR 1.0; MR-STFT 0.5), mesmo com rótulo
+   "calibrado" — um teste meta deve falhar se algum gate do oráculo for ≥ 1.0.
+3. "Concluído" exige um **sanity-check do significado** da métrica (ex.: decomposição soma ≈ total),
+   não apenas "o assert passou".
+
+**Esforço:** Baixo (política + 1 meta-teste).
+
+---
+
 ## Épicos (agrupamento para resolução rápida, segura e ordenada)
 
+> Sequência otimizada (Parte I): **E1 primeiro** (desbloqueia o debug de tudo o mais), depois **E2**
+> (fecha o ponto cego de correção), depois **E3** (processo/clareza). **Parte II:** **E5 (medição)
+> antes de E4 (correção sonora)** — não se corrige o que não se mede; o ASR/THD/oráculo f64 precedem o
+> oversampling e o reprojeto do resampler. **Parte III:** **E7 (validação do oráculo) é pré-requisito de
+> E4/S5**. **Parte IV:** **E7 está apenas PARCIAL** — a âncora foi feita, mas a fidelidade à produção não
+> (AC-6); **E8 (fidelidade do oráculo) deve preceder qualquer confiança nos números absolutos do oráculo**.
 > Sequência otimizada (Parte I): **E1 primeiro** (desbloqueia o debug de tudo o mais), depois **E2**
 > (fecha o ponto cego de correção), depois **E3** (processo/clareza). **Parte II:** **E5 (medição)
 > antes de E4 (correção sonora)** — não se corrige o que não se mede; o ASR/THD/oráculo f64 precedem o
@@ -884,23 +1083,34 @@ de som").
 - **Risco:** **médio-alto** — toca o hot-path DSP e o trade-off latência×qualidade; tratar com
   feature-flags (live vs offline) e benchmarks (P-7).
 
-### Épico E7 — "Validação do Oráculo & Recalibração Honesta de Gates"  _(pré-requisito de E4/S5)_
+### Épico E7 — "Validação do Oráculo & Recalibração Honesta de Gates"  _(✅ PARCIAL)_
 
-- **Findings:** AC-1 (crítico — ancorar o oráculo f64), AC-2 (alto — re-derivar gates de LSTM e remover
-  carve-out anti-placebo), AC-5 (processo — política de calibração), AC-3 (médio — vetores EBU).
-- **Objetivo:** transformar o oráculo f64 de **scaffold não-validado** em **instrumento confiável**:
-  ancorá-lo a referência externa (NumPy/PyTorch f64), provar convergência em precisão-casada, e então
-  recalibrar os gates de LSTM a partir do piso **validado** — removendo os afrouxamentos "calibrados-para-passar".
-- **Por que é pré-requisito de E4/S5:** S5 usa o oráculo para baseline de aliasing (5.1) e medição da
-  contribuição Padé (5.3). **Usar um oráculo não-ancorado para "provar ganho sonoro" propagaria erro** e
-  poderia validar uma falsa melhoria. A pré-condição de S5 ("oráculo estruturalmente correto") **não está
-  realmente satisfeita** até E7.
-- **Depende de:** E5 (o oráculo já existe; falta validá-lo).
-- **Risco:** **médio** — majoritariamente engenharia de teste/medição; o risco real é **descobrir** que o
-  piso de erro do LSTM é menor que o assumido (o que reabriria AC-2 como bug, não como "inerente").
+- **Findings:** AC-1 (ancorar o oráculo f64), AC-2 (re-derivar gates de LSTM e remover carve-out
+  anti-placebo), AC-5 (política de calibração), AC-3 (vetores EBU).
+- **Concluído:** ✅ âncora externa (NumPy f64, ESR < 1e-12); ✅ remoção do carve-out anti-placebo de LSTM
+  (MR-STFT re-derivado do piso v1 < 0.5).
+- **NÃO concluído (ver Parte IV / AC-6):** ❌ o oráculo **não modela a produção** (gap arquitetural de
+  2.47/1.06/0.126, não-precisão); ❌ gates do oráculo ainda placebo (3.5/1.8 > 1.0); ❌ `ABSOLUTE_ESR_CAP_LSTM
+  = 0.2` intacto; ❌ vetores EBU (AC-3) pendentes. ⇒ **E7 transborda para E8.**
+
+### Épico E8 — "Fidelidade do Oráculo à Produção"  _(novo — pré-requisito real de E4/S6)_
+
+- **Findings:** AC-6 (crítico — gap arquitetural), AC-7 (alto — root-cause prewarm/topologia/escala),
+  AC-9 (processo — meta-teste anti-placebo no oráculo), AC-3 (médio — EBU).
+- **Objetivo:** fechar `ESR(combined vs production) < 1e-2` para as 3 famílias (provável causa: prewarm/
+  estado não-pareado na comparação de 256 amostras), e **só então** re-derivar gates de fidelidade do
+  oráculo **< 1.0**, reabrir `ABSOLUTE_ESR_CAP_LSTM`, e reescrever T3.3 à luz do piso **real** (~1e-4).
+- **Por que é o pré-requisito real de E4/S6:** as conclusões de qualidade de S6 que dependem do **ESR
+  absoluto** do oráculo (não as que dependem só de ASR/THD/decomposição-relativa, que são válidas)
+  herdam o gap arquitetural. Sem E8, "provar ganho sonoro" contra o oráculo é comparar com uma topologia
+  2.47 distante da produção.
+- **Depende de:** E7 (âncora + decomposição já existem; falta a fidelidade à produção).
+- **Risco:** **médio** — diagnóstico de transiente/topologia; resultado provável é **bom** (o "drift
+  inerente" do LSTM encolhe de ~1.0 para ~1e-4, virando tratável em vez de "limitação do formato").
 
 ---
 
-_Findings produzidos pelas skills `revisor-auditor` (Partes I e III) e `pesquisador-inovador` (Parte II).
-Para transformá-los em sprints/tasks ágeis, acione a skill `planejador-arquiteto` para gerar/atualizar
-`TODO-sprints.md`. **A Parte III recomenda inserir o Épico E7 antes de S5.**_
+_Findings produzidos pelas skills `revisor-auditor` (Partes I, III e IV) e `pesquisador-inovador`
+(Parte II). Para transformá-los em sprints/tasks ágeis, acione a skill `planejador-arquiteto` para
+gerar/atualizar `TODO-sprints.md`. **A Parte IV recomenda E8 (fidelidade do oráculo) antes de confiar nos
+números absolutos do oráculo usados por S6.**_
