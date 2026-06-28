@@ -1222,9 +1222,14 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
 ### Grupo A — Épico E8: Fidelidade do Oráculo à Produção _(pré-requisito dos números absolutos do oráculo)_
 
-### Tarefa 8.1 [DEBUG/TEST] Diagnosticar a divergência arquitetural oráculo↔produção ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md), [AC-7](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.1 [DEBUG/TEST] Diagnosticar a divergência arquitetural oráculo↔produção ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md), [AC-7](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída — diagnóstico. Hipótese prewarm **REFUTADA** (teste reproduzível:
+  `test_oracle_warmup_paired_*`). ESR não encolhe com prewarm pareado (WaveNet: ~2.5, LSTM: ~1.06, A2: ~0.13).
+  Bug falso-positivo (tanh/1x1) investigado e descartado — o oráculo WaveNet já aplica 1x1 sobre
+  conv_out pós-tanh, igual à produção. Gap arquitetural permanece não identificado.
+  Próximo passo (T8.2): investigar topologia two-array (buffers compartilhados vs separados),
+  escala/ganho, ou layout de pesos LSTM.
 - **Arquivos Alvo:**
   - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) (testes `test_combined_simulation_*`)
   - [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs) (`oracle_forward`, lógica de prewarm)

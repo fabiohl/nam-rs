@@ -468,6 +468,72 @@ fn test_combined_simulation_a2() {
     );
 }
 
+// ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
+
+/// T8.1 Diagnostic: measures ESR(oracle vs production) with paired prewarm.
+///
+/// Hypothesis (AC-7): the current ESR gap is dominated by **transient
+/// mismatch** — the oracle starts with zero state while production has
+/// pre-warmed history buffers. If correct, feeding both with the same 24k
+/// prewarm samples before measuring 256 sweep should collapse the gap.
+///
+/// We use `combined_config()` (F16C + Padé Minimax + f32 accumulation) on
+/// the oracle side to match production precision as closely as possible.
+fn run_warmup_paired_test(model_filename: &str, label: &str, original_esr: f64) {
+    let path = models_dir().join(model_filename);
+    let md = load_and_parse(&path);
+    let total = 24_000 + 256;
+    let input_f64 = gen_sweep(total, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; input_f32.len()];
+    let mut pos = 0;
+    while pos < input_f32.len() {
+        let nf = (input_f32.len() - pos).min(64);
+        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+        pos += nf;
+    }
+
+    let oracle = oracle_forward(&md, &input_f64, &combined_config());
+    let prod_last_f64: Vec<f64> = prod_output[24_000..].iter().map(|&x| x as f64).collect();
+    let oracle_last = &oracle[24_000..];
+
+    let esr_full = compute_esr_f64(
+        &oracle,
+        &prod_output.iter().map(|&x| x as f64).collect::<Vec<f64>>(),
+    );
+    let esr_warmed = compute_esr_f64(oracle_last, &prod_last_f64);
+
+    println!(
+        "{} Paired Prewarm (24k+256):\n\
+           ESR(full 24k+256, cold):      {:.2e} ({:.1} dB)\n\
+           ESR(last 256, after prewarm): {:.2e} ({:.1} dB)\n\
+           Hypothesis: gap should shrink from ~{} to < 0.1 if prewarm is root cause",
+        label,
+        esr_full,
+        esr_to_db_f64(esr_full),
+        esr_warmed,
+        esr_to_db_f64(esr_warmed),
+        original_esr,
+    );
+}
+
+#[test]
+fn test_oracle_warmup_paired_wavenet() {
+    run_warmup_paired_test("wavenet_official.nam", "WaveNet", 2.47);
+}
+
+#[test]
+fn test_oracle_warmup_paired_lstm() {
+    run_warmup_paired_test("lstm.nam", "LSTM", 1.06);
+}
+
+#[test]
+fn test_oracle_warmup_paired_a2() {
+    run_warmup_paired_test("wavenet_a2_lite.nam", "A2", 0.126);
+}
+
 // ── Summary table ──────────────────────────────────────────────────────────
 
 #[test]
