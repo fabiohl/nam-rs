@@ -65,6 +65,46 @@ fn test_minimum_phase_energy_concentration() {
 }
 
 #[test]
+fn test_to_minimum_phase_dc_preservation() {
+    let kernel = generate_sinc_kaiser(256, 0.5, 12.0);
+    let original_sum: f64 = kernel.iter().sum();
+    assert!(
+        (original_sum - 1.0).abs() < 1e-10,
+        "Original DC must be 1.0, got {original_sum}"
+    );
+
+    let min_ph = to_minimum_phase(&kernel);
+    let min_sum: f64 = min_ph.iter().sum();
+    let sum_err = (min_sum - original_sum).abs();
+    println!("original_sum={original_sum}, min_sum={min_sum}, err={sum_err}");
+    assert!(
+        sum_err < 0.05,
+        "Min-phase DC sum must be close to original. Original={original_sum}, min={min_sum}, err={sum_err}"
+    );
+}
+
+#[test]
+fn test_to_minimum_phase_energy_rms() {
+    let kernel = generate_sinc_kaiser(256, 0.5, 12.0);
+    let original_rms: f64 =
+        (kernel.iter().map(|x| x * x).sum::<f64>() / kernel.len() as f64).sqrt();
+
+    let min_ph = to_minimum_phase(&kernel);
+    let min_rms: f64 = (min_ph.iter().map(|x| x * x).sum::<f64>() / min_ph.len() as f64).sqrt();
+
+    println!(
+        "original_rms={original_rms}, min_rms={min_rms}, ratio={}",
+        min_rms / original_rms
+    );
+    // Energy should be preserved (Parseval)
+    let ratio = min_rms / original_rms;
+    assert!(
+        ratio > 0.9 && ratio < 1.1,
+        "Min-phase RMS energy should be within 10% of original. Original={original_rms}, min={min_rms}"
+    );
+}
+
+#[test]
 fn test_polyphase_bank_dimensions() {
     let bank = generate_polyphase_bank(44100, 48000);
     assert_eq!(bank.taps_per_phase, TAPS_PER_PHASE);
@@ -72,6 +112,32 @@ fn test_polyphase_bank_dimensions() {
     for p in 0..NUM_PHASES {
         let c = bank.phase_coeffs(p);
         assert_eq!(c.len(), TAPS_PER_PHASE);
+    }
+}
+
+#[test]
+fn test_polyphase_bank_phase_dc_unity() {
+    let bank = generate_polyphase_bank(44100, 48000);
+    for p in 0..NUM_PHASES {
+        let c = bank.phase_coeffs(p);
+        let sum: f32 = c.iter().sum();
+        assert!(
+            (sum - 1.0f32).abs() < 1e-5 || sum.abs() < 1e-9,
+            "Phase {p} DC gain must be ~1.0, got {sum}"
+        );
+    }
+}
+
+#[test]
+fn test_polyphase_bank_minphase_dc_unity() {
+    let bank = generate_polyphase_bank(22050, 48000);
+    for p in 0..NUM_PHASES {
+        let c = bank.phase_coeffs(p);
+        let sum: f32 = c.iter().sum();
+        assert!(
+            (sum - 1.0f32).abs() < 1e-5 || sum.abs() < 1e-9,
+            "Phase {p} DC gain must be ~1.0, got {sum}"
+        );
     }
 }
 

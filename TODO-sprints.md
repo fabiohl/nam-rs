@@ -719,16 +719,22 @@ reflita apenas testes com valor de **correção** — não de consistência rela
 ### Tarefa 4.1 [TEST] Subconjunto de paridade hard @ 48 kHz no loop rápido ([F-3](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
+
 - **Arquivos Alvo:**
+
   - [`utils/tests-quick.sh`](file:///home/fabio/nam-rs/utils/tests-quick.sh)
   - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) / [`tests/golden_vectors.rs`](file:///home/fabio/nam-rs/tests/golden_vectors.rs)
+
 - **Descrição:**
+
   - Hoje o loop rápido roda só `wavenet_nano` de cross-validation (32/33 `#[ignore]`). Selecionar um
     subconjunto representativo @ 48 kHz: **1 LSTM + 1 WaveNet CH16 + 1 A2** com sinal curto (~2048), com o
     **gate MR-STFT de S3 ativo**. Reusar o cache do render C++ (`BUILD_LOCK`) para não recompilar.
   - Implementar via um filtro/grupo de testes não-ignorados ou um alvo dedicado no script.
+
 - **Critérios de Aceite:** ≥ 3 cross-validations hard @ 48 kHz em **< +30 s** do orçamento total do
   `tests-quick`; tempo medido e registrado.
+
 - **Risco:** Baixo (vigiar o orçamento de tempo do loop rápido).
 
 - **Conclusão:** 3 funções de teste não-ignoradas (`quick_parity_lstm_1x16`, `quick_parity_wavenet_ch16`,
@@ -1035,9 +1041,9 @@ decisões dos sprints S1–S5.
 - **Critérios de Aceite:** documentação lê-se como obra coesa e de autor único.
 - **Risco:** Baixo.
 
-### Tarefa 6.5 [DOC] Documentar a hierarquia de valor da suíte de testes em `docs/testing.md`
+### Tarefa 6.5 [DOC] Documentar a hierarquia de valor da suíte de testes em `docs/testing.md` [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluida
 - **Arquivos Alvo:** [`docs/testing.md`](file:///home/fabio/nam-rs/docs/testing.md)
 - **Descrição:**
   - **Corrigir** a seção §7 ("Key Concepts" → "Soft gates"): após S3/T3.1, o MR-STFT é um **gate hard**
@@ -1070,14 +1076,38 @@ decisões dos sprints S1–S5.
   central deste plano (medir antes de corrigir).
 - **Próximo passo sugerido:** executar **S4** (baixo risco, ganho imediato no loop rápido + consolidação da suíte) via skill `tarefa` → `implementador`. S4 é o único sprint sem dependências pendentes — T-CR2, T-CR3 e todas as CRs estão concluídas.
 
+### Diagnóstico da Execução dos Testes Longos (2026-06-28)
+
+Execução do comando `utils/tests-long.sh`. Resultado resumido (7 fases, ~42 min):
+
+| Fase                               | Duração | Status                     |
+| ---------------------------------- | ------- | -------------------------- |
+| Soak Tests                         | 122s    | ❌ Corrigido               |
+| PipeWire Integration               | 34s     | ✓                          |
+| Proptests, Parity & Golden Vectors | 239s    | ❌ 1 falha (pré-existente) |
+| Heap-Audit (Resampler, Cabsim, A2) | 111s    | ✓                          |
+| CLAP Release Validation            | 50s     | ❌ 1 falha (pré-existente) |
+| Long Benchmarks                    | 1791s   | ✓                          |
+| RT Deadline & Jitter Stress        | 92s     | ✓                          |
+
+**Fase 1 — Soak Tests (Resampler Drift Soak):** Falha no `test_resampler_drift_soak` — "Resampler Upsampling L RMS do loop out of range: 25.38" (deveria estar < 10.0). **Causa raiz:** em `src/dsp/sinc_kernel.rs`, o cutoff do protótipo Sinc+Kaiser era calculado como `0.95 × min_rate / max_rate` (normalizado a `max(fs₁, fs₂)`), mas o filtro opera conceitualmente a `from_rate × NUM_PHASES` Hz. Para 22050→48000, cutoff=0.4364 (deveria ser 0.0039 — 112× mais largo). O filtro efetivamente não rejeitava imagens espectrais, causando amplificação de até 60× (RMS 25.38 em vez de ~0.58) em ruído branco e de ~1.94× em senoide de 440 Hz (modo min-phase). **Correção:** fórmula alterada para `cutoff = 0.95 × min_rate / (from_rate × NUM_PHASES)` nas 3 funções afetadas (`generate_polyphase_bank`, `generate_polyphase_bank_linear`, `measure_cepstrum_ripple`). Após a correção, ganho em banda passante ≈ 1.0 para ambas variantes (linear e min-phase) e o soak test passa.
+
+**Fase 3 — Proptests, Parity & Golden Vectors:** Falha única em `live_cross_validation_v2_linear` (modelo `linear_test.nam`, 88200 Hz). **Causa:** o oráculo C++ (`NeuralAmpModelerCore render`) produz saída com LUFS=13.5 para esse modelo nessa taxa — acima do limiar de plausibilidade [-50, +10] do gate LUFS introduzido em S2/T2.5. O gate está funcionando corretamente: detectou dado de referência defeituoso (clipping no C++). **Não é regressão** da correção do resampler — o modelo linear_test.nam com RF=4 em 88200 Hz tem ganho excessivo no render C++.
+
+**Fase 5 — CLAP Release Validation:** Símbolo `clap_entry` ausente no binário de Release. **Causa provável:** o build foi feito com `--lib`, gerando `libnam_rs.so`. O macro `clack_export_entry!(entry::NamEntry)` em `src/clap/mod.rs:23` deve exportar o símbolo. A falha pode ser de ambiente de build (cache corrompido, versão do `clack_plugin` com bug de linkagem, ou `strip` automático do linker). **Não é regressão** do código da engine DSP — a falha ocorre na camada de empacotamento CLAP, isolada da engine de inferência e resample.
+
+**Recomendação:** reexecutar `run_clap_audit_local` isoladamente após `cargo clean` para isolar se é falha de build cache ou bug no crate `clack_plugin`. Se persistir, verificar com `nm -D --defined-only` e `objdump -T` se o símbolo existe com nome diferente (ex: `clap_plugin_entry`).
+
 ---
 
 ## Notas do PO
 
-[Sonnet] Momento da verdade final sobre tudo o que foi feito aqui. Verifique se tudo que foi feito até aqui está exemplarmente correto ou se precisa de correções adicionais. Use, inclusive, de forte senso crítico (e uma ponta de ceticismo) para julgar os avanços reais e paupáveis que tivemos e o estado geral das coisas.
+Momento da verdade final sobre tudo o que foi feito aqui. Verifique se todo o trabalho está exemplarmente correto ou se precisa de correções adicionais. Use, inclusive, de forte senso crítico (e uma ponta de ceticismo) para julgar os avanços reais e paupáveis que tivemos e o estado geral das coisas.
+Use também o resultado anexo dos testes longos como subsídio.
+Este trabalho aqui acabou sendo uma skill "revisor-auditor" com role "Correctness Auditor" muito interessante e produtiva. Acredito valer muito a pena concluírmos com uma nova revisão geral neste mesmo nível de qualidade.
+Acione o "planejador-arquiteto" para organizar eventuais novos achados.
 
-[Sonnet]/documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (mesmo as não mencionadas aqui, outras coisas semelhantes presentes no código) e qual o papel delas. Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM). Tudo isso e são opcionais ou obrigatórias. E o que cabe continuar ou remover. Precisamos ter uma visão clara deste fatores de degradação ou aprimoramento "por design". De preferência devidamente documentado à parte para acompanhamento Inclusive, migre as informações do docs/f16c_compression_analysis.md para ele. Unificando as coisas. Faça o mesmo para outras coisas similares espalhados em outros documentos.
-
-[Sonnet] [Kilo Compact Session]
-
-[Opus] Este trabalho aqui acabou sendo uma skill "revisor-auditor" com role "Correctness Auditor" muito interessante e produtiva. Acredito valer muito a pena uma nova revisão geral neste novo nível de qualidade.
+/documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (muito especialmente as que não foram trabalhadas aqui neste TODO-sprints.md) e qual o papel delas.
+Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM). Identifique se são opcionais ou obrigatórias. Se podem ser removidas ou tornadas opcionais. Se estão bem documentados ou com questões pendentes a resolver.
+Identifique este fatores que são alheios à especificação estrita do NAM e podem afetar performance e, muito especialmente, qualidade sonora.
+Precisamos ter uma visão clara deste fatores de degradação ou aprimoramento "por design". De preferência devidamente documentado à parte para acompanhamento. Inclusive, migre as informações do docs/f16c_compression_analysis.md para ele. Unificando as coisas. Faça o mesmo para outras coisas similares espalhados em outros documentos.

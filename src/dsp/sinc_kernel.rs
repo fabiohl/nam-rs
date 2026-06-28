@@ -9,7 +9,7 @@
 //! ## Generation Pipeline
 //!
 //! 1. **Ideal Sinc + Kaiser Windowing (β=12)** — generates the linear-phase FIR lowpass prototype
-//!    with cutoff at 0.95×min(f₁,f₂)/max(f₁,f₂).
+//!    with cutoff at 0.95×min(f₁,f₂) / (f₁×NUM_PHASES), normalized to the prototype Nyquist.
 //! 2. **Minimum-Phase Transform (Real Cepstrum)** — eliminates pre-ringing by concentrating
 //!    energy into the shortest possible delay, using f64 FFT for numerical precision.
 //!    Magnitude-preserving; measured ripple added < 1e-3 dB (Task 5.4 QA).
@@ -103,9 +103,16 @@ impl PolyphaseBank {
 /// # Returns
 /// Polyphase bank ready for SIMD convolution.
 pub fn generate_polyphase_bank(from_rate: u32, to_rate: u32) -> PolyphaseBank {
-    // 1. Generate Sinc + Kaiser prototype in f64
-    let cutoff_ratio = (from_rate.min(to_rate) as f64) / (from_rate.max(to_rate) as f64);
-    let cutoff = 0.95 * cutoff_ratio;
+    // 1. Generate Sinc + Kaiser prototype in f64.
+    //
+    // The prototype operates at the conceptual proto rate = from_rate × NUM_PHASES.
+    // Its passband must span only the baseband of the signal being resampled:
+    //   - interpolation (from_rate < to_rate): passband = from_rate / 2  (input Nyquist)
+    //   - decimation   (from_rate > to_rate): passband = to_rate   / 2  (output Nyquist)
+    // The common expression is min_rate / 2, normalized to the proto Nyquist.
+    let passband_rate = from_rate.min(to_rate) as f64;
+    let proto_nyq = from_rate as f64 * NUM_PHASES as f64 / 2.0;
+    let cutoff = 0.95 * passband_rate / 2.0 / proto_nyq;
     let proto_f64 = generate_sinc_kaiser(PROTO_LEN, cutoff, 12.0);
 
     // 2. Transform to minimum phase via real cepstrum
@@ -301,8 +308,9 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
 /// suitable for offline/mixdown use where pre-ringing is acceptable and
 /// exact phase linearity is preferred.
 pub fn generate_polyphase_bank_linear(from_rate: u32, to_rate: u32) -> PolyphaseBank {
-    let cutoff_ratio = (from_rate.min(to_rate) as f64) / (from_rate.max(to_rate) as f64);
-    let cutoff = 0.95 * cutoff_ratio;
+    let passband_rate = from_rate.min(to_rate) as f64;
+    let proto_nyq = from_rate as f64 * NUM_PHASES as f64 / 2.0;
+    let cutoff = 0.95 * passband_rate / 2.0 / proto_nyq;
     let proto_f64 = generate_sinc_kaiser(PROTO_LEN, cutoff, 12.0);
     let proto_f32: Vec<f32> = proto_f64.iter().map(|&x| x as f32).collect();
     partition_polyphase(&proto_f32)
@@ -321,8 +329,9 @@ pub fn generate_polyphase_bank_linear(from_rate: u32, to_rate: u32) -> Polyphase
 /// If FFT planner creation fails.
 #[doc(hidden)]
 pub fn measure_cepstrum_ripple(from_rate: u32, to_rate: u32) -> (f64, f64) {
-    let cutoff_ratio = (from_rate.min(to_rate) as f64) / (from_rate.max(to_rate) as f64);
-    let cutoff = 0.95 * cutoff_ratio;
+    let passband_rate = from_rate.min(to_rate) as f64;
+    let proto_nyq = from_rate as f64 * NUM_PHASES as f64 / 2.0;
+    let cutoff = 0.95 * passband_rate / 2.0 / proto_nyq;
     let proto_f64 = generate_sinc_kaiser(PROTO_LEN, cutoff, 12.0);
     let min_phase = to_minimum_phase(&proto_f64);
 
@@ -343,7 +352,6 @@ pub fn measure_cepstrum_ripple(from_rate: u32, to_rate: u32) -> (f64, f64) {
     let mut sum_sq = 0.0f64;
     let mut passband_count = 0usize;
 
-    let cutoff = 0.95 * (from_rate.min(to_rate) as f64) / (from_rate.max(to_rate) as f64);
     let passband_bins = ((cutoff * 0.98) * (n_fft as f64 / 2.0)).ceil() as usize;
     let nyq_idx = passband_bins.min(n_fft / 2);
 
