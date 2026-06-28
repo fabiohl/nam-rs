@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::dsp::oversample::OversampleFactor;
 use std::path::PathBuf;
 
 #[test]
@@ -41,6 +42,7 @@ fn test_v1_round_trip() {
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        oversample: OversampleFactor::Off,
         ir_path: None,
     };
 
@@ -96,6 +98,7 @@ fn test_v1_round_trip_with_search_fields() {
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        oversample: OversampleFactor::Off,
         ir_path: None,
     };
 
@@ -141,6 +144,7 @@ fn test_v1_round_trip_with_ir_path() {
         bypass: false,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        oversample: OversampleFactor::Off,
         ir_path: Some(PathBuf::from("/tmp/cab.wav")),
     };
 

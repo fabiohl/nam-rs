@@ -111,14 +111,14 @@ mod block_tests {
         let mut samples_l = vec![0.1; n];
         let mut samples_r = vec![0.1; n];
 
+        let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+        let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+
         let _guard = TrackingGuard::new();
 
         let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
         for _ in 0..iterations {
-            let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-            let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-
             // The Context (ctx) groups all the tools the pipeline needs to work.
             let ctx = DspPipelineContext {
                 resampler: &mut resampler,

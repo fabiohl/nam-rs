@@ -112,6 +112,35 @@ impl<'a> NamClapMainThread<'a> {
                 .clear_flag_release(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
+        // Oversampling engine rebuild: main thread performs all allocation
+        // (OversampleEngine::new creates filters and buffers) off the audio-thread.
+        if self
+            .shared
+            .cold
+            .rt_status
+            .check_flag_acquire(spsc::RT_STATUS_NEEDS_OS_REBUILD)
+        {
+            use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
+            use crate::dsp::pipeline::MAX_RESAMP_BUF;
+
+            let factor_val = self
+                .shared
+                .cold
+                .rt_status
+                .requested_os_factor
+                .load(Ordering::Relaxed);
+            let factor = OversampleFactor::from_f32(factor_val as f32);
+            let os_l = Box::new(OversampleEngine::new(factor, MAX_RESAMP_BUF));
+            let os_r = Box::new(OversampleEngine::new(factor, MAX_RESAMP_BUF));
+            let _ = self
+                .param_tx
+                .push(crate::clap::plugin::ClapParamPayload::SetOversample { os_l, os_r });
+            self.shared
+                .cold
+                .rt_status
+                .clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+        }
+
         // Check if there is a pending model sent by the UI
         let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock()
         {

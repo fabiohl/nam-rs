@@ -20,6 +20,8 @@ pub const PARAM_ACTIVE_MODEL: u32 = 4;
 pub const PARAM_ADAPTIVE_COMPUTE: u32 = 5;
 /// Manual slim override parameter ID.
 pub const PARAM_SLIM_OVERRIDE: u32 = 6;
+/// Oversampling factor parameter ID (stepped: Off/2x/4x).
+pub const PARAM_OVERSAMPLE: u32 = 7;
 
 /// Bypass atomic value: off.
 pub const BYPASS_OFF: u32 = 0;

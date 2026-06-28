@@ -154,6 +154,12 @@ impl<'a> NamClapMainThread<'a> {
                 .param_slim_override
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );
+        self.params.oversample = crate::dsp::oversample::OversampleFactor::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_oversample
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
             if let Ok(ir_guard) = self.shared.cold.ir_path.lock() {

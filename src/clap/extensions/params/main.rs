@@ -5,7 +5,8 @@
 
 use super::{
     PARAM_ACTIVE_MODEL, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-    PARAM_OUTPUT_GAIN, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32, bypass_f32_to_bool,
+    PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32,
+    bypass_f32_to_bool,
 };
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::RtPluginParams;
@@ -19,7 +20,7 @@ use std::ffi::CStr;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn count(&mut self) -> u32 {
-        7
+        8
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -110,6 +111,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     default_value: 0.0,
                 });
             }
+            PARAM_OVERSAMPLE => {
+                info.set(&ParamInfo {
+                    id: ClapId::new(PARAM_OVERSAMPLE),
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
+                    cookie: clack_plugin::utils::Cookie::empty(),
+                    name: b"Oversampling",
+                    module: b"",
+                    min_value: 0.0,
+                    max_value: 2.0,
+                    default_value: 0.0,
+                });
+            }
             _ => {}
         }
     }
@@ -158,6 +171,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     .param_slim_override
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
+            PARAM_OVERSAMPLE => Some(
+                self.shared
+                    .ui_to_rt
+                    .param_oversample
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
+            ),
             _ => None,
         }
     }
@@ -202,6 +221,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 1 => writer.write_str("Force Full"),
                 2 => writer.write_str("Force Lite"),
                 _ => writer.write_str("Auto"),
+            },
+            PARAM_OVERSAMPLE => match value.round() as i32 {
+                1 => writer.write_str("2x"),
+                2 => writer.write_str("4x"),
+                _ => writer.write_str("Off"),
             },
             _ => Ok(()),
         }
@@ -254,6 +278,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 "auto" | "0" => Some(0.0),
                 "force full" | "full" | "1" => Some(1.0),
                 "force lite" | "lite" | "2" => Some(2.0),
+                _ => text_str.parse::<f64>().ok(),
+            },
+            PARAM_OVERSAMPLE => match text_str.to_lowercase().as_str() {
+                "off" | "0" => Some(0.0),
+                "2x" | "2" => Some(1.0),
+                "4x" | "4" => Some(2.0),
                 _ => text_str.parse::<f64>().ok(),
             },
             _ => None,
@@ -317,6 +347,14 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                         .ui_to_rt
                         .param_slim_override
                         .store(ov as u32, std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_OVERSAMPLE => {
+                    let factor = crate::dsp::oversample::OversampleFactor::from_f32(val);
+                    self.params.oversample = factor;
+                    self.shared
+                        .ui_to_rt
+                        .param_oversample
+                        .store(factor.to_f32() as u32, std::sync::atomic::Ordering::Relaxed);
                 }
                 _ => continue,
             }

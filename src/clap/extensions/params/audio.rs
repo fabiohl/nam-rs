@@ -5,7 +5,7 @@
 
 use super::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    PARAM_SLIM_OVERRIDE, bypass_u32_to_bool,
+    PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_u32_to_bool,
 };
 use crate::clap::processor::NamClapProcessor;
 use clack_extensions::params::PluginAudioProcessorParams;
@@ -52,6 +52,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                 PARAM_BYPASS => self.set_bypass(val),
                 PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
                 PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
+                PARAM_OVERSAMPLE => self.set_oversample(val),
                 _ => continue,
             }
             param_changed = true;
@@ -127,6 +128,17 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             );
             if shared_slim_override != self.params.slim_override {
                 self.params.slim_override = shared_slim_override;
+            }
+
+            let shared_oversample = crate::dsp::oversample::OversampleFactor::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_oversample
+                    .load(std::sync::atomic::Ordering::Relaxed) as f32,
+            );
+            if shared_oversample != self.params.oversample {
+                self.params.oversample = shared_oversample;
+                self.apply_oversample(shared_oversample);
             }
         }
     }

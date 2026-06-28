@@ -31,9 +31,9 @@ pub struct NamClapProcessor<'a> {
     /// Held in Box for RT-safe disposal without allocation.
     pub(crate) resampler: Box<NamResampler>,
     /// Half-band oversampling engine for the left channel.
-    pub(crate) os_l: OversampleEngine,
+    pub(crate) os_l: Box<OversampleEngine>,
     /// Half-band oversampling engine for the right channel.
-    pub(crate) os_r: OversampleEngine,
+    pub(crate) os_r: Box<OversampleEngine>,
     /// Current parameters on the audio thread (snapshotted from SPSC at each process()).
     pub(crate) params: RtPluginParams,
 

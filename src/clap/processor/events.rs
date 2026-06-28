@@ -7,7 +7,7 @@
 use super::NamClapProcessor;
 use crate::clap::extensions::params::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    PARAM_SLIM_OVERRIDE,
+    PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
@@ -46,6 +46,9 @@ impl<'a> NamClapProcessor<'a> {
                 ClapParamPayload::LoadCabIr { engine } => {
                     self.cold_load_cabsim(engine);
                 }
+                ClapParamPayload::SetOversample { os_l, os_r } => {
+                    self.cold_load_os(os_l, os_r);
+                }
             }
         }
 
@@ -63,6 +66,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_BYPASS => self.set_bypass(val),
                     PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
                     PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
+                    PARAM_OVERSAMPLE => self.set_oversample(val),
                     _ => {}
                 }
             } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
@@ -96,6 +100,7 @@ impl<'a> NamClapProcessor<'a> {
             self.sync_bypass_from_gui();
             self.sync_adaptive_compute_from_gui();
             self.sync_slim_override_from_gui();
+            self.sync_oversample_from_gui();
         } // generation guard
 
         // Dynamic latency monitoring on the Audio Thread.
@@ -201,6 +206,18 @@ impl<'a> NamClapProcessor<'a> {
         if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
             self.push_to_gc(GcItem::CabConvEngine(old_engine));
         }
+    }
+
+    #[cold]
+    fn cold_load_os(
+        &mut self,
+        os_l: Box<crate::dsp::oversample::OversampleEngine>,
+        os_r: Box<crate::dsp::oversample::OversampleEngine>,
+    ) {
+        let old_l = std::mem::replace(&mut self.os_l, os_l);
+        let old_r = std::mem::replace(&mut self.os_r, os_r);
+        self.push_to_gc(GcItem::Oversample(old_l));
+        self.push_to_gc(GcItem::Oversample(old_r));
     }
 
     /// Checks if the adaptive FSM demands a WaveNet channel count change

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 pub use crate::dsp::adaptive::AdaptiveComputeMode;
 pub use crate::dsp::adaptive::SlimOverride;
+use crate::dsp::oversample::OversampleFactor;
 
 const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
 
@@ -51,6 +52,10 @@ pub struct NamPluginParams {
     /// Manual slim override quality level. Default: `Auto` (FSM decides).
     #[serde(default)]
     pub slim_override: SlimOverride,
+    /// Oversampling factor for the neural stage (anti-aliasing).
+    /// Default: `Off` (lowest latency).
+    #[serde(default)]
+    pub oversample: OversampleFactor,
     /// Path to the loaded cab-sim impulse response (.wav).
     #[serde(default)]
     pub ir_path: Option<PathBuf>,
@@ -72,6 +77,7 @@ impl Default for NamPluginParams {
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: SlimOverride::Auto,
+            oversample: OversampleFactor::Off,
             ir_path: None,
         }
     }
@@ -93,6 +99,8 @@ pub struct RtPluginParams {
     pub adaptive_compute: AdaptiveComputeMode,
     /// Manual slim override quality level.
     pub slim_override: SlimOverride,
+    /// Oversampling factor for the neural stage (anti-aliasing).
+    pub oversample: OversampleFactor,
 }
 
 impl RtPluginParams {
@@ -105,6 +113,7 @@ impl RtPluginParams {
             bypass: params.bypass,
             adaptive_compute: params.adaptive_compute,
             slim_override: params.slim_override,
+            oversample: params.oversample,
         }
     }
 }
@@ -118,6 +127,7 @@ impl Default for RtPluginParams {
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: SlimOverride::Auto,
+            oversample: OversampleFactor::Off,
         }
     }
 }

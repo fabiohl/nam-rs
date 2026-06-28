@@ -17,6 +17,8 @@ pub enum GcItem {
     /// A cab-sim convolution engine (boxed to ensure RT-safety on drop).
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     CabConvEngine(Box<crate::dsp::cabsim::conv::ConvEngine>),
+    /// An oversampling engine (boxed to ensure RT-safety on drop).
+    Oversample(Box<crate::dsp::oversample::OversampleEngine>),
     /// Test variant for integrity and stress validation.
     #[cfg(test)]
     Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
@@ -32,6 +34,7 @@ impl GcItem {
             GcItem::CabSimIr(_) => 3,
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             GcItem::CabConvEngine(_) => 4,
+            GcItem::Oversample(_) => 5,
             #[cfg(test)]
             GcItem::Test(_) => 255,
         }
@@ -70,6 +73,9 @@ impl GcItem {
             4 => Some(GcItem::CabConvEngine(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::cabsim::conv::ConvEngine)
             })),
+            5 => Some(GcItem::Oversample(unsafe {
+                Box::from_raw(ptr as *mut crate::dsp::oversample::OversampleEngine)
+            })),
             #[cfg(test)]
             255 => Some(GcItem::Test(unsafe {
                 Box::from_raw(ptr as *mut std::sync::Arc<std::sync::atomic::AtomicU32>)
@@ -94,6 +100,7 @@ impl GcItem {
             GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             GcItem::CabConvEngine(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            GcItem::Oversample(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             #[cfg(test)]
             GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
         };

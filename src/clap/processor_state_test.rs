@@ -373,6 +373,7 @@ mod tests {
             bypass: false,
             adaptive_compute: crate::common::params::AdaptiveComputeMode::Conservative,
             slim_override: Default::default(),
+            oversample: crate::dsp::oversample::OversampleFactor::Off,
             ir_path: None,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();

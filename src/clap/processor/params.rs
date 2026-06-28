@@ -73,6 +73,18 @@ impl<'a> NamClapProcessor<'a> {
         self.adaptive_compute.set_slim_override(ov);
     }
 
+    pub(crate) fn set_oversample(&mut self, val: f32) {
+        let factor = crate::dsp::oversample::OversampleFactor::from_f32(val);
+        if factor != self.params.oversample {
+            self.params.oversample = factor;
+            self.shared
+                .ui_to_rt
+                .param_oversample
+                .store(factor.to_f32() as u32, Ordering::Relaxed);
+            self.apply_oversample(factor);
+        }
+    }
+
     // ── Modulation helpers ────────────────────────────────────────
 
     pub(super) fn set_mod_input_gain(&mut self, amount: f32) {
@@ -98,9 +110,24 @@ impl<'a> NamClapProcessor<'a> {
 
     // ── SPSC full-apply ───────────────────────────────────────────
 
+    // ── SPSC full-apply ───────────────────────────────────────────
+
+    pub(crate) fn apply_oversample(&mut self, factor: crate::dsp::oversample::OversampleFactor) {
+        // Oversample factor change requires rebuilding the engines
+        // (allocation of new buffers), which must happen off-RT.
+        // The audio thread signals the main thread via rt_status flag
+        // and the main thread creates new engines + delivers via SPSC.
+        self.rt_status
+            .requested_os_factor
+            .store(factor.to_f32() as u32, Ordering::Relaxed);
+        self.rt_status
+            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+    }
+
     pub(super) fn apply_params_from_spsc(&mut self, new_params: RtPluginParams) {
         let adaptive_changed = self.params.adaptive_compute != new_params.adaptive_compute;
         let slim_override_changed = self.params.slim_override != new_params.slim_override;
+        let oversample_changed = self.params.oversample != new_params.oversample;
         self.params = new_params;
         self.smoother_in.set_target(
             self.gain_lut
@@ -117,6 +144,9 @@ impl<'a> NamClapProcessor<'a> {
         if slim_override_changed {
             self.adaptive_compute
                 .set_slim_override(self.params.slim_override);
+        }
+        if oversample_changed {
+            self.apply_oversample(self.params.oversample);
         }
     }
 
@@ -195,6 +225,19 @@ impl<'a> NamClapProcessor<'a> {
         if shared_override != self.params.slim_override {
             self.params.slim_override = shared_override;
             self.adaptive_compute.set_slim_override(shared_override);
+        }
+    }
+
+    pub(super) fn sync_oversample_from_gui(&mut self) {
+        let shared_factor = crate::dsp::oversample::OversampleFactor::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_oversample
+                .load(Ordering::Relaxed) as f32,
+        );
+        if shared_factor != self.params.oversample {
+            self.params.oversample = shared_factor;
+            self.apply_oversample(shared_factor);
         }
     }
 }

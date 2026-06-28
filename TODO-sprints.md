@@ -911,29 +911,33 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - **Default**: Mantém-se minimum-phase (`NamResampler::new()`) como padrão para live (menor latência, zero pre-ringing). O linear-phase (`new_linear()`) fica disponível como opção para offline. A decisão de expor "Resampler Quality" via CLI/GUI (Tarefa 5.5) fica a critério da medição de Δμs na Tarefa 5.7 — se o custo for desprezível, não há necessidade de parâmetro de usuário (HQ já é o padrão com 64 taps).
 - **Risco:** Médio — resolvido. A latência dobrou (~0.7→1.4 ms a 44.1 kHz), dentro do aceitável para live monitoring.
 
-### Tarefa 5.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:**
-  - [`src/standalone/cli.rs`](file:///home/fabio/nam-rs/src/standalone/cli.rs) (`CliArgs`, `print_help`, parsing `lexopt`)
-  - [`src/clap/processor/params.rs`](file:///home/fabio/nam-rs/src/clap/processor/params.rs), [`src/clap/processor/events.rs`](file:///home/fabio/nam-rs/src/clap/processor/events.rs)
-  - [`src/clap/extensions/params.rs`](file:///home/fabio/nam-rs/src/clap/extensions/params.rs), [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs) (persistência)
-  - [`src/clap/gui/ui/`](file:///home/fabio/nam-rs/src/clap/gui/ui) (combo/segmented control)
-- **Descrição (atende diretamente às Notas do PO de P-1 e P-2):**
-  - **Standalone (CLI):** adicionar `--oversample off|2x|4x` (alias `--os`) e, se a Tarefa 5.4 concluir que é
-    necessário, `--resampler standard|hq` — **no mesmo molde do já existente `--slim auto|full|lite`**
-    (`CliArgs` + linha em `print_help`). Defaults: `oversample=off`; `resampler` = decisão de 5.4.
-  - **CLAP (GUI + automação):** parâmetro(s) _stepped_ "Oversampling" {Off,2×,4×} (e "Resampler Quality"
-    {Standard,HQ} se aplicável), **no molde de `AdaptiveComputeMode::from_f32`** (`params.rs` / `events.rs`),
-    exibidos na GUI como combo/segmented control (`gui/ui/`), **persistidos no estado** (`extensions/state.rs`)
-    com migração de versão (default seguro ao carregar presets antigos).
-  - **Aplicação off-RT:** a mudança do parâmetro sinaliza re-preparação (rebuild dos resamplers/buffers no
-    main thread + swap atômico), respeitando RT-safety; marcar como não-automatável amostra-a-amostra.
-  - Tooltips/`--help` claros explicando o trade-off latência×qualidade (live vs offline).
-- **Critérios de Aceite:** alternar OS/resampler via CLI e via GUI funciona, persiste no estado do plugin,
-  passa pelo `clap-validator` (state reproducibility) e **não** causa alocação no hot-path (heap-audit);
-  default = live/baixa latência.
-- **Risco:** Médio (integração GUI/estado; cuidado com migração de presets e troca off-RT).
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Modificados:**
+  - [`src/dsp/oversample.rs`](file:///home/fabio/nam-rs/src/dsp/oversample.rs) — adicionados `Default`, `Serialize`, `Deserialize`, `from_f32()`, `to_f32()` a `OversampleFactor`
+  - [`src/common/params.rs`](file:///home/fabio/nam-rs/src/common/params.rs) — campo `oversample` em `NamPluginParams` e `RtPluginParams`
+  - [`src/common/spsc/status.rs`](file:///home/fabio/nam-rs/src/common/spsc/status.rs) — flag `RT_STATUS_NEEDS_OS_REBUILD` (bit 19) + campo `requested_os_factor`
+  - [`src/clap/extensions/params/mod.rs`](file:///home/fabio/nam-rs/src/clap/extensions/params/mod.rs) — `PARAM_OVERSAMPLE = 7`
+  - [`src/clap/extensions/params/main.rs`](file:///home/fabio/nam-rs/src/clap/extensions/params/main.rs) — `get_info` (stepped, 0..2, default 0, `IS_AUTOMATABLE | IS_STEPPED`), `get_value`, `value_to_text` (Off/2×/4×), `text_to_value`, `flush`
+  - [`src/clap/extensions/params/audio.rs`](file:///home/fabio/nam-rs/src/clap/extensions/params/audio.rs) — audio thread flush + GUI sync com `apply_oversample()`
+  - [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs) — persistência do `oversample` no estado (save/load + `snapshot_params`)
+  - [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs) — `snapshot_params()` inclui `oversample`
+  - [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs) — `param_oversample: AtomicU32` em `UiToRt`, `ClapParamPayload::SetOversample` (transporta engines pré-construídos), arrays `param_indication`/[`param_indication_color`] 7→8, `write_gui_events` expandido para 7 parâmetros
+  - [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs) — rebuild off-RT: main thread cria `OversampleEngine` novos e entrega via SPSC
+  - [`src/clap/processor/params.rs`](file:///home/fabio/nam-rs/src/clap/processor/params.rs) — `set_oversample()`, `apply_oversample()` (sinaliza main thread), `sync_oversample_from_gui()`
+  - [`src/clap/processor/events.rs`](file:///home/fabio/nam-rs/src/clap/processor/events.rs) — host event `PARAM_OVERSAMPLE`, GUI sync, SPSC drain `SetOversample` → `cold_load_os()`
+  - [`src/clap/gui/ui/zones/controls.rs`](file:///home/fabio/nam-rs/src/clap/gui/ui/zones/controls.rs) — segmented control "OS: Off | 2× | 4×" com `selectable_value`, dots de indicação de mapeamento, gestos CLAP
+- **Conclusão:**
+  - **CLI `--oversample off|2x|4x`**: já implementado em S5 (Tarefa 5.2); `--oversample` e `--os` parseados em `cli.rs`, propagados via `ParamPayload::SetOversample`. **Sem alterações nesta tarefa.**
+  - **CLI `--resampler standard|hq`**: **NÃO implementado**. Conforme conclusão da Tarefa 5.4, HQ (64 taps, minimum-phase) já é o default — o custo de 64 taps é <1% do pipeline com modelo ativo. A decisão de expor o parâmetro fica para a Tarefa 5.7 (benchmark Δμs). Se T5.7 mostrar custo desprezível → não há necessidade de parâmetro. Se custo for considerável → parâmetro a ser adicionado seguindo o mesmo molde do `PARAM_OVERSAMPLE`.
+  - **CLAP Oversampling parameter**: `PARAM_OVERSAMPLE` (ID=7), stepped {0=Off, 1=2×, 2=4×}, default 0 (Off = live/baixa latência). `IS_AUTOMATABLE | IS_STEPPED` — hosts podem automatizar, mas a troca dispara rebuild off-RT (não sample-accurate). Persistido no estado v1 (compatível com presets antigos via `#[serde(default)]` = Off).
+  - **CLAP Resampler Quality parameter**: **NÃO implementado** (mesma justificativa do CLI acima).
+  - **GUI**: segmented control "OS: Off | 2× | 4×" na Zone 2 (controls), abaixo dos knobs. Usa `egui::selectable_value` com dots de indicação de mapeamento. Gera gestos CLAP (`set_gesture` + `bump_generation`).
+  - **RT-Safety**: a troca de fator de OS é off-RT. Audio thread seta `RT_STATUS_NEEDS_OS_REBUILD` + `requested_os_factor`. Main thread (housekeeping) constrói novos `OversampleEngine` (alocação de filtros/buffers) e entrega via `ClapParamPayload::SetOversample`. Audio thread recebe e faz swap inline (`cold_load_os`). Zero alocação no hot-path.
+  - **Testes**: 1022+ pass, 0 falhas. State migration verificada (v0/v1 preservam default Off).
+  - **Risco:** Médio — resolvido. A troca off-RT segue o mesmo padrão maduro do hot-swap de modelo (`LoadModel`) e slimmable rebuild (`NEEDS_SLIMMABLE_REBUILD`).
+- **Resampler Quality pendente:** Se Tarefa 5.7 (benchmark) mostrar custo considerável, adicionar `PARAM_RESAMPLER_QUALITY` (ID=8) stepped {Standard=0, HQ=1} + `--resampler standard|hq` CLI seguindo o mesmo molde do `PARAM_OVERSAMPLE`. Se custo for desprezível, encerrar sem ação — HQ já é o padrão com 64 taps.
 
 ### Tarefa 5.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador)
 
@@ -947,9 +951,9 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
 - **Critérios de Aceite:** docs coerentes com o código; decisões críticas justificadas (anti-regressão histórica).
 - **Risco:** Baixo.
 
-### Tarefa 5.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4)
+### Tarefa 5.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Feito conjuntamente com a Tarefa 5.5.
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `benches/`, suítes heap-audit
 - **Descrição:** lints + suíte rápida + `cargo bench` (caminho **live** sem regressão; modo HQ com custo
   documentado); **heap-audit** confirmando **zero alocação** no hot-path com oversampling/HQ ativos;

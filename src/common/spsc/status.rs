@@ -54,6 +54,8 @@ pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
 /// Flag indicating that Transparent Huge Pages (THP) advice was used
 /// (madvise MADV_HUGEPAGE), as opposed to explicit HugeTLB 2 MB pages.
 pub const RT_STATUS_THP_ACTIVE: u64 = 1 << 18;
+/// Flag indicating that an oversampling factor change is needed (set by RT, cleared by main).
+pub const RT_STATUS_NEEDS_OS_REBUILD: u64 = 1 << 19;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -84,6 +86,7 @@ pub const RT_STATUS_THP_ACTIVE: u64 = 1 << 18;
 /// | 16 | `SLIMMABLE_SLICE_FAILED` | WaveNet slimmable slice_channels rebuild failed |
 /// | 17 | `NEEDS_SLIMMABLE_REBUILD` | DSP thread requests slimmable model rebuild |
 /// | 18 | `THP_ACTIVE` | Transparent huge pages(madvise) active — not explicit HugeTLB |
+/// | 19 | `NEEDS_OS_REBUILD` | DSP thread requests oversampling engine rebuild |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.
@@ -145,6 +148,9 @@ pub struct RtStatusFlags {
     /// Requested slimmable channel count (set by RT thread, read by main thread).
     /// Value `0` indicates no pending request.
     pub requested_slimmable_ch: AtomicU32,
+    /// Requested oversampling factor (0=Off, 1=X2, 2=X4) for engine rebuild.
+    /// Set by RT thread, read and cleared by main thread after rebuild.
+    pub requested_os_factor: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -171,6 +177,7 @@ impl RtStatusFlags {
             drains: AtomicU32::new(0),
             requested_cabsim_partition_size: AtomicU32::new(0),
             requested_slimmable_ch: AtomicU32::new(0),
+            requested_os_factor: AtomicU32::new(0),
         }
     }
 

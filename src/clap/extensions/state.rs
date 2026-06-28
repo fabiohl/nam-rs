@@ -122,6 +122,10 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             self.params.slim_override as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
+        self.shared.ui_to_rt.param_oversample.store(
+            self.params.oversample.to_f32() as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         self.shared.bump_generation();
 
         if let Some(path) = self.params.model_path.clone() {

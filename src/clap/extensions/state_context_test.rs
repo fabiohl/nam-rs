@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::common::params::{AdaptiveComputeMode, NamPluginParams};
+use crate::dsp::oversample::OversampleFactor;
 use std::path::PathBuf;
 
 fn make_test_params() -> NamPluginParams {
@@ -15,6 +16,7 @@ fn make_test_params() -> NamPluginParams {
         bypass: false,
         adaptive_compute: AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        oversample: OversampleFactor::Off,
         ir_path: None,
     }
 }

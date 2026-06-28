@@ -80,6 +80,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 param_bypass: AtomicU32::new(0),
                 param_adaptive_compute: AtomicU32::new(1), // Conservative by default in CLAP plugin
                 param_slim_override: AtomicU32::new(0),    // Auto by default
+                param_oversample: AtomicU32::new(0),       // Off by default
                 gesture_flags: AtomicU32::new(0),
                 gui_param_generation: AtomicU32::new(0),
             },
@@ -102,8 +103,10 @@ impl DefaultPluginFactory for NamClapPlugin {
                     std::sync::atomic::AtomicU8::new(0),
                     std::sync::atomic::AtomicU8::new(0),
                     std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
                 ],
                 param_indication_color: [
+                    std::sync::atomic::AtomicU32::new(0),
                     std::sync::atomic::AtomicU32::new(0),
                     std::sync::atomic::AtomicU32::new(0),
                     std::sync::atomic::AtomicU32::new(0),

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Zone 2 (center): Controls — Input Gain, Output Gain and Gate Threshold knobs.
+//! Zone 2 (center): Controls — Input Gain, Output Gain, Gate Threshold knobs,
+//! and Oversampling segmented control.
 
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
@@ -55,7 +56,7 @@ pub(crate) fn draw_zone2_controls(
             );
 
             ui.horizontal(|ui| {
-                ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
+                ui.allocate_ui(egui::vec2(78.0, 125.0), |ui| {
                     handle_knob(
                         ui,
                         ui.make_persistent_id("input_gain_knob"),
@@ -76,7 +77,7 @@ pub(crate) fn draw_zone2_controls(
                     );
                 });
                 ui.add_space(2.0);
-                ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
+                ui.allocate_ui(egui::vec2(78.0, 125.0), |ui| {
                     handle_knob(
                         ui,
                         ui.make_persistent_id("output_gain_knob"),
@@ -97,7 +98,7 @@ pub(crate) fn draw_zone2_controls(
                     );
                 });
                 ui.add_space(2.0);
-                ui.allocate_ui(egui::vec2(70.0, 185.0), |ui| {
+                ui.allocate_ui(egui::vec2(70.0, 125.0), |ui| {
                     handle_knob(
                         ui,
                         ui.make_persistent_id("gate_thresh_knob"),
@@ -117,6 +118,82 @@ pub(crate) fn draw_zone2_controls(
                         " dB (Threshold)",
                     );
                 });
+            });
+
+            // Oversampling segmented control
+            ui.add_space(4.0);
+            let ind_os = shared.cold.param_indication
+                [crate::clap::extensions::params::PARAM_OVERSAMPLE as usize]
+                .load(Ordering::Relaxed);
+            let ind_os_color = resolve_color(
+                shared.cold.param_indication_color
+                    [crate::clap::extensions::params::PARAM_OVERSAMPLE as usize]
+                    .load(Ordering::Relaxed),
+                accent_color,
+            );
+            let os_val = shared.ui_to_rt.param_oversample.load(Ordering::Relaxed);
+            let os_val_i32 = os_val as i32;
+
+            ui.allocate_ui(egui::vec2(210.0, 26.0), |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new("Oversampling")
+                            .font(egui::FontId::proportional(10.0))
+                            .color(egui::Color32::GRAY),
+                    );
+                    let resp = ui.selectable_value(
+                        &mut (os_val_i32 == 0),
+                        true,
+                        egui::RichText::new("Off").font(egui::FontId::proportional(11.0)),
+                    );
+                    if resp.clicked() && os_val_i32 != 0 {
+                        shared.ui_to_rt.param_oversample.store(0, Ordering::Relaxed);
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            0,
+                        );
+                        shared.bump_generation();
+                    }
+                    let resp = ui.selectable_value(
+                        &mut (os_val_i32 == 1),
+                        true,
+                        egui::RichText::new("2×").font(egui::FontId::proportional(11.0)),
+                    );
+                    if resp.clicked() && os_val_i32 != 1 {
+                        shared.ui_to_rt.param_oversample.store(1, Ordering::Relaxed);
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            0,
+                        );
+                        shared.bump_generation();
+                    }
+                    let resp = ui.selectable_value(
+                        &mut (os_val_i32 == 2),
+                        true,
+                        egui::RichText::new("4×").font(egui::FontId::proportional(11.0)),
+                    );
+                    if resp.clicked() && os_val_i32 != 2 {
+                        shared.ui_to_rt.param_oversample.store(2, Ordering::Relaxed);
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            0,
+                        );
+                        shared.bump_generation();
+                    }
+                });
+                if ind_os & 1 != 0 {
+                    let painter = ui.painter();
+                    let rect = ui.min_rect();
+                    let dots = [
+                        egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.top() + 4.0),
+                        egui::pos2(rect.left() + 4.0, rect.bottom() - 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
+                    ];
+                    for dot in dots {
+                        painter.circle_filled(dot, 1.5, ind_os_color);
+                    }
+                }
             });
         });
     });

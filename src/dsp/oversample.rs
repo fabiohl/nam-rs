@@ -36,9 +36,10 @@ const HB_DELAY: usize = HB_TAPS / 2;
 const HB_ODD_COUNT: usize = HB_TAPS / 2; // 12
 
 /// Oversampling factor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum OversampleFactor {
     /// No oversampling — pass-through with zero overhead.
+    #[default]
     Off,
     /// 2× oversampling (one half-band stage).
     X2,
@@ -47,6 +48,24 @@ pub enum OversampleFactor {
 }
 
 impl OversampleFactor {
+    /// Creates an `OversampleFactor` from a CLAP parameter value (0.0, 1.0, 2.0).
+    pub fn from_f32(val: f32) -> Self {
+        match val.round() as i32 {
+            1 => Self::X2,
+            2 => Self::X4,
+            _ => Self::Off,
+        }
+    }
+
+    /// Converts to its CLAP parameter value (0.0, 1.0, 2.0).
+    pub fn to_f32(self) -> f32 {
+        match self {
+            Self::Off => 0.0,
+            Self::X2 => 1.0,
+            Self::X4 => 2.0,
+        }
+    }
+
     /// Returns the sample count multiplier (1, 2, or 4).
     #[inline]
     pub const fn multiplier(self) -> usize {

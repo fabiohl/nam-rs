@@ -36,6 +36,13 @@ pub enum ClapParamPayload {
         /// Pre-built convolution engine (None = bypass cabsim).
         engine: Option<Box<crate::dsp::cabsim::conv::ConvEngine>>,
     },
+    /// Oversampling factor change: carries new pre-built engines for the audio thread.
+    SetOversample {
+        /// Pre-built left-channel oversample engine.
+        os_l: Box<crate::dsp::oversample::OversampleEngine>,
+        /// Pre-built right-channel oversample engine.
+        os_r: Box<crate::dsp::oversample::OversampleEngine>,
+    },
 }
 
 /// Model metadata for display in the GUI.
@@ -102,6 +109,8 @@ pub struct UiToRt {
     pub param_adaptive_compute: AtomicU32,
     /// Latest Slim Override parameter value (0=Auto, 1=ForceFull, 2=ForceLite).
     pub param_slim_override: AtomicU32,
+    /// Latest Oversampling factor parameter value (0=Off, 1=X2, 2=X4).
+    pub param_oversample: AtomicU32,
     /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
     /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
     ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
@@ -136,11 +145,11 @@ pub struct ColdShared {
     pub buffer_size: AtomicU32,
     /// Dynamic accent color based on DAW track color (packed ARGB).
     pub track_accent_color: AtomicU32,
-    /// Parameter indication (mapping, automation, and override) for the 7 parameters.
+    /// Parameter indication (mapping, automation, and override) for the 8 parameters.
     /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
-    pub param_indication: [AtomicU8; 7],
+    pub param_indication: [AtomicU8; 8],
     /// Indicated/mapped parameter colors (packed ARGB).
-    pub param_indication_color: [AtomicU32; 7],
+    pub param_indication_color: [AtomicU32; 8],
     /// Model load counter (incremented on each successful model load).
     pub model_load_counter: AtomicU32,
     /// Loaded model name (path basename). Written by the main thread, read by the UI thread.
@@ -297,13 +306,13 @@ impl NamClapShared {
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
         use crate::clap::extensions::params::{
             PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-            PARAM_OUTPUT_GAIN, PARAM_SLIM_OVERRIDE,
+            PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
         };
         use clack_plugin::events::event_types::{
             ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let params: [(u32, u32, &AtomicU32); 6] = [
+        let params: [(u32, u32, &AtomicU32); 7] = [
             (
                 PARAM_INPUT_GAIN,
                 Self::param_index(PARAM_INPUT_GAIN) as u32,
@@ -333,6 +342,11 @@ impl NamClapShared {
                 PARAM_SLIM_OVERRIDE,
                 Self::param_index(PARAM_SLIM_OVERRIDE) as u32,
                 &self.ui_to_rt.param_slim_override,
+            ),
+            (
+                PARAM_OVERSAMPLE,
+                Self::param_index(PARAM_OVERSAMPLE) as u32,
+                &self.ui_to_rt.param_oversample,
             ),
         ];
 
