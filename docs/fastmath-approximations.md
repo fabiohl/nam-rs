@@ -33,16 +33,16 @@ Implemented in `src/math/activations/tanh.rs`:
 | SIMD operations (AVX2, 8 elem)                | ~9 ops                                   |
 | Throughput `tanh_slice` (256 elem, AVX2)      | **~54 ns**                               |
 | Throughput `tanh_slice` (256 elem, piecewise) | ~~163 ns~~                               |
-| Gain vs. 7-segment piecewise (Epic 8)         | **−66.6%**                               |
+| Gain vs. 7-segment piecewise                  | **−66.6%**                               |
 | Coefficients                                  | `PADE_TANH_*` in `src/math/constants.rs` |
 
 ### Why `_mm256_div_ps` and not Newton-Raphson Iteration (NR2)?
 
-Empirical experiment (E8.T04, 10M samples in [-4, 4]):
+Empirical experiment (10M samples in [-4, 4]):
 
 | Variant                    | Max Abs Err | RMS Error   | Throughput (256 elem) |
 |:-------------------------- |:----------- |:----------- |:--------------------- |
-| 7-seg Piecewise (E8.T02)   | 4.90e-3     | —           | ~163 ns               |
+| 7-seg Piecewise            | 4.90e-3     | —           | ~163 ns               |
 | Padé NR2 (rcp + 2× Newton) | 2.32e-3     | ≈ Div       | ~104 ns               |
 | **Padé Div (hw div)**      | **2.32e-3** | **minimum** | **~63 ns**            |
 
@@ -53,7 +53,7 @@ The error ratio between NR2 and Division is **1.000×** — the double Newton-Ra
 
 ---
 
-## 2. Failed Experiment: Piecewise 7-Segment for Tanh (E8.T02)
+## 2. Failed Experiment: Piecewise 7-Segment for Tanh
 
 ### What was tried
 
@@ -63,9 +63,9 @@ Replacing the Padé [5,4] with 7 polynomials of degree 5 with branchless blendin
 
 Hypothesis: short segments allow coefficients with lower Chebyshev error per segment, improving global precision.
 
-### Measured Results (Epic 8)
+### Measured Results
 
-| Metric                       | Padé [5,4] (baseline) | 7-seg Piecewise (E8.T02)     |
+| Metric                       | Padé [5,4] (baseline) | 7-seg Piecewise              |
 |:---------------------------- |:--------------------- |:---------------------------- |
 | SIMD operations              | ~9                    | **~28** (7 polys + 6 blends) |
 | Max error [-4, 4]            | 2.32e-3               | **4.90e-3** (worse!)         |
@@ -100,11 +100,11 @@ for each segment, where `[a, b]` is the segment interval.
 
 The previous implementation used the identity `σ(x) = 0.5 + 0.5 · tanh(x/2)`, propagating the tanh error and adding scaling operations.
 
-### Adopted Solution (E8.T01)
+### Adopted Solution
 
 Odd polynomial of degree 17 (9 terms) for the [-8, 8] domain, coefficients obtained via **Lawson's algorithm** (weighted minimax).
 
-| Property                 | Tanh identity (baseline) | Direct Minimax (E8.T01)     |
+| Property                 | Tanh identity (baseline) | Direct Minimax              |
 |:------------------------ |:------------------------ |:--------------------------- |
 | Max absolute error       | ~6.8e-4                  | **~4.09e-4** (1.67× better) |
 | SIMD operations          | 16                       | **15**                      |
@@ -118,11 +118,11 @@ Smooth symmetric functions on a compact domain (sigmoid in [-8, 8]) are better a
 
 ## 4. Discovery: Newton-Raphson Reciprocal Adds No Drift in f32
 
-Experiment E8.T04 empirically proved that **the double Newton-Raphson iteration (NR2) in the Padé division fully saturates the 24-bit f32 mantissa**. The maximum absolute error of NR2 vs. hardware division is a 1.000× ratio — indistinguishable within representable precision.
+Empirical experiment proved that **the double Newton-Raphson iteration (NR2) in the Padé division fully saturates the 24-bit f32 mantissa**. The maximum absolute error of NR2 vs. hardware division is a 1.000× ratio — indistinguishable within representable precision.
 
 **Normative implication:** Wherever `rcp_ps + 2× Newton-Raphson` is used in the codebase to approximate a rational Padé division, it can be replaced with `div_ps` with no precision penalty and a potential throughput gain (fewer dependencies, lower register pressure).
 
-A follow-up experiment (A8, 2026-06) tested whether a single NR iteration (`rcp_ps + 1×NR`, ~23 bits) could beat `div_ps` given the Padé intrinsic error of ~2.3e-3.  NR1 passed the −80 dB precision gate with ~64 dB margin but was **1.77× slower** than `div_ps` (110 ns vs 62 ns, 256-elem AVX2).  The hypothesis that manual NR saves latency was disproven: modern CPUs pipeline `div_ps` more efficiently than serial NR chains.  `div_ps` remains the optimal choice for both precision and throughput.
+A follow-up experiment tested whether a single NR iteration (`rcp_ps + 1×NR`, ~23 bits) could beat `div_ps` given the Padé intrinsic error of ~2.3e-3.  NR1 passed the −80 dB precision gate with ~64 dB margin but was **1.77× slower** than `div_ps` (110 ns vs 62 ns, 256-elem AVX2).  The hypothesis that manual NR saves latency was disproven: modern CPUs pipeline `div_ps` more efficiently than serial NR chains.  `div_ps` remains the optimal choice for both precision and throughput.
 
 ---
 
@@ -142,7 +142,7 @@ Parity comparison with NeuralAmpModelerCore revealed that WaveNet Standard SNR r
 4. Reciprocal in Padé division                       (≈0, saturated in 24 bits)
 ```
 
-### Measured: Drift Source Decomposition (S1.T1.4)
+### Measured: Drift Source Decomposition
 
 Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`) for WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers) with synthetic weights 0.01 and conv1d biases 0.001:
 
@@ -159,21 +159,21 @@ Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`)
 2. **Tanh Padé contribution is negligible** for this topology. The small synthetic weights (0.01) keep internal activations in the linear region of tanh where `tanh(x) ≈ x` with negligible error. This does NOT imply Padé is harmless for real NAM models — real weights are larger and produce activations with `|x| > 1` where Padé error (~2.32e-3 max) becomes significant.
 3. **f32 accumulation error is below measurement noise** — the residual after subtracting quantization and tanh components is effectively zero, confirming that the existing Kahan-compensated primitives are sufficient.
 
-**Recommendation (P2):** Sprint S4's exact mode should prioritize higher-precision weight storage (f32 or compensated F16) over improving the tanh approximation, since the measured weight-quantization ESR dominates by >8 orders of magnitude for this topology. However, a follow-up measurement with real model weights (which produce larger activation ranges) is needed to quantify the tanh contribution under realistic conditions.
+**Recommendation (P2):** Exact mode should prioritize higher-precision weight storage (f32 or compensated F16) over improving the tanh approximation, since the measured weight-quantization ESR dominates by >8 orders of magnitude for this topology. However, a follow-up measurement with real model weights (which produce larger activation ranges) is needed to quantify the tanh contribution under realistic conditions.
 
 ### Path to Improving SNR
 
-E8.T03 implements bias-tuning for BF16 (compensation at model load). The expected gain is ≥1.5 dB SNR on BF16-capable hardware (Intel Sapphire Rapids, AMD Zen 5+). To validate, a CI runner with a compatible CPU is required.
+Bias-tuning for BF16 compensates at model load. The expected gain is ≥1.5 dB SNR on BF16-capable hardware (Intel Sapphire Rapids, AMD Zen 5+). To validate, a CI runner with a compatible CPU is required.
 
 ---
 
-## 6. Anti-Subnormal Prevention with DC Dither (E8.T05)
+## 6. Anti-Subnormal Prevention with DC Dither
 
 ### Problem
 
 During fade-out/silence, near-zero values in LSTM/WaveNet activations enter the subnormal territory (< 1.175e-38 for f32). Subnormals have a high processing cost (hardware soft emulation) and can introduce "digital click" artifacts during fades.
 
-### Adopted Solution
+### Adopted Solution - Anti-Subnormal Prevention with DC Dither
 
 The constant `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) is injected in `apply_input_stage` and removed in `apply_output_stage`.
 
@@ -186,7 +186,7 @@ The constant `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) is injected in `appl
 
 ---
 
-## 8. WaveNet Non-Zero Silence Policy (S1.T1.3)
+## 8. WaveNet Non-Zero Silence Policy
 
 ### Phenomenon
 
@@ -248,7 +248,6 @@ is a normal normalized f32 value.
 
 - `tests/soak_test.rs:53` — `test_wavenet_silence_soak` (`#[ignore]`, 10M frames)
 - `tests/soak_test.rs:117` — `test_wavenet_silence_decomposition` (source isolation)
-- `TODO-sprints.md:136` — T1.3 task definition
 - `TODO-problemas.md:155` — P4 problem report
 
 ---
@@ -268,23 +267,23 @@ For any future modification in `src/math/activations/`:
 
 ---
 
-## 9. Product Fidelity Policy — WaveNet Family (post-T-HF6.6)
+## 9. Product Fidelity Policy — WaveNet Family
 
 ### 9.1 Current State: Single Mode (f32 + Poly Tanh)
 
-As of Epic E-HF Sprint 6 (T-HF6.1–T-HF6.6, jun/2026), WaveNet A1 operates
+After the elimination of BF16/F16 dual-mode paths, WaveNet A1 operates
 exclusively in a **single mode**:
 
 - **Weights**: `f32` native — no quantization, no dual storage, no
   `AlignedVec<u16>` or BF16/F16 paths in WaveNet inference
 - **Tanh activation**: Padé [5,4] polynomial (SIMD AVX2/AVX-512, ~2.32e-3
   max error, ~54 ns throughput)
-- **Feature flag `high-fidelity`**: **removed** from `Cargo.toml` (T-HF6.5)
+- **Feature flag `high-fidelity`**: **removed** from `Cargo.toml`
 - **No cfg gates**: zero `#[cfg(feature = "high-fidelity")]` in WaveNet code
 - **No `AlignedVec<u16>`** in any WaveNet model, layer, or conv1d component
 
 This single-mode architecture eliminates the entire low-fidelity/high-fidelity
-duality that existed prior to E-HF Sprint 6. The ESR vs C++ reference improved
+duality that existed prior to these changes. The ESR vs C++ reference improved
 by ~10 orders of magnitude:
 
 | Architecture         | ESR (linear) | ESR (dB) | SNR (dB) | Precision class |
@@ -299,16 +298,16 @@ by ~10 orders of magnitude:
 > ESR measured against NeuralAmpModelerCore v0.5.3 reference (commit `9c7b185`).
 > All non-Lite WaveNet models now achieve SNR ≫ 100 dB — comparable to LSTM/Linear.
 
-### 9.2 What Changed (E-HF Sprint 6)
+### 9.2 What Changed
 
-| Prior state (pre-HF6)               | Current state (post-HF6)                            | Sprint/task |
-|:----------------------------------- |:--------------------------------------------------- | ----------- |
-| Dual weight storage (u16 + f32)     | Single f32 storage, no `AlignedVec<u16>` in WaveNet | T-HF6.1–6.3 |
-| `#[cfg(feature = "high-fidelity")]` | No cfg gates in WaveNet — removed                   | T-HF6.4     |
-| `high-fidelity = []` in Cargo.toml  | Feature flag removed                                | T-HF6.5     |
-| ESR ~3e-3 to 1e-2 (−25 to −20 dB)   | ESR ~1e-13 (−123 dB) — ~10 orders improvement       | T-HF6.6     |
-| Golden thresholds SNR ≥ 7 dB        | Thresholds SNR 85–105 dB (16-37 dB margin)          | T-HF6.6     |
-| BF16/F16 weight quantization        | Eliminated for WaveNet (zero u16 in hot-path)       | T-HF6.1–6.3 |
+| Prior state (pre-HF6)               | Current state (post-HF6)                            |
+|:----------------------------------- |:--------------------------------------------------- |
+| Dual weight storage (u16 + f32)     | Single f32 storage, no `AlignedVec<u16>` in WaveNet |
+| `#[cfg(feature = "high-fidelity")]` | No cfg gates in WaveNet — removed                   |
+| `high-fidelity = []` in Cargo.toml  | Feature flag removed                                |
+| ESR ~3e-3 to 1e-2 (−25 to −20 dB)   | ESR ~1e-13 (−123 dB) — ~10 orders improvement       |
+| Golden thresholds SNR ≥ 7 dB        | Thresholds SNR 85–105 dB (16-37 dB margin)          |
+| BF16/F16 weight quantization        | Eliminated for WaveNet (zero u16 in hot-path)       |
 
 ### 9.3 Tanh Poly Approximation — Remaining Divergence from C++
 
@@ -328,17 +327,17 @@ non-exact component, but still yields SNR ≫ 100 dB across all non-Lite models.
 WaveNet **Lite (CH=12)** is the only WaveNet SKU that diverges from C++:
 **SNR ≈ 0.9 dB** — the output is almost fully decorrelated from the reference.
 
-> **Verdict T-HF6.6 (jun/2026):** The f32 exact path (weights + tanh poly,
+> **Verdict:** The f32 exact path (weights + tanh poly,
 > identical to all other WaveNet models) **did not** resolve P1. Lite CH=12
 > maintained SNR ≈ 0.9 dB with no quantization in the path. This confirms
 > P1 is **architectural/implementational** — not a drift accumulation from
 > FastMath or quantization. Suspected causes: bias-tuning, 4-wide interleaving
 > order, or the CH=12 static engine path itself.
 
-| Model                   | Status                                       | SNR (vs C++) |
-|:----------------------- |:-------------------------------------------- |:------------ |
-| BossWN-lite (synthetic) | Obsolete (RF7/T2.4) — replaced by real CH=12 | ~0.9 dB      |
-| EVH-5150-Lite (real)    | ✅ Golden parity resolved (RF7) — ≥ 105 dB   | 122.3 dB     |
+| Model                   | Status                                | SNR (vs C++) |
+|:----------------------- |:------------------------------------- |:------------ |
+| BossWN-lite (synthetic) | Obsolete — replaced by real CH=12     | ~0.9 dB      |
+| EVH-5150-Lite (real)    | ✅ Golden parity resolved — ≥ 105 dB  | 122.3 dB     |
 
 > [!CAUTION]
 > Lite models should be treated with caution. Users loading a WaveNet Lite model
@@ -349,7 +348,7 @@ WaveNet **Lite (CH=12)** is the only WaveNet SKU that diverges from C++:
 ### 9.5 Historical Context: The Lo-Fi/Hi-Fi Duality (Removed)
 
 The dual-mode architecture (low-fidelity default + high-fidelity opt-in) existed
-from S4 to E-HF Sprint 5. It was eliminated in T-HF6.1–T-HF6.6 (E-HF Sprint 6)
+from earlier iterations. It was eliminated
 because:
 
 1. The quantitative performance advantage of low-fidelity over exact f32 was
@@ -360,7 +359,7 @@ because:
    more efficient and more faithful than WaveNet A1
 3. The dual path introduced complexity (dual `AlignedVec<u16/f32>` storage,
    compile-time cfg gates, dual weight dispatch) for unquantified benefit
-4. The nuke (T-HF6.1–6.3) simplified WaveNet to a single f32 path, and the
+4. The simplification resulted in a single f32 path, and the
    resulting ESR improvement (~10 orders of magnitude) validated the decision
 
 > [!NOTE]
@@ -372,13 +371,11 @@ because:
 
 ### 9.6 Cross-References
 
-| Item    | Location                | Topic                          |
-|:------- |:----------------------- |:------------------------------ |
-| P1      | `TODO-problemas.md:47`  | Lite divergent (architectural) |
-| P2      | `TODO-problemas.md:92`  | Fidelity asymmetry — RESOLVED  |
-| P10     | `TODO-problemas.md:353` | Lo-fi mode review — RESOLVED   |
-| T-HF6.6 | `TODO-sprints.md:1277`  | Golden recalibration post-nuke |
-| T-HF6.5 | `TODO-sprints.md:1258`  | Feature flag removal           |
+| Item | Location                | Topic                          |
+|:---- |:----------------------- |:------------------------------ |
+| P1   | `TODO-problemas.md:47`  | Lite divergent (architectural) |
+| P2   | `TODO-problemas.md:92`  | Fidelity asymmetry — RESOLVED  |
+| P10  | `TODO-problemas.md:353` | Lo-fi mode review — RESOLVED   |
 
 ---
 
@@ -388,8 +385,6 @@ because:
 - Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3rd ed. Birkhäuser, 2016. (Padé approximants)
 - Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput per microarchitecture.
 - [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
-- `TODO-sprints.md` §Epic 8 — complete history of decisions and benchmark data.
-- `TODO-sprints.md` §E-HF Sprint 6 — T-HF6.1–T-HF6.7 (nuke + recalibration + docs).
 
 ## 10. Activation Precision Modes — Standard vs. HighFidelity
 
@@ -446,12 +441,10 @@ exp evaluations for tanh and sigmoid. Coverage extends to:
 
 ### 10.5 Cross-References
 
-| Item  | Location                                     | Topic                                  |
-|:----- |:-------------------------------------------- |:-------------------------------------- |
-| T5.3  | `TODO-sprints.md:867`                        | Activation precision ESR measurements  |
-| T5.6  | `TODO-sprints.md:942`                        | This documentation task                |
-| Test  | `tests/activation_precision.rs`              | ESR via oracle, functional validation  |
-| Code  | `src/math/activations/tanh/high_fidelity.rs` | Polynomial exp-based kernels           |
-| Code  | `src/math/activations/tanh/production.rs`    | Padé [5,4] production kernels          |
+| Item | Location                                     | Topic                                  |
+|:---- |:-------------------------------------------- |:-------------------------------------- |
+| Test | `tests/activation_precision.rs`              | ESR via oracle, functional validation  |
+| Code | `src/math/activations/tanh/high_fidelity.rs` | Polynomial exp-based kernels           |
+| Code | `src/math/activations/tanh/production.rs`    | Padé [5,4] production kernels          |
 
 ---

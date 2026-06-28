@@ -115,7 +115,7 @@ pub enum StaticModel {
     WavenetA2Lite(Box<a2::WaveNetA2<3>>),
     /// WaveNet A2 Dynamic (runtime-dimensioned, full topology spectrum).
     WavenetA2Dyn(Box<a2::WaveNetA2Dyn>),
-    /// WaveNet Dynamic (runtime-dimensioned, free geometry — T3.1).
+    /// WaveNet Dynamic (runtime-dimensioned, free geometry).
     WavenetDyn(Box<wavenet::WaveNetModelDyn>),
     /// LSTM 1 Layer × 3 hidden units.
     Lstm1x3(Box<lstm::Lstm1x3>),

@@ -7,7 +7,7 @@
     clippy::too_many_arguments
 )]
 
-//! CH=8 T=8 frame-tiled tap-major convolution with broadcast-FMA (T2.2).
+//! CH=8 T=8 frame-tiled tap-major convolution with broadcast-FMA.
 //!
 //! When `out_ch == 8`, the generic 4-wide interleaved scheme processes frames
 //! one at a time. This module implements a **block-level** kernel that processes
@@ -32,7 +32,7 @@
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 
 /// Maximum frames per kernel invocation.
-/// Guaranteed by `process()` internal chunking (T2.1).
+/// Guaranteed by `process()` internal chunking.
 const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 
 /// CH=8 dilated causal Conv1D alias — see `super::conv1d_ch::A2Conv1dCh` for docs.

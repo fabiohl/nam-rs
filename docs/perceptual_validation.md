@@ -71,30 +71,30 @@ Defined in `tests/common/validation.rs:435` (`get_calibrated_threshold`). Each m
 empirically measured `(mse_limit, min_snr_db, max_esr, mrstft_max)` at 48 kHz with 2048-sample v1
 stress signal. Source measurements are documented in code comments.
 
-| Model                                | SNR dB | ESR max | MR-STFT max | Notes                                       |
-| ------------------------------------ | ------ | ------- | ----------- | ------------------------------------------- |
-| WaveNet Standard (CH=16)             | 105    | 3.0e-11 | 0.05        | Golden only                                 |
-| WaveNet A1 Standard / Official CH=16 | 85     | 3.0e-9  | 0.05        | Live parity                                 |
-| WaveNet Feather (CH=8)               | 100    | 1.0e-10 | 0.05        | Golden only                                 |
-| WaveNet Nano (CH=4)                  | 95     | 3.0e-10 | 0.05        | Golden only                                 |
-| WaveNet Lite (CH=12)                 | 105    | 3.5e-11 | 0.05        | Golden only                                 |
-| WaveNet Official (CH=3)              | 14     | 3.5e-2  | 0.05        | Live parity, extreme compression            |
+| Model                                | SNR dB | ESR max | MR-STFT max | Notes                                                  |
+| ------------------------------------ | ------ | ------- | ----------- | ------------------------------------------------------ |
+| WaveNet Standard (CH=16)             | 105    | 3.0e-11 | 0.05        | Golden only                                            |
+| WaveNet A1 Standard / Official CH=16 | 85     | 3.0e-9  | 0.05        | Live parity                                            |
+| WaveNet Feather (CH=8)               | 100    | 1.0e-10 | 0.05        | Golden only                                            |
+| WaveNet Nano (CH=4)                  | 95     | 3.0e-10 | 0.05        | Golden only                                            |
+| WaveNet Lite (CH=12)                 | 105    | 3.5e-11 | 0.05        | Golden only                                            |
+| WaveNet Official (CH=3)              | 14     | 3.5e-2  | 0.05        | Live parity, extreme compression                       |
 | WaveNet Cond-DSP                     | 100    | 1.0e-10 | 0.35        | cond=3, dynamic path (see §MR-STFT Sensitivity Caveat) |
-| WaveNet Dyn Free-Shape               | 90     | 1.0e-11 | 0.05        | CH=7→4, head_scale=0.02                     |
-| Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall        |
-| A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                            |
-| A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                 |
-| A2-FiLM-Lite (CH=3)                  | 12     | 2.0e-2  | 0.60        | FiLM active, RF1                            |
-| A2-FiLM-Full (CH=8)                  | 30     | 5.0e-4  | 0.55        | FiLM active, RF1                            |
-| A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                            |
-| A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                             |
-| A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                          |
-| ConvNet Test                         | 140    | 1.0e-10 | 0.05        | Self-golden consistency                     |
-| LSTM 1×16                            | 12     | 6.5e-2  | 0.15        | Recurrent drift (see §LSTM Recurrent Drift) |
-| LSTM 2×8                             | 18     | 2.0e-2  | 0.12        | Recurrent drift                             |
-| LSTM Official (H=3)                  | 22     | 6.0e-3  | 0.22        | Recurrent drift                             |
-| LSTM-Dyn 1×7                         | 80     | 3.5e-9  | 0.08        | Non-catalog geometry, 48 kHz only           |
-| Linear                               | 140    | 1.0e-10 | —           | Bit-exact proxy                             |
+| WaveNet Dyn Free-Shape               | 90     | 1.0e-11 | 0.05        | CH=7→4, head_scale=0.02                                |
+| Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall                   |
+| A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                                       |
+| A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                            |
+| A2-FiLM-Lite (CH=3)                  | 12     | 2.0e-2  | 0.60        | FiLM active, RF1                                       |
+| A2-FiLM-Full (CH=8)                  | 30     | 5.0e-4  | 0.55        | FiLM active, RF1                                       |
+| A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                                       |
+| A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                                        |
+| A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                                     |
+| ConvNet Test                         | 140    | 1.0e-10 | 0.05        | Self-golden consistency                                |
+| LSTM 1×16                            | 12     | 6.5e-2  | 0.15        | Recurrent drift (see §LSTM Recurrent Drift)            |
+| LSTM 2×8                             | 18     | 2.0e-2  | 0.12        | Recurrent drift                                        |
+| LSTM Official (H=3)                  | 22     | 6.0e-3  | 0.22        | Recurrent drift                                        |
+| LSTM-Dyn 1×7                         | 80     | 3.5e-9  | 0.08        | Non-catalog geometry, 48 kHz only                      |
+| Linear                               | 140    | 1.0e-10 | —           | Bit-exact proxy                                        |
 
 Fallback formulas (when a model has no calibrated entry):
 
@@ -135,7 +135,7 @@ is proportionally tightened. `min_snr_db` is clamped to at least 5.0 dB.
 
 **Purpose:** The cap acts as a sentinel, not a pass/fail criterion expected to always succeed.
 When a model exceeds it (as all LSTM models do in v2), the test **intentionally fails** and
-routes the case to T3.3 triage (see `docs/lstm_recurrent_drift.md` for the RCA conclusion).
+routes the case to recurrent drift triage (see `docs/lstm_recurrent_drift.md` for the RCA conclusion).
 This ensures that "passing" always means "at least as precise as WaveNet A1-Std f32 native" —
 preventing the relaxation chain from silently absorbing real regressions.
 
@@ -217,17 +217,17 @@ the MR-STFT score in models with extended near-silent regions.
 model (CH=3, cond=3, dynamic sub-path) exemplifies this pattern in v2
 multi-sample-rate testing at 48 kHz:
 
-| Metric   | v1 (2048 samples, 42.7 ms) | v2 (240k samples, 5.0 s) |
-|----------|----------------------------|--------------------------|
-| ESR      | 1.13e-14 (−139.5 dB)       | 8.93e-15 (−140.5 dB)     |
-| SNR      | 139.5 dB                   | 140.5 dB                 |
-| MR-STFT  | 0.021                      | **0.336** (16× increase) |
+| Metric  | v1 (2048 samples, 42.7 ms) | v2 (240k samples, 5.0 s) |
+| ------- | -------------------------- | ------------------------ |
+| ESR     | 1.13e-14 (−139.5 dB)       | 8.93e-15 (−140.5 dB)     |
+| SNR     | 139.5 dB                   | 140.5 dB                 |
+| MR-STFT | 0.021                      | **0.336** (16× increase) |
 
 The v2 signal is 117× longer but ESR **improves** (lower noise-to-signal ratio
 over more samples). The MR-STFT rises 16× purely because the longer signal
 accumulates more near-zero-bin frames — the condition path drives much of the
 spectrum to near-silence for extended periods, amplifying the log-ratio artifact.
-This was confirmed by audit (2026-06-27) ruling out internal state drift: the
+This was confirmed by analysis ruling out internal state drift: the
 time-domain signal is virtually bit-exact.
 
 **Calibrated thresholds for `condition_dsp`.** The MR-STFT hard gate at native
@@ -236,11 +236,11 @@ stress signal (5s) triggers Tier 2 relaxation on `mrstft_max` (same formula as
 ESR/SNR: `10^(snr_relaxation/5.0)` for WaveNet). Neither value reflects audio
 degradation — both accommodate the log-magnitude sensitivity to spectral sparsity:
 
-| Metric      | v1 (at 48 kHz) | v2 (at 48 kHz, relaxed) | Relaxation              |
-|-------------|:--------------:|:-----------------------:|-------------------------|
-| `mrstft_max`| 0.35           | 0.698                   | `10^(snr_relax/5.0)`    |
-| `max_esr`   | 1.0e-10        | relaxed¹                | Tier 2 relaxation       |
-| `min_snr_db`| 100.0          | relaxed¹                | Tier 2 relaxation       |
+| Metric       | v1 (at 48 kHz) | v2 (at 48 kHz, relaxed) | Relaxation           |
+| ------------ |:--------------:|:-----------------------:| -------------------- |
+| `mrstft_max` | 0.35           | 0.698                   | `10^(snr_relax/5.0)` |
+| `max_esr`    | 1.0e-10        | relaxed¹                | Tier 2 relaxation    |
+| `min_snr_db` | 100.0          | relaxed¹                | Tier 2 relaxation    |
 
 ¹ Relaxation formula: `min_snr −= 1.5 × sr_ratio` (capped at 4 dB), applied
 symmetrically to `mse_limit` and `max_esr`. At 48 kHz where `sr_ratio = 1.0`,
@@ -472,7 +472,7 @@ gate on golden reference output — implausible LUFS values indicate upstream bu
 `LUFS_PLAUSIBLE_MIN = −50.0`, `LUFS_PLAUSIBLE_MAX = +10.0`
 (`tests/common/validation.rs:22-23`).
 
-The gate was introduced after T2.5: a golden vector with LUFS −67 (near-silence)
+The gate enforces that: a golden vector with LUFS −67 (near-silence)
 passed all time-domain checks undetected — the signal was structurally valid
 but perceptually meaningless. Now any reference signal outside [−50, +10] LUFS
 triggers a "GOLDEN DEFECT" warning.

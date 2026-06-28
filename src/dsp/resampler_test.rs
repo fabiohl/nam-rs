@@ -280,15 +280,15 @@ fn test_resampler_micro_soak() {
 
 #[test]
 fn test_resampler_snr_against_reference() {
-    // T5.4 — SNR of minimum-phase polyphase resampler against libsoxr reference.
+    // SNR of minimum-phase polyphase resampler against libsoxr reference.
     //
-    // With TAPS_PER_PHASE=64 (Task 5.4): ~31 dB SNR in the passband.
+    // With TAPS_PER_PHASE=64: ~31 dB SNR in the passband.
     // The minimum-phase polyphase architecture with per-phase normalization
     // has inherent ripple (~0.06 dB cepstrum + per-phase gain dispersion)
     // that limits SNR. The linear-phase variant (test_resampler_linear_snr)
     // achieves significantly better performance.
     //
-    // Gate elevated from 20 dB (pre-T5.4) to 25 dB (post-T5.4, with margin).
+    // Gate elevated from 20 dB to 25 dB (with margin).
 
     let rate_pairs: &[(u32, u32)] = &[
         (44100, 48000),
@@ -369,7 +369,7 @@ fn test_resampler_snr_against_reference() {
 
 #[test]
 fn test_resampler_linear_snr() {
-    // T5.4 — SNR of linear-phase polyphase resampler.
+    // SNR of linear-phase polyphase resampler.
     // Linear-phase: symmetric impulse, uniform per-phase gains,
     // linear interpolation between adjacent phases is accurate.
 

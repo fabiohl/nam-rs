@@ -535,7 +535,7 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
 }
 
 // =============================================================================
-// Grouped conv integration tests — A2Conv1d enum (T2.1)
+// Grouped conv integration tests — A2Conv1d enum
 // =============================================================================
 
 use crate::models::a2::grouped_conv1d::{make_layer_buffer, make_test_weights_grouped};

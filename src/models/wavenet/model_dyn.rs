@@ -33,9 +33,9 @@ use crate::models::{NamModel, StaticModel};
 /// from generating fully-vectorized code without the LLVM const-propagation that
 /// drives the static path.
 ///
-/// **What E1.1 fixed:** eliminated the 4KB intermediate tap-copy buffer that was
+/// **What the optimization fixed:** eliminated the 4KB intermediate tap-copy buffer that was
 /// copying each tap's data into a contiguous stack array before processing — that
-/// was a +53-57% regression introduced by Épico B. E1.1 switched to direct pointer
+/// was a +53-57% regression. The fix switched to direct pointer
 /// accumulation, recovering most of the loss.
 ///
 /// **What remains unfixed:** the accumulator scalar init + K sequential scalar
@@ -43,7 +43,7 @@ use crate::models::{NamModel, StaticModel};
 ///   - Option C: const-generic specializations for CH3/CH5/CH8 at the dispatcher level
 ///     (similar to how LSTM static profiles work for common hidden sizes)
 ///
-/// ## Decision: not a priority (2026-06-24)
+/// ## Decision: not a priority
 ///
 /// The dynamic path (`WaveNetModelDyn`) is a **fallback** for models whose geometry
 /// does not match any of the static profiles. In practice, the standard NAM trainers

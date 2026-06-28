@@ -153,7 +153,7 @@ pub unsafe fn layer_forward_ch8_block(
     debug_assert!(layer_in.len() >= num_frames * ch);
     debug_assert!(input_cond.len() >= num_frames);
 
-    // `process()` guarantees ≤ MAX_KERNEL_FRAMES via internal chunking (T2.1).
+    // `process()` guarantees ≤ MAX_KERNEL_FRAMES via internal chunking.
     debug_assert!(num_frames <= MAX_KERNEL_FRAMES);
     let mut z_buf = [0.0f32; MAX_KERNEL_FRAMES * 8];
 

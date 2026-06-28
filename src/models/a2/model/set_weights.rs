@@ -38,7 +38,7 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// 3. `_head_rechannel`: conv k=16 weights `16*CH` f32 + head_bias `1` f32
     /// 4. `head_scale`: last f32 in the stream
     ///
-    /// ## Acceptance criteria (T1.6)
+    /// ## Acceptance criteria
     /// - Calls `verify_exhaustion()` — consumed count must equal `weights.len()`.
     /// - Returns a clear error if the weight stream is shorter or longer than expected.
     #[allow(clippy::too_many_lines)]
@@ -68,7 +68,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             let conv_w_padded = num_blocks * 4 * CH * ksize;
 
             // 2a. Dilated conv weights: read CH×CH×K, store padded interleaved 4-wide.
-            // For CH=8 we also keep a f32 copy for the col-major-per-tap path (T2.2/T2.4).
+            // For CH=8 we also keep a f32 copy for the col-major-per-tap path.
             let conv_w_f32 = read_slice(
                 weights,
                 &mut pos,

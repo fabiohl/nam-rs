@@ -22,7 +22,7 @@ const MAX_TRAINING_DEPTH: usize = 16;
 /// Maximum number of submodels in a SlimmableContainer.
 const MAX_SUBMODELS: usize = 8;
 
-// ── Topology bounds (DoS/OOM prevention — Sprint 5, Task 5.2) ──
+// ── Topology bounds (DoS/OOM prevention) ──
 
 /// Maximum number of LSTM layers accepted from model config.
 pub const MAX_LSTM_LAYERS: usize = 16;

@@ -12,7 +12,7 @@ use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use core::arch::x86_64::*;
 
 /// Maximum frames per kernel invocation.
-/// Guaranteed by `process()` internal chunking (T2.1).
+/// Guaranteed by `process()` internal chunking.
 const MAX_KERNEL_FRAMES: usize = WAVENET_MAX_NUM_FRAMES;
 
 // AVX2 kernels — unrolled CH=3, f32 native weights, no f16 decode
@@ -272,7 +272,7 @@ pub unsafe fn layer_forward_ch3_block(
     debug_assert!(mixin_w.len() >= CH);
     debug_assert!(l1x1_w.len() >= CH * CH);
     debug_assert!(l1x1_b.len() >= CH);
-    debug_assert!(num_frames <= MAX_KERNEL_FRAMES); // process() guarantees ≤ MAX_KERNEL_FRAMES (T2.1)
+    debug_assert!(num_frames <= MAX_KERNEL_FRAMES); // process() guarantees ≤ MAX_KERNEL_FRAMES
     debug_assert!(layer_in.len() >= num_frames * CH);
     debug_assert!(input_cond.len() >= num_frames);
 

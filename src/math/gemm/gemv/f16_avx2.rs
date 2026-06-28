@@ -28,7 +28,7 @@ pub unsafe fn fused_add_gemv_avx2(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
-    // Dispatch to specialized kernel for known dimensions (Épico G, Sprint 6).
+    // Dispatch to specialized kernel for known dimensions.
     match (in_len, out_len) {
         (1, 4) => {
             return f16_avx2_specialized::fused_add_gemv_avx2_1x4(
@@ -113,7 +113,7 @@ pub unsafe fn gemv_overwrite_avx2(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
-    // Dispatch to specialized kernel for known dimensions (Épico G, Sprint 6).
+    // Dispatch to specialized kernel for known dimensions.
     match (in_len, out_len) {
         (1, 4) => {
             return f16_avx2_specialized::gemv_overwrite_avx2_1x4(

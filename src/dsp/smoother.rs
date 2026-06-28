@@ -52,7 +52,7 @@ impl ParamSmoother {
     /// Advances one sample and returns the smoothed value.
     ///
     /// Called per-sample in the output gain smoothing path.
-    /// Micro-opt [T18.5d]: `#[inline]` eliminates the function-call
+    /// Micro-opt: `#[inline]` eliminates the function-call
     /// overhead for this hot-path 1-pole IIR tick.
     #[inline]
     pub fn tick(&mut self) -> f32 {

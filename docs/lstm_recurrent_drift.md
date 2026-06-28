@@ -4,8 +4,7 @@
 
 # LSTM Recurrent State Quantization Drift
 
-> **RCA T3.3** — Root Cause Analysis of ESR above A1-Std baseline and MR-STFT degradation in LSTM topologies.
-> **Date:** 2026-06-27
+> Root Cause Analysis of ESR above A1-Std baseline and MR-STFT degradation in LSTM topologies.
 
 This document explains why LSTM topologies (`BossLSTM-1×16`, `BossLSTM-2×8`, `LSTM Official H=3`) exhibit
 Error-to-Signal Ratio (ESR) significantly above the WaveNet A1-Std baseline (6.23e-3), even at native
@@ -113,7 +112,7 @@ limitation built into the `.nam` file format.
 
 ## 5. The ABSOLUTE_ESR_CAP Sentinel
 
-Introduced in T3.2 (F-2), the `ABSOLUTE_ESR_CAP` in `tests/cpp_parity.rs:374` sets the baseline at:
+The `ABSOLUTE_ESR_CAP` in `tests/cpp_parity.rs:374` sets the baseline at:
 
 ```text
 ABSOLUTE_ESR_CAP = A2ESR_A1_STANDARD_MEDIAN = 6.23e-3
@@ -142,7 +141,7 @@ validated against this cap.
 
 ## 6. Diagnostic Reproduction
 
-The T3.3 diagnostic test is at `tests/reference_oracle_f64.rs:271-347` (gated with `#[ignore]` due to cost).
+The diagnostic test is at `tests/reference_oracle_f64.rs:271-347` (ignored due to cost).
 
 ```bash
 cargo test --release --test reference_oracle_f64 \
@@ -194,6 +193,6 @@ cargo test --release --test cpp_parity \
 - [`perceptual_validation.md`](./perceptual_validation.md) — Full measurement framework and gate methodology
 - [`f16c_compression_analysis.md`](./f16c_compression_analysis.md) — Weight compression trade-offs
 - [`TODO-findings.md`](../TODO-findings.md) — F-2 for the original finding
-- [`TODO-sprints.md`](../TODO-sprints.md) — T3.3 for the RCA task specification
+- [`TODO-sprints.md`](../TODO-sprints.md) — RCA task specification
 - `src/testing/reference_oracle.rs` — f64 oracle implementation (LSTM: lines 640–758)
 - `src/models/lstm/layer_kernels.rs` — Production SIMD kernels with f16c GEMV

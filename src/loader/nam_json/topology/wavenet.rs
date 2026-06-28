@@ -23,7 +23,7 @@ pub enum NamWavenetTopology {
 ///
 /// Returned by [`get_wavenet_topology`] when the model is a valid WaveNet A1
 /// but does not match any of the four catalog SKUs
-/// (Standard/Lite/Feather/Nano). The dynamic engine (T3.1) consumes this
+/// (Standard/Lite/Feather/Nano). The dynamic engine consumes this
 /// structure to build a runtime-dimensioned [`WaveNetModelDyn`].
 ///
 /// ## Semver note
@@ -72,7 +72,7 @@ pub struct FreeWavenetGeometry {
 pub enum WavenetTopologyResult {
     /// Matches a known catalog SKU — use const-generic fast-path.
     Known(NamWavenetTopology),
-    /// Valid geometry not in the catalog — use dynamic engine (T3.1).
+    /// Valid geometry not in the catalog — use dynamic engine.
     Free(FreeWavenetGeometry),
     /// Rejected due to unsupported feature or invalid shape.
     Rejected(String),
@@ -151,7 +151,7 @@ impl NamModelData {
 ///   use the const-generic fast-path. Only `condition_size=1` (or absent) models
 ///   can match a catalog SKU.
 /// - `Free(geometry)`: valid A1 geometry outside the catalog — destined for the
-///   dynamic engine (T3.1). Any `condition_size` is accepted.
+///   dynamic engine. Any `condition_size` is accepted.
 /// - `Rejected(reason)`: missing/invalid shape data.
 ///
 /// Mirror of C++ `NeuralModel.cpp` (L:155-218) generalized to accept any valid

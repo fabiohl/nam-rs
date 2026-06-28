@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Approved color palette (T4.0.2) and color resolution helpers.
+//! Approved color palette and color resolution helpers.
 
 /// Main window background color (`#1A1D23`).
 pub const COL_BG: egui::Color32 = egui::Color32::from_rgb(26, 29, 35);

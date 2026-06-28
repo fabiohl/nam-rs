@@ -141,16 +141,16 @@ If the script exits with `❌ PERFORMANCE REGRESSION DETECTED`:
 4. If the regression is real and unintentional: bisect your recent changes to find the cause.
 5. If the regression is intentional (e.g., a new feature with a measured, accepted overhead): re-save the baseline with `--save` **and document the change and its measured cost** in your commit message.
 
-## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates T3)
+## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates)
 
 Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
 
 | Topology      | Implementation      | Latency (Average) | Speedup    |
 |:------------- |:------------------- |:----------------- |:---------- |
 | **LSTM 1x8**  | Scalar (Baseline)   | ~45.12 µs         | -          |
-| **LSTM 1x8**  | **SIMD Fused (T3)** | **~2.27 µs**      | **19.84x** |
+| **LSTM 1x8**  | **SIMD Fused**      | **~2.27 µs**      | **19.84x** |
 | **LSTM 2x16** | Scalar (Baseline)   | ~45.19 µs         | -          |
-| **LSTM 2x16** | **SIMD Fused (T3)** | **~10.86 µs**     | **4.16x**  |
+| **LSTM 2x16** | **SIMD Fused**      | **~10.86 µs**     | **4.16x**  |
 
 ### Technical Conclusion
 
@@ -176,11 +176,11 @@ Below is the average percentage distribution of cycles on an x86-64-v3 (AVX2) ar
 At the `WaveNetLayerArray` level, the layer cascade dominates processing (**>90% of total time**). Interface stages (input **Rechannel** and output **Head Rechannel**) represent a negligible fixed overhead as the number of layers increases, validating the scalability of the NAM-rs architecture for complex models.
 
 > [!TIP]
-> Fusing **Tanh** with **Head Accumulation** was the most impactful optimization of Epic E, reducing the activation stage budget from ~30% to ~15% by eliminating redundant passes through L1 Cache memory.
+> Fusing **Tanh** with **Head Accumulation** was the most impactful optimization, reducing the activation stage budget from ~30% to ~15% by eliminating redundant passes through L1 Cache memory.
 
 ## Experiment Report: Temporal Tiling (Dual-Frame) on Conv1D
 
-In the hot-path optimization Epic, a **Temporal Tiling** variant ("Dual-Frame" processing) was designed and tested for `Conv1D` kernels, aiming to maximize L1 Cache weight reuse by processing two frames simultaneously in WaveNet inference.
+In the hot-path optimization, a **Temporal Tiling** variant ("Dual-Frame" processing) was designed and tested for `Conv1D` kernels, aiming to maximize L1 Cache weight reuse by processing two frames simultaneously in WaveNet inference.
 
 ### Measurement Results (64 samples, 48kHz, CH=16, AVX2)
 
@@ -198,13 +198,13 @@ To process two frames in parallel:
 
 **Conclusion:** The primary bottleneck of `Conv1D` in NAM-rs is not tied to L1 Cache bandwidth, but rather to computational throughput and register contention in the backend (FMA). Because of this, while the kernel implementation has been kept in the `SimdMath` trait for portability and testing on architectures with more registers (e.g., AVX-512 or ARM NEON), the main loop in `WaveNetLayer` continues to use **Single-Frame processing** to ensure the lowest latency and highest real-time stability.
 
-## Experiment Report: Stereo Fusion in the Output Stage (T3.2)
+## Experiment Report: Stereo Fusion in the Output Stage
 
-Task T3.2 aimed to eliminate redundant memory passes in the final output stage by fusing the gain (Hysteresis/Gate) operations of the L and R channels into a single stereo SIMD call.
+The goal was to eliminate redundant memory passes in the final output stage by fusing the gain (Hysteresis/Gate) operations of the L and R channels into a single stereo SIMD call.
 
 ### Measurement Results (64 samples, 48kHz, AVX2)
 
-| Topology        | Before Fusion | After Fusion (T3.2) | Gain (%)  |
+| Topology        | Before Fusion | After Fusion        | Gain (%)  |
 |:--------------- |:------------- |:------------------- |:--------- |
 | **WaveNet Std** | ~98.0 µs      | ~92.6 µs            | **~5.5%** |
 | **LSTM 2x16**   | ~11.4 µs      | ~10.9 µs            | **~4.5%** |
@@ -213,9 +213,9 @@ Task T3.2 aimed to eliminate redundant memory passes in the final output stage b
 
 Stereo fusion reduces memory traffic in the L1 Cache by reading the L and R channels simultaneously and applying the gain/ramp weights in a single loop. The gain is more pronounced in smaller blocks (e.g., 32 samples, where a **~8.5%** improvement was measured), where dispatch overhead and partial cache misses have a higher relative weight.
 
-## Criterion A2 Architecture (Epic 2)
+## Criterion A2 Architecture
 
-The A2 architecture introduces per-layer conditioning (FiLM + Gating) and a configurable channel count (CH=3 Lite, CH=8 Full). Epic 2 focused on a SIMD-heavy hot-path for CH=8 (`A2Conv1dCh8`) with col-major-per-tap weight layout, enabling AVX2 T=4 broadcast-FMA convolution.
+The A2 architecture introduces per-layer conditioning (FiLM + Gating) and a configurable channel count (CH=3 Lite, CH=8 Full). The implementation focused on a SIMD-heavy hot-path for CH=8 (`A2Conv1dCh8`) with col-major-per-tap weight layout, enabling AVX2 T=4 broadcast-FMA convolution.
 
 ### A2-Full (CH=8) — Optimized SIMD Path
 
@@ -278,7 +278,7 @@ The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callb
 cargo bench --bench inference_bench -- "Gate_FSM"
 ```
 
-## IR Cabsim Convolution (Epic 4)
+## IR Cabsim Convolution
 
 The cabsim engine uses UPOLS (Uniform-Partitioned Overlap-Save) frequency-domain convolution. All FFTs of the kernel partitions are pre-computed at construction time; the `ConvEngine::process()` hot-path performs zero allocations and operates on pre-allocated buffers exclusively.
 
@@ -323,7 +323,7 @@ cargo bench --bench inference_bench -- "Cabsim_MediumIR_2048_256"
 cargo bench --bench inference_bench -- "Cabsim_Engine_Construction"
 ``
 
-## Investigação T13.2: Custo do Kahan por-tap no Conv1d [RESOLVIDO — Kahan removido]
+## Kahan Per-Tap Cost in Conv1d (Removed)
 
 ### Contexto
 
@@ -348,7 +348,7 @@ para configurações típicas de WaveNet A1 (K=3, IN/OUT ∈ {8, 12, 16}), proce
 
 Arquivo: `benches/kahan_conv1d_bench.rs`.
 
-### Resultados (pós-remoção, 2026-06-13)
+### Results (post-removal)
 
 #### Loop interno isolado (custo por tap)
 
@@ -396,7 +396,7 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
 > que nunca ocorre em sinais de áudio reais (alternam polaridade). Na prática, o erro
 > real é ordens de grandeza menor por cancelamento parcial.
 
-### Decisão [EXECUTADA em T18.4]
+### Decision
 
 **Kahan removido do caminho estático (conv1d.rs, conv1d_dual.rs).** Justificativa:
 
@@ -409,7 +409,7 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
 4. **Documentação:** O próprio módulo `kahan.rs` já lista "Single-digit additions
    (K ≤ 3 taps)" como caso de não-uso.
 
-A remoção foi aplicada em T18.4 (2026-06-13):
+The removal was applied to:
 * `src/models/wavenet/conv1d.rs`: `kahan_add` → `+=`, compensação removida
 * `src/models/wavenet/conv1d_dual.rs`: idem
 * `src/models/wavenet/conv_input.rs`: `store_kahan_4_accums` renomeada para `store_4_accums`
@@ -427,7 +427,7 @@ cargo bench --bench kahan_conv1d_bench
 cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ```
 
-## RT-Safety on Adaptive Degradation Transition (Epic 12)
+## RT-Safety on Adaptive Degradation Transition
 
 To ensure that the transition between quality levels (e.g., A2-Full and A2-Lite) under CPU pressure does not trigger buffer underruns, the transition path has been optimized:
 

@@ -18,7 +18,7 @@
 //!
 //! ## Solution
 //!
-//! Mirrors the approach of T2.2/T2.4 for CH=8: store weights in **f32 native col-major-per-tap**
+//! Mirrors the approach for CH=8: store weights in **f32 native col-major-per-tap**
 //! layout (`w[k * 16 + in * 4 + out]`, 4-padded for SIMD alignment with one zero lane).
 //! The hot-path becomes a plain `_mm_loadu_ps` + `_mm_fmadd_ps` — identical in structure
 //! to the CH=8 kernel but using SSE/128-bit registers (CH=3+1pad = 4 lanes = 1 XMM).
@@ -41,7 +41,7 @@
 //!
 //! ## Source of truth
 //! - `a2_fast.cpp` (strategy `Channels=3`, GEMV unrolled)
-//! - T2.2/T2.4 (`conv1d_ch8.rs`) for the f32 col-major pattern
+//! - `conv1d_ch8.rs` for the f32 col-major pattern
 
 /// CH=3 dilated causal Conv1D alias — see `super::conv1d_ch::A2Conv1dCh` for docs.
 pub type A2Conv1dCh3 = super::conv1d_ch::A2Conv1dCh<3>;

@@ -131,7 +131,7 @@ fn test_tanh_piecewise_odd_symmetry() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tanh – Padé NR2 correctness tests (T8.11)
+// Tanh – Padé NR2 correctness tests
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Deterministic sweep of the Padé NR2 AVX2 path against `f64::tanh` over
@@ -193,7 +193,7 @@ fn test_tanh_pade_nr2_sweep() {
         }
     }
 
-    eprintln!("[T8.11] NR2 AVX2 sweep max error: {max_error:.4e}");
+    eprintln!("NR2 AVX2 sweep max error: {max_error:.4e}");
 }
 
 // Proptest: validates the Padé NR2 AVX2 path against `f64::tanh` on 100k
@@ -287,7 +287,7 @@ fn test_tanh_pade_nr2_sweep_avx512() {
         }
     }
 
-    eprintln!("[T8.11] NR2 AVX-512 sweep max error: {max_error:.4e}");
+    eprintln!("NR2 AVX-512 sweep max error: {max_error:.4e}");
 }
 
 // Proptest: validates the Padé NR2 AVX-512 path against `f64::tanh` on

@@ -102,7 +102,7 @@ fn test_mirror_buf_debug() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_mirror_buf_channel_alignment() -> Result<(), Box<dyn std::error::Error>> {
-    // T1.2 fix: MirroredBuffer::new_aligned guarantees size_elements % channels == 0
+    // MirroredBuffer::new_aligned guarantees size_elements % channels == 0
     // for all channel counts, including non-power-of-two channels (6, 12 — Lite).
     let min_buffer_frames = 3648usize;
 

@@ -27,10 +27,10 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Full forward pass through the A2 model.
     ///
     /// Processes `input` samples and writes to `output`.
-    /// Requires layers to be populated via `set_weights` (T1.6).
+    /// Requires layers to be populated via `set_weights`.
     /// Outputs silence until weights are loaded.
     ///
-    /// ## Ring buffer architecture (T2.3)
+    /// ## Ring buffer architecture
     ///
     /// Layer history uses `MirroredBuffer<f32>` with power-of-2 sizes.
     /// Writes go to unmasked positions in the 2× virtual mapping; reads are

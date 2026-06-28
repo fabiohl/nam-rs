@@ -14,7 +14,7 @@
 //!
 //! Processing is chunked by `WAVENET_MAX_NUM_FRAMES` (64) with zero allocation on the hot-path.
 //!
-//! ## Ring buffer architecture (T2.3)
+//! ## Ring buffer architecture
 //!
 //! Each layer's history is a power-of-2 `MirroredBuffer<f32>` that provides
 //! branchless reads via virtual-memory mirroring. The `buffer_start` pointer
@@ -47,7 +47,7 @@ pub mod process;
 ///
 /// `CH` = channel count (3 for Lite/Nano, 8 for Full/Standard).
 pub struct WaveNetA2<const CH: usize> {
-    /// 23 A2 layers (one per layer index). Populated by `set_weights` (T1.6).
+    /// 23 A2 layers (one per layer index). Populated by `set_weights`.
     pub layers: Vec<A2Layer>,
 
     /// Input rechannel weights: `Conv1x1(1 → CH)` (no bias), u16 quantized.
@@ -69,7 +69,7 @@ pub struct WaveNetA2<const CH: usize> {
     pub head_ring_mask: usize,
 
     /// Per-layer history buffers: one MirroredBuffer per layer (23 total).
-    /// Each buffer provides 2× virtual mapping for branchless ring access (T2.3).
+    /// Each buffer provides 2× virtual mapping for branchless ring access.
     pub layer_buffers: Vec<MirroredBuffer<f32>>,
 
     /// Per-layer ring sizes in elements (pow2 page-aligned). For rewind: `start -= ring_size`.
@@ -110,7 +110,7 @@ impl<const CH: usize> WaveNetA2<CH> {
     ///
     /// Allocates ring buffers (MirroredBuffer per layer, pow2 head accumulator)
     /// sized for the architecture and computes the receptive field.
-    /// Weight-bearing fields start empty and are populated by the weight loader (T1.6).
+    /// Weight-bearing fields start empty and are populated by the weight loader.
     pub fn new() -> anyhow::Result<Self> {
         let rf = a2_receptive_field();
         let max_buf = WAVENET_MAX_NUM_FRAMES;
@@ -177,7 +177,7 @@ impl<const CH: usize> WaveNetA2<CH> {
     ///
     /// Any block size is accepted: processing is internally chunked into
     /// sub-blocks of ≤ `WAVENET_MAX_NUM_FRAMES` (64) by [`process`], matching
-    /// the kernel scratch buffer capacity (T2.1). Call this to inform the model
+    /// the kernel scratch buffer capacity. Call this to inform the model
     /// of the negotiated CLAP/audio host block size so that internal ring
     /// buffers are sized correctly.
     ///

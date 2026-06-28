@@ -8,7 +8,7 @@
 //! so that layer biases populate the head accumulator ring — matching the
 //! C++ steady-state initial condition.
 //!
-//! ## T7.8 — Root cause of initial A2 Rust×C++ divergence
+//! ## Root cause of initial A2 Rust×C++ divergence
 //!
 //! The initial Rust port diverged from C++ because `prewarm()` only zeroed buffers
 //! while the C++ `A2FastModel::prewarm()` feeds `_prewarm_samples` frames of silence

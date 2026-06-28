@@ -161,7 +161,7 @@ fn test_wavenet_a2_const_receptive_field_matches_runtime() {
     assert_eq!(model8.receptive_field_size, rf_const);
 }
 
-// ── set_weights tests (T1.6) ───────────────────────────────────────
+// ── set_weights tests ──────────────────────────────────────────────
 
 #[test]
 fn test_set_weights_exact_count_ch3() {
@@ -295,7 +295,7 @@ fn test_set_weights_process_smoke_ch8() {
     );
 }
 
-// ── set_weights finitude & bounds tests (T3.1-C3) ──────────────────
+// ── set_weights finitude & bounds tests ─────────────────────────────
 
 /// NaN in weight stream: currently accepted silently (F1 documents the gap).
 #[test]
@@ -437,7 +437,7 @@ fn test_set_weights_empty_slice_ch8() {
     );
 }
 
-// ── Block invariance & negative tests (T2.3) ──────────────────────────
+// ── Block invariance & negative tests ─────────────────────────────────
 
 /// Asserts that kernel frame capacity equals 64.
 #[test]

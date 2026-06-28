@@ -188,7 +188,7 @@ mod tests {
         assert!(msg.is_ok(), "Sanitized CString creation should succeed");
     }
 
-    /// T17.3 — Loading a .nam file that fails to build should:
+    /// Loading a .nam file that fails to build should:
     /// 1. Show an error to the user (ui_load_error = true)
     /// 2. NOT swap the active model (model_load_counter unchanged)
     #[test]

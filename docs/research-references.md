@@ -30,7 +30,6 @@ and high-fidelity tanh (exact, smoother).
 | Traceability | Reference                                                                                |
 |:------------ |:---------------------------------------------------------------------------------------- |
 | Finding      | P-1 (aliasing de ativações não-lineares)                                                 |
-| Sprints      | S2 T2.4 (ASR metric), S5 T5.1 (oversampling opcional)                                    |
 | Files        | `src/math/activations/`, `src/dsp/pipeline/stages/inference.rs`, `src/dsp/oversampling/` |
 
 ---
@@ -43,13 +42,12 @@ DAFx 2025. arXiv:2505.11375.
 
 **Why relevant to nam-rs.** Shows that fine-tuning for anti-aliasing can outperform 2× oversampling,
 offering an alternative (or complementary) path to reducing aliasing. Motivates the multi-pronged
-approach in S5: oversampling as the primary mechanism (user-controllable), with fine-tuning left as a
+approach: oversampling as the primary mechanism (user-controllable), with fine-tuning left as a
 potential future enhancement for shipped `.nam` models.
 
 | Traceability | Reference                                |
 |:------------ |:---------------------------------------- |
 | Finding      | P-1 (aliasing de ativações não-lineares) |
-| Sprints      | S5 T5.1 (oversampling opcional)          |
 | Files        | `src/dsp/oversampling/`                  |
 
 ---
@@ -62,13 +60,12 @@ Journal of the Audio Engineering Society, 67(6):440–449, 2019.
 
 **Why relevant to nam-rs.** Provides the theoretical foundation and practical filter design
 guidelines for oversampling around nonlinear stages. The half-band Kaiser-window polyphase filter
-adopted in S5 (β=12, 25 taps, >100 dB stopband) follows the design methodology established in this
-paper. Also referenced in the resampler redesign (T5.4) for the HQ polyphase bank.
+adopted (β=12, 25 taps, >100 dB stopband) follows the design methodology established in this
+paper. Also referenced in the resampler redesign for the HQ polyphase bank.
 
 | Traceability | Reference                                                                       |
 |:------------ |:------------------------------------------------------------------------------- |
 | Finding      | P-1 (filtros de oversampling)                                                   |
-| Sprints      | S5 T5.1 (oversampling opcional), S5 T5.4 (resampler reprojeto HQ)               |
 | Files        | `src/dsp/oversampling/`, `src/dsp/sinc_kernel.rs`, `docs/architecture.md` §5.0O |
 
 ---
@@ -81,7 +78,7 @@ Proceedings of the 19th International Conference on Digital Audio Effects (DAFx-
 
 **Why relevant to nam-rs.** Introduces **ADAA (Antiderivative Antialiasing)** of 1st order — a
 low-cost alternative to oversampling for memoryless nonlinearities. Relevant as the theoretical
-baseline against which the oversampling approach was evaluated (S5 T5.1). ADAA was considered but
+baseline against which the oversampling approach was evaluated. ADAA was considered but
 ultimately **not adopted** because it would require per-model modification of the activation dispatch
 (polymorphic dispatch conflict); the decision and rationale are documented in
 `docs/architecture.md` §5.0O.
@@ -89,7 +86,6 @@ ultimately **not adopted** because it would require per-model modification of th
 | Traceability | Reference                                              |
 |:------------ |:------------------------------------------------------ |
 | Finding      | P-1 (ADAA alternativa de baixo custo)                  |
-| Sprints      | S5 T5.1 (avaliação ADAA — rejeitada arquiteturalmente) |
 | Files        | `docs/architecture.md` §5.0O                           |
 
 ---
@@ -109,7 +105,6 @@ analysis are preserved for potential future modes (e.g., embedded/high-performan
 | Traceability | Reference                                                    |
 |:------------ |:------------------------------------------------------------ |
 | Finding      | P-1 (ADAA para memoryless — tanh, ReLU)                      |
-| Sprints      | S5 T5.1 (avaliação ADAA)                                     |
 | Files        | `src/math/activations/tanh/`, `src/models/a2/activations.rs` |
 
 ---
@@ -130,7 +125,6 @@ for LSTM-family models at high sample rates.
 | Traceability | Reference                                          |
 |:------------ |:-------------------------------------------------- |
 | Finding      | P-1 (ADAA para sistemas com estado — LSTM)         |
-| Sprints      | S5 T5.1 (avaliação ADAA)                           |
 | Files        | `src/models/lstm/`, `docs/lstm_recurrent_drift.md` |
 
 ---
@@ -154,7 +148,6 @@ complement to the standard (flat) ESR metric already implemented in `src/testing
 | Traceability | Reference                                                                                       |
 |:------------ |:----------------------------------------------------------------------------------------------- |
 | Finding      | P-5 (pré-ênfase A-weighting; ESR perceptual)                                                    |
-| Sprints      | S2 T2.3 (activation precision measurement), S5 T5.2 (activation HF mode)                        |
 | Files        | `src/testing/perceptual.rs`, `docs/perceptual_validation.md`, `docs/fastmath-approximations.md` |
 
 ---
@@ -169,14 +162,13 @@ Applied Sciences, 10(3):766, 2020.
 metric — the primary scale-invariant fidelity gate adopted by the NAM ecosystem and by
 nam-rs's cross-validation framework. Introduces the WaveNet-based architecture that became the
 NAM standard. Every parity test in `tests/cpp_parity.rs`, `tests/golden_vectors.rs`, and
-`tests/common/validation.rs` uses ESR as the primary hard gate (T3.2, T3.3). Also documents
+`tests/common/validation.rs` uses ESR as the primary hard gate. Also documents
 the real-time feasibility of neural amp modeling, directly validating nam-rs's low-latency
 live-path design.
 
 | Traceability | Reference                                                                            |
 |:------------ |:------------------------------------------------------------------------------------ |
 | Finding      | P-5 (origem da métrica ESR); F-2 (ESR como gate primário)                            |
-| Sprints      | S1 T1.1–T1.5 (fastmath), S3 T3.1–T3.3 (parity framework), S5 T5.2                    |
 | Files        | `tests/cpp_parity.rs`, `tests/common/validation.rs`, `docs/perceptual_validation.md` |
 
 ---
@@ -199,7 +191,6 @@ reproducible CI gates.
 | Traceability | Reference                                                         |
 |:------------ |:----------------------------------------------------------------- |
 | Finding      | P-3 (suíte de fidelidade espectral — FR, THD por ordem)           |
-| Sprints      | S5 T5.3 (spectral fidelity suite)                                 |
 | Files        | `tests/spectral_fidelity.rs`, `src/testing/`, `src/math/dsp/fft/` |
 
 ---
@@ -219,7 +210,6 @@ specifications.
 | Traceability | Reference                                    |
 |:------------ |:-------------------------------------------- |
 | Finding      | P-3 (THD+N padronizado)                      |
-| Sprints      | S5 T5.3 (spectral fidelity suite)            |
 | Files        | `tests/spectral_fidelity.rs`, `src/testing/` |
 
 ---
@@ -252,7 +242,6 @@ European Broadcasting Union, 2016.
 | Traceability | Reference                                                                                         |
 |:------------ |:------------------------------------------------------------------------------------------------- |
 | Finding      | P-6 (LUFS BS.1770-4 pleno, LRA); P-3 (true-peak dBTP)                                             |
-| Sprints      | S2 T2.1 (LUFS), S5 T5.3 (true-peak, spectral fidelity)                                            |
 | Files        | `src/testing/perceptual.rs`, `src/dsp/pipeline/stages/output.rs`, `docs/perceptual_validation.md` |
 
 ---
@@ -271,18 +260,4 @@ European Broadcasting Union, 2016.
 | P-8 (matriz cross-ISA)                       | — (engenharia interna)                                 |
 | F-2 (ponto cego de fidelidade)               | R8                                                     |
 
----
-
-## Reference Index by Sprint
-
-| Sprint                                          | References                                   |
-|:----------------------------------------------- |:-------------------------------------------- |
-| S1 (fastmath foundations)                       | R8                                           |
-| S2 (QA infrastructure)                          | R1, R7, R8, R11                              |
-| S3 (parity framework)                           | R8                                           |
-| S5 (spectral fidelity, oversampling, resampler) | R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11 |
-| S6 (documentation)                              | all                                          |
-
----
-
-*Compiled from findings in [`TODO-findings.md`](../TODO-findings.md) Part II (skill `pesquisador-inovador`, 2026-06-26) and cross-referenced with implementation traces in [`TODO-sprints.md`](../TODO-sprints.md) S1–S6.*
+*Cross-referenced with findings in [`TODO-findings.md`](../TODO-findings.md) and sprints in [`TODO-sprints.md`](../TODO-sprints.md).*

@@ -105,13 +105,13 @@ These components must be installed via `cargo install` or `rustup component add`
 
 The following dependencies are implemented to enable CLAP plugin support and the embedded graphical interface:
 
-| Crate              | Version  | Feature Flag  | Status                 | Justification                                                                                                                                                     |
-|:------------------ |:-------- |:------------- |:---------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clack-plugin`     | `0.1`    | `clap-plugin` | Introduced in Sprint 1 | Rust API for implementing CLAP plugins. Typed abstraction over `clap-sys` with no runtime overhead. Chosen over `nih-plug` because it does not force VST3 or GUI. |
-| `clack-extensions` | `0.1`    | `clap-plugin` | Introduced in Sprint 1 | CLAP spec extensions (params, state, gui, latency, track-info, remote-controls, param-indication). Separate crate from `clack-plugin` for modularity.             |
-| `egui`             | `0.34.2` | `clap-plugin` | Introduced in Sprint 4 | Immediate mode GUI framework, pure Rust. GPU rendering via OpenGL (`egui_glow` and `glow`).                                                                       |
-| `baseview`         | `0.1.1`  | `clap-plugin` | Introduced in Sprint 4 | Multiplatform native window for `egui` in a plugin context. Published and consumed from crates.io.                                                                |
-| `rfd`              | `0.17.2` | `clap-plugin` | Introduced in Sprint 4 | Native and asynchronous File Dialog for loading models (.nam/.namb) via GUI.                                                                                      |
+| Crate              | Version  | Feature Flag  | Status | Justification                                                                                                                                                     |
+|:------------------ |:-------- |:------------- |:------ |:----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clack-plugin`     | `0.1`    | `clap-plugin` | Active | Rust API for implementing CLAP plugins. Typed abstraction over `clap-sys` with no runtime overhead. Chosen over `nih-plug` because it does not force VST3 or GUI. |
+| `clack-extensions` | `0.1`    | `clap-plugin` | Active | CLAP spec extensions (params, state, gui, latency, track-info, remote-controls, param-indication). Separate crate from `clack-plugin` for modularity.             |
+| `egui`             | `0.34.2` | `clap-plugin` | Active | Immediate mode GUI framework, pure Rust. GPU rendering via OpenGL (`egui_glow` and `glow`).                                                                       |
+| `baseview`         | `0.1.1`  | `clap-plugin` | Active | Multiplatform native window for `egui` in a plugin context. Published and consumed from crates.io.                                                                |
+| `rfd`              | `0.17.2` | `clap-plugin` | Active | Native and asynchronous File Dialog for loading models (.nam/.namb) via GUI.                                                                                      |
 
 ## 6. Dependencies for C++ Cross-Validation (Optional)
 

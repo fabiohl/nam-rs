@@ -1026,9 +1026,9 @@ decisões dos sprints S1–S5.
   - **Coerência de voz/tom:** Todas as seções seguem o estilo `documentador` — concisas, com referências DRY para arquivos-fonte, sem duplicação de código, sem afirmações irrelevantes. Linguagem unificada entre README, arquitetura e regras.
 - **Risco:** Baixo — concluído.
 
-### Tarefa 6.4 [QA] Revisão final de documentação (refatora-doc)
+### Tarefa 6.4 [QA] Revisão final de documentação (refatora-doc) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluida
 - **Arquivos Alvo:** `docs/`, comentários de fonte tocados em S1–S5
 - **Descrição:** acionar a skill `refatora-doc` para revisar markdown e comentários (voz única, sem deriva de
   estilo, sem afirmações irrelevantes do tipo "sprint X"/datas, conforme `documentador`).

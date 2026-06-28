@@ -97,7 +97,7 @@ impl WindowHandler for NamPluginWindow {
                     .tessellate(full_output.shapes, full_output.pixels_per_point);
 
                 let screen_size = [self.width, self.height];
-                // Background color: #1A1D23 (approved dark mode palette — T4.0.2)
+                // Background color: #1A1D23 (approved dark mode palette)
                 self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
                 self.painter.paint_and_update_textures(
                     screen_size,

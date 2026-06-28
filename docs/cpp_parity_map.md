@@ -7,7 +7,7 @@
 Point-to-point mapping between the canonical C++ reference
 [`github.com/NeuralAmpModelerCore`](https://github.com/sdatkinson/NeuralAmpModelerCore)
 and the NAM-rs Rust engine (`src/`). This document tracks parity status, known
-divergences, and the sprint/task that established each equivalence.
+divergences, and the established equivalence status.
 
 ---
 
@@ -15,12 +15,12 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                                              | Rust (`src/`)                                                             | Parity established |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------ |
-| `NAM/dsp.h:184` — `void DSP::Reset(sr, maxBuf)`                            | `models/mod.rs` — `NamModel::reset()`                                     | S4.T04, S26.T02    |
-| `NAM/dsp.cpp:93-102` — `Reset` impl (calls `SetMaxBufferSize` + `prewarm`) | `models/mod.rs` — `NamModel::set_max_buffer_size()` + `prewarm_samples()` | S26.T02            |
+| `NAM/dsp.h:184` — `void DSP::Reset(sr, maxBuf)`                            | `models/mod.rs` — `NamModel::reset()`                                     | Established        |
+| `NAM/dsp.cpp:93-102` — `Reset` impl (calls `SetMaxBufferSize` + `prewarm`) | `models/mod.rs` — `NamModel::set_max_buffer_size()` + `prewarm_samples()` | Established        |
 | `NAM/dsp.cpp` — `DSP::process` (audio callback entry)                      | `dsp/pipeline/stages.rs` — `run_inference()`                              | —                  |
 | `NAM/dsp.cpp` — DSP buffer lifecycle                                       | `dsp/pipeline/context.rs` — `DspPipelineContext`                          | —                  |
 | `NAM/dsp.cpp` — Noise gate (threshold + hysteresis)                        | `dsp/gate.rs` — `DynamicHysteresis`                                       | —                  |
-| `NAM/dsp.cpp` — Prewarm / silence stabilization                            | `loader/mod.rs` — `load_and_build_model` (prewarm 2048 samples)           | S4.T04, S4.T05     |
+| `NAM/dsp.cpp` — Prewarm / silence stabilization                            | `loader/mod.rs` — `load_and_build_model` (prewarm 2048 samples)           | Established        |
 
 ---
 
@@ -29,7 +29,7 @@ divergences, and the sprint/task that established each equivalence.
 | C++ (`NeuralAmpModelerCore/`)                           | Rust (`src/`)                                            | Parity established |
 | ------------------------------------------------------- | -------------------------------------------------------- | ------------------ |
 | `NAM/dsp.cpp` — `GetDSP` factory (dynamic dispatch)     | `models/mod.rs` — `StaticModel` enum + manual `match`    | —                  |
-| `NeuralModel.cpp:L155-218` — WaveNet topology detection | `loader/nam_json/topology.rs` — `get_wavenet_topology()` | S4.T01–T03         |
+| `NeuralModel.cpp:L155-218` — WaveNet topology detection | `loader/nam_json/topology.rs` — `get_wavenet_topology()` | Established        |
 
 ---
 
@@ -39,18 +39,18 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                                                | Rust (`src/`)                                                                                      | Parity established |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------ |
-| `NAM/wavenet/model.cpp` — `WaveNet::process`                                 | `models/wavenet/model.rs` — `process_block_internal()`                                             | S3.T04, S4.T01     |
-| `WaveNetLayerArrayT<CH,1,1,HEAD,K,Dilations,true>` (C++ template for Array2) | `models/wavenet/model.rs` — `WaveNetModel::array2` (type param `WaveNetLayerArray<CH,1,HEAD,K,1>`) | S1.T01             |
-| C++ `model->Prewarm()` (no-arg call)                                         | `models/wavenet/mod.rs` — `prewarm()` ignores `num_samples`                                        | S4.T05             |
+| `NAM/wavenet/model.cpp` — `WaveNet::process`                                 | `models/wavenet/model.rs` — `process_block_internal()`                                             | Established        |
+| `WaveNetLayerArrayT<CH,1,1,HEAD,K,Dilations,true>` (C++ template for Array2) | `models/wavenet/model.rs` — `WaveNetModel::array2` (type param `WaveNetLayerArray<CH,1,HEAD,K,1>`) | Established        |
+| C++ `model->Prewarm()` (no-arg call)                                         | `models/wavenet/mod.rs` — `prewarm()` ignores `num_samples`                                        | Established        |
 
 ### 3.2 Layer Components
 
 | C++ (`NeuralAmpModelerCore/`)                          | Rust (`src/`)                                                      | Parity established |
 | ------------------------------------------------------ | ------------------------------------------------------------------ | ------------------ |
-| WaveNet causal dilated Conv1D                          | `models/wavenet/conv1d.rs` — `Conv1d<IN,OUT,K>`                    | S3.T04             |
+| WaveNet causal dilated Conv1D                          | `models/wavenet/conv1d.rs` — `Conv1d<IN,OUT,K>`                    | Established        |
 | Conv1D dual-frame temporal tiling                      | `models/wavenet/conv1d_dual.rs`                                    | —                  |
-| Input mixin (1×1 projection, conditioned input)        | `models/wavenet/dense.rs` — `DenseLayer::process_fused()`          | S3.T04             |
-| 1×1 residual projection                                | `models/wavenet/dense.rs` — `DenseLayer::process_residual_batch()` | S3.T04             |
+| Input mixin (1×1 projection, conditioned input)        | `models/wavenet/dense.rs` — `DenseLayer::process_fused()`          | Established        |
+| 1×1 residual projection                                | `models/wavenet/dense.rs` — `DenseLayer::process_residual_batch()` | Established        |
 | Layer states (delay buffers, receptive field tracking) | `models/wavenet/common.rs` — `WaveNetLayerState`                   | —                  |
 | BF16 layer state caching                               | `models/wavenet/common.rs` — `u16` mirrored buffer variant         | —                  |
 
@@ -85,21 +85,21 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                | Rust (`src/`)                                                          | Parity established |
 | -------------------------------------------- | ---------------------------------------------------------------------- | ------------------ |
-| `NAM/lstm.cpp` — `LSTM::process_sample`      | `models/lstm/layer.rs` — `process_sample_avx2` / `_avx512` (via macro) | S3.T01–T02, S7.R02 |
-| LSTM gate computation (sigmoid + tanh fused) | `math/lstm/gates.rs` — `fused_lstm_gates`                              | S3.T02             |
-| LSTM 2-layer pipelined processing            | `models/lstm/model2.rs` — `define_lstm2_process_pipelined!`            | S3.T03             |
-| LSTM Prewarm (silence → convergence)         | `models/lstm/mod.rs` — `lstm_prewarm_common`                           | S4.T05             |
+| `NAM/lstm.cpp` — `LSTM::process_sample`      | `models/lstm/layer.rs` — `process_sample_avx2` / `_avx512` (via macro) | Established        |
+| LSTM gate computation (sigmoid + tanh fused) | `math/lstm/gates.rs` — `fused_lstm_gates`                              | Established        |
+| LSTM 2-layer pipelined processing            | `models/lstm/model2.rs` — `define_lstm2_process_pipelined!`            | Established        |
+| LSTM Prewarm (silence → convergence)         | `models/lstm/mod.rs` — `lstm_prewarm_common`                           | Established        |
 
 ### 4.2 Layer Components
 
 | C++ (`NeuralAmpModelerCore/`)                 | Rust (`src/`)                                                                   | Parity established |
 | --------------------------------------------- | ------------------------------------------------------------------------------- | ------------------ |
-| Gate-major weight layout `[Gate][IH][Hidden]` | `models/lstm/layer.rs` — `LstmLayer.input_hidden_weights` `[[[u16; H]; IH]; 4]` | S3.T01             |
-| Bias vector `[H * 4]`                         | `models/lstm/layer.rs` — `LstmLayer.bias: [f32; H4]`                            | S3.T01             |
-| Hidden state `[H]`                            | `models/lstm/layer.rs` — `LstmLayer.state` / `state_bf16`                       | S3.T01             |
-| Cell state `[H]`                              | `models/lstm/layer.rs` — `LstmLayer.cell_state`                                 | S3.T01             |
-| Head projection (H → 1)                       | `models/lstm/model1.rs` — `head_weights` / `head_bias`                          | S3.T01             |
-| FP32 native head rechannel                    | `models/lstm/model1.rs` — `use_f32_head: bool`                                  | E8.T08             |
+| Gate-major weight layout `[Gate][IH][Hidden]` | `models/lstm/layer.rs` — `LstmLayer.input_hidden_weights` `[[[u16; H]; IH]; 4]` | Established        |
+| Bias vector `[H * 4]`                         | `models/lstm/layer.rs` — `LstmLayer.bias: [f32; H4]`                            | Established        |
+| Hidden state `[H]`                            | `models/lstm/layer.rs` — `LstmLayer.state` / `state_bf16`                       | Established        |
+| Cell state `[H]`                              | `models/lstm/layer.rs` — `LstmLayer.cell_state`                                 | Established        |
+| Head projection (H → 1)                       | `models/lstm/model1.rs` — `head_weights` / `head_bias`                          | Established        |
+| FP32 native head rechannel                    | `models/lstm/model1.rs` — `use_f32_head: bool`                                  | Established        |
 
 ### 4.3 Scalar Parity Reference
 
@@ -139,11 +139,11 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 6. A2 Architecture (Fixed fast-path port)
 
-> **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
+> **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](../TODO-sprints.md). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 >
 > **Golden vectors** are generated from the C++ `render` tool at pinned commit `9c7b185` (v0.5.3) and committed as pre-validated Layer 1 artifacts (`tests/fixtures/golden_wavenet_a2_{full,lite}.bin`). The v1 golden tests run actively on every `cargo test`. Layer 2 live cross-validation (`tests/cpp_parity.rs`) exists and is `#[ignore]` — normal for all live parity tests, requiring C++ toolchain; run via `utils/tests-long.sh`.
 >
-> **Calibrated SNR/ESR** (measured 2026-06-14 against C++ v0.5.3): A2-Full = 79.2 dB / 1.21e−8; A2-Lite = 90.7 dB / 8.58e−10. Thresholds include ≥8 dB SNR margin and ~6–7× ESR multiplier. See `tests/fixtures/README.md` (§`wavenet_a2_full.nam` & `wavenet_a2_lite.nam`) and §9.1.
+> **Calibrated SNR/ESR** (measured against C++ v0.5.3): A2-Full = 79.2 dB / 1.21e−8; A2-Lite = 90.7 dB / 8.58e−10. Thresholds include ≥8 dB SNR margin and ~6–7× ESR multiplier. See `tests/fixtures/README.md` (§`wavenet_a2_full.nam` & `wavenet_a2_lite.nam`) and §9.1.
 >
 > **⚠ Nature:** These goldens use **synthetic weights** (canonical A2 skeleton: 23 layers, K=6/15, LeakyReLU, head_scale=0.02 — generated by `tests/fixtures/generate_a2_fixtures.py`). They validate **numerical parity of the fast-path** Rust↔C++, not real amplifier timbres or FiLM-conditioned models. Official A2 models (`wavenet_a2_max.nam`, `slimmable_wavenet.nam`) use FiLM conditioning and remain unsupported (future feature). Elevation to official goldens will occur when the engine supports FiLM and generic A2 inference.
 >
@@ -153,14 +153,14 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                            | Rust (`src/`)                                                                                                     | Parity established |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `NAM/wavenet/a2_fast.h` — architectural constants        | `models/a2/params.rs` — `A2_NUM_LAYERS`, `A2_LEAKY_SLOPE`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_VALID_CHANNELS` | S26.T01            |
-| `a2_fast.cpp:875-908` — `is_a2_shape()`                  | `loader/nam_json/topology.rs` — `is_a2_shape()`                                                                   | S26.T01, T11.2     |
-| `NAM/activations.h:L111-122` — `fast_tanh`               | `models/a2/activations.rs` — `fast_tanh()`                                                                        | S26.T01            |
-| `GatingActivation` class *(parser surface, not wired)*   | `models/a2/gating.rs` — `GatingActivationConfig`                                                                  | S26.T01            |
-| `BlendingActivation` class *(parser surface, not wired)* | `models/a2/gating.rs` — `BlendingActivationConfig`                                                                | S26.T01            |
-| `_FiLMParams` struct *(parser surface, not wired)*       | `models/a2/film.rs` — `FiLMConfig`                                                                                | S26.T01            |
-| **A2-Full / A2-Lite inference (fixed fast-path)**        | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>`                                                        | Epics 1, 2         |
-| `NAM/container.{h,cpp}` — `SlimmableContainer`           | `models/container.rs` + `loader/dispatcher/container/`                                                            | Epic 3             |
+| `NAM/wavenet/a2_fast.h` — architectural constants        | `models/a2/params.rs` — `A2_NUM_LAYERS`, `A2_LEAKY_SLOPE`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_VALID_CHANNELS` | Established        |
+| `a2_fast.cpp:875-908` — `is_a2_shape()`                  | `loader/nam_json/topology.rs` — `is_a2_shape()`                                                                   | Established        |
+| `NAM/activations.h:L111-122` — `fast_tanh`               | `models/a2/activations.rs` — `fast_tanh()`                                                                        | Established        |
+| `GatingActivation` class *(parser surface, not wired)*   | `models/a2/gating.rs` — `GatingActivationConfig`                                                                  | Established        |
+| `BlendingActivation` class *(parser surface, not wired)* | `models/a2/gating.rs` — `BlendingActivationConfig`                                                                | Established        |
+| `_FiLMParams` struct *(parser surface, not wired)*       | `models/a2/film.rs` — `FiLMConfig`                                                                                | Established        |
+| **A2-Full / A2-Lite inference (fixed fast-path)**        | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>`                                                        | Established        |
+| `NAM/container.{h,cpp}` — `SlimmableContainer`           | `models/container.rs` + `loader/dispatcher/container/`                                                            | Established        |
 
 ---
 
@@ -170,36 +170,36 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                         | Rust (`src/`)                                                                    | Parity established |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------ |
-| `.nam` JSON deserialization                           | `loader/nam_json/data.rs` — `NamModelData`                                       | S1.T01–T02         |
-| Weight layout detection (row-major gate-major)        | `loader/nam_json/data.rs` — `WeightLayout` enum                                  | S3.T02             |
-| `NeuralModel.cpp` — topology dispatch                 | `loader/nam_json/topology.rs` — `get_wavenet_topology()` / `get_lstm_topology()` | S4.T03             |
-| NAM metadata (input_level_dbu, loudness, sample_rate) | `loader/nam_json/data.rs` — `NamMetadata`                                        | S1.T02             |
+| `.nam` JSON deserialization                           | `loader/nam_json/data.rs` — `NamModelData`                                       | Established        |
+| Weight layout detection (row-major gate-major)        | `loader/nam_json/data.rs` — `WeightLayout` enum                                  | Established        |
+| `NeuralModel.cpp` — topology dispatch                 | `loader/nam_json/topology.rs` — `get_wavenet_topology()` / `get_lstm_topology()` | Established        |
+| NAM metadata (input_level_dbu, loudness, sample_rate) | `loader/nam_json/data.rs` — `NamMetadata`                                        | Established        |
 
 ### 7.2 NAMB Binary Format
 
 | C++ ecosystem convention                       | Rust (`src/`)                                          | Parity established |
 | ---------------------------------------------- | ------------------------------------------------------ | ------------------ |
-| NAMB binary layout (magic, version, CRC32)     | `loader/namb.rs` — `NambHeader` + `parse_namb()`       | S5.T02             |
-| Original weight layout (row-major, unmodified) | `loader/namb.rs` — `WeightLayout::Original`            | S5.T02             |
-| GateMajorLstm transposed layout                | `loader/namb.rs` — `WeightLayout::GateMajorLstm`       | S5.T02             |
-| Interleaved4WaveNet transposed layout          | `loader/namb.rs` — `WeightLayout::Interleaved4WaveNet` | S5.T02             |
-| NAMB CRC32 validation (v2+)                    | `loader/namb.rs` — `crc32_ieee()`                      | S12.T02            |
-| NAMB encoder/export                            | `loader/namb_encoder.rs` — `encode_namb()`             | S10.T01            |
+| NAMB binary layout (magic, version, CRC32)     | `loader/namb.rs` — `NambHeader` + `parse_namb()`       | Established        |
+| Original weight layout (row-major, unmodified) | `loader/namb.rs` — `WeightLayout::Original`            | Established        |
+| GateMajorLstm transposed layout                | `loader/namb.rs` — `WeightLayout::GateMajorLstm`       | Established        |
+| Interleaved4WaveNet transposed layout          | `loader/namb.rs` — `WeightLayout::Interleaved4WaveNet` | Established        |
+| NAMB CRC32 validation (v2+)                    | `loader/namb.rs` — `crc32_ieee()`                      | Established        |
+| NAMB encoder/export                            | `loader/namb_encoder.rs` — `encode_namb()`             | Established        |
 
 ### 7.3 WaveNet Weight Layout
 
 | C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                     | Parity established |
 | --------------------------------------------------- | ----------------------------------------------------------------- | ------------------ |
-| `WaveNet.h` — `SetWeights` (global layout)          | `loader/dispatcher/wavenet/standard.rs` — `build_wavenet_typed()` | S3.T03             |
-| `WaveNetLayerArrayT::SetWeights` (per-array layout) | `loader/dispatcher/wavenet/standard.rs` — `build_wavenet_array()` | S3.T03             |
-| Head scale (final scalar multiplier)                | `loader/dispatcher/wavenet/standard.rs` — `head_scale`            | S3.T03             |
+| `WaveNet.h` — `SetWeights` (global layout)          | `loader/dispatcher/wavenet/standard.rs` — `build_wavenet_typed()` | Established        |
+| `WaveNetLayerArrayT::SetWeights` (per-array layout) | `loader/dispatcher/wavenet/standard.rs` — `build_wavenet_array()` | Established        |
+| Head scale (final scalar multiplier)                | `loader/dispatcher/wavenet/standard.rs` — `head_scale`            | Established        |
 
 ### 7.4 LSTM Weight Layout
 
 | C++ (`NeuralAmpModelerCore/`)            | Rust (`src/`)                                                               | Parity established |
 | ---------------------------------------- | --------------------------------------------------------------------------- | ------------------ |
-| `LSTMLayerT::SetNAMWeights` (NAM format) | `loader/dispatcher/lstm.rs` — `build_lstm_1layer()` / `build_lstm_2layer()` | S3.T01             |
-| Weight layout: `[H4*IH, H4, H, H, H, 1]` | `loader/dispatcher/lstm.rs` — `read_lstm_layer()`                           | S3.T01             |
+| `LSTMLayerT::SetNAMWeights` (NAM format) | `loader/dispatcher/lstm.rs` — `build_lstm_1layer()` / `build_lstm_2layer()` | Established        |
+| Weight layout: `[H4*IH, H4, H, H, H, 1]` | `loader/dispatcher/lstm.rs` — `read_lstm_layer()`                           | Established        |
 
 ---
 
@@ -207,24 +207,24 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                 | Parity established |
 | --------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
-| Dot product (f32)                                   | `math/gemm/dot.rs` — `dot_product`                            | S2.T03             |
-| Dot product (BF16 quantized weights)                | `math/gemm/dot_4x/` — `dot_product_bf16`                      | S3.T01             |
-| Dot product 4× interleaved (WaveNet Conv1D)         | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`            | S3.T04             |
-| Dot product 4× interleaved dual-frame               | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame` | S10b.T02           |
-| GEMV (fused add)                                    | `math/gemm/gemv.rs` — `fused_add_gemv`                        | S3.T01             |
-| GEMV (overwrite)                                    | `math/gemm/gemv.rs` — `gemv_overwrite`                        | S26.T03            |
-| GEMV 4-gate (LSTM)                                  | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`            | S3.T01             |
-| GEMV BF16 (LSTM 4-gate)                             | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`        | S3.T01             |
-| Tanh activation (SIMD)                              | `math/activations/tanh.rs` — `tanh_slice`                     | S2.T03             |
-| Sigmoid activation (SIMD)                           | `math/activations/sigmoid.rs` — `sigmoid_slice`               | S2.T03             |
-| Fused Tanh + accumulate (WaveNet head)              | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | S3.T04             |
-| Fused Tanh + overwrite (first layer head)           | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | S25.T08            |
-| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation               | S16.1              |
-| Gain application (linear)                           | `math/dsp/gain.rs` — `apply_gain`                             | S2.T03             |
+| Dot product (f32)                                   | `math/gemm/dot.rs` — `dot_product`                            | Established        |
+| Dot product (BF16 quantized weights)                | `math/gemm/dot_4x/` — `dot_product_bf16`                      | Established        |
+| Dot product 4× interleaved (WaveNet Conv1D)         | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`            | Established        |
+| Dot product 4× interleaved dual-frame               | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame` | Established        |
+| GEMV (fused add)                                    | `math/gemm/gemv.rs` — `fused_add_gemv`                        | Established        |
+| GEMV (overwrite)                                    | `math/gemm/gemv.rs` — `gemv_overwrite`                        | Established        |
+| GEMV 4-gate (LSTM)                                  | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`            | Established        |
+| GEMV BF16 (LSTM 4-gate)                             | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`        | Established        |
+| Tanh activation (SIMD)                              | `math/activations/tanh.rs` — `tanh_slice`                     | Established        |
+| Sigmoid activation (SIMD)                           | `math/activations/sigmoid.rs` — `sigmoid_slice`               | Established        |
+| Fused Tanh + accumulate (WaveNet head)              | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | Established        |
+| Fused Tanh + overwrite (first layer head)           | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | Established        |
+| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation               | Established        |
+| Gain application (linear)                           | `math/dsp/gain.rs` — `apply_gain`                             | Established        |
 | Gain LUT (dB → linear)                              | `math/dsp/gain_lut.rs` — `GainLut`                            | —                  |
-| Stereo convolution (resampler FIR)                  | `math/dsp/stereo/` — `convolve_stereo`                        | S17.T01            |
-| Kahan compensated summation (scalar fallback)       | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`             | E8.T06             |
-| BF16 quantization (f32 → u16)                       | `math/common/utility.rs` — `quantize_weight()`                | S3.T01             |
+| Stereo convolution (resampler FIR)                  | `math/dsp/stereo/` — `convolve_stereo`                        | Established        |
+| Kahan compensated summation (scalar fallback)       | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`             | Established        |
+| BF16 quantization (f32 → u16)                       | `math/common/utility.rs` — `quantize_weight()`                | Established        |
 | Scalar reference (definitive math specification)    | `math/common/scalar_ref.rs` — all operations                  | —                  |
 
 ---
@@ -233,16 +233,15 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                        | Rust (`src/` / `tests/`)                        | Parity established |
 | ---------------------------------------------------- | ----------------------------------------------- | ------------------ |
-| `render` CLI (golden output generation)              | `tests/cpp_parity.rs` — live cross-validation   | S13a.T01           |
-| `ModelTest.cpp` (stress-signal tests)                | `tests/nam_infer_test.rs` — golden vector tests | S13a.T01           |
-| `test_get_dsp.cpp` (official WaveNet test)           | `tests/fixtures/` — `wavenet.nam` model         | S13a.T01           |
-| `test_slimmable_wavenet.cpp` (official WaveNet test) | `tests/fixtures/` — shared models               | S13a.T01           |
+| `render` CLI (golden output generation)              | `tests/cpp_parity.rs` — live cross-validation   | Established        |
+| `ModelTest.cpp` (stress-signal tests)                | `tests/nam_infer_test.rs` — golden vector tests | Established        |
+| `test_get_dsp.cpp` (official WaveNet test)           | `tests/fixtures/` — `wavenet.nam` model         | Established        |
+| `test_slimmable_wavenet.cpp` (official WaveNet test) | `tests/fixtures/` — shared models               | Established        |
 | SNR thresholds (C++ → Rust comparison)               | `tests/cpp_parity.rs` — per-model SNR passes    | —                  |
 
-### 9.1 Post-Nuke ESR Measurements (T-HF6.6, jun/2026)
+### 9.1 Post-Nuke ESR Measurements
 
-After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet A1
-(E-HF Sprint 6), the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
+After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet A1, the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
 was recalibrated:
 
 | Model                 | ESR (linear) | ESR (dB) | SNR (dB) | Notes                           |
@@ -305,9 +304,9 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 | **No `DspBridge` in CLAP mode**               | CLAP plugin receives both input and output in a single `process()` call. Bridge only needed standalone (PipeWire dual-thread topology).                                                     |
 | **MirroredBuffer (`memfd_create`)**           | Linux-specific virtual memory mirroring for O(1) linear access in WaveNet delay lines. C++ uses modulo-based circular access.                                                               |
 | **Static const-generic dispatch (no vtable)** | Static `match` on `StaticModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                        |
-| **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file (S4.T05). C++ `Reset` always calls `prewarm()`. |
+| **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file. C++ `Reset` always calls `prewarm()`.          |
 | **Prewarm hardcoded to 2048 samples**         | C++ `PrewarmSamples()` returns `receptive_field`. NAM-rs uses 2048 as a safe upper bound covering all models.                                                                               |
-| **`WavenetA2Placeholder` (silent output)**    | Retired and removed in Epic 1. Replaced by real `WaveNetA2` inference.                                                                                                                      |
+| **`WavenetA2Placeholder` (silent output)**    | Retired and removed. Replaced by real `WaveNetA2` inference.                                                                                                                                |
 | **No `std::complex` / STL data structures**   | Everything uses idiomatic Rust (`AlignedVec<T>`, `AtomicU64`, `rtrb` SPSC).                                                                                                                 |
 | **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                            |
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
@@ -322,10 +321,10 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 | Divergence                                           | Rationale                                                                                                                                                                                                                          |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. Post-T-HF6.6, this is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated). |
+| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. This is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated).               |
 | **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                                        |
 | **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+.             |
-| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation (T13.2/T18.4).                                                                             |
+| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation.                                                                                           |
 | **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                              |
 | **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                                |
 
@@ -348,12 +347,12 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 
 | C++ reference                                                | Rust (`src/`)                         | Parity status            |
 | ------------------------------------------------------------ | ------------------------------------- | ------------------------ |
-| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed (S5.3/T5.7)** |
+| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed**             |
 | `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**          |
 
 ### 12.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
 
-> **Analysis completed:** Sprint 5.3, [T5.7] — submodule `AudioDSPTools` initialized at commit `0827c6c`.
+> **Analysis completed.**
 
 #### 12.1.1 C++ `dsp::ImpulseResponse` — Algorithm
 
@@ -403,7 +402,7 @@ Given the dominant gain divergence (#2), cross-validation should apply **gain co
 
 Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden threshold) due to FFT arithmetic differences compounded across multiple partitions. SNR floor is dictated by FFT twiddle-factor rounding (~140 dB for single FFT, degrading with `log₂(num_partitions)` due to frequency-domain accumulation).
 
-**Cross-validation results** (T5.9, gain-compensated via `CPP_GAIN_INV ≈ 7.943`):
+**Cross-validation results** (gain-compensated via `CPP_GAIN_INV ≈ 7.943`):
 
 | Scenario | IR len | Signal len | Partitions | ESR      | ESR (dB) | SNR (dB) |
 | -------- | ------ | ---------- | ---------- | -------- | -------- | -------- |
@@ -414,40 +413,10 @@ Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden thresho
 
 > **Stress scenario skipped:** C++ `ImpulseResponse::mMaxLength = 8192` hard-caps the IR, truncating the 32768-sample stress IR. NAM-rs UPOLS stress validation is performed against direct convolution in `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5). All three comparable scenarios exceed the 1e-3 ESR threshold by 10+ orders of magnitude, confirming bit-identical equivalence after gain compensation.
 
-### 12.2 Cross-Validation Performed (Sprint 5.3)
+### 12.2 Cross-Validation Performed
 
 The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/`. Cross-validation tests are implemented as `#[ignore]` in `tests/cabsim_cpp_parity.rs` and run via `utils/tests-long.sh`.
 
 - **Test validation:** Compares the UPOLS convolution engine against golden vectors generated by the C++ reference binary (`tests/fixtures/render_ir.cpp`).
 - **Alignment & compensation:** Compares are gain-compensated (`CPP_GAIN_INV ≈ 7.943`) and latency-aligned.
 - **Results:** Parity is verified with **ESR < 1e-13** in short, medium, and long scenarios, vastly exceeding the target threshold of 1e-3.
-
----
-
-## 13. Related Sprints & Tasks
-
-| Sprint        | Topic                                                | Key C++ reference                               |
-| ------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| S3 (T01–T05)  | LSTM parity, BF16, NAMB round-trip, Conv1D tail-loop | `LSTMLayerT::SetNAMWeights`, WaveNet level loop |
-| S4 (T01–T05)  | WaveNet backfill, `reset()`, LSTM state preservation | `DSP::Reset`, `prewarm` contract                |
-| S7 (R02)      | Hoist BF16 dispatch outside LSTM loop                | `LSTM::process_sample`                          |
-| S13a (T01)    | Cross-validation suite vs NeuralAmpModelerCore       | `render` CLI, `ModelTest.cpp`                   |
-| S25 (T01–T08) | Hotpath SIMD recovery, buffer alignment              | `process_block_f32_native`, head rechannel      |
-| S26 (T01–T04) | Architectural adherence vs C++ reference             | `dsp.h`, `a2_fast.h`                            |
-| S28 (T01)     | Cross-validation v2                                  | `t3k-mushra` metrics, A2 baselines              |
-
----
-
-## 14. Version History
-
-| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-20 | [Tarefa A.1.3] Seção 6 (A2 Architecture): removido aviso de "C++ Live Cross-Validation Blocked" e "self-golden pattern" — os goldens A2 são gerados pelo C++ `render` v0.5.3 desde T2.5/T16.4; documentada natureza sintética dos pesos, limitação de sample rate (48 kHz apenas), ESR/SNR calibrados reais (79.2/90.7 dB) e status normal do `#[ignore]` de Layer 2.                              |
-| 2026-06-20 | [Tarefa A.1.1] Atualização de §§3.3, 3.4, 4.4, 10 e nova Seção 5 (ConvNet): removida linguagem de "removido" dos engines dinâmicos; corrigido fallback `Free`/`WaveNetModelDyn`/`LstmModelDyn` para geometrias não-catalogadas; adicionadas entradas `WaveNetDyn`, `LSTM Dyn`, `WaveNetA2Dyn` e `ConvNet` na tabela de topologia; renumeradas todas as seções subsequentes (5→6, 6→7, ..., 15→14). |
-| 2026-06-18 | [T-HF6.7] Post-nuke ESR table (§9.1): WaveNet ESR improved ~10 orders after lo-fi elimination (T-HF6.1–6.6). All non-Lite models SNR ≫ 100 dB. Thresholds 85-105 dB. Updated §11.2 Math divergences to note BF16/F16 paths eliminated for WaveNet A1.                                                                                                                                              |
-| 2026-06-12 | [T11.2] `is_a2_shape()` now matches C++ `is_a2_shape()` exactly (20 criteria from `a2_fast.cpp:875-908`). Added `bottleneck`, `kernel_sizes`, `in_channels` to typed config structs; raw JSON capture via `layer_raw` for complex checks (activation arrays, FiLM, gating_mode, head sub-objects, groups,                                                                                          |
-|            | slimmable). Strict rejection with clear diagnostics prevents silent fast-path misroute for models with `bottleneck≠channels`, gated/blended activation, or active FiLM conditioning. Full parity map entry updated with correct line range.                                                                                                                                                        |
-| 2026-06-11 | [T7.8] A2 divergence root-cause analysis. Fixed Rust `prewarm()` to feed silence through `process()` (matching C++ `DSP::Reset` → `prewarm()` flow). C++ live cross-validation blocked by upstream `a2_fast.cpp` numerical bug (A2-Full output ~10^14). Self-golden pattern maintained with corrected prewarm.                                                                                     |
-| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                                                                                                                                           |
-| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                                                                                                                                                       |
-| 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences.                                                                                                                          |

@@ -116,10 +116,10 @@ struct ResamplerCore {
     /// Cached ISA dispatch for the hot-path stereo method.
     /// Set in `new()` to the monomorphized `process_internal::<Isa>`.
     /// Eliminates the global `dispatch_simd!` match per call.
-    /// Micro-opt [T18.5c].
+    /// Micro-opt.
     process_stereo: ProcessFn,
     /// Cached ISA dispatch for the hot-path mono method.
-    /// Micro-opt [T18.5c].
+    /// Micro-opt.
     process_mono: ProcessMonoFn,
 }
 
@@ -201,7 +201,7 @@ impl ResamplerCore {
 
         // Cache the ISA-dispatched function pointers once, instead of
         // matching on the global `SIMD_MATH` on every hot-path call.
-        // Micro-opt [T18.5c].
+        // Micro-opt.
         let (process_stereo, process_mono) = match effective_instruction_set() {
             InstructionSet::Avx2 => (
                 process_internal_avx2 as ProcessFn,

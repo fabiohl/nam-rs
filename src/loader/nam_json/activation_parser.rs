@@ -5,7 +5,7 @@
 //!
 //! Parses the per-layer activation, gating mode, and secondary activation arrays
 //! from the raw layer JSON, returning typed Rust vectors for consumption by the
-//! dynamic A2 engine (Sprint 3 / WaveNetA2Dyn) and topology classification.
+//! dynamic A2 engine (WaveNetA2Dyn) and topology classification.
 //!
 //! Each function expects a single layer array's raw JSON (the `layer_raw` field
 //! of `NamLayerConfig`) and validates array length against `num_layers` (23 for

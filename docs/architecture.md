@@ -151,7 +151,7 @@ To optimize the trade-off between computational latency and tonal accuracy, NAM-
 
 To prevent the accumulation of numerical drift and mathematical instabilities in long-duration runs:
 
-- **Kahan Summation (E8.T06):** Employed in the interleaved 4x scalar fallback dot products (`scalar_ref/dot.rs`) to reduce relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$. The static conv1d paths (`conv1d.rs`, `conv1d_dual.rs`) use plain `+=` accumulation — error for K≤3 taps is below −129 dBFS per layer, inaudible (T13.2/T18.4).
+- **Kahan Summation (E8.T06):** Employed in the interleaved 4x scalar fallback dot products (`scalar_ref/dot.rs`) to reduce relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$. The static conv1d paths (`conv1d.rs`, `conv1d_dual.rs`) use plain `+=` accumulation — error for K≤3 taps is below −129 dBFS per layer, inaudible.
 - **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L47) after gain) with corresponding compensatory subtraction at the output ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L21)). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
 
 ## 3. Time Management and Isolation (Strict RT)
@@ -230,7 +230,7 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 >
 > **When disabled** (production default), generic A2 convolutions are impossible by construction: the A2 loaders enforce CH∈{3,8} at parse time, and the fallback block compiles to `unreachable!()` with a static invariant message.
 >
-> **When enabled** (testing / scaffolding T3.1/T3.2), the scalar fallback is compiled in, allowing A2 models with non-standard channel geometries to execute inference correctly — at the cost of per-frame scalar processing (no SIMD tile optimization) for those layers.
+> **When enabled** (testing / scaffolding), the scalar fallback is compiled in, allowing A2 models with non-standard channel geometries to execute inference correctly — at the cost of per-frame scalar processing (no SIMD tile optimization) for those layers.
 >
 > **What this flag does NOT control:** The main dynamic engine variants — `WaveNetModelDyn`, `LstmModelDyn`, and `WaveNetA2Dyn` — are **always compiled** as integral variants of the `StaticModel` enum (§2, Structural Dispatch). These engines handle free-shape models (A1 WaveNet, LSTM, and A2 with runtime channel counts) regardless of the `dynamic-engine` flag. The flag is narrowly scoped to the A2 fast-path's internal scalar branch for non-standard convolution geometries.
 
@@ -238,7 +238,7 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 
 NAM-rs uses a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampler` in `src/dsp/resampler.rs`), replacing external dependencies.
 
-### Quality Metrics (TAPS_PER_PHASE = 64, Task 5.4 QA)
+### Quality Metrics (TAPS_PER_PHASE = 64)
 
 | Rate Pair   | Passband Ripple | Stopband Attenuation | SNR (multitone vs. soxr) |
 |:----------- |:--------------- |:-------------------- |:------------------------ |
@@ -519,7 +519,7 @@ turn goldens into placebos that grant false confidence:
 3. **Silent heuristic fallback:** Models without a calibrated entry falling back to
    `topology_thresholds()` with undocumented, untraceable thresholds.
 
-**Meta-test enforcement** (`tests/threshold_calibration.rs`, part of T3.3/T3.4):
+**Meta-test enforcement** (`tests/threshold_calibration.rs`):
 
 - `test_all_golden_models_have_calibrated_thresholds` — Every committed golden `.bin` MUST
   have an explicit calibrated entry. No silent fallback.
@@ -643,7 +643,7 @@ Model switching in the audio thread is RT-safe:
 
 ### Decision: Reject `SwapStrategy<T>` for Standalone/CLAP Deduplication
 
-**Context:** Task T9.7 investigated unifying the object-swap + GC-cascade logic shared between
+**Context:** An investigation was conducted on unifying the object-swap + GC-cascade logic shared between
 `src/standalone/pw_host/rt_callback/{resampler_swap,commands,cabsim_swap}.rs` and
 `src/clap/processor/events.rs` into a common `SwapStrategy<T>` in `src/dsp/`.
 

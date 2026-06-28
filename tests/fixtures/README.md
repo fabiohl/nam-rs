@@ -35,7 +35,7 @@ All golden vectors are validated against the **single canonical upstream referen
 | `sdatkinson/NeuralAmpModelerCore`   | `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` | v0.5.3 |
 | `sdatkinson/NeuralAmpModelerPlugin` | `96337e9ab6e3beb619459779bbb5c47e1b04d8c4` | —      |
 
-> **Unification (T5.2, 2026-06-14):** The A1/LSTM goldens (formerly pinned at `e49c93e`) are byte-identical when rendered from `9c7b185` (SNR = ∞). The diff between these commits is restricted to A2 fast-path code. A single canonical commit now serves all goldens.
+> **Unification:** The A1/LSTM goldens (formerly pinned at `e49c93e`) are byte-identical when rendered from `9c7b185` (SNR = ∞). The diff between these commits is restricted to A2 fast-path code. A single canonical commit now serves all goldens.
 
 To regenerate all fixtures from scratch:
 
@@ -117,14 +117,14 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 
 | Model / Fixture             | Nature           | Architecture                                                   | Quality & Confidence                                       | License & Provenance                                                     | Purpose in Tests                                                                                      |
 | --------------------------- | ---------------- | -------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam` (RF7, T2.4) | Artificially generated (2026-06-11).                                     | Legacy fixture; no longer used in active tests. Superseded by real community model.                   |
+| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam`          | Artificially generated.                                     | Legacy fixture; no longer used in active tests. Superseded by real community model.                   |
 | `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                               | Simple weights defined for testing. Apache-2.0.                          | Linear parity and linear_golden.                                                                      |
-| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights (T2.5, peak ~0.15). Apache-2.0.                       | Parity A2 fast-path (Full), container submodel.                                                       |
-| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights (T2.5, peak ~0.19). Apache-2.0.                       | Parity A2 fast-path (Lite), container submodel.                                                       |
+| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights. Apache-2.0.                       | Parity A2 fast-path (Full), container submodel.                                                       |
+| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                | Calibrated weights. Apache-2.0.                       | Parity A2 fast-path (Lite), container submodel.                                                       |
 | `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)                            | **High** (Functional parity)                               | Container joining the two submodels above. Apache-2.0.                   | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                        |
 | `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)                                  | N/A (Negative mock)                                        | Clean structure without weights (legal mitigation). Apache-2.0.          | Tests graceful rejection of legacy Keras format (F13).                                                |
 | `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                                        | Empty model for failure testing. Apache-2.0.                             | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                         |
-| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                                | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU). Sprint 2.2. |
+| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                                | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU).             |
 | `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                                        | Model with custom dilations and channels. Apache-2.0.                    | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                     |
 | `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (F2 Focus / Rejected)                                  | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=8` for now.                                         |
 | `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)                                    | N/A (F2 Focus / Rejected)                                  | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=3` for now.                                         |
@@ -377,9 +377,9 @@ See `docs/perceptual_validation.md` for methodology.
 
 > [!IMPORTANT]
 > Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
-> `tests/common/validation.rs` from post-T16.1 C++-generated golden measurements.
+> `tests/common/validation.rs` from C++-generated golden measurements.
 > WaveNet Lite (CH=12) was migrated from the synthetic `BossWN-lite.nam` (0.9 dB SNR)
-> to the real community model `EVH-5150-Lite.nam` (≥ 105 dB SNR, RF7/T2.4).
+> to the real community model `EVH-5150-Lite.nam` (≥ 105 dB SNR).
 > See §Non-Distributable Model Management and `tests/common/validation.rs`.
 
 ### Principle: "Todo Golden Deve Poder Falhar" (Every Golden Must Be Able to Fail)
@@ -394,11 +394,11 @@ A golden test is a **gate** — it exists to catch regressions. Three patterns d
 
 **Meta-tests enforce this principle** in `tests/threshold_calibration.rs`:
 
-| Meta-teste (T3.3/T3.4)                                  | What it catches                                                                                |
-|:------------------------------------------------------- |:---------------------------------------------------------------------------------------------- |
-| `test_all_golden_models_have_calibrated_thresholds`     | Models without explicit calibrated entry (T3.3)                                                |
-| `test_all_calibrated_entries_have_measurement_comments` | Entries without `// Measured: SNR=..., ESR=...` provenance (T3.3)                              |
-| `test_all_thresholds_anti_placebo`                      | Any single neutralized component: SNR ≤ 0, ESR ≥ 1, or MSE ≥ 1e29 without rigid SNR+ESR (T3.4) |
+| Meta-tests                                                 | What it catches                                                                                |
+|:---------------------------------------------------------- |:---------------------------------------------------------------------------------------------- |
+| `test_all_golden_models_have_calibrated_thresholds`        | Models without explicit calibrated entry                                                        |
+| `test_all_calibrated_entries_have_measurement_comments`    | Entries without `// Measured: SNR=..., ESR=...` provenance                                      |
+| `test_all_thresholds_anti_placebo`                         | Any single neutralized component: SNR ≤ 0, ESR ≥ 1, or MSE ≥ 1e29 without rigid SNR+ESR         |
 
 > [!IMPORTANT]
 > **A2 Exception:** The A2 Full/Lite models intentionally use `mse_limit = 1e30` (MSE effectively disabled)
@@ -419,7 +419,7 @@ cargo run --release --bin gen_stress -- --version v1 --output tests/fixtures/str
 ./tests/fixtures/golden_gen_build.sh
 ```
 
-## Resampler Reference Fixtures (T8.9)
+## Resampler Reference Fixtures
 
 Resampler correctness test vectors are generated by `tests/fixtures/generate_resampler_reference.py`.
 
@@ -461,16 +461,15 @@ Prerequisites: `cmake`, `g++` (or `clang++`, C++20), `cargo` (Rust), `git`.
 
 > Python is no longer required — `gen_stress` and `wav_to_golden` replace the inline Python blocks.
 
-These files are committed to the repository so that the Rust golden vector tests can run without needing to recompile C++. If the golden vectors do not exist, the tests **panic** with instructions to run `golden_gen_build.sh` (post-T16.3: no silent SKIP).
+These files are committed to the repository so that the Rust golden vector tests can run without needing to recompile C++. If the golden vectors do not exist, the tests **panic** with instructions to run `golden_gen_build.sh`.
 
 ## Model Provenance
 
 ### `BossWN-lite.nam` — Obsolete Synthetic WaveNet Lite (CH=12)
 
-- **Created:** 2026-06-11
 - **Nature:** Synthetic fixture (weights auto-generated, not trained on real data).
 - **Metadata:** Round values, no `sample_rate` field in the JSON.
-- **Status:** **Obsolete as of 2026-06-21 (RF7/T2.4).** Was an active golden test gate with
+- **Status:** **Obsolete.** Was an active golden test gate with
   a 0 dB SNR threshold (near-noise output). Replaced by the real community model
   `EVH-5150-Lite.nam` (non-distributable, ≥ 105 dB SNR).
   See `tests/common/validation.rs` and `tests/fixtures/README.md` §Non-Distributable Model Management.
@@ -495,7 +494,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
   wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_1x16.bin
   ```
 
-- **Validation Verdict (2026-06-13):** The current committed fixtures are byte-identical to those newly rendered with commit `e49c93e` (SHA-256 match). They differ from `nam-rs_v2.0.0` only at floating-point precision levels (SNR > 120 dB) due to dynamic C++ compiler/build configurations in the original unpinned `v2.0.0` build.
+- **Validation Verdict:** The current committed fixtures are byte-identical to those newly rendered with commit `e49c93e` (SHA-256 match). They differ from `nam-rs_v2.0.0` only at floating-point precision levels (SNR > 120 dB) due to dynamic C++ compiler/build configurations in the original unpinned `v2.0.0` build.
 
 ### `lstm.nam`
 
@@ -512,7 +511,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
   wav_to_golden --input output.wav --reference tests/fixtures/stress_signal.wav --output golden_lstm_official.bin
   ```
 
-### `wavenet_a2_full.nam` & `wavenet_a2_lite.nam` (T2.5) — **Synthetic, NOT official FiLM models**
+### `wavenet_a2_full.nam` & `wavenet_a2_lite.nam` — **Synthetic, NOT official FiLM models**
 
 > [!IMPORTANT]
 > **Estes goldens A2 usam pesos sintéticos, NÃO pesos de modelo oficial.** Os modelos A2 oficiais
@@ -530,11 +529,11 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 - **Nature:** Synthetic fixtures generated by `tests/fixtures/generate_a2_fixtures.py` using the canonical A2 skeleton (23 layers, K=6/15, LeakyReLU, head_scale=0.02).
 
-- **Amplitude regime (T2.5 correction):** Weights scaled per-channel (Full CH=8: weight=0.28, bias=0.065; Lite CH=3: weight=0.45, bias=0.09) to produce C++ output in the realistic audio regime (Full: peak≈0.15, LUFS≈−22.6; Lite: peak≈0.19, LUFS≈−20.0), replacing the previous near-silence regime (peak≈2e−3, LUFS≈−68). This ensures denormals/FTZ, saturation, and accumulation paths are exercised at meaningful levels.
+- **Amplitude regime:** Weights scaled per-channel (Full CH=8: weight=0.28, bias=0.065; Lite CH=3: weight=0.45, bias=0.09) to produce C++ output in the realistic audio regime (Full: peak≈0.15, LUFS≈−22.6; Lite: peak≈0.19, LUFS≈−20.0), replacing the previous near-silence regime (peak≈2e−3, LUFS≈−68). This ensures denormals/FTZ, saturation, and accumulation paths are exercised at meaningful levels.
 
 - **Golden Fixtures:** `golden_wavenet_a2_full.bin`, `golden_wavenet_a2_lite.bin` — cross-reference Rust↔C++ rendered using the same canonical commit `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` (v0.5.3).
 
-- **SNR/ESR (2026-06-14):** Full = 79.2 dB / 1.21e−8; Lite = 90.7 dB / 8.58e−10. Thresholds calibrated with ≥8 dB SNR margin and ~6–7× ESR multiplier.
+- **SNR/ESR:** Full = 79.2 dB / 1.21e−8; Lite = 90.7 dB / 8.58e−10. Thresholds calibrated with ≥8 dB SNR margin and ~6–7× ESR multiplier.
 
 - **Command used:**
 
@@ -553,7 +552,6 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 ### `keras_unsupported.json` — Unsupported Legacy Keras/H5 Format Mock
 
-- **Created:** 2026-06-16
 - **Nature:** Synthetic/Mock JSON representation of a legacy Keras-format model.
 - **Provenance:** Replaces the original third-party model `tw40_blues_deluxe_deerinkstudios.json` (Fender Blues Deluxe capture by Deer Ink Studios) which was distributed under the **Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0)** license.
 - **Legal Risk Mitigation:** To avoid licensing conflicts with the main Apache-2.0 codebase (specifically regarding the Non-Commercial restriction, which prevents packaging or commercial use of the repository), the 160 KB real weights have been deleted. The mock file preserves only the key-value dictionary structure (`"in_shape"`, `"layers"`) to test that the model loader/dispatcher gracefully rejects the legacy format (by returning an error due to the missing `"architecture"` field) without hosting any copyrighted or restricted weights.
@@ -574,7 +572,7 @@ Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare agai
 >
 > **Consequence:** NAM-rs produces audio perceptually equivalent to C++, but with measurable numerical differences. These differences are inaudible in any 16-bit or higher audio pipeline.
 >
-> **LSTM divergence (investigated T5.5, 2026-06-14):** The LSTM goldens show relatively low SNR
+> **LSTM divergence:** The LSTM goldens show relatively low SNR
 > (1×16 ≈ 19.8 dB, 2×8 ≈ 25.7 dB, official ≈ 29.7 dB) vs WaveNet 52–68 dB. The hypothesis that
 > FastMath Padé [5,4] tanh is the cause was **refuted**: using exact `f32::tanh` (libm) yields
 > identical SNR (Δ ≈ 0.0 dB). The actual bottleneck is likely BF16 weight quantization or GEMV

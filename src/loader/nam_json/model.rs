@@ -115,7 +115,7 @@ impl NamLayerConfig {
     /// Returns `None` when `layer_raw` is absent or the `activation` array
     /// is missing/invalid.
     ///
-    /// This is the primary entry point for the dynamic A2 engine (Sprint 3)
+    /// This is the primary entry point for the dynamic A2 engine
     /// to obtain the heterogeneous activation configuration at model build time.
     pub fn parse_activation_config(
         &self,
