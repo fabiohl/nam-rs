@@ -40,3 +40,33 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 * **False Sharing:** Shared structures RT↔Main annotated with `#[repr(align(128))]` to isolate cache lines.
 * **Ordering:** No `SeqCst` on the hot-path. `Relaxed` for telemetry; `Acquire`/`Release` for SPSC pointers.
+
+---
+
+## 5. Quality Modes: Live vs. HQ / Offline
+
+NAM-rs operates in two distinct quality modes. Code must honor these distinctions:
+
+* **Live Mode (default):** Oversampling `Off`, activation precision `Standard`, adaptive compute active. Zero added latency. All hot-path code must complete within the RT deadline budget.
+* **HQ / Offline Mode:** Oversampling `4×`, activation precision `HighFidelity`, adaptive compute disabled. Maximum fidelity with deterministic output — no soft-degradation allowed. The CLAP host signals this via `RenderMode::Offline`.
+
+**Off-RT rebuild protocol:** Factor changes (oversampling, model swap, cab IR) are never applied on the audio thread. The main thread constructs new resources (filter allocation, buffer allocation), pushes them via SPSC, and the audio thread atomically swaps. Old resources are disposed via the GC cascade (SPSC → parking-lot → overflow).
+
+**Deterministic offline bounce (CLAP):** When `RenderMode::Offline` is active:
+
+* `AdaptiveCompute` is forced to `Off` (FSM reset to Full, no degradation).
+* All `RT_STATUS_DEGRADE_*` flags are cleared.
+* Block deadline measurements are ignored.
+* User-initiated adaptive-compute mode changes are guarded and rejected.
+
+---
+
+## 6. Measurement & Off-RT QA Framework
+
+Measurement and spectral analysis functions are **strictly off-RT** — they allocate on the heap and are never called from the audio thread.
+
+* **Placement:** All measurement functions belong in `src/testing/`. Never in `src/dsp/` or hot-path code.
+* **True-peak prohibition:** BS.1770-4 Annex 2 true-peak (4× polyphase FIR, 48 taps) is too expensive for the RT thread. Use sample-peak detection on the audio-thread hot-path; true-peak only in integration tests.
+* **f64 oracle authority:** The f64 reference oracle (`src/testing/reference_oracle.rs`) is the absolute mathematical ground truth. When it disagrees with C++ NAMCore or golden vectors, the f64 oracle wins.
+* **Gate calibration:** All metric thresholds must be explicitly documented with measurement comments. `// Measured: SNR=..., ESR=...` format required for every calibrated entry in golden threshold tables.
+* **Baseline versioning:** Metric baselines (ASR, THD+N, Farina FR) are versioned in `tests/fixtures/spectral_fidelity_baseline.json`.

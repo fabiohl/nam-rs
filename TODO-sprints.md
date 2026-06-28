@@ -1013,15 +1013,18 @@ decisões dos sprints S1–S5.
   - **Hierarquia:** Mantida coerente — §5.3 encaixa entre DSP (§5.2 IR Cabsim) e Testing (§6); referências DRY para todos os arquivos-fonte; sem duplicação de conteúdo de código.
 - **Risco:** Baixo — concluído.
 
-### Tarefa 6.3 [DOC] Atualizar `README.md` e `.agents/` (padrões)
+### Tarefa 6.3 [DOC] Atualizar `README.md` e `.agents/` (padrões) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`README.md`](file:///home/fabio/nam-rs/README.md), [`.agents/`](file:///home/fabio/nam-rs/.agents)
-- **Descrição:** documentar os modos HQ/offline (CLI/GUI) e o framework de QA para usuários/builders; se os
-  padrões de implementação mudaram (nova convenção de métricas/testes/controles), atualizar as regras/skills
-  relevantes em `.agents/`.
-- **Critérios de Aceite:** README e `.agents/` coerentes; voz/tom unificados (`documentador`).
-- **Risco:** Baixo.
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Modificados:**
+  - [`README.md`](file:///home/fabio/nam-rs/README.md) — adicionada seção "Quality and Operational Modes" comoversampling, activation precision, adaptive compute, slim override, offline render mode e diagnose; expandida seção "Tests & Validation" com três oráculos independentes, measurement framework e tabela de métricas.
+  - [`.agents/rules/testing.md`](file:///home/fabio/nam-rs/.agents/rules/testing.md) — adicionadas seções §6 (Three Independent Test Oracles), §7 (Test Value Hierarchy — 3 tiers), §8 (Hard vs. Soft Gates), §9 (Measurement Framework Conventions).
+  - [`.agents/rules/rust.md`](file:///home/fabio/nam-rs/.agents/rules/rust.md) — adicionadas seções §5 (Quality Modes: Live vs. HQ/Offline) e §6 (Measurement & Off-RT QA Framework).
+- **Conclusão:**
+  - **Quality & Operational Modes (`README.md`):** Documentados oversampling (off/2×/4×), activation precision (Standard/HighFidelity), adaptive compute FSM + slim override (`--slim auto|full|lite`), offline render mode (CLAP deterministic bounce), diagnose (`--diagnose`, `--diagnose-full`). Tabela comparativa Live vs. HQ/Offline.
+  - **QA Framework (`README.md`, `.agents/rules/testing.md`):** Documentados três oráculos independentes (C++ NAMCore / f64 oracle / ISA parity) com as perguntas que cada um responde. Measurement framework com tabela de métricas (ASR, THD+N, IMD, ES-R, MR-STFT, LUFS, LRA, true-peak) e seus gates. Test value hierarchy (3 tiers). Hard vs. soft gate distinction (MR-STFT hard @ 44.1/48 kHz, soft @ ≥88.2 kHz). Convenções de measurement (off-RT only, true-peak prohibition, baseline versioning, f64 oracle authority).
+  - **Coerência de voz/tom:** Todas as seções seguem o estilo `documentador` — concisas, com referências DRY para arquivos-fonte, sem duplicação de código, sem afirmações irrelevantes. Linguagem unificada entre README, arquitetura e regras.
+- **Risco:** Baixo — concluído.
 
 ### Tarefa 6.4 [QA] Revisão final de documentação (refatora-doc)
 

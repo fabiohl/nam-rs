@@ -53,6 +53,7 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
   `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find`
 
   > [!NOTE]
+  >
   > * `ffmpeg` is required to generate the resampler reference vectors via Python scripts.
   > * `vlc` is utilized as an audio playback generator in the manual standalone run script.
 
@@ -154,6 +155,40 @@ Switching oversampling modes triggers an off-RT engine rebuild (same lock-free G
 
 See [docs/architecture.md §5.0O](docs/architecture.md) for the full oversampling architecture and trade-off analysis.
 
+### Quality and Operational Modes
+
+NAM-rs provides a layered quality control surface spanning latency, fidelity, and CPU budget. These controls are exposed through the unified CLI+CLAP parameter matrix (see [docs/architecture.md §8.2.3](docs/architecture.md)):
+
+**Oversampling** — anti-aliasing around the neural stage:
+
+* `Off` (default): zero overhead, live monitoring. Neural model runs at host sample rate.
+* `2×`: one half-band FIR stage, 12-sample latency (~0.27 ms @ 44.1 kHz), ~100 dB stop-band.
+* `4×`: two cascaded stages, 24-sample latency (~0.54 ms @ 44.1 kHz), ~200 dB stop-band.
+
+**Activation Precision** — tanh/sigmoid approximation fidelity:
+
+* `Standard` (default): Padé [5,4] tanh + minimax sigmoid. Error ~2.32e-3. Fastest path.
+* `HighFidelity`: polynomial exp-based. Error ~2.4e-7 (~10,000× lower). Best combined with 4× oversampling.
+
+**Adaptive Compute** — graceful CPU fallback to prevent xruns:
+
+* An hysteresis FSM monitors block deadlines and soft-degrades model complexity (layer-skipping in WaveNet/LSTM, A2-Full → A2-Lite switching) under CPU pressure.
+* **Slim Override** (`--slim auto|full|lite`): forces a fixed quality level, bypassing the FSM. `full` locks at maximum complexity; `lite` locks at minimum. Default `auto` lets the FSM decide.
+
+**Offline Render Mode** (CLAP only): during DAW export/bounce, the host signals `RenderMode::Offline`. The engine disables adaptive compute (deterministic max-quality output), clears all degradation flags, and ignores block deadline measurements. No soft-degradation can compromise a rendered file.
+
+**Live vs. HQ/Offline Summary:**
+
+| Aspect               | Live (default)       | HQ / Offline               |
+|:-------------------- |:-------------------- |:-------------------------- |
+| Oversampling         | `Off`                | `4×`                       |
+| Activation precision | `Standard`           | `HighFidelity`             |
+| Adaptive compute     | Active (FSM-driven)  | Disabled (deterministic)   |
+| Latency              | 0 samples            | 24 samples (~0.54 ms)      |
+| Use case             | Monitoring, live gig | Export, mixdown, mastering |
+
+**Diagnostic Mode** (`--diagnose`, `--diagnose-full`): prints a technical support block (system snapshot, runtime telemetry, error context) and exits immediately — no audio processing. The `--diagnose-full` variant includes unredacted file paths. In the CLAP GUI, the diagnostic bundle is accessible via the status bar "Copy Diagnostic" button. See [docs/troubleshooting.md](docs/troubleshooting.md).
+
 ### Build, install and run
 
 *Note: `.cargo/config.toml` allows configuring a build optimized specifically for your current CPU ("march=native").*
@@ -186,7 +221,34 @@ utils/build-release.sh
 
 ## 🧪 Tests & Validation
 
-NAM-rs maintains a suite of approximately **350+ automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. To simplify development and QA flows, use the scripts located under `utils/`:
+NAM-rs maintains a suite of approximately **350+ automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. The QA strategy rests on three independent, non-redundant oracles — each answers a fundamentally different question, and removing any one leaves a corresponding blind spot:
+
+| Oracle                   | Question it answers                                            | What it anchors against                                    | Validation layer                |
+|:------------------------ |:-------------------------------------------------------------- |:---------------------------------------------------------- |:------------------------------- |
+| **C++ NAMCore** (f32)    | "Does NAM-rs match the canonical C++ reference?"               | External golden vectors (ES-R, SNR, MR-STFT)               | `tests/cpp_parity.rs`           |
+| **f64 Reference Oracle** | "Is NAM-rs mathematically correct (absolute numerical truth)?" | Double-precision forward pass + error source decomposition | `tests/reference_oracle_f64.rs` |
+| **ISA Parity**           | "Do AVX2, AVX-512, and scalar produce identical results?"      | Cross-ISA bit-equivalence                                  | `tests/isa_parity.rs`           |
+
+> **Why three oracles?** A kernel bug small enough to pass the C++ golden band can still break the tight f64 oracle. A spec error shared by scalar and SIMD is invisible to ISA parity but caught by the external golden. All three are necessary.
+
+### Measurement & Spectral Analysis Framework
+
+Beyond regression tests, NAM-rs includes a comprehensive off-RT measurement library (`src/testing/`) for fidelity validation and perceptual benchmarking:
+
+| Metric            | Standard                  | Gate (pass threshold)                |
+|:----------------- |:------------------------- |:------------------------------------ |
+| **ASR**           | Sato & Smith (DAFx 2025)  | < −70 dB aliasing-to-signal ratio    |
+| **THD+N**         | AES17 @ 997 Hz, −20 dBFS  | < −60 dB                             |
+| **IMD**           | SMPTE/DIN (60 Hz + 7 kHz) | Per-model calibrated                 |
+| **ES-R**          | Wright et al. (2020)      | SNR + ES-R compound, per-model       |
+| **MR-STFT**       | Yamamoto et al. (2020)    | Informational / diagnostic           |
+| **LUFS** (integ.) | ITU-R BS.1770-4           | Absolute gate −70 LUFS               |
+| **LRA**           | EBU Tech 3342             | Statistical distribution             |
+| **True-peak**     | BS.1770-4 Annex 2         | Inter-sample overs > 0 dBFS detected |
+
+All measurement functions allocate on the heap and are **not** RT-safe — they are designed for integration tests and offline QA tooling. See [docs/architecture.md §5.3](docs/architecture.md) for the full module map and [docs/perceptual_validation.md](docs/perceptual_validation.md) for perceptual benchmarking methodology.
+
+### Test Execution Scripts
 
 ```bash
 # 1. Lint & Quality (Formatting + Clippy + Feature Matrix)
