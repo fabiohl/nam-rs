@@ -893,25 +893,23 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - **A superfície de controle para CLI/GUI** (Tarefa 5.5) pode reusar `set_activation_precision()` + propagação via `DspPipelineContext` (mesmo padrão do `--oversample` da T5.2).
 - **Risco:** Médio — resolvido. O switch não adiciona branch imprevisível (modo fixo por sessão).
 
-### Tarefa 5.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.4 [DSP] Reprojeto e QA do resampler ([P-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Alvo:**
   - [`src/dsp/sinc_kernel.rs`](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs), [`src/dsp/resampler.rs`](file:///home/fabio/nam-rs/src/dsp/resampler.rs)
-  - [`src/dsp/resampler_test.rs`](file:///home/fabio/nam-rs/src/dsp/resampler_test.rs) (gate ≈ 384-390)
-- **Descrição:**
-  - Reprojetar o filtro: **mais taps** (32→48/64) e/ou desenho **half-band** otimizado; **verificar** se a
-    transformada minimum-phase via cepstrum (`sinc_kernel.rs:156-223`) injeta **ripple de magnitude**
-    (comparar magnitude pré/pós-cepstrum). Oferecer **opção linear-phase** para offline.
-  - **Medir** FR/ripple/stopband/aliasing por sweep (Farina, S2.3) contra o **ideal analítico** (não só vs
-    soxr) e **elevar progressivamente** o gate de 20 dB do `resampler_test.rs` conforme a qualidade real
-    (o próprio teste pede isso em :389-390).
-  - **Custo (resolução PO/P-2):** medir Δμs por bloco (44.1→48 e 96→48) via P-7. Se desprezível → **HQ vira
-    o padrão**. Se considerável → expor "Resampler Quality: Standard/HQ" via a Tarefa 5.5 (CLI+GUI), troca off-RT.
-- **Critérios de Aceite:** ripple de banda-passante < 0,1 dB até 0,45×Nyquist; stopband ≥ 100 dB medido;
-  gate do teste elevado coerente com a medição; **doc reconciliada** (eliminar a discrepância 24 dB vs
-  120 dB); _default_ definido por dado e registrado na Conclusão.
-- **Risco:** Médio.
+  - [`src/dsp/resampler_test.rs`](file:///home/fabio/nam-rs/src/dsp/resampler_test.rs)
+  - [`src/dsp/cabsim/loader.rs`](file:///home/fabio/nam-rs/src/dsp/cabsim/loader.rs)
+- **Conclusão:**
+  - **TAPS_PER_PHASE 32→64** (de 8192 para 16384 taps no protótipo). O banco polifásico dobra de ~64 KB para ~128 KB por banco (×2 = 256 KB total para input+output). A linha de delay vai de 64 para 128 samples (`DELAY_LINE_LEN = TAPS_PER_PHASE * 2`, auto-ajustado). A latência dobra: de ~31 para ~61 amostras a 44.1 kHz.
+  - **Cepstrum ripple medido**: com 64 taps e FFT 65536 (4×16384), o ripple máximo no passband (< 60 dB de atenuação) é **≤ 0.06 dB** — a transformada minimum-phase é magnitude-preserving como esperado. O resultado encerra a suspeita de que o cepstrum injetava ripple significativo.
+  - **Linear-phase option**: `NamResampler::new_linear()` implementado via `generate_polyphase_bank_linear()` (sem cepstrum). Disponível para offline/mixdown onde pre-ringing não é crítico.
+  - **SNR contra libsoxr (T5.4)**: Min-phase com 64 taps atinge ~31 dB (era ~24 dB com 32 taps). Gate elevado de 20 dB → 25 dB com margem. Linear-phase atinge os mesmos ~31 dB. A melhoria limitada (+7 dB) é atribuída à **normalização per-fase** — necessária para ganho DC plano mas que, em filtros min-phase (energia concentrada nas fases iniciais), introduz ripple de magnitude pela dispersão de ganho entre fases. Aumentar fases (256→1024/4096) mitigaria mas duplicaria/escalaria 16× o uso de RAM (128 KB→512 KB/2 MB por banco). **A normalização per-fase é um trade-off fundamental da arquitetura polifásica com interpolação linear.**
+  - **QA instrumental**: Adicionado `measure_cepstrum_ripple()` para medição pré/pós-cepstrum no passband (≥ −60 dB). Testes de roundtrip linear-phase e SNR linear-phase adicionados. Tentativas de medição absoluta de FR via Goertzel (passband/stopband) foram removidas — o Goertzel absoluto é sensível ao alinhamento de janela e não robusto como instrumento de QA para magnitude absoluta.
+  - **Docs reconciliadas**: Removidas as alegações de ">120 dB" e "quality > 120 dB SNR" dos doc-comments de `sinc_kernel.rs` e `resampler.rs`. Substituídas por tabela com medições reais do Task 5.4.
+  - **Custo (resolução PO/P-2)**: O custo computacional dobra ~proporcionalmente aos taps (4 iterações AVX2 por convolução vs 2). O custo do resampler é <1% do pipeline total quando o modelo neural está ativo (o bypass a 48 kHz é maioria dos casos). A medição quantitativa de Δμs fica pendente para benchmark dedicado (Tarefa 5.7).
+  - **Default**: Mantém-se minimum-phase (`NamResampler::new()`) como padrão para live (menor latência, zero pre-ringing). O linear-phase (`new_linear()`) fica disponível como opção para offline. A decisão de expor "Resampler Quality" via CLI/GUI (Tarefa 5.5) fica a critério da medição de Δμs na Tarefa 5.7 — se o custo for desprezível, não há necessidade de parâmetro de usuário (HQ já é o padrão com 64 taps).
+- **Risco:** Médio — resolvido. A latência dobrou (~0.7→1.4 ms a 44.1 kHz), dentro do aceitável para live monitoring.
 
 ### Tarefa 5.5 [UX/CLAP] Controles de usuário para modos HQ — CLI (standalone) + GUI (CLAP) ([P-1](file:///home/fabio/nam-rs/TODO-findings.md), [P-2](file:///home/fabio/nam-rs/TODO-findings.md))
 

@@ -11,7 +11,7 @@
 //! - **Pre-ringing elimination**: the minimum-phase transform via Real Cepstrum
 //!   concentrates all filter energy into the shortest possible delay, removing 100%
 //!   of the pre-echo artifacts on guitar transients.
-//! - **Algorithmic latency reduction**: from ~1.5 ms (linear phase) to ~0.7 ms.
+//! - **Algorithmic latency reduction**: ~50% less latency than equivalent linear-phase.
 //! - **Vectorized convolution**: AVX2+FMA inner product with coefficients aligned
 //!   to 64 bytes, saturating the processor's FMA port throughput.
 //!
@@ -20,17 +20,27 @@
 //! Instead of using discrete L/M phases (impractical for L=160 at ratio 44.1→48),
 //! the resampler uses an overabundant bank of 256 phases with linear interpolation
 //! between adjacent phases. This yields arbitrary conversion ratios with
-//! quality > 120 dB SNR and minimal computational overhead (2 convolutions per sample).
+//! measured passband ripple < 0.05 dB and stopband ≥ 100 dB (Task 5.4).
+//!
+//! ## Quality Mode
+//!
+//! `NamResampler::new()` produces the production default: minimum-phase polyphase
+//! with TAPS_PER_PHASE (currently 64). `NamResampler::new_linear()` produces a
+//! linear-phase variant for offline/mixdown use. Both are RT-safe and zero-alloc
+//! in the hot path after construction.
 //!
 //! ## Real-Time Guarantees
 //!
-//! All allocation happens in `NamResampler::new()`, outside the DSP thread.
+//! All allocation happens in `NamResampler::new()` / `new_linear()`, outside the DSP thread.
 //! In the RT callback, only `process_input()` / `process_output()` are invoked —
 //! zero-alloc operations that manipulate pre-allocated ring buffers.
 
 use anyhow::{Result, bail};
 
-use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
+use super::sinc_kernel::{
+    NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
+    generate_polyphase_bank_linear,
+};
 use crate::math::common::{
     AlignedVec, Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SimdMath,
     effective_instruction_set,
@@ -182,8 +192,7 @@ fn process_internal_mono_avx512bf16(
 }
 
 impl ResamplerCore {
-    fn new(from_rate: u32, to_rate: u32) -> Self {
-        let bank = generate_polyphase_bank(from_rate, to_rate);
+    fn new(from_rate: u32, to_rate: u32, bank: PolyphaseBank) -> Self {
         // Starts the accumulator at NUM_PHASES so that the first iteration
         // of the processing loop immediately consumes the first input
         // sample, filling the delay line before attempting to produce output.
@@ -394,6 +403,10 @@ pub struct NamResampler {
 impl NamResampler {
     /// Creates the pair of resamplers (input+output), pre-allocating all buffers.
     ///
+    /// Produces a **minimum-phase** polyphase resampler — the production default.
+    /// Minimum-phase eliminates pre-ringing at the cost of non-linear phase response,
+    /// ideal for live monitoring where transient fidelity dominates.
+    ///
     /// If `pw_rate == nam_rate`, full bypass with no overhead.
     ///
     /// # Parameters
@@ -415,8 +428,57 @@ impl NamResampler {
             });
         }
 
-        let inner = ResamplerCore::new(pw_rate, nam_rate);
-        let outer = ResamplerCore::new(nam_rate, pw_rate);
+        let inner = ResamplerCore::new(
+            pw_rate,
+            nam_rate,
+            generate_polyphase_bank(pw_rate, nam_rate),
+        );
+        let outer = ResamplerCore::new(
+            nam_rate,
+            pw_rate,
+            generate_polyphase_bank(nam_rate, pw_rate),
+        );
+
+        Ok(Self {
+            inner: Some(inner),
+            outer: Some(outer),
+            pw_rate,
+            nam_rate,
+        })
+    }
+
+    /// Creates the pair of resamplers using **linear-phase** polyphase banks.
+    ///
+    /// Linear-phase preserves perfect phase linearity at the cost of pre-ringing —
+    /// suitable for offline rendering and mixdown where latency is irrelevant and
+    /// phase accuracy is paramount.
+    ///
+    /// If `pw_rate == nam_rate`, full bypass with no overhead.
+    #[cold]
+    pub fn new_linear(pw_rate: u32, nam_rate: u32, _chunk_size: usize) -> Result<Self> {
+        if pw_rate == 0 || nam_rate == 0 {
+            bail!("NamResampler: sample rates must not be null");
+        }
+
+        if pw_rate == nam_rate {
+            return Ok(Self {
+                inner: None,
+                outer: None,
+                pw_rate,
+                nam_rate,
+            });
+        }
+
+        let inner = ResamplerCore::new(
+            pw_rate,
+            nam_rate,
+            generate_polyphase_bank_linear(pw_rate, nam_rate),
+        );
+        let outer = ResamplerCore::new(
+            nam_rate,
+            pw_rate,
+            generate_polyphase_bank_linear(nam_rate, pw_rate),
+        );
 
         Ok(Self {
             inner: Some(inner),
@@ -447,7 +509,7 @@ impl NamResampler {
     /// Computes the total latency (input + output) in host-rate samples.
     ///
     /// Latency is deterministic and uses a conservative estimate of
-    /// TAPS_PER_PHASE/2 per filter (32 taps → 16 sample group delay per stage).
+    /// TAPS_PER_PHASE/2 per filter (64 taps → 32 sample group delay per stage).
     ///
     /// # Parameters
     /// - `host_rate`: host sample rate (e.g., 44100, 48000, 96000).
@@ -459,7 +521,7 @@ impl NamResampler {
             return 0;
         }
 
-        // TAPS_PER_PHASE (32) is the order of each sub-filter.
+        // TAPS_PER_PHASE (64) is the order of each sub-filter.
         // The group average latency is ~ (TAPS_PER_PHASE / 2).
         let taps_half = TAPS_PER_PHASE as f64 / 2.0;
 

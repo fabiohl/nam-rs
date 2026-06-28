@@ -9,6 +9,7 @@
 
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
+use crate::dsp::sinc_kernel::TAPS_PER_PHASE;
 
 use std::io;
 use std::io::Read;
@@ -358,9 +359,12 @@ impl CabSimIr {
             pos += chunk;
         }
 
-        // Flush the resampler’s delay line with zeros (TAPS_PER_PHASE=32, plus interpolation)
+        // Flush the resampler's delay line with zeros. Each iteration feeds
+        // MAX_RESAMP_BUF zeros; TAPS_PER_PHASE × 2 iterations ensure the longer
+        // ringdown with the increased tap count is fully drained.
         in_buf.fill(0.0);
-        for _ in 0..64 {
+        let flush_iters = TAPS_PER_PHASE * 2;
+        for _ in 0..flush_iters {
             let written = resampler.process_input_mono(&in_buf, &mut out_l, &mut out_r);
             if written == 0 {
                 break;
