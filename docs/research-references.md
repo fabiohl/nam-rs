@@ -1,0 +1,288 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
+
+# Research References — Annotated Technical Bibliography
+
+Annotated catalog of the scientific and normative literature that underpins the architectural,
+implementation, and quality-assurance decisions of the nam-rs project. Each entry includes a
+complete citation, a relevance annotation, and bidirectional traceability linking it to
+findings in [`TODO-findings.md`](../TODO-findings.md), sprints in
+[`TODO-sprints.md`](../TODO-sprints.md), and source files.
+
+---
+
+## 1. Aliasing Reduction & Anti-Aliasing
+
+### R1 · Sato & Smith III (2025)
+
+**Sato, R.; Smith III, J. O.**
+*"Aliasing Reduction in Neural Amp Modeling by Smoothing Activations."*
+DAFx 2025. arXiv:2505.04082.
+
+**Why relevant to nam-rs.** Demonstrates that neural amp models (WaveNet/TCN) generate significant
+aliasing from nonlinear activation functions, especially on high fundamentals and high gain. Introduces
+the **ASR (Aliasing-to-Signal Ratio)** metric — the key missing measurement in nam-rs's QA arsenal.
+Shows that smoother activations (tanh, Snake) reduce ASR without significantly increasing ESR, directly
+informing the activation precision analysis (P-5) and the trade-off between Padé tanh (fast, clamped)
+and high-fidelity tanh (exact, smoother).
+
+| Traceability | Reference                                                                                |
+|:------------ |:---------------------------------------------------------------------------------------- |
+| Finding      | P-1 (aliasing de ativações não-lineares)                                                 |
+| Sprints      | S2 T2.4 (ASR metric), S5 T5.1 (oversampling opcional)                                    |
+| Files        | `src/math/activations/`, `src/dsp/pipeline/stages/inference.rs`, `src/dsp/oversampling/` |
+
+---
+
+### R2 · Carson, Wright & Bilbao (2025)
+
+**Carson, A.; Wright, A.; Bilbao, S.**
+*"Anti-aliasing of neural distortion effects via model fine tuning."*
+DAFx 2025. arXiv:2505.11375.
+
+**Why relevant to nam-rs.** Shows that fine-tuning for anti-aliasing can outperform 2× oversampling,
+offering an alternative (or complementary) path to reducing aliasing. Motivates the multi-pronged
+approach in S5: oversampling as the primary mechanism (user-controllable), with fine-tuning left as a
+potential future enhancement for shipped `.nam` models.
+
+| Traceability | Reference                                |
+|:------------ |:---------------------------------------- |
+| Finding      | P-1 (aliasing de ativações não-lineares) |
+| Sprints      | S5 T5.1 (oversampling opcional)          |
+| Files        | `src/dsp/oversampling/`                  |
+
+---
+
+### R3 · Kahles, Esqueda & Välimäki (2019)
+
+**Kahles, J.; Esqueda, F.; Välimäki, V.**
+*"Oversampling for Nonlinear Waveshaping: Choosing the Right Filters."*
+Journal of the Audio Engineering Society, 67(6):440–449, 2019.
+
+**Why relevant to nam-rs.** Provides the theoretical foundation and practical filter design
+guidelines for oversampling around nonlinear stages. The half-band Kaiser-window polyphase filter
+adopted in S5 (β=12, 25 taps, >100 dB stopband) follows the design methodology established in this
+paper. Also referenced in the resampler redesign (T5.4) for the HQ polyphase bank.
+
+| Traceability | Reference                                                                       |
+|:------------ |:------------------------------------------------------------------------------- |
+| Finding      | P-1 (filtros de oversampling)                                                   |
+| Sprints      | S5 T5.1 (oversampling opcional), S5 T5.4 (resampler reprojeto HQ)               |
+| Files        | `src/dsp/oversampling/`, `src/dsp/sinc_kernel.rs`, `docs/architecture.md` §5.0O |
+
+---
+
+### R4 · Parker, Zavalishin & Le Bivic (DAFx-16)
+
+**Parker, J. D.; Zavalishin, V.; Le Bivic, E.**
+*"Reducing the Aliasing of Nonlinear Waveshaping Using Continuous-Time Convolution."*
+Proceedings of the 19th International Conference on Digital Audio Effects (DAFx-16), Brno, 2016.
+
+**Why relevant to nam-rs.** Introduces **ADAA (Antiderivative Antialiasing)** of 1st order — a
+low-cost alternative to oversampling for memoryless nonlinearities. Relevant as the theoretical
+baseline against which the oversampling approach was evaluated (S5 T5.1). ADAA was considered but
+ultimately **not adopted** because it would require per-model modification of the activation dispatch
+(polymorphic dispatch conflict); the decision and rationale are documented in
+`docs/architecture.md` §5.0O.
+
+| Traceability | Reference                                              |
+|:------------ |:------------------------------------------------------ |
+| Finding      | P-1 (ADAA alternativa de baixo custo)                  |
+| Sprints      | S5 T5.1 (avaliação ADAA — rejeitada arquiteturalmente) |
+| Files        | `docs/architecture.md` §5.0O                           |
+
+---
+
+### R5 · Bilbao, Esqueda, Parker & Välimäki (2017)
+
+**Bilbao, S.; Esqueda, F.; Parker, J. D.; Välimäki, V.**
+*"Antiderivative Antialiasing for Memoryless Nonlinearities."*
+IEEE Signal Processing Letters, 24(7):1049–1053, 2017.
+
+**Why relevant to nam-rs.** Extends ADAA to a rigorous theoretical framework for memoryless
+nonlinearities (tanh, sigmoid, ReLU). This paper provides the antiderivative formulas applicable
+to the activation functions used in nam-rs's WaveNet and LSTM models. Like R4, ADAA was
+architecturally evaluated and deferred in favor of oversampling; the formulas and feasibility
+analysis are preserved for potential future modes (e.g., embedded/high-performance targets).
+
+| Traceability | Reference                                                    |
+|:------------ |:------------------------------------------------------------ |
+| Finding      | P-1 (ADAA para memoryless — tanh, ReLU)                      |
+| Sprints      | S5 T5.1 (avaliação ADAA)                                     |
+| Files        | `src/math/activations/tanh/`, `src/models/a2/activations.rs` |
+
+---
+
+### R6 · Holters (2019)
+
+**Holters, M.**
+*"Antiderivative Antialiasing for Stateful Systems."*
+Proceedings of the 22nd International Conference on Digital Audio Effects (DAFx-19), Birmingham, 2019.
+
+**Why relevant to nam-rs.** Extends ADAA to systems with internal state — the theoretical bridge to
+applying antialiasing to the LSTM cell itself (stateful recurrent nonlinearity). This paper is
+particularly pertinent because the LSTM head is the primary source of recurrent state quantization
+drift (documented in `docs/lstm_recurrent_drift.md`, finding F-2). While ADAA for stateful systems
+was not implemented, this reference anchors future work should oversampling prove insufficient
+for LSTM-family models at high sample rates.
+
+| Traceability | Reference                                          |
+|:------------ |:-------------------------------------------------- |
+| Finding      | P-1 (ADAA para sistemas com estado — LSTM)         |
+| Sprints      | S5 T5.1 (avaliação ADAA)                           |
+| Files        | `src/models/lstm/`, `docs/lstm_recurrent_drift.md` |
+
+---
+
+## 2. Perceptual Metrics & Loss Functions
+
+### R7 · Wright & Välimäki (2020)
+
+**Wright, A.; Välimäki, V.**
+*"Perceptual Loss Function for Neural Modelling of Audio Systems."*
+IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), Barcelona, 2020.
+arXiv:1911.08922.
+
+**Why relevant to nam-rs.** Introduces perceptual weighting of the error signal (pre-emphasis
+A-weighting curve) in the loss function used to train NAM models. This directly informs the
+perceptual dimension of the activation precision analysis (P-5): the frequency-dependent
+relevance of approximation error — errors in the presence region (~2–5 kHz) are audibly more
+significant than low-frequency errors. The paper also justifies A-weighted ESR as a perceptual
+complement to the standard (flat) ESR metric already implemented in `src/testing/perceptual.rs`.
+
+| Traceability | Reference                                                                                       |
+|:------------ |:----------------------------------------------------------------------------------------------- |
+| Finding      | P-5 (pré-ênfase A-weighting; ESR perceptual)                                                    |
+| Sprints      | S2 T2.3 (activation precision measurement), S5 T5.2 (activation HF mode)                        |
+| Files        | `src/testing/perceptual.rs`, `docs/perceptual_validation.md`, `docs/fastmath-approximations.md` |
+
+---
+
+### R8 · Wright et al. (2020)
+
+**Wright, A.; Damskägg, E.-P.; Juvela, L.; Välimäki, V.**
+*"Real-Time Guitar Amplifier Emulation with Deep Learning."*
+Applied Sciences, 10(3):766, 2020.
+
+**Why relevant to nam-rs.** The seminal paper that defines the **ESR (Error-to-Signal Ratio)**
+metric — the primary scale-invariant fidelity gate adopted by the NAM ecosystem and by
+nam-rs's cross-validation framework. Introduces the WaveNet-based architecture that became the
+NAM standard. Every parity test in `tests/cpp_parity.rs`, `tests/golden_vectors.rs`, and
+`tests/common/validation.rs` uses ESR as the primary hard gate (T3.2, T3.3). Also documents
+the real-time feasibility of neural amp modeling, directly validating nam-rs's low-latency
+live-path design.
+
+| Traceability | Reference                                                                            |
+|:------------ |:------------------------------------------------------------------------------------ |
+| Finding      | P-5 (origem da métrica ESR); F-2 (ESR como gate primário)                            |
+| Sprints      | S1 T1.1–T1.5 (fastmath), S3 T3.1–T3.3 (parity framework), S5 T5.2                    |
+| Files        | `tests/cpp_parity.rs`, `tests/common/validation.rs`, `docs/perceptual_validation.md` |
+
+---
+
+## 3. Measurement & Instrumentation
+
+### R9 · Farina (2000)
+
+**Farina, A.**
+*"Simultaneous measurement of impulse response and distortion with a swept-sine technique."*
+Audio Engineering Society Convention 108, Paris, 2000. Preprint 5093.
+
+**Why relevant to nam-rs.** The foundational technique for measuring frequency response and
+harmonic distortion (per order) from a single exponential sine sweep. This method is the
+theoretical backbone of the spectral fidelity test suite (`tests/spectral_fidelity.rs`, P-3)
+that measures THD, THD+N, IMD, and frequency response per model SKU. Enables versioned
+spectral fingerprinting — the mechanism that converts "does it sound right?" into automated,
+reproducible CI gates.
+
+| Traceability | Reference                                                         |
+|:------------ |:----------------------------------------------------------------- |
+| Finding      | P-3 (suíte de fidelidade espectral — FR, THD por ordem)           |
+| Sprints      | S5 T5.3 (spectral fidelity suite)                                 |
+| Files        | `tests/spectral_fidelity.rs`, `src/testing/`, `src/math/dsp/fft/` |
+
+---
+
+### R10 · AES17
+
+**AES17-2015 (r2020).**
+*"AES standard method for digital audio engineering — Measurement of digital audio equipment."*
+Audio Engineering Society, 2015 (revised 2020).
+
+**Why relevant to nam-rs.** Defines the standardized methodology for **THD+N** measurement:
+sine tone at 997 Hz, notch filter with Q ∈ [1, 5], total energy of residual as THD+N. This
+standard provides the normative reference for nam-rs's THD+N reporting (P-3), ensuring that
+spectral quality metrics are comparable with published amplifier and audio interface
+specifications.
+
+| Traceability | Reference                                    |
+|:------------ |:-------------------------------------------- |
+| Finding      | P-3 (THD+N padronizado)                      |
+| Sprints      | S5 T5.3 (spectral fidelity suite)            |
+| Files        | `tests/spectral_fidelity.rs`, `src/testing/` |
+
+---
+
+### R11 · ITU-R BS.1770-4 / EBU R128 / EBU Tech 3342
+
+**ITU-R BS.1770-4 (2015).**
+*"Algorithms to measure audio programme loudness and true-peak audio level."*
+International Telecommunication Union, 2015.
+
+**EBU R128 (2020).**
+*"Loudness normalisation and permitted maximum level of audio signals."*
+European Broadcasting Union, 2020.
+
+**EBU Tech 3342 (2016).**
+*"Loudness Range: A measure to supplement EBU R128 loudness normalisation."*
+European Broadcasting Union, 2016.
+
+**Why relevant to nam-rs.** The normative trilogy for loudness and true-peak measurement:
+
+- **ITU-R BS.1770-4 Annex 2** defines **true-peak (dBTP)** via 4× oversampled peak detection,
+  the basis for nam-rs's intersample-peak clipping detection (P-3) — replacing the current
+  sample-peak-only flag (`RT_STATUS_HAS_CLIPPED` in `output.rs`).
+- **BS.1770-4 main body + EBU R128** define the two-pass LUFS algorithm (absolute gate −70 LUFS
+  → relative gate −10 LU) — the target upgrade from nam-rs's current single-pass simplified LUFS
+  (`src/testing/perceptual.rs`).
+- **EBU Tech 3342** defines **LRA (Loudness Range)** — a supplemental diagnostic that completes
+  the loudness measurement framework (P-6).
+
+| Traceability | Reference                                                                                         |
+|:------------ |:------------------------------------------------------------------------------------------------- |
+| Finding      | P-6 (LUFS BS.1770-4 pleno, LRA); P-3 (true-peak dBTP)                                             |
+| Sprints      | S2 T2.1 (LUFS), S5 T5.3 (true-peak, spectral fidelity)                                            |
+| Files        | `src/testing/perceptual.rs`, `src/dsp/pipeline/stages/output.rs`, `docs/perceptual_validation.md` |
+
+---
+
+## Reference Index by Finding
+
+| Finding                                      | References                                             |
+|:-------------------------------------------- |:------------------------------------------------------ |
+| P-1 (aliasing de ativações)                  | R1, R2, R3, R4, R5, R6                                 |
+| P-2 (fidelidade do resampler)                | R3                                                     |
+| P-3 (suíte espectral — THD/IMD/FR/true-peak) | R9, R10, R11                                           |
+| P-4 (oráculo f64)                            | — (norma computacional, não referenciada externamente) |
+| P-5 (erro de ativação — precisão)            | R1, R7, R8                                             |
+| P-6 (LUFS/LRA/true-peak)                     | R11                                                    |
+| P-7 (gates de perf/deadline)                 | — (engenharia interna)                                 |
+| P-8 (matriz cross-ISA)                       | — (engenharia interna)                                 |
+| F-2 (ponto cego de fidelidade)               | R8                                                     |
+
+---
+
+## Reference Index by Sprint
+
+| Sprint                                          | References                                   |
+|:----------------------------------------------- |:-------------------------------------------- |
+| S1 (fastmath foundations)                       | R8                                           |
+| S2 (QA infrastructure)                          | R1, R7, R8, R11                              |
+| S3 (parity framework)                           | R8                                           |
+| S5 (spectral fidelity, oversampling, resampler) | R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11 |
+| S6 (documentation)                              | all                                          |
+
+---
+
+*Compiled from findings in [`TODO-findings.md`](../TODO-findings.md) Part II (skill `pesquisador-inovador`, 2026-06-26) and cross-referenced with implementation traces in [`TODO-sprints.md`](../TODO-sprints.md) S1–S6.*

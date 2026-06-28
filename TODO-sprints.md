@@ -978,8 +978,9 @@ decisões dos sprints S1–S5.
 
 ### Tarefa 6.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`docs/research-references.md`](file:///home/fabio/nam-rs/docs/research-references.md) (novo)
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Modificados:**
+  - [`docs/research-references.md`](file:///home/fabio/nam-rs/docs/research-references.md) — created
 - **Descrição:**
   - Catalogar, com **anotação do _porquê é relevante para o nam-rs_**, as fontes da Parte II de
     `TODO-findings.md`: Sato & Smith (DAFx 2025, **ASR**); Carson/Wright/Bilbao (DAFx 2025, anti-aliasing por
@@ -990,6 +991,14 @@ decisões dos sprints S1–S5.
   - Vincular cada referência ao(s) finding(s) `P-x` e ao(s) módulo(s)/tarefa(s) correspondentes (rastreabilidade
     bidirecional).
 - **Critérios de Aceite:** cada referência com citação completa + relevância + link para finding(s) e arquivo(s).
+- **Conclusão:**
+  - Documento criado com 11 referências anotadas (R1–R11) em 3 seções temáticas: Anti-aliasing (R1–R6),
+    Perceptual Metrics (R7–R8), Measurement & Instrumentation (R9–R11).
+  - Cada referência contém: citação completa (autor, título, venue, ano, arXiv/DOI quando aplicável),
+    anotação do _porquê é relevante para o nam-rs_ com contexto de decisão arquitetural, e tabela de
+    rastreabilidade (Finding / Sprints / Files).
+  - Índices de referência cruzada incluídos: por Finding (P-1 a P-8, F-2) e por Sprint (S1–S6), garantindo
+    rastreabilidade bidirecional completa.
 - **Risco:** Baixo.
 
 ### Tarefa 6.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles)
