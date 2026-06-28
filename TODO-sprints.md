@@ -1236,8 +1236,9 @@ Execução do comando `utils/tests-long.sh`. Resultado resumido (7 fases, ~42 mi
 
 ## Conclusão final
 
-Atividades propostas concluídas. Segue anexo o resultado dos testes longos para coleta de insights.
-Faça a mesma análise crítica aqui: Desta rodadas de ajustes e do "quadro geral das coisas".
+Atividades propostas concluídas. Faça a mesma análise crítica aqui: Desta rodadas de ajustes e do "quadro geral das coisas".
+Segue anexo o resultado dos testes longos para coleta de insights.
+Obs: Este erro registrado no "Phase 5" já foi encaminhado para tratamento em outra atividade - possivelmente já resolvido neste momento.
 
 /documentador Em alguns momentos eu vi referências a quantização e oversampling. Cheque pra mim - de forma sintética e ao mesmo tempo clara e precisa - onde estão todas essas coisas (muito especialmente as que não foram trabalhadas aqui neste TODO-sprints.md) e qual o papel delas. Faça também para o oposto (supersimpling, melhorias, etc, que não estão na especificação NAM).
 Identifique se tudo isso é opcional ou obrigatório. Se podem ser removidas ou tornadas opcionais. Se estão bem documentados ou com questões pendentes a resolver.
