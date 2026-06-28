@@ -2,18 +2,18 @@
 """Reference oracle external validation — PyTorch/NumPy f64 anchor.
 
 Validates the Rust f64 reference oracle against the original PyTorch network
-executed in double precision, for ≥ 1 model per family (WaveNet/LSTM/A2).
+executed in double precision, for >= 1 model per family (WaveNet/LSTM/A2).
 
 Usage:
     python3 validate_oracle_f64.py <model.nam> <input.bin> --architecture <WaveNet|LSTM|A2>
 
 The script:
 1. Loads the NAM JSON model
-2. Reconstructs the network in PyTorch/NumPy f64
+2. Reconstructs the network in NumPy f64
 3. Runs inference on the input signal
 4. Outputs the f64 prediction as binary (f64 LE), ready for comparison
 
-Match target: ≤ ~1e-12 vs Rust oracle f64 output.
+Match target: <= ~1e-12 vs Rust oracle f64 output.
 """
 
 import argparse
@@ -30,8 +30,19 @@ def load_nam_json(path: str) -> dict:
         return json.load(f)
 
 
+def load_weights_as_f64(model: dict) -> np.ndarray:
+    """Load NAM model weights preserving f32 binary precision.
+
+    JSON decimal representation of f32 values loses ~1e-8 in f64.
+    Parse as f32 first, then convert to f64, matching the Rust oracle
+    which stores weights as f32 and converts to f64 at compute time.
+    """
+    raw = np.array(model["weights"], dtype=np.float32)
+    return np.array(raw, dtype=np.float64)
+
+
 def read_input_bin(path: str) -> np.ndarray:
-    """Read binary input signal: [u32 num_samples] [f64×N samples]."""
+    """Read binary input signal: [u32 num_samples] [f64*N samples]."""
     with open(path, "rb") as f:
         num = struct.unpack("<I", f.read(4))[0]
         data = np.frombuffer(f.read(num * 8), dtype=np.float64)
@@ -47,127 +58,160 @@ def write_output_bin(path: str, data: np.ndarray):
 # ── WaveNet f64 model ─────────────────────────────────────────────────────
 
 def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
-    """WaveNet forward pass in NumPy f64."""
+    """WaveNet forward pass in NumPy f64.
+
+    Matches the Rust oracle and NAMCore cascaded head chain:
+    - Uses [out_ch][in_ch][kernel] conv weight layout
+    - Layer-outer/frame-inner iteration with in-place buffer updates
+    - Array N seeds its head_accum with array N-1's head projection
+    """
     config = model["config"]
-    weights = np.array(model["weights"], dtype=np.float64)
+    weights = load_weights_as_f64(model)
     head_scale = np.float64(config.get("head_scale", 1.0))
     layers = config.get("layers", [])
 
     if not layers:
         return np.zeros_like(x)
 
-    cursor = 0
+    a_ch = [int(lc.get("channels", 8)) for lc in layers]
+    a_head = [int(lc.get("head_size", 8)) for lc in layers]
+    a_k = [int(lc.get("kernel_size", 3)) for lc in layers]
+    a_dil = [lc.get("dilations", [1, 2, 4, 8]) for lc in layers]
+
+    a_rf = [sum((a_k[ai] - 1) * d for d in a_dil[ai]) for ai in range(len(layers))]
+    max_rf = max(a_rf) + 64
+    max_ch = max(a_ch)
+
     num_frames = len(x)
-    output = np.zeros(num_frames, dtype=np.float64)
+    cursor = 0
 
-    # Parse arrays
-    for ai, lc in enumerate(layers):
-        in_ch = 1 if ai == 0 else prev_head
-        ch = int(lc["channels"])
-        head_ch = int(lc.get("head_size", 8))
-        k = int(lc.get("kernel_size", 3))
-        cond = int(lc.get("condition_size", 1))
-        dilations = lc.get("dilations", [1, 2, 4, 8])
+    a_rech = []
+    a_lws = []
+    a_head_w = []
+    a_head_b = []
 
-        # Rechannel
-        n_rech = in_ch * ch
-        rechannel_w = weights[cursor : cursor + n_rech].reshape(in_ch, ch)
-        cursor += n_rech
+    for ai in range(len(layers)):
+        ch = a_ch[ai]
+        head_ch = a_head[ai]
+        k = a_k[ai]
+        in_ch = 1 if ai == 0 else a_ch[ai - 1]
 
-        # Per-layer weights
-        layer_weights = []
-        for dil in dilations:
-            n_conv = ch * ch * k
-            conv_w = weights[cursor : cursor + n_conv]
-            cursor += n_conv
+        rech_w = weights[cursor : cursor + in_ch * ch].reshape(in_ch, ch)
+        cursor += in_ch * ch
+        a_rech.append(rech_w)
+
+        lws = []
+        for dil in a_dil[ai]:
+            conv_w = weights[cursor : cursor + ch * ch * k].reshape(ch, ch, k)
+            cursor += ch * ch * k
             conv_b = weights[cursor : cursor + ch]
             cursor += ch
-            n_mixin = cond * ch
-            mixin_w = weights[cursor : cursor + n_mixin]
-            cursor += n_mixin
-            n_l1x1 = ch * ch
-            l1x1_w = weights[cursor : cursor + n_l1x1]
-            cursor += n_l1x1
+            mixin_w = weights[cursor : cursor + ch]
+            cursor += ch
+            l1x1_w = weights[cursor : cursor + ch * ch].reshape(ch, ch)
+            cursor += ch * ch
             l1x1_b = weights[cursor : cursor + ch]
             cursor += ch
+            lws.append({
+                "conv_w": conv_w,
+                "conv_b": conv_b,
+                "mixin_w": mixin_w,
+                "l1x1_w": l1x1_w,
+                "l1x1_b": l1x1_b,
+                "dilation": dil,
+            })
+        a_lws.append(lws)
 
-            layer_weights.append(
-                {
-                    "conv_w": conv_w.reshape(ch, k, ch),
-                    "conv_b": conv_b,
-                    "mixin_w": mixin_w.reshape(cond, ch),
-                    "l1x1_w": l1x1_w.reshape(ch, ch),
-                    "l1x1_b": l1x1_b,
-                    "dilation": dil,
-                }
-            )
-
-        # Head
-        n_head = ch * head_ch
-        head_w = weights[cursor : cursor + n_head].reshape(ch, head_ch)
-        cursor += n_head
-        has_head_bias = ai == len(layers) - 1
-        if has_head_bias:
-            head_b = weights[cursor : cursor + head_ch]
+        hw = weights[cursor : cursor + ch * head_ch].reshape(ch, head_ch)
+        cursor += ch * head_ch
+        a_head_w.append(hw)
+        hb = np.zeros(head_ch, dtype=np.float64)
+        if ai == len(layers) - 1:
+            hb = weights[cursor : cursor + head_ch]
             cursor += head_ch
-        else:
-            head_b = np.zeros(head_ch, dtype=np.float64)
+        a_head_b.append(hb)
 
-        # Receptive field
-        rf = sum((k - 1) * d for d in dilations)
-        buf_size = rf + num_frames + 64
-        buf = np.zeros((buf_size, ch), dtype=np.float64)
+    # Shared flat buffer (matching Rust oracle layout)
+    buf_len = max_rf * max_ch * 2 + num_frames * max_ch * 2 + 4096
+    layer_buffer = np.zeros(buf_len, dtype=np.float64)
+    bs = max_rf
 
-        # Fill buffer
+    ch_outs = []
+    head_proj_out = []
+
+    for ai in range(len(layers)):
+        ch = a_ch[ai]
+        head_ch = a_head[ai]
+
+        # Rechannel into flat buffer
         if ai == 0:
-            arr_in = x.reshape(-1).astype(np.float64)
+            for f in range(num_frames):
+                idx = bs + f
+                for c in range(ch):
+                    layer_buffer[idx * ch + c] = x[f] * a_rech[ai][0, c]
         else:
-            arr_in = output.reshape(-1).astype(np.float64)
+            prev_ch_out = ch_outs[ai - 1]
+            prev_ch = a_ch[ai - 1]
+            for f in range(num_frames):
+                idx = bs + f
+                for c in range(ch):
+                    val = np.dot(prev_ch_out[f], a_rech[ai][:, c])
+                    layer_buffer[idx * ch + c] = val
 
-        for f in range(num_frames):
-            idx = rf + f
-            if in_ch == 1:
-                buf[idx] = arr_in[f] * rechannel_w[0]
-            else:
-                inp = arr_in[f * in_ch : (f + 1) * in_ch]
-                buf[idx] = inp @ rechannel_w
+        ha = np.zeros((num_frames, ch), dtype=np.float64)
 
-        # Forward
-        for f in range(num_frames):
-            idx = rf + f
-            current = buf[idx].copy()
-
-            for lw in layer_weights:
+        # Layer-outer / frame-inner iteration (matching Rust)
+        for li, lw in enumerate(a_lws[ai]):
+            for f in range(num_frames):
+                idx = bs + f
                 dil = lw["dilation"]
-                # Conv1d
-                conv_out = lw["conv_b"].copy()
+                k = a_k[ai]
+
+                # Conv1d + bias
+                cv = lw["conv_b"].copy()
                 for oc in range(ch):
                     for kt in range(k):
                         off = dil * (kt + 1 - k)
-                        t_idx = idx + off
-                        if 0 <= t_idx < buf_size:
-                            conv_out[oc] += np.dot(
-                                buf[t_idx], lw["conv_w"][oc, kt]
+                        ins = (idx + off) * ch
+                        if ins >= 0 and ins + ch <= len(layer_buffer):
+                            cv[oc] += np.dot(
+                                layer_buffer[ins : ins + ch],
+                                lw["conv_w"][oc, :, kt],
                             )
 
                 # Mixin
-                cond_val = buf[idx, 0]
-                conv_out += cond_val * lw["mixin_w"][0]
+                cv += x[f] * lw["mixin_w"]
 
                 # Tanh
-                conv_out = np.tanh(conv_out)
+                cv = np.tanh(cv)
 
-                # L1x1 residual
-                residual = conv_out @ lw["l1x1_w"].T + lw["l1x1_b"]
-                current = current + residual
+                # Head accumulate — cascaded seed from previous array
+                if li == 0 and ai > 0:
+                    ha[f] = head_proj_out[ai - 1][f] + cv
+                elif li == 0:
+                    ha[f] = cv
+                else:
+                    ha[f] = ha[f] + cv
 
-            # Head
-            head_out = current @ head_w + head_b
-            output[f] = head_out[0]
+                # L1x1 residual — write to flat buffer
+                for oc in range(ch):
+                    val = lw["l1x1_b"][oc]
+                    for ic in range(ch):
+                        val += cv[ic] * lw["l1x1_w"][oc, ic]
+                    layer_buffer[idx * ch + oc] += val
 
-        prev_head = head_ch
+        # Save per-channel residual output for next array
+        ch_out = np.zeros((num_frames, ch), dtype=np.float64)
+        for f in range(num_frames):
+            idx = bs + f
+            ch_out[f] = layer_buffer[idx * ch : idx * ch + ch]
+        ch_outs.append(ch_out)
 
-    output *= head_scale
+        # Head projection
+        proj = ha @ a_head_w[ai] + a_head_b[ai]
+        head_proj_out.append(proj)
+
+    output = head_proj_out[-1][:, 0] * head_scale
     return output
 
 
@@ -176,7 +220,7 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
 def lstm_forward(model: dict, x: np.ndarray) -> np.ndarray:
     """LSTM forward pass in NumPy f64."""
     config = model["config"]
-    weights = np.array(model["weights"], dtype=np.float64)
+    weights = load_weights_as_f64(model)
     h = int(config.get("hidden_size", 16))
     num_layers = int(config.get("num_layers", 1))
     num_frames = len(x)
@@ -199,10 +243,6 @@ def lstm_forward(model: dict, x: np.ndarray) -> np.ndarray:
         cursor += h
         cell = weights[cursor : cursor + h]
         cursor += h
-
-        # Gate-Major transposition check:
-        # NAM weights_layout determine if transpose is needed.
-        # For 'Original' layout: [gate][row][col] — already what we have.
 
         layers.append(
             {
@@ -273,9 +313,16 @@ A2_HEAD_K = 16
 
 
 def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
-    """A2 forward pass in NumPy f64."""
+    """A2 forward pass in NumPy f64.
+
+    Matches the Rust oracle:
+    - [out_ch][in_ch][kernel] conv weight layout
+    - Head_w transposed from NAM JSON [channel][tap] to [tap][channel]
+    - Linear head accumulator (no ring modulo during writes)
+    - K=16 causal convolution for head finalize
+    """
     config = model["config"]
-    weights = np.array(model["weights"], dtype=np.float64)
+    weights = load_weights_as_f64(model)
     head_scale = np.float64(config.get("head_scale", 1.0))
 
     layers_cfg = config.get("layers", [])
@@ -296,35 +343,38 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         dil = A2_DIL[li]
 
         n_conv = ch * ch * ks
-        conv_w = weights[cursor : cursor + n_conv]
+        conv_w = weights[cursor : cursor + n_conv].reshape(ch, ch, ks)
         cursor += n_conv
         conv_b = weights[cursor : cursor + ch]
         cursor += ch
         mixin_w = weights[cursor : cursor + ch]
         cursor += ch
         n_l1x1 = ch * ch
-        l1x1_w = weights[cursor : cursor + n_l1x1]
+        l1x1_w = weights[cursor : cursor + n_l1x1].reshape(ch, ch)
         cursor += n_l1x1
         l1x1_b = weights[cursor : cursor + ch]
         cursor += ch
 
         layer_weights.append(
             {
-                "conv_w": conv_w.reshape(ch, ks, ch),
+                "conv_w": conv_w,
                 "conv_b": conv_b,
                 "mixin_w": mixin_w,
-                "l1x1_w": l1x1_w.reshape(ch, ch),
+                "l1x1_w": l1x1_w,
                 "l1x1_b": l1x1_b,
                 "ks": ks,
                 "dil": dil,
             }
         )
 
-    # Head
-    n_head = A2_HEAD_K * ch
-    head_w = weights[cursor : cursor + n_head]
-    cursor += n_head
-    head_b = weights[cursor]
+    # Head weights — transpose from [channel][tap] to [tap][channel]
+    head_w_raw = weights[cursor : cursor + A2_HEAD_K * ch]
+    cursor += A2_HEAD_K * ch
+    head_w = np.zeros(A2_HEAD_K * ch, dtype=np.float64)
+    for tap in range(A2_HEAD_K):
+        for c in range(ch):
+            head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_K + tap]
+    head_b = np.float64(weights[cursor])
     cursor += 1
 
     num_frames = len(x)
@@ -332,11 +382,12 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     max_dil = max(A2_DIL)
     max_rf = (max_ks - 1) * max_dil
     hist_size = max_rf + num_frames + 64
-    history = np.zeros((hist_size, ch), dtype=np.float64)
+    history = np.zeros(hist_size * ch, dtype=np.float64)
     bs = max_rf
 
+    # Head accumulator — flat array (no ring modulo during writes)
     hr_len = 1 << (max_rf + num_frames + 64).bit_length()
-    head_acc = np.zeros((hr_len, ch), dtype=np.float64)
+    head_acc = np.zeros(hr_len * ch, dtype=np.float64)
     ring_mask = hr_len - 1
     head_wp = 0
 
@@ -346,24 +397,31 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         fi = bs + f
         x_val = x[f]
 
-        layer_in = x_val * rechannel_w
-        history[fi] = layer_in
+        # Rechannel
+        layer_in = np.zeros(ch, dtype=np.float64)
+        for c in range(ch):
+            layer_in[c] = x_val * rechannel_w[c]
+            history[fi * ch + c] = layer_in[c]
 
         head_col = head_wp
         head_wp += 1
+        ho = head_col * ch
 
         for li, lw in enumerate(layer_weights):
             ks = lw["ks"]
             dil = lw["dil"]
 
-            # Conv1d
+            # Conv1d + bias
             z = lw["conv_b"].copy()
             for oc in range(ch):
                 for kt in range(ks):
                     off = dil * (kt + 1 - ks)
-                    t_idx = fi + off
-                    if 0 <= t_idx < hist_size:
-                        z[oc] += np.dot(history[t_idx], lw["conv_w"][oc, kt])
+                    ins = (fi + off) * ch
+                    if ins >= 0 and ins + ch <= len(history):
+                        z[oc] += np.dot(
+                            history[ins : ins + ch],
+                            lw["conv_w"][oc, :, kt],
+                        )
 
             # Mixin
             z += lw["mixin_w"] * x_val
@@ -371,26 +429,24 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
             # LeakyReLU(0.01)
             z = np.where(z < 0, z * 0.01, z)
 
-            # Head accumulate
-            ho = head_col * ch
+            # Head accumulate — linear write (no modulo), matches Rust oracle
             if li == 0:
-                head_acc[ho % hr_len] = z
+                head_acc[ho : ho + ch] = z[:ch]
             else:
-                head_acc[ho % hr_len] += z
-            # Note: the above is simplified — production uses ring buffer indexing
+                head_acc[ho : ho + ch] += z[:ch]
 
             # L1x1 residual (skip last)
             if li < A2_NLAYERS - 1:
                 residual = z @ lw["l1x1_w"].T + lw["l1x1_b"]
                 layer_in = layer_in + residual
 
-        # Head finalize
+        # Head finalize — K=16 causal convolution
         cb = head_col - (A2_HEAD_K - 1)
         y = head_b
         for t in range(A2_HEAD_K):
             col = (cb + t) & ring_mask
             wo = t * ch
-            y += np.dot(head_acc[col], head_w[wo : wo + ch])
+            y += np.dot(head_acc[col * ch : (col + 1) * ch], head_w[wo : wo + ch])
         output[f] = y * head_scale
 
     return output
@@ -403,7 +459,7 @@ def main():
         description="NAM f64 reference oracle — PyTorch/NumPy anchor"
     )
     ap.add_argument("model", help="Path to .nam JSON model file")
-    ap.add_argument("input", help="Binary input: [u32 N] [f64×N]")
+    ap.add_argument("input", help="Binary input: [u32 N] [f64*N]")
     ap.add_argument(
         "--architecture",
         choices=["WaveNet", "LSTM", "A2"],
@@ -411,7 +467,7 @@ def main():
         help="Model architecture family",
     )
     ap.add_argument(
-        "-o", "--output", help="Output file (binary: [u32 M] [f64×M])"
+        "-o", "--output", help="Output file (binary: [u32 M] [f64*M])"
     )
     args = ap.parse_args()
 
