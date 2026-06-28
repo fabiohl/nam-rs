@@ -903,6 +903,25 @@ pub struct DecompositionResult {
     pub esr_quant_bf16: Option<f64>,
     pub esr_activation: Option<f64>,
     pub esr_accumulation: Option<f64>,
+    pub esr_combined: Option<f64>,
+}
+
+impl DecompositionResult {
+    pub fn esr_quant_f16c_display(&self) -> f64 {
+        self.esr_quant_f16c.unwrap_or(0.0)
+    }
+    pub fn esr_quant_bf16_display(&self) -> f64 {
+        self.esr_quant_bf16.unwrap_or(0.0)
+    }
+    pub fn esr_activation_display(&self) -> f64 {
+        self.esr_activation.unwrap_or(0.0)
+    }
+    pub fn esr_accumulation_display(&self) -> f64 {
+        self.esr_accumulation.unwrap_or(0.0)
+    }
+    pub fn esr_combined_display(&self) -> f64 {
+        self.esr_combined.unwrap_or(0.0)
+    }
 }
 
 pub fn run_decomposition(
@@ -937,6 +956,14 @@ pub fn run_decomposition(
     let out_acc = oracle_forward(model_data, input_signal, &cfg_acc);
     let esr_acc = compute_esr_f64(&oracle_out, &out_acc);
 
+    let combined_cfg = PrecisionConfig {
+        weight_precision: WeightPrecision::F16C,
+        activation: ActivationMode::PadeMinimax,
+        accumulation: AccumulationMode::F32Plain,
+    };
+    let out_combined = oracle_forward(model_data, input_signal, &combined_cfg);
+    let esr_combined = compute_esr_f64(&oracle_out, &out_combined);
+
     DecompositionResult {
         label: label.to_string(),
         architecture: architecture.to_string(),
@@ -945,5 +972,6 @@ pub fn run_decomposition(
         esr_quant_bf16: Some(esr_bf16),
         esr_activation: Some(esr_act),
         esr_accumulation: Some(esr_acc),
+        esr_combined: Some(esr_combined),
     }
 }

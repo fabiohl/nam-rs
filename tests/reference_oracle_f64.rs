@@ -18,7 +18,8 @@ use nam_rs::loader::nam_json::model::NamModelData;
 use nam_rs::loader::nam_json::parse::parse_nam_json;
 use nam_rs::models::NamModel;
 use nam_rs::testing::reference_oracle::{
-    PrecisionConfig, compute_esr_f64, esr_to_db_f64, oracle_forward, run_decomposition,
+    AccumulationMode, ActivationMode, PrecisionConfig, WeightPrecision, compute_esr_f64,
+    esr_to_db_f64, oracle_forward, run_decomposition,
 };
 
 fn models_dir() -> PathBuf {
@@ -59,6 +60,38 @@ fn gen_sweep(n: usize, sample_rate: f64) -> Vec<f64> {
         sig.push(phase.sin() * 0.3);
     }
     sig
+}
+
+fn print_decomposition(result: &nam_rs::testing::reference_oracle::DecompositionResult) {
+    let db = |v: f64| -> f64 {
+        if v <= 0.0 {
+            f64::NEG_INFINITY
+        } else {
+            10.0 * v.log10()
+        }
+    };
+    println!(
+        "{} Decomposition:\n\
+           ESR(f32 vs f64 oracle):  {:.2e} ({:.1} dB)\n\
+           ΔESR f16c weights:       {:.2e} ({:.1} dB)\n\
+           ΔESR bf16 weights:       {:.2e} ({:.1} dB)\n\
+           ΔESR Pade activation:    {:.2e} ({:.1} dB)\n\
+           ΔESR f32 accumulation:   {:.2e} ({:.1} dB)\n\
+           ΔESR combined (F16C+Padé+F32): {:.2e} ({:.1} dB)",
+        result.label,
+        result.esr_f32_vs_f64,
+        db(result.esr_f32_vs_f64),
+        result.esr_quant_f16c_display(),
+        db(result.esr_quant_f16c_display()),
+        result.esr_quant_bf16_display(),
+        db(result.esr_quant_bf16_display()),
+        result.esr_activation_display(),
+        db(result.esr_activation_display()),
+        result.esr_accumulation_display(),
+        db(result.esr_accumulation_display()),
+        result.esr_combined_display(),
+        db(result.esr_combined_display()),
+    );
 }
 
 // ── Basic ESR tests ────────────────────────────────────────────────────────
@@ -138,28 +171,15 @@ fn test_decomposition_wavenet() {
     let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
 
     let result = run_decomposition("WaveNet-official", "WaveNet", &md, &prod_f64, &input_f64);
-    println!(
-        "WaveNet Decomposition:\n\
-           ESR(f32 vs f64 oracle):  {:.2e} ({:.1} dB)\n\
-           ΔESR f16c weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR bf16 weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR Pade activation:    {:.2e} ({:.1} dB)\n\
-           ΔESR f32 accumulation:   {:.2e} ({:.1} dB)",
-        result.esr_f32_vs_f64,
-        esr_to_db_f64(result.esr_f32_vs_f64),
-        result.esr_quant_f16c.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_f16c.unwrap_or(1e-99)),
-        result.esr_quant_bf16.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_bf16.unwrap_or(1e-99)),
-        result.esr_activation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_activation.unwrap_or(1e-99)),
-        result.esr_accumulation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_accumulation.unwrap_or(1e-99)),
-    );
+    print_decomposition(&result);
     assert!(
         result.esr_f32_vs_f64 < 3.0,
         "ESR={:.6e} too high",
         result.esr_f32_vs_f64
+    );
+    assert!(
+        result.esr_combined_display() > 0.0,
+        "Combined ΔESR should be non-zero"
     );
 }
 
@@ -173,25 +193,12 @@ fn test_decomposition_lstm() {
     let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
 
     let result = run_decomposition("LSTM-H3", "LSTM", &md, &prod_f64, &input_f64);
-    println!(
-        "LSTM Decomposition:\n\
-           ESR(f32 vs f64 oracle):  {:.2e} ({:.1} dB)\n\
-           ΔESR f16c weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR bf16 weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR Pade activation:    {:.2e} ({:.1} dB)\n\
-           ΔESR f32 accumulation:   {:.2e} ({:.1} dB)",
-        result.esr_f32_vs_f64,
-        esr_to_db_f64(result.esr_f32_vs_f64),
-        result.esr_quant_f16c.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_f16c.unwrap_or(1e-99)),
-        result.esr_quant_bf16.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_bf16.unwrap_or(1e-99)),
-        result.esr_activation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_activation.unwrap_or(1e-99)),
-        result.esr_accumulation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_accumulation.unwrap_or(1e-99)),
-    );
+    print_decomposition(&result);
     assert!(result.esr_f32_vs_f64 < 1.5);
+    assert!(
+        result.esr_combined_display() > 0.0,
+        "Combined ΔESR should be non-zero"
+    );
 }
 
 #[test]
@@ -204,28 +211,124 @@ fn test_decomposition_a2() {
     let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
 
     let result = run_decomposition("A2-Lite", "WaveNet", &md, &prod_f64, &input_f64);
-    println!(
-        "A2 Decomposition:\n\
-           ESR(f32 vs f64 oracle):  {:.2e} ({:.1} dB)\n\
-           ΔESR f16c weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR bf16 weights:       {:.2e} ({:.1} dB)\n\
-           ΔESR Pade activation:    {:.2e} ({:.1} dB)\n\
-           ΔESR f32 accumulation:   {:.2e} ({:.1} dB)",
-        result.esr_f32_vs_f64,
-        esr_to_db_f64(result.esr_f32_vs_f64),
-        result.esr_quant_f16c.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_f16c.unwrap_or(1e-99)),
-        result.esr_quant_bf16.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_quant_bf16.unwrap_or(1e-99)),
-        result.esr_activation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_activation.unwrap_or(1e-99)),
-        result.esr_accumulation.unwrap_or(0.0),
-        esr_to_db_f64(result.esr_accumulation.unwrap_or(1e-99)),
-    );
+    print_decomposition(&result);
     assert!(
         result.esr_f32_vs_f64 < 0.5,
         "ESR={:.6e} too high",
         result.esr_f32_vs_f64
+    );
+    assert!(
+        result.esr_combined_display() > 0.0,
+        "Combined ΔESR should be non-zero"
+    );
+}
+
+// ── Combined simulation acceptance tests ───────────────────────────────────
+
+fn combined_config() -> PrecisionConfig {
+    PrecisionConfig {
+        weight_precision: WeightPrecision::F16C,
+        activation: ActivationMode::PadeMinimax,
+        accumulation: AccumulationMode::F32Plain,
+    }
+}
+
+#[test]
+fn test_combined_simulation_wavenet() {
+    let path = models_dir().join("wavenet_official.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = gen_sweep(256, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+
+    let prod_f32 = run_f32_inference(&md, &input_f32);
+    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
+    let combined = oracle_forward(&md, &input_f64, &combined_config());
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr_combined_vs_oracle = compute_esr_f64(&oracle, &combined);
+    let esr_combined_vs_prod = compute_esr_f64(&combined, &prod_f64);
+
+    println!(
+        "WaveNet CombinedSim:\n  \
+           ΔESR(combined vs oracle):     {:.2e} ({:.1} dB)\n  \
+           ESR(combined vs production):  {:.2e} ({:.1} dB) (gap = architectural divergence)",
+        esr_combined_vs_oracle,
+        esr_to_db_f64(esr_combined_vs_oracle),
+        esr_combined_vs_prod,
+        esr_to_db_f64(esr_combined_vs_prod),
+    );
+    assert!(
+        esr_combined_vs_oracle > 0.0,
+        "Combined simulation must be active (non-zero ΔESR)"
+    );
+    assert!(
+        esr_combined_vs_prod < 3.0,
+        "Production ESR vs combined sim diverges too far"
+    );
+}
+
+#[test]
+fn test_combined_simulation_lstm() {
+    let path = models_dir().join("lstm.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = gen_sweep(256, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+
+    let prod_f32 = run_f32_inference(&md, &input_f32);
+    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
+    let combined = oracle_forward(&md, &input_f64, &combined_config());
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr_combined_vs_oracle = compute_esr_f64(&oracle, &combined);
+    let esr_combined_vs_prod = compute_esr_f64(&combined, &prod_f64);
+
+    println!(
+        "LSTM CombinedSim:\n  \
+           ΔESR(combined vs oracle):     {:.2e} ({:.1} dB)\n  \
+           ESR(combined vs production):  {:.2e} ({:.1} dB) (gap = architectural divergence)",
+        esr_combined_vs_oracle,
+        esr_to_db_f64(esr_combined_vs_oracle),
+        esr_combined_vs_prod,
+        esr_to_db_f64(esr_combined_vs_prod),
+    );
+    assert!(
+        esr_combined_vs_oracle > 0.0,
+        "Combined simulation must be active (non-zero ΔESR)"
+    );
+    assert!(
+        esr_combined_vs_prod < 1.5,
+        "Production ESR vs combined sim diverges too far"
+    );
+}
+
+#[test]
+fn test_combined_simulation_a2() {
+    let path = models_dir().join("wavenet_a2_lite.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = gen_sweep(256, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+
+    let prod_f32 = run_f32_inference(&md, &input_f32);
+    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
+    let combined = oracle_forward(&md, &input_f64, &combined_config());
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr_combined_vs_oracle = compute_esr_f64(&oracle, &combined);
+    let esr_combined_vs_prod = compute_esr_f64(&combined, &prod_f64);
+
+    println!(
+        "A2 CombinedSim:\n  \
+           ΔESR(combined vs oracle):     {:.2e} ({:.1} dB)\n  \
+           ESR(combined vs production):  {:.2e} ({:.1} dB) (gap = architectural divergence)",
+        esr_combined_vs_oracle,
+        esr_to_db_f64(esr_combined_vs_oracle),
+        esr_combined_vs_prod,
+        esr_to_db_f64(esr_combined_vs_prod),
+    );
+    assert!(
+        esr_combined_vs_oracle > 0.0,
+        "Combined simulation must be active (non-zero ΔESR)"
+    );
+    assert!(
+        esr_combined_vs_prod < 0.5,
+        "Production ESR vs combined sim diverges too far"
     );
 }
 

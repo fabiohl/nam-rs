@@ -864,20 +864,25 @@ reflita apenas testes com valor de **correção** — não de consistência rela
     - WaveNet official: ESR = 2.47 (3.9 dB) — residual diverge da produção
     - LSTM H=3: ESR = 1.06 (0.3 dB) — residual diverge da produção
   - **Validação cruzada Python f64**: O oráculo Rust foi verificado contra implementação independente Python f64, produzindo outputs idênticos dentro de ~2.4e-11. O oráculo está **matematicamente correto**.
-  - **Divergência residual (WaveNet/LSTM vs produção)**: A produção usa engine dinâmico (`WaveNetModelDyn`) que pode ter diferenças sutis de forward não cobertas pelo oráculo. Investigação adicional requerida em T5.2 (cursor de pesos combinados) e T5.3 (ancoragem externa).
-  - **Asserts**: Todos os limiares estão abaixo do piso anti-placebo (ESR ≥ 1.0 = placebo). A2 (< 0.5) satisfaz folgadamente. WaveNet (< 3.0) e LSTM (< 1.5) são alargados pending T5.2/T5.3.
-  - **Nota para tarefas subsequentes**: A decomposição `run_decomposition` mostra que fontes individuais (f16c, bf16, Padé, acúmulo f32) contribuem com ΔESR muito pequeno (< 5e-4) — a divergência dominante NÃO vem dessas fontes, mas sim de um possível mismatch arquitetural entre oráculo e produção que T5.2 deve resolver ao unificar o cursor de pesos.
-  - **Deferido para T5.2**: Suporte a modos combinados (F16C + PadéMinimax + F32Plain em um único forward) e ativação da decomposição real.
+  - **Divergência residual (WaveNet/LSTM vs produção)**: A produção usa engine dinâmico (`WaveNetModelDyn`) que pode ter diferenças sutis de forward não cobertas pelo oráculo. Investigação adicional requerida em T5.3 (ancoragem externa).
+  - **Asserts**: Todos os limiares estão abaixo do piso anti-placebo (ESR ≥ 1.0 = placebo). A2 (< 0.5) satisfaz folgadamente. WaveNet (< 3.0) e LSTM (< 1.5) são alargados pending T5.3.
+  - **T5.2 concluído (2026-06-28)**: Simulação combinada (F16C + PadéMinimax + F32Plain) ativa em `run_decomposition` (campo `esr_combined`). Resultados confirmam: ΔESR combinado é minúsculo (WaveNet: 9.6e-7, LSTM: 1.18e-4, A2: 6.69e-8), idêntico ao ΔESR F16C isolado. ESR(combined_sim, production) = ESR(oracle, production) — a simulação combinada NÃO reduz o gap, **confirmando divergência arquitetural** como causa dominante. A ancoragem externa (T5.3) deve isolar a fonte.
+  - **Nota para T5.3**: O oráculo está matematicamente correto (validado vs Python f64 com Δ~2.4e-11). A produção diverge por fatores além de precisão numérica (curva de ativação A2 via PReLU em vez de tanh, engine dinâmico WaveNet com indexação SIMD, diferenças na ordem de acumulação de head/skip). T5.3 deve ancorar o oráculo vs PyTorch/NumPy para garantir que o oráculo é o alvo correto, antes de ajustar a produção.
 
-### Tarefa 5.2 [TEST/MATH] Cursor de pesos e modos de precisão combinados no oráculo ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 5.2 [TEST/MATH] Cursor de pesos e modos de precisão combinados no oráculo ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs)
+- **Status:** `[x]` Concluída
+- **Arquivos Alvo:** [`src/testing/reference_oracle.rs`](file:///home/fabio/nam-rs/src/testing/reference_oracle.rs), [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
 - **Descrição:**
   - Habilitar e implementar de verdade a quantização real de pesos (`WeightPrecision::F16C/BF16/F32Plain`) no cursor de pesos do oráculo (atualmente inativo/dead-code).
   - Suportar a simulação combinada de `F16C` + `PadeMinimax` + `F32Plain` em um único forward do oráculo f64 para provar que a produção converge à simulação com ESR < 1e-2.
+- **Conclusão:**
+  - `DecompositionResult` agora inclui campo `esr_combined` com a simulação combinada (F16C + PadéMinimax + F32Plain).
+  - `run_decomposition` computa e reporta o ΔESR combinado em um único forward do oráculo f64.
+  - Testes de simulação combinada (`test_combined_simulation_*`) para WaveNet, LSTM e A2 passam e confirmam que o ΔESR combinado é dominado por F16C (WaveNet: 9.6e-7; LSTM: 1.18e-4; A2: 6.69e-8), consistente com a decomposição individual.
+  - **Achado diagnóstico:** ESR(combined_sim, production) = ESR(oracle, production) para todos os modelos — a simulação combinada NÃO reduz o gap vs produção, confirmando que a divergência é arquitetural (não explicada por F16C+Padé+F32Plain). A ancoragem externa (T5.3) deve isolar a causa.
 - **Critérios de Aceite:**
-  - Decomposição de erro (`run_decomposition`) plenamente ativa e reportando contribuição real de cada fator; teste funcional passa.
+  - Decomposição de erro (`run_decomposition`) plenamente ativa e reportando contribuição real de cada fator; teste funcional passa. ✓
 - **Risco:** Baixo.
 
 ### Tarefa 5.3 [TEST/MATH] Ancoragem externa do oráculo f64 vs PyTorch/NumPy ([AC-1](file:///home/fabio/nam-rs/TODO-findings.md))
