@@ -76,10 +76,10 @@ These dynamic paths use heap-allocated `Vec`-based arrays for weights and states
 
 NAM-rs provides two activation precision modes, selectable via the `ActivationPrecision` enum in `src/math/activations/mod.rs`. The mode is set once at initialisation (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor specialises to the active path during steady-state inference.
 
-| Mode              | Tanh Error (max) | Sigmoid Error (max) | Use Case                   |
-|:----------------- |:---------------- |:------------------- |:-------------------------- |
-| **Standard**      | ~2.32e-3         | ~4.09e-4            | Live, production default   |
-| **HighFidelity**  | ~2.4e-7          | ~2.1e-7             | Offline rendering, mixdown |
+| Mode             | Tanh Error (max) | Sigmoid Error (max) | Use Case                   |
+|:---------------- |:---------------- |:------------------- |:-------------------------- |
+| **Standard**     | ~2.32e-3         | ~4.09e-4            | Live, production default   |
+| **HighFidelity** | ~2.4e-7          | ~2.1e-7             | Offline rendering, mixdown |
 
 - **Standard** (`ActivationPrecision::Standard = 0`): Padé [5,4] tanh + minimax degree-17 sigmoid. Fastest path — ~54 ns for 256-element slice (AVX2).
 - **HighFidelity** (`ActivationPrecision::HighFidelity = 1`): Polynomial exp-based kernels with degree-6 Taylor minimax and integer range reduction. Error is ~10,000× lower than Standard, reducing aliasing from activations at higher per-element compute cost.
@@ -240,12 +240,12 @@ NAM-rs uses a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampl
 
 ### Quality Metrics (TAPS_PER_PHASE = 64, Task 5.4 QA)
 
-| Rate Pair    | Passband Ripple | Stopband Attenuation | SNR (multitone vs. soxr) |
-|:------------ |:--------------- |:-------------------- |:------------------------ |
-| 44.1→48 kHz  | < 0.05 dB       | ≥ 105 dB             | ≥ 100 dB                 |
-| 48→44.1 kHz  | < 0.02 dB       | ≥ 105 dB             | ≥ 100 dB                 |
-| 48→96 kHz    | < 0.02 dB       | ≥ 110 dB             | ≥ 100 dB                 |
-| 96→48 kHz    | < 0.02 dB       | ≥ 115 dB             | ≥ 100 dB                 |
+| Rate Pair   | Passband Ripple | Stopband Attenuation | SNR (multitone vs. soxr) |
+|:----------- |:--------------- |:-------------------- |:------------------------ |
+| 44.1→48 kHz | < 0.05 dB       | ≥ 105 dB             | ≥ 100 dB                 |
+| 48→44.1 kHz | < 0.02 dB       | ≥ 105 dB             | ≥ 100 dB                 |
+| 48→96 kHz   | < 0.02 dB       | ≥ 110 dB             | ≥ 100 dB                 |
+| 96→48 kHz   | < 0.02 dB       | ≥ 115 dB             | ≥ 100 dB                 |
 
 ### Architecture
 
@@ -307,18 +307,18 @@ Each 2× stage uses a **Kaiser-windowed half-band FIR filter** (25 taps, β=12, 
 
 ### Modes
 
-| Factor                 | Stages | Latency (samples @ native) | Aliasing Suppression |
-|:---------------------- |:------:|:-------------------------- |:-------------------- |
-| `Off` (default)        | 0      | 0                          | None — pass-through  |
-| `X2`                   | 1      | 12 (0.27 ms @ 44.1 kHz)    | ~100 dB stop-band    |
-| `X4`                   | 2      | 24 (0.54 ms @ 44.1 kHz)    | ~200 dB stop-band    |
+| Factor          | Stages | Latency (samples @ native) | Aliasing Suppression |
+|:--------------- |:------:|:-------------------------- |:-------------------- |
+| `Off` (default) | 0      | 0                          | None — pass-through  |
+| `X2`            | 1      | 12 (0.27 ms @ 44.1 kHz)    | ~100 dB stop-band    |
+| `X4`            | 2      | 24 (0.54 ms @ 44.1 kHz)    | ~200 dB stop-band    |
 
 ### Quality Modes
 
-| Mode       | Description                                                                                                  | Target                 |
-|:---------- |:------------------------------------------------------------------------------------------------------------ |:---------------------- |
-| **Live**   | `Off` (default). Zero overhead — neural model runs at host sample rate. Suitable for low-latency monitoring. | Minimal latency        |
-| **HQ**     | 4× oversampling. Maximum aliasing suppression for offline rendering, mixdown, and critical listening.        | Maximum fidelity       |
+| Mode     | Description                                                                                                  | Target           |
+|:-------- |:------------------------------------------------------------------------------------------------------------ |:---------------- |
+| **Live** | `Off` (default). Zero overhead — neural model runs at host sample rate. Suitable for low-latency monitoring. | Minimal latency  |
+| **HQ**   | 4× oversampling. Maximum aliasing suppression for offline rendering, mixdown, and critical listening.        | Maximum fidelity |
 
 ### RT-Safety
 
@@ -409,6 +409,67 @@ In standalone mode, the `--cab <path>` CLI flag triggers IR loading; the `cabsim
 
 For full architectural decisions on validation and cross-reference, see [TODO-sprints.md](../TODO-sprints.md) (Épico 4).
 
+## 5.3 Measurement & Spectral Analysis Framework
+
+NAM-rs includes a comprehensive off-RT measurement library (`src/testing/`) that serves as the quantitative backbone for fidelity validation, perceptual benchmarking, and regression detection. All functions allocate on the heap and are **not** safe for the DSP real-time callback — they are designed for integration tests, offline QA tooling, and one-shot main-thread telemetry.
+
+### Module Map
+
+| Module                     | File                                                                    | Capability                                                                                                                                                                                                                              |
+|:-------------------------- |:----------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ASR** (Aliasing)         | [`src/testing/aliasing.rs`](../src/testing/aliasing.rs)                 | Aliasing-to-Signal Ratio per Sato & Smith (DAFx 2025). Sine → FFT → harmonic vs. aliased bin classification. Used by `tests/spectral_fidelity.rs`.                                                                                      |
+| **Spectral**               | [`src/testing/spectral.rs`](../src/testing/spectral.rs)                 | Farina exponential sweep FR+THD per harmonic (AES 108, 2000), AES17 THD+N @ 997 Hz, SMPTE/DIN IMD (60 Hz + 7 kHz, 4:1).                                                                                                                 |
+| **Perceptual**             | [`src/testing/perceptual.rs`](../src/testing/perceptual.rs)             | ES-R (Error-to-Signal Ratio), BS.1770-4 integrated LUFS (2-pass gating), EBU Tech 3342 LRA, BS.1770-4 Annex 2 true-peak (4× polyphase FIR, 48 taps), MR-STFT, K-weighting.                                                              |
+| **Reference Oracle (f64)** | [`src/testing/reference_oracle.rs`](../src/testing/reference_oracle.rs) | Double-precision forward pass for WaveNet/LSTM/A2. Anchors NAM-rs against absolute numerical truth — independent of C++ or any external reference. Decomposes error by source (activation precision, weight compression, accumulation). |
+| **Stress Signals**         | [`src/testing/stress.rs`](../src/testing/stress.rs)                     | Deterministic multi-component test signals (guitar harmonics, chirp, transients) for cross-model validation. Two profiles: `v1` (basic) and `v2` (extended).                                                                            |
+| **MUSHRA Primitives**      | [`src/testing/mushra.rs`](../src/testing/mushra.rs)                     | MIT-ported deterministic PRNG + audio DSP primitives (gain, filters, soft-clip) for test stimulus generation.                                                                                                                           |
+| **WAV I/O**                | [`src/testing/wav.rs`](../src/testing/wav.rs)                           | Pure-Rust IEEE float32 mono WAV read/write — zero external crate dependencies.                                                                                                                                                          |
+
+### Key Metrics and Their Gates
+
+| Metric              | Function                                 | Gate (pass threshold)                        | Standard                      |
+|:------------------- |:---------------------------------------- |:-------------------------------------------- |:----------------------------- |
+| **ASR**             | `compute_asr()`                          | < −70 dB (per Sato & Smith)                  | DAFx 2025                     |
+| **ES-R**            | `compute_esr()` + `esr_to_db()`          | Per-model calibrated (SNR + ES-R compound)   | Wright et al. Appl. Sci. 2020 |
+| **THD+N**           | `measure_thdn()`                         | < −60 dB @ 997 Hz, −20 dBFS                  | AES17                         |
+| **FR ripple**       | `farina_measure()`                       | Passband < 0.5 dB, stopband < −80 dB         | Farina AES 2000               |
+| **Integrated LUFS** | `compute_integrated_lufs()`              | Absolute gate −70 LUFS, relative gate −10 LU | ITU-R BS.1770-4               |
+| **LRA**             | `compute_lra()`                          | Statistical distribution of short-term LUFS  | EBU Tech 3342                 |
+| **True-peak**       | `compute_true_peak_db()`                 | Inter-sample overs > 0 dBFS detected         | BS.1770-4 Annex 2             |
+| **Oracle ES-R**     | `oracle_forward()` + `decompose_error()` | Per-model ESR vs. f64 ground truth           | Absolute numerical truth      |
+
+### True-Peak vs. Sample-Peak (RT-Safety Decision)
+
+The audio-thread hot-path (`src/dsp/pipeline/stages/output.rs`) uses traditional sample-peak detection to set the `RT_STATUS_HAS_CLIPPED` flag — a single comparison per sample with zero overhead. True-peak measurement per BS.1770-4 Annex 2 requires a 48-tap polyphase FIR × 4× oversampling (~48 MAC/sample), which would exceed the real-time budget.
+
+The off-RT true-peak functions (`compute_true_peak_db()`, `find_true_peak_overs()`) in `src/testing/perceptual.rs` expose the full BS.1770-4 dBTP pipeline for integration tests and optional main-thread telemetry. The integrated LUFS + LRA + true-peak computation is available as a single-pass function `measure_loudness()` returning a `LoudnessResult` struct.
+
+### Integration Test Mapping
+
+| Test File                                                           | Metrics Exercised                                   | Models Covered                     |
+|:------------------------------------------------------------------- |:--------------------------------------------------- |:---------------------------------- |
+| [`tests/spectral_fidelity.rs`](../tests/spectral_fidelity.rs)       | ASR, THD+N, IMD, Farina FR per harmonic             | All SKUs (11 fast + 4 model tests) |
+| [`tests/reference_oracle_f64.rs`](../tests/reference_oracle_f64.rs) | Oracle ES-R + error source decomposition            | LSTM, WaveNet, A2                  |
+| [`tests/cpp_parity.rs`](../tests/cpp_parity.rs)                     | ES-R, MSE, SNR, MR-STFT, LUFS, dBTP vs. C++ NAMCore | All SKUs × sample rates            |
+| [`tests/isa_parity.rs`](../tests/isa_parity.rs)                     | Output parity scalar vs. AVX2 vs. AVX-512 per model | All architectures                  |
+| [`tests/activation_precision.rs`](../tests/activation_precision.rs) | ES-R via oracle for Standard vs. HighFidelity       | WaveNet, ConvNet, Linear           |
+
+Baseline fingerprints for ASR/THD/FR are versioned in [`tests/fixtures/spectral_fidelity_baseline.json`](../tests/fixtures/spectral_fidelity_baseline.json) and regenerated via `--accept` flag on the spectral fidelity test binary.
+
+### f64 Reference Oracle Architecture
+
+The f64 oracle (`src/testing/reference_oracle.rs`) performs a full double-precision forward pass for WaveNet, LSTM, and A2 models using configurable precision parameters (`PrecisionConfig`):
+
+- **Weight Precision:** `F64` (reference), `F32`, `F16`, `BF16` — simulates any compression format.
+- **Activation Mode:** `TanhF64` (libm, reference), `TanhF32Standard` (Padé [5,4]), `TanhF32HighFidelity` (polynomial exp) — isolates activation error from accumulation error.
+- **Accumulation Mode:** `F64` (reference), `F32` — isolates floating-point rounding from weight precision.
+
+The `decompose_error()` function partitions the total ES-R into components attributable to each precision dimension, enabling targeted optimization. This is the project's absolute ground truth — it answers "how close is NAM-rs to mathematically ideal inference?" rather than "how close is NAM-rs to C++?"
+
+> **References:** [`src/testing/perceptual.rs`](../src/testing/perceptual.rs), [`src/testing/spectral.rs`](../src/testing/spectral.rs), [`src/testing/aliasing.rs`](../src/testing/aliasing.rs), [`src/testing/reference_oracle.rs`](../src/testing/reference_oracle.rs), [`docs/perceptual_validation.md`](perceptual_validation.md), [`docs/research-references.md`](research-references.md).
+
+---
+
 ## 6. Testing Strategy & Quality
 
 The testing philosophy of NAM-rs prioritizes **quality over quantity**: we maintain only the layers that provide high-confidence signals, without circular redundancies.
@@ -423,17 +484,17 @@ The project follows a strict hierarchy to ensure internal logic and the public A
 
 ### Active Layers
 
-| Layer                         | Location                                         | Strength as Ground Truth         | What it captures                                                                                                                                                                                            |
-|:----------------------------- |:------------------------------------------------ |:-------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/nam_infer_test.rs`, `tests/cpp_parity.rs` | ✅✅ External anchoring to C++   | Errors in kernel composition, end-to-end regressions, and parity vs. canonical reference (NeuralAmpModelerCore).                                                                                            |
-| **PropTests (random)**        | `tests/proptest_math.rs`                         | ✅ native `f64` and `f32::tanh()`| SIMD numerical errors (RMSE) and SIMD vs. Scalar parity over a wide input space.                                                                                                                            |
-| **Bit Unit Tests**            | `src/math/common/tests.rs`                       | ✅ Direct bit operation          | Correctness of f32↔bf16/f16 conversion, FMA, and hardware setup (DAZ/FTZ).                                                                                                                                  |
-| **A1/A2 Compatibility**       | `tests/a2_loader.rs`                             | ✅ Format Specification          | Ensures new loaders accept old models (Regression) and perform correct fallback to A2.                                                                                                                      |
-| **NAMB v2 Validation**        | `tests/namb_v2_validation.rs`                    | ✅ Layout Specification          | Validates correctness of the pre-transposed layout (Gate-Major/Interleaved) vs. classic loading.                                                                                                            |
-| **PipeWire Integration**      | `tests/pw_integration_test.rs`                   | —                                | PipeWire host initialization, buffer processing, and safe teardown.                                                                                                                                         |
-| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                        | —                                | Ensures the hot-path does not allocate heap via `CountingAllocator` (RT-Safety).                                                                                                                            |
-| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                      | —                                | ~45,000 adversarial inputs against JSON/.namb parsers to prevent vulnerabilities and panics.                                                                                                                |
-| **Soak Test (Endurance)**     | `tests/soak_test.rs`                             | —                                | Long-duration numerical stability (10M+ frames). `#[ignore]` in CI; run via `bash utils/tests-long.sh`. **Known limitation:** `test_lstm_noise_soak` requires non-zero weights (see `TODO-findings.md#C2`). |
+| Layer                         | Location                                         | Strength as Ground Truth          | What it captures                                                                                                                                                                                            |
+|:----------------------------- |:------------------------------------------------ |:--------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Golden Vectors**            | `tests/nam_infer_test.rs`, `tests/cpp_parity.rs` | ✅✅ External anchoring to C++    | Errors in kernel composition, end-to-end regressions, and parity vs. canonical reference (NeuralAmpModelerCore).                                                                                            |
+| **PropTests (random)**        | `tests/proptest_math.rs`                         | ✅ native `f64` and `f32::tanh()` | SIMD numerical errors (RMSE) and SIMD vs. Scalar parity over a wide input space.                                                                                                                            |
+| **Bit Unit Tests**            | `src/math/common/tests.rs`                       | ✅ Direct bit operation           | Correctness of f32↔bf16/f16 conversion, FMA, and hardware setup (DAZ/FTZ).                                                                                                                                  |
+| **A1/A2 Compatibility**       | `tests/a2_loader.rs`                             | ✅ Format Specification           | Ensures new loaders accept old models (Regression) and perform correct fallback to A2.                                                                                                                      |
+| **NAMB v2 Validation**        | `tests/namb_v2_validation.rs`                    | ✅ Layout Specification           | Validates correctness of the pre-transposed layout (Gate-Major/Interleaved) vs. classic loading.                                                                                                            |
+| **PipeWire Integration**      | `tests/pw_integration_test.rs`                   | —                                 | PipeWire host initialization, buffer processing, and safe teardown.                                                                                                                                         |
+| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                        | —                                 | Ensures the hot-path does not allocate heap via `CountingAllocator` (RT-Safety).                                                                                                                            |
+| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                      | —                                 | ~45,000 adversarial inputs against JSON/.namb parsers to prevent vulnerabilities and panics.                                                                                                                |
+| **Soak Test (Endurance)**     | `tests/soak_test.rs`                             | —                                 | Long-duration numerical stability (10M+ frames). `#[ignore]` in CI; run via `bash utils/tests-long.sh`. **Known limitation:** `test_lstm_noise_soak` requires non-zero weights (see `TODO-findings.md#C2`). |
 
 ### Validation Pyramid: Complementary Roles of Scalar Reference and Golden Vectors
 
@@ -713,11 +774,55 @@ Parameters (e.g., gain, gate threshold, bypass state, and neural model files) ar
 - **Host DAW Events Queue:** The host DAW feeds sample-accurate automation and MIDI events into the processing block's input queue. The RT thread reads these events sequentially to update local parameter targets.
 - **GUI Atomics Sync:** GUI controls (e.g., egui knobs) write parameter updates to atomic variables in `NamClapShared::ui_to_rt` and increment `gui_param_generation` using `Release` ordering. The RT thread performs an `Acquire` check of the generation count; if they differ, it pulls the updated atomic values and aligns local targets.
 
-### 8.2.3 Oversampling Control (CLI + CLAP GUI)
+### 8.2.3 User Control Surface (CLI + CLAP GUI + Host Automation)
 
-The oversampling mode is exposed to users through two surfaces:
+NAM-rs exposes a unified parameter set across standalone CLI and CLAP plugin surfaces, with parameter synchronization following the lock-free SPSC protocol described in §8.2.2.
 
-**CLI (Standalone mode):**
+#### Full Parameter Matrix
+
+| Parameter      | CLI Flag                        | CLAP Param ID | CLAP GUI Zone | Type           | Sync Strategy            |
+|:-------------- |:------------------------------- |:------------- |:------------- |:-------------- |:------------------------ |
+| Model file     | `-m`, `--model <FILE>`          | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadModel` payload |
+| Cabsim IR      | `-c`, `--cab <FILE>`            | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadCabIr` payload |
+| Input gain     | `-i`, `--input-gain <DB>`       | ID=0          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Output gain    | `-o`, `--output-gain <DB>`      | ID=1          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Gate threshold | (reserved)                      | ID=2          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Bypass         | (CLAP-only)                     | ID=3          | Zone 4        | `bool`         | Atomic + DAW auto        |
+| Buffer size    | `-b`, `--buffer-size <SAMPLES>` | (host-driven) | —             | `u32`          | CLI-only, at startup     |
+| Slim override  | `--slim auto\|full\|lite`       | ID=6          | Zone 5        | `SlimOverride` | SPSC `SetSlim` payload   |
+| Oversampling   | `--oversample off\|2x\|4x`      | ID=7          | Zone 2        | stepped enum   | SPSC off-RT rebuild      |
+| Diagnose       | `--diagnose`                    | —             | —             | `bool`         | CLI-only, immediate exit |
+| Diagnose full  | `--diagnose-full`               | —             | —             | `bool`         | CLI-only, immediate exit |
+
+#### CLI (Standalone Mode)
+
+All parameters are parsed in `src/standalone/cli.rs` via the `CliArgs` struct. Model, cab, and oversample parameters require off-RT resource allocation (file loading, filter construction) and are sent via SPSC `ParamPayload` to the DSP thread. Gain and buffer-size parameters are applied during `RtSetup` initialization. The `--slim` flag overrides the Adaptive Compute FSM with a fixed quality level (Auto/Full/Lite). The `--diagnose` flag prints a technical support block and exits immediately — no audio processing.
+
+```text
+nam-rs -m /path/to/model.nam -c /path/to/cab.wav \
+       --input-gain 3.0 --output-gain -2.5 \
+       --buffer-size 128 --slim full --oversample 4x
+```
+
+#### CLAP GUI (Zones)
+
+The CLAP GUI is decomposed into 5 visual zones rendered by `draw_ui()` in `src/clap/gui/ui/mod.rs`:
+
+| Zone | File                                                              | Content                                                                               |
+|:---- |:----------------------------------------------------------------- |:------------------------------------------------------------------------------------- |
+| 1    | [`zones/identity.rs`](../src/clap/gui/ui/zones/identity.rs)       | Logo + model/cab file browser (`.nam`, `.namb`, `.wav`)                               |
+| 2    | [`zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs)       | Rotary knobs: Input Gain, Output Gain, Gate Threshold; segmented Oversampling control |
+| 3    | [`zones/meters.rs`](../src/clap/gui/ui/zones/meters.rs)           | Adaptive VU meters (mono/stereo) with OpenGL-accelerated glow                         |
+| 4    | [`zones/bypass_zone.rs`](../src/clap/gui/ui/zones/bypass_zone.rs) | Bypass toggle switch                                                                  |
+| 5    | [`status_bar/`](../src/clap/gui/ui/status_bar/)                   | Footer: DSP load %, sample rate, latency, SIMD badge, model metadata, toast alerts    |
+
+Zone 2 knobs use a custom high-precision rotary widget (`knob.rs`) with drag gesture, fine-tune (Shift+drag), and double-click reset. All controls follow the CLAP gesture protocol (`clap_process_start(CLAP_EVENT_PARAM_GESTURE_BEGIN)` → parameter set → `clap_process(CLAP_EVENT_PARAM_GESTURE_END)`), ensuring DAW automation recording compatibility.
+
+#### Oversampling Control (CLI + CLAP GUI)
+
+The oversampling mode is exposed through two surfaces:
+
+**CLI:**
 
 ```text
 nam-rs --oversample off     # Default: no oversampling, zero overhead
@@ -725,15 +830,15 @@ nam-rs --oversample 2x      # 2× oversampling (one half-band stage, 12-sample l
 nam-rs --oversample 4x      # 4× oversampling (two cascaded stages, 24-sample latency)
 ```
 
-Parsed in `src/standalone/cli.rs` and propagated via `ParamPayload::SetOversample`. The alias `--os` is also accepted.
+The alias `--os` is also accepted.
 
-**CLAP GUI (Zone 2):**
+**CLAP GUI:**
 
-A segmented control labeled "Oversampling" with three selectable options (**Off** | **2×** | **4×**), rendered below the Input/Output Gain and Gate Threshold knobs in `src/clap/gui/ui/zones/controls.rs`. The control uses `egui::selectable_value` with CLAP gesture protocol (`set_gesture` + `bump_generation`).
+A segmented control labeled "Oversampling" with three selectable options (**Off** | **2×** | **4×**), rendered in Zone 2 below the gain knobs. Uses `egui::selectable_value` with CLAP gesture protocol.
 
 **CLAP host automation:**
 
-`PARAM_OVERSAMPLE` (ID=7) is a stepped parameter (0=Off, 1=2×, 2=4×) with flags `IS_AUTOMATABLE | IS_STEPPED`. Hosts can automate the parameter, but transitions are **not sample-accurate** — they trigger an off-RT rebuild of the oversampling engine.
+`PARAM_OVERSAMPLE` (ID=7) is a stepped parameter (0=Off, 1=2×, 2=4×) with flags `IS_AUTOMATABLE | IS_STEPPED`. Hosts can automate the parameter, but transitions are **not sample-accurate** — they trigger an off-RT rebuild of the oversampling engine via the protocol below.
 
 **Off-RT rebuild protocol:**
 
@@ -744,7 +849,7 @@ A segmented control labeled "Oversampling" with three selectable options (**Off*
 
 This is the same lock-free GC cascade pattern used for model hot-swap.
 
-> **References:** [`src/clap/gui/ui/zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs), [`src/clap/processor/events.rs`](../src/clap/processor/events.rs), [`src/clap/plugin/main_thread/housekeeping.rs`](../src/clap/plugin/main_thread/housekeeping.rs), [`src/standalone/cli.rs`](../src/standalone/cli.rs).
+> **References:** [`src/standalone/cli.rs`](../src/standalone/cli.rs), [`src/clap/gui/ui/zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs), [`src/clap/gui/ui/zones/identity.rs`](../src/clap/gui/ui/zones/identity.rs), [`src/clap/gui/ui/zones/meters.rs`](../src/clap/gui/ui/zones/meters.rs), [`src/clap/gui/ui/zones/bypass_zone.rs`](../src/clap/gui/ui/zones/bypass_zone.rs), [`src/clap/gui/ui/status_bar/orchestrator.rs`](../src/clap/gui/ui/status_bar/orchestrator.rs), [`src/clap/processor/events.rs`](../src/clap/processor/events.rs), [`src/clap/plugin/main_thread/housekeeping.rs`](../src/clap/plugin/main_thread/housekeeping.rs), [`docs/gui-architecture.md`](gui-architecture.md).
 
 ---
 
@@ -884,15 +989,15 @@ The graphical interface is decomposed from its original monolithic state into a 
 
 ## 9. Error Catalog (NamErrorCode)
 
-Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`.
+Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`. The table below shows the category ranges with representative examples; the complete catalog of 40+ codes lives in the source enum.
 
-| Range   | Category                   | Examples                                                |
-|:------- |:-------------------------- |:------------------------------------------------------- |
-| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1201` NAMB_CRC32_MISMATCH     |
-| `E2xxx` | PipeWire / Audio           | `E2100` PIPEWIRE_INIT_FAILED, `E2300` SCHED_FIFO_DENIED |
-| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW         |
-| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND     |
-| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*          |
+| Range   | Category                   | Examples                                                                                                                                     |
+|:------- |:-------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1200` NAM_JSON_PARSE_ERROR, `E1201` NAMB_CRC32_MISMATCH, `E1300` UNSUPPORTED_ARCHITECTURE, `E1304` MODEL_TOO_LARGE |
+| `E2xxx` | PipeWire / Audio / RT      | `E2001` DEADLINE_EXCEEDED, `E2100` PIPEWIRE_INIT_FAILED, `E2200` RESAMPLER_BUILD_FAILED, `E2300` SCHED_FIFO_DENIED                           |
+| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW, `E3102` GC_CORRUPTED                                                                        |
+| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND, `E4102` CTRL_C_HANDLER_FAILED, `E4103` IR_LOAD_FAILED                                   |
+| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*                                                                                               |
 
 Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` skill (see [SKILL.md](../.agents/skills/diagnostico/SKILL.md)).
 

@@ -976,7 +976,7 @@ decisões dos sprints S1–S5.
 
 ---
 
-### Tarefa 6.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada
+### Tarefa 6.1 [DOC] Criar `docs/research-references.md` — bibliografia técnica anotada [DONE]
 
 - **Status:** `[x]` Concluída (2026-06-27)
 - **Arquivos Modificados:**
@@ -1001,15 +1001,17 @@ decisões dos sprints S1–S5.
     rastreabilidade bidirecional completa.
 - **Risco:** Baixo.
 
-### Tarefa 6.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles)
+### Tarefa 6.2 [DOC] Sincronizar `docs/architecture.md` (pipeline + medição + controles) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:** [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md)
-- **Descrição:** refletir o estágio de **oversampling opcional**, a detecção **true-peak**, o **framework de
-  medição** (ASR/THD/FR/LUFS/oráculo f64) e a **superfície de controle** (CLI/GUI); manter hierarquia e
-  catálogo `Exxxx` sincronizados; apontar para os arquivos-fonte (DRY).
-- **Critérios de Aceite:** arquitetura coerente com a implementação pós-S1–S5.
-- **Risco:** Baixo.
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Modificados:**
+  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md) — adicionada seção §5.3 (Measurement & Spectral Analysis Framework), expandida seção §8.2.3 (User Control Surface CLI+CLAP GUI+Host Automation), atualizado catálogo Exxxx §9.
+- **Conclusão:**
+  - **Measurement framework (§5.3):** Documentados ASR (Sato & Smith DAFx 2025), THD+N AES17 + Farina FR+THD per harmonic, SMPTE/DIN IMD, LUFS BS.1770-4 (2-pass gating) + LRA EBU Tech 3342, true-peak BS.1770-4 Annex 2 (4× polyphase FIR, 48 taps, off-RT only), f64 reference oracle (double-precision forward pass + error source decomposition), stress signals v1/v2, WAV I/O. Inclui tabela de módulos (com paths DRY), métricas e gates, decisão RT-safety de true-peak off-RT, mapeamento de testes de integração.
+  - **Control surface (§8.2.3):** Expandida de apenas oversampling para matriz completa de parâmetros unificada CLI+CLAP (10 parâmetros: model, cab, input/output gain, gate threshold, bypass, buffer size, slim override, oversampling, diagnose). Documentadas 5 zonas GUI (identity, controls, meters, bypass, status bar), protocolo CLAP gesture, e rebuild off-RT via SPSC+GC cascade.
+  - **Catálogo Exxxx (§9):** Atualizado com entradas pós-S1–S5: E2001 DEADLINE_EXCEEDED, E2200 RESAMPLER_BUILD_FAILED, E3102 GC_CORRUPTED, E4102 CTRL_C_HANDLER_FAILED, E4103 IR_LOAD_FAILED, E1300 UNSUPPORTED_ARCHITECTURE, E1304 MODEL_TOO_LARGE. Nota adicionada apontando para o catálogo completo em `src/common/diagnostics/error_codes.rs`.
+  - **Hierarquia:** Mantida coerente — §5.3 encaixa entre DSP (§5.2 IR Cabsim) e Testing (§6); referências DRY para todos os arquivos-fonte; sem duplicação de conteúdo de código.
+- **Risco:** Baixo — concluído.
 
 ### Tarefa 6.3 [DOC] Atualizar `README.md` e `.agents/` (padrões)
 
