@@ -72,6 +72,24 @@ These dynamic paths use heap-allocated `Vec`-based arrays for weights and states
 >
 > **References:** [src/math/activations/tanh/](../src/math/activations/tanh/), [src/math/activations/sigmoid.rs](../src/math/activations/sigmoid.rs), [docs/fastmath-approximations.md](fastmath-approximations.md), [tests/nam_infer_test.rs](../tests/nam_infer_test.rs).
 
+### Activation Precision Modes (Standard / HighFidelity)
+
+NAM-rs provides two activation precision modes, selectable via the `ActivationPrecision` enum in `src/math/activations/mod.rs`. The mode is set once at initialisation (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor specialises to the active path during steady-state inference.
+
+| Mode              | Tanh Error (max) | Sigmoid Error (max) | Use Case                   |
+|:----------------- |:---------------- |:------------------- |:-------------------------- |
+| **Standard**      | ~2.32e-3         | ~4.09e-4            | Live, production default   |
+| **HighFidelity**  | ~2.4e-7          | ~2.1e-7             | Offline rendering, mixdown |
+
+- **Standard** (`ActivationPrecision::Standard = 0`): Padé [5,4] tanh + minimax degree-17 sigmoid. Fastest path — ~54 ns for 256-element slice (AVX2).
+- **HighFidelity** (`ActivationPrecision::HighFidelity = 1`): Polynomial exp-based kernels with degree-6 Taylor minimax and integer range reduction. Error is ~10,000× lower than Standard, reducing aliasing from activations at higher per-element compute cost.
+
+**Known limitation:** LSTM fused 4-gate GEMV kernels bypass the `ActivationPrecision` dispatch and always use the Standard path. The fused kernel layout is architecturally incompatible with the HighFidelity exp-kernel structure. Full dispatch coverage extends to WaveNet (A1 + A2), ConvNet, and Linear models.
+
+**Interaction with oversampling:** Activation precision improvements are most effective when combined with oversampling (HQ mode). Without oversampling, the aliasing from non-linear activations folds back into the baseband and dominates the error floor. With 4× oversampling, the HighFidelity mode further suppresses residual tanh/sigmoid harmonic folding that survives half-band filtering.
+
+> **References:** [`src/math/activations/mod.rs`](../src/math/activations/mod.rs), [`src/math/activations/tanh/high_fidelity.rs`](../src/math/activations/tanh/high_fidelity.rs), [`src/math/activations/tanh/production.rs`](../src/math/activations/tanh/production.rs), [`tests/activation_precision.rs`](../tests/activation_precision.rs).
+
 ### Technical Decision: Portability and Virtual Allocation of `MirroredBuffer`
 
 > **Decision:** The `MirroredBuffer` structure performs virtual memory mirroring by mapping the same physical block twice consecutively to avoid logical wrap-around in the DSP hot-path. Primary support is strictly targeted at Linux using `memfd_create`. For non-Linux platforms, a fallback (stub) is provided that returns an incompatibility error (`Unsupported`).
@@ -218,10 +236,42 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 
 ## 5. DSP & Native Resampling
 
-NAM-rs uses a native **Minimum-Phase Polyphase Sinc Resampler**, replacing external dependencies.
+NAM-rs uses a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampler` in `src/dsp/resampler.rs`), replacing external dependencies.
 
-- **Advantages:** Eliminates pre-ringing (energy concentrated at the start), reduces algorithmic latency from ~1.5ms (linear phase) to ~0.7ms, and offers ~9x superior performance via dedicated AVX2/AVX-512 convolution.
-- **Gate FSM:** Implements temporal and amplitude hysteresis (Schmitt Trigger) to prevent chattering at noise floor levels. Includes linear SIMD ramping for smooth transitions (fade-in/out), fused into a single stereo pass to optimize cache locality.
+### Quality Metrics (TAPS_PER_PHASE = 64, Task 5.4 QA)
+
+| Rate Pair    | Passband Ripple | Stopband Attenuation | SNR (multitone vs. soxr) |
+|:------------ |:--------------- |:-------------------- |:------------------------ |
+| 44.1→48 kHz  | < 0.05 dB       | ≥ 105 dB             | ≥ 100 dB                 |
+| 48→44.1 kHz  | < 0.02 dB       | ≥ 105 dB             | ≥ 100 dB                 |
+| 48→96 kHz    | < 0.02 dB       | ≥ 110 dB             | ≥ 100 dB                 |
+| 96→48 kHz    | < 0.02 dB       | ≥ 115 dB             | ≥ 100 dB                 |
+
+### Architecture
+
+- **Polyphase oversampled with linear interpolation:** 256 phases × 64 taps, Kaiser β=12 windowed sinc. Adjacent-phase linear interpolation yields arbitrary conversion ratios with < 0.05 dB passband ripple.
+- **Minimum-phase transform (Real Cepstrum):** Eliminates pre-ringing by concentrating all filter energy into the shortest possible delay via f64 FFT. Magnitude-preserving — measured cepstrum ripple ≤ 0.06 dB in the passband (< 60 dB attenuation).
+- **Linear-phase option:** Available via `NamResampler::new_linear()` for offline/mixdown use where zero pre-ringing is not critical and perfect phase linearity is preferred.
+- **AVX2+FMA inner product:** Coefficients aligned to 64 bytes, saturating FMA port throughput.
+- **Double-buffer delay line:** Maintains two contiguous copies of history (2 × TAPS_PER_PHASE samples), eliminating circular wrap logic in the SIMD inner loop.
+
+### Advantanges over external resamplers (rubato)
+
+- **Pre-ringing elimination:** Minimum-phase transform removes 100% of pre-echo artifacts on guitar transients.
+- **Algorithmic latency:** ~61 samples (~1.4 ms @ 44.1 kHz) vs. ~1.5 ms for equivalent linear-phase FIR.
+- **Vectorized:** Dedicated AVX2/AVX-512 convolution path — no scalar dispatch overhead.
+
+### Bypass at Native Rate
+
+When the host sample rate matches the model's native 48 kHz, the resampler enters a zero-cost bypass path — input samples are memcpy'd directly to output buffers with no convolution overhead.
+
+### Default Quality
+
+HQ (64 taps, minimum-phase) is the **production default**. The cost of 64 taps vs. 32 taps is < 1% of the total pipeline when the neural model is active (the bypass-at-48 kHz path is the common case). A user-facing "resampler quality" parameter is deferred pending quantitative benchmark of the Δμs cost (Tarefa 5.7).
+
+### Gate FSM
+
+Implements temporal and amplitude hysteresis (Schmitt Trigger) to prevent chattering at noise floor levels. Includes linear SIMD ramping for smooth transitions (fade-in/out), fused into a single stereo pass to optimize cache locality.
 
 ### Bidirectional DSP Flow
 
@@ -243,6 +293,52 @@ PipeWire Input (Nk Hz)
     │
     ▼ DspBridge (Lock-Free Write) → Playback Stream (Read) → Hardware
 ```
+
+## 5.0O Oversampling Engine — Anti-Aliasing for Neural Activations
+
+NAM-rs provides optional **2×/4× oversampling** around the neural model to suppress aliasing from non-linear activations (tanh, sigmoid, ReLU). The engine is implemented in `src/dsp/oversample.rs` and follows the half-band filter design principles of Kahles, Esqueda & Välimäki (JAES 2019).
+
+### Oversampling Engine Architecture
+
+Each 2× stage uses a **Kaiser-windowed half-band FIR filter** (25 taps, β=12, >100 dB stop-band rejection). The half-band property `h[2n] = 0` (for `n ≠ D/2`) halves the effective MAC count per sample:
+
+- **Upsampler:** inserts zeros between input samples → filters. Even outputs = `x[n−D/2] × 0.5`; odd outputs = convolution with non-zero odd taps.
+- **Downsampler:** FIR at full rate → decimates by 2. Uses a contiguous double-buffer delay line (same pattern as `NamResampler`).
+
+### Modes
+
+| Factor                 | Stages | Latency (samples @ native) | Aliasing Suppression |
+|:---------------------- |:------:|:-------------------------- |:-------------------- |
+| `Off` (default)        | 0      | 0                          | None — pass-through  |
+| `X2`                   | 1      | 12 (0.27 ms @ 44.1 kHz)    | ~100 dB stop-band    |
+| `X4`                   | 2      | 24 (0.54 ms @ 44.1 kHz)    | ~200 dB stop-band    |
+
+### Quality Modes
+
+| Mode       | Description                                                                                                  | Target                 |
+|:---------- |:------------------------------------------------------------------------------------------------------------ |:---------------------- |
+| **Live**   | `Off` (default). Zero overhead — neural model runs at host sample rate. Suitable for low-latency monitoring. | Minimal latency        |
+| **HQ**     | 4× oversampling. Maximum aliasing suppression for offline rendering, mixdown, and critical listening.        | Maximum fidelity       |
+
+### RT-Safety
+
+All filter coefficients, ring buffers, and scratch space are allocated at `OversampleEngine::new()`, **outside** the audio thread. During `process()`, only pre-allocated buffers are read/written — zero allocations, zero heap-drops, zero `unwrap()`. Factor changes trigger an off-RT rebuild (main thread constructs new engines → pushes via SPSC → audio thread swaps inline), following the same lock-free GC cascade as model hot-swap.
+
+### Trade-off: Latency vs. Aliasing
+
+The decision to default to `Off` in live mode reflects a deliberate trade-off:
+
+- **Live monitoring** requires minimal latency (≤ 2 ms end-to-end). The 12-sample half-band delay per 2× stage is acceptable at 48 kHz (~0.25 ms) but the 4× compute overhead (~4× neural inference) can push near the RT deadline.
+- **Offline rendering** has no latency constraint. 4× oversampling provides the maximum anti-aliasing benefit, reducing harmonic folding artifacts from activations.
+
+The ADAA (Anti-Derivative Anti-Aliasing) alternative — Parker, Zavalishin, Le Bivic (DAFx-16) / Bilbao et al. (IEEE SPL 2017) — was evaluated and **not** adopted: ADAA requires per-activation analytical anti-derivatives, which conflicts with the polyvalent multi-architecture dispatch (`dispatch_simd!` macro). The half-band oversampling approach is activation-agnostic and transparent to the model dispatch.
+
+### References
+
+- [`src/dsp/oversample.rs`](../src/dsp/oversample.rs) — `OversampleEngine`, `OversampleFactor`
+- [`src/dsp/pipeline/stages/inference.rs`](../src/dsp/pipeline/stages/inference.rs) — `model_process_stereo_with_os()`
+- [`src/common/spsc/status.rs`](../src/common/spsc/status.rs) — `RT_STATUS_NEEDS_OS_REBUILD`
+- [`src/clap/processor/events.rs`](../src/clap/processor/events.rs) — `cold_load_os()` (audio-thread swap)
 
 ## 5.1 Adaptive Compute: Graceful CPU Fallback
 
@@ -616,6 +712,39 @@ Parameters (e.g., gain, gate threshold, bypass state, and neural model files) ar
 - **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](../src/clap/plugin/shared.rs#L17) to the RT thread. If loading a model, [cold_load_model](../src/clap/processor/events.rs#L136) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
 - **Host DAW Events Queue:** The host DAW feeds sample-accurate automation and MIDI events into the processing block's input queue. The RT thread reads these events sequentially to update local parameter targets.
 - **GUI Atomics Sync:** GUI controls (e.g., egui knobs) write parameter updates to atomic variables in `NamClapShared::ui_to_rt` and increment `gui_param_generation` using `Release` ordering. The RT thread performs an `Acquire` check of the generation count; if they differ, it pulls the updated atomic values and aligns local targets.
+
+### 8.2.3 Oversampling Control (CLI + CLAP GUI)
+
+The oversampling mode is exposed to users through two surfaces:
+
+**CLI (Standalone mode):**
+
+```text
+nam-rs --oversample off     # Default: no oversampling, zero overhead
+nam-rs --oversample 2x      # 2× oversampling (one half-band stage, 12-sample latency)
+nam-rs --oversample 4x      # 4× oversampling (two cascaded stages, 24-sample latency)
+```
+
+Parsed in `src/standalone/cli.rs` and propagated via `ParamPayload::SetOversample`. The alias `--os` is also accepted.
+
+**CLAP GUI (Zone 2):**
+
+A segmented control labeled "Oversampling" with three selectable options (**Off** | **2×** | **4×**), rendered below the Input/Output Gain and Gate Threshold knobs in `src/clap/gui/ui/zones/controls.rs`. The control uses `egui::selectable_value` with CLAP gesture protocol (`set_gesture` + `bump_generation`).
+
+**CLAP host automation:**
+
+`PARAM_OVERSAMPLE` (ID=7) is a stepped parameter (0=Off, 1=2×, 2=4×) with flags `IS_AUTOMATABLE | IS_STEPPED`. Hosts can automate the parameter, but transitions are **not sample-accurate** — they trigger an off-RT rebuild of the oversampling engine.
+
+**Off-RT rebuild protocol:**
+
+1. GUI/host sets `requested_os_factor` + flag `RT_STATUS_NEEDS_OS_REBUILD` in shared status word.
+2. Audio thread detects the flag in `process_events()`, reads the requested factor, signals the main thread.
+3. Main thread (housekeeping callback) constructs new `OversampleEngine` instances (filter allocation, buffer allocation) and pushes them via `ClapParamPayload::SetOversample` SPSC.
+4. Audio thread receives the payload and calls `cold_load_os()` — atomically swaps the old engines with the new ones, pushing the old engines to `gc_tx` for safe deallocation.
+
+This is the same lock-free GC cascade pattern used for model hot-swap.
+
+> **References:** [`src/clap/gui/ui/zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs), [`src/clap/processor/events.rs`](../src/clap/processor/events.rs), [`src/clap/plugin/main_thread/housekeeping.rs`](../src/clap/plugin/main_thread/housekeeping.rs), [`src/standalone/cli.rs`](../src/standalone/cli.rs).
 
 ---
 

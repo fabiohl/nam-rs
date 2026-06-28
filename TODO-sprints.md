@@ -939,17 +939,20 @@ feature-flags (live vs offline), RT-safety estrita (`rust.md`), validação por 
   - **Risco:** Médio — resolvido. A troca off-RT segue o mesmo padrão maduro do hot-swap de modelo (`LoadModel`) e slimmable rebuild (`NEEDS_SLIMMABLE_REBUILD`).
 - **Resampler Quality pendente:** Se Tarefa 5.7 (benchmark) mostrar custo considerável, adicionar `PARAM_RESAMPLER_QUALITY` (ID=8) stepped {Standard=0, HQ=1} + `--resampler standard|hq` CLI seguindo o mesmo molde do `PARAM_OVERSAMPLE`. Se custo for desprezível, encerrar sem ação — HQ já é o padrão com 64 taps.
 
-### Tarefa 5.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador)
+### Tarefa 5.6 [DOC] Documentar oversampling, ativações, resampler e controles (documentador) [DONE]
 
-- **Status:** `[ ]` Não iniciada
-- **Arquivos Alvo:**
-  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md)
-  - [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md)
-  - [`README.md`](file:///home/fabio/nam-rs/README.md) (uso dos novos controles)
-- **Descrição:** justificar o _porquê_ das decisões (trade-off latência×aliasing, modos HQ/live, taps do
-  resampler, modo de ativação) e os números medidos; documentar a UX (CLI/GUI). Referenciar as fontes (S6).
-- **Critérios de Aceite:** docs coerentes com o código; decisões críticas justificadas (anti-regressão histórica).
-- **Risco:** Baixo.
+- **Status:** `[x]` Concluída (2026-06-27)
+- **Arquivos Modificados:**
+  - [`docs/architecture.md`](file:///home/fabio/nam-rs/docs/architecture.md) — adicionada seção §5.0O (Oversampling Engine), seção Activation Precision Modes em §2, seção §8.2.3 (Oversampling Control CLI+GUI); atualizada seção §5 (DSP & Native Resampling) com métricas T5.4 (64 taps, cepstrum ripple ≤ 0.06 dB, bypass 48 kHz, HQ default).
+  - [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md) — adicionada seção §10 (Activation Precision Modes — Standard vs. HighFidelity) com tabelas de erro, interação com oversampling, limitação LSTM fused gates, cross-references.
+  - [`README.md`](file:///home/fabio/nam-rs/README.md) — adicionada seção Usage com CLI `--oversample off|2x|4x` e CLAP Oversampling control; atualizada lista de docs.
+- **Conclusão:**
+  - **Oversampling:** Documentada arquitetura half-band Kaiser β=12 (25 taps, >100 dB), modos Off/2×/4×, trade-off latência×aliasing, protocolo off-RT rebuild (SPSC + GC cascade), decisão de não adotar ADAA.
+  - **Ativações:** Documentados modos Standard (Padé [5,4], ~2.32e-3) vs. HighFidelity (polynomial exp, ~2.4e-7), dispatch atômico, interação com oversampling (residual aliasing), limitação LSTM fused gates.
+  - **Resampler:** Atualizada seção existente com métricas QA T5.4 (tabela rate-pair, SNR vs soxr, arch polyphase 256×64, cepstrum ripple, linear-phase option, bypass 48 kHz, HQ default 64 taps).
+  - **Controles:** Documentado CLI `--oversample` (off/2x/4x) + CLAP GUI segmented control (Zone 2, PARAM_OVERSAMPLE ID=7, host automation IS_STEPPED, off-RT rebuild via SPSC GC cascade).
+  - Justificativas de decisões críticas registradas (anti-regressão histórica): trade-off latência vs aliasing (live=Off default, offline=4× HQ); rejeição ADAA por conflito arquitetural com dispatch polimórfico; normalização per-fase como trade-off fundamental da arquitetura polifásica; HQ 64 taps como default (custo <1% com modelo ativo).
+  - **Risco:** Baixo — concluído.
 
 ### Tarefa 5.7 [QA/BENCH] Validação de lints, testes, benchmarks e heap-audit (E4) [DONE]
 

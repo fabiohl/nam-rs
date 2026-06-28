@@ -133,6 +133,27 @@ This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModele
 > [!NOTE]
 > `tests-long.sh` **automatically regenerates** golden vectors if they are missing (requires C++ toolchain). Set `NAM_SKIP_GOLDEN_BUILD=1` to disable auto-regeneration.
 
+### Usage
+
+#### Standalone Mode (CLI)
+
+```bash
+nam-rs /path/to/model.nam               # Default: no oversampling (live mode — lowest latency)
+nam-rs --oversample 2x model.nam         # 2× oversampling (12-sample latency)
+nam-rs --oversample 4x model.nam         # 4× oversampling (24-sample latency, maximum fidelity)
+nam-rs --oversample off --cab cab.wav model.nam  # Disable oversampling + load IR
+```
+
+The `--oversample` flag (alias `--os`) accepts `off`, `2x`, or `4x`. Default is `off` for live monitoring (zero overhead, minimum latency). Use `4x` for offline rendering, mixdown, or critical listening — the half-band FIR oversampling engine suppresses aliasing from non-linear neural activations (tanh, sigmoid) with >100 dB stop-band rejection per stage.
+
+#### CLAP Plugin
+
+The plugin GUI exposes an **Oversampling** segmented control in Zone 2 (below the Input/Output knobs), with three selectable options: **Off** | **2×** | **4×**. The parameter is also automatable via the host DAW (`PARAM_OVERSAMPLE`, stepped 0–2).
+
+Switching oversampling modes triggers an off-RT engine rebuild (same lock-free GC cascade as model hot-swap) — the transition is click-free but not sample-accurate. All filter allocation occurs on the main thread, keeping the audio thread zero-allocation and RT-safe at all times.
+
+See [docs/architecture.md §5.0O](docs/architecture.md) for the full oversampling architecture and trade-off analysis.
+
 ### Build, install and run
 
 *Note: `.cargo/config.toml` allows configuring a build optimized specifically for your current CPU ("march=native").*
@@ -153,7 +174,8 @@ utils/build-release.sh
 
 ## 📚 Documentation
 
-* [docs/architecture.md](docs/architecture.md) — Topology, modules, and design decisions
+* [docs/architecture.md](docs/architecture.md) — Topology, modules, design decisions, oversampling engine, and user controls
+* [docs/fastmath-approximations.md](docs/fastmath-approximations.md) — Tanh/sigmoid approximation decisions, activation precision modes, benchmarks
 * [docs/dependencies.md](docs/dependencies.md) — System dependencies and Rust crates
 * [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector format, stress signal design, and regeneration instructions
 * [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics

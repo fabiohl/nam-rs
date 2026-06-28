@@ -390,3 +390,68 @@ because:
 - [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
 - `TODO-sprints.md` §Epic 8 — complete history of decisions and benchmark data.
 - `TODO-sprints.md` §E-HF Sprint 6 — T-HF6.1–T-HF6.7 (nuke + recalibration + docs).
+
+## 10. Activation Precision Modes — Standard vs. HighFidelity
+
+NAM-rs provides a runtime-selectable activation precision switch via the `ActivationPrecision`
+enum in [`src/math/activations/mod.rs`](../src/math/activations/mod.rs). The mode is set once at
+initialisation (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor
+specialises to whichever path is stable during steady-state inference.
+
+### 10.1 Standard Mode (`ActivationPrecision::Standard = 0`)
+
+The production default. Uses the Padé [5,4] rational approximant for tanh and the direct minimax
+degree-17 polynomial for sigmoid — both documented in §§1–3 above. Selected for live monitoring:
+fastest path, ~54 ns for 256-element slice (AVX2), error well below the 16-bit PCM quantization floor.
+
+### 10.2 HighFidelity Mode (`ActivationPrecision::HighFidelity = 1`)
+
+Uses polynomial exp-based kernels with degree-6 Taylor minimax and integer range reduction
+(`k = round(x·log₂e)`, `r = x − k·ln 2`). Implemented in
+[`src/math/activations/tanh/high_fidelity.rs`](../src/math/activations/tanh/high_fidelity.rs):
+
+| Function  | Formula                                            | Max Error (vs. f32 ref) |
+|:--------- |:-------------------------------------------------- |:----------------------- |
+| tanh      | `(e²ˣ − 1) / (e²ˣ + 1)` with exp polynomial        | ≤ 2.4e-7                |
+| sigmoid   | `1 / (1 + e⁻ˣ)` with exp polynomial                | ≤ 2.1e-7                |
+
+Error is ~10,000× lower than Standard mode. The exp-based formulation requires one hardware
+division per activation — throughput is dominated by the `_mm256_div_ps` instruction (~10–14
+cycles latency on modern microarchitectures) rather than the polynomial evaluation.
+
+### 10.3 Interaction with Oversampling
+
+Activation precision improvements are most effective when **combined with oversampling** (HQ mode,
+see [`docs/architecture.md §5.0O`](architecture.md)). The rationale:
+
+1. Without oversampling, non-linear activation distortion products (harmonics above Nyquist) fold
+   back into the baseband — this aliasing dominates the error floor regardless of activation precision.
+2. With 4× oversampling, half-band filtering removes the majority of folded harmonics. The
+   **residual aliasing** is then dominated by tanh/sigmoid approximation error — this is where
+   HighFidelity mode provides measurable improvement.
+3. In practice, Standard + 4× oversampling already achieves **>100 dB SNR** for most use cases.
+   HighFidelity provides a further margin for offline rendering and critical listening.
+
+### 10.4 Known Limitation: LSTM Fused Gates
+
+LSTM fused 4-gate GEMV kernels bypass the `ActivationPrecision` dispatch and always use the
+Standard path. The fused kernel layout (combined tanh + sigmoid evaluation in a single SIMD pass)
+is architecturally incompatible with the HighFidelity exp-kernel structure, which requires separate
+exp evaluations for tanh and sigmoid. Coverage extends to:
+
+- WaveNet A1 (all profiles: Standard, Lite, Feather, Nano, Dyn) — full dispatch
+- WaveNet A2 (Full + Lite + Dyn) — full dispatch
+- ConvNet — full dispatch
+- Linear (FIR models) — no activations, unaffected
+
+### 10.5 Cross-References
+
+| Item  | Location                                     | Topic                                  |
+|:----- |:-------------------------------------------- |:-------------------------------------- |
+| T5.3  | `TODO-sprints.md:867`                        | Activation precision ESR measurements  |
+| T5.6  | `TODO-sprints.md:942`                        | This documentation task                |
+| Test  | `tests/activation_precision.rs`              | ESR via oracle, functional validation  |
+| Code  | `src/math/activations/tanh/high_fidelity.rs` | Polynomial exp-based kernels           |
+| Code  | `src/math/activations/tanh/production.rs`    | Padé [5,4] production kernels          |
+
+---
