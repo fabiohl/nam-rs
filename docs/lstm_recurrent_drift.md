@@ -190,9 +190,7 @@ cargo test --release --test cpp_parity \
 
 ## See Also
 
+- [`audio_fidelity_map.md`](./audio_fidelity_map.md) — Unified map of all off-spec DSP decisions (§1 weight compression, §3 LSTM drift)
 - [`perceptual_validation.md`](./perceptual_validation.md) — Full measurement framework and gate methodology
-- [`f16c_compression_analysis.md`](./f16c_compression_analysis.md) — Weight compression trade-offs
-- [`TODO-findings.md`](../TODO-findings.md) — F-2 for the original finding
-- [`TODO-sprints.md`](../TODO-sprints.md) — RCA task specification
 - `src/testing/reference_oracle.rs` — f64 oracle implementation (LSTM: lines 640–758)
 - `src/models/lstm/layer_kernels.rs` — Production SIMD kernels with f16c GEMV
