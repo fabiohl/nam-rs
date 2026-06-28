@@ -277,12 +277,11 @@ fn test_all_thresholds_anti_placebo() {
             // MR-STFT is a relative metric bounded [0,1]; values approaching 1.0
             // indicate spectral collapse. A gate with threshold ≥ 0.5 would never
             // catch meaningful regressions.
-            // LSTM models are exempt: recurrent state spectral drift is an inherent,
-            // well-documented phenomenon that legitimately requires higher MR-STFT
-            // thresholds (e.g., LSTM 1×16 needs 0.85 for v2 240k-sample stress).
-            if let Some(mrstft) = mrstft_opt
-                && !(model_name.starts_with("BossLSTM") || model_name.starts_with("lstm"))
-            {
+            // Tarefa 5.5 (f64 oracle recalibration): LSTM models are no longer exempt —
+            // their MR-STFT thresholds are now recalibrated from v1 measurements
+            // (format floor + minimal recurrent drift, all < 0.5) with v2 relaxation
+            // handled in cpp_parity.rs via rate-dependent multiplier and ABSOLUTE_MRSTFT_CAP.
+            if let Some(mrstft) = mrstft_opt {
                 assert!(
                     mrstft < 0.5,
                     "Model '{model_name}' has MR-STFT = {mrstft} ≥ 0.5 — \

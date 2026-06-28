@@ -494,32 +494,28 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.45)))
         }
         // --- LSTM 1x16 ---
-        // T3.3 triage: (a) Inherent — LSTM recurrent state accumulates quantization error
-        // proportional to sequence length × sample rate. Not an engine regression.
-        // v2 relaxation formula (golden_vectors.rs:79-85) handles 96 kHz properly.
-        // Measured: SNR=19.8 dB (v1 2048 samples), ESR=1.04e-2
-        // v2: SNR=12.2 dB / ESR=6.1e-2 @ 96 kHz (recurrent drift). Margin: 7.8/0.2 dB (v1/v2).
-        // Tarefa 3.1: MR-STFT gate relaxed for LSTM (recurrent spectral drift is inherent)
-        // Tarefa 3.5: mrstft_max bumped to 0.85 — v2 240k-sample stress signal drives
-        //   MR-STFT to 0.82-0.87 due to recurrent state accumulation over 5s sequences.
-        // Measured: SNR=19.8 dB (v1), ESR=1.04e-2, MR-STFT=0.82 (v2 @ 48 kHz, 5s stress)
+        // T5.5 (f64 oracle): format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated
+        // vs PyTorch/NumPy f64 anchor). Recurrent state accumulation adds dominant drift beyond
+        // format floor — inherent, not engine regression.
+        // Measured: SNR=19.8 dB (v1), ESR=1.04e-2, MR-STFT=0.098(v1)/0.82(v2 @ 48k 5s) — oracle Δ~1.2e-4
         "BossLSTM-1x16" | "lstm_1x16" => {
             let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2), Some(0.85)))
+            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2), Some(0.20)))
         }
         // --- LSTM 2x8 ---
-        // T3.3 triage: (a) Inherent — same recurrent accumulation mechanism as LSTM 1x16.
-        // Margin at 96 kHz remains positive (0.4 dB) after v2 relaxation.
-        // Measured: SNR=25.7 dB (v1 2048 samples), ESR=2.69e-3
+        // T5.5: format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated vs PyTorch f64).
+        // Recurrent state accumulation adds dominant drift beyond format floor — inherent.
+        // Measured: SNR=25.7 dB (v1 2048 samples), ESR=2.69e-3, MR-STFT(v1)=0.0665 @ 48 kHz
         // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz (recurrent drift). Margin: 7.7/0.4 dB (v1/v2).
+        // MR-STFT gate: v1 base=0.12 (80% margin over measured 0.0665).
         "BossLSTM-2x8" | "lstm_2x8" => {
             let snr_db = 18.0;
             Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2), Some(0.12)))
         }
         // --- LSTM Official (H=3) ---
-        // Measured: SNR = 29.7 dB, ESR = 1.08e-3
-        // Tarefa 3.1: MR-STFT measured 1.84e-1 (recurrent spectral drift), gate at 2.2e-1 (19% margin)
-        // Margin: SNR - 7.7 dB, ESR factor ~5.5x
+        // T5.5: format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated vs PyTorch f64).
+        // Measured: SNR=29.7 dB, ESR=1.08e-3, MR-STFT(v1)=0.184 @ 48 kHz
+        // MR-STFT gate at 2.2e-1 (19% margin). Margin: SNR - 7.7 dB, ESR factor ~5.5x
         "lstm (Official)" | "lstm_official" => {
             let snr_db = 22.0;
             Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3), Some(0.22)))
@@ -629,6 +625,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // LstmModelDyn. Recurrent state accumulation over 2048-sample stress
         // signal produces measurable but minimal drift at 48 kHz.
         // Measured: SNR=90.8 dB, ESR=8.34e-10 (2026-06-21) after minimax/Padé unification (Sprint E3.2)
+        // MR-STFT: measured 5.85e-2 @ 48 kHz (v1, 2048 samples), gate at 0.08 (37% margin).
         // Margin: SNR - 10.8 dB, ESR factor ~4x
         "lstm_dyn_test" => {
             let snr_db = 80.0;

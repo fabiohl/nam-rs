@@ -780,6 +780,11 @@ texto do critério para "calibração analítica por seno" (honestidade de escop
 
 **Esforço:** Baixo.
 
+**Resolução (Tarefa 5.4, 2026-06-28):** Resolvido. Sequências EBU Tech 3341 geradas por script Python
+com K-weighting independente; validadas em `tests/ebu_lufs_compliance.rs` (7 testes, ±0,1 LU para senoides,
+±0,2 LU para dinâmico). A implementação de LUFS agora tem validação cruzada contra implementação
+independente, não apenas auto-calibração por seno.
+
 ---
 
 ### AC-4 · 🟢 BAIXO (conhecido/deferido) — Matriz ISA sem caminho **escalar**; true-peak não cobre **produção**
