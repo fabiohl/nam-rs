@@ -1,6 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Audio Fidelity Map — Off-Spec DSP Design Decisions
 
@@ -339,13 +340,13 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ## 9. Pending / Open Work
 
-| Item                                                                          | Status                        | Reference                                                                               |
-|:----------------------------------------------------------------------------- |:-----------------------------:|:--------------------------------------------------------------------------------------- |
-| HighFidelity activation mode user control (CLI/CLAP knob)                     | 🟡 Designed, not exposed (§6) | future                                                                                  |
-| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker resolved Sprint B1) |
-| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved Sprint B1)                                      |
-| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 |                                                                                         |
-| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 |                                                                                         |
+| Item                                                                          | Status                        | Reference                                                            |
+|:----------------------------------------------------------------------------- |:-----------------------------:|:-------------------------------------------------------------------- |
+| HighFidelity activation mode user control (CLI/CLAP knob)                     | 🟡 Designed, not exposed (§6) | future                                                               |
+| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker) |
+| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved)                             |
+| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 |                                                                      |
+| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 |                                                                      |
 
 ---
 
