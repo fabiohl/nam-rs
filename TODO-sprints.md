@@ -1464,25 +1464,33 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
 ### Grupo C — Measurement Completeness: LUFS Compliance EBU
 
-### Tarefa 8.8 [TEST] Validar LUFS contra vetores EBU Tech 3341 ou corrigir critério de aceite ([AC-3](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.8 [TEST] Validar LUFS contra vetores EBU Tech 3341 ou corrigir critério de aceite ([AC-3](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (via T5.4, 2026-06-28)
 - **Arquivos Alvo:**
   - [`src/testing/perceptual_test.rs`](file:///home/fabio/nam-rs/src/testing/perceptual_test.rs) (testes LUFS)
-  - [`tests/fixtures/`](file:///home/fabio/nam-rs/tests/fixtures) (eventuais fixtures EBU)
+  - [`tests/fixtures/`](file:///home/fabio/nam-rs/tests/fixtures) (fixtures EBU)
+  - [`tests/ebu_lufs_compliance.rs`](file:///home/fabio/nam-rs/tests/ebu_lufs_compliance.rs) (suíte de compliance)
+  - [`tests/fixtures/generate_ebu_sequences.py`](file:///home/fabio/nam-rs/tests/fixtures/generate_ebu_sequences.py) (gerador)
 - **Descrição:**
   - O critério de aceite de T2.5 prometia "validado contra vetores EBU (±0,1 LU)"; a validação real foi
     "calibração por seno analítico" — critério auto-referente, não compliance oficial.
-  - **Opção A (recomendada):** vendorizar sequências de compliance EBU Tech 3341 (arquivos de teste públicos
-    da EBU, curtos, sem dependência externa). Asserir `|computed - expected| < 0.1 LU` para cada sequência.
-    Se a Opção A revelar falhas, há um bug real na implementação de 2 passes.
-  - **Opção B (honestidade de escopo, fallback rápido):** corrigir o critério de aceite de T2.5 para
-    "calibração analítica por seno (não compliance EBU)" e abrir issue explícito para compliance futura.
+  - **Opção A (recomendada):** vendorizar sequências de compliance EBU Tech 3341. **Executado via T5.4.**
   - Preferir Opção A. Estimar: encontrar/gerar as sequências EBU Tech 3341 leva ~1 h; implementar os asserts
     leva ~2 h.
 - **Critérios de Aceite:** critério de aceite de T2.5 alinhado com o que foi validado; se Opção A: ≥ 3
-  sequências EBU passam dentro de ±0,1 LU.
+  sequências EBU passam dentro de ±0,1 LU. ✓
 - **Risco:** Baixo.
+
+**Conclusão (2026-06-28, via T5.4):** Opção A executada. Sequências EBU Tech 3341 geradas por script Python
+com implementação independente de K-weighting + 2-pass gating. Quatro sinais mono IEEE f32: senoides 1 kHz
+a −23, −33 e −18 LUFS (tolerância ±0,1 LU) e sinal dinâmico alternante −20/−46 dBFS exercitando o gate
+relativo (tolerância ±0,2 LU). Suíte `tests/ebu_lufs_compliance.rs` (7 testes: 3 sine, 1 dinâmico, 1 LRA,
+1 idempotência, 1 linearidade) — todos passando. AC-3 resolvido: validação cruzada contra implementação
+independente (Python), não mais auto-calibração por seno analítico.
+
+- **Nota:** Sequências de fala/dinâmicas completas (EBU loudness test set) requerem download externo de
+`https://tech.ebu.ch/publications/ebu_loudness_test_set` — fora do escopo desta tarefa.
 
 ---
 
@@ -1490,7 +1498,7 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
 ### Tarefa 8.9 [BUILD] Gate de símbolo/SONAME/validator no artefato real de distribuição ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Implementado — três gates (nm -D | grep clap_entry, readelf -d | grep SONAME, clap-validator) adicionados em `utils/build-release.sh` Phase 5 (linha 417-437), após o strip e antes da limpeza de temp files.
 
 - **Arquivos Alvo:** [`utils/build-release.sh`](file:///home/fabio/nam-rs/utils/build-release.sh)
   (Phase 5/5 "Installing and validating artifacts", linha 392+)

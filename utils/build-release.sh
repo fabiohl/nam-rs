@@ -414,6 +414,28 @@ cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" "$CLAP_TARGET"
 strip --strip-unneeded "$CLAP_TARGET"
 echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
 
+# Gate: validate CLAP distribution artifact (symbol, SONAME, clap-validator)
+CLAP_SOURCE="$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so"
+echo -e "  Validating CLAP artifact integrity..."
+if ! nm -D "$CLAP_SOURCE" | grep -q "clap_entry"; then
+    echo -e "${RED}Erro: Símbolo 'clap_entry' ausente no artefato CLAP!${NC}"
+    exit 1
+fi
+if ! readelf -d "$CLAP_SOURCE" | grep -q SONAME; then
+    echo -e "${RED}Erro: SONAME ausente no artefato CLAP!${NC}"
+    exit 1
+fi
+if command -v clap-validator >/dev/null 2>&1; then
+    echo -e "  Executando clap-validator..."
+    clap-validator validate "$CLAP_SOURCE" || {
+        echo -e "${RED}Erro: clap-validator reprovou o artefato de distribuição!${NC}"
+        exit 1
+    }
+else
+    echo -e "${YELLOW}  Aviso: clap-validator indisponível. Pulando validação externa.${NC}"
+fi
+echo -e "${GREEN}  CLAP artifact validation passed.${NC}"
+
 # Cleanup temp files
 rm -rf "$PGO_DIR" "$BOLT_DIR"
 
