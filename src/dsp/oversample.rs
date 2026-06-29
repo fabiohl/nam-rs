@@ -389,6 +389,17 @@ impl OversampleEngine {
     }
 }
 
+/// Atomic bundle of stereo oversampling engines delivered via SPSC.
+///
+/// L and R engines are built together on the main thread and consumed
+/// together on the RT thread, ensuring they always share the same factor.
+pub struct OsEnginePair {
+    /// Left-channel oversampling engine.
+    pub l: Box<OversampleEngine>,
+    /// Right-channel oversampling engine.
+    pub r: Box<OversampleEngine>,
+}
+
 #[cfg(test)]
 #[path = "oversample_test.rs"]
 mod oversample_test;

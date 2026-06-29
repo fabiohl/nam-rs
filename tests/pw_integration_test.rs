@@ -44,6 +44,8 @@ fn test_pipewire_integration() {
     let (cs_prod, cs_cons) = RingBuffer::new(2);
     // slimmable: Slimmable model rebuild (Main -> DSP)
     let (sl_prod, sl_cons) = RingBuffer::new(2);
+    // os: Oversampling engine rebuild (Main -> DSP)
+    let (os_prod, os_cons) = RingBuffer::new(2);
 
     // Fallback buffer for GC overflow
     let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new(64));
@@ -74,10 +76,12 @@ fn test_pipewire_integration() {
                 ir_raw_samples: None,
                 full_wavenet_model: None,
                 slimmable_producer: sl_prod,
+                os_producer: os_prod,
                 oversample: nam_rs::dsp::oversample::OversampleFactor::Off,
             },
             gc_cons,
             sl_cons,
+            os_cons,
         )
     });
 

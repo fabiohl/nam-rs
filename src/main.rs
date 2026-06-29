@@ -103,6 +103,8 @@ fn main() -> anyhow::Result<()> {
     let cabsim_consumer = channels.cabsim_consumer;
     let slimmable_producer = channels.slimmable_producer;
     let slimmable_consumer = channels.slimmable_consumer;
+    let os_producer = channels.os_producer;
+    let os_consumer = channels.os_consumer;
     let rt_status = channels.rt_status;
 
     // 6. LOAD THE CAB-SIM IR: If you said "use cabinet X",
@@ -212,10 +214,12 @@ fn main() -> anyhow::Result<()> {
             ir_raw_samples,
             full_wavenet_model,
             slimmable_producer,
+            os_producer,
             oversample: args.oversample,
         },
         gc_consumer,
         slimmable_consumer,
+        os_consumer,
     );
 
     // Signal shutdown to bypass panic hook during cleanup

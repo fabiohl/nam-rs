@@ -41,6 +41,7 @@ pub fn setup_capture_stream<'c>(
     mut cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     rt_status: Arc<RtStatusFlags>,
     slimmable_consumer: Consumer<Option<Box<StaticModel>>>,
+    os_consumer: Consumer<Box<crate::dsp::oversample::OsEnginePair>>,
     oversample: OversampleFactor,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let mut capture_props = properties! {
@@ -68,6 +69,7 @@ pub fn setup_capture_stream<'c>(
     let mut state = CaptureState::init(sys, oversample);
     state.ir_raw_samples = ir_raw_samples;
     state.slimmable_rx = Some(slimmable_consumer);
+    state.os_rx = Some(os_consumer);
     let rate_for_param = state.shared_target_rate.clone();
     let rate_for_process = state.shared_target_rate.clone();
 
@@ -140,6 +142,16 @@ pub fn setup_capture_stream<'c>(
                 &mut state.slimmable_rx,
                 &mut state.active_model_l,
                 &mut state.active_model_r,
+                &mut gc_producer,
+                &mut state.parking_lot,
+                &gc_overflow_for_process,
+                &rt_status_for_process,
+            );
+
+            rt_callback::drain_os_engines(
+                &mut state.os_rx,
+                &mut state.os_l,
+                &mut state.os_r,
                 &mut gc_producer,
                 &mut state.parking_lot,
                 &gc_overflow_for_process,

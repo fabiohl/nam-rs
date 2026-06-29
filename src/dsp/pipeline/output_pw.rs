@@ -42,6 +42,8 @@ pub struct PipewireHostConfig {
     pub full_wavenet_model: Option<Box<crate::models::StaticModel>>,
     /// Producer to send slimmable-rebuilt models to the audio thread.
     pub slimmable_producer: rtrb::Producer<Option<Box<crate::models::StaticModel>>>,
+    /// Producer to send oversampling engines rebuilt on main thread to the audio thread.
+    pub os_producer: rtrb::Producer<Box<crate::dsp::oversample::OsEnginePair>>,
     /// Initial oversampling factor for the neural stage.
     pub oversample: OversampleFactor,
 }

@@ -7,6 +7,7 @@
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, gc_cascade};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::GateParams;
+use crate::dsp::oversample::{OsEnginePair, OversampleEngine};
 use crate::models::StaticModel;
 
 use rtrb::Consumer;
@@ -105,33 +106,12 @@ pub fn receive_commands(
             ParamPayload::SlimOverride(ov) => {
                 adaptive.set_slim_override(ov);
             }
-            ParamPayload::SetOversample(_factor) => {
-                // ============================================================
-                // TODO(oversample-rt): runtime oversample changes are IGNORED.
-                // ============================================================
-                // CURRENT BEHAVIOR (known limitation): a SetOversample payload
-                // reaching the audio thread is a deliberate no-op. The factor
-                // is only honored once, at `CaptureState::init()`. So changing
-                // the CLAP parameter (PARAM_OVERSAMPLE=7) or `--oversample`
-                // equivalent AT RUNTIME has no audible effect until the host
-                // re-instantiates the plugin.
-                //
-                // WHY DEFERRED: switching 1x/2x/4x reallocates the oversampling
-                // engines' internal buffers (half-band FIR state + scratch).
-                // Heap allocation on the RT thread is forbidden (.agents/rules
-                // RT-safety: zero alloc / lock / syscall on the audio path).
-                //
-                // HOW TO IMPLEMENT (mirror the slimmable-rebuild pattern in
-                // this same file — it is the canonical template):
-                //   1. RT side: store the requested factor on `rt_status` and
-                //      raise an atomic flag (cf. `try_slimmable_rebuild`, which
-                //      sets `requested_slimmable_ch` + RT_STATUS_NEEDS_*).
-                //   2. Main thread: observe the flag, rebuild + prewarm the
-                //      oversampling engines OFF-RT, hand them back over SPSC.
-                //   3. RT side: drain the SPSC and hot-swap, sending the old
-                //      engines to the GC cascade (cf. `drain_slimmable_models`).
-                // Until then, treat oversample as an instantiation-time setting.
-                // ============================================================
+            ParamPayload::SetOversample(factor) => {
+                rt_status_for_process
+                    .requested_os_factor
+                    .store(factor.to_f32() as u32, Ordering::Relaxed);
+                rt_status_for_process
+                    .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
             }
         }
     }
@@ -193,5 +173,40 @@ pub fn drain_slimmable_models(
                 );
             }
         }
+    }
+}
+
+/// Drains oversampling engines delivered by the main thread via SPSC.
+/// Swaps both L and R engines and sends the obsolete ones to the GC cascade.
+#[inline(always)]
+pub fn drain_os_engines(
+    os_rx: &mut Option<Consumer<Box<OsEnginePair>>>,
+    os_l: &mut Box<OversampleEngine>,
+    os_r: &mut Box<OversampleEngine>,
+    gc_producer: &mut rtrb::Producer<GcItem>,
+    parking_lot: &mut [Option<GcItem>; 16],
+    gc_overflow: &GcOverflowBuffer,
+    rt_status: &RtStatusFlags,
+) {
+    let Some(rx) = os_rx.as_mut() else {
+        return;
+    };
+    while let Ok(pair) = rx.pop() {
+        let old_l = std::mem::replace(os_l, pair.l);
+        let old_r = std::mem::replace(os_r, pair.r);
+        gc_cascade(
+            Some(GcItem::Oversample(old_l)),
+            gc_producer,
+            parking_lot,
+            gc_overflow,
+            rt_status,
+        );
+        gc_cascade(
+            Some(GcItem::Oversample(old_r)),
+            gc_producer,
+            parking_lot,
+            gc_overflow,
+            rt_status,
+        );
     }
 }

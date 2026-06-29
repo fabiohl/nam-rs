@@ -50,6 +50,7 @@ pub fn run_pipewire_host(
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
     slimmable_consumer: Consumer<Option<Box<StaticModel>>>,
+    os_consumer: Consumer<Box<crate::dsp::oversample::OsEnginePair>>,
 ) -> anyhow::Result<()> {
     let PipewireHostConfig {
         buffer_size,
@@ -57,6 +58,7 @@ pub fn run_pipewire_host(
         ir_raw_samples,
         full_wavenet_model,
         mut slimmable_producer,
+        mut os_producer,
         oversample,
     } = config;
 
@@ -103,6 +105,7 @@ pub fn run_pipewire_host(
             cabsim_consumer,
             rt_status.clone(),
             slimmable_consumer,
+            os_consumer,
             oversample,
         )?;
         capture_stream = cs;
@@ -263,6 +266,37 @@ pub fn run_pipewire_host(
                 }
             }
             rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+        }
+
+        if rt_status.check_flag_acquire(spsc::RT_STATUS_NEEDS_OS_REBUILD) {
+            let factor_val = rt_status.requested_os_factor.load(Ordering::Relaxed);
+            let factor = crate::dsp::oversample::OversampleFactor::from_f32(factor_val as f32);
+            let pair = Box::new(crate::dsp::oversample::OsEnginePair {
+                l: Box::new(crate::dsp::oversample::OversampleEngine::new(
+                    factor,
+                    crate::dsp::pipeline::MAX_RESAMP_BUF,
+                )),
+                r: Box::new(crate::dsp::oversample::OversampleEngine::new(
+                    factor,
+                    crate::dsp::pipeline::MAX_RESAMP_BUF,
+                )),
+            });
+            log::info!(
+                "{} Oversampling factor changed to {:?}",
+                "🔄".cyan(),
+                factor,
+            );
+            if os_producer.push(pair).is_err() {
+                crate::common::diagnostics::NamDiagnostic::new(
+                    crate::common::diagnostics::NamErrorCode::ParamChannelFull,
+                    &sys,
+                )
+                .message("OS engine channel full. Rebuild discarded.")
+                .hint("The audio engine is overloaded. If the problem persists, restart NAM-rs.")
+                .emit_warning();
+            } else {
+                rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+            }
         }
 
         (was_silent, was_fading) =

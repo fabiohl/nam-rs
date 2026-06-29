@@ -36,7 +36,7 @@ Este sprint resolve a lacuna de runtime oversampling no executável standalone, 
   - Em [setup.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/capture/setup.rs), usar o valor de oversample da configuração para inicializar o `CaptureState`.
 - **Validação:** Rodar standalone especificando `--oversample 2x` ou `--os 4x` e validar que as engines de oversampling são criadas com o fator correto no log de inicialização.
 
-#### [ ] Tarefa α1.2 — SPSC Rebuild Pipeline para Oversampling no Standalone [MÉDIO RISCO]
+#### [x] Tarefa α1.2 — SPSC Rebuild Pipeline para Oversampling no Standalone [MÉDIO RISCO]
 
 - **Descrição:** Implementar a troca de oversampling em tempo de execução no standalone usando o padrão de reconstrução assíncrona off-RT.
 - **Mudanças propostas:**

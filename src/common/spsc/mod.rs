@@ -60,6 +60,10 @@ pub struct SpscChannels {
     pub slimmable_producer: Producer<Option<Box<crate::models::StaticModel>>>,
     /// Slimmable model consumer: RT callback drains to swap the active model.
     pub slimmable_consumer: Consumer<Option<Box<crate::models::StaticModel>>>,
+    /// Oversampling engine producer: main thread builds and sends OS engines to RT callback.
+    pub os_producer: Producer<Box<crate::dsp::oversample::OsEnginePair>>,
+    /// Oversampling engine consumer: RT callback drains to hot-swap OS engines.
+    pub os_consumer: Consumer<Box<crate::dsp::oversample::OsEnginePair>>,
     /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }
@@ -83,6 +87,8 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (cs_prod, cs_cons) = RingBuffer::new(4);
     // Slimmable model channel: small capacity (only 1 in transit at a time)
     let (sl_prod, sl_cons) = RingBuffer::new(4);
+    // Oversampling engine channel: small capacity (only L+R pair in transit at a time)
+    let (os_prod, os_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
     // The overflow buffer should be large enough to accommodate model swap spikes.
     // We use 64 as a base, or the requested capacity if higher.
@@ -102,6 +108,8 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
         cabsim_consumer: cs_cons,
         slimmable_producer: sl_prod,
         slimmable_consumer: sl_cons,
+        os_producer: os_prod,
+        os_consumer: os_cons,
         rt_status,
     }
 }

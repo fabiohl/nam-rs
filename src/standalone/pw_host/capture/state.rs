@@ -30,8 +30,8 @@ pub struct CaptureState {
     pub active_model_l: Option<Box<crate::models::StaticModel>>,
     pub active_model_r: Option<Box<crate::models::StaticModel>>,
     pub resampler: Box<NamResampler>,
-    pub os_l: OversampleEngine,
-    pub os_r: OversampleEngine,
+    pub os_l: Box<OversampleEngine>,
+    pub os_r: Box<OversampleEngine>,
     pub active_cabsim: Option<Box<ConvEngine>>,
     pub current_nam_rate: u32,
     pub resamp_mid_l: Box<[f32; MAX_RESAMP_BUF]>,
@@ -63,6 +63,7 @@ pub struct CaptureState {
     pub thread_configured: bool,
     pub ir_raw_samples: Option<Vec<f32>>,
     pub slimmable_rx: Option<Consumer<Option<Box<StaticModel>>>>,
+    pub os_rx: Option<Consumer<Box<crate::dsp::oversample::OsEnginePair>>>,
 }
 
 impl CaptureState {
@@ -86,8 +87,8 @@ impl CaptureState {
             active_model_l: None,
             active_model_r: None,
             resampler: Box::new(resampler),
-            os_l: OversampleEngine::new(os, MAX_RESAMP_BUF),
-            os_r: OversampleEngine::new(os, MAX_RESAMP_BUF),
+            os_l: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF)),
+            os_r: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF)),
             active_cabsim: None,
             current_nam_rate: 48_000,
             resamp_mid_l: Box::new([0.0f32; MAX_RESAMP_BUF]),
@@ -119,6 +120,7 @@ impl CaptureState {
             thread_configured: false,
             ir_raw_samples: None,
             slimmable_rx: None,
+            os_rx: None,
         }
     }
 }
