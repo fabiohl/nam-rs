@@ -7,6 +7,7 @@
 use super::super::rt_callback;
 use super::state::CaptureState;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags};
+use crate::dsp::oversample::OversampleFactor;
 use crate::dsp::pipeline::{
     BridgeRef, DspBridgeWriter, DspBuffers, DspPipelineContext, build_spa_format_pod,
 };
@@ -40,6 +41,7 @@ pub fn setup_capture_stream<'c>(
     mut cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     rt_status: Arc<RtStatusFlags>,
     slimmable_consumer: Consumer<Option<Box<StaticModel>>>,
+    oversample: OversampleFactor,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let mut capture_props = properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
@@ -63,7 +65,7 @@ pub fn setup_capture_stream<'c>(
 
     let capture_stream = pw::stream::StreamBox::new(core, "NAM-rs", capture_props)?;
 
-    let mut state = CaptureState::init(sys, crate::dsp::oversample::OversampleFactor::Off);
+    let mut state = CaptureState::init(sys, oversample);
     state.ir_raw_samples = ir_raw_samples;
     state.slimmable_rx = Some(slimmable_consumer);
     let rate_for_param = state.shared_target_rate.clone();

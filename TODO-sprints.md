@@ -28,7 +28,7 @@ Para otimizar e garantir a paridade, o trabalho será dividido em dois sprints f
 
 Este sprint resolve a lacuna de runtime oversampling no executável standalone, permitindo que a CLI honre a flag de inicialização e possibilite a troca de fator em tempo de execução de maneira RT-safe (zero-alloc no thread de áudio).
 
-#### [ ] Tarefa α1.1 — Correção da Inicialização via CLI [BAIXO RISCO]
+#### [x] Tarefa α1.1 — Correção da Inicialização via CLI [BAIXO RISCO]
 
 - **Descrição:** Corrigir o bug de inicialização onde o fator `--oversample` parseado da linha de comando é descartado em `run.rs` e substituído por `OversampleFactor::Off` fixo em `capture/setup.rs:66`.
 - **Mudanças propostas:**

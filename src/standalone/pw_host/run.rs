@@ -57,7 +57,7 @@ pub fn run_pipewire_host(
         ir_raw_samples,
         full_wavenet_model,
         mut slimmable_producer,
-        oversample: _os,
+        oversample,
     } = config;
 
     let full_wavenet_model = full_wavenet_model;
@@ -103,6 +103,7 @@ pub fn run_pipewire_host(
             cabsim_consumer,
             rt_status.clone(),
             slimmable_consumer,
+            oversample,
         )?;
         capture_stream = cs;
         capture_listener = cl;
