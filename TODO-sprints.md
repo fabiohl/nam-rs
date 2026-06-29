@@ -262,3 +262,146 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 * **Critérios de Aceitação:**
   * Todos os testes novos passam com sucesso.
   * Execução bem-sucedida de `tests-quick.sh` com zero falhas.
+
+---
+
+## Épico C — Endurecimento de robustez (loader e máquina de estados de swap)
+
+* **Objetivo:** Garantir que os loaders sejam à prova de falhas ("never panic") com aritmética checada, flags de swap consistentes na máquina de estados de tempo real, e guardas defensivas no oversampling.
+* **Complexidade Geral:** Baixa
+* **QA Requerido:** Testes unitários do WeightCursor com overflows artificiais e verificação rápida da suíte (`tests-quick.sh`).
+* **Fontes de maiores informações:** TODO-findings.md seções "Épico C — Endurecimento de robustez (loader e máquina de estados de swap)" e "Tabela de cruzamento".
+
+---
+
+### Sprint C1 — Endurecimento de Robustez (Loader, Swap e Oversampling)
+
+#### Tarefa C1.1 — Evitar Overflow de Aritmética no `WeightCursor` (F5) (CRÍTICA)
+
+* **Tipo:** Correção de Bug / Segurança
+* **Severidade:** BAIXA (Cold path / Loader)
+* **Risco:** BAIXO
+* **Finding de Origem:** [TODO-findings.md F5](TODO-findings.md#f5--baixa-weightcursor-selfpos--len-pode-estourar-usize-release-e-burlar-a-checagem-de-limites)
+* **Arquivos Relacionados:**
+  * [src/loader/dispatcher/weight_cursor.rs](src/loader/dispatcher/weight_cursor.rs)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/loader/dispatcher/weight_cursor.rs](src/loader/dispatcher/weight_cursor.rs), atualizar o método `read_slice` para usar aritmética checada contra estouro de `usize` em builds de release:
+
+     ```rust
+     pub(crate) fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]> {
+         let end = self.pos.checked_add(len)
+             .filter(|&e| e <= self.data.len())
+             .ok_or_else(|| anyhow::anyhow!(
+                 "Insufficient weights: required {} starting from position {}, available {}",
+                 len,
+                 self.pos,
+                 self.data.len()
+             ))?;
+         let slice = &self.data[self.pos..end];
+         self.pos = end;
+         Ok(slice)
+     }
+     ```
+
+* **Critérios de Aceitação:**
+  * O método `read_slice` retorna um erro de forma limpa caso a adição `self.pos + len` resulte em overflow, em vez de passar na checagem e panicar no fatiamento subsequente.
+
+---
+
+#### Tarefa C1.2 — Usar Aritmética Checada nos Dimensionamentos do Loader de LSTM Dinâmico (F5)
+
+* **Tipo:** Melhoria de Robustez
+* **Severidade:** BAIXA
+* **Risco:** BAIXO
+* **Finding de Origem:** [TODO-findings.md F5](TODO-findings.md#f5--baixa-weightcursor-selfpos--len-pode-estourar-usize-release-e-burlar-a-checagem-de-limites)
+* **Arquivos Relacionados:**
+  * [src/loader/dispatcher/lstm/weights.rs](src/loader/dispatcher/lstm/weights.rs)
+* **Detalhamento Técnico:**
+  1. Importar `use crate::loader::dispatcher::checked_arith;` no arquivo [src/loader/dispatcher/lstm/weights.rs](src/loader/dispatcher/lstm/weights.rs).
+  2. Na função `read_lstm_layer_dyn`, atualizar o cálculo de dimensões para usar as funções auxiliares em `checked_arith`:
+
+     ```rust
+     let ih = checked_arith::checked_add(input_size, hidden_size)?;
+     let h4 = checked_arith::checked_mul(4, hidden_size)?;
+     let weights_len = checked_arith::checked_mul(h4, ih)?;
+     ```
+
+* **Critérios de Aceitação:**
+  * Cálculos de tamanho de pesos do LSTM dinâmico não causam pânico ou wrapping silencioso em builds de release.
+
+---
+
+#### Tarefa C1.3 — Resetar a Flag `RESAMPLER_REBUILD_FAILED` no Swap RT (F6)
+
+* **Tipo:** Correção de Bug (State Machine)
+* **Severidade:** BAIXA
+* **Risco:** BAIXO
+* **Finding de Origem:** [TODO-findings.md F6](TODO-findings.md#f6--baixa-flag-resampler_rebuild_failed-permanece-setada-após-uma-falha-desabilitando-a-espera-pelo-resampler-em-swaps-futuros)
+* **Arquivos Relacionados:**
+  * [src/standalone/pw_host/capture/setup.rs](src/standalone/pw_host/capture/setup.rs)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/standalone/pw_host/capture/setup.rs](src/standalone/pw_host/capture/setup.rs), no ponto em que se limpa a flag `RESAMP_SWAP_PENDING` por conta da falha de rebuild anterior, limpar também a flag `RESAMPLER_REBUILD_FAILED`:
+
+     ```rust
+     if rt_status_for_process.check_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING) {
+         if rt_status_for_process.check_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED) {
+             rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
+             rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
+         } else {
+             let _ = stream.dequeue_buffer();
+             return;
+         }
+     }
+     ```
+
+* **Critérios de Aceitação:**
+  * Se um rebuild falhar e marcar `REBUILD_FAILED`, no próximo ciclo de swap o RT thread consumirá a flag de falha e a resetará. Swaps futuros voltarão a aguardar o resampler normalmente (não serão curto-circuitados).
+
+---
+
+#### Tarefa C1.4 — Adicionar Guardas de Tamanho de Buffer no `OversampleEngine` (F7)
+
+* **Tipo:** Melhoria Defensiva
+* **Severidade:** BAIXA (Defensivo)
+* **Risco:** BAIXO
+* **Finding de Origem:** [TODO-findings.md F7](TODO-findings.md#f7--baixa-oversampleengineupsample-escreve-com-get_unchecked_mut-sem-debug_assert-do-tamanho-de-output)
+* **Arquivos Relacionados:**
+  * [src/dsp/oversample.rs](src/dsp/oversample.rs)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/dsp/oversample.rs](src/dsp/oversample.rs), adicionar `debug_assert!` nas funções `upsample` e `downsample` para validar o tamanho dos buffers de saída recebidos contra o multiplicador correspondente do fator de sobreamostragem:
+     * Em `upsample`:
+
+       ```rust
+       debug_assert!(
+           output.len() >= input.len() * self.factor.multiplier(),
+           "oversample: output buffer too small for upsampling factor"
+       );
+       ```
+
+     * Em `downsample`:
+
+       ```rust
+       debug_assert!(
+           output.len() >= input.len() / self.factor.multiplier(),
+           "oversample: output buffer too small for downsampling factor"
+       );
+       ```
+
+* **Critérios de Aceitação:**
+  * Prevenção de escrita/leitura OOB (Out-Of-Bounds) em cenários futuros de alteração do chamador do DSP, garantido por asserções em tempo de depuração.
+
+---
+
+#### Tarefa C1.5 — Validação da Suíte de Robustez (QA)
+
+* **Tipo:** QA e Validação de Regressão
+* **Severidade:** GARANTIA DE QUALIDADE
+* **Risco:** BAIXO
+* **Arquivos Relacionados:**
+  * [src/loader/dispatcher/weight_cursor.rs](src/loader/dispatcher/weight_cursor.rs)
+* **Detalhamento Técnico:**
+  1. Adicionar testes unitários inline no final de [src/loader/dispatcher/weight_cursor.rs](src/loader/dispatcher/weight_cursor.rs) dentro de `#[cfg(test)] mod tests` para simular chamadas de `read_slice` com tamanhos abusivos (ex.: `usize::MAX`) ou que ultrapassam `data.len()`, atestando que retornam erro apropriado sem panicar.
+  2. Executar `utils/tests-quick.sh` para atestar que a qualidade clippy e formatação se mantêm adequadas.
+* **Critérios de Aceitação:**
+  * Teste unitário compilando e passando com sucesso.
+  * Pipeline rápida executando sem avisos ou falhas.

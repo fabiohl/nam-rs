@@ -623,7 +623,7 @@ dessincronização de `prev_state` em transições encadeadas.
 oracle/parity antes e depois. Começar por F1 opção 1 (exclusão de A2 do
 double-pass), que é a de menor superfície de risco.
 
-## Épico B — Reporte de latência correto para PDC
+## Épico B — Reporte de latência correto para PDC [DONE]
 
 **Findings:** F2 (MÉDIA), F3 (MÉDIA-BAIXA).
 **Objetivo:** o host receber a latência real (resampler + cab + **oversampling**),
