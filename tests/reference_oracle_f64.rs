@@ -131,12 +131,19 @@ fn print_decomposition(result: &nam_rs::testing::reference_oracle::Decomposition
 
 // ── T5.3: External anchor validation ─────────────────────────────────────
 
-/// T5.3 anchor validation: Rust oracle vs PyTorch/NumPy f64 reference.
+/// T5.3 anchor validation: Rust oracle vs independent NumPy f64 reference.
 /// The pre-generated anchors are in tests/fixtures/f64_anchors/.
 /// Format: [u32 LE count] [f64 LE × count]
+///
+/// MAINTENANCE CONTRACT (Gate Calibration Policy Rule 6, docs/perceptual_validation.md):
+/// any change to `src/testing/reference_oracle.rs` invalidates these anchors.
+/// In the SAME change set, regenerate them with
+/// `tests/fixtures/scripts/validate_oracle_f64.py` and confirm the script's
+/// output also matches the f32 production engine (≈ f32/f16c floor) — proving
+/// the reference is independently correct, not merely a mirror of the oracle.
+/// Never leave these tests `#[ignore]`d without a tracked restoration task.
 
 #[test]
-#[ignore = "anchors need regeneration after T8.2 oracle architectural fixes"]
 fn test_oracle_vs_python_anchor_wavenet() {
     let path = models_dir().join("wavenet_official.nam");
     let md = load_and_parse(&path);
@@ -159,7 +166,6 @@ fn test_oracle_vs_python_anchor_wavenet() {
 }
 
 #[test]
-#[ignore = "anchors need regeneration after T8.2 oracle architectural fixes"]
 fn test_oracle_vs_python_anchor_lstm() {
     let path = models_dir().join("lstm.nam");
     let md = load_and_parse(&path);
@@ -182,7 +188,6 @@ fn test_oracle_vs_python_anchor_lstm() {
 }
 
 #[test]
-#[ignore = "anchors need regeneration after T8.2 oracle architectural fixes"]
 fn test_oracle_vs_python_anchor_a2() {
     let path = models_dir().join("wavenet_a2_lite.nam");
     let md = load_and_parse(&path);

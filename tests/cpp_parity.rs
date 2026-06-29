@@ -484,10 +484,10 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
     );
 }
 
-/// Runs v2 stress signal comparison across supported sample rates for one model.
+/// Runs v2 stress signal comparison across all `SUPPORTED_SAMPLE_RATES` for one model.
 ///
-/// If `rates` is `Some(slice)`, only those sample rates are tested;
-/// if `None`, all `SUPPORTED_SAMPLE_RATES` are tested.
+/// For coverage restricted to native rates only (44.1k/48k), use
+/// [`run_v2_native_sr`] instead.
 ///
 /// **Known limitation:** NeuralAmpModelerCore's `render` tool enforces that the
 /// input WAV sample rate matches the model's expected rate (typically 48 kHz).

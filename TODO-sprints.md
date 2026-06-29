@@ -1295,13 +1295,13 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
   - Testes de âncora Python (`test_oracle_vs_python_anchor_*`) marcados como
     `#[ignore]` porque as âncoras precisam ser regeneradas (script Python
-    `validate_oracle_f64.py` usa os mesmos layouts antigos). Tarefa de
-    regeneração de âncoras encaminhada como follow-up.
+    `validate_oracle_f64.py` usava os mesmos layouts antigos).
+    **Resolvido na Tarefa 8.13** (regeneração das âncoras + reativação dos testes).
 
 - **Critérios de Aceite:** `ESR(combined vs production) < 1e-2` nos 3 asserts;
-  `cargo test --release --test reference_oracle_f64` verde (13/13 passam,
-  4 ignorados); comentário "gap = architectural divergence" removido e
-  substituído por gates duros com números medidos.
+  `cargo test --release --test reference_oracle_f64` verde; comentário
+  "gap = architectural divergence" removido e substituído por gates duros
+  com números medidos.
 
 - **Risco:** Baixo. Correções arquiteturais validadas por cold-start matching
   (ESR < 1e-7 com prewarm pareado).
@@ -1613,6 +1613,38 @@ independente (Python), não mais auto-calibração por seno analítico.
 ---
 
 ### Grupo F — Encerramento e Validação
+
+### Tarefa 8.13 [TEST/MATH] Restaurar a testemunha externa: regenerar âncoras NumPy e reativar os testes ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md), follow-up de T8.2) [DONE]
+
+- **Status:** `[x]` Concluída (2026-06-29)
+- **Arquivos Alvo:**
+  - [`tests/fixtures/scripts/validate_oracle_f64.py`](file:///home/fabio/nam-rs/tests/fixtures/scripts/validate_oracle_f64.py)
+  - [`tests/fixtures/f64_anchors/*.bin`](file:///home/fabio/nam-rs/tests/fixtures/f64_anchors) (3 âncoras de saída)
+  - [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) (`test_oracle_vs_python_anchor_*`)
+- **Motivação (achado da auditoria):** após T8.2, as 3 âncoras estavam `#[ignore]`das
+  e **sem tarefa rastreada**. Pior: o script Python `validate_oracle_f64.py` foi
+  originalmente escrito para **espelhar o oráculo Rust antigo** (buffer compartilhado,
+  layouts transpostos). Isso significava que a "ancoragem externa < 1e-12" de S5 era
+  **dois implementações compartilhando o mesmo bug** (circularidade) — exatamente o
+  risco que a estrutura de proteção de qualidade deve eliminar.
+- **Correções no script Python (independentes do estilo do Rust, derivadas do
+  formato de peso NAM):**
+  1. **LSTM:** layout de gate `[gate][IH][H]` (GateMajor) → `[gate][H][IH]` (Original,
+     padrão dos modelos JSON `.nam`).
+  2. **WaveNet:** buffers per-layer (eliminando a realimentação IIR espúria do buffer
+     compartilhado) + `head_w` `[head][ch]` + rechannel `[out][in]`.
+  3. **A2:** buffers per-layer (resíduo 1×1 escrito no buffer da próxima camada).
+- **Validação cruzada de TRÊS vias (quebra a circularidade):**
+  - Python f64 ↔ oráculo Rust f64: WaveNet **5.0e-16**, LSTM **3.5e-30**, A2 **5.0e-16** (gate < 1e-12).
+  - Python f64 ↔ **produção f32** (engine totalmente separado): WaveNet **1.81e-13**,
+    LSTM **8.43e-4** (piso f16c recorrente), A2 **2.07e-10** — idênticos a produção-vs-oráculo.
+  - Logo: produção f32, oráculo Rust f64 e referência NumPy f64 são **mutuamente
+    consistentes** por três caminhos de código independentes.
+- **Critérios de Aceite:** 3 testes `test_oracle_vs_python_anchor_*` **sem `#[ignore]`**
+  e verdes com `assert!(esr < 1e-12)`; `cargo test --test reference_oracle_f64
+  --include-ignored` → 17/17 passam, 0 ignorados. ✓
+- **Risco:** Baixo. A independência é comprovada pela concordância com a produção
+  (código separado), não apenas com o oráculo.
 
 ### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 

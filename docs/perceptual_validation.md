@@ -971,6 +971,53 @@ understood and closed.
 - **Historical example.** The pre-T8.2 oracle reported `ESR(WaveNet prod vs oracle) = 2.47` while the decomposition showed `ΣΔESR(all sources) = 9.60e-7` — a ratio of ~2.6 million ×. The ESR was dominated by **architectural divergence** (unmatched prewarm state between oracle and production), not precision loss. Deriving `WAVENET_ESR_LIMIT = 3.5` from the 2.47 was prevented by this rule; post-T8.2 the limit was corrected to 1e-12.
 - **After T8.2/T8.3.** The prewarm-paired ESR (3.57e-3 for LSTM, 6.13e-14 for WaveNet, 4.28e-10 for A2) is now consistent with the decomposition (≤ 10× gap), confirming the corrected gates measure actual precision loss.
 
+### Rule 6 — Independence Must Not Be Circular
+
+**A reference oracle is only "independent" if it is validated against a ground
+truth that is a separate codebase from the one it judges — and that
+independence must be re-proven whenever either side changes.** A second
+implementation written to *mirror* the implementation it is supposed to check
+provides no protection: a shared conceptual bug passes silently in both.
+
+- **The trap (canonical example).** The S5 external anchor `validate_oracle_f64.py`
+  was written to "match the Rust oracle layout" (shared flat buffer, transposed
+  weight indexing). When the Rust oracle was buggy, the Python reproduced the
+  *same* bug, so `ESR(oracle vs anchor) < 1e-12` looked like proof of correctness
+  while both were wrong. T8.2 fixed the Rust oracle and the hidden divergence
+  surfaced (LSTM ESR jumped to 21.3).
+- **The fix (T8.13).** The anchor must agree with a **third, independent code
+  path** — the f32 **production engine** — not just with the oracle. Ground truth
+  for "which layout is correct" is determined **empirically** (run production,
+  see which reference it matches), never by reasoning or by copying the other
+  implementation. After T8.13 the three paths agree mutually:
+  production f32 ↔ Rust f64 oracle ↔ NumPy f64 reference.
+- **Requirement.** Any change to the oracle (`src/testing/reference_oracle.rs`)
+  **invalidates the anchors** and must be paired, in the same change set, with
+  (a) regenerating the anchors via the independent script and (b) re-confirming
+  `ESR(reference vs production) ≈ f32/f16c floor` — not merely `ESR(reference vs
+  oracle) < 1e-12`. Anchor tests must never be left `#[ignore]`d without a
+  tracked task to restore them.
+
+### Rule 7 — Fix the Code, Not the Test's Scope
+
+**When a tightened gate fails for a subset of inputs, the response is to fix the
+code, raise the bound with a documented measurement (Rule 4), or formally record
+an accepted limitation — never to silently remove the failing inputs from the
+test.** Narrowing a test's scope until it passes is the same anti-pattern as
+"calibrate until it passes" (AC-5/AC-9), in disguise.
+
+- **The trap (canonical example).** T8.4 tightened `ABSOLUTE_ESR_CAP_LSTM` to
+  0.08, which the LSTM v2 parity test failed at non-native sample rates
+  (88.2/96/192 kHz). Those rates were quietly dropped from the running test and
+  the code comment claimed they were "tested separately under `#[ignore]`" —
+  but no such test existed. Coverage vanished behind a false comment.
+- **The rule.** If a subset must be excluded, the exclusion must be: (1) **true**
+  (the comment describes reality), (2) **justified** by a stated technical reason
+  (e.g., "the comparison is architecturally unequal because nam-rs resamples to
+  the model's native rate while the C++ reference runs at the raw rate"), and
+  (3) **tracked** as a documented limitation in `TODO-findings.md`, with the
+  measured numbers recorded so the gap stays visible.
+
 ### Policy Compliance Checklist
 
 When introducing or modifying a calibrated gate:
@@ -980,6 +1027,8 @@ When introducing or modifying a calibrated gate:
 - [ ] Rule 3: The threshold carries a **`// Measured:` comment** with the measured value, conditions, and margin.
 - [ ] Rule 4: Any relaxation has a **link to the independent measurement** in the commit message or PR description.
 - [ ] Rule 5: The **sanity-check** was performed (`Σ sources ≈ total` within 10×); if the divergence is larger, the gate is marked as provisional and not declared "done."
+- [ ] Rule 6: If an oracle/reference changed, its **independence was re-proven against production** (a separate code path), and no anchor test is left `#[ignore]`d without a tracked restoration task.
+- [ ] Rule 7: No failing input was **removed from a test to make it pass**; any exclusion is true, justified, and tracked as a documented limitation.
 
 ### Cross-References in Code
 

@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
-"""Reference oracle external validation — PyTorch/NumPy f64 anchor.
+"""Reference oracle external validation — independent NumPy f64 anchor.
 
-Validates the Rust f64 reference oracle against the original PyTorch network
-executed in double precision, for >= 1 model per family (WaveNet/LSTM/A2).
+Independent f64 implementation of the NAM topology (WaveNet/LSTM/A2), used as
+the external ground truth for the Rust f64 reference oracle.
+
+INDEPENDENCE IS THE POINT (see docs/perceptual_validation.md, Gate Calibration
+Policy Rule 6). This script must implement each architecture from the NAM weight
+*format spec* — NOT by mirroring the Rust oracle's buffer layout or index
+arithmetic. The weight byte order is a fixed fact (determine it empirically by
+checking which reading matches the f32 production engine), but the computation
+must stay idiomatic NumPy so that a shared conceptual bug cannot pass silently
+in both. A historic violation (this script copying the old Rust shared-buffer
+layout) made the S5 anchor circular and hid a real bug until T8.2; see T8.13.
+
+Validation requirement (NOT optional): after any change to the oracle or this
+script, the generated anchor must satisfy BOTH
+  * ESR(anchor vs Rust oracle)      < 1e-12   (numerical agreement), AND
+  * ESR(anchor vs production f32)    ≈ f32/f16c floor (independent agreement).
+Regenerate the checked-in anchors in tests/fixtures/f64_anchors/ and keep the
+three test_oracle_vs_python_anchor_* tests un-ignored.
 
 Usage:
     python3 validate_oracle_f64.py <model.nam> <input.bin> --architecture <WaveNet|LSTM|A2>
-
-The script:
-1. Loads the NAM JSON model
-2. Reconstructs the network in NumPy f64
-3. Runs inference on the input signal
-4. Outputs the f64 prediction as binary (f64 LE), ready for comparison
-
-Match target: <= ~1e-12 vs Rust oracle f64 output.
 """
 
 import argparse
@@ -60,10 +68,12 @@ def write_output_bin(path: str, data: np.ndarray):
 def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
     """WaveNet forward pass in NumPy f64.
 
-    Matches the Rust oracle and NAMCore cascaded head chain:
-    - Uses [out_ch][in_ch][kernel] conv weight layout
-    - Layer-outer/frame-inner iteration with in-place buffer updates
-    - Array N seeds its head_accum with array N-1's head projection
+    Independent f64 implementation of the NAM WaveNet topology (cross-checked
+    against both the Rust oracle and the f32 production engine):
+    - [out_ch][in_ch][kernel] conv weights; [head_ch][ch] head; [out][in] rechannel
+    - Per-layer history buffers (each layer reads its own buffer, writes the
+      residual sum into the next layer's buffer)
+    - Array N seeds its head accumulator with array N-1's head projection
     """
     config = model["config"]
     weights = load_weights_as_f64(model)
@@ -96,7 +106,8 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
         k = a_k[ai]
         in_ch = 1 if ai == 0 else a_ch[ai - 1]
 
-        rech_w = weights[cursor : cursor + in_ch * ch].reshape(in_ch, ch)
+        # Rechannel weight: [out_ch][in_ch] (NAM order, matches production).
+        rech_w = weights[cursor : cursor + in_ch * ch].reshape(ch, in_ch)
         cursor += in_ch * ch
         a_rech.append(rech_w)
 
@@ -122,7 +133,8 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
             })
         a_lws.append(lws)
 
-        hw = weights[cursor : cursor + ch * head_ch].reshape(ch, head_ch)
+        # Head projection weight: [head_ch][ch] (NAM order, matches production).
+        hw = weights[cursor : cursor + ch * head_ch].reshape(head_ch, ch)
         cursor += ch * head_ch
         a_head_w.append(hw)
         hb = np.zeros(head_ch, dtype=np.float64)
@@ -131,10 +143,14 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
             cursor += head_ch
         a_head_b.append(hb)
 
-    # Shared flat buffer (matching Rust oracle layout)
-    buf_len = max_rf * max_ch * 2 + num_frames * max_ch * 2 + 4096
-    layer_buffer = np.zeros(buf_len, dtype=np.float64)
+    # Per-layer history buffers (matches production and the Rust oracle).
+    # A single shared buffer is INCORRECT for dilated convolutions: with
+    # layer-outer/frame-inner iteration, a layer's kernel would read past
+    # frames already updated by that same layer's residual write, creating a
+    # spurious IIR feedback. Each layer therefore reads its own buffer and
+    # writes the residual sum into the next layer's buffer.
     bs = max_rf
+    buf_size = max_rf + num_frames + 64
 
     ch_outs = []
     head_proj_out = []
@@ -142,40 +158,42 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
     for ai in range(len(layers)):
         ch = a_ch[ai]
         head_ch = a_head[ai]
+        num_li = len(a_lws[ai])
+        # bufs[0] = rechannel output; bufs[li+1] = layer li output
+        bufs = [np.zeros(buf_size * ch, dtype=np.float64) for _ in range(num_li + 1)]
 
-        # Rechannel into flat buffer
+        # Rechannel into bufs[0]
         if ai == 0:
             for f in range(num_frames):
                 idx = bs + f
                 for c in range(ch):
-                    layer_buffer[idx * ch + c] = x[f] * a_rech[ai][0, c]
+                    bufs[0][idx * ch + c] = x[f] * a_rech[ai][c, 0]
         else:
             prev_ch_out = ch_outs[ai - 1]
-            prev_ch = a_ch[ai - 1]
             for f in range(num_frames):
                 idx = bs + f
                 for c in range(ch):
-                    val = np.dot(prev_ch_out[f], a_rech[ai][:, c])
-                    layer_buffer[idx * ch + c] = val
+                    bufs[0][idx * ch + c] = np.dot(a_rech[ai][c], prev_ch_out[f])
 
         ha = np.zeros((num_frames, ch), dtype=np.float64)
 
-        # Layer-outer / frame-inner iteration (matching Rust)
+        # Layer-outer / frame-inner iteration
         for li, lw in enumerate(a_lws[ai]):
+            hist = bufs[li]
+            k = a_k[ai]
+            dil = lw["dilation"]
             for f in range(num_frames):
                 idx = bs + f
-                dil = lw["dilation"]
-                k = a_k[ai]
 
-                # Conv1d + bias
+                # Conv1d + bias (reads this layer's own input buffer)
                 cv = lw["conv_b"].copy()
                 for oc in range(ch):
                     for kt in range(k):
                         off = dil * (kt + 1 - k)
                         ins = (idx + off) * ch
-                        if ins >= 0 and ins + ch <= len(layer_buffer):
+                        if ins >= 0 and ins + ch <= len(hist):
                             cv[oc] += np.dot(
-                                layer_buffer[ins : ins + ch],
+                                hist[ins : ins + ch],
                                 lw["conv_w"][oc, :, kt],
                             )
 
@@ -193,22 +211,23 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 else:
                     ha[f] = ha[f] + cv
 
-                # L1x1 residual — write to flat buffer
+                # L1x1 residual → next layer's buffer (bufs[li] + residual)
                 for oc in range(ch):
                     val = lw["l1x1_b"][oc]
                     for ic in range(ch):
                         val += cv[ic] * lw["l1x1_w"][oc, ic]
-                    layer_buffer[idx * ch + oc] += val
+                    bufs[li + 1][idx * ch + oc] = bufs[li][idx * ch + oc] + val
 
-        # Save per-channel residual output for next array
+        # Save per-channel residual output (last layer's buffer) for next array
         ch_out = np.zeros((num_frames, ch), dtype=np.float64)
+        last = bufs[num_li]
         for f in range(num_frames):
             idx = bs + f
-            ch_out[f] = layer_buffer[idx * ch : idx * ch + ch]
+            ch_out[f] = last[idx * ch : idx * ch + ch]
         ch_outs.append(ch_out)
 
-        # Head projection
-        proj = ha @ a_head_w[ai] + a_head_b[ai]
+        # Head projection: proj[f, hc] = sum_c ha[f, c] * head_w[hc, c]
+        proj = ha @ a_head_w[ai].T + a_head_b[ai]
         head_proj_out.append(proj)
 
     output = head_proj_out[-1][:, 0] * head_scale
@@ -234,7 +253,10 @@ def lstm_forward(model: dict, x: np.ndarray) -> np.ndarray:
         h4 = 4 * h
 
         n_w = h4 * ih
-        raw_w = weights[cursor : cursor + n_w].reshape(4, ih, h)
+        # NAM/PyTorch standard ("Original") LSTM weight layout: [gate][H][IH]
+        # (rows = 4*hidden output units, cols = input+hidden). JSON .nam models
+        # are always Original; the GateMajor [gate][IH][H] layout is binary-only.
+        raw_w = weights[cursor : cursor + n_w].reshape(4, h, ih)
         cursor += n_w
 
         bias = weights[cursor : cursor + h4]
@@ -275,12 +297,13 @@ def lstm_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 state[:ins] = layers[l - 1]["hidden"]
             state[ins:] = layer["hidden"]
 
-            # GEMV: gates[g, i] = bias[g, i] + sum_j state[j] * w[g, j, i]
+            # GEMV: gates[g, i] = bias[g, i] + sum_j state[j] * w[g, i, j]
+            # ("Original" layout: w[gate, out_unit, in_index])
             gates = layer["bias"].copy()
             for g in range(4):
                 for i in range(h):
                     for j in range(ih):
-                        gates[g, i] += state[j] * layer["w"][g, j, i]
+                        gates[g, i] += state[j] * layer["w"][g, i, j]
 
             # Fused LSTM gates
             for i in range(h):
@@ -380,10 +403,13 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     num_frames = len(x)
     max_ks = max(A2_KS)
     max_dil = max(A2_DIL)
-    max_rf = (max_ks - 1) * max_dil
+    max_rf = (max_ks - 1) * max_dil + 64
     hist_size = max_rf + num_frames + 64
-    history = np.zeros(hist_size * ch, dtype=np.float64)
     bs = max_rf
+    # Per-layer history buffers (matches production and the Rust oracle): each
+    # layer reads its own buffer and writes its residual output into the next
+    # layer's buffer. A single shared buffer is incorrect (see WaveNet note).
+    layer_bufs = [np.zeros(hist_size * ch, dtype=np.float64) for _ in range(A2_NLAYERS)]
 
     # Head accumulator — flat array (no ring modulo during writes)
     hr_len = 1 << (max_rf + num_frames + 64).bit_length()
@@ -397,11 +423,11 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         fi = bs + f
         x_val = x[f]
 
-        # Rechannel
+        # Rechannel → layer 0's history buffer
         layer_in = np.zeros(ch, dtype=np.float64)
         for c in range(ch):
             layer_in[c] = x_val * rechannel_w[c]
-            history[fi * ch + c] = layer_in[c]
+            layer_bufs[0][fi * ch + c] = layer_in[c]
 
         head_col = head_wp
         head_wp += 1
@@ -410,16 +436,17 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         for li, lw in enumerate(layer_weights):
             ks = lw["ks"]
             dil = lw["dil"]
+            hist = layer_bufs[li]
 
-            # Conv1d + bias
+            # Conv1d + bias (reads this layer's own history buffer)
             z = lw["conv_b"].copy()
             for oc in range(ch):
                 for kt in range(ks):
                     off = dil * (kt + 1 - ks)
                     ins = (fi + off) * ch
-                    if ins >= 0 and ins + ch <= len(history):
+                    if ins >= 0 and ins + ch <= len(hist):
                         z[oc] += np.dot(
-                            history[ins : ins + ch],
+                            hist[ins : ins + ch],
                             lw["conv_w"][oc, :, kt],
                         )
 
@@ -435,10 +462,12 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
             else:
                 head_acc[ho : ho + ch] += z[:ch]
 
-            # L1x1 residual (skip last)
+            # L1x1 residual (skip last): next = layer_in + l1x1(z),
+            # written into the NEXT layer's history buffer.
             if li < A2_NLAYERS - 1:
                 residual = z @ lw["l1x1_w"].T + lw["l1x1_b"]
                 layer_in = layer_in + residual
+                layer_bufs[li + 1][fi * ch : fi * ch + ch] = layer_in
 
         # Head finalize — K=16 causal convolution
         cb = head_col - (A2_HEAD_K - 1)

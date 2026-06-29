@@ -414,20 +414,22 @@ cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" "$CLAP_TARGET"
 strip --strip-unneeded "$CLAP_TARGET"
 echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
 
-# Gate: validate CLAP distribution artifact (symbol, SONAME, clap-validator)
-CLAP_SOURCE="$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so"
-echo -e "  Validating CLAP artifact integrity..."
-if ! nm -D "$CLAP_SOURCE" | grep -q "clap_entry"; then
-    echo -e "${RED}Erro: Símbolo 'clap_entry' ausente no artefato CLAP!${NC}"
+# Gate: validate the SHIPPED CLAP distribution artifact (symbol, SONAME, clap-validator).
+# Validamos "$CLAP_TARGET" — o arquivo já copiado e *após* o strip — em vez da fonte
+# pré-strip, para que o gate cubra exatamente o que o usuário recebe (um bug de strip
+# que removesse clap_entry/SONAME seria capturado aqui).
+echo -e "  Validating shipped CLAP artifact integrity..."
+if ! nm -D "$CLAP_TARGET" | grep -q "clap_entry"; then
+    echo -e "${RED}Erro: Símbolo 'clap_entry' ausente no artefato CLAP distribuído!${NC}"
     exit 1
 fi
-if ! readelf -d "$CLAP_SOURCE" | grep -q SONAME; then
-    echo -e "${RED}Erro: SONAME ausente no artefato CLAP!${NC}"
+if ! readelf -d "$CLAP_TARGET" | grep -q SONAME; then
+    echo -e "${RED}Erro: SONAME ausente no artefato CLAP distribuído!${NC}"
     exit 1
 fi
 if command -v clap-validator >/dev/null 2>&1; then
     echo -e "  Executando clap-validator..."
-    clap-validator validate "$CLAP_SOURCE" || {
+    clap-validator validate "$CLAP_TARGET" || {
         echo -e "${RED}Erro: clap-validator reprovou o artefato de distribuição!${NC}"
         exit 1
     }
