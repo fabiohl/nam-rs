@@ -31,6 +31,9 @@ use std::fs;
 use std::path::PathBuf;
 
 mod common;
+use common::A2_ESR_LIMIT;
+use common::LSTM_ESR_LIMIT;
+use common::WAVENET_ESR_LIMIT;
 use common::validation::get_calibrated_threshold;
 
 /// Maps a committed golden `.bin` filename to the `model_name` key
@@ -319,4 +322,29 @@ fn test_all_thresholds_anti_placebo() {
         tested_count >= 10,
         "Expected ≥ 10 golden models in anti-placebo check, found {tested_count}"
     );
+}
+
+/// Tarefa 8.6 — Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo.
+///
+/// Reads the oracle ESR limits (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT)
+/// from the shared `tests/common/constants.rs` module and asserts that ALL are
+/// strictly less than 1.0 — the project's placebo threshold (Rule 2, AC-9):
+/// "ESR ≥ 1.0 = placebo gate that never catches regressions."
+///
+/// This is the guard that prevents future calibration rounds from raising
+/// oracle limits back into the placebo zone. It must fail during T8.3
+/// (before limits are fixed) and pass after.
+///
+/// Uses compile-time const assertions: if any limit is raised >= 1.0,
+/// compilation fails with a clear message — not just a test failure.
+#[test]
+fn test_oracle_gates_below_placebo_threshold() {
+    const {
+        assert!(
+            WAVENET_ESR_LIMIT < 1.0,
+            "WaveNet oracle gate is placebo (≥ 1.0)"
+        );
+        assert!(LSTM_ESR_LIMIT < 1.0, "LSTM oracle gate is placebo (≥ 1.0)");
+        assert!(A2_ESR_LIMIT < 1.0, "A2 oracle gate is placebo (≥ 1.0)");
+    }
 }

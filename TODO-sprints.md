@@ -1406,9 +1406,9 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
 ### Grupo B — Gate Hygiene & Policy: Anti-Placebo no Oráculo + Política de Calibração
 
-### Tarefa 8.6 [TEST] Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo ([AC-9](file:///home/fabio/nam-rs/TODO-findings.md), [AC-5](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.6 [TEST] Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo ([AC-9](file:///home/fabio/nam-rs/TODO-findings.md), [AC-5](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-28)
 
 - **Arquivos Alvo:**
 

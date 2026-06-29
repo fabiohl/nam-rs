@@ -22,6 +22,11 @@
 use std::io::Read;
 use std::path::PathBuf;
 
+mod common;
+use common::A2_ESR_LIMIT;
+use common::LSTM_ESR_LIMIT;
+use common::WAVENET_ESR_LIMIT;
+
 use nam_rs::loader::nam_json::model::NamModelData;
 use nam_rs::loader::nam_json::parse::parse_nam_json;
 use nam_rs::models::NamModel;
@@ -200,24 +205,9 @@ fn test_oracle_vs_python_anchor_a2() {
 }
 
 // ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
-
-// These bounds are re-derived from prewarm-paired ESR(f32 production vs f64
-// ideal oracle) measurements after the T8.2 architectural fixes. They replace
-// the previous limits (WAVENET=3.5, LSTM=1.8, A2=0.35) that were above the
-// project's placebo line (ESR >= 1.0). All new limits are < 1.0.
-//
-// Methodology: 24k prewarm + 256-sample sweep @ 48 kHz; both production (f32)
-// and oracle (f64 ideal) fed the same signal; ESR measured on last 256 samples.
-// Limit = measured ESR × 2 (conservative margin).
-//
-// Measured (post-T8.2, prewarm-paired, 256-sample sweep @ 48 kHz):
-//   WaveNet: ESR = 6.13e-14  →  WAVENET_ESR_LIMIT = 6.13e-14 × 2  →  1e-12 (numerical floor)
-//   LSTM:    ESR = 3.57e-3   →  LSTM_ESR_LIMIT    = 3.57e-3 × 2   →  7.0e-3
-//   A2:      ESR = 4.28e-10  →  A2_ESR_LIMIT      = 4.28e-10 × 2  →  8.6e-10
-
-const WAVENET_ESR_LIMIT: f64 = 1e-12;
-const LSTM_ESR_LIMIT: f64 = 7.0e-3;
-const A2_ESR_LIMIT: f64 = 8.6e-10;
+// Oracle ESR limits are defined in tests/common/constants.rs as pub const
+// (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT) and shared between
+// reference_oracle_f64.rs and threshold_calibration.rs for cross-test access.
 
 // ── T8.3: Prewarm-paired ESR gate tests ────────────────────────────────────
 // Measures ESR(f32 production vs f64 ideal oracle) with paired prewarm

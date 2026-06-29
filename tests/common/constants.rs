@@ -12,3 +12,19 @@ pub const STRESS_SAMPLE_RATE: u32 = 48000;
 pub const V2_PREWARM_SAMPLES: usize = 2048;
 pub const V2_TEST_BLOCK_SIZE: usize = 64;
 pub const V2_STRESS_DURATION_SECS: f64 = 5.0;
+
+// ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
+// Moved to common module for cross-test access (Tarefa 8.6).
+//
+// Methodology: 24k prewarm + 256-sample sweep @ 48 kHz; both production (f32)
+// and oracle (f64 ideal) fed the same signal; ESR measured on last 256 samples.
+// Limit = measured ESR × 2 (conservative margin).
+//
+// Measured (post-T8.2, prewarm-paired, 256-sample sweep @ 48 kHz):
+//   WaveNet: ESR = 6.13e-14  →  WAVENET_ESR_LIMIT = 6.13e-14 × 2  →  1e-12 (numerical floor)
+//   LSTM:    ESR = 3.57e-3   →  LSTM_ESR_LIMIT    = 3.57e-3 × 2   →  7.0e-3
+//   A2:      ESR = 4.28e-10  →  A2_ESR_LIMIT      = 4.28e-10 × 2  →  8.6e-10
+
+pub const WAVENET_ESR_LIMIT: f64 = 1e-12;
+pub const LSTM_ESR_LIMIT: f64 = 7.0e-3;
+pub const A2_ESR_LIMIT: f64 = 8.6e-10;
