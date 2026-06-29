@@ -34,6 +34,15 @@
 use crate::math::common::AlignedVec;
 use crate::math::dsp::fft::FftPlanner;
 
+/// Phase type of the polyphase bank.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PhaseType {
+    /// Linear-phase FIR: symmetric impulse, constant group delay = TAPS_PER_PHASE/2.
+    Linear,
+    /// Minimum-phase FIR via real cepstrum: asymmetric impulse, minimal group delay.
+    Minimum,
+}
+
 /// Number of phases in the overabundant polyphase bank.
 ///
 /// Controls the fractional resolution of the resampler. With 256 phases,
@@ -70,6 +79,12 @@ pub struct PolyphaseBank {
     coeffs: AlignedVec<f32>,
     /// Taps per phase (always TAPS_PER_PHASE, already a multiple of 8).
     pub taps_per_phase: usize,
+    /// Empirical group delay (centroid of energy) in output-rate samples.
+    /// For linear-phase: always `TAPS_PER_PHASE / 2`.
+    /// For minimum-phase: `centroid_of_prototype / NUM_PHASES`.
+    pub group_delay: f64,
+    /// Phase type of this bank (Linear or Minimum).
+    pub phase_type: PhaseType,
 }
 
 impl PolyphaseBank {
@@ -118,11 +133,18 @@ pub fn generate_polyphase_bank(from_rate: u32, to_rate: u32) -> PolyphaseBank {
     // 2. Transform to minimum phase via real cepstrum
     let min_phase = to_minimum_phase(&proto_f64);
 
+    // 2a. Compute empirical group delay (energy centroid) of the minimum-phase kernel
+    let centroid = calculate_centroid(&min_phase);
+    let group_delay = centroid / NUM_PHASES as f64;
+
     // 3. Normalize energy (DC gain = 1.0 per phase)
     let proto_f32: Vec<f32> = min_phase.iter().map(|&x| x as f32).collect();
 
     // 4. Partition into NUM_PHASES sub-filters
-    partition_polyphase(&proto_f32)
+    let mut bank = partition_polyphase(&proto_f32);
+    bank.group_delay = group_delay;
+    bank.phase_type = PhaseType::Minimum;
+    bank
 }
 
 /// Generates a Sinc FIR kernel with Kaiser windowing.
@@ -182,6 +204,22 @@ fn bessel_i0(x: f64) -> f64 {
         }
     }
     sum
+}
+
+/// Computes the energy-weighted centroid (center of mass) of an impulse response.
+///
+/// Returns the average time index (in samples) where the energy is concentrated.
+/// For minimum-phase filters, this centroid is significantly smaller than
+/// `len/2` (the linear-phase theoretical group delay).
+fn calculate_centroid(h: &[f64]) -> f64 {
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for (n, &val) in h.iter().enumerate() {
+        let energy = val * val;
+        num += n as f64 * energy;
+        den += energy;
+    }
+    if den > 1e-30 { num / den } else { 0.0 }
 }
 
 /// Transforms a linear-phase FIR kernel to minimum phase via Real Cepstrum.
@@ -299,6 +337,8 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
     PolyphaseBank {
         coeffs,
         taps_per_phase: taps,
+        group_delay: taps as f64 / 2.0,
+        phase_type: PhaseType::Linear,
     }
 }
 

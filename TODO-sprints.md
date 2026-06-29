@@ -167,7 +167,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa B1.2 — Medir e Rastrear o Atraso de Grupo (Centróide) do Resampler de Fase Mínima (F3) (CRÍTICA)
+#### Tarefa B1.2 — Medir e Rastrear o Atraso de Grupo (Centróide) do Resampler de Fase Mínima (F3) (CRÍTICA) [DONE]
 
 * **Tipo:** Correção de Bug / Melhoria de DSP
 * **Severidade:** MÉDIA-BAIXA

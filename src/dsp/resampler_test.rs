@@ -486,19 +486,44 @@ fn test_linear_phase_roundtrip() {
 
 #[test]
 fn test_latency_calculation() {
-    let rs_48 = NamResampler::new(48_000, 48_000, 256).unwrap();
-    assert_eq!(rs_48.latency_samples(48_000), 0);
+    let rs_bypass = NamResampler::new(48_000, 48_000, 256).unwrap();
+    assert_eq!(rs_bypass.latency_samples(48_000), 0);
 
-    // 44.1k -> 48k: TAPS_PER_PHASE=64 → taps_half=32
-    // latency_in = 32*(44100/48000)=29.4, latency_out=32, total≈61
-    let rs_44 = NamResampler::new(44_100, 48_000, 256).unwrap();
-    assert_eq!(rs_44.latency_samples(44_100), 61);
+    let rate_pairs = [
+        (44_100, 48_000),
+        (48_000, 44_100),
+        (96_000, 48_000),
+        (48_000, 96_000),
+    ];
 
-    // 96k -> 48k: taps_half=32, latency_in=32*(96000/48000)=64, latency_out=32, total=96
-    let rs_96 = NamResampler::new(96_000, 48_000, 256).unwrap();
-    assert_eq!(rs_96.latency_samples(96_000), 96);
+    for &(pw, nam) in &rate_pairs {
+        let rs_min = NamResampler::new(pw, nam, 256).unwrap();
+        let rs_lin = NamResampler::new_linear(pw, nam, 256).unwrap();
 
-    assert_eq!(rs_44.latency_samples(0), 0);
+        let lat_min = rs_min.latency_samples(pw);
+        let lat_lin = rs_lin.latency_samples(pw);
+
+        assert!(
+            lat_min > 0,
+            "{pw}->{nam}: min-phase latency must be positive, got {lat_min}"
+        );
+
+        // Linear-phase: each stage adds TAPS_PER_PHASE/2 = 32 samples,
+        // outer stage rate-converted: 32 * pw_rate / nam_rate
+        let expected_lin = (32.0 + 32.0 * pw as f64 / nam as f64).round() as u32;
+        assert_eq!(
+            lat_lin, expected_lin,
+            "{pw}->{nam}: linear-phase latency mismatch: got {lat_lin}, expected {expected_lin}"
+        );
+
+        assert!(
+            lat_min < lat_lin,
+            "{pw}->{nam}: min-phase latency ({lat_min}) must be less than linear-phase ({lat_lin})"
+        );
+    }
+
+    // Verify host_rate parameter is ignored (now deprecated, must not panic)
+    assert_eq!(rs_bypass.latency_samples(0), 0);
 }
 
 #[test]

@@ -38,7 +38,7 @@
 use anyhow::{Result, bail};
 
 use super::sinc_kernel::{
-    NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
+    NUM_PHASES, PhaseType, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
     generate_polyphase_bank_linear,
 };
 use crate::math::common::{
@@ -121,6 +121,11 @@ struct ResamplerCore {
     /// Cached ISA dispatch for the hot-path mono method.
     /// Micro-opt.
     process_mono: ProcessMonoFn,
+    /// Empirical group delay in output-rate samples (from source bank).
+    group_delay: f64,
+    /// Phase type of the source polyphase bank.
+    #[allow(dead_code)]
+    phase_type: PhaseType,
 }
 
 /// Cached function pointer type for stereo resampling (hot path).
@@ -193,6 +198,11 @@ fn process_internal_mono_avx512bf16(
 
 impl ResamplerCore {
     fn new(from_rate: u32, to_rate: u32, bank: PolyphaseBank) -> Self {
+        // Capture the empirical group delay and phase type before the bank
+        // is consumed by the struct.
+        let group_delay = bank.group_delay;
+        let phase_type = bank.phase_type;
+
         // Starts the accumulator at NUM_PHASES so that the first iteration
         // of the processing loop immediately consumes the first input
         // sample, filling the delay line before attempting to produce output.
@@ -225,7 +235,22 @@ impl ResamplerCore {
             phase_step,
             process_stereo,
             process_mono,
+            group_delay,
+            phase_type,
         }
+    }
+
+    /// Returns the empirical group delay in output-rate samples.
+    #[inline]
+    pub fn group_delay(&self) -> f64 {
+        self.group_delay
+    }
+
+    /// Returns the phase type of the source polyphase bank.
+    #[inline]
+    #[allow(dead_code)]
+    pub fn phase_type(&self) -> PhaseType {
+        self.phase_type
     }
 
     /// Processes a stereo block. RT-safe: zero allocations.
@@ -508,32 +533,31 @@ impl NamResampler {
 
     /// Computes the total latency (input + output) in host-rate samples.
     ///
-    /// Latency is deterministic and uses a conservative estimate of
-    /// TAPS_PER_PHASE/2 per filter (64 taps → 32 sample group delay per stage).
+    /// Uses the empirical group delay from the polyphase bank:
+    /// - Linear-phase: exactly `TAPS_PER_PHASE / 2` per stage.
+    /// - Minimum-phase: energy centroid of the prototype divided by NUM_PHASES.
+    ///
+    /// The output-stage delay is rate-converted to host-rate samples.
     ///
     /// # Parameters
     /// - `host_rate`: host sample rate (e.g., 44100, 48000, 96000).
     ///
     /// # Returns
     /// Total latency in samples at `host_rate`.
-    pub fn latency_samples(&self, host_rate: u32) -> u32 {
-        if self.is_bypass() || host_rate == 0 {
+    pub fn latency_samples(&self, _host_rate: u32) -> u32 {
+        if self.is_bypass() {
             return 0;
         }
 
-        // TAPS_PER_PHASE (64) is the order of each sub-filter.
-        // The group average latency is ~ (TAPS_PER_PHASE / 2).
-        let taps_half = TAPS_PER_PHASE as f64 / 2.0;
-
-        // Input filter latency (host -> nam):
-        // measured in host-rate samples.
-        let latency_in = taps_half * (self.pw_rate as f64 / self.nam_rate as f64);
-
-        // Output filter latency (nam -> host):
-        // measured in host-rate samples.
-        let latency_out = taps_half;
-
-        (latency_in + latency_out).round() as u32
+        let delay_in = match self.inner {
+            Some(ref core) => core.group_delay(),
+            None => 0.0,
+        };
+        let delay_out = match self.outer {
+            Some(ref core) => core.group_delay() * (self.pw_rate as f64 / self.nam_rate as f64),
+            None => 0.0,
+        };
+        (delay_in + delay_out).round() as u32
     }
 
     /// **Input resampling** (input path): `pw_rate → nam_rate`.
