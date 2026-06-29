@@ -169,6 +169,8 @@ pub fn setup_capture_stream<'c>(
                 {
                     rt_status_for_process
                         .clear_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
+                    rt_status_for_process
+                        .clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
                 } else {
                     let _ = stream.dequeue_buffer();
                     return;

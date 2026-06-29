@@ -333,7 +333,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa C1.3 — Resetar a Flag `RESAMPLER_REBUILD_FAILED` no Swap RT (F6)
+#### Tarefa C1.3 — Resetar a Flag `RESAMPLER_REBUILD_FAILED` no Swap RT (F6) [DONE]
 
 * **Tipo:** Correção de Bug (State Machine)
 * **Severidade:** BAIXA
@@ -358,6 +358,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 * **Critérios de Aceitação:**
   * Se um rebuild falhar e marcar `REBUILD_FAILED`, no próximo ciclo de swap o RT thread consumirá a flag de falha e a resetará. Swaps futuros voltarão a aguardar o resampler normalmente (não serão curto-circuitados).
+* **Conclusão (2026-06-29):** ✅ Implementado. Adicionada chamada `rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED)` logo após a limpeza de `RESAMP_SWAP_PENDING` no bloco de falha, garantindo que swaps futuros voltem a aguardar o resampler normalmente. 1028 testes passam, sem warnings, clippy limpo.
 
 ---
 
