@@ -1496,7 +1496,7 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 ### Grupo D — Release Pipeline Hardening: Artefato Distribuído Seguro (AC-8)
 
-### Tarefa 8.9 [BUILD] Gate de símbolo/SONAME/validator no artefato real de distribuição ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.9 [BUILD] Gate de símbolo/SONAME/validator no artefato real de distribuição ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[x]` Implementado — três gates (nm -D | grep clap_entry, readelf -d | grep SONAME, clap-validator) adicionados em `utils/build-release.sh` Phase 5 (linha 417-437), após o strip e antes da limpeza de temp files.
 
@@ -1538,7 +1538,7 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 ### Tarefa 8.10 [BUILD] Fortalecer o knob CARGO_INCREMENTAL no audit (Phase 5) ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída
 
 - **Arquivos Alvo:** [`utils/tests-long.sh`](file:///home/fabio/nam-rs/utils/tests-long.sh)
   (função `run_clap_audit_local`, linha ≈ 393)
@@ -1578,7 +1578,7 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 ### Tarefa 8.11 [TEST] Investigar e resolver linear_test.nam 88200 Hz LUFS=13.5 ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída
 - **Arquivos Alvo:**
   - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`live_cross_validation_v2_linear`)
   - [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (gate LUFS)
@@ -1602,7 +1602,7 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 ### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md))
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `utils/tests-long.sh`
 - **Descrição:**
   - **Pré-condição:** T8.1–T8.11 concluídas (ou explicitamente deferidas com justificativa documentada).

@@ -389,9 +389,10 @@ run_clap_audit_local() {
 
     echo "  Limpando binário CLAP anterior..."
     rm -f target/release/libnam_rs.so
+    rm -rf target/release/incremental/
 
     echo "  Compilando CLAP Plugin em modo Release..."
-    CARGO_BUILD_INCREMENTAL=false cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
+    CARGO_INCREMENTAL=0 cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
 
     local RELEASE_CLAP_BIN="target/release/libnam_rs.so"
     if [ ! -f "$RELEASE_CLAP_BIN" ]; then
