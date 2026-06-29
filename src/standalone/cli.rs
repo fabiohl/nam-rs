@@ -6,6 +6,7 @@
 //! Handles the display of help and parsing of arguments
 //! provided by the user via terminal.
 
+use crate::math::activations::ActivationPrecision;
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 
 use crate::dsp::adaptive::SlimOverride;
@@ -46,6 +47,8 @@ pub fn print_help() {
         "      --oversample off|2x|4x Half-band oversampling around neural stage [default: off]"
     );
     println!("      --os off|2x|4x       Short alias for --oversample");
+    println!("      --activation MODE    Activation precision: standard (default) or hf");
+    println!("      --act MODE           Short alias for --activation");
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -77,6 +80,8 @@ pub struct CliArgs {
     pub slim_override: SlimOverride,
     /// Oversampling factor for the neural stage (off, 2x, 4x).
     pub oversample: OversampleFactor,
+    /// Activation precision mode (Standard or HighFidelity).
+    pub activation: ActivationPrecision,
 }
 
 /// Parses command-line arguments.
@@ -95,6 +100,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut diagnose_full = false;
     let mut slim_override = SlimOverride::Auto;
     let mut oversample = OversampleFactor::Off;
+    let mut activation = ActivationPrecision::Standard;
     let mut has_args = false;
 
     while let Some(arg) = parser.next().unwrap_or_else(|e| exit_with_error(e)) {
@@ -136,6 +142,20 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     "4x" | "4" => OversampleFactor::X4,
                     other => exit_with_error(format!(
                         "Invalid oversample factor: '{}'. Expected 'off', '2x', or '4x'.",
+                        other
+                    )),
+                };
+            }
+            Long("activation") | Long("act") => {
+                let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
+                let val_str = val
+                    .into_string()
+                    .unwrap_or_else(|_| exit_with_error("Invalid activation precision value."));
+                activation = match val_str.to_lowercase().as_str() {
+                    "standard" | "std" => ActivationPrecision::Standard,
+                    "hf" | "highfidelity" | "high" => ActivationPrecision::HighFidelity,
+                    other => exit_with_error(format!(
+                        "Invalid activation precision: '{}'. Expected 'standard' or 'hf'.",
                         other
                     )),
                 };
@@ -244,6 +264,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
         diagnose_full,
         slim_override,
         oversample,
+        activation,
     }
 }
 
@@ -290,5 +311,49 @@ mod tests {
         assert_eq!(cli_args.buffer_size, 512);
         assert!(!cli_args.diagnose);
         assert!(!cli_args.diagnose_full);
+    }
+
+    #[test]
+    fn test_parse_args_activation_standard() {
+        let args = vec!["nam-rs", "--activation", "standard"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert_eq!(
+            cli_args.activation as usize,
+            ActivationPrecision::Standard as usize
+        );
+    }
+
+    #[test]
+    fn test_parse_args_activation_hf() {
+        let args = vec!["nam-rs", "--act", "hf"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert_eq!(
+            cli_args.activation as usize,
+            ActivationPrecision::HighFidelity as usize
+        );
+    }
+
+    #[test]
+    fn test_parse_args_activation_highfidelity() {
+        let args = vec!["nam-rs", "--activation", "highfidelity"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert_eq!(
+            cli_args.activation as usize,
+            ActivationPrecision::HighFidelity as usize
+        );
+    }
+
+    #[test]
+    fn test_parse_args_activation_default() {
+        let args: Vec<&str> = vec!["nam-rs"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert_eq!(
+            cli_args.activation as usize,
+            ActivationPrecision::Standard as usize
+        );
     }
 }

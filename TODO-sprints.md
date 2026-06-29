@@ -58,7 +58,7 @@ Este sprint resolve a lacuna de runtime oversampling no executável standalone, 
 
 Este sprint expõe a infraestrutura de `ActivationPrecision::HighFidelity` (que hoje existe no código, mas só é chamada em testes) para o usuário final por meio da linha de comando do standalone (CLI) e de parâmetros adicionais no plugin CLAP.
 
-#### [ ] Tarefa α2.1 — Exposição na CLI (Standalone) [BAIXO RISCO]
+#### [x] Tarefa α2.1 — Exposição na CLI (Standalone) [BAIXO RISCO]
 
 - **Descrição:** Adicionar as opções de CLI `--activation <standard|hf>` (e o atalho `--act`) ao parser de linha de comando do standalone para configurar a precisão global no bootstrap.
 - **Mudanças propostas:**

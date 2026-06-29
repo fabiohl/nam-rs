@@ -20,6 +20,7 @@
 use nam_rs::diagnostics::SystemSnapshot;
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 use nam_rs::dsp::cabsim::loader::CabSimIr;
+use nam_rs::math::activations::set_activation_precision;
 use nam_rs::models::StaticModel;
 use nam_rs::models::slimmable::clone_wavenet_for_slimmable_storage;
 use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
@@ -192,6 +193,9 @@ fn main() -> anyhow::Result<()> {
 
     let _ = producer.push(ParamPayload::SlimOverride(args.slim_override));
     let _ = producer.push(ParamPayload::SetOversample(args.oversample));
+
+    // Apply activation precision mode before any audio processing
+    set_activation_precision(args.activation);
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.
     // Executed here (outside the cold-path of the first DSP frame) to avoid

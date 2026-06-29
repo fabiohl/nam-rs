@@ -51,12 +51,13 @@ pub use tanh::*;
 ///
 /// Controls whether the production Padé/minimax kernels or the
 /// high-fidelity polynomial exp-based kernels are used.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[repr(usize)]
 #[allow(clippy::module_name_repetitions)]
 pub enum ActivationPrecision {
     /// Padé [5,4] tanh (~2.32e-3) + minimax degree-17 sigmoid (~4.09e-4).
     /// Current production default — fastest path.
+    #[default]
     Standard = 0,
     /// Polynomial exp-based tanh/sigmoid (~2.4e-7 / ~2.1e-7).
     /// Higher cost, lower error, lower aliasing (offline/mixdown).
