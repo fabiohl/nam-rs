@@ -20,7 +20,7 @@ of the `.nam` / `.namb` file format contract.
 |:---:|:--------------------------------------- |:-----:|:-----------------------:|:--------------------:|:------------------------------------------- |:-------------------:|
 | 1   | **Weight compression (F16C/BF16)**      | ❌    | ✅ Yes                  | ❌ No                | −80…−100 dBFS error; LSTM drift             | ✅ Active           |
 | 2   | **Activation approximations (Padé)**    | ❌    | ✅ Default              | 🔶 Partial           | −80…−97 dBFS; ↑ aliasing                    | ✅ Active           |
-| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ❌ No mitigation yet | ESR 2.5–14× over 5 s at 48 kHz              | ✅ Documented       |
+| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ❌ No mitigation yet | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Documented       |
 | 4   | **Host sample rate resampler**          | ❌    | ✅ When host ≠ 48 kHz   | ❌ No†               | Passband ripple < 0.05 dB; stopband ≥ 25 dB | ✅ Active           |
 | 5   | **Neural stage oversampling**           | ❌    | ❌ Off by default       | ✅ CLI + CLAP        | Reduces aliasing; adds latency + CPU        | ✅ Active           |
 | 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | 🔶 Internal only†    | Error ÷ 10,000; ↓ aliasing                  | ⚠️ Not user-exposed |
@@ -108,21 +108,52 @@ After enough steps the error reaches a steady state:
 ESR_steady ∝ σ²ε / (1 − ⟨f⟩²)
 ```
 
-| Model               | Signal length                | ESR vs NAMCore | MR-STFT  |
-|:------------------- |:---------------------------- |:--------------:|:--------:|
-| LSTM 1×16 v1        | 2,048 samp (42 ms)           | 1.04e-2        | 0.098    |
-| LSTM 1×16 v2        | 240,000 samp (5 s)           | **2.61e-2**    | **0.87** |
-| LSTM 1×16 v2        | 960,000 samp (20 s, 192 kHz) | **1.42e-1**    | **1.93** |
-| WaveNet Standard v2 | 240,000 samp                 | ~1e-13         | ~0.01    |
+**The true precision floor (validated).** The f64 reference oracle — now confirmed correct by
+three-way cross-validation (production f32 ↔ Rust f64 oracle ↔ independent NumPy f64; see
+[`perceptual_validation.md`](perceptual_validation.md) and `tests/reference_oracle_f64.rs`) —
+measures the LSTM's distance from the _ideal_ math:
 
-WaveNet is feedforward (no recurrent state) and does not accumulate error across time.
+```text
+ESR(production f32 vs ideal f64, prewarm-paired @ 48 kHz) = 3.57e-3   ← real f16c floor (LSTM 1×16)
+                                  WaveNet = 6.13e-14   A2 = 4.28e-10   ← feedforward, no drift
+```
+
+This is the genuine cost of f16c+f32 precision. (A historical claim that "ESR ≈ 1.0 was the f16c
+floor" was a **bug in the old oracle**, not a real floor — corrected in Sprint S8 / T8.1–T8.2.)
+
+**Two ways drift grows.** Both are measured against NAMCore (the C++ reference — itself also f16c,
+so this is _interop_ drift shared by both engines, larger than the f64 floor above):
+
+_(a) with signal duration_ — the recurrent state keeps accumulating until steady state:
+
+| Signal (LSTM 1×16, 48 kHz) | ESR vs NAMCore | MR-STFT  |
+|:-------------------------- |:--------------:|:--------:|
+| v1 — 2,048 samp (43 ms)    | 1.04e-2        | 0.098    |
+| v2 — 240,000 samp (5 s)    | **2.61e-2**    | **0.87** |
+
+_(b) with sample rate_ — higher rates mean more recurrent steps per second of audio:
+
+| Host rate | LSTM 1×16 ESR vs NAMCore | Notes                       |
+|:--------- |:------------------------:|:--------------------------- |
+| 44.1 kHz  | 2.39e-2                  | native                      |
+| 48 kHz    | 2.61e-2                  | native (model's train rate) |
+| 88.2 kHz  | 5.39e-2                  |                             |
+| 96 kHz    | 6.09e-2                  |                             |
+| 192 kHz   | **1.42e-1**              | 4× native — worst case      |
+
+(Other LSTMs drift much less: 2×8 @ 192 kHz = 4.20e-2; the tiny Official H=3 ≈ 1.23e-3 flat.
+WaveNet is feedforward — no recurrent state, ESR ≈ 1e-13 at every rate.)
+
+The parity test caps this drift with a **measured, rate-aware** bound — `≤ 96 kHz: 0.08`,
+`> 96 kHz: 0.20` — never excluding any rate to make the gate pass (see
+[`cpp_parity_map.md`](cpp_parity_map.md) §4.5 and `tests/cpp_parity.rs`).
 
 **Mandatory?** Yes — it is intrinsic to f16c weight quantization in recurrent architectures.
 Removing it would require f32 weights (breaking format interoperability with NAMCore) or
 compensated accumulation in the cell state (proposed mitigation — see §9).
 
-**User impact.** LSTM models degrade with signal duration. WaveNet models do not. Users comparing
-equal-budget models should factor this in for long sessions.
+**User impact.** LSTM models degrade with signal duration and with host sample rate. WaveNet
+models do not. For long sessions or high host rates, a WaveNet of equal budget is more faithful.
 
 **Implementation.** `src/models/lstm/layer_kernels.rs` (GEMV with f16c weights). Full analysis in
 [`docs/lstm_recurrent_drift.md`](lstm_recurrent_drift.md).
@@ -227,9 +258,12 @@ runtime knob** (no CLI flag, no CLAP parameter). It is currently only selectable
 build-time configuration. A user-accessible control (e.g., `--activation hf|standard`) was
 discussed in Tarefa 5.3 but not implemented as a runtime parameter.
 
-**Pending.** The Padé contribution under real model weights was measured in T5.3: ΔESR Padé =
-1.39e-4 for LSTM H=3 (negligible vs. f16c floor of 3.05e-6 from §1). This measurement needs
-re-validation after T8.2 closes the oracle architectural gap.
+**Precision context (validated post-S8).** With the f64 oracle now confirmed correct (§3), the
+combined precision model (f16c + Padé + f32 accumulation) reproduces production to within
+ESR ≈ 6.9e-5 (LSTM), 6.7e-8 (WaveNet), 1.8e-7 (A2) — i.e. the Padé approximation and f16c
+together fully explain the gap from ideal f64; there is no unexplained "architectural" residue.
+Standard (Padé) mode is therefore the well-understood production default; HighFidelity mode buys
+~10,000× lower activation error, audibly relevant only when paired with oversampling (§5).
 
 **Implementation.** `src/math/activations/mod.rs`, `src/math/activations/tanh/production.rs`,
 `src/math/activations/tanh/high_fidelity.rs`. Detailed precision analysis in
@@ -291,16 +325,13 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ## 9. Pending / Open Work
 
-| Item                                                            | Status                        | Sprint reference |
-|:--------------------------------------------------------------- |:-----------------------------:|:---------------- |
-| Oracle architectural gap (ESR 2.47 vs 9.6e-7 modeled precision) | 🔴 Open                       | T8.1–T8.2 (S8)   |
-| Re-derive LSTM gates from real oracle floor                     | 🔴 Open                       | T8.3–T8.4 (S8)   |
-| T3.3 re-qualification pending oracle fix                        | 🔴 Open                       | T8.5 (S8)        |
-| HighFidelity activation mode user control (CLI/CLAP knob)       | 🟡 Designed, not exposed      | S8/future        |
-| Resampler quality selector (Standard 32T / HQ 64T)              | 🟡 Designed, HQ is default    | Deferred         |
-| Kahan-compensated LSTM head accumulation                        | 🟡 Proposed mitigation for §3 | Épico E4         |
-| Oversampled recurrent state (LSTM HQ mode)                      | 🟡 Proposed mitigation for §3 | Épico E4         |
-| LUFS EBU Tech 3341 compliance vectors                           | 🟡 Open                       | T8.8 (S8)        |
+| Item                                                      | Status                        | Reference                                           |
+|:--------------------------------------------------------- |:-----------------------------:|:--------------------------------------------------- |
+| HighFidelity activation mode user control (CLI/CLAP knob) | 🟡 Designed, not exposed (§6) | future                                              |
+| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` |
+| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default    | §4                                                  |
+| Kahan-compensated LSTM head accumulation                  | 🟡 Proposed mitigation for §3 | Épico E4                                            |
+| Oversampled recurrent state (LSTM HQ mode)                | 🟡 Proposed mitigation for §3 | Épico E4                                            |
 
 ---
 

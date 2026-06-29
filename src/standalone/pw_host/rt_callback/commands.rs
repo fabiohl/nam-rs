@@ -106,11 +106,32 @@ pub fn receive_commands(
                 adaptive.set_slim_override(ov);
             }
             ParamPayload::SetOversample(_factor) => {
-                // Oversample factor change requires rebuilding the engines
-                // (allocation of new buffers), which must happen off-RT.
-                // The initial factor is set at CaptureState::init() time.
-                // ToDo: wire up via main-thread rebuild + SPSC swap (same
-                // pattern as resampler/model hot-swap).
+                // ============================================================
+                // TODO(oversample-rt): runtime oversample changes are IGNORED.
+                // ============================================================
+                // CURRENT BEHAVIOR (known limitation): a SetOversample payload
+                // reaching the audio thread is a deliberate no-op. The factor
+                // is only honored once, at `CaptureState::init()`. So changing
+                // the CLAP parameter (PARAM_OVERSAMPLE=7) or `--oversample`
+                // equivalent AT RUNTIME has no audible effect until the host
+                // re-instantiates the plugin.
+                //
+                // WHY DEFERRED: switching 1x/2x/4x reallocates the oversampling
+                // engines' internal buffers (half-band FIR state + scratch).
+                // Heap allocation on the RT thread is forbidden (.agents/rules
+                // RT-safety: zero alloc / lock / syscall on the audio path).
+                //
+                // HOW TO IMPLEMENT (mirror the slimmable-rebuild pattern in
+                // this same file — it is the canonical template):
+                //   1. RT side: store the requested factor on `rt_status` and
+                //      raise an atomic flag (cf. `try_slimmable_rebuild`, which
+                //      sets `requested_slimmable_ch` + RT_STATUS_NEEDS_*).
+                //   2. Main thread: observe the flag, rebuild + prewarm the
+                //      oversampling engines OFF-RT, hand them back over SPSC.
+                //   3. RT side: drain the SPSC and hot-swap, sending the old
+                //      engines to the GC cascade (cf. `drain_slimmable_models`).
+                // Until then, treat oversample as an instantiation-time setting.
+                // ============================================================
             }
         }
     }

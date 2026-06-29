@@ -1682,7 +1682,7 @@ fn test_golden_vectors_wavenet_a2_film_full() {
 // sample-rate variance. Live cross-validation (`tests/cpp_parity.rs` lines
 // 667, 678) exercises multi-SR parity via the C++ toolchain for these
 // geometries without committing large v2 golden files. See `docs/cpp_parity_map.md`
-// §3.3 and `TODO-audit.md` RF3.
+// §3.3.
 // =============================================================================
 
 /// Test 10a: Golden Vectors — WaveNetDyn Free-Shape (CH=7→4)

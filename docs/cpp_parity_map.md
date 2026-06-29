@@ -9,6 +9,17 @@ Point-to-point mapping between the canonical C++ reference
 and the NAM-rs Rust engine (`src/`). This document tracks parity status, known
 divergences, and the established equivalence status.
 
+Correctness is verified along **two complementary axes**:
+
+1. **Interop parity** — does NAM-rs match NAMCore? (golden vectors + live cross-validation,
+   §9 / §9.1). Both are f16c engines, so this proves *agreement*, not absolute fidelity.
+2. **Ideal-math fidelity** — how far is NAM-rs from the exact mathematics? (the independent
+   f64 reference oracle, §9.2). This isolates the genuine precision floor.
+
+Together they pin the engine from both sides: agreement with the reference **and** distance from
+the ideal. A quick map of every concept lives in the [Topology Table](#10-topology-table) (§10)
+and the [Divergences](#11-nam-rs-divergences-from-c-reference-accepted) (§11).
+
 ---
 
 ## 1. DSP Engine Layer
@@ -58,7 +69,7 @@ divergences, and the established equivalence status.
 
 > Models whose topology does not match a catalog SKU (Standard/Lite/Feather/Nano) are routed through the dynamic fallback path (`WaveNetModelDyn`) — not rejected. This engine handles arbitrary channel counts, kernel sizes, dilations, `condition_size > 1`, and post-stack heads. The `Conv1dDyn` convolution kernel serves as the low-level compute engine for this path, for the A2 dynamic engine (`WaveNetA2Dyn`), and for static WaveNet test/stress kernels.
 >
-> **v2 multi-SR goldens:** Dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) are anchored at **48 kHz only** for v1 golden vectors. v2 multi-SR goldens are intentionally not provided because: (a) dynamic engines handle arbitrary free geometries — geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` (lines 651, 662, 667, 678) already exercises multi-SR parity via the C++ toolchain for the canonical dynamic geometries (`wavenet_dyn_free`, `lstm_dyn_test`); (c) the A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface only and not part of the fixed fast-path. See `TODO-audit.md` RF3 and `tests/fixtures/README.md` §v2 multi-SR coverage.
+> **v2 multi-SR goldens:** Dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) are anchored at **48 kHz only** for v1 golden vectors. v2 multi-SR goldens are intentionally not provided because: (a) dynamic engines handle arbitrary free geometries — geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` (the `live_cross_validation_v2_*` tests) already exercises multi-SR parity via the C++ toolchain for the canonical dynamic geometries (`wavenet_dyn_free`, `lstm_dyn_test`); (c) the A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface only and not part of the fixed fast-path. See `tests/fixtures/README.md` §v2 multi-SR coverage.
 
 | C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                     | Parity established |
 | ----------------------------- | ------------------------------------------------- | ------------------ |
@@ -122,7 +133,40 @@ divergences, and the established equivalence status.
 | `2×24`                         | `LstmModel2<24, 25, 48, 96>`                 | `Lstm2x24`                     |
 | Any other (num_layers, hidden) | `loader/dispatcher/lstm.rs` → `LstmModelDyn` | —                              |
 
----
+### 4.5 LSTM Sample-Rate Drift & Parity Caps
+
+LSTM is the one topology whose parity error grows with **signal length** and **host sample
+rate** — its recurrent cell state accumulates f16c quantization error over time (full RCA in
+[`audio_fidelity_map.md`](audio_fidelity_map.md) §3). NAMCore is *also* f16c, so the figures
+below are **interop drift shared by both engines**, not a NAM-rs-only defect.
+
+Measured nam-rs ↔ NAMCore (v2 stress signal, `tests/cpp_parity.rs`):
+
+| Model         | 44.1 kHz | 48 kHz  | 88.2 kHz | 96 kHz  | 192 kHz     |
+|:------------- |:--------:|:-------:|:--------:|:-------:|:-----------:|
+| LSTM 1×16     | 2.39e-2  | 2.61e-2 | 5.39e-2  | 6.09e-2 | **1.42e-1** |
+| LSTM 2×8      | 3.41e-3  | 3.88e-3 | 1.18e-2  | 1.45e-2 | 4.20e-2     |
+| LSTM Official | 1.23e-3  | 1.23e-3 | 1.23e-3  | 1.23e-3 | 1.23e-3     |
+
+**Parity gate (anti-masking).** The absolute ESR cap for LSTM is **rate-aware and measured** — it
+is *not* a single flat number, and **no sample rate is excluded** to make a gate pass (Gate
+Calibration Policy Rule 7, [`perceptual_validation.md`](perceptual_validation.md)):
+
+| Host rate | `ABSOLUTE_ESR_CAP_LSTM` | Margin over worst measured   |
+|:--------- |:-----------------------:|:---------------------------- |
+| ≤ 96 kHz  | 0.08                    | ~1.3× (vs 6.09e-2 @ 96 kHz)  |
+| > 96 kHz  | 0.20                    | ~1.4× (vs 1.42e-1 @ 192 kHz) |
+
+Both caps are below the placebo line (ESR < 1.0). All four LSTM v2 tests
+(`live_cross_validation_v2_lstm_{1x16,2x8,official,dyn}`) run `run_v2_multi_sr` across all five
+supported rates. The 192 kHz / 1×16 drift is a **documented, tracked, asserted** limitation
+([`TODO-findings.md`](../TODO-findings.md) F-2), never a hidden gap.
+
+> **Weight-layout note (root cause of a real bug).** JSON `.nam` LSTM weights use the **Original**
+> layout `[Gate][H][IH]`; the production runtime transposes them to the SIMD-friendly **GateMajor**
+> `[Gate][IH][H]` at load (see §4.2, §7.4). Confusing the two produces a *completely* wrong output
+> (ESR ≈ 21). This bit the f64 oracle's external anchor (Sprint S8 / Problem A) and is the reason
+> the oracle is now cross-checked against production, not just numerically — see §9.2.
 
 ---
 
@@ -264,6 +308,51 @@ These measurements replace the pre-nuke ESR of ~3e-3 to 1e-2 (−25 to −20 dB)
 The ~10 order-of-magnitude improvement comes from eliminating BF16/F16 weight
 quantization (previously the dominant drift source at ~3.9e-3 per element).
 
+### 9.2 The f64 Reference Oracle — Independent Witness
+
+Cross-validation against NAMCore answers *"do the two f16c engines agree?"* — but NAMCore is
+itself an f16c implementation, so it cannot tell us how far either engine sits from the **ideal
+mathematics**. That is the job of the **f64 reference oracle** (`src/testing/reference_oracle.rs`):
+a from-scratch double-precision implementation of each topology that owes nothing to the SIMD
+production path.
+
+The trust chain has **four independent code paths**, each anchoring the next:
+
+```text
+NAMCore C++ (reference)
+  └─ golden vectors + cpp_parity (interop parity, §9 / §9.1)
+       └─ nam-rs production f32 (the shipped engine)
+            └─ Rust f64 oracle (ideal-math witness, exact tanh/sigmoid)
+                 └─ independent NumPy f64 anchor (3rd implementation)
+```
+
+**Why a 4th layer (the NumPy anchor)?** An oracle written to *mirror* the engine it judges proves
+nothing — a shared conceptual bug passes silently in both. In Sprint S8 this exact trap was found
+and fixed (Problem A): the original anchor copied the oracle's buffer layout, so a wrong LSTM gate
+layout (§4.5) and WaveNet weight transpositions went undetected. The anchor was rebuilt to be
+genuinely independent and is now validated **two ways**:
+
+| Reference oracle vs…               | WaveNet  | LSTM    | A2       | Meaning                                    |
+|:---------------------------------- |:--------:|:-------:|:--------:|:------------------------------------------ |
+| **production f32** (separate code) | 6.13e-14 | 3.57e-3 | 4.28e-10 | true precision floor (f16c+Padé+f32)       |
+| **NumPy f64 anchor** (3rd impl)    | 5.0e-16  | 3.5e-30 | 5.0e-16  | the oracle's own math is correct (< 1e-12) |
+
+The first column is the genuine cost of f16c/Padé precision — and the source of the oracle ESR
+gates (`WAVENET_ESR_LIMIT = 1e-12`, `LSTM_ESR_LIMIT = 7.0e-3`, `A2_ESR_LIMIT = 8.6e-10` =
+measured × 2, `tests/common/constants.rs`). The second column proves the oracle is a faithful
+f64 model, not a mirror of production. A compile-time `const { assert!(LIMIT < 1.0) }` meta-test
+keeps every oracle gate below the placebo line.
+
+| C++ / math reference                   | Rust (`tests/`)                                                   | Parity established    |
+|:-------------------------------------- |:----------------------------------------------------------------- |:--------------------- |
+| (no C++ equiv — ideal f64 math)        | `src/testing/reference_oracle.rs` — f64 forward pass              | Witness               |
+| (no C++ equiv — independent NumPy f64) | `tests/fixtures/scripts/validate_oracle_f64.py` + anchors         | Established (< 1e-12) |
+| Oracle gates / anti-placebo meta-tests | `tests/reference_oracle_f64.rs`, `tests/threshold_calibration.rs` | Established           |
+
+> **Maintenance contract:** any change to `reference_oracle.rs` invalidates the anchors. In the
+> same change set, regenerate them with `validate_oracle_f64.py` and re-confirm both columns above.
+> Never leave the `test_oracle_vs_python_anchor_*` tests `#[ignore]`d without a tracked task.
+
 ---
 
 ## 10. Topology Table
@@ -319,14 +408,14 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 ### 11.2 Math
 
-| Divergence                                           | Rationale                                                                                                                                                                                                                          |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. This is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated).               |
-| **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                                        |
-| **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+.             |
-| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation.                                                                                           |
-| **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                              |
-| **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                                |
+| Divergence                                           | Rationale                                                                                                                                                                                                              |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Padé [5,4] Tanh vs `std::tanh`**                   | C++ uses IEEE-754 `std::tanh`. NAM-rs uses rational Padé approximant (error < 2.32e-3) — 10–20× throughput gain. This is the sole remaining math divergence for WaveNet A1 (BF16/F16 quantization paths eliminated).   |
+| **Minimax degree-17 sigmoid vs `0.5+0.5*tanh(x/2)`** | Direct polynomial (1.67× lower error, −20.25% latency). C++ reference composes `std::tanh`.                                                                                                                            |
+| **BF16 vs F16 dispatch**                             | NAM-rs runtime-detects `Avx512VnniBf16` and chooses precision. C++ has no equivalent multi-ISA/packed-format dispatch. BF16 has ~8× larger quantization error than F16 but allows VNNI native ops on Sapphire Rapids+. |
+| **Kahan compensated summation (scalar fallback)**    | Applied in interleaved 4x scalar fallback dot products. C++ uses standard accumulation. Static conv1d paths also use plain accumulation.                                                                               |
+| **Anti-subnormal DC dither (−220 dBFS)**             | Prevents subnormal float stalls. Below 24-bit DAC noise floor. C++ has no equivalent.                                                                                                                                  |
+| **FP32 native head rechannel**                       | Final projection (head) runs in FP32 regardless of backbone precision. Eliminates quantization error at output. C++ uses same precision throughout.                                                                    |
 
 ### 11.3 Ecosystem
 
@@ -345,10 +434,10 @@ quantization (previously the dominant drift source at ~3.9e-3 per element).
 
 The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` library (MIT-licensed utility used by `NeuralAmpModelerPlugin`):
 
-| C++ reference                                                | Rust (`src/`)                         | Parity status            |
-| ------------------------------------------------------------ | ------------------------------------- | ------------------------ |
-| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed**             |
-| `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**          |
+| C++ reference                                                | Rust (`src/`)                         | Parity status   |
+| ------------------------------------------------------------ | ------------------------------------- | --------------- |
+| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed**    |
+| `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature** |
 
 ### 12.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
 
@@ -420,3 +509,39 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 - **Test validation:** Compares the UPOLS convolution engine against golden vectors generated by the C++ reference binary (`tests/fixtures/render_ir.cpp`).
 - **Alignment & compensation:** Compares are gain-compensated (`CPP_GAIN_INV ≈ 7.943`) and latency-aligned.
 - **Results:** Parity is verified with **ESR < 1e-13** in short, medium, and long scenarios, vastly exceeding the target threshold of 1e-3.
+
+---
+
+## 13. Pending / Open Work
+
+Open parity items, by status. 🟢 = established/by-design and tracked; 🟡 = partial or
+out-of-current-scope; 🔴 = known divergence under investigation.
+
+| Item                                                                              | Status                                                        | Reference                                           |
+|:--------------------------------------------------------------------------------- |:------------------------------------------------------------- |:--------------------------------------------------- |
+| **ConvNet** parity vs C++ `convnet.cpp`                                           | 🟡 Implemented; formal cross-validation not yet established   | §5                                                  |
+| **WaveNet Lite CH=12** ESR divergence (SNR ≈ 0.9 dB)                              | 🔴 Known architectural divergence, `#[ignore]` (P1)           | §9.1                                                |
+| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                   | 🟢 Documented, asserted limitation (inherent f16c)            | §4.5; [`TODO-findings.md`](../TODO-findings.md) F-2 |
+| **A2 general engine** (FiLM / gating / `condition_dsp` / `bottleneck ≠ channels`) | 🟡 Out of scope — forward-compat parser surface only          | §6                                                  |
+| **A2 official FiLM models** (`wavenet_a2_max`, real amp captures)                 | 🟡 Unsupported (future feature; gated on FiLM engine)         | §6                                                  |
+| **A2 goldens** use synthetic weights (not real amp timbres)                       | 🟡 Validates fast-path numerics only; elevate when FiLM lands | §6                                                  |
+| **`SlimmableWavenet`** (single-net channel slicing)                               | 🟡 Deferred epic                                              | §6                                                  |
+| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                           | 🟢 By design (explicit `sample_rate` field pins native rate)  | §6                                                  |
+| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                  | 🟢 By design — live cross-val covers SR; no committed goldens | §3.3                                                |
+
+**Recently resolved (Sprint S8)** — kept for traceability: the f64 oracle was found to be
+**internally bugged and its anchor circular** (Problem A) → rebuilt and 3-way cross-validated
+(§9.2); and LSTM non-native parity coverage had been **silently dropped** (Problem B) → restored
+with a measured, rate-aware cap, no rate excluded (§4.5). The process rules that now prevent these
+classes of error live in [`perceptual_validation.md`](perceptual_validation.md) (Gate Calibration
+Policy, Rules 6 & 7).
+
+---
+
+## See Also
+
+- [`audio_fidelity_map.md`](audio_fidelity_map.md) — Off-spec DSP factors; §3 (LSTM drift) pairs with §4.5 here
+- [`perceptual_validation.md`](perceptual_validation.md) — Metrics, gate methodology, Gate Calibration Policy
+- [`TODO-findings.md`](../TODO-findings.md) — F-2 (LSTM sample-rate drift), audit findings
+- `tests/cpp_parity.rs` — Live cross-validation (`live_cross_validation_v2_*`)
+- `tests/reference_oracle_f64.rs` + `tests/fixtures/scripts/validate_oracle_f64.py` — f64 oracle & independent anchor
