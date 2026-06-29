@@ -18,18 +18,18 @@ of the `.nam` / `.namb` file format contract.
 
 ## Quick Reference
 
-| #   | Factor                                  | Spec? | Mandatory?              | User-Controllable?   | Quality Impact                              | Status              |
-|:---:|:--------------------------------------- |:-----:|:-----------------------:|:--------------------:|:------------------------------------------- |:-------------------:|
-| 1   | **Weight compression (F16C/BF16)**      | ❌    | ✅ Yes                  | ❌ No                | −80…−100 dBFS error; LSTM drift             | ✅ Active           |
-| 2   | **Activation approximations (Padé)**    | ❌    | ✅ Default              | 🔶 Partial           | −80…−97 dBFS; ↑ aliasing                    | ✅ Active           |
-| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ❌ No mitigation yet | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Documented       |
-| 4   | **Host sample rate resampler**          | ❌    | ✅ When host ≠ 48 kHz   | ❌ No†               | Passband ripple < 0.05 dB; stopband ≥ 25 dB | ✅ Active           |
-| 5   | **Neural stage oversampling**           | ❌    | ❌ Off by default       | ✅ CLI + CLAP        | Reduces aliasing; adds latency + CPU        | ✅ Active           |
-| 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | 🔶 Internal only†    | Error ÷ 10,000; ↓ aliasing                  | ⚠️ Not user-exposed |
-| 7   | **Denormal dither + FTZ/DAZ**           | ❌    | ✅ Yes                  | ❌ No                | No audible impact (−220 dBFS)               | ✅ Active           |
-| 8   | **Adaptive Compute (quality fallback)** | ❌    | ✅ Default              | 🔶 `--slim` flag     | Silent quality drop under CPU load          | ✅ Active           |
+| #   | Factor                                  | Spec? | Mandatory?              | User-Controllable?       | Quality Impact                              | Status               |
+|:---:|:--------------------------------------- |:-----:|:-----------------------:|:------------------------:|:------------------------------------------- |:--------------------:|
+| 1   | **Weight compression (F16C/BF16)**      | ❌    | ✅ Yes                  | ❌ No                    | −80…−100 dBFS error; LSTM drift             | ✅ Active            |
+| 2   | **Activation approximations (Padé)**    | ❌    | ✅ Default              | 🔶 Partial               | −80…−97 dBFS; ↑ aliasing                    | ✅ Active            |
+| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ❌ No mitigation yet     | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Documented        |
+| 4   | **Host sample rate resampler**          | ❌    | ✅ When host ≠ 48 kHz   | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB | ✅ Active            |
+| 5   | **Neural stage oversampling**           | ❌    | ❌ Off by default       | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU        | ✅ Active            |
+| 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | ✅ CLI; 🔶 CLAP pending† | Error ÷ 10,000; ↓ aliasing                  | ⚠️ Partially exposed |
+| 7   | **Denormal dither + FTZ/DAZ**           | ❌    | ✅ Yes                  | ❌ No                    | No audible impact (−220 dBFS)               | ✅ Active            |
+| 8   | **Adaptive Compute (quality fallback)** | ❌    | ✅ Default              | 🔶 `--slim` flag         | Silent quality drop under CPU load          | ✅ Active            |
 
-† Resampler quality (Standard/HQ) was deferred — see §4. HF activation mode has no runtime knob — see §6.
+† Resampler quality (Standard/HQ) was deferred — see §4. HF activation mode is exposed via CLI (`--activation`); CLAP parameter pending α2.2. LSTM models ignore the switch until Épico β/I6 — see §6.
 
 ---
 
@@ -259,10 +259,13 @@ high-order folding.
 
 **Mandatory?** No. Standard mode is the production default.
 
-**⚠️ User-exposed?** **Not yet.** The `HighFidelity` path exists and is tested but has **no
-runtime knob** (no CLI flag, no CLAP parameter). It is currently only selectable by code or
-build-time configuration. A user-accessible control (e.g., `--activation hf|standard`) was
-discussed in Tarefa 5.3 but not implemented as a runtime parameter.
+**⚠️ User-exposed?** **Partially.** The CLI exposes `--activation standard|hf` (alias `--act`),
+applying the mode at startup. The CLAP plugin parameter (`PARAM_ACTIVATION=8`) is declared but
+pending wiring (α2.2). **Known limitation:** LSTM models silently ignore the mode switch —
+the fused 4-gate GEMV kernels bypass the `ActivationPrecision` dispatch and always use the
+Standard (Padé/Minimax) path. Full LSTM HighFidelity coverage is deferred to Épico β (I6).
+WaveNet (A1/A2), ConvNet, and Linear models dispatch correctly to both Standard and
+HighFidelity kernels.
 
 **Precision context (validated post-S8).** With the f64 oracle now confirmed correct (§3), the
 combined precision model (f16c + Padé + f32 accumulation) reproduces production to within
@@ -340,13 +343,13 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ## 9. Pending / Open Work
 
-| Item                                                                          | Status                        | Reference                                                            |
-|:----------------------------------------------------------------------------- |:-----------------------------:|:-------------------------------------------------------------------- |
-| HighFidelity activation mode user control (CLI/CLAP knob)                     | 🟡 Designed, not exposed (§6) | future                                                               |
-| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker) |
-| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved)                             |
-| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 |                                                                      |
-| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 |                                                                      |
+| Item                                                      | Status                        | Reference                                                            |
+|:--------------------------------------------------------- |:-----------------------------:|:-------------------------------------------------------------------- |
+| HighFidelity activation mode user control (CLI/CLAP knob) | 🟡 Designed, not exposed (§6) | future                                                               |
+| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker) |
+| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved)                             |
+| Kahan-compensated LSTM head accumulation                  | 🟡 Proposed mitigation for §3 |                                                                      |
+| Oversampled recurrent state (LSTM HQ mode)                | 🟡 Proposed mitigation for §3 |                                                                      |
 
 ---
 

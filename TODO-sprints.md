@@ -79,10 +79,20 @@ Este sprint expõe a infraestrutura de `ActivationPrecision::HighFidelity` (que 
   - Mudar o parâmetro via GUI e constatar a alteração de comportamento no thread de processamento sem instabilidade de áudio.
   - Testar o comportamento em render offline (Offline render força HighFidelity e desliga adaptativo).
 
-#### [ ] Tarefa α2.3 — Testes de Integração e Medições de Zero Alloc [BAIXO RISCO]
+#### [x] Tarefa α2.3 — Testes de Integração e Medições de Zero Alloc [BAIXO RISCO] ✅
 
 - **Descrição:** Escrever testes de integração e validar as garantias de latência e tempo real.
 - **Validação específica:**
   - Adicionar teste em `tests/activation_precision.rs` simulando o fluxo de controle CLI/CLAP.
   - Verificar se a alternância de ativação não dispara o `CountingAllocator` (nenhuma alocação ocorre na troca).
   - Documentar explicitamente em `architecture.md` e `audio_fidelity_map.md` que os modelos LSTM ignoram temporariamente este controle até a entrega do Épico β (I6).
+- **Conclusão (2026-06-29):**
+  - **5 novos testes** adicionados em `tests/activation_precision.rs`:
+    - `test_zero_alloc_activation_switch_primitive`: confirma que `set_activation_precision()` (AtomicStore) é zero-alloc (RT-safety F9).
+    - `test_zero_alloc_activation_hot_path_switch`: confirma zero-alloc durante alternância mid-stream com inferência (WaveNet + LSTM).
+    - `test_zero_alloc_cli_activation_flow` (standalone): simula parse de `--activation` + apply, zero-alloc.
+    - `test_activation_switch_output_idempotent`: confirma saída finita após switch mid-stream.
+    - `test_clap_pattern_block_boundary_activation_switch`: simula o padrão CLAP de switch na borda de bloco (PARAM_ACTIVATION=8 pendente α2.2), zero-alloc.
+  - `docs/architecture.md:87`: documentado que LSTM ignora o modo até Épico β (I6).
+  - `docs/audio_fidelity_map.md`: atualizado de "not user-exposed" para "CLI ✓, CLAP pending α2.2" + nota LSTM/I6.
+  - **Nota para α2.2:** O caminho global `set_activation_precision()` está validado como RT-safe; a wiring de PARAM_ACTIVATION=8 em `events.rs` pode simplesmente chamar esta função na borda do bloco sem preocupação com alocações.
