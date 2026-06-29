@@ -58,7 +58,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         output[..total].fill(0.0);
 
         if self.layers.is_empty() {
-            self.head_write_pos += total;
+            self.head_write_pos = (self.head_write_pos + total) & self.head_ring_mask;
             return;
         }
 

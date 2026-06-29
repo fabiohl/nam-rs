@@ -478,7 +478,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ### Sprint E1 — Endurecimento e Segurança de Limites em A2
 
-#### Tarefa E1.1 — Aplicar Máscara de Anel no Atalho de Camadas Vazias de A2 (F9) (CRÍTICA)
+#### Tarefa E1.1 — Aplicar Máscara de Anel no Atalho de Camadas Vazias de A2 (F9) (CRÍTICA) [DONE]
 
 * **Tipo:** Correção de Bug Latente (Inference Engine)
 * **Severidade:** BAIXA-MÉDIA
