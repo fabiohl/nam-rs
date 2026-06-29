@@ -77,7 +77,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa A1.3 — Atualização do Estado de Questões nas Documentações (Docs)
+#### Tarefa A1.3 — Atualização do Estado de Questões nas Documentações (Docs) [DONE]
 
 * **Tipo:** Ajuste de Documentação e Higiene de Referências
 * **Severidade:** INFORMATIVA

@@ -527,7 +527,7 @@ out-of-current-scope; 🔴 = known divergence under investigation.
 | **`SlimmableWavenet`** (single-net channel slicing)                               | 🟡 Deferred epic                                              | §6                                                      |
 | **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                           | 🟢 By design (explicit `sample_rate` field pins native rate)  | §6                                                      |
 | **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                  | 🟢 By design — live cross-val covers SR; no committed goldens | §3.3                                                    |
-| **A2 Beta: adaptive compute double-pass corrompe estado recorrente**              | 🔴 Bug ativo (fast-path A2-Full/Lite/Dyn, adaptive ligado)    | §6; [`TODO-findings.md`](../TODO-findings.md) F1        |
+| **A2 Beta: adaptive compute double-pass corrompia estado recorrente**             | ✅ Resolvido (Sprint A1)                                      | §6; [`TODO-findings.md`](../TODO-findings.md) F1        |
 | **A2 Beta: `head_write_pos` não mascarado em `layers.is_empty()`**                | 🟡 Latente — disparado apenas sem `prewarm()` após `reset()`  | §11.1; [`TODO-findings.md`](../TODO-findings.md) F9     |
 
 **Recently resolved (Sprint S8)** — kept for traceability: the f64 oracle was found to be

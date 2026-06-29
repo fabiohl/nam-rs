@@ -309,6 +309,14 @@ user control and none is needed — these have zero audible effect.
 / 64 samples), the Adaptive Compute FSM silently downgrades the active model from Full → Reduced →
 Minimal quality tiers. Each tier uses a lighter sub-model (e.g., WaveNet Standard → WaveNet Nano).
 
+During quality transitions WaveNet A1 models use a double-pass inference to crossfade between the
+current and target quality tiers without audible glitches. WaveNet A2 models (A2-Full, A2-Lite,
+A2-Dyn) do **not** support layer-skip (the mechanism that double-pass relies on); forcing them
+through the double-pass path would corrupt their recurrent internal state (buffer history). As a
+safety measure, A2 architectures are excluded from double-pass entirely — they transition between
+quality tiers via a direct single-pass path, preserving audio integrity at the cost of a slightly
+less smooth crossfade during adaptive downgrades.
+
 **Mandatory?** The FSM is active by default. Override via:
 
 - CLI: `--slim auto|full|lite`
@@ -320,7 +328,8 @@ Setting `--slim full` disables the fallback and always uses the full model.
 transitions — this is a deliberate trade-off (seamless playback > consistent quality). Without
 Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
-**Implementation.** `src/dsp/adaptive_compute.rs`, `src/clap/processor/params.rs`.
+**Implementation.** `src/dsp/adaptive_compute.rs`, `src/clap/processor/params.rs`,
+`src/models/static_model.rs` (`supports_layer_skip()`), `src/dsp/pipeline/stages/inference.rs`.
 
 ---
 
@@ -335,8 +344,8 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 | Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
 | **🔴 Oversampling: latência não reportada ao host (PDC)**                     | 🔴 Bug ativo                  | §5 (latência documentada: 12/24 amostras); [`TODO-findings.md`](../TODO-findings.md) F2 |
 | **🔴 Resampler: fórmula de atraso de grupo errada para banco de fase mínima** | 🔴 Bug ativo                  | §4 (min-phase default confirmado); [`TODO-findings.md`](../TODO-findings.md) F3         |
-| **🔴 Adaptive Compute + A2 Beta: double-pass corrompe estado recorrente**     | 🔴 Bug ativo                  | §8 (Adaptive Compute); [`TODO-findings.md`](../TODO-findings.md) F1                     |
-| Adaptive Compute: `prev_state` dessinc em transições encadeadas (< 32 ms)     | 🟡 Edge case raro             | §8; [`TODO-findings.md`](../TODO-findings.md) F4                                        |
+| **Adaptive Compute + A2: double-pass corrompia estado recorrente**            | ✅ Resolvido (Sprint A1)      | §8 (Adaptive Compute); [`TODO-findings.md`](../TODO-findings.md) F1                     |
+| Adaptive Compute: `prev_state` dessinc em transições encadeadas (< 32 ms)     | ✅ Resolvido (Sprint A1)      | §8; [`TODO-findings.md`](../TODO-findings.md) F4                                        |
 
 ---
 
