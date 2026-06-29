@@ -423,7 +423,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ### Sprint D1 — Conformidade de Licença SPDX e CI
 
-#### Tarefa D1.1 — Corrigir o Identificador SPDX no arquivo `oversample.rs` (F8)
+#### Tarefa D1.1 — Corrigir o Identificador SPDX no arquivo `oversample.rs` (F8) [DONE]
 
 * **Tipo:** Higiene / Conformidade de Licenciamento
 * **Severidade:** TRIVIAL
@@ -449,7 +449,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa D1.2 — Adicionar Verificação do Identificador SPDX em `utils/lints.sh`
+#### Tarefa D1.2 — Adicionar Verificação do Identificador SPDX em `utils/lints.sh` [DONE]
 
 * **Tipo:** Ferramenta / QA Automatizado
 * **Severidade:** TRIVIAL

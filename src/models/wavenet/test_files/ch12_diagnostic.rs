@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
 // Minimal test: CH=12 dense layer with known weights, compare SIMD vs scalar
 #[test]
 fn test_dense_ch12_scalar_vs_simd() {
