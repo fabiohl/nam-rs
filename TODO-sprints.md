@@ -396,7 +396,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa C1.5 — Validação da Suíte de Robustez (QA)
+#### Tarefa C1.5 — Validação da Suíte de Robustez (QA) [DONE]
 
 * **Tipo:** QA e Validação de Regressão
 * **Severidade:** GARANTIA DE QUALIDADE
