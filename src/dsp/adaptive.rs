@@ -359,7 +359,9 @@ impl AdaptiveCompute {
             _ => 0.0,
         };
 
-        self.prev_state = self.state;
+        if !matches!(self.crossfade, CrossfadePhase::Active) {
+            self.prev_state = self.state;
+        }
         self.state = new_state;
         self.overload_counter = 0;
         self.recovery_counter = 0;

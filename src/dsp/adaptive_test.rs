@@ -449,7 +449,7 @@ mod tests {
             adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
         }
         assert_eq!(adaptive.state(), AdaptiveState::Minimal);
-        assert_eq!(adaptive.prev_state(), AdaptiveState::Reduced);
+        assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
         assert!(adaptive.is_crossfading());
 
         // Envelope continuity: new multiplier must not jump from the previous value

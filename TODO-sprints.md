@@ -53,7 +53,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa A1.2 — Evitar Dessincronização de `prev_state` em Transições Rápidas
+#### Tarefa A1.2 — Evitar Dessincronização de `prev_state` em Transições Rápidas [DONE]
 
 * **Tipo:** Correção de Bug (State Machine)
 * **Severidade:** BAIXA-MÉDIA
@@ -73,6 +73,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 * **Critérios de Aceitação:**
   * Se ocorrer uma transição de estado enquanto a fase de crossfade ainda estiver `Active` (por exemplo, `Full -> Reduced` seguido de `Reduced -> Minimal` em menos de 32 ms), o `prev_state` do FSM deve manter o valor da origem inicial (`Full`), em vez de ser incorretamente sobrescrito para `Reduced`.
+  * ✅ **Conclusão (Sprint A1, 2026-06-29):** Implementado. A guarda `if !matches!(self.crossfade, CrossfadePhase::Active)` em `transition_to` impede sobrescrita de `prev_state` durante crossfades ativos. Teste `crossfade_rebased_on_rapid_consecutive_transitions` ajustado para validar o novo comportamento (`prev_state` mantém `Full` após transição encadeada).
 
 ---
 
