@@ -29,7 +29,7 @@ NC='\033[0m'
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 37 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 50 minutes)   ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory
@@ -384,10 +384,11 @@ run_phase \
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
 run_clap_audit_local() {
     # Keep RUSTFLAGS consistent across this block to avoid Cargo cache invalidation loops
-    local RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap"
+    local RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap -Clink-arg=-Wl,-u,clap_entry"
     export RUSTFLAGS
 
-    echo "  Limpando binário CLAP anterior..."
+    echo "  Limpando binário CLAP anterior e cache local..."
+    cargo clean -p nam-rs --release
     rm -f target/release/libnam_rs.so
     rm -rf target/release/incremental/
 

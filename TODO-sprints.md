@@ -1536,7 +1536,7 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 - **Risco:** Baixo.
 
-### Tarefa 8.10 [BUILD] Fortalecer o knob CARGO_INCREMENTAL no audit (Phase 5) ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.10 [BUILD] Fortalecer o knob CARGO_INCREMENTAL no audit (Phase 5) ([AC-8](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[X]` Concluída
 
@@ -1576,13 +1576,14 @@ independente (Python), não mais auto-calibração por seno analítico.
 
 ### Grupo E — Long-Suite Residual: Issues do Diagnóstico de 2026-06-28
 
-### Tarefa 8.11 [TEST] Investigar e resolver linear_test.nam 88200 Hz LUFS=13.5 ([F-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.11 [TEST] Investigar e resolver linear_test.nam 88200 Hz LUFS=13.5 ([F-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[X]` Concluída
 - **Arquivos Alvo:**
   - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`live_cross_validation_v2_linear`)
   - [`tests/common/validation.rs`](file:///home/fabio/nam-rs/tests/common/validation.rs) (gate LUFS)
   - [`tests/fixtures/models/linear_test.nam`](file:///home/fabio/nam-rs/tests/fixtures/models/linear_test.nam)
+  - [`src/dsp/sinc_kernel.rs`](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs) (fix da causa raiz — cutoff do protótipo)
 - **Descrição:**
   - O diagnóstico de `tests-long.sh` (2026-06-28) registrou falha em `live_cross_validation_v2_linear` @
     88200 Hz: LUFS=13.5 no render C++ — acima do limiar `[-50, +10]`. O gate LUFS detectou dado de referência
@@ -1595,12 +1596,25 @@ independente (Python), não mais auto-calibração por seno analítico.
 - **Critérios de Aceite:** causa identificada e documentada; Phase 3 da long-suite verde para `v2_linear`;
   comportamento registrado no threshold entry do modelo.
 - **Risco:** Baixo.
+- **Conclusão (2026-06-28):**
+  - **Causa-raiz:** bug na normalização do cutoff do protótipo Sinc/Kaiser em `src/dsp/sinc_kernel.rs:106-115`.
+    A fórmula antiga usava `cutoff = 0.95 × min_rate / max_rate` — um **ratio** não-normalizado ao Nyquist do
+    protótipo (`from_rate × NUM_PHASES / 2`), causando filtro ~22× mais largo que o necessário e variação de
+    ganho entre fases de até 112×. Na conversão 48→88200 kHz (upsample da saída do render C++), o erro de
+    ganho amplificava o sinal para LUFS=13.5.
+  - **Correção:** commit `fa89590` — `fix(resampler): correct prototype cutoff from max-rate to proto-rate
+    normalization to fix 112x gain error`. Nova fórmula: `cutoff = 0.95 × passband_rate / 2 / proto_nyq`.
+  - **Resultado pós-fix:** LUFS @ 88200 Hz = −6.7 (dentro de [−50, +10] ✓); paridade bit-exata (ESR=0,
+    MR-STFT=0) mantida em todas as 5 taxas (44.1k, 48k, 88.2k, 96k, 192k).
+  - **Nota sobre threshold entry:** modelo Linear atinge paridade bit-exata → não requer threshold calibrado
+    por modelo. O bug era do resampler (infra compartilhada), não do modelo. Registro nesta conclusão supre
+    o AC "comportamento registrado no threshold entry do modelo".
 
 ---
 
 ### Grupo F — Encerramento e Validação
 
-### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[X]` Concluída
 - **Arquivos Alvo:** `utils/lints.sh`, `utils/tests-quick.sh`, `utils/tests-long.sh`
