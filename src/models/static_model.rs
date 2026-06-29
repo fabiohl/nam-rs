@@ -225,6 +225,21 @@ impl StaticModel {
         )
     }
 
+    /// Returns `true` if this model supports layer skipping (WaveNet A1 variants only).
+    /// A2 architectures use `MirroredBuffer` + `layer_buffer_starts`/`head_write_pos`
+    /// and cannot safely participate in the double-pass crossfade mechanism.
+    #[inline(always)]
+    pub fn supports_layer_skip(&self) -> bool {
+        matches!(
+            self,
+            Self::WavenetStandard(_)
+                | Self::WavenetLite(_)
+                | Self::WavenetFeather(_)
+                | Self::WavenetNano(_)
+                | Self::WavenetDyn(_)
+        )
+    }
+
     /// Returns `true` if this is a SlimmableContainer model.
     #[inline(always)]
     pub fn is_container(&self) -> bool {

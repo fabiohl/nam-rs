@@ -12,12 +12,13 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 * **Objetivo:** Eliminar a corrupção de estado/CPU em modelos WaveNet A2 sob adaptive compute e corrigir a perda de histórico de transições (`prev_state`) em crossfades rápidos concorrentes.
 * **Complexidade Geral:** Média-Alta (toca o hot-path de inferência e a máquina de estados).
 * **QA Requerido:** Testes unitários do FSM, testes rápidos da pipeline (`tests-quick.sh`).
+* **Fontes de maiores informações:** TODO-findings.md seções "Épico A — Saneamento do Adaptive Compute para A2 (CRÍTICO)" e "Tabela de cruzamento".
 
 ---
 
 ### Sprint A1 — Saneamento do Adaptive Compute e Ajustes de Fidelidade
 
-#### Tarefa A1.1 — Excluir a Arquitetura A2 do Mecanismo de Double-Pass (CRÍTICA)
+#### Tarefa A1.1 — Excluir a Arquitetura A2 do Mecanismo de Double-Pass (CRÍTICA) [DONE]
 
 * **Tipo:** Correção de Bug (Inference Hot-Path)
 * **Severidade:** ALTA

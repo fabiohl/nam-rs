@@ -246,8 +246,11 @@ pub(crate) fn run_inference(
     let lstm_passthrough =
         configure_adaptive_model(ctx.active_model_l, ctx.active_model_r, ctx.adaptive);
 
-    let is_wavenet = ctx.active_model_l.as_ref().is_some_and(|m| m.is_wavenet());
-    let is_crossfading_wavenet = is_wavenet && ctx.adaptive.is_crossfading();
+    let supports_skip = ctx
+        .active_model_l
+        .as_ref()
+        .is_some_and(|m| m.supports_layer_skip());
+    let is_crossfading_wavenet = supports_skip && ctx.adaptive.is_crossfading();
 
     // PATH A: Quality adjustment off (Resampler in Bypass).
     if is_resamp_bypass {
