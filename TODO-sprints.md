@@ -309,7 +309,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa C1.2 — Usar Aritmética Checada nos Dimensionamentos do Loader de LSTM Dinâmico (F5)
+#### Tarefa C1.2 — Usar Aritmética Checada nos Dimensionamentos do Loader de LSTM Dinâmico (F5) [DONE]
 
 * **Tipo:** Melhoria de Robustez
 * **Severidade:** BAIXA
@@ -329,6 +329,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 * **Critérios de Aceitação:**
   * Cálculos de tamanho de pesos do LSTM dinâmico não causam pânico ou wrapping silencioso em builds de release.
+* **Conclusão (2026-06-29):** ✅ Implementado. Substituído `input_size + hidden_size`, `4 * hidden_size`, e `h4 * ih` por chamadas a `checked_arith::checked_add`/`checked_mul` na função `read_lstm_layer_dyn`. 1028 testes passam, sem warnings, clippy limpo.
 
 ---
 

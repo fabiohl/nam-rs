@@ -4,6 +4,7 @@
 use std::mem::size_of;
 
 use super::super::WeightCursor;
+use crate::loader::dispatcher::checked_arith;
 use crate::math::common::quantize_weight;
 use crate::models::lstm::{LstmLayer, LstmLayerDyn};
 
@@ -104,9 +105,9 @@ pub(crate) fn read_lstm_layer_dyn(
     hidden_size: usize,
     is_bf16: bool,
 ) -> anyhow::Result<LstmLayerDyn> {
-    let ih = input_size + hidden_size;
-    let h4 = 4 * hidden_size;
-    let weights_len = h4 * ih;
+    let ih = checked_arith::checked_add(input_size, hidden_size)?;
+    let h4 = checked_arith::checked_mul(4, hidden_size)?;
+    let weights_len = checked_arith::checked_mul(h4, ih)?;
 
     let mut layer = LstmLayerDyn::new(input_size, hidden_size);
 
