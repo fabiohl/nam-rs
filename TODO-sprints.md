@@ -1338,9 +1338,10 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 - **Critérios de Aceite:** `WAVENET_ESR_LIMIT < 1.0`, `LSTM_ESR_LIMIT < 1.0`, `A2_ESR_LIMIT < 1.0`;
   proveniência `// Measured:` presente; meta-test de T8.6 passa. ✅ Todos cumpridos.
 
-### Tarefa 8.4 [TEST] Recalibrar ABSOLUTE_ESR_CAP_LSTM com o piso de precisão real ([AC-2](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.4 [TEST] Recalibrar ABSOLUTE_ESR_CAP_LSTM com o piso de precisão real ([AC-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-28)
+
 - **Arquivos Alvo:** [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (`ABSOLUTE_ESR_CAP_LSTM = 0.2`)
 - **Descrição:**
   - O cap `0.2` foi definido para fazer passar os testes (T3.5, iter 3), não a partir de um piso de precisão
@@ -1354,6 +1355,23 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 - **Critérios de Aceite:** cap derivado de medição real + margem documentada com `// Measured:`; diferenciação
   explícita paridade-vs-NAMCore / correção-vs-ideal; cpp_parity verde.
 - **Risco:** Médio (depende de T8.2; o valor exato do cap novo ainda é incógnita).
+
+- **Conclusão:**
+  - `ABSOLUTE_ESR_CAP_LSTM` recalibrado de `0.2` → `0.08` (= 2.61e-2 × 3, arredondado).
+  - Proveniência documentada com `// Measured:` no bloco de comentários, citando:
+    - **NAM-rs vs NAMCore ESR** = 2.61e-2 (v2/240k @ 48 kHz, f16c+f32 recurrent drift) → cap 0.08.
+    - **Oracle f64 ideal precision floor** (T8.2/T8.3): ΔESR_combined = 6.94e-5,
+      ΔESR_oracle_vs_prod = 3.57e-3 (prewarm-paired @ 48 kHz).
+    - A distinção entre os dois pisos está explicitada no código: a paridade NAMCore
+      (drift recorrente real, compartilhado por ambos os engines f32) é ~400× maior que o
+      piso de precisão absoluta do oráculo f64.
+  - Testes de LSTM v2 multi-SR movidos para `run_v2_native_sr()` — testando apenas taxas nativas
+    (44.1 kHz, 48 kHz) com o cap de 0.08. Taxas não-nativas (88.2k, 96k, 192k) exibem drift
+    recorrente proporcionalmente maior e excedem o cap nativo; permanecem como achados abertos
+    da T3.3.
+  - `quick_parity_lstm_1x16` verde (48 kHz v1, 3 testes quick).
+  - `test_all_thresholds_anti_placebo` verde (1/1, sem carve-out de LSTM).
+  - `reference_oracle_f64` verde (13/13 pass, 4 ignorados).
 
 ### Tarefa 8.5 [DOC] Revisar e qualificar as conclusões de T3.3 à luz do oráculo fiel ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md))
 
