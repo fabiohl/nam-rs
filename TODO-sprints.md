@@ -276,7 +276,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ### Sprint C1 — Endurecimento de Robustez (Loader, Swap e Oversampling)
 
-#### Tarefa C1.1 — Evitar Overflow de Aritmética no `WeightCursor` (F5) (CRÍTICA)
+#### Tarefa C1.1 — Evitar Overflow de Aritmética no `WeightCursor` (F5) (CRÍTICA) [DONE]
 
 * **Tipo:** Correção de Bug / Segurança
 * **Severidade:** BAIXA (Cold path / Loader)
@@ -305,6 +305,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 * **Critérios de Aceitação:**
   * O método `read_slice` retorna um erro de forma limpa caso a adição `self.pos + len` resulte em overflow, em vez de passar na checagem e panicar no fatiamento subsequente.
+* **Conclusão (2026-06-29):** ✅ Implementado. Substituído `self.pos + len` por `checked_add` com filtro de bounds. 1028 testes passam, sem warnings. O `bail!` permanece importado para outros métodos (`read_f32_finite`, `verify_exhausted`).
 
 ---
 

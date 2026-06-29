@@ -45,16 +45,20 @@ impl<'a> WeightCursor<'a> {
 
     /// Reads a contiguous slice of `len` weights, advancing the cursor.
     pub(crate) fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]> {
-        if self.pos + len > self.data.len() {
-            bail!(
-                "Insufficient weights: required {} starting from position {}, available {}",
-                len,
-                self.pos,
-                self.data.len()
-            );
-        }
-        let slice = &self.data[self.pos..self.pos + len];
-        self.pos += len;
+        let end = self
+            .pos
+            .checked_add(len)
+            .filter(|&e| e <= self.data.len())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Insufficient weights: required {} starting from position {}, available {}",
+                    len,
+                    self.pos,
+                    self.data.len()
+                )
+            })?;
+        let slice = &self.data[self.pos..end];
+        self.pos = end;
         Ok(slice)
     }
 
