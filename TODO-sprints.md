@@ -362,7 +362,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa C1.4 — Adicionar Guardas de Tamanho de Buffer no `OversampleEngine` (F7)
+#### Tarefa C1.4 — Adicionar Guardas de Tamanho de Buffer no `OversampleEngine` (F7) [DONE]
 
 * **Tipo:** Melhoria Defensiva
 * **Severidade:** BAIXA (Defensivo)
@@ -392,6 +392,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 * **Critérios de Aceitação:**
   * Prevenção de escrita/leitura OOB (Out-Of-Bounds) em cenários futuros de alteração do chamador do DSP, garantido por asserções em tempo de depuração.
+* **Conclusão (2026-06-29):** ✅ Implementado. Adicionados `debug_assert!` em `OversampleEngine::upsample` (valida `output.len() >= input.len() * factor.multiplier()`) e `OversampleEngine::downsample` (valida `output.len() >= input.len() / factor.multiplier()`). 11 testes passam, clippy e fmt limpos.
 
 ---
 
