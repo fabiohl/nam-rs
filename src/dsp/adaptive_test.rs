@@ -461,4 +461,141 @@ mod tests {
              prev={prev_multiplier:.4}, after={m_after:.4}, step={step:.4}"
         );
     }
+
+    #[test]
+    fn prev_state_invariant_under_chained_crossfades() {
+        // Validates that prev_state remains invariant (unchanged) when multiple
+        // consecutive state transitions are chained while a crossfade is still
+        // active. The FSM must preserve the original previous state across all
+        // chained transitions until the crossfade completes.
+        let budget = 1000;
+
+        // Scenario A: Degrade chain Full→Reduced→Minimal
+        // prev_state must stick to Full (original source) throughout.
+        {
+            let flags = rt_flags();
+            let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Minimal);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+        }
+
+        // Scenario B: Degrade then immediate recovery (Full→Reduced→Full)
+        // prev_state must stay Full — was set on first degrade; recovery does
+        // not overwrite it while crossfade is active.
+        {
+            let flags = rt_flags();
+            let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+
+            adaptive.crossfade_multiplier(48000, 512);
+
+            for _ in 0..5 {
+                adaptive.update(below_threshold(budget, 0.34), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Full);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+        }
+
+        // Scenario C: Oscillation (Full→Reduced→Minimal→Reduced)
+        // prev_state must stay Full throughout all chained transitions.
+        {
+            let flags = rt_flags();
+            let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Minimal);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+
+            for _ in 0..5 {
+                adaptive.update(below_threshold(budget, 0.42), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert!(adaptive.is_crossfading());
+        }
+
+        // Scenario D: After crossfade completes, new transition updates prev_state
+        // Validates that once crossfade finishes, prev_state is correctly set on
+        // the next transition.
+        {
+            let flags = rt_flags();
+            let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+            assert_eq!(adaptive.state(), AdaptiveState::Reduced);
+
+            adaptive.crossfade_multiplier(48000, 1600);
+            assert!(!adaptive.is_crossfading());
+            assert_eq!(adaptive.current_crossfade_multiplier(), 1.0);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Minimal);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Reduced);
+            assert!(adaptive.is_crossfading());
+        }
+
+        // Scenario E: Crossfade continuity after re-base preserves prev_state
+        // Validates that after a rapid re-base the crossfade envelope doesn't
+        // jump and prev_state remains invariant.
+        {
+            let flags = rt_flags();
+            let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Conservative);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.71), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+
+            for _ in 0..12 {
+                adaptive.crossfade_multiplier(48000, 64);
+            }
+            let m_before = adaptive.current_crossfade_multiplier();
+            assert!((m_before - 0.5).abs() < 0.02);
+
+            for _ in 0..3 {
+                adaptive.update(above_threshold(budget, 0.86), budget, 48000, &flags);
+            }
+            assert_eq!(adaptive.state(), AdaptiveState::Minimal);
+            assert_eq!(adaptive.prev_state(), AdaptiveState::Full);
+
+            let m_after = adaptive.current_crossfade_multiplier();
+            assert!(
+                (m_after - m_before).abs() < 0.05,
+                "envelope discontinuity after chained re-base: \
+                 before={m_before:.4}, after={m_after:.4}"
+            );
+        }
+    }
 }

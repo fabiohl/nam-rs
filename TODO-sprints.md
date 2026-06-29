@@ -99,7 +99,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa A1.4 — Validação dos Testes Unitários de Integração de Estado
+#### Tarefa A1.4 — Validação dos Testes Unitários de Integração de Estado [DONE]
 
 * **Tipo:** QA e Validação de Regressão
 * **Severidade:** GARANTIA DE QUALIDADE
