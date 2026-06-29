@@ -614,7 +614,7 @@ Durante a auditoria, várias hipóteses (algumas levantadas por sub-agentes) for
 > (A quebra em sprints/tarefas — `TODO-sprints.md` — só deve ser feita quando
 > solicitada, conforme a skill `planejador-arquiteto`.)
 
-## Épico A — Saneamento do Adaptive Compute para A2 (CRÍTICO)
+## Épico A — Saneamento do Adaptive Compute para A2 (CRÍTICO) [DONE]
 
 **Findings:** F1 (ALTA), F4 (BAIXA-MÉDIA).
 **Objetivo:** eliminar a corrupção de estado/CPU em A2 sob adaptive e corrigir a

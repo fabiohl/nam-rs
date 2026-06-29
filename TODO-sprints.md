@@ -111,3 +111,154 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
   2. Executar `utils/tests-quick.sh` e verificar se a compilação, formatação, clippy e todos os testes rápidos do projeto passam sem warnings ou erros.
 * **Critérios de Aceitação:**
   * Execução bem-sucedida do script `tests-quick.sh` com zero falhas na suite de testes do projeto.
+
+---
+
+## Épico B — Reporte de latência correto para PDC
+
+* **Objetivo:** O host receber a latência real do plugin (soma do resampler, cab-sim e oversampling), com medição e reporte corretos do atraso de grupo do resampler sob fase mínima.
+* **Complexidade Geral:** Média
+* **QA Requerido:** Testes unitários do resampler e do oversampling, validação de latência dinâmica no plugin CLAP.
+* **Fontes de maiores informações:** TODO-findings.md seções "Épico B — Reporte de latência correto para PDC" e "Tabela de cruzamento".
+
+---
+
+### Sprint B1 — Reporte de Latência Correto e Calibração de Fase Mínima
+
+#### Tarefa B1.1 — Reportar a Latência do `OversampleEngine` (F2) (CRÍTICA)
+
+* **Tipo:** Correção de Bug / Melhoria de DSP
+* **Severidade:** MÉDIA
+* **Risco:** MÉDIO (toca o cálculo de latência exposto ao host)
+* **Finding de Origem:** [TODO-findings.md F2](TODO-findings.md#f2--média-oversampling-latência-do-engine-não-é-reportada-ao-host-pdc)
+* **Arquivos Relacionados:**
+  * [src/dsp/oversample.rs](src/dsp/oversample.rs) (impl `OversampleEngine`)
+  * [src/clap/processor/events.rs](src/clap/processor/events.rs) (função `effective_latency` check)
+  * [src/clap/processor/mod.rs](src/clap/processor/mod.rs) (cálculo de `initial_latency`)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/dsp/oversample.rs](src/dsp/oversample.rs), implementar o método público:
+
+     ```rust
+     #[inline]
+     pub fn latency_samples(&self) -> usize {
+         match self.factor {
+             OversampleFactor::Off => 0,
+             OversampleFactor::X2 => HB_DELAY,
+             OversampleFactor::X4 => 2 * HB_DELAY,
+         }
+     }
+     ```
+
+  2. No arquivo [src/clap/processor/events.rs](src/clap/processor/events.rs), na monitoração dinâmica de latência (`let mut effective_latency = self.resampler.latency_samples(host_rate);`), somar a latência do oversampling:
+
+     ```rust
+     effective_latency += self.os_l.latency_samples() as u32;
+     ```
+
+  3. No arquivo [src/clap/processor/mod.rs](src/clap/processor/mod.rs), na ativação inicial do plugin (`let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);`), somar a latência do oversampling:
+
+     ```rust
+     initial_latency += os_l.latency_samples() as u32;
+     ```
+
+* **Critérios de Aceitação:**
+  * O método `OversampleEngine::latency_samples` retorna `0`, `12` ou `24` para as configurações `Off`, `X2` e `X4`, respectivamente.
+  * A latência inicial e as mudanças em tempo de execução incluem corretamente a contribuição do oversampling.
+
+---
+
+#### Tarefa B1.2 — Medir e Rastrear o Atraso de Grupo (Centróide) do Resampler de Fase Mínima (F3) (CRÍTICA)
+
+* **Tipo:** Correção de Bug / Melhoria de DSP
+* **Severidade:** MÉDIA-BAIXA
+* **Risco:** MÉDIO (altera a latência reportada sob fase mínima)
+* **Finding de Origem:** [TODO-findings.md F3](TODO-findings.md#f3--média-baixa-resampler-latência-superestimada-para-bancos-de-fase-mínima)
+* **Arquivos Relacionados:**
+  * [src/dsp/sinc_kernel.rs](src/dsp/sinc_kernel.rs) (banco de filtros e `PolyphaseBank`)
+  * [src/dsp/resampler.rs](src/dsp/resampler.rs) (`ResamplerCore` e `NamResampler`)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/dsp/sinc_kernel.rs](src/dsp/sinc_kernel.rs):
+     * Declarar o enum de controle:
+
+       ```rust
+       #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+       pub enum PhaseType {
+           Linear,
+           Minimum,
+       }
+       ```
+
+     * Adicionar os campos `pub group_delay: f64` e `pub phase_type: PhaseType` ao struct `PolyphaseBank`.
+     * Criar a função auxiliar `calculate_centroid(h: &[f64]) -> f64` que calcula a média ponderada do tempo (centróide de energia) do kernel prototype:
+
+       ```rust
+       fn calculate_centroid(h: &[f64]) -> f64 {
+           let mut num = 0.0;
+           let mut den = 0.0;
+           for (n, &val) in h.iter().enumerate() {
+               let energy = val * val;
+               num += n as f64 * energy;
+               den += energy;
+           }
+           if den > 1e-30 { num / den } else { 0.0 }
+       }
+       ```
+
+     * Em `generate_polyphase_bank` (fase mínima), obter o centróide do kernel `min_phase` e definir `group_delay = centroid / NUM_PHASES as f64`. E definir `phase_type = PhaseType::Minimum`.
+     * Em `generate_polyphase_bank_linear` (fase linear), definir `group_delay = TAPS_PER_PHASE as f64 / 2.0` (exatamente `32.0`). E definir `phase_type = PhaseType::Linear`.
+  2. No arquivo [src/dsp/resampler.rs](src/dsp/resampler.rs):
+     * Adicionar os campos `group_delay: f64` e `phase_type: PhaseType` à estrutura `ResamplerCore`, inicializando-os a partir do `PolyphaseBank` correspondente.
+     * Implementar getters em `ResamplerCore`: `pub fn group_delay(&self) -> f64` e `pub fn phase_type(&self) -> PhaseType`.
+     * Alterar o cálculo em `NamResampler::latency_samples` para somar a latência das fases `inner` e `outer` fisicamente de forma independente e com taxas corretas:
+
+       ```rust
+       let delay_in = match self.inner {
+           Some(ref core) => core.group_delay(),
+           None => 0.0,
+       };
+       let delay_out = match self.outer {
+           Some(ref core) => core.group_delay() * (self.pw_rate as f64 / self.nam_rate as f64),
+           None => 0.0,
+       };
+       (delay_in + delay_out).round() as u32
+       ```
+
+* **Critérios de Aceitação:**
+  * O resampler de fase mínima calcula e reporta o atraso de grupo empírico real (centróide de energia), resultando em menor latência do que na fase linear.
+  * O resampler de fase linear continua reportando o atraso teórico de `TAPS_PER_PHASE / 2`.
+  * Conversão de taxas na etapa de saída correta e consistente com a latência observada.
+
+---
+
+#### Tarefa B1.3 — Atualização do Estado de Questões nas Documentações (Docs)
+
+* **Tipo:** Ajuste de Documentação e Higiene
+* **Severidade:** INFORMATIVA
+* **Risco:** MÍNIMO (apenas alteração de documentação)
+* **Findings de Origem:** [TODO-findings.md § Tabela de Cruzamento](TODO-findings.md#tabela-de-cruzamento), [F2/F3 - Detalhamento](TODO-findings.md#f2--detalhamento-do-cruzamento-com-audio_fidelity_mapmd-5-e-9)
+* **Arquivos Relacionados:**
+  * [docs/audio_fidelity_map.md](docs/audio_fidelity_map.md) (§5, §9)
+* **Detalhamento Técnico:**
+  1. No arquivo [docs/audio_fidelity_map.md](docs/audio_fidelity_map.md):
+     * Atualizar a seção **§5. Oversampling** para indicar que a latência (12 amostras a 2×, 24 amostras a 4×) agora é rastreada e reportada ao host.
+     * Na tabela de **§9. Pending / Open Work**, marcar as linhas referentes aos bugs **F2 (Oversampling PDC)** e **F3 (Resampler min-phase latency)** como `✅ Resolvido (Sprint B1)`.
+* **Critérios de Aceitação:**
+  * O mapa de fidelidade de áudio descreve com precisão a resolução do reporte empírico e dinâmico de latências do resampler e do oversampling.
+
+---
+
+#### Tarefa B1.4 — Validação dos Testes Unitários de Latência e Paridade
+
+* **Tipo:** QA e Validação de Regressão
+* **Severidade:** GARANTIA DE QUALIDADE
+* **Risco:** BAIXO
+* **Arquivos Relacionados:**
+  * [src/dsp/resampler_test.rs](src/dsp/resampler_test.rs)
+  * [src/dsp/oversample_test.rs](src/dsp/oversample_test.rs)
+* **Detalhamento Técnico:**
+  1. Adicionar/ajustar os testes em `src/dsp/resampler_test.rs` para testar que a latência calculada sob fase mínima é inferior à da fase linear correspondente.
+  2. Adicionar testes unitários em `src/dsp/oversample_test.rs` para o método `latency_samples`.
+  3. Executar o pipeline QA rápido (`utils/tests-quick.sh`).
+* **Critérios de Aceitação:**
+  * Todos os testes novos passam com sucesso.
+  * Execução bem-sucedida de `tests-quick.sh` com zero falhas.
