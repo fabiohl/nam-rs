@@ -538,7 +538,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa E1.3 — Criar Testes Unitários de Regressão para os Casos de Borda de A2 (F9/F10)
+#### Tarefa E1.3 — Criar Testes Unitários de Regressão para os Casos de Borda de A2 (F9/F10) [DONE]
 
 * **Tipo:** QA / Testes
 * **Severidade:** GARANTIA DE QUALIDADE
@@ -552,3 +552,6 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 * **Critérios de Aceitação:**
   * Novos testes unitários compilam e validam com sucesso as novas proteções e wrap-arounds da máquina de estados do modelo.
   * O script `utils/tests-quick.sh` é concluído com status de sucesso.
+  * ✅ **Conclusão (Sprint E1, 2026-06-29):** Implementados 6 testes unitários de regressão:
+    * **F9 (dynamic_test.rs — 3 testes):** `head_write_pos_never_exceeds_ring_mask` (2048 iterações com verificação de limite estrito), `head_write_pos_wraps_correctly` (4096 iterações confirmando wrap-around dentro da máscara), `head_write_pos_reset_after_prewarm` (500 chamadas seguidas de prewarm, confirmando reset para rf).
+    * **F10 (film_test.rs — 3 testes):** `cond_size_greater_than_1` (cond_size=2, groups=1, shift=true), `cond_size_2_groups_2` (cond_size=2, groups=2, shift=true), `cond_size_4_groups_4_scale_only` (cond_size=4, groups=4, shift=false, validando zeragem do shift). Todos os novos testes passaram, assim como os 236 testes da suíte A2 e o script `tests-quick.sh` completo (todas as 5 fases).

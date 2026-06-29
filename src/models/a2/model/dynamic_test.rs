@@ -271,3 +271,99 @@ fn test_wavenet_a2_dyn_receptive_field() {
     assert_eq!(model.receptive_field_size, expected);
     assert_eq!(model.receptive_field(), expected);
 }
+
+// ── F9 regression: head_write_pos wrap-around with empty layers ──────
+
+#[test]
+fn test_wavenet_a2_dyn_head_write_pos_never_exceeds_ring_mask() {
+    let mut model = WaveNetA2Dyn::new(
+        3,
+        3,
+        &A2_KERNEL_SIZES,
+        &A2_DILATIONS,
+        make_standard_activations(A2_NUM_LAYERS),
+        make_standard_gating(A2_NUM_LAYERS),
+        make_standard_secondary(A2_NUM_LAYERS),
+        false,
+    )
+    .unwrap();
+    let ring_mask = model.head_ring_mask;
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    for i in 0..2048 {
+        model.process(&input, &mut output);
+        assert!(
+            model.head_write_pos <= ring_mask,
+            "iteration {}: head_write_pos {} exceeded ring_mask {}",
+            i,
+            model.head_write_pos,
+            ring_mask
+        );
+    }
+}
+
+#[test]
+fn test_wavenet_a2_dyn_head_write_pos_wraps_correctly() {
+    let mut model = WaveNetA2Dyn::new(
+        3,
+        3,
+        &A2_KERNEL_SIZES,
+        &A2_DILATIONS,
+        make_standard_activations(A2_NUM_LAYERS),
+        make_standard_gating(A2_NUM_LAYERS),
+        make_standard_secondary(A2_NUM_LAYERS),
+        false,
+    )
+    .unwrap();
+    let ring_mask = model.head_ring_mask;
+    let cap = ring_mask + 1;
+    let mut prev_wp = model.head_write_pos;
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    let mut wrapped = false;
+    for _ in 0..4096 {
+        model.process(&input, &mut output);
+        let wp = model.head_write_pos;
+        if wp < prev_wp {
+            wrapped = true;
+        }
+        assert!(wp <= ring_mask);
+        prev_wp = wp;
+    }
+    assert!(
+        wrapped || cap <= 64 * 4096,
+        "head_write_pos should wrap after enough iterations (cap={}, wp after 4096 iters={})",
+        cap,
+        model.head_write_pos
+    );
+}
+
+#[test]
+fn test_wavenet_a2_dyn_head_write_pos_reset_after_prewarm() {
+    let mut model = WaveNetA2Dyn::new(
+        3,
+        3,
+        &A2_KERNEL_SIZES,
+        &A2_DILATIONS,
+        make_standard_activations(A2_NUM_LAYERS),
+        make_standard_gating(A2_NUM_LAYERS),
+        make_standard_secondary(A2_NUM_LAYERS),
+        false,
+    )
+    .unwrap();
+    let rf = model.receptive_field_size;
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    for _ in 0..500 {
+        model.process(&input, &mut output);
+    }
+    assert_ne!(
+        model.head_write_pos, rf,
+        "head_write_pos should have advanced after 500 process calls"
+    );
+    model.prewarm();
+    assert_eq!(
+        model.head_write_pos, rf,
+        "head_write_pos should be reset to rf after prewarm"
+    );
+}

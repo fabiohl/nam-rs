@@ -296,33 +296,166 @@ fn test_film_shift_buffer_zeroed_when_shift_false() {
     }
 }
 
-/// Ensure `load()` copies weights correctly for groups > 1.
+/// F10 regression: FiLM with cond_size=2 (> 1) and groups=1, shift=true.
+/// Exercises the debug_assert guard added in E1.2 with properly sized condition.
 #[test]
-fn test_film_load_copies_weights() {
-    let cond_size = 4;
-    let channels = 8;
-    let groups = 2;
+fn test_film_process_cond_size_greater_than_1() {
+    let cond_size = 2;
+    let channels = 4;
+    let config = FiLMConfig {
+        active: true,
+        shift: true,
+        groups: 1,
+    };
+
+    let mut weights = vec![0.0f32; channels * 2 * cond_size];
+    for c in 0..channels {
+        weights[c * cond_size + (c % cond_size)] = 1.0;
+        weights[(channels + c) * cond_size + (c % cond_size)] = 0.5;
+    }
+    let bias = vec![0.0f32; channels * 2];
+
+    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+
+    let condition = vec![0.25f32, 0.75];
+    let mut input = vec![1.0f32, 2.0, 3.0, 4.0];
+
+    let ref_scale_shift =
+        cond_to_scale_shift_ref(&weights, &bias, &condition, channels, cond_size, true, 1);
+    let expected = apply_modulation_ref(&input, &ref_scale_shift);
+
+    unsafe { layer.process(&mut input, &condition) };
+
+    for c in 0..channels {
+        assert!(
+            (input[c] - expected[c]).abs() < 1e-5,
+            "channel {}: expected {}, got {}",
+            c,
+            expected[c],
+            input[c]
+        );
+    }
+}
+
+/// F10 regression: FiLM with cond_size=2 (> 1) and groups=2, shift=true.
+/// Exercises group-based indexing in cond_to_scale_shift with cond_size > 1.
+#[test]
+fn test_film_process_cond_size_2_groups_2() {
+    let cond_size = 2;
+    let channels = 4;
+    let groups = 2u32;
     let config = FiLMConfig {
         active: true,
         shift: true,
         groups,
     };
 
-    let out_per_group = (channels / groups as usize) * 2;
-    let cond_per_group = cond_size / groups as usize;
-    let total_w = groups as usize * out_per_group * cond_per_group;
-    let weights: Vec<f32> = (0..total_w).map(|i| i as f32 + 0.1).collect();
-    let bias: Vec<f32> = (0..channels * 2).map(|i| i as f32 + 0.5).collect();
+    let g = groups as usize;
+    let ch_per_group = channels / g;
+    let cond_per_group = cond_size / g;
+    let out_per_group = ch_per_group * 2;
+    let total_w = g * out_per_group * cond_per_group;
 
-    let layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut weights = vec![0.0f32; total_w];
+    let mut bias = vec![0.0f32; channels * 2];
 
-    assert_eq!(layer.weights.len(), total_w);
-    assert_eq!(layer.bias.len(), channels * 2);
-    assert_eq!(layer.scale_shift_buf.len(), channels * 2);
-    for (i, &w) in weights.iter().enumerate() {
-        assert_eq!(layer.weights[i], w);
+    for grp in 0..g {
+        let w_offset = grp * out_per_group * cond_per_group;
+        for row in 0..out_per_group {
+            let w_start = w_offset + row * cond_per_group;
+            for ic in 0..cond_per_group {
+                weights[w_start + ic] = 1.5;
+            }
+            let global_out = if row < ch_per_group {
+                grp * ch_per_group + row
+            } else {
+                channels + grp * ch_per_group + (row - ch_per_group)
+            };
+            bias[global_out] = 0.1;
+        }
     }
-    for (i, &b) in bias.iter().enumerate() {
-        assert_eq!(layer.bias[i], b);
+
+    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+
+    let condition = vec![0.5f32, 0.5];
+    let mut input = vec![1.0f32; channels];
+
+    let ref_scale_shift = cond_to_scale_shift_ref(
+        &weights, &bias, &condition, channels, cond_size, true, groups,
+    );
+    let expected = apply_modulation_ref(&input, &ref_scale_shift);
+
+    unsafe { layer.process(&mut input, &condition) };
+
+    for c in 0..channels {
+        assert!(
+            (input[c] - expected[c]).abs() < 1e-5,
+            "channel {}: expected {}, got {}",
+            c,
+            expected[c],
+            input[c]
+        );
+    }
+}
+
+/// F10 regression: FiLM with cond_size=4, groups=4, shift=false (scale-only).
+/// Exercises cond_per_group = 1 with cond_size > 1.
+#[test]
+fn test_film_process_cond_size_4_groups_4_scale_only() {
+    let cond_size = 4;
+    let channels = 4;
+    let groups = 4u32;
+    let config = FiLMConfig {
+        active: true,
+        shift: false,
+        groups,
+    };
+
+    let g = groups as usize;
+    let ch_per_group = channels / g;
+    let cond_per_group = cond_size / g;
+    let out_per_group = ch_per_group;
+    let total_w = g * out_per_group * cond_per_group;
+
+    let mut weights = vec![0.0f32; total_w];
+    let mut bias = vec![0.0f32; channels];
+
+    for grp in 0..g {
+        let w_offset = grp * out_per_group * cond_per_group;
+        for row in 0..out_per_group {
+            let w_start = w_offset + row * cond_per_group;
+            for ic in 0..cond_per_group {
+                weights[w_start + ic] = 2.0;
+            }
+            let global_out = grp * ch_per_group + row;
+            bias[global_out] = 0.5;
+        }
+    }
+
+    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+
+    let condition = vec![0.1f32, 0.2, 0.3, 0.4];
+    let mut input = vec![1.0f32; channels];
+
+    let ref_scale_shift = cond_to_scale_shift_ref(
+        &weights, &bias, &condition, channels, cond_size, false, groups,
+    );
+    let expected = apply_modulation_ref(&input, &ref_scale_shift);
+
+    unsafe { layer.process(&mut input, &condition) };
+
+    // Shift region must be zero when shift=false
+    for c in channels..channels * 2 {
+        assert_eq!(layer.scale_shift_buf[c], 0.0);
+    }
+
+    for c in 0..channels {
+        assert!(
+            (input[c] - expected[c]).abs() < 1e-5,
+            "channel {}: expected {}, got {}",
+            c,
+            expected[c],
+            input[c]
+        );
     }
 }

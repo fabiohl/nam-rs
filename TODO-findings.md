@@ -639,13 +639,13 @@ de impulso/atraso de grupo.
 consistentes e guardas defensivas no oversampling.
 **Risco:** BAIXO. Mudanças locais e de baixo acoplamento.
 
-## Épico D — Conformidade e higiene
+## Épico D — Conformidade e higiene [DONE]
 
 **Findings:** F8 (TRIVIAL).
 **Objetivo:** corrigir SPDX e adicionar *lint* de CI para SPDX/licença.
 **Risco:** MÍNIMO.
 
-## Épico E — Endurecimento latente da arquitetura A2 (Beta)
+## Épico E — Endurecimento latente da arquitetura A2 (Beta) [DONE]
 
 **Findings:** F9 (LATENTE), F10 (LATENTE).
 **Objetivo:** fechar caminhos OOB/pânico que hoje não disparam por dependerem de
