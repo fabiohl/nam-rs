@@ -319,6 +319,19 @@ impl OversampleEngine {
         matches!(self.factor, OversampleFactor::Off)
     }
 
+    /// Returns the group delay in samples at the native (model) rate.
+    ///
+    /// Each 2× half-band stage introduces HB_DELAY (= 12) samples.
+    /// Off → 0, X2 → 12, X4 → 24.
+    #[inline]
+    pub fn latency_samples(&self) -> usize {
+        match self.factor {
+            OversampleFactor::Off => 0,
+            OversampleFactor::X2 => HB_DELAY,
+            OversampleFactor::X4 => 2 * HB_DELAY,
+        }
+    }
+
     /// Upsamples mono input from native rate to oversampled rate.
     ///
     /// `output` must have room for `input.len() * factor.multiplier()` samples.

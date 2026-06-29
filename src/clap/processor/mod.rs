@@ -150,6 +150,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         // 5. Report initial latency to shared state
         let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);
+        initial_latency += os_l.latency_samples() as u32;
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
             if let Some(ref conv) = conv_engine {

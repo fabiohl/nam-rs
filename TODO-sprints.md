@@ -125,7 +125,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ### Sprint B1 — Reporte de Latência Correto e Calibração de Fase Mínima
 
-#### Tarefa B1.1 — Reportar a Latência do `OversampleEngine` (F2) (CRÍTICA)
+#### Tarefa B1.1 — Reportar a Latência do `OversampleEngine` (F2) (CRÍTICA) [DONE]
 
 * **Tipo:** Correção de Bug / Melhoria de DSP
 * **Severidade:** MÉDIA

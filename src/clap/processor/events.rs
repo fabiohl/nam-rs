@@ -114,6 +114,7 @@ impl<'a> NamClapProcessor<'a> {
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let mut effective_latency = self.resampler.latency_samples(host_rate);
+        effective_latency += self.os_l.latency_samples() as u32;
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
             if let Some(ref conv) = self.conv_engine {
