@@ -1438,9 +1438,9 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 
 - **Risco:** Baixo (depende de T8.3).
 
-### Tarefa 8.7 [DOC] Formalizar a Política de Calibração de Gates ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md), [AC-9](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.7 [DOC] Formalizar a Política de Calibração de Gates ([AC-5](file:///home/fabio/nam-rs/TODO-findings.md), [AC-9](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[x]` Concluída (2026-06-28)
 - **Arquivos Alvo:** [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
   (nova seção "Gate Calibration Policy")
 - **Descrição:**
@@ -1455,6 +1455,10 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
   - Referenciar esta política nos comentários de `reference_oracle_f64.rs` e `threshold_calibration.rs`.
 - **Critérios de Aceite:** seção presente no doc; referenciada em 2+ arquivos de código; `refatora-doc` revisada.
 - **Risco:** Baixo.
+- **Conclusão:** Seção "Gate Calibration Policy" adicionada em `docs/perceptual_validation.md:890-992` com as
+  5 regras, checklist de compliance, exemplos canônico corretos/incorretos, e cross-references. Código
+  referenciado em `tests/reference_oracle_f64.rs:211-213` e `tests/threshold_calibration.rs:12-15`.
+  Revisão `refatora-doc` sem apontamentos.
 
 ---
 

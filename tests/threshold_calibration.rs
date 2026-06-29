@@ -9,6 +9,11 @@
 //!
 //! Part of T3.3: formalizing the calibration infrastructure.
 //!
+//! All meta-tests implement the Gate Calibration Policy from
+//! docs/perceptual_validation.md (Rules 1–5): validated reference,
+//! below placebo, provenance comment, link to independent measurement,
+//! sanity-check Σ sources ≈ total.
+//!
 //! ## F10 Investigation (E2.1 — 2026-06-24)
 //!
 //! Fidelity Margin ≤ 0.5 dB in `live_cross_validation_lstm_dyn_1x7 (v2)`

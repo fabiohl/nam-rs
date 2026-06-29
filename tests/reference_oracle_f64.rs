@@ -208,6 +208,9 @@ fn test_oracle_vs_python_anchor_a2() {
 // Oracle ESR limits are defined in tests/common/constants.rs as pub const
 // (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT) and shared between
 // reference_oracle_f64.rs and threshold_calibration.rs for cross-test access.
+// All gates comply with the Gate Calibration Policy in docs/perceptual_validation.md
+// (Rules 1–5: validated reference, below placebo, provenance comment, link to
+// independent measurement, sanity-check Σ sources ≈ total).
 
 // ── T8.3: Prewarm-paired ESR gate tests ────────────────────────────────────
 // Measures ESR(f32 production vs f64 ideal oracle) with paired prewarm

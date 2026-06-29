@@ -887,6 +887,110 @@ numerical noise, not training error.
 
 ---
 
+## Gate Calibration Policy
+
+This policy governs how every threshold and gate in the project is derived, maintained,
+and reviewed. It formalizes the methodology from [AC-5](file:///home/fabio/nam-rs/TODO-findings.md)
+("Methodology 'calibrate until it passes' inverts the purpose of the test") and
+[AC-9](file:///home/fabio/nam-rs/TODO-findings.md) ("The 'calibrate until it passes +
+declare done' pattern recurred at the oracle level") of the project's correctness
+audit. All gates in `tests/threshold_calibration.rs`, `tests/cpp_parity.rs`,
+`tests/reference_oracle_f64.rs`, and `tests/common/validation.rs` must comply.
+
+### Rule 1 — Derivation from Validated Reference
+
+**Every threshold must derive from a metric whose validity has been independently
+established.** A metric is "validated" when it has been corroborated by an external,
+independent reference (e.g., NumPy f64 anchor for the f64 oracle; NAMCore C++ for
+interop parity). No gate may be derived from a metric whose only evidence is
+"the current output passes."
+
+- **Correct:** `LSTM_ESR_LIMIT = 7.0e-3` — derived from `ESR(f32 prod vs f64 oracle, prewarm-paired) = 3.57e-3` with the f64 oracle independently anchored against NumPy f64 (ESR < 1e-12). Measured and validated.
+- **Incorrect:** Setting a threshold to `current_esr × 1.5` without an external anchor proving the metric measures what it claims.
+
+### Rule 2 — Never Exceed the Placebo Line
+
+**Fidelity gates must never exceed the project's placebo boundary: ESR < 1.0,
+MR-STFT < 0.5.** A gate with ESR ≥ 1.0 or MR-STFT ≥ 0.5 is a placebo — it
+cannot catch any regression because it sits above the signal's own energy
+or above the point of total spectral collapse.
+
+- **Enforced by:** `test_all_thresholds_anti_placebo` in `tests/threshold_calibration.rs:264` (per-model gates) and `test_oracle_gates_below_placebo_threshold` in `tests/threshold_calibration.rs:341` (oracle gates).
+- **No per-model carve-outs permitted.** The anti-placebo rules apply uniformly to all models without `starts_with(...)` exemptions. Architectural differences (e.g., LSTM recurrent drift) are accommodated through parametrized, measured, and documented bounds — never through blanket exemptions.
+- **Historical violations (canonical examples of what NOT to do):** Placebo oracle gates `WAVENET_ESR_LIMIT = 3.5` / `LSTM_ESR_LIMIT = 1.8` (post-E7, pre-T8.2), and the LSTM carve-out in the MR-STFT anti-placebo rule that permitted `mrstft_max = 0.85` — both corrected in T8.2–T8.6.
+
+### Rule 3 — Mandatory Measurement Provenance Comment
+
+**Every calibrated threshold entry must carry a `// Measured:` comment** documenting:
+the measured value, the conditions (sample rate, signal duration, prewarm),
+and the margin applied to derive the limit. The format is:
+
+```text
+// Measured: <value> @ <conditions>  →  limit = <value × margin>
+```
+
+This requirement applies to Tier 1 calibrated thresholds in `tests/common/validation.rs`,
+oracle ESR limits in `tests/common/constants.rs`, per-architecture caps in
+`tests/cpp_parity.rs`, and any future calibrated gate. Entries without a provenance
+comment are caught by `test_all_calibrated_entries_have_measurement_comments` in
+`tests/threshold_calibration.rs:222`.
+
+- **Example (correct):** `// Measured: 3.57e-3 ESR @ 48 kHz, 24k prewarm + 256 sweep → limit = 3.57e-3 × 2 = 7.0e-3`
+- **Example (incorrect):** A threshold with no comment, or a comment like `// Relaxed from 0.1` without stating the measurement that justified it.
+
+### Rule 4 — Relaxation Requires Link to Independent Measurement
+
+**Any loosening of a gate requires linking to an independent measurement that
+justifies it.** "The current output passes" is not a valid justification.
+The justification must cite:
+
+1. **What was measured** (metric, model, sample rate, signal).
+2. **How the reference was validated** (external anchor, independent tool).
+3. **Why the new limit still provides meaningful regression protection**
+   (i.e., the limit − measured value margin is small enough to detect a real
+   degradation).
+
+- **Correct:** Relaxing `ABSOLUTE_ESR_CAP_LSTM` from 6.23e-3 to 0.08 based on `ESR(v2, 240k steps, 48 kHz, prewarm-paired vs oracle) = 3.57e-3`, with a 3× margin justified by the oracle's confirmed f64 correctness (external NumPy anchor). The limit 0.08 is still < 1.0 (non-placebo) and 3.57e-3 is documented as the steady-state floor.
+- **Incorrect:** Iterating thresholds upward until CI turns green, as observed in T3.5 (MR-STFT 0.15→0.85 across 5 iterations).
+
+### Rule 5 — Mandatory Sanity-Check on Metric Meaning
+
+**Before declaring any gate "completed," the sum of modeled error sources
+must be consistent with the total measured error** within a reasonable bound
+(≤ 10× divergence). This ensures the metric being gated actually measures what
+is claimed — not an architectural artifact masquerading as precision loss.
+
+```text
+Σ ΔESR(modeled sources: f16c + activation + accumulation) ≈ ESR(total measured)
+```
+
+If the ratio `ESR(total) / ΣΔESR(sources)` exceeds 10, the absolute number is
+suspect and cannot be used as a gate until the root cause of the divergence is
+understood and closed.
+
+- **Historical example.** The pre-T8.2 oracle reported `ESR(WaveNet prod vs oracle) = 2.47` while the decomposition showed `ΣΔESR(all sources) = 9.60e-7` — a ratio of ~2.6 million ×. The ESR was dominated by **architectural divergence** (unmatched prewarm state between oracle and production), not precision loss. Deriving `WAVENET_ESR_LIMIT = 3.5` from the 2.47 was prevented by this rule; post-T8.2 the limit was corrected to 1e-12.
+- **After T8.2/T8.3.** The prewarm-paired ESR (3.57e-3 for LSTM, 6.13e-14 for WaveNet, 4.28e-10 for A2) is now consistent with the decomposition (≤ 10× gap), confirming the corrected gates measure actual precision loss.
+
+### Policy Compliance Checklist
+
+When introducing or modifying a calibrated gate:
+
+- [ ] Rule 1: The metric is measured against an **independently validated reference** (external anchor, not self-referential).
+- [ ] Rule 2: The gate is **below the placebo line** (ESR < 1.0, MR-STFT < 0.5). The anti-placebo meta-tests will enforce this.
+- [ ] Rule 3: The threshold carries a **`// Measured:` comment** with the measured value, conditions, and margin.
+- [ ] Rule 4: Any relaxation has a **link to the independent measurement** in the commit message or PR description.
+- [ ] Rule 5: The **sanity-check** was performed (`Σ sources ≈ total` within 10×); if the divergence is larger, the gate is marked as provisional and not declared "done."
+
+### Cross-References in Code
+
+This policy is referenced in:
+
+- `tests/threshold_calibration.rs` — meta-tests that enforce Rules 2, 3, and 5 at CI time.
+- `tests/reference_oracle_f64.rs` — oracle ESR gates that comply with Rules 1, 2, 3, and 5 after T8.2/T8.3.
+- `tests/common/validation.rs` — `get_calibrated_threshold()` and Tier 1 entries, which carry `// Measured:` comments (Rule 3).
+
+---
+
 ## Quick Reference — File/Line Map
 
 | Metric            | Implementation                        | Tests                                                                |
