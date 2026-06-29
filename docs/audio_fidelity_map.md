@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Audio Fidelity Map — Off-Spec DSP Design Decisions
@@ -325,13 +326,17 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ## 9. Pending / Open Work
 
-| Item                                                      | Status                        | Reference                                           |
-|:--------------------------------------------------------- |:-----------------------------:|:--------------------------------------------------- |
-| HighFidelity activation mode user control (CLI/CLAP knob) | 🟡 Designed, not exposed (§6) | future                                              |
-| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` |
-| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default    | §4                                                  |
-| Kahan-compensated LSTM head accumulation                  | 🟡 Proposed mitigation for §3 | Épico E4                                            |
-| Oversampled recurrent state (LSTM HQ mode)                | 🟡 Proposed mitigation for §3 | Épico E4                                            |
+| Item                                                                          | Status                        | Reference                                                                               |
+|:----------------------------------------------------------------------------- |:-----------------------------:|:--------------------------------------------------------------------------------------- |
+| HighFidelity activation mode user control (CLI/CLAP knob)                     | 🟡 Designed, not exposed (§6) | future                                                                                  |
+| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)`; **⚠️ bloqueado por F2**            |
+| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4; **⚠️ requer correção de F3 antes da implementação**                                 |
+| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
+| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
+| **🔴 Oversampling: latência não reportada ao host (PDC)**                     | 🔴 Bug ativo                  | §5 (latência documentada: 12/24 amostras); [`TODO-findings.md`](../TODO-findings.md) F2 |
+| **🔴 Resampler: fórmula de atraso de grupo errada para banco de fase mínima** | 🔴 Bug ativo                  | §4 (min-phase default confirmado); [`TODO-findings.md`](../TODO-findings.md) F3         |
+| **🔴 Adaptive Compute + A2 Beta: double-pass corrompe estado recorrente**     | 🔴 Bug ativo                  | §8 (Adaptive Compute); [`TODO-findings.md`](../TODO-findings.md) F1                     |
+| Adaptive Compute: `prev_state` dessinc em transições encadeadas (< 32 ms)     | 🟡 Edge case raro             | §8; [`TODO-findings.md`](../TODO-findings.md) F4                                        |
 
 ---
 

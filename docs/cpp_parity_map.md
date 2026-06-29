@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # C++ ↔ Rust Parity Map — NeuralAmpModelerCore × NAM-rs
@@ -160,7 +159,7 @@ Calibration Policy Rule 7, [`perceptual_validation.md`](perceptual_validation.md
 Both caps are below the placebo line (ESR < 1.0). All four LSTM v2 tests
 (`live_cross_validation_v2_lstm_{1x16,2x8,official,dyn}`) run `run_v2_multi_sr` across all five
 supported rates. The 192 kHz / 1×16 drift is a **documented, tracked, asserted** limitation
-([`TODO-findings.md`](../TODO-findings.md) F-2), never a hidden gap.
+(see §4.5 and §9.1 of this document for full RCA and measured gates), never a hidden gap.
 
 > **Weight-layout note (root cause of a real bug).** JSON `.nam` LSTM weights use the **Original**
 > layout `[Gate][H][IH]`; the production runtime transposes them to the SIMD-friendly **GateMajor**
@@ -517,17 +516,19 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 Open parity items, by status. 🟢 = established/by-design and tracked; 🟡 = partial or
 out-of-current-scope; 🔴 = known divergence under investigation.
 
-| Item                                                                              | Status                                                        | Reference                                           |
-|:--------------------------------------------------------------------------------- |:------------------------------------------------------------- |:--------------------------------------------------- |
-| **ConvNet** parity vs C++ `convnet.cpp`                                           | 🟡 Implemented; formal cross-validation not yet established   | §5                                                  |
-| **WaveNet Lite CH=12** ESR divergence (SNR ≈ 0.9 dB)                              | 🔴 Known architectural divergence, `#[ignore]` (P1)           | §9.1                                                |
-| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                   | 🟢 Documented, asserted limitation (inherent f16c)            | §4.5; [`TODO-findings.md`](../TODO-findings.md) F-2 |
-| **A2 general engine** (FiLM / gating / `condition_dsp` / `bottleneck ≠ channels`) | 🟡 Out of scope — forward-compat parser surface only          | §6                                                  |
-| **A2 official FiLM models** (`wavenet_a2_max`, real amp captures)                 | 🟡 Unsupported (future feature; gated on FiLM engine)         | §6                                                  |
-| **A2 goldens** use synthetic weights (not real amp timbres)                       | 🟡 Validates fast-path numerics only; elevate when FiLM lands | §6                                                  |
-| **`SlimmableWavenet`** (single-net channel slicing)                               | 🟡 Deferred epic                                              | §6                                                  |
-| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                           | 🟢 By design (explicit `sample_rate` field pins native rate)  | §6                                                  |
-| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                  | 🟢 By design — live cross-val covers SR; no committed goldens | §3.3                                                |
+| Item                                                                              | Status                                                        | Reference                                               |
+|:--------------------------------------------------------------------------------- |:------------------------------------------------------------- |:------------------------------------------------------- |
+| **ConvNet** parity vs C++ `convnet.cpp`                                           | 🟡 Implemented; formal cross-validation not yet established   | §5                                                      |
+| **WaveNet Lite CH=12** ESR divergence (SNR ≈ 0.9 dB)                              | 🔴 Known architectural divergence, `#[ignore]` (P1)           | §9.1                                                    |
+| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                   | 🟢 Documented, asserted limitation (inherent f16c)            | §4.5 and §9.1 (measured gates in `tests/cpp_parity.rs`) |
+| **A2 general engine** (FiLM / gating / `condition_dsp` / `bottleneck ≠ channels`) | 🟡 Out of scope — forward-compat parser surface only          | §6                                                      |
+| **A2 official FiLM models** (`wavenet_a2_max`, real amp captures)                 | 🟡 Unsupported (future feature; gated on FiLM engine)         | §6                                                      |
+| **A2 goldens** use synthetic weights (not real amp timbres)                       | 🟡 Validates fast-path numerics only; elevate when FiLM lands | §6                                                      |
+| **`SlimmableWavenet`** (single-net channel slicing)                               | 🟡 Deferred epic                                              | §6                                                      |
+| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                           | 🟢 By design (explicit `sample_rate` field pins native rate)  | §6                                                      |
+| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                  | 🟢 By design — live cross-val covers SR; no committed goldens | §3.3                                                    |
+| **A2 Beta: adaptive compute double-pass corrompe estado recorrente**              | 🔴 Bug ativo (fast-path A2-Full/Lite/Dyn, adaptive ligado)    | §6; [`TODO-findings.md`](../TODO-findings.md) F1        |
+| **A2 Beta: `head_write_pos` não mascarado em `layers.is_empty()`**                | 🟡 Latente — disparado apenas sem `prewarm()` após `reset()`  | §11.1; [`TODO-findings.md`](../TODO-findings.md) F9     |
 
 **Recently resolved (Sprint S8)** — kept for traceability: the f64 oracle was found to be
 **internally bugged and its anchor circular** (Problem A) → rebuilt and 3-way cross-validated
@@ -542,6 +543,6 @@ Policy, Rules 6 & 7).
 
 - [`audio_fidelity_map.md`](audio_fidelity_map.md) — Off-spec DSP factors; §3 (LSTM drift) pairs with §4.5 here
 - [`perceptual_validation.md`](perceptual_validation.md) — Metrics, gate methodology, Gate Calibration Policy
-- [`TODO-findings.md`](../TODO-findings.md) — F-2 (LSTM sample-rate drift), audit findings
+- [`TODO-findings.md`](../TODO-findings.md) — F1 (A2 adaptive double-pass), F2 (oversample PDC latency), and other audit findings
 - `tests/cpp_parity.rs` — Live cross-validation (`live_cross_validation_v2_*`)
 - `tests/reference_oracle_f64.rs` + `tests/fixtures/scripts/validate_oracle_f64.py` — f64 oracle & independent anchor
