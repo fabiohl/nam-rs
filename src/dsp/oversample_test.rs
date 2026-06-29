@@ -170,6 +170,21 @@ fn test_x4_roundtrip_dc() {
 }
 
 #[test]
+fn test_latency_samples() {
+    let off = OversampleEngine::new(OversampleFactor::Off, 256);
+    assert_eq!(off.latency_samples(), 0);
+    assert!(off.is_bypass());
+
+    let x2 = OversampleEngine::new(OversampleFactor::X2, 256);
+    assert_eq!(x2.latency_samples(), 12);
+    assert!(!x2.is_bypass());
+
+    let x4 = OversampleEngine::new(OversampleFactor::X4, 256);
+    assert_eq!(x4.latency_samples(), 24);
+    assert!(!x4.is_bypass());
+}
+
+#[test]
 fn test_factor_multiplier() {
     assert_eq!(OversampleFactor::Off.multiplier(), 1);
     assert_eq!(OversampleFactor::X2.multiplier(), 2);

@@ -247,7 +247,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa B1.4 — Validação dos Testes Unitários de Latência e Paridade
+#### Tarefa B1.4 — Validação dos Testes Unitários de Latência e Paridade [DONE]
 
 * **Tipo:** QA e Validação de Regressão
 * **Severidade:** GARANTIA DE QUALIDADE
