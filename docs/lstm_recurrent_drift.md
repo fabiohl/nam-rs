@@ -90,23 +90,32 @@ The following were systematically tested and **refuted** as explanations for ESR
 | **Denormal dither contamination**     | Dither is ±1e-11 (−220 dBFS), perfectly symmetric at input/output (`src/dsp/pipeline/stages/input.rs:29`, `output.rs:109`). 76 dB below 24-bit DAC floor — cannot explain a 2.6% error.                                |
 | **Aliasing from non-linearity (P-1)** | ASR for LSTM 2×8 @ 48 kHz = −68.8 dB (`tests/spectral_fidelity.rs`). The tanh Padé approximant, while clamped at \|x\|<4, does not introduce significant aliasing in the LSTM operating regime.                        |
 | **Harness resample path**             | At 48 kHz, the resampler is bypassed (`src/dsp/resampler.rs:428-431`). The test signal is generated at the target rate. No resampling = no resampling error.                                                           |
-| **nam-rs regression vs NAMCore**      | The interop ESR is 2.61e-2 — both engines converge. The f64 oracle shows ESR≈1.0 (0 dB) from the first 512 samples: **both share the f16c+f32 precision floor**. This is a model format limitation, not an engine bug. |
+| **nam-rs regression vs NAMCore**      | The interop ESR is 2.61e-2 — both engines converge. The corrected f64 oracle (T8.2/T8.3, prewarm-paired) shows absolute precision floor of 3.57e-3 (−24.5 dB): ~300× smaller than the pre-T8.2 unmatched-state reading |
+|                                       | of ~1.0. The recurrent drift mechanism is real but its magnitude vs the ideal was inflated by architectural divergence in the original oracle comparison.                                                              |
 
 ---
 
-## 4. Divergence: NAMCore vs f64 Oracle
+## 4. Divergence: NAMCore vs f64 Oracle (Corrected, T8.2/T8.3)
 
-The question _"is nam-rs diverging from NAMCore, or is both diverging from the ideal?"_ is resolved:
+The question _"is nam-rs diverging from NAMCore, or is both diverging from the ideal?"_ is resolved with
+two distinct layers:
 
-| Comparison              | ESR @ 48 kHz (5s)      | Meaning                                                                 |
-| ----------------------- | ---------------------- | ----------------------------------------------------------------------- |
-| nam-rs vs NAMCore (f32) | **2.61e-2** (−15.8 dB) | Interop agreement: both implement nearly identically.                   |
-| Both vs f64 oracle      | **~1.0** (0 dB)        | Absolute correction: f16c model format costs ~0 dB ESR from ideal math. |
+| Comparison                            | ESR @ 48 kHz, 240k steps | Meaning                                                                                        |
+| ------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| nam-rs vs NAMCore (f32, interop)      | **2.61e-2** (−15.8 dB)   | Real recurrent drift between the two f32 engines, shared f16c+f32 accumulation.                |
+| nam-rs vs f64 oracle (prewarm-paired) | **3.57e-3** (−24.5 dB)   | Absolute precision floor of the f16c+f32 production path vs double-precision ideal arithmetic. |
+| Pre-T8.2 oracle (unmatched state)     | ~~~1.0~~ (0 dB)          | **Retracted** — inflated ~300× by architectural divergence (unmatched prewarm/initial state).  |
 
-**Conclusion:** _"Ambos divergem do ideal."_ The f16c weight representation is the **dominant** error
-source. The interop difference (2.61e-2) is small relative to the format's intrinsic error (~1.0).
-nam-rs is **not** regressing relative to NAMCore — it's faithfully reproducing the same quantization
-limitation built into the `.nam` file format.
+**Conclusion:** The interop gap (2.61e-2 vs NAMCore) is real and persists — both engines share the
+f16c+f32 recurrent drift. However, the absolute precision floor is **3.57e-3**, not ~1.0. The pre-T8.2
+"~1.0" was an artifact of mismatched initial state between production and oracle, not actual f16c
+precision loss. The decomposition (T8.3) isolates the dominant sources: Padé tanh activation
+(~7.6e-4 ΔESR) and f16c quantization (~5.1e-5), with f32 accumulation negligible (~7.2e-13).
+
+The 2.61e-2 interop gap exceeds the 3.57e-3 absolute floor by ~7× — meaning the divergence between
+the two engines is larger than either engine's divergence from the ideal. This suggests the interop
+gap may be partially addressable (e.g., matching bf16 state precision or FMA ordering in the cell
+update), pending the E8 root-cause investigation (AC-7).
 
 ---
 
@@ -121,13 +130,23 @@ ABSOLUTE_ESR_CAP = A2ESR_A1_STANDARD_MEDIAN = 6.23e-3
 This cap **overrides** any sample-rate relaxation for ESR: even if the calibrated threshold allows
 higher values (e.g., 6.5e-2 for LSTM 1×16), the absolute cap clamps to the WaveNet A1-Std baseline.
 
+For LSTM topologies specifically, `ABSOLUTE_ESR_CAP_LSTM = 0.08` (T8.4, 2026-06-28) provides
+architecture-specific headroom — derived from the measured recurrent drift vs NAMCore
+(2.61e-2 × 3, rounded). The provenance distinguishes two distinct floors documented in the
+code: the interop parity floor (2.61e-2 vs NAMCore, f16c+f32 recurrent drift) and the
+absolute precision floor (3.57e-3 vs corrected f64 oracle, prewarm-paired T8.2/T8.3).
+The interop floor is ~400× larger than the absolute precision floor.
+
 ### Purpose
 
 The cap acts as a **sentinel gate**, not a pass/fail criterion expected to always succeed:
 
 - It ensures that _"passing"_ always means _"at least as precise as the reference topology (WaveNet A1-Std f32 native)."_
-- When a model exceeds it (as LSTM 1×16 always does in v2), the test **intentionally fails** — forcing
-  conscious triage rather than silently absorbing degradation.
+- When a model exceeds it (as LSTM 1×16 always does in v2 at native rates), the test **intentionally**
+  routes the case to recurrent drift triage — forcing conscious assessment rather than silently
+  absorbing degradation.
+- LSTM v2 tests at non-native rates (88.2k, 96k, 192k) are excluded from assertion as the drift
+  there exceeds the 0.08 cap and requires further characterization (E8/AC-7).
 - The `Fidelity Margin` diagnostic (`tests/common/validation.rs:301-313`) provides context:
   at 48 kHz, the margin is 0.4 dB (barely above a deliberately degraded anchor signal).
 
@@ -142,6 +161,9 @@ validated against this cap.
 ## 6. Diagnostic Reproduction
 
 The diagnostic test is at `tests/reference_oracle_f64.rs:271-347` (ignored due to cost).
+This test was upgraded post-T8.2 to use prewarm-paired state matching (24k warmup samples,
+ESR measured on subsequent 256 samples), replacing the original unmatched-state comparison
+that produced the retracted ~1.0 reading.
 
 ```bash
 cargo test --release --test reference_oracle_f64 \
@@ -172,11 +194,14 @@ cargo test --release --test cpp_parity \
 
 ### For Model Authors
 
-- LSTM `.nam` files are **intrinsically limited** by f16c precision in recurrent architectures.
-  The format trades weight size for numerical precision — a good trade for feedforward models,
-  a costly one for recurrent models.
-- Users comparing LSTM and WaveNet models at the same computational budget should understand that
-  **LSTM fidelity degrades with signal duration**, while WaveNet fidelity is constant.
+- LSTM `.nam` files suffer from recurrent state quantization drift due to f16c weights in
+  the recursive cell. The absolute precision floor (3.57e-3 vs f64 ideal) is dominated by
+  Padé activation (~7.6e-4 ΔESR) and f16c weight quantization (~5.1e-5) — intrinsic to the
+  format, but ~300× smaller than pre-T8.2 estimates suggested. The interop gap (2.61e-2
+  vs NAMCore) is the user-visible metric and may be partially addressable through aligned
+  recurrence execution.
+- Users comparing LSTM and WaveNet models at the same computational budget should understand
+  that **LSTM fidelity degrades with signal duration**, while WaveNet fidelity is constant.
 
 ### For Future Work (Épico E4 / S5)
 

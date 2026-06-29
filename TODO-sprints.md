@@ -484,6 +484,8 @@ oráculo f64 e pela suíte espectral (S2).
 
 **🎯 Conclusão T3.3:** A divergência espectral do LSTM é _inerente à combinação da arquitetura recorrente com quantização f16c de pesos_, compartilhada com o NAMCore. Não é uma regressão do nam-rs, não é corrigível sem alterar o formato do modelo (e perder interoperabilidade). O `ABSOLUTE_ESR_CAP` de 6.23e-3 (A1-Std baseline) introduzido em T3.2 cumpre seu papel de sentinela: mantém visível o custo real da quantização, impedindo que "passar" se torne "qualquer coisa abaixo do caos". Ações de mitigação de longo prazo (acúmulo compensado Kahan no head do LSTM, oversampling do estado recorrente) são encaminhadas ao Épico E4 (S5).
 
+**⚠️ Qualificação pós-T8.2/T8.3 (T8.5, 2026-06-28):** O "ESR ≈ 1.0 vs ideal" original era artefato de divergência arquitetural do oráculo não-pareado (estado inicial não-casado entre produção e oráculo). O piso absoluto real com prewarm-paired é **3.57e-3** (−24.5 dB), ~300× menor. O mecanismo de drift recorrente está correto; apenas a magnitude absoluta "vs ideal" estava inflada. A decomposição confirma: ΔESR Padé ~7.6e-4 + f16c ~5.1e-5; acúmulo f32 ~7.2e-13 (negligenciável). O gap interop (2.61e-2 vs NAMCore) persiste — é real, compartilhado por ambos os engines f32. Se é "não corrigível" depende do escopo: o gap vs NAMCore pode ser parcialmente endereçável (E8/AC-7 investigará alinhamento de estado bf16/ordem FMA); o gap vs ideal (3.57e-3) é dominado por Padé+f16c, confirmando o formato como gargalo — mas ~300× menos severo do que a conclusão original afirmava. Ver `docs/perceptual_validation.md#qualification-of-t33-conclusion`.
+
 ### Tarefa 3.4 [DOC] Atualizar a política de gates perceptuais [documentador] (DONE)
 
 - **Status:** `[X]` Concluída (2026-06-27)
@@ -1373,9 +1375,9 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
   - `test_all_thresholds_anti_placebo` verde (1/1, sem carve-out de LSTM).
   - `reference_oracle_f64` verde (13/13 pass, 4 ignorados).
 
-### Tarefa 8.5 [DOC] Revisar e qualificar as conclusões de T3.3 à luz do oráculo fiel ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.5 [DOC] Revisar e qualificar as conclusões de T3.3 à luz do oráculo fiel ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-28)
 - **Arquivos Alvo:**
   - [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md) (seção "LSTM Recurrent State Quantization Drift")
   - [`TODO-sprints.md`](file:///home/fabio/nam-rs/TODO-sprints.md) (T3.3 conclusão, linhas ≈ 457-483)

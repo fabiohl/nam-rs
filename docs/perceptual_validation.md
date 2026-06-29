@@ -612,13 +612,19 @@ under 5 configurations and returns a `DecompositionResult` (`src/testing/referen
 The parity reference answers "Is our f32 code compatible with upstream?" The
 absolute reference answers "How much quality did we lose by using f32?"
 
-**Interop-vs-Correction in practice:** For WaveNet, ESR(vs NAMCore) ≈ 1e-13
-and ESR(vs f64 oracle) ≈ 1e-7 — the shared f32+f16c representation dominates.
-For LSTM, ESR(vs NAMCore) ≈ 2.6e-2 (v2, 5s) while ESR(vs f64 oracle) ≈ 1.0
-from the first 512 samples — **both** nam-rs and NAMCore diverge from the ideal
-by similar amounts. The per-model calibrated thresholds reflect this reality:
-LSTM entries are orders of magnitude looser because the f16c model format itself
-is the bottleneck, not the engine implementation. See `docs/lstm_recurrent_drift.md`.
+**Interop-vs-Correction in practice (post-T8.2 corrected oracle):** For WaveNet,
+ESR(vs NAMCore) ≈ 1e-13 and ESR(vs f64 oracle, prewarm-paired) = 6.13e-14 (−132 dB)
+— virtually indistinguishable from the numerical floor. For LSTM, ESR(vs NAMCore)
+≈ 2.61e-2 (v2, 240k steps, 5s) while ESR(vs f64 oracle, prewarm-paired) = 3.57e-3
+(−24.5 dB) — the interop drift is ~7× larger than the absolute precision floor.
+Both engines share the f16c+f32 recurrent drift, producing a 2.61e-2 interop gap,
+but each individually diverges from the ideal by only 3.57e-3 when measured with
+matched prewarm. The pre-T8.2 oracle reported ~1.0 due to unmatched-state
+architectural divergence — a ~300× inflation now corrected. The per-model
+calibrated thresholds reflect this reality: LSTM entries are looser than WaveNet
+because the recurrent f16c+f32 drift is shared with NAMCore. The dominant sources
+are Padé activation (~7.6e-4 ΔESR) and f16c quantization (~5.1e-5), with f32
+accumulation negligible (~7.2e-13). See `docs/lstm_recurrent_drift.md`.
 
 Tests: `tests/reference_oracle_f64.rs:67-268`.
 
@@ -649,15 +655,18 @@ accumulation to a steady-state: `⟨ESR⟩ ∝ σ²ε / (1 − ⟨f⟩²)`.
 
 ### Empirical evidence
 
-| Sequence           | LSTM Steps | ESR (vs NAMCore) | MR-STFT | Notes            |
-| ------------------ | ---------- | ---------------- | ------- | ---------------- |
-| 2,048 (42.7ms, v1) | 2,048      | 1.04e-2          | 0.098   | Passes all gates |
-| 240,000 (5s, v2)   | 240,000    | 2.61e-2          | 0.87    | Fails Tier 3 cap |
-| 480,000            | 480,000    | 6.09e-2          | 1.38    | Fails all gates  |
-| 960,000            | 960,000    | 1.42e-1          | 1.93    | Worst case       |
+| Sequence           | LSTM Steps | ESR (vs NAMCore) | MR-STFT | ESR (vs f64 oracle) | Notes                       |
+| ------------------ | ---------- | ---------------- | ------- | ------------------- | --------------------------- |
+| 2,048 (42.7ms, v1) | 2,048      | 1.04e-2          | 0.098   | —                   | Passes all gates            |
+| 240,000 (5s, v2)   | 240,000    | 2.61e-2          | 0.87    | 3.57e-3 (−24.5 dB)  | Prewarm-paired oracle match |
+| 480,000            | 480,000    | 6.09e-2          | 1.38    | —                   | Fails all gates             |
+| 960,000            | 960,000    | 1.42e-1          | 1.93    | —                   | Worst case                  |
 
 The ESR grows sub-quadratically (not ∝N²), confirming the forget gate limits
-accumulation to a rate-dependent steady-state.
+accumulation to a rate-dependent steady-state. The oracle vs production ESR
+(3.57e-3 at 48 kHz v2 with prewarm-paired state) is ~7× smaller than the
+nam-rs vs NAMCore interop gap (2.61e-2) — both engines share the f16c+f32
+recurrent drift, but their mutual gap exceeds the absolute precision floor.
 
 ### Hypotheses ruled out
 
@@ -668,20 +677,74 @@ None of these contribute significantly to the observed ESR.
 
 ### Classification
 
-The divergence is **interop** (nam-rs vs NAMCore), not a nam-rs-specific
-regression. Both engines converge closely (ESR 2.61e-2 between them) but diverge
-far more from the f64 ideal (ESR ≈ 1.0). The f16c model format is the bottleneck,
-not the engine implementation.
+The divergence has two distinct layers:
+
+1. **Interop (nam-rs vs NAMCore):** ESR = 2.61e-2 (v2, 240k steps @ 48 kHz).
+   The two engines share the same f16c weights and f32 accumulation model but
+   execute with different code paths — the observed 2.61e-2 is the real,
+   measurable recurrent drift between the two implementations.
+
+2. **Absolute correction (production f32 vs f64 ideal):** ESR = 3.57e-3
+   (−24.5 dB) with prewarm-paired state matching (T8.2/T8.3, 2026-06-28).
+   This is the true precision floor of the f16c+f32 production path vs
+   double-precision arithmetic — ~300× smaller than the pre-T8.2 oracle
+   reading of ~1.0, which was inflated by unmatched-initial-state architectural
+   divergence between oracle and production. The decomposition (T8.3) isolates
+   the dominant sources: Padé tanh activation (~7.6e-4 ΔESR) and f16c weight
+   quantization (~5.1e-5), with f32 accumulation negligible (~7.2e-13).
+
+The pre-T8.2 conclusion _"both diverge from the ideal by ~1.0"_ was contaminated
+by the oracle's unmatched state; the corrected picture is: the interop gap
+(2.61e-2) persists and is real, but the absolute precision floor (3.57e-3) is
+much lower, confirming the recurrent drift mechanism while correcting its
+magnitude vs the ideal.
 
 ### Impact on gates
 
 - **Tier 1 thresholds** for LSTM models (6.5e-2, 2.0e-2, 6.0e-3) are calibrated
-  from empirical measurements and reflect this format limitation.
-- **Tier 3 cap** (6.23e-3) is lower than all LSTM measurements in v2 — these models
-  **systematically fail** the absolute sentinel, intentionally. The cap acts as a
-  visible gating mechanism, not a pass/fail expected to always succeed.
+  from empirical interop measurements and reflect the recurrent drift shared with
+  NAMCore.
+- **Tier 3 cap** (6.23e-3) is lower than all LSTM interop measurements in v2 —
+  these models **systematically fail** the absolute sentinel, intentionally.
+  The cap acts as a visible gating mechanism; `ABSOLUTE_ESR_CAP_LSTM = 0.08`
+  (T8.4, 2026-06-28) provides architecture-specific sentinel headroom
+  (2.61e-2 × 3 margin).
 - **MR-STFT hard gate** at 44.1/48 kHz also fails for LSTM in v2 due to broadband
   spectral error from quantization noise in the recurrent state.
+- **Oracle fidelity gates** (`LSTM_ESR_LIMIT = 7.0e-3` in
+  `tests/reference_oracle_f64.rs`, calibrated from prewarm-paired 3.57e-3 × 2)
+  are now below the project placebo line (ESR < 1.0), restoring the gate's
+  ability to detect regressions vs absolute precision.
+
+### Qualification of T3.3 conclusion ("not fixable without changing format")
+
+**T3.3 (2026-06-27)** concluded: _"ESR ≈ 1.0 vs ideal = inherent floor of f16c
+quantization… not fixable without altering the model format."_
+
+**Post-T8.2/T8.3 (2026-06-28) correction:**
+
+- The "~1.0" was **architectural divergence** in the oracle (unmatched prewarm
+  state), not f16c precision loss. The real absolute floor is 3.57e-3 — ~300×
+  smaller.
+- The **mechanism** of recurrent state quantization drift is correct and remains
+  valid. The forget-gate leak, step-proportional ESR growth, and broadband
+  spectral error distribution are all confirmed.
+- The interop gap (2.61e-2 vs NAMCore at v2/240k) **persists after T8.2** — it
+  is real recurrent drift shared by both f32 engines, not an oracle artifact.
+- Whether this is "not fixable without changing the format" depends on scope:
+  - **vs NAMCore (interop):** The 2.61e-2 gap between implementations **may** be
+    reducible by aligning the recurrence execution (e.g., matching bf16 state
+    precision, FMA ordering in the cell update). The E8 root-cause investigation
+    (AC-7) will determine how much of this gap is addressable.
+  - **vs f64 ideal (absolute):** The 3.57e-3 floor is dominated by Padé
+    activation (~7.6e-4) and f16c quantization (~5.1e-5) — both are intrinsic to
+    the current format. Kahan accumulation in the LSTM head (planned E4/S5)
+    targets the recurrent head accumulation but not the body weight quantization.
+  - **Practical verdict:** The interop gap is the user-visible metric (sound
+    difference vs NAMCore), and it may be partially addressable. The absolute
+    gap vs ideal is smaller than originally assumed and bounded by the f16c
+    format, confirming the format is indeed the bottleneck — but ~300× less
+    severely than T3.3's original statement implied.
 
 For full RCA documentation, see `docs/lstm_recurrent_drift.md`.
 
