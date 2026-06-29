@@ -511,7 +511,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa E1.2 — Adicionar Asserções de Segurança na Camada FiLM de A2 (F10)
+#### Tarefa E1.2 — Adicionar Asserções de Segurança na Camada FiLM de A2 (F10) [DONE]
 
 * **Tipo:** Melhoria Defensiva / Segurança
 * **Severidade:** LATENTE

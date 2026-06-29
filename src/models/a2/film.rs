@@ -114,6 +114,12 @@ impl FiLMLayer {
     /// `condition.len()` must equal `self.cond_size`.
     #[inline(always)]
     pub unsafe fn process(&mut self, input: &mut [f32], condition: &[f32]) {
+        debug_assert!(
+            condition.len() >= self.cond_size,
+            "FiLM process: condition slice length ({}) must be >= cond_size ({})",
+            condition.len(),
+            self.cond_size
+        );
         self.cond_to_scale_shift(condition);
         self.apply_modulation(input);
     }
@@ -122,6 +128,12 @@ impl FiLMLayer {
 
     #[inline(always)]
     unsafe fn cond_to_scale_shift(&mut self, condition: &[f32]) {
+        debug_assert!(
+            condition.len() >= self.cond_size,
+            "FiLM cond_to_scale_shift: condition slice length ({}) must be >= cond_size ({})",
+            condition.len(),
+            self.cond_size
+        );
         let g = self.config.groups as usize;
         let ch_per_group = self.channels / g;
         let cond_per_group = self.cond_size / g;
