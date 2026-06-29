@@ -199,40 +199,68 @@ fn test_oracle_vs_python_anchor_a2() {
     );
 }
 
-// ── T5.3: Calibrated fidelity gates (post-anchoring) ────────────────────
+// ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
 
-// These bounds are calibrated from the measured ESR(f32 production vs f64
-// oracle) with a ~2× safety margin. They replace the previous placebo
-// asserts (< 2.0, < 1.5, < 0.5) that were < 1.0 (anti-placebo line).
+// These bounds are re-derived from prewarm-paired ESR(f32 production vs f64
+// ideal oracle) measurements after the T8.2 architectural fixes. They replace
+// the previous limits (WAVENET=3.5, LSTM=1.8, A2=0.35) that were above the
+// project's placebo line (ESR >= 1.0). All new limits are < 1.0.
 //
-// Measured values (256-sample sweep, 48 kHz):
-//   WaveNet:  ESR = 2.47e0 (dominated by f16c weight quantization + arch)
-//   LSTM:     ESR = 1.06e0
-//   A2:       ESR = 1.26e-1
+// Methodology: 24k prewarm + 256-sample sweep @ 48 kHz; both production (f32)
+// and oracle (f64 ideal) fed the same signal; ESR measured on last 256 samples.
+// Limit = measured ESR × 2 (conservative margin).
+//
+// Measured (post-T8.2, prewarm-paired, 256-sample sweep @ 48 kHz):
+//   WaveNet: ESR = 6.13e-14  →  WAVENET_ESR_LIMIT = 6.13e-14 × 2  →  1e-12 (numerical floor)
+//   LSTM:    ESR = 3.57e-3   →  LSTM_ESR_LIMIT    = 3.57e-3 × 2   →  7.0e-3
+//   A2:      ESR = 4.28e-10  →  A2_ESR_LIMIT      = 4.28e-10 × 2  →  8.6e-10
 
-const WAVENET_ESR_LIMIT: f64 = 3.5; // 2.47 measured + ~40% margin
-const LSTM_ESR_LIMIT: f64 = 1.8; // 1.06 measured + ~70% margin
-const A2_ESR_LIMIT: f64 = 0.35; // 0.126 measured + ~175% margin
+const WAVENET_ESR_LIMIT: f64 = 1e-12;
+const LSTM_ESR_LIMIT: f64 = 7.0e-3;
+const A2_ESR_LIMIT: f64 = 8.6e-10;
 
-// ── Basic ESR tests ────────────────────────────────────────────────────────
+// ── T8.3: Prewarm-paired ESR gate tests ────────────────────────────────────
+// Measures ESR(f32 production vs f64 ideal oracle) with paired prewarm
+// (24k warmup + 256 measurement sweep @ 48 kHz) to eliminate transient-
+// mismatch from cold-start history buffers. Limits = measured × 2.
 
-#[test]
-fn test_oracle_wavenet() {
-    let path = models_dir().join("wavenet_official.nam");
+/// Runs a prewarm-paired ESR measurement: feeds both production (f32) and the
+/// f64 ideal oracle with 24k warmup + 256 measurement samples, then computes
+/// ESR on the post-prewarm window only.
+fn run_oracle_esr_paired(model_filename: &str, label: &str) -> f64 {
+    let path = models_dir().join(model_filename);
     let md = load_and_parse(&path);
-    let input_f64 = gen_sweep(256, 48000.0);
+    let total = 24_000 + 256;
+    let input_f64 = gen_sweep(total, 48000.0);
     let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
 
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
-    let esr = compute_esr_f64(&oracle, &prod_f64);
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; input_f32.len()];
+    let mut pos = 0;
+    while pos < input_f32.len() {
+        let nf = (input_f32.len() - pos).min(64);
+        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+        pos += nf;
+    }
 
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+
+    let prod_last_f64: Vec<f64> = prod_output[24_000..].iter().map(|&x| x as f64).collect();
+    let oracle_last = &oracle[24_000..];
+
+    let esr = compute_esr_f64(oracle_last, &prod_last_f64);
     println!(
-        "WaveNet Official: ESR(f32 vs oracle) = {:.2e} ({:.1} dB)",
+        "{} ESR(f32 vs oracle, prewarm-paired, last 256 of 24k+256): {:.2e} ({:.1} dB)",
+        label,
         esr,
         esr_to_db_f64(esr)
     );
+    esr
+}
+
+#[test]
+fn test_oracle_wavenet() {
+    let esr = run_oracle_esr_paired("wavenet_official.nam", "WaveNet");
     assert!(
         esr < WAVENET_ESR_LIMIT,
         "WaveNet ESR={:.6e} exceeds calibrated limit {}",
@@ -243,21 +271,7 @@ fn test_oracle_wavenet() {
 
 #[test]
 fn test_oracle_lstm() {
-    let path = models_dir().join("lstm.nam");
-    let md = load_and_parse(&path);
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
-    let esr = compute_esr_f64(&oracle, &prod_f64);
-
-    println!(
-        "LSTM H=3: ESR(f32 vs oracle) = {:.2e} ({:.1} dB)",
-        esr,
-        esr_to_db_f64(esr)
-    );
+    let esr = run_oracle_esr_paired("lstm.nam", "LSTM");
     assert!(
         esr < LSTM_ESR_LIMIT,
         "LSTM ESR={:.6e} exceeds calibrated limit {}",
@@ -268,21 +282,7 @@ fn test_oracle_lstm() {
 
 #[test]
 fn test_oracle_a2() {
-    let path = models_dir().join("wavenet_a2_lite.nam");
-    let md = load_and_parse(&path);
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
-    let esr = compute_esr_f64(&oracle, &prod_f64);
-
-    println!(
-        "A2 Lite: ESR(f32 vs oracle) = {:.2e} ({:.1} dB)",
-        esr,
-        esr_to_db_f64(esr)
-    );
+    let esr = run_oracle_esr_paired("wavenet_a2_lite.nam", "A2");
     assert!(
         esr < A2_ESR_LIMIT,
         "A2 ESR={:.6e} exceeds calibrated limit {}",
@@ -292,11 +292,22 @@ fn test_oracle_a2() {
 }
 
 // ── Decomposition tests ────────────────────────────────────────────────────
+// T8.3: Gating assertion uses prewarm-paired ESR; decomposition breakdown
+// is diagnostic (cold-start run_decomposition prints per-component ΔESR).
 
 #[test]
 fn test_decomposition_wavenet() {
     let path = models_dir().join("wavenet_official.nam");
     let md = load_and_parse(&path);
+
+    let esr_paired = run_oracle_esr_paired("wavenet_official.nam", "WaveNet");
+    assert!(
+        esr_paired < WAVENET_ESR_LIMIT,
+        "WaveNet paired ESR={:.6e} exceeds calibrated limit {}",
+        esr_paired,
+        WAVENET_ESR_LIMIT
+    );
+
     let input_f64 = gen_sweep(256, 48000.0);
     let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
     let prod_f32 = run_f32_inference(&md, &input_f32);
@@ -304,12 +315,6 @@ fn test_decomposition_wavenet() {
 
     let result = run_decomposition("WaveNet-official", "WaveNet", &md, &prod_f64, &input_f64);
     print_decomposition(&result);
-    assert!(
-        result.esr_f32_vs_f64 < WAVENET_ESR_LIMIT,
-        "WaveNet ESR={:.6e} exceeds calibrated limit {}",
-        result.esr_f32_vs_f64,
-        WAVENET_ESR_LIMIT
-    );
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
@@ -320,6 +325,15 @@ fn test_decomposition_wavenet() {
 fn test_decomposition_lstm() {
     let path = models_dir().join("lstm.nam");
     let md = load_and_parse(&path);
+
+    let esr_paired = run_oracle_esr_paired("lstm.nam", "LSTM");
+    assert!(
+        esr_paired < LSTM_ESR_LIMIT,
+        "LSTM paired ESR={:.6e} exceeds calibrated limit {}",
+        esr_paired,
+        LSTM_ESR_LIMIT
+    );
+
     let input_f64 = gen_sweep(256, 48000.0);
     let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
     let prod_f32 = run_f32_inference(&md, &input_f32);
@@ -327,12 +341,6 @@ fn test_decomposition_lstm() {
 
     let result = run_decomposition("LSTM-H3", "LSTM", &md, &prod_f64, &input_f64);
     print_decomposition(&result);
-    assert!(
-        result.esr_f32_vs_f64 < LSTM_ESR_LIMIT,
-        "LSTM ESR={:.6e} exceeds calibrated limit {}",
-        result.esr_f32_vs_f64,
-        LSTM_ESR_LIMIT
-    );
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
@@ -343,6 +351,15 @@ fn test_decomposition_lstm() {
 fn test_decomposition_a2() {
     let path = models_dir().join("wavenet_a2_lite.nam");
     let md = load_and_parse(&path);
+
+    let esr_paired = run_oracle_esr_paired("wavenet_a2_lite.nam", "A2");
+    assert!(
+        esr_paired < A2_ESR_LIMIT,
+        "A2 paired ESR={:.6e} exceeds calibrated limit {}",
+        esr_paired,
+        A2_ESR_LIMIT
+    );
+
     let input_f64 = gen_sweep(256, 48000.0);
     let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
     let prod_f32 = run_f32_inference(&md, &input_f32);
@@ -350,12 +367,6 @@ fn test_decomposition_a2() {
 
     let result = run_decomposition("A2-Lite", "WaveNet", &md, &prod_f64, &input_f64);
     print_decomposition(&result);
-    assert!(
-        result.esr_f32_vs_f64 < A2_ESR_LIMIT,
-        "A2 ESR={:.6e} exceeds calibrated limit {}",
-        result.esr_f32_vs_f64,
-        A2_ESR_LIMIT
-    );
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"

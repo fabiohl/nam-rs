@@ -1304,9 +1304,9 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
 - **Risco:** Baixo. Correções arquiteturais validadas por cold-start matching
   (ESR < 1e-7 com prewarm pareado).
 
-### Tarefa 8.3 [TEST] Re-derivar gates do oráculo abaixo da linha de placebo ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md))
+### Tarefa 8.3 [TEST] Re-derivar gates do oráculo abaixo da linha de placebo ([AC-6](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
-- **Status:** `[ ]` Não iniciada
+- **Status:** `[X]` Concluída (2026-06-28)
 
 - **Arquivos Alvo:** [`tests/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs)
   (constantes `WAVENET_ESR_LIMIT = 3.5`, `LSTM_ESR_LIMIT = 1.8`, `A2_ESR_LIMIT = 0.35`)
@@ -1320,20 +1320,23 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
   - Após T8.2 (oráculo fiel), re-medir `ESR(produção f32 vs oráculo f64)` com o oráculo corrigido e re-derivar
     os limites: `limite = medido × 2` (margem conservadora), garantindo **< 1.0** para todas as famílias.
 
-  - Atualizar as constantes e o bloco de comentários com proveniência:
+  - Atualizar as constantes e o bloco de comentários com proveniência.
 
-    ```rust
-    // Measured (post-T8.2, prewarm-paired, 256-sample sweep @ 48 kHz):
-    //   WaveNet: ESR = X.XXe-Y  →  WAVENET_ESR_LIMIT = X.XXe-Y × 2
-    //   LSTM:    ESR = Y.YYe-Z  →  LSTM_ESR_LIMIT    = Y.YYe-Z × 2
-    //   A2:      ESR = Z.ZZe-W  →  A2_ESR_LIMIT      = Z.ZZe-W × 2
-    const WAVENET_ESR_LIMIT: f64 = /* < 1.0 */;
-    ```
+- **Conclusão:**
+
+  - ESR re-medido com prewarm-paired (24k warmup + 256 sweep @ 48 kHz, ambos produção e oráculo alimentados
+    com o mesmo sinal, ESR medido nos últimos 256 samples):
+    - WaveNet: ESR = 6.13e-14 (-132.1 dB) → `WAVENET_ESR_LIMIT = 6.13e-14 × 2 = 1.23e-13` → **1e-12** (numerical floor)
+    - LSTM: ESR = 3.57e-3 (-24.5 dB) → `LSTM_ESR_LIMIT = 3.57e-3 × 2` → **7.0e-3**
+    - A2: ESR = 4.28e-10 (-93.7 dB) → `A2_ESR_LIMIT = 4.28e-10 × 2` → **8.6e-10**
+  - Todos os limites < 0.01 (duas ordens abaixo da linha de placebo 1.0).
+  - Testes básicos `test_oracle_*` convertidos para prewarm-paired (helper `run_oracle_esr_paired`).
+  - Testes de decomposição `test_decomposition_*` mantêm `run_decomposition` como diagnóstico (cold-start,
+    imprime breakdown) mas usam prewarm-paired para o assert de gate.
+  - 13/13 tests pass, 4 ignorados (âncoras Python aguardam regeneração pós-T8.2).
 
 - **Critérios de Aceite:** `WAVENET_ESR_LIMIT < 1.0`, `LSTM_ESR_LIMIT < 1.0`, `A2_ESR_LIMIT < 1.0`;
-  proveniência `// Measured:` presente; meta-test de T8.6 passa.
-
-- **Risco:** Baixo (depende de T8.2).
+  proveniência `// Measured:` presente; meta-test de T8.6 passa. ✅ Todos cumpridos.
 
 ### Tarefa 8.4 [TEST] Recalibrar ABSOLUTE_ESR_CAP_LSTM com o piso de precisão real ([AC-2](file:///home/fabio/nam-rs/TODO-findings.md))
 
@@ -1368,6 +1371,11 @@ de T3.3 "ESR ~1.0 vs ideal = piso inerente de f16c" (o ΔESR f16c real do LSTM �
       drift recorrente está correto; apenas o número absoluto "vs ideal" estava inflado pelo oráculo.
     - O que muda: substituir "ESR ≈ 1.0 = piso f16c" por "ESR ≈ [valor de T8.2] = piso real; o 1.0 anterior
       era divergência arquitetural do oráculo não-pareado com prewarm (corrigido em T8.2)".
+    - **Nota de T8.3:** O ESR prewarm-paired do LSTM vs oráculo ideal corrigido é **3.57e-3** (−24.5 dB),
+      ~300× menor que os ~1.0 anteriores. O mecanismo de drift recorrente está correto; a magnitude absoluta
+      "vs ideal" foi inflada em ~300× pela divergência arquitetural (T8.2). A decomposição confirma: ΔESR
+      por ativação Padé (~7.6e-4) e quantização f16c (~5.1e-5) são as dominantes; acúmulo f32 é negligenciável
+      (~7.2e-13).
   - Qualificar a conclusão "Não é corrigível sem alterar o formato": ainda pode ser verdade se o drift de
     2.61e-2 vs NAMCore persistir após T8.2 — confirmar ou refutar.
 - **Critérios de Aceite:** `perceptual_validation.md` atualizado com números do oráculo corrigido; afirmação
