@@ -387,23 +387,25 @@ keeps every oracle gate below the placebo line.
 
 ### 11.1 Architecture
 
-| Divergence                                    | Rationale                                                                                                                                                                                   |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **No `DspBridge` in CLAP mode**               | CLAP plugin receives both input and output in a single `process()` call. Bridge only needed standalone (PipeWire dual-thread topology).                                                     |
-| **MirroredBuffer (`memfd_create`)**           | Linux-specific virtual memory mirroring for O(1) linear access in WaveNet delay lines. C++ uses modulo-based circular access.                                                               |
-| **Static const-generic dispatch (no vtable)** | Static `match` on `StaticModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                        |
-| **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file. C++ `Reset` always calls `prewarm()`.          |
-| **Prewarm hardcoded to 2048 samples**         | C++ `PrewarmSamples()` returns `receptive_field`. NAM-rs uses 2048 as a safe upper bound covering all models.                                                                               |
-| **`WavenetA2Placeholder` (silent output)**    | Retired and removed. Replaced by real `WaveNetA2` inference.                                                                                                                                |
-| **No `std::complex` / STL data structures**   | Everything uses idiomatic Rust (`AlignedVec<T>`, `AtomicU64`, `rtrb` SPSC).                                                                                                                 |
-| **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                            |
-| **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
-| **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features. Models using them are **accepted at load time** —                    |
-| `head` (non-null) accepted**                  | `get_wavenet_topology()` captures the non-catalog geometry as `Free` and routes it to `WaveNetModelDyn` (the dynamic engine), which is parameterized on `condition_size` at runtime.        |
-|                                               | Catalog SKUs (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null` via the const-generic fast-path. The dynamic path handles `condition_size > 1`, post-stack heads,          |
-|                                               | and free geometries with generic dispatch (§3.3).                                                                                                                                           |
+| Divergence                                    | Rationale                                                                                                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **No `DspBridge` in CLAP mode**               | CLAP plugin receives both input and output in a single `process()` call. Bridge only needed standalone (PipeWire dual-thread topology).                                              |
+| **MirroredBuffer (`memfd_create`)**           | Linux-specific virtual memory mirroring for O(1) linear access in WaveNet delay lines. C++ uses modulo-based circular access.                                                        |
+| **Static const-generic dispatch (no vtable)** | Static `match` on `StaticModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                 |
+| **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file. C++ `Reset` always calls `prewarm()`.   |
+|                                               | **A2-specific implication (fixed Sprint E1):** calling `process()` on an A2 model with empty layers before `prewarm()` caused `head_write_pos` to grow unmasked, leading to OOB on   |
+|                                               | the next `prewarm()`. Fixed by masking with `head_ring_mask` in the early-return path.                                                                                               |
+| **Prewarm hardcoded to 2048 samples**         | C++ `PrewarmSamples()` returns `receptive_field`. NAM-rs uses 2048 as a safe upper bound covering all models.                                                                        |
+| **`WavenetA2Placeholder` (silent output)**    | Retired and removed. Replaced by real `WaveNetA2` inference.                                                                                                                         |
+| **No `std::complex` / STL data structures**   | Everything uses idiomatic Rust (`AlignedVec<T>`, `AtomicU64`, `rtrb` SPSC).                                                                                                          |
+| **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                     |
+| **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                            |
+| **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`condition_size ≠ 1` or                     | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features. Models using them are **accepted at load time** —             |
+| `head` (non-null) accepted**                  | `get_wavenet_topology()` captures the non-catalog geometry as `Free` and routes it to `WaveNetModelDyn` (the dynamic engine), which is parameterized on `condition_size` at runtime. |
+|                                               | Catalog SKUs (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null` via the const-generic fast-path. The dynamic path handles `condition_size > 1`, post-stack heads,   |
+|                                               | and free geometries with generic dispatch (§3.3).                                                                                                                                    |
 
 ### 11.2 Math
 
@@ -527,8 +529,6 @@ out-of-current-scope; 🔴 = known divergence under investigation.
 | **`SlimmableWavenet`** (single-net channel slicing)                               | 🟡 Deferred epic                                              | §6                                                      |
 | **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                           | 🟢 By design (explicit `sample_rate` field pins native rate)  | §6                                                      |
 | **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                  | 🟢 By design — live cross-val covers SR; no committed goldens | §3.3                                                    |
-| **A2 Beta: adaptive compute double-pass corrompia estado recorrente**             | ✅ Resolvido (Sprint A1)                                      | §6; [`TODO-findings.md`](../TODO-findings.md) F1        |
-| **A2 Beta: `head_write_pos` não mascarado em `layers.is_empty()`**                | 🟡 Latente — disparado apenas sem `prewarm()` após `reset()`  | §11.1; [`TODO-findings.md`](../TODO-findings.md) F9     |
 
 **Recently resolved (Sprint S8)** — kept for traceability: the f64 oracle was found to be
 **internally bugged and its anchor circular** (Problem A) → rebuilt and 3-way cross-validated

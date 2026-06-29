@@ -342,14 +342,10 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 | Item                                                                          | Status                        | Reference                                                                               |
 |:----------------------------------------------------------------------------- |:-----------------------------:|:--------------------------------------------------------------------------------------- |
 | HighFidelity activation mode user control (CLI/CLAP knob)                     | 🟡 Designed, not exposed (§6) | future                                                                                  |
-| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)`; **⚠️ bloqueado por F2**            |
-| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4; **⚠️ requer correção de F3 antes da implementação**                                 |
-| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
-| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
-| **🔴 Oversampling: latência não reportada ao host (PDC)**                     | ✅ Resolvido (Sprint B1)      | §5 (latência documentada: 12/24 amostras); [`TODO-findings.md`](../TODO-findings.md) F2 |
-| **🔴 Resampler: fórmula de atraso de grupo errada para banco de fase mínima** | ✅ Resolvido (Sprint B1)      | §4 (min-phase default confirmado); [`TODO-findings.md`](../TODO-findings.md) F3         |
-| **Adaptive Compute + A2: double-pass corrompia estado recorrente**            | ✅ Resolvido (Sprint A1)      | §8 (Adaptive Compute); [`TODO-findings.md`](../TODO-findings.md) F1                     |
-| Adaptive Compute: `prev_state` dessinc em transições encadeadas (< 32 ms)     | ✅ Resolvido (Sprint A1)      | §8; [`TODO-findings.md`](../TODO-findings.md) F4                                        |
+| Runtime oversample switching (currently init-time only)                       | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker resolved Sprint B1) |
+| Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved Sprint B1)                                      |
+| Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 |                                                                                         |
+| Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 |                                                                                         |
 
 ---
 
