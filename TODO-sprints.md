@@ -409,3 +409,146 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 * **Critérios de Aceitação:**
   * Teste unitário compilando e passando com sucesso.
   * Pipeline rápida executando sem avisos ou falhas.
+
+---
+
+## Épico D — Conformidade e higiene
+
+* **Objetivo:** Corrigir os identificadores SPDX inválidos e implantar uma verificação automatizada no pipeline de CI local para garantir a integridade do licenciamento.
+* **Complexidade Geral:** Trivial
+* **QA Requerido:** Execução do script [utils/lints.sh](file:///home/fabio/nam-rs/utils/lints.sh).
+* **Fontes de maiores informações:** [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md) seções "Épico D — Conformidade e higiene" e "Tabela de cruzamento".
+
+---
+
+### Sprint D1 — Conformidade de Licença SPDX e CI
+
+#### Tarefa D1.1 — Corrigir o Identificador SPDX no arquivo `oversample.rs` (F8)
+
+* **Tipo:** Higiene / Conformidade de Licenciamento
+* **Severidade:** TRIVIAL
+* **Risco:** MÍNIMO (apenas comentário de cabeçalho)
+* **Finding de Origem:** [TODO-findings.md F8](file:///home/fabio/nam-rs/TODO-findings.md#f8--trivial-cabeçalho-spdx-incorreto-apache-22)
+* **Arquivos Relacionados:**
+  * [src/dsp/oversample.rs](file:///home/fabio/nam-rs/src/dsp/oversample.rs)
+* **Detalhamento Técnico:**
+  1. No arquivo [src/dsp/oversample.rs](file:///home/fabio/nam-rs/src/dsp/oversample.rs), substituir o identificador inválido no cabeçalho:
+
+     ```rust
+     // SPDX-License-Identifier: Apache-2.2
+     ```
+
+     pelo identificador válido do projeto:
+
+     ```rust
+     // SPDX-License-Identifier: Apache-2.0
+     ```
+
+* **Critérios de Aceitação:**
+  * A primeira linha de [src/dsp/oversample.rs](file:///home/fabio/nam-rs/src/dsp/oversample.rs) contém o identificador correto: `// SPDX-License-Identifier: Apache-2.0`.
+
+---
+
+#### Tarefa D1.2 — Adicionar Verificação do Identificador SPDX em `utils/lints.sh`
+
+* **Tipo:** Ferramenta / QA Automatizado
+* **Severidade:** TRIVIAL
+* **Risco:** MÍNIMO (melhoria apenas de script local)
+* **Finding de Origem:** [TODO-findings.md F8](file:///home/fabio/nam-rs/TODO-findings.md#f8--trivial-cabeçalho-spdx-incorreto-apache-22)
+* **Arquivos Relacionados:**
+  * [utils/lints.sh](file:///home/fabio/nam-rs/utils/lints.sh)
+* **Detalhamento Técnico:**
+  1. No arquivo [utils/lints.sh](file:///home/fabio/nam-rs/utils/lints.sh), adicionar uma nova etapa de validação automatizada que varre o diretório `src/` em busca de qualquer arquivo `.rs` que não contenha a assinatura de licença SPDX válida.
+  2. Implementar a verificação de forma robusta e limpa usando ferramentas UNIX padrão (como `grep`). O script deve retornar código de erro `1` e detalhar quais arquivos falharam se:
+     * O cabeçalho SPDX estiver ausente ou malformado.
+     * Algum arquivo contiver um identificador SPDX que não seja `Apache-2.0`.
+* **Critérios de Aceitação:**
+  * A execução do script [utils/lints.sh](file:///home/fabio/nam-rs/utils/lints.sh) falha de forma visível caso um arquivo Rust contenha um identificador SPDX incorreto (como `Apache-2.2`) ou não tenha o cabeçalho SPDX.
+
+---
+
+## Épico E — Endurecimento latente da arquitetura A2 (Beta)
+
+* **Objetivo:** Corrigir os potenciais estouros de memória (OOB) e pânico latentes nos atalhos de processamento e na camada FiLM da arquitetura A2, adicionando limites robustos e asserções de segurança em tempo de execução.
+* **Complexidade Geral:** Baixa
+* **QA Requerido:** Testes unitários do FSM, testes rápidos da pipeline (`tests-quick.sh`).
+* **Fontes de maiores informações:** [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md) seções "Épico E — Endurecimento latente da arquitetura A2 (Beta)" e "Tabela de cruzamento".
+
+---
+
+### Sprint E1 — Endurecimento e Segurança de Limites em A2
+
+#### Tarefa E1.1 — Aplicar Máscara de Anel no Atalho de Camadas Vazias de A2 (F9) (CRÍTICA)
+
+* **Tipo:** Correção de Bug Latente (Inference Engine)
+* **Severidade:** BAIXA-MÉDIA
+* **Risco:** BAIXO (caminho defensivo secundário)
+* **Finding de Origem:** [TODO-findings.md F9](file:///home/fabio/nam-rs/TODO-findings.md#f9--latente-a2-head_write_pos-cresce-sem-máscara-no-atalho-layersis_empty--possível-oob-se-process-for-chamado-antes-de-prewarm)
+* **Arquivos Relacionados:**
+  * [src/models/a2/model/static/process.rs](file:///home/fabio/nam-rs/src/models/a2/model/static/process.rs)
+  * [src/models/a2/model/dynamic/process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
+* **Detalhamento Técnico:**
+  1. No atalho de layers vazias em [src/models/a2/model/static/process.rs](file:///home/fabio/nam-rs/src/models/a2/model/static/process.rs):
+
+     ```rust
+     if self.layers.is_empty() {
+         self.head_write_pos = (self.head_write_pos + total) & self.head_ring_mask;
+         return;
+     }
+     ```
+
+  2. Fazer o mesmo ajuste no correspondente atalho dinâmico em [src/models/a2/model/dynamic/process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs):
+
+     ```rust
+     if self.layers.is_empty() {
+         self.head_write_pos = (self.head_write_pos + total) & self.head_ring_mask;
+         return;
+     }
+     ```
+
+* **Critérios de Aceitação:**
+  * O indicador de escrita do buffer circular (`head_write_pos`) é mantido estritamente dentro dos limites da máscara de anel (`head_ring_mask`), evitando descompassos aritméticos se pesos forem recarregados em runtime sem um reset imediato intermediário.
+
+---
+
+#### Tarefa E1.2 — Adicionar Asserções de Segurança na Camada FiLM de A2 (F10)
+
+* **Tipo:** Melhoria Defensiva / Segurança
+* **Severidade:** LATENTE
+* **Risco:** BAIXO
+* **Finding de Origem:** [TODO-findings.md F10](file:///home/fabio/nam-rs/TODO-findings.md#f10--latente-a2-film-get_unchecked-oob-se-condition_size--1-combinado-com-conv_post_film)
+* **Arquivos Relacionados:**
+  * [src/models/a2/film.rs](file:///home/fabio/nam-rs/src/models/a2/film.rs)
+* **Detalhamento Técnico:**
+  1. Em [src/models/a2/film.rs](file:///home/fabio/nam-rs/src/models/a2/film.rs), no método `process` da struct `FiLMLayer`, introduzir uma guarda de depuração estrita para verificar a conformidade do slice de condicionamento fornecido antes de repassá-lo ao kernel inseguro:
+
+     ```rust
+     debug_assert_eq!(
+         condition.len(),
+         self.cond_size,
+         "FiLM process: condition slice length ({}) must match cond_size ({})",
+         condition.len(),
+         self.cond_size
+     );
+     ```
+
+  2. Adicionar uma asserção análoga em `cond_to_scale_shift` para atestar que o slice possui pelo menos `self.cond_size` elementos antes de invocar fatiamentos inseguros (`get_unchecked`).
+* **Critérios de Aceitação:**
+  * Asserções de segurança ativas em builds de depuração evitam acessos fora-de-limites (OOB UB) na inferência FiLM caso o host ou o dispatcher forneça slices de condicionamento com tamanhos incompatíveis com os pesos do modelo.
+
+---
+
+#### Tarefa E1.3 — Criar Testes Unitários de Regressão para os Casos de Borda de A2 (F9/F10)
+
+* **Tipo:** QA / Testes
+* **Severidade:** GARANTIA DE QUALIDADE
+* **Risco:** BAIXO
+* **Arquivos Relacionados:**
+  * [src/models/a2/model/dynamic_test.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic_test.rs)
+  * [src/models/a2/film_test.rs](file:///home/fabio/nam-rs/src/models/a2/film_test.rs)
+* **Detalhamento Técnico:**
+  1. Escrever testes unitários em [src/models/a2/model/dynamic_test.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic_test.rs) que criem instâncias do modelo dinâmico com camadas de peso vazias, exercitem o método `process()` consecutivas vezes, e verifiquem se `head_write_pos` faz o wrap-around adequadamente sem estourar.
+  2. Executar `utils/tests-quick.sh` para atestar que toda a suíte de qualidade de código passa limpa e sem regressões.
+* **Critérios de Aceitação:**
+  * Novos testes unitários compilam e validam com sucesso as novas proteções e wrap-arounds da máquina de estados do modelo.
+  * O script `utils/tests-quick.sh` é concluído com status de sucesso.

@@ -632,7 +632,7 @@ alteram o número final reportado).
 **Risco:** MÉDIO. Não toca o áudio em si, mas erra alinhamento. Validar com teste
 de impulso/atraso de grupo.
 
-## Épico C — Endurecimento de robustez (loader e máquina de estados de swap)
+## Épico C — Endurecimento de robustez (loader e máquina de estados de swap) [DONE]
 
 **Findings:** F5 (BAIXA), F6 (BAIXA), F7 (BAIXA).
 **Objetivo:** loaders "never panic" de fato (aritmética checada), flags de swap
