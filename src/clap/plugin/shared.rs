@@ -111,6 +111,8 @@ pub struct UiToRt {
     pub param_slim_override: AtomicU32,
     /// Latest Oversampling factor parameter value (0=Off, 1=X2, 2=X4).
     pub param_oversample: AtomicU32,
+    /// Latest Activation Precision parameter value (0=Standard, 1=HighFidelity).
+    pub param_activation: AtomicU32,
     /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
     /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
     ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
@@ -145,11 +147,11 @@ pub struct ColdShared {
     pub buffer_size: AtomicU32,
     /// Dynamic accent color based on DAW track color (packed ARGB).
     pub track_accent_color: AtomicU32,
-    /// Parameter indication (mapping, automation, and override) for the 8 parameters.
+    /// Parameter indication (mapping, automation, and override) for the 9 parameters.
     /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
-    pub param_indication: [AtomicU8; 8],
+    pub param_indication: [AtomicU8; 9],
     /// Indicated/mapped parameter colors (packed ARGB).
-    pub param_indication_color: [AtomicU32; 8],
+    pub param_indication_color: [AtomicU32; 9],
     /// Model load counter (incremented on each successful model load).
     pub model_load_counter: AtomicU32,
     /// Loaded model name (path basename). Written by the main thread, read by the UI thread.
@@ -266,7 +268,7 @@ impl NamClapShared {
     const GESTURE_END_SHIFT: u32 = 2;
     const GESTURE_BITS_PER_PARAM: u32 = 3;
 
-    /// Maps a CLAP param_id (0..3) to internal index 0..3.
+    /// Maps a CLAP param_id (0..8) to internal index 0..8.
     const fn param_index(param_id: u32) -> usize {
         param_id as usize
     }
@@ -305,14 +307,14 @@ impl NamClapShared {
     /// into the host's output event queue.
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
         use crate::clap::extensions::params::{
-            PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-            PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
+            PARAM_ACTIVATION, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH,
+            PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
         };
         use clack_plugin::events::event_types::{
             ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let params: [(u32, u32, &AtomicU32); 7] = [
+        let params: [(u32, u32, &AtomicU32); 8] = [
             (
                 PARAM_INPUT_GAIN,
                 Self::param_index(PARAM_INPUT_GAIN) as u32,
@@ -347,6 +349,11 @@ impl NamClapShared {
                 PARAM_OVERSAMPLE,
                 Self::param_index(PARAM_OVERSAMPLE) as u32,
                 &self.ui_to_rt.param_oversample,
+            ),
+            (
+                PARAM_ACTIVATION,
+                Self::param_index(PARAM_ACTIVATION) as u32,
+                &self.ui_to_rt.param_activation,
             ),
         ];
 

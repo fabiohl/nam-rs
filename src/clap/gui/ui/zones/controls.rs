@@ -19,7 +19,7 @@ pub(crate) fn draw_zone2_controls(
     current_bypass: bool,
     accent_color: egui::Color32,
 ) {
-    ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
+    ui.allocate_ui(egui::vec2(240.0, 250.0), |ui| {
         if current_bypass {
             ui.disable();
         }
@@ -192,6 +192,69 @@ pub(crate) fn draw_zone2_controls(
                     ];
                     for dot in dots {
                         painter.circle_filled(dot, 1.5, ind_os_color);
+                    }
+                }
+            });
+
+            // Activation Precision segmented control
+            ui.add_space(4.0);
+            let ind_act = shared.cold.param_indication
+                [crate::clap::extensions::params::PARAM_ACTIVATION as usize]
+                .load(Ordering::Relaxed);
+            let ind_act_color = resolve_color(
+                shared.cold.param_indication_color
+                    [crate::clap::extensions::params::PARAM_ACTIVATION as usize]
+                    .load(Ordering::Relaxed),
+                accent_color,
+            );
+            let act_val = shared.ui_to_rt.param_activation.load(Ordering::Relaxed);
+            let act_val_i32 = act_val as i32;
+
+            ui.allocate_ui(egui::vec2(210.0, 26.0), |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new("Activation")
+                            .font(egui::FontId::proportional(10.0))
+                            .color(egui::Color32::GRAY),
+                    );
+                    let resp = ui.selectable_value(
+                        &mut (act_val_i32 == 0),
+                        true,
+                        egui::RichText::new("Standard").font(egui::FontId::proportional(11.0)),
+                    );
+                    if resp.clicked() && act_val_i32 != 0 {
+                        shared.ui_to_rt.param_activation.store(0, Ordering::Relaxed);
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            0,
+                        );
+                        shared.bump_generation();
+                    }
+                    let resp = ui.selectable_value(
+                        &mut (act_val_i32 == 1),
+                        true,
+                        egui::RichText::new("HF").font(egui::FontId::proportional(11.0)),
+                    );
+                    if resp.clicked() && act_val_i32 != 1 {
+                        shared.ui_to_rt.param_activation.store(1, Ordering::Relaxed);
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            0,
+                        );
+                        shared.bump_generation();
+                    }
+                });
+                if ind_act & 1 != 0 {
+                    let painter = ui.painter();
+                    let rect = ui.min_rect();
+                    let dots = [
+                        egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.top() + 4.0),
+                        egui::pos2(rect.left() + 4.0, rect.bottom() - 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
+                    ];
+                    for dot in dots {
+                        painter.circle_filled(dot, 1.5, ind_act_color);
                     }
                 }
             });

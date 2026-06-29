@@ -4,8 +4,8 @@
 //! `PluginMainThreadParams` implementation for the Main Thread.
 
 use super::{
-    PARAM_ACTIVE_MODEL, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-    PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32,
+    PARAM_ACTIVATION, PARAM_ACTIVE_MODEL, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH,
+    PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32,
     bypass_f32_to_bool,
 };
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
@@ -20,7 +20,7 @@ use std::ffi::CStr;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn count(&mut self) -> u32 {
-        8
+        9
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -123,6 +123,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     default_value: 0.0,
                 });
             }
+            PARAM_ACTIVATION => {
+                info.set(&ParamInfo {
+                    id: ClapId::new(PARAM_ACTIVATION),
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
+                    cookie: clack_plugin::utils::Cookie::empty(),
+                    name: b"Activation Precision",
+                    module: b"",
+                    min_value: 0.0,
+                    max_value: 1.0,
+                    default_value: 0.0,
+                });
+            }
             _ => {}
         }
     }
@@ -177,6 +189,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     .param_oversample
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
+            PARAM_ACTIVATION => Some(
+                self.shared
+                    .ui_to_rt
+                    .param_activation
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
+            ),
             _ => None,
         }
     }
@@ -226,6 +244,10 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 1 => writer.write_str("2x"),
                 2 => writer.write_str("4x"),
                 _ => writer.write_str("Off"),
+            },
+            PARAM_ACTIVATION => match value.round() as i32 {
+                1 => writer.write_str("HighFidelity"),
+                _ => writer.write_str("Standard"),
             },
             _ => Ok(()),
         }
@@ -284,6 +306,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 "off" | "0" => Some(0.0),
                 "2x" | "2" => Some(1.0),
                 "4x" | "4" => Some(2.0),
+                _ => text_str.parse::<f64>().ok(),
+            },
+            PARAM_ACTIVATION => match text_str.to_lowercase().as_str() {
+                "standard" | "0" => Some(0.0),
+                "highfidelity" | "hf" | "high fidelity" | "1" => Some(1.0),
                 _ => text_str.parse::<f64>().ok(),
             },
             _ => None,
@@ -355,6 +382,14 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                         .ui_to_rt
                         .param_oversample
                         .store(factor.to_f32() as u32, std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_ACTIVATION => {
+                    let mode = crate::common::params::ActivationPrecision::from_f32(val);
+                    self.params.activation_precision = mode;
+                    self.shared
+                        .ui_to_rt
+                        .param_activation
+                        .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
                 }
                 _ => continue,
             }

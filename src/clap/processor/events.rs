@@ -6,8 +6,8 @@
 
 use super::NamClapProcessor;
 use crate::clap::extensions::params::{
-    PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
+    PARAM_ACTIVATION, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
+    PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
@@ -67,6 +67,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
                     PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
                     PARAM_OVERSAMPLE => self.set_oversample(val),
+                    PARAM_ACTIVATION => self.set_activation(val),
                     _ => {}
                 }
             } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
@@ -101,6 +102,7 @@ impl<'a> NamClapProcessor<'a> {
             self.sync_adaptive_compute_from_gui();
             self.sync_slim_override_from_gui();
             self.sync_oversample_from_gui();
+            self.sync_activation_from_gui();
         } // generation guard
 
         // Dynamic latency monitoring on the Audio Thread.
@@ -134,10 +136,16 @@ impl<'a> NamClapProcessor<'a> {
         let render_mode = self.shared.cold.render_mode.load(Ordering::Acquire);
         if render_mode != self.last_render_mode {
             self.last_render_mode = render_mode;
+            let old_activation = self.params.activation_precision;
             if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE {
                 self.adaptive_compute.set_mode(
                     crate::common::params::AdaptiveComputeMode::Off,
                     &self.rt_status,
+                );
+                self.params.activation_precision =
+                    crate::common::params::ActivationPrecision::HighFidelity;
+                crate::math::activations::set_activation_precision(
+                    crate::common::params::ActivationPrecision::HighFidelity,
                 );
             } else {
                 let user_mode = crate::common::params::AdaptiveComputeMode::from_f32(
@@ -147,6 +155,8 @@ impl<'a> NamClapProcessor<'a> {
                         .load(Ordering::Relaxed) as f32,
                 );
                 self.adaptive_compute.set_mode(user_mode, &self.rt_status);
+                self.params.activation_precision = old_activation;
+                crate::math::activations::set_activation_precision(old_activation);
             }
         }
         // Also guard against user changing adaptive compute while offline (via host events

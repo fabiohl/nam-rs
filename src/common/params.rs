@@ -13,6 +13,7 @@ use std::path::PathBuf;
 pub use crate::dsp::adaptive::AdaptiveComputeMode;
 pub use crate::dsp::adaptive::SlimOverride;
 use crate::dsp::oversample::OversampleFactor;
+pub use crate::math::activations::ActivationPrecision;
 
 const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
 
@@ -59,6 +60,9 @@ pub struct NamPluginParams {
     /// Path to the loaded cab-sim impulse response (.wav).
     #[serde(default)]
     pub ir_path: Option<PathBuf>,
+    /// Activation precision mode (Standard or HighFidelity). Default: Standard.
+    #[serde(default)]
+    pub activation_precision: ActivationPrecision,
 }
 
 fn default_gate_threshold_db() -> f32 {
@@ -79,6 +83,7 @@ impl Default for NamPluginParams {
             slim_override: SlimOverride::Auto,
             oversample: OversampleFactor::Off,
             ir_path: None,
+            activation_precision: ActivationPrecision::Standard,
         }
     }
 }
@@ -101,6 +106,8 @@ pub struct RtPluginParams {
     pub slim_override: SlimOverride,
     /// Oversampling factor for the neural stage (anti-aliasing).
     pub oversample: OversampleFactor,
+    /// Activation precision mode.
+    pub activation_precision: ActivationPrecision,
 }
 
 impl RtPluginParams {
@@ -114,6 +121,7 @@ impl RtPluginParams {
             adaptive_compute: params.adaptive_compute,
             slim_override: params.slim_override,
             oversample: params.oversample,
+            activation_precision: params.activation_precision,
         }
     }
 }
@@ -128,6 +136,7 @@ impl Default for RtPluginParams {
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: SlimOverride::Auto,
             oversample: OversampleFactor::Off,
+            activation_precision: ActivationPrecision::Standard,
         }
     }
 }

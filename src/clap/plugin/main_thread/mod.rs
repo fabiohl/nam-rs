@@ -160,6 +160,12 @@ impl<'a> NamClapMainThread<'a> {
                 .param_oversample
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );
+        self.params.activation_precision = crate::common::params::ActivationPrecision::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_activation
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
             if let Ok(ir_guard) = self.shared.cold.ir_path.lock() {

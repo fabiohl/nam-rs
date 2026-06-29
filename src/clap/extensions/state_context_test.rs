@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use crate::common::params::{AdaptiveComputeMode, NamPluginParams};
+use crate::common::params::{ActivationPrecision, AdaptiveComputeMode, NamPluginParams};
 use crate::dsp::oversample::OversampleFactor;
 use std::path::PathBuf;
 
@@ -18,6 +18,7 @@ fn make_test_params() -> NamPluginParams {
         slim_override: Default::default(),
         oversample: OversampleFactor::Off,
         ir_path: None,
+        activation_precision: ActivationPrecision::Standard,
     }
 }
 

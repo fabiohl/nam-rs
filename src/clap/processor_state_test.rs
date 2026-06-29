@@ -375,6 +375,7 @@ mod tests {
             slim_override: Default::default(),
             oversample: crate::dsp::oversample::OversampleFactor::Off,
             ir_path: None,
+            activation_precision: crate::common::params::ActivationPrecision::Standard,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();

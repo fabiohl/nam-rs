@@ -31,6 +31,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             param_adaptive_compute: AtomicU32::new(1),
             param_slim_override: AtomicU32::new(0),
             param_oversample: AtomicU32::new(0),
+            param_activation: AtomicU32::new(0),
             gesture_flags: AtomicU32::new(0),
             gui_param_generation: AtomicU32::new(0),
         },
@@ -54,8 +55,10 @@ pub(crate) fn make_test_shared() -> NamClapShared {
                 AtomicU8::new(0),
                 AtomicU8::new(0),
                 AtomicU8::new(0),
+                AtomicU8::new(0),
             ],
             param_indication_color: [
+                AtomicU32::new(0),
                 AtomicU32::new(0),
                 AtomicU32::new(0),
                 AtomicU32::new(0),

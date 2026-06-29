@@ -4,8 +4,8 @@
 //! `PluginAudioProcessorParams` implementation for the Audio Thread.
 
 use super::{
-    PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_u32_to_bool,
+    PARAM_ACTIVATION, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
+    PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_u32_to_bool,
 };
 use crate::clap::processor::NamClapProcessor;
 use clack_extensions::params::PluginAudioProcessorParams;
@@ -53,6 +53,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                 PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
                 PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
                 PARAM_OVERSAMPLE => self.set_oversample(val),
+                PARAM_ACTIVATION => self.set_activation(val),
                 _ => continue,
             }
             param_changed = true;
@@ -139,6 +140,17 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             if shared_oversample != self.params.oversample {
                 self.params.oversample = shared_oversample;
                 self.apply_oversample(shared_oversample);
+            }
+
+            let shared_activation = crate::common::params::ActivationPrecision::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_activation
+                    .load(std::sync::atomic::Ordering::Relaxed) as f32,
+            );
+            if shared_activation != self.params.activation_precision {
+                self.params.activation_precision = shared_activation;
+                crate::math::activations::set_activation_precision(shared_activation);
             }
         }
     }

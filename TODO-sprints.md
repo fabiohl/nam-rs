@@ -66,7 +66,7 @@ Este sprint expõe a infraestrutura de `ActivationPrecision::HighFidelity` (que 
   - No bootstrap em [main.rs](file:///home/fabio/nam-rs/src/main.rs), chamar `set_activation_precision(...)` antes da inicialização do PipeWire para aplicar o modo selecionado.
 - **Validação:** Executar o standalone com `--activation hf` e confirmar que o modo de alta fidelidade é ativado.
 
-#### [ ] Tarefa α2.2 — Adição de Parâmetro e GUI no CLAP (Plugin) [BAIXO RISCO]
+#### [x] Tarefa α2.2 — Adição de Parâmetro e GUI no CLAP (Plugin) [BAIXO RISCO] ✅
 
 - **Descrição:** Expor o controle de precisão de ativação no plugin CLAP sob o identificador `PARAM_ACTIVATION = 8`.
 - **Mudanças propostas:**
@@ -78,6 +78,20 @@ Este sprint expõe a infraestrutura de `ActivationPrecision::HighFidelity` (que 
 - **Validação:**
   - Mudar o parâmetro via GUI e constatar a alteração de comportamento no thread de processamento sem instabilidade de áudio.
   - Testar o comportamento em render offline (Offline render força HighFidelity e desliga adaptativo).
+- **Conclusão (2026-06-29):**
+  - `ActivationPrecision` ganhou `Serialize, Deserialize`, `from_f32()` e `to_f32()` (`src/math/activations/mod.rs:57`).
+  - `PARAM_ACTIVATION = 8` declarado (`src/clap/extensions/params/mod.rs:26`) com helpers `activation_u32_to_enum` / `activation_enum_to_u32`.
+  - `param_activation: AtomicU32` adicionado a `UiToRt` (`src/clap/plugin/shared.rs:114`).
+  - Wiring completo nos 3 caminhos de eventos: Host Events (`set_activation`), GUI sync (`sync_activation_from_gui`) e SPSC (`apply_params_from_spsc`) em `src/clap/processor/params.rs`.
+  - `process_events()` em `events.rs` chama `set_activation_precision()` no bloco, incluindo override de offline render que força HighFidelity.
+  - Parâmetro registrado no `PluginMainThreadParams` (count=9, info/value/display/flush) em `main.rs`.
+  - `PluginAudioProcessorParams::flush()` (audio.rs) e `write_gui_events()` (shared.rs) atualizados.
+  - Persistência: `state.rs` e `state_context.rs` salvam/restauram `activation_precision` via envelope v1 (compatível, campo opcional `#[serde(default)]`).
+  - `snapshot_params()` em `main_thread/mod.rs` sincroniza do atômico.
+  - GUI: widget segmented "Activation" (Standard / HF) adicionado em `zones/controls.rs`, abaixo do controle de Oversampling, com indicação de DAW mapping.
+  - Arrays `param_indication`/`param_indication_color` expandidos de 8→9 elementos (`ColdShared`, `plugin/mod.rs`, `shared_test.rs`).
+  - `NamPluginParams` e `RtPluginParams` ganharam campo `activation_precision` com default `Standard`.
+  - Testes existentes (shared_test layout cache-line, state_test v0/v1 round-trip, state_context_test, processor_state_test, activation_precision 9 tests) todos passam.
 
 #### [x] Tarefa α2.3 — Testes de Integração e Medições de Zero Alloc [BAIXO RISCO] ✅
 

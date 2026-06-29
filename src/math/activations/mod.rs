@@ -42,6 +42,7 @@ pub use hard_tanh::*;
 pub use leaky_hard_tanh::*;
 pub use prelu::*;
 pub use relu::*;
+use serde::{Deserialize, Serialize};
 pub use sigmoid::*;
 pub use silu::*;
 pub use softsign::*;
@@ -51,7 +52,7 @@ pub use tanh::*;
 ///
 /// Controls whether the production Padé/minimax kernels or the
 /// high-fidelity polynomial exp-based kernels are used.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(usize)]
 #[allow(clippy::module_name_repetitions)]
 pub enum ActivationPrecision {
@@ -62,6 +63,23 @@ pub enum ActivationPrecision {
     /// Polynomial exp-based tanh/sigmoid (~2.4e-7 / ~2.1e-7).
     /// Higher cost, lower error, lower aliasing (offline/mixdown).
     HighFidelity = 1,
+}
+
+impl ActivationPrecision {
+    /// Creates an `ActivationPrecision` from a f32 CLAP parameter value.
+    #[inline]
+    pub fn from_f32(val: f32) -> Self {
+        match val.round() as i32 {
+            1 => Self::HighFidelity,
+            _ => Self::Standard,
+        }
+    }
+
+    /// Converts to a f32 CLAP parameter value (0.0 or 1.0).
+    #[inline]
+    pub fn to_f32(self) -> f32 {
+        self as u32 as f32
+    }
 }
 
 /// Global activation precision mode (default: `Standard`).

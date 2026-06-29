@@ -85,6 +85,18 @@ impl<'a> NamClapProcessor<'a> {
         }
     }
 
+    pub(crate) fn set_activation(&mut self, val: f32) {
+        let mode = crate::common::params::ActivationPrecision::from_f32(val);
+        if mode != self.params.activation_precision {
+            self.params.activation_precision = mode;
+            self.shared
+                .ui_to_rt
+                .param_activation
+                .store(mode as u32, Ordering::Relaxed);
+            crate::math::activations::set_activation_precision(mode);
+        }
+    }
+
     // ── Modulation helpers ────────────────────────────────────────
 
     pub(super) fn set_mod_input_gain(&mut self, amount: f32) {
@@ -128,6 +140,8 @@ impl<'a> NamClapProcessor<'a> {
         let adaptive_changed = self.params.adaptive_compute != new_params.adaptive_compute;
         let slim_override_changed = self.params.slim_override != new_params.slim_override;
         let oversample_changed = self.params.oversample != new_params.oversample;
+        let activation_changed =
+            self.params.activation_precision != new_params.activation_precision;
         self.params = new_params;
         self.smoother_in.set_target(
             self.gain_lut
@@ -147,6 +161,9 @@ impl<'a> NamClapProcessor<'a> {
         }
         if oversample_changed {
             self.apply_oversample(self.params.oversample);
+        }
+        if activation_changed {
+            crate::math::activations::set_activation_precision(self.params.activation_precision);
         }
     }
 
@@ -238,6 +255,19 @@ impl<'a> NamClapProcessor<'a> {
         if shared_factor != self.params.oversample {
             self.params.oversample = shared_factor;
             self.apply_oversample(shared_factor);
+        }
+    }
+
+    pub(super) fn sync_activation_from_gui(&mut self) {
+        let shared_mode = crate::common::params::ActivationPrecision::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_activation
+                .load(Ordering::Relaxed) as f32,
+        );
+        if shared_mode != self.params.activation_precision {
+            self.params.activation_precision = shared_mode;
+            crate::math::activations::set_activation_precision(shared_mode);
         }
     }
 }
