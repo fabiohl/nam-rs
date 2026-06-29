@@ -211,6 +211,10 @@ Pipeline: `upsample → model inference (at 2× or 4× rate) → downsample`.
 | 2×            | 1      | 12 samples @ native rate (~0.25 ms @ 48 kHz) | ~2× model cost |
 | 4×            | 2      | 24 samples @ native rate (~0.5 ms @ 48 kHz)  | ~4× model cost |
 
+The latency above is tracked and reported to the host via `OversampleEngine::latency_samples()`
+(post-Sprint B1). The CLAP plugin includes oversampling latency in both its initial latency
+announcement and dynamic latency updates (`src/clap/processor/events.rs`, `mod.rs`).
+
 **Mandatory?** No. Default is Off. Designed for offline/mixdown rendering and critical
 listening where CPU headroom exists.
 
@@ -342,8 +346,8 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 | Resampler quality selector (Standard 32T / HQ 64T)                            | 🟡 Designed, HQ is default    | §4; **⚠️ requer correção de F3 antes da implementação**                                 |
 | Kahan-compensated LSTM head accumulation                                      | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
 | Oversampled recurrent state (LSTM HQ mode)                                    | 🟡 Proposed mitigation for §3 | Épico E4                                                                                |
-| **🔴 Oversampling: latência não reportada ao host (PDC)**                     | 🔴 Bug ativo                  | §5 (latência documentada: 12/24 amostras); [`TODO-findings.md`](../TODO-findings.md) F2 |
-| **🔴 Resampler: fórmula de atraso de grupo errada para banco de fase mínima** | 🔴 Bug ativo                  | §4 (min-phase default confirmado); [`TODO-findings.md`](../TODO-findings.md) F3         |
+| **🔴 Oversampling: latência não reportada ao host (PDC)**                     | ✅ Resolvido (Sprint B1)      | §5 (latência documentada: 12/24 amostras); [`TODO-findings.md`](../TODO-findings.md) F2 |
+| **🔴 Resampler: fórmula de atraso de grupo errada para banco de fase mínima** | ✅ Resolvido (Sprint B1)      | §4 (min-phase default confirmado); [`TODO-findings.md`](../TODO-findings.md) F3         |
 | **Adaptive Compute + A2: double-pass corrompia estado recorrente**            | ✅ Resolvido (Sprint A1)      | §8 (Adaptive Compute); [`TODO-findings.md`](../TODO-findings.md) F1                     |
 | Adaptive Compute: `prev_state` dessinc em transições encadeadas (< 32 ms)     | ✅ Resolvido (Sprint A1)      | §8; [`TODO-findings.md`](../TODO-findings.md) F4                                        |
 

@@ -230,7 +230,7 @@ Este documento organiza a resolução dos épicos descritos em [TODO-findings.md
 
 ---
 
-#### Tarefa B1.3 — Atualização do Estado de Questões nas Documentações (Docs)
+#### Tarefa B1.3 — Atualização do Estado de Questões nas Documentações (Docs) [DONE]
 
 * **Tipo:** Ajuste de Documentação e Higiene
 * **Severidade:** INFORMATIVA
