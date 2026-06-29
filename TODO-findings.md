@@ -196,6 +196,33 @@ distribuição de treino".
 6. **Mitigação de longo prazo encaminhada ao Épico E4 (S5):** acúmulo compensado (Kahan) no
    head do LSTM; oversampling do estado recorrente como modo HQ opcional.
 
+### F-2 · Resolução adicional (2026-06-29, Tarefa 8.14 — anti-mascaramento)
+
+Auditoria de correção identificou que a Tarefa 8.4, ao apertar `ABSOLUTE_ESR_CAP_LSTM`
+para 0.08, **removeu as taxas não-nativas (88.2/96/192 kHz) do teste LSTM** e as
+escondeu atrás de um comentário falso ("tested separately under `#[ignore]`" — teste
+inexistente). Isso é a mesma anti-prática de "calibrar até passar", disfarçada de
+"estreitar o escopo até passar" (ver Gate Calibration Policy Rule 7).
+
+**Medição completa (nam-rs ↔ NAMCore, v2/stress, todos os modelos LSTM):**
+
+| Modelo            | 44.1k    | 48k      | 88.2k    | 96k      | 192k        |
+| ----------------- | -------- | -------- | -------- | -------- | ----------- |
+| BossLSTM-1×16     | 2.39e-2  | 2.61e-2  | 5.39e-2  | 6.09e-2  | **1.42e-1** |
+| BossLSTM-2×8      | 3.41e-3  | 3.88e-3  | 1.18e-2  | 1.45e-2  | 4.20e-2     |
+| LSTM Official     | 1.23e-3  | 1.23e-3  | 1.23e-3  | 1.23e-3  | 1.23e-3     |
+
+**Constatação:** 88.2k e 96k já passavam o cap 0.08 — foram removidas
+desnecessariamente. Apenas 1×16 @ 192 kHz (1.42e-1) o excede.
+
+**Correção (sem mascarar):** cap absoluto LSTM tornado **rate-aware** e medido —
+`≤ 96 kHz: 0.08` (cobre 6.09e-2, ~1.3×) e `> 96 kHz: 0.20` (cobre 1.42e-1, ~1.4×),
+ambos < 1.0 (não-placebo). Todos os 4 testes LSTM v2 voltaram a `run_v2_multi_sr`
+(todas as taxas testadas, nenhuma escondida); `run_v2_native_sr` removida (código
+morto). O drift recorrente de 1×16 @ 192 kHz permanece **limitação conhecida e
+rastreada** (inerente ao formato f16c, ponto 4 acima), agora **visível e asserida**
+em vez de oculta. Resultado: 4/4 testes LSTM v2 verdes em 44.1/48/88.2/96/192 kHz.
+
 ### F-2 · Critérios de aceite
 
 - Existe `mrstft_max` calibrado e **asserido** para todos os modelos golden em 44.1/48 kHz.

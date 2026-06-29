@@ -385,26 +385,37 @@ fn run_render_comparison(
         // Caps derivados de medição real, não de "o que faz passar o teste":
         //
         // - WaveNet: cap = baseline A1-Std (6.23e-3)
-        // - LSTM:   cap = 0.08.
-        //   // Measured: nam-rs vs NAMCore ESR = 2.61e-2 (v2/240k @ 48 kHz, f16c+f32 recurrent drift).
-        //   // Margin: 3× (2.61e-2 × 3 ≈ 0.078 → 0.08).
-        //   // Oracle ideal precision floor (T8.2/T8.3): ΔESR_combined = 6.94e-5,
-        //   //   ΔESR_oracle_vs_prod = 3.57e-3 (prewarm-paired @ 48 kHz).
-        //   // The 2.61e-2 is interop drift (NAM-rs vs NAMCore) — recurrent state
-        //   // accumulation shared by both f32 engines; distinct from oracle f64
-        //   // precision floor (~1e-4).
-        //   // Non-native sample rates (88.2k, 96k, 192k) exhibit proportionally
-        //   // larger recurrent drift; tested separately under #[ignore] to avoid
-        //   // masking at native rates (44.1k, 48k).
+        // - LSTM:   rate-aware cap (recurrent drift scales with the sample-rate
+        //   ratio — more recurrent steps per second of audio mean more f16c/f32
+        //   state accumulation). ALL supported rates are tested (Tarefa 8.14,
+        //   Gate Calibration Policy Rule 7): no rate is excluded to make a gate
+        //   pass; the bound is raised per-rate from real measurements instead.
+        //
+        //   // Measured — BossLSTM-1x16 (worst case), v2/240k stress vs NAMCore:
+        //   //   44.1k=2.39e-2  48k=2.61e-2  88.2k=5.39e-2  96k=6.09e-2  192k=1.42e-1
+        //   //   (other LSTMs are lower: 2x8 192k=4.20e-2; Official flat 1.23e-3)
+        //   // Oracle ideal precision floor (T8.2/T8.3): ΔESR_oracle_vs_prod =
+        //   //   3.57e-3 (prewarm-paired @ 48 kHz). The interop figures above are
+        //   //   nam-rs↔NAMCore drift (shared by both f32 engines), distinct from
+        //   //   the f64 oracle floor.
+        //   //   ≤ 96 kHz: cap 0.08  (covers measured 6.09e-2 with ~1.3× margin)
+        //   //   > 96 kHz: cap 0.20  (covers measured 1.42e-1 @ 192k with ~1.4× margin)
+        //   // Both bounds are < 1.0 (non-placebo); 192 kHz remains a documented,
+        //   // tracked limitation (TODO-findings.md F-2), not a hidden gap.
         // - SNR nunca abaixo de 5.0 dB (piso absoluto)
         // - MR-STFT nunca acima de 0.95 (cap at ceiling for normalized metric)
         const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
-        const ABSOLUTE_ESR_CAP_LSTM: f64 = 0.08;
+        const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08; // rates ≤ 96 kHz
+        const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.20; // rates > 96 kHz (e.g. 192 kHz)
         const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
         const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
 
         let esr_cap = if model_data.architecture == "LSTM" {
-            ABSOLUTE_ESR_CAP_LSTM
+            if sample_rate > 96_000 {
+                ABSOLUTE_ESR_CAP_LSTM_HIRATE
+            } else {
+                ABSOLUTE_ESR_CAP_LSTM_NATIVE
+            }
         } else {
             ABSOLUTE_ESR_CAP_WAVENET
         };
@@ -486,8 +497,9 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
 
 /// Runs v2 stress signal comparison across all `SUPPORTED_SAMPLE_RATES` for one model.
 ///
-/// For coverage restricted to native rates only (44.1k/48k), use
-/// [`run_v2_native_sr`] instead.
+/// Every supported rate (44.1k…192k) is exercised for every model, including
+/// LSTMs (Gate Calibration Policy Rule 7 — no rate is dropped to make a gate
+/// pass; the absolute ESR cap is raised per-rate from measurements instead).
 ///
 /// **Known limitation:** NeuralAmpModelerCore's `render` tool enforces that the
 /// input WAV sample rate matches the model's expected rate (typically 48 kHz).
@@ -510,46 +522,6 @@ fn run_v2_multi_sr(
 ) {
     let mut failures: Vec<(u32, String)> = Vec::new();
     for &sr in SUPPORTED_SAMPLE_RATES {
-        let label = format!("{label_base} @ {sr} Hz (v2)");
-        let gname = format!("{golden_name}_v2_{sr}");
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_render_comparison(model_filename, &gname, &label, sr, true, check_lufs_gate);
-        }));
-        if let Err(e) = result {
-            let msg = e
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "unknown panic (non-string payload)".to_string());
-            failures.push((sr, msg));
-        }
-    }
-    if !failures.is_empty() {
-        let summary: Vec<String> = failures
-            .iter()
-            .map(|(sr, msg)| format!("@ {sr} Hz: {msg}"))
-            .collect();
-        panic!(
-            "Parity validation failed for sample rates:\n  {}",
-            summary.join("\n  ")
-        );
-    }
-}
-
-/// Like `run_v2_multi_sr` but only tests at native sample rates (44100, 48000 Hz).
-///
-/// Tarefa 8.4 (AC-2): LSTM recurrent state drift at non-native rates (88.2k, 96k, 192k)
-/// exceeds the native-rate ESR cap (0.08). These rates are tested separately under
-/// `#[ignore]` to avoid masking native-rate regressions.
-fn run_v2_native_sr(
-    model_filename: &str,
-    golden_name: &str,
-    label_base: &str,
-    check_lufs_gate: bool,
-) {
-    const NATIVE_RATES: &[u32] = &[44100, 48000];
-    let mut failures: Vec<(u32, String)> = Vec::new();
-    for &sr in NATIVE_RATES {
         let label = format!("{label_base} @ {sr} Hz (v2)");
         let gname = format!("{golden_name}_v2_{sr}");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -779,7 +751,7 @@ fn live_cross_validation_v2_wavenet_lite() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_1x16() {
-    run_v2_native_sr(
+    run_v2_multi_sr(
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Live LSTM 1×16 (v2)",
@@ -790,7 +762,7 @@ fn live_cross_validation_v2_lstm_1x16() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_2x8() {
-    run_v2_native_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)", true);
+    run_v2_multi_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)", true);
 }
 
 #[test]
@@ -807,7 +779,7 @@ fn live_cross_validation_v2_wavenet_a1_standard() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_official() {
-    run_v2_native_sr("lstm.nam", "lstm_official", "Live LSTM Official (v2)", true);
+    run_v2_multi_sr("lstm.nam", "lstm_official", "Live LSTM Official (v2)", true);
 }
 
 #[test]
@@ -914,7 +886,7 @@ fn live_cross_validation_v2_wavenet_dyn() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_lstm_dyn() {
-    run_v2_native_sr(
+    run_v2_multi_sr(
         "lstm_dyn_test.nam",
         "lstm_dyn_test",
         "Live LSTM-Dyn 1×7 (v2)",

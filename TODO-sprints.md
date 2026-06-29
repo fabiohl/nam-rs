@@ -1646,6 +1646,30 @@ independente (Python), não mais auto-calibração por seno analítico.
 - **Risco:** Baixo. A independência é comprovada pela concordância com a produção
   (código separado), não apenas com o oráculo.
 
+### Tarefa 8.14 [TEST] Desfazer o mascaramento de cobertura LSTM não-nativa (cap rate-aware medido) ([F-2](file:///home/fabio/nam-rs/TODO-findings.md), [AC-2](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
+
+- **Status:** `[x]` Concluída (2026-06-29)
+- **Arquivos Alvo:**
+  - [`tests/cpp_parity.rs`](file:///home/fabio/nam-rs/tests/cpp_parity.rs) (cap LSTM, testes v2)
+  - [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md) (Rule 7)
+- **Motivação (achado da auditoria):** T8.4, ao apertar `ABSOLUTE_ESR_CAP_LSTM` para
+  0.08, trocou os 4 testes LSTM v2 de `run_v2_multi_sr` para `run_v2_native_sr`
+  (somente 44.1/48k) e justificou com um comentário **falso** ("non-native rates
+  tested separately under `#[ignore]`") — nenhum teste assim existia. Cobertura viva
+  (LSTM @ 88.2/96/192 kHz) **desapareceu** para o cap apertado passar. É a anti-prática
+  "estreitar o escopo até passar" (Gate Calibration Policy Rule 7).
+- **Medição (nam-rs ↔ NAMCore, v2/stress):** ver tabela em F-2. Pior caso
+  BossLSTM-1×16: 88.2k=5.39e-2, 96k=6.09e-2, 192k=1.42e-1. **88.2/96k já passavam
+  0.08** (removidas sem necessidade); só 192k o excede.
+- **Correção:** cap LSTM tornado **rate-aware e medido** — `≤ 96 kHz: 0.08`
+  (cobre 6.09e-2, ~1.3×), `> 96 kHz: 0.20` (cobre 1.42e-1 @ 192k, ~1.4×), ambos
+  < 1.0. Os 4 testes LSTM v2 voltaram a `run_v2_multi_sr` (todas as taxas);
+  `run_v2_native_sr` removida (código morto); comentário falso substituído pela
+  tabela medida; limitação de 192k registrada e **asserida** (não oculta) em F-2.
+- **Critérios de Aceite:** 4/4 testes LSTM v2 verdes em 44.1/48/88.2/96/192 kHz;
+  nenhuma taxa excluída; cap medido e documentado (Rule 3); `< 1.0` (Rule 2). ✓
+- **Risco:** Baixo. Restaura cobertura sem afrouxar gates nativos.
+
 ### Tarefa 8.12 [QA] Validação completa: lints + quick-suite + long-suite 7/7 ([todos os AC](file:///home/fabio/nam-rs/TODO-findings.md)) [DONE]
 
 - **Status:** `[X]` Concluída
