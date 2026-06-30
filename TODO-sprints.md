@@ -179,12 +179,15 @@ Este sprint leva o modo `ActivationPrecision::HighFidelity` (que usa aproximaç�
 
 Este sprint adiciona soma compensada de Kahan ao head f32-native do LSTM como proteção contra o acúmulo de erros de arredondamento em heads longos.
 
-#### [ ] Tarefa β2.1 — Implementação da Função de Soma Compensada [BAIXO RISCO]
+#### [X] Tarefa β2.1 — Implementação da Função de Soma Compensada [BAIXO RISCO]
 
 - **Descrição:** Adicionar suporte a produto escalar compensado nativo f32.
 - **Mudanças propostas:**
   - Em `src/math/common/scalar_ref/dot.rs`, implementar `dot_product_f32_native_kahan(a: &[f32], b: &[f32]) -> f32` reusando `KahanF32` de `src/math/common/kahan.rs`.
 - **Validação:** Testes unitários para validar a precisão matemática da soma.
+- **Conclusão (2026-06-29):**
+  - `dot_product_f32_native_kahan` implementada em `src/math/common/scalar_ref/dot.rs:78` usando `KahanF32::add` para acumulação compensada. Import de `KahanF32` adicionado ao cabeçalho do módulo.
+  - 6 testes unitários (`kahan_dot_tests`) validam: concordância com naive em casos pequenos, vantagem em alta faixa dinâmica, slices vazios, elemento único, tamanhos diferentes, e redução de drift ≥ 2 dB em acumulação profunda (11520 termos). Todos passam.
 
 #### [ ] Tarefa β2.2 — Integração da Acumulação nos Modelos LSTM [BAIXO RISCO]
 
