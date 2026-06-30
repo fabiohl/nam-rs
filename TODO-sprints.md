@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, B, C & D
+# Roadmap de Sprints — Épicos A, B, C, D & E
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)** e o **Épico D (PM-06 — SlimmableWavenet)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)** e o **Épico E (PM-07 — Robustez da Suíte de Testes)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -188,3 +188,45 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   5. ✅ Testes `test_oracle_vs_python_anchor_a2_film_lite` e `test_oracle_vs_python_anchor_a2_film_full` adicionados em `tests/reference_oracle_f64.rs`.
 * **Conclusão (2026-06-30):**
   Cadeia de confiança de 3 vias fechada: Python NumPy ↔ Rust Oracle ↔ Produção f32. A âncora NumPy replica `FiLMOracleSlot::apply` (grupos GEMV → `cond_to_scale_shift` + `apply_modulation`) e os 6 pontos de inserção ativos, validada com ESR = 5.00e-16 contra o oráculo Rust. Clippy limpo, 26/26 testes passando.
+
+---
+
+## SPRINT S11 — Robustez da Suíte de Testes (PM-07)
+
+### S11 Objetivos da Sprint
+
+1. Eliminar a brecha estrutural de **SKIP silencioso** no harness de teste de múltiplas taxas de amostragem (`run_v2_multi_sr` em `tests/cpp_parity.rs`), coletando e validando os resultados por taxa com asserções estritas.
+2. Exibir um sumário legível e explícito do desfecho das execuções por taxa e por modelo na saída `--nocapture` dos testes.
+3. Auditar detalhadamente a integridade operacional e tratamento de erros dos scripts executores de qualidade (`utils/tests-quick.sh`, `utils/tests-long.sh`, `utils/build-release.sh` e `utils/tests-performance-regression.sh`) sob o olhar do papel *Correctness Auditor*.
+
+---
+
+### S11 Tarefas Técnicas
+
+#### [ ] Task S11.1 — Robustecer o Harness de Testes `run_v2_multi_sr` contra SKIP Silencioso (PM-07)
+
+* **Responsável:** Engenheiro de DSP / QA
+* **Risco/Criticidade:** Baixo (test-only).
+* **Contexto:**
+  No harness `run_v2_multi_sr`, se o renderizador C++ pular silenciosamente uma taxa de amostragem por incompatibilidade de taxa, o teste hoje retorna cedo com uma mensagem de log e passa silenciosamente. Isso viola a Regra 7 de calibração de gates. Precisamos rastrear o status de cada taxa por modelo e assertar que as taxas de amostragem esperadas foram comparadas com sucesso.
+* **Critérios de Aceitação:**
+  1. Definir o enum `ParityOutcome` em `tests/cpp_parity.rs` para classificar o resultado das execuções (Completed, SkippedModelNotFound, SkippedToolNotAvailable, SkippedRateRejected, SkippedGarbageOutput).
+  2. Modificar `run_render_comparison` para retornar `ParityOutcome`.
+  3. Refatorar `run_v2_multi_sr` e `run_v2_multi_sr_hf` sob uma função auxiliar única `run_v2_multi_sr_impl` para evitar duplicação de controle.
+  4. Na execução, carregar e analisar o JSON do modelo para inferir quais taxas de amostragem devem obrigatoriamente completar (modelos com taxa fixa no JSON rodam apenas nela; WaveNets dinâmicos rodam em todas as 5 taxas; LSTMs pulam apenas a taxa de 192 kHz).
+  5. Se o renderizador C++ estiver disponível e o modelo existir, assertar que:
+     * Ao menos uma taxa de amostragem completou a validação (prevenindo skipping total).
+     * O conjunto de taxas completadas é idêntico ao conjunto de taxas esperadas para o modelo.
+  6. Emitir um resumo tabulado das taxas de amostragem executadas no terminal quando executado com `--nocapture`.
+
+#### [ ] Task S11.2 — Auditoria e Validação das Suítes de Testes (Correctness Auditor)
+
+* **Responsável:** Auditor de Correção / DevOps
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  Assegurar que as suítes de scripts executadas localmente e em CI (`utils/tests-quick.sh`, `utils/tests-long.sh`, `utils/build-release.sh` e `utils/tests-performance-regression.sh`) estejam livres de falhas latentes, com comportamento determinístico e tratamento correto de erros de encadeamento.
+* **Critérios de Aceitação:**
+  1. Revisar `utils/tests-quick.sh` garantindo que todos os estágios de auditoria de heap, clippy estrito e validações do plugin CLAP abortam imediatamente sob qualquer sinal de falha.
+  2. Revisar `utils/tests-long.sh` atestando que todas as 6 fases (Soak, Proptests, Heap-Audit, CLAP Release Validation, Long Benches, RT Deadline) são executadas independentemente e que qualquer erro parcial é reportado no resumo final e resulta em código de saída `1` no script.
+  3. Validar se `utils/build-release.sh` exige corretude no processo PGO + BOLT, abortando graciosamente se os perfis de amostragem do kernel não puderem ser adquiridos.
+  4. Revisar `utils/tests-performance-regression.sh` garantindo que a análise estatística do Criterion detecta e barra regressões de latência no DSP com p-value correto (p < 0.05).
