@@ -156,6 +156,7 @@ case "$MODE" in
         fi
 
         echo -e "\n${BLUE}${BOLD}[CHECK] Comparing against CI baseline...${NC}"
+        mkdir -p target/logs
         # Criterion baseline comparison reports regressions with exit code
         set +e
         $TASKSET cargo bench --bench regression_gate \

@@ -5,13 +5,14 @@
 # Standard quality control and testing script for nam-rs — unified PR gate.
 #
 # Phases:
-#   1. Unit/integration tests (fast feedback, debug mode)
-#   2. Medium validation suite (C++ parity + proptest parsers + proptest math, release mode, ignored)
-#   3. Build CLAP plugin (debug + heap-audit)
-#   4. CLAP integration and heap-audit tests
-#   5. CLAP validator (external)
+#   1. Cargo clippy strict (standalone + CLAP plugin features)
+#   2. Unit/integration tests (fast feedback, debug mode)
+#   3. Medium validation suite (C++ parity + proptest parsers + proptest math, release mode, ignored)
+#   4. Build CLAP plugin (debug + heap-audit)
+#   5. CLAP integration and heap-audit tests
+#   6. CLAP validator (external)
 #
-# Phase 2 requires NeuralAmpModelerCore (./utils/mod-update.sh) and golden vectors.
+# Phase 3 requires NeuralAmpModelerCore (./utils/mod-update.sh) and golden vectors.
 # It is gracefully skipped if not available, emitting a warning.
 
 set -euo pipefail
@@ -44,7 +45,7 @@ fi
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}=================================================${NC}"
-echo -e "${BLUE}${BOLD}      nam-rs Quick QA Suite (± 3,5 minutes)      ${NC}"
+echo -e "${BLUE}${BOLD}      nam-rs Quick QA Suite (± 5,0 minutes)      ${NC}"
 echo -e "${BLUE}${BOLD}=================================================${NC}"
 
 # Ensure we are in the project root directory
@@ -70,21 +71,32 @@ cargo_clap() {
       cargo "$action" --profile test --no-default-features --features "clap-plugin,heap-audit,testing" "$@"
 }
 
-# 1. Standard tests (fast feedback)
-echo -e "\n${BLUE}${BOLD}[1/5] Executando testes unitários e de integração...${NC}"
+# 1. Clippy strict (standalone + CLAP plugin features — focused PR gate coverage)
+echo -e "\n${BLUE}${BOLD}[1/6] Executando análise estática estrita (cargo clippy)...${NC}"
+echo -e "  Clippy: Standalone..."
+cargo clippy --all-targets --features standalone -- -D warnings
+echo -e "  Clippy: CLAP Plugin..."
+cargo clippy --all-targets --no-default-features --features clap-plugin,testing -- -D warnings
+
+# Track whether medium validation ran (for summary message)
+MEDIUM_RUN=false
+
+# 2. Standard tests (fast feedback)
+echo -e "\n${BLUE}${BOLD}[2/6] Executando testes unitários e de integração...${NC}"
 cargo test
 
-# 2. Medium validation suite — C++ Parity + Proptests (release, ignored)
+# 3. Medium validation suite — C++ Parity + Proptests (release, ignored)
 #    These provide robust parser/SIMD/parity guarantees for the PR gate without
 #    waiting for the full long-duration suite.  Gracefully skipped when golden
 #    vectors or NeuralAmpModelerCore are not available.
-echo -e "\n${BLUE}${BOLD}[2/5] Executando suíte de validação intermediária...${NC}"
+echo -e "\n${BLUE}${BOLD}[3/6] Executando suíte de validação intermediária...${NC}"
 GOLDENS_OK=0
 if [ -d "tests/fixtures/NeuralAmpModelerCore" ] && [ -f "tests/fixtures/golden_cabsim_cpp_short.bin" ]; then
     GOLDENS_OK=1
 fi
 
 if [ "$GOLDENS_OK" -eq 1 ]; then
+    MEDIUM_RUN=true
     MEDIUM_STATUS=0
 
     echo -e "  ${BLUE}→ C++ Parity (subconjunto rápido: LSTM + WaveNet CH16 + A2 @ 48 kHz)...${NC}"
@@ -106,8 +118,8 @@ else
     echo -e "  ${YELLOW}  Pulando validação intermediária (cpp_parity + proptests).${NC}"
 fi
 
-# 3. Build CLAP plugin debug binary with heap-audit
-echo -e "\n${BLUE}${BOLD}[3/5] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
+# 4. Build CLAP plugin debug binary with heap-audit
+echo -e "\n${BLUE}${BOLD}[4/6] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
 cargo_clap build --lib
 
 if [ ! -f "$CLAP_BIN_RAW" ]; then
@@ -117,12 +129,12 @@ fi
 
 # Preservar o binário compilado em um local estável para evitar modificações por etapas subsequentes
 cp "$CLAP_BIN_RAW" "$CLAP_BIN"
-HASH_PHASE3=$(get_sha256 "$CLAP_BIN")
-echo -e "  Preservado binário da fase 3: $CLAP_BIN"
-echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE3}${NC}"
+HASH_PHASE4=$(get_sha256 "$CLAP_BIN")
+echo -e "  Preservado binário da fase 4: $CLAP_BIN"
+echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE4}${NC}"
 
-# 4. CLAP integration and heap-audit tests
-echo -e "\n${BLUE}${BOLD}[4/5] Executando testes de integração CLAP e auditoria de heap...${NC}"
+# 5. CLAP integration and heap-audit tests
+echo -e "\n${BLUE}${BOLD}[5/6] Executando testes de integração CLAP e auditoria de heap...${NC}"
 
 # A) CLAP Library tests
 cargo_clap test --lib clap::
@@ -139,15 +151,15 @@ cargo_clap test \
 # C) Diagnostic bundle heap variant test
 cargo_clap test --test diagnostic_bundle heap_audit
 
-# 5. Run the official CLAP validator if available
-echo -e "\n${BLUE}${BOLD}[5/5] Executando validação via clap-validator...${NC}"
+# 6. Run the official CLAP validator if available
+echo -e "\n${BLUE}${BOLD}[6/6] Executando validação via clap-validator...${NC}"
 if command -v clap-validator >/dev/null 2>&1; then
-  # Validar que o binário a ser testado pelo clap-validator é rigorosamente o da fase 3
-  HASH_PHASE5=$(get_sha256 "$CLAP_BIN")
-  echo -e "  SHA256 do binário na fase 3: ${GREEN}${HASH_PHASE3}${NC}"
-  echo -e "  SHA256 do binário na fase 5: ${GREEN}${HASH_PHASE5}${NC}"
-  if [ "$HASH_PHASE3" != "$HASH_PHASE5" ]; then
-    echo -e "${RED}Erro: O checksum do binário mudou entre as fases 3 e 5!${NC}"
+  # Validar que o binário a ser testado pelo clap-validator é rigorosamente o da fase 4
+  HASH_PHASE6=$(get_sha256 "$CLAP_BIN")
+  echo -e "  SHA256 do binário na fase 4: ${GREEN}${HASH_PHASE4}${NC}"
+  echo -e "  SHA256 do binário na fase 6: ${GREEN}${HASH_PHASE6}${NC}"
+  if [ "$HASH_PHASE4" != "$HASH_PHASE6" ]; then
+    echo -e "${RED}Erro: O checksum do binário mudou entre as fases 4 e 6!${NC}"
     exit 1
   else
     echo -e "  ${GREEN}✓${NC} Checksum correspondente comprovado."
@@ -161,6 +173,13 @@ else
   echo -e "${YELLOW}Aviso: clap-validator não encontrado. Pulando etapa de validação.${NC}"
 fi
 
-echo -e "${GREEN}${BOLD}================================================================${NC}"
-echo -e "${GREEN}${BOLD}               Todos os testes padrão passaram!                 ${NC}"
-echo -e "${GREEN}${BOLD}================================================================${NC}"
+if [ "$MEDIUM_RUN" = true ]; then
+    echo -e "${GREEN}${BOLD}================================================================${NC}"
+    echo -e "${GREEN}${BOLD}               Todos os testes padrão passaram!                 ${NC}"
+    echo -e "${GREEN}${BOLD}================================================================${NC}"
+else
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+    echo -e "${YELLOW}${BOLD}         Testes padrão passaram (validação intermediária        ${NC}"
+    echo -e "${YELLOW}${BOLD}          foi pulada — gere os golden vectors primeiro)         ${NC}"
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+fi

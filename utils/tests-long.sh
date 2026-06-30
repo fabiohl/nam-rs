@@ -13,7 +13,7 @@
 #                             automatically rebuilt during Phase 0.
 #   NAM_AUTO_BUILD_GOLDENS    (Deprecated and ignored)
 
-set -uo pipefail
+set -euo pipefail
 ## Observação à IA: Dado à longa (por design) duração da execução deste script, é PROIBIDO executa-lo durante atividades de IA.
 ### Se necessário, peça ao desenvolvedor humano para roda-lo e trazer o resultado.
 

@@ -221,7 +221,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 **Resultado S11.1:** `ParityOutcome` enum com 5 variantes; `run_render_comparison` retorna `ParityOutcome`; `run_v2_multi_sr`/`run_v2_multi_sr_hf` delegam para `run_v2_multi_sr_impl` (zero duplicação); validação precoce do modelo JSON; assert `!completed.is_empty()` (antiskip total) + assert `completed_set == expected_set` (antiskip parcial); sumário tabulado emitido em `println!` visível com `--nocapture`. Medição empírica: WaveNet Standard e LSTM 1×16 completam todas as 5 taxas (44.1k…192k) com o render C++ — a premissa original de que modelos de taxa fixa ou LSTMs pulariam taxas não se confirmou com a versão atual do NAMCore (v0.5.3+A2-fast). Expected set = todas as 5 taxas para todos os modelos. Quick parity (5/5) e v2 multi-SR (WaveNet + LSTM) passando. Clippy limpo.
 
-#### [ ] Task S11.2 — Auditoria e Validação das Suítes de Testes (Correctness Auditor)
+#### [x] Task S11.2 — Auditoria e Validação das Suítes de Testes (Correctness Auditor)
 
 * **Responsável:** Auditor de Correção / DevOps
 * **Risco/Criticidade:** Baixo.
@@ -232,3 +232,11 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   2. Revisar `utils/tests-long.sh` atestando que todas as 6 fases (Soak, Proptests, Heap-Audit, CLAP Release Validation, Long Benches, RT Deadline) são executadas independentemente e que qualquer erro parcial é reportado no resumo final e resulta em código de saída `1` no script.
   3. Validar se `utils/build-release.sh` exige corretude no processo PGO + BOLT, abortando graciosamente se os perfis de amostragem do kernel não puderem ser adquiridos.
   4. Revisar `utils/tests-performance-regression.sh` garantindo que a análise estatística do Criterion detecta e barra regressões de latência no DSP com p-value correto (p < 0.05).
+
+**Resultado parcial S11.2 (2026-06-30):**
+
+* `utils/tests-quick.sh`: Adicionado estágio de clippy estrito (fase [1/6] com `-D warnings` para standalone + CLAP). Total agora 6 fases (era 5). Mensagem de sucesso agora distingue se a validação intermediária foi pulada.
+* `utils/tests-long.sh`: Corrigido `set -uo pipefail` → `set -euo pipefail` para ativar o ERR trap corretamente e abortar em erros de pré-voo/entre-fases. Fases continuam independentes via `|| true`.
+* `utils/build-release.sh`: OK. PGO aborta se não gerar perfis; BOLT faz fallback gracioso; trap restaura `perf_event_paranoid`; validação do artefato CLAP cobre símbolo, SONAME e clap-validator.
+* `utils/tests-performance-regression.sh`: Adicionado `mkdir -p target/logs` antes do tee no modo `--check`. Detecção de regressão via `grep "regressed"` + exit code do Criterion — OK.
+* **Pendência:** `tests-long.sh` Phase "Property-Based, Parity & Golden Vectors in Release" reportou **FAILED** (status=1, 236s). Verificar `target/logs/phase2-proptests-parity.log` para identificar qual das 10 suítes falhou. Candidatos mais prováveis: `lib_pipeline_block_proptest` (assert `allocs==0` com 2000 casos aleatórios, 108s), `lstm_scalar_bf16_parity` (sem early-return para CPU sem AVX-512 BF16, divergência SIMD vs escalar em release), ou `cpp_parity` v2 multi-SR (assert `completed_set == expected_set` se render C++ falhar em alguma taxa).
