@@ -25,7 +25,7 @@ of the `.nam` / `.namb` file format contract.
 | 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Mitigated (β1–β3) |
 | 4   | **Host sample rate resampler**          | ❌    | ✅ When host ≠ 48 kHz   | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB | ✅ Active            |
 | 5   | **Neural stage oversampling**           | ❌    | ❌ Off by default       | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU        | ✅ Active            |
-| 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | ✅ CLI; 🔶 CLAP pending† | Error ÷ 10,000; ↓ aliasing                  | ⚠️ Partially exposed |
+| 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | ✅ CLI + CLAP            | Error ÷ 10,000; ↓ aliasing                  | ✅ Active            |
 | 7   | **Denormal dither + FTZ/DAZ**           | ❌    | ✅ Yes                  | ❌ No                    | No audible impact (−220 dBFS)               | ✅ Active            |
 | 8   | **Adaptive Compute (quality fallback)** | ❌    | ✅ Default              | 🔶 `--slim` flag         | Silent quality drop under CPU load          | ✅ Active            |
 
@@ -259,7 +259,7 @@ high-order folding.
 
 **Mandatory?** No. Standard mode is the production default.
 
-**⚠️ User-exposed?** **Yes.** The CLI exposes `--activation standard|hf` (alias `--act`),
+**✅ User-exposed.** **Yes.** The CLI exposes `--activation standard|hf` (alias `--act`),
 applying the mode at startup. The CLAP plugin exposes `PARAM_ACTIVATION=8` with full wiring
 (host events, GUI sync, SPSC path), persistence (state save/load), and override for offline
 render (forces HighFidelity). **All model families — WaveNet (A1/A2), ConvNet, Linear, and
@@ -346,7 +346,7 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 | Item                                                      | Status                     | Reference                                                                   |
 |:--------------------------------------------------------- |:--------------------------:|:--------------------------------------------------------------------------- |
 | HighFidelity activation mode user control (CLI/CLAP knob) | ✅ Complete (α2; β1)       | `src/math/activations/`, `src/clap/`                                        |
-| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO   | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker)        |
+| Runtime oversample switching (currently init-time only)   | ✅ Complete (α1.2)         | §5; `rt_callback/commands.rs`, `src/clap/processor/params.rs`               |
 | Resampler quality selector (Standard 32T / HQ 64T)        | ✅ Rejected (γ)            | §4 (Benchmark proved 32T savings < 0.1% pipeline. HQ-only permanent.)       |
 | Kahan-compensated LSTM head accumulation                  | ✅ Complete (β2)           | `src/math/common/scalar_ref/dot.rs`, `src/models/lstm/`                     |
 | LSTM HF gate kernel coverage                              | ✅ Complete (β1)           | `src/math/lstm/gates.rs`, `src/models/lstm/layer_kernels.rs`                |

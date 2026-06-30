@@ -575,7 +575,7 @@ preservando o formato?**
   bench provar custo material. **[Medição concluída: economia de 32T vs 64T é de apenas 40 ns por bloco (<0.1% do total), decidindo pelo descarte do seletor e manutenção de HQ-only permanente.]**
 - **Risco:** BAIXO.
 
-### Épico δ — Sincronização da documentação de fidelidade (a "arquitetura final")
+### Épico δ — Sincronização da documentação de fidelidade (a "arquitetura final") [DONE]
 
 - **Findings:** transversal a I1–I6.
 - **Objetivo:** deixar `audio_fidelity_map.md`, `lstm_recurrent_drift.md`, `architecture.md`,

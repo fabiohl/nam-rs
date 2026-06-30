@@ -427,17 +427,21 @@ see [`docs/architecture.md §5.0O`](architecture.md)). The rationale:
 3. In practice, Standard + 4× oversampling already achieves **>100 dB SNR** for most use cases.
    HighFidelity provides a further margin for offline rendering and critical listening.
 
-### 10.4 Known Limitation: LSTM Fused Gates
+### 10.4 Full Topology Coverage (including LSTM Fused Gates)
 
-LSTM fused 4-gate GEMV kernels bypass the `ActivationPrecision` dispatch and always use the
-Standard path. The fused kernel layout (combined tanh + sigmoid evaluation in a single SIMD pass)
-is architecturally incompatible with the HighFidelity exp-kernel structure, which requires separate
-exp evaluations for tanh and sigmoid. Coverage extends to:
+All model families fully support the `ActivationPrecision` dispatch. During Épico β, coverage was extended to the LSTM fused 4-gate GEMV kernels across all paths:
 
-- WaveNet A1 (all profiles: Standard, Lite, Feather, Nano, Dyn) — full dispatch
-- WaveNet A2 (Full + Lite + Dyn) — full dispatch
-- ConvNet — full dispatch
-- Linear (FIR models) — no activations, unaffected
+- Scalar fallback (`process_sample_scalar`)
+- AVX2 SIMD (`fused_lstm_gates_avx2`)
+- AVX-512 SIMD (`fused_lstm_gates_avx512`)
+
+The dispatch is performed via a branch-direct hoisted flag check before entering the loops, maintaining zero allocations and full real-time safety. Coverage now extends to:
+
+- WaveNet A1 (all profiles: Standard, Lite, Feather, Nano, Dyn)
+- WaveNet A2 (Full + Lite + Dyn)
+- LSTM (all configurations: 1×8, 1×12, 1×16, 1×24, 1×40, 2×8, 2×12, 2×16, 2×24, and Dyn)
+- ConvNet
+- Linear (FIR models — no activations, unaffected)
 
 ### 10.5 Cross-References
 

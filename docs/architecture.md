@@ -452,7 +452,7 @@ The off-RT true-peak functions (`compute_true_peak_db()`, `find_true_peak_overs(
 | [`tests/reference_oracle_f64.rs`](../tests/reference_oracle_f64.rs) | Oracle ES-R + error source decomposition            | LSTM, WaveNet, A2                  |
 | [`tests/cpp_parity.rs`](../tests/cpp_parity.rs)                     | ES-R, MSE, SNR, MR-STFT, LUFS, dBTP vs. C++ NAMCore | All SKUs × sample rates            |
 | [`tests/isa_parity.rs`](../tests/isa_parity.rs)                     | Output parity scalar vs. AVX2 vs. AVX-512 per model | All architectures                  |
-| [`tests/activation_precision.rs`](../tests/activation_precision.rs) | ES-R via oracle for Standard vs. HighFidelity       | WaveNet, ConvNet, Linear           |
+| [`tests/activation_precision.rs`](../tests/activation_precision.rs) | ES-R via oracle for Standard vs. HighFidelity       | WaveNet, ConvNet, Linear, LSTM     |
 
 Baseline fingerprints for ASR/THD/FR are versioned in [`tests/fixtures/spectral_fidelity_baseline.json`](../tests/fixtures/spectral_fidelity_baseline.json) and regenerated via `--accept` flag on the spectral fidelity test binary.
 

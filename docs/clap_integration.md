@@ -24,13 +24,17 @@ The CLAP integration must strictly respect the thread segregation already existi
 
 Parameters exposed to the host will be mapped from the `NamPluginParams` structure (see `src/common/params.rs`):
 
-| CLAP Parameter     | ID                  | Unit   | Description                                 |
-|:------------------ |:------------------- |:------ |:------------------------------------------- |
-| **Input Gain**     | `input_gain_db`     | dB     | Gain applied before neural inference.       |
-| **Output Gain**    | `output_gain_db`    | dB     | Gain applied after neural inference.        |
-| **Gate Threshold** | `gate_threshold_db` | dB     | Noise Gate opening threshold.               |
-| **Bypass**         | `bypass`            | binary | Disables neural processing (Dry/Wet 0/100). |
-| **Active Model**   | `active_model`      | —      | Loaded model name (read-only).              |
+| CLAP Parameter          | ID                      | Unit   | Description                                                                     |
+|:----------------------- |:----------------------- |:------ |:------------------------------------------------------------------------------- |
+| **Input Gain**          | `input_gain_db`         | dB     | Gain applied before neural inference.                                           |
+| **Output Gain**         | `output_gain_db`        | dB     | Gain applied after neural inference.                                            |
+| **Gate Threshold**      | `gate_threshold_db`     | dB     | Noise Gate opening threshold.                                                   |
+| **Bypass**              | `bypass`                | binary | Disables neural processing (Dry/Wet 0/100).                                     |
+| **Active Model**        | `active_model`          | —      | Loaded model name (read-only).                                                  |
+| **Adaptive Compute**    | `adaptive_compute`      | binary | Enables or disables real-time CPU-based quality fallback (FSM).                 |
+| **Slim Override**       | `slim_override`         | —      | Manual quality level override (stepped: Auto, Full, Lite).                      |
+| **Oversampling Factor** | `oversample`            | —      | Neural stage oversampling factor (stepped: Off, 2×, 4×).                        |
+| **Activation Precision**| `activation_precision`  | —      | Neural activation implementation precision (stepped: Standard, HighFidelity).   |
 
 The model path (`model_path`) will be treated as a **State Property**, allowing the DAW to save and load the correct model in the project.
 

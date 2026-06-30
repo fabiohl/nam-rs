@@ -259,3 +259,51 @@ Este sprint caracteriza o impacto de oversampling externo no LSTM e atualiza os 
     - R7 (novo): Carson, Wright, Chowdhury, Välimäki & Bilbao (2024) — "Sample Rate Independent RNNs for Audio Effects Processing", DAFx-24. Ancora teórica do mecanismo de mudança de timbre do LSTM sob oversampling (β3.1).
     - R7b (novo): Mikkonen & Werner (2025) — "Antiderivative Antialiasing for Recurrent Neural Networks", DAFx-25. Ponte teórica entre ADAA (R4/R5) e célula LSTM. Valida abordagem ADAA para GRU/LSTM, documentada como avaliada e deferred.
     - Renumeração cascata: R7→R8, R8→R9, R9→R10, R10→R11, R11→R12. Reference Index by Finding atualizado com novas entradas R7, R7b; P-1 ganha R7b; novo finding I5 adicionado.
+
+---
+
+## Épico δ — Sincronização da documentação de fidelidade (a "arquitetura final")
+
+**Objetivo:** Deixar a documentação técnica consistente com as decisões de design e a implementação real pós-findings do projeto.
+**Risco:** MÍNIMO (documentação).
+**Origem dos achados:** Transversal a I1–I6 do [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+
+### Épico δ — Dependências e Sequência de Execução
+
+1. **Sprint δ1: Sincronização e Auditoria Final da Documentação**
+
+---
+
+### Sprint δ1 — Sincronização e Auditoria Final da Documentação
+
+Este sprint realiza a sincronização final das especificações, parâmetros, tabelas de controle de usuário, limitações conhecidas e validação de documentos, refletindo a arquitetura estabelecida de alta fidelidade e oversampling.
+
+#### [x] Tarefa δ1.1 — Sincronização do Audio Fidelity Map [BAIXO RISCO]
+
+- **Descrição:** Atualizar o mapa global de fidelidade do áudio (`docs/audio_fidelity_map.md`) para refletir a ativação e exposição completas dos controles de ativação HF e oversampling, e marcar a alternância de taxa no standalone como resolvida.
+- **Mudanças propostas:**
+  - Na Tabela de Referência Rápida (§1), atualizar a linha da precisão de ativação (ID 6) para indicar suporte completo CLI+CLAP e status ativo. Remover símbolo pendente.
+  - Na seção 6 (§6), ajustar o cabeçalho e detalhar a exposição total das famílias de modelos.
+  - Na tabela de Pendências (§9), atualizar `Runtime oversample switching` para `✅ Complete (α1.2)`.
+- **Validação:** Verificação manual do documento markdown gerado.
+
+#### [x] Tarefa δ1.2 — Sincronização do Guia de Arquitetura [BAIXO RISCO]
+
+- **Descrição:** Atualizar a tabela de cobertura de testes de fidelidade no guia de arquitetura para incluir os LSTMs.
+- **Mudanças propostas:**
+  - Em `docs/architecture.md` (Tabela de Testes e Validação na seção 6), adicionar `LSTM` ao escopo do teste `tests/activation_precision.rs`.
+- **Validação:** Verificação manual do documento markdown gerado.
+
+#### [x] Tarefa δ1.3 — Sincronização da Estratégia de Integração CLAP [BAIXO RISCO]
+
+- **Descrição:** Atualizar a tabela de mapeamento de parâmetros expostos pelo plugin CLAP.
+- **Mudanças propostas:**
+  - Em `docs/clap_integration.md` (Seção 2 - Mapeamento de Parâmetros), adicionar os IDs de 5 a 8 (`PARAM_ADAPTIVE_COMPUTE`, `PARAM_SLIM_OVERRIDE`, `PARAM_OVERSAMPLE`, `PARAM_ACTIVATION`) com suas respectivas unidades, descrições e naturezas.
+- **Validação:** Verificação manual do documento markdown gerado.
+
+#### [x] Tarefa δ1.4 — Sincronização de FastMath Approximations [BAIXO RISCO]
+
+- **Descrição:** Atualizar o documento de aproximações de fastmath para remover limitações obsoletas em relação aos kernels do LSTM.
+- **Mudanças propostas:**
+  - Em `docs/fastmath-approximations.md` (Seção 10.4 - Known Limitation: LSTM Fused Gates), remover a limitação que indicava bypass de precisão HF nos LSTMs, registrando o suporte total scalar/SIMD.
+- **Validação:** Verificação manual do documento markdown gerado.
