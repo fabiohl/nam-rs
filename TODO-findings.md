@@ -125,9 +125,16 @@ e mapeia as *tags* existentes.
   * `cpp_parity_map.md` §6/§13 atualizado: "inherent structural divergence, oracle-witnessed".
   * **Pendente:** Âncora NumPy independente (S10.4) para fechar a cadeia de 3 vias (Regra 6).
 
-### PM-04 — **ConvNet** sem validação externa: implementar oráculo f64 independente
+### PM-04 — **ConvNet** sem validação externa: implementar oráculo f64 independente **[RESOLVIDO — Sprint S10]**
+
+> **Resolução (commits `653cdbc`, `7788f40`):** adicionado oráculo f64 de ConvNet
+> (`tests/reference_oracle_f64.rs::test_oracle_convnet` + `test_oracle_vs_python_anchor_convnet`, ambos
+> ativos) — ESR ≈ 1.83e-14 vs produção, `CONVNET_ESR_LIMIT = 1e-12`, com âncora NumPy (cadeia §9.2).
+> Interop C++ permanece **N/A por formato** (bespoke vs canônico) — ver **PM-13**, que rastreia essa
+> distinção; não é mais um blocker de "sem testemunha".
 
 * **ID:** PM-04 · **Severidade:** Média (arquitetura oficial NAMCore sem testemunha) · **Risco da correção:** Baixo (test-only, aditivo)
+
 * **Problema:** O motor ConvNet (`src/models/convnet/`) está **completo, despachado e
   unit-testado**, com teste *self-golden* de determinismo (`tests/golden_vectors.rs`
   `test_golden_vectors_convnet_test`, threshold em `validation.rs:660-663`), porém **sem
@@ -136,16 +143,18 @@ e mapeia as *tags* existentes.
   **não consegue** gerar golden porque o ConvNet do **NAMCore v0.5.3** é arquiteturalmente
   incompatível com o **NAM 0.5.4** do Rust:
 
-  | Aspecto      | C++ v0.5.3                          | NAM-rs 0.5.4                    |
-  | ------------ | ----------------------------------- | ------------------------------- |
-  | Canais       | único, compartilhado                | por-bloco                       |
-  | Kernel       | fixo `=2`                           | por-bloco                       |
-  | Head         | matriz × vetor, **sem** Conv1D/ativ.| `PostStackHead` Conv1D + ativ.  |
-  | `head_scale` | ausente                             | presente                        |
+  | Aspecto      | C++ v0.5.3                           | NAM-rs 0.5.4                   |
+  | ------------ | ------------------------------------ | ------------------------------ |
+  | Canais       | único, compartilhado                 | por-bloco                      |
+  | Kernel       | fixo `=2`                            | por-bloco                      |
+  | Head         | matriz × vetor, **sem** Conv1D/ativ. | `PostStackHead` Conv1D + ativ. |
+  | `head_scale` | ausente                              | presente                       |
 
   `tests/fixtures/golden_gen_build.sh:236-261,321` marca o ConvNet como **SKIP esperado**
   ("C++ v0.5.3 ConvNet is architecturally incompatible — known").
+
 * **Proposta de Solução (NAMCore-safe, sem upgrade do ref C++):**
+
   1. Implementar `oracle_convnet_forward()` em f64 exato em `reference_oracle.rs`: Conv1D causal
      por bloco → BatchNorm fundida (`scale·x + offset`) → ativação → `PostStackHead` (Conv1D +
      ativação) → `head_scale`. Espelha exatamente a topologia multi-bloco do NAM 0.5.4.
@@ -157,6 +166,7 @@ e mapeia as *tags* existentes.
   4. Adicionar gates em `tests/reference_oracle_f64.rs` (`test_oracle_convnet`,
      `test_oracle_vs_python_anchor_convnet`) e, opcionalmente, um golden derivado do oráculo
      para proteção de regressão.
+
 * **Resultado:** ConvNet ganha a mesma *testemunha de matemática ideal* dos demais motores,
   **sem** depender de um `render` C++ compatível. A cross-validation C++ permanece **diferida e
   corretamente documentada** (bloqueada no upgrade do ref C++), agora com justificativa explícita
@@ -280,10 +290,226 @@ e mapeia as *tags* existentes.
   já é coberto pelo `SlimmableContainer`.
 * **Nota do PO:** Documente isto de forma muito clara em `docs/cpp_parity_map.md`seção `13. Pending / Open Work`.
 
-### Épico E — Robustez da Suíte de Testes (PM-07) [DOING]
+### Épico E — Robustez da Suíte de Testes (PM-07) [DONE]
 
 * **Risco/Criticidade:** Baixo (test-only). **Sequência:** independente; pode ir junto com o Épico A.
 * Fecha a brecha latente de SKIP silencioso no harness live v2, em conformidade com a Regra 7.
 * **Pedido do PO:** Aproveite esta ocasião para acionar a skill "revisor-auditor" focada na role "Correctness Auditor".
   * Muito especificamente na suíte de testes ativadas por utils/tests-quick.sh, utils/tests-long.sh, utils/build-release.sh e utils/tests-performance-regression.sh.
   * Assegurar que tanto aqueles scripts em si, quanto os testes que eles acionam - todos corretos e prontos para serem graduados como os perfeitos "guardiães da qualidade" do nam-rs.
+  * **Verificação (PM-07 ✅ confirmado):** `run_v2_multi_sr_impl` (`tests/cpp_parity.rs:570+`) agora rastreia o desfecho por-taxa e **assere** (a) ≥1 taxa concluída (sem skip total silencioso) e (b) o conjunto de taxas concluídas == taxas esperadas do modelo (sem skip parcial silencioso, Regra 7). Resolvido conforme proposto.
+
+---
+
+## Auditoria de Paridade — Rodada 2: Verificação contra a Referência C++ v0.5.4 (2026-06-30)
+
+> **Gatilho:** auditoria crítica de "feature-completeness e correção inquestionável" + revisita do
+> espelho `tests/fixtures/NeuralAmpModelerCore/` + análise do `testes.log` + certificação dos
+> scripts de teste como "guardiães da qualidade" (pedido do PO no Épico E).
+>
+> **Descoberta central:** a cópia de trabalho da referência C++ **NÃO está mais em v0.5.3** — está em
+> **v0.5.4** (`git describe` = `v0.5.4`, commit `1f42f88`), enquanto `golden_gen_build.sh` e os docs
+> fixam **v0.5.3** (`9c7b185`). A revisita ao código C++ v0.5.4 (ground truth) confirmou e refinou
+> vários findings e revelou **lacunas reais de feature-completeness** vs os modelos oficiais.
+
+## Estado verificado do `testes.log` (última bateria)
+
+* **Resultado:** ✅ **0 falhas**, 0 panics/SIGSEGV/abort; 391 passes + 151 ignored nas integrações;
+  pipeline encerrou com "✓ Todos os estágios da auditoria passaram com sucesso!".
+* **Cobertura do log:** o log é de `build-release.sh ; tests-performance-regression.sh` (suíte rápida
+  * goldens + heap-audits + RT gates + benchmarks). Os **151 ignored são os testes de interop C++ ao
+    vivo** (`live_cross_validation_*`) — **não exercitados** neste log (exigem `tests-long.sh` +
+    toolchain C++). Ver **PM-14**.
+* **Anomalia de observabilidade:** a linha-sumário (`test result: ok. …`) da suíte de unidade `lib`
+  (`running 1070 tests`, linha 568) **não foi capturada** no log (apenas as linhas `... ok`
+  individuais). Ver **PM-14**.
+
+## Modelos oficiais NAMCore v0.5.4 (`example_models/`) × loader nam-rs
+
+| Modelo oficial                                   | Carrega?         | Motor                  | Observação                                                 |
+|:------------------------------------------------ |:----------------:|:---------------------- |:---------------------------------------------------------- |
+| `wavenet_a1_standard.nam`, `my_model.nam`        | ✅               | `WaveNetModel<16,3,8>` | catálogo Standard                                          |
+| `wavenet.nam` (CH=3 free)                        | ✅               | `WaveNetModelDyn`      | geometria livre                                            |
+| `lstm.nam` (1×3)                                 | ✅               | `LstmModel1`           | —                                                          |
+| `wavenet_condition_dsp.nam`                      | ✅               | `WaveNetModelDyn`      | `condition_size=3` + sub-DSP                               |
+| `A2.nam`, `slimmable_container.nam`              | ✅               | `ContainerModel`       | multi-submodelo                                            |
+| **`wavenet_a2_max.nam`** (A2 oficial/flagship)   | ❌ **rejeitado** | —                      | **PM-10** — FiLM+cond=8+head1x1+gating em WaveNet genérico |
+| **`slimmable_wavenet.nam`** (single-net slicing) | ❌ **rejeitado** | —                      | **PM-12** — campo `slimmable` descartado                   |
+
+> As rejeições são **fail-closed** (carga falha com erro; nenhum áudio incorreto é produzido). Há
+> teste de lacuna ativo para `a2_max` (`test_loader_gap_wavenet_a2_max`, assere `is_err()`).
+
+---
+
+## Findings (Constatações) — Rodada 2
+
+### PM-09 — Deriva de versão da referência C++ (v0.5.4 ⇄ pin v0.5.3) sem enforcement [Won't Do]
+
+* **Nota do PO:** Não é uma problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
+
+* **ID:** PM-09 · **Severidade:** Alta (reprodutibilidade + risco de mascaramento) · **Risco da correção:** Médio
+* **Problema:**
+  * `tests/fixtures/NeuralAmpModelerCore/` **não é um submódulo rastreado** (não há `.gitmodules`; não
+    está no índice git do repo-pai) — **não há pin reproduzível**. A cópia local está em **v0.5.4**
+    (`1f42f88`), mas `tests/fixtures/golden_gen_build.sh:60` fixa `NAM_CORE_COMMIT=9c7b185…` (v0.5.3) e
+    os docs descrevem v0.5.3 como canônica.
+  * Os **goldens** commitados foram gerados em **v0.5.3**; os testes **live** (`tests/cpp_parity.rs`)
+    compilam o `render` a partir da **cópia de trabalho atual (v0.5.4)**. Resultado: **skew silencioso**
+    — Rust×golden(v0.5.3) vs Rust×render(v0.5.4), com thresholds calibrados para v0.5.3.
+  * `utils/tests-long.sh:54-55` **captura** `CURRENT_CORE_SHA` mas apenas o **ecoa** — **nunca assere**
+    que bate com o commit de geração dos goldens.
+* **Proposta de Solução:**
+  1. **Decidir a versão canônica.** Verificar empiricamente se v0.5.4 muda numéricos vs v0.5.3 (rodar
+     `cpp_parity` ao vivo nos dois commits). Recomendado: **fixar v0.5.4** como nova canônica *se* os
+     goldens v0.5.3 continuarem dentro dos gates; caso contrário, **resetar a cópia para `9c7b185`**.
+  2. **Enforcement de pin:** adicionar asserção dura em `tests-long.sh` e `golden_gen_build.sh`
+     (`[ "$CURRENT_CORE_SHA" = "$EXPECTED_CORE_SHA" ] || fail`), e gravar `EXPECTED_CORE_SHA` em um
+     arquivo rastreado (ex.: `tests/fixtures/.namcore_pin`).
+  3. **Sincronizar docs** (`cpp_parity_map.md`) com o commit/versão efetivo (feito nesta auditoria, com
+     nota de deriva).
+  4. Se migrar para v0.5.4: **regenerar todos os goldens** e **recalibrar thresholds** (Política de
+     Calibração de Gates), nunca afrouxando gate para mascarar.
+* **Por que importa:** sem pin, um `git pull` no espelho pode silenciosamente trocar a referência e
+  invalidar (ou mascarar) toda a prova de paridade — o oposto de um "guardião da qualidade".
+
+### PM-10 — Modelo A2 oficial `wavenet_a2_max.nam` não carregável (motor A2 dinâmico genérico ausente)
+
+* **ID:** PM-10 · **Severidade:** Alta (feature-completeness do flagship A2) · **Risco da correção:** Alto (novo motor) — interino seguro
+* **Problema:** O flagship oficial A2 (`example_models/wavenet_a2_max.nam`, **md5-idêntico** ao fixture
+  `tests/fixtures/models/wavenet_a2_max.nam`) é `architecture=WaveNet`, **1 layer-array**, `channels=4`,
+  `bottleneck=4`, `condition_size=8`, `activation={"type":"Softsign"}` (objeto), **todas** as 8 chaves
+  FiLM ativas, `head1x1`, `secondary_activation`, `groups_input_mixin=4`, e um sub-modelo `condition_dsp`
+  com gating/blending. O nam-rs **rejeita** esse modelo (`test_loader_gap_wavenet_a2_max`,
+  `tests/golden_vectors.rs:945`, assere `is_err()`).
+  * **Causa precisa:** o suporte FiLM do nam-rs vive no `WaveNetA2Dyn`, alcançado **apenas** quando o
+    modelo casa a **assinatura estrutural A2 de 23 camadas** (`is_a2_shape`, CH∈{3,8}) — i.e., os
+    fixtures **sintéticos** `wavenet_a2_film_{lite,full}` (CH 3/8). O `a2_max` é um **WaveNet genérico
+    de 1 array com FiLM** (kernel único, dilations `[1,2]`), que **não** casa a assinatura A2 → cai no
+    motor **A1 dinâmico**, que **não** tem FiLM/gating/head1x1 → rejeição segura.
+* **Correção do registro anterior:** isto **refina o PM-05 e desfaz o exagero** da Rodada 1 ("A2 general
+  engine 🟢 implementado"). O que está implementado/golden-testado é o A2 **23-camadas** sintético
+  (gated/blended/FiLM CH 3/8); a **geometria oficial** (`a2_max`) **não é suportada**.
+* **Proposta de Solução:**
+  1. Implementar o **motor A2 dinâmico genérico** (o "`WaveNetModelDynA2`" já mencionado no comentário
+     do teste de lacuna): WaveNet de geometria livre + FiLM + `condition_size>1` + `head1x1` +
+     gating/blending + `condition_dsp` + ativação em forma de objeto.
+  2. **Validar com a referência C++ v0.5.x** (que **suporta** esse modelo — `wavenet/model.cpp` tem 85
+     menções a FiLM já em v0.5.3): gerar golden de `wavenet_a2_max.nam` + testemunha do oráculo f64
+     (estende PM-03). Subsome **PM-05** (capturas reais A2-FiLM passam a ser carregáveis/testáveis).
+  3. **Interino seguro (já vigente):** manter a rejeição fail-closed; **melhorar a mensagem de erro**
+     para ser orientada ao usuário ("modelo A2/FiLM oficial ainda não suportado — use Standard/…").
+* **Risco:** alto (motor novo). O interino (rejeição) **não tem risco de correção** — nunca produz
+  áudio errado.
+
+### PM-11 — `activation` em forma de objeto `{"type":"…"}` cai silenciosamente para Tanh (caminho A1)
+
+* **ID:** PM-11 · **Severidade:** Média (risco latente fail-open) · **Risco da correção:** Baixo
+* **Problema:** Em `src/loader/nam_json/model.rs` o parser de `activation` trata **apenas** string e
+  array; a forma de **objeto** `{"type":"Softsign"}` cai no ramo `_ => None`, e o default vira "Tanh".
+  Hoje está **mascarado** pelo `a2_max` ser rejeitado por outras razões, mas é uma brecha **fail-open**:
+  qualquer modelo futuro com ativação-objeto que passe pelas demais checagens rodaria com a **ativação
+  errada, silenciosamente**.
+* **Proposta de Solução:** ou (a) **parsear** a forma de objeto (extrair `"type"`), ou (b) **falhar
+  fechado** (rejeitar ativação não-reconhecida com erro explícito). Recomendado: (b) agora (defensivo) +
+  (a) quando o motor A2 genérico (PM-10) precisar. Adicionar teste unitário com ativação-objeto.
+* **Risco:** baixo (mudança pequena de parser + teste).
+
+### PM-12 — `slimmable_wavenet.nam` oficial não carregável; campo `slimmable` descartado em silêncio
+
+* **ID:** PM-12 · **Severidade:** Média · **Risco da correção:** Baixo (defensivo) / Alto (motor completo, diferido)
+* **Problema:** O modelo oficial de single-net channel slicing (`example_models/slimmable_wavenet.nam`,
+  md5-idêntico ao fixture) tem `slimmable: {method:"slice_channels_uniform", kwargs:{allowed_channels:[1,2,3]}}`.
+  O nam-rs **rejeita** (via checagem de A2/ativação não-Tanh), mas o campo `slimmable` é **silenciosamente
+  descartado** (não há caminho explícito "slimmable não suportado"). Nenhum teste carrega o modelo oficial.
+  Confirma o **PM-06** com o artefato real.
+* **Proposta de Solução:**
+  1. **Rejeição fail-closed explícita** para `slimmable` single-net, com erro claro + **teste de lacuna**
+     (espelhando `test_loader_gap_wavenet_a2_max`) — agora, barato e seguro.
+  2. Motor de slicing single-net em runtime: **diferido** (épico PM-06).
+* **Risco:** baixo (defensivo) agora; alto (motor) diferido.
+
+### PM-13 — ConvNet do nam-rs é um formato bespoke sem contrapartida canônica NAMCore
+
+* **ID:** PM-13 · **Severidade:** Média (clareza de paridade + interop real) · **Risco da correção:** Baixo (doc + decisão)
+* **Problema (refina PM-04):** A revisita ao C++ confirmou que o ConvNet **canônico** do NAMCore — em
+  **v0.5.3 e v0.5.4** — é: `channels` único compartilhado, **kernel fixo = 2** (`convnet.cpp:57`,
+  comentário "HACK 2 kernel"), `_Head` = multiplicação de matriz + bias (**sem** Conv1D, **sem** ativação,
+  **sem** `head_scale`), config **plana** (`channels`/`dilations`/`batchnorm`/`activation` únicos). O
+  ConvNet do **nam-rs** usa um formato **bespoke**: `config.layers[]` (kernel/channels/ativação por bloco)
+  * `head` Conv1D + `head_scale` (visto em `convnet_test.nam`, gerado por `generate_b1_2_fixtures.py`).
+  * **Consequência:** o nam-rs **não carrega** um ConvNet canônico real, e o C++ **não carrega** o
+    `convnet_test.nam`. **Não existe ConvNet oficial** em `example_models/` (arquitetura efetivamente
+    descontinuada upstream). Logo o blocker **não** é "v0.5.3 vs v0.5.4" — é **"formato bespoke vs
+    canônico (ambas as versões)"**.
+* **Proposta de Solução:**
+  1. **Documentar honestamente** (feito nesta auditoria) que o ConvNet nam-rs é uma arquitetura própria,
+     **sem interop NAMCore**.
+  2. Como ConvNet é descontinuado upstream, **manter o bespoke + oráculo f64 (PM-04)** como testemunha
+     de matemática ideal; **decidir** se vale (baixa prioridade) adicionar um caminho de loader para o
+     formato **plano canônico** (kernel=2, head-matriz) para compat com modelos reais antigos — e, se
+     sim, gerar 1 golden plano via C++ para fechar interop.
+* **Risco:** baixo (essencialmente documentação + decisão de escopo).
+* **Decisão do PO:** Já que é uma arquitetura legada, vamos nuka-lo e decretar e documentar esta decisão.
+
+### PM-14 — Certificação dos scripts-guardião e observabilidade da bateria [Wont-Do]
+
+* **Nota do PO:** Não é uma problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
+* **ID:** PM-14 · **Severidade:** Média (observabilidade/cobertura) · **Risco da correção:** Baixo (infra de teste)
+* **Auditoria dos 4 scripts (pedido do PO):**
+  * ✅ **Pontos fortes:** `tests-long.sh` tem pré-voo de goldens abrangente (v1 + v2 por grupo de SR),
+    agregação `no-fail-fast` com sumário por fase, manifesto de frescor de goldens, heap-audits, RT
+    gates e validação CLAP; `tests-quick.sh` faz clippy estrito + integridade SHA256 do binário CLAP
+    entre fases; `tests-performance-regression.sh` usa pinagem de core (`taskset`) e baseline criterion;
+    `build-release.sh` (PGO+BOLT) degrada graciosamente. **PM-07 confirmado resolvido.**
+  * ⚠ **Lacuna 1 (→ PM-09):** `tests-long.sh` não **assere** o commit da referência C++ (só ecoa) →
+    skew de versão silencioso.
+  * ⚠ **Lacuna 2 (observabilidade):** no `testes.log`, a linha-sumário da suíte `lib` (1070 testes) não
+    foi capturada; e os **151 ignored (interop C++ ao vivo) não rodam** na pipeline padrão
+    (`build-release.sh`/`tests-performance-regression.sh`) — só em `tests-long.sh`.
+* **Proposta de Solução:**
+  1. **PM-09** (asserção de pin) — eleva a integridade do guardião live.
+  2. **Capturar** a linha-sumário do `lib` (ordenação stdout/stderr; ex.: `cargo test … 2>&1` no
+     pipeline de log da bateria) para tornar a contagem auditável.
+  3. **Rodar e capturar `tests-long.sh`** como parte do fechamento de auditoria — **executado pelo
+     desenvolvedor humano** (o próprio `tests-long.sh:17` proíbe a IA de executá-lo) — para provar a
+     interop C++ ao vivo, não apenas os goldens.
+* **Risco:** baixo (infra/observabilidade).
+
+---
+
+## Épicos (Agrupamentos) — Rodada 2
+
+### Épico F — Integridade da Referência C++ (PM-09) [WONT-DO]
+
+* **Risco/Criticidade:** Médio-Alto. **Sequência:** **primeiro** — todos os demais dependem de uma
+  referência confiável e pinada.
+* Decide a versão canônica (v0.5.3 vs v0.5.4), adiciona enforcement de pin e sincroniza docs/goldens.
+  É o pré-requisito para confiar em qualquer prova de paridade.
+* **Decisão do PO:** Não é um problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
+
+### Épico G — Feature-Completeness A2 Oficial (PM-10, PM-03, PM-05) [ALTO VALOR] [TO-DO]
+
+* **Risco/Criticidade:** Alto (motor A2 dinâmico genérico). **Sequência:** após Épico F.
+* Implementa o motor A2 genérico para carregar `wavenet_a2_max.nam` (FiLM real + `condition_size>1` +
+  `head1x1` + gating/blending), validado por golden C++ + oráculo f64 (PM-03). É o que falta para o A2
+  ser **inquestionavelmente feature-completo** vs NAMCore.
+
+### Épico H — Robustez de Carregamento "fail-closed" (PM-11, PM-12) [DOING]
+
+* **Risco/Criticidade:** Baixo. **Sequência:** imediata (independente).
+* Garante que toda entrada não suportada (ativação-objeto, `slimmable` single-net) **falhe fechada** com
+  erro claro + teste de lacuna — nunca silenciosamente errada. Eleva a confiança no loader como guardião.
+
+### Épico I — Sincronização Documental & ConvNet (PM-13, e doc de PM-09/PM-10/PM-12) [DOING]
+
+* **Risco/Criticidade:** Nulo a Baixo (doc-only). **Sequência:** junto com F/H.
+* Documenta o ConvNet bespoke (sem interop), a deriva de versão e as lacunas de modelos oficiais com
+  precisão no `cpp_parity_map.md` §13 (feito nesta auditoria; manter sincronizado).
+* **Decisão do PO:** Já que é uma arquitetura legada, vamos nuka-lo e decretar e documentar esta decisão.
+
+### Épico J — Observabilidade & Cobertura da Bateria (PM-14) [TEST-INFRA] [WONT-DO]
+
+* **Risco/Criticidade:** Baixo. **Sequência:** junto com F.
+* Captura a linha-sumário do `lib`, garante execução/registro do `tests-long.sh` (interop ao vivo) e
+  integra a asserção de pin (PM-09). Fecha o ciclo do "guardião da qualidade".
+* **Decisão do PO:** Não é um problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.

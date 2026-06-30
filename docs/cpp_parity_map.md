@@ -21,6 +21,15 @@ Together they pin the engine from both sides: agreement with the reference **and
 the ideal. A quick map of every concept lives in the [Topology Table](#10-topology-table) (§10)
 and the [Divergences](#11-nam-rs-divergences-from-c-reference-accepted) (§11).
 
+> **⚠ C++ reference version (audit 2026-06-30).** Committed **golden vectors** are generated from
+> NeuralAmpModelerCore **v0.5.3** (commit `9c7b185`, pinned in `tests/fixtures/golden_gen_build.sh`).
+> However, the vendored working copy at `tests/fixtures/NeuralAmpModelerCore/` is currently checked
+> out at **v0.5.4** (`1f42f88`) and is **not a git-tracked submodule** (no enforced pin). Live
+> cross-validation (`tests/cpp_parity.rs`) builds the `render` tool from that working copy — so live
+> tests use v0.5.4 while goldens are v0.5.3. This drift is tracked and must be reconciled (assert the
+> pin in the scripts, pick a canonical version, regenerate goldens if migrating). See
+> [`TODO-findings.md`](../TODO-findings.md) **PM-09**.
+
 ---
 
 ## 1. DSP Engine Layer
@@ -202,14 +211,20 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 | `convnet.h:108-118` — `_Head` (post-stack head) | `models/convnet/model.rs` — `ConvNetModel.post_stack_head` | —                  |
 | ConvNet topology dispatch                       | `loader/dispatcher/convnet/mod.rs` — `build_convnet()`     | —                  |
 
-> **Cross-validation status (PM-04).** The Rust engine is complete, dispatched, unit-tested, and
-> covered by a *self-golden* determinism test (`test_golden_vectors_convnet_test`). **Formal external
-> validation is blocked**: NAMCore v0.5.3's ConvNet (single shared `channels`, hard-coded `kernel=2`,
-> matrix-multiply `_Head`, no `head_scale`) is architecturally incompatible with NAM 0.5.4's multi-block
-> ConvNet (per-block `channels`/`kernel`/`activation`, Conv1D post-stack head, `head_scale`), so the C++
-> `render` tool cannot emit a golden (an *expected SKIP* in `golden_gen_build.sh`). The f64 reference
-> oracle also returns zeros for ConvNet (`reference_oracle.rs:282`). The safe, NAMCore-compatible path
-> is an **independent f64 ConvNet oracle** (§9.2 trust-chain pattern) — see §13.1 / `TODO-findings.md` PM-04.
+> **Cross-validation status (PM-04 ✅ / PM-13).** The Rust engine is complete, dispatched, unit-tested,
+> and covered by a *self-golden* determinism test. **An independent f64 ConvNet oracle now provides the
+> external witness** (Sprint S10): `tests/reference_oracle_f64.rs::test_oracle_convnet` +
+> `test_oracle_vs_python_anchor_convnet` (both active, not `#[ignore]`d) — ESR ≈ 1.83e-14 vs production,
+> `CONVNET_ESR_LIMIT = 1e-12`, plus a NumPy f64 anchor (the §9.2 3-way trust chain).
+> **C++ interop golden remains N/A by format, not version (PM-13).** Verified against the actual C++
+> source (both v0.5.3 and **v0.5.4**, `convnet.cpp:57` *"HACK 2 kernel"*): the canonical NAMCore ConvNet
+> is **flat** — a single shared `channels`, **kernel hard-coded to 2**, matrix-multiply `_Head` (no
+> Conv1D, no activation, no `head_scale`). The nam-rs ConvNet is a **bespoke** format — per-block
+> `config.layers[]` (`channels`/`kernel`/`activation`), a Conv1D post-stack `head`, and `head_scale`
+> (see `convnet_test.nam`, synthetic). Consequently nam-rs **cannot load a canonical ConvNet** and C++
+> cannot load `convnet_test.nam`; **no official ConvNet model exists upstream** (none in `example_models/`
+> — the architecture is effectively deprecated), so `golden_gen_build.sh` keeps it an *expected SKIP*.
+> The f64 oracle (not C++ interop) is the correct, NAMCore-safe witness — see §13.1 / PM-04 & PM-13.
 
 ---
 
@@ -218,11 +233,13 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 > **Status:** A2 inference is implemented along **two complementary paths**:
 >
 > 1. **Fixed fast-path** — a port of `NAM/wavenet/a2_fast.cpp` for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch): pure A2, no FiLM/gating, full SIMD const-generic specialization. See [TODO-sprints.md](../TODO-sprints.md).
-> 2. **Dynamic engine** (`WaveNetA2Dyn`) — the *general* A2 engine that **does** handle FiLM, `GatingActivation`, `BlendingActivation`, `condition_dsp`, and `bottleneck ≠ channels`. `is_a2_shape()` routes models using any of these features here (mirroring C++ `a2_fast.cpp`, which rejects them and falls back to its generic Eigen WaveNet). All of these are **golden-tested** (§13): gating/blending/`condition_dsp` reach near-bit-exact parity (>100 dB SNR), while **FiLM** carries a documented interop divergence vs the C++ generic path (18–36 dB SNR, tracked as **RF1** — see §13 and [`TODO-findings.md`](../TODO-findings.md) PM-03).
+> 2. **Dynamic engine** (`WaveNetA2Dyn`) — handles FiLM, `GatingActivation`, `BlendingActivation`, `condition_dsp`, and `bottleneck ≠ channels` **for models that match the A2 23-layer structural signature** (CH ∈ {3,8}). These are **golden-tested** (§13): gating/blending/`condition_dsp` reach near-bit-exact parity (>100 dB SNR), while **FiLM** carries a documented interop divergence vs the C++ generic path (18–36 dB SNR, tracked as **RF1** — see §13 / `TODO-findings.md` PM-03). The committed FiLM goldens use synthetic CH 3/8 A2-shaped weights.
 >
-> `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic; the multi-model `SlimmableContainer` (independent sub-nets + crossfade) is implemented and tested (`tests/container_slimmable.rs`).
+> **⚠ Not yet feature-complete (PM-10).** The **official A2 flagship** `wavenet_a2_max.nam` is a *generic* 1-array WaveNet with FiLM (`channels=4`, `bottleneck=4`, `condition_size=8`, object-form `Softsign`, `head1x1`, plus a `condition_dsp` sub-model with gating/blending). It does **not** match the A2 23-layer signature, so it reaches neither the fast-path nor `WaveNetA2Dyn`, and the A1 dynamic engine lacks FiLM — it is therefore **safely rejected at load** (`test_loader_gap_wavenet_a2_max` asserts `is_err()`). A **generic A2 dynamic engine** is required to load real-amp A2/FiLM captures; deferred (PM-10).
 >
-> **Golden vectors** are generated from the C++ `render` tool at pinned commit `9c7b185` (v0.5.3) and committed as pre-validated Layer 1 artifacts (`tests/fixtures/golden_wavenet_a2_{full,lite}.bin`). The v1 golden tests run actively on every `cargo test`. Layer 2 live cross-validation (`tests/cpp_parity.rs`) exists and is `#[ignore]` — normal for all live parity tests, requiring C++ toolchain; run via `utils/tests-long.sh`.
+> `SlimmableWavenet` (single-net channel slicing, the official `slimmable_wavenet.nam`) is **not loadable** — rejected at dispatch; deferred epic (PM-06 / PM-12). The multi-model `SlimmableContainer` (independent sub-nets + crossfade, e.g. official `A2.nam`/`slimmable_container.nam`) **is** implemented and tested (`tests/container_slimmable.rs`).
+>
+> **Golden vectors** are generated from the C++ `render` tool at pinned commit `9c7b185` (v0.5.3, per `golden_gen_build.sh`) and committed as pre-validated Layer 1 artifacts (`tests/fixtures/golden_wavenet_a2_{full,lite}.bin`). The v1 golden tests run actively on every `cargo test`. Layer 2 live cross-validation (`tests/cpp_parity.rs`) exists and is `#[ignore]` — normal for all live parity tests, requiring C++ toolchain; run via `utils/tests-long.sh`. (See the reference-version drift note at the top of this document and PM-09.)
 >
 > **Calibrated SNR/ESR** (measured against C++ v0.5.3): A2-Full = 79.2 dB / 1.21e−8; A2-Lite = 90.7 dB / 8.58e−10. Thresholds include ≥8 dB SNR margin and ~6–7× ESR multiplier. See `tests/fixtures/README.md` (§`wavenet_a2_full.nam` & `wavenet_a2_lite.nam`) and §9.1.
 >
@@ -560,30 +577,41 @@ out-of-current-scope; 🔴 = known divergence under investigation.
 
 Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below are tracked in
 [`TODO-findings.md`](../TODO-findings.md) under **"Auditoria de Paridade NAMCore × NAM-rs"**
-(findings `PM-01`…`PM-08`).
+(findings `PM-01`…`PM-14`). The audit revisited the actual C++ source (`tests/fixtures/NeuralAmpModelerCore/`,
+**v0.5.4**) on 2026-06-30; items confirmed against ground truth.
 
-| Item                                                                                         | Status                                                                                                                                                                                                                                                         | Reference / Finding |
-|:-------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
-| **ConvNet** C++ cross-validation                                                             | 🟡 Engine complete + self-golden + unit-tested; **C++ golden blocked** — NAMCore v0.5.3 single-block ConvNet is architecturally incompatible with NAM 0.5.4 multi-block. f64-oracle path open.                                                                 | §5 · PM-04          |
-| **A2 general engine** (FiLM / gating / blending / `condition_dsp` / `bottleneck ≠ channels`) | 🟢 **Implemented & golden-tested** via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB)                                                                                                                                                | §6                  |
-| **A2 FiLM** interop divergence vs C++ generic WaveNet (**RF1**)                              | 🟡 **Inherent structural divergence** — oracle-witnessed (S10.3): ESR(Rust f32 vs f64 oracle) = 1e-14 (−140 dB). Divergence vs C++ (18-36 dB) is structural (C++ Eigen generic WaveNet applies conditioning by different path). Documented, capped, not a bug. | §6 · PM-03          |
-| **A2 official real-amp FiLM captures** (`wavenet_a2_max`, …)                                 | 🟡 **Temporary conformity** — validated against synthetic fixtures (`wavenet_a2_film_full`, `wavenet_a2_film_lite`); real-amp captures structurally incompatible (see §13.1). Sprint S9 goldens ✅.                                                            | §6 · PM-05          |
-| **`SlimmableContainer`** (multi-model adaptive quality via independent sub-nets + crossfade) | 🟢 Implemented & tested: `src/models/container.rs`, `tests/container_slimmable.rs`                                                                                                                                                                             | §6 · PM-06          |
-| **`SlimmableWavenet`** (single-net dynamic channel slicing)                                  | 🟡 Genuinely deferred — scope is distinct from `SlimmableContainer`; acceptance criteria defined in §13.1                                                                                                                                                      | §6 · PM-06          |
-| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                              | 🟢 Documented, asserted, rate-aware cap (inherent f16c)                                                                                                                                                                                                        | §4.5 / §9.1         |
-| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                                      | 🟢 By design (explicit `sample_rate` field pins native rate)                                                                                                                                                                                                   | §6                  |
-| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                             | 🟢 By design — live cross-val covers SR; no committed goldens                                                                                                                                                                                                  | §3.3 (**RF3**)      |
-| **Live v2 harness** — C++ `render` rate-reject silently passes                               | 🟡 Latent anti-masking gap in `run_v2_multi_sr` (no rate masked today)                                                                                                                                                                                         | §9 · PM-07          |
+**Genuinely open (🟡/🔴):**
+
+| Item                                                                                                                              | Status                                                                                                                                                                                                       | Reference / Finding |
+|:--------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:------------------- |
+| **C++ reference version pin**                                                                                                     | 🟡 Working copy is **v0.5.4** (`1f42f88`) but goldens/docs pin **v0.5.3** (`9c7b185`); not a tracked submodule, no enforcement in scripts → silent skew risk                                                 | §9 · PM-09          |
+| **A2 official flagship** `wavenet_a2_max.nam` (generic WaveNet + FiLM + `cond_size=8` + `head1x1` + `condition_dsp`/gating, CH=4) | 🟡 **Not loadable** — safe rejection (`test_loader_gap_wavenet_a2_max` asserts `is_err`). Needs a *generic* A2 dynamic engine; deferred                                                                      | §6 · PM-10          |
+| **`SlimmableWavenet`** (single-net channel slicing; official `slimmable_wavenet.nam`)                                             | 🟡 **Not loadable** — rejected at dispatch; `slimmable` field silently dropped. Deferred epic (distinct from `SlimmableContainer`)                                                                           | §6 · PM-06 · PM-12  |
+| **ConvNet** C++ interop                                                                                                           | 🟡 **N/A by format** (not version): nam-rs ConvNet is bespoke (`layers[]`+Conv1D head+`head_scale`); canonical NAMCore is flat/kernel=2/matrix-head; no upstream ConvNet model. f64 oracle witness ✅ (PM-04)| §5 · PM-13          |
+| **Loader fail-closed hardening**                                                                                                  | 🟡 `activation` object-form `{"type":…}` silently → Tanh in A1 path; `slimmable` field dropped — should reject explicitly                                                                                    | §7 · PM-11 · PM-12  |
+| **Test observability**                                                                                                            | 🟡 lib-suite (1070) summary not captured in pipeline log; live C++ interop (151 `#[ignore]`) runs only via `tests-long.sh`                                                                                   | §9 · PM-14          |
+
+**By design / established (🟢):**
+
+| Item                                                                                                             | Status                                                                                                      | Reference / Finding |
+|:---------------------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------- |:------------------- |
+| **A2 synthetic FiLM / gating / blending / `condition_dsp`** (CH 3/8, A2 23-layer signature)                      | 🟢 Implemented & golden-tested via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB) | §6                  |
+| **`SlimmableContainer`** (multi-model adaptive quality + crossfade; official `A2.nam`/`slimmable_container.nam`) | 🟢 Implemented & tested: `src/models/container.rs`, `tests/container_slimmable.rs`                          | §6                  |
+| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                                                  | 🟢 Documented, asserted, rate-aware cap (inherent f16c)                                                     | §4.5 / §9.1         |
+| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                                                          | 🟢 By design (explicit `sample_rate` field pins native rate)                                                | §6                  |
+| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                                                 | 🟢 By design — live cross-val covers SR; no committed goldens                                               | §3.3 (**RF3**)      |
 
 ### 13.1 Notes on the open items
 
-- **ConvNet (PM-04).** The Rust engine (`models/convnet/`) is complete, dispatched, and unit-tested,
-  and has a *self-golden* determinism test (`test_golden_vectors_convnet_test`). It has **no external
-  witness**: the f64 oracle returns zeros for ConvNet (`reference_oracle.rs:282`) and the C++ `render`
-  tool cannot produce a golden because NAMCore v0.5.3's ConvNet (single shared `channels`, hard-coded
-  `kernel=2`, matrix-multiply `_Head`, no `head_scale`) is incompatible with NAM 0.5.4's multi-block
-  ConvNet (`golden_gen_build.sh` flags this as an *expected SKIP*). The safe path is an independent
-  **f64 ConvNet oracle** (mirroring the §9.2 trust chain), not a C++ upgrade.
+- **ConvNet (PM-04 ✅ / PM-13).** The Rust engine (`models/convnet/`) is complete, dispatched, and
+  unit-tested. As of Sprint S10 it has an **independent f64 ConvNet oracle witness**
+  (`tests/reference_oracle_f64.rs::test_oracle_convnet` + `test_oracle_vs_python_anchor_convnet`, both
+  active) — ESR ≈ 1.83e-14 vs production, `CONVNET_ESR_LIMIT = 1e-12`, plus a NumPy f64 anchor (the §9.2
+  3-way trust chain). **What remains is C++ interop, which is N/A by format, not version (PM-13):** the
+  nam-rs ConvNet is a bespoke multi-block format (`config.layers[]` + Conv1D head + `head_scale`) while
+  the canonical NAMCore ConvNet (v0.5.3 **and** v0.5.4) is flat with a hard-coded kernel of 2 and a
+  matrix `_Head`; no official ConvNet model exists upstream (deprecated). `golden_gen_build.sh` keeps
+  ConvNet an *expected SKIP* — correct, because the f64 oracle is the right witness here.
 
 - **A2 FiLM / RF1 (PM-03).** ✅ **Resolved (S10.3)** — the f64 oracle now models FiLM completely
   (8 insertion points, `cond_to_scale_shift` GEMV, `apply_modulation`). Cross-check Rust f32 production
@@ -609,8 +637,48 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
   2. **Fatiamento dinâmico de pesos em runtime com garantia RT-safe.** Weight slicing into narrower channel counts (e.g., `16 → 12/8/4`) must complete within a bounded, deterministic time window (no heap allocation, no lock contention, no unbounded iteration) and must not introduce latency jitter into the audio processing thread. All slicing must happen at model load time, not during `process()`.
   3. **Paridade matemática bit-a-bit com NAMCore C++ `SlimmableWavenet`.** Sliced variants must produce output bit-exact with the equivalent `SlimmableWavenet` topology in NAMCore C++ (commit `9c7b185`, `tests/test_slimmable_wavenet.cpp`), verified by the existing golden-vector + live cross-validation infrastructure (`tests/cpp_parity.rs`). Any divergence exceeding the f16c precision floor (ESR > 1e-12) is a regression.
 
+- **C++ reference version pin (PM-09).** The vendored `tests/fixtures/NeuralAmpModelerCore/` is **not a
+  tracked submodule** (no `.gitmodules`, absent from the git index) and is currently checked out at
+  **v0.5.4** (`1f42f88`), while committed goldens and `golden_gen_build.sh` pin **v0.5.3** (`9c7b185`).
+  `tests-long.sh` captures the reference SHA but only *echoes* it (no assertion), so live cross-validation
+  builds `render` from v0.5.4 against v0.5.3 goldens — a silent skew with thresholds calibrated for
+  v0.5.3. Fix: assert the pin in the scripts, pick a canonical version, and regenerate goldens if migrating.
+
+- **A2 official flagship `wavenet_a2_max.nam` (PM-10).** The official A2 model is a *generic* 1-array
+  WaveNet with FiLM (CH=4, `bottleneck=4`, `condition_size=8`, object-form `Softsign`, `head1x1`, plus a
+  `condition_dsp` sub-model with gating/blending). It does **not** match the A2 23-layer signature, so it
+  reaches neither the fast-path nor `WaveNetA2Dyn`; the A1 dynamic engine lacks FiLM, so the loader
+  **safely rejects it** (`test_loader_gap_wavenet_a2_max` asserts `is_err`). This is the real boundary of
+  "A2 general engine": the synthetic CH 3/8 A2-shaped FiLM/gating/blending models are supported and
+  golden-tested, but the **official generic-WaveNet-with-FiLM geometry is not yet loadable**. Closing it
+  needs a generic A2 dynamic engine (`WaveNetModelDynA2`); C++ v0.5.x supports this model, so it can be
+  golden- and oracle-validated once built. Subsumes the real-amp FiLM capture gap (PM-05).
+
+- **Loader fail-closed hardening (PM-11 / PM-12).** Two latent fail-open paths: (a) `activation` in
+  object form `{"type":"…"}` is not parsed in the A1 path and silently defaults to `Tanh`
+  (`src/loader/nam_json/model.rs`); (b) the `slimmable` field on a single-net WaveNet is silently dropped.
+  Today both are masked because the carrying models are rejected for other reasons, but the engine should
+  **fail closed** — parse the object form or reject unknown activation explicitly, and reject single-net
+  `slimmable` with a clear error + a gap test (mirroring `test_loader_gap_wavenet_a2_max`).
+
+- **Test observability (PM-14).** The standard pipeline (`build-release.sh` + `tests-performance-regression.sh`)
+  proves the fast suite + goldens green (0 failures), but: the lib unit-suite (1070 tests) **summary line
+  is not captured** in the run log, and the **live C++ interop tests (151 `#[ignore]`) only run via
+  `tests-long.sh`** (developer-run; the AI is barred from executing it). The full audit should capture
+  both. The test *scripts* themselves are otherwise strong guardians (comprehensive golden pre-flight,
+  `no-fail-fast` aggregation, SHA256 binary integrity, RT gates, anti-silent-skip in `run_v2_multi_sr`).
+
 **Recently resolved** — kept for traceability:
 
+- **A2 FiLM oracle / RF1 (PM-03, Sprint S10).** The f64 oracle now models FiLM end-to-end; Rust f32 vs
+  oracle ESR = 9.52e-15 / 1.15e-14 proves the Rust FiLM math is correct → RF1 reclassified 🔴→🟡
+  (inherent structural divergence vs C++ generic WaveNet, capped, not a bug). See §13.1 above.
+- **ConvNet f64 oracle (PM-04, Sprint S10).** Independent f64 oracle + NumPy anchor added and un-ignored
+  (`CONVNET_ESR_LIMIT = 1e-12`, measured 1.83e-14).
+- **Live v2 anti-silent-skip (PM-07).** `run_v2_multi_sr` now tracks per-rate outcomes (`ParityOutcome`)
+  and asserts no silent total/partial skip (Gate Calibration Policy Rule 7).
+- **Test-script hardening.** clippy added to `tests-quick.sh`; `ERR` trap activated in `tests-long.sh`;
+  perf-regression log directory fixed (commit `29ead5f`).
 - **WaveNet Lite CH=12 (P1 / RF7).** The historical 🔴 "SNR ≈ 0.9 dB architectural divergence" is
   **resolved**. Root cause was a `MirroredBuffer` page-rounding bug (the delay-line buffer was not
   channel-aligned for non-power-of-two channel counts: `1024 % 12 = 4`, `1024 % 6 = 4`), compounded

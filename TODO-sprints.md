@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, B, C, D & E
+# Roadmap de Sprints — Épicos A, B, C, D, E, H & I
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)** e o **Épico E (PM-07 — Robustez da Suíte de Testes)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")** e o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -239,4 +239,61 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 * `utils/tests-long.sh`: Corrigido `set -uo pipefail` → `set -euo pipefail` para ativar o ERR trap corretamente e abortar em erros de pré-voo/entre-fases. Fases continuam independentes via `|| true`.
 * `utils/build-release.sh`: OK. PGO aborta se não gerar perfis; BOLT faz fallback gracioso; trap restaura `perf_event_paranoid`; validação do artefato CLAP cobre símbolo, SONAME e clap-validator.
 * `utils/tests-performance-regression.sh`: Adicionado `mkdir -p target/logs` antes do tee no modo `--check`. Detecção de regressão via `grep "regressed"` + exit code do Criterion — OK.
-* **Pendência:** `tests-long.sh` Phase "Property-Based, Parity & Golden Vectors in Release" reportou **FAILED** (status=1, 236s). Verificar `target/logs/phase2-proptests-parity.log` para identificar qual das 10 suítes falhou. Candidatos mais prováveis: `lib_pipeline_block_proptest` (assert `allocs==0` com 2000 casos aleatórios, 108s), `lstm_scalar_bf16_parity` (sem early-return para CPU sem AVX-512 BF16, divergência SIMD vs escalar em release), ou `cpp_parity` v2 multi-SR (assert `completed_set == expected_set` se render C++ falhar em alguma taxa).
+* **Pendência:** `tests-long.sh` Phase "Property-Based, Parity & Golden Vectors in Release" reportou **FAILED** (status=1, 236s). Verificar `target/logs/phase2-proptests-parity.log` para identificar qual das 10 suítes falhou. Candidatos mais prováveis: `lib_pipeline_block_proptest` (assert `allocs==0` com 2000 casos aleatórios, 108s), `lstm_scalar_bf16_parity` (sem early-return para CPU sem AVX-512 BF16, divergência SIMD vs escalar in release), ou `cpp_parity` v2 multi-SR (assert `completed_set == expected_set` se render C++ falhar em alguma taxa).
+
+---
+
+## SPRINT S12 — Robustez de Carregamento "fail-closed" e Sincronização Documental (Épico H & Épico I)
+
+### Objetivos da Sprint S12
+
+1. **Hardening do Loader (Fail-Closed):** Impedir que ativações em formato de objeto em caminhos não-A2 caiam silenciosamente para Tanh, e rejeitar explicitamente modelos single-net que façam uso do campo `slimmable`.
+2. **Prevenção de Regressões de Carga:** Garantir comportamento defensivo no loader com testes de lacuna (gap tests) claros e específicos para ativação-objeto e `slimmable`.
+3. **Formalização Documental dos Gaps e Decisões:** Sincronizar os mapas de documentação técnica (`docs/cpp_parity_map.md` e similares) registrando formalmente a ausência do motor A2 dinâmico genérico (PM-10), a decisão de não-asserção de commit no pin do C++ (PM-09) e o arquivamento/descontinuidade do ConvNet canônico interop (PM-13).
+
+---
+
+### Tarefas Técnicas S12
+
+#### [ ] Task S12.1 — Hardening do Parser de Ativação do Loader (PM-11)
+
+* **Responsável:** Engenheiro de DSP / Core Developer
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  No parser de `activation` dentro de `src/loader/nam_json/model.rs`, qualquer tipo diferente de String ou Array (como o objeto `{"type":"Softsign"}` no flagship A2) cai no ramo curinga `_ => None`, o que resulta em um fallback silencioso para a ativação "Tanh" na WaveNet A1. Isso representa uma falha de tipo "fail-open" latente.
+* **Critérios de Aceitação:**
+  1. Modificar o parser de ativação em `NamLayerConfig` para retornar erro (`Err`) caso o JSON contenha uma ativação que não seja String, Array ou Null/None (especificamente, rejeitar se for um Object).
+  2. Garantir que o parser retorne um erro explícito de deserialização ("unsupported activation format").
+  3. Adicionar um teste unitário em `src/loader/nam_json/activation_parser_test.rs` (ou no próprio teste do model loader) simulando uma ativação em forma de objeto e assegurando que ela falhe fechada com o erro correspondente.
+
+#### [ ] Task S12.2 — Rejeição Explícita de Modelos Slimmable Single-Net (PM-12)
+
+* **Responsável:** Engenheiro de DSP / Core Developer
+* **Risco/Criticidade:** Baixo (defensivo).
+* **Contexto:**
+  O motor `nam-rs` não suporta fatiamento dinâmico de canais em runtime (slicing de pesos single-net) — funcionalidade correspondente ao campo `slimmable` em arquivos `.nam`. Atualmente, modelos contendo essa chave (como `slimmable_wavenet.nam`) são rejeitados de forma indireta por incompatibilidades secundárias, mas o campo `slimmable` é silenciosamente descartado e não há caminho explícito de rejeição.
+* **Critérios de Aceitação:**
+  1. Implementar uma verificação explícita no loader (durante a validação de topologia ou model data) que rejeite imediatamente qualquer modelo que possua a chave `slimmable` ativa.
+  2. O erro gerado deve ser explícito e orientado ao usuário (ex.: "slimmable single-net weight slicing is not supported; use SlimmableContainer instead").
+  3. Criar o teste de lacuna `test_loader_gap_slimmable_wavenet` sob `tests/golden_vectors.rs` (ou `tests/loader_gap.rs` se aplicável), carregando a fixture real `tests/fixtures/models/slimmable_wavenet.nam` e validando a rejeição fail-closed com a mensagem esperada.
+
+#### [ ] Task S12.3 — Documentação e Decreto de Arquivamento de ConvNet Canônico (PM-13)
+
+* **Responsável:** Documentador Técnico / Arquiteto
+* **Risco/Criticidade:** Nulo (doc-only).
+* **Contexto:**
+  A arquitetura ConvNet canônica upstream possui kernel=2 fixo e head matricial flat. O `nam-rs` implementa um formato bespoke (multi-bloco, head Conv1D, `head_scale`). Como o ConvNet foi descontinuado upstream e não há modelos oficiais na pasta de exemplos, o PO decidiu "nucar" (arquivar) qualquer pretensão de implementar compatibilidade com o formato canônico flat upstream.
+* **Critérios de Aceitação:**
+  1. Atualizar `docs/cpp_parity_map.md` (seções §5 e §13) documentando explicitamente a decisão do PO de arquivar/descontinuar o interop do formato canônico flat de ConvNet.
+  2. Formalizar que o `nam-rs` mantém apenas o seu formato bespoke interno com validação via f64 oracle como sua única testemunha de paridade matemática ideal.
+
+#### [ ] Task S12.4 — Sincronização Documental de Gaps e Decisões de Loader (PM-09, PM-10, PM-12)
+
+* **Responsável:** Documentador Técnico / Arquiteto
+* **Risco/Criticidade:** Nulo (doc-only).
+* **Contexto:**
+  Sincronizar a documentação técnica com os novos comportamentos endurecidos do loader e com as decisões executivas do PO acerca da versão do C++ e A2.
+* **Critérios de Aceitação:**
+  1. Documentar em `docs/cpp_parity_map.md` §13 a decisão do PO de não aplicar asserções de commit rígidas no script `tests-long.sh` para o pin da referência C++ (PM-09), considerando a última versão do GitHub como a verdade de referência.
+  2. Documentar que os modelos com ativações-objeto e `slimmable` agora são explicitamente validados e rejeitados no loader de forma fail-closed segura.
+  3. Garantir a consistência e sincronização de referências cruzadas entre `TODO-findings.md` e `docs/cpp_parity_map.md`.
