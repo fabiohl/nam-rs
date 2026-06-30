@@ -280,7 +280,7 @@ e mapeia as *tags* existentes.
   já é coberto pelo `SlimmableContainer`.
 * **Nota do PO:** Documente isto de forma muito clara em `docs/cpp_parity_map.md`seção `13. Pending / Open Work`.
 
-### Épico E — Robustez da Suíte de Testes (PM-07)
+### Épico E — Robustez da Suíte de Testes (PM-07) [DOING]
 
 * **Risco/Criticidade:** Baixo (test-only). **Sequência:** independente; pode ir junto com o Épico A.
 * Fecha a brecha latente de SKIP silencioso no harness live v2, em conformidade com a Regra 7.

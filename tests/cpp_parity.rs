@@ -47,6 +47,7 @@ use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::math::activations::ActivationPrecision;
 use nam_rs::math::activations::set_activation_precision;
 use nam_rs::models::NamModel;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -66,6 +67,15 @@ impl Drop for PrecisionGuard {
     fn drop(&mut self) {
         set_activation_precision(ActivationPrecision::Standard);
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParityOutcome {
+    Completed,
+    SkippedModelNotFound,
+    SkippedToolNotAvailable,
+    SkippedRateRejected,
+    SkippedGarbageOutput,
 }
 
 const NAM_CORE_DIR: &str = "tests/fixtures/NeuralAmpModelerCore";
@@ -204,11 +214,11 @@ fn run_render_comparison(
     use_v2: bool,
     check_lufs_gate: bool,
     use_hf: bool,
-) {
+) -> ParityOutcome {
     let model_path = model_path(model_filename);
     if !model_path.exists() {
         eprintln!("SKIP: {label} — model file {model_filename} not found at {model_path:?}.");
-        return;
+        return ParityOutcome::SkippedModelNotFound;
     }
 
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -221,7 +231,7 @@ fn run_render_comparison(
 
     if !ensure_render_compiled() {
         eprintln!("SKIP: {label} — C++ render tool not available, skipping cross-validation.");
-        return;
+        return ParityOutcome::SkippedToolNotAvailable;
     }
 
     let actual_sr = if use_v2 {
@@ -308,11 +318,11 @@ fn run_render_comparison(
                  --- render stderr ---\n{stderr_msg}{stdout_msg}",
                 o.status.code().unwrap_or(-1)
             );
-            return;
+            return ParityOutcome::SkippedRateRejected;
         }
         Err(e) => {
             eprintln!("SKIP: {label} — failed to execute render: {e}");
-            return;
+            return ParityOutcome::SkippedRateRejected;
         }
     }
 
@@ -344,7 +354,7 @@ fn run_render_comparison(
                 "SKIP: {label} — C++ render produced garbage output (non-finite=true); skipping comparison.",
             );
             fs::remove_file(&output_wav).ok();
-            return;
+            return ParityOutcome::SkippedGarbageOutput;
         }
     }
 
@@ -528,11 +538,12 @@ fn run_render_comparison(
 
     // Cleanup
     fs::remove_file(&output_wav).ok();
+    ParityOutcome::Completed
 }
 
 /// Helper: run v1 comparison (legacy 48 kHz, fast CI).
 fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
-    run_render_comparison(
+    let _ = run_render_comparison(
         model_filename,
         golden_name,
         label,
@@ -545,7 +556,7 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
 
 /// Helper: run v1 comparison in HighFidelity mode (Tarefa β1.3).
 fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
-    run_render_comparison(
+    let _ = run_render_comparison(
         model_filename,
         golden_name,
         label,
@@ -556,116 +567,129 @@ fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_ga
     );
 }
 
-/// Runs v2 stress signal comparison across all `SUPPORTED_SAMPLE_RATES` for one model.
+/// Unified implementation for v2 multi-SR parity tests.
 ///
-/// Every supported rate (44.1k…192k) is exercised for every model, including
-/// LSTMs (Gate Calibration Policy Rule 7 — no rate is dropped to make a gate
-/// pass; the absolute ESR cap is raised per-rate from measurements instead).
+/// Monitors every `SUPPORTED_SAMPLE_RATES` entry per model and asserts that:
+/// - At least one rate completed parity validation (no silent total skip).
+/// - The set of completed rates exactly matches the expected rates for the model
+///   (no silent partial skip violating Gate Calibration Policy Rule 7).
 ///
-/// **Known limitation:** NeuralAmpModelerCore's `render` tool enforces that the
-/// input WAV sample rate matches the model's expected rate (typically 48 kHz).
-/// Models that were trained at 48 kHz (e.g., WaveNet Standard) will SKIP at
-/// non-48 kHz sample rates with:
-///
-/// ```text
-/// Error: Input WAV sample rate (44100 Hz) does not match model expected rate (48000 Hz)
-/// SKIP: Live WaveNet Standard (v2) @ 44100 Hz — render returned exit code 1
-/// ```
-///
-/// This is a `render` tool limitation, not a nam-rs issue. The Rust inference
-/// engine itself supports arbitrary sample rates. Lighter models (Nano, Feather)
-/// and LSTM models may not enforce this restriction in the C++ render tool.
+fn run_v2_multi_sr_impl(
+    model_filename: &str,
+    golden_name: &str,
+    label_base: &str,
+    check_lufs_gate: bool,
+    use_hf: bool,
+) {
+    let model_path = model_path(model_filename);
+    let _json_data = fs::read_to_string(&model_path).expect("Failed to read model");
+    let _model_data = parse_nam_json(&_json_data).expect("JSON parser failed");
+
+    let expected_rates = SUPPORTED_SAMPLE_RATES.to_vec();
+
+    let mut outcomes: Vec<(u32, ParityOutcome)> = Vec::new();
+    let mut failures: Vec<(u32, String)> = Vec::new();
+    let hf_tag = if use_hf { ", HF" } else { "" };
+
+    for &sr in SUPPORTED_SAMPLE_RATES {
+        let label = format!("{label_base} @ {sr} Hz (v2{hf_tag})");
+        let gname = format!("{golden_name}_v2_{sr}");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_render_comparison(
+                model_filename,
+                &gname,
+                &label,
+                sr,
+                true,
+                check_lufs_gate,
+                use_hf,
+            )
+        }));
+        match result {
+            Ok(outcome) => outcomes.push((sr, outcome)),
+            Err(e) => {
+                let msg = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "unknown panic (non-string payload)".to_string());
+                failures.push((sr, msg));
+            }
+        }
+    }
+
+    println!("=== Multi-SR Summary: {label_base}{hf_tag} ===");
+    println!("{:<10} {:<30}", "SR (Hz)", "Outcome");
+    println!("{}", "-".repeat(42));
+    for &(sr, ref outcome) in &outcomes {
+        println!("{:<10} {:?}", sr, outcome);
+    }
+    for &(sr, ref msg) in &failures {
+        println!("{:<10} FAILED: {}", sr, &msg[..msg.len().min(30)]);
+    }
+    println!("{}", "-".repeat(42));
+
+    let completed: Vec<u32> = outcomes
+        .iter()
+        .filter(|(_, o)| *o == ParityOutcome::Completed)
+        .map(|(sr, _)| *sr)
+        .collect();
+
+    assert!(
+        !completed.is_empty(),
+        "Parity validation for '{label_base}': no sample rate completed. \
+         Expected at least one of {expected_rates:?}. \
+         Outcomes: {outcomes:?}, Failures: {failures:?}"
+    );
+
+    let completed_set: BTreeSet<u32> = completed.iter().copied().collect();
+    let expected_set: BTreeSet<u32> = expected_rates.iter().copied().collect();
+
+    assert_eq!(
+        completed_set, expected_set,
+        "Parity validation for '{label_base}': completed SRs ({completed_set:?}) != expected SRs ({expected_set:?})"
+    );
+
+    if !failures.is_empty() {
+        let summary: Vec<String> = failures
+            .iter()
+            .map(|(sr, msg)| format!("@ {sr} Hz: {msg}"))
+            .collect();
+        panic!(
+            "Parity validation panic failures for sample rates:\n  {}",
+            summary.join("\n  ")
+        );
+    }
+}
+
 fn run_v2_multi_sr(
     model_filename: &str,
     golden_name: &str,
     label_base: &str,
     check_lufs_gate: bool,
 ) {
-    let mut failures: Vec<(u32, String)> = Vec::new();
-    for &sr in SUPPORTED_SAMPLE_RATES {
-        let label = format!("{label_base} @ {sr} Hz (v2)");
-        let gname = format!("{golden_name}_v2_{sr}");
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_render_comparison(
-                model_filename,
-                &gname,
-                &label,
-                sr,
-                true,
-                check_lufs_gate,
-                false,
-            );
-        }));
-        if let Err(e) = result {
-            let msg = e
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "unknown panic (non-string payload)".to_string());
-            failures.push((sr, msg));
-        }
-    }
-    if !failures.is_empty() {
-        let summary: Vec<String> = failures
-            .iter()
-            .map(|(sr, msg)| format!("@ {sr} Hz: {msg}"))
-            .collect();
-        panic!(
-            "Parity validation failed for sample rates:\n  {}",
-            summary.join("\n  ")
-        );
-    }
+    run_v2_multi_sr_impl(
+        model_filename,
+        golden_name,
+        label_base,
+        check_lufs_gate,
+        false,
+    );
 }
 
-/// Runs v2 stress signal comparison in HighFidelity mode (Tarefa β1.3).
-///
-/// The C++ NAMCore `render` tool always uses standard Padé approximations.
-/// The Rust engine uses high-fidelity polynomial exp-based kernels when
-/// HF mode is active. This deliberate asymmetry means the interop ESR
-/// will be larger in HF mode than in standard mode.
-///
-/// The HF-specific absolute ESR caps (defined in `run_render_comparison`)
-/// are more generous to accommodate this legitimate divergence.
 fn run_v2_multi_sr_hf(
     model_filename: &str,
     golden_name: &str,
     label_base: &str,
     check_lufs_gate: bool,
 ) {
-    let mut failures: Vec<(u32, String)> = Vec::new();
-    for &sr in SUPPORTED_SAMPLE_RATES {
-        let label = format!("{label_base} @ {sr} Hz (v2, HF)");
-        let gname = format!("{golden_name}_v2_{sr}");
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_render_comparison(
-                model_filename,
-                &gname,
-                &label,
-                sr,
-                true,
-                check_lufs_gate,
-                true,
-            );
-        }));
-        if let Err(e) = result {
-            let msg = e
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "unknown panic (non-string payload)".to_string());
-            failures.push((sr, msg));
-        }
-    }
-    if !failures.is_empty() {
-        let summary: Vec<String> = failures
-            .iter()
-            .map(|(sr, msg)| format!("@ {sr} Hz: {msg}"))
-            .collect();
-        panic!(
-            "Parity validation failed for sample rates:\n  {}",
-            summary.join("\n  ")
-        );
-    }
+    run_v2_multi_sr_impl(
+        model_filename,
+        golden_name,
+        label_base,
+        check_lufs_gate,
+        true,
+    );
 }
 
 // =============================================================================

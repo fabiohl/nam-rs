@@ -203,7 +203,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### S11 Tarefas Técnicas
 
-#### [ ] Task S11.1 — Robustecer o Harness de Testes `run_v2_multi_sr` contra SKIP Silencioso (PM-07)
+#### [x] Task S11.1 — Robustecer o Harness de Testes `run_v2_multi_sr` contra SKIP Silencioso (PM-07) *(concluída 2026-06-30)*
 
 * **Responsável:** Engenheiro de DSP / QA
 * **Risco/Criticidade:** Baixo (test-only).
@@ -218,6 +218,8 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * Ao menos uma taxa de amostragem completou a validação (prevenindo skipping total).
      * O conjunto de taxas completadas é idêntico ao conjunto de taxas esperadas para o modelo.
   6. Emitir um resumo tabulado das taxas de amostragem executadas no terminal quando executado com `--nocapture`.
+
+**Resultado S11.1:** `ParityOutcome` enum com 5 variantes; `run_render_comparison` retorna `ParityOutcome`; `run_v2_multi_sr`/`run_v2_multi_sr_hf` delegam para `run_v2_multi_sr_impl` (zero duplicação); validação precoce do modelo JSON; assert `!completed.is_empty()` (antiskip total) + assert `completed_set == expected_set` (antiskip parcial); sumário tabulado emitido em `println!` visível com `--nocapture`. Medição empírica: WaveNet Standard e LSTM 1×16 completam todas as 5 taxas (44.1k…192k) com o render C++ — a premissa original de que modelos de taxa fixa ou LSTMs pulariam taxas não se confirmou com a versão atual do NAMCore (v0.5.3+A2-fast). Expected set = todas as 5 taxas para todos os modelos. Quick parity (5/5) e v2 multi-SR (WaveNet + LSTM) passando. Clippy limpo.
 
 #### [ ] Task S11.2 — Auditoria e Validação das Suítes de Testes (Correctness Auditor)
 
