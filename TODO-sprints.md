@@ -233,7 +233,7 @@ Este sprint caracteriza o impacto de oversampling externo no LSTM e atualiza os 
   - **Hipótese CONFIRMADA:** Oversampling de LSTM reduz aliasing (ASR melhora ~8.7 a ~11.3 dB para modelos que produzem aliasing), mas altera o timbre de forma mensurável e drástica (ESR > 1.0 para modelos BossLSTM, indicando que a saída com OS é mais diferente do baseline Off do que a energia do próprio baseline). A causa raiz é que o atraso de realimentação do LSTM é fixo em amostras absolutas — rodar a 2×/4× efetivamente divide por 2/4 a janela temporal de feedback em segundos, alterando a dinâmica recorrente.
   - **Nota para β3.2:** Incluir a tabela ASR/ESR em `docs/lstm_recurrent_drift.md` (§4, §7) e `docs/audio_fidelity_map.md` (§3, §9). Documentar que o oversampling de LSTM NÃO é recomendado como controle de usuário (ao contrário do WaveNet onde o OS é transparente) devido à alteração drástica de timbre.
 
-#### [ ] Tarefa β3.2 — Sincronização da Documentação e Referências [BAIXO RISCO]
+#### [x] Tarefa β3.2 — Sincronização da Documentação e Referências [BAIXO RISCO]
 
 - **Descrição:** Atualizar a documentação do repositório com o status-alvo da arquitetura de fidelidade do LSTM.
 - **Mudanças propostas:**
@@ -241,3 +241,21 @@ Este sprint caracteriza o impacto de oversampling externo no LSTM e atualiza os 
   - Modificar `docs/lstm_recurrent_drift.md` (§4, §7) incluindo a tabela empírica do oversampling e orientações ao usuário.
   - Adicionar notas pertinentes em `docs/architecture.md` e `docs/cpp_parity_map.md`.
   - Inserir as novas referências acadêmicas (Mikkonen & Werner 2025; Carson et al. 2024/2025) em `docs/research-references.md`.
+- **Conclusão (2026-06-29):**
+  - `docs/audio_fidelity_map.md`:
+    - Quick Reference table (§1): linha 3 atualizada de "❌ No mitigation yet" para "✅ HF gates + Kahan head", status "✅ Mitigated (β1–β3)".
+    - §3: texto de mitigação reescrito — I6 (HF ativações nos gates LSTM, ~10.000× menor erro de ativação) como mitigação primária de drift; I4 (Kahan no head, ≥2 dB SNR extra) como higiene numérica; I5 (caracterização de oversampling) como contexto de anti-aliasing. Documentado que oversampling de LSTM **NÃO é recomendado** como controle de usuário.
+    - §6: limitação removida — "LSTM models silently ignore the mode switch" atualizado para "All model families dispatch correctly" (cobertura HF LSTM concluída em β1.1–β1.2).
+    - §9 (Pending Work): itens I6, I4, I5 marcados como ✅ Complete; novos itens adicionados para tracking (Kahan head, LSTM HF gates, oversampling characterization).
+  - `docs/lstm_recurrent_drift.md`:
+    - §4.1 (novo): tabela empírica ASR/ESR de caracterização de oversampling (β3.1) — ASR (Off→2×: Δ −8.7 a −11.3 dB onde aplicável), ESR/MR-STFT (BossLSTM ESR > 1.0, timbre crítico). Root cause documentado: atraso de feedback LSTM fixo em amostras absolutas. Orientação ao usuário: oversampling de LSTM NÃO recomendado; HighFidelity mode + Kahan head são o caminho recomendado.
+    - §7 (Implications→Future Work): reescrito. I6 (HF gates) ✅ Complete, I4 (Kahan head) ✅ Complete, I5 (caracterização) ✅ Complete. ADAA stateful (Holters 2019) e oversampled recurrent state mantidos como "Pending/Evaluated, deferred".
+  - `docs/architecture.md:87`: nota "Known limitation: LSTM fused 4-gate GEMV kernels bypass the ActivationPrecision dispatch" substituída por cobertura completa de dispatch (scalar + AVX2 + AVX-512) concluída em β1.1–β1.2, zero-alloc.
+  - `docs/cpp_parity_map.md`:
+    - §4.1 (Core Inference): entrada adicionada para LSTM HF gate dispatch (β1.1–β1.2).
+    - §4.2 (Layer Components): entrada adicionada para Kahan-compensated head accumulation (β2.2).
+    - §8 (Math/SIMD): entrada adicionada para `dot_product_f32_native_kahan` (β2.1).
+  - `docs/research-references.md`:
+    - R7 (novo): Carson, Wright, Chowdhury, Välimäki & Bilbao (2024) — "Sample Rate Independent RNNs for Audio Effects Processing", DAFx-24. Ancora teórica do mecanismo de mudança de timbre do LSTM sob oversampling (β3.1).
+    - R7b (novo): Mikkonen & Werner (2025) — "Antiderivative Antialiasing for Recurrent Neural Networks", DAFx-25. Ponte teórica entre ADAA (R4/R5) e célula LSTM. Valida abordagem ADAA para GRU/LSTM, documentada como avaliada e deferred.
+    - Renumeração cascata: R7→R8, R8→R9, R9→R10, R10→R11, R11→R12. Reference Index by Finding atualizado com novas entradas R7, R7b; P-1 ganha R7b; novo finding I5 adicionado.

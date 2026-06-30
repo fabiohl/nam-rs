@@ -563,7 +563,7 @@ preservando o formato?**
 - **Risco:** BAIXO. Não toca matemática de inferência. Validar com guards de zero-alloc.
 - **Sequência sugerida:** I2 (corrigir init é ~2 linhas; depois runtime) → I1.
 
-### Épico β — Fidelidade do §3 (LSTM), **reordenado pela evidência**
+### Épico β — Fidelidade do §3 (LSTM), **reordenado pela evidência** [DONE]
 
 - **Findings:** **I6 (primário — Padé→HF no LSTM)**, I4 (higiene, secundário), I5 (rejeitar
   caminho dedicado; caracterizar + documentar).

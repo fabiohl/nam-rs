@@ -95,12 +95,13 @@ and the [Divergences](#11-nam-rs-divergences-from-c-reference-accepted) (§11).
 
 ### 4.1 Core Inference
 
-| C++ (`NeuralAmpModelerCore/`)                | Rust (`src/`)                                                          | Parity established |
-| -------------------------------------------- | ---------------------------------------------------------------------- | ------------------ |
-| `NAM/lstm.cpp` — `LSTM::process_sample`      | `models/lstm/layer.rs` — `process_sample_avx2` / `_avx512` (via macro) | Established        |
-| LSTM gate computation (sigmoid + tanh fused) | `math/lstm/gates.rs` — `fused_lstm_gates`                              | Established        |
-| LSTM 2-layer pipelined processing            | `models/lstm/model2.rs` — `define_lstm2_process_pipelined!`            | Established        |
-| LSTM Prewarm (silence → convergence)         | `models/lstm/mod.rs` — `lstm_prewarm_common`                           | Established        |
+| C++ (`NeuralAmpModelerCore/`)                | Rust (`src/`)                                                           | Parity established |
+| -------------------------------------------- | ----------------------------------------------------------------------- | ------------------ |
+| `NAM/lstm.cpp` — `LSTM::process_sample`      | `models/lstm/layer.rs` — `process_sample_avx2` / `_avx512` (via macro)  | Established        |
+| LSTM gate computation (sigmoid + tanh fused) | `math/lstm/gates.rs` — `fused_lstm_gates`                               | Established        |
+| LSTM HF gate dispatch (β1.1–β1.2)            | `math/lstm/gates.rs`, `models/lstm/layer_kernels.rs` — HF branch-direct | Established        |
+| LSTM 2-layer pipelined processing            | `models/lstm/model2.rs` — `define_lstm2_process_pipelined!`             | Established        |
+| LSTM Prewarm (silence → convergence)         | `models/lstm/mod.rs` — `lstm_prewarm_common`                            | Established        |
 
 ### 4.2 Layer Components
 
@@ -112,6 +113,7 @@ and the [Divergences](#11-nam-rs-divergences-from-c-reference-accepted) (§11).
 | Cell state `[H]`                              | `models/lstm/layer.rs` — `LstmLayer.cell_state`                                 | Established        |
 | Head projection (H → 1)                       | `models/lstm/model1.rs` — `head_weights` / `head_bias`                          | Established        |
 | FP32 native head rechannel                    | `models/lstm/model1.rs` — `use_f32_head: bool`                                  | Established        |
+| Kahan-compensated head accumulation (β2.2)    | `math/common/scalar_ref/dot.rs` — `dot_product_f32_native_kahan`                | Established        |
 
 ### 4.3 Scalar Parity Reference
 
@@ -170,10 +172,10 @@ sigmoid (~4.09e-4). This **deliberate asymmetry** means HF mode is **closer to t
 ideal** but **further from C++ bit-equivalence**. The parity gate uses HF-specific caps that
 remain meaningful (ESR < 1.0) while documenting the increased interop drift:
 
-| Host rate | `ABSOLUTE_ESR_CAP_LSTM_HF` | Notes                                   |
-|:--------- |:--------------------------:|:----------------------------------------|
-| ≤ 96 kHz  | 0.30                       | ~5× standard cap; covers Padé→HF delta  |
-| > 96 kHz  | 0.60                       | Conservative for 192 kHz recurrent drift|
+| Host rate | `ABSOLUTE_ESR_CAP_LSTM_HF` | Notes                                    |
+|:--------- |:--------------------------:|:---------------------------------------- |
+| ≤ 96 kHz  | 0.30                       | ~5× standard cap; covers Padé→HF delta   |
+| > 96 kHz  | 0.60                       | Conservative for 192 kHz recurrent drift |
 
 HF caps for WaveNet: 5.0× the standard `ABSOLUTE_ESR_CAP_WAVENET` (still < 1.0).
 HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
@@ -183,7 +185,6 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 > is expected and documented. Users seeking interop parity with NAMCore should use Standard
 > activation precision. See [`audio_fidelity_map.md`](audio_fidelity_map.md) §2/§6 and
 > [`TODO-findings.md`](TODO-findings.md) I6.
-
 > **Weight-layout note (root cause of a real bug).** JSON `.nam` LSTM weights use the **Original**
 > layout `[Gate][H][IH]`; the production runtime transposes them to the SIMD-friendly **GateMajor**
 > `[Gate][IH][H]` at load (see §4.2, §7.4). Confusing the two produces a *completely* wrong output
@@ -271,27 +272,28 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 
 ## 8. Math / SIMD Kernels
 
-| C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                 | Parity established |
-| --------------------------------------------------- | ------------------------------------------------------------- | ------------------ |
-| Dot product (f32)                                   | `math/gemm/dot.rs` — `dot_product`                            | Established        |
-| Dot product (BF16 quantized weights)                | `math/gemm/dot_4x/` — `dot_product_bf16`                      | Established        |
-| Dot product 4× interleaved (WaveNet Conv1D)         | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`            | Established        |
-| Dot product 4× interleaved dual-frame               | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame` | Established        |
-| GEMV (fused add)                                    | `math/gemm/gemv.rs` — `fused_add_gemv`                        | Established        |
-| GEMV (overwrite)                                    | `math/gemm/gemv.rs` — `gemv_overwrite`                        | Established        |
-| GEMV 4-gate (LSTM)                                  | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`            | Established        |
-| GEMV BF16 (LSTM 4-gate)                             | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`        | Established        |
-| Tanh activation (SIMD)                              | `math/activations/tanh.rs` — `tanh_slice`                     | Established        |
-| Sigmoid activation (SIMD)                           | `math/activations/sigmoid.rs` — `sigmoid_slice`               | Established        |
-| Fused Tanh + accumulate (WaveNet head)              | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`    | Established        |
-| Fused Tanh + overwrite (first layer head)           | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`     | Established        |
-| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation               | Established        |
-| Gain application (linear)                           | `math/dsp/gain.rs` — `apply_gain`                             | Established        |
-| Gain LUT (dB → linear)                              | `math/dsp/gain_lut.rs` — `GainLut`                            | —                  |
-| Stereo convolution (resampler FIR)                  | `math/dsp/stereo/` — `convolve_stereo`                        | Established        |
-| Kahan compensated summation (scalar fallback)       | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`             | Established        |
-| BF16 quantization (f32 → u16)                       | `math/common/utility.rs` — `quantize_weight()`                | Established        |
-| Scalar reference (definitive math specification)    | `math/common/scalar_ref.rs` — all operations                  | —                  |
+| C++ (`NeuralAmpModelerCore/`)                       | Rust (`src/`)                                                    | Parity established |
+| --------------------------------------------------- | ---------------------------------------------------------------- | ------------------ |
+| Dot product (f32)                                   | `math/gemm/dot.rs` — `dot_product`                               | Established        |
+| Dot product (BF16 quantized weights)                | `math/gemm/dot_4x/` — `dot_product_bf16`                         | Established        |
+| Dot product 4× interleaved (WaveNet Conv1D)         | `math/gemm/dot_4x/` — `dot_product_4x_interleaved`               | Established        |
+| Dot product 4× interleaved dual-frame               | `math/gemm/dot_4x/` — `dot_product_4x_interleaved_dual_frame`    | Established        |
+| GEMV (fused add)                                    | `math/gemm/gemv.rs` — `fused_add_gemv`                           | Established        |
+| GEMV (overwrite)                                    | `math/gemm/gemv.rs` — `gemv_overwrite`                           | Established        |
+| GEMV 4-gate (LSTM)                                  | `math/gemm/gemv_4gate.rs` — `gemv_overwrite_4gate`               | Established        |
+| GEMV BF16 (LSTM 4-gate)                             | `math/gemm/gemv_bf16.rs` — `gemv_overwrite_bf16_4gate`           | Established        |
+| Tanh activation (SIMD)                              | `math/activations/tanh.rs` — `tanh_slice`                        | Established        |
+| Sigmoid activation (SIMD)                           | `math/activations/sigmoid.rs` — `sigmoid_slice`                  | Established        |
+| Fused Tanh + accumulate (WaveNet head)              | `math/wavenet/accumulate.rs` — `tanh_and_accumulate_block`       | Established        |
+| Fused Tanh + overwrite (first layer head)           | `math/wavenet/accumulate.rs` — `tanh_and_overwrite_block`        | Established        |
+| Cascaded head accumulation (array N seeds from N−1) | `layer_array.rs` — `head_seeded` + accumulation                  | Established        |
+| Gain application (linear)                           | `math/dsp/gain.rs` — `apply_gain`                                | Established        |
+| Gain LUT (dB → linear)                              | `math/dsp/gain_lut.rs` — `GainLut`                               | —                  |
+| Stereo convolution (resampler FIR)                  | `math/dsp/stereo/` — `convolve_stereo`                           | Established        |
+| Kahan compensated summation (scalar fallback)       | `math/common/kahan.rs` — `KahanF32` / `Kahan4F32`                | Established        |
+| Kahan dot product (LSTM head — β2.1)                | `math/common/scalar_ref/dot.rs` — `dot_product_f32_native_kahan` | Established        |
+| BF16 quantization (f32 → u16)                       | `math/common/utility.rs` — `quantize_weight()`                   | Established        |
+| Scalar reference (definitive math specification)    | `math/common/scalar_ref.rs` — all operations                     | —                  |
 
 ---
 

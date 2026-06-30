@@ -83,10 +83,10 @@ ultimately **not adopted** because it would require per-model modification of th
 (polymorphic dispatch conflict); the decision and rationale are documented in
 `docs/architecture.md` §5.0O.
 
-| Traceability | Reference                                              |
-|:------------ |:------------------------------------------------------ |
-| Finding      | P-1 (ADAA alternativa de baixo custo)                  |
-| Files        | `docs/architecture.md` §5.0O                           |
+| Traceability | Reference                             |
+|:------------ |:------------------------------------- |
+| Finding      | P-1 (ADAA alternativa de baixo custo) |
+| Files        | `docs/architecture.md` §5.0O          |
 
 ---
 
@@ -129,9 +129,56 @@ for LSTM-family models at high sample rates.
 
 ---
 
+### R7 — Carson, Wright, Chowdhury, Välimäki & Bilbao (2024)
+
+**Carson, A.; Wright, A.; Chowdhury, J.; Välimäki, V.; Bilbao, S.**
+*"Sample Rate Independent Recurrent Neural Networks for Audio Effects Processing."*
+Proceedings of the 27th International Conference on Digital Audio Effects (DAFx-24),
+Guildford, UK, 2024.
+
+**Why relevant to nam-rs.** Addresses the core problem of sample-rate dependency in recurrent
+neural networks — the very mechanism that causes LSTM timbre to change drastically under
+oversampling (documented in §4.1 of `docs/lstm_recurrent_drift.md`). Proposes architectural
+modifications to make RNNs sample-rate independent, directly relevant to the observation that
+LSTM feedback delay is fixed in absolute samples. This paper anchors the theoretical
+understanding of why LSTM oversampling changes timbre (β3.1) and provides a potential path
+for future sample-rate-agnostic LSTM models.
+
+| Traceability | Reference                                                                     |
+|:------------ |:----------------------------------------------------------------------------- |
+| Finding      | I5 (oversampling timbre change, β3.1)                                         |
+| Files        | `docs/lstm_recurrent_drift.md` §4.1, `tests/oversampling_characterization.rs` |
+
+---
+
+### R7b — Mikkonen & Werner (2025)
+
+**Mikkonen, O.; Werner, K. J.**
+*"Antiderivative Antialiasing for Recurrent Neural Networks."*
+Proceedings of the 28th International Conference on Digital Audio Effects (DAFx-25),
+Ancona, Italy, 2025.
+
+**Why relevant to nam-rs.** Extends ADAA (Antiderivative Antialiasing) to explicit, computable
+RNNs — specifically GRU and LSTM cells. Evaluated on pre-trained guitar amplifier models,
+showing that ADAA reduces aliasing considerably across all sample rates while only moderately
+affecting tonality, **without requiring high oversampling factors**. This is the theoretical
+bridge between R4/R5 (ADAA for memoryless nonlinearities) and the LSTM cell — the stateful
+recurrent nonlinearity that nam-rs's oversampling characterization (β3.1) identified as
+problematic for timbre preservation. While ADAA for LSTM was architecturally evaluated and
+deferred in favor of oversampling + HighFidelity activations (I6), this paper validates the
+approach and anchors future work should the current mitigation strategy prove insufficient
+for LSTM-family models at high sample rates.
+
+| Traceability | Reference                                                       |
+|:------------ |:--------------------------------------------------------------- |
+| Finding      | I5 (LSTM oversampling trade-off, β3.1); future ADAA             |
+| Files        | `docs/lstm_recurrent_drift.md`, `docs/audio_fidelity_map.md` §3 |
+
+---
+
 ## 2. Perceptual Metrics & Loss Functions
 
-### R7 · Wright & Välimäki (2020)
+### R8 · Wright & Välimäki (2020)
 
 **Wright, A.; Välimäki, V.**
 *"Perceptual Loss Function for Neural Modelling of Audio Systems."*
@@ -152,7 +199,7 @@ complement to the standard (flat) ESR metric already implemented in `src/testing
 
 ---
 
-### R8 · Wright et al. (2020)
+### R9 · Wright et al. (2020)
 
 **Wright, A.; Damskägg, E.-P.; Juvela, L.; Välimäki, V.**
 *"Real-Time Guitar Amplifier Emulation with Deep Learning."*
@@ -175,7 +222,7 @@ live-path design.
 
 ## 3. Measurement & Instrumentation
 
-### R9 · Farina (2000)
+### R10 · Farina (2000)
 
 **Farina, A.**
 *"Simultaneous measurement of impulse response and distortion with a swept-sine technique."*
@@ -195,7 +242,7 @@ reproducible CI gates.
 
 ---
 
-### R10 · AES17
+### R11 · AES17
 
 **AES17-2015 (r2020).**
 *"AES standard method for digital audio engineering — Measurement of digital audio equipment."*
@@ -214,7 +261,7 @@ specifications.
 
 ---
 
-### R11 · ITU-R BS.1770-4 / EBU R128 / EBU Tech 3342
+### R12 · ITU-R BS.1770-4 / EBU R128 / EBU Tech 3342
 
 **ITU-R BS.1770-4 (2015).**
 *"Algorithms to measure audio programme loudness and true-peak audio level."*
@@ -250,14 +297,15 @@ European Broadcasting Union, 2016.
 
 | Finding                                      | References                                             |
 |:-------------------------------------------- |:------------------------------------------------------ |
-| P-1 (aliasing de ativações)                  | R1, R2, R3, R4, R5, R6                                 |
+| P-1 (aliasing de ativações)                  | R1, R2, R3, R4, R5, R6, R7b                            |
 | P-2 (fidelidade do resampler)                | R3                                                     |
-| P-3 (suíte espectral — THD/IMD/FR/true-peak) | R9, R10, R11                                           |
+| P-3 (suíte espectral — THD/IMD/FR/true-peak) | R10, R11, R12                                          |
 | P-4 (oráculo f64)                            | — (norma computacional, não referenciada externamente) |
-| P-5 (erro de ativação — precisão)            | R1, R7, R8                                             |
-| P-6 (LUFS/LRA/true-peak)                     | R11                                                    |
+| P-5 (erro de ativação — precisão)            | R1, R8, R9                                             |
+| P-6 (LUFS/LRA/true-peak)                     | R12                                                    |
 | P-7 (gates de perf/deadline)                 | — (engenharia interna)                                 |
 | P-8 (matriz cross-ISA)                       | — (engenharia interna)                                 |
-| F-2 (ponto cego de fidelidade)               | R8                                                     |
+| F-2 (ponto cego de fidelidade)               | R9                                                     |
+| I5 (oversampling LSTM — timbre, β3.1)        | R7, R7b                                                |
 
 *Cross-referenced with findings in [`TODO-findings.md`](../TODO-findings.md) and sprints in [`TODO-sprints.md`](../TODO-sprints.md).*

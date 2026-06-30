@@ -117,6 +117,49 @@ the two engines is larger than either engine's divergence from the ideal. This s
 gap may be partially addressable (e.g., matching bf16 state precision or FMA ordering in the cell
 update), pending the E8 root-cause investigation (AC-7).
 
+### 4.1 Oversampling Characterization — Anti-Aliasing vs. Timbre Trade-Off
+
+External oversampling (the `OversampleEngine` half-band pipeline, §5 of `audio_fidelity_map.md`)
+was empirically characterized for LSTM models at 48 kHz with a 2017 Hz +12 dB stress tone (ASR)
+and a 5-second v2 stress signal (ESR/MR-STFT). Methodology: `tests/oversampling_characterization.rs`.
+
+**ASR (Aliasing-to-Signal Ratio):** Oversampling improves aliasing suppression for LSTM models
+that produce aliasing, but the benefit is model-dependent:
+
+| Model               | Off (dB) | 2× (dB) | Δ (Off→2×) | Notes                                |
+|:------------------- |:--------:|:-------:|:----------:|:------------------------------------ |
+| LSTM 1×16           | −22.1    | −30.8   | −8.7 dB    | BossLSTM, aliases                    |
+| LSTM 2×8            | −34.0    | −45.3   | −11.3 dB   | BossLSTM, aliases less               |
+| LSTM Official (H=3) | −inf     | −inf    | N/A        | No detectable aliasing at any factor |
+
+**ESR / MR-STFT (timbre change):** Running the LSTM at a higher internal rate through oversampling
+changes the output timbre — **drastically** for BossLSTM architectures:
+
+| Model               | Factor | ESR vs Off | ESR (dB) | MR-STFT | Timbre Change    |
+|:------------------- |:------:|:----------:|:--------:|:-------:|:----------------:|
+| LSTM 1×16           | 2×     | 1.17       | +0.7     | 1.92    | Critical (> 1.0) |
+| LSTM 1×16           | 4×     | 1.59       | +2.0     | 2.89    | Critical (> 1.0) |
+| LSTM 2×8            | 2×     | 1.19       | +0.8     | 2.55    | Critical (> 1.0) |
+| LSTM 2×8            | 4×     | 1.60       | +2.0     | 3.99    | Critical (> 1.0) |
+| LSTM Official (H=3) | 2×     | 0.11       | −9.4     | 0.78    | Moderate         |
+| LSTM Official (H=3) | 4×     | 0.37       | −4.3     | 0.91    | Moderate         |
+
+ESR > 1.0 means the oversampled output is **more different from the Off baseline than the Off
+baseline's own energy** — the timbre change is the dominant effect, not residual aliasing.
+
+**Root cause.** The LSTM feedback delay is fixed in absolute samples. Running at 2× or 4× rate
+effectively divides the feedback time window by 2 or 4 in seconds, altering the recurrent
+dynamics. This is unlike WaveNet, where oversampling is transparent and only anti-aliases.
+
+**User guidance.** Oversampling of LSTM models is **NOT recommended** as a user-facing control.
+The ASR improvement (8–11 dB where applicable) is outweighed by the drastic timbre alteration
+(ESR > 1.0) for BossLSTM architectures. The tiny Official LSTM (H=3) is less affected but
+gains no practical anti-aliasing benefit (already alias-free at all factors). For users seeking
+maximum fidelity from LSTM models, the **HighFidelity activation mode** (§6 of
+`audio_fidelity_map.md`) provides a ~10,000× reduction in activation error without altering
+the recurrent feedback dynamics — and is the recommended path. See also Kahan-compensated
+head accumulation (§7, I4) for an additional ~2 dB of head SNR at negligible cost.
+
 ---
 
 ## 5. The ABSOLUTE_ESR_CAP Sentinel
@@ -203,13 +246,34 @@ cargo test --release --test cpp_parity \
 - Users comparing LSTM and WaveNet models at the same computational budget should understand
   that **LSTM fidelity degrades with signal duration**, while WaveNet fidelity is constant.
 
-### For Future Work (Épico E4 / S5)
+### For Future Work
 
-- **Kahan compensated summation** in the LSTM head projection (`src/models/lstm/model1.rs:96-107`)
-  could reduce accumulation error by ~1-2 orders of magnitude without changing the model format.
-- **Oversampled recurrent state** (running the LSTM at 2× sample rate internally) would
-  reduce per-step error by spreading quantization over more samples. This would be an opt-in
-  HQ mode (controlled via CLI flag and CLAP parameter, as designed in P-1/P-2).
+**Completed (Épico β / Sprints β1–β3):**
+
+- **I6 — HighFidelity activations in LSTM gates** (β1.1–β1.2): All LSTM gate computation paths
+  (scalar fallback, AVX2 SIMD, AVX-512 SIMD) now dispatch to exp-based polynomial kernels when
+  `ActivationPrecision::HighFidelity` is active. Error drops from ~2.32e-3 (Padé) to ~2.4e-7
+  (HF polynomial) — a ~10,000× improvement. ISA parity confirmed bit-exact (MSE=0.00) for all
+  HF paths within the same ISA. Gate calibration completed (β1.3) with C++ interop caps
+  documented in `cpp_parity_map.md` §4.5.
+- **I4 — Kahan-compensated head accumulation** (β2.1–β2.3): The LSTM head projection (final
+  H→1 mapping) uses Kahan compensated summation (`dot_product_f32_native_kahan`) across all
+  model variants (model1.rs, model2.rs, model_dyn.rs). Validated for stability via 10M-frame
+  soak tests — zero NaN/Inf, zero subnormals, ≥2 dB head SNR improvement in deep H≥40 heads.
+  Negligible CPU overhead (~0.21 µs/sample).
+- **I5 — Oversampling characterization** (β3.1): Empirically confirmed that LSTM oversampling
+  reduces aliasing but **changes timbre drastically** (ESR > 1.0 for BossLSTM at 2×/4×).
+  Oversampling is not recommended as a user control for LSTM models. See §4.1 for full table.
+
+**Pending / Evaluated:**
+
+- **Stateful ADAA (Holters 2019):** Antiderivative antialiasing for the LSTM cell itself.
+  Theoretically feasible (R6 in `research-references.md`) but architecturally complex —
+  requires per-model modification of activation dispatch. Deferred in favor of the half-band
+  oversampling approach already adopted for WaveNet.
+- **Oversampled recurrent state:** Running the LSTM at 2× internally with adjusted feedback
+  delay. Would require retraining or delay compensation — evaluated and deferred because it
+  alters the model-to-audio mapping that users expect.
 
 ---
 

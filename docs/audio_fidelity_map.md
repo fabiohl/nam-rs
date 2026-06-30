@@ -22,14 +22,14 @@ of the `.nam` / `.namb` file format contract.
 |:---:|:--------------------------------------- |:-----:|:-----------------------:|:------------------------:|:------------------------------------------- |:--------------------:|
 | 1   | **Weight compression (F16C/BF16)**      | ❌    | ✅ Yes                  | ❌ No                    | −80…−100 dBFS error; LSTM drift             | ✅ Active            |
 | 2   | **Activation approximations (Padé)**    | ❌    | ✅ Default              | 🔶 Partial               | −80…−97 dBFS; ↑ aliasing                    | ✅ Active            |
-| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ❌ No mitigation yet     | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Documented        |
+| 3   | **LSTM recurrent drift**                | ❌    | N/A (consequence of #1) | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)        | ✅ Mitigated (β1–β3) |
 | 4   | **Host sample rate resampler**          | ❌    | ✅ When host ≠ 48 kHz   | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB | ✅ Active            |
 | 5   | **Neural stage oversampling**           | ❌    | ❌ Off by default       | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU        | ✅ Active            |
 | 6   | **Activation precision (HF mode)**      | ❌    | ❌ Off by default       | ✅ CLI; 🔶 CLAP pending† | Error ÷ 10,000; ↓ aliasing                  | ⚠️ Partially exposed |
 | 7   | **Denormal dither + FTZ/DAZ**           | ❌    | ✅ Yes                  | ❌ No                    | No audible impact (−220 dBFS)               | ✅ Active            |
 | 8   | **Adaptive Compute (quality fallback)** | ❌    | ✅ Default              | 🔶 `--slim` flag         | Silent quality drop under CPU load          | ✅ Active            |
 
-† Resampler quality (Standard/HQ) was deferred — see §4. HF activation mode is exposed via CLI (`--activation`); CLAP parameter pending α2.2. LSTM models ignore the switch until Épico β/I6 — see §6.
+† Resampler quality (Standard/HQ) was deferred — see §4. HF activation mode is exposed via CLI (`--activation`) and CLAP (`PARAM_ACTIVATION=8`). LSTM models fully support HighFidelity activation gates since Épico β (Sprint β1).
 
 ---
 
@@ -151,8 +151,11 @@ The parity test caps this drift with a **measured, rate-aware** bound — `≤ 9
 [`cpp_parity_map.md`](cpp_parity_map.md) §4.5 and `tests/cpp_parity.rs`).
 
 **Mandatory?** Yes — it is intrinsic to f16c weight quantization in recurrent architectures.
-Removing it would require f32 weights (breaking format interoperability with NAMCore) or
-compensated accumulation in the cell state (proposed mitigation — see §9).
+Mitigations are now implemented (Épico β, Sprints β1–β3):
+
+- **I6 — HighFidelity activations in LSTM gates** (primary mitigation): replaces Padé [5,4] tanh with exp-based polynomial kernels (~2.4e-7 error, 10,000× lower) in all LSTM gate computations — scalar fallback, AVX2 SIMD, and AVX-512 SIMD paths. Reduces per-step activation quantization error injected into the cell state. Validated via f64 oracle ESR improvement (β1.1–β1.3). _Cost:_ +10–15% compute in HF mode.
+- **I4 — Kahan-compensated head accumulation** (numerical hygiene): replaces naive f32 dot-product with Kahan compensated summation in the LSTM head projection (the final H→1 mapping). Reduces accumulation error in long heads by ~2 dB (≥11520-term summation). _Cost:_ negligible (~1 additional floating-point operation per output sample). Implemented in β2.1–β2.3.
+- **I5 — Oversampling characterization** (anti-aliasing context): empirically measured the ASR/ESR impact of external oversampling (Off→2×→4×) on LSTM models. **Confirmed that LSTM oversampling changes timbre drastically** (ESR > 1.0 for BossLSTM models at 2× vs Off) — the recurrent feedback delay is fixed in absolute samples, so 2×/4× rate halves/quarters the feedback time window in seconds. Oversampling of LSTM is **NOT recommended** as a user-facing control, unlike WaveNet where it is transparent. See β3.1 and `docs/lstm_recurrent_drift.md` §4.
 
 **User impact.** LSTM models degrade with signal duration and with host sample rate. WaveNet
 models do not. For long sessions or high host rates, a WaveNet of equal budget is more faithful.
@@ -259,13 +262,13 @@ high-order folding.
 
 **Mandatory?** No. Standard mode is the production default.
 
-**⚠️ User-exposed?** **Partially.** The CLI exposes `--activation standard|hf` (alias `--act`),
-applying the mode at startup. The CLAP plugin parameter (`PARAM_ACTIVATION=8`) is declared but
-pending wiring (α2.2). **Known limitation:** LSTM models silently ignore the mode switch —
-the fused 4-gate GEMV kernels bypass the `ActivationPrecision` dispatch and always use the
-Standard (Padé/Minimax) path. Full LSTM HighFidelity coverage is deferred to Épico β (I6).
-WaveNet (A1/A2), ConvNet, and Linear models dispatch correctly to both Standard and
-HighFidelity kernels.
+**⚠️ User-exposed?** **Yes.** The CLI exposes `--activation standard|hf` (alias `--act`),
+applying the mode at startup. The CLAP plugin exposes `PARAM_ACTIVATION=8` with full wiring
+(host events, GUI sync, SPSC path), persistence (state save/load), and override for offline
+render (forces HighFidelity). **All model families — WaveNet (A1/A2), ConvNet, Linear, and
+LSTM — dispatch correctly to both Standard and HighFidelity kernels** (LSTM HF gate coverage
+completed in Épico β / Sprint β1.1–β1.2: scalar, AVX2 SIMD, and AVX-512 SIMD paths all
+support HF dispatch with branch-direct hoisted flag).
 
 **Precision context (validated post-S8).** With the f64 oracle now confirmed correct (§3), the
 combined precision model (f16c + Padé + f32 accumulation) reproduces production to within
@@ -343,13 +346,15 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ## 9. Pending / Open Work
 
-| Item                                                      | Status                        | Reference                                                            |
-|:--------------------------------------------------------- |:-----------------------------:|:-------------------------------------------------------------------- |
-| HighFidelity activation mode user control (CLI/CLAP knob) | 🟡 Designed, not exposed (§6) | future                                                               |
-| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO      | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker) |
-| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default    | §4 (F3 latency formula blocker resolved)                             |
-| Kahan-compensated LSTM head accumulation                  | 🟡 Proposed mitigation for §3 |                                                                      |
-| Oversampled recurrent state (LSTM HQ mode)                | 🟡 Proposed mitigation for §3 |                                                                      |
+| Item                                                      | Status                     | Reference                                                                   |
+|:--------------------------------------------------------- |:--------------------------:|:--------------------------------------------------------------------------- |
+| HighFidelity activation mode user control (CLI/CLAP knob) | ✅ Complete (α2; β1)       | `src/math/activations/`, `src/clap/`                                        |
+| Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO   | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker)        |
+| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default | §4 (F3 latency formula blocker resolved)                                    |
+| Kahan-compensated LSTM head accumulation                  | ✅ Complete (β2)           | `src/math/common/scalar_ref/dot.rs`, `src/models/lstm/`                     |
+| LSTM HF gate kernel coverage                              | ✅ Complete (β1)           | `src/math/lstm/gates.rs`, `src/models/lstm/layer_kernels.rs`                |
+| LSTM oversampling characterization & user guidance        | ✅ Complete (β3.1)         | `docs/lstm_recurrent_drift.md` §4, `tests/oversampling_characterization.rs` |
+| LSTM stateful ADAA (Holters 2019)                         | 🟡 Evaluated, not adopted  | `docs/research-references.md` R6                                            |
 
 ---
 
