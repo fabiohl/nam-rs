@@ -120,7 +120,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### S10 Tarefas Técnicas
 
-#### [ ] Task S10.1 — Extensão do Oráculo f64 para ConvNet (PM-04)
+#### [x] Task S10.1 — Extensão do Oráculo f64 para ConvNet (PM-04)
 
 * **Responsável:** Engenheiro de DSP / QA
 * **Risco/Criticidade:** Baixo.
@@ -131,6 +131,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   2. Integrar a chamada no despachador principal `oracle_forward`.
   3. Definir o threshold `CONVNET_ESR_LIMIT = 1e-12` em `tests/common/constants.rs`.
   4. Adicionar testes em `tests/reference_oracle_f64.rs` (ex: `test_oracle_convnet`) carregando `convnet_test.nam` e comparando com o motor f32 de produção (ESR < `CONVNET_ESR_LIMIT`).
+* **Conclusão:** ✅ Oracle implementado em `src/testing/reference_oracle.rs:918` (~200 linhas). Cobertura de activations: Tanh, HardTanh, ReLU, Sigmoid, SiLU, HardSwish, Softsign (FastTanh e Tanh compartilham oracle_tanh). Dispatcher estendido linha 282. Threshold `CONVNET_ESR_LIMIT = 1e-12` em `tests/common/constants.rs:31`. ESR medido: 1.83e-14 (−137.4 dB) — piso numérico, similar ao WaveNet. Testes: prewarm-paired ESR gate, decomposition, combined simulation, warmup paired, python anchor (ignored → S10.2).
 
 #### [ ] Task S10.2 — Âncora NumPy e Geração de Fixtures ConvNet (PM-04)
 

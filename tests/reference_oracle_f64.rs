@@ -24,6 +24,7 @@ use std::path::PathBuf;
 
 mod common;
 use common::A2_ESR_LIMIT;
+use common::CONVNET_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
 use common::WAVENET_ESR_LIMIT;
 
@@ -449,6 +450,70 @@ fn test_combined_simulation_a2() {
     run_combined_paired_test("wavenet_a2_lite.nam", "A2");
 }
 
+// ── S10.1: ConvNet oracle tests ────────────────────────────────────────────
+
+#[test]
+fn test_oracle_convnet() {
+    let esr = run_oracle_esr_paired("convnet_test.nam", "ConvNet");
+    assert!(
+        esr < CONVNET_ESR_LIMIT,
+        "ConvNet ESR={:.6e} exceeds calibrated limit {}",
+        esr,
+        CONVNET_ESR_LIMIT
+    );
+}
+
+#[test]
+fn test_decomposition_convnet() {
+    let path = models_dir().join("convnet_test.nam");
+    let md = load_and_parse(&path);
+
+    let esr_paired = run_oracle_esr_paired("convnet_test.nam", "ConvNet");
+    assert!(
+        esr_paired < CONVNET_ESR_LIMIT,
+        "ConvNet paired ESR={:.6e} exceeds calibrated limit {}",
+        esr_paired,
+        CONVNET_ESR_LIMIT
+    );
+
+    let input_f64 = gen_sweep(256, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+    let prod_f32 = run_f32_inference(&md, &input_f32);
+    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition("ConvNet-test", "ConvNet", &md, &prod_f64, &input_f64);
+    print_decomposition(&result);
+    assert!(
+        result.esr_combined_display() > 0.0,
+        "Combined ΔESR should be non-zero"
+    );
+}
+
+#[test]
+fn test_combined_simulation_convnet() {
+    run_combined_paired_test("convnet_test.nam", "ConvNet");
+}
+
+#[test]
+fn test_oracle_warmup_paired_convnet() {
+    run_warmup_paired_test("convnet_test.nam", "ConvNet", 1.00);
+}
+
+#[test]
+#[ignore]
+fn test_oracle_vs_python_anchor_convnet() {
+    let path = models_dir().join("convnet_test.nam");
+    let md = load_and_parse(&path);
+    // Anchor files will be generated in Task S10.2 (NumPy anchor + generation)
+    // For now, only the Rust oracle is validated.
+    let _input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let _anchor = load_f64_binary(&anchors_dir().join("convnet_256_f64.bin"));
+
+    let _oracle = oracle_forward(&md, &_input_f64, &PrecisionConfig::default());
+    let _esr = compute_esr_f64(&_oracle, &_anchor);
+    // assert!(_esr < 1e-12);
+}
+
 // ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
 
 /// T8.1 Diagnostic: measures ESR(oracle vs production) with paired prewarm.
@@ -523,6 +588,7 @@ fn test_summary_table() {
         ("wavenet_official.nam", "WaveNet"),
         ("lstm.nam", "LSTM"),
         ("wavenet_a2_lite.nam", "WaveNet(A2)"),
+        ("convnet_test.nam", "ConvNet"),
     ];
     let input = gen_sweep(256, 48000.0);
 
