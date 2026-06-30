@@ -146,15 +146,21 @@ Este sprint leva o modo `ActivationPrecision::HighFidelity` (que usa aproximaç�
   - `src/models/lstm/layer_kernels.rs:252-284`: `process_sample_scalar` aplica mesma lógica com `is_hf` hoisted e branch direto.
   - `src/models/lstm/layer_dyn_kernels.rs:57-88`: `LstmLayerDyn::process_sample_scalar` também ganhou dispatch HF (originalmente esquecido).
   - Todos os testes passam: `test_oracle_lstm`, `test_decomposition_lstm`, `test_lstm_activation_precision_gain`, 16 unit tests LSTM, 8 dynamic LSTM validation tests. Clippy limpo.
-  - **Nota para β1.2:** O caminho SIMD principal (AVX2/AVX-512) em `fused_lstm_gates_avx2`/`fused_lstm_gates_avx512` **ainda não lê** `activation_precision()` — usa sempre Padé/minimax. A validação do ESR em modo HF no oráculo f64 só será observável após β1.2 (SIMD HF). A infraestrutura de desvio escalar está pronta e funcionando como fundação.
+  - **Nota para β1.2:** O caminho SIMD principal (AVX2/AVX-512) em `fused_lstm_gates_avx2`/`fused_lstm_gates_avx512` foi implementado. A validação do ESR no modo HF no oráculo f64 é observável em toda a stack LSTM.
 
-#### [ ] Tarefa β1.2 — Kernels SIMD Fundidos HF (AVX2 e AVX512) [ALTO RISCO]
+#### [x] Tarefa β1.2 — Kernels SIMD Fundidos HF (AVX2 e AVX512) [ALTO RISCO]
 
 - **Descrição:** Adicionar suporte a SIMD HighFidelity nos kernels fundidos de 4 gates do LSTM.
 - **Mudanças propostas:**
   - Em `src/math/lstm/gates.rs`, modificar `fused_lstm_gates_avx2` e `fused_lstm_gates_avx512` para avaliar `activation_precision()`.
   - Se `HighFidelity` estiver ativo, despachar para implementações polinomiais de alta fidelidade reusando os kernels exp/sigmoid/tanh poly de `high_fidelity.rs`.
 - **Validação:** Confirmar que não ocorrem alocações de heap no hot path e que os ganhos de ESR se estendem ao processamento SIMD.
+- **Conclusão (2026-06-29):**
+  - `src/math/lstm/gates.rs:43,79`: `fused_lstm_gates_avx2` e `fused_lstm_gates_avx512` agora avaliam `activation_precision()` internamente com branch direto (`if is_hf { ... simd_sigmoid_poly_avx2/simd_tanh_poly_avx2 } else { ... simd_sigmoid_avx2/simd_sigmoid_dual_avx2/simd_tanh_avx2 }`). Preserva a assinatura original — compatível com `define_lstm_process!` em `layer_kernels.rs`.
+  - AVX2 HF perde o dual-sigmoid interleave (`simd_sigmoid_dual_avx2`), usando 3 chamadas individuais a `simd_sigmoid_poly_avx2` + `simd_tanh_poly_avx2`. AVX-512 HF usa `simd_sigmoid_poly_avx512` ×3 + `simd_tanh_poly_avx512` (já individual no Standard).
+  - Imports de `simd_sigmoid_poly_avx2`, `simd_sigmoid_poly_avx512`, `simd_tanh_poly_avx2`, `simd_tanh_poly_avx512` adicionados no bloco `tanh::high_fidelity`.
+  - Testes: todos passam (reference_oracle_f64 16/16, isa_parity 8/8, activation_precision 9/9, zero_alloc_infer 8/8, LSTM unit tests). Clippy limpo.
+  - `test_zero_alloc_process_lstm` confirma zero alocação no hot path com HF ativo. A ESR gain no SIMD agora se estende a 100% do processamento LSTM (antes β1.2, apenas WWN e scalar fallback do LSTM eram cobertos).
 
 #### [ ] Tarefa β1.3 — Paridade ISA e Recalibração de Gates [MÉDIO RISCO]
 

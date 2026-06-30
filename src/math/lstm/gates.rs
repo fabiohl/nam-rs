@@ -16,7 +16,10 @@ use crate::math::activations::activation_precision;
 use crate::math::activations::sigmoid::{
     scalar_minimax_sigmoid, simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
 };
-use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
+use crate::math::activations::tanh::high_fidelity::{
+    scalar_sigmoid_poly, scalar_tanh_poly, simd_sigmoid_poly_avx2, simd_sigmoid_poly_avx512,
+    simd_tanh_poly_avx2, simd_tanh_poly_avx512,
+};
 use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
@@ -36,15 +39,27 @@ pub unsafe fn fused_lstm_gates_avx2(
     go: __m256,
     cs: __m256,
 ) -> (__m256, __m256) {
-    // Interleave sigmoids
-    let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
-    let sig_o = unsafe { simd_sigmoid_avx2(go) };
-    let tanh_g = unsafe { simd_tanh_avx2(gg) };
+    if activation_precision() == ActivationPrecision::HighFidelity {
+        let sig_f = unsafe { simd_sigmoid_poly_avx2(gf) };
+        let sig_i = unsafe { simd_sigmoid_poly_avx2(gi) };
+        let sig_o = unsafe { simd_sigmoid_poly_avx2(go) };
+        let tanh_g = unsafe { simd_tanh_poly_avx2(gg) };
 
-    let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
-    let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_avx2(new_cs) });
+        let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
+        let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_poly_avx2(new_cs) });
 
-    (new_cs, hidden)
+        (new_cs, hidden)
+    } else {
+        // Interleave sigmoids
+        let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
+        let sig_o = unsafe { simd_sigmoid_avx2(go) };
+        let tanh_g = unsafe { simd_tanh_avx2(gg) };
+
+        let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
+        let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_avx2(new_cs) });
+
+        (new_cs, hidden)
+    }
 }
 
 /// Fused kernel for LSTM gates (AVX-512).
@@ -60,15 +75,27 @@ pub unsafe fn fused_lstm_gates_avx512(
     go: __m512,
     cs: __m512,
 ) -> (__m512, __m512) {
-    let sig_f = unsafe { simd_sigmoid_avx512(gf) };
-    let sig_i = unsafe { simd_sigmoid_avx512(gi) };
-    let sig_o = unsafe { simd_sigmoid_avx512(go) };
-    let tanh_g = unsafe { simd_tanh_avx512(gg) };
+    if activation_precision() == ActivationPrecision::HighFidelity {
+        let sig_f = unsafe { simd_sigmoid_poly_avx512(gf) };
+        let sig_i = unsafe { simd_sigmoid_poly_avx512(gi) };
+        let sig_o = unsafe { simd_sigmoid_poly_avx512(go) };
+        let tanh_g = unsafe { simd_tanh_poly_avx512(gg) };
 
-    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
-    let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
+        let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+        let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_poly_avx512(new_cs) });
 
-    (new_cs, hidden)
+        (new_cs, hidden)
+    } else {
+        let sig_f = unsafe { simd_sigmoid_avx512(gf) };
+        let sig_i = unsafe { simd_sigmoid_avx512(gi) };
+        let sig_o = unsafe { simd_sigmoid_avx512(go) };
+        let tanh_g = unsafe { simd_tanh_avx512(gg) };
+
+        let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+        let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
+
+        (new_cs, hidden)
+    }
 }
 
 /// Fused kernel for dynamic LSTM gate processing via AVX2.
