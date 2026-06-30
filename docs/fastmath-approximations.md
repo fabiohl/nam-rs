@@ -248,7 +248,7 @@ is a normal normalized f32 value.
 
 - `tests/soak_test.rs:53` — `test_wavenet_silence_soak` (`#[ignore]`, 10M frames)
 - `tests/soak_test.rs:117` — `test_wavenet_silence_decomposition` (source isolation)
-- `TODO-problemas.md:155` — P4 problem report
+- See `fastmath-approximations.md` §6 (this section) and `docs/audio_fidelity_map.md`.
 
 ---
 
@@ -322,28 +322,19 @@ non-exact component, but still yields SNR ≫ 100 dB across all non-Lite models.
 > the trade-off being < 2.32e-3 local error — well below the 24-bit DAC
 > quantization floor in practice.
 
-### 9.4 Lite Architectures — P1 Remains (Architectural)
+### 9.4 Lite Architectures — Resolved (PM-02)
 
-WaveNet **Lite (CH=12)** is the only WaveNet SKU that diverges from C++:
-**SNR ≈ 0.9 dB** — the output is almost fully decorrelated from the reference.
+WaveNet **Lite (CH=12)** historical 🔴 "SNR ≈ 0.9 dB" divergence vs C++ has been fully **resolved** (122.3 dB).
 
-> **Verdict:** The f32 exact path (weights + tanh poly,
-> identical to all other WaveNet models) **did not** resolve P1. Lite CH=12
-> maintained SNR ≈ 0.9 dB with no quantization in the path. This confirms
-> P1 is **architectural/implementational** — not a drift accumulation from
-> FastMath or quantization. Suspected causes: bias-tuning, 4-wide interleaving
-> order, or the CH=12 static engine path itself.
+> [!NOTE]
+> **RCA (Root Cause Analysis):** The divergence was caused by a buffer wrap alignment bug in the `MirroredBuffer` delay lines. The buffer was rounded to memory page boundaries (4096 bytes = 1024 `f32`) without ensuring alignment to the channel count/stride. For non-power-of-two channel counts (CH=12 in Lite array1, CH=6 in Lite array2), `1024 % 12 = 4` and `1024 % 6 = 4`, causing the wrap pointer to shift by +4 elements per wrap cycle, leading to rapid decorrelation. Other standard topologies (CH=16/8/4) are divisible by 1024 and were never affected.
+>
+> **Resolution:** Solved via `MirroredBuffer::new_aligned(req, elem_multiple)` which ensures `size_elements % channels == 0`. The golden vector was also updated to use the real model `EVH-5150-Lite.nam`. Three active regression tests guard this implementation.
 
 | Model                   | Status                                | SNR (vs C++) |
 |:----------------------- |:------------------------------------- |:------------ |
 | BossWN-lite (synthetic) | Obsolete — replaced by real CH=12     | ~0.9 dB      |
-| EVH-5150-Lite (real)    | ✅ Golden parity resolved — ≥ 105 dB  | 122.3 dB     |
-
-> [!CAUTION]
-> Lite models should be treated with caution. Users loading a WaveNet Lite model
-> will hear output that differs from the canonical NAMCore render. Until P1 is
-> resolved, Lite is documented as a **known limitation** (see
-> `TODO-problemas.md#P1`).
+| EVH-5150-Lite (real)    | ✅ Golden parity resolved             | 122.3 dB     |
 
 ### 9.5 Historical Context: The Lo-Fi/Hi-Fi Duality (Removed)
 
@@ -353,7 +344,7 @@ because:
 
 1. The quantitative performance advantage of low-fidelity over exact f32 was
    **never rigorously measured** with real-world models on modern x86-64-v3
-   hardware (P10, `TODO-problemas.md:353`)
+   hardware (see §9.5, historical lo-fi mode decision)
 2. A2 architecture demonstrated that quality and efficiency are **not**
    mutually exclusive — A2 uses native f32 + LeakyReLU and is simultaneously
    more efficient and more faithful than WaveNet A1
@@ -371,11 +362,10 @@ because:
 
 ### 9.6 Cross-References
 
-| Item | Location                | Topic                          |
-|:---- |:----------------------- |:------------------------------ |
-| P1   | `TODO-problemas.md:47`  | Lite divergent (architectural) |
-| P2   | `TODO-problemas.md:92`  | Fidelity asymmetry — RESOLVED  |
-| P10  | `TODO-problemas.md:353` | Lo-fi mode review — RESOLVED   |
+| Item | Location                          | Topic                                  |
+|:---- |:--------------------------------- |:-------------------------------------- |
+| PM-02| `docs/cpp_parity_map.md` §9.1     | Lite resolved (aligned MirroredBuffer) |
+| PM-08| `TODO-findings.md` PM-08          | Central definition & reference registry|
 
 ---
 
@@ -450,5 +440,3 @@ The dispatch is performed via a branch-direct hoisted flag check before entering
 | Test | `tests/activation_precision.rs`              | ESR via oracle, functional validation  |
 | Code | `src/math/activations/tanh/high_fidelity.rs` | Polynomial exp-based kernels           |
 | Code | `src/math/activations/tanh/production.rs`    | Padé [5,4] production kernels          |
-
----

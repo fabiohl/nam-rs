@@ -567,8 +567,8 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 | **ConvNet** C++ cross-validation                                                             | 🟡 Engine complete + self-golden + unit-tested; **C++ golden blocked** — NAMCore v0.5.3 single-block ConvNet is architecturally incompatible with NAM 0.5.4 multi-block. f64-oracle path open. | §5 · PM-04          |
 | **A2 general engine** (FiLM / gating / blending / `condition_dsp` / `bottleneck ≠ channels`) | 🟢 **Implemented & golden-tested** via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB)                                                                                | §6                  |
 | **A2 FiLM** interop divergence vs C++ generic WaveNet (**RF1**)                              | 🟡 Wired & golden-tested; SNR 18–36 dB divergence documented & capped; not yet witnessed by the f64 oracle                                                                                     | §6 · PM-03          |
-| **A2 official real-amp FiLM captures** (`wavenet_a2_max`, …)                                 | 🟡 Engine supports FiLM; real-amp **fixtures** not yet integrated (synthetic only)                                                                                                             | §6 · PM-05          |
-| **`SlimmableWavenet`** (single-net channel slicing)                                          | 🟡 Deferred epic (multi-model `SlimmableContainer` is implemented & tested)                                                                                                                    | §6 · PM-06          |
+| **A2 official real-amp FiLM captures** (`wavenet_a2_max`, …)                                 | 🟡 Conformed to synthetic captures (no compatible real-amp captures in fixtures)                                                                                                               | §6 · PM-05          |
+| **`SlimmableWavenet`** (single-net channel slicing)                                          | 🟡 Genuinely deferred (multi-model `SlimmableContainer` is implemented & tested)                                                                                                               | §6 · PM-06          |
 | **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                              | 🟢 Documented, asserted, rate-aware cap (inherent f16c)                                                                                                                                        | §4.5 / §9.1         |
 | **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                                      | 🟢 By design (explicit `sample_rate` field pins native rate)                                                                                                                                   | §6                  |
 | **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                             | 🟢 By design — live cross-val covers SR; no committed goldens                                                                                                                                  | §3.3 (**RF3**)      |
@@ -589,9 +589,11 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
   `tests/common/validation.rs` and `perceptual_validation.md`. The divergence is *capped and tracked*,
   but it has **not** been independently classified as inherent-vs-bug because the f64 A2 oracle does
   not yet model FiLM. PM-03 proposes extending the oracle to settle this.
-- **`SlimmableWavenet` (PM-06).** Genuinely deferred. The practical use case (adaptive quality via
-  independent sub-nets + crossfade) is already covered by `SlimmableContainer`
-  (`tests/container_slimmable.rs`). Single-net runtime channel slicing remains future work.
+- **A2 official real-amp FiLM captures (PM-05).** The engine supports FiLM, but available real-amp FiLM models (such as `wavenet_a2_max.nam` with `condition_size=8`) are structure-incompatible with the active A2 dynamic engine (rejected by the loader). No other compatible captures exist in `tests/fixtures/models-nondist/`. Therefore, the project conforms to synthetic captures (`wavenet_a2_film_full.nam`, `wavenet_a2_film_lite.nam`) for automated correctness verification.
+- **`SlimmableWavenet` (PM-06).** Genuinely deferred. The practical use case (adaptive quality via independent sub-nets + crossfade) is already covered by the implemented and tested `SlimmableContainer` (`tests/container_slimmable.rs`). Any future implementation must meet the following acceptance criteria:
+  - Single-file parser supporting multiple channel widths.
+  - RT-safe dynamic slicing of weights.
+  - Bit-exact parity with C++ NAMCore's `SlimmableWavenet`.
 
 **Recently resolved** — kept for traceability:
 

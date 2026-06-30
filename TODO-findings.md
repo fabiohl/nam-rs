@@ -259,7 +259,7 @@ e mapeia as *tags* existentes.
 > Ordenados por relação **valor/risco/sequência**. Épicos A e D são *quick wins* de baixíssimo
 > risco; B e C entregam testemunhas independentes e cobertura real; E permanece diferido.
 
-### Épico A — Sincronização Documental de Paridade (PM-01, PM-02, PM-08)
+### Épico A — Sincronização Documental de Paridade (PM-01, PM-02, PM-08) [DOING]
 
 * **Risco/Criticidade:** Nulo a Baixo (doc-only). **Sequência:** imediata.
 * Alinha toda a documentação ao estado real do motor e elimina referências quebradas/alarmes
@@ -275,7 +275,7 @@ e mapeia as *tags* existentes.
 * **Crítico/atenção:** manter a **independência** do oráculo (âncora NumPy, Regra 6) — não
   espelhar o engine; e jamais relaxar gate para mascarar (Regra 7).
 
-### Épico C — Cobertura de Modelos Reais A2-FiLM (PM-05)
+### Épico C — Cobertura de Modelos Reais A2-FiLM (PM-05) [DOING]
 
 * **Risco/Criticidade:** Médio (depende de obter captura real). **Sequência:** após Épico B (PM-03).
 * Eleva os goldens FiLM de pesos sintéticos para timbres reais, fechando o item "A2 official
@@ -284,7 +284,7 @@ e mapeia as *tags* existentes.
   * Se nenhum arquivo lá ou em `tests/fixtures/models/`, vamos ter de nos conformar com capturas sintéticas.
   * Documente isto de forma muito clara em `docs/cpp_parity_map.md`seção `13. Pending / Open Work`.
 
-### Épico D — Épico Diferido: `SlimmableWavenet` (PM-06)
+### Épico D — Épico Diferido: `SlimmableWavenet` (PM-06) [DOING]
 
 * **Risco/Criticidade:** Nulo (decisão de escopo). **Sequência:** sem urgência.
 * Mantém o single-net channel slicing diferido com critérios de aceitação claros; o caso prático
