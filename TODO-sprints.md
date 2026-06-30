@@ -219,13 +219,19 @@ Este sprint adiciona soma compensada de Kahan ao head f32-native do LSTM como pr
 
 Este sprint caracteriza o impacto de oversampling externo no LSTM e atualiza os mapas de fidelidade para refletir os findings reais.
 
-#### [ ] Tarefa β3.1 — Experimentos de Caracterização de Oversampling [BAIXO RISCO]
+#### [x] Tarefa β3.1 — Experimentos de Caracterização de Oversampling [BAIXO RISCO]
 
 - **Descrição:** Medir empiricamente o efeito de usar o `OversampleEngine` externo com modelos LSTM.
 - **Atividades:**
   - Rodar testes para obter ASR (redução de aliasing) e ESR/MR-STFT (variação de timbre contra baseline de 48 k) com oversampling de Off vs 2x vs 4x.
   - Tabular os dados espectrais obtidos para inclusão na documentação.
 - **Validação:** Confirmar cientificamente a hipótese de que o oversampling de LSTM serve a anti-aliasing mas muda o timbre (tonalidade) por não ajustar o atraso de realimentação.
+- **Conclusão (2026-06-29):**
+  - `tests/oversampling_characterization.rs` — 3 testes (1 ignored, 2 non-ignored sanity checks).
+  - **ASR** (stress tone 2017 Hz +12 dB): LSTM-1x16 Off=-22.1 dB → X2=-30.8 dB (Δ=-8.7 dB); LSTM-2x8 Off=-34.0 dB → X2=-45.3 dB (Δ=-11.3 dB); LSTM-official (H=3): sem aliasing detectável (-inf em todos os fatores).
+  - **ESR/MR-STFT** (v2 stress 5s, 48 kHz): timbre muda drasticamente. LSTM-1x16 X2vsOff ESR=1.17 (0.7 dB), X4vsOff ESR=1.59 (2.0 dB), MR-STFT X2=1.92, MR-STFT X4=2.89. LSTM-2x8: X2vsOff ESR=1.19 (0.8 dB), X4vsOff ESR=1.60 (2.0 dB), MR-STFT X2=2.55, MR-STFT X4=3.99. LSTM-official (H=3) mais moderado: X2vsOff ESR=0.11 (-9.4 dB), X4vsOff ESR=0.37 (-4.3 dB), MR-STFT X2=0.78, MR-STFT X4=0.91.
+  - **Hipótese CONFIRMADA:** Oversampling de LSTM reduz aliasing (ASR melhora ~8.7 a ~11.3 dB para modelos que produzem aliasing), mas altera o timbre de forma mensurável e drástica (ESR > 1.0 para modelos BossLSTM, indicando que a saída com OS é mais diferente do baseline Off do que a energia do próprio baseline). A causa raiz é que o atraso de realimentação do LSTM é fixo em amostras absolutas — rodar a 2×/4× efetivamente divide por 2/4 a janela temporal de feedback em segundos, alterando a dinâmica recorrente.
+  - **Nota para β3.2:** Incluir a tabela ASR/ESR em `docs/lstm_recurrent_drift.md` (§4, §7) e `docs/audio_fidelity_map.md` (§3, §9). Documentar que o oversampling de LSTM NÃO é recomendado como controle de usuário (ao contrário do WaveNet onde o OS é transparente) devido à alteração drástica de timbre.
 
 #### [ ] Tarefa β3.2 — Sincronização da Documentação e Referências [BAIXO RISCO]
 
