@@ -38,7 +38,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   5. Documentação atualizada: `tests/fixtures/README.md` corrigiu registros obsoletos (`wavenet_condition_dsp` marcado como "Rejected" mas opera com SNR=139.5 dB), adicionou entradas `wavenet_a2_film_*` à tabela de catálogo e golden vectors, e adicionou seção dedicada de FiLM Fixtures documentando o conformismo PM-05.
   * **Nota para S9.2:** O `docs/cpp_parity_map.md` §13 já contém a documentação de conformismo solicitada (linha 592). S9.2 pode focar em revisar/expandir o que já existe, em vez de criar do zero.
 
-#### [ ] Task S9.2 — Documentação de Conformismo FiLM A2 em `cpp_parity_map.md` (PM-05)
+#### [x] Task S9.2 — Documentação de Conformismo FiLM A2 em `cpp_parity_map.md` (PM-05)
 
 * **Responsável:** Documentador Técnico
 * **Risco/Criticidade:** Nulo (doc-only).
