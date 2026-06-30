@@ -199,11 +199,19 @@ Este sprint adiciona soma compensada de Kahan ao head f32-native do LSTM como pr
   - 9 chamadas substituídas: 4 em `model_dyn.rs` (AVX2, AVX-512, AVX-512 BF16, scalar), 2+macro em `model1.rs` (processo SIMD + scalar), 3+macro em `model2.rs` (processo pipelined SIMD × 2 + scalar). Todas sob guarda `self.use_f32_head`.
   - Compilação limpa, 11 testes LSTM passam (model_dyn_validation: 8/8, self_consistency: 3/3, zero_alloc_infer: 1/1).
 
-#### [ ] Tarefa β2.3 — Validação de Estabilidade e Soak [BAIXO RISCO]
+#### [X] Tarefa β2.3 — Validação de Estabilidade e Soak [BAIXO RISCO]
 
 - **Descrição:** Validar que a adição do Kahan no head não introduz gargalos de CPU no thread de áudio nem quebra garantias de latência.
 - **Validação específica:**
   - Executar `tests/soak_test.rs` de longa duração para garantir estabilidade e ausência de regressões.
+- **Conclusão (2026-06-29):**
+  - 3 testes de soak LSTM executados em `--release`, todos aprovados:
+    - `test_lstm_silence_soak` — 10M frames (2.02s), estados internos estáveis, sem NaN/Inf.
+    - `test_lstm_noise_soak` — 10M frames (2.07s), RMS range [1e-4, 10] mantido, sem NaN/Inf.
+    - `test_lstm_dyn_soak` — 10M frames (2.17s), zero-alloc verificado (CountingAllocator), sem subnormals.
+  - Testes unitários LSTM (24/24) e Kahan dot product (6/6) passam.
+  - Zero-alloc em `process()` confirmado: `test_zero_alloc_process_lstm` aprovado.
+  - Kahan no head do LSTM não introduz gargalos mensuráveis de CPU (~0.21 µs/sample no soak), mantém garantias RT (zero heap allocation) e estabilidade numérica de longa duração.
 
 ---
 
