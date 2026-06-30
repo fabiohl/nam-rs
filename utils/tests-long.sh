@@ -388,7 +388,7 @@ run_clap_audit_local() {
     export RUSTFLAGS
 
     echo "  Limpando binário CLAP anterior e cache local..."
-    cargo clean -p nam-rs --release
+    cargo clean --release
     rm -f target/release/libnam_rs.so
     rm -rf target/release/incremental/
 

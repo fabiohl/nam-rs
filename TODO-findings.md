@@ -554,7 +554,7 @@ preservando o formato?**
 > Agrupados por afinidade técnica, risco e dependência. A quebra em sprints/tarefas
 > (`TODO-sprints.md`) só deve ser feita **quando solicitada** (skill `planejador-arquiteto`).
 
-### Épico α — Controles de usuário de baixo risco (quick wins)
+### Épico α — Controles de usuário de baixo risco (quick wins) [DONE]
 
 - **Findings:** I1 (HF knob p/ WaveNet/ConvNet/Linear) + I2 (paridade de oversampling no standalone).
 - **Objetivo:** expor o que **já existe e funciona**, com mínima superfície de risco. I1 é um
