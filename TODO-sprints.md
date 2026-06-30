@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, C & D
+# Roadmap de Sprints — Épicos A, B, C & D
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)** e o **Épico D (PM-06 — SlimmableWavenet)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)** e o **Épico D (PM-06 — SlimmableWavenet)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -104,3 +104,69 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   4. ✅ Cross-reference canônica estabelecida em `fastmath-approximations.md` §9.6 e `cpp_parity_map.md` See Also — ambas apontam para este registro (`TODO-findings.md` PM-08).
   5. ✅ Bug de auto-referência em `fastmath-approximations.md` §8 References (`(this section)` referindo-se a §6) corrigido.
   6. PM-08 marcado `[RESOLVIDO]` em `TODO-findings.md`.
+
+---
+
+## SPRINT S10 — Testemunhas Independentes: Oráculo f64 (PM-04, PM-03)
+
+### S10 Objetivos da Sprint
+
+1. Estender o oráculo f64 (`src/testing/reference_oracle.rs`) para suportar a arquitetura **ConvNet** e a feature **FiLM** do motor **A2**, estabelecendo a *testemunha de matemática ideal* de forma independente do motor de produção.
+2. Atualizar o script de validação externa NumPy/Python (`tests/fixtures/scripts/validate_oracle_f64.py`) para suportar as mesmas arquiteturas (ConvNet e FiLM A2), fechando a cadeia de confiança de 3 oráculos/testemunhas independentes.
+3. Caracterizar a divergência interop de FiLM A2 (RF1) no oráculo f64 para validar se é inerente (diferenças legítimas de estrutura) ou bug do motor SIMD de produção.
+4. Validar o oráculo f64 e a âncora NumPy contra o motor de produção Rust com erros ESR estritamente controlados (< 1e-12 para ConvNet e < 1e-9 para FiLM A2).
+
+---
+
+### S10 Tarefas Técnicas
+
+#### [ ] Task S10.1 — Extensão do Oráculo f64 para ConvNet (PM-04)
+
+* **Responsável:** Engenheiro de DSP / QA
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  O motor ConvNet está completo e unit-testado, mas não possui cobertura pelo oráculo f64 (retorna zeros). É necessário implementar `oracle_convnet_forward` em f64 exato no oráculo para servir de referência matemática independente.
+* **Critérios de Aceitação:**
+  1. Implementar `oracle_convnet_forward` em `src/testing/reference_oracle.rs` simulando a topologia multi-bloco do NAM 0.5.4: `Conv1d` causal → `BatchNorm` fundida (`scale * x + offset`) → ativação → `PostStackHead` (se presente) → `head_scale`.
+  2. Integrar a chamada no despachador principal `oracle_forward`.
+  3. Definir o threshold `CONVNET_ESR_LIMIT = 1e-12` em `tests/common/constants.rs`.
+  4. Adicionar testes em `tests/reference_oracle_f64.rs` (ex: `test_oracle_convnet`) carregando `convnet_test.nam` e comparando com o motor f32 de produção (ESR < `CONVNET_ESR_LIMIT`).
+
+#### [ ] Task S10.2 — Âncora NumPy e Geração de Fixtures ConvNet (PM-04)
+
+* **Responsável:** Engenheiro de DSP / Python Integrator
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  Para garantir a Regra 6 da *Gate Calibration Policy* (não-circularidade do oráculo), precisamos de uma 3ª implementação independente em NumPy (`validate_oracle_f64.py`) servindo de âncora.
+* **Critérios de Aceitação:**
+  1. Adicionar `convnet_forward(model, x)` em `tests/fixtures/scripts/validate_oracle_f64.py` seguindo a especificação física do formato NAM.
+  2. Integrar a arquitetura `"ConvNet"` no CLI do script Python.
+  3. Gerar a fixture de sinal de sweep f64 e o arquivo de âncora binário `convnet_256_f64.bin` sob `tests/fixtures/f64_anchors/`.
+  4. Adicionar o teste `test_oracle_vs_python_anchor_convnet` em `tests/reference_oracle_f64.rs` exigindo ESR < 1e-12.
+
+#### [ ] Task S10.3 — Extensão do Oráculo f64 para FiLM A2 (PM-03)
+
+* **Responsável:** Engenheiro de DSP / Cientista de Redes
+* **Risco/Criticidade:** Médio.
+* **Contexto:**
+  O motor `WaveNetA2Dyn` suporta FiLM, mas ele apresenta uma divergência interop de paridade de 18-36 dB (marcada como `RF1` / PM-03). Precisamos estender o oráculo f64 para suportar FiLM para classificar se a causa-raiz é estrutural inerente ou um bug de inserção/SIMD.
+* **Critérios de Aceitação:**
+  1. Modificar `oracle_a2_forward` em `src/testing/reference_oracle.rs` para carregar as configurações de FiLM (via `l0.layer_raw`) e ler os respectivos pesos/bias usando o cursor de peso.
+  2. Implementar `apply_modulation` e as 8 posições de inserção FiLM em f64 exato, espelhando a ordem de processamento da produção.
+  3. Executar o cross-check Rust f32 × oráculo f64 com os modelos `wavenet_a2_film_lite.nam` e `wavenet_a2_film_full.nam`:
+     * Se ESR for baixo (< 1e-9) → FiLM está matematicamente correto e a divergência vs C++ é **inerente** (H1) → reclassificar `RF1` como divergência documentada, atualizar `cpp_parity_map.md` e manter os caps.
+     * Se ESR for alto → existe um **bug** (H2) de inserção ou SIMD → corrigir o ponto de divergência, revalidar os goldens e só então alterar produção.
+  4. Adicionar testes unitários/gates em `tests/reference_oracle_f64.rs`.
+
+#### [ ] Task S10.4 — Âncora NumPy e Geração de Fixtures FiLM A2 (PM-03)
+
+* **Responsável:** Engenheiro de DSP / Python Integrator
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  Complementar a cadeia de confiança gerando a âncora independente NumPy para o caso FiLM A2.
+* **Critérios de Aceitação:**
+  1. Estender `a2_forward` em `tests/fixtures/scripts/validate_oracle_f64.py` para ler as propriedades FiLM do JSON e extrair seus pesos.
+  2. Implementar a modulação FiLM em NumPy f64 nas posições correspondentes da rede.
+  3. Validar a âncora Python contra o oráculo Rust f64 com ESR < 1e-12.
+  4. Gerar os arquivos de âncora correspondentes (ex: `wavenet_a2_film_lite_256_f64.bin`) em `tests/fixtures/f64_anchors/`.
+  5. Adicionar `test_oracle_vs_python_anchor_a2_film` em `tests/reference_oracle_f64.rs` assegurando o alinhamento de 3 vias.

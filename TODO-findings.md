@@ -277,7 +277,7 @@ e mapeia as *tags* existentes.
   falsos. **PM-01 aplicado** ao `cpp_parity_map.md`; **PM-02** resolvido (`fastmath-approximations.md`
   §9.4); **PM-08** resolvido (registro canônico + correção de todas as referências quebradas).
 
-### Épico B — Testemunhas Independentes (Oráculo f64) (PM-04, PM-03)
+### Épico B — Testemunhas Independentes (Oráculo f64) (PM-04, PM-03) [DOING]
 
 * **Risco/Criticidade:** Baixo-Médio (test-only; produção só muda sob bug comprovado). **Alto valor.**
 * Estende a cadeia de confiança de 4 camadas do §9.2 a duas lacunas: **ConvNet** (PM-04, sem
