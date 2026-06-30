@@ -402,11 +402,11 @@ run_clap_audit_local() {
     fi
 
     echo "  Auditando SONAME e símbolos exportados..."
-    if ! readelf -d "$RELEASE_CLAP_BIN" | grep -q SONAME; then
+    if ! readelf -d "$RELEASE_CLAP_BIN" | grep SONAME >/dev/null; then
         echo "Erro: SONAME ausente no binário de Release!" >&2
         return 1
     fi
-    if ! nm -D "$RELEASE_CLAP_BIN" | grep -q "clap_entry"; then
+    if ! nm -D "$RELEASE_CLAP_BIN" | grep "clap_entry" >/dev/null; then
         echo "Erro: Símbolo 'clap_entry' ausente no binário de Release!" >&2
         return 1
     fi

@@ -419,11 +419,11 @@ echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
 # pré-strip, para que o gate cubra exatamente o que o usuário recebe (um bug de strip
 # que removesse clap_entry/SONAME seria capturado aqui).
 echo -e "  Validating shipped CLAP artifact integrity..."
-if ! nm -D "$CLAP_TARGET" | grep -q "clap_entry"; then
+if ! nm -D "$CLAP_TARGET" | grep "clap_entry" >/dev/null; then
     echo -e "${RED}Erro: Símbolo 'clap_entry' ausente no artefato CLAP distribuído!${NC}"
     exit 1
 fi
-if ! readelf -d "$CLAP_TARGET" | grep -q SONAME; then
+if ! readelf -d "$CLAP_TARGET" | grep SONAME >/dev/null; then
     echo -e "${RED}Erro: SONAME ausente no artefato CLAP distribuído!${NC}"
     exit 1
 fi

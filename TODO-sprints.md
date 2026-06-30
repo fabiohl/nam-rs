@@ -66,7 +66,7 @@ Foco em acelerar o passo de perfilamento e resolver falhas silenciosas de pipe e
   * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), mover a definição da variável `NAM_RS_BIN` para antes da chamada de `perf annotate`.
   * Passar `"$NAM_RS_BIN"` como argumento para o comando `perf annotate`.
 
-#### [T2.2] Correção do SIGPIPE na Validação de Símbolos do CLAP (F08)
+#### [T2.2] Correção do SIGPIPE na Validação de Símbolos do CLAP (F08) [DONE]
 
 * **Objetivo:** Substituir o uso de `grep -q` em pipelines para evitar que sinais `SIGPIPE` retornem código de erro e façam o script falhar sob `set -o pipefail`.
 * **Ações:**

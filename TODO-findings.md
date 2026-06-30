@@ -118,7 +118,7 @@ Este documento agrupa as análises e constatações obtidas pelas auditorias da 
 * Inclui **F01**, **F03**, **F04**, **F06**.
 * Foco em limpar atalhos redundantes (`--os`, `--act`), esclarecer o `--slim` e introduzir a exibição no terminal do modo de precisão de ativação selecionado.
 
-### Épico 2: Correção do Pipeline de Build de Release
+### Épico 2: Correção do Pipeline de Build de Release [DONE]
 
 * Inclui **F07**, **F08**.
 * Foco em acelerar o passo do `perf annotate` de 14 minutos para alguns segundos e corrigir a falha silenciosa de pipe do validador de símbolo `clap_entry` (eliminando a saída de erro falsa).
