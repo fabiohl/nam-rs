@@ -85,11 +85,11 @@ thousands of activations per 1.3 ms RT window, this is the difference between re
 
 **Optional HF mode.** `ActivationPrecision::HighFidelity` replaces Padé/minimax with Taylor-based
 polynomial exp kernels (~degree-6). Error is ~10,000× lower (≈ −133 dB), and it eliminates the
-`|x|>4` clamp discontinuity. This is most useful combined with oversampling (§5). See §6 for
-current exposure status.
+`|x|>4` clamp discontinuity. This is most useful combined with oversampling (§5). It is
+user-selectable at runtime (CLI + CLAP) and now reaches **all** model families, LSTM included — see §6.
 
-**Mandatory?** The Padé mode is the mandatory production default. The HF mode exists in code but
-is not yet runtime-selectable by the user (see §6).
+**Mandatory?** The Padé mode is the production default. The HF mode is opt-in and user-selectable
+via `--activation hf` (CLI) or `PARAM_ACTIVATION` (CLAP); see §6.
 
 **Implementation.** `src/math/activations/tanh/production.rs` (Padé), `src/math/activations/
 tanh/high_fidelity.rs` (HF), `src/math/activations/sigmoid.rs`. Full analysis in
@@ -156,6 +156,7 @@ Mitigations are now implemented (Épico β, Sprints β1–β3):
 - **I6 — HighFidelity activations in LSTM gates** (primary mitigation): replaces Padé [5,4] tanh with exp-based polynomial kernels (~2.4e-7 error, 10,000× lower) in all LSTM gate computations — scalar fallback, AVX2 SIMD, and AVX-512 SIMD paths. Reduces per-step activation quantization error injected into the cell state. Validated via f64 oracle ESR improvement (β1.1–β1.3). _Cost:_ +10–15% compute in HF mode.
 - **I4 — Kahan-compensated head accumulation** (numerical hygiene): replaces naive f32 dot-product with Kahan compensated summation in the LSTM head projection (the final H→1 mapping). Reduces accumulation error in long heads by ~2 dB (≥11520-term summation). _Cost:_ negligible (~1 additional floating-point operation per output sample). Implemented in β2.1–β2.3.
 - **I5 — Oversampling characterization** (anti-aliasing context): empirically measured the ASR/ESR impact of external oversampling (Off→2×→4×) on LSTM models. **Confirmed that LSTM oversampling changes timbre drastically** (ESR > 1.0 for BossLSTM models at 2× vs Off) — the recurrent feedback delay is fixed in absolute samples, so 2×/4× rate halves/quarters the feedback time window in seconds. Oversampling of LSTM is **NOT recommended** as a user-facing control, unlike WaveNet where it is transparent. See β3.1 and `docs/lstm_recurrent_drift.md` §4.
+- **Stateful ADAA** (Holters 2019; Mikkonen & Werner 2025, DAFx): evaluated as a future antialiasing path for the recurrent cell itself, but **not adopted** — it conflicts with the polymorphic `dispatch_simd!` macro for the same reason ADAA was rejected for waveshaping (§5). Retained as a research direction in `docs/research-references.md` (R6, R7b).
 
 **User impact.** LSTM models degrade with signal duration and with host sample rate. WaveNet
 models do not. For long sessions or high host rates, a WaveNet of equal budget is more faithful.
@@ -180,12 +181,12 @@ interfaces.
 
 **Quality impact.**
 
-| Metric                   | Value                                                      |
-|:------------------------ |:---------------------------------------------------------- |
-| Passband ripple          | < 0.05 dB (to 0.45 × Nyquist)                              |
-| Stopband attenuation     | ≥ 25 dB (SNR gate; spec target: ≥ 100 dB, pending T8 work) |
-| Group delay (min-phase)  | Asymmetric; slight high-frequency transient smearing       |
-| 44.1 kHz top-end rolloff | Post-S6 < 0.05 dB at 20 kHz (vs. −1.7 dB pre-S6)           |
+| Metric                   | Value                                                                                                    |
+|:------------------------ |:-------------------------------------------------------------------------------------------------------- |
+| Passband ripple          | < 0.05 dB (to 0.45 × Nyquist)                                                                            |
+| Stopband attenuation     | Filter design ≥ 105 dB; end-to-end multitone SNR ~31 dB (min-phase, interpolation-limited; gate ≥ 25 dB) |
+| Group delay (min-phase)  | Asymmetric; slight high-frequency transient smearing                                                     |
+| 44.1 kHz top-end rolloff | Post-S6 < 0.05 dB at 20 kHz (vs. −1.7 dB pre-S6)                                                         |
 
 **Mandatory?** Yes, when the host rate differs from 48 kHz. Cannot be disabled without
 breaking audio at non-48 kHz rates.
@@ -248,9 +249,11 @@ activation-agnostic and transparent to the model dispatcher.
 | **Standard** (default) | Padé [5,4] tanh + minimax sigmoid          | ~2.3e-3                 | Higher (clamp discontinuity) | Baseline        |
 | **HighFidelity**       | Taylor-based exp kernels, degree-6 minimax | ~2.4e-7 (10,000× lower) | Lower (no clamp)             | +10–15% compute |
 
-The mode is selected via the `ActivationPrecision` enum in `src/math/activations/mod.rs` and
-applied at model-load time (or hot-swap rebuild) via an atomic flag. The branch predictor
-specialises to the active path during steady-state inference.
+The mode is held in the `ActivationPrecision` enum (`src/math/activations/mod.rs`) as a global
+atomic flag. It is applied at startup from the CLI (`--activation`) and switched at runtime from
+the CLAP `PARAM_ACTIVATION` handler at the block boundary (param-flush) — a single relaxed atomic
+store, with no rebuild or allocation. The branch predictor specialises to the active path during
+steady-state inference.
 
 **Interaction with oversampling.** HighFidelity is most effective combined with 4× oversampling:
 without OS, aliased harmonics fold back into the baseband regardless of activation precision;
@@ -338,20 +341,6 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 **Implementation.** `src/dsp/adaptive_compute.rs`, `src/clap/processor/params.rs`,
 `src/models/static_model.rs` (`supports_layer_skip()`), `src/dsp/pipeline/stages/inference.rs`.
-
----
-
-## 9. Pending / Open Work
-
-| Item                                                      | Status                     | Reference                                                                   |
-|:--------------------------------------------------------- |:--------------------------:|:--------------------------------------------------------------------------- |
-| HighFidelity activation mode user control (CLI/CLAP knob) | ✅ Complete (α2; β1)       | `src/math/activations/`, `src/clap/`                                        |
-| Runtime oversample switching (currently init-time only)   | ✅ Complete (α1.2)         | §5; `rt_callback/commands.rs`, `src/clap/processor/params.rs`               |
-| Resampler quality selector (Standard 32T / HQ 64T)        | ✅ Rejected (γ)            | §4 (Benchmark proved 32T savings < 0.1% pipeline. HQ-only permanent.)       |
-| Kahan-compensated LSTM head accumulation                  | ✅ Complete (β2)           | `src/math/common/scalar_ref/dot.rs`, `src/models/lstm/`                     |
-| LSTM HF gate kernel coverage                              | ✅ Complete (β1)           | `src/math/lstm/gates.rs`, `src/models/lstm/layer_kernels.rs`                |
-| LSTM oversampling characterization & user guidance        | ✅ Complete (β3.1)         | `docs/lstm_recurrent_drift.md` §4, `tests/oversampling_characterization.rs` |
-| LSTM stateful ADAA (Holters 2019)                         | 🟡 Evaluated, not adopted  | `docs/research-references.md` R6                                            |
 
 ---
 

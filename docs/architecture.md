@@ -240,12 +240,30 @@ NAM-rs uses a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampl
 
 ### Quality Metrics (TAPS_PER_PHASE = 64)
 
-| Rate Pair   | Passband Ripple | Stopband Attenuation | SNR (multitone vs. soxr) |
-|:----------- |:--------------- |:-------------------- |:------------------------ |
-| 44.1→48 kHz | < 0.05 dB       | ≥ 105 dB             | ≥ 100 dB                 |
-| 48→44.1 kHz | < 0.02 dB       | ≥ 105 dB             | ≥ 100 dB                 |
-| 48→96 kHz   | < 0.02 dB       | ≥ 110 dB             | ≥ 100 dB                 |
-| 96→48 kHz   | < 0.02 dB       | ≥ 115 dB             | ≥ 100 dB                 |
+Two **distinct** metrics must not be conflated:
+
+- **Stopband attenuation** — a property of the Kaiser β=12 windowed-sinc *filter design* (how
+  strongly out-of-band alias images are rejected). High by construction.
+- **End-to-end multitone SNR vs. soxr** — the *total* deviation of the resampler output from the
+  libsoxr reference, including passband ripple, phase response, and per-phase gain dispersion.
+  This is **bank-dependent** and, for the production minimum-phase bank, is far lower than the
+  stopband figure.
+
+| Rate Pair   | Passband Ripple | Stopband Attenuation (filter design) | Multitone SNR vs. soxr (min-phase prod.) |
+|:----------- |:--------------- |:------------------------------------ |:---------------------------------------- |
+| 44.1→48 kHz | < 0.05 dB       | ≥ 105 dB                             | ~31 dB (gate ≥ 25 dB)                    |
+| 48→44.1 kHz | < 0.02 dB       | ≥ 105 dB                             | ~31 dB (gate ≥ 25 dB)                    |
+| 48→96 kHz   | < 0.02 dB       | ≥ 110 dB                             | ~31 dB (gate ≥ 25 dB)                    |
+| 96→48 kHz   | < 0.02 dB       | ≥ 115 dB                             | ~31 dB (gate ≥ 25 dB)                    |
+
+> **Why end-to-end SNR (~31 dB) ≪ stopband (≥ 105 dB).** The production default is the
+> **minimum-phase** bank, whose per-phase normalization introduces inherent passband ripple
+> (~0.06 dB cepstrum + per-phase gain dispersion) that limits the multitone SNR against the
+> linear-phase soxr reference to ~31 dB — even though out-of-band alias images are suppressed
+> ≥ 105 dB. The **linear-phase** variant (`NamResampler::new_linear()`, offline use) scores
+> significantly higher on multitone SNR but is **not** the production default (it reintroduces
+> pre-ringing on transients). Both banks are gated at ≥ 25 dB in `src/dsp/resampler_test.rs`
+> (`test_resampler_snr_against_reference`, `test_resampler_linear_snr`).
 
 ### Architecture
 
@@ -267,7 +285,7 @@ When the host sample rate matches the model's native 48 kHz, the resampler enter
 
 ### Default Quality
 
-HQ (64 taps, minimum-phase) is the permanent **production default**. The cost of 64 taps vs. 32 taps was quantitatively benchmarked (Épico γ), showing a savings of only ~40 ns per 64-sample block (< 0.1% of the total pipeline when the neural model is active), while the 32-tap configuration degraded passband SNR to ~24 dB (vs. $\ge 100$ dB for 64 taps). A user-facing "resampler quality" parameter was thus rejected to preserve audio fidelity and minimize code complexity.
+HQ (64 taps, minimum-phase) is the permanent **production default**. The cost of 64 taps vs. 32 taps was quantitatively benchmarked (Épico γ), showing a savings of only ~40 ns per 64-sample block (< 0.1% of the total pipeline when the neural model is active), while the 32-tap configuration degraded the end-to-end multitone SNR to ~24 dB (vs. ~31 dB for 64 taps, min-phase). A user-facing "resampler quality" parameter was thus rejected to preserve audio fidelity and minimize code complexity.
 
 ### Gate FSM
 
