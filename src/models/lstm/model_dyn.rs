@@ -90,7 +90,7 @@ impl LstmModelDyn {
 
                     let last = &*layers_ptr.add(n_layers - 1);
                     let h = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native(
+                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                         h,
                         &self.head_weights_f32,
                     );
@@ -138,7 +138,7 @@ impl LstmModelDyn {
 
                     let last = &*layers_ptr.add(n_layers - 1);
                     let h = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native(
+                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                         h,
                         &self.head_weights_f32,
                     );
@@ -186,7 +186,7 @@ impl LstmModelDyn {
 
                     let last = &*layers_ptr.add(n_layers - 1);
                     let h_f32 = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native(
+                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                         h_f32,
                         &self.head_weights_f32,
                     );
@@ -258,7 +258,7 @@ impl LstmModelDyn {
                 let last = &*layers_ptr.add(n_layers - 1);
                 let hidden_last = last.get_hidden_state();
                 let dot = if self.use_f32_head {
-                    crate::math::common::scalar_ref::dot_product_f32_native(
+                    crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                         hidden_last,
                         &self.head_weights_f32,
                     )

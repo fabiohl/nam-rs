@@ -28,19 +28,21 @@ macro_rules! define_lstm2_process_pipelined {
                             self.layer1.$layer_proc(&[input[i]]);
                             self.layer2.$layer_proc(&prev_h1);
                             let h_f32 = self.layer2.get_hidden_state();
-                            output[i - 1] = $crate::math::common::scalar_ref::dot_product_f32_native(
-                                h_f32,
-                                &self.head_weights_f32,
-                            ) + self.head_bias;
+                            output[i - 1] =
+                                $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                                    h_f32,
+                                    &self.head_weights_f32,
+                                ) + self.head_bias;
                             prev_h1.copy_from_slice(self.layer1.get_hidden_state());
                         }
 
                         self.layer2.$layer_proc(&prev_h1);
                         let h_f32 = self.layer2.get_hidden_state();
-                        output[len - 1] = $crate::math::common::scalar_ref::dot_product_f32_native(
-                            h_f32,
-                            &self.head_weights_f32,
-                        ) + self.head_bias;
+                        output[len - 1] =
+                            $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                                h_f32,
+                                &self.head_weights_f32,
+                            ) + self.head_bias;
                     } else {
                         self.layer1.$layer_proc(&[input[0]]);
                         let mut prev_h1 = [0.0; H];
@@ -49,18 +51,14 @@ macro_rules! define_lstm2_process_pipelined {
                         for i in 1..len {
                             self.layer1.$layer_proc(&[input[i]]);
                             self.layer2.$layer_proc(&prev_h1);
-                            output[i - 1] = $dot_prod(
-                                self.layer2.$get_h2(),
-                                &self.head_weights,
-                            ) + self.head_bias;
+                            output[i - 1] = $dot_prod(self.layer2.$get_h2(), &self.head_weights)
+                                + self.head_bias;
                             prev_h1.copy_from_slice(self.layer1.get_hidden_state());
                         }
 
                         self.layer2.$layer_proc(&prev_h1);
-                        output[len - 1] = $dot_prod(
-                            self.layer2.$get_h2(),
-                            &self.head_weights,
-                        ) + self.head_bias;
+                        output[len - 1] =
+                            $dot_prod(self.layer2.$get_h2(), &self.head_weights) + self.head_bias;
                     }
                 }
             }
@@ -153,7 +151,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 .process_sample_scalar(self.layer1.get_hidden_state(), is_bf16);
             let hidden2 = self.layer2.get_hidden_state();
             let dot = if self.use_f32_head {
-                crate::math::common::scalar_ref::dot_product_f32_native(
+                crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                     hidden2,
                     &self.head_weights_f32,
                 )

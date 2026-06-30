@@ -21,7 +21,7 @@ macro_rules! define_lstm1_process {
                     for (i, &val) in input.iter().enumerate() {
                         self.layer.$layer_proc(&[val]);
                         let h_f32 = self.layer.get_hidden_state();
-                        output[i] = $crate::math::common::scalar_ref::dot_product_f32_native(
+                        output[i] = $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                             h_f32,
                             &self.head_weights_f32,
                         ) + self.head_bias;
@@ -116,7 +116,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
             self.layer.process_sample_scalar(&[input[i]], is_bf16);
             let hidden = self.layer.get_hidden_state();
             let dot = if self.use_f32_head {
-                crate::math::common::scalar_ref::dot_product_f32_native(
+                crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                     hidden,
                     &self.head_weights_f32,
                 )

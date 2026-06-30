@@ -189,12 +189,15 @@ Este sprint adiciona soma compensada de Kahan ao head f32-native do LSTM como pr
   - `dot_product_f32_native_kahan` implementada em `src/math/common/scalar_ref/dot.rs:78` usando `KahanF32::add` para acumulação compensada. Import de `KahanF32` adicionado ao cabeçalho do módulo.
   - 6 testes unitários (`kahan_dot_tests`) validam: concordância com naive em casos pequenos, vantagem em alta faixa dinâmica, slices vazios, elemento único, tamanhos diferentes, e redução de drift ≥ 2 dB em acumulação profunda (11520 termos). Todos passam.
 
-#### [ ] Tarefa β2.2 — Integração da Acumulação nos Modelos LSTM [BAIXO RISCO]
+#### [X] Tarefa β2.2 — Integração da Acumulação nos Modelos LSTM [BAIXO RISCO]
 
 - **Descrição:** Substituir a acumulação ingênua pelo produto escalar de Kahan nos heads dos modelos LSTM.
 - **Mudanças propostas:**
   - Em `src/models/lstm/model1.rs`, `model2.rs` e `model_dyn.rs`, alterar as chamadas de `dot_product_f32_native` para `dot_product_f32_native_kahan` quando `use_f32_head` for verdadeiro.
 - **Validação:** Compilar e verificar que todos os modelos LSTM executam corretamente.
+- **Conclusão (2026-06-29):**
+  - 9 chamadas substituídas: 4 em `model_dyn.rs` (AVX2, AVX-512, AVX-512 BF16, scalar), 2+macro em `model1.rs` (processo SIMD + scalar), 3+macro em `model2.rs` (processo pipelined SIMD × 2 + scalar). Todas sob guarda `self.use_f32_head`.
+  - Compilação limpa, 11 testes LSTM passam (model_dyn_validation: 8/8, self_consistency: 3/3, zero_alloc_infer: 1/1).
 
 #### [ ] Tarefa β2.3 — Validação de Estabilidade e Soak [BAIXO RISCO]
 
