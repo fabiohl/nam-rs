@@ -133,7 +133,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   4. Adicionar testes em `tests/reference_oracle_f64.rs` (ex: `test_oracle_convnet`) carregando `convnet_test.nam` e comparando com o motor f32 de produção (ESR < `CONVNET_ESR_LIMIT`).
 * **Conclusão:** ✅ Oracle implementado em `src/testing/reference_oracle.rs:918` (~200 linhas). Cobertura de activations: Tanh, HardTanh, ReLU, Sigmoid, SiLU, HardSwish, Softsign (FastTanh e Tanh compartilham oracle_tanh). Dispatcher estendido linha 282. Threshold `CONVNET_ESR_LIMIT = 1e-12` em `tests/common/constants.rs:31`. ESR medido: 1.83e-14 (−137.4 dB) — piso numérico, similar ao WaveNet. Testes: prewarm-paired ESR gate, decomposition, combined simulation, warmup paired, python anchor (ignored → S10.2).
 
-#### [ ] Task S10.2 — Âncora NumPy e Geração de Fixtures ConvNet (PM-04)
+#### [x] Task S10.2 — Âncora NumPy e Geração de Fixtures ConvNet (PM-04)
 
 * **Responsável:** Engenheiro de DSP / Python Integrator
 * **Risco/Criticidade:** Baixo.
@@ -144,6 +144,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   2. Integrar a arquitetura `"ConvNet"` no CLI do script Python.
   3. Gerar a fixture de sinal de sweep f64 e o arquivo de âncora binário `convnet_256_f64.bin` sob `tests/fixtures/f64_anchors/`.
   4. Adicionar o teste `test_oracle_vs_python_anchor_convnet` em `tests/reference_oracle_f64.rs` exigindo ESR < 1e-12.
+* **Conclusão:** ✅ `convnet_forward` (~160 linhas) implementado em `tests/fixtures/scripts/validate_oracle_f64.py`, seguindo topologia multi-bloco: Conv1d causal `[out_ch][in_ch][kernel]` → BatchNorm fundida (scale * x + offset) → ativação → PostStackHead (opcional). Cobertura de activations: Tanh, HardTanh, FastTanh, ReLU, Sigmoid, SiLU, HardSwish, Softsign. CLI estendido com `--architecture ConvNet`. Âncora `convnet_256_f64.bin` gerada em `tests/fixtures/f64_anchors/`. Teste `test_oracle_vs_python_anchor_convnet` des-ignorado com ESR=5.00e-16 (−153.0 dB) — piso numérico, consistente com WaveNet e ConvNet.
 
 #### [ ] Task S10.3 — Extensão do Oráculo f64 para FiLM A2 (PM-03)
 

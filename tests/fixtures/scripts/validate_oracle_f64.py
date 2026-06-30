@@ -327,6 +327,179 @@ def lstm_forward(model: dict, x: np.ndarray) -> np.ndarray:
     return output
 
 
+# ── ConvNet f64 model ──────────────────────────────────────────────────────
+
+def convnet_forward(model: dict, x: np.ndarray) -> np.ndarray:
+    """ConvNet forward pass in NumPy f64.
+
+    Independent f64 implementation of the NAM ConvNet topology, matching the
+    Rust oracle (src/testing/reference_oracle.rs:922):
+    - [out_ch][in_ch][kernel] conv weight layout
+    - Fused BatchNorm: scale * x + offset (no running mean/var — already
+      baked into the .nam weights)
+    - Causal Conv1d with dilation (reads history buffer, padded left with 0)
+    - Per-block history buffers (each block reads its own buffer, writes into
+      the next block's buffer)
+    - Optional PostStackHead with activation and head_scale
+    """
+    config = model["config"]
+    weights = load_weights_as_f64(model)
+    head_scale = np.float64(config.get("head_scale", 1.0))
+    layers = config.get("layers", [])
+
+    if not layers:
+        return np.zeros_like(x)
+
+    cursor = 0
+
+    class BlockW:
+        pass
+
+    blocks = []
+    for i, lc in enumerate(layers):
+        b = BlockW()
+        b.out_ch = int(lc.get("channels", 8))
+        b.in_ch = 1 if i == 0 else int(layers[i - 1].get("channels", b.out_ch))
+        b.kernel = int(lc.get("kernel_size", 3))
+        b.dilation = int(lc.get("dilations", [1])[0])
+        b.activation = lc.get("activation", "Tanh")
+
+        # conv_w: [out_ch][in_ch][kernel]
+        n_conv_w = b.in_ch * b.out_ch * b.kernel
+        b.conv_w = weights[cursor : cursor + n_conv_w].reshape(b.out_ch, b.in_ch, b.kernel)
+        cursor += n_conv_w
+
+        b.conv_b = weights[cursor : cursor + b.out_ch]
+        cursor += b.out_ch
+
+        b.bn_scale = weights[cursor : cursor + b.out_ch]
+        cursor += b.out_ch
+
+        b.bn_offset = weights[cursor : cursor + b.out_ch]
+        cursor += b.out_ch
+
+        blocks.append(b)
+
+    # Head
+    head_config = config.get("head")
+    has_head = head_config is not None
+    h_w = None
+    h_b = None
+    h_in_ch = None
+    h_out_ch = None
+    h_kernel = None
+    h_activation = None
+    if has_head:
+        last_out_ch = blocks[-1].out_ch
+        h_in_ch = int(head_config.get("channels", last_out_ch))
+        h_out_ch = int(head_config.get("out_channels", 1))
+        h_kernel = int(head_config.get("kernel_size", 1))
+        h_has_bias = head_config.get("bias", True)
+        h_activation = head_config.get("activation", "Tanh")
+
+        # h_w: [h_out_ch][h_in_ch][h_kernel]
+        n_h_w = h_in_ch * h_out_ch * h_kernel
+        h_w = weights[cursor : cursor + n_h_w].reshape(h_out_ch, h_in_ch, h_kernel)
+        cursor += n_h_w
+
+        if h_has_bias:
+            h_b = weights[cursor : cursor + h_out_ch]
+            cursor += h_out_ch
+        else:
+            h_b = np.zeros(h_out_ch, dtype=np.float64)
+
+    num_frames = len(x)
+    max_rf = max((b.kernel - 1) * b.dilation for b in blocks) + 64
+    hist_size = max_rf + num_frames + 64
+
+    # Per-block history buffers
+    block_hists = [np.zeros(hist_size * b.in_ch, dtype=np.float64) for b in blocks]
+
+    output = np.zeros(num_frames, dtype=np.float64)
+
+    def apply_activation(data: np.ndarray, name: str) -> np.ndarray:
+        if name == "Tanh":
+            return np.tanh(data)
+        elif name == "HardTanh":
+            return np.clip(data, -1.0, 1.0)
+        elif name == "FastTanh":
+            return np.tanh(data)
+        elif name == "ReLU":
+            return np.maximum(data, 0.0)
+        elif name == "Sigmoid":
+            # 1 / (1 + exp(-x))
+            return 1.0 / (1.0 + np.exp(-data))
+        elif name == "SiLU":
+            s = 1.0 / (1.0 + np.exp(-data))
+            return data * s
+        elif name == "HardSwish":
+            relu6 = np.clip(data + 3.0, 0.0, 6.0)
+            return data * relu6 / 6.0
+        elif name == "Softsign":
+            return data / (1.0 + np.abs(data))
+        else:
+            return np.tanh(data)
+
+    for f in range(num_frames):
+        hist_i = max_rf + f
+
+        # Feed input into block 0 history
+        block_hists[0][hist_i * blocks[0].in_ch] = x[f]
+
+        last_out = None
+
+        for bi, b in enumerate(blocks):
+            hist = block_hists[bi]
+            out_ch = b.out_ch
+            in_ch = b.in_ch
+            kernel = b.kernel
+            dil = b.dilation
+
+            conv_out = b.conv_b.copy()
+
+            # Causal Conv1d
+            for oc in range(out_ch):
+                for kt in range(kernel):
+                    off = dil * (kt + 1 - kernel)
+                    ins = (hist_i + off) * in_ch
+                    if ins >= 0 and ins + in_ch <= len(hist):
+                        conv_out[oc] += np.dot(
+                            hist[ins : ins + in_ch],
+                            b.conv_w[oc, :, kt],
+                        )
+
+            # Fused BatchNorm: scale * x + offset
+            conv_out = conv_out * b.bn_scale + b.bn_offset
+
+            # Activation
+            conv_out = apply_activation(conv_out, b.activation)
+
+            # Pass to next block's history buffer
+            if bi + 1 < len(blocks):
+                next_in_ch = blocks[bi + 1].in_ch
+                n_copy = min(out_ch, next_in_ch)
+                block_hists[bi + 1][hist_i * next_in_ch : hist_i * next_in_ch + n_copy] = conv_out[:n_copy]
+
+            if bi == len(blocks) - 1:
+                last_out = conv_out
+
+        block_out = last_out
+
+        if has_head:
+            h_out = h_b.copy()
+            for oc in range(h_out_ch):
+                for ic in range(h_in_ch):
+                    h_out[oc] += block_out[ic] * h_w[oc, ic, 0]
+            h_out = apply_activation(h_out, h_activation)
+            y = h_out[0]
+        else:
+            y = block_out[0]
+
+        output[f] = y * head_scale
+
+    return output
+
+
 # ── A2 f64 model ───────────────────────────────────────────────────────────
 
 A2_KS = [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6]
@@ -491,7 +664,7 @@ def main():
     ap.add_argument("input", help="Binary input: [u32 N] [f64*N]")
     ap.add_argument(
         "--architecture",
-        choices=["WaveNet", "LSTM", "A2"],
+        choices=["WaveNet", "LSTM", "A2", "ConvNet"],
         default="WaveNet",
         help="Model architecture family",
     )
@@ -524,6 +697,8 @@ def main():
         output = lstm_forward(model, signal)
     elif arch == "A2":
         output = a2_forward(model, signal)
+    elif arch == "ConvNet":
+        output = convnet_forward(model, signal)
     else:
         print(f"Unknown architecture: {arch}", file=sys.stderr)
         sys.exit(1)

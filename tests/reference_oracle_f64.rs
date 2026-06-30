@@ -500,18 +500,25 @@ fn test_oracle_warmup_paired_convnet() {
 }
 
 #[test]
-#[ignore]
 fn test_oracle_vs_python_anchor_convnet() {
     let path = models_dir().join("convnet_test.nam");
     let md = load_and_parse(&path);
-    // Anchor files will be generated in Task S10.2 (NumPy anchor + generation)
-    // For now, only the Rust oracle is validated.
-    let _input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
-    let _anchor = load_f64_binary(&anchors_dir().join("convnet_256_f64.bin"));
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("convnet_256_f64.bin"));
 
-    let _oracle = oracle_forward(&md, &_input_f64, &PrecisionConfig::default());
-    let _esr = compute_esr_f64(&_oracle, &_anchor);
-    // assert!(_esr < 1e-12);
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "ConvNet: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-12,
+        "ConvNet Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
 }
 
 // ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
