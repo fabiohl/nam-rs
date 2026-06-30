@@ -62,22 +62,24 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                      | `.nam` Model              | Nature                                                                     | Topology                                                          |
-| -------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `golden_wavenet_standard.bin`    | `BossWN-standard.nam`     | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                     |
-| `golden_wavenet_lite.bin`        | `EVH-5150-Lite.nam`       | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                     |
-| `golden_wavenet_feather.bin`     | `BossWN-feather.nam`      | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                      |
-| `golden_wavenet_nano.bin`        | `BossWN-nano.nam`         | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                      |
-| `golden_wavenet_a1_standard.bin` | `wavenet_a1_standard.nam` | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                     |
-| `golden_lstm_1x16.bin`           | `BossLSTM-1x16.nam`       | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                     |
-| `golden_lstm_2x8.bin`            | `BossLSTM-2x8.nam`        | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                     |
-| `golden_lstm_official.bin`       | `lstm.nam`                | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                      |
-| `golden_wavenet_a2_full.bin`     | `wavenet_a2_full.nam`     | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185` |
-| `golden_wavenet_a2_lite.bin`     | `wavenet_a2_lite.nam`     | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185` |
-| `golden_cabsim_cpp_short.bin`    | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse             |
-| `golden_cabsim_cpp_medium.bin`   | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse           |
-| `golden_cabsim_cpp_long.bin`     | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse            |
-| `golden_cabsim_cpp_stress.bin`   | N/A                       | C++ reference (synthetic IR)                                               | Cabsim Stress IR (65536 samples) C++ dsp::ImpulseResponse         |
+| Golden File                       | `.nam` Model               | Nature                                                                     | Topology                                                                |
+| --------------------------------- | -------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`      | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_wavenet_lite.bin`         | `EVH-5150-Lite.nam`        | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                           |
+| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`       | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                            |
+| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`          | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                            |
+| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam`  | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`        | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                           |
+| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`         | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                           |
+| `golden_lstm_official.bin`        | `lstm.nam`                 | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                            |
+| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`      | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`      | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_film_full.bin` | `wavenet_a2_film_full.nam` | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=8, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_wavenet_a2_film_lite.bin` | `wavenet_a2_film_lite.nam` | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_cabsim_cpp_short.bin`     | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
+| `golden_cabsim_cpp_medium.bin`    | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
+| `golden_cabsim_cpp_long.bin`      | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
+| `golden_cabsim_cpp_stress.bin`    | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Stress IR (65536 samples) C++ dsp::ImpulseResponse               |
 
 > **Nature classification:**
 >
@@ -87,9 +89,11 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 > - **C++ reference** — vetores de referência gerados pelo C++ upstream (`dsp::ImpulseResponse`); não são modelos NAM.
 >   [!NOTE]
 >   **Resumo rápido:** 2 goldens são **oficial real** (A1-Standard, LSTM Official).
->   5 são **community real** (WaveNet Standard/Feather/Nano + LSTM 1×16/2×8, todos Boss Waza).
->   3 são **synthetic** (WaveNet Lite CH=12, A2-Full, A2-Lite — este último grupo é o único que
->   valida apenas paridade numérica de fast-path, não timbres reais).
+>   6 são **community real** (WaveNet Standard, Lite CH=12, Feather, Nano + LSTM 1×16/2×8,
+>   todos Boss Waza).
+>   4 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite —
+>   os dois últimos são conformismo PM-05 para cobertura do motor FiLM; os demais validam
+>   apenas paridade numérica de fast-path, não timbres reais).
 >   Os 4 goldens C++ cabsim são vetores de referência do upstream.
 
 ### Model Files and Trust Levels Registry
@@ -126,8 +130,10 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 | `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                            | Empty model for failure testing. Apache-2.0.                             | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).             |
 | `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                    | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU). |
 | `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                            | Model with custom dilations and channels. Apache-2.0.                    | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                         |
-| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (F2 Focus / Rejected)                      | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=8` for now.                             |
-| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM)                                    | N/A (F2 Focus / Rejected)                      | Steve Atkinson official example. CC0.                                    | Tests if loader rejects FiLM with `condition_size=3` for now.                             |
+| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (Rejected — structure-incompatible)        | Steve Atkinson official example. CC0.                                    | Verifies loader rejection of FiLM models with incompatible geometry (PM-05 conformism).   |
+| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM, post-FiLM DSP)                     | **High** (Near-bit-exact — SNR=139.5 dB)       | Steve Atkinson official example. CC0.                                    | Golden vectors v1 (dynamic path with FiLM+condition_dsp, §6 of this doc).                 |
+| `wavenet_a2_film_full.nam`  | Synthetic        | WaveNet A2 (CH=8, FiLM active)                                 | **Medium** (FiLM parity — SNR=36.0 dB, RF1)    | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                         |
+| `wavenet_a2_film_lite.nam`  | Synthetic        | WaveNet A2 (CH=3, FiLM active)                                 | **Medium** (FiLM parity — SNR=18.1 dB, RF1)    | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                         |
 
 #### 3. Non-Distributable Model Management (`tests/fixtures/models-nondist`)
 
@@ -516,16 +522,15 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 > [!IMPORTANT]
 > **Estes goldens A2 usam pesos sintéticos, NÃO pesos de modelo oficial.** Os modelos A2 oficiais
 > (`wavenet_a2_max.nam`, `slimmable_wavenet.nam`) usam
-> condicionamento FiLM / multi-condição, que o nam-rs **ainda não suporta** (feature futura —
-> ver `TODO-sprints.md §Feature à parte — WaveNet genérico + FiLM/multi-condição`).
+> condicionamento FiLM / multi-condição. O **fast-path** A2 (`a2_fast`) não suporta FiLM —
+> este é tratado exclusivamente pelo engine dinâmico `WaveNetA2Dyn` com cobertura em
+> fixtures sintéticas `wavenet_a2_film_full/lite.nam` (ver §FiLM Fixtures e PM-05).
 >
 > **O que estes goldens validam:** paridade numérica Rust↔C++ do **fast-path** da arquitetura A2
 > (23 camadas, K=6/15, LeakyReLU, head_scale=0.02). **O que NÃO validam:** timbres de amplificador
 > reais ou fidelidade perceptual de modelos A2 treinados.
 >
-> **Elevação para oficial:** será possível quando o engine suportar FiLM e modelos A2 genéricos
-> (WaveNet com qualquer configuração de channels/heads/layers). Nesse momento, estes goldens
-> sintéticos serão substituídos por goldens de modelos A2 oficiais reais.
+> Para detalhes do conformismo PM-05 com capturas reais de FiLM, ver §FiLM Fixtures abaixo.
 
 - **Nature:** Synthetic fixtures generated by `tests/fixtures/generate_a2_fixtures.py` using the canonical A2 skeleton (23 layers, K=6/15, LeakyReLU, head_scale=0.02).
 
@@ -548,6 +553,39 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
   # Convert to golden
   wav_to_golden --input full.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_full.bin
   wav_to_golden --input lite.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_lite.bin
+  ```
+
+### `wavenet_a2_film_full.nam` & `wavenet_a2_film_lite.nam` — **FiLM Fixtures (PM-05 conformism)**
+
+> [!NOTE]
+> **Conformismo PM-05:** O motor `WaveNetA2Dyn` suporta FiLM nativamente, mas os modelos
+> reais de FiLM disponíveis (como `wavenet_a2_max.nam` com `condition_size=8`) são
+> rejeitados por incompatibilidade estrutural com a assinatura esperada pelo loader
+> dinâmico A2. Como não existem capturas reais compatíveis em `models-nondist/`,
+> o projeto conforma com fixtures sintéticas para verificação automatizada da correção
+> do motor FiLM. Ver `docs/cpp_parity_map.md` §13.
+
+- **Nature:** Synthetic FiLM fixtures generated by `tests/fixtures/generate_a2_fixtures.py` using the canonical A2 skeleton (23 layers, K=6/15, LeakyReLU, head_scale=0.02) with FiLM post-modulation on `conv`, `input_mixin`, `activation`, and `layer1x1` keys (`condition_size=1`).
+
+- **Engine:** Routed to `WaveNetA2Dyn` (dynamic engine with native FiLM support). The C++ `a2_fast.cpp` rejects FiLM and falls back to Eigen-based generic WaveNet — the golden cross-reference validates *cross-engine equivalence*, not bit-exact parity.
+
+- **SNR/ESR:** FiLM-Full (CH=8) = 36.0 dB / 2.50e-4; FiLM-Lite (CH=3) = 18.1 dB / 1.54e-2. Thresholds calibrated per `tests/common/validation.rs` with RF1 flag (FiLM vs generic WaveNet divergence capped and tracked).
+
+- **Golden Fixtures:** `golden_wavenet_a2_film_full.bin`, `golden_wavenet_a2_film_lite.bin` — cross-reference Rust↔C++ rendered at canonical commit `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` (v0.5.3).
+
+- **Command used:**
+
+  ```bash
+  # Generate .nam models
+  python3 tests/fixtures/generate_a2_fixtures.py
+
+  # Render FiLM-Full with C++ v0.5.3 (C++ a2_fast.cpp rejects FiLM → falls back to generic)
+  render tests/fixtures/models/wavenet_a2_film_full.nam tests/fixtures/stress_signal.wav film_full.wav
+  render tests/fixtures/models/wavenet_a2_film_lite.nam tests/fixtures/stress_signal.wav film_lite.wav
+
+  # Convert to golden
+  wav_to_golden --input film_full.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_film_full.bin
+  wav_to_golden --input film_lite.wav --reference tests/fixtures/stress_signal.wav --output tests/fixtures/golden_wavenet_a2_film_lite.bin
   ```
 
 ### `keras_unsupported.json` — Unsupported Legacy Keras/H5 Format Mock

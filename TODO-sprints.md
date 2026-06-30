@@ -21,7 +21,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### Tarefas Técnicas
 
-#### [ ] Task S9.1 — Auditoria de Fixtures e Conformismo A2-FiLM (PM-05)
+#### [x] Task S9.1 — Auditoria de Fixtures e Conformismo A2-FiLM (PM-05)
 
 * **Responsável:** Engenheiro de DSP / QA
 * **Risco/Criticidade:** Baixo.
@@ -30,6 +30,13 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 * **Critérios de Aceitação:**
   1. Confirmar que os testes de vetores dourados (`tests/golden_vectors.rs`) exercitam corretamente as fixtures sintéticas de FiLM.
   2. Verificar que o modelo real incompatível `wavenet_a2_max.nam` é rejeitado graciosamente e coberto pelo teste `test_loader_gap_wavenet_a2_max` sem quebras silenciosas.
+* **Conclusão (2026-06-30):**
+  1. ✅ `test_golden_vectors_wavenet_a2_film_lite` — passa (SNR=18.1 dB, ESR=1.54e-2, MR-STFT=0.497, gates OK).
+  2. ✅ `test_golden_vectors_wavenet_a2_film_full` — passa (SNR=36.0 dB, ESR=2.50e-4, MR-STFT=0.465, gates OK).
+  3. ✅ `test_loader_gap_wavenet_a2_max` — passa, rejeitado com erro de incompatibilidade estrutural.
+  4. `tests/fixtures/models-nondist/` confirmado sem capturas FiLM compatíveis (apenas WaveNet/LSTM comunitários).
+  5. Documentação atualizada: `tests/fixtures/README.md` corrigiu registros obsoletos (`wavenet_condition_dsp` marcado como "Rejected" mas opera com SNR=139.5 dB), adicionou entradas `wavenet_a2_film_*` à tabela de catálogo e golden vectors, e adicionou seção dedicada de FiLM Fixtures documentando o conformismo PM-05.
+  * **Nota para S9.2:** O `docs/cpp_parity_map.md` §13 já contém a documentação de conformismo solicitada (linha 592). S9.2 pode focar em revisar/expandir o que já existe, em vez de criar do zero.
 
 #### [ ] Task S9.2 — Documentação de Conformismo FiLM A2 em `cpp_parity_map.md` (PM-05)
 
