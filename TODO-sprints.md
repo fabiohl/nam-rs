@@ -48,7 +48,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. Atualizar a entrada de tabela **"A2 official real-amp FiLM captures"** no §13 para refletir o status de conformismo temporário com modelos sintéticos.
   2. Documentar o motivo técnico (incompatibilidade estrutural dos modelos reais existentes) no §13.1.
 
-#### [ ] Task S9.3 — Fronteira de Escopo e Critérios para `SlimmableWavenet` Diferido (PM-06)
+#### [x] Task S9.3 — Fronteira de Escopo e Critérios para `SlimmableWavenet` Diferido (PM-06)
 
 * **Responsável:** Arquiteto de Software
 * **Risco/Criticidade:** Nulo (doc-only).
@@ -60,6 +60,9 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * Parser para ler múltiplas larguras de canal de um único arquivo `.nam`.
      * Fatiamento dinâmico de pesos em runtime de forma segura para tempo real (RT-safe).
      * Paridade matemática bit-a-bit com a implementação equivalente do NAMCore C++.
+* **Conclusão (2026-06-30):**
+  1. ✅ Tabela do §13 dividida em duas linhas distintas: `SlimmableContainer` (🟢 implementado, com referência a `src/models/container.rs` e `tests/container_slimmable.rs`) e `SlimmableWavenet` (🟡 diferido, com referência aos critérios expandidos em §13.1).
+  2. ✅ Nota do §13.1 expandida com distinção conceitual explícita entre os dois construtos (orquestração de múltiplos modelos vs. fatiamento de pesos de uma única rede) e critérios de aceitação detalhados em três níveis: (a) parser de múltiplas larguras com projeção para SKUs do catálogo; (b) slicing RT-safe na carga, sem alocação/lock no `process()`; (c) paridade bit-a-bit validada por golden vectors + live cross-validation contra NAMCore.
 
 #### [ ] Task S9.4 — Resolução de Avisos Obsoletos da WaveNet Lite em `fastmath-approximations.md` (PM-02)
 
