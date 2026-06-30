@@ -507,6 +507,73 @@ A2_DIL = [1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 
 A2_NLAYERS = 23
 A2_HEAD_K = 16
 
+# ── FiLM A2 helpers ───────────────────────────────────────────────────────
+
+FILM_KEYS = [
+    ("conv_pre_film", 0),
+    ("conv_post_film", 1),
+    ("input_mixin_pre_film", 2),
+    ("input_mixin_post_film", 3),
+    ("activation_pre_film", 4),
+    ("activation_post_film", 5),
+    ("layer1x1_post_film", 6),
+    ("head1x1_post_film", 7),
+]
+
+
+def film_weight_count(groups, cond_size, channels, shift):
+    g = int(groups)
+    ch_per_group = channels // g
+    cond_per_group = cond_size // g
+    out_per_group = ch_per_group * 2 if shift else ch_per_group
+    return g * out_per_group * cond_per_group
+
+
+def film_bias_count(channels, shift):
+    return channels * 2 if shift else channels
+
+
+class FiLMSlot:
+    def __init__(self, shift, groups, weights_arr, bias_arr, channels):
+        self.shift = shift
+        self.groups = int(groups)
+        self.weights = np.array(weights_arr, dtype=np.float64)
+        self.bias = np.array(bias_arr, dtype=np.float64)
+        self.channels = channels
+        self.buf = np.zeros(channels * 2, dtype=np.float64)
+
+    def apply(self, input_slice, condition):
+        """Apply FiLM modulation in-place on input_slice (1D array of length channels)."""
+        ch = self.channels
+        g = self.groups
+        ch_per_group = ch // g
+        cond_per_group = len(condition) // g
+        out_per_group = ch_per_group * 2 if self.shift else ch_per_group
+
+        self.buf.fill(0.0)
+
+        for grp in range(g):
+            cond_off = grp * cond_per_group
+            row_off = grp * out_per_group
+            w_off = row_off * cond_per_group
+            for row in range(out_per_group):
+                if row < ch_per_group:
+                    global_out = grp * ch_per_group + row
+                else:
+                    global_out = ch + grp * ch_per_group + (row - ch_per_group)
+                s = float(self.bias[global_out])
+                for k in range(cond_per_group):
+                    s += (
+                        self.weights[w_off + row * cond_per_group + k]
+                        * condition[cond_off + k]
+                    )
+                self.buf[global_out] = s
+
+        for c in range(ch):
+            scale = self.buf[c]
+            shift_val = self.buf[c + ch] if self.shift else 0.0
+            input_slice[c] = input_slice[c] * scale + shift_val
+
 
 def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     """A2 forward pass in NumPy f64.
@@ -516,6 +583,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     - Head_w transposed from NAM JSON [channel][tap] to [tap][channel]
     - Linear head accumulator (no ring modulo during writes)
     - K=16 causal convolution for head finalize
+    - FiLM modulation at 6 active insertion points (when layer_raw present)
     """
     config = model["config"]
     weights = load_weights_as_f64(model)
@@ -526,14 +594,33 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         return np.zeros_like(x)
 
     ch = int(layers_cfg[0]["channels"])
+    cond_size = int(layers_cfg[0].get("condition_size", 1))
+
+    # Detect active FiLM slots from layer_raw (the layer config itself)
+    film_active = [False] * 8
+    layer_raw = layers_cfg[0]
+    for key, idx in FILM_KEYS:
+        cfg = layer_raw.get(key)
+        if isinstance(cfg, dict) and cfg.get("active", False):
+            film_active[idx] = True
+
     cursor = 0
 
     # Rechannel
     rechannel_w = weights[cursor : cursor + ch]
     cursor += ch
 
-    # Per-layer weights
+    # Per-layer weights (including FiLM)
     layer_weights = []
+    film_slot_configs = [None] * 8
+    for key, idx in FILM_KEYS:
+        cfg = layer_raw.get(key)
+        if isinstance(cfg, dict) and cfg.get("active", False):
+            film_slot_configs[idx] = {
+                "shift": cfg.get("shift", True),
+                "groups": cfg.get("groups", 1),
+            }
+
     for li in range(A2_NLAYERS):
         ks = A2_KS[li]
         dil = A2_DIL[li]
@@ -551,6 +638,22 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         l1x1_b = weights[cursor : cursor + ch]
         cursor += ch
 
+        # Read FiLM weights for active slots
+        film_slots = [None] * 8
+        for slot_idx in range(8):
+            if not film_active[slot_idx]:
+                continue
+            scfg = film_slot_configs[slot_idx]
+            g = int(scfg["groups"])
+            shift = scfg["shift"]
+            wc = film_weight_count(g, cond_size, ch, shift)
+            bc = film_bias_count(ch, shift)
+            slot_w = weights[cursor : cursor + wc].copy()
+            cursor += wc
+            slot_b = weights[cursor : cursor + bc].copy()
+            cursor += bc
+            film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, ch)
+
         layer_weights.append(
             {
                 "conv_w": conv_w,
@@ -560,6 +663,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 "l1x1_b": l1x1_b,
                 "ks": ks,
                 "dil": dil,
+                "film": film_slots,
             }
         )
 
@@ -592,9 +696,15 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
 
     output = np.zeros(num_frames, dtype=np.float64)
 
+    cond_vec = np.array([], dtype=np.float64)
+    if cond_size != 1:
+        cond_vec = np.zeros(cond_size, dtype=np.float64)
+
     for f in range(num_frames):
         fi = bs + f
         x_val = x[f]
+
+        condition = np.array([x_val]) if cond_size == 1 else cond_vec
 
         # Rechannel → layer 0's history buffer
         layer_in = np.zeros(ch, dtype=np.float64)
@@ -610,6 +720,11 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
             ks = lw["ks"]
             dil = lw["dil"]
             hist = layer_bufs[li]
+            film = lw["film"]
+
+            # conv_pre_film (slot 0): modulate history before conv reads it
+            if film[0] is not None:
+                film[0].apply(layer_bufs[li][fi * ch : fi * ch + ch], condition)
 
             # Conv1d + bias (reads this layer's own history buffer)
             z = lw["conv_b"].copy()
@@ -623,11 +738,27 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                             lw["conv_w"][oc, :, kt],
                         )
 
+            # conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
+            if film[1] is not None:
+                film[1].apply(z, condition)
+            if film[2] is not None:
+                film[2].apply(z, condition)
+
             # Mixin
             z += lw["mixin_w"] * x_val
 
+            # input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
+            if film[3] is not None:
+                film[3].apply(z, condition)
+            if film[4] is not None:
+                film[4].apply(z, condition)
+
             # LeakyReLU(0.01)
             z = np.where(z < 0, z * 0.01, z)
+
+            # activation_post_film (slot 5)
+            if film[5] is not None:
+                film[5].apply(z, condition)
 
             # Head accumulate — linear write (no modulo), matches Rust oracle
             if li == 0:
@@ -640,6 +771,9 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
             if li < A2_NLAYERS - 1:
                 residual = z @ lw["l1x1_w"].T + lw["l1x1_b"]
                 layer_in = layer_in + residual
+                # layer1x1_post_film (slot 6) on the residual output
+                if film[6] is not None:
+                    film[6].apply(layer_in, condition)
                 layer_bufs[li + 1][fi * ch : fi * ch + ch] = layer_in
 
         # Head finalize — K=16 causal convolution

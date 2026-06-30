@@ -172,15 +172,19 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   5. `A2_FILM_ESR_LIMIT = 1e-12` em `tests/common/constants.rs` (piso numérico, consistente com WaveNet/ConvNet).
   * **Nota para S10.4:** Com H1 confirmada e o oráculo f64 agora testemunhando FiLM A2, a âncora NumPy (S10.4) é necessária para fechar a cadeia de confiança de 3 vias. A implementação Python deve replicar `FiLMOracleSlot::apply` (grupos GEMV → `cond_to_scale_shift` + `apply_modulation`) e os 6 pontos de inserção ativos.
 
-#### [ ] Task S10.4 — Âncora NumPy e Geração de Fixtures FiLM A2 (PM-03)
+#### [X] Task S10.4 — Âncora NumPy e Geração de Fixtures FiLM A2 (PM-03)
 
 * **Responsável:** Engenheiro de DSP / Python Integrator
 * **Risco/Criticidade:** Baixo.
 * **Contexto:**
   Complementar a cadeia de confiança gerando a âncora independente NumPy para o caso FiLM A2.
 * **Critérios de Aceitação:**
-  1. Estender `a2_forward` em `tests/fixtures/scripts/validate_oracle_f64.py` para ler as propriedades FiLM do JSON e extrair seus pesos.
-  2. Implementar a modulação FiLM em NumPy f64 nas posições correspondentes da rede.
-  3. Validar a âncora Python contra o oráculo Rust f64 com ESR < 1e-12.
-  4. Gerar os arquivos de âncora correspondentes (ex: `wavenet_a2_film_lite_256_f64.bin`) em `tests/fixtures/f64_anchors/`.
-  5. Adicionar `test_oracle_vs_python_anchor_a2_film` em `tests/reference_oracle_f64.rs` assegurando o alinhamento de 3 vias.
+  1. ✅ `a2_forward` em `tests/fixtures/scripts/validate_oracle_f64.py` estendido para ler propriedades FiLM do JSON via `FILM_KEYS` (8 slots), detectar slots ativos, extrair pesos/bias por camada (após `l1x1_b`), usando `film_weight_count`/`film_bias_count` com grupos.
+  2. ✅ Modulação FiLM implementada em NumPy f64 via classe `FiLMSlot` (grupos GEMV → `cond_to_scale_shift` + `apply_modulation`), aplicada nos 6 pontos de inserção ativos: conv_post(1), input_mixin_post(3), activation_post(5), layer1x1_post(6) — mais conv_pre(0) no history buffer. Head1x1_post(7) reservado.
+  3. ✅ Python anchor vs Rust oracle f64:
+     * A2-FiLM-Lite: ESR = 5.00e-16 (−153.0 dB) < 1e-12
+     * A2-FiLM-Full: ESR = 5.00e-16 (−153.0 dB) < 1e-12
+  4. ✅ Arquivos de âncora gerados: `wavenet_a2_film_lite_256_f64.bin` e `wavenet_a2_film_full_256_f64.bin` em `tests/fixtures/f64_anchors/`.
+  5. ✅ Testes `test_oracle_vs_python_anchor_a2_film_lite` e `test_oracle_vs_python_anchor_a2_film_full` adicionados em `tests/reference_oracle_f64.rs`.
+* **Conclusão (2026-06-30):**
+  Cadeia de confiança de 3 vias fechada: Python NumPy ↔ Rust Oracle ↔ Produção f32. A âncora NumPy replica `FiLMOracleSlot::apply` (grupos GEMV → `cond_to_scale_shift` + `apply_modulation`) e os 6 pontos de inserção ativos, validada com ESR = 5.00e-16 contra o oráculo Rust. Clippy limpo, 26/26 testes passando.
