@@ -44,10 +44,29 @@ use common::*;
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
+use nam_rs::math::activations::ActivationPrecision;
+use nam_rs::math::activations::set_activation_precision;
 use nam_rs::models::NamModel;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+
+/// Sets `ActivationPrecision::HighFidelity` and returns a guard that
+/// restores `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3).
+struct PrecisionGuard;
+
+impl PrecisionGuard {
+    fn set() -> Self {
+        set_activation_precision(ActivationPrecision::HighFidelity);
+        PrecisionGuard
+    }
+}
+
+impl Drop for PrecisionGuard {
+    fn drop(&mut self) {
+        set_activation_precision(ActivationPrecision::Standard);
+    }
+}
 
 const NAM_CORE_DIR: &str = "tests/fixtures/NeuralAmpModelerCore";
 const BUILD_DIR: &str = "build/namcore_render";
@@ -184,6 +203,7 @@ fn run_render_comparison(
     sample_rate: u32,
     use_v2: bool,
     check_lufs_gate: bool,
+    use_hf: bool,
 ) {
     let model_path = model_path(model_filename);
     if !model_path.exists() {
@@ -407,15 +427,32 @@ fn run_render_comparison(
         const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
         const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08; // rates ≤ 96 kHz
         const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.20; // rates > 96 kHz (e.g. 192 kHz)
+        // HighFidelity mode caps (Tarefa β1.3) — the C++ render tool uses
+        // standard Padé approximations, while Rust uses HF poly exp-based
+        // kernels. This deliberate asymmetry increases interop divergence.
+        // Caps are calibrated to pass meaningful comparison (all < 1.0,
+        // non-placebo) while documenting the HF interop drift.
+        const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
+            nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
+        const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 0.30; // rates ≤ 96 kHz
+        const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 0.60; // rates > 96 kHz (e.g. 192 kHz)
         const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
         const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
 
         let esr_cap = if model_data.architecture == "LSTM" {
-            if sample_rate > 96_000 {
+            if use_hf {
+                if sample_rate > 96_000 {
+                    ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF
+                } else {
+                    ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF
+                }
+            } else if sample_rate > 96_000 {
                 ABSOLUTE_ESR_CAP_LSTM_HIRATE
             } else {
                 ABSOLUTE_ESR_CAP_LSTM_NATIVE
             }
+        } else if use_hf {
+            ABSOLUTE_ESR_CAP_WAVENET_HF
         } else {
             ABSOLUTE_ESR_CAP_WAVENET
         };
@@ -437,6 +474,16 @@ fn run_render_comparison(
             *mr = ABSOLUTE_MRSTFT_CAP;
         }
     }
+
+    // Set HighFidelity activation mode if requested (Tarefa β1.3).
+    // The C++ NAMCore render tool uses standard Padé approximations,
+    // so this deliberately increases the interop divergence.
+    // Uses RAII guard for panic-safe restoration to Standard.
+    let _precision: Option<PrecisionGuard> = if use_hf {
+        Some(PrecisionGuard::set())
+    } else {
+        None
+    };
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
 
@@ -492,6 +539,20 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
         48000,
         false,
         check_lufs_gate,
+        false,
+    );
+}
+
+/// Helper: run v1 comparison in HighFidelity mode (Tarefa β1.3).
+fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
+    run_render_comparison(
+        model_filename,
+        golden_name,
+        label,
+        48000,
+        false,
+        check_lufs_gate,
+        true,
     );
 }
 
@@ -525,7 +586,66 @@ fn run_v2_multi_sr(
         let label = format!("{label_base} @ {sr} Hz (v2)");
         let gname = format!("{golden_name}_v2_{sr}");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_render_comparison(model_filename, &gname, &label, sr, true, check_lufs_gate);
+            run_render_comparison(
+                model_filename,
+                &gname,
+                &label,
+                sr,
+                true,
+                check_lufs_gate,
+                false,
+            );
+        }));
+        if let Err(e) = result {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown panic (non-string payload)".to_string());
+            failures.push((sr, msg));
+        }
+    }
+    if !failures.is_empty() {
+        let summary: Vec<String> = failures
+            .iter()
+            .map(|(sr, msg)| format!("@ {sr} Hz: {msg}"))
+            .collect();
+        panic!(
+            "Parity validation failed for sample rates:\n  {}",
+            summary.join("\n  ")
+        );
+    }
+}
+
+/// Runs v2 stress signal comparison in HighFidelity mode (Tarefa β1.3).
+///
+/// The C++ NAMCore `render` tool always uses standard Padé approximations.
+/// The Rust engine uses high-fidelity polynomial exp-based kernels when
+/// HF mode is active. This deliberate asymmetry means the interop ESR
+/// will be larger in HF mode than in standard mode.
+///
+/// The HF-specific absolute ESR caps (defined in `run_render_comparison`)
+/// are more generous to accommodate this legitimate divergence.
+fn run_v2_multi_sr_hf(
+    model_filename: &str,
+    golden_name: &str,
+    label_base: &str,
+    check_lufs_gate: bool,
+) {
+    let mut failures: Vec<(u32, String)> = Vec::new();
+    for &sr in SUPPORTED_SAMPLE_RATES {
+        let label = format!("{label_base} @ {sr} Hz (v2, HF)");
+        let gname = format!("{golden_name}_v2_{sr}");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_render_comparison(
+                model_filename,
+                &gname,
+                &label,
+                sr,
+                true,
+                check_lufs_gate,
+                true,
+            );
         }));
         if let Err(e) = result {
             let msg = e
@@ -909,6 +1029,108 @@ fn live_cross_validation_v2_linear() {
         "linear_test.nam",
         "linear_test",
         "Live Linear RF=4 (v2)",
+        true,
+    );
+}
+
+// =============================================================================
+// HighFidelity mode cpp_parity tests (Tarefa β1.3)
+// =============================================================================
+//
+// C++ NAMCore uses standard Padé/minimax approximations for tanh/sigmoid.
+// Rust in HF mode uses high-fidelity polynomial exp-based kernels (~2.4e-7
+// error vs ~2.32e-3 for Padé tanh). This deliberate asymmetry means the
+// interop divergence is larger in HF mode than in standard mode.
+//
+// These tests characterize that divergence and gate it with HF-specific
+// caps (ABSOLUTE_ESR_CAP_*_HF in run_render_comparison).
+//
+// Quick (non-ignored): representative subset for fast CI loop
+// Comprehensive (ignored): full model × SR matrix, requires C++ toolchain
+
+// --- Quick Parity Subset (HF, non-ignored) ---
+
+#[test]
+fn quick_parity_hf_lstm_1x16() {
+    run_v1_hf(
+        "BossLSTM-1x16.nam",
+        "lstm_1x16",
+        "Quick LSTM 1×16 (HF)",
+        true,
+    );
+}
+
+#[test]
+fn quick_parity_hf_wavenet_ch16() {
+    run_v1_hf(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Quick WaveNet CH16 (HF)",
+        true,
+    );
+}
+
+// --- v1 (standard-rate) HF tests, ignored ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_hf_lstm_1x16() {
+    run_v1_hf(
+        "BossLSTM-1x16.nam",
+        "lstm_1x16",
+        "Live LSTM 1×16 (HF)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_hf_lstm_2x8() {
+    run_v1_hf("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (HF)", true);
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_hf_wavenet_standard() {
+    run_v1_hf(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Live WaveNet Standard (HF)",
+        true,
+    );
+}
+
+// --- v2 (multi-SR) HF tests, ignored ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_hf_lstm_1x16() {
+    run_v2_multi_sr_hf(
+        "BossLSTM-1x16.nam",
+        "lstm_1x16",
+        "Live LSTM 1×16 (v2, HF)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_hf_lstm_2x8() {
+    run_v2_multi_sr_hf(
+        "BossLSTM-2x8.nam",
+        "lstm_2x8",
+        "Live LSTM 2×8 (v2, HF)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_hf_wavenet_standard() {
+    run_v2_multi_sr_hf(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Live WaveNet Standard (v2, HF)",
         true,
     );
 }

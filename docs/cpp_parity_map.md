@@ -163,6 +163,27 @@ Both caps are below the placebo line (ESR < 1.0). All four LSTM v2 tests
 supported rates. The 192 kHz / 1×16 drift is a **documented, tracked, asserted** limitation
 (see §4.5 and §9.1 of this document for full RCA and measured gates), never a hidden gap.
 
+**HighFidelity mode interop caps (Tarefa β1.3).** When `ActivationPrecision::HighFidelity` is
+active, Rust uses polynomial exp-based tanh/sigmoid (~2.4e-7 / ~2.1e-7 error) while the C++
+`render` tool continues to use standard Padé [5,4] tanh (~2.32e-3) and minimax degree-17
+sigmoid (~4.09e-4). This **deliberate asymmetry** means HF mode is **closer to the mathematical
+ideal** but **further from C++ bit-equivalence**. The parity gate uses HF-specific caps that
+remain meaningful (ESR < 1.0) while documenting the increased interop drift:
+
+| Host rate | `ABSOLUTE_ESR_CAP_LSTM_HF` | Notes                                   |
+|:--------- |:--------------------------:|:----------------------------------------|
+| ≤ 96 kHz  | 0.30                       | ~5× standard cap; covers Padé→HF delta  |
+| > 96 kHz  | 0.60                       | Conservative for 192 kHz recurrent drift|
+
+HF caps for WaveNet: 5.0× the standard `ABSOLUTE_ESR_CAP_WAVENET` (still < 1.0).
+HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
+`live_cross_validation_v2_*_hf` (all `#[ignore]`, require C++ toolchain).
+
+> **Design decision:** HF mode is an "ideal math" mode, not a "match C++" mode. The divergence
+> is expected and documented. Users seeking interop parity with NAMCore should use Standard
+> activation precision. See [`audio_fidelity_map.md`](audio_fidelity_map.md) §2/§6 and
+> [`TODO-findings.md`](TODO-findings.md) I6.
+
 > **Weight-layout note (root cause of a real bug).** JSON `.nam` LSTM weights use the **Original**
 > layout `[Gate][H][IH]`; the production runtime transposes them to the SIMD-friendly **GateMajor**
 > `[Gate][IH][H]` at load (see §4.2, §7.4). Confusing the two produces a *completely* wrong output

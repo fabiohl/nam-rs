@@ -43,6 +43,8 @@ use std::sync::atomic::Ordering;
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
+use nam_rs::math::activations::ActivationPrecision;
+use nam_rs::math::activations::set_activation_precision;
 use nam_rs::math::common::{InstructionSet, TEST_ISA_OVERRIDE, encode_isa_override};
 use nam_rs::models::NamModel;
 
@@ -71,6 +73,23 @@ impl IsaGuard {
 impl Drop for IsaGuard {
     fn drop(&mut self) {
         clear_override();
+    }
+}
+
+/// Sets `ActivationPrecision::HighFidelity` and returns a guard that
+/// restores `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3).
+struct PrecisionGuard;
+
+impl PrecisionGuard {
+    fn set() -> Self {
+        set_activation_precision(ActivationPrecision::HighFidelity);
+        PrecisionGuard
+    }
+}
+
+impl Drop for PrecisionGuard {
+    fn drop(&mut self) {
+        set_activation_precision(ActivationPrecision::Standard);
     }
 }
 
@@ -125,6 +144,49 @@ fn run_under_isa(
 
     // CRITICAL: set override BEFORE building model — the builder reads
     // SimdMathConfig::get() to decide BF16 vs non-BF16 weight layout.
+    // Also explicitly pin Standard activation precision — HF tests may
+    // have left the global atomic dirty (Tarefa β1.3).
+    let _guard = IsaGuard::set(isa);
+    set_activation_precision(ActivationPrecision::Standard);
+
+    let mut model = build_model(&model_data).unwrap_or_else(|e| panic!("Build failed: {e}"));
+    model.prewarm(V2_PREWARM_SAMPLES);
+
+    let num_samples = input.len();
+    let mut output = vec![0.0f32; num_samples];
+    process_in_blocks(&mut model, &input, &mut output, V2_TEST_BLOCK_SIZE);
+
+    (output, expected)
+}
+
+/// Loads a model and runs golden-vector inference under a specific ISA
+/// with `ActivationPrecision::HighFidelity` enabled.
+///
+/// Returns the model output buffer and the expected (C++ reference) output.
+fn run_under_isa_hf(
+    model_filename: &str,
+    golden_name: &str,
+    sr: u32,
+    isa: InstructionSet,
+) -> (Vec<f32>, Vec<f32>) {
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let nam_path = model_path(model_filename);
+    let golden_filename = format!("{golden_name}_v2_{sr}.bin");
+    let golden_path = fixtures_dir.join(&golden_filename);
+
+    assert!(nam_path.exists(), "Model file not found: {nam_path:?}");
+    assert!(
+        golden_path.exists(),
+        "Golden vector not found: {golden_path:?}. Run './tests/fixtures/golden_gen_build.sh'."
+    );
+
+    let (input, expected) = read_golden_bin(&golden_path)
+        .unwrap_or_else(|| panic!("Failed to read golden {golden_filename}"));
+
+    let json_data = std::fs::read_to_string(&nam_path).expect("Failed to read model JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+
+    let _precision = PrecisionGuard::set();
     let _guard = IsaGuard::set(isa);
 
     let mut model = build_model(&model_data).unwrap_or_else(|e| panic!("Build failed: {e}"));
@@ -174,6 +236,32 @@ fn assert_isa_parity(
         esr < max_esr,
         "[{label}] ISA parity FAIL: {ref_name} → {test_name} \
          ESR={esr:.2e} ≥ budget={max_esr:.1e}"
+    );
+}
+
+/// Convenience: runs cross-ISA comparison for one model at 48 kHz
+/// in `ActivationPrecision::HighFidelity` mode.
+fn check_isa_parity_for_model_hf(
+    model_filename: &str,
+    golden_name: &str,
+    label: &str,
+    test_isa: InstructionSet,
+    max_esr: f64,
+) {
+    let sr = 48000;
+
+    let (ref_output, _expected) =
+        run_under_isa_hf(model_filename, golden_name, sr, InstructionSet::Avx2);
+
+    let (test_output, _expected2) = run_under_isa_hf(model_filename, golden_name, sr, test_isa);
+
+    assert_isa_parity(
+        &ref_output,
+        &test_output,
+        &format!("{label} @ {sr} Hz (HF)"),
+        InstructionSet::Avx2,
+        test_isa,
+        max_esr,
     );
 }
 
@@ -462,6 +550,142 @@ fn isa_parity_wavenet_nano_avx2_vs_vnnibf16() {
         "WN-Nano",
         InstructionSet::Avx512VnniBf16,
         WN_ESR_BUDGET * 10.0,
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HighFidelity mode self-consistency (AVX2) — always runs
+// ══════════════════════════════════════════════════════════════════════
+//
+// Tarefa β1.3: verify that the HF activation paths (scalar + SIMD) are
+// deterministic across repeated runs with the same ISA.
+
+#[test]
+fn isa_hf_self_consistency_wavenet_standard_avx2() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    let sr = 48000;
+    let (output1, _) = run_under_isa_hf(
+        "BossWN-standard.nam",
+        "golden_wavenet_standard",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let (output2, _) = run_under_isa_hf(
+        "BossWN-standard.nam",
+        "golden_wavenet_standard",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let mse = compute_mse(&output1, &output2);
+    println!("[ISA HF Matrix] WN-Std AVX2 self-consistency (HF) | MSE={mse:.2e}");
+    assert!(
+        mse == 0.0,
+        "WN-Std AVX2 HF self-consistency FAIL: MSE={mse:.6e} (expected 0.0)"
+    );
+}
+
+#[test]
+fn isa_hf_self_consistency_lstm_1x16_avx2() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    let sr = 48000;
+    let (output1, _) = run_under_isa_hf(
+        "BossLSTM-1x16.nam",
+        "golden_lstm_1x16",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let (output2, _) = run_under_isa_hf(
+        "BossLSTM-1x16.nam",
+        "golden_lstm_1x16",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let mse = compute_mse(&output1, &output2);
+    println!("[ISA HF Matrix] LSTM-1x16 AVX2 self-consistency (HF) | MSE={mse:.2e}");
+    assert!(
+        mse == 0.0,
+        "LSTM-1x16 AVX2 HF self-consistency FAIL: MSE={mse:.6e} (expected 0.0)"
+    );
+}
+
+#[test]
+fn isa_hf_self_consistency_lstm_2x8_avx2() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    let sr = 48000;
+    let (output1, _) = run_under_isa_hf(
+        "BossLSTM-2x8.nam",
+        "golden_lstm_2x8",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let (output2, _) = run_under_isa_hf(
+        "BossLSTM-2x8.nam",
+        "golden_lstm_2x8",
+        sr,
+        InstructionSet::Avx2,
+    );
+    let mse = compute_mse(&output1, &output2);
+    println!("[ISA HF Matrix] LSTM-2x8 AVX2 self-consistency (HF) | MSE={mse:.2e}");
+    assert!(
+        mse == 0.0,
+        "LSTM-2x8 AVX2 HF self-consistency FAIL: MSE={mse:.6e} (expected 0.0)"
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HighFidelity cross-ISA parity — AVX2 (ref) vs AVX-512 (ignored)
+// ══════════════════════════════════════════════════════════════════════
+//
+// Tarefa β1.3: verify cross-ISA parity in HighFidelity mode.
+// HF polynomial kernels use the same mathematical approximation (degree-6
+// Taylor with range reduction) across ISAs, so cross-ISA parity should be
+// comparable to or better than standard mode.
+
+/// HF cross-ISA ESR budget for LSTM models.
+const LSTM_HF_ESR_BUDGET: f64 = 1e-2;
+
+/// HF cross-ISA ESR budget for WaveNet models.
+const WN_HF_ESR_BUDGET: f64 = 1e-3;
+
+#[test]
+#[ignore = "Requires AVX-512 hardware"]
+fn isa_parity_hf_lstm_1x16_avx2_vs_avx512() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    skip_if_unsupported!(InstructionSet::Avx512, "LSTM-1x16/AVX-512 HF");
+    check_isa_parity_for_model_hf(
+        "BossLSTM-1x16.nam",
+        "golden_lstm_1x16",
+        "LSTM-1x16",
+        InstructionSet::Avx512,
+        LSTM_HF_ESR_BUDGET,
+    );
+}
+
+#[test]
+#[ignore = "Requires AVX-512 hardware"]
+fn isa_parity_hf_lstm_2x8_avx2_vs_avx512() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    skip_if_unsupported!(InstructionSet::Avx512, "LSTM-2x8/AVX-512 HF");
+    check_isa_parity_for_model_hf(
+        "BossLSTM-2x8.nam",
+        "golden_lstm_2x8",
+        "LSTM-2x8",
+        InstructionSet::Avx512,
+        LSTM_HF_ESR_BUDGET,
+    );
+}
+
+#[test]
+#[ignore = "Requires AVX-512 hardware"]
+fn isa_parity_hf_wavenet_standard_avx2_vs_avx512() {
+    let _lock = ISA_LOCK.lock().unwrap();
+    skip_if_unsupported!(InstructionSet::Avx512, "WN-Std/AVX-512 HF");
+    check_isa_parity_for_model_hf(
+        "BossWN-standard.nam",
+        "golden_wavenet_standard",
+        "WN-Std",
+        InstructionSet::Avx512,
+        WN_HF_ESR_BUDGET,
     );
 }
 
