@@ -328,14 +328,14 @@ with wave.open('$TEST_WAV', 'w') as w:
             wait $NAM_PID 2>/dev/null || true
 
             # Generate AI-ready assembly hotspot report
+            NAM_RS_BIN="$PGO_BUILD_TARGET_DIR/dist/nam-rs"
             if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
                 echo -e "  Generating AI-ready assembly hotspot report in target/dsp_hotpath.asm..."
                 mkdir -p target
-                perf annotate --stdio -i "$BOLT_DIR/perf.data" > "target/dsp_hotpath.asm" 2>/dev/null || true
+                perf annotate --stdio -i "$BOLT_DIR/perf.data" "$NAM_RS_BIN" > "target/dsp_hotpath.asm" 2>/dev/null || true
             fi
 
             # Convert profile and optimize standalone binary
-            NAM_RS_BIN="$PGO_BUILD_TARGET_DIR/dist/nam-rs"
             if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
                 echo -e "  Converting profile with perf2bolt..."
 

@@ -47,3 +47,28 @@ Foco em limpar redundâncias de parâmetros na CLI, melhorar a clareza das opç�
 * **Ações:**
   * Alterar em `src/standalone/cli.rs` o texto de ajuda do `--slim` para:
     `Adaptive Compute (downgrades the active model) Auto = Under CPU Pressure [default: auto]`
+
+---
+
+## Sprint 2: Correção do Pipeline de Build de Release
+
+Foco em acelerar o passo de perfilamento e resolver falhas silenciosas de pipe em validações de símbolos do CLAP.
+
+### Épico 2: Correção do Pipeline de Build de Release (F07, F08)
+
+* **Risco/Criticidade:** Médio. Alterações em scripts Bash críticos de build e integração. É essencial que os scripts continuem executando corretamente e instalando os artefatos nos caminhos esperados.
+* **Tarefas Técnicas:**
+
+#### [T2.1] Otimização do `perf annotate` no Build de Release (F07) [DONE]
+
+* **Objetivo:** Restringir a análise do `perf annotate` ao binário do `nam-rs`, reduzindo o tempo de execução de ~14 minutos para apenas alguns segundos.
+* **Ações:**
+  * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), mover a definição da variável `NAM_RS_BIN` para antes da chamada de `perf annotate`.
+  * Passar `"$NAM_RS_BIN"` como argumento para o comando `perf annotate`.
+
+#### [T2.2] Correção do SIGPIPE na Validação de Símbolos do CLAP (F08)
+
+* **Objetivo:** Substituir o uso de `grep -q` em pipelines para evitar que sinais `SIGPIPE` retornem código de erro e façam o script falhar sob `set -o pipefail`.
+* **Ações:**
+  * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), substituir `grep -q` por `grep ... >/dev/null` nas verificações de `clap_entry` e `SONAME`.
+  * No arquivo [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh), aplicar a mesma modificação nas checagens de `SONAME` e `clap_entry`.
