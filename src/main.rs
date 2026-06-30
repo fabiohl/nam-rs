@@ -196,6 +196,11 @@ fn main() -> anyhow::Result<()> {
 
     // Apply activation precision mode before any audio processing
     set_activation_precision(args.activation);
+    log::info!(
+        "{} Activation precision set to {:?}",
+        "⚡".yellow(),
+        args.activation
+    );
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.
     // Executed here (outside the cold-path of the first DSP frame) to avoid

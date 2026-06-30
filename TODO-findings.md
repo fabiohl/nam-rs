@@ -113,7 +113,7 @@ Este documento agrupa as análises e constatações obtidas pelas auditorias da 
 
 ## Epics (Agrupamentos)
 
-### Épico 1: Ajustes e Polimento de Interface CLI e Logs
+### Épico 1: Ajustes e Polimento de Interface CLI e Logs [DONE]
 
 * Inclui **F01**, **F03**, **F04**, **F06**.
 * Foco em limpar atalhos redundantes (`--os`, `--act`), esclarecer o `--slim` e introduzir a exibição no terminal do modo de precisão de ativação selecionado.

@@ -41,14 +41,12 @@ pub fn print_help() {
     println!("      --diagnose          Print technical support block and exit");
     println!("      --diagnose-full     Print technical support block with raw paths and exit");
     println!(
-        "      --slim auto|full|lite  Force quality level (overrides adaptive FSM) [default: auto]"
+        "      --slim auto|full|lite  Adaptive Compute (downgrades the active model) Auto = Under CPU Pressure [default: auto]"
     );
     println!(
         "      --oversample off|2x|4x Half-band oversampling around neural stage [default: off]"
     );
-    println!("      --os off|2x|4x       Short alias for --oversample");
     println!("      --activation MODE    Activation precision: standard (default) or hf");
-    println!("      --act MODE           Short alias for --activation");
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -131,7 +129,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     )),
                 };
             }
-            Long("oversample") | Long("os") => {
+            Long("oversample") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let val_str = val
                     .into_string()
@@ -146,7 +144,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     )),
                 };
             }
-            Long("activation") | Long("act") => {
+            Long("activation") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let val_str = val
                     .into_string()
@@ -326,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_parse_args_activation_hf() {
-        let args = vec!["nam-rs", "--act", "hf"];
+        let args = vec!["nam-rs", "--activation", "hf"];
         let parser = lexopt::Parser::from_iter(args);
         let cli_args = parse_args_from(parser);
         assert_eq!(

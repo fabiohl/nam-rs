@@ -477,7 +477,7 @@ fn test_zero_alloc_cli_activation_flow() {
             ActivationPrecision::Standard,
         ),
         (
-            vec!["nam-rs", "--act", "hf"],
+            vec!["nam-rs", "--activation", "hf"],
             ActivationPrecision::HighFidelity,
         ),
         (
