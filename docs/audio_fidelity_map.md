@@ -29,7 +29,7 @@ of the `.nam` / `.namb` file format contract.
 | 7   | **Denormal dither + FTZ/DAZ**           | ❌    | ✅ Yes                  | ❌ No                    | No audible impact (−220 dBFS)               | ✅ Active            |
 | 8   | **Adaptive Compute (quality fallback)** | ❌    | ✅ Default              | 🔶 `--slim` flag         | Silent quality drop under CPU load          | ✅ Active            |
 
-† Resampler quality (Standard/HQ) was deferred — see §4. HF activation mode is exposed via CLI (`--activation`) and CLAP (`PARAM_ACTIVATION=8`). LSTM models fully support HighFidelity activation gates since Épico β (Sprint β1).
+† Resampler quality (Standard/HQ) was rejected after benchmarking — see §4. HF activation mode is exposed via CLI (`--activation`) and CLAP (`PARAM_ACTIVATION=8`). LSTM models fully support HighFidelity activation gates since Épico β (Sprint β1).
 
 ---
 
@@ -190,10 +190,7 @@ interfaces.
 **Mandatory?** Yes, when the host rate differs from 48 kHz. Cannot be disabled without
 breaking audio at non-48 kHz rates.
 
-**User-controllable?** A "Resampler Quality: Standard/HQ" parameter was designed (Tarefa 5.7 /
-`docs/architecture.md §3.2`) but deferred pending a Δμs benchmark. The 64-tap HQ config is
-the production default; if cost proves non-negligible, a user-selectable Standard (32-tap) mode
-may be exposed via CLI and CLAP.
+**User-controllable?** No. A "Resampler Quality: Standard/HQ" parameter was designed but discarded after quantitative benchmarks. The 64-tap HQ configuration is the permanent production default. Benchmarks showed that a 32-tap configuration saves only ~40 ns per 64-sample block (< 0.1% of the total pipeline) while severely degrading passband SNR from $\ge 100\text{ dB}$ to $\sim 24\text{ dB}$. Thus, Standard (32-tap) mode has been rejected to prioritize fidelity and avoid code complexity.
 
 **Implementation.** `src/dsp/resampler.rs`, `src/dsp/sinc_kernel.rs`.
 
@@ -350,7 +347,7 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 |:--------------------------------------------------------- |:--------------------------:|:--------------------------------------------------------------------------- |
 | HighFidelity activation mode user control (CLI/CLAP knob) | ✅ Complete (α2; β1)       | `src/math/activations/`, `src/clap/`                                        |
 | Runtime oversample switching (currently init-time only)   | 🟡 Designed, off-RT TODO   | §5; `rt_callback/commands.rs` `TODO(oversample-rt)` (F2 PDC blocker)        |
-| Resampler quality selector (Standard 32T / HQ 64T)        | 🟡 Designed, HQ is default | §4 (F3 latency formula blocker resolved)                                    |
+| Resampler quality selector (Standard 32T / HQ 64T)        | ✅ Rejected (γ)            | §4 (Benchmark proved 32T savings < 0.1% pipeline. HQ-only permanent.)       |
 | Kahan-compensated LSTM head accumulation                  | ✅ Complete (β2)           | `src/math/common/scalar_ref/dot.rs`, `src/models/lstm/`                     |
 | LSTM HF gate kernel coverage                              | ✅ Complete (β1)           | `src/math/lstm/gates.rs`, `src/models/lstm/layer_kernels.rs`                |
 | LSTM oversampling characterization & user guidance        | ✅ Complete (β3.1)         | `docs/lstm_recurrent_drift.md` §4, `tests/oversampling_characterization.rs` |

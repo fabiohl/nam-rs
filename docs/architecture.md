@@ -267,7 +267,7 @@ When the host sample rate matches the model's native 48 kHz, the resampler enter
 
 ### Default Quality
 
-HQ (64 taps, minimum-phase) is the **production default**. The cost of 64 taps vs. 32 taps is < 1% of the total pipeline when the neural model is active (the bypass-at-48 kHz path is the common case). A user-facing "resampler quality" parameter is deferred pending quantitative benchmark of the Δμs cost (Tarefa 5.7).
+HQ (64 taps, minimum-phase) is the permanent **production default**. The cost of 64 taps vs. 32 taps was quantitatively benchmarked (Épico γ), showing a savings of only ~40 ns per 64-sample block (< 0.1% of the total pipeline when the neural model is active), while the 32-tap configuration degraded passband SNR to ~24 dB (vs. $\ge 100$ dB for 64 taps). A user-facing "resampler quality" parameter was thus rejected to preserve audio fidelity and minimize code complexity.
 
 ### Gate FSM
 

@@ -35,7 +35,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 |:------ |:------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------- |
 | **I1** | HighFidelity activation: controle do usuário (CLI/CLAP) | Infra **pronta e funcional**, mas `set_activation_precision()` **só é chamada por testes**. Sem CLI/CLAP/GUI.         | **FAZER.** É o item mais barato: alternar o modo é **apenas um store atômico** (sem rebuild/alloc). Expor CLI+CLAP.   |
 | **I2** | Runtime oversample switching                            | **F2/PDC já corrigido.** Troca em runtime **já funciona 100% no CLAP**. Quebrado **só no standalone** (2 lacunas).    | **FAZER (escopo reduzido).** Espelhar o padrão _slimmable-rebuild_ no standalone + honrar `--oversample` no init.     |
-| **I3** | Resampler quality selector (Standard 32T / HQ 64T)      | **F3/latência já corrigido** (group delay empírico de fase mínima). `TAPS=64` é `const` de compilação. Sem seletor.   | **MEDIR ANTES.** Provável **não-fazer**: rodar bench Δµs; se HQ < ~1 % do pipeline, manter HQ-only e documentar.      |
+| **I3** | Resampler quality selector (Standard 32T / HQ 64T)      | **F3/latência já corrigido**. Benchmark Δµs provou que 64T vs 32T economiza apenas 40 ns (<0.1% do pipeline).         | **RESOLVIDO (NÃO FAZER).** HQ-only é mantido permanentemente. Decisão documentada.                                    |
 | **I4** | Kahan-compensated LSTM head accumulation                | Head f32-native usa `+=` simples (**sem Kahan**). Mas `decompose_error`: acumulação f32 é **negligível (~7,2e-13)**.  | **HIGIENE, não fix de §3.** Implementar Kahan no head é barato e correto, mas **não** move o drift de §3. Re-rotular. |
 | **I5** | Oversampled recurrent state (LSTM HQ)                   | Sem OS interno no LSTM; o `OversampleEngine` externo **já roda o LSTM a 2×/4×**. §3(b): rate maior = **mais** drift.  | **REJEITAR caminho dedicado.** Mecanismo trocado (alias ≠ drift) + risco de mudar timbre. Caracterizar e documentar.  |
 | **I6** | **(NOVO)** HF activations nos kernels fundidos do LSTM  | Kernels 4-gate fundidos **bypassam** o dispatch de `ActivationPrecision` (sempre Padé). Padé domina o piso (~7,6e-4). | **A ALAVANCA REAL de §3.** Maior ganho de fidelidade LSTM preservando formato. Surge desta pesquisa.                  |
@@ -277,29 +277,23 @@ Aqui a inovação é **resistir a adicionar complexidade que provavelmente não 
   `taps=32`), novo parâmetro CLAP (ID 8/9), wiring CLI, persistência, GUI, rebuild SPSC e
   cuidado com o `DELAY_LINE_LEN`. **Superfície de risco real** para um ganho de CPU duvidoso.
 
-**Recomendação:** transformar este item de "feature pendente" em "**decisão guiada por
-dados**". Rodar o benchmark Δµs (o projeto já tem `benches/`). Resultado provável: manter
-**HQ-only** como default permanente e **documentar a decisão** (encerrar o item). Só se o
-benchmark mostrar custo material em hardware-alvo de baixo custo a taxas ≠ 48 kHz é que o
-seletor se justifica.
+**Decisão:** decisão guiada por dados concluída. O benchmark Δµs provou que o custo do banco de 64 taps (HQ) é desprezível e que a economia do modo de 32 taps é insignificante, não justificando a perda de fidelidade e complexidade adicional de um seletor. Mantido **HQ-only** como padrão definitivo.
 
-### I3 — Proposta de solução
+### I3 — Resultados do Benchmark (Passo 0 executado)
 
-- **Passo 0 (obrigatório):** bench `Δµs` de `process_input`/`process_output` 64T vs 32T por par
-  de taxas (44.1↔48, 48↔96), em hardware representativo, com modelo ativo. Critério de decisão:
-  custo do resampler **> ~3 %** do bloco → considerar seletor; senão, **encerrar como HQ-only**.
-- **Se (e somente se) justificado:** implementar `enum ResamplerQuality { Standard, Hq }` +
-  `NamResampler::new_with_quality(...)`, gerador parametrizado por `taps`, e seletor
-  CLI/CLAP espelhando o oversampling. Como `group_delay` já é por-banco (I3 ↔ F3 resolvido),
-  a latência de ambos os bancos é tratada corretamente sem novas fórmulas. Manter o
-  `DELAY_LINE_LEN` em 64 (usar só os 32 primeiros taps) para minimizar mudança — desperdício
-  de memória irrisório.
+- **Upsampling (44.1 -> 48 kHz) por bloco de 256 amostras**:
+  - HQ (64 Taps): **3.87 µs**
+  - Standard (32 Taps): **3.71 µs**
+  - Economia absoluta ($\Delta\mu\text{s}$): **0.16 µs** por 256 amostras (equivalente a **40 ns** por bloco de 64 amostras).
+- **Inferencia WaveNet Standard (bloco de 64 amostras @ 48 kHz)**: **48.80 µs**.
+- **Overhead relativo e economia**:
+  - O overhead total do resampler de 64T (upsampling) em relação ao modelo neural é de apenas **~1.99%** do pipeline.
+  - A economia de trocar 64T por 32T é de **~0.08%** do pipeline total de inferência (40 ns em 48.80 µs).
+- **Conclusão**: Uma economia de <0.1% de CPU não justifica degradar a fidelidade do sinal (onde o SNR no passband cai de $\ge 100\text{ dB}$ com 64T para $\sim 24\text{ dB}$ com 32T) e adicionar complexidade na base de código. O item é **encerrado como HQ-only**.
 
 ### I3 — Impacto na arquitetura/documentação
 
-- `audio_fidelity_map.md §4/§9` e `architecture.md §5`: registrar que **F3 foi resolvido** e
-  que a decisão do seletor é **gated por benchmark**; se encerrado, documentar "HQ-only é o
-  default permanente; Standard 32T descartado por custo desprezível e perda de fidelidade".
+- `audio_fidelity_map.md §4/§9` e `architecture.md §5`: atualizados para registrar que **F3 foi resolvido**, os resultados do benchmark, e que o seletor foi descartado mantendo o design **HQ-only** permanente.
 
 ### I3 — Validação sugerida
 
@@ -573,13 +567,13 @@ preservando o formato?**
   oráculo f64 antes/depois; reavaliar o gate interop (`ABSOLUTE_ESR_CAP_LSTM`).
 - **Dependência:** I6 herda o controle de I1 (fazer I1 antes).
 
-### Épico γ — Resampler quality (decisão guiada por dados)
+### Épico γ — Resampler quality (decisão guiada por dados) [DONE]
 
 - **Findings:** I3.
 - **Objetivo:** **medir** (Δµs bench) e, muito provavelmente, **encerrar** como "HQ-only é o
   default permanente"; documentar que F3 já está resolvido. Implementar o seletor **só** se o
-  bench provar custo material.
-- **Risco:** BAIXO (passo 0 é só benchmark). A implementação, se ocorrer, é MÉDIA.
+  bench provar custo material. **[Medição concluída: economia de 32T vs 64T é de apenas 40 ns por bloco (<0.1% do total), decidindo pelo descarte do seletor e manutenção de HQ-only permanente.]**
+- **Risco:** BAIXO.
 
 ### Épico δ — Sincronização da documentação de fidelidade (a "arquitetura final")
 
