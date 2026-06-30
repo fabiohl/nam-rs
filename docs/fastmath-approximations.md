@@ -248,7 +248,7 @@ is a normal normalized f32 value.
 
 - `tests/soak_test.rs:53` — `test_wavenet_silence_soak` (`#[ignore]`, 10M frames)
 - `tests/soak_test.rs:117` — `test_wavenet_silence_decomposition` (source isolation)
-- See `fastmath-approximations.md` §6 (this section) and `docs/audio_fidelity_map.md`.
+- See `fastmath-approximations.md` §6 (anti-subnormal companion) and `docs/audio_fidelity_map.md`.
 
 ---
 

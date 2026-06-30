@@ -47,6 +47,9 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 * **Critérios de Aceitação:**
   1. Atualizar a entrada de tabela **"A2 official real-amp FiLM captures"** no §13 para refletir o status de conformismo temporário com modelos sintéticos.
   2. Documentar o motivo técnico (incompatibilidade estrutural dos modelos reais existentes) no §13.1.
+* **Conclusão (2026-06-30):**
+  1. ✅ Tabela do §13 atualizada: entrada "A2 official real-amp FiLM captures" (🟡 Temporary conformity — validated against synthetic fixtures `wavenet_a2_film_full/lite`, Sprint S9 goldens ✅) — `cpp_parity_map.md:570`.
+  2. ✅ §13.1 documenta o motivo técnico: `wavenet_a2_max.nam` com `condition_size=8` rejeitado por incompatibilidade estrutural; rejeição graciosa validada por `test_loader_gap_wavenet_a2_max`; sem outras capturas reais compatíveis em `models-nondist/` — `cpp_parity_map.md:593`.
 
 #### [x] Task S9.3 — Fronteira de Escopo e Critérios para `SlimmableWavenet` Diferido (PM-06)
 
@@ -64,7 +67,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. ✅ Tabela do §13 dividida em duas linhas distintas: `SlimmableContainer` (🟢 implementado, com referência a `src/models/container.rs` e `tests/container_slimmable.rs`) e `SlimmableWavenet` (🟡 diferido, com referência aos critérios expandidos em §13.1).
   2. ✅ Nota do §13.1 expandida com distinção conceitual explícita entre os dois construtos (orquestração de múltiplos modelos vs. fatiamento de pesos de uma única rede) e critérios de aceitação detalhados em três níveis: (a) parser de múltiplas larguras com projeção para SKUs do catálogo; (b) slicing RT-safe na carga, sem alocação/lock no `process()`; (c) paridade bit-a-bit validada por golden vectors + live cross-validation contra NAMCore.
 
-#### [ ] Task S9.4 — Resolução de Avisos Obsoletos da WaveNet Lite em `fastmath-approximations.md` (PM-02)
+#### [x] Task S9.4 — Resolução de Avisos Obsoletos da WaveNet Lite em `fastmath-approximations.md` (PM-02)
 
 * **Responsável:** Documentador Técnico / Auditor
 * **Risco/Criticidade:** Nulo (doc-only).
@@ -74,8 +77,13 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. Renomear a seção 9.4 para indicar a resolução (ex: "9.4 Lite Architectures — Resolved").
   2. Descrever detalhadamente a causa-raiz (arredondamento do buffer circular sem levar em conta o alinhamento de stride de canais para não-potências de dois) e sua correção (`MirroredBuffer::new_aligned`).
   3. Remover/substituir o bloco de cautela por uma nota de contexto histórico de resolução.
+* **Conclusão (2026-06-30):**
+  1. ✅ Seção renomeada para "9.4 Lite Architectures — Resolved (PM-02)" — `fastmath-approximations.md:325`.
+  2. ✅ RCA detalhada documentada: bug de `MirroredBuffer` page-rounding (`1024 % 12 = 4`, `1024 % 6 = 4` para CH não-potência-de-dois) + golden sintético obsoleto (`BossWN-lite.nam`). Correção via `MirroredBuffer::new_aligned()` com `lcm(page, channel_stride)` + migração para `EVH-5150-Lite.nam` real — `fastmath-approximations.md:329-332`.
+  3. ✅ Bloco `> [!CAUTION]` substituído por `> [!NOTE]` com RCA e 3 guardas de regressão ativas documentadas. Tabela comparativa mantida (BossWN-lite 0.9 dB → EVH-5150-Lite 122.3 dB) — `fastmath-approximations.md:329-337`.
+  4. Referência morta `TODO-problemas.md#P1` removida (substituída por cross-ref a `cpp_parity_map.md` §9.1 e PM-02) — tratada em S9.5.
 
-#### [ ] Task S9.5 — Correção de Referências Quebradas (PM-08)
+#### [x] Task S9.5 — Correção de Referências Quebradas (PM-08)
 
 * **Responsável:** Documentador Técnico
 * **Risco/Criticidade:** Nulo (doc-only).
@@ -86,3 +94,13 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * `TODO-problemas.md:155` (silêncio/denormais) apontará para `fastmath-approximations.md` §6.
      * `TODO-problemas.md#P1` e `TODO-problemas.md:47` (Lite) apontarão para `docs/cpp_parity_map.md` §9.1 e `PM-02`.
      * `TODO-problemas.md:92` (asimetria) e `TODO-problemas.md:353` (lo-fi) apontarão para `docs/fastmath-approximations.md` §9.5.
+* **Conclusão (2026-06-30):**
+  1. ✅ Mapeamento verificado — nenhuma referência viva a `TODO-problemas.md` permanece em `docs/`:
+     * Silêncio/denormais: coberto por `fastmath-approximations.md` §6 (Anti-Subnormal Prevention) e §8 (Non-Zero Silence Policy).
+     * Lite/P1: coberto por `cpp_parity_map.md` §9.1 (122.3 dB, RF7 resolvido) e PM-02.
+     * Asimetria/lo-fi: coberto por `fastmath-approximations.md` §9.5 (Historical Lo-Fi/Hi-Fi Duality).
+  2. ✅ Referências quebradas em `cpp_parity_map.md` (F1/F2/I6) resolvidas desde PM-01.
+  3. ✅ Referência `TODO-problemas.md#P1` em `fastmath-approximations.md` §9.4 removida em S9.4 (substituída por cross-refs a `cpp_parity_map.md` §9.1 e PM-02).
+  4. ✅ Cross-reference canônica estabelecida em `fastmath-approximations.md` §9.6 e `cpp_parity_map.md` See Also — ambas apontam para este registro (`TODO-findings.md` PM-08).
+  5. ✅ Bug de auto-referência em `fastmath-approximations.md` §8 References (`(this section)` referindo-se a §6) corrigido.
+  6. PM-08 marcado `[RESOLVIDO]` em `TODO-findings.md`.

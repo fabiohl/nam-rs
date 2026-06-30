@@ -76,7 +76,7 @@ e mapeia as *tags* existentes.
   * §13 — tabela e notas reescritas (este documento como destino dos detalhes).
   * See Also — referência quebrada substituída por `PM-01…PM-08`.
 
-### PM-02 — Avisos obsoletos de WaveNet Lite (P1/RF7) em `fastmath-approximations.md` §9.4
+### PM-02 — Avisos obsoletos de WaveNet Lite (P1/RF7) em `fastmath-approximations.md` §9.4 [RESOLVIDO]
 
 * **ID:** PM-02 · **Severidade:** Alta (alarme falso ao usuário) · **Risco da correção:** Baixo (doc-only)
 * **Problema:** `docs/fastmath-approximations.md` §9.4 (linhas 325-346) ainda intitula
@@ -236,7 +236,7 @@ e mapeia as *tags* existentes.
      *deveria* comparar der SKIP inesperado).
   3. Emitir um resumo explícito por-taxa no `--nocapture` para auditoria.
 
-### PM-08 — Registro único de findings e correção de **referências quebradas**
+### PM-08 — Registro único de findings e correção de **referências quebradas** [RESOLVIDO]
 
 * **ID:** PM-08 · **Severidade:** Média (rastreabilidade) · **Risco da correção:** Nulo (doc-only)
 * **Problema:** Não há registro central de findings de paridade. O `cpp_parity_map.md`
@@ -251,6 +251,17 @@ e mapeia as *tags* existentes.
      em PM-02.
   3. Padronizar convenção `RF#`/`PM#` e garantir que *tags* em código apontem para um finding
      existente (invariante verificável, análogo ao `tests/threshold_calibration.rs`).
+* **Conclusão (2026-06-30):**
+  1. Referência `TODO-problemas.md#P1` (Lite) removida em S9.4 (PM-02) — substituída por
+     `cpp_parity_map.md` §9.1 e PM-02 no próprio `fastmath-approximations.md` §9.4.
+  2. Referências `F1`/`F2`/`I6` removidas do `cpp_parity_map.md` em PM-01 — substituídas
+     por PM-03 (FiLM), PM-04 (ConvNet), e `perceptual_validation.md` (caps HF).
+  3. Cross-reference canônica estabelecida em `fastmath-approximations.md` §9.6 e
+     `cpp_parity_map.md` See Also, ambas apontando para este registro (`TODO-findings.md`).
+  4. Mapeamento de *tags* vivas: `RF1→PM-03`, `RF3→§3.3`, `RF7→PM-02` — verificado consistente
+     entre `tests/common/validation.rs` e `docs/perceptual_validation.md`.
+  5. Referência auto-contraditória em `fastmath-approximations.md` §8 References
+     (`§6 (this section)`) corrigida para `§6 (anti-subnormal companion)`.
 
 ---
 
@@ -259,12 +270,12 @@ e mapeia as *tags* existentes.
 > Ordenados por relação **valor/risco/sequência**. Épicos A e D são *quick wins* de baixíssimo
 > risco; B e C entregam testemunhas independentes e cobertura real; E permanece diferido.
 
-### Épico A — Sincronização Documental de Paridade (PM-01, PM-02, PM-08) [DOING]
+### Épico A — Sincronização Documental de Paridade (PM-01, PM-02, PM-08) [DONE]
 
 * **Risco/Criticidade:** Nulo a Baixo (doc-only). **Sequência:** imediata.
 * Alinha toda a documentação ao estado real do motor e elimina referências quebradas/alarmes
-  falsos. **PM-01 já aplicado** ao `cpp_parity_map.md` nesta auditoria; restam **PM-02**
-  (`fastmath-approximations.md` §9.4) e **PM-08** (registro/refs).
+  falsos. **PM-01 aplicado** ao `cpp_parity_map.md`; **PM-02** resolvido (`fastmath-approximations.md`
+  §9.4); **PM-08** resolvido (registro canônico + correção de todas as referências quebradas).
 
 ### Épico B — Testemunhas Independentes (Oráculo f64) (PM-04, PM-03)
 
@@ -275,7 +286,7 @@ e mapeia as *tags* existentes.
 * **Crítico/atenção:** manter a **independência** do oráculo (âncora NumPy, Regra 6) — não
   espelhar o engine; e jamais relaxar gate para mascarar (Regra 7).
 
-### Épico C — Cobertura de Modelos Reais A2-FiLM (PM-05) [DOING]
+### Épico C — Cobertura de Modelos Reais A2-FiLM (PM-05) [DONE]
 
 * **Risco/Criticidade:** Médio (depende de obter captura real). **Sequência:** após Épico B (PM-03).
 * Eleva os goldens FiLM de pesos sintéticos para timbres reais, fechando o item "A2 official
@@ -284,7 +295,7 @@ e mapeia as *tags* existentes.
   * Se nenhum arquivo lá ou em `tests/fixtures/models/`, vamos ter de nos conformar com capturas sintéticas.
   * Documente isto de forma muito clara em `docs/cpp_parity_map.md`seção `13. Pending / Open Work`.
 
-### Épico D — Épico Diferido: `SlimmableWavenet` (PM-06) [DOING]
+### Épico D — Épico Diferido: `SlimmableWavenet` (PM-06) [DONE]
 
 * **Risco/Criticidade:** Nulo (decisão de escopo). **Sequência:** sem urgência.
 * Mantém o single-net channel slicing diferido com critérios de aceitação claros; o caso prático
