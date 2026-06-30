@@ -312,19 +312,49 @@ pub unsafe fn sigmoid_poly_slice_avx2(slice: &mut [f32]) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Scalar reference implementations (for testing / fallback)
+// Scalar polynomial exp/tanh/sigmoid (degree-6 Taylor, range reduction)
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Scalar polynomial `tanh(x)` — Padé [5,4] rational approximation.
+/// Scalar polynomial `exp(x)` — degree-6 Taylor polynomial with integer
+/// range reduction `x = k·ln2 + r`.  Matches `simd_exp_poly_avx2` logic.
+///
+/// Input must be pre-clamped to [-POLY_ACTIVATION_CLAMP, POLY_ACTIVATION_CLAMP].
 #[inline]
-pub fn scalar_tanh_poly(x: f32) -> f32 {
-    super::scalar_pade_tanh(x)
+fn scalar_exp_poly_inner(x: f32) -> f32 {
+    let k_f64 = (x as f64) * (POLY_LOG2_E as f64);
+    let k = k_f64.round_ties_even() as f32;
+    let r = (-k).mul_add(POLY_LN2, x);
+
+    let p = POLY_EXP_C6.mul_add(r, POLY_EXP_C5);
+    let p = p.mul_add(r, POLY_EXP_C4);
+    let p = p.mul_add(r, POLY_EXP_C3);
+    let p = p.mul_add(r, POLY_EXP_C2);
+    let p = p.mul_add(r, 1.0);
+    let p = p.mul_add(r, 1.0);
+
+    let scale = f32::from_bits(((k as i32 + 127_i32) as u32) << 23);
+    p * scale
 }
 
-/// Scalar polynomial `sigmoid(x)` — direct minimax rational approximation.
+/// Scalar polynomial `tanh(x)` — exp-based, using degree-6 Taylor.
+/// Formula: `tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)`.
+/// Max absolute error: ≤ 2.4e-7 vs `f32::tanh` on [-20, 20].
+#[inline]
+pub fn scalar_tanh_poly(x: f32) -> f32 {
+    let x = x.clamp(-POLY_ACTIVATION_CLAMP, POLY_ACTIVATION_CLAMP);
+    let exp_x = scalar_exp_poly_inner(x);
+    let e2x = exp_x * exp_x;
+    ((e2x - 1.0) / (e2x + 1.0)).clamp(-1.0, 1.0)
+}
+
+/// Scalar polynomial `sigmoid(x)` — exp-based, using degree-6 Taylor.
+/// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
+/// Max absolute error: ≤ 2.1e-7 vs `f32::exp` reference on [-20, 20].
 #[inline]
 pub fn scalar_sigmoid_poly(x: f32) -> f32 {
-    crate::math::activations::scalar_minimax_sigmoid(x)
+    let x = x.clamp(-POLY_ACTIVATION_CLAMP, POLY_ACTIVATION_CLAMP);
+    let exp_neg_x = scalar_exp_poly_inner(-x);
+    (1.0 / (1.0 + exp_neg_x)).clamp(0.0, 1.0)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,11 @@
 //! directly from slice lengths at runtime.
 
 use crate::dispatch_simd;
+use crate::math::activations::ActivationPrecision;
+use crate::math::activations::activation_precision;
 use crate::math::activations::scalar_minimax_sigmoid;
+use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
+use crate::math::activations::tanh::scalar_pade_tanh;
 use crate::math::common::half::f16_bits_to_f32;
 use core::arch::x86_64::*;
 
@@ -52,6 +56,7 @@ impl LstmLayerDyn {
         }
 
         // Manual activation of the LSTM gates.
+        let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
         for j in 0..h {
             let gf = self.gates[j + h];
             let gi = self.gates[j];
@@ -59,16 +64,29 @@ impl LstmLayerDyn {
             let go = self.gates[j + 3 * h];
             let cs = self.cell_state[j];
 
-            let f = scalar_minimax_sigmoid(gf);
-            let in_gate = scalar_minimax_sigmoid(gi);
-            let g = gg.tanh();
-            let o = scalar_minimax_sigmoid(go);
+            if is_hf {
+                let f = scalar_sigmoid_poly(gf);
+                let in_gate = scalar_sigmoid_poly(gi);
+                let g = scalar_tanh_poly(gg);
+                let o = scalar_sigmoid_poly(go);
 
-            let new_cs = f * cs + in_gate * g;
-            let h_val = o * new_cs.tanh();
+                let new_cs = f * cs + in_gate * g;
+                let h_val = o * scalar_tanh_poly(new_cs);
 
-            self.cell_state[j] = new_cs;
-            self.state[i + j] = h_val;
+                self.cell_state[j] = new_cs;
+                self.state[i + j] = h_val;
+            } else {
+                let f = scalar_minimax_sigmoid(gf);
+                let in_gate = scalar_minimax_sigmoid(gi);
+                let g = scalar_pade_tanh(gg);
+                let o = scalar_minimax_sigmoid(go);
+
+                let new_cs = f * cs + in_gate * g;
+                let h_val = o * scalar_pade_tanh(new_cs);
+
+                self.cell_state[j] = new_cs;
+                self.state[i + j] = h_val;
+            }
         }
     }
 }

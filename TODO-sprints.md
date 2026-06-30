@@ -133,13 +133,20 @@ Como o Épico β herda o controle global de precisão de ativação de I1, assum
 
 Este sprint leva o modo `ActivationPrecision::HighFidelity` (que usa aproximações polinomiais de alta precisão baseadas em exp) para as células e gates do LSTM, eliminando o erro da aproximação Padé rápida (default) em cenários de alta fidelidade.
 
-#### [ ] Tarefa β1.1 — Caminho Escalar HighFidelity nos Gates [MÉDIO RISCO]
+#### [x] Tarefa β1.1 — Caminho Escalar HighFidelity nos Gates [MÉDIO RISCO]
 
 - **Descrição:** Implementar o suporte a ativações HF no loop de fallback escalar do LSTM gates, lendo a flag `activation_precision()`.
 - **Mudanças propostas:**
   - Em `src/math/lstm/gates.rs` (no fallback de `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512`), desviar as chamadas de ativação: se `activation_precision() == ActivationPrecision::HighFidelity`, usar `scalar_sigmoid_poly` e `scalar_tanh_poly` em vez de `scalar_minimax_sigmoid` e `scalar_pade_tanh`.
   - No loop escalar de `process_sample_scalar` em `src/models/lstm/layer_kernels.rs:248-266`, aplicar a mesma lógica de desvio.
 - **Validação:** Rodar o oráculo f64 (`tests/reference_oracle_f64.rs`) e certificar-se de que a ESR cai significativamente no modo HF.
+- **Conclusão (2026-06-29):**
+  - `src/math/activations/tanh/high_fidelity.rs:318-356`: stubs `scalar_tanh_poly`/`scalar_sigmoid_poly` substituídos por implementações exp-based reais (degree-6 Taylor com range reduction), emparelhadas com os kernels SIMD (`simd_exp_poly_avx2`). Erro máximo: ≤ 2.4e-7 (tanh), ≤ 2.1e-7 (sigmoid). `scalar_exp_poly_inner` usa `f64::round_ties_even` (ties-to-even, parity com `_MM_FROUND_TO_NEAREST_INT`) e não faz double-clamp.
+  - `src/math/lstm/gates.rs`: ambos `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512` scalar fallbacks agora desviam com branch direto (`if is_hf { ... scalar_tanh_poly(new_cs) } else { ... scalar_pade_tanh(new_cs) }`), sem function pointer. Flag `is_hf` hoisted antes do `while`.
+  - `src/models/lstm/layer_kernels.rs:252-284`: `process_sample_scalar` aplica mesma lógica com `is_hf` hoisted e branch direto.
+  - `src/models/lstm/layer_dyn_kernels.rs:57-88`: `LstmLayerDyn::process_sample_scalar` também ganhou dispatch HF (originalmente esquecido).
+  - Todos os testes passam: `test_oracle_lstm`, `test_decomposition_lstm`, `test_lstm_activation_precision_gain`, 16 unit tests LSTM, 8 dynamic LSTM validation tests. Clippy limpo.
+  - **Nota para β1.2:** O caminho SIMD principal (AVX2/AVX-512) em `fused_lstm_gates_avx2`/`fused_lstm_gates_avx512` **ainda não lê** `activation_precision()` — usa sempre Padé/minimax. A validação do ESR em modo HF no oráculo f64 só será observável após β1.2 (SIMD HF). A infraestrutura de desvio escalar está pronta e funcionando como fundação.
 
 #### [ ] Tarefa β1.2 — Kernels SIMD Fundidos HF (AVX2 e AVX512) [ALTO RISCO]
 

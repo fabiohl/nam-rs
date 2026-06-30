@@ -11,9 +11,12 @@
 //! Extracted from `activations/fused.rs` and `simd/avx2.rs`/`simd/avx512.rs`
 //! during Task 3.3.
 
+use crate::math::activations::ActivationPrecision;
+use crate::math::activations::activation_precision;
 use crate::math::activations::sigmoid::{
     scalar_minimax_sigmoid, simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
 };
+use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
 use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
@@ -92,15 +95,27 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
 
         j += 8;
     }
+    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     while j < hidden_size {
-        let sig_i = scalar_minimax_sigmoid(gates[j]);
-        let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
-        let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
-        let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
+        if is_hf {
+            let sig_i = scalar_sigmoid_poly(gates[j]);
+            let sig_f = scalar_sigmoid_poly(gates[j + hidden_size]);
+            let tanh_g = scalar_tanh_poly(gates[j + 2 * hidden_size]);
+            let sig_o = scalar_sigmoid_poly(gates[j + 3 * hidden_size]);
 
-        let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
-        cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
+            let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+            cell_state[j] = new_cs;
+            hidden_state[j] = sig_o * scalar_tanh_poly(new_cs);
+        } else {
+            let sig_i = scalar_minimax_sigmoid(gates[j]);
+            let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
+            let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
+            let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
+
+            let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+            cell_state[j] = new_cs;
+            hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
+        }
         j += 1;
     }
 }
@@ -134,15 +149,27 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
         j += 16;
     }
     // Handle the remainder.
+    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     while j < hidden_size {
-        let sig_i = scalar_minimax_sigmoid(gates[j]);
-        let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
-        let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
-        let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
+        if is_hf {
+            let sig_i = scalar_sigmoid_poly(gates[j]);
+            let sig_f = scalar_sigmoid_poly(gates[j + hidden_size]);
+            let tanh_g = scalar_tanh_poly(gates[j + 2 * hidden_size]);
+            let sig_o = scalar_sigmoid_poly(gates[j + 3 * hidden_size]);
 
-        let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
-        cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
+            let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+            cell_state[j] = new_cs;
+            hidden_state[j] = sig_o * scalar_tanh_poly(new_cs);
+        } else {
+            let sig_i = scalar_minimax_sigmoid(gates[j]);
+            let sig_f = scalar_minimax_sigmoid(gates[j + hidden_size]);
+            let tanh_g = scalar_pade_tanh(gates[j + 2 * hidden_size]);
+            let sig_o = scalar_minimax_sigmoid(gates[j + 3 * hidden_size]);
+
+            let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+            cell_state[j] = new_cs;
+            hidden_state[j] = sig_o * scalar_pade_tanh(new_cs);
+        }
         j += 1;
     }
 }
