@@ -110,3 +110,97 @@ Este sprint expõe a infraestrutura de `ActivationPrecision::HighFidelity` (que 
   - `docs/architecture.md:87`: documentado que LSTM ignora o modo até Épico β (I6).
   - `docs/audio_fidelity_map.md`: atualizado de "not user-exposed" para "CLI ✓, CLAP pending α2.2" + nota LSTM/I6.
   - **Nota para α2.2:** O caminho global `set_activation_precision()` está validado como RT-safe; a wiring de PARAM_ACTIVATION=8 em `events.rs` pode simplesmente chamar esta função na borda do bloco sem preocupação com alocações.
+
+---
+
+## Épico β — Fidelidade do §3 (LSTM), reordenado pela evidência
+
+**Objetivo:** Levar a precisão de ativação HighFidelity para os gates fundidos do LSTM para resolver a mitigação do drift recorrente (§3), aplicando Kahan no head como higiene numérica e caracterizando o impacto espectral real do oversampling no LSTM.
+**Risco:** MÉDIO-ALTO (alteração de kernels matemáticos e SIMD do LSTM).
+**Origem dos achados:** I4, I5 e I6 do [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+
+### Épico β — Dependências e Sequência de Execução
+
+Como o Épico β herda o controle global de precisão de ativação de I1, assume-se que as tarefas de controle e interface do Épico α já estão concluídas. O trabalho é estruturado em três sprints sequenciais:
+
+1. **Sprint β1: Ativações HighFidelity no LSTM (Foco em I6)**
+2. **Sprint β2: Acumulação Kahan no Head do LSTM (Foco em I4)**
+3. **Sprint β3: Caracterização de Oversampling e Documentação (Foco em I5 e docs)**
+
+---
+
+### Sprint β1 — Ativações HighFidelity nos Kernels do LSTM (I6)
+
+Este sprint leva o modo `ActivationPrecision::HighFidelity` (que usa aproximações polinomiais de alta precisão baseadas em exp) para as células e gates do LSTM, eliminando o erro da aproximação Padé rápida (default) em cenários de alta fidelidade.
+
+#### [ ] Tarefa β1.1 — Caminho Escalar HighFidelity nos Gates [MÉDIO RISCO]
+
+- **Descrição:** Implementar o suporte a ativações HF no loop de fallback escalar do LSTM gates, lendo a flag `activation_precision()`.
+- **Mudanças propostas:**
+  - Em `src/math/lstm/gates.rs` (no fallback de `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512`), desviar as chamadas de ativação: se `activation_precision() == ActivationPrecision::HighFidelity`, usar `scalar_sigmoid_poly` e `scalar_tanh_poly` em vez de `scalar_minimax_sigmoid` e `scalar_pade_tanh`.
+  - No loop escalar de `process_sample_scalar` em `src/models/lstm/layer_kernels.rs:248-266`, aplicar a mesma lógica de desvio.
+- **Validação:** Rodar o oráculo f64 (`tests/reference_oracle_f64.rs`) e certificar-se de que a ESR cai significativamente no modo HF.
+
+#### [ ] Tarefa β1.2 — Kernels SIMD Fundidos HF (AVX2 e AVX512) [ALTO RISCO]
+
+- **Descrição:** Adicionar suporte a SIMD HighFidelity nos kernels fundidos de 4 gates do LSTM.
+- **Mudanças propostas:**
+  - Em `src/math/lstm/gates.rs`, modificar `fused_lstm_gates_avx2` e `fused_lstm_gates_avx512` para avaliar `activation_precision()`.
+  - Se `HighFidelity` estiver ativo, despachar para implementações polinomiais de alta fidelidade reusando os kernels exp/sigmoid/tanh poly de `high_fidelity.rs`.
+- **Validação:** Confirmar que não ocorrem alocações de heap no hot path e que os ganhos de ESR se estendem ao processamento SIMD.
+
+#### [ ] Tarefa β1.3 — Paridade ISA e Recalibração de Gates [MÉDIO RISCO]
+
+- **Descrição:** Garantir a exatidão matemática entre os caminhos escalar e SIMD e calibrar limites de paridade.
+- **Mudanças propostas:**
+  - Garantir que `tests/isa_parity.rs` passa sem divergência no modo `HighFidelity`.
+  - Caracterizar a divergência interop vs C++ NAMCore em `tests/cpp_parity.rs` no modo HF. Se necessário, ajustar ou documentar a recalibração do gate `ABSOLUTE_ESR_CAP_LSTM`.
+
+---
+
+### Sprint β2 — Higiene Numérica com Kahan no Head do LSTM (I4)
+
+Este sprint adiciona soma compensada de Kahan ao head f32-native do LSTM como proteção contra o acúmulo de erros de arredondamento em heads longos.
+
+#### [ ] Tarefa β2.1 — Implementação da Função de Soma Compensada [BAIXO RISCO]
+
+- **Descrição:** Adicionar suporte a produto escalar compensado nativo f32.
+- **Mudanças propostas:**
+  - Em `src/math/common/scalar_ref/dot.rs`, implementar `dot_product_f32_native_kahan(a: &[f32], b: &[f32]) -> f32` reusando `KahanF32` de `src/math/common/kahan.rs`.
+- **Validação:** Testes unitários para validar a precisão matemática da soma.
+
+#### [ ] Tarefa β2.2 — Integração da Acumulação nos Modelos LSTM [BAIXO RISCO]
+
+- **Descrição:** Substituir a acumulação ingênua pelo produto escalar de Kahan nos heads dos modelos LSTM.
+- **Mudanças propostas:**
+  - Em `src/models/lstm/model1.rs`, `model2.rs` e `model_dyn.rs`, alterar as chamadas de `dot_product_f32_native` para `dot_product_f32_native_kahan` quando `use_f32_head` for verdadeiro.
+- **Validação:** Compilar e verificar que todos os modelos LSTM executam corretamente.
+
+#### [ ] Tarefa β2.3 — Validação de Estabilidade e Soak [BAIXO RISCO]
+
+- **Descrição:** Validar que a adição do Kahan no head não introduz gargalos de CPU no thread de áudio nem quebra garantias de latência.
+- **Validação específica:**
+  - Executar `tests/soak_test.rs` de longa duração para garantir estabilidade e ausência de regressões.
+
+---
+
+### Sprint β3 — Caracterização e Sincronização de Documentação (I5)
+
+Este sprint caracteriza o impacto de oversampling externo no LSTM e atualiza os mapas de fidelidade para refletir os findings reais.
+
+#### [ ] Tarefa β3.1 — Experimentos de Caracterização de Oversampling [BAIXO RISCO]
+
+- **Descrição:** Medir empiricamente o efeito de usar o `OversampleEngine` externo com modelos LSTM.
+- **Atividades:**
+  - Rodar testes para obter ASR (redução de aliasing) e ESR/MR-STFT (variação de timbre contra baseline de 48 k) com oversampling de Off vs 2x vs 4x.
+  - Tabular os dados espectrais obtidos para inclusão na documentação.
+- **Validação:** Confirmar cientificamente a hipótese de que o oversampling de LSTM serve a anti-aliasing mas muda o timbre (tonalidade) por não ajustar o atraso de realimentação.
+
+#### [ ] Tarefa β3.2 — Sincronização da Documentação e Referências [BAIXO RISCO]
+
+- **Descrição:** Atualizar a documentação do repositório com o status-alvo da arquitetura de fidelidade do LSTM.
+- **Mudanças propostas:**
+  - Atualizar `docs/audio_fidelity_map.md` (§3, §9) para estabelecer o I6 como mitigação primária de drift, I4 como higiene e I5 como anti-aliasing.
+  - Modificar `docs/lstm_recurrent_drift.md` (§4, §7) incluindo a tabela empírica do oversampling e orientações ao usuário.
+  - Adicionar notas pertinentes em `docs/architecture.md` e `docs/cpp_parity_map.md`.
+  - Inserir as novas referências acadêmicas (Mikkonen & Werner 2025; Carson et al. 2024/2025) em `docs/research-references.md`.
