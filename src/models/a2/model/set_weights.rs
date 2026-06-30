@@ -22,7 +22,8 @@ use crate::models::a2::params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS,
 };
 use crate::models::a2::weights_layout::{
-    transpose_conv1d_interleaved_4wide, transpose_dense_f32, transpose_head_w,
+    FILM_KEYS, film_bias_count, film_weight_count, transpose_conv1d_interleaved_4wide,
+    transpose_dense_f32, transpose_head_w,
 };
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -236,17 +237,6 @@ pub(crate) fn read_slice<'a>(
 // FiLM loading helpers
 // =============================================================================
 
-pub(crate) const FILM_KEYS: &[(&str, usize)] = &[
-    ("conv_pre_film", 0),
-    ("conv_post_film", 1),
-    ("input_mixin_pre_film", 2),
-    ("input_mixin_post_film", 3),
-    ("activation_pre_film", 4),
-    ("activation_post_film", 5),
-    ("layer1x1_post_film", 6),
-    ("head1x1_post_film", 7),
-];
-
 pub(crate) fn parse_single_film_config(raw: &serde_json::Value, key: &str) -> FiLMConfig {
     let obj = match raw.get(key).and_then(|v| v.as_object()) {
         Some(o) => o,
@@ -271,22 +261,6 @@ pub(crate) fn parse_film_configs(raw: &serde_json::Value) -> [FiLMConfig; 8] {
     configs
 }
 
-pub(crate) fn film_weight_count(config: &FiLMConfig, cond_size: usize, channels: usize) -> usize {
-    let g = config.groups as usize;
-    let ch_per_group = channels / g;
-    let cond_per_group = cond_size / g;
-    let out_per_group = if config.shift {
-        ch_per_group * 2
-    } else {
-        ch_per_group
-    };
-    g * out_per_group * cond_per_group
-}
-
-pub(crate) fn film_bias_count(config: &FiLMConfig, channels: usize) -> usize {
-    if config.shift { channels * 2 } else { channels }
-}
-
 pub(crate) fn set_layer_film(
     layer: &mut A2Layer,
     _config: &FiLMConfig,
@@ -307,6 +281,22 @@ pub(crate) fn set_layer_film(
     Ok(())
 }
 
+/// Convenience wrapper — see `weights_layout::film_weight_count`.
+#[allow(dead_code)]
+pub(crate) fn film_weight_count_cfg(
+    config: &FiLMConfig,
+    cond_size: usize,
+    channels: usize,
+) -> usize {
+    film_weight_count(config.groups, cond_size, channels, config.shift)
+}
+
+/// Convenience wrapper — see `weights_layout::film_bias_count`.
+#[allow(dead_code)]
+pub(crate) fn film_bias_count_cfg(config: &FiLMConfig, channels: usize) -> usize {
+    film_bias_count(channels, config.shift)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn load_film_for_layer(
     layer: &mut A2Layer,
@@ -322,8 +312,8 @@ pub(crate) fn load_film_for_layer(
         if !config.active {
             continue;
         }
-        let w_count = film_weight_count(config, cond_size, channels);
-        let b_count = film_bias_count(config, channels);
+        let w_count = film_weight_count(config.groups, cond_size, channels, config.shift);
+        let b_count = film_bias_count(channels, config.shift);
         let key = FILM_KEYS[idx].0;
 
         let film_w = read_slice(

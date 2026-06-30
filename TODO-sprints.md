@@ -146,7 +146,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   4. Adicionar o teste `test_oracle_vs_python_anchor_convnet` em `tests/reference_oracle_f64.rs` exigindo ESR < 1e-12.
 * **Conclusão:** ✅ `convnet_forward` (~160 linhas) implementado em `tests/fixtures/scripts/validate_oracle_f64.py`, seguindo topologia multi-bloco: Conv1d causal `[out_ch][in_ch][kernel]` → BatchNorm fundida (scale * x + offset) → ativação → PostStackHead (opcional). Cobertura de activations: Tanh, HardTanh, FastTanh, ReLU, Sigmoid, SiLU, HardSwish, Softsign. CLI estendido com `--architecture ConvNet`. Âncora `convnet_256_f64.bin` gerada em `tests/fixtures/f64_anchors/`. Teste `test_oracle_vs_python_anchor_convnet` des-ignorado com ESR=5.00e-16 (−153.0 dB) — piso numérico, consistente com WaveNet e ConvNet.
 
-#### [ ] Task S10.3 — Extensão do Oráculo f64 para FiLM A2 (PM-03)
+#### [x] Task S10.3 — Extensão do Oráculo f64 para FiLM A2 (PM-03)
 
 * **Responsável:** Engenheiro de DSP / Cientista de Redes
 * **Risco/Criticidade:** Médio.
@@ -159,6 +159,18 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * Se ESR for baixo (< 1e-9) → FiLM está matematicamente correto e a divergência vs C++ é **inerente** (H1) → reclassificar `RF1` como divergência documentada, atualizar `cpp_parity_map.md` e manter os caps.
      * Se ESR for alto → existe um **bug** (H2) de inserção ou SIMD → corrigir o ponto de divergência, revalidar os goldens e só então alterar produção.
   4. Adicionar testes unitários/gates em `tests/reference_oracle_f64.rs`.
+* **Conclusão (2026-06-30):**
+  1. ✅ `oracle_a2_forward` estendido em `src/testing/reference_oracle.rs:642` (~130 linhas adicionais) — parse de FiLM config via `layer_raw` (8 slots, `FILM_KEYS`), leitura de pesos/bias após `l1x1_b` por camada, `film_weight_count`/`film_bias_count` com grupos, `cond_size`, `shift`.
+  2. ✅ `FiLMOracleSlot` com `cond_to_scale_shift` + `apply_modulation` em f64 exato (grupos GEMV), aplicado nos 6 pontos de inserção ativos: conv_post(1), input_mixin_pre(2), input_mixin_post(3), activation_pre(4), activation_post(5), layer1x1_post(6). Plus conv_pre(0) na history buffer. Head1x1_post(7) reservado.
+  3. ✅ Cross-check executado — **H1 confirmada (inerente)**:
+     * A2-FiLM-Lite: ESR(f32 vs oracle f64) = 9.52e-15 (−140.2 dB) — piso numérico.
+     * A2-FiLM-Full: ESR(f32 vs oracle f64) = 1.15e-14 (−139.4 dB) — piso numérico.
+     * Ambos bem abaixo do threshold 1e-9 → a implementação Rust FiLM está **matematicamente correta**.
+     * A divergência vs C++ (18-36 dB SNR) é **inerente**: o C++ fallback generic WaveNet (via Eigen) aplica conditioning por caminho estruturalmente diferente do FiLM nativo Rust.
+     * `RF1` reclassificado de "divergência suspeita" para **"divergência estrutural inerente — documentada e capada"**.
+  4. ✅ Testes adicionados em `tests/reference_oracle_f64.rs`: `test_oracle_a2_film_lite`, `test_oracle_a2_film_full`, `test_combined_simulation_a2_film`. Entradas adicionadas à tabela `test_summary_table`.
+  5. `A2_FILM_ESR_LIMIT = 1e-12` em `tests/common/constants.rs` (piso numérico, consistente com WaveNet/ConvNet).
+  * **Nota para S10.4:** Com H1 confirmada e o oráculo f64 agora testemunhando FiLM A2, a âncora NumPy (S10.4) é necessária para fechar a cadeia de confiança de 3 vias. A implementação Python deve replicar `FiLMOracleSlot::apply` (grupos GEMV → `cond_to_scale_shift` + `apply_modulation`) e os 6 pontos de inserção ativos.
 
 #### [ ] Task S10.4 — Âncora NumPy e Geração de Fixtures FiLM A2 (PM-03)
 

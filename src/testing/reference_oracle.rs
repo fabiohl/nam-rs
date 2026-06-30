@@ -19,6 +19,7 @@
 use crate::loader::nam_json::WeightsLayout;
 use crate::loader::nam_json::model::NamModelData;
 use crate::math::common::half::f16_bits_to_f32;
+use crate::models::a2::weights_layout::{FILM_KEYS, film_bias_count, film_weight_count};
 
 // =============================================================================
 // Precision Configuration
@@ -603,6 +604,66 @@ const A2_DIL: [usize; 23] = [
     1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
 ];
 
+#[derive(Clone)]
+struct FiLMOracleSlot {
+    shift: bool,
+    groups: u32,
+    weights: Vec<f64>,
+    bias: Vec<f64>,
+    buf: Vec<f64>,
+}
+
+impl FiLMOracleSlot {
+    fn new(shift: bool, groups: u32, weights: Vec<f64>, bias: Vec<f64>, channels: usize) -> Self {
+        Self {
+            shift,
+            groups,
+            weights,
+            bias,
+            buf: vec![0.0f64; channels * 2],
+        }
+    }
+
+    fn apply(&mut self, input: &mut [f64], condition: &[f64]) {
+        let ch = input.len();
+        let g = self.groups as usize;
+        let ch_per_group = ch / g;
+        let cond_per_group = condition.len().checked_div(g).unwrap_or(0);
+        let out_per_group = if self.shift {
+            ch_per_group * 2
+        } else {
+            ch_per_group
+        };
+
+        self.buf.fill(0.0);
+        let buf = &mut self.buf;
+
+        for grp in 0..g {
+            let cond_off = grp * cond_per_group;
+            let row_off = grp * out_per_group;
+            let w_off = row_off * cond_per_group;
+            for row in 0..out_per_group {
+                let global_out = if row < ch_per_group {
+                    grp * ch_per_group + row
+                } else {
+                    ch + grp * ch_per_group + (row - ch_per_group)
+                };
+                let mut sum = self.bias[global_out];
+                for k in 0..cond_per_group {
+                    sum += self.weights[w_off + row * cond_per_group + k] * condition[cond_off + k];
+                }
+                buf[global_out] = sum;
+            }
+        }
+
+        for c in 0..ch {
+            let scale = buf[c];
+            let shift = if self.shift { buf[c + ch] } else { 0.0 };
+            input[c] = input[c] * scale + shift;
+        }
+    }
+}
+
 fn oracle_a2_forward(
     model_data: &NamModelData,
     input: &[f64],
@@ -618,6 +679,34 @@ fn oracle_a2_forward(
     let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let num_frames = input.len();
 
+    let layer_raw = model_data
+        .config
+        .layers
+        .first()
+        .and_then(|l| l.layer_raw.clone());
+    let cond_size = model_data
+        .config
+        .layers
+        .first()
+        .and_then(|l| l.condition_size)
+        .unwrap_or(1);
+
+    let film_configs: [bool; 8] = if let Some(ref raw) = layer_raw {
+        let mut active = [false; 8];
+        for &(key, idx) in FILM_KEYS {
+            let cfg = raw.get(key).and_then(|v| v.as_object());
+            if let Some(obj) = cfg {
+                let a = obj.get("active").and_then(|a| a.as_bool()).unwrap_or(false);
+                if a {
+                    active[idx] = true;
+                }
+            }
+        }
+        active
+    } else {
+        [false; 8]
+    };
+
     // Rechannel: CH f32
     let rechannel_w = cursor.read_f64(ch);
 
@@ -630,6 +719,7 @@ fn oracle_a2_forward(
         l1x1_b: Vec<f64>,
         ks: usize,
         dil: usize,
+        film: Vec<Option<FiLMOracleSlot>>,
     }
     let mut lws: Vec<A2LW> = Vec::new();
     for li in 0..A2_NUM_LAYERS {
@@ -640,6 +730,39 @@ fn oracle_a2_forward(
         let mixin_w = cursor.read_f64(ch);
         let l1x1_w = cursor.read_f64(ch * ch);
         let l1x1_b = cursor.read_f64(ch);
+
+        // Read FiLM weights for active slots
+        let mut film_slots: Vec<Option<FiLMOracleSlot>> = vec![None; 8];
+        for slot_idx in 0..8 {
+            if !film_configs[slot_idx] {
+                continue;
+            }
+            let g = layer_raw
+                .as_ref()
+                .and_then(|raw| {
+                    let key = FILM_KEYS.iter().find(|(_, idx)| *idx == slot_idx)?.0;
+                    raw.get(key)
+                })
+                .and_then(|v| v.get("groups"))
+                .and_then(|g| g.as_u64())
+                .unwrap_or(1) as u32;
+            let shift = layer_raw
+                .as_ref()
+                .and_then(|raw| {
+                    let key = FILM_KEYS.iter().find(|(_, idx)| *idx == slot_idx)?.0;
+                    raw.get(key)
+                })
+                .and_then(|v| v.get("shift"))
+                .and_then(|s| s.as_bool())
+                .unwrap_or(true);
+
+            let w_count = film_weight_count(g, cond_size, ch, shift);
+            let b_count = film_bias_count(ch, shift);
+            let weights = cursor.read_f64(w_count);
+            let bias = cursor.read_f64(b_count);
+            film_slots[slot_idx] = Some(FiLMOracleSlot::new(shift, g, weights, bias, ch));
+        }
+
         lws.push(A2LW {
             conv_w,
             conv_b,
@@ -648,6 +771,7 @@ fn oracle_a2_forward(
             l1x1_b,
             ks,
             dil,
+            film: film_slots,
         });
     }
 
@@ -682,10 +806,22 @@ fn oracle_a2_forward(
 
     let mut output = vec![0.0f64; num_frames];
 
+    let cond_vec = if cond_size == 1 {
+        vec![]
+    } else {
+        vec![0.0f64; cond_size]
+    };
+
     #[allow(clippy::explicit_counter_loop)]
     for (f, out_val) in output.iter_mut().enumerate() {
         let fi = bs + f;
         let x = input[f];
+
+        let condition: &[f64] = if cond_size == 1 {
+            std::slice::from_ref(&x)
+        } else {
+            &cond_vec
+        };
 
         // Rechannel: layer_in[c] = x * rechannel_w[c]
         // Write to layer 0's history buffer
@@ -698,8 +834,11 @@ fn oracle_a2_forward(
         let head_col = head_wp;
         head_wp += 1;
 
-        for (li, lw) in lws.iter().enumerate() {
-            let hist = &layer_bufs[li];
+        for (li, lw) in lws.iter_mut().enumerate() {
+            // conv_pre_film (slot 0): modulate history before conv reads it
+            if let Some(ref mut film) = lw.film[0] {
+                film.apply(&mut layer_bufs[li][fi * ch..fi * ch + ch], condition);
+            }
 
             // Conv1d over this layer's own history buffer
             let mut z = vec![0.0f64; ch];
@@ -710,9 +849,9 @@ fn oracle_a2_forward(
                     let off = (lw.dil as isize) * ((kt as isize) + 1 - (lw.ks as isize));
                     let ins = ((fi as isize) + off) as usize * ch;
                     for ic in 0..ch {
-                        if ins + ic < hist.len() {
+                        if ins + ic < layer_bufs[li].len() {
                             sum = mul_add_f64(
-                                hist[ins + ic],
+                                layer_bufs[li][ins + ic],
                                 lw.conv_w[wb + ic * lw.ks + kt],
                                 sum,
                                 acc_mode,
@@ -723,9 +862,25 @@ fn oracle_a2_forward(
                 *zv = sum;
             }
 
+            // conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
+            if let Some(ref mut film) = lw.film[1] {
+                film.apply(&mut z, condition);
+            }
+            if let Some(ref mut film) = lw.film[2] {
+                film.apply(&mut z, condition);
+            }
+
             // Mixin
             for (c, zv) in z.iter_mut().enumerate() {
                 *zv = mul_add_f64(lw.mixin_w[c], x, *zv, acc_mode);
+            }
+
+            // input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
+            if let Some(ref mut film) = lw.film[3] {
+                film.apply(&mut z, condition);
+            }
+            if let Some(ref mut film) = lw.film[4] {
+                film.apply(&mut z, condition);
             }
 
             // LeakyReLU(0.01)
@@ -733,6 +888,11 @@ fn oracle_a2_forward(
                 if *zv < 0.0 {
                     *zv *= 0.01;
                 }
+            }
+
+            // activation_post_film (slot 5)
+            if let Some(ref mut film) = lw.film[5] {
+                film.apply(&mut z, condition);
             }
 
             // Head accumulate (shared ring)
@@ -754,6 +914,10 @@ fn oracle_a2_forward(
                         sum = mul_add_f64(zv, lw.l1x1_w[oc * ch + ic], sum, acc_mode);
                     }
                     *nv = accum_f64(layer_in[oc], sum, acc_mode);
+                }
+                // layer1x1_post_film (slot 6) on the residual output
+                if let Some(ref mut film) = lw.film[6] {
+                    film.apply(&mut next, condition);
                 }
                 // Write to NEXT layer's history buffer
                 for (c, &v) in next.iter().enumerate() {

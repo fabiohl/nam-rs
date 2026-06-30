@@ -331,7 +331,7 @@ fn test_film_weight_count_shift_true() {
     };
     // ch=8, cond=4 → g=1, ch_per_group=8, cond_per_group=4, out_per_group=16
     // w = 1 * 16 * 4 = 64
-    assert_eq!(film_weight_count(&config, 4, 8), 64);
+    assert_eq!(film_weight_count_cfg(&config, 4, 8), 64);
 }
 
 #[test]
@@ -342,7 +342,7 @@ fn test_film_weight_count_shift_false() {
         groups: 1,
     };
     // ch=8, cond=4 → out_per_group=8, w = 1 * 8 * 4 = 32
-    assert_eq!(film_weight_count(&config, 4, 8), 32);
+    assert_eq!(film_weight_count_cfg(&config, 4, 8), 32);
 }
 
 #[test]
@@ -354,7 +354,7 @@ fn test_film_weight_count_groups() {
     };
     // ch=8, cond=4 → g=2, ch_per_group=4, cond_per_group=2, out_per_group=8
     // w = 2 * 8 * 2 = 32
-    assert_eq!(film_weight_count(&config, 4, 8), 32);
+    assert_eq!(film_weight_count_cfg(&config, 4, 8), 32);
 }
 
 #[test]
@@ -365,7 +365,7 @@ fn test_film_weight_count_inactive() {
         shift: true,
         groups: 1,
     };
-    assert_eq!(film_weight_count(&config, 4, 8), 64);
+    assert_eq!(film_weight_count_cfg(&config, 4, 8), 64);
 }
 
 // =============================================================================
@@ -379,7 +379,7 @@ fn test_film_bias_count_shift_true() {
         shift: true,
         groups: 1,
     };
-    assert_eq!(film_bias_count(&config, 8), 16); // channels * 2
+    assert_eq!(film_bias_count_cfg(&config, 8), 16); // channels * 2
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn test_film_bias_count_shift_false() {
         shift: false,
         groups: 1,
     };
-    assert_eq!(film_bias_count(&config, 8), 8); // channels
+    assert_eq!(film_bias_count_cfg(&config, 8), 8); // channels
 }
 
 #[test]
@@ -399,7 +399,7 @@ fn test_film_bias_count_odd_channels() {
         shift: true,
         groups: 1,
     };
-    assert_eq!(film_bias_count(&config, 3), 6);
+    assert_eq!(film_bias_count_cfg(&config, 3), 6);
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn test_film_bias_count_inactive() {
         shift: true,
         groups: 1,
     };
-    assert_eq!(film_bias_count(&config, 8), 16);
+    assert_eq!(film_bias_count_cfg(&config, 8), 16);
 }
 
 // =============================================================================

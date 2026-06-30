@@ -326,16 +326,16 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 After elimination of all BF16/F16 quantization and dual-mode paths from WaveNet A1, the ESR against NeuralAmpModelerCore v0.5.3 (commit `9c7b185`)
 was recalibrated:
 
-| Model                 | ESR (linear) | ESR (dB) | SNR (dB) | Notes                                         |
-|:--------------------- |:------------ |:-------- |:-------- |:--------------------------------------------- |
-| WaveNet A1-Std CH=16  | 4.58e-13     | −123.4   | 123.4    | Live v1, f32 + poly tanh                      |
-| WaveNet Standard v2   | *varies*     | *varies* | 101.8*   | Multi-SR v2 worst @ 192k                      |
-| WaveNet Standard (v2) | *varies*     | *varies* | 123.0**  | v2 best @ 48kHz                               |
-| WaveNet Feather CH=8  | 4.92e-14     | −133.1   | 133.1    | Live v1                                       |
-| WaveNet Feather (v2)  | *varies*     | *varies* | 117.6*   | v2 worst @ 192kHz                             |
-| WaveNet Nano CH=4     | 6.30e-14     | −132.0   | 132.0    | Live v1                                       |
-| WaveNet Nano (v2)     | *varies*     | *varies* | 114.6*   | v2 worst @ 192kHz                             |
-| WaveNet Lite CH=12    | 5.84e-13     | −122.3   | 122.3    | Golden v1 (live 117.4); **P1/RF7 ✅resolved** |
+| Model                 | ESR (linear) | ESR (dB) | SNR (dB) | Notes                                        |
+|:--------------------- |:------------ |:-------- |:-------- |:-------------------------------------------- |
+| WaveNet A1-Std CH=16  | 4.58e-13     | −123.4   | 123.4    | Live v1, f32 + poly tanh                     |
+| WaveNet Standard v2   | *varies*     | *varies* | 101.8*   | Multi-SR v2 worst @ 192k                     |
+| WaveNet Standard (v2) | *varies*     | *varies* | 123.0**  | v2 best @ 48kHz                              |
+| WaveNet Feather CH=8  | 4.92e-14     | −133.1   | 133.1    | Live v1                                      |
+| WaveNet Feather (v2)  | *varies*     | *varies* | 117.6*   | v2 worst @ 192kHz                            |
+| WaveNet Nano CH=4     | 6.30e-14     | −132.0   | 132.0    | Live v1                                      |
+| WaveNet Nano (v2)     | *varies*     | *varies* | 114.6*   | v2 worst @ 192kHz                            |
+| WaveNet Lite CH=12    | 5.84e-13     | −122.3   | 122.3    | Golden v1 (live 117.4); **P1/RF7 ✅resolved**|
 
 > \* Worst-case across v2 multi-SR golden vectors.
 > \*\* Best-case v2 (48 kHz native).
@@ -562,18 +562,18 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 [`TODO-findings.md`](../TODO-findings.md) under **"Auditoria de Paridade NAMCore × NAM-rs"**
 (findings `PM-01`…`PM-08`).
 
-| Item                                                                                         | Status                                                                                                                                                                                              | Reference / Finding |
-|:-------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
-| **ConvNet** C++ cross-validation                                                             | 🟡 Engine complete + self-golden + unit-tested; **C++ golden blocked** — NAMCore v0.5.3 single-block ConvNet is architecturally incompatible with NAM 0.5.4 multi-block. f64-oracle path open.      | §5 · PM-04          |
-| **A2 general engine** (FiLM / gating / blending / `condition_dsp` / `bottleneck ≠ channels`) | 🟢 **Implemented & golden-tested** via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB)                                                                                     | §6                  |
-| **A2 FiLM** interop divergence vs C++ generic WaveNet (**RF1**)                              | 🟡 Wired & golden-tested; SNR 18–36 dB divergence documented & capped; not yet witnessed by the f64 oracle                                                                                          | §6 · PM-03          |
-| **A2 official real-amp FiLM captures** (`wavenet_a2_max`, …)                                 | 🟡 **Temporary conformity** — validated against synthetic fixtures (`wavenet_a2_film_full`, `wavenet_a2_film_lite`); real-amp captures structurally incompatible (see §13.1). Sprint S9 goldens ✅. | §6 · PM-05          |
-| **`SlimmableContainer`** (multi-model adaptive quality via independent sub-nets + crossfade) | 🟢 Implemented & tested: `src/models/container.rs`, `tests/container_slimmable.rs`                                                                                                                  | §6 · PM-06          |
-| **`SlimmableWavenet`** (single-net dynamic channel slicing)                                  | 🟡 Genuinely deferred — scope is distinct from `SlimmableContainer`; acceptance criteria defined in §13.1                                                                                           | §6 · PM-06          |
-| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                              | 🟢 Documented, asserted, rate-aware cap (inherent f16c)                                                                                                                                             | §4.5 / §9.1         |
-| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                                      | 🟢 By design (explicit `sample_rate` field pins native rate)                                                                                                                                        | §6                  |
-| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                             | 🟢 By design — live cross-val covers SR; no committed goldens                                                                                                                                       | §3.3 (**RF3**)      |
-| **Live v2 harness** — C++ `render` rate-reject silently passes                               | 🟡 Latent anti-masking gap in `run_v2_multi_sr` (no rate masked today)                                                                                                                              | §9 · PM-07          |
+| Item                                                                                         | Status                                                                                                                                                                                                                                                         | Reference / Finding |
+|:-------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
+| **ConvNet** C++ cross-validation                                                             | 🟡 Engine complete + self-golden + unit-tested; **C++ golden blocked** — NAMCore v0.5.3 single-block ConvNet is architecturally incompatible with NAM 0.5.4 multi-block. f64-oracle path open.                                                                 | §5 · PM-04          |
+| **A2 general engine** (FiLM / gating / blending / `condition_dsp` / `bottleneck ≠ channels`) | 🟢 **Implemented & golden-tested** via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB)                                                                                                                                                | §6                  |
+| **A2 FiLM** interop divergence vs C++ generic WaveNet (**RF1**)                              | 🟡 **Inherent structural divergence** — oracle-witnessed (S10.3): ESR(Rust f32 vs f64 oracle) = 1e-14 (−140 dB). Divergence vs C++ (18-36 dB) is structural (C++ Eigen generic WaveNet applies conditioning by different path). Documented, capped, not a bug. | §6 · PM-03          |
+| **A2 official real-amp FiLM captures** (`wavenet_a2_max`, …)                                 | 🟡 **Temporary conformity** — validated against synthetic fixtures (`wavenet_a2_film_full`, `wavenet_a2_film_lite`); real-amp captures structurally incompatible (see §13.1). Sprint S9 goldens ✅.                                                            | §6 · PM-05          |
+| **`SlimmableContainer`** (multi-model adaptive quality via independent sub-nets + crossfade) | 🟢 Implemented & tested: `src/models/container.rs`, `tests/container_slimmable.rs`                                                                                                                                                                             | §6 · PM-06          |
+| **`SlimmableWavenet`** (single-net dynamic channel slicing)                                  | 🟡 Genuinely deferred — scope is distinct from `SlimmableContainer`; acceptance criteria defined in §13.1                                                                                                                                                      | §6 · PM-06          |
+| **LSTM 1×16 @ 192 kHz** interop drift (1.42e-1)                                              | 🟢 Documented, asserted, rate-aware cap (inherent f16c)                                                                                                                                                                                                        | §4.5 / §9.1         |
+| **A2-Full / A2-Lite v2 multi-SR goldens** (48 kHz only)                                      | 🟢 By design (explicit `sample_rate` field pins native rate)                                                                                                                                                                                                   | §6                  |
+| **Dynamic engines v2 multi-SR goldens** (`*Dyn`)                                             | 🟢 By design — live cross-val covers SR; no committed goldens                                                                                                                                                                                                  | §3.3 (**RF3**)      |
+| **Live v2 harness** — C++ `render` rate-reject silently passes                               | 🟡 Latent anti-masking gap in `run_v2_multi_sr` (no rate masked today)                                                                                                                                                                                         | §9 · PM-07          |
 
 ### 13.1 Notes on the open items
 
@@ -584,13 +584,19 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
   `kernel=2`, matrix-multiply `_Head`, no `head_scale`) is incompatible with NAM 0.5.4's multi-block
   ConvNet (`golden_gen_build.sh` flags this as an *expected SKIP*). The safe path is an independent
   **f64 ConvNet oracle** (mirroring the §9.2 trust chain), not a C++ upgrade.
-- **A2 FiLM / RF1 (PM-03).** FiLM is fully wired in `WaveNetA2Dyn` and golden-tested against the C++
-  *generic* WaveNet (C++ `a2_fast.cpp` rejects FiLM). Gating (≈103 dB), blending (≈133 dB) and
-  `condition_dsp` (≈139 dB) are near-bit-exact, but **FiLM** sits at 18–36 dB SNR — flagged `RF1` in
-  `tests/common/validation.rs` and `perceptual_validation.md`. The divergence is *capped and tracked*,
-  but it has **not** been independently classified as inherent-vs-bug because the f64 A2 oracle does
-  not yet model FiLM. PM-03 proposes extending the oracle to settle this.
+
+- **A2 FiLM / RF1 (PM-03).** ✅ **Resolved (S10.3)** — the f64 oracle now models FiLM completely
+  (8 insertion points, `cond_to_scale_shift` GEMV, `apply_modulation`). Cross-check Rust f32 production
+  vs f64 oracle yields ESR at the numerical floor: 9.52e-15 (−140.2 dB) for FilmLite, 1.15e-14
+  (−139.4 dB) for FilmFull. This proves the Rust FiLM implementation is **mathematically correct**.
+  The 18-36 dB SNR gap vs C++ is **inherent structural divergence**: the C++ generic WaveNet
+  (Eigen-based, used as fallback when `a2_fast.cpp` rejects FiLM) applies conditioning through a
+  structurally different path from the Rust native FiLM-A2 engine. This is analogous to the HF
+  activation asymmetry (§4.5): closer to the mathematical ideal, further from C++ bit-equivalence.
+  RF1 reclassified from 🔴 (suspected bug) to 🟡 (inherent, documented, capped).
+
 - **A2 official real-amp FiLM captures (PM-05).** The engine supports FiLM via `WaveNetA2Dyn` and the inference path is fully wired, but available real-amp FiLM models are structure-incompatible with the active A2 dynamic engine: `wavenet_a2_max.nam` carries `condition_size=8`, which the loader rejects at topology dispatch. The rejection is graceful (validated by `test_loader_gap_wavenet_a2_max` in Sprint S9.1), not a silent failure. No other compatible real-amp FiLM captures exist in `tests/fixtures/models-nondist/`. Therefore, the project conforms to synthetic captures (`wavenet_a2_film_full.nam`, `wavenet_a2_film_lite.nam`) for automated correctness verification. Sprint S9 golden vectors confirm the synthetic engine path: FilmFull SNR=36.0 dB / ESR=2.50e-4, FilmLite SNR=18.1 dB / ESR=1.54e-2 — both within the documented FiLM interop cap (RF1, PM-03). This conformity is temporary: if compatible real-amp FiLM captures become available, they should be integrated as fixtures and elevated to official goldens.
+
 - **`SlimmableWavenet` (PM-06).** Genuinely deferred — the practical use case (adaptive quality) is already covered by the implemented and tested `SlimmableContainer` (`src/models/container.rs`, `tests/container_slimmable.rs`), which achieves the same goal via independent sub-networks with crossfade orchestration rather than single-net channel slicing. The two constructs serve distinct design purposes:
 
   *`SlimmableContainer`* (🟢 implemented): hosts multiple complete `.nam` models — each a self-contained network with its own channel configuration — and seamlessly crossfades between them at runtime. This is a model-orchestration layer, not a weight-slicing mechanism.

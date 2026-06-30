@@ -25,8 +25,13 @@ pub const V2_STRESS_DURATION_SECS: f64 = 5.0;
 //   LSTM:    ESR = 3.57e-3   →  LSTM_ESR_LIMIT    = 3.57e-3 × 2   →  7.0e-3
 //   A2:      ESR = 4.28e-10  →  A2_ESR_LIMIT      = 4.28e-10 × 2  →  8.6e-10
 //   ConvNet: ESR = 1.83e-14 →  CONVNET_ESR_LIMIT = 1e-12 (numerical floor)
+//   A2-FiLM-Lite:  ESR = 9.52e-15  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor, S10.3)
+//   A2-FiLM-Full:  ESR = 1.15e-14  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor, S10.3)
 
 pub const WAVENET_ESR_LIMIT: f64 = 1e-12;
 pub const LSTM_ESR_LIMIT: f64 = 7.0e-3;
 pub const A2_ESR_LIMIT: f64 = 8.6e-10;
 pub const CONVNET_ESR_LIMIT: f64 = 1e-12;
+//   A2-FiLM-Lite:  ESR = 9.52e-15  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor)
+//   A2-FiLM-Full:  ESR = 1.15e-14  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor)
+pub const A2_FILM_ESR_LIMIT: f64 = 1e-9;

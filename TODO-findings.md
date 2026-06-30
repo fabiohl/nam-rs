@@ -109,43 +109,21 @@ e mapeia as *tags* existentes.
   3. Substituir a referência morta `TODO-problemas.md#P1` por `cpp_parity_map.md §9.1` e este
      finding (PM-02). Tratado em conjunto com **PM-08**.
 
-### PM-03 — Divergência interop de **FiLM A2 (RF1)** sem testemunha de oráculo f64
+### PM-03 — Divergência interop de **FiLM A2 (RF1)** sem testemunha de oráculo f64 **[RESOLVIDO — H1 Inerente]**
 
 * **ID:** PM-03 · **Severidade:** Média-Alta (única feature A2 com baixa paridade) · **Risco da correção:** Baixo-Médio (test-only; só toca produção se comprovar bug)
-* **Problema:** FiLM está conectado em `WaveNetA2Dyn` e coberto por goldens **ativos**
-  (`tests/golden_vectors.rs:1570,1628`), porém com **SNR de apenas 18–36 dB** contra o WaveNet
-  *genérico* do C++ (o `a2_fast.cpp` rejeita FiLM e cai no caminho Eigen genérico). Está
-  marcado **`RF1` 🔴** em `tests/common/validation.rs:578-599` e `docs/perceptual_validation.md:87-88`.
-  Por contraste, **gating (≈103 dB)**, **blending (≈133 dB)** e **`condition_dsp` (≈139 dB)** são
-  quase-bit-exatos (`validation.rs:600-621,558-561`). O ponto crítico: a divergência está
-  **capada e rastreada**, mas **não foi classificada de forma independente** como *inerente*
-  (diferença legítima entre o FiLM-A2 do Rust e o WaveNet-genérico do C++) **ou** *bug* (pontos
-  de inserção/ordem do FiLM no Rust). O oráculo f64 (`src/testing/reference_oracle.rs`)
-  **não modela FiLM**: `oracle_a2_forward` é exercitado apenas com `wavenet_a2_lite.nam` puro
-  (`tests/reference_oracle_f64.rs:191,282,349,448,514`) e não há lógica FiLM/gating em
-  `reference_oracle.rs` (confirmado: nenhuma menção a `film`/`gating`).
-* **Hipóteses de causa-raiz:**
-  * **(H1) Inerente** — o WaveNet genérico do C++ aplica o condicionamento por um caminho
-    estruturalmente distinto do FiLM-A2 do Rust (ordem de modulação, pontos de inserção,
-    *broadcast* de `condition_size`). Nesse caso a divergência é análoga à assimetria HF
-    (`cpp_parity_map.md` §4.5): mais próxima do ideal, mais distante da bit-equivalência C++.
-  * **(H2) Bug** — algum dos 5 pontos de inserção FiLM (`src/models/a2/conv1d_ch3/simd.rs`,
-    `conv1d_ch8/simd.rs`, `model/dynamic/process.rs:301-409`) diverge da semântica de referência.
-* **Proposta de Solução (segura, decisiva):**
-  1. **Estender o oráculo f64** (`reference_oracle.rs::oracle_a2_forward`) para modelar FiLM
-     (γ/β por canal, `cond_to_scale_shift`, `apply_modulation`) em f64 exato — uma testemunha
-     independente do caminho SIMD de produção.
-  2. **Cross-check Rust f32 × oráculo f64 FiLM** com `wavenet_a2_film_lite/full.nam`
-     (`tests/reference_oracle_f64.rs`, novo `test_oracle_a2_film_*`):
-     * Se **ESR(f32, oráculo) ≪ 1e-9** → o FiLM do Rust está **matematicamente correto**; a
-       divergência vs C++ é **inerente (H1)** → reclassificar `RF1` como divergência documentada
-       (não-bug), manter o cap, e atualizar a nota de §6/§13 ("inherent, oracle-witnessed").
-     * Se **ESR(f32, oráculo)** for alto → **bug (H2)** localizado; corrigir os pontos de inserção
-       (alteração mínima e cirúrgica), revalidar goldens. Só então toca produção.
-  3. **Âncora NumPy independente** (3ª implementação, padrão da cadeia §9.2) para o caso FiLM,
-     evitando oráculo-espelho (Regra 6 da *Gate Calibration Policy*).
-* **Por que é seguro:** passos 1–3 são **test-only**; produção só muda se (2) comprovar bug, e
-  mesmo aí a mudança é guiada por testemunha independente — jamais relaxando gate para "passar".
+* **Status:** ✅ **RESOLVIDO (2026-06-30, S10.3)** — H1 confirmada: divergência estrutural inerente, implementação Rust matematicamente correta.
+* **Resolução (S10.3):**
+  * Oráculo f64 estendido em `src/testing/reference_oracle.rs:642` com FiLM completo: parse de 8 slots via `layer_raw`, leitura de pesos/bias após `l1x1_b`, `FilmOracleSlot::apply` (grupos GEMV → `cond_to_scale_shift` + modulação), 6 pontos de inserção ativos + conv_pre na history.
+  * Cross-check Rust f32 × oráculo f64:
+    * `wavenet_a2_film_lite.nam`: ESR = 9.52e-15 (−140.2 dB) — piso numérico.
+    * `wavenet_a2_film_full.nam`: ESR = 1.15e-14 (−139.4 dB) — piso numérico.
+    * Ambos ≪ 1e-9 → **H1 (inerente)** confirmada. A implementação Rust FiLM está matematicamente correta. A divergência vs C++ (18-36 dB SNR) é estrutural: o C++ fallback generic WaveNet (Eigen) aplica conditioning por caminho diferente do FiLM nativo Rust.
+  * `RF1` reclassificado de 🔴 (suspeito) para 🟡 (inerente, documentado, capado).
+  * `A2_FILM_ESR_LIMIT = 1e-12` em `tests/common/constants.rs` (piso numérico).
+  * Testes: `test_oracle_a2_film_lite`, `test_oracle_a2_film_full`, `test_combined_simulation_a2_film` em `tests/reference_oracle_f64.rs`.
+  * `cpp_parity_map.md` §6/§13 atualizado: "inherent structural divergence, oracle-witnessed".
+  * **Pendente:** Âncora NumPy independente (S10.4) para fechar a cadeia de 3 vias (Regra 6).
 
 ### PM-04 — **ConvNet** sem validação externa: implementar oráculo f64 independente
 

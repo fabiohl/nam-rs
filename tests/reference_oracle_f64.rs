@@ -24,6 +24,7 @@ use std::path::PathBuf;
 
 mod common;
 use common::A2_ESR_LIMIT;
+use common::A2_FILM_ESR_LIMIT;
 use common::CONVNET_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
 use common::WAVENET_ESR_LIMIT;
@@ -521,6 +522,36 @@ fn test_oracle_vs_python_anchor_convnet() {
     );
 }
 
+// ── S10.3: FiLM A2 oracle tests ────────────────────────────────────────────
+
+#[test]
+fn test_oracle_a2_film_lite() {
+    let esr = run_oracle_esr_paired("wavenet_a2_film_lite.nam", "A2-FiLM-Lite");
+    assert!(
+        esr < A2_FILM_ESR_LIMIT,
+        "A2-FiLM-Lite ESR={:.6e} exceeds calibrated limit {}",
+        esr,
+        A2_FILM_ESR_LIMIT
+    );
+}
+
+#[test]
+fn test_oracle_a2_film_full() {
+    let esr = run_oracle_esr_paired("wavenet_a2_film_full.nam", "A2-FiLM-Full");
+    assert!(
+        esr < A2_FILM_ESR_LIMIT,
+        "A2-FiLM-Full ESR={:.6e} exceeds calibrated limit {}",
+        esr,
+        A2_FILM_ESR_LIMIT
+    );
+}
+
+#[test]
+fn test_combined_simulation_a2_film() {
+    run_combined_paired_test("wavenet_a2_film_lite.nam", "A2-FiLM-Lite");
+    run_combined_paired_test("wavenet_a2_film_full.nam", "A2-FiLM-Full");
+}
+
 // ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
 
 /// T8.1 Diagnostic: measures ESR(oracle vs production) with paired prewarm.
@@ -596,6 +627,8 @@ fn test_summary_table() {
         ("lstm.nam", "LSTM"),
         ("wavenet_a2_lite.nam", "WaveNet(A2)"),
         ("convnet_test.nam", "ConvNet"),
+        ("wavenet_a2_film_lite.nam", "A2-FiLM-Lite"),
+        ("wavenet_a2_film_full.nam", "A2-FiLM-Full"),
     ];
     let input = gen_sweep(256, 48000.0);
 

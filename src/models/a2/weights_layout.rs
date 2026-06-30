@@ -7,6 +7,44 @@
 //! (`set_weights`) and dynamic-model construction. All functions operate
 //! at full f32 precision — quantization happens downstream.
 
+// ── FiLM slot keys ──────────────────────────────────────────────────────
+// Shared between production (`set_weights`) and the f64 oracle
+// (`reference_oracle.rs`). Keep in sync with the NAM JSON spec.
+
+pub(crate) const FILM_KEYS: &[(&str, usize)] = &[
+    ("conv_pre_film", 0),
+    ("conv_post_film", 1),
+    ("input_mixin_pre_film", 2),
+    ("input_mixin_post_film", 3),
+    ("activation_pre_film", 4),
+    ("activation_post_film", 5),
+    ("layer1x1_post_film", 6),
+    ("head1x1_post_film", 7),
+];
+
+pub(crate) fn film_weight_count(
+    groups: u32,
+    cond_size: usize,
+    channels: usize,
+    shift: bool,
+) -> usize {
+    let g = groups as usize;
+    let ch_per_group = channels / g;
+    let cond_per_group = cond_size / g;
+    let out_per_group = if shift {
+        ch_per_group * 2
+    } else {
+        ch_per_group
+    };
+    g * out_per_group * cond_per_group
+}
+
+pub(crate) fn film_bias_count(channels: usize, shift: bool) -> usize {
+    if shift { channels * 2 } else { channels }
+}
+
+// ── Transpose helpers ───────────────────────────────────────────────────
+
 /// Rearranges dense layer weights from row-major to col-major.
 ///
 /// Input:  `raw[out * in_size + in_c]` (row-major)
