@@ -332,8 +332,9 @@ with wave.open('$TEST_WAV', 'w') as w:
             if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
                 echo -e "  Generating AI-ready assembly hotspot report in target/dsp_hotpath.asm..."
                 mkdir -p target
-                perf annotate --stdio -i "$BOLT_DIR/perf.data" "$NAM_RS_BIN" > "target/dsp_hotpath.asm" 2>/dev/null || true
+                perf annotate --stdio -i "$BOLT_DIR/perf.data" -d nam-rs > "target/dsp_hotpath.asm" 2>/dev/null || true
             fi
+
 
             # Convert profile and optimize standalone binary
             if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then

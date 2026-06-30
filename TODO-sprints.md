@@ -64,7 +64,7 @@ Foco em acelerar o passo de perfilamento e resolver falhas silenciosas de pipe e
 * **Objetivo:** Restringir a análise do `perf annotate` ao binário do `nam-rs`, reduzindo o tempo de execução de ~14 minutos para apenas alguns segundos.
 * **Ações:**
   * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), mover a definição da variável `NAM_RS_BIN` para antes da chamada de `perf annotate`.
-  * Passar `"$NAM_RS_BIN"` como argumento para o comando `perf annotate`.
+  * Passar `-d nam-rs` como argumento para o comando `perf annotate` (filtrando o DSO para o relatório do hotspot).
 
 #### [T2.2] Correção do SIGPIPE na Validação de Símbolos do CLAP (F08) [DONE]
 
@@ -72,3 +72,20 @@ Foco em acelerar o passo de perfilamento e resolver falhas silenciosas de pipe e
 * **Ações:**
   * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), substituir `grep -q` por `grep ... >/dev/null` nas verificações de `clap_entry` e `SONAME`.
   * No arquivo [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh), aplicar a mesma modificação nas checagens de `SONAME` e `clap_entry`.
+
+---
+
+## Sprint 3: Correção da Geração do Relatório de Hotspots
+
+Foco em corrigir a sintaxe do comando `perf annotate` para garantir que o relatório `target/dsp_hotpath.asm` não seja gerado vazio (tamanho 0).
+
+### Épico 3: Correção de Sintaxe do Relatório perf annotate (F07)
+
+* **Risco/Criticidade:** Baixo.
+* **Tarefas Técnicas:**
+
+#### [T3.1] Correção do Argumento Posicional de `perf annotate` [DONE]
+
+* **Objetivo:** Alterar a chamada do `perf annotate` em `build-release.sh` para usar `-d nam-rs` (filtro de DSO) em vez do caminho bruto do binário (que era tratado como nome de símbolo).
+* **Ações:**
+  * No arquivo [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh), substituir a chamada direta de `perf annotate` usando `"$NAM_RS_BIN"` pela opção `-d nam-rs`.

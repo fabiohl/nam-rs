@@ -44,7 +44,7 @@ fi
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}=================================================${NC}"
-echo -e "${BLUE}${BOLD}      nam-rs Quick QA Suite (± 3,0 minutes)      ${NC}"
+echo -e "${BLUE}${BOLD}      nam-rs Quick QA Suite (± 3,5 minutes)      ${NC}"
 echo -e "${BLUE}${BOLD}=================================================${NC}"
 
 # Ensure we are in the project root directory

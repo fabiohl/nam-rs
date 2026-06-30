@@ -77,12 +77,12 @@ Este documento agrupa as análises e constatações obtidas pelas auditorias da 
 
 * **ID:** F07
 * **Problema:** O comando `perf annotate` no script [build-release.sh](file:///home/fabio/nam-rs/utils/build-release.sh) demora cerca de 14 minutos para rodar.
-* **Causa:** O comando é executado sem indicar o binário alvo específico (`perf annotate --stdio -i "$BOLT_DIR/perf.data"`). Isso faz com que o `perf` tente analisar e gerar anotações de código de máquina para todos os executáveis, bibliotecas compartilhadas do sistema (PipeWire, libc) e símbolos do kernel registrados no arquivo `perf.data`.
+* **Causa:** O comando é executado sem indicar o binário alvo específico (`perf annotate --stdio -i "$BOLT_DIR/perf.data"`). Isso faz com que o `perf` tente analisar e gerar anotações de código de máquina para todos os executáveis, bibliotecas compartilhadas do sistema (PipeWire, libc) e símbolos do kernel registrados no arquivo `perf.data`. Além disso, passar `"$NAM_RS_BIN"` diretamente faz o `perf annotate` tratá-lo como um nome de símbolo (não um binário/DSO), resultando em um arquivo `target/dsp_hotpath.asm` vazio (0 bytes).
 * **Proposta de Solução:**
-  * Limitar a anotação ao binário do nam-rs passando `"$NAM_RS_BIN"` ao comando `perf annotate`:
+  * Limitar a anotação ao binário do nam-rs passando a flag `-d nam-rs` (ou `-d $(basename "$NAM_RS_BIN")`) ao comando `perf annotate`:
 
     ```bash
-    perf annotate --stdio -i "$BOLT_DIR/perf.data" "$NAM_RS_BIN" > "target/dsp_hotpath.asm" 2>/dev/null || true
+    perf annotate --stdio -i "$BOLT_DIR/perf.data" -d nam-rs > "target/dsp_hotpath.asm" 2>/dev/null || true
     ```
 
 ### 8. Erro Falso de Símbolo `clap_entry` Ausente no Build de Release
@@ -122,3 +122,8 @@ Este documento agrupa as análises e constatações obtidas pelas auditorias da 
 
 * Inclui **F07**, **F08**.
 * Foco em acelerar o passo do `perf annotate` de 14 minutos para alguns segundos e corrigir a falha silenciosa de pipe do validador de símbolo `clap_entry` (eliminando a saída de erro falsa).
+
+### Épico 3: Correção de Sintaxe do Relatório perf annotate
+
+* Inclui **F07** (correção de sintaxe).
+* Foco em alterar o argumento de `$NAM_RS_BIN` para `-d nam-rs` no comando `perf annotate` de `utils/build-release.sh` para restaurar a geração correta do relatório de assembly hotspot (`target/dsp_hotpath.asm`).
