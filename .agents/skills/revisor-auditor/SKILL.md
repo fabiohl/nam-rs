@@ -23,6 +23,7 @@ Use this skill for a general and holistic codebase review in search of architect
 ### Compliance and Parity Auditor
 
 * Ensure strict feature and behavioral parity with the `Neural Amp Modeler Core` reference implementation (locally mirrored at `tests/fixtures/NeuralAmpModelerCore/`).
+* `Neural Amp Modeler Core` (or just "NAMcore") is the primary source of truth - It is the target. All the others are just helpers to better achieve other objectives.
 * Inspect and diagnose exact mathematical compatibility and maximum audio fidelity.
 * Guarantee that the test suite (`utils/`) adopts the most rigorous and deterministic practices possible, acting as the pillar of quality for nam-rs.
 
