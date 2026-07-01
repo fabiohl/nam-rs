@@ -96,6 +96,14 @@ impl WaveNetA2Dyn {
                     &input[pos..pos + nf],
                     &mut self.condition_dsp_output[0..nf * cond_size],
                 );
+                use std::sync::atomic::{AtomicBool, Ordering};
+                static PRINTED: AtomicBool = AtomicBool::new(false);
+                if !PRINTED.swap(true, Ordering::Relaxed) {
+                    println!(
+                        "PROD COND FIRST 10: {:?}",
+                        &self.condition_dsp_output[0..10]
+                    );
+                }
             }
 
             self.rechannel_prescale(input, pos, nf);
@@ -110,6 +118,7 @@ impl WaveNetA2Dyn {
                     head_wp,
                     use_cond_dsp,
                     cond_size,
+                    true,
                 );
             }
 
@@ -185,10 +194,11 @@ impl WaveNetA2Dyn {
         head_wp: usize,
         use_cond_dsp: bool,
         cond_size: usize,
+        is_first_array: bool,
     ) {
         let channels = self.channels;
         let bottleneck = self.bottleneck;
-        let is_first = li == 0;
+        let is_first = is_first_array && li == 0;
         let is_last = li == self.num_layers - 1;
         let ring_size = self.layer_ring_sizes[li];
         let lookback = self.layer_lookbacks[li];
@@ -268,6 +278,7 @@ impl WaveNetA2Dyn {
                         is_first,
                         is_last,
                         self.channels,
+                        self.head_accum_size,
                         self.bottleneck,
                         self.head1x1_active,
                         z_scratch,
@@ -317,11 +328,21 @@ impl WaveNetA2Dyn {
         pos: usize,
         use_cond_dsp: bool,
         cond_size: usize,
+        is_first_array: bool,
     ) {
         let head_wp = self.advance_head_ring(nf);
 
         for li in 0..self.num_layers {
-            self.layer_forward_dispatch::<M>(li, nf, input, pos, head_wp, use_cond_dsp, cond_size);
+            self.layer_forward_dispatch::<M>(
+                li,
+                nf,
+                input,
+                pos,
+                head_wp,
+                use_cond_dsp,
+                cond_size,
+                is_first_array,
+            );
         }
 
         // head_write_pos is NOT advanced here — caller calls cascade_head_finalize.
@@ -346,7 +367,7 @@ impl WaveNetA2Dyn {
             }
         } else {
             // Multi-channel head_rechannel: dense projection channels → head_size.
-            let channels = self.channels;
+            let channels = self.head_accum_size;
             let hw = &self.head_rechannel_w;
             let ha = &self.head_accum;
             let wp = self.head_write_pos;
@@ -456,6 +477,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     is_first: bool,
     is_last: bool,
     channels: usize,
+    head_accum_size: usize,
     bottleneck: usize,
     head1x1_active: bool,
     z_scratch: &mut [f32],
@@ -548,18 +570,18 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     }
 
     // 4. Head accumulator.
-    let head_off = (head_wp + f) * channels;
+    let head_off = (head_wp + f) * head_accum_size;
     if head1x1_active {
         // S14.2 (PM-15): Correct grouped head1x1 accumulation.
-        // head1x1_w is [channels][h1_in] (transposed in build.rs).
+        // head1x1_w is [head_accum_size][h1_in] (transposed in build.rs).
         // For grouped models, each group uses a subset of z_scratch.
         let h1_in = if head1x1_w.is_empty() {
             0
         } else {
-            head1x1_w.len() / channels
+            head1x1_w.len() / head_accum_size
         };
         let h1_groups = bottleneck.checked_div(h1_in).unwrap_or(1);
-        let ch_per_group = channels / h1_groups;
+        let ch_per_group = head_accum_size / h1_groups;
         for grp in 0..h1_groups {
             for oc in grp * ch_per_group..(grp + 1) * ch_per_group {
                 let mut sum = head1x1_b[oc];
@@ -571,16 +593,17 @@ unsafe fn process_frame_dyn<M: SimdMath>(
             }
         }
         if is_first {
-            head_accum[head_off..head_off + channels].copy_from_slice(&head1x1_scratch[..channels]);
+            head_accum[head_off..head_off + head_accum_size]
+                .copy_from_slice(&head1x1_scratch[..head_accum_size]);
         } else {
-            for c in 0..channels {
+            for c in 0..head_accum_size {
                 head_accum[head_off + c] += head1x1_scratch[c];
             }
         }
     } else {
         debug_assert_eq!(
-            bottleneck, channels,
-            "head1x1 must be active when bottleneck != channels"
+            bottleneck, head_accum_size,
+            "head1x1 must be active when bottleneck != head_accum_size"
         );
         if is_first {
             head_accum[head_off..head_off + bottleneck].copy_from_slice(&z_scratch[..bottleneck]);

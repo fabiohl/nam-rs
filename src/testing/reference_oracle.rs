@@ -948,6 +948,7 @@ fn oracle_a2_forward(
         head_accum_size: usize,
         bottleneck: usize,
         cond_size: usize,
+        head_size: usize,
         rechannel_w: Vec<f64>,
         lws: Vec<A2OracleLayerWeights>,
         head1x1_active: bool,
@@ -1131,15 +1132,23 @@ fn oracle_a2_forward(
             vec![]
         };
 
-        // Head conv weights
-        let head_w_raw = cursor.read_f64(A2_HEAD_KERNEL * ch);
-        let mut head_w = vec![0.0f64; A2_HEAD_KERNEL * ch];
-        for tap in 0..A2_HEAD_KERNEL {
-            for c in 0..ch {
-                head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_KERNEL + tap];
+        let head_size = layer_cfg.head_size.unwrap_or(1);
+        let (head_w, head_b) = if head_size == 1 {
+            let head_w_raw = cursor.read_f64(A2_HEAD_KERNEL * head_accum_size);
+            let mut head_w = vec![0.0f64; A2_HEAD_KERNEL * head_accum_size];
+            for tap in 0..A2_HEAD_KERNEL {
+                for c in 0..head_accum_size {
+                    head_w[tap * head_accum_size + c] = head_w_raw[c * A2_HEAD_KERNEL + tap];
+                }
             }
-        }
-        let head_b = cursor.read_one_f64();
+            let head_b = cursor.read_one_f64();
+            let _head_scale_val = cursor.read_one_f64();
+            (head_w, head_b)
+        } else {
+            let hw_count = head_accum_size * head_size;
+            let head_w = cursor.read_f64(hw_count);
+            (head_w, 0.0f64)
+        };
 
         // Pre-compute per-array max RF for buffer sizing
         let max_dil: usize = *dilations.iter().max().unwrap_or(&1);
@@ -1151,6 +1160,7 @@ fn oracle_a2_forward(
             head_accum_size,
             bottleneck,
             cond_size,
+            head_size,
             rechannel_w,
             lws,
             head1x1_active,
@@ -1434,7 +1444,11 @@ fn oracle_a2_forward(
         // ── Head finalize (last array only) ──
         let last_arr = &arrays[num_arrays - 1];
         let lch = last_arr.head_accum_size;
-        let k = A2_HEAD_KERNEL;
+        let k = if last_arr.head_size == 1 {
+            A2_HEAD_KERNEL
+        } else {
+            last_arr.head_size
+        };
         let cb = head_col.wrapping_sub(k - 1);
         let mut y = last_arr.head_b;
         for t in 0..k {

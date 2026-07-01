@@ -281,6 +281,7 @@ fn run_oracle_esr_paired(model_filename: &str, label: &str) -> f64 {
     let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
 
     let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    println!("MODEL CLASS LABEL: {}", model.class_label());
     let mut prod_output = vec![0.0f32; input_f32.len()];
     let mut pos = 0;
     while pos < input_f32.len() {
@@ -295,6 +296,14 @@ fn run_oracle_esr_paired(model_filename: &str, label: &str) -> f64 {
     let oracle_last = &oracle[24_000..];
 
     let esr = compute_esr_f64(oracle_last, &prod_last_f64);
+    println!(
+        "PROD FIRST 10: {:?}",
+        &prod_last_f64[..10.min(prod_last_f64.len())]
+    );
+    println!(
+        "ORACLE FIRST 10: {:?}",
+        &oracle_last[..10.min(oracle_last.len())]
+    );
     println!(
         "{} ESR(f32 vs oracle, prewarm-paired, last 256 of 24k+256): {:.2e} ({:.1} dB)",
         label,

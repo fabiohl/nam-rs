@@ -134,7 +134,7 @@ impl WaveNetA2Cascade {
                 let arr0 = &mut self.arrays[0];
                 arr0.cascade_write_mono_input(input, pos, nf);
                 arr0.cascade_set_condition(cond_slice, nf, arr0.condition_size);
-                arr0.cascade_layer_loop::<M>(nf, input, pos, true, arr0.condition_size);
+                arr0.cascade_layer_loop::<M>(nf, input, pos, true, arr0.condition_size, true);
 
                 // Save residual for next array.
                 let ch0 = arr0.channels;
@@ -156,7 +156,7 @@ impl WaveNetA2Cascade {
                 // Write residual input.
                 curr.cascade_write_residual_input(&self.cascade_residual, nf, prev_ch);
                 curr.cascade_set_condition(cond_slice, nf, curr.condition_size);
-                curr.cascade_layer_loop::<M>(nf, input, pos, true, curr.condition_size);
+                curr.cascade_layer_loop::<M>(nf, input, pos, true, curr.condition_size, false);
 
                 // Save residual for next array.
                 let curr_ch = curr.channels;

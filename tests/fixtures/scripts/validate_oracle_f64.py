@@ -795,19 +795,32 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
             cursor += ch
 
         # Head conv weights
-        head_w_raw = weights[cursor : cursor + A2_HEAD_K * ch]
-        cursor += A2_HEAD_K * ch
-        head_w = np.zeros(A2_HEAD_K * ch, dtype=np.float64)
-        for tap in range(A2_HEAD_K):
-            for c in range(ch):
-                head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_K + tap]
-        head_b = np.float64(weights[cursor])
-        cursor += 1
+        head_accum_size = int(layer_raw.get("head1x1", {}).get("out_channels", bottleneck)) if head1x1_active else bottleneck
+        head_size = int(layer_raw.get("head_size", 1))
+        if head_size == 1:
+            head_w_raw = weights[cursor : cursor + A2_HEAD_K * head_accum_size]
+            cursor += A2_HEAD_K * head_accum_size
+            head_w = np.zeros(A2_HEAD_K * head_accum_size, dtype=np.float64)
+            for tap in range(A2_HEAD_K):
+                for c in range(head_accum_size):
+                    head_w[tap * head_accum_size + c] = head_w_raw[c * A2_HEAD_K + tap]
+            head_b = np.float64(weights[cursor])
+            cursor += 1
+            # read head_scale
+            _head_scale_val = np.float64(weights[cursor])
+            cursor += 1
+        else:
+            hw_count = head_accum_size * head_size
+            head_w = weights[cursor : cursor + hw_count].copy()
+            cursor += hw_count
+            head_b = 0.0
 
         arr = ArrayWeights()
+        arr.head_accum_size = head_accum_size
         arr.ch = ch
         arr.bottleneck = bottleneck
         arr.cond_size = cond_size
+        arr.head_size = head_size
         arr.rechannel_w = rechannel_w
         arr.layer_weights = layer_weights
         arr.head1x1_active = head1x1_active
@@ -962,7 +975,8 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 if arr.head1x1_active:
                     h1_groups = layer_raw.get("head1x1", {}).get("groups", 1)
                     ch_per_group = ch // h1_groups
-                    h1x1_out = arr.head1x1_b.copy()
+                    h1x1_out = np.zeros(arr.head_accum_size, dtype=np.float64)
+                    h1x1_out[:ch] = arr.head1x1_b
                     for grp in range(h1_groups):
                         for oc in range(grp * ch_per_group, (grp + 1) * ch_per_group):
                             for ic in range(arr.head1x1_in):
@@ -973,9 +987,9 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                     if film[7] is not None:
                         film[7].apply(h1x1_out, condition)
                     if li == 0 and ai == 0:
-                        head_acc[head_off : head_off + ch] = h1x1_out[:ch]
+                        head_acc[head_off : head_off + arr.head_accum_size] = h1x1_out[:arr.head_accum_size]
                     else:
-                        head_acc[head_off : head_off + ch] += h1x1_out[:ch]
+                        head_acc[head_off : head_off + arr.head_accum_size] += h1x1_out[:arr.head_accum_size]
                 else:
                     if li == 0 and ai == 0:
                         head_acc[head_off : head_off + z_len] = z[:z_len]
@@ -996,8 +1010,8 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
 
         # ── Head finalize (last array) ──
         last_arr = array_list[-1]
-        lch = last_arr.ch
-        k = A2_HEAD_K
+        lch = last_arr.head_accum_size
+        k = A2_HEAD_K if last_arr.head_size == 1 else last_arr.head_size
         cb = head_col - (k - 1)
         y = last_arr.head_b
         for t in range(k):
@@ -1035,11 +1049,13 @@ def main():
     if arch == "WaveNet":
         config = model.get("config", {})
         layers = config.get("layers", [])
-        # S14.2 (PM-15): Multi-array A2 detection — at least one layer with
-        # dilations+channels and no scalar kernel_size (uses per-layer kernel_sizes).
-        if layers and any(
+        # A2 detection: head_scale present, no post-stack head, and layers
+        # have dilations+channels (either with kernel_sizes array or
+        # kernel_size scalar).
+        has_head_scale = "head_scale" in config
+        has_head = bool(config.get("head"))
+        if has_head_scale and not has_head and layers and any(
             "dilations" in l and "channels" in l
-            and "kernel_size" not in l
             for l in layers
         ):
             arch = "A2"

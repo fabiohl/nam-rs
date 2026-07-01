@@ -61,7 +61,12 @@ impl WaveNetA2Dyn {
 
         self.layers = layers;
         if self.head_size == 1 {
-            self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, self.channels));
+            self.head_conv = Some(A2HeadConv::new(
+                head_w,
+                head_b,
+                head_scale,
+                self.head_accum_size,
+            ));
         } else {
             self.head_rechannel_w = head_w;
         }
@@ -219,7 +224,7 @@ impl WaveNetA2Dyn {
         if !self.head1x1_active {
             return Ok(());
         }
-        let channels = self.channels;
+        let channels = self.head_accum_size;
 
         // S13.2: A2 generic models with condition_size > 1 may have
         // grouped head1x1 (head1x1.groups > 1). Use reduced input dimension.
@@ -251,7 +256,7 @@ impl WaveNetA2Dyn {
         pos: &mut usize,
         total: usize,
     ) -> Result<(AlignedVec<f32>, f32, f32), String> {
-        let channels = self.channels;
+        let channels = self.head_accum_size;
         let head_size = self.head_size;
 
         if head_size == 1 {

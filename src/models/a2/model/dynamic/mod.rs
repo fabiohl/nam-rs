@@ -233,17 +233,17 @@ impl WaveNetA2Dyn {
         }
 
         let head1x1_w = if head1x1_active {
-            AlignedVec::new(bottleneck * channels, 0.0f32)
+            AlignedVec::new(head_accum_size * h1_in_size, 0.0f32)
         } else {
             AlignedVec::new(0, 0.0f32)
         };
         let head1x1_b = if head1x1_active {
-            AlignedVec::new(channels, 0.0f32)
+            AlignedVec::new(head_accum_size, 0.0f32)
         } else {
             AlignedVec::new(0, 0.0f32)
         };
         let head1x1_scratch = if head1x1_active {
-            AlignedVec::new(channels, 0.0f32)
+            AlignedVec::new(head_accum_size, 0.0f32)
         } else {
             AlignedVec::new(0, 0.0f32)
         };
@@ -260,8 +260,8 @@ impl WaveNetA2Dyn {
             rechannel_w: AlignedVec::new(input_channels * channels, 0u16),
             rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32),
             head_conv: None,
-            head_rechannel_w: AlignedVec::new(head_size.max(1) * channels, 0.0f32),
-            head_accum: AlignedVec::new(head_ring_size * channels, 0.0f32),
+            head_rechannel_w: AlignedVec::new(head_size.max(1) * head_accum_size, 0.0f32),
+            head_accum: AlignedVec::new(head_ring_size * head_accum_size, 0.0f32),
             head_write_pos: rf,
             head_ring_mask,
             layer_buffers,
