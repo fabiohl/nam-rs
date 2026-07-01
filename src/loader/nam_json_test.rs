@@ -1353,8 +1353,9 @@ fn test_linear_implementation_invalid_falls_back_to_auto() {
 
 #[test]
 fn test_reject_object_activation_fail_closed() {
-    // Activation field as a single object (not String, Array, or null) must
-    // fail closed with "unsupported activation format" per PM-11 hardening.
+    // Object activation is now accepted (S13.2: A2 generic models use per-layer
+    // activation objects like {"type": "Softsign"}). The activation string is
+    // None, and the raw JSON is preserved in layer_raw for downstream dispatch.
     let json = r#"{
         "version": "0.5.4",
         "architecture": "WaveNet",
@@ -1372,12 +1373,9 @@ fn test_reject_object_activation_fail_closed() {
         "weights": [0.0, 0.0],
         "sample_rate": 48000
     }"#;
-    let err = parse_nam_json(json).expect_err("object activation should fail closed");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("unsupported activation format"),
-        "expected 'unsupported activation format' error, got: {msg}"
-    );
+    let parsed = parse_nam_json(json).expect("object activation must be accepted (S13.2)");
+    assert_eq!(parsed.config.layers[0].activation, None);
+    assert!(parsed.config.layers[0].layer_raw.is_some());
 }
 
 #[test]

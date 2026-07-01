@@ -44,8 +44,10 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
     }
     if layers.len() > 1 {
         let mut has_a2_feature = false;
+        let mut any_layer_raw = false;
         for l in layers.iter() {
             if let Some(ref raw) = l.layer_raw {
+                any_layer_raw = true;
                 // head1x1 active is an A2-specific feature.
                 if raw
                     .get("head1x1")
@@ -87,7 +89,7 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
                 }
             }
         }
-        if !has_a2_feature {
+        if any_layer_raw && !has_a2_feature {
             return None;
         }
     }
