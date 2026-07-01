@@ -1350,3 +1350,60 @@ fn test_linear_implementation_invalid_falls_back_to_auto() {
     let (_, _, imp) = get_linear_topology(&parsed).expect("Linear topology");
     assert_eq!(imp, LinearImplementation::Auto);
 }
+
+#[test]
+fn test_reject_object_activation_fail_closed() {
+    // Activation field as a single object (not String, Array, or null) must
+    // fail closed with "unsupported activation format" per PM-11 hardening.
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 8, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": {"type": "Softsign"}, "gated": false, "head_bias": false
+                }
+            ],
+            "head": null,
+            "head_scale": 0.02
+        },
+        "weights": [0.0, 0.0],
+        "sample_rate": 48000
+    }"#;
+    let err = parse_nam_json(json).expect_err("object activation should fail closed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("unsupported activation format"),
+        "expected 'unsupported activation format' error, got: {msg}"
+    );
+}
+
+#[test]
+fn test_reject_bool_activation_fail_closed() {
+    // Bool activation also rejected by the hardened parser.
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 8, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": true, "gated": false, "head_bias": false
+                }
+            ],
+            "head": null,
+            "head_scale": 0.02
+        },
+        "weights": [0.0, 0.0],
+        "sample_rate": 48000
+    }"#;
+    let err = parse_nam_json(json).expect_err("bool activation should fail closed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("unsupported activation format"),
+        "expected 'unsupported activation format' error, got: {msg}"
+    );
+}

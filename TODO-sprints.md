@@ -255,7 +255,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### Tarefas Técnicas S12
 
-#### [ ] Task S12.1 — Hardening do Parser de Ativação do Loader (PM-11)
+#### [x] Task S12.1 — Hardening do Parser de Ativação do Loader (PM-11)
 
 * **Responsável:** Engenheiro de DSP / Core Developer
 * **Risco/Criticidade:** Baixo.
