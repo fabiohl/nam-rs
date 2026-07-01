@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, B, C, D, E, F, H, I & J
+# Roadmap de Sprints — Épicos A, B, C, D, E, F, G, H, I & J
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico F (PM-09 — Integridade da Referência C++ [Won't Do - Decisão Documentada])**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")**, o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** e o **Épico J (PM-14 — Observabilidade & Cobertura [Won't Do - Decisão Documentada])** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico F (PM-09 — Integridade da Referência C++ [Won't Do - Decisão Documentada])**, o **Épico G (PM-10, PM-03, PM-05 — Feature-Completeness A2 Oficial)**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")**, o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** e o **Épico J (PM-14 — Observabilidade & Cobertura [Won't Do - Decisão Documentada])** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -322,3 +322,51 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. ✅ `docs/cpp_parity_map.md` §13.1 PM-14: nota expandida com Decreto do PO formalizando a decisão sobre observabilidade e scripts-guardião. A auditoria dos 4 scripts (`tests-long.sh`, `tests-quick.sh`, `tests-performance-regression.sh`, `build-release.sh`) foi revista — goldens abrangentes, clippy estrito, pinagem de core para perf, degradação graciosa de PGO+BOLT, RT gates, validação CLAP, heap-audits e manifesto de frescor de goldens — todos confirmados como suficientemente robustos. O PO decretou que nenhuma asserção rígida de pin de commit, captura adicional de linha-sumário ou alteração na bateria de observabilidade ao vivo é necessária. Tabela §13 linha PM-14 já consolidada como 🟢 PO Decision.
   2. ✅ `TODO-findings.md` PM-14: entrada atualizada com "✅ Documentado (S12.5)" e nota de decisão documentada.
   3. ✅ `TODO-findings.md` Épico J: mantido como `[WONT-DO]` (a decisão de não-executar o trabalho foi documentada, não o trabalho em si), com referência ao decreto documentado em `cpp_parity_map.md` §13.1.
+
+---
+
+## SPRINT S13 — Feature-Completeness A2 Oficial (Épico G)
+
+### Objetivos da Sprint S13
+
+1. **Feature-Completeness do Flagship A2:** Implementar o motor genérico A2 dinâmico para suportar modelos de arquitetura livre, contendo `condition_size > 1`, `head1x1`, gating/blending, sub-modelo `condition_dsp` e ativações declaradas como objetos (PM-10).
+2. **Cobertura do Oráculo f64 (Extensão PM-03):** Adaptar a testemunha de matemática ideal para absorver as novas especificações da arquitetura A2 genérica, viabilizando o isolamento de bugs de SIMD em estruturas variáveis.
+3. **Fidelidade com Capturas Reais (PM-05):** Carregar e processar o modelo flagship oficial A2 (`wavenet_a2_max.nam`), validando timbre e robustez contra golden vectors C++ gerados pela v0.5.x, alcançando o fechamento do gap de compatibilidade com a referência em sua totalidade.
+
+---
+
+### Tarefas Técnicas S13
+
+#### [ ] Task S13.1 — Arquitetura DSP e Parser do Motor A2 Genérico (PM-10)
+
+* **Responsável:** Engenheiro de DSP / Arquiteto
+* **Risco/Criticidade:** Alto (criação de um novo motor de processamento no caminho quente de DSP).
+* **Contexto:**
+  O flagship A2 oficial (`wavenet_a2_max.nam`) apresenta apenas 1 array (kernel único, dilations `[1, 2]`), `head1x1`, gating, sub-modelo `condition_dsp` e ativação-objeto (`{"type":"Softsign"}`). Atualmente, o nam-rs exige uma assinatura rígida de 23 camadas para usar o FiLM. A missão é construir um motor WaveNet flexível que aplique condicionamento FiLM independente da geometria imposta e leia as ativações-objeto.
+* **Critérios de Aceitação:**
+  1. No `src/loader/nam_json/model.rs`, estender o parser de `activation` para interpretar a forma de objeto (ex.: extraindo o campo `"type"`) conforme o fail-closed implementado em S12.1.
+  2. Projetar e implementar o construto de DSP `WaveNetModelDynA2Generic` (ou abstrair o A2 existente) para comportar arrays únicos, dimensões genéricas e suporte completo às chaves de FiLM (gating, `condition_dsp`, `head1x1`).
+  3. Otimizar a estrutura mantendo a RT-Safety (ausência de alocações no block processing).
+  4. Manter a compatibilidade com o formato já estabelecido de vetores SIMD para não quebrar a performance do pipeline.
+
+#### [ ] Task S13.2 — Testemunha Oráculo f64 para A2 Genérico (PM-03/PM-10)
+
+* **Responsável:** Engenheiro de DSP / QA
+* **Risco/Criticidade:** Médio (necessário para validação da task S13.1).
+* **Contexto:**
+  Com um motor novo (Task S13.1), o oráculo f64 implementado na Sprint S10 precisa ser estendido. A referência f64 deve suportar geometrias livres e as novas inserções (ex. `head1x1_post(7)`) para comprovar que o novo código SIMD de produção mantém a fidelidade matemática esperada em dupla precisão.
+* **Critérios de Aceitação:**
+  1. Estender `src/testing/reference_oracle.rs` e `validate_oracle_f64.py` para processar a topologia aberta de A2 genérico.
+  2. Implementar a inserção FiLM 7 (`head1x1_post`) e a propagação correta das matrizes gating/blending do `condition_dsp`.
+  3. Criar os testes unitários (`test_oracle_a2_generic`) que atestem o piso numérico (ESR < 1e-12) usando dados de varredura.
+
+#### [ ] Task S13.3 — Integração e Calibração de Capturas Reais A2 (PM-05)
+
+* **Responsável:** Engenheiro de DSP / QA
+* **Risco/Criticidade:** Baixo (dependente da conclusão com êxito de S13.1 e S13.2).
+* **Contexto:**
+  O último passo para confirmar a aderência e a Feature-Completeness (Épico G) é injetar a captura real de áudio pelo flagship A2, atestando a validade perceptiva do gating e do `head1x1` nos harmônicos do som, contra os vetores de referência C++ gerados.
+* **Critérios de Aceitação:**
+  1. Promover o modelo não distribuível `wavenet_a2_max.nam` (ou similar oficial da bateria de exemplos) para as fixtures testadas pela suite de golden vectors.
+  2. Gerar o golden vector referencial pelo C++ canônico (`golden_gen_build.sh` / C++ render) para o modelo real.
+  3. Calibrar a margem de threshold (ESR / SNR) em `tests/validation.rs` baseando-se no desvio documentado em PM-03 e atestando que os testes agora carregam a arquitetura livre sem acionar fallback (passando os gates de MR-STFT).

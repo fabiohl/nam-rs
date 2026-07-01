@@ -490,7 +490,7 @@ e mapeia as *tags* existentes.
   É o pré-requisito para confiar em qualquer prova de paridade.
 * **Decisão do PO:** Não é um problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
 
-### Épico G — Feature-Completeness A2 Oficial (PM-10, PM-03, PM-05) [ALTO VALOR] [TO-DO]
+### Épico G — Feature-Completeness A2 Oficial (PM-10, PM-03, PM-05) [ALTO VALOR] [MAPPED S13]
 
 * **Risco/Criticidade:** Alto (motor A2 dinâmico genérico). **Sequência:** após Épico F.
 * Implementa o motor A2 genérico para carregar `wavenet_a2_max.nam` (FiLM real + `condition_size>1` +
