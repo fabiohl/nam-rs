@@ -63,26 +63,31 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
  **Risco:** Baixo (medição, sem mudança de produção). **Decisório.**
  **Especialista:** QA / revisor-auditor.
 
-* [ ] **Tarefa S2.1:** Verificar a integridade do golden: `tests/fixtures/golden_wavenet_a2_max.bin` (16388 bytes = 4 [u32] + 2048×4 [input] + 2048×4 [output]). Confirmar formato (`golden_vectors.rs:9-14`: `[u32 N][f32×N input][f32×N expected]`). Se ausente/inválido, regenerar via `tests/fixtures/golden_gen_build.sh` com o C++ vendored (v0.5.4) — registrar a versão do C++ usada.
+* [x] **Tarefa S2.1:** Verificar a integridade do golden: `tests/fixtures/golden_wavenet_a2_max.bin` (16388 bytes = 4 [u32] + 2048×4 [input] + 2048×4 [output]). Confirmar formato (`golden_vectors.rs:9-14`: `[u32 N][f32×N input][f32×N expected]`). Se ausente/inválido, regenerar via `tests/fixtures/golden_gen_build.sh` com o C++ vendored (v0.5.4) — registrar a versão do C++ usada. [DONE]
+    > **Golden íntegro.** Arquivo presente (16388 bytes), N=2048, input/output válidos.
+    > C++ vendored: **v0.5.4** (tag, commit `1f42f88`, "Fix inline GEMM restrict annotations on MSVC").
+    > **Nota:** `golden_gen_build.sh:9` ainda declara v0.5.3 como canônico; o vendored local está em v0.5.4.
 
-* [ ] **Tarefa S2.2:** Des-ignorar **temporariamente** `test_golden_vectors_wavenet_a2_max` (`golden_vectors.rs:1952`): remover o `#[ignore]` apenas para medição.
+* [x] **Tarefa S2.2:** Des-ignorar **temporariamente** `test_golden_vectors_wavenet_a2_max` (`golden_vectors.rs:1952`): remover o `#[ignore]` apenas para medição. [DONE]
 
-* [ ] **Tarefa S2.3:** Rodar em release (o caminho do golden é otimizado):
+* [x] **Tarefa S2.3:** Rodar em release (o caminho do golden é otimizado):
 
   ```shell
   cargo test --release --test golden_vectors test_golden_vectors_wavenet_a2_max -- --nocapture
   ```
 
 Registrar **ESR, SNR (dB), MSE, MRSTFT** (via `report_dsp_fidelity`).
+  > **Resultados:** MSE=2.46e3, SNR=−15.6 dB, ESR=3.61e1, MR-STFT=3.41, MAE=3.10e2.
+  > Todos os thresholds violados por 3+ ordens de magnitude. **Caso (b).** [DONE]
 
-* [ ] **Tarefa S2.4 (decisório):**
-  * **(a) ESR < `max_esr` calibrado (topology_thresholds "wavenet_a2_max"):** produção está
-   **correta vs C++**. PM-D rejeitada. → Pular para S5 (travar gate) e depois S6.
-* **(b) ESR ≥ threshold:** produção diverge do C++. → Prosseguir S3 (spec C++) e S4 (fix).
-   **Re-ignorar** o teste (preservar o marcador `"S14.2-followup: ..."`) até S5.
+* [x] **Tarefa S2.4 (decisório):** [DONE] — **Caso (b): ESR=3.61e1 ≫ 5.0e-2.** Produção diverge do C++. → S3 (spec) → S4 (fix). Teste re-ignorado.
 
-* [ ] **Tarefa S2.5 (registro):** Anotar o veredito (a/b) com os números no relatório. **Não mudar produção neste sprint.**
+* [x] **Tarefa S2.5 (registro):** Anotar o veredito (a/b) com os números no relatório. **Não mudar produção neste sprint.** [DONE]
       * **Critério de aceite:** Números empíricos registrados; decisão (a) ou (b) tomada.
+      > **Veredito consolidado:** **Caso (b)** — produção diverge massivamente do C++ golden.
+      > MSE=2.46e3, SNR=−15.6 dB, ESR=3.61e1, MR-STFT=3.41. Golden gerado com C++ v0.5.4 (vendored, commit `1f42f88`).
+      > **Impacto:** caminho completo S3 (spec C++) → S4 (fix vs C++) → S5 (gate) → S6 (oráculo).
+      > Nenhuma mudança de produção neste sprint; decisão 100% empírica.
 
 ---
 
