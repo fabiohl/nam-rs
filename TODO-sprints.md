@@ -309,7 +309,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * `TODO-findings.md` tabela de modelos oficiais: entrada `slimmable_wavenet.nam` — "campo descartado" → "explicitamente rejeitado (fail-closed)".
      * Nenhuma referência cruzada quebrada identificada entre os dois arquivos.
 
-#### [ ] Task S12.5 — Documentação da Decisão do PO sobre Observabilidade e Scripts (PM-14)
+#### [x] Task S12.5 — Documentação da Decisão do PO sobre Observabilidade e Scripts (PM-14)
 
 * **Responsável:** Documentador Técnico / Arquiteto
 * **Risco/Criticidade:** Nulo (doc-only).
@@ -318,3 +318,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 * **Critérios de Aceitação:**
   1. Atualizar `docs/cpp_parity_map.md` §13 formalizando a decisão do PO para o PM-14, consolidando que nenhuma mudança adicional na infraestrutura de observabilidade da bateria é necessária.
   2. Sincronizar o status em `TODO-findings.md` indicando a documentação da decisão.
+* **Conclusão (2026-06-30):**
+  1. ✅ `docs/cpp_parity_map.md` §13.1 PM-14: nota expandida com Decreto do PO formalizando a decisão sobre observabilidade e scripts-guardião. A auditoria dos 4 scripts (`tests-long.sh`, `tests-quick.sh`, `tests-performance-regression.sh`, `build-release.sh`) foi revista — goldens abrangentes, clippy estrito, pinagem de core para perf, degradação graciosa de PGO+BOLT, RT gates, validação CLAP, heap-audits e manifesto de frescor de goldens — todos confirmados como suficientemente robustos. O PO decretou que nenhuma asserção rígida de pin de commit, captura adicional de linha-sumário ou alteração na bateria de observabilidade ao vivo é necessária. Tabela §13 linha PM-14 já consolidada como 🟢 PO Decision.
+  2. ✅ `TODO-findings.md` PM-14: entrada atualizada com "✅ Documentado (S12.5)" e nota de decisão documentada.
+  3. ✅ `TODO-findings.md` Épico J: mantido como `[WONT-DO]` (a decisão de não-executar o trabalho foi documentada, não o trabalho em si), com referência ao decreto documentado em `cpp_parity_map.md` §13.1.

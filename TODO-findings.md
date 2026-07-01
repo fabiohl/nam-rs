@@ -326,14 +326,14 @@ e mapeia as *tags* existentes.
 
 ## Modelos oficiais NAMCore v0.5.4 (`example_models/`) × loader nam-rs
 
-| Modelo oficial                                   | Carrega?         | Motor                  | Observação                                                 |
-|:------------------------------------------------ |:----------------:|:---------------------- |:---------------------------------------------------------- |
-| `wavenet_a1_standard.nam`, `my_model.nam`        | ✅               | `WaveNetModel<16,3,8>` | catálogo Standard                                          |
-| `wavenet.nam` (CH=3 free)                        | ✅               | `WaveNetModelDyn`      | geometria livre                                            |
-| `lstm.nam` (1×3)                                 | ✅               | `LstmModel1`           | —                                                          |
-| `wavenet_condition_dsp.nam`                      | ✅               | `WaveNetModelDyn`      | `condition_size=3` + sub-DSP                               |
-| `A2.nam`, `slimmable_container.nam`              | ✅               | `ContainerModel`       | multi-submodelo                                            |
-| **`wavenet_a2_max.nam`** (A2 oficial/flagship)   | ❌ **rejeitado** | —                      | **PM-10** — FiLM+cond=8+head1x1+gating em WaveNet genérico |
+| Modelo oficial                                   | Carrega?         | Motor                  | Observação                                                           |
+|:------------------------------------------------ |:----------------:|:---------------------- |:-------------------------------------------------------------------- |
+| `wavenet_a1_standard.nam`, `my_model.nam`        | ✅               | `WaveNetModel<16,3,8>` | catálogo Standard                                                    |
+| `wavenet.nam` (CH=3 free)                        | ✅               | `WaveNetModelDyn`      | geometria livre                                                      |
+| `lstm.nam` (1×3)                                 | ✅               | `LstmModel1`           | —                                                                    |
+| `wavenet_condition_dsp.nam`                      | ✅               | `WaveNetModelDyn`      | `condition_size=3` + sub-DSP                                         |
+| `A2.nam`, `slimmable_container.nam`              | ✅               | `ContainerModel`       | multi-submodelo                                                      |
+| **`wavenet_a2_max.nam`** (A2 oficial/flagship)   | ❌ **rejeitado** | —                      | **PM-10** — FiLM+cond=8+head1x1+gating em WaveNet genérico           |
 | **`slimmable_wavenet.nam`** (single-net slicing) | ❌ **rejeitado** | —                      | **PM-12** — campo `slimmable` explicitamente rejeitado (fail-closed) |
 
 > As rejeições são **fail-closed** (carga falha com erro; nenhum áudio incorreto é produzido). Há
@@ -453,9 +453,10 @@ e mapeia as *tags* existentes.
 * **Risco:** baixo (essencialmente documentação + decisão de escopo).
 * **Decisão do PO:** Já que é uma arquitetura legada, vamos nuka-lo e decretar e documentar esta decisão.
 
-### PM-14 — Certificação dos scripts-guardião e observabilidade da bateria [Wont-Do]
+### PM-14 — Certificação dos scripts-guardião e observabilidade da bateria [Wont-Do] ✅ Documentado (S12.5)
 
 * **Nota do PO:** Não é uma problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
+* **Decisão documentada em 2026-06-30 (S12.5):** Decreto do PO formalizado em `docs/cpp_parity_map.md` §13.1 e §13 (tabela). Nenhuma mudança adicional na infraestrutura de observabilidade da bateria é necessária.
 * **ID:** PM-14 · **Severidade:** Média (observabilidade/cobertura) · **Risco da correção:** Baixo (infra de teste)
 * **Auditoria dos 4 scripts (pedido do PO):**
   * ✅ **Pontos fortes:** `tests-long.sh` tem pré-voo de goldens abrangente (v1 + v2 por grupo de SR),
@@ -515,3 +516,4 @@ e mapeia as *tags* existentes.
 * Captura a linha-sumário do `lib`, garante execução/registro do `tests-long.sh` (interop ao vivo) e
   integra a asserção de pin (PM-09). Fecha o ciclo do "guardião da qualidade".
 * **Decisão do PO:** Não é um problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
+* **Documentado em 2026-06-30 (S12.5):** Decreto do PO formalizado em `docs/cpp_parity_map.md` §13.1.
