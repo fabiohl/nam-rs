@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, B, C, D, E, H & I
+# Roadmap de Sprints — Épicos A, B, C, D, E, F, H, I & J
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")** e o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico F (PM-09 — Integridade da Referência C++ [Won't Do - Decisão Documentada])**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")**, o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** e o **Épico J (PM-14 — Observabilidade & Cobertura [Won't Do - Decisão Documentada])** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -297,3 +297,13 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. Documentar em `docs/cpp_parity_map.md` §13 a decisão do PO de não aplicar asserções de commit rígidas no script `tests-long.sh` para o pin da referência C++ (PM-09), considerando a última versão do GitHub como a verdade de referência.
   2. Documentar que os modelos com ativações-objeto e `slimmable` agora são explicitamente validados e rejeitados no loader de forma fail-closed segura.
   3. Garantir a consistência e sincronização de referências cruzadas entre `TODO-findings.md` e `docs/cpp_parity_map.md`.
+
+#### [ ] Task S12.5 — Documentação da Decisão do PO sobre Observabilidade e Scripts (PM-14)
+
+* **Responsável:** Documentador Técnico / Arquiteto
+* **Risco/Criticidade:** Nulo (doc-only).
+* **Contexto:**
+  O Épico J (observabilidade da bateria e scripts-guardião) foi classificado como `Won't Do` por decisão executiva do PO. A estrutura atual de testes e observabilidade no local/CI foi atestada como suficientemente robusta, e a referência atualizada do GitHub é a única fonte canônica necessária.
+* **Critérios de Aceitação:**
+  1. Atualizar `docs/cpp_parity_map.md` §13 formalizando a decisão do PO para o PM-14, consolidando que nenhuma mudança adicional na infraestrutura de observabilidade da bateria é necessária.
+  2. Sincronizar o status em `TODO-findings.md` indicando a documentação da decisão.
