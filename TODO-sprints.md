@@ -413,7 +413,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### Tarefas Técnicas S14
 
-#### [ ] Task S14.1 — Detector A2 e Pipeline de Cascata de Arrays (PM-15)
+#### [x] Task S14.1 — Detector A2 e Pipeline de Cascata de Arrays (PM-15)
 
 * **Responsável:** Engenheiro de DSP / Arquiteto
 * **Risco/Criticidade:** Alto (Requer roteamento adequado de RT-Safety entre múltiplos buffers).

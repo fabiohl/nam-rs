@@ -13,6 +13,7 @@ impl StaticModel {
             Self::WavenetA2Full(m) => m.inject_rt_status(rt_status),
             Self::WavenetA2Lite(m) => m.inject_rt_status(rt_status),
             Self::WavenetA2Dyn(_) => {}
+            Self::WavenetA2Cascade(_) => {}
             _ => {}
         }
     }
@@ -36,6 +37,7 @@ impl StaticModel {
             Self::Lstm2x24(m) => m.process_scalar(input, output),
             Self::LstmDyn(m) => m.process_scalar(input, output),
             Self::ConvNet(m) => m.process(input, output),
+            Self::WavenetA2Cascade(m) => m.process(input, output),
             other => other.process(input, output),
         }
     }
@@ -51,7 +53,8 @@ impl StaticModel {
             Self::WavenetNano(m) => m.set_effective_layers(n),
             Self::WavenetDyn(m) => m.set_effective_layers(n),
             // LSTM, A2, Container, and Linear: no-op — reduction handled at pipeline level
-            Self::WavenetA2Full(_)
+            Self::WavenetA2Cascade(_)
+            | Self::WavenetA2Full(_)
             | Self::WavenetA2Lite(_)
             | Self::WavenetA2Dyn(_)
             | Self::Container(_)
@@ -80,6 +83,7 @@ impl StaticModel {
             Self::WavenetFeather(m) => m.backup_buffer_starts(starts, offset),
             Self::WavenetNano(m) => m.backup_buffer_starts(starts, offset),
             Self::WavenetDyn(m) => m.backup_buffer_starts(starts, offset),
+            Self::WavenetA2Cascade(_) => {}
             _ => {}
         }
     }
@@ -93,6 +97,7 @@ impl StaticModel {
             Self::WavenetFeather(m) => m.restore_buffer_starts(starts, offset),
             Self::WavenetNano(m) => m.restore_buffer_starts(starts, offset),
             Self::WavenetDyn(m) => m.restore_buffer_starts(starts, offset),
+            Self::WavenetA2Cascade(_) => {}
             _ => {}
         }
     }
@@ -132,6 +137,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) | Self::WavenetA2Dyn(_) => {
                 crate::models::a2::A2_NUM_LAYERS
             }
+            Self::WavenetA2Cascade(m) => m.arrays.iter().map(|a| a.num_layers).sum(),
             Self::Container(c) => c.active().layer_count(),
             Self::Lstm2x8(_) | Self::Lstm2x12(_) | Self::Lstm2x16(_) | Self::Lstm2x24(_) => 2,
             Self::LstmDyn(m) => m.layers.len(),
@@ -159,6 +165,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) => "WaveNet A2 (CH=8)".into(),
             Self::WavenetA2Lite(_) => "WaveNet A2 Lite (CH=3)".into(),
             Self::WavenetA2Dyn(m) => format!("WaveNet A2 (CH={})", m.channels),
+            Self::WavenetA2Cascade(m) => format!("WaveNet A2 Cascade ({} arrays)", m.arrays.len()),
             Self::WavenetDyn(m) => {
                 if m.arrays.len() == 2 {
                     "WaveNet A1 (Custom)".into()
@@ -221,6 +228,7 @@ impl StaticModel {
                 | Self::WavenetA2Full(_)
                 | Self::WavenetA2Lite(_)
                 | Self::WavenetA2Dyn(_)
+                | Self::WavenetA2Cascade(_)
                 | Self::WavenetDyn(_)
         )
     }
@@ -256,6 +264,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) => 8,
             Self::WavenetA2Lite(_) => 3,
             Self::WavenetA2Dyn(m) => m.channels,
+            Self::WavenetA2Cascade(m) => m.channels(),
             Self::WavenetDyn(m) => m.ch,
             Self::Container(c) => c.active().channels(),
             Self::Lstm1x3(_) => 3,
@@ -284,6 +293,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) => 1,
             Self::WavenetA2Lite(_) => 1,
             Self::WavenetA2Dyn(_) => 1,
+            Self::WavenetA2Cascade(_) => 1,
             Self::WavenetDyn(_) => 1,
             Self::Container(c) => c.active().in_channels(),
             Self::Lstm1x3(_)
@@ -328,6 +338,7 @@ impl StaticModel {
             Self::WavenetA2Full(_) => 1,
             Self::WavenetA2Lite(_) => 1,
             Self::WavenetA2Dyn(_) => 1,
+            Self::WavenetA2Cascade(m) => m.arrays.last().map(|a| a.head_size).unwrap_or(1),
             Self::WavenetDyn(m) => m.arrays.last().map(|a| a.head).unwrap_or(0),
             Self::Container(c) => c.active().num_output_channels(),
             Self::Lstm1x3(_) => 3,
@@ -354,6 +365,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.process(input, output),
             Self::WavenetA2Lite(m) => m.process(input, output),
             Self::WavenetA2Dyn(m) => m.process(input, output),
+            Self::WavenetA2Cascade(m) => m.process(input, output),
             Self::WavenetDyn(m) => m.process(input, output),
             Self::Container(m) => m.process(input, output),
             Self::Lstm1x3(m) => m.process(input, output),
@@ -382,6 +394,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.prewarm(),
             Self::WavenetA2Lite(m) => m.prewarm(),
             Self::WavenetA2Dyn(m) => m.prewarm(),
+            Self::WavenetA2Cascade(m) => m.prewarm(),
             Self::WavenetDyn(m) => m.prewarm(),
             Self::Container(m) => m.prewarm(num_samples),
             Self::Lstm1x3(m) => m.prewarm(num_samples),
@@ -409,6 +422,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.prewarm_on_reset(),
             Self::WavenetA2Lite(m) => m.prewarm_on_reset(),
             Self::WavenetA2Dyn(m) => m.prewarm_on_reset(),
+            Self::WavenetA2Cascade(m) => m.prewarm_on_reset(),
             Self::WavenetDyn(m) => m.prewarm_on_reset(),
             Self::Container(m) => m.prewarm_on_reset(),
             Self::Lstm1x3(m) => m.prewarm_on_reset(),
@@ -436,6 +450,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.set_prewarm_on_reset(val),
             Self::WavenetA2Lite(m) => m.set_prewarm_on_reset(val),
             Self::WavenetA2Dyn(m) => m.set_prewarm_on_reset(val),
+            Self::WavenetA2Cascade(m) => m.set_prewarm_on_reset(val),
             Self::WavenetDyn(m) => m.set_prewarm_on_reset(val),
             Self::Container(m) => m.set_prewarm_on_reset(val),
             Self::Lstm1x3(m) => m.set_prewarm_on_reset(val),
@@ -463,6 +478,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Lite(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Dyn(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetA2Cascade(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetDyn(m) => m.reset(sample_rate, max_buffer_size),
             Self::Container(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x3(m) => m.reset(sample_rate, max_buffer_size),
@@ -490,6 +506,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Lite(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Dyn(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetA2Cascade(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetDyn(m) => m.set_max_buffer_size(max_buf),
             Self::Container(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x3(m) => m.set_max_buffer_size(max_buf),
@@ -517,6 +534,7 @@ impl NamModel for StaticModel {
             Self::WavenetA2Full(m) => m.prewarm_samples(),
             Self::WavenetA2Lite(m) => m.prewarm_samples(),
             Self::WavenetA2Dyn(m) => m.prewarm_samples(),
+            Self::WavenetA2Cascade(m) => m.prewarm_samples(),
             Self::WavenetDyn(m) => m.prewarm_samples(),
             Self::Container(m) => m.prewarm_samples(),
             Self::Lstm1x3(m) => m.prewarm_samples(),
@@ -553,6 +571,7 @@ impl NamModel for StaticModel {
 pub(crate) fn clone_condition_dsp(model: &Option<Box<StaticModel>>) -> Option<Box<StaticModel>> {
     model.as_ref().and_then(|m| match m.as_ref() {
         StaticModel::WavenetDyn(w) => Some(Box::new(StaticModel::WavenetDyn(w.clone()))),
+        StaticModel::WavenetA2Cascade(_) => None,
         _ => None,
     })
 }

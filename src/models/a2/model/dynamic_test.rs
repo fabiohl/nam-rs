@@ -26,8 +26,10 @@ fn make_standard_secondary(num: usize) -> Vec<Option<ActivationType>> {
 #[test]
 fn test_wavenet_a2_dyn_new_ch3() {
     let model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -52,8 +54,10 @@ fn test_wavenet_a2_dyn_new_ch3() {
 #[test]
 fn test_wavenet_a2_dyn_new_ch8() {
     let model = WaveNetA2Dyn::new(
+        1,
         8,
         8,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -72,8 +76,10 @@ fn test_wavenet_a2_dyn_new_ch8() {
 #[test]
 fn test_wavenet_a2_dyn_bottleneck_neq_channels() {
     let model = WaveNetA2Dyn::new(
+        1,
         8,
         4,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -101,8 +107,10 @@ fn test_wavenet_a2_dyn_gating_prealloc() {
     sec[1] = Some(ActivationType::Tanh);
 
     let model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(num),
@@ -121,8 +129,10 @@ fn test_wavenet_a2_dyn_gating_prealloc() {
 #[test]
 fn test_wavenet_a2_dyn_process_empty_input() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -139,8 +149,10 @@ fn test_wavenet_a2_dyn_process_empty_input() {
 #[test]
 fn test_wavenet_a2_dyn_process_silence_no_weights() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -160,8 +172,10 @@ fn test_wavenet_a2_dyn_process_silence_no_weights() {
 #[test]
 fn test_wavenet_a2_dyn_prewarm_zeroes() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -194,8 +208,10 @@ fn test_wavenet_a2_dyn_prewarm_zeroes() {
 #[test]
 fn test_wavenet_a2_dyn_set_max_buffer_size_noop() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -212,8 +228,10 @@ fn test_wavenet_a2_dyn_set_max_buffer_size_noop() {
 #[test]
 fn test_wavenet_a2_dyn_set_max_buffer_size_grows() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         8,
         8,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -235,8 +253,10 @@ fn test_wavenet_a2_dyn_set_max_buffer_size_grows() {
 #[test]
 fn test_wavenet_a2_dyn_has_weights_false_initially() {
     let model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -251,8 +271,10 @@ fn test_wavenet_a2_dyn_has_weights_false_initially() {
 #[test]
 fn test_wavenet_a2_dyn_receptive_field() {
     let model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -277,8 +299,10 @@ fn test_wavenet_a2_dyn_receptive_field() {
 #[test]
 fn test_wavenet_a2_dyn_head_write_pos_never_exceeds_ring_mask() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -305,8 +329,10 @@ fn test_wavenet_a2_dyn_head_write_pos_never_exceeds_ring_mask() {
 #[test]
 fn test_wavenet_a2_dyn_head_write_pos_wraps_correctly() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),
@@ -341,8 +367,10 @@ fn test_wavenet_a2_dyn_head_write_pos_wraps_correctly() {
 #[test]
 fn test_wavenet_a2_dyn_head_write_pos_reset_after_prewarm() {
     let mut model = WaveNetA2Dyn::new(
+        1,
         3,
         3,
+        1,
         &A2_KERNEL_SIZES,
         &A2_DILATIONS,
         make_standard_activations(A2_NUM_LAYERS),

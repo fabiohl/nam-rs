@@ -934,24 +934,10 @@ fn test_golden_vectors_a2_example_slimmable() {
     );
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — T3.2: this model requires a full A2 dynamic
-/// engine (FiLM, gating, heterogeneous activations, bottleneck, condition_dsp with
-/// A2 sub-model). The A2 secondary detector (`is_wavenet_a2()`) flags it via
-/// Loader Gap — `wavenet_a2_max.nam` (CH=4, cond=8, FiLM, head1x1).
-///
-/// This model dispatches to `WaveNetA2Dyn` (A2 generic dynamic engine)
-/// since S13.1, but the `condition_dsp` sub-model (2-layer WaveNet with
-/// FiLM entries) fails to load because the A1 free-geometry WaveNetDyn
-/// engine lacks FiLM support for multi-array condition DSP sub-models.
-///
-/// Rejection message: `Model with inconsistent weights` (consumed 368,
-/// total 1052) — the A1 dynamic engine cannot read the FiLM weights
-/// in the condition_dsp sub-model stream.
-///
-/// This will be resolved when multi-array A2 dispatch support is added
-/// to the generic engine (S13.3, PM-05). The golden vector test
-/// `test_golden_vectors_wavenet_a2_max` is ready and waiting.
-/// See TODO-sprints.md S13.3.
+/// Test 8k: Loader Gap WaveNet A2 Max — S14.1 (PM-15): multi-array A2 cascade
+/// support for pure A2 models is implemented. The `condition_dsp` sub-model
+/// (hybrid A1/FiLM structure) still requires A1 dynamic FiLM weight handling
+/// which is deferred to a follow-up task.
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -962,10 +948,8 @@ fn test_loader_gap_wavenet_a2_max() {
     assert!(model.is_err());
     let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("A2 model detected but architecture shape not recognized")
-            || err_msg.contains("dynamic engine requires exactly 2 layer arrays")
-            || err_msg.contains("Model with inconsistent weights"),
-        "Expected A2 rejection / array-count error / weight mismatch, got: {}",
+        err_msg.contains("Model with inconsistent weights"),
+        "Expected weight mismatch for hybrid condition_dsp sub-model, got: {}",
         err_msg
     );
 }
@@ -1958,10 +1942,10 @@ fn test_golden_vectors_convnet_test() {
 /// `StaticModel` from `wavenet_a2_max.nam`, and compares via ESR/SNR/MSE
 /// fusion report.
 ///
-/// Marked `#[ignore]` pending multi-array condition_dsp dispatch support
-/// in the A2 dynamic engine. See TODO-sprints.md S13.3.
+/// Activated by S14.1 (PM-15) — multi-array A2 cascade dispatch support.
+/// Pending A1 dynamic FiLM weight handling for condition_dsp sub-model.
 #[test]
-#[ignore = "S13.3: multi-array condition_dsp dispatch not yet implemented (PM-05)"]
+#[ignore = "S14.1-followup: condition_dsp sub-model FiLM weight handling in A1 dynamic"]
 fn test_golden_vectors_wavenet_a2_max() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_max.bin");

@@ -32,10 +32,22 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
         return None;
     }
 
-    // 2. Exactly one layer array (a2_fast.cpp:876-879)
+    // 2. At least one layer array (a2_fast.cpp:876-879).
+    // S14.1 (PM-15): Relaxed from != 1 to < 1 to support multi-array
+    // cascade topologies (including hybrid condition_dsp sub-models
+    // with FiLM features).
     let layers = &data.config.layers;
-    if layers.len() != 1 {
+    if layers.is_empty() {
         return None;
+    }
+    if layers.len() > 1 {
+        for l in layers.iter() {
+            if let Some(hs) = l.head_size
+                && hs > 1
+            {
+                return None;
+            }
+        }
     }
 
     // 3. No post-stack head (a2_fast.cpp:881-884)

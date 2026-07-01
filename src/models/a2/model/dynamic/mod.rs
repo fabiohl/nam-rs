@@ -34,6 +34,11 @@ pub mod process;
 /// dispatch (standard, grouped, depthwise) is handled by the polymorphic
 /// `A2Conv1d::process_single_frame`.
 pub struct WaveNetA2Dyn {
+    /// Input channel count (1 for standalone mono models;
+    /// may be > 1 for cascade sub-arrays receiving multi-channel input).
+    pub input_channels: usize,
+    /// Output head size (1 for mono A2, may be > 1 for cascade sub-arrays).
+    pub head_size: usize,
     /// Inter-layer channel count.
     pub channels: usize,
     /// Internal bottleneck channel count (conv output size).
@@ -53,7 +58,11 @@ pub struct WaveNetA2Dyn {
     pub rechannel_w_f32: AlignedVec<f32>,
 
     /// Head convolution (K=16 over head accumulator, bias, head_scale).
+    /// Used when head_size == 1 (mono output).
     pub head_conv: Option<A2HeadConv>,
+    /// Head rechannel weights for multi-channel output (head_size > 1).
+    /// Maps channels → head_size (no bias, no scale).
+    pub head_rechannel_w: AlignedVec<f32>,
 
     /// Head accumulator ring buffer (channels-wide, pow2 size).
     pub head_accum: AlignedVec<f32>,
@@ -143,8 +152,10 @@ impl WaveNetA2Dyn {
     /// The activation config vectors must also have length `num_layers`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        input_channels: usize,
         channels: usize,
         bottleneck: usize,
+        head_size: usize,
         kernel_sizes: &[usize],
         dilations: &[usize],
         activations: Vec<ActivationType>,
@@ -232,13 +243,16 @@ impl WaveNetA2Dyn {
         };
 
         Ok(Self {
+            input_channels,
+            head_size,
             channels,
             bottleneck,
             num_layers,
             layers: Vec::with_capacity(num_layers),
-            rechannel_w: AlignedVec::new(channels, 0u16),
-            rechannel_w_f32: AlignedVec::new(channels, 0.0f32),
+            rechannel_w: AlignedVec::new(input_channels * channels, 0u16),
+            rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32),
             head_conv: None,
+            head_rechannel_w: AlignedVec::new(head_size.max(1) * channels, 0.0f32),
             head_accum: AlignedVec::new(head_ring_size * channels, 0.0f32),
             head_write_pos: rf,
             head_ring_mask,

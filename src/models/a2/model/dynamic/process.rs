@@ -29,7 +29,7 @@
 //! All scratch buffers (z_scratch, gating_scratch) and gating/blending configs
 //! are pre-allocated at construction time. Zero heap alloc on the hot-path.
 
-use crate::math::common::SimdMath;
+use crate::math::common::{AlignedVec, SimdMath};
 use crate::models::NamModel;
 use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::{BlendingActivationConfig, GatingActivationConfig, GatingMode};
@@ -119,13 +119,30 @@ impl WaveNetA2Dyn {
     }
 
     /// Phase 0: rechannel pre-scaling — `input × rechannel_w_f32 → layer_in`.
+    /// For mono input (input_channels == 1): `layer_in[c] = rechannel_w_f32[c] * x`.
+    /// For multi-channel input (input_channels > 1): matrix multiply per frame.
     #[inline(always)]
     fn rechannel_prescale(&mut self, input: &[f32], pos: usize, nf: usize) {
         let channels = self.channels;
-        for (f, &x) in input[pos..pos + nf].iter().enumerate() {
-            let base = f * channels;
-            for c in 0..channels {
-                self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+        let in_ch = self.input_channels;
+        if in_ch == 1 {
+            for (f, &x) in input[pos..pos + nf].iter().enumerate() {
+                let base = f * channels;
+                for c in 0..channels {
+                    self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+                }
+            }
+        } else {
+            for f in 0..nf {
+                let base = f * channels;
+                let in_base = pos + f * in_ch;
+                for c in 0..channels {
+                    let mut sum = 0.0f32;
+                    for ic in 0..in_ch {
+                        sum += input[in_base + ic] * self.rechannel_w_f32[ic * channels + c];
+                    }
+                    self.layer_in[base + c] = sum;
+                }
             }
         }
     }
@@ -283,6 +300,137 @@ impl WaveNetA2Dyn {
                 nf,
                 output,
             );
+        }
+    }
+
+    /// Runs the per-layer loop for the cascade pipeline.
+    /// Caller must pre-fill `self.layer_in` and initialize `self.head_accum`
+    /// before calling this method. After return, `self.layer_in` contains
+    /// the residual output (for cascading to next array) and
+    /// `self.head_accum` contains the accumulated head (for head_conv or
+    /// cascading to next array).
+    #[inline(always)]
+    pub(crate) fn cascade_layer_loop<M: SimdMath>(
+        &mut self,
+        nf: usize,
+        input: &[f32],
+        pos: usize,
+        use_cond_dsp: bool,
+        cond_size: usize,
+    ) {
+        let head_wp = self.advance_head_ring(nf);
+
+        for li in 0..self.num_layers {
+            self.layer_forward_dispatch::<M>(li, nf, input, pos, head_wp, use_cond_dsp, cond_size);
+        }
+
+        // head_write_pos is NOT advanced here — caller calls cascade_head_finalize.
+        self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
+    }
+
+    /// Finalizes the head convolution for cascade — uses the current
+    /// head_write_pos (set by cascade_layer_loop).
+    /// When head_size > 1, uses dense head_rechannel instead of head_conv.
+    #[inline(always)]
+    pub(crate) fn cascade_head_finalize(&mut self, nf: usize, output: &mut [f32]) {
+        let head_size = self.head_size;
+        if head_size == 1 {
+            if let Some(ref head) = self.head_conv {
+                head.process(
+                    &self.head_accum,
+                    self.head_write_pos,
+                    self.head_ring_mask,
+                    nf,
+                    output,
+                );
+            }
+        } else {
+            // Multi-channel head_rechannel: dense projection channels → head_size.
+            let channels = self.channels;
+            let hw = &self.head_rechannel_w;
+            let ha = &self.head_accum;
+            let wp = self.head_write_pos;
+            let mask = self.head_ring_mask;
+            for f in 0..nf {
+                let ha_off = ((wp + f) & mask) * channels;
+                let out_off = f * head_size;
+                for oc in 0..head_size {
+                    let mut sum = 0.0f32;
+                    for ic in 0..channels {
+                        sum += ha[ha_off + ic] * hw[ic * head_size + oc];
+                    }
+                    output[out_off + oc] = sum;
+                }
+            }
+        }
+    }
+
+    /// Writes mono input into `layer_in` with rechannel scaling.
+    /// For the cascade: Array 0 receives mono input directly.
+    #[inline(always)]
+    pub(crate) fn cascade_write_mono_input(&mut self, input: &[f32], pos: usize, nf: usize) {
+        let channels = self.channels;
+        for f in 0..nf {
+            let base = f * channels;
+            let x = input[pos + f];
+            for c in 0..channels {
+                self.layer_in[base + c] = self.rechannel_w_f32[c] * x;
+            }
+        }
+    }
+
+    /// Writes multi-channel residual from a previous array into `layer_in`
+    /// with rechannel scaling. `residual` is `nf * src_channels` elements.
+    #[inline(always)]
+    pub(crate) fn cascade_write_residual_input(
+        &mut self,
+        residual: &[f32],
+        nf: usize,
+        src_channels: usize,
+    ) {
+        let channels = self.channels;
+        let in_ch = self.input_channels;
+        assert_eq!(in_ch, src_channels, "input_channels mismatch in cascade");
+        for f in 0..nf {
+            let base = f * channels;
+            let rbase = f * src_channels;
+            for c in 0..channels {
+                let mut sum = 0.0f32;
+                for ic in 0..src_channels {
+                    sum += residual[rbase + ic] * self.rechannel_w_f32[ic * channels + c];
+                }
+                self.layer_in[base + c] = sum;
+            }
+        }
+    }
+
+    /// Copies condition output into this array's `condition_dsp_output` buffer
+    /// so that `layer_forward_dispatch` can use it.
+    #[inline(always)]
+    pub(crate) fn cascade_set_condition(&mut self, cond_buf: &[f32], nf: usize, cond_size: usize) {
+        let dest = &mut self.condition_dsp_output;
+        if dest.len() < nf * cond_size {
+            *dest = AlignedVec::new(nf * cond_size, 0.0f32);
+        }
+        dest[0..nf * cond_size].copy_from_slice(&cond_buf[0..nf * cond_size]);
+    }
+
+    /// Seeds this array's head_accum from a previous array's head_accum.
+    /// Only copies up to `min(src_ch, dst_ch)` channels per frame.
+    #[inline(always)]
+    pub(crate) fn cascade_seed_head(&mut self, prev: &Self, nf: usize) {
+        let prev_ch = prev.channels.min(self.channels);
+        let prev_wp = prev.head_write_pos;
+        let prev_mask = prev.head_ring_mask;
+        let prev_head = &prev.head_accum;
+        let curr_wp = self.head_write_pos;
+        let curr_head = &mut self.head_accum;
+        for f in 0..nf {
+            let prev_off = ((prev_wp + f) & prev_mask) * prev.channels;
+            let curr_off = (curr_wp + f) * self.channels;
+            for c in 0..prev_ch {
+                curr_head[curr_off + c] = prev_head[prev_off + c];
+            }
         }
     }
 }

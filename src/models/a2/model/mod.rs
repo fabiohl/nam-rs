@@ -75,6 +75,7 @@ pub(crate) fn a2_prewarm_common(
 pub mod static_mod;
 pub use static_mod::WaveNetA2;
 
+pub mod cascade;
 pub mod dynamic;
 mod set_weights;
 

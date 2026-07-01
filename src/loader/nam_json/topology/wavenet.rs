@@ -197,10 +197,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         if let Some(ref raw) = layer.layer_raw
             && raw
                 .as_object()
-                .is_some_and(|obj| {
-                    obj.get("slimmable")
-                        .is_some_and(|v| !v.is_null())
-                })
+                .is_some_and(|obj| obj.get("slimmable").is_some_and(|v| !v.is_null()))
         {
             return WavenetTopologyResult::Rejected(
                 "slimmable single-net weight slicing is not supported; use SlimmableContainer instead"

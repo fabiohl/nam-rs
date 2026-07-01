@@ -8,7 +8,7 @@ use crate::models::StaticModel;
 use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::GatingMode;
 use crate::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES, A2_LEAKY_SLOPE};
-use crate::models::a2::{WaveNetA2, WaveNetA2Dyn};
+use crate::models::a2::{WaveNetA2, WaveNetA2Cascade, WaveNetA2Dyn};
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use anyhow::bail;
 use log::info;
@@ -59,10 +59,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
         if let Some(ref raw) = layer.layer_raw
             && raw
                 .as_object()
-                .is_some_and(|obj| {
-                    obj.get("slimmable")
-                        .is_some_and(|v| !v.is_null())
-                })
+                .is_some_and(|obj| obj.get("slimmable").is_some_and(|v| !v.is_null()))
         {
             bail!(
                 "slimmable single-net weight slicing is not supported; use SlimmableContainer instead"
@@ -109,52 +106,71 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS,
                 };
 
+                // S14.1 (PM-15): multi-array A2 cascade support.
+                let num_arrays = data.config.layers.len();
+                let total_weights = data.weights.len();
+                let mut weight_pos: usize = 0;
+
+                // Validate all arrays.
+                for (ai, layer_cfg) in data.config.layers.iter().enumerate() {
+                    let ch = layer_cfg.channels.unwrap_or(0);
+                    let bn = layer_cfg.bottleneck.unwrap_or(ch);
+                    if ch > MAX_A2_DYN_CHANNELS {
+                        bail!(
+                            "A2-Dynamic array[{}] channels ({}) exceeds maximum {} (OOM/DoS protection)",
+                            ai,
+                            ch,
+                            MAX_A2_DYN_CHANNELS
+                        );
+                    }
+                    if bn > MAX_A2_DYN_BOTTLENECK {
+                        bail!(
+                            "A2-Dynamic array[{}] bottleneck ({}) exceeds maximum {} (OOM/DoS protection)",
+                            ai,
+                            bn,
+                            MAX_A2_DYN_BOTTLENECK
+                        );
+                    }
+                }
+
                 let l0 = &data.config.layers[0];
-                let channels = l0.channels.unwrap_or(0);
-                let bottleneck = l0.bottleneck.unwrap_or(channels);
-                let kernel_sizes = if let Some(ks) = l0.kernel_sizes.clone() {
-                    ks
-                } else if let Some(ks_scalar) = l0.kernel_size {
-                    // A2 generic with scalar kernel_size — repeat for each layer
-                    // defined by the dilations array.
-                    let dils = l0
+                let mut arrays: Vec<WaveNetA2Dyn> = Vec::with_capacity(num_arrays);
+
+                for (ai, layer_cfg) in data.config.layers.iter().enumerate() {
+                    let channels = layer_cfg.channels.unwrap_or(0);
+                    let bottleneck = layer_cfg.bottleneck.unwrap_or(channels);
+                    let head_size = layer_cfg.head_size.unwrap_or(1);
+                    // S14.1 (PM-15): For cascade arrays, input_channels is 1 for the
+                    // first array, and the previous array's channels for subsequent.
+                    let input_channels = if ai == 0 {
+                        layer_cfg.input_size.unwrap_or(1)
+                    } else {
+                        data.config.layers[ai - 1].channels.unwrap_or(1)
+                    };
+
+                    let kernel_sizes = if let Some(ks) = layer_cfg.kernel_sizes.clone() {
+                        ks
+                    } else if let Some(ks_scalar) = layer_cfg.kernel_size {
+                        let dils = layer_cfg
+                            .dilations
+                            .clone()
+                            .unwrap_or_else(|| A2_DILATIONS.to_vec());
+                        vec![ks_scalar; dils.len()]
+                    } else {
+                        A2_KERNEL_SIZES.to_vec()
+                    };
+                    let dilations = layer_cfg
                         .dilations
                         .clone()
                         .unwrap_or_else(|| A2_DILATIONS.to_vec());
-                    vec![ks_scalar; dils.len()]
-                } else {
-                    A2_KERNEL_SIZES.to_vec()
-                };
-                let dilations = l0
-                    .dilations
-                    .clone()
-                    .unwrap_or_else(|| A2_DILATIONS.to_vec());
-                let num_layers = kernel_sizes.len();
+                    let num_layers = kernel_sizes.len();
 
-                if channels > MAX_A2_DYN_CHANNELS {
-                    bail!(
-                        "A2-Dynamic channels ({}) exceeds maximum {} (OOM/DoS protection)",
-                        channels,
-                        MAX_A2_DYN_CHANNELS
-                    );
-                }
-                if bottleneck > MAX_A2_DYN_BOTTLENECK {
-                    bail!(
-                        "A2-Dynamic bottleneck ({}) exceeds maximum {} (OOM/DoS protection)",
-                        bottleneck,
-                        MAX_A2_DYN_BOTTLENECK
-                    );
-                }
-
-                // Parse activations from raw JSON using actual layer count.
-                let act_cfg = l0
-                    .parse_activation_config(num_layers)
-                    .map(|cfg| (cfg.activations, cfg.gating_modes, cfg.secondary_activations));
-                let (activations, gating_modes, secondary_activations) = match act_cfg {
-                    Some((a, g, s)) => (a, g, s),
-                    None => {
-                        // Fallback: standard LeakyReLU, no gating.
-                        (
+                    let act_cfg = layer_cfg
+                        .parse_activation_config(num_layers)
+                        .map(|cfg| (cfg.activations, cfg.gating_modes, cfg.secondary_activations));
+                    let (activations, gating_modes, secondary_activations) = match act_cfg {
+                        Some((a, g, s)) => (a, g, s),
+                        None => (
                             vec![
                                 ActivationType::LeakyReLU {
                                     negative_slope: A2_LEAKY_SLOPE,
@@ -163,39 +179,63 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                             ],
                             vec![GatingMode::None; num_layers],
                             vec![None; num_layers],
-                        )
-                    }
-                };
+                        ),
+                    };
 
-                // Detect head1x1 from raw JSON.
-                let head1x1_active = l0
-                    .layer_raw
-                    .as_ref()
-                    .and_then(|raw| raw.get("head1x1"))
-                    .and_then(|h| h.get("active"))
-                    .and_then(|a| a.as_bool())
-                    .unwrap_or(false);
+                    let head1x1_active = layer_cfg
+                        .layer_raw
+                        .as_ref()
+                        .and_then(|raw| raw.get("head1x1"))
+                        .and_then(|h| h.get("active"))
+                        .and_then(|a| a.as_bool())
+                        .unwrap_or(false);
+
+                    let condition_size = layer_cfg.condition_size.unwrap_or(1);
+
+                    let mut model = WaveNetA2Dyn::new(
+                        input_channels,
+                        channels,
+                        bottleneck,
+                        head_size,
+                        &kernel_sizes,
+                        &dilations,
+                        activations,
+                        gating_modes,
+                        secondary_activations,
+                        head1x1_active,
+                    )?;
+                    model.set_layer_raw(layer_cfg.layer_raw.clone());
+                    model.condition_size = condition_size;
+
+                    // Multi-array weight loading: advance through shared stream.
+                    model
+                        .load_weights_inner(&data.weights, &mut weight_pos, total_weights)
+                        .map_err(|e| {
+                            anyhow::anyhow!("A2-Dynamic array[{ai}] weight load failed: {e}")
+                        })?;
+
+                    arrays.push(model);
+                }
+
+                if weight_pos != total_weights {
+                    // S14.1 (PM-15): Hybrid condition_dsp sub-models may have
+                    // residual weights (A1-style head post-processing, etc.)
+                    // that the A2 cascade engine does not consume. These are
+                    // non-critical for sub-model operation.
+                    info!(
+                        "[Dispatcher] A2-Dynamic: {} unconsumed weights after loading {} arrays (consumed {}, total {}). \
+                         Allowed for hybrid condition_dsp sub-models.",
+                        total_weights - weight_pos,
+                        num_arrays,
+                        weight_pos,
+                        total_weights
+                    );
+                }
 
                 let condition_size = l0.condition_size.unwrap_or(1);
 
-                let mut model = WaveNetA2Dyn::new(
-                    channels,
-                    bottleneck,
-                    &kernel_sizes,
-                    &dilations,
-                    activations,
-                    gating_modes,
-                    secondary_activations,
-                    head1x1_active,
-                )?;
-                model.set_layer_raw(layer_raw);
-                model.condition_size = condition_size;
-                model
-                    .set_weights(&data.weights)
-                    .map_err(|e| anyhow::anyhow!("A2-Dynamic weight load failed: {e}"))?;
-
-                // Build condition_dsp sub-model if present in JSON config.
-                if let Some(ref cond_dsp_json) = data.config.condition_dsp {
+                // Build condition_dsp sub-model if present.
+                let condition_dsp = if let Some(ref cond_dsp_json) = data.config.condition_dsp {
                     let cond_dsp_data: NamModelData =
                         serde_json::from_value(cond_dsp_json.clone())?;
                     let cond_model = crate::loader::dispatcher::build_model(&cond_dsp_data)?;
@@ -211,17 +251,39 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                         "[Dispatcher] A2-Dynamic condition_dsp built — architecture={}, output_channels={}",
                         cond_dsp_data.architecture, cond_out
                     );
-                    model.set_condition_dsp(Some(cond_model), WAVENET_MAX_NUM_FRAMES);
+                    Some(cond_model)
+                } else {
+                    None
+                };
+
+                if num_arrays == 1 {
+                    // Single array: use WaveNetA2Dyn directly (fast path, no cascade overhead).
+                    let mut model = arrays.remove(0);
+                    model.set_condition_dsp(condition_dsp, WAVENET_MAX_NUM_FRAMES);
+                    info!(
+                        "[Dispatcher] WaveNet A2-Dynamic built — CH={}, BN={}, layers={}, weights={}",
+                        model.channels,
+                        model.bottleneck,
+                        model.num_layers,
+                        data.weights.len()
+                    );
+                    return Ok(Box::new(StaticModel::WavenetA2Dyn(Box::new(model))));
                 }
 
+                // Multi-array: build cascade.
+                let cascade = WaveNetA2Cascade::new(arrays, condition_dsp, condition_size);
                 info!(
-                    "[Dispatcher] WaveNet A2-Dynamic built — CH={}, BN={}, layers={}, weights={}",
-                    channels,
-                    bottleneck,
-                    num_layers,
+                    "[Dispatcher] WaveNet A2-Cascade built — {} arrays, CH=[{}], weights={}",
+                    num_arrays,
+                    cascade
+                        .arrays
+                        .iter()
+                        .map(|a| a.channels.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     data.weights.len()
                 );
-                return Ok(Box::new(StaticModel::WavenetA2Dyn(Box::new(model))));
+                return Ok(Box::new(StaticModel::WavenetA2Cascade(Box::new(cascade))));
             }
         }
     }

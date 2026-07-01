@@ -46,10 +46,12 @@ impl A2Conv1d {
         kernel_size: usize,
         prefetch_fn: PrefetchFn,
     ) -> Self {
-        // A2 generic (S13.2): kernel sizes 4, 6, 15 are all valid.
+        // A2 generic (S13.2, S14.1): arbitrary kernel sizes are valid
+        // for the dynamic engine. Fast-path const-generic kernels (CH=3,8)
+        // use specialized tile sizes for 6 and 15.
         debug_assert!(
-            kernel_size == 4 || kernel_size == 6 || kernel_size == 15,
-            "A2 supports kernel sizes 4, 6, 15; got {}",
+            kernel_size >= 1,
+            "A2 kernel size must be >= 1; got {}",
             kernel_size
         );
         debug_assert!(

@@ -195,7 +195,9 @@ fn test_is_a2_shape_rejects_wrong_dilations() {
 }
 
 #[test]
-fn test_is_a2_shape_rejects_multiple_layers() {
+fn test_is_a2_shape_accepts_multiple_layers() {
+    // S14.1 (PM-15): Multi-array A2 topologies are now accepted.
+    // The first layer must have valid A2 shape characteristics.
     let data = NamModelData {
         version: Some("0.6.0".to_string()),
         architecture: "WaveNet".to_string(),
@@ -207,6 +209,7 @@ fn test_is_a2_shape_rejects_multiple_layers() {
                     head_size: None,
                     channels: Some(8),
                     kernel_size: None,
+                    kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
                     dilations: Some(A2_DILATIONS.to_vec()),
                     activation: Some("LeakyReLU".to_string()),
                     gated: None,
@@ -219,8 +222,9 @@ fn test_is_a2_shape_rejects_multiple_layers() {
                     head_size: None,
                     channels: Some(8),
                     kernel_size: None,
-                    dilations: Some(vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512]),
-                    activation: Some("Tanh".to_string()),
+                    kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
+                    dilations: Some(A2_DILATIONS.to_vec()),
+                    activation: Some("LeakyReLU".to_string()),
                     gated: None,
                     head_bias: None,
                     ..Default::default()
@@ -241,8 +245,8 @@ fn test_is_a2_shape_rejects_multiple_layers() {
         weights_layout: WeightsLayout::Original,
     };
     assert!(
-        is_a2_shape(&data).is_none(),
-        "models with more than one layer should not match A2 shape"
+        is_a2_shape(&data).is_some(),
+        "S14.1: multi-array A2 models with valid shape must now be accepted"
     );
 }
 
