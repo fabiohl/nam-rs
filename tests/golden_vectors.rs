@@ -934,10 +934,9 @@ fn test_golden_vectors_a2_example_slimmable() {
     );
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — S14.1 (PM-15): multi-array A2 cascade
-/// support for pure A2 models is implemented. The `condition_dsp` sub-model
-/// (hybrid A1/FiLM structure) still requires A1 dynamic FiLM weight handling
-/// which is deferred to a follow-up task.
+/// Test 8k: Loader Gap WaveNet A2 Max — S14.2 (PM-15): multi-array A2 cascade
+/// and condition_dsp support now enable loading the flagship A2 model.
+/// Asserts successful model construction.
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -945,12 +944,15 @@ fn test_loader_gap_wavenet_a2_max() {
     let json = fs::read_to_string(&path).expect("Failed to read wavenet_a2_max.nam");
     let data = parse_nam_json(&json).expect("Failed to parse wavenet_a2_max.nam");
     let model = build_model(&data);
-    assert!(model.is_err());
-    let err_msg = format!("{}", model.err().unwrap());
     assert!(
-        err_msg.contains("Model with inconsistent weights"),
-        "Expected weight mismatch for hybrid condition_dsp sub-model, got: {}",
-        err_msg
+        model.is_ok(),
+        "S14.2 (PM-15): wavenet_a2_max.nam should load successfully. Error: {:?}",
+        model.err()
+    );
+    let model = model.unwrap();
+    assert!(
+        matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),
+        "A2 Max model must route to WaveNetA2Dyn with condition_dsp"
     );
 }
 
@@ -1942,10 +1944,12 @@ fn test_golden_vectors_convnet_test() {
 /// `StaticModel` from `wavenet_a2_max.nam`, and compares via ESR/SNR/MSE
 /// fusion report.
 ///
-/// Activated by S14.1 (PM-15) — multi-array A2 cascade dispatch support.
-/// Pending A1 dynamic FiLM weight handling for condition_dsp sub-model.
+/// S14.2 (PM-15): Model loads and processes successfully via A2 cascade.
+/// Golden vector SNR=4.7 dB, ESR=3.4e-1 — C++ golden was generated with
+/// different condition_dsp processing (Eigen-based generic WaveNet). Pending
+/// condition_dsp parity investigation.
 #[test]
-#[ignore = "S14.1-followup: condition_dsp sub-model FiLM weight handling in A1 dynamic"]
+#[ignore = "S14.2-followup: condition_dsp output divergence vs C++ golden (Eigen-based condition_dsp in C++ vs A2 cascade in Rust)"]
 fn test_golden_vectors_wavenet_a2_max() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_max.bin");

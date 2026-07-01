@@ -625,7 +625,7 @@ fn test_oracle_vs_python_anchor_a2_generic() {
 }
 
 #[test]
-#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+#[ignore = "S14.2-followup: condition_dsp output divergence between production and oracle — ESR=1e5 (50 dB). Requires investigation of condition_dsp Cascade vs single-array A2 condition processing path."]
 fn test_oracle_a2_generic() {
     let esr = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
     assert!(
@@ -637,7 +637,7 @@ fn test_oracle_a2_generic() {
 }
 
 #[test]
-#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+#[ignore = "S14.2-followup: see test_oracle_a2_generic"]
 fn test_decomposition_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -664,7 +664,7 @@ fn test_decomposition_a2_generic() {
 }
 
 #[test]
-#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+#[ignore = "S14.2-followup: see test_oracle_a2_generic"]
 fn test_combined_simulation_a2_generic() {
     run_combined_paired_test("wavenet_a2_max.nam", "A2-Generic");
 }

@@ -427,7 +427,7 @@ impl WaveNetA2Dyn {
         let curr_head = &mut self.head_accum;
         for f in 0..nf {
             let prev_off = ((prev_wp + f) & prev_mask) * prev.channels;
-            let curr_off = (curr_wp + f) * self.channels;
+            let curr_off = ((curr_wp + f) & self.head_ring_mask) * self.channels;
             for c in 0..prev_ch {
                 curr_head[curr_off + c] = prev_head[prev_off + c];
             }
@@ -550,12 +550,25 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     // 4. Head accumulator.
     let head_off = (head_wp + f) * channels;
     if head1x1_active {
-        for oc in 0..channels {
-            let mut sum = head1x1_b[oc];
-            for ic in 0..bottleneck {
-                sum += head1x1_w[ic * channels + oc] * z_scratch[ic];
+        // S14.2 (PM-15): Correct grouped head1x1 accumulation.
+        // head1x1_w is [channels][h1_in] (transposed in build.rs).
+        // For grouped models, each group uses a subset of z_scratch.
+        let h1_in = if head1x1_w.is_empty() {
+            0
+        } else {
+            head1x1_w.len() / channels
+        };
+        let h1_groups = bottleneck.checked_div(h1_in).unwrap_or(1);
+        let ch_per_group = channels / h1_groups;
+        for grp in 0..h1_groups {
+            for oc in grp * ch_per_group..(grp + 1) * ch_per_group {
+                let mut sum = head1x1_b[oc];
+                let b_start = oc * h1_in;
+                for ic in 0..h1_in {
+                    sum += head1x1_w[b_start + ic] * z_scratch[grp * h1_in + ic];
+                }
+                head1x1_scratch[oc] = sum;
             }
-            head1x1_scratch[oc] = sum;
         }
         if is_first {
             head_accum[head_off..head_off + channels].copy_from_slice(&head1x1_scratch[..channels]);

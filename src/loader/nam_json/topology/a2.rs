@@ -35,18 +35,60 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
     // 2. At least one layer array (a2_fast.cpp:876-879).
     // S14.1 (PM-15): Relaxed from != 1 to < 1 to support multi-array
     // cascade topologies (including hybrid condition_dsp sub-models
-    // with FiLM features).
+    // with FiLM features). S14.2 (PM-15): Multi-array models must have
+    // at least one A2-specific feature (head1x1, FiLM, or array/object
+    // activation) to avoid misclassifying standard WaveNet models.
     let layers = &data.config.layers;
     if layers.is_empty() {
         return None;
     }
     if layers.len() > 1 {
+        let mut has_a2_feature = false;
         for l in layers.iter() {
-            if let Some(hs) = l.head_size
-                && hs > 1
-            {
-                return None;
+            if let Some(ref raw) = l.layer_raw {
+                // head1x1 active is an A2-specific feature.
+                if raw
+                    .get("head1x1")
+                    .and_then(|h| h.get("active"))
+                    .and_then(|a| a.as_bool())
+                    .unwrap_or(false)
+                {
+                    has_a2_feature = true;
+                    break;
+                }
+                // FiLM slots are A2-specific.
+                for key in &[
+                    "conv_pre_film",
+                    "conv_post_film",
+                    "input_mixin_pre_film",
+                    "input_mixin_post_film",
+                    "activation_pre_film",
+                    "activation_post_film",
+                    "layer1x1_post_film",
+                    "head1x1_post_film",
+                ] {
+                    if raw
+                        .get(key)
+                        .and_then(|v| v.get("active"))
+                        .and_then(|a| a.as_bool())
+                        .unwrap_or(false)
+                    {
+                        has_a2_feature = true;
+                        break;
+                    }
+                }
+                // Array/object activation is A2-specific (standard WaveNet uses
+                // string activation like "Tanh").
+                if let Some(act) = raw.get("activation")
+                    && (act.is_array() || act.is_object())
+                {
+                    has_a2_feature = true;
+                    break;
+                }
             }
+        }
+        if !has_a2_feature {
+            return None;
         }
     }
 

@@ -559,10 +559,10 @@ class FiLMSlot:
         self.buf = np.zeros(channels * 2, dtype=np.float64)
 
     def apply(self, input_slice, condition):
-        """Apply FiLM modulation in-place on input_slice (1D array of length channels)."""
-        ch = self.channels
+        """Apply FiLM modulation in-place on input_slice (variable-length, up to channels)."""
+        ch_constructed = self.channels
         g = self.groups
-        ch_per_group = ch // g
+        ch_per_group = ch_constructed // g
         cond_per_group = len(condition) // g
         out_per_group = ch_per_group * 2 if self.shift else ch_per_group
 
@@ -576,7 +576,7 @@ class FiLMSlot:
                 if row < ch_per_group:
                     global_out = grp * ch_per_group + row
                 else:
-                    global_out = ch + grp * ch_per_group + (row - ch_per_group)
+                    global_out = ch_constructed + grp * ch_per_group + (row - ch_per_group)
                 s = float(self.bias[global_out])
                 for k in range(cond_per_group):
                     s += (
@@ -585,9 +585,10 @@ class FiLMSlot:
                     )
                 self.buf[global_out] = s
 
-        for c in range(ch):
+        apply_len = min(len(input_slice), ch_constructed)
+        for c in range(apply_len):
             scale = self.buf[c]
-            shift_val = self.buf[c + ch] if self.shift else 0.0
+            shift_val = self.buf[c + ch_constructed] if self.shift else 0.0
             input_slice[c] = input_slice[c] * scale + shift_val
 
 
@@ -650,12 +651,13 @@ def _extract_head1x1_active(layer_raw):
 
 
 def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
-    """A2 forward pass in NumPy f64 — Generic topology (S13.2).
+    """A2 forward pass in NumPy f64 — Multi-array cascade (S14.2).
 
-    Supports open topologies: arbitrary channels, bottleneck, kernel_sizes,
-    dilations, condition_size>1, head1x1, gating/blending, heterogeneous
-    activations, and all 8 FiLM slots including head1x1_post_film (slot 7).
-    Backward-compatible with legacy 23-layer fast-path A2 models.
+    Supports open topologies, multi-array cascade, condition_dsp sub-model,
+    arbitrary channels, bottleneck, kernel_sizes, dilations, condition_size>1,
+    head1x1, gating/blending, heterogeneous activations, and all 8 FiLM slots.
+    Backward-compatible with legacy 23-layer fast-path A2 models and
+    single-array A2 generic models.
     """
     config = model["config"]
     weights = load_weights_as_f64(model)
@@ -664,274 +666,338 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     layers_cfg = config.get("layers", [])
     if not layers_cfg:
         return np.zeros_like(x)
-
-    layer_raw = layers_cfg[0]
-    ch = int(layer_raw["channels"])
-    cond_size = int(layer_raw.get("condition_size", 1))
-
-    # Read topology
-    # kernel_sizes may be absent when model uses scalar kernel_size (A2 generic).
-    if "kernel_sizes" in layer_raw:
-        kernel_sizes = list(layer_raw["kernel_sizes"])
-    elif "kernel_size" in layer_raw and "dilations" in layer_raw:
-        kernel_sizes = [int(layer_raw["kernel_size"])] * len(layer_raw["dilations"])
-    else:
-        kernel_sizes = list(A2_KS)
-    dilations = list(layer_raw.get("dilations", A2_DIL))
-    num_layers = len(kernel_sizes)
-    if num_layers != len(dilations) or num_layers == 0:
-        return np.zeros_like(x)
-    bottleneck = int(layer_raw.get("bottleneck", ch))
-
-    # Per-layer configs
-    activation_raw = layer_raw.get("activation")
-    head1x1_active = _extract_head1x1_active(layer_raw)
-
-    # FiLM detection
-    film_active = [False] * 8
-    for key, idx in FILM_KEYS:
-        cfg = layer_raw.get(key)
-        if isinstance(cfg, dict) and cfg.get("active", False):
-            film_active[idx] = True
-
-    film_slot_configs = [None] * 8
-    for key, idx in FILM_KEYS:
-        cfg = layer_raw.get(key)
-        if isinstance(cfg, dict) and cfg.get("active", False):
-            film_slot_configs[idx] = {
-                "shift": cfg.get("shift", True),
-                "groups": cfg.get("groups", 1),
-            }
-
-    cursor = 0
-    rechannel_w = weights[cursor : cursor + ch]
-    cursor += ch
-
-    # Per-layer weights
-    layer_weights = []
-    for li in range(num_layers):
-        ks = kernel_sizes[li]
-        dil = dilations[li]
-        gmode = _extract_gating_mode(layer_raw, li)
-        use_gating = gmode in ("gated", "blended")
-        conv_out = bottleneck * 2 if use_gating else bottleneck
-
-        # Conv: [conv_out][ch][ks]
-        n_conv = ch * conv_out * ks
-        conv_w = weights[cursor : cursor + n_conv].reshape(conv_out, ch, ks)
-        cursor += n_conv
-        conv_b = weights[cursor : cursor + conv_out]
-        cursor += conv_out
-        # Mixin: conv_out * cond_size (matrix-vector when cond_size>1)
-        n_mixin = conv_out * cond_size
-        mixin_w = weights[cursor : cursor + n_mixin].reshape(conv_out, cond_size)
-        cursor += n_mixin
-        # L1x1: bottleneck × channels + channels bias
-        n_l1x1 = bottleneck * ch
-        l1x1_w = weights[cursor : cursor + n_l1x1].reshape(ch, bottleneck)
-        cursor += n_l1x1
-        l1x1_b = weights[cursor : cursor + ch]
-        cursor += ch
-
-        # FiLM weights
-        film_slots = [None] * 8
-        for slot_idx in range(8):
-            if not film_active[slot_idx]:
-                continue
-            scfg = film_slot_configs[slot_idx]
-            g = int(scfg["groups"])
-            shift = scfg["shift"]
-            if cond_size > 1:
-                wc = film_weight_count_generic(g, cond_size, ch, shift)
-                bc = film_bias_count_generic(ch)
-            else:
-                wc = film_weight_count(g, cond_size, ch, shift)
-                bc = film_bias_count(ch, shift)
-            slot_w = weights[cursor : cursor + wc].copy()
-            cursor += wc
-            slot_b = weights[cursor : cursor + bc].copy()
-            cursor += bc
-            film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, ch)
-
-        act = _extract_activation(activation_raw, li, num_layers)
-
-        layer_weights.append({
-            "conv_w": conv_w,
-            "conv_b": conv_b,
-            "mixin_w": mixin_w,
-            "l1x1_w": l1x1_w,
-            "l1x1_b": l1x1_b,
-            "ks": ks,
-            "dil": dil,
-            "film": film_slots,
-            "gating_mode": gmode,
-            "activation": act,
-            "conv_out": conv_out,
-        })
-
-    # Head1x1 weights (if active): bottleneck×channels + channels
-    # S13.2: groups reduce the input dimension
-    head1x1_w = None
-    head1x1_b = None
-    head1x1_in = None
-    if head1x1_active:
-        h1_groups = layer_raw.get("head1x1", {}).get("groups", 1)
-        head1x1_in = bottleneck // h1_groups
-        n_h1 = ch * head1x1_in
-        head1x1_w = weights[cursor : cursor + n_h1].reshape(ch, head1x1_in)
-        cursor += n_h1
-        head1x1_b = weights[cursor : cursor + ch]
-        cursor += ch
-
-    # Head conv: 16*CH + 1 bias
-    head_w_raw = weights[cursor : cursor + A2_HEAD_K * ch]
-    cursor += A2_HEAD_K * ch
-    head_w = np.zeros(A2_HEAD_K * ch, dtype=np.float64)
-    for tap in range(A2_HEAD_K):
-        for c in range(ch):
-            head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_K + tap]
-    head_b = np.float64(weights[cursor])
-    cursor += 1
-
+    num_arrays = len(layers_cfg)
     num_frames = len(x)
+    if num_frames == 0:
+        return np.zeros(0, dtype=np.float64)
 
-    # Buffers
-    max_ks = max(kernel_sizes)
-    max_dil = max(dilations)
-    max_rf = (max_ks - 1) * max_dil + 64
+    # ── condition_dsp sub-model ──
+    cond_dsp_out = None
+    if config.get("condition_dsp") is not None:
+        import copy
+        cond_model = copy.deepcopy(config["condition_dsp"])
+        cond_dsp_out = a2_forward(cond_model, x)
+
+    # ── Read all arrays' weights ──
+    cursor = 0
+
+    class ArrayWeights:
+        pass
+
+    array_list = []
+    for ai in range(num_arrays):
+        layer_raw = layers_cfg[ai]
+        ch = int(layer_raw["channels"])
+        cond_size = int(layer_raw.get("condition_size", 1))
+
+        # Read topology
+        if "kernel_sizes" in layer_raw:
+            kernel_sizes = list(layer_raw["kernel_sizes"])
+        elif "kernel_size" in layer_raw and "dilations" in layer_raw:
+            kernel_sizes = [int(layer_raw["kernel_size"])] * len(layer_raw["dilations"])
+        else:
+            kernel_sizes = list(A2_KS)
+        dilations = list(layer_raw.get("dilations", A2_DIL))
+        num_layers = len(kernel_sizes)
+        if num_layers != len(dilations) or num_layers == 0:
+            return np.zeros_like(x)
+        bottleneck = int(layer_raw.get("bottleneck", ch))
+
+        activation_raw = layer_raw.get("activation")
+        head1x1_active = _extract_head1x1_active(layer_raw)
+
+        # FiLM detection
+        film_active = [False] * 8
+        for key, idx in FILM_KEYS:
+            cfg = layer_raw.get(key)
+            if isinstance(cfg, dict) and cfg.get("active", False):
+                film_active[idx] = True
+
+        film_slot_configs = [None] * 8
+        for key, idx in FILM_KEYS:
+            cfg = layer_raw.get(key)
+            if isinstance(cfg, dict) and cfg.get("active", False):
+                film_slot_configs[idx] = {
+                    "shift": cfg.get("shift", True),
+                    "groups": cfg.get("groups", 1),
+                }
+
+        # Rechannel weights (1×ch for array 0, prev_ch×ch for cascade)
+        in_ch = 1 if ai == 0 else (int(layers_cfg[ai - 1].get("channels", 8)))
+        rw_count = in_ch * ch
+        rechannel_w = weights[cursor : cursor + rw_count].copy()
+        cursor += rw_count
+
+        # Per-layer weights
+        layer_weights = []
+        for li in range(num_layers):
+            ks = kernel_sizes[li]
+            dil = dilations[li]
+            gmode = _extract_gating_mode(layer_raw, li)
+            use_gating = gmode in ("gated", "blended")
+            conv_out = bottleneck * 2 if use_gating else bottleneck
+
+            n_conv = ch * conv_out * ks
+            conv_w = weights[cursor : cursor + n_conv].reshape(conv_out, ch, ks).copy()
+            cursor += n_conv
+            conv_b = weights[cursor : cursor + conv_out].copy()
+            cursor += conv_out
+            n_mixin = conv_out * cond_size
+            mixin_w = weights[cursor : cursor + n_mixin].reshape(conv_out, cond_size).copy()
+            cursor += n_mixin
+            n_l1x1 = bottleneck * ch
+            l1x1_w = weights[cursor : cursor + n_l1x1].reshape(ch, bottleneck).copy()
+            cursor += n_l1x1
+            l1x1_b = weights[cursor : cursor + ch].copy()
+            cursor += ch
+
+            film_slots = [None] * 8
+            for slot_idx in range(8):
+                if not film_active[slot_idx]:
+                    continue
+                scfg = film_slot_configs[slot_idx]
+                g = int(scfg["groups"])
+                shift = scfg["shift"]
+                if cond_size > 1:
+                    wc = film_weight_count_generic(g, cond_size, ch, shift)
+                    bc = film_bias_count_generic(ch)
+                else:
+                    wc = film_weight_count(g, cond_size, ch, shift)
+                    bc = film_bias_count(ch, shift)
+                slot_w = weights[cursor : cursor + wc].copy()
+                cursor += wc
+                slot_b = weights[cursor : cursor + bc].copy()
+                cursor += bc
+                film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, ch)
+
+            act = _extract_activation(activation_raw, li, num_layers)
+            layer_weights.append({
+                "conv_w": conv_w, "conv_b": conv_b, "mixin_w": mixin_w,
+                "l1x1_w": l1x1_w, "l1x1_b": l1x1_b, "ks": ks, "dil": dil,
+                "film": film_slots, "gating_mode": gmode,
+                "activation": act, "conv_out": conv_out,
+            })
+
+        # Head1x1 weights
+        head1x1_w = None
+        head1x1_b = None
+        head1x1_in = None
+        if head1x1_active:
+            h1_groups = layer_raw.get("head1x1", {}).get("groups", 1)
+            head1x1_in = bottleneck // h1_groups
+            n_h1 = ch * head1x1_in
+            head1x1_w = weights[cursor : cursor + n_h1].reshape(ch, head1x1_in).copy()
+            cursor += n_h1
+            head1x1_b = weights[cursor : cursor + ch].copy()
+            cursor += ch
+
+        # Head conv weights
+        head_w_raw = weights[cursor : cursor + A2_HEAD_K * ch]
+        cursor += A2_HEAD_K * ch
+        head_w = np.zeros(A2_HEAD_K * ch, dtype=np.float64)
+        for tap in range(A2_HEAD_K):
+            for c in range(ch):
+                head_w[tap * ch + c] = head_w_raw[c * A2_HEAD_K + tap]
+        head_b = np.float64(weights[cursor])
+        cursor += 1
+
+        arr = ArrayWeights()
+        arr.ch = ch
+        arr.bottleneck = bottleneck
+        arr.cond_size = cond_size
+        arr.rechannel_w = rechannel_w
+        arr.layer_weights = layer_weights
+        arr.head1x1_active = head1x1_active
+        arr.head1x1_w = head1x1_w
+        arr.head1x1_b = head1x1_b
+        arr.head1x1_in = head1x1_in
+        arr.head_w = head_w
+        arr.head_b = head_b
+        arr.kernel_sizes = kernel_sizes
+        arr.dilations = dilations
+        arr.num_layers = num_layers
+        arr.film_active = film_active
+        arr.layer_raw = layer_raw  # needed for head1x1 groups at runtime
+        array_list.append(arr)
+
+    # ── Buffers ──
+    max_rf = 0
+    for arr in array_list:
+        max_ks = max(arr.kernel_sizes)
+        max_dil = max(arr.dilations)
+        max_rf = max(max_rf, (max_ks - 1) * max_dil + 64)
     hist_size = max_rf + num_frames + 64
     bs = max_rf
-    layer_bufs = [np.zeros(hist_size * ch, dtype=np.float64) for _ in range(num_layers)]
 
+    # Per-array state buffers (lazily initialized per frame)
     hr_len = 1 << (max_rf + num_frames + 64).bit_length()
-    head_acc = np.zeros(hr_len * ch, dtype=np.float64)
     ring_mask = hr_len - 1
+    max_ch = max(a.ch for a in array_list)
+    head_acc = np.zeros(hr_len * max_ch, dtype=np.float64)
     head_wp = 0
 
-    output = np.zeros(num_frames, dtype=np.float64)
+    # Cascade residual buffer
+    cascade_residual = np.zeros(hist_size * max_ch, dtype=np.float64)
 
-    cond_vec = np.array([], dtype=np.float64)
-    if cond_size != 1:
-        cond_vec = np.zeros(cond_size, dtype=np.float64)
+    output = np.zeros(num_frames, dtype=np.float64)
 
     for f in range(num_frames):
         fi = bs + f
         x_val = x[f]
-
-        condition = np.array([x_val]) if cond_size == 1 else cond_vec
-
-        # Rechannel → layer 0's history buffer
-        layer_in = np.zeros(ch, dtype=np.float64)
-        for c in range(ch):
-            layer_in[c] = x_val * rechannel_w[c]
-            layer_bufs[0][fi * ch + c] = layer_in[c]
-
         head_col = head_wp
         head_wp += 1
-        ho = head_col * ch
 
-        for li, lw in enumerate(layer_weights):
-            ks = lw["ks"]
-            dil = lw["dil"]
-            conv_out = lw["conv_out"]
-            use_gating = lw["gating_mode"] == "gated"
-            use_blending = lw["gating_mode"] == "blended"
-            film = lw["film"]
+        for ai, arr in enumerate(array_list):
+            ch = arr.ch
+            bottleneck = arr.bottleneck
+            cond_size = arr.cond_size
+            num_layers = arr.num_layers
+            layer_raw = arr.layer_raw
 
-            # conv_pre_film (slot 0)
-            if film[0] is not None:
-                film[0].apply(layer_bufs[li][fi * ch : fi * ch + ch], condition)
-
-            # Conv1d
-            z = lw["conv_b"].copy()
-            hist = layer_bufs[li]
-            for oc in range(conv_out):
-                for kt in range(ks):
-                    off = dil * (kt + 1 - ks)
-                    ins = (fi + off) * ch
-                    if ins >= 0 and ins + ch <= len(hist):
-                        z[oc] += np.dot(
-                            hist[ins : ins + ch],
-                            lw["conv_w"][oc, :, kt],
-                        )
-
-            # conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
-            if film[1] is not None:
-                film[1].apply(z, condition)
-            if film[2] is not None:
-                film[2].apply(z, condition)
-
-            # Mixin: matrix-vector when cond_size > 1
-            for c in range(min(conv_out, bottleneck)):
-                z[c] += np.dot(lw["mixin_w"][c], condition)
-
-            # input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
-            if film[3] is not None:
-                film[3].apply(z, condition)
-            if film[4] is not None:
-                film[4].apply(z, condition)
-
-            # Activation or Gating/Blending
-            if use_gating:
-                half = bottleneck
-                act = apply_activation_a2(z[:half], lw["activation"])
-                z[:half] = act * (1.0 / (1.0 + np.exp(-z[half:half * 2])))
-                z_len = half
-            elif use_blending:
-                half = bottleneck
-                act = apply_activation_a2(z[:half], lw["activation"])
-                alpha = 1.0 / (1.0 + np.exp(-z[half:half * 2]))
-                z[:half] = alpha * act + (1.0 - alpha) * z[half:half * 2]
-                z_len = half
+            # Condition vector
+            if cond_size == 1:
+                condition = np.array([x_val], dtype=np.float64)
+            elif cond_dsp_out is not None:
+                off = f * cond_size
+                condition = (
+                    cond_dsp_out[off : off + cond_size].copy()
+                    if off + cond_size <= len(cond_dsp_out)
+                    else np.zeros(cond_size, dtype=np.float64)
+                )
             else:
-                z[:bottleneck] = apply_activation_a2(z[:bottleneck], lw["activation"])
-                z_len = bottleneck
+                condition = np.zeros(0, dtype=np.float64)
 
-            # activation_post_film (slot 5)
-            if film[5] is not None:
-                film[5].apply(z[:z_len], condition)
+            # Per-array history buffers
+            layer_bufs = [
+                np.zeros(hist_size * ch, dtype=np.float64) for _ in range(num_layers)
+            ]
 
-            # Head accumulate with optional head1x1 projection
-            if head1x1_active:
-                h1_groups = layer_raw.get("head1x1", {}).get("groups", 1)
-                ch_per_group = ch // h1_groups
-                h1x1_out = head1x1_b.copy()
-                for grp in range(h1_groups):
-                    for oc in range(grp * ch_per_group, (grp + 1) * ch_per_group):
-                        for ic in range(head1x1_in):
-                            h1x1_out[oc] += (
-                                head1x1_w[oc, ic] * z[grp * head1x1_in + ic]
+            # Input: mono for array 0, cascade residual for others
+            layer_in = np.zeros(ch, dtype=np.float64)
+            if ai == 0:
+                for c in range(ch):
+                    layer_in[c] = x_val * arr.rechannel_w[c]
+            else:
+                prev_ch = array_list[ai - 1].ch
+                rw = arr.rechannel_w
+                for nc in range(ch):
+                    s = 0.0
+                    for ic in range(prev_ch):
+                        s += cascade_residual[fi * max_ch + ic] * rw[ic * ch + nc]
+                    layer_in[nc] = s
+
+            for c in range(ch):
+                layer_bufs[0][fi * ch + c] = layer_in[c]
+
+            for li, lw in enumerate(arr.layer_weights):
+                ks = lw["ks"]
+                dil = lw["dil"]
+                conv_out = lw["conv_out"]
+                use_gating = lw["gating_mode"] == "gated"
+                use_blending = lw["gating_mode"] == "blended"
+                film = lw["film"]
+
+                # conv_pre_film (slot 0)
+                if film[0] is not None:
+                    film[0].apply(layer_bufs[li][fi * ch : fi * ch + ch], condition)
+
+                # Conv1d
+                z = lw["conv_b"].copy()
+                hist = layer_bufs[li]
+                for oc in range(conv_out):
+                    for kt in range(ks):
+                        off = dil * (kt + 1 - ks)
+                        ins = (fi + off) * ch
+                        if ins >= 0 and ins + ch <= len(hist):
+                            z[oc] += np.dot(
+                                hist[ins : ins + ch], lw["conv_w"][oc, :, kt]
                             )
-                # head1x1_post_film (slot 7)
-                if film[7] is not None:
-                    film[7].apply(h1x1_out, condition)
-                if li == 0:
-                    head_acc[ho : ho + ch] = h1x1_out[:ch]
-                else:
-                    head_acc[ho : ho + ch] = head_acc[ho : ho + ch] + h1x1_out[:ch]
-            else:
-                if li == 0:
-                    head_acc[ho : ho + z_len] = z[:z_len]
-                else:
-                    head_acc[ho : ho + z_len] = head_acc[ho : ho + z_len] + z[:z_len]
 
-            # L1x1 residual (skip last layer)
-            if li < num_layers - 1:
-                # l1x1_w is [ch][bottleneck] (raw NAM order)
-                residual = z[:bottleneck] @ lw["l1x1_w"].T + lw["l1x1_b"]
-                layer_in = layer_in + residual
-                # layer1x1_post_film (slot 6)
-                if film[6] is not None:
-                    film[6].apply(layer_in, condition)
-                layer_bufs[li + 1][fi * ch : fi * ch + ch] = layer_in
+                # conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
+                if film[1] is not None:
+                    film[1].apply(z, condition)
+                if film[2] is not None:
+                    film[2].apply(z, condition)
 
-        # Head finalize
-        cb = head_col - (A2_HEAD_K - 1)
-        y = head_b
-        for t in range(A2_HEAD_K):
+                # Mixin
+                if len(condition) > 0:
+                    k_used = min(cond_size, len(condition))
+                    for c in range(min(conv_out, bottleneck)):
+                        z[c] += np.dot(lw["mixin_w"][c, :k_used], condition[:k_used])
+
+                # input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
+                if film[3] is not None:
+                    film[3].apply(z, condition)
+                if film[4] is not None:
+                    film[4].apply(z, condition)
+
+                # Activation or Gating/Blending
+                if use_gating:
+                    half = bottleneck
+                    act = apply_activation_a2(z[:half], lw["activation"])
+                    z[:half] = act * (1.0 / (1.0 + np.exp(-z[half:half * 2])))
+                    z_len = half
+                elif use_blending:
+                    half = bottleneck
+                    act = apply_activation_a2(z[:half], lw["activation"])
+                    alpha = 1.0 / (1.0 + np.exp(-z[half:half * 2]))
+                    z[:half] = alpha * act + (1.0 - alpha) * z[half:half * 2]
+                    z_len = half
+                else:
+                    z[:bottleneck] = apply_activation_a2(z[:bottleneck], lw["activation"])
+                    z_len = bottleneck
+
+                # activation_post_film (slot 5)
+                if film[5] is not None:
+                    film[5].apply(z[:z_len], condition)
+
+                # Head accumulate
+                head_off = head_col * max_ch
+                if arr.head1x1_active:
+                    h1_groups = layer_raw.get("head1x1", {}).get("groups", 1)
+                    ch_per_group = ch // h1_groups
+                    h1x1_out = arr.head1x1_b.copy()
+                    for grp in range(h1_groups):
+                        for oc in range(grp * ch_per_group, (grp + 1) * ch_per_group):
+                            for ic in range(arr.head1x1_in):
+                                h1x1_out[oc] += (
+                                    arr.head1x1_w[oc, ic]
+                                    * z[grp * arr.head1x1_in + ic]
+                                )
+                    if film[7] is not None:
+                        film[7].apply(h1x1_out, condition)
+                    if li == 0 and ai == 0:
+                        head_acc[head_off : head_off + ch] = h1x1_out[:ch]
+                    else:
+                        head_acc[head_off : head_off + ch] += h1x1_out[:ch]
+                else:
+                    if li == 0 and ai == 0:
+                        head_acc[head_off : head_off + z_len] = z[:z_len]
+                    else:
+                        head_acc[head_off : head_off + z_len] += z[:z_len]
+
+                # L1x1 residual
+                if li < num_layers - 1:
+                    residual = z[:bottleneck] @ lw["l1x1_w"].T + lw["l1x1_b"]
+                    layer_in = layer_in + residual
+                    if film[6] is not None:
+                        film[6].apply(layer_in, condition)
+                    layer_bufs[li + 1][fi * ch : fi * ch + ch] = layer_in
+
+            # Save residual for next array
+            if ai + 1 < num_arrays:
+                cascade_residual[fi * max_ch : fi * max_ch + ch] = layer_in
+
+        # ── Head finalize (last array) ──
+        last_arr = array_list[-1]
+        lch = last_arr.ch
+        k = A2_HEAD_K
+        cb = head_col - (k - 1)
+        y = last_arr.head_b
+        for t in range(k):
             col = (cb + t) & ring_mask
-            wo = t * ch
-            y += np.dot(head_acc[col * ch : (col + 1) * ch], head_w[wo : wo + ch])
+            wo = t * lch
+            y += np.dot(head_acc[col * max_ch : col * max_ch + lch], last_arr.head_w[wo : wo + lch])
         output[f] = y * head_scale
 
     return output
@@ -963,10 +1029,12 @@ def main():
     if arch == "WaveNet":
         config = model.get("config", {})
         layers = config.get("layers", [])
-        if (
-            layers
-            and len(layers) == 1
-            and "kernel_size" not in layers[0]
+        # S14.2 (PM-15): Multi-array A2 detection — at least one layer with
+        # dilations+channels and no scalar kernel_size (uses per-layer kernel_sizes).
+        if layers and any(
+            "dilations" in l and "channels" in l
+            and "kernel_size" not in l
+            for l in layers
         ):
             arch = "A2"
 

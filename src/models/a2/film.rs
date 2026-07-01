@@ -93,12 +93,17 @@ impl FiLMLayer {
         weights: Vec<f32>,
         bias: Vec<f32>,
     ) -> Self {
+        let expected_bias = if config.shift { channels * 2 } else { channels };
+        let mut bias_padded = bias;
+        if bias_padded.len() < expected_bias {
+            bias_padded.resize(expected_bias, 0.0);
+        }
         Self {
             config,
             cond_size,
             channels,
             weights: AlignedVec::from_vec(weights),
-            bias: AlignedVec::from_vec(bias),
+            bias: AlignedVec::from_vec(bias_padded),
             scale_shift_buf: AlignedVec::new(channels * 2, 0.0f32),
         }
     }
@@ -110,8 +115,9 @@ impl FiLMLayer {
     /// 2. Per-channel modulation: `input[c] = input[c] * scale[c] + shift[c]`.
     ///
     /// # Safety
-    /// `input.len()` must equal `self.channels`.
     /// `condition.len()` must equal `self.cond_size`.
+    /// `input.len()` may be ≤ `self.channels` (e.g. activation_post_film on
+    /// bottleneck-sized slice when bottleneck < channels).
     #[inline(always)]
     pub unsafe fn process(&mut self, input: &mut [f32], condition: &[f32]) {
         debug_assert!(
@@ -182,9 +188,13 @@ impl FiLMLayer {
     unsafe fn apply_modulation(&mut self, input: &mut [f32]) {
         let scale = &self.scale_shift_buf[..self.channels];
         let shift = &self.scale_shift_buf[self.channels..self.channels * 2];
+        // S14.2 (PM-15): Support applying FiLM to slices shorter than
+        // self.channels (e.g. activation_post_film on bottleneck-sized z_scratch
+        // when bottleneck < channels). Only modulate up to input.len() elements.
+        let limit = input.len().min(self.channels);
 
         let mut off = 0;
-        for in_chunk in input.chunks_exact_mut(8) {
+        for in_chunk in input[..limit].chunks_exact_mut(8) {
             let v_in = _mm256_loadu_ps(in_chunk.as_ptr());
             let v_scale = _mm256_loadu_ps(scale.as_ptr().add(off));
             let v_shift = _mm256_loadu_ps(shift.as_ptr().add(off));
@@ -195,7 +205,7 @@ impl FiLMLayer {
             off += 8;
         }
 
-        for c in off..self.channels {
+        for c in off..limit {
             *input.get_unchecked_mut(c) =
                 input.get_unchecked(c) * scale.get_unchecked(c) + shift.get_unchecked(c);
         }

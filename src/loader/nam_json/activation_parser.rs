@@ -53,10 +53,21 @@ pub fn parse_layer_activations(
 ///
 /// Returns `None` if the array is missing, has the wrong length, or
 /// contains entries that cannot be deserialized as valid `ActivationType`.
+///
+/// S14.2 (PM-15): Also handles single-object activations (e.g. `{"type":"Softsign"}`)
+/// used by A2 generic topologies and condition_dsp sub-models, replicating the
+/// single activation across all layers.
 pub fn parse_activations_from_json(
     raw: &serde_json::Value,
     num_layers: usize,
 ) -> Option<Vec<ActivationType>> {
+    // Single-object activation: replicate across all layers (A2 generic).
+    if let Some(obj) = raw.get("activation").and_then(|v| v.as_object()) {
+        let at: ActivationType =
+            serde_json::from_value(serde_json::Value::Object(obj.clone())).ok()?;
+        return Some(vec![at; num_layers]);
+    }
+
     let arr = raw.get("activation").and_then(|v| v.as_array())?;
     if arr.len() != num_layers {
         return None;
@@ -73,7 +84,20 @@ pub fn parse_activations_from_json(
 ///
 /// If the field is absent or null, returns a vector of `GatingMode::None`
 /// with length `num_layers`.
+///
+/// S14.2 (PM-15): Also handles single-string gating mode (e.g. `"gated"`)
+/// used by A2 generic topologies, replicating the value across all layers.
 pub fn parse_gating_modes_from_json(raw: &serde_json::Value, num_layers: usize) -> Vec<GatingMode> {
+    // Single-string gating mode: replicate across all layers (A2 generic).
+    if let Some(s) = raw.get("gating_mode").and_then(|v| v.as_str()) {
+        let mode = match s {
+            "gated" => GatingMode::Gated,
+            "blended" => GatingMode::Blended,
+            _ => GatingMode::None,
+        };
+        return vec![mode; num_layers];
+    }
+
     let arr = match raw.get("gating_mode") {
         None | Some(serde_json::Value::Null) => {
             return vec![GatingMode::None; num_layers];
@@ -99,10 +123,28 @@ pub fn parse_gating_modes_from_json(raw: &serde_json::Value, num_layers: usize) 
 ///
 /// If the field is absent or null, returns a vector of `None` with length
 /// `num_layers`. Individual null entries are mapped to `None`.
+///
+/// S14.2 (PM-15): Also handles single-object/single-string secondary activation
+/// (e.g. `"Hardswish"`), replicating across all layers.
 pub fn parse_secondary_activations_from_json(
     raw: &serde_json::Value,
     num_layers: usize,
 ) -> Vec<Option<ActivationType>> {
+    // Single-value secondary activation (object or string): replicate across all layers.
+    if let Some(v) = raw.get("secondary_activation") {
+        if let Some(s) = v.as_str() {
+            if s.is_empty() || s.eq_ignore_ascii_case("none") {
+                return vec![None; num_layers];
+            }
+            let at = serde_json::from_value(serde_json::Value::String(s.to_string())).ok();
+            return vec![at; num_layers];
+        }
+        if v.is_object() {
+            let at = serde_json::from_value(v.clone()).ok();
+            return vec![at; num_layers];
+        }
+    }
+
     let arr = match raw.get("secondary_activation") {
         None | Some(serde_json::Value::Null) => {
             return vec![None; num_layers];
