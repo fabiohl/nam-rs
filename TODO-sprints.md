@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Roadmap de Sprints — Épicos A, B, C, D, E, F, G, H, I & J
+# Roadmap de Sprints — Épicos A, B, C, D, E, F, G, H, I, J & K
 
-Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico F (PM-09 — Integridade da Referência C++ [Won't Do - Decisão Documentada])**, o **Épico G (PM-10, PM-03, PM-05 — Feature-Completeness A2 Oficial)**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")**, o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)** e o **Épico J (PM-14 — Observabilidade & Cobertura [Won't Do - Decisão Documentada])** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
+Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico A (PM-01, PM-02, PM-08 — Sincronização Documental de Paridade)**, o **Épico B (PM-04, PM-03 — Testemunhas Independentes/Oráculo f64)**, o **Épico C (PM-05 — Cobertura de Modelos Reais A2-FiLM)**, o **Épico D (PM-06 — SlimmableWavenet)**, o **Épico E (PM-07 — Robustez da Suíte de Testes)**, o **Épico F (PM-09 — Integridade da Referência C++ [Won't Do - Decisão Documentada])**, o **Épico G (PM-10, PM-03, PM-05 — Feature-Completeness A2 Oficial)**, o **Épico H (PM-11, PM-12 — Robustez de Carregamento "fail-closed")**, o **Épico I (PM-13 e documentação de PM-09/PM-10/PM-12 — Sincronização Documental & ConvNet)**, o **Épico J (PM-14 — Observabilidade & Cobertura [Won't Do - Decisão Documentada])** e o **Épico K (PM-15 — Multi-Array A2)** no `nam-rs`, com base nas descobertas consolidadas em `TODO-findings.md`.
 
 ---
 
@@ -398,3 +398,39 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
      * Esta engine work estava parcialmente no escopo de S13.1 e é o blocker final para Feature-Completeness do flagship A2 (Épico G).
   7. **Retrocompatibilidade mantida:** 26 dos 29 testes golden vector passam (3 falhas pré-existentes não relacionadas), 16 ignorados (incluindo o novo `wavenet_a2_max` e os do oráculo A2 genérico de S13.2).
   8. Testes de calibração de thresholds passam (4/4).
+
+---
+
+## SPRINT S14 — Multi-Array A2 (Épico K)
+
+### Objetivos da Sprint S14
+
+1. **Topologia Multi-Array (Cascata) no Motor A2 Dinâmico:** Expandir a capacidade do `WaveNetA2Dyn` para orquestrar mais de 1 array (conforme arquitetura suportada nativamente no C++ e utilizada em sub-modelos como o `condition_dsp` do flagship A2).
+2. **Resolução de Carregamento:** Eliminar o fallback forçado de modelos A2 multi-array para o pipeline da A1 (que falha estritamente e fail-closed por desconhecer chaves FiLM), permitindo o carregamento completo do `wavenet_a2_max.nam`.
+3. **Isolamento de Acúmulos Finais:** Garantir que as convoluções de projeção (`head1x1`) e os gates ocorram da mesma maneira que a referência C++: apenas no resultado acumulado global de todos os sub-arrays (`final_head_outputs`).
+
+---
+
+### Tarefas Técnicas S14
+
+#### [ ] Task S14.1 — Detector A2 e Pipeline de Cascata de Arrays (PM-15)
+
+* **Responsável:** Engenheiro de DSP / Arquiteto
+* **Risco/Criticidade:** Alto (Requer roteamento adequado de RT-Safety entre múltiplos buffers).
+* **Contexto:**
+  No momento, `is_a2_shape` assegura `layers.len() == 1`. Para habilitar `condition_dsp` multi-array (FiLM), o detector e o builder do modelo precisarão instanciar um vetor de arrays (seja um wrapper `WaveNetA2Cascade` iterando N `WaveNetA2Dyn`, ou refatoração interna) e direcioná-los corretamente no método `process`.
+* **Critérios de Aceitação:**
+  1. Alterar o detector de topologia `is_a2_shape` para `layers.len() >= 1`.
+  2. Implementar a lógica de pipeline (`WaveNetA2Cascade` ou análogo): a saída (layer_in/residual) do Array N serve como input do Array N+1.
+  3. Acumular as saídas `head_accum` de todos os sub-arrays aditivamente e repassar esse acúmulo finalizado à camada `head1x1` e, subsequentemente, à head opcional (`head_conv`).
+
+#### [ ] Task S14.2 — Testes de Lacuna e Oráculo f64 para A2 Multi-Array (PM-15)
+
+* **Responsável:** QA / Engenheiro de DSP
+* **Risco/Criticidade:** Baixo.
+* **Contexto:**
+  Para certificar que a agregação dos sub-arrays (e a ordem das chamadas do `head1x1`) são isomorfas com o oráculo de f64, os scripts de teste devem abranger esse modelo e não permitir falhas de carregamento.
+* **Critérios de Aceitação:**
+  1. No script `validate_oracle_f64.py` e `src/testing/reference_oracle.rs`, implementar o somatório multi-array compatível para WaveNets A2.
+  2. Remover as restrições (`#[ignore]`) das funções de teste referenciadas para o `wavenet_a2_max.nam` (que possui `condition_dsp` multi-array e ativará essa cadeia nativamente).
+  3. Atestar que `test_loader_gap_wavenet_a2_max` não lança mais pânicos nem recusa o arquivo, passando com a fidelidade sonora estabelecida na task S13.3.

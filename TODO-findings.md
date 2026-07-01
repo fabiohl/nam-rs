@@ -517,3 +517,29 @@ e mapeia as *tags* existentes.
   integra a asserção de pin (PM-09). Fecha o ciclo do "guardião da qualidade".
 * **Decisão do PO:** Não é um problema real. A referência ao github mais recente é a fonte "e ponto final". Documente isto.
 * **Documentado em 2026-06-30 (S12.5):** Decreto do PO formalizado em `docs/cpp_parity_map.md` §13.1.
+
+---
+
+## Épicos (Agrupamentos) — Rodada 3 (Auditoria de S13)
+
+### Épico K — Multi-Array A2 (PM-15) [TO-DO]
+
+* **Risco/Criticidade:** Alto (hot-path DSP). **Sequência:** imediata (conclui o Épico G).
+* A validação final do modelo `wavenet_a2_max.nam` (Sprint S13.3) expôs uma limitação arquitetural: o A2 dinâmico genérico restringe-se a 1 único *layer array*. O C++ orquestra múltiplos arrays nativamente (`std::vector<LayerArray>`), necessário para carregar o sub-modelo `condition_dsp` que possui 2 arrays com FiLM. Este épico estende o motor A2 para roteamento em cascata.
+
+---
+
+### PM-15 — Suporte a Múltiplos Arrays (Cascade) no Motor A2 Genérico
+
+* **ID:** PM-15 · **Severidade:** Alta (Blocker para Feature-Completeness A2 e `condition_dsp` do `wavenet_a2_max.nam`) · **Risco da correção:** Alto (Hot-path DSP, alocação)
+* **Contexto/Auditoria (revisor-auditor):**
+  Auditoria da implementação de referência C++ (`NAM/wavenet/model.cpp`) revela que a WaveNet armazena nativamente um vetor de camadas (`std::vector<LayerArray>`) e as processa sequencialmente. O output de uma alimenta o input da outra, e as saídas de *head* de todas elas são acumuladas (`final_head_outputs`). A convolução opcional `head1x1` é aplicada apenas sobre esta soma final (linha 787 de `model.cpp`).
+  No `nam-rs`, a topologia A1 suporta múltiplos arrays (`WaveNetLayerArrayDyn`), mas o novo motor A2 dinâmico (`WaveNetA2Dyn` implementado na Sprint S13) está rigidamente fixado em `layers.len() == 1`.
+  Devido a isto, o sub-modelo `condition_dsp` do `wavenet_a2_max.nam`, que possui 2 arrays em sua topologia e chaves FiLM, não é qualificado pela verificação `is_a2_shape` e sofre fallback para a WaveNet A1 genérica. Por não suportar chaves FiLM, o parser A1 dinâmico falha alegando inconsistência de contagem de pesos (erro explicitamente mapeado no *Loader Gap* de S13.3: `consumed 368, total 1052`).
+* **Proposta de Solução (planejador-arquiteto):**
+  Transformar o modelo de execução do A2 genérico para suportar nativamente a topologia multi-array:
+  1. Alterar o detector de topologia `is_a2_shape` (`src/loader/nam_json/topology/a2.rs`) para validar `layers.len() >= 1`.
+  2. Implementar um wrapper de orquestração `WaveNetA2Cascade` (ou expandir o `WaveNetA2Dyn` internamente) para instanciar e gerenciar iterativamente os `LayerArrays`.
+  3. No processamento DSP, repassar a saída ativada/processada de um array como entrada do próximo e acumular de forma contínua o `head_accum`.
+  4. Extrair a aplicação da projeção `head1x1` do array individual e transferi-la para o roteador final pós-soma da cascata.
+  5. Após consolidação da engine multi-array, remover os `#[ignore]` pendentes no `test_loader_gap_wavenet_a2_max` e no `test_golden_vectors_wavenet_a2_max`.
