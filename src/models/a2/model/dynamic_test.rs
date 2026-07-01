@@ -98,8 +98,8 @@ fn test_wavenet_a2_dyn_bottleneck_neq_channels() {
     assert_eq!(model.channels, 8);
     assert_eq!(model.bottleneck, 4);
     assert!(model.head1x1_active);
-    assert_eq!(model.head1x1_w.len(), 4 * 8);
-    assert_eq!(model.head1x1_b.len(), 8);
+    assert_eq!(model.head1x1_w.len(), 4 * 4);
+    assert_eq!(model.head1x1_b.len(), 4);
 }
 
 #[test]

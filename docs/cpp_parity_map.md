@@ -256,7 +256,20 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 > 1. **Fixed fast-path** — a port of `NAM/wavenet/a2_fast.cpp` for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch): pure A2, no FiLM/gating, full SIMD const-generic specialization. See [TODO-sprints.md](../TODO-sprints.md).
 > 2. **Dynamic engine** (`WaveNetA2Dyn`) — handles FiLM, `GatingActivation`, `BlendingActivation`, `condition_dsp`, and `bottleneck ≠ channels` **for models that match the A2 23-layer structural signature** (CH ∈ {3,8}). These are **golden-tested** (§13): gating/blending/`condition_dsp` reach near-bit-exact parity (>100 dB SNR), while **FiLM** carries a documented interop divergence vs the C++ generic path (18–36 dB SNR, tracked as **RF1** — see §13 / `TODO-findings.md` PM-03). The committed FiLM goldens use synthetic CH 3/8 A2-shaped weights.
 >
-> **⚠ Not yet feature-complete (PM-10).** The **official A2 flagship** `wavenet_a2_max.nam` is a *generic* 1-array WaveNet with FiLM (`channels=4`, `bottleneck=4`, `condition_size=8`, object-form `Softsign`, `head1x1`, plus a `condition_dsp` sub-model with gating/blending). It does **not** match the A2 23-layer signature, so it reaches neither the fast-path nor `WaveNetA2Dyn`, and the A1 dynamic engine lacks FiLM — it is therefore **safely rejected at load** (`test_loader_gap_wavenet_a2_max` asserts `is_err()`). A **generic A2 dynamic engine** is required to load real-amp A2/FiLM captures; deferred (PM-10).
+> **⚠ Loads but inference is BROKEN (PM-16, audit 2026-07-01).** S14.2 (PM-15) added multi-array
+> cascade + `condition_dsp` + grouped `head1x1` support, so the **official A2 flagship**
+> `wavenet_a2_max.nam` (v0.6.0: `channels=4`, `bottleneck=4`, `condition_size=8`, object-form
+> `Softsign`, grouped `head1x1` out=4/groups=2, plus a 2-array `condition_dsp` sub-model with
+> grouped `head1x1` out=6/groups=3) now **loads successfully** and routes to `WaveNetA2Dyn`
+> (`test_loader_gap_wavenet_a2_max` asserts `is_ok` + `matches!(WavenetA2Dyn)`). **However**,
+> the inference is gravely incorrect: the `head1x1` weight-load path reads
+> `head_accum_size * h1_in_size` weights instead of `channels * h1_in_size`, desyncing the
+> weight cursor whenever `head1x1.out_channels != channels` (true for the `condition_dsp`
+> sub-model's array[0]: ch=3, out=6). Measured ESR (production vs independent f64 oracle, which
+> matches the NumPy anchor at 5.31e-16): **condition_dsp sub-model 50.3 dB; full model 93.0 dB**.
+> Four fidelity tests are `#[ignore]`d with `"S14.2-followup"` markers (PM-20); root cause and
+> fix are characterized in [`TODO-findings.md`](../TODO-findings.md) **PM-16 / PM-20**. The
+> pre-S14.2 statement ("safely rejected at load") is **superseded**.
 >
 > `SlimmableWavenet` (single-net channel slicing, the official `slimmable_wavenet.nam`) is **not loadable** — rejected at dispatch; deferred epic (PM-06 / PM-12). The multi-model `SlimmableContainer` (independent sub-nets + crossfade, e.g. official `A2.nam`/`slimmable_container.nam`) **is** implemented and tested (`tests/container_slimmable.rs`).
 >
@@ -603,10 +616,10 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 
 **Genuinely open (🟡/🔴):**
 
-| Item                                                                                                                              | Status                                                                                                                                                        | Reference / Finding |
-|:--------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
-| **A2 official flagship** `wavenet_a2_max.nam` (generic WaveNet + FiLM + `cond_size=8` + `head1x1` + `condition_dsp`/gating, CH=4) | 🟡 **Not loadable** — safe rejection (`test_loader_gap_wavenet_a2_max` asserts `is_err`). Needs a *generic* A2 dynamic engine; deferred                       | §6 · PM-10          |
-| **`SlimmableWavenet`** (single-net channel slicing; official `slimmable_wavenet.nam`)                                             | 🟡 **Not loadable** — explicitly rejected at dispatch (fail-closed, `slimmable` field parsed and refused). Deferred epic (distinct from `SlimmableContainer`) | §6 · PM-06 · PM-12  |
+| Item                                                                                                                                              | Status                                                                                                                                                                                                               | Reference / Finding |
+|:------------------------------------------------------------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
+| **A2 official flagship** `wavenet_a2_max.nam` (generic WaveNet + FiLM + `cond_size=8` + grouped `head1x1` + `condition_dsp`/gating, CH=4, v0.6.0) | 🔴 **Loads but inference BROKEN** (S14.2): `head1x1` weight-count bug (PM-16) desyncs cursor when `out_channels ≠ channels`. ESR 93 dB vs f64 oracle. 4 fidelity tests `#[ignore]`d (PM-20). Fix tracked PM-16/PM-20 | §6 · PM-10 · PM-16  |
+| **`SlimmableWavenet`** (single-net channel slicing; official `slimmable_wavenet.nam`)                                                             | 🟡 **Not loadable** — explicitly rejected at dispatch (fail-closed, `slimmable` field parsed and refused). Deferred epic (distinct from `SlimmableContainer`)                                                        | §6 · PM-06 · PM-12  |
 
 **By design / established (🟢):**
 
@@ -654,13 +667,18 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 
 - **A2 official flagship `wavenet_a2_max.nam` (PM-10).** The official A2 model is a *generic* 1-array
   WaveNet with FiLM (CH=4, `bottleneck=4`, `condition_size=8`, object-form `Softsign`, `head1x1`, plus a
-  `condition_dsp` sub-model with gating/blending). It does **not** match the A2 23-layer signature, so it
-  reaches neither the fast-path nor `WaveNetA2Dyn`; the A1 dynamic engine lacks FiLM, so the loader
-  **safely rejects it** (`test_loader_gap_wavenet_a2_max` asserts `is_err`). This is the real boundary of
-  "A2 general engine": the synthetic CH 3/8 A2-shaped FiLM/gating/blending models are supported and
-  golden-tested, but the **official generic-WaveNet-with-FiLM geometry is not yet loadable**. Closing it
-  needs a generic A2 dynamic engine (`WaveNetModelDynA2`); C++ v0.5.x supports this model, so it can be
-  golden- and oracle-validated once built. Subsumes the real-amp FiLM capture gap (PM-05).
+  `condition_dsp` sub-model with grouped `head1x1`). S14.2 (PM-15) added multi-array cascade +
+  `condition_dsp` + grouped `head1x1` support, so the loader now **accepts it** and routes to
+  `WaveNetA2Dyn` (`test_loader_gap_wavenet_a2_max` now asserts `is_ok` + `matches!(WavenetA2Dyn)` —
+  the pre-S14.2 `is_err` statement is **superseded**). **However**, the inference is currently
+  **broken**: a `head1x1` weight-count bug (PM-16, audit 2026-07-01) reads
+  `head_accum_size * h1_in_size` weights instead of `channels * h1_in_size`, desyncing the weight
+  cursor when `head1x1.out_channels != channels` (true for the `condition_dsp` sub-model array[0]:
+  ch=3, out=6, groups=3). Measured ESR vs independent f64 oracle (validated against NumPy anchor at
+  5.31e-16): **50.3 dB for the sub-model, 93.0 dB for the full model**. Four fidelity tests are
+  `#[ignore]`d with `"S14.2-followup"` markers (PM-20). Root cause characterized and fix tracked in
+  [`TODO-findings.md`](../TODO-findings.md) **PM-16 / PM-20** (Épico L). Subsumes the real-amp FiLM
+  capture gap (PM-05).
 
 - **Loader fail-closed hardening (PM-11 / PM-12).** Standardized to fail-closed behavior: (a) `activation` in object form `{"type":"…"}` is explicitly validated and rejected with a deserialization error outside of A2; (b) the `slimmable` field on a single-net WaveNet is parsed and rejected with a user-friendly error. Checked via explicit unit/gap tests (`test_loader_gap_slimmable_wavenet` and activation validation).
 

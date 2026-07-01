@@ -96,14 +96,6 @@ impl WaveNetA2Dyn {
                     &input[pos..pos + nf],
                     &mut self.condition_dsp_output[0..nf * cond_size],
                 );
-                use std::sync::atomic::{AtomicBool, Ordering};
-                static PRINTED: AtomicBool = AtomicBool::new(false);
-                if !PRINTED.swap(true, Ordering::Relaxed) {
-                    println!(
-                        "PROD COND FIRST 10: {:?}",
-                        &self.condition_dsp_output[0..10]
-                    );
-                }
             }
 
             self.rechannel_prescale(input, pos, nf);
