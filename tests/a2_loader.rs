@@ -9,8 +9,8 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
-    NamConfig, NamLayerConfig, NamModelData, WavenetTopologyResult, WeightsLayout,
-    get_wavenet_topology, is_a2_shape, parse_nam_json,
+    A2TopologyResult, NamConfig, NamLayerConfig, NamModelData, WavenetTopologyResult,
+    WeightsLayout, get_wavenet_topology, is_a2_shape, parse_nam_json,
 };
 use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
@@ -187,9 +187,10 @@ fn test_is_a2_shape_rejects_wrong_dilations() {
         1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4,
     ];
     let data = make_a2_data(8, wrong_dils);
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "dilations not matching A2_DILATIONS should be rejected"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(A2TopologyResult::Dynamic),
+        "dilations not matching A2_DILATIONS should route to Dynamic"
     );
 }
 
@@ -287,9 +288,10 @@ fn test_is_a2_shape_rejects_non_wavenet_architecture() {
 fn test_is_a2_shape_rejects_wrong_dilations_length() {
     let short_dils: Vec<usize> = vec![1, 2, 3];
     let data = make_a2_data(8, short_dils);
-    assert!(
-        is_a2_shape(&data).is_none(),
-        "dilations with wrong length should be rejected"
+    assert_eq!(
+        is_a2_shape(&data),
+        Some(A2TopologyResult::Dynamic),
+        "dilations with wrong length should route to Dynamic"
     );
 }
 

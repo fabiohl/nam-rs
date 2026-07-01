@@ -349,7 +349,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
 
     // 2. Input mixin — matrix-vector multiply when cond_size > 1 (A2 generic).
     // Standard A2 (cond_size == 1) reduces to: z[c] += mixin_w[c] * cond_slice[0].
-    for c in 0..z_out_ch.min(bottleneck) {
+    for c in 0..z_out_ch {
         let base = c * cond_size;
         let mut sum = 0.0;
         for k in 0..cond_size {

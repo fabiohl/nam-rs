@@ -59,7 +59,10 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
         if let Some(ref raw) = layer.layer_raw
             && raw
                 .as_object()
-                .is_some_and(|obj| obj.contains_key("slimmable"))
+                .is_some_and(|obj| {
+                    obj.get("slimmable")
+                        .is_some_and(|v| !v.is_null())
+                })
         {
             bail!(
                 "slimmable single-net weight slicing is not supported; use SlimmableContainer instead"
