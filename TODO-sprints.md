@@ -266,7 +266,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   2. Garantir que o parser retorne um erro explícito de deserialização ("unsupported activation format").
   3. Adicionar um teste unitário em `src/loader/nam_json/activation_parser_test.rs` (ou no próprio teste do model loader) simulando uma ativação em forma de objeto e assegurando que ela falhe fechada com o erro correspondente.
 
-#### [ ] Task S12.2 — Rejeição Explícita de Modelos Slimmable Single-Net (PM-12)
+#### [x] Task S12.2 — Rejeição Explícita de Modelos Slimmable Single-Net (PM-12)
 
 * **Responsável:** Engenheiro de DSP / Core Developer
 * **Risco/Criticidade:** Baixo (defensivo).

@@ -959,6 +959,31 @@ fn test_loader_gap_wavenet_a2_max() {
     );
 }
 
+/// Test 8k-2: Loader Gap — Explicit rejection of single-net slimmable WaveNet (PM-12).
+///
+/// Loads the real fixture `slimmable_wavenet.nam` and validates fail-closed
+/// rejection with the expected error message. The `nam-rs` engine does not
+/// support per-layer slimmable weight slicing — users must use a
+/// `SlimmableContainer` architecture instead.
+#[test]
+fn test_loader_gap_slimmable_wavenet() {
+    let path = model_path("slimmable_wavenet.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read slimmable_wavenet.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse slimmable_wavenet.nam");
+    let model = build_model(&data);
+    assert!(
+        model.is_err(),
+        "Expected slimmable single-net WaveNet to be rejected, but it loaded successfully"
+    );
+    let err_msg = format!("{}", model.err().unwrap());
+    assert!(
+        err_msg.contains("slimmable single-net weight slicing is not supported"),
+        "Expected explicit slimmable rejection message, got: {}",
+        err_msg
+    );
+}
+
 /// Test 8l: Golden Vectors WaveNet Condition DSP — T3.2 cross-reference C++ ↔ NAM-rs.
 ///
 /// Replaces the pre-T3.2 gap test (`test_loader_gap_wavenet_condition_dsp`).

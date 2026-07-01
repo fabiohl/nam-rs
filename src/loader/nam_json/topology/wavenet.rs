@@ -194,6 +194,16 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
     let mut kernel_sizes: Vec<usize> = Vec::with_capacity(layers.len());
 
     for (i, layer) in layers.iter().enumerate() {
+        if let Some(ref raw) = layer.layer_raw
+            && raw
+                .as_object()
+                .is_some_and(|obj| obj.contains_key("slimmable"))
+        {
+            return WavenetTopologyResult::Rejected(
+                "slimmable single-net weight slicing is not supported; use SlimmableContainer instead"
+                    .to_string(),
+            );
+        }
         let ch = match layer.channels {
             Some(c) if c > 0 => {
                 if c > MAX_WAVENET_FREE_CHANNELS {
