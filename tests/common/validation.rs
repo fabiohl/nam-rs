@@ -597,6 +597,19 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 30.0;
             Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4), Some(0.55)))
         }
+        // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
+        // S13.3 (PM-05): Official A2 flagship model with condition_dsp sub-model,
+        // 8 FiLM slots (groups 1-8), head1x1 (groups=2), Softsign activation,
+        // and condition_size=8. C++ routes to generic WaveNet (Eigen), Rust
+        // routes to WaveNetA2Dyn with native FiLM.
+        // Measured: PENDING — model cannot load yet (multi-array condition_dsp
+        // dispatch not implemented). ESR=5.0e-2, MRSTFT=0.49 provisional
+        // based on PM-03 FiLM divergence (RF1, 18-36 dB). Recalibrate after
+        // engine support is complete (S13.3, PM-05).
+        "wavenet_a2_max" => {
+            let snr_db = 10.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-2), Some(0.49)))
+        }
         // --- WaveNet A2 Dynamic Gated CH=8 (Task 3.3) ---
         // Gating doubles conv output (channels × 2*bottleneck) and applies
         // Sigmoid gate + LeakyReLU main activation. C++ uses Eigen-based generic

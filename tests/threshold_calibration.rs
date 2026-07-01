@@ -171,6 +171,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "APP-EVH-Stealth100-Dialled-xSTD",
         "wavenet_a2_film_lite",
         "wavenet_a2_film_full",
+        "wavenet_a2_max",
         "a2_dynamic_gated_ch8",
         "a2_dynamic_blended_ch3",
         "wavenet_dyn_free",

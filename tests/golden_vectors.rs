@@ -937,10 +937,21 @@ fn test_golden_vectors_a2_example_slimmable() {
 /// Test 8k: Loader Gap WaveNet A2 Max — T3.2: this model requires a full A2 dynamic
 /// engine (FiLM, gating, heterogeneous activations, bottleneck, condition_dsp with
 /// A2 sub-model). The A2 secondary detector (`is_wavenet_a2()`) flags it via
-/// non-Tanh activation (Softsign) and rejects it at dispatch. Even if routing were
-/// relaxed, the A1 dynamic engine lacks FiLM, gating, and 1-array support.
-/// An A2 dynamic engine (`WaveNetModelDynA2`) is required and deferred to a future
-/// sprint. See TODO-sprints.md for the A2 dynamic engine tracking.
+/// Loader Gap — `wavenet_a2_max.nam` (CH=4, cond=8, FiLM, head1x1).
+///
+/// This model dispatches to `WaveNetA2Dyn` (A2 generic dynamic engine)
+/// since S13.1, but the `condition_dsp` sub-model (2-layer WaveNet with
+/// FiLM entries) fails to load because the A1 free-geometry WaveNetDyn
+/// engine lacks FiLM support for multi-array condition DSP sub-models.
+///
+/// Rejection message: `Model with inconsistent weights` (consumed 368,
+/// total 1052) — the A1 dynamic engine cannot read the FiLM weights
+/// in the condition_dsp sub-model stream.
+///
+/// This will be resolved when multi-array A2 dispatch support is added
+/// to the generic engine (S13.3, PM-05). The golden vector test
+/// `test_golden_vectors_wavenet_a2_max` is ready and waiting.
+/// See TODO-sprints.md S13.3.
 #[test]
 fn test_loader_gap_wavenet_a2_max() {
     let path = model_path("wavenet_a2_max.nam");
@@ -1935,6 +1946,68 @@ fn test_golden_vectors_convnet_test() {
             "ConvNet self-golden ESR={esr:.2e} exceeds threshold {esr_limit:.1e}"
         );
     }
+}
+
+/// Test 10d: Golden Vectors — WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)
+///
+/// Validates the `WaveNetA2Dyn` engine with condition_dsp sub-model against
+/// the C++ generic WaveNet reference (C++ a2_fast.cpp rejects this topology
+/// and falls back to Eigen-based generic WaveNet).
+///
+/// Reads `tests/fixtures/golden_wavenet_a2_max.bin`, builds the dynamic
+/// `StaticModel` from `wavenet_a2_max.nam`, and compares via ESR/SNR/MSE
+/// fusion report.
+///
+/// Marked `#[ignore]` pending multi-array condition_dsp dispatch support
+/// in the A2 dynamic engine. See TODO-sprints.md S13.3.
+#[test]
+#[ignore = "S13.3: multi-array condition_dsp dispatch not yet implemented (PM-05)"]
+fn test_golden_vectors_wavenet_a2_max() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_max.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_max.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_max.bin");
+
+    let nam_path = model_path("wavenet_a2_max.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_a2_max.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read wavenet_a2_max.nam");
+    let model_data = parse_nam_json(&json_data).expect("Failed to parse wavenet_a2_max.nam JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet A2 Max for golden test");
+
+    assert!(
+        matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),
+        "A2 Max model must route to WaveNetA2Dyn (C++ a2_fast.cpp rejects this topology)"
+    );
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_max");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        mrstft_max,
+        "WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Tarefa 3.1 (F-2): Synthetic MR-STFT regression — mild low-pass filter

@@ -234,6 +234,7 @@ MODELS=(
     "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
+    "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
     # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
     #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
@@ -319,6 +320,7 @@ V2_MODELS=(
     "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4)"
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
+    "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
     # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
     #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
