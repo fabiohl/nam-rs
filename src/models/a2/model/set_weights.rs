@@ -22,8 +22,9 @@ use crate::models::a2::params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS,
 };
 use crate::models::a2::weights_layout::{
-    FILM_KEYS, film_bias_count, film_weight_count, transpose_conv1d_interleaved_4wide,
-    transpose_dense_f32, transpose_head_w,
+    FILM_KEYS, film_bias_count, film_bias_count_generic, film_weight_count,
+    film_weight_count_generic, transpose_conv1d_interleaved_4wide, transpose_dense_f32,
+    transpose_head_w,
 };
 
 impl<const CH: usize> WaveNetA2<CH> {
@@ -312,8 +313,18 @@ pub(crate) fn load_film_for_layer(
         if !config.active {
             continue;
         }
-        let w_count = film_weight_count(config.groups, cond_size, channels, config.shift);
-        let b_count = film_bias_count(channels, config.shift);
+        let (w_count, b_count) = if cond_size > 1 {
+            // A2 generic: integer-safe formula with channels-sized bias
+            (
+                film_weight_count_generic(config.groups, cond_size, channels, config.shift),
+                film_bias_count_generic(channels),
+            )
+        } else {
+            (
+                film_weight_count(config.groups, cond_size, channels, config.shift),
+                film_bias_count(channels, config.shift),
+            )
+        };
         let key = FILM_KEYS[idx].0;
 
         let film_w = read_slice(

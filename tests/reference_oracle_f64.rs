@@ -598,6 +598,77 @@ fn test_combined_simulation_a2_film() {
     run_combined_paired_test("wavenet_a2_film_full.nam", "A2-FiLM-Full");
 }
 
+// ── S13.2: A2 Generic oracle tests ────────────────────────────────────────
+
+use common::A2_GENERIC_ESR_LIMIT;
+
+#[test]
+fn test_oracle_vs_python_anchor_a2_generic() {
+    let path = models_dir().join("wavenet_a2_max.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("a2_max_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "A2 Generic: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-12,
+        "A2 Generic Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
+#[test]
+#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+fn test_oracle_a2_generic() {
+    let esr = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
+    assert!(
+        esr < A2_GENERIC_ESR_LIMIT,
+        "A2-Generic ESR={:.6e} exceeds calibrated limit {}",
+        esr,
+        A2_GENERIC_ESR_LIMIT
+    );
+}
+
+#[test]
+#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+fn test_decomposition_a2_generic() {
+    let path = models_dir().join("wavenet_a2_max.nam");
+    let md = load_and_parse(&path);
+
+    let esr_paired = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
+    assert!(
+        esr_paired < A2_GENERIC_ESR_LIMIT,
+        "A2-Generic paired ESR={:.6e} exceeds calibrated limit {}",
+        esr_paired,
+        A2_GENERIC_ESR_LIMIT
+    );
+
+    let input_f64 = gen_sweep(256, 48000.0);
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+    let prod_f32 = run_f32_inference(&md, &input_f32);
+    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition("A2-Generic-Max", "WaveNet/A2", &md, &prod_f64, &input_f64);
+    print_decomposition(&result);
+    assert!(
+        result.esr_combined_display() > 0.0,
+        "Combined ΔESR should be non-zero"
+    );
+}
+
+#[test]
+#[ignore = "S13.1: grouped head1x1 processing not yet implemented in production engine"]
+fn test_combined_simulation_a2_generic() {
+    run_combined_paired_test("wavenet_a2_max.nam", "A2-Generic");
+}
+
 // ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
 
 /// T8.1 Diagnostic: measures ESR(oracle vs production) with paired prewarm.

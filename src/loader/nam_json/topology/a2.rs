@@ -52,7 +52,18 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
 
     // 10. kernel_sizes must match A2_KERNEL_SIZES exactly for fast-path (a2_fast.cpp:910-918).
     // Non-canonical sizes indicate an A2-generic model → route to Dynamic.
-    let ks = l0.kernel_sizes.as_deref()?;
+    // S13.2: also accept models with scalar kernel_size (plural absent); those
+    // are always A2-generic (Dynamic).
+    let ks = match l0.kernel_sizes.as_deref() {
+        Some(s) => s.to_vec(),
+        None => {
+            // kernel_size (scalar) + dilations → A2 generic
+            if l0.kernel_size.is_some() && l0.dilations.is_some() {
+                return Some(A2TopologyResult::Dynamic);
+            }
+            return None;
+        }
+    };
     if ks.len() != A2_NUM_LAYERS || ks.iter().zip(A2_KERNEL_SIZES.iter()).any(|(a, b)| *a != *b) {
         return Some(A2TopologyResult::Dynamic);
     }

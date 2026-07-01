@@ -138,10 +138,11 @@ impl<'de> Deserialize<'de> for NamLayerConfig {
         let activation = match helper.activation {
             Some(serde_json::Value::String(s)) => Some(s),
             Some(serde_json::Value::Array(_)) => None,
+            Some(serde_json::Value::Object(_)) => None,
             Some(serde_json::Value::Null) | None => None,
             _ => {
                 return Err(serde::de::Error::custom(
-                    "unsupported activation format: expected a string, array, or null",
+                    "unsupported activation format: expected a string, array, object, or null",
                 ));
             }
         };

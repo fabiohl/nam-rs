@@ -212,11 +212,22 @@ impl WaveNetA2Dyn {
         }
         let channels = self.channels;
         let bottleneck = self.bottleneck;
-        let h1_w_count = bottleneck * channels;
+
+        // S13.2: A2 generic models with condition_size > 1 may have
+        // grouped head1x1 (head1x1.groups > 1). Use reduced input dimension.
+        let h1_groups = self
+            .layer_raw
+            .as_ref()
+            .and_then(|raw| raw.get("head1x1"))
+            .and_then(|h| h.get("groups"))
+            .and_then(|g| g.as_u64())
+            .unwrap_or(1) as usize;
+        let h1_in = bottleneck / h1_groups;
+        let h1_w_count = channels * h1_in;
         let h1_w_f32 =
             super::super::set_weights::read_slice(weights, pos, h1_w_count, total, "head1x1_w")?;
         let mut h1_w = AlignedVec::new(h1_w_count, 0.0f32);
-        transpose_dense_f32(h1_w_f32, &mut h1_w, bottleneck, channels);
+        transpose_dense_f32(h1_w_f32, &mut h1_w, h1_in, channels);
 
         let h1_b_f32 =
             super::super::set_weights::read_slice(weights, pos, channels, total, "head1x1_b")?;

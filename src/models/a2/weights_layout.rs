@@ -39,8 +39,28 @@ pub(crate) fn film_weight_count(
     g * out_per_group * cond_per_group
 }
 
+/// Integer-safe film_weight_count for A2 generic models (cond_size > 1).
+///
+/// Uses `channels * mult * cond_size / groups` to avoid zero-division
+/// truncation when `cond_size / groups < 1` or `channels / groups < 1`.
+pub(crate) fn film_weight_count_generic(
+    groups: u32,
+    cond_size: usize,
+    channels: usize,
+    shift: bool,
+) -> usize {
+    let g = groups as usize;
+    let mult = if shift { 2 } else { 1 };
+    channels * mult * cond_size / g
+}
+
 pub(crate) fn film_bias_count(channels: usize, shift: bool) -> usize {
     if shift { channels * 2 } else { channels }
+}
+
+/// Simplified film_bias_count for A2 generic models — always `channels`.
+pub(crate) fn film_bias_count_generic(channels: usize) -> usize {
+    channels
 }
 
 // ── Transpose helpers ───────────────────────────────────────────────────

@@ -109,10 +109,19 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 let l0 = &data.config.layers[0];
                 let channels = l0.channels.unwrap_or(0);
                 let bottleneck = l0.bottleneck.unwrap_or(channels);
-                let kernel_sizes = l0
-                    .kernel_sizes
-                    .clone()
-                    .unwrap_or_else(|| A2_KERNEL_SIZES.to_vec());
+                let kernel_sizes = if let Some(ks) = l0.kernel_sizes.clone() {
+                    ks
+                } else if let Some(ks_scalar) = l0.kernel_size {
+                    // A2 generic with scalar kernel_size — repeat for each layer
+                    // defined by the dilations array.
+                    let dils = l0
+                        .dilations
+                        .clone()
+                        .unwrap_or_else(|| A2_DILATIONS.to_vec());
+                    vec![ks_scalar; dils.len()]
+                } else {
+                    A2_KERNEL_SIZES.to_vec()
+                };
                 let dilations = l0
                     .dilations
                     .clone()

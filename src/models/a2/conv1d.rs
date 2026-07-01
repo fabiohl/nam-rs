@@ -46,9 +46,10 @@ impl A2Conv1d {
         kernel_size: usize,
         prefetch_fn: PrefetchFn,
     ) -> Self {
+        // A2 generic (S13.2): kernel sizes 4, 6, 15 are all valid.
         debug_assert!(
-            kernel_size == 6 || kernel_size == 15,
-            "A2 only supports kernel sizes 6 and 15, got {}",
+            kernel_size == 4 || kernel_size == 6 || kernel_size == 15,
+            "A2 supports kernel sizes 4, 6, 15; got {}",
             kernel_size
         );
         debug_assert!(

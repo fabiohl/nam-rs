@@ -17,9 +17,12 @@
 //!   approximation (weight quantization, activation, accumulation) to total error.
 
 use crate::loader::nam_json::WeightsLayout;
-use crate::loader::nam_json::model::NamModelData;
+use crate::loader::nam_json::model::{NamLayerConfig, NamModelData};
 use crate::math::common::half::f16_bits_to_f32;
-use crate::models::a2::weights_layout::{FILM_KEYS, film_bias_count, film_weight_count};
+use crate::models::a2::weights_layout::{
+    FILM_KEYS, film_bias_count, film_bias_count_generic, film_weight_count,
+    film_weight_count_generic,
+};
 
 // =============================================================================
 // Precision Configuration
@@ -291,7 +294,10 @@ fn is_a2_model(model_data: &NamModelData) -> bool {
         return false;
     }
     let l0 = &layers[0];
-    l0.kernel_size.is_none() && l0.channels.is_some()
+    // A2 models are identified by having dilations + channels, and no
+    // traditional kernel_size array (kernel_size is either absent or
+    // a single scalar applied to all layers).
+    l0.dilations.is_some() && l0.channels.is_some()
 }
 
 // =============================================================================
@@ -592,17 +598,14 @@ fn oracle_wavenet_forward(
 }
 
 // =============================================================================
-// A2 Oracle
+// A2 Oracle — Generic topology support (S13.2)
 // =============================================================================
+// Supports arbitrary channel counts, kernel sizes, dilations, bottleneck≠channels,
+// heterogeneous activations, gating/blending, head1x1, condition_size>1, condition_dsp,
+// and all 8 FiLM insertion slots including head1x1_post_film (slot 7).
+// Backward-compatible with the legacy 23-layer A2 fast-path models.
 
-const A2_NUM_LAYERS: usize = 23;
 const A2_HEAD_KERNEL: usize = 16;
-const A2_KS: [usize; 23] = [
-    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
-];
-const A2_DIL: [usize; 23] = [
-    1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
-];
 
 #[derive(Clone)]
 struct FiLMOracleSlot {
@@ -615,11 +618,14 @@ struct FiLMOracleSlot {
 
 impl FiLMOracleSlot {
     fn new(shift: bool, groups: u32, weights: Vec<f64>, bias: Vec<f64>, channels: usize) -> Self {
+        let expected_bias = if shift { channels * 2 } else { channels };
+        let mut padded_bias = bias;
+        padded_bias.resize(expected_bias, 0.0);
         Self {
             shift,
             groups,
             weights,
-            bias,
+            bias: padded_bias,
             buf: vec![0.0f64; channels * 2],
         }
     }
@@ -664,33 +670,253 @@ impl FiLMOracleSlot {
     }
 }
 
+// ── Architecture parameter extraction ─────────────────────────────────────
+
+fn a2_read_topology(layer_cfg: &NamLayerConfig) -> Option<(Vec<usize>, Vec<usize>, usize, usize)> {
+    let dil = layer_cfg.dilations.clone()?;
+    let nlayers = dil.len();
+    if nlayers == 0 {
+        return None;
+    }
+    // kernel_sizes may be None when the model uses a single scalar kernel_size
+    // applied to all layers (e.g. wavenet_a2_max.nam with kernel_size=4).
+    let ks = if let Some(ks_vec) = layer_cfg.kernel_sizes.clone() {
+        if ks_vec.len() != nlayers {
+            return None;
+        }
+        ks_vec
+    } else if let Some(ks_scalar) = layer_cfg.kernel_size {
+        vec![ks_scalar; nlayers]
+    } else {
+        return None;
+    };
+    let bn = layer_cfg
+        .bottleneck
+        .unwrap_or(layer_cfg.channels.unwrap_or(8));
+    Some((ks, dil, nlayers, bn))
+}
+
+fn a2_read_activation(raw: &serde_json::Value, li: usize, _num_layers: usize) -> ActivationConfig {
+    let arr = raw.get("activation").and_then(|v| v.as_array());
+    if let Some(arr) = arr
+        && li < arr.len()
+    {
+        return ActivationConfig::from_json(&arr[li]);
+    }
+    // Fallback: single-object activation (e.g. {"type":"Softsign"})
+    if let Some(obj) = raw.get("activation").and_then(|v| v.as_object()) {
+        return ActivationConfig::from_json_obj(obj);
+    }
+    // Default: LeakyReLU(0.01)
+    ActivationConfig::LeakyReLU {
+        negative_slope: 0.01,
+    }
+}
+
+fn a2_read_gating_mode(raw: &serde_json::Value, li: usize) -> GatingModeOracle {
+    let arr = raw.get("gating_mode").and_then(|v| v.as_array());
+    if let Some(arr) = arr
+        && li < arr.len()
+        && let Some(s) = arr[li].as_str()
+    {
+        return match s {
+            "gated" => GatingModeOracle::Gated,
+            "blended" => GatingModeOracle::Blended,
+            _ => GatingModeOracle::None,
+        };
+    }
+    GatingModeOracle::None
+}
+
+fn a2_read_head1x1_active(raw: &serde_json::Value) -> bool {
+    raw.get("head1x1")
+        .and_then(|v| v.get("active"))
+        .and_then(|a| a.as_bool())
+        .unwrap_or(false)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum GatingModeOracle {
+    None,
+    Gated,
+    Blended,
+}
+
+#[derive(Clone)]
+enum ActivationConfig {
+    Tanh,
+    HardTanh,
+    FastTanh,
+    ReLU,
+    LeakyReLU { negative_slope: f64 },
+    Sigmoid,
+    SiLU,
+    HardSwish,
+    Softsign,
+}
+
+impl ActivationConfig {
+    fn from_json(v: &serde_json::Value) -> Self {
+        let obj = v.as_object();
+        if let Some(obj) = obj {
+            return Self::from_json_obj(obj);
+        }
+        if let Some(s) = v.as_str() {
+            return match s {
+                "Tanh" => Self::Tanh,
+                "HardTanh" => Self::HardTanh,
+                "FastTanh" => Self::FastTanh,
+                "ReLU" => Self::ReLU,
+                "Sigmoid" => Self::Sigmoid,
+                "SiLU" => Self::SiLU,
+                "HardSwish" => Self::HardSwish,
+                "Softsign" => Self::Softsign,
+                _ => Self::Tanh,
+            };
+        }
+        Self::Tanh
+    }
+
+    fn from_json_obj(obj: &serde_json::Map<String, serde_json::Value>) -> Self {
+        let t = obj.get("type").and_then(|v| v.as_str()).unwrap_or("Tanh");
+        match t {
+            "Tanh" => Self::Tanh,
+            "HardTanh" => Self::HardTanh,
+            "FastTanh" => Self::FastTanh,
+            "ReLU" => Self::ReLU,
+            "LeakyReLU" => {
+                let slope = obj
+                    .get("negative_slope")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.01);
+                Self::LeakyReLU {
+                    negative_slope: slope,
+                }
+            }
+            "Sigmoid" => Self::Sigmoid,
+            "SiLU" => Self::SiLU,
+            "HardSwish" => Self::HardSwish,
+            "Softsign" => Self::Softsign,
+            _ => Self::Tanh,
+        }
+    }
+
+    fn apply(&self, z: &mut [f64], activation_mode: ActivationMode) {
+        match self {
+            Self::Tanh => {
+                for v in z.iter_mut() {
+                    *v = oracle_tanh(*v, activation_mode);
+                }
+            }
+            Self::HardTanh => {
+                for v in z.iter_mut() {
+                    *v = v.clamp(-1.0, 1.0);
+                }
+            }
+            Self::FastTanh => {
+                for v in z.iter_mut() {
+                    *v = oracle_tanh(*v, activation_mode);
+                }
+            }
+            Self::ReLU => {
+                for v in z.iter_mut() {
+                    *v = v.max(0.0);
+                }
+            }
+            Self::LeakyReLU { negative_slope } => {
+                let s = *negative_slope;
+                for v in z.iter_mut() {
+                    if *v < 0.0 {
+                        *v *= s;
+                    }
+                }
+            }
+            Self::Sigmoid => {
+                for v in z.iter_mut() {
+                    *v = oracle_sigmoid(*v, activation_mode);
+                }
+            }
+            Self::SiLU => {
+                for v in z.iter_mut() {
+                    let s = oracle_sigmoid(*v, activation_mode);
+                    *v *= s;
+                }
+            }
+            Self::HardSwish => {
+                for v in z.iter_mut() {
+                    let relu6 = (*v + 3.0).clamp(0.0, 6.0);
+                    *v = *v * relu6 / 6.0;
+                }
+            }
+            Self::Softsign => {
+                for v in z.iter_mut() {
+                    *v /= 1.0 + v.abs();
+                }
+            }
+        }
+    }
+}
+
+#[allow(clippy::needless_range_loop)]
 fn oracle_a2_forward(
     model_data: &NamModelData,
     input: &[f64],
     config: &PrecisionConfig,
 ) -> Vec<f64> {
-    let ch = model_data
-        .config
-        .layers
-        .first()
-        .and_then(|l| l.channels)
-        .unwrap_or(8);
+    let layer_cfg = match model_data.config.layers.first() {
+        Some(l) => l,
+        None => return vec![0.0; input.len()],
+    };
+    let ch = layer_cfg.channels.unwrap_or(8);
     let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
     let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let num_frames = input.len();
+    let acc_mode = config.accumulation;
 
-    let layer_raw = model_data
-        .config
-        .layers
-        .first()
-        .and_then(|l| l.layer_raw.clone());
-    let cond_size = model_data
-        .config
-        .layers
-        .first()
-        .and_then(|l| l.condition_size)
-        .unwrap_or(1);
+    let layer_raw = layer_cfg.layer_raw.clone();
+    let cond_size = layer_cfg.condition_size.unwrap_or(1);
 
+    // Read topology: kernel_sizes, dilations, num_layers, bottleneck
+    let (kernel_sizes, dilations, num_layers, bottleneck) = a2_read_topology(layer_cfg)
+        .unwrap_or_else(|| {
+            // Legacy fallback: model without kernel_sizes/dilations in config
+            // (structs constructed directly, not via JSON).
+            // Use hardcoded 23-layer constants but report 0 layers → returns zeros.
+            (vec![], vec![], 0, ch)
+        });
+
+    if num_layers == 0 {
+        return vec![0.0; input.len()];
+    }
+
+    // Per-layer gating mode, activation, head1x1_active
+    let head1x1_active = layer_raw
+        .as_ref()
+        .map(a2_read_head1x1_active)
+        .unwrap_or(false);
+
+    let pre_gating_modes: Vec<GatingModeOracle> = if let Some(ref raw) = layer_raw {
+        (0..num_layers)
+            .map(|li| a2_read_gating_mode(raw, li))
+            .collect()
+    } else {
+        vec![GatingModeOracle::None; num_layers]
+    };
+
+    let pre_activations: Vec<ActivationConfig> = if let Some(ref raw) = layer_raw {
+        (0..num_layers)
+            .map(|li| a2_read_activation(raw, li, num_layers))
+            .collect()
+    } else {
+        vec![
+            ActivationConfig::LeakyReLU {
+                negative_slope: 0.01
+            };
+            num_layers
+        ]
+    };
+
+    // FiLM config
     let film_configs: [bool; 8] = if let Some(ref raw) = layer_raw {
         let mut active = [false; 8];
         for &(key, idx) in FILM_KEYS {
@@ -707,7 +933,7 @@ fn oracle_a2_forward(
         [false; 8]
     };
 
-    // Rechannel: CH f32
+    // Rechannel: CH weights
     let rechannel_w = cursor.read_f64(ch);
 
     // Per-layer weights
@@ -720,18 +946,33 @@ fn oracle_a2_forward(
         ks: usize,
         dil: usize,
         film: Vec<Option<FiLMOracleSlot>>,
+        gating_mode: GatingModeOracle,
+        activation: ActivationConfig,
+        conv_out: usize,
     }
+
     let mut lws: Vec<A2LW> = Vec::new();
-    for li in 0..A2_NUM_LAYERS {
-        let ks = A2_KS[li];
-        let dil = A2_DIL[li];
-        let conv_w = cursor.read_f64(ch * ch * ks);
-        let conv_b = cursor.read_f64(ch);
-        let mixin_w = cursor.read_f64(ch);
-        let l1x1_w = cursor.read_f64(ch * ch);
+    for li in 0..num_layers {
+        let ks = kernel_sizes[li];
+        let dil = dilations[li];
+        let gmode = pre_gating_modes[li];
+        let use_gating = gmode == GatingModeOracle::Gated || gmode == GatingModeOracle::Blended;
+        let conv_out = if use_gating {
+            bottleneck * 2
+        } else {
+            bottleneck
+        };
+
+        // Conv: [conv_out][ch][ks] in NAM order — read as [out][in][kernel]
+        let conv_w = cursor.read_f64(ch * conv_out * ks);
+        let conv_b = cursor.read_f64(conv_out);
+        // Mixin: conv_out * condition_size (matrix-vector when cond_size>1)
+        let mixin_w = cursor.read_f64(conv_out * cond_size);
+        // L1x1: bottleneck×channels + channels bias
+        let l1x1_w = cursor.read_f64(bottleneck * ch);
         let l1x1_b = cursor.read_f64(ch);
 
-        // Read FiLM weights for active slots
+        // FiLM weights
         let mut film_slots: Vec<Option<FiLMOracleSlot>> = vec![None; 8];
         for slot_idx in 0..8 {
             if !film_configs[slot_idx] {
@@ -756,8 +997,19 @@ fn oracle_a2_forward(
                 .and_then(|s| s.as_bool())
                 .unwrap_or(true);
 
-            let w_count = film_weight_count(g, cond_size, ch, shift);
-            let b_count = film_bias_count(ch, shift);
+            // S13.2: A2 generic models (cond_size > 1) use integer-safe
+            // formula and channels-sized bias (not channels*2).
+            let (w_count, b_count) = if cond_size > 1 {
+                (
+                    film_weight_count_generic(g, cond_size, ch, shift),
+                    film_bias_count_generic(ch),
+                )
+            } else {
+                (
+                    film_weight_count(g, cond_size, ch, shift),
+                    film_bias_count(ch, shift),
+                )
+            };
             let weights = cursor.read_f64(w_count);
             let bias = cursor.read_f64(b_count);
             film_slots[slot_idx] = Some(FiLMOracleSlot::new(shift, g, weights, bias, ch));
@@ -772,11 +1024,37 @@ fn oracle_a2_forward(
             ks,
             dil,
             film: film_slots,
+            gating_mode: gmode,
+            activation: pre_activations[li].clone(),
+            conv_out,
         });
     }
 
-    // Head: 16*CH + 1 weight
-    // Raw NAM JSON stores [channel][tap]; production transposes to [tap][channel].
+    // Head1x1 weights (if active): bottleneck×channels + channels
+    // S13.2: A2 generic models with head1x1 groups > 1 use reduced weight count
+    let h1_groups = layer_raw
+        .as_ref()
+        .and_then(|raw| raw.get("head1x1"))
+        .and_then(|h| h.get("groups"))
+        .and_then(|g| g.as_u64())
+        .unwrap_or(1) as usize;
+    let h1_in_size = if head1x1_active {
+        bottleneck / h1_groups
+    } else {
+        0
+    };
+    let head1x1_w: Vec<f64> = if head1x1_active {
+        cursor.read_f64(ch * h1_in_size)
+    } else {
+        vec![]
+    };
+    let head1x1_b: Vec<f64> = if head1x1_active {
+        cursor.read_f64(ch)
+    } else {
+        vec![]
+    };
+
+    // Head conv: 16*CH + 1 bias
     let head_w_raw = cursor.read_f64(A2_HEAD_KERNEL * ch);
     let mut head_w = vec![0.0f64; A2_HEAD_KERNEL * ch];
     for tap in 0..A2_HEAD_KERNEL {
@@ -786,19 +1064,17 @@ fn oracle_a2_forward(
     }
     let head_b = cursor.read_one_f64();
 
-    let acc_mode = config.accumulation;
-
-    // Per-layer history buffers (matches production: each layer has its own ring buffer)
-    let max_dil: usize = *A2_DIL.iter().max().unwrap_or(&1);
-    let max_ks: usize = *A2_KS.iter().max().unwrap_or(&6);
+    // Per-layer history buffers
+    let max_dil: usize = *dilations.iter().max().unwrap_or(&1);
+    let max_ks: usize = *kernel_sizes.iter().max().unwrap_or(&6);
     let max_rf = (max_ks - 1) * max_dil + 64;
     let hist_size = max_rf + num_frames + 64;
     let bs = max_rf;
-    let mut layer_bufs: Vec<Vec<f64>> = (0..A2_NUM_LAYERS)
+    let mut layer_bufs: Vec<Vec<f64>> = (0..num_layers)
         .map(|_| vec![0.0f64; hist_size * ch])
         .collect();
 
-    // Head accumulator ring (shared across layers — matches production)
+    // Head accumulator ring
     let hr_len = (max_rf + num_frames + 64).next_power_of_two();
     let mut head_acc = vec![0.0f64; hr_len * ch];
     let ring_mask = hr_len - 1;
@@ -812,6 +1088,14 @@ fn oracle_a2_forward(
         vec![0.0f64; cond_size]
     };
 
+    // Scratch buffers per frame
+    let mut z_scratch = vec![0.0f64; bottleneck * 2];
+    let mut head1x1_scratch = if head1x1_active {
+        vec![0.0f64; ch]
+    } else {
+        vec![]
+    };
+
     #[allow(clippy::explicit_counter_loop)]
     for (f, out_val) in output.iter_mut().enumerate() {
         let fi = bs + f;
@@ -823,8 +1107,6 @@ fn oracle_a2_forward(
             &cond_vec
         };
 
-        // Rechannel: layer_in[c] = x * rechannel_w[c]
-        // Write to layer 0's history buffer
         let mut layer_in = vec![0.0f64; ch];
         for (c, li) in layer_in.iter_mut().enumerate() {
             *li = x * rechannel_w[c];
@@ -835,14 +1117,18 @@ fn oracle_a2_forward(
         head_wp += 1;
 
         for (li, lw) in lws.iter_mut().enumerate() {
-            // conv_pre_film (slot 0): modulate history before conv reads it
+            let z_out_ch = lw.conv_out;
+            let use_gating = lw.gating_mode == GatingModeOracle::Gated;
+            let use_blending = lw.gating_mode == GatingModeOracle::Blended;
+
+            // conv_pre_film (slot 0)
             if let Some(ref mut film) = lw.film[0] {
                 film.apply(&mut layer_bufs[li][fi * ch..fi * ch + ch], condition);
             }
 
-            // Conv1d over this layer's own history buffer
-            let mut z = vec![0.0f64; ch];
-            for (oc, zv) in z.iter_mut().enumerate() {
+            // Conv1d
+            z_scratch.fill(0.0);
+            for oc in 0..z_out_ch {
                 let mut sum = lw.conv_b[oc];
                 let wb = oc * ch * lw.ks;
                 for kt in 0..lw.ks {
@@ -859,67 +1145,125 @@ fn oracle_a2_forward(
                         }
                     }
                 }
-                *zv = sum;
+                z_scratch[oc] = sum;
             }
 
             // conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
             if let Some(ref mut film) = lw.film[1] {
-                film.apply(&mut z, condition);
+                film.apply(&mut z_scratch[..z_out_ch], condition);
             }
             if let Some(ref mut film) = lw.film[2] {
-                film.apply(&mut z, condition);
+                film.apply(&mut z_scratch[..z_out_ch], condition);
             }
 
-            // Mixin
-            for (c, zv) in z.iter_mut().enumerate() {
-                *zv = mul_add_f64(lw.mixin_w[c], x, *zv, acc_mode);
+            // Mixin: matrix-vector when cond_size > 1
+            for c in 0..z_out_ch.min(bottleneck) {
+                let mut sum = 0.0;
+                for k in 0..cond_size {
+                    sum += lw.mixin_w[c * cond_size + k] * condition[k];
+                }
+                z_scratch[c] += sum;
             }
 
             // input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
             if let Some(ref mut film) = lw.film[3] {
-                film.apply(&mut z, condition);
+                film.apply(&mut z_scratch[..z_out_ch], condition);
             }
             if let Some(ref mut film) = lw.film[4] {
-                film.apply(&mut z, condition);
+                film.apply(&mut z_scratch[..z_out_ch], condition);
             }
 
-            // LeakyReLU(0.01)
-            for zv in z.iter_mut().take(ch) {
-                if *zv < 0.0 {
-                    *zv *= 0.01;
+            // Activation or Gating/Blending
+            let z_len = if use_gating {
+                let half = bottleneck;
+                lw.activation
+                    .apply(&mut z_scratch[..half], config.activation);
+                for i in 0..half {
+                    let gate = exact_sigmoid_f64(z_scratch[half + i]);
+                    z_scratch[i] *= gate;
                 }
-            }
+                half
+            } else if use_blending {
+                let half = bottleneck;
+                lw.activation
+                    .apply(&mut z_scratch[..half], config.activation);
+                for i in 0..half {
+                    let alpha = exact_sigmoid_f64(z_scratch[half + i]);
+                    z_scratch[i] = alpha * z_scratch[i] + (1.0 - alpha) * z_scratch[half + i];
+                }
+                half
+            } else {
+                lw.activation
+                    .apply(&mut z_scratch[..bottleneck], config.activation);
+                bottleneck
+            };
 
             // activation_post_film (slot 5)
             if let Some(ref mut film) = lw.film[5] {
-                film.apply(&mut z, condition);
+                film.apply(&mut z_scratch[..z_len], condition);
             }
 
-            // Head accumulate (shared ring)
-            let ho = head_col * ch;
-            if li == 0 {
-                head_acc[ho..ho + ch].copy_from_slice(&z[..ch]);
-            } else {
-                for (c, &zv) in z.iter().enumerate() {
-                    head_acc[ho + c] = accum_f64(head_acc[ho + c], zv, acc_mode);
-                }
-            }
-
-            // L1x1 residual (skip last layer): output → next layer's history
-            if li < A2_NUM_LAYERS - 1 {
-                let mut next = vec![0.0f64; ch];
-                for (oc, nv) in next.iter_mut().enumerate() {
-                    let mut sum = lw.l1x1_b[oc];
-                    for (ic, &zv) in z.iter().enumerate() {
-                        sum = mul_add_f64(zv, lw.l1x1_w[oc * ch + ic], sum, acc_mode);
+            // Head accumulate with optional head1x1 projection
+            let head_off = head_col * ch;
+            if head1x1_active {
+                let ch_per_group = ch / h1_groups;
+                head1x1_scratch.fill(0.0);
+                for grp in 0..h1_groups {
+                    for oc in grp * ch_per_group..(grp + 1) * ch_per_group {
+                        let mut sum = head1x1_b[oc];
+                        for ic in 0..h1_in_size {
+                            sum = mul_add_f64(
+                                z_scratch[grp * h1_in_size + ic],
+                                head1x1_w[oc * h1_in_size + ic],
+                                sum,
+                                acc_mode,
+                            );
+                        }
+                        head1x1_scratch[oc] = sum;
                     }
-                    *nv = accum_f64(layer_in[oc], sum, acc_mode);
                 }
-                // layer1x1_post_film (slot 6) on the residual output
+                // head1x1_post_film (slot 7) — applied after head1x1 projection
+                if let Some(ref mut film) = lw.film[7] {
+                    film.apply(&mut head1x1_scratch, condition);
+                }
+                if li == 0 {
+                    head_acc[head_off..head_off + ch].copy_from_slice(&head1x1_scratch[..ch]);
+                } else {
+                    for c in 0..ch {
+                        head_acc[head_off + c] =
+                            accum_f64(head_acc[head_off + c], head1x1_scratch[c], acc_mode);
+                    }
+                }
+            } else {
+                if li == 0 {
+                    head_acc[head_off..head_off + z_len].copy_from_slice(&z_scratch[..z_len]);
+                } else {
+                    for c in 0..z_len {
+                        head_acc[head_off + c] =
+                            accum_f64(head_acc[head_off + c], z_scratch[c], acc_mode);
+                    }
+                }
+            }
+
+            // L1x1 residual (skip last layer)
+            if li < num_layers - 1 {
+                let mut next = vec![0.0f64; ch];
+                for oc in 0..ch {
+                    let mut sum = lw.l1x1_b[oc];
+                    for ic in 0..bottleneck {
+                        sum = mul_add_f64(
+                            z_scratch[ic],
+                            lw.l1x1_w[oc * bottleneck + ic],
+                            sum,
+                            acc_mode,
+                        );
+                    }
+                    next[oc] = accum_f64(layer_in[oc], sum, acc_mode);
+                }
+                // layer1x1_post_film (slot 6)
                 if let Some(ref mut film) = lw.film[6] {
                     film.apply(&mut next, condition);
                 }
-                // Write to NEXT layer's history buffer
                 for (c, &v) in next.iter().enumerate() {
                     layer_bufs[li + 1][fi * ch + c] = v;
                 }

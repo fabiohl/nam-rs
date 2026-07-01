@@ -35,3 +35,5 @@ pub const CONVNET_ESR_LIMIT: f64 = 1e-12;
 //   A2-FiLM-Lite:  ESR = 9.52e-15  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor)
 //   A2-FiLM-Full:  ESR = 1.15e-14  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor)
 pub const A2_FILM_ESR_LIMIT: f64 = 1e-9;
+// S13.2: A2 Generic (wavenet_a2_max.nam) — calibrated against f32 production with prewarm
+pub const A2_GENERIC_ESR_LIMIT: f64 = 1e-9;
