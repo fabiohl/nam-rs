@@ -159,8 +159,8 @@ impl WaveNetA2Dyn {
         let head_cap = self.head_ring_mask + 1;
         if self.head_write_pos + nf > head_cap {
             let keep_start = self.head_write_pos - head_keep;
-            let keep_bytes = head_keep * self.channels;
-            let src = keep_start * self.channels;
+            let keep_bytes = head_keep * self.head_accum_size;
+            let src = keep_start * self.head_accum_size;
             self.head_accum.copy_within(src..src + keep_bytes, 0);
             self.head_write_pos = head_keep;
         }
@@ -427,7 +427,7 @@ impl WaveNetA2Dyn {
         let curr_head = &mut self.head_accum;
         for f in 0..nf {
             let prev_off = ((prev_wp + f) & prev_mask) * prev.channels;
-            let curr_off = ((curr_wp + f) & self.head_ring_mask) * self.channels;
+            let curr_off = ((curr_wp + f) & self.head_ring_mask) * self.head_accum_size;
             for c in 0..prev_ch {
                 curr_head[curr_off + c] = prev_head[prev_off + c];
             }

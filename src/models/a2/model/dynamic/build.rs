@@ -220,18 +220,10 @@ impl WaveNetA2Dyn {
             return Ok(());
         }
         let channels = self.channels;
-        let bottleneck = self.bottleneck;
 
         // S13.2: A2 generic models with condition_size > 1 may have
         // grouped head1x1 (head1x1.groups > 1). Use reduced input dimension.
-        let h1_groups = self
-            .layer_raw
-            .as_ref()
-            .and_then(|raw| raw.get("head1x1"))
-            .and_then(|h| h.get("groups"))
-            .and_then(|g| g.as_u64())
-            .unwrap_or(1) as usize;
-        let h1_in = bottleneck / h1_groups;
+        let h1_in = self.h1_in_size;
         let h1_w_count = channels * h1_in;
         let h1_w_f32 =
             super::super::set_weights::read_slice(weights, pos, h1_w_count, total, "head1x1_w")?;
@@ -300,7 +292,7 @@ impl WaveNetA2Dyn {
             Ok((head_w, head_b, head_scale))
         } else {
             // Multi-channel head: dense rechannel (channels × head_size, no bias).
-            let hw_count = channels * head_size;
+            let hw_count = self.head_accum_size * head_size;
             let hw_f32 = super::super::set_weights::read_slice(
                 weights,
                 pos,

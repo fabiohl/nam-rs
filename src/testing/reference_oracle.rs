@@ -945,6 +945,7 @@ fn oracle_a2_forward(
     #[allow(clippy::type_complexity)]
     struct ArrayState {
         ch: usize,
+        head_accum_size: usize,
         bottleneck: usize,
         cond_size: usize,
         rechannel_w: Vec<f64>,
@@ -956,6 +957,7 @@ fn oracle_a2_forward(
         head1x1_b: Vec<f64>,
         head_w: Vec<f64>,
         head_b: f64,
+        fwd_bufs: Vec<Vec<f64>>,
     }
 
     let mut arrays: Vec<ArrayState> = Vec::with_capacity(num_arrays);
@@ -1108,6 +1110,16 @@ fn oracle_a2_forward(
         } else {
             0
         };
+        let head_accum_size = if head1x1_active {
+            layer_raw
+                .as_ref()
+                .and_then(|raw| raw.get("head1x1"))
+                .and_then(|h| h.get("out_channels"))
+                .and_then(|a| a.as_u64())
+                .unwrap_or(bottleneck as u64) as usize
+        } else {
+            bottleneck
+        };
         let head1x1_w: Vec<f64> = if head1x1_active {
             cursor.read_f64(ch * h1_in_size)
         } else {
@@ -1136,6 +1148,7 @@ fn oracle_a2_forward(
 
         arrays.push(ArrayState {
             ch,
+            head_accum_size,
             bottleneck,
             cond_size,
             rechannel_w,
@@ -1147,6 +1160,7 @@ fn oracle_a2_forward(
             head1x1_b,
             head_w,
             head_b,
+            fwd_bufs: vec![],
         });
     }
 
@@ -1159,6 +1173,14 @@ fn oracle_a2_forward(
     }
     let hist_size = max_rf + num_frames + 64;
     let bs = max_rf;
+
+    for arr in &mut arrays {
+        let num_layers = arr.lws.len();
+        let ch = arr.ch;
+        arr.fwd_bufs = (0..num_layers)
+            .map(|_| vec![0.0f64; hist_size * ch])
+            .collect();
+    }
 
     // Head accumulator (shared across arrays, per-channel).
     let hr_len = (max_rf + num_frames + 64).next_power_of_two();
@@ -1210,7 +1232,7 @@ fn oracle_a2_forward(
             // Per-array history buffers.
             let num_layers = arr.lws.len();
             let mut head1x1_scratch = if arr.head1x1_active {
-                vec![0.0f64; ch]
+                vec![0.0f64; arr.head_accum_size]
             } else {
                 vec![]
             };
@@ -1236,9 +1258,7 @@ fn oracle_a2_forward(
             }
 
             // Per-layer history buffers
-            let mut fwd_bufs: Vec<Vec<f64>> = (0..num_layers)
-                .map(|_| vec![0.0f64; hist_size * ch])
-                .collect();
+            let fwd_bufs = &mut arr.fwd_bufs;
 
             // Write input to first layer's history
             for c in 0..ch {
@@ -1359,9 +1379,10 @@ fn oracle_a2_forward(
                         film.apply(&mut head1x1_scratch, condition);
                     }
                     if li == 0 && ai == 0 {
-                        head_acc[head_off..head_off + ch].copy_from_slice(&head1x1_scratch[..ch]);
+                        head_acc[head_off..head_off + arr.head_accum_size]
+                            .copy_from_slice(&head1x1_scratch[..arr.head_accum_size]);
                     } else {
-                        for c in 0..ch {
+                        for c in 0..arr.head_accum_size {
                             head_acc[head_off + c] =
                                 accum_f64(head_acc[head_off + c], head1x1_scratch[c], acc_mode);
                         }
@@ -1412,7 +1433,7 @@ fn oracle_a2_forward(
 
         // ── Head finalize (last array only) ──
         let last_arr = &arrays[num_arrays - 1];
-        let lch = last_arr.ch;
+        let lch = last_arr.head_accum_size;
         let k = A2_HEAD_KERNEL;
         let cb = head_col.wrapping_sub(k - 1);
         let mut y = last_arr.head_b;
@@ -1420,7 +1441,7 @@ fn oracle_a2_forward(
             let col = cb.wrapping_add(t) & ring_mask;
             let so = col * max_ch;
             let wo = t * lch;
-            for c in 0..lch {
+            for c in 0..last_arr.head_accum_size {
                 y = mul_add_f64(last_arr.head_w[wo + c], head_acc[so + c], y, acc_mode);
             }
         }

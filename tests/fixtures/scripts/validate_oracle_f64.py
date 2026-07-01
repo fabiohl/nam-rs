@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
 """Reference oracle external validation — independent NumPy f64 anchor.
 
 Independent f64 implementation of the NAM topology (WaveNet/LSTM/A2), used as
@@ -839,6 +842,11 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     # Cascade residual buffer
     cascade_residual = np.zeros(hist_size * max_ch, dtype=np.float64)
 
+    for arr in array_list:
+        arr.layer_bufs = [
+            np.zeros(hist_size * arr.ch, dtype=np.float64) for _ in range(arr.num_layers)
+        ]
+
     output = np.zeros(num_frames, dtype=np.float64)
 
     for f in range(num_frames):
@@ -868,9 +876,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 condition = np.zeros(0, dtype=np.float64)
 
             # Per-array history buffers
-            layer_bufs = [
-                np.zeros(hist_size * ch, dtype=np.float64) for _ in range(num_layers)
-            ]
+            layer_bufs = arr.layer_bufs
 
             # Input: mono for array 0, cascade residual for others
             layer_in = np.zeros(ch, dtype=np.float64)

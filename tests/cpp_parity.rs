@@ -247,7 +247,10 @@ fn run_render_comparison(
         generate_stress_signal_v1()
     };
 
-    let stress_wav = temp_dir.join(format!("stress_live_{golden_name}.wav"));
+    let suffix = if use_hf { "_hf" } else { "" };
+    let stress_wav = temp_dir.join(format!(
+        "stress_live_{golden_name}_{sample_rate}{suffix}.wav"
+    ));
 
     use nam_rs::dsp::resampler::NamResampler;
     let mut resampler_cpp = if actual_sr != model_sr {
@@ -290,7 +293,7 @@ fn run_render_comparison(
     common::wav::write_wav_f32(&stress_wav, &input_for_render, input_sr)
         .expect("Failed to write stress WAV");
 
-    let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
+    let output_wav = temp_dir.join(format!("{golden_name}_live_{sample_rate}{suffix}.wav"));
 
     // Execute render tool — capture stdout/stderr to prevent interleaving
     // with the Rust test harness output (F-1 fix).

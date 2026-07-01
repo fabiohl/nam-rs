@@ -32,6 +32,14 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
         return None;
     }
 
+    // A2 models do not use Tanh as their main activation.
+    // If any layer explicitly requests Tanh, this is an A1 (standard WaveNet) model.
+    for l in &data.config.layers {
+        if l.activation.as_deref() == Some("Tanh") {
+            return None;
+        }
+    }
+
     // 2. At least one layer array (a2_fast.cpp:876-879).
     // S14.1 (PM-15): Relaxed from != 1 to < 1 to support multi-array
     // cascade topologies (including hybrid condition_dsp sub-models

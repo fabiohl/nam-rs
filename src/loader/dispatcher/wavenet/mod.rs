@@ -192,11 +192,39 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
 
                     let condition_size = layer_cfg.condition_size.unwrap_or(1);
 
+                    let head1x1_out_channels = layer_cfg
+                        .layer_raw
+                        .as_ref()
+                        .and_then(|raw| raw.get("head1x1"))
+                        .and_then(|h| h.get("out_channels"))
+                        .and_then(|a| a.as_u64())
+                        .unwrap_or(bottleneck as u64)
+                        as usize;
+                    let head_accum_size = if head1x1_active {
+                        head1x1_out_channels
+                    } else {
+                        bottleneck
+                    };
+                    let h1_groups = layer_cfg
+                        .layer_raw
+                        .as_ref()
+                        .and_then(|raw| raw.get("head1x1"))
+                        .and_then(|h| h.get("groups"))
+                        .and_then(|g| g.as_u64())
+                        .unwrap_or(1) as usize;
+                    let h1_in_size = if head1x1_active {
+                        bottleneck / h1_groups
+                    } else {
+                        bottleneck
+                    };
+
                     let mut model = WaveNetA2Dyn::new(
                         input_channels,
                         channels,
                         bottleneck,
                         head_size,
+                        head_accum_size,
+                        h1_in_size,
                         &kernel_sizes,
                         &dilations,
                         activations,

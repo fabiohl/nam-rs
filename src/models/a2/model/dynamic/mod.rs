@@ -103,6 +103,10 @@ pub struct WaveNetA2Dyn {
 
     /// Whether head1x1 projection (`bottleneck → channels`) is active.
     pub head1x1_active: bool,
+    /// Dimension size of the head accumulator (output size of head1x1 projection).
+    pub head_accum_size: usize,
+    /// Size of the input to head1x1 layer.
+    pub h1_in_size: usize,
     /// Head1x1 weights: `[channels][bottleneck]` row-major (channels rows × bottleneck cols).
     pub head1x1_w: AlignedVec<f32>,
     /// Head1x1 bias: `channels` elements.
@@ -156,6 +160,8 @@ impl WaveNetA2Dyn {
         channels: usize,
         bottleneck: usize,
         head_size: usize,
+        head_accum_size: usize,
+        h1_in_size: usize,
         kernel_sizes: &[usize],
         dilations: &[usize],
         activations: Vec<ActivationType>,
@@ -245,6 +251,8 @@ impl WaveNetA2Dyn {
         Ok(Self {
             input_channels,
             head_size,
+            head_accum_size,
+            h1_in_size,
             channels,
             bottleneck,
             num_layers,
