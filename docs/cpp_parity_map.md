@@ -606,7 +606,7 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 | Item                                                                                                                              | Status                                                                                                                                  | Reference / Finding |
 |:--------------------------------------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
 | **A2 official flagship** `wavenet_a2_max.nam` (generic WaveNet + FiLM + `cond_size=8` + `head1x1` + `condition_dsp`/gating, CH=4) | 🟡 **Not loadable** — safe rejection (`test_loader_gap_wavenet_a2_max` asserts `is_err`). Needs a *generic* A2 dynamic engine; deferred | §6 · PM-10          |
-| **`SlimmableWavenet`** (single-net channel slicing; official `slimmable_wavenet.nam`)                                             | 🟡 **Not loadable** — rejected at dispatch; `slimmable` field silently dropped. Deferred epic (distinct from `SlimmableContainer`)      | §6 · PM-06 · PM-12  |
+| **`SlimmableWavenet`** (single-net channel slicing; official `slimmable_wavenet.nam`)                                             | 🟡 **Not loadable** — explicitly rejected at dispatch (fail-closed, `slimmable` field parsed and refused). Deferred epic (distinct from `SlimmableContainer`) | §6 · PM-06 · PM-12  |
 
 **By design / established (🟢):**
 
@@ -650,7 +650,7 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
   2. **Fatiamento dinâmico de pesos em runtime com garantia RT-safe.** Weight slicing into narrower channel counts (e.g., `16 → 12/8/4`) must complete within a bounded, deterministic time window (no heap allocation, no lock contention, no unbounded iteration) and must not introduce latency jitter into the audio processing thread. All slicing must happen at model load time, not during `process()`.
   3. **Paridade matemática bit-a-bit com NAMCore C++ `SlimmableWavenet`.** Sliced variants must produce output bit-exact with the equivalent `SlimmableWavenet` topology in NAMCore C++ (commit `9c7b185`, `tests/test_slimmable_wavenet.cpp`), verified by the existing golden-vector + live cross-validation infrastructure (`tests/cpp_parity.rs`). Any divergence exceeding the f16c precision floor (ESR > 1e-12) is a regression.
 
-- **C++ reference version pin (PM-09).** The vendored `tests/fixtures/NeuralAmpModelerCore/` is checked out at **v0.5.4** (`1f42f88`), while committed goldens were generated at **v0.5.3** (`9c7b185`). The PO formally decided that the working copy on the latest GitHub revision is the canonical source ("e ponto final") and no hard pin assertion is required in the test scripts. Version drift is considered non-critical for developer workflows.
+- **C++ reference version pin (PM-09).** The vendored `tests/fixtures/NeuralAmpModelerCore/` is checked out at **v0.5.4** (`1f42f88`), while committed goldens were generated at **v0.5.3** (`9c7b185`). The PO formally decided that the working copy on the latest GitHub revision is the canonical source ("e ponto final"). Consequently, **no hard commit-pin assertions are enforced in `tests-long.sh` or `golden_gen_build.sh`** — `tests-long.sh` logs the current working-copy SHA for developer awareness only and does not abort on version mismatch. Version drift is considered non-critical for developer workflows.
 
 - **A2 official flagship `wavenet_a2_max.nam` (PM-10).** The official A2 model is a *generic* 1-array
   WaveNet with FiLM (CH=4, `bottleneck=4`, `condition_size=8`, object-form `Softsign`, `head1x1`, plus a
@@ -697,6 +697,6 @@ The process rules that prevent these classes of error live in
 
 - [`audio_fidelity_map.md`](audio_fidelity_map.md) — Off-spec DSP factors; §3 (LSTM drift) pairs with §4.5 here
 - [`perceptual_validation.md`](perceptual_validation.md) — Metrics, gate methodology, Gate Calibration Policy
-- [`TODO-findings.md`](../TODO-findings.md) — Parity audit findings `PM-01`…`PM-08` for §13 (ConvNet f64 oracle, A2 FiLM/RF1, doc sync, live-harness SKIP robustness)
+- [`TODO-findings.md`](../TODO-findings.md) — Parity audit findings `PM-01`…`PM-14` for §13 (ConvNet f64 oracle, A2 FiLM/RF1, doc sync, live-harness SKIP robustness, loader hardening, PO decisions)
 - `tests/cpp_parity.rs` — Live cross-validation (`live_cross_validation_v2_*`)
 - `tests/reference_oracle_f64.rs` + `tests/fixtures/scripts/validate_oracle_f64.py` — f64 oracle & independent anchor

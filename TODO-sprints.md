@@ -287,7 +287,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. Atualizar `docs/cpp_parity_map.md` (seções §5 e §13) documentando explicitamente a decisão do PO de arquivar/descontinuar o interop do formato canônico flat de ConvNet.
   2. Formalizar que o `nam-rs` mantém apenas o seu formato bespoke interno com validação via f64 oracle como sua única testemunha de paridade matemática ideal.
 
-#### [ ] Task S12.4 — Sincronização Documental de Gaps e Decisões de Loader (PM-09, PM-10, PM-12)
+#### [x] Task S12.4 — Sincronização Documental de Gaps e Decisões de Loader (PM-09, PM-10, PM-12)
 
 * **Responsável:** Documentador Técnico / Arquiteto
 * **Risco/Criticidade:** Nulo (doc-only).
@@ -297,6 +297,17 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   1. Documentar em `docs/cpp_parity_map.md` §13 a decisão do PO de não aplicar asserções de commit rígidas no script `tests-long.sh` para o pin da referência C++ (PM-09), considerando a última versão do GitHub como a verdade de referência.
   2. Documentar que os modelos com ativações-objeto e `slimmable` agora são explicitamente validados e rejeitados no loader de forma fail-closed segura.
   3. Garantir a consistência e sincronização de referências cruzadas entre `TODO-findings.md` e `docs/cpp_parity_map.md`.
+* **Conclusão (2026-06-30):**
+  1. ✅ `docs/cpp_parity_map.md` §13.1 PM-09: documentação expandida explicitando que `tests-long.sh` e `golden_gen_build.sh` não impõem asserções rígidas de commit-pin — apenas logam o SHA da working copy para awareness do desenvolvedor, sem abortar em mismatch. Tabela §13 linha PM-09 consolidada como 🟢 PO Decision.
+  2. ✅ `docs/cpp_parity_map.md` §13.1 PM-11/PM-12 (linha "Loader fail-closed hardening"): documentação existente confirma que ativações-objeto são explicitamente validadas e rejeitadas com erro de deserialização, e que modelos `slimmable` single-net são parseados e rejeitados com erro user-friendly. Tabela §13 linha `SlimmableWavenet` atualizada de "silently dropped" para "explicitly rejected (fail-closed)". Tabela de modelos oficiais em `TODO-findings.md` sincronizada.
+  3. ✅ Consistência cross-ref:
+     * `TODO-findings.md` PM-11: status atualizado para ✅ RESOLVIDO (S12.1) com nota de implementação.
+     * `TODO-findings.md` PM-12: título e status atualizados para "rejeitado explicitamente (fail-closed) ✅ RESOLVIDO (S12.2)".
+     * `TODO-findings.md` Épico H: `[DOING]` → `[DONE]`.
+     * `TODO-findings.md` Épico I: `[DOING]` → `[DONE]`.
+     * `cpp_parity_map.md` See Also: range `PM-01…PM-08` → `PM-01…PM-14`.
+     * `TODO-findings.md` tabela de modelos oficiais: entrada `slimmable_wavenet.nam` — "campo descartado" → "explicitamente rejeitado (fail-closed)".
+     * Nenhuma referência cruzada quebrada identificada entre os dois arquivos.
 
 #### [ ] Task S12.5 — Documentação da Decisão do PO sobre Observabilidade e Scripts (PM-14)
 

@@ -334,7 +334,7 @@ e mapeia as *tags* existentes.
 | `wavenet_condition_dsp.nam`                      | ✅               | `WaveNetModelDyn`      | `condition_size=3` + sub-DSP                               |
 | `A2.nam`, `slimmable_container.nam`              | ✅               | `ContainerModel`       | multi-submodelo                                            |
 | **`wavenet_a2_max.nam`** (A2 oficial/flagship)   | ❌ **rejeitado** | —                      | **PM-10** — FiLM+cond=8+head1x1+gating em WaveNet genérico |
-| **`slimmable_wavenet.nam`** (single-net slicing) | ❌ **rejeitado** | —                      | **PM-12** — campo `slimmable` descartado                   |
+| **`slimmable_wavenet.nam`** (single-net slicing) | ❌ **rejeitado** | —                      | **PM-12** — campo `slimmable` explicitamente rejeitado (fail-closed) |
 
 > As rejeições são **fail-closed** (carga falha com erro; nenhum áudio incorreto é produzido). Há
 > teste de lacuna ativo para `a2_max` (`test_loader_gap_wavenet_a2_max`, assere `is_err()`).
@@ -401,9 +401,10 @@ e mapeia as *tags* existentes.
 * **Risco:** alto (motor novo). O interino (rejeição) **não tem risco de correção** — nunca produz
   áudio errado.
 
-### PM-11 — `activation` em forma de objeto `{"type":"…"}` cai silenciosamente para Tanh (caminho A1)
+### PM-11 — `activation` em forma de objeto `{"type":"…"}` cai silenciosamente para Tanh (caminho A1) **[RESOLVIDO — S12.1]**
 
 * **ID:** PM-11 · **Severidade:** Média (risco latente fail-open) · **Risco da correção:** Baixo
+* **Status:** ✅ **RESOLVIDO (2026-06-30, S12.1)** — o parser de `activation` em `src/loader/nam_json/model.rs` agora rejeita explicitamente a forma de objeto com erro de deserialização ("unsupported activation format"). Teste de unidade adicionado (`activation_parser_test`) assegura comportamento fail-closed. Ver [`TODO-sprints.md`](../TODO-sprints.md) S12.1.
 * **Problema:** Em `src/loader/nam_json/model.rs` o parser de `activation` trata **apenas** string e
   array; a forma de **objeto** `{"type":"Softsign"}` cai no ramo `_ => None`, e o default vira "Tanh".
   Hoje está **mascarado** pelo `a2_max` ser rejeitado por outras razões, mas é uma brecha **fail-open**:
@@ -414,9 +415,10 @@ e mapeia as *tags* existentes.
   (a) quando o motor A2 genérico (PM-10) precisar. Adicionar teste unitário com ativação-objeto.
 * **Risco:** baixo (mudança pequena de parser + teste).
 
-### PM-12 — `slimmable_wavenet.nam` oficial não carregável; campo `slimmable` descartado em silêncio
+### PM-12 — `slimmable_wavenet.nam` oficial não carregável; campo `slimmable` rejeitado explicitamente (fail-closed) **[RESOLVIDO — S12.2]**
 
 * **ID:** PM-12 · **Severidade:** Média · **Risco da correção:** Baixo (defensivo) / Alto (motor completo, diferido)
+* **Status:** ✅ **RESOLVIDO — lado defensivo (2026-06-30, S12.2).** O loader agora realiza verificação explícita da chave `slimmable` durante a validação de topologia e rejeita imediatamente modelos single-net que a possuam, com erro orientado ao usuário ("slimmable single-net weight slicing is not supported; use SlimmableContainer instead"). Teste de lacuna `test_loader_gap_slimmable_wavenet` (`tests/golden_vectors.rs`) valida a rejeição fail-closed. O motor de slicing single-net em runtime permanece **diferido** (épico PM-06). Ver [`TODO-sprints.md`](../TODO-sprints.md) S12.2.
 * **Problema:** O modelo oficial de single-net channel slicing (`example_models/slimmable_wavenet.nam`,
   md5-idêntico ao fixture) tem `slimmable: {method:"slice_channels_uniform", kwargs:{allowed_channels:[1,2,3]}}`.
   O nam-rs **rejeita** (via checagem de A2/ativação não-Tanh), mas o campo `slimmable` é **silenciosamente
@@ -494,13 +496,13 @@ e mapeia as *tags* existentes.
   `head1x1` + gating/blending), validado por golden C++ + oráculo f64 (PM-03). É o que falta para o A2
   ser **inquestionavelmente feature-completo** vs NAMCore.
 
-### Épico H — Robustez de Carregamento "fail-closed" (PM-11, PM-12) [DOING]
+### Épico H — Robustez de Carregamento "fail-closed" (PM-11, PM-12) [DONE]
 
 * **Risco/Criticidade:** Baixo. **Sequência:** imediata (independente).
 * Garante que toda entrada não suportada (ativação-objeto, `slimmable` single-net) **falhe fechada** com
   erro claro + teste de lacuna — nunca silenciosamente errada. Eleva a confiança no loader como guardião.
 
-### Épico I — Sincronização Documental & ConvNet (PM-13, e doc de PM-09/PM-10/PM-12) [DOING]
+### Épico I — Sincronização Documental & ConvNet (PM-13, e doc de PM-09/PM-10/PM-12) [DONE]
 
 * **Risco/Criticidade:** Nulo a Baixo (doc-only). **Sequência:** junto com F/H.
 * Documenta o ConvNet bespoke (sem interop), a deriva de versão e as lacunas de modelos oficiais com
