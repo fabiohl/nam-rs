@@ -277,7 +277,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
   2. O erro gerado deve ser explícito e orientado ao usuário (ex.: "slimmable single-net weight slicing is not supported; use SlimmableContainer instead").
   3. Criar o teste de lacuna `test_loader_gap_slimmable_wavenet` sob `tests/golden_vectors.rs` (ou `tests/loader_gap.rs` se aplicável), carregando a fixture real `tests/fixtures/models/slimmable_wavenet.nam` e validando a rejeição fail-closed com a mensagem esperada.
 
-#### [ ] Task S12.3 — Documentação e Decreto de Arquivamento de ConvNet Canônico (PM-13)
+#### [x] Task S12.3 — Documentação e Decreto de Arquivamento de ConvNet Canônico (PM-13)
 
 * **Responsável:** Documentador Técnico / Arquiteto
 * **Risco/Criticidade:** Nulo (doc-only).

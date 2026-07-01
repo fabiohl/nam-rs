@@ -224,7 +224,28 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 > (see `convnet_test.nam`, synthetic). Consequently nam-rs **cannot load a canonical ConvNet** and C++
 > cannot load `convnet_test.nam`; **no official ConvNet model exists upstream** (none in `example_models/`
 > — the architecture is effectively deprecated), so `golden_gen_build.sh` keeps it an *expected SKIP*.
-> The f64 oracle (not C++ interop) is the correct, NAMCore-safe witness — see §13.1 / PM-04 & PM-13.
+>
+> > **🪦 Decreto de Arquivamento (PM-13, Decisão do PO, 2026-06-30).** O PO decretou o **arquivamento
+> > definitivo** ("nuke") de qualquer pretensão de implementar compatibilidade com o formato canônico
+> > flat de ConvNet (kernel=2, head matricial) do NAMCore upstream. A arquitetura foi **descontinuada
+> > upstream** (nenhum modelo oficial em `example_models/`), o formato canônico é estruturalmente
+> > incompatível com o paradigma multi-bloco do nam-rs, e o custo de manter dois caminhos de interop
+> > não se justifica.
+> >
+> > **Consequências deste decreto:**
+> >
+> > 1. O `nam-rs` mantém **exclusivamente** o seu formato **bespoke** interno — multi-bloco, `head`
+> >    Conv1D, `head_scale` — validado pelo gerador sintético `generate_b1_2_fixtures.py`.
+> > 2. A **única testemunha de paridade matemática ideal** para o ConvNet bespoke é o **oráculo f64
+> >    independente** (`tests/reference_oracle_f64.rs`, ESR < 1e-12), integrado à cadeia de confiança
+> >    de 4 camadas do §9.2 (Rust f32 ↔ oráculo f64 ↔ âncora NumPy).
+> > 3. O **SKIP esperado** em `golden_gen_build.sh` para ConvNet é **permanente** — não há plano de
+> >    removê-lo ou de implementar o formato canônico flat.
+> > 4. A nota de contexto e justificativa vive em [`TODO-findings.md`](../TODO-findings.md) **PM-13**
+> >    e em §13.1 deste documento.
+> >
+> > O oráculo f64 (não a interop C++) é a testemunha canônica de correção matemática do ConvNet
+> > bespoke — ver §13.1 / PM-04 & PM-13.
 
 ---
 
@@ -592,7 +613,7 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 | Item                                                                                                             | Status                                                                                                                                                           | Reference / Finding |
 |:---------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------- |
 | **C++ reference version pin**                                                                                    | 🟢 PO Decision: Pinned reference is the latest GitHub workspace version. No hard script assertions are enforced; version drift is non-critical.                  | §9 · PM-09          |
-| **ConvNet** C++ interop                                                                                          | 🟢 PO Decision: Canonical flat interop permanently decommissioned (legacy). Refactored bespoke format + f64 oracle witness is the canonical specification.       | §5 · PM-13          |
+| **ConvNet** C++ interop                                                                                          | 🟢 PO Decision: Canonical flat interop permanently archived (bespoke format + f64 oracle is the sole witness)                                                    | §5 · PM-13          |
 | **Loader fail-closed hardening**                                                                                 | 🟢 Hardened (Sprint S12): Object-form activations and slimmable single-net models are explicitly validated and rejected (fail-closed) with user-friendly errors. | §7 · PM-11 · PM-12  |
 | **Test observability**                                                                                           | 🟢 PO Decision: Existing pipeline script verification is sufficient; the latest GitHub commit revision is the reference source.                                  | §9 · PM-14          |
 | **A2 synthetic FiLM / gating / blending / `condition_dsp`** (CH 3/8, A2 23-layer signature)                      | 🟢 Implemented & golden-tested via `WaveNetA2Dyn`; gating/blending/`condition_dsp` near-bit-exact (>100 dB)                                                      | §6                  |
@@ -603,7 +624,7 @@ Detailed RCA and concrete, low-risk mitigations for every 🟡/🔴 item below a
 
 ### 13.1 Notes on the open items
 
-- **ConvNet (PM-04 ✅ / PM-13).** The Rust engine (`models/convnet/`) is complete, dispatched, and unit-tested. As of Sprint S10 it has an **independent f64 ConvNet oracle witness** (`tests/reference_oracle_f64.rs::test_oracle_convnet` + `test_oracle_vs_python_anchor_convnet`, both active) — ESR ≈ 1.83e-14 vs production, `CONVNET_ESR_LIMIT = 1e-12`, plus a NumPy f64 anchor (the §9.2 3-way trust chain). The C++ interop for ConvNet is **N/A by format** (nam-rs uses a bespoke multi-block format while upstream is flat/kernel=2/matrix-head; no official model exists). The PO formally decided to decommissioning plans for flat canonical interop, establishing the bespoke format + f64 oracle as the standard.
+- **ConvNet (PM-04 ✅ / PM-13).** The Rust engine (`models/convnet/`) is complete, dispatched, and unit-tested. As of Sprint S10 it has an **independent f64 ConvNet oracle witness** (`tests/reference_oracle_f64.rs::test_oracle_convnet` + `test_oracle_vs_python_anchor_convnet`, both active) — ESR ≈ 1.83e-14 vs production, `CONVNET_ESR_LIMIT = 1e-12`, plus a NumPy f64 anchor (the §9.2 3-way trust chain). The C++ interop for ConvNet is permanently **N/A by format** (nam-rs uses a bespoke multi-block format while upstream is flat/kernel=2/matrix-head; no official model exists). **🪦 Decreto de Arquivamento (PO, 2026-06-30):** o PO decretou o arquivamento definitivo de qualquer pretensão de interop com o formato canônico flat de ConvNet. O `nam-rs` mantém exclusivamente o formato bespoke com o oráculo f64 como sua única testemunha de paridade matemática ideal. Detalhes da decisão e justificativa completa em `TODO-findings.md` **PM-13** e `cpp_parity_map.md` §5.
 
 - **A2 FiLM / RF1 (PM-03).** ✅ **Resolved (S10.3)** — the f64 oracle now models FiLM completely
   (8 insertion points, `cond_to_scale_shift` GEMV, `apply_modulation`). Cross-check Rust f32 production
