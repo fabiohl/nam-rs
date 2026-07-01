@@ -7,8 +7,9 @@ use crate::loader::nam_json::{
 use crate::models::StaticModel;
 use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::GatingMode;
-use crate::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS};
+use crate::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES, A2_LEAKY_SLOPE};
 use crate::models::a2::{WaveNetA2, WaveNetA2Dyn};
+use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use anyhow::bail;
 use log::info;
 
@@ -108,6 +109,15 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 let l0 = &data.config.layers[0];
                 let channels = l0.channels.unwrap_or(0);
                 let bottleneck = l0.bottleneck.unwrap_or(channels);
+                let kernel_sizes = l0
+                    .kernel_sizes
+                    .clone()
+                    .unwrap_or_else(|| A2_KERNEL_SIZES.to_vec());
+                let dilations = l0
+                    .dilations
+                    .clone()
+                    .unwrap_or_else(|| A2_DILATIONS.to_vec());
+                let num_layers = kernel_sizes.len();
 
                 if channels > MAX_A2_DYN_CHANNELS {
                     bail!(
@@ -124,9 +134,9 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     );
                 }
 
-                // Parse activations from raw JSON.
+                // Parse activations from raw JSON using actual layer count.
                 let act_cfg = l0
-                    .parse_activation_config(A2_NUM_LAYERS)
+                    .parse_activation_config(num_layers)
                     .map(|cfg| (cfg.activations, cfg.gating_modes, cfg.secondary_activations));
                 let (activations, gating_modes, secondary_activations) = match act_cfg {
                     Some((a, g, s)) => (a, g, s),
@@ -137,10 +147,10 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                                 ActivationType::LeakyReLU {
                                     negative_slope: A2_LEAKY_SLOPE,
                                 };
-                                A2_NUM_LAYERS
+                                num_layers
                             ],
-                            vec![GatingMode::None; A2_NUM_LAYERS],
-                            vec![None; A2_NUM_LAYERS],
+                            vec![GatingMode::None; num_layers],
+                            vec![None; num_layers],
                         )
                     }
                 };
@@ -154,25 +164,49 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     .and_then(|a| a.as_bool())
                     .unwrap_or(false);
 
+                let condition_size = l0.condition_size.unwrap_or(1);
+
                 let mut model = WaveNetA2Dyn::new(
                     channels,
                     bottleneck,
-                    &A2_KERNEL_SIZES,
-                    &A2_DILATIONS,
+                    &kernel_sizes,
+                    &dilations,
                     activations,
                     gating_modes,
                     secondary_activations,
                     head1x1_active,
                 )?;
                 model.set_layer_raw(layer_raw);
-                model.condition_size = l0.condition_size.unwrap_or(1);
+                model.condition_size = condition_size;
                 model
                     .set_weights(&data.weights)
                     .map_err(|e| anyhow::anyhow!("A2-Dynamic weight load failed: {e}"))?;
+
+                // Build condition_dsp sub-model if present in JSON config.
+                if let Some(ref cond_dsp_json) = data.config.condition_dsp {
+                    let cond_dsp_data: NamModelData =
+                        serde_json::from_value(cond_dsp_json.clone())?;
+                    let cond_model = crate::loader::dispatcher::build_model(&cond_dsp_data)?;
+                    let cond_out = cond_model.num_output_channels();
+                    if cond_out != condition_size {
+                        bail!(
+                            "condition_dsp output channels ({}) must match A2 condition_size ({})",
+                            cond_out,
+                            condition_size
+                        );
+                    }
+                    info!(
+                        "[Dispatcher] A2-Dynamic condition_dsp built — architecture={}, output_channels={}",
+                        cond_dsp_data.architecture, cond_out
+                    );
+                    model.set_condition_dsp(Some(cond_model), WAVENET_MAX_NUM_FRAMES);
+                }
+
                 info!(
-                    "[Dispatcher] WaveNet A2-Dynamic built — CH={}, BN={}, layers=23, weights={}",
+                    "[Dispatcher] WaveNet A2-Dynamic built — CH={}, BN={}, layers={}, weights={}",
                     channels,
                     bottleneck,
+                    num_layers,
                     data.weights.len()
                 );
                 return Ok(Box::new(StaticModel::WavenetA2Dyn(Box::new(model))));

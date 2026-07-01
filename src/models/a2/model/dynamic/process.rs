@@ -30,6 +30,7 @@
 //! are pre-allocated at construction time. Zero heap alloc on the hot-path.
 
 use crate::math::common::SimdMath;
+use crate::models::NamModel;
 use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::{BlendingActivationConfig, GatingActivationConfig, GatingMode};
 use crate::models::a2::layer::A2Layer;
@@ -79,15 +80,37 @@ impl WaveNetA2Dyn {
         );
         let nf_total = total.min(self.max_buffer_size);
 
+        let cond_size = self.condition_size;
+
         let mut pos = 0;
         while pos < nf_total {
             let nf = (nf_total - pos).min(WAVENET_MAX_NUM_FRAMES);
+
+            // Pre-process input through condition_dsp if present.
+            // The condition_dsp output replaces the raw input as the parameter
+            // for per-layer mixin and FiLM (C++ _process_condition pattern).
+            let use_cond_dsp = self.condition_dsp.is_some();
+            if use_cond_dsp {
+                let cond_dsp = self.condition_dsp.as_mut().unwrap();
+                cond_dsp.process(
+                    &input[pos..pos + nf],
+                    &mut self.condition_dsp_output[0..nf * cond_size],
+                );
+            }
 
             self.rechannel_prescale(input, pos, nf);
             let head_wp = self.advance_head_ring(nf);
 
             for li in 0..self.num_layers {
-                self.layer_forward_dispatch::<M>(li, nf, input, pos, head_wp);
+                self.layer_forward_dispatch::<M>(
+                    li,
+                    nf,
+                    input,
+                    pos,
+                    head_wp,
+                    use_cond_dsp,
+                    cond_size,
+                );
             }
 
             self.head_finalize(head_wp, nf, &mut output[pos..pos + nf]);
@@ -135,6 +158,7 @@ impl WaveNetA2Dyn {
     /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
     /// accesses assume caller-verified buffer capacities.
     #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
     fn layer_forward_dispatch<M: SimdMath>(
         &mut self,
         li: usize,
@@ -142,6 +166,8 @@ impl WaveNetA2Dyn {
         input: &[f32],
         pos: usize,
         head_wp: usize,
+        use_cond_dsp: bool,
+        cond_size: usize,
     ) {
         let channels = self.channels;
         let bottleneck = self.bottleneck;
@@ -164,12 +190,19 @@ impl WaveNetA2Dyn {
             let buf = &mut self.layer_buffers[li];
             buf[bs..bs + nf * channels].copy_from_slice(&self.layer_in[..nf * channels]);
             // Apply conv_pre_film on new frames.
+            // With condition_dsp, the condition signal is multi-channel (cond_size > 1).
+            let cond_buf: &[f32] = if use_cond_dsp {
+                &self.condition_dsp_output[..nf * cond_size]
+            } else {
+                &input[pos..pos + nf]
+            };
             for f in 0..nf {
                 if let Some(ref mut film) = self.layers[li].conv_pre_film {
+                    let cond_slice = &cond_buf[f * cond_size..(f + 1) * cond_size];
                     unsafe {
                         film.process(
                             &mut buf[bs + f * channels..bs + (f + 1) * channels],
-                            &input[pos + f..pos + f + 1],
+                            cond_slice,
                         );
                     }
                 }
@@ -197,6 +230,12 @@ impl WaveNetA2Dyn {
             let mut blending_config = self.blending_configs[li].as_mut();
             let activation = &self.activations[li];
 
+            let cond_buf: &[f32] = if use_cond_dsp {
+                &self.condition_dsp_output[..nf * cond_size]
+            } else {
+                &input[pos..pos + nf]
+            };
+
             for f in 0..nf {
                 let bc = blending_config.as_deref_mut();
                 unsafe {
@@ -205,8 +244,6 @@ impl WaveNetA2Dyn {
                         history,
                         f,
                         max_lookback_cols,
-                        input,
-                        pos,
                         head_wp,
                         z_out_ch,
                         use_gating,
@@ -225,6 +262,8 @@ impl WaveNetA2Dyn {
                         gating_config,
                         bc,
                         activation,
+                        cond_buf,
+                        cond_size,
                     );
                 }
             }
@@ -255,15 +294,13 @@ impl WaveNetA2Dyn {
 ///
 /// `M` is the ISA monomorphization type propagated from the top-level
 /// `dispatch_simd!` in [`WaveNetA2Dyn::process`].
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 #[inline(always)]
 unsafe fn process_frame_dyn<M: SimdMath>(
     layer: &mut A2Layer,
     history: &[f32],
     f: usize,
     max_lookback_cols: usize,
-    input: &[f32],
-    pos: usize,
     head_wp: usize,
     z_out_ch: usize,
     use_gating: bool,
@@ -282,10 +319,11 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     gating_config: Option<&GatingActivationConfig>,
     blending_config: Option<&mut BlendingActivationConfig>,
     activation: &ActivationType,
+    cond_buf: &[f32],
+    cond_size: usize,
 ) {
     let frame_idx = max_lookback_cols + f;
-    let cond_slice = &input[pos + f..pos + f + 1];
-    let cond = cond_slice[0];
+    let cond_slice = &cond_buf[f * cond_size..(f + 1) * cond_size];
 
     #[allow(unused_assignments)]
     let mut z_len = z_out_ch;
@@ -309,13 +347,15 @@ unsafe fn process_frame_dyn<M: SimdMath>(
         }
     }
 
-    // 2. Input mixin.
-    for (c, z) in z_scratch
-        .iter_mut()
-        .enumerate()
-        .take(z_out_ch.min(layer.mixin_w.len()))
-    {
-        *z += layer.mixin_w[c] * cond;
+    // 2. Input mixin — matrix-vector multiply when cond_size > 1 (A2 generic).
+    // Standard A2 (cond_size == 1) reduces to: z[c] += mixin_w[c] * cond_slice[0].
+    for c in 0..z_out_ch.min(bottleneck) {
+        let base = c * cond_size;
+        let mut sum = 0.0;
+        for k in 0..cond_size {
+            sum += layer.mixin_w[base + k] * cond_slice[k];
+        }
+        z_scratch[c] += sum;
     }
 
     // FiLM post-mixin + pre-activation.

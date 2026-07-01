@@ -161,6 +161,10 @@ impl A2Layer {
     /// from `conv.out_ch()` (bottleneck). When gating/blending is active,
     /// `conv.out_ch()` is `2*bottleneck` but l1x1 operates on the post-gating
     /// bottleneck-wide output.
+    ///
+    /// `condition_size` controls the mixin weight layout:
+    /// `mixin_w` has `conv.out_ch() * condition_size` elements, laid out as
+    /// row-major `[output_channel][condition_index]`.
     pub fn new_dyn(
         conv: A2Conv1d,
         mixin_w: AlignedVec<f32>,
@@ -168,9 +172,10 @@ impl A2Layer {
         l1x1_b: AlignedVec<f32>,
         l1x1_out_ch: usize,
         bottleneck: usize,
+        condition_size: usize,
     ) -> Self {
         let ch = conv.out_ch();
-        debug_assert_eq!(mixin_w.len(), ch);
+        debug_assert_eq!(mixin_w.len(), ch * condition_size);
         debug_assert_eq!(l1x1_w.len(), bottleneck * l1x1_out_ch);
         debug_assert_eq!(l1x1_b.len(), l1x1_out_ch);
         Self {

@@ -50,25 +50,20 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
 
     let l0 = &layers[0];
 
-    // 10. kernel_sizes must match A2_KERNEL_SIZES exactly (a2_fast.cpp:910-918)
+    // 10. kernel_sizes must match A2_KERNEL_SIZES exactly for fast-path (a2_fast.cpp:910-918).
+    // Non-canonical sizes indicate an A2-generic model → route to Dynamic.
     let ks = l0.kernel_sizes.as_deref()?;
-    if ks.len() != A2_NUM_LAYERS {
-        return None;
-    }
-    if ks.iter().zip(A2_KERNEL_SIZES.iter()).any(|(a, b)| *a != *b) {
-        return None;
+    if ks.len() != A2_NUM_LAYERS || ks.iter().zip(A2_KERNEL_SIZES.iter()).any(|(a, b)| *a != *b) {
+        return Some(A2TopologyResult::Dynamic);
     }
 
-    // 11. Dilations must match A2_DILATIONS exactly (a2_fast.cpp:920-928)
+    // 11. Dilations must match A2_DILATIONS exactly for fast-path (a2_fast.cpp:920-928).
     let dils = l0.dilations.as_deref()?;
-    if dils.len() != A2_NUM_LAYERS {
-        return None;
-    }
-    if dils.iter().zip(A2_DILATIONS.iter()).any(|(a, b)| *a != *b) {
-        return None;
+    if dils.len() != A2_NUM_LAYERS || dils.iter().zip(A2_DILATIONS.iter()).any(|(a, b)| *a != *b) {
+        return Some(A2TopologyResult::Dynamic);
     }
 
-    // --- Se chegamos aqui, o modelo é inequivocamente um WaveNet A2. ---
+    // --- Se chegamos aqui, o modelo é inequivocamente um WaveNet A2 fast-path candidate. ---
     // A partir daqui, validamos se ele se enquadra no fast-path const-generic.
 
     // 5. in_channels defaults to 1, must be 1 (a2_fast.cpp:892-894)

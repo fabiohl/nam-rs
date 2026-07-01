@@ -337,7 +337,7 @@ Este documento organiza o planejamento ágil e tarefas técnicas para o **Épico
 
 ### Tarefas Técnicas S13
 
-#### [ ] Task S13.1 — Arquitetura DSP e Parser do Motor A2 Genérico (PM-10)
+#### [x] Task S13.1 — Arquitetura DSP e Parser do Motor A2 Genérico (PM-10)
 
 * **Responsável:** Engenheiro de DSP / Arquiteto
 * **Risco/Criticidade:** Alto (criação de um novo motor de processamento no caminho quente de DSP).

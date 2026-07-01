@@ -138,11 +138,14 @@ impl WaveNetA2Dyn {
             prefetch_fn,
         );
 
-        // 2c. Mixin (conv_out elements, applied after conv).
+        // 2c. Mixin (conv_out * condition_size elements, applied after conv).
+        // Standard A2: condition_size == 1, so conv_out elements.
+        // A2 generic: condition_size can be > 1, giving conv_out * condition_size.
+        let mixin_count = conv_out * self.condition_size;
         let mixin_w_f32 = super::super::set_weights::read_slice(
             weights,
             pos,
-            conv_out,
+            mixin_count,
             total,
             &format!("layer[{i}].mixin_w"),
         )?;
@@ -169,7 +172,15 @@ impl WaveNetA2Dyn {
         )?;
         let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
-        let mut layer = A2Layer::new_dyn(conv, mixin_w, l1x1_w, l1x1_b, channels, bottleneck);
+        let mut layer = A2Layer::new_dyn(
+            conv,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+            channels,
+            bottleneck,
+            self.condition_size,
+        );
 
         // FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
         if let Some(ref raw) = self.layer_raw {

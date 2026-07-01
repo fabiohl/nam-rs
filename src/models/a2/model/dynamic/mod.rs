@@ -9,6 +9,7 @@
 
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::AlignedVec;
+use crate::models::StaticModel;
 use crate::models::a2::activations::ActivationType;
 use crate::models::a2::gating::{BlendingActivationConfig, GatingActivationConfig, GatingMode};
 use crate::models::a2::head::A2HeadConv;
@@ -117,6 +118,19 @@ pub struct WaveNetA2Dyn {
     pub head1x1_scratch: AlignedVec<f32>,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
+
+    /// Optional nested condition DSP sub-model (C++ `_condition_dsp`).
+    ///
+    /// Built eagerly during model construction from the `condition_dsp` JSON
+    /// object. Its `process()` is called with mono audio input; its multi-channel
+    /// output replaces the raw input as the `condition` parameter passed to
+    /// per-layer FiLM/mixin. When `None`, the raw input is used as `condition`
+    /// (passthrough, behavior equivalent to A2 fast-path).
+    pub condition_dsp: Option<Box<StaticModel>>,
+    /// Pre-allocated output buffer for condition_dsp processing.
+    ///
+    /// Size: `condition_size × WAVENET_MAX_NUM_FRAMES`.
+    pub condition_dsp_output: AlignedVec<f32>,
 }
 
 impl WaveNetA2Dyn {
@@ -250,6 +264,8 @@ impl WaveNetA2Dyn {
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32),
             head1x1_scratch,
             prewarm_on_reset: true,
+            condition_dsp: None,
+            condition_dsp_output: AlignedVec::new(0, 0.0f32),
         })
     }
 
@@ -268,6 +284,24 @@ impl WaveNetA2Dyn {
     /// Stores the raw layer JSON for FiLM config parsing during weight loading.
     pub fn set_layer_raw(&mut self, raw: Option<Value>) {
         self.layer_raw = raw;
+    }
+
+    /// Sets the optional condition DSP sub-model and allocates its output buffer.
+    ///
+    /// When `condition_dsp` is `Some`, the sub-model pre-processes the audio input
+    /// before the main layer loop. Its output channels replace the raw input as
+    /// the `condition` parameter for per-layer mixin and FiLM.
+    ///
+    /// `max_buf` is the maximum number of frames per processing block
+    /// (typically [`WAVENET_MAX_NUM_FRAMES`]).
+    pub fn set_condition_dsp(&mut self, cond_dsp: Option<Box<StaticModel>>, max_buf: usize) {
+        let cond_size = if cond_dsp.is_some() {
+            self.condition_size
+        } else {
+            0
+        };
+        self.condition_dsp_output = AlignedVec::new(cond_size * max_buf, 0.0f32);
+        self.condition_dsp = cond_dsp;
     }
 
     /// Returns whether weights have been loaded.
@@ -299,6 +333,8 @@ impl WaveNetA2Dyn {
                 .copy_from_slice(&self.layer_ring_sizes);
             let li_len = self.layer_in.len();
             self.layer_in[..li_len].fill(0.0);
+            let cd_len = self.condition_dsp_output.len();
+            self.condition_dsp_output[..cd_len].fill(0.0);
             return Ok(());
         }
         self.max_buffer_size = max_buf;
@@ -327,6 +363,9 @@ impl WaveNetA2Dyn {
         self.head_ring_mask = head_ring_size - 1;
         self.head_accum = AlignedVec::new(head_ring_size * channels, 0.0f32);
         self.head_write_pos = rf;
+
+        let cond_output_size = self.condition_size * max_buf;
+        self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32);
 
         Ok(())
     }

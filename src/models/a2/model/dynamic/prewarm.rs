@@ -5,7 +5,9 @@
 //!
 //! Zeroes internal buffers and feeds `receptive_field_size` frames
 //! of silence through `process()` to reach the proper steady state.
+//! When a condition_dsp sub-model is present, it is also pre-warmed.
 
+use crate::models::NamModel;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 
 use super::super::a2_prewarm_common;
@@ -27,6 +29,11 @@ impl WaveNetA2Dyn {
         );
 
         if self.has_weights() {
+            // Prewarm the condition_dsp sub-model first (if present).
+            if let Some(ref mut cond_dsp) = self.condition_dsp {
+                cond_dsp.prewarm(0);
+            }
+
             let prewarm_samples = self.receptive_field_size;
             let block = WAVENET_MAX_NUM_FRAMES;
             let zeros = [0.0f32; WAVENET_MAX_NUM_FRAMES];
