@@ -47,10 +47,10 @@ echo -e "\n${BLUE}${BOLD}[3/4] Atualizando versões resolvidas no Cargo.lock...$
 cargo update --verbose
 
 # 4. Sync upstream C++ fixtures
-echo -e "\n${BLUE}${BOLD}[4.1/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
+echo -e "\n${BLUE}${BOLD}[4/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
 
-# Canonical tag and pinned SHA (T5.2 — single reference for all goldens)
+# Canonical tag and pinned SHA
 NAM_CORE_TAG="v0.5.4"
 NAM_CORE_SHA="1f42f88535884450104b8711d7595019afa0495b"
 
@@ -73,37 +73,6 @@ for sub in eigen AudioDSPTools; do
         (cd "$FIXTURE_DIR" && git submodule update --init "Dependencies/$sub")
     fi
 done
-
-echo -e "\n${BLUE}${BOLD}[4.2/4] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
-FIXTURE_DIR="tests/fixtures/NeuralAmpModelerPlugin"
-
-# Canonical tag and pinned SHA for plugin
-NAM_PLUGIN_TAG="v0.7.15"
-NAM_PLUGIN_SHA="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
-
-if [ -d "$FIXTURE_DIR" ]; then
-    echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
-    (cd "$FIXTURE_DIR" && git fetch --depth 1 origin tag "$NAM_PLUGIN_TAG" && git checkout "$NAM_PLUGIN_SHA" && git clean -df)
-    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_PLUGIN_TAG @ $NAM_PLUGIN_SHA)."
-else
-    echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 --branch "$NAM_PLUGIN_TAG" https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
-    (cd "$FIXTURE_DIR" && git checkout "$NAM_PLUGIN_SHA")
-    echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
-fi
-
-# Ensure AudioDSPTools submodule dependencies are present for NeuralAmpModelerPlugin
-AUDIO_DSP_TOOLS_DIR="$FIXTURE_DIR/AudioDSPTools"
-if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ]; then
-    echo "  Initializing NeuralAmpModelerPlugin/AudioDSPTools submodules..."
-    (cd "$FIXTURE_DIR" && git submodule update --init AudioDSPTools)
-fi
-
-if [ ! -d "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen/Eigen" ]; then
-    echo "  Initializing eigen submodule for AudioDSPTools..."
-    (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
-fi
-
 
 echo -e "${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}          Toda a cadeia de suprimentos foi atualizada!          ${NC}"
