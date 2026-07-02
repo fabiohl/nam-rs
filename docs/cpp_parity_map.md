@@ -751,26 +751,7 @@ is a requirement.
 > **Cobertura de regressão:** `test_wavenet_condition_dsp_still_loads` prova que
 > a guarda não bloqueia modelos vizinhos válidos. `tests-quick.sh` 100% verde.
 
-### 7.2 🟠 Confirmed code bugs — not yet triggered by any known model
-
-Real bugs, found by reading the code, that would produce silently wrong output **if** a
-model exercised the specific condition below. None of the fixtures in the current test suite
-(real or synthetic) trigger any of these — that is precisely why they haven't been caught yet.
-
-| #   | Bug                                                                                              | Trigger condition                                                                                                        | Consequence if triggered                                                                                   | Ref  |
-|:--- |:------------------------------------------------------------------------------------------------ |:------------------------------------------------------------------------------------------------------------------------ |:---------------------------------------------------------------------------------------------------------- |:---- |
-| 1   | `WaveNetModelDyn::prewarm_internal()` calls `condition_dsp.prewarm(0)` (hardcoded zero)          | A WaveNet A1 model whose `condition_dsp` sub-model is an **LSTM** (feedforward `condition_dsp` is unaffected — see §3.5) | LSTM sub-model's recurrent state never converges before first use; audible transient error at signal start | §3.5 |
-| 2   | A1's `Free`/`WaveNetModelDyn` path never reads `gating_mode`/`head1x1`/`layer1x1`/FiLM from JSON | A WaveNet model using any of these **and** not matching the A2 shape/heuristic (§4.1)                                    | Silently processed as if the feature were off — mathematically wrong output, no error                      | §3.6 |
-| 3   | `LstmModelDyn::process_*` dereferences an empty `Vec`'s pointer before checking `n_layers > 0`   | A `.nam` LSTM model declaring `num_layers: 0` (C++ treats this as a valid passthrough)                                   | Undefined behavior in release builds, panic in debug                                                       | §2.6 |
-| 4   | A1 catalog-SKU matching never checks for a `condition_dsp` sub-model                             | A 2-array, ungated, catalog-shaped (16/12/8/4 ch) model that *also* declares `condition_dsp`                             | Routed to the fast path, which has no `condition_dsp` handling at all — silently dropped                   | §3.4 |
-| 5   | LSTM loader never validates `in_channels`/`out_channels`                                         | A `.nam` LSTM model declaring non-mono channels                                                                          | Extra channels silently ignored, processed as mono                                                         | §2.6 |
-
-All five require a model shape that has never been observed in the wild (NAM is guitar/bass amp
-modeling — mono, and gating/FiLM correlate with A2 in practice). They are real, not
-hypothetical bugs, but they are **dormant**. Closing them is a defensive-engineering / fail-closed
-validation task, not an emergency fix.
-
-### 7.3 🟡 Known, measured, accepted tradeoffs — not bugs
+### 7.2 🟡 Known, measured, accepted tradeoffs — not bugs
 
 Every item below is a deliberate engineering tradeoff with a calibrated, tested error budget. They
 show up as nonzero numbers in the tables throughout this document, but they are not defects:
@@ -785,81 +766,12 @@ show up as nonzero numbers in the tables throughout this document, but they are 
   the independent f64 oracle, to be a numerically-correct-but-structurally-different application
   of conditioning, not a logic error in either engine (§4.3).
 
-### 7.4 ⚪ Cosmetic findings — verified zero runtime effect today
-
-Found while auditing, worth fixing for hygiene, **traced to confirm they change nothing audible
-right now**:
-
-- `WaveNetModel`/`WaveNetModelDyn::prewarm_samples()` under-reports (ignores `array2`/later
-  cascade arrays, uses `max` instead of C++'s `sum` for `condition_dsp`). Every call site was
-  traced: the only caller discards the value, and WaveNet's own `prewarm()` ignores its argument
-  and always runs a separately-correct analytical fill. A landmine only if ever wired to a
-  host-facing latency API (§3.5).
-- A2 multi-array cascade propagates the **raw** `head_accum` between arrays instead of C++'s
-  **post-rechannel** head output. Only matters for multi-array models with
-  `head_kernel_size > 1` — irrelevant to `wavenet_a2_max.nam` (single array) or any other current
-  fixture (§4.6).
-- A2's post-stack head for `head_size > 1` uses a plain dense projection instead of C++'s
-  Conv1D+bias+`head_scale`. Only diverges when `head_kernel_size != 1` or `head_bias == true` —
-  not the case for any current fixture (§4.6).
-
-### 7.5 📄 Stale documentation — misleading, but not code bugs
-
-Found by cross-checking docs/comments against current source and git history. None of these
-change any correctness verdict above; all are corrected here and flagged at their source for a
-future pass:
-
-| Location                               | Stale claim                                                                                         | Current reality                                                                                                               |
-|:-------------------------------------- |:--------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------- |
-| `docs/testing.md` §5                   | WaveNet Lite golden test "ignored, SNR = 0.9 dB (Known Divergent)"                                  | Migrated to a real model (`EVH-5150-Lite.nam`), not ignored, passes at 122.3 dB (§3.7)                                        |
-| `tests/fixtures/README.md` model table | `wavenet_a2_max.nam` — "Rejected — structure-incompatible"                                          | Loads and runs since multi-array `condition_dsp` cascade support was added; produces wrong output, but is not rejected (§4.4) |
-| `tests/common/validation.rs:600-612`   | `wavenet_a2_max` threshold comment: "PENDING — model cannot load yet", provisional `max_esr=5.0e-2` | Model loads; real measured ESR is 3.61e1 — three orders of magnitude past the stale placeholder (§4.4)                        |
-| `tests/golden_vectors.rs` doc comment  | `test_golden_vectors_wavenet_a2_max`: "SNR=4.7 dB, ESR=3.4e-1"                                      | Superseded by the current empirical baseline, SNR=−15.6 dB, ESR=3.61e1 (§4.4)                                                 |
-
-### 7.6 Coverage gaps — not correctness bugs, but validation-depth gaps
-
-- **A2-Full / A2-Lite fast path has no real trained community model** — only synthetic,
-  calibrated-weight fixtures. LSTM and WaveNet A1 are both validated primarily against real
-  community captures; A2's fast path is not (§4.2, §4.7).
-- **No live cross-validation exists for `wavenet_a2_max.nam`, or for any FiLM/gated/blended A2
-  dynamic-engine fixture** — only frozen golden `.bin` snapshots, which cannot catch a fresh
-  NAMcore toolchain drift the way LSTM/A1's live suite would (§4.7).
-- **`LstmModelDyn` has no real-model coverage** — only a synthetic dispatch-path fixture; no known
-  community LSTM export uses a non-catalog hidden size (§2.8).
-
-### 7.7 Everything else: under control
-
-Explicitly, as a positive checklist — verified this pass, no open issues:
-
-- **LSTM** (§2): gate math, weight layout, head projection, prewarm formula, `Reset`/prewarm-on-reset
-  semantics, and all four catalog SKUs (1×3, 1×{8,12,16,24,40}, 2×{8,12,16,24}) — all match C++
-  exactly, all backed by real community-trained golden vectors, all actively tested (live +
-  golden).
-- **WaveNet A1** (§3): all four catalog SKUs (Standard/Lite/Feather/Nano) match C++'s single
-  generic implementation structurally and numerically, all four backed by real community models
-  (three committed, one fetched non-distributable), all actively tested (live + golden). Weight
-  loading, activation defaults, and DSP Reset semantics all confirmed identical to C++.
-- **WaveNet A2** (§4): shape detection (`is_a2_shape`) is a line-by-line, self-correcting mirror of
-  C++'s own detector. The fast path (A2-Full/Lite) is structurally verified correct. The dynamic
-  engine's gating and blending are near-bit-exact (103 dB / 133 dB SNR) against C++'s generic
-  path. The one official real-model container example (`a2_example.nam`) passes.
-- **Shared DSP engine semantics** (§5): `Reset`/prewarm-on-reset, base `GetPrewarmSamples()`
-  default, and the exact-math-vs-approximation activation split are all confirmed identical in
-  intent and default behavior across all three architectures.
-
-If a model is not `wavenet_a2_max.nam`, and does not deliberately construct one of the five
-dormant conditions in §7.2, its NAM-rs output is expected — and, where measured, confirmed — to
-match NAMcore within the documented, calibrated tolerances.
-
 ---
 
 ## See Also
 
-- [`audio_fidelity_map.md`](audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent
-  drift) pairs with §2.5/§2.7 here
-- [`perceptual_validation.md`](perceptual_validation.md) — metrics and gate-calibration policy
-- [`TODO-findings.md`](../TODO-findings.md) / [`TODO-sprints.md`](../TODO-sprints.md) — live
-  status of the open A2 investigation (§4.4)
-- `tests/cpp_parity.rs` — live cross-validation against the C++ `render` tool
-- `tests/reference_oracle_f64.rs` + `tests/fixtures/scripts/validate_oracle_f64.py` — f64 oracle
-  and independent NumPy anchor (decomposition tools, §1.2)
+- [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent drift) pairs with §2.5/§2.7 here
+- [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md) — metrics and gate-calibration policy
+- [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md) / [TODO-sprints.md](file:///home/fabio/nam-rs/TODO-sprints.md) — live status of the open A2 investigation (§4.4) and planned sprints for structural audit findings
+- [tests/cpp_parity.rs](file:///home/fabio/nam-rs/tests/cpp_parity.rs) — live cross-validation against the C++ `render` tool
+- [tests/reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) + [validate_oracle_f64.py](file:///home/fabio/nam-rs/tests/fixtures/scripts/validate_oracle_f64.py) — f64 oracle and independent NumPy anchor (decomposition tools, §1.2)
