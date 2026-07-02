@@ -52,6 +52,9 @@
 #   golden_a2_dynamic_gated_ch8.bin, golden_a2_dynamic_blended_ch3.bin,
 #   golden_wavenet_a2_film_lite.bin, golden_wavenet_a2_film_full.bin
 #   (Synthetic A2 dynamic/FiLM goldens — v1 only, generated from Python fixtures)
+#   golden_linear_fft_rf320.bin, golden_linear_fft_rf2048.bin,
+#   golden_linear_fft_rf4096.bin, golden_linear_fft_rf8192.bin
+#   (Linear FFT partitioned convolution goldens — v1 + v2@48k)
 #
 # These files must be committed so that the Rust golden vector tests
 # run without C++ recompilation.
@@ -291,6 +294,10 @@ CATALOG=(
     "a2_dynamic_blended_ch3.nam:golden_a2_dynamic_blended_ch3:A2 Dynamic Blended (CH=3):none"
     "wavenet_a2_film_lite.nam:golden_wavenet_a2_film_lite:A2-FiLM Lite (CH=3):none"
     "wavenet_a2_film_full.nam:golden_wavenet_a2_film_full:A2-FiLM Full (CH=8):none"
+    "linear_fft_rf320.nam:golden_linear_fft_rf320:Linear FFT RF=320:48k_only"
+    "linear_fft_rf2048.nam:golden_linear_fft_rf2048:Linear FFT RF=2048:48k_only"
+    "linear_fft_rf4096.nam:golden_linear_fft_rf4096:Linear FFT RF=4096:48k_only"
+    "linear_fft_rf8192.nam:golden_linear_fft_rf8192:Linear FFT RF=8192:48k_only"
 )
 # ^ "convnet_test" above is expected SKIP — C++ $NAM_CORE_TAG ConvNet is architecturally
 #   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.

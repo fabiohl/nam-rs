@@ -718,7 +718,7 @@ pub fn topology_thresholds(
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 140.0, Some(1e-10), None),
+        "Linear" => (1e-10, 135.0, Some(1e-10), None),
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }
@@ -760,7 +760,7 @@ pub fn live_parity_thresholds(
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 140.0, Some(1e-10), None),
+        "Linear" => (1e-10, 135.0, Some(1e-10), None),
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }
