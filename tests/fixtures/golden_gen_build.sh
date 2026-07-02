@@ -5,15 +5,15 @@
 # golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones
 # NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
 #
-# Canonical reference: NeuralAmpModelerCore v0.5.4 (tag), pinned at commit
-# 1f42f88535884450104b8711d7595019afa0495b. All goldens (A1/LSTM/WaveNet/A2/ConvNet/Dyn)
-# are rendered from this single commit. This must always match the pin in
-# utils/mod-update.sh — both scripts operate on the same vendored working
-# copy at tests/fixtures/NeuralAmpModelerCore/, and a mismatch causes this
-# script's version-mismatch guard (below) to hard-fail after mod-update.sh
-# has synchronized the fixtures. Some older committed goldens were rendered
-# at v0.5.3 (9c7b185); the patch-level diff is below the interop noise floor
-# for all architectures except where explicitly noted in docs/cpp_parity_map.md §1.3.
+# Canonical reference: NeuralAmpModelerCore v0.5.4 (tag). All goldens
+# (A1/LSTM/WaveNet/A2/ConvNet/Dyn) are rendered from a single pinned commit.
+# Pinned versions (commits, tags, repo URLs) live in variables.env — sourced by
+# both this script and utils/mod-update.sh.  A mismatch between the vendored
+# working copy at tests/fixtures/NeuralAmpModelerCore/ and the pin in variables.env
+# causes this script's version-mismatch guard (below) to hard-fail. Some older
+# committed goldens were rendered at v0.5.3 (9c7b185); the patch-level diff is
+# below the interop noise floor for all architectures except where explicitly
+# noted in docs/cpp_parity_map.md §1.3.
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
@@ -21,8 +21,8 @@
 #   - git (to clone NeuralAmpModelerCore and NeuralAmpModelerPlugin if needed)
 #
 # Reproducibility:
-#   Upstream commits are pinned in NAM_CORE_COMMIT and NAM_PLUGIN_COMMIT.
-#   Update these variables when regenerating goldens from a newer upstream version.
+#   Upstream commits are pinned in variables.env (NAM_CORE_COMMIT, NAM_PLUGIN_COMMIT).
+#   Update there when regenerating goldens from a newer upstream version.
 #
 # Python is no longer required — gen_stress and wav_to_golden replace the inline Python blocks.
 #
@@ -63,10 +63,8 @@ MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
 mkdir -p "$LOGS_DIR"
 
-# Pinned upstream commits for reproducibility.
-# Update these when regenerating goldens with a newer upstream version.
-NAM_CORE_COMMIT="1f42f88535884450104b8711d7595019afa0495b" # v0.5.4 (canonical; must match utils/mod-update.sh)
-NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
+# Load pinned versions from single source of truth (variables.env).
+source "$PROJECT_ROOT/variables.env"
 
 # =============================================================================
 # Prerequisite checks

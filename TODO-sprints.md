@@ -63,7 +63,7 @@ gantt
     - `render_ir_build.log` — compilação C++ do render_ir
     - Padrão de falha uniforme: `cmd > "$LOG" 2>&1 || { tail -5; echo "ERROR: ..."; exit 1; }` com mensagem apontando para o log persistente. Gen_stress e wav_to_golden mantidos sem log por serem leves. As chamadas de render agora usam arquivo temporário por modelo → `cat >>` para o log mestre.
 
-#### 📝 Tarefa A.1.3: Renumeração Consistente das Fases do Script
+#### 📝 Tarefa A.1.3: Renumeração Consistente das Fases do Script [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
@@ -106,19 +106,20 @@ gantt
 - **Risco:** Médio (precisa garantir compatibilidade de importação do ambiente no Bash)
 - **Achado Associado:** F2 (sub-tarefa de constantes) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L186-L191)
 - **Arquivos Alvos:**
-  - [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env) [NEW]
+  - [variables.env](file:///home/fabio/nam-rs//variables.env) [NEW]
   - [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh)
   - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
 - **Descrição:**
-  - Criar um novo arquivo [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env) contendo os hashes e tags das dependências vendored:
+  - Criar um novo arquivo [variables.env](file:///home/fabio/nam-rs//variables.env) contendo os hashes e tags das dependências vendored:
     - `NAM_CORE_TAG="v0.5.4"`
     - `NAM_CORE_COMMIT="1f42f88535884450104b8711d7595019afa0495b"`
     - `NAM_PLUGIN_TAG="v0.5.4"` (ou tag correspondente ao commit abaixo)
     - `NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"`
-  - Incluir cabeçalhos de copyright SPDX apropriados em [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env).
+  - Incluir cabeçalhos de copyright SPDX apropriados em [variables.env](file:///home/fabio/nam-rs//variables.env).
   - Alterar [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) e [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) para carregar essas variáveis via `source` dinâmico do arquivo compartilhado, removendo as declarações duplicadas locais.
+  - ✅ **CONCLUÍDO 2026-07-02**: Arquivo `/variables.env` (raiz do projeto) criado com as 4 constantes + URLs de clone (`NAM_CORE_REPO`, `NAM_PLUGIN_REPO`) e cabeçalho SPDX. Ambos os scripts carregam via `source`: `golden_gen_build.sh` usa `$PROJECT_ROOT/variables.env`; `mod-update.sh` usa `$PROJECT_DIR/variables.env`. `mod-update.sh` também usa `$NAM_CORE_REPO` no lugar da URL hardcoded. `NAM_CORE_SHA` → `NAM_CORE_COMMIT` unificado. Zero duplicações de hashes entre os scripts.
 
-#### 📝 Tarefa B.1.2: Extensão de Sincronização do `NeuralAmpModelerPlugin` no `mod-update.sh`
+#### 📝 Tarefa B.1.2: Extensão de Sincronização do `NeuralAmpModelerPlugin` no `mod-update.sh` [DONE]
 
 - **Prioridade:** 🔴 Crítica
 - **Risco:** Médio
@@ -129,6 +130,7 @@ gantt
   - Implementar a clonagem simétrica à do Core: se a pasta não existir, clonar a partir do repositório upstream oficial.
   - Se a pasta já existir, executar fetch e checkout no commit pinado (`NAM_PLUGIN_COMMIT`).
   - Inicializar os submódulos necessários para o Plugin (`AudioDSPTools`, que por sua vez contém dependências como `eigen` e `nlohmann`).
+  - ✅ **CONCLUÍDO 2026-07-02**: Versões verificadas contra GitHub API — Core mantém v0.5.4 (`1f42f88`), Plugin corrigido para v0.7.15 (`96337e9a` — commit mantido, tag estava errada como v0.5.4). `variables.env` atualizado com `NAM_PLUGIN_TAG="v0.7.15"`. Seção `[5/5]` adicionada ao `mod-update.sh` com clone/fetch/checkout simétrico ao Core + `submodule update --init --recursive AudioDSPTools`. Header do script e fase `[4/5]` renumerados. `tests/fixtures/README.md`: WARNING "mod-update.sh não sincroniza Plugin" substituído por NOTE confirmando que ambos são sincronizados.
 
 #### 📝 Tarefa B.1.3: Atualização das Validações no `golden_gen_build.sh`
 
@@ -137,7 +139,7 @@ gantt
 - **Achado Associado:** F2 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L138-L195)
 - **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
 - **Descrição:**
-  - Ajustar as verificações iniciais (Fase 1 e 1b) para garantir que elas validem a integridade das pastas `NeuralAmpModelerPlugin` e `NeuralAmpModelerCore` usando as variáveis do arquivo [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env).
+  - Ajustar as verificações iniciais (Fase 1 e 1b) para garantir que elas validem a integridade das pastas `NeuralAmpModelerPlugin` e `NeuralAmpModelerCore` usando as variáveis do arquivo [variables.env](file:///home/fabio/nam-rs//variables.env).
   - Validar que o prompt de instruções instruindo a execução de `./utils/mod-update.sh` esteja correto e sincronizado.
 
 #### 📝 Tarefa B.1.4: Correção Factuais na Documentação Principal

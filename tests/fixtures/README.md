@@ -29,21 +29,11 @@ implementations:
 > their C++ generation infrastructure is local. Line numbers are intentionally not
 > cited here — a prior revision of this note pinned exact `.gitignore` line numbers
 > and drifted stale as the file grew; match by section comment instead.
-> [!WARNING]
-> **`utils/mod-update.sh` only syncs `NeuralAmpModelerCore`.** It does **not** clone or
-> update `NeuralAmpModelerPlugin` (required by `golden_gen_build.sh` §`[1/10]` for the
-> cabsim IR cross-validation step). If `golden_gen_build.sh` reports
-> `NeuralAmpModelerPlugin not found` or a version mismatch, running `mod-update.sh` will
-> **not** fix it — you must clone it manually at the pinned commit until this gap is
-> closed (see `TODO-findings.md` Épico B):
->
-> ```bash
-> git clone https://github.com/sdatkinson/NeuralAmpModelerPlugin.git \
->     tests/fixtures/NeuralAmpModelerPlugin
-> cd tests/fixtures/NeuralAmpModelerPlugin
-> git checkout 96337e9ab6e3beb619459779bbb5c47e1b04d8c4
-> git submodule update --init --recursive
-> ```
+> [!NOTE]
+> **`utils/mod-update.sh` now syncs both `NeuralAmpModelerCore` and
+> `NeuralAmpModelerPlugin`** (including their submodules). Run it to set up or
+> update both vendored copies to the pinned versions defined in
+> [`/variables.env`](../variables.env).
 
 ### To regenerate all fixtures from scratch
 
@@ -64,8 +54,8 @@ rm -rf tests/fixtures/NeuralAmpModelerCore \
 > `utils/tests-long.sh` automatically regenerates any missing golden vectors (requiring a C++ toolchain and local NeuralAmpModelerCore dependencies). To opt out of this auto-regeneration, run with `NAM_SKIP_GOLDEN_BUILD=1`. The environment variable `NAM_AUTO_BUILD_GOLDENS` is deprecated and ignored.
 
 When the pinned upstream commits are updated (after re-baselining goldens),
-update the `NAM_CORE_COMMIT` and `NAM_PLUGIN_COMMIT` variables at the top of
-`golden_gen_build.sh` and this section. All goldens generated from the new
+update the values in [`/variables.env`](../variables.env) (sourced by both
+`golden_gen_build.sh` and `mod-update.sh`). All goldens generated from the new
 version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory

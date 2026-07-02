@@ -4,7 +4,7 @@
 #
 # Supply chain update utility for nam-rs.
 # Updates the Rust toolchain, Cargo package indexes, dependencies in Cargo.toml/Cargo.lock,
-# and pulls the latest upstream NeuralAmpModelerCore fixtures.
+# and pulls the latest upstream NeuralAmpModelerCore and NeuralAmpModelerPlugin fixtures.
 
 set -euo pipefail
 
@@ -24,6 +24,9 @@ echo -e "${BLUE}${BOLD}=========================================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
+
+# Load pinned versions from single source of truth (variables.env).
+source "$PROJECT_DIR/variables.env"
 
 # 1. Update Rust Toolchain
 echo -e "\n${BLUE}${BOLD}[1/4] Atualizando a toolchain ativa do Rust (rustup)...${NC}"
@@ -47,21 +50,17 @@ echo -e "\n${BLUE}${BOLD}[3/4] Atualizando versões resolvidas no Cargo.lock...$
 cargo update --verbose
 
 # 4. Sync upstream C++ fixtures
-echo -e "\n${BLUE}${BOLD}[4/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
+echo -e "\n${BLUE}${BOLD}[4/5] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
-
-# Canonical tag and pinned SHA
-NAM_CORE_TAG="v0.5.4"
-NAM_CORE_SHA="1f42f88535884450104b8711d7595019afa0495b"
 
 if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
-    (cd "$FIXTURE_DIR" && git fetch --depth 1 origin tag "$NAM_CORE_TAG" && git checkout "$NAM_CORE_SHA" && git clean -df)
-    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_CORE_TAG @ $NAM_CORE_SHA)."
+    (cd "$FIXTURE_DIR" && git fetch --depth 1 origin tag "$NAM_CORE_TAG" && git checkout "$NAM_CORE_COMMIT" && git clean -df)
+    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_CORE_TAG @ $NAM_CORE_COMMIT)."
 else
     echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
-    git clone --depth 1 --branch "$NAM_CORE_TAG" https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
-    (cd "$FIXTURE_DIR" && git checkout "$NAM_CORE_SHA")
+    git clone --depth 1 --branch "$NAM_CORE_TAG" "$NAM_CORE_REPO" "$FIXTURE_DIR"
+    (cd "$FIXTURE_DIR" && git checkout "$NAM_CORE_COMMIT")
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
 
@@ -73,6 +72,28 @@ for sub in eigen AudioDSPTools; do
         (cd "$FIXTURE_DIR" && git submodule update --init "Dependencies/$sub")
     fi
 done
+
+# 5. Sync upstream NeuralAmpModelerPlugin (C++ IR reference)
+echo -e "\n${BLUE}${BOLD}[5/5] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
+PLUGIN_DIR="tests/fixtures/NeuralAmpModelerPlugin"
+
+if [ -d "$PLUGIN_DIR" ]; then
+    echo -e "  Fixtures encontradas em $PLUGIN_DIR. Atualizando..."
+    (cd "$PLUGIN_DIR" && git fetch --depth 1 origin tag "$NAM_PLUGIN_TAG" && git checkout "$NAM_PLUGIN_COMMIT" && git clean -df)
+    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas (canonical: $NAM_PLUGIN_TAG @ $NAM_PLUGIN_COMMIT)."
+else
+    echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
+    git clone --depth 1 --branch "$NAM_PLUGIN_TAG" "$NAM_PLUGIN_REPO" "$PLUGIN_DIR"
+    (cd "$PLUGIN_DIR" && git checkout "$NAM_PLUGIN_COMMIT")
+    echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
+fi
+
+# Initialize submodules for NeuralAmpModelerPlugin (AudioDSPTools → eigen, nlohmann)
+if [ "$(cd "$PLUGIN_DIR" && git submodule status AudioDSPTools | head -c1)" = "-" ]; then
+    echo -e "  Initializing submodules for NeuralAmpModelerPlugin..."
+    (cd "$PLUGIN_DIR" && git submodule update --init --recursive AudioDSPTools)
+    echo -e "  ${GREEN}✓${NC} Submodules initialized."
+fi
 
 echo -e "${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}          Toda a cadeia de suprimentos foi atualizada!          ${NC}"

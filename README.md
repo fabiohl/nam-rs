@@ -119,7 +119,7 @@ After cloning, a single command prepares all external dependencies:
 ./utils/mod-update.sh
 ```
 
-This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (v0.5.3) and [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin) with submodules.
+This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) and [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin) with submodules. Pinned versions are defined in [`/variables.env`](variables.env).
 
 #### Running the Full Test Suite
 

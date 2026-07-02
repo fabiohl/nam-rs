@@ -94,7 +94,8 @@ Fase 2's `golden_vectors` (v1) and `isa_parity` (v2), and the long suite's `cpp_
 full matrix and `golden_vectors` v2 multi-SR, do **not** measure against a live C++
 build on every run. They compare against pre-committed `.bin` golden files rendered
 once by [`tests/fixtures/golden_gen_build.sh`](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
-against a pinned `NeuralAmpModelerCore`/`NeuralAmpModelerPlugin` commit — a script
+against a pinned `NeuralAmpModelerCore`/`NeuralAmpModelerPlugin` commit (pinned
+versions defined in [`/variables.env`](../variables.env)) — a script
 intended to run *rarely*, only when a new reference model or architecture is added
 (see `tests/fixtures/README.md` for the full regeneration walkthrough and the current
 model↔golden catalog).

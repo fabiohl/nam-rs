@@ -183,12 +183,15 @@ mão — exatamente o trabalho que `mod-update.sh` existe para automatizar.
    sincronize `NeuralAmpModelerPlugin` de forma simétrica ao que já é feito para `Core`: mesmo padrão de
    clone/fetch/checkout no SHA pinado + inicialização de submódulos (`AudioDSPTools`, que por sua vez
    tem `Dependencies/eigen` e `Dependencies/nlohmann`).
-2. Extrair as constantes de commit pinado (`NAM_CORE_COMMIT`, `NAM_PLUGIN_COMMIT`, tags) para um único
-   arquivo de configuração compartilhado (ex.: `tests/fixtures/pinned_versions.env`, com `source` feito
+2. Extrair as constantes de commit pinado (`NAM_CORE_COMMIT`, `NAM_PLUGIN_COMMIT`, tags, repos) para um único
+   arquivo de configuração compartilhado (`/variables.env`, com `source` feito
    tanto por `golden_gen_build.sh` quanto por `mod-update.sh`), eliminando a duplicação atual onde o SHA
    do `Core` está hardcoded em **dois** arquivos (`golden_gen_build.sh:66` e `mod-update.sh:55`) que já
    precisam ficar sincronizados manualmente (o comentário em `golden_gen_build.sh:11-13` já reconhece
    esse acoplamento frágil: *"a mismatch causes this script's version-mismatch guard... to hard-fail"*).
+   **DECISÃO (2026-07-02):** Centralizado em `/variables.env` (raiz do projeto) com a seção "Pinned
+   vendor versions" — contém também os URLs de clone (`NAM_CORE_REPO`, `NAM_PLUGIN_REPO`) para que
+   `mod-update.sh` os consuma como variáveis em vez de strings mágicas.
 3. Corrigir `README.md:122` para não afirmar que `mod-update.sh` cobre `NeuralAmpModelerPlugin` até que
    o item 1 seja implementado (ou simultâneo a ele).
 
