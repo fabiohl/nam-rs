@@ -58,7 +58,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 
 **Foco:** Reforçar barreiras fail-closed no parser do WaveNet A1 para evitar processamento silencioso de dados inválidos.
 
-### 🟠 Tarefa T2.1: Implementar Guardrails Fail-Closed no Path Dinâmico A1
+### 🟠 Tarefa T2.1: Implementar Guardrails Fail-Closed no Path Dinâmico A1 [DONE]
 
 * **Descrição:** Rejeitar modelos WaveNet A1 livres que utilizem recursos de gating ou FiLM não portados para a arquitetura A1.
 * **Ações:**

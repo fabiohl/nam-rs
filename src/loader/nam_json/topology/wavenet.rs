@@ -324,6 +324,74 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         }
     };
 
+    // ── Guardrail: Reject A1 models with A2-specific features ──
+    // Models with gating_mode, head1x1, layer1x1, or FiLM features carry
+    // A2 semantics and cannot be processed by WaveNet A1 (catalog or free).
+    // (Finding 7.2.2 / Task T2.1; review: extended to cover catalog SKU path).
+    for (i, layer) in layers.iter().enumerate() {
+        let Some(ref raw) = layer.layer_raw else {
+            continue;
+        };
+        if let Some(gm) = raw.get("gating_mode") {
+            if let Some(arr) = gm.as_array() {
+                if arr
+                    .iter()
+                    .any(|v| !(v.as_str() == Some("none") || v.is_null()))
+                {
+                    return WavenetTopologyResult::Rejected(format!(
+                        "Layer {i} has non-none gating_mode — A2 feature not supported in WaveNet A1."
+                    ));
+                }
+            } else if !gm.is_null() {
+                return WavenetTopologyResult::Rejected(format!(
+                    "Layer {i} has non-array gating_mode — A2 feature not supported in WaveNet A1."
+                ));
+            }
+        }
+        if raw
+            .get("head1x1")
+            .and_then(|h| h.get("active"))
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false)
+        {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {i} has active head1x1 — A2 feature not supported in WaveNet A1."
+            ));
+        }
+        if raw
+            .get("layer1x1")
+            .and_then(|l| l.get("active"))
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false)
+        {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {i} has active layer1x1 — A2 feature not supported in WaveNet A1."
+            ));
+        }
+        const FILM_KEYS: &[&str] = &[
+            "conv_pre_film",
+            "conv_post_film",
+            "input_mixin_pre_film",
+            "input_mixin_post_film",
+            "activation_pre_film",
+            "activation_post_film",
+            "layer1x1_post_film",
+            "head1x1_post_film",
+        ];
+        for key in FILM_KEYS {
+            if raw
+                .get(key)
+                .and_then(|f| f.get("active"))
+                .and_then(|a| a.as_bool())
+                .unwrap_or(false)
+            {
+                return WavenetTopologyResult::Rejected(format!(
+                    "Layer {i} has active {key} — A2 feature not supported in WaveNet A1."
+                ));
+            }
+        }
+    }
+
     // ── Try matching a known catalog SKU (fast-path) ──
     if layers.len() == 2 {
         let l0 = &layers[0];
