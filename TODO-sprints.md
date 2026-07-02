@@ -93,13 +93,18 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
   * `WaveNetModelDyn::prewarm_samples()` (mod.rs:111-120): alterado para somar `receptive_field_size` de todos os arrays via `.iter().map(|a| a.receptive_field_size).sum()` e usar `+=` para `cond_dsp.prewarm_samples()` em vez de `.max()`.
   * 1077 testes passam (incluindo todos os 96 testes wavenet e 11 testes de prewarm).
 
-### 🟡 Tarefa T3.2: Ajustar Propagação de Saída de Cabeça no Cascade A2
+### 🟡 Tarefa T3.2: Ajustar Propagação de Saída de Cabeça no Cascade A2 [DONE]
 
 * **Descrição:** Garantir que o cascade A2 dinâmico propague as saídas de áudio pós-recanalização, e não o buffer bruto acumulado da cabeça.
 * **Ações:**
   1. Modificar a lógica de encadeamento em `src/models/a2/cascade.rs` (ou correspondente) para extrair o sinal recanalizado da cabeça do estágio anterior.
 * **Verificação:** `cargo test` geral.
 * **Referência:** Finding 7.4.2.
+* **Conclusão (2026-07-02):**
+  * `cascade.rs`: Adicionado buffer `intermediate_head_output` e campo `max_head_size` ao `WaveNetA2Cascade`.
+  * `cascade.rs`: `process_internal` reestruturado para que arrays intermediários computem a saída de cabeça pós-recanalização (`cascade_head_finalize`) e a propaguem para o array seguinte através do novo método `cascade_seed_head_from_output`.
+  * `process.rs`: Substituído o método `cascade_seed_head` (que copiava `head_accum` bruto com stride incorreto usando `channels` em vez de `head_accum_size`) por `cascade_seed_head_from_output` que recebe a saída de cabeça já processada.
+  * 1077 testes passam (incluindo todos os 235 testes A2, 96 testes wavenet e o golden vector `test_golden_vectors_wavenet_condition_dsp` do modelo cascade multi-array).
 
 ### 🟡 Tarefa T3.3: Implementar Convolução de Cabeça Completa no A2 para `head_size > 1`
 

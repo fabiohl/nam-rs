@@ -40,8 +40,13 @@ pub struct WaveNetA2Cascade {
     /// Cascade residual buffer: stores array N's layer_in output for array N+1.
     /// Size: `max_channels * WAVENET_MAX_NUM_FRAMES`.
     cascade_residual: AlignedVec<f32>,
+    /// Intermediate head output buffer: stores array N's post-rechannel head
+    /// output to seed array N+1's head_accum. Size: `max_head_size * max_buffer_size`.
+    intermediate_head_output: AlignedVec<f32>,
     /// Largest per-array channel count (for cascade scratch sizing).
     max_channels: usize,
+    /// Largest per-array head_size (for intermediate head output sizing).
+    max_head_size: usize,
     /// Maximum frames per processing block.
     max_buffer_size: usize,
 }
@@ -61,6 +66,7 @@ impl WaveNetA2Cascade {
             .max()
             .unwrap_or(0);
         let max_ch = arrays.iter().map(|a| a.channels).max().unwrap_or(1);
+        let max_hs = arrays.iter().map(|a| a.head_size).max().unwrap_or(1);
         let cond_buf_size = if condition_dsp.is_some() {
             condition_size
         } else {
@@ -74,7 +80,9 @@ impl WaveNetA2Cascade {
             condition_size,
             prewarm_on_reset: true,
             cascade_residual: AlignedVec::new(max_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            intermediate_head_output: AlignedVec::new(max_hs * WAVENET_MAX_NUM_FRAMES, 0.0f32),
             max_channels: max_ch,
+            max_head_size: max_hs,
             max_buffer_size: WAVENET_MAX_NUM_FRAMES,
         }
     }
@@ -136,32 +144,47 @@ impl WaveNetA2Cascade {
                 arr0.cascade_set_condition(cond_slice, nf, arr0.condition_size);
                 arr0.cascade_layer_loop::<M>(nf, input, pos, true, arr0.condition_size, true);
 
-                // Save residual for next array.
+                // Save residual and compute head output for next array.
                 let ch0 = arr0.channels;
                 self.cascade_residual[0..nf * ch0].copy_from_slice(&arr0.layer_in[0..nf * ch0]);
+                if num_arrays > 1 {
+                    let hs = arr0.head_size;
+                    arr0.cascade_head_finalize(nf, &mut self.intermediate_head_output[0..nf * hs]);
+                }
             }
 
-            // Arrays 1..N-1: residual from previous, head seed from previous.
+            // Arrays 1..N-1: residual from previous, head seed from
+            // previous array's post-rechannel head output.
             for ai in 1..num_arrays {
                 let prev_ch = self.arrays[ai - 1].channels;
+                let prev_hs = self.arrays[ai - 1].head_size;
 
-                // Split mutable borrow.
-                let (left, right) = self.arrays.split_at_mut(ai);
-                let prev = &left[ai - 1];
+                let (_left, right) = self.arrays.split_at_mut(ai);
                 let curr = &mut right[0];
 
-                // Seed head_accum from previous array.
-                curr.cascade_seed_head(prev, nf);
+                // Seed head_accum from previous array's post-rechannel head output.
+                curr.cascade_seed_head_from_output(
+                    &self.intermediate_head_output[0..nf * prev_hs],
+                    nf,
+                    prev_hs,
+                );
 
                 // Write residual input.
                 curr.cascade_write_residual_input(&self.cascade_residual, nf, prev_ch);
                 curr.cascade_set_condition(cond_slice, nf, curr.condition_size);
                 curr.cascade_layer_loop::<M>(nf, input, pos, true, curr.condition_size, false);
 
-                // Save residual for next array.
+                // Save residual and compute head output for next array (if not last).
                 let curr_ch = curr.channels;
                 self.cascade_residual[0..nf * curr_ch]
                     .copy_from_slice(&curr.layer_in[0..nf * curr_ch]);
+                if ai < num_arrays - 1 {
+                    let curr_hs = curr.head_size;
+                    curr.cascade_head_finalize(
+                        nf,
+                        &mut self.intermediate_head_output[0..nf * curr_hs],
+                    );
+                }
             }
 
             // Finalize head on the last array.
@@ -188,6 +211,7 @@ impl WaveNetA2Cascade {
         let cond_output_size = self.condition_size * max_buf;
         self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32);
         self.cascade_residual = AlignedVec::new(self.max_channels * max_buf, 0.0f32);
+        self.intermediate_head_output = AlignedVec::new(self.max_head_size * max_buf, 0.0f32);
         Ok(())
     }
 

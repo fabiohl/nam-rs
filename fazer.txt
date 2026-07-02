@@ -1,7 +1,7 @@
-* /revisor-auditor [Sonnet][Fable] totalmente focado na role "Compliance and Parity Auditor".
+* /revisor-auditor [Sonnet] totalmente focado na role "Compliance and Parity Auditor".
   Auditar e atualizar o "docs/cpp_parity_map.md" e o "tests/fixtures/README.md". Atualizados, limpos, úteis!
   Assegure que os testes acionáveis por "utils/tests-quick.sh" estão calibrados e corretos.
-  E o que os seus resultados dizem da qualidade do nam-rs que possam ser melhorados.
+  E considerar o que os seus resultados dizem do estado da qualidade do nam-rs - especialmente no que possa ser melhorado.
 * /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
   Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "tests/fixtures/golden_gen_build.sh"
   Tendo muito em vista o espírito e os objetivos da arquitetura de testes (vide "docs/testing.md"), analise criticamente o que temos aqui.

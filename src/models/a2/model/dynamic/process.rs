@@ -428,21 +428,29 @@ impl WaveNetA2Dyn {
         dest[0..nf * cond_size].copy_from_slice(&cond_buf[0..nf * cond_size]);
     }
 
-    /// Seeds this array's head_accum from a previous array's head_accum.
-    /// Only copies up to `min(src_ch, dst_ch)` channels per frame.
+    /// Seeds this array's head_accum from the previous array's post-rechannel
+    /// head output (computed by `cascade_head_finalize`).
+    ///
+    /// Copies `min(prev_head_size, self.head_accum_size)` channels per frame,
+    /// zero-filling the remainder.
     #[inline(always)]
-    pub(crate) fn cascade_seed_head(&mut self, prev: &Self, nf: usize) {
-        let prev_ch = prev.channels.min(self.channels);
-        let prev_wp = prev.head_write_pos;
-        let prev_mask = prev.head_ring_mask;
-        let prev_head = &prev.head_accum;
+    pub(crate) fn cascade_seed_head_from_output(
+        &mut self,
+        prev_head_output: &[f32],
+        nf: usize,
+        prev_head_size: usize,
+    ) {
+        let copy_ch = prev_head_size.min(self.head_accum_size);
         let curr_wp = self.head_write_pos;
         let curr_head = &mut self.head_accum;
         for f in 0..nf {
-            let prev_off = ((prev_wp + f) & prev_mask) * prev.channels;
+            let prev_off = f * prev_head_size;
             let curr_off = ((curr_wp + f) & self.head_ring_mask) * self.head_accum_size;
-            for c in 0..prev_ch {
-                curr_head[curr_off + c] = prev_head[prev_off + c];
+            for c in 0..copy_ch {
+                curr_head[curr_off + c] = prev_head_output[prev_off + c];
+            }
+            for c in copy_ch..self.head_accum_size {
+                curr_head[curr_off + c] = 0.0;
             }
         }
     }
