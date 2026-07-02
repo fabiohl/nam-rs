@@ -421,7 +421,7 @@ gantt
   - A função `phase()` deve incrementar dinamicamente a variável `$PHASE_NUM` e imprimir o cabeçalho no formato `[PHASE_NUM/PHASE_TOTAL] Descrição...` com cores ANSI.
   - Importar via `source` o helper em [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) (PHASE_TOTAL=5) e [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) (PHASE_TOTAL=11), substituindo todas as strings de fases hardcoded.
 
-#### 📝 Tarefa H.1.2: Consolidação da Rationale v2_scope=none [TODO]
+#### 📝 Tarefa H.1.2: Consolidação da Rationale v2_scope=none [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Nulo

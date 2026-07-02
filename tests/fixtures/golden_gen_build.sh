@@ -279,6 +279,30 @@ phase "Running render for each model (v1)..."
 #     none     — no v2 golden generation for this model
 #   skip_srs (optional, comma-separated) — sample rates NOT to generate in v2,
 #   kept in sync with test SR sets in tests/golden_vectors.rs
+#
+# Rationale for v2_scope=none (A2 dynamic/FiLM models):
+#   The 4 dynamic/FiLM models (a2_dynamic_gated_ch8, a2_dynamic_blended_ch3,
+#   wavenet_a2_film_lite, wavenet_a2_film_full) are intentionally v2_scope=none
+#   for two independent technical reasons:
+#
+#   1. C++ upstream limitation: the a2_fast.cpp render path rejects FiLM-conditioned
+#      models and falls back to the Eigen-based generic WaveNet engine. The generic
+#      engine does not consistently support multi-sample-rate rendering for FiLM
+#      architectures — attempting v2 multi-SR renders for these models would produce
+#      unreliable (or rejected) C++ reference outputs.
+#
+#   2. Dynamic engine coverage is a superset: these models are routed through
+#      WaveNetA2Dyn (the dynamic engine with native FiLM support) at test time.
+#      The dynamic engine handles arbitrary free geometries — geometry variance
+#      subsumes sample-rate variance in practice. Live multi-SR cross-validation
+#      is exercised via cpp_parity (live C++ toolchain) for dynamic engines, and
+#      the v1 golden at 48 kHz provides the essential committed cross-reference.
+#      Generating v2 multi-SR goldens here would produce ~28 MB of binary files
+#      without any Rust test consumer (golden_vectors v2 skips tests whose
+#      corresponding CATALOG entry has v2_scope=none).
+#
+#   This rationale is the single source of truth — docs/testing.md and
+#   tests/fixtures/README.md reference this comment rather than duplicating it.
 CATALOG=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard (CH=16):48k_only"
     "EVH-5150-Lite.nam:golden_wavenet_lite:WaveNet Lite (CH=12):all"

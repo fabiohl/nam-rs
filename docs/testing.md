@@ -111,10 +111,9 @@ of this table should be aware of when interpreting "coverage":
 
 - **A2 dynamic/FiLM v2 multi-SR gap:** `golden_gen_build.sh` auto-generates v1 goldens
   (48000 Hz) for `golden_a2_dynamic_{gated_ch8,blended_ch3}.bin` and
-  `golden_wavenet_a2_film_{full,lite}.bin` (step `[3/11]` builds `.nam` models via
-  `generate_a2_fixtures.py`; step `[7/11]` renders v1 goldens). v2 multi-SR goldens are
-  intentionally skipped (`v2_scope=none`) because the C++ upstream does not consistently
-  support multi-SR FiLM architectures.
+  `golden_wavenet_a2_film_{full,lite}.bin`. v2 multi-SR goldens are intentionally skipped
+  (`v2_scope=none`) — see the CATALOG rationale comment in
+  `tests/fixtures/golden_gen_build.sh` for the full technical explanation.
 - **Linear FFT goldens.** `golden_gen_build.sh` generates
   `golden_linear_fft_rf{320,2048,4096,8192}.bin` for 4 Linear FFT models at 48 kHz
   (CATALOG entries with `v2_scope=48k_only`). `tests/linear_fft_test.rs` runs in

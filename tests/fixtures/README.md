@@ -90,10 +90,10 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 > - `golden_wavenet_a2_film_{full,lite}.bin`, `golden_a2_dynamic_gated_ch8.bin`, and
 >   `golden_a2_dynamic_blended_ch3.bin` are now **auto-generated** by
 >   `golden_gen_build.sh` for v1 (48000 Hz). Their `.nam` source models are built by
->   `tests/fixtures/generate_a2_fixtures.py` in step `[3/11]`, and v1 goldens are
->   rendered in step `[7/11]`. v2 multi-SR goldens are intentionally skipped
->   (`v2_scope=none`) because the C++ upstream does not support multi-SR for FiLM
->   architectures consistently.
+>   `tests/fixtures/generate_a2_fixtures.py`, and v1 goldens are rendered by the
+>   script's v1 loop. v2 multi-SR goldens are intentionally skipped
+>   (`v2_scope=none`) — see the CATALOG rationale comment in
+>   `golden_gen_build.sh` for the technical explanation.
 > - `golden_cabsim_cpp_stress.bin` has been **removed**. `tests/fixtures/render_ir.cpp`
 >   only implements 3 scenarios (short, medium, long) because the C++
 >   `dsp::ImpulseResponse` engine hard-caps IR length at 8192 samples (`mMaxLength`),
@@ -276,7 +276,7 @@ by the test suite.
 | Excl. 192k  | `lstm_1x16`, `lstm_2x8` (recurrent drift > 18 dB SNR at 192k over 960k samples)                                                                                 |
 | 48 kHz only | `wavenet_dyn_free`, `lstm_dyn_test`, `a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*` (dynamic engines — intentional, see rationale below) |
 
-**v2 multi-SR coverage for dynamic engines:** The dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) only provide v1 golden vectors at 48 kHz. v2 multi-SR goldens are intentionally absent because: (a) dynamic engines handle arbitrary free geometries — the geometry variance subsumes sample-rate variance in practice; (b) live cross-validation in `tests/cpp_parity.rs` already exercises multi-SR parity via the C++ toolchain for `wavenet_dyn_free` and `lstm_dyn_test`; (c) A2 dynamic geometries (`a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface for the fixed A2 fast-path and not part of the v2 golden pipeline. See `docs/cpp_parity_map.md` §3.3.
+**v2 multi-SR coverage for dynamic engines:** The dynamic engines (`WaveNetModelDyn`, `LstmModelDyn`, `WaveNetA2Dyn`) only provide v1 golden vectors at 48 kHz. v2 multi-SR goldens are intentionally absent — see the CATALOG rationale comment in `golden_gen_build.sh` for the full technical explanation. For A2 dynamic/FiLM specifically, the C++ upstream `a2_fast` path rejects FiLM-conditioned models and the generic Eigen fallback engine does not consistently support multi-SR FiLM renderings. See also `docs/cpp_parity_map.md` §3.3.
 
 **v2 files** (`golden_<model_id>_v2_<sr>.bin`): Multi-sample-rate goldens using Stress Signal v2 (5 seconds, multi-component, covering all 5 stimulus categories GA/FRG/P/BA/PA in a single file). Naming schema:
 
