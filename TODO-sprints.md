@@ -42,6 +42,7 @@ gantt
   - Garantir que erros individuais de renderização não causem a parada abrupta do script devido ao `set -e` global.
   - Implementar verificação explícita do status de saída do comando de renderização.
   - Permitir que o loop continue para os modelos restantes usando `continue`.
+  - ✅ **CONCLUÍDO 2026-07-02**: Padrão adotado: `set +o pipefail` local + captura explícita de `$?` + restauração de `pipefail`, seguindo a abordagem "mais robusta e sem subshell" proposta em F1. O loop v2 (linha 370) já usava subshell como workaround; o loop v1 agora usa o mesmo tratamento de erro explícito. Nenhuma outra chamada de pipeline em loop com `continue` foi encontrada — todas as demais estão fora de loops e abortar via `set -e` é o comportamento correto.
 
 #### 📝 Tarefa A.1.2: Persistência de Logs Completos por Fase
 

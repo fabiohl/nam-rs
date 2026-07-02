@@ -270,10 +270,12 @@ for entry in "${MODELS[@]}"; do
         continue
     fi
 
+    set +o pipefail
     "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
-
-    if [ ! -f "$OUTPUT_WAV" ]; then
-        echo "  ERROR: Render failed for $label"
+    render_status=$?
+    set -o pipefail
+    if [ "$render_status" -ne 0 ] || [ ! -f "$OUTPUT_WAV" ]; then
+        echo "  ERROR: Render failed for $label (exit=$render_status)"
         continue
     fi
 
