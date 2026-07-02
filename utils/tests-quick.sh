@@ -2,18 +2,53 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
-# Standard quality control and testing script for nam-rs — unified PR gate.
+# Quick QA Suite for nam-rs — agile first line of defense (vocaçao: cargo test).
 #
-# Phases:
-#   1. Cargo clippy strict (standalone + CLAP plugin features)
-#   2. Unit/integration tests (fast feedback, debug mode)
-#   3. Medium validation suite (C++ parity + proptest parsers + proptest math, release mode, ignored)
-#   4. Build CLAP plugin (debug + heap-audit)
-#   5. CLAP integration and heap-audit tests
-#   6. CLAP validator (external)
+# Divisão de trabalho entre os scripts de QA:
+#   * utils/lints.sh            — gate estático (fmt, SPDX, cargo check, clippy).
+#                                  Roda a todo momento. NÃO se repete aqui.
+#   * utils/tests-quick.sh      — ESTE script. Suíte ágil de testes (cargo test
+#                                  e assemelhados). Roda várias vezes ao dia, ao
+#                                  menos a cada sprint. Primeira linha defensiva
+#                                  confiável: captura problemas rápido sem
+#                                  desestimular a execução (~2-3 min).
+#   * utils/tests-long.sh      — caçador de bugs extremos (soak, proptests
+#                                  completos, paridade C++ full, CLAP release,
+#                                  concorrência, bench, RT). Demorado, ~1×/dia.
 #
-# Phase 3 requires NeuralAmpModelerCore (./utils/mod-update.sh) and golden vectors.
-# It is gracefully skipped if not available, emitting a warning.
+# Princípio filosófico (docs/testing.md §7 — dois eixos ortogonais):
+#   Eixo A (rigorosidade):  ignored = long/rigoroso; non-ignored = primeira linha.
+#   Eixo B (caminho float): estrutural → debug (rápido, debug-assertions ON);
+#                           oráculo de medida → release (mede o path de produção,
+#                           sem o qual mediria um "fantasma" — codegen sem -O,
+#                           sem contração FMA, sem auto-vetorização).
+#   A Fase 1 guarda o eixo A (non-ignored) no eixo B correto (debug estrutural).
+#   A Fase 2 guarda os oráculos de medida do §7 no eixo B de produção (release).
+#
+# Fases:
+#   1. Estrutural (debug) — unit (lib) + integração determinística. Compilação
+#      rápida, debug-assertions ON. Verifica lógica de parser, máquinas de
+#      estado, loaders, SPSC, determinismo bitwise, FSM. EXCLUI os 5 oráculos de
+#      medida do §7 (→ Fase 2 release) e rt_deadline (→ long, gate de release).
+#   2. Oráculos de medida (release, docs/testing.md §7) — gate autoritativo de
+#      floats de produção: golden_vectors v1, cpp_parity quick_parity,
+#      reference_oracle_f64, isa_parity (AVX2 self-consistency), spectral_fidelity.
+#      Skip gracioso para os dependentes de NAMCore/goldens ausentes.
+#   3. Parser fuzzing ágil (release, --ignored) — proptest_parsers (Tier 1:
+#      robustez/segurança de parser) com contagem de casos reduzida para
+#      permanecer ágil (override via NAM_QUICK_PROPTEST_CASES).
+#
+# Notas de cobertura:
+#   - Clippy/cargo check ficam em lints.sh (nao duplicados aqui).
+#   - Bloco CLAP (build + heap-audit + validator) e testes feature-gated
+#     (heap-audit/clap) ficam em tests-long.sh (release, superconjunto).
+#   - proptest_math (Tier 3) e rt_deadline/rt_jitter(stress)/soak ficam no long.
+#   - A Fase 1 lista EXPLICITAMENTE os testes estruturais porque `--skip` por
+#     nome colide (ex.: `test_oracle` atingiria threshold_calibration;
+#     `test_asr` atingiria unitários de aliasing). Manutenção: ao adicionar um
+#     novo teste estrutural em tests/, inclua-o em STRUCTURAL_TESTS abaixo
+#     (vide inventário em docs/testing.md §3). A auto-descoberta de unit tests
+#     (lib) é preservada.
 
 set -euo pipefail
 
@@ -44,142 +79,100 @@ fi
 
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
-echo -e "${BLUE}${BOLD}=================================================${NC}"
-echo -e "${BLUE}${BOLD}      nam-rs Quick QA Suite (± 5,0 minutes)      ${NC}"
-echo -e "${BLUE}${BOLD}=================================================${NC}"
+echo -e "${BLUE}${BOLD}=====================================${NC}"
+echo -e "${BLUE}${BOLD}   nam-rs Quick QA Suite"
+echo -e "${BLUE}${BOLD}   ± 35 seconds on "hot" target dir${NC}"
+echo -e "${BLUE}${BOLD}   ± 5,5 minutes on "cold" target dir${NC}"
+echo -e "${BLUE}${BOLD}=====================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-CLAP_BIN_RAW="target/debug/libnam_rs.so"
-CLAP_BIN="target/debug/libnam_rs_validated.so"
+# ── Fase 1: Estrutural (debug) ──────────────────────────────────────────────
+# Unit tests (lib, auto-descobertos) + integração determinística (lista explícita).
+# Exclui os 5 oráculos de medida do §7 (→ Fase 2 release) e rt_deadline (→ long).
+# debug-assertions ON captura invariantes baratos que --release mascararia.
+echo -e "\n${BLUE}${BOLD}[1/3] Estrutural: unit + integração determinística (debug)...${NC}"
 
-# Helper to compute SHA256 of a file
-get_sha256() {
-    sha256sum "$1" | cut -d' ' -f1
-}
+STRUCTURAL_TESTS=(
+    a2_loader activation_precision adaptive_fsm_proptest cabsim_golden
+    concurrency_stress container_slimmable diagnostic_bundle ebu_lufs_compliance
+    fixture_b1_2_smoke linear_fft_test linear_golden lstm_activation_precision
+    lstm_model_dyn_validation mirror_buf_fault_injection nam_infer_test
+    namb_v2_roundtrip namb_v2_validation nondist_validation parity_primitives
+    prewarm_test proptest_math self_consistency soak_test spsc_pipeline
+    threshold_calibration wavenet_lite_block_invariance wavenet_prewarm_edge
+    zero_alloc_infer
+)
+cargo test --lib "${STRUCTURAL_TESTS[@]/#/--test=}"
 
-# Helper to run cargo commands with the CLAP profile, features, and environment variables
-cargo_clap() {
-    local action="$1"
-    shift
-    CLAP_PLUGIN_PATH="$CLAP_BIN" \
-    NAM_HEAP_AUDIT=1 \
-    RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-      cargo "$action" --profile test --no-default-features --features "clap-plugin,heap-audit,testing" "$@"
-}
+# ── Fase 2: Oráculos de medida (release, docs/testing.md §7) ───────────────
+# Gate autoritativo de floats de produção: medem o caminho de codegen que o
+# usuário executa. Em debug mediriam um "fantasma" (sem contração FMA / vet.).
+echo -e "\n${BLUE}${BOLD}[2/3] Oráculos de medida (release — gate de floats de produção)...${NC}"
 
-# 1. Clippy strict (standalone + CLAP plugin features — focused PR gate coverage)
-echo -e "\n${BLUE}${BOLD}[1/6] Executando análise estática estrita (cargo clippy)...${NC}"
-echo -e "  Clippy: Standalone..."
-cargo clippy --all-targets --features standalone -- -D warnings
-echo -e "  Clippy: CLAP Plugin..."
-cargo clippy --all-targets --no-default-features --features clap-plugin,testing -- -D warnings
+MEASUREMENT_STATUS=0
+GOLDEN_RAN=false
 
-# Track whether medium validation ran (for summary message)
-MEDIUM_RUN=false
+# Combina os oráculos em UMA invocação cargo por ramo de dependência, para que
+# o nam-rs (rlib release) seja compilado UMA vez por ramo — não uma por teste.
+# A rodada anterior recompilava nam-rs ~5× (~44s cada = ~220s desperdiçados).
+# isa_parity exige --test-threads=1 (§7); os demais toleram (todos < 2s).
 
-# 2. Standard tests (fast feedback)
-echo -e "\n${BLUE}${BOLD}[2/6] Executando testes unitários e de integração...${NC}"
-cargo test
-
-# 3. Medium validation suite — C++ Parity + Proptests (release, ignored)
-#    These provide robust parser/SIMD/parity guarantees for the PR gate without
-#    waiting for the full long-duration suite.  Gracefully skipped when golden
-#    vectors or NeuralAmpModelerCore are not available.
-echo -e "\n${BLUE}${BOLD}[3/6] Executando suíte de validação intermediária...${NC}"
-GOLDENS_OK=0
-if [ -d "tests/fixtures/NeuralAmpModelerCore" ] && [ -f "tests/fixtures/golden_cabsim_cpp_short.bin" ]; then
-    GOLDENS_OK=1
-fi
-
-if [ "$GOLDENS_OK" -eq 1 ]; then
-    MEDIUM_RUN=true
-    MEDIUM_STATUS=0
-
-    echo -e "  ${BLUE}→ C++ Parity (subconjunto rápido: LSTM + WaveNet CH16 + A2 @ 48 kHz)...${NC}"
-    cargo test --release --test cpp_parity -- quick_parity --nocapture || MEDIUM_STATUS=1
-
-    echo -e "  ${BLUE}→ Proptest Parsers (fuzzing de loaders)...${NC}"
-    cargo test --release --test proptest_parsers -- --ignored --nocapture || MEDIUM_STATUS=1
-
-    echo -e "  ${BLUE}→ Proptest Math (precisão SIMD)...${NC}"
-    cargo test --release --test proptest_math -- --ignored --nocapture || MEDIUM_STATUS=1
-
-    if [ "$MEDIUM_STATUS" -ne 0 ]; then
-        echo -e "${RED}${BOLD}❌ Suíte de validação intermediária falhou.${NC}"
-        exit 1
-    fi
+# Ramo A — sempre executáveis (deps committed: modelos .nam + f64_anchors /
+# sinais sintéticos). f64 Oracle + Spectral Fidelity.
+# Ramo B — acrescenta golden_vectors (v1) + isa_parity (v2) quando goldens
+# committed estão presentes (estes hard-fail sem goldens, por isso o gate).
+if [ -f "tests/fixtures/golden_wavenet_standard.bin" ] && [ -f "tests/fixtures/golden_wavenet_standard_v2_48000.bin" ]; then
+    GOLDEN_RAN=true
+    echo -e "  ${BLUE}→ f64 Oracle + Spectral + Golden v1 + ISA parity (release, 1 compilação)...${NC}"
+    cargo test --release \
+        --test reference_oracle_f64 --test spectral_fidelity \
+        --test golden_vectors --test isa_parity \
+        -- --test-threads=1 --nocapture || MEASUREMENT_STATUS=1
 else
-    echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore ou golden vectors não encontrados.${NC}"
-    echo -e "  ${YELLOW}  Execute './utils/mod-update.sh' para configurar as dependências.${NC}"
-    echo -e "  ${YELLOW}  Pulando validação intermediária (cpp_parity + proptests).${NC}"
+    echo -e "  ${YELLOW}ⓘ Golden vectors (v1/v2) não encontrados — golden_vectors + isa_parity pulados.${NC}"
+    echo -e "  ${YELLOW}  Execute './tests/fixtures/golden_gen_build.sh' para gerá-los.${NC}"
+    echo -e "  ${BLUE}→ f64 Oracle + Spectral Fidelity (release, 1 compilação)...${NC}"
+    cargo test --release \
+        --test reference_oracle_f64 --test spectral_fidelity \
+        -- --nocapture || MEASUREMENT_STATUS=1
 fi
 
-# 4. Build CLAP plugin debug binary with heap-audit
-echo -e "\n${BLUE}${BOLD}[4/6] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
-cargo_clap build --lib
+# C++ Parity — invocação SEPARADA porque o filtro `quick_parity` (necessário
+# para rodar só o subconjunto ágil) suprimiria os demais oráculos se combinado.
+# Self-skip gracioso se o render C++ não estiver compilado.
+if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
+    echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
+    cargo test --release --test cpp_parity -- quick_parity --nocapture || MEASUREMENT_STATUS=1
+else
+    echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore não encontrado. Execute './utils/mod-update.sh'.${NC}"
+    echo -e "  ${YELLOW}  Pulando cpp_parity (paridade live C++).${NC}"
+fi
 
-if [ ! -f "$CLAP_BIN_RAW" ]; then
-    echo -e "${RED}Erro: Falha ao encontrar a biblioteca do CLAP em $CLAP_BIN_RAW!${NC}"
+if [ "$MEASUREMENT_STATUS" -ne 0 ]; then
+    echo -e "${RED}${BOLD}❌ Gate de oráculos de medida (release) falhou.${NC}"
     exit 1
 fi
 
-# Preservar o binário compilado em um local estável para evitar modificações por etapas subsequentes
-cp "$CLAP_BIN_RAW" "$CLAP_BIN"
-HASH_PHASE4=$(get_sha256 "$CLAP_BIN")
-echo -e "  Preservado binário da fase 4: $CLAP_BIN"
-echo -e "  SHA256 do binário compilado: ${GREEN}${HASH_PHASE4}${NC}"
+# ── Fase 3: Parser fuzzing ágil (release, --ignored) ───────────────────────
+# Tier 1: robustez/segurança de parser. Contagem reduzida para agilidade first-line
+# (o long suite roda a contagem completa 5000/100000). Override via env.
+# (proptest_math — Tier 3: consistência/locator — já roda na Fase 1 e no long.)
+echo -e "\n${BLUE}${BOLD}[3/3] Parser fuzzing ágil (release)...${NC}"
+PROPTEST_CASES="${NAM_QUICK_PROPTEST_CASES:-1000}" \
+    cargo test --release --test proptest_parsers -- --ignored --nocapture
 
-# 5. CLAP integration and heap-audit tests
-echo -e "\n${BLUE}${BOLD}[5/6] Executando testes de integração CLAP e auditoria de heap...${NC}"
-
-# A) CLAP Library tests
-cargo_clap test --lib clap::
-
-# B) Targeted integration tests
-cargo_clap test \
-  --test a2_heap_audit \
-  --test cabsim_heap_audit \
-  --test resampler_heap_audit \
-  --test clap_lifecycle_test \
-  --test clap_state_migration \
-  --test clap_multi_instance
-
-# C) Diagnostic bundle heap variant test
-cargo_clap test --test diagnostic_bundle heap_audit
-
-# 6. Run the official CLAP validator if available
-echo -e "\n${BLUE}${BOLD}[6/6] Executando validação via clap-validator...${NC}"
-if command -v clap-validator >/dev/null 2>&1; then
-  # Validar que o binário a ser testado pelo clap-validator é rigorosamente o da fase 4
-  HASH_PHASE6=$(get_sha256 "$CLAP_BIN")
-  echo -e "  SHA256 do binário na fase 4: ${GREEN}${HASH_PHASE4}${NC}"
-  echo -e "  SHA256 do binário na fase 6: ${GREEN}${HASH_PHASE6}${NC}"
-  if [ "$HASH_PHASE4" != "$HASH_PHASE6" ]; then
-    echo -e "${RED}Erro: O checksum do binário mudou entre as fases 4 e 6!${NC}"
-    exit 1
-  else
-    echo -e "  ${GREEN}✓${NC} Checksum correspondente comprovado."
-  fi
-
-  CLAP_PLUGIN_PATH="$CLAP_BIN" \
-    NAM_HEAP_AUDIT=1 \
-    clap-validator validate "$CLAP_BIN"
-  echo -e "  ${GREEN}✓${NC} Validação com clap-validator finalizada."
-else
-  echo -e "${YELLOW}Aviso: clap-validator não encontrado. Pulando etapa de validação.${NC}"
-fi
-
-if [ "$MEDIUM_RUN" = true ]; then
+# ── Resumo ──────────────────────────────────────────────────────────────────
+if [ "$GOLDEN_RAN" = true ]; then
     echo -e "${GREEN}${BOLD}================================================================${NC}"
-    echo -e "${GREEN}${BOLD}               Todos os testes padrão passaram!                 ${NC}"
+    echo -e "${GREEN}${BOLD}      Todos os testes rápidos passaram! (estrutural + medida)     ${NC}"
     echo -e "${GREEN}${BOLD}================================================================${NC}"
 else
     echo -e "${YELLOW}${BOLD}================================================================${NC}"
-    echo -e "${YELLOW}${BOLD}         Testes padrão passaram (validação intermediária        ${NC}"
-    echo -e "${YELLOW}${BOLD}          foi pulada — gere os golden vectors primeiro)         ${NC}"
+    echo -e "${YELLOW}${BOLD}    Testes rápidos passaram (golden_vectors + isa_parity         ${NC}"
+    echo -e "${YELLOW}${BOLD}     pulados — gere os golden vectors para cobertura completa)      ${NC}"
     echo -e "${YELLOW}${BOLD}================================================================${NC}"
 fi

@@ -378,7 +378,7 @@ run_phase \
 # --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit" \
-    'status=0; timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; [ $status -eq 0 ]' \
+    'status=0; timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; timed_cargo_test "diagnostic_bundle_heap_audit" --release --no-fail-fast --features heap-audit --test diagnostic_bundle -- heap_audit || status=1; [ $status -eq 0 ]' \
     "phase3-heap-audit.log" || true
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
@@ -423,6 +423,10 @@ run_clap_audit_local() {
     else
         echo "  Aviso: clap-validator ou jq indisponíveis. Pulando auditoria externa."
     fi
+
+    echo "  Executando testes de integração CLAP (lifecycle + state migration)..."
+    timed_cargo_test "clap_lifecycle_test" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_lifecycle_test -- --nocapture || audit_status=1
+    timed_cargo_test "clap_state_migration" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_state_migration -- --nocapture || audit_status=1
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
     timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_multi_instance -- --ignored --nocapture || audit_status=1

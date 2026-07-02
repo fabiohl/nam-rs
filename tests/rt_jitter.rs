@@ -135,6 +135,7 @@ fn run_jitter_test(label: &str, model: &mut nam_rs::models::StaticModel, stress_
 
 /// Baseline — no stress.
 #[test]
+#[ignore]
 fn test_jitter_baseline_wavenet_standard() {
     if let Some(mut model) = load_and_prewarm("BossWN-standard.nam") {
         run_jitter_test("WaveNet-Std-baseline", &mut model, 0);
@@ -143,6 +144,7 @@ fn test_jitter_baseline_wavenet_standard() {
 
 /// Light stress — 1 background CPU-burn thread.
 #[test]
+#[ignore]
 fn test_jitter_stress_1_wavenet_standard() {
     if let Some(mut model) = load_and_prewarm("BossWN-standard.nam") {
         run_jitter_test("WaveNet-Std-stress-1", &mut model, 1);

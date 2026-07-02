@@ -26,6 +26,7 @@ Use this skill for a general and holistic codebase review in search of architect
 * `Neural Amp Modeler Core` (or just "NAMcore") is the primary source of truth - It is the target. All the others are just helpers to better achieve other objectives.
 * Inspect and diagnose exact mathematical compatibility and maximum audio fidelity.
 * Guarantee that the test suite (`utils/`) adopts the most rigorous and deterministic practices possible, acting as the pillar of quality for nam-rs.
+* Guarantee that the test suite (`docs/`) guard and guide the principles and philosofies of compliance and parity.
 
 ### Resilience and Robustness Specialist
 
