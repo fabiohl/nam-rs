@@ -171,7 +171,7 @@ gantt
 
 ### 🏃 Sprint C.1: Consolidação do Catálogo e Meta-Testes (Duração: Est. 4 dias)
 
-#### 📝 Tarefa C.1.1: Consolidação de Arrays no Gerador de Goldens
+#### 📝 Tarefa C.1.1: Consolidação de Arrays no Gerador de Goldens [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Médio (precisa garantir que todos os 20+ modelos sejam migrados sem erros de sintaxe ou perda de propriedades)
