@@ -353,3 +353,126 @@ fn test_oracle_gates_below_placebo_threshold() {
         assert!(A2_ESR_LIMIT < 1.0, "A2 oracle gate is placebo (≥ 1.0)");
     }
 }
+
+/// Tarefa G.1.2 — Eixo B isolation guard-rail.
+///
+/// Ensures that no structural test (Phase 1, debug, `STRUCTURAL_TESTS`)
+/// references golden `.bin` files or `golden_vectors` test functions.
+/// Structural tests run with debug assertions ON, where float codegen
+/// is a "phantom" (no `-O`, no FMA contraction, no auto-vectorization).
+/// Any test that compares floats against a reference `.bin` or
+/// `golden_vectors` must run in Phase 2 (release) — the Eixo B principle
+/// from `docs/testing.md` §2.
+///
+/// This meta-test reads `utils/tests-quick.sh`, extracts the
+/// `STRUCTURAL_TESTS` array, and checks each corresponding `tests/*.rs`
+/// source file for forbidden patterns. It acts as an automated gate
+/// that prevents the class of regression where a measurement oracle
+/// is accidentally placed in the debug phase.
+///
+/// ## Exclusions
+///
+/// - `threshold_calibration`: meta-test that validates the golden catalog
+///   metadata — references `.bin` filenames for catalog integrity, not
+///   float comparison.
+/// - `parity_primitives`: references `.bin` for PRNG bit-parity
+///   (Mulberry32 vs TypeScript) and MR-STFT algorithm verification
+///   (vs Python) — structural parity, not production float measurement.
+/// - `lstm_activation_precision` (TODO Eixo B): pre-existing violation —
+///   measures SNR of LSTM models against C++ golden `.bin` files. Runs
+///   non-ignored in Phase 1 debug. Should be moved to Phase 2 release.
+#[test]
+fn test_structural_tests_contain_no_bin_references() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let quick_script = project_root.join("utils").join("tests-quick.sh");
+
+    let script = fs::read_to_string(&quick_script)
+        .expect("Failed to read utils/tests-quick.sh");
+
+    let start_marker = "STRUCTURAL_TESTS=(";
+    let start = script
+        .find(start_marker)
+        .expect("STRUCTURAL_TESTS=() array not found in utils/tests-quick.sh");
+    let content_start = start + start_marker.len();
+    let rest = &script[content_start..];
+
+    let end = rest
+        .find("\n)")
+        .expect("Could not find closing ')' of STRUCTURAL_TESTS array in utils/tests-quick.sh");
+    let array_content = &rest[..end];
+
+    let test_names: Vec<&str> = array_content.split_whitespace().collect();
+
+    assert!(
+        !test_names.is_empty(),
+        "STRUCTURAL_TESTS array is empty — check parsing of utils/tests-quick.sh"
+    );
+
+    const EXCLUDED: &[&str] = &[
+        "threshold_calibration",     // meta-test — catalog integrity, not float comparison
+        "parity_primitives",         // PRNG bit-parity + MR-STFT algorithm verification
+        "lstm_activation_precision", // TODO: pre-existing violation — measures SNR vs C++ golden
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for &test_name in &test_names {
+        if EXCLUDED.contains(&test_name) {
+            continue;
+        }
+
+        let test_file = project_root.join("tests").join(format!("{test_name}.rs"));
+        if !test_file.exists() {
+            continue;
+        }
+
+        let source = fs::read_to_string(&test_file).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read {test_path}: {e}",
+                test_path = test_file.display()
+            )
+        });
+
+        // Filter out comment lines to avoid false positives from
+        // doc-comments that mention `.bin` without actually loading them
+        // (e.g., "No golden .bin files or C++" in linear_golden.rs).
+        let non_comment: String = source
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                !trimmed.starts_with("//") && !trimmed.starts_with("///")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if non_comment.contains(".bin") {
+            violations.push(format!(
+                "{test_name}.rs references .bin files (forbidden in Phase 1 structural tests)"
+            ));
+        }
+
+        if non_comment.contains("golden_vectors") {
+            violations.push(format!(
+                "{test_name}.rs references golden_vectors (forbidden in Phase 1 structural tests)"
+            ));
+        }
+    }
+
+    if !violations.is_empty() {
+        panic!(
+            "Eixo B isolation guard-rail FAILED (Tarefa G.1.2):\n\
+             \n\
+             The following structural tests (Phase 1, debug) contain references\n\
+             to .bin files or golden_vectors — they MUST run in Phase 2 (release),\n\
+             per the Eixo B principle in docs/testing.md §2:\n\
+             \n{}\n\n\
+             Resolution: remove these tests from STRUCTURAL_TESTS in\n\
+             utils/tests-quick.sh and add them to the Phase 2 release invocation.\n",
+            violations
+                .iter()
+                .map(|v| format!("  ✗ {v}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+}

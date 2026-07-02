@@ -382,7 +382,7 @@ gantt
   - Adicionar `--test linear_fft_test` à invocação de release da Fase 2 (Ramo A, cobrindo tanto com goldens presentes quanto ausentes).
   - Atualizar o mapeamento de fases em [testing.md](file:///home/fabio/nam-rs/docs/testing.md) para indicar que `linear_fft_test` executa na Fase 2 (Release) em vez da Fase 1 (Debug).
 
-#### 📝 Tarefa G.1.2: Implementação de Guard-Rail de Isolamento Eixo B (Meta-Teste) [TODO]
+#### 📝 Tarefa G.1.2: Implementação de Guard-Rail de Isolamento Eixo B (Meta-Teste) [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Baixo
