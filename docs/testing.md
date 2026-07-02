@@ -68,7 +68,9 @@ graph TD
 - **Goal:** the 5 canonical oracles of §7 measure the float path that ships.
 - **Scope (combined into one `cargo test` per dependency branch to avoid
   recompiling `nam-rs` once per test):**
-  - Always: `reference_oracle_f64` + `spectral_fidelity` (deps committed).
+  - Always: `reference_oracle_f64` + `spectral_fidelity` + `linear_fft_test`
+    (deps committed; linear_fft_test's mathematical oracle tests always run,
+    C++ golden tests skip gracefully when goldens absent).
   - With committed goldens: `golden_vectors` (v1) + `isa_parity` (v2, requires
     `--test-threads=1` per §7; the others tolerate single-threading).
   - With `NeuralAmpModelerCore`: `cpp_parity quick_parity` (separate invocation —
@@ -115,8 +117,9 @@ of this table should be aware of when interpreting "coverage":
   support multi-SR FiLM architectures.
 - **Linear FFT goldens.** `golden_gen_build.sh` generates
   `golden_linear_fft_rf{320,2048,4096,8192}.bin` for 4 Linear FFT models at 48 kHz
-  (CATALOG entries with `v2_scope=48k_only`). `tests/linear_fft_test.rs` tests skip
-  gracefully when goldens are absent — they are no longer `#[ignore]`d.
+  (CATALOG entries with `v2_scope=48k_only`). `tests/linear_fft_test.rs` runs in
+  Fase 2 (release, Eixo B) — mathematical oracle tests always execute; C++ golden
+  cross-reference tests skip gracefully when goldens absent.
 - **Freshness is blocking in quick suite (Épico E).** `golden_gen_build.sh` commits a
   versioned `.golden_manifest.sha256` freshness manifest checked by `utils/tests-quick.sh`
   Fase 2 — a `sha256sum`-based gate that hard-fails when a `.nam` model has been modified
@@ -150,7 +153,7 @@ The following table maps every test suite, target, or binary to the features it 
 | **`fixture_b1_2_smoke`**            | Integration | *None*                      | **Yes**                   | No                       | No                              | No                                   | Smoke test for Sprint B.1.2 synthetic fixture model generation and integrity                                                         |
 | **`golden_vectors`**                | Integration | *None*                      | No                        | **Yes** (v1)             | No                              | **Yes** (Phase 3, v2 ignored)        | Golden vector cross-validation of static and dynamic models against C++ reference. v1 (2048 samples) in Fase 2; v2 multi-SR in long. |
 | **`linear_golden`**                 | Integration | *None*                      | **Yes** *(ignored)*       | No                       | No                              | **Yes** (Phase 3)                    | Bitwise output testing of linear (simplified) models                                                                                 |
-| **`linear_fft_test`**               | Integration | *None*                      | **Yes**                   | No                       | No                              | No                                   | Partitioned convolution cross-validation (Linear FFT). Graceful skip when golden absent.                                             |
+| **`linear_fft_test`**               | Integration | *None*                      | No                        | **Yes**                 | No                              | No                                   | Partitioned convolution cross-validation (Linear FFT). Mathematical oracle tests always run; C++ golden tests skip gracefully when goldens absent. |
 | **`lstm_activation_precision`**     | Integration | *None*                      | **Yes**                   | No                       | No                              | No                                   | Precision verification of LSTM activation gain and scaling                                                                           |
 | **`meta_coherence`**                | Integration | *None*                      | No                        | No                       | No                              | On demand                            | Meta-test asserting golden-catalog ↔ ignored-test model coherence. Guards against silent drift.                                      |
 | **`lstm_model_dyn_validation`**     | Integration | *None*                      | **Yes** *(ignored)*       | No                       | No                              | **Yes** (Phase 2)                    | Parity validation of LstmModelDyn: SIMD vs scalar, determinism, block-size invariance, zero-input edge cases, quantized head         |

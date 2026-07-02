@@ -369,7 +369,7 @@ gantt
 
 ### 🏃 Sprint G.1: Alinhamento Eixo B & Guard-Rail (Duração: Est. 2 dias)
 
-#### 📝 Tarefa G.1.1: Alinhamento de linear_fft_test ao Eixo B [TODO]
+#### 📝 Tarefa G.1.1: Alinhamento de linear_fft_test ao Eixo B [DONE]
 
 - **Prioridade:** 🔴 Crítica
 - **Risco:** Baixo

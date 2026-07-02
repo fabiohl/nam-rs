@@ -139,7 +139,7 @@ echo -e "\n${BLUE}${BOLD}[1/3] Estrutural: unit + integração determinística (
 STRUCTURAL_TESTS=(
     a2_loader activation_precision adaptive_fsm_proptest cabsim_golden
     concurrency_stress container_slimmable diagnostic_bundle ebu_lufs_compliance
-    fixture_b1_2_smoke linear_fft_test linear_golden lstm_activation_precision
+    fixture_b1_2_smoke linear_golden lstm_activation_precision
     lstm_model_dyn_validation mirror_buf_fault_injection nam_infer_test
     namb_v2_roundtrip namb_v2_validation nondist_validation parity_primitives
     prewarm_test proptest_math self_consistency soak_test spsc_pipeline
@@ -169,22 +169,25 @@ GOLDEN_RAN=false
 # isa_parity exige --test-threads=1 (§7); os demais toleram (todos < 2s).
 
 # Ramo A — sempre executáveis (deps committed: modelos .nam + f64_anchors /
-# sinais sintéticos). f64 Oracle + Spectral Fidelity.
+# sinais sintéticos). f64 Oracle + Spectral Fidelity + Linear FFT (graceful
+# skip when goldens absent — mathematical oracle tests always run).
 # Ramo B — acrescenta golden_vectors (v1) + isa_parity (v2) quando goldens
 # committed estão presentes (estes hard-fail sem goldens, por isso o gate).
 if [ -f "tests/fixtures/golden_wavenet_standard.bin" ] && [ -f "tests/fixtures/golden_wavenet_standard_v2_48000.bin" ]; then
     GOLDEN_RAN=true
-    echo -e "  ${BLUE}→ f64 Oracle + Spectral + Golden v1 + ISA parity (release, 1 compilação)...${NC}"
+    echo -e "  ${BLUE}→ f64 Oracle + Spectral + Linear FFT + Golden v1 + ISA parity (release, 1 compilação)...${NC}"
     cargo test --release \
         --test reference_oracle_f64 --test spectral_fidelity \
+        --test linear_fft_test \
         --test golden_vectors --test isa_parity \
         -- --test-threads=1 --nocapture || MEASUREMENT_STATUS=1
 else
     echo -e "  ${YELLOW}ⓘ Golden vectors (v1/v2) não encontrados — golden_vectors + isa_parity pulados.${NC}"
     echo -e "  ${YELLOW}  Execute './tests/fixtures/golden_gen_build.sh' para gerá-los.${NC}"
-    echo -e "  ${BLUE}→ f64 Oracle + Spectral Fidelity (release, 1 compilação)...${NC}"
+    echo -e "  ${BLUE}→ f64 Oracle + Spectral Fidelity + Linear FFT (release, 1 compilação)...${NC}"
     cargo test --release \
         --test reference_oracle_f64 --test spectral_fidelity \
+        --test linear_fft_test \
         -- --nocapture || MEASUREMENT_STATUS=1
 fi
 
