@@ -43,7 +43,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | F3  | 🟠 Alto    | Compliance/Parity       | 4 goldens A2 dinâmicos/FiLM usados em teste não são gerados pelo script            |
 | F3b | 🟠 Alto    | Compliance/Parity       | 4 goldens Linear FFT documentados no `testing.md` como cobertos nunca existiram    |
 | F4  | 🟠 Alto    | Manutenibilidade        | Duplicação estrutural `MODELS[]` vs `V2_MODELS[]` (causa raiz de F3/F3b)           |
-| F5  | 🟡 Médio   | Consistência            | `golden_cabsim_cpp_stress.bin` é artefato órfão, nunca gerado por `render_ir.cpp`  |
+| F5  | 🟡 Médio   | Consistência            | ✅ `golden_cabsim_cpp_stress.bin` é artefato órfão, nunca gerado por `render_ir.cpp` — **resolvido D.1.1** |
 | F6  | 🟡 Médio   | Robustez                | Cache de binários (`render`, `render_ir`) nunca invalidado por mudança local       |
 | F7  | 🟡 Médio   | Observabilidade         | Numeração de fases inconsistente e duplicada no output do script                   |
 | F8  | 🟡 Médio   | Observabilidade         | Truncamento de log (`tail -N`) esconde a causa raiz exatamente na falha            |
@@ -412,6 +412,7 @@ o README acredita que esse arquivo é uma referência C++ válida e pode tentar 
 3. Corrigir `render_ir.cpp:12` para não prometer um cenário `stress` que nunca será implementado — ou
    documentar explicitamente ali, ao lado do comentário, por que ele foi descartado (referenciando o
    `mMaxLength` cap), para que a ausência seja uma decisão documentada, não uma omissão silenciosa.
+4. ✅ **Resolução (2026-07-02, D.1.1):** Arquivo removido — nenhum teste ou script o consumia (órfão desde 870dafc, removido em b683fab, re-adicionado acidentalmente em 1b210c9). `render_ir.cpp:12` atualizado documentando o limite `mMaxLength`. `README.md` atualizado (linha removida da tabela, warning atualizado).
 
 ---
 
@@ -769,7 +770,7 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 
 ## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [TO-DO]
 
-- **F5** — Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`.
+- **F5** — ✅ Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`. **Resolvido — arquivo removido, render_ir.cpp e README.md saneados em D.1.1.**
 - **F6** — Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config.
 - **F10** — Remover comentário stale/contraditório sobre `wavenet_lite`.
 

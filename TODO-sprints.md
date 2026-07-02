@@ -263,7 +263,7 @@ gantt
 
 ### 🏃 Sprint D.1: Saneamento e Invalidação de Cache (Duração: Est. 2 dias)
 
-#### 📝 Tarefa D.1.1: Saneamento do Binário Cabsim Stress
+#### 📝 Tarefa D.1.1: Saneamento do Binário Cabsim Stress [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
@@ -277,6 +277,7 @@ gantt
   - Se não for consumido por nenhum teste, remover o arquivo do repositório.
   - Caso contrário, corrigir sua documentação em `tests/fixtures/README.md` reclassificando-o como "Self-golden" de Rust (sem validação C++ devido ao limite `mMaxLength`).
   - Atualizar os comentários de cenário em `render_ir.cpp` para remover a menção ao cenário "stress" que excede o limite arquitetural de 8192 amostras do C++.
+  - ✅ **Concluído 2026-07-02:** Arquivo removido (órfão — origem em 870dafc, removido em b683fab, re-adicionado acidentalmente em 1b210c9). Nenhum teste ou script o referenciava. Comentário em `render_ir.cpp` atualizado documentando o limite `mMaxLength`. README.md atualizado (linha removida da tabela, warning atualizado).
 
 #### 📝 Tarefa D.1.2: Invalidação de Cache de Binários por Timestamp
 
@@ -302,7 +303,7 @@ gantt
 
 1. Compilar `render_ir`, alterar `render_ir.cpp` e verificar se a próxima execução de `golden_gen_build.sh` reconstrói o binário automaticamente.
 2. Limpeza completa dos comentários de cenários em `render_ir.cpp` e do `wavenet_lite` obsoleto.
-3. Decisão final aplicada sobre o destino do arquivo `golden_cabsim_cpp_stress.bin`.
+3. ✅ Decisão final aplicada sobre o destino do arquivo `golden_cabsim_cpp_stress.bin`: removido (D.1.1).
 
 ---
 

@@ -9,7 +9,11 @@
 // vectors in the binary format:
 //   [u32 N LE] [f32×N in LE] [f32×N out LE]
 //
-// Scenarios: short (seed=42), medium (seed=137), long (seed=31337), stress (seed=999983)
+// Scenarios: short (seed=42), medium (seed=137), long (seed=31337).
+// A theoretical "stress" scenario with 32768-sample IR is deliberately not
+// implemented: dsp::ImpulseResponse caps impulse response length at 8192
+// samples (mMaxLength) and would silently truncate, making cross-reference
+// validation against C++ meaningless. See tests/cabsim_cpp_parity.rs.
 //
 // Build: see golden_gen_build.sh [5b] section.
 

@@ -79,7 +79,6 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 | `golden_cabsim_cpp_short.bin`       | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
 | `golden_cabsim_cpp_medium.bin`      | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
 | `golden_cabsim_cpp_long.bin`        | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
-| `golden_cabsim_cpp_stress.bin`      | N/A                          | ⚠️ Orphan (see warning below)                                              | 65536 samples — **not** producible by the current C++ reference         |
 
 > [!WARNING]
 > **Automation gap, tracked in `TODO-findings.md` (F3, F5):**
@@ -91,13 +90,12 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 >   dedicated model sections below ("FiLM Fixtures", A2 dynamic sections) for the exact
 >   commands. If you land here from an error message pointing at `golden_gen_build.sh`
 >   for one of these four files, that message is currently misleading (tracked).
-> - `golden_cabsim_cpp_stress.bin` exists on disk but `tests/fixtures/render_ir.cpp`
->   only implements 3 of the 4 scenarios its own header comment advertises (short,
->   medium, long — never `stress`). The C++ `dsp::ImpulseResponse` engine hard-caps IR
->   length at 8192 samples (`mMaxLength`), so a genuine C++ cross-reference for a
->   65536-sample IR is not achievable with the vendored engine — see
->   `tests/cabsim_cpp_parity.rs` for the Rust-side rationale. Treat this file as a
->   historical/orphan artifact, not an active C++ reference, until F5 is resolved.
+> - `golden_cabsim_cpp_stress.bin` has been **removed**. `tests/fixtures/render_ir.cpp`
+>   only implements 3 scenarios (short, medium, long) because the C++
+>   `dsp::ImpulseResponse` engine hard-caps IR length at 8192 samples (`mMaxLength`),
+>   so a genuine C++ cross-reference for a 65536-sample IR is not achievable with the
+>   vendored engine — see `tests/cabsim_cpp_parity.rs` for the Rust-side rationale.
+>   F5 resolved in D.1.1.
 >
 > **Nature classification:**
 >
@@ -112,7 +110,7 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 >   4 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite —
 >   os dois últimos são conformismo PM-05 para cobertura do motor FiLM; os demais validam
 >   apenas paridade numérica de fast-path, não timbres reais).
->   Os 4 goldens C++ cabsim são vetores de referência do upstream.
+>   Os 3 goldens C++ cabsim são vetores de referência do upstream.
 
 ### Model Files and Trust Levels Registry
 
