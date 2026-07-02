@@ -294,6 +294,73 @@ HF tests exist in `tests/cpp_parity.rs` as `live_cross_validation_*_hf` and
 | **A2-Full / A2-Lite inference (fixed fast-path)**           | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>`                                                        | Established                         |
 | `NAM/container.{h,cpp}` — `SlimmableContainer`              | `models/container.rs` + `loader/dispatcher/container/`                                                            | Established                         |
 
+### 6.1 S3 Spec — Canonical C++ Layouts for A2 Max Parity (Sprint S3)
+
+> **Status:** Completed 2026-07-01. This spec is the **source of truth for Sprint S4 (Fix)**.
+> It documents the exact C++ layout for every component exercised by `wavenet_a2_max.nam`
+> (head1x1, condition_dsp, cascade, head finalization), cross-referenced against the
+> vendored C++ source at `tests/fixtures/NeuralAmpModelerCore/`. All line numbers refer
+> to that vendored copy unless prefixed with `TODO-findings`.
+
+#### S3.1 — Conv1x1 Weight Layout
+
+| Aspect                    | C++ reference                                                                                                                                | Detail                                                                                                                                                  |
+|:------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stream order**          | `NAM/dsp.cpp:384-393` (`Conv1x1::set_weights_`)                                                                                              | Row-major `[out_ch][in_ch]` per group: outer=group, middle=out_ch, inner=in_ch. Stream element at index `n` is `_weight(g*opg+i, g*ipg+j)`.             |
+| **Stream order (test)**   | `tools/test/test_wavenet/test_layer.cpp:366`: `// Weight layout for Conv1x1: for each out_channel, for each in_channel`                      | C++ unit test corroborates the stream order.                                                                                                            |
+| **Matrix storage**        | `NAM/dsp.cpp:345` (`_weight.resize(out_channels, in_channels)`), `NAM/conv1d.cpp:97-98`                                                      | Eigen column-major `(out_ch × in_ch)`. Row = output channel, column = input channel.                                                                    |
+| **Matrix storage (test)** | `tools/test/test_wavenet/test_layer.cpp:368-373`                                                                                             | Identity-like weights constructed as `for out_ch … for in_ch` per group, confirming row-major stream mapping.                                           |
+| **Process (compute)**     | `NAM/dsp.cpp:427` (`result = _weight * input`), `NAM/conv1d.cpp:249-251` (`_weight[k].asDiagonal() * input`)                                 | Standard matrix multiply `(out_ch × in_ch) × (in_ch × frames) = (out_ch × frames)`. No transposition. Grouped conv via block-diagonal zero structure.   |
+| **Rust mismatch**         | `src/models/a2/model/dynamic/build.rs:236` (`transpose_dense_f32`) + `src/models/a2/model/dynamic/process.rs:582` (`head1x1_w[oc*h1_in+ic]`) | Stream is read row-major, transposed to `[ic][oc]` by `transpose_dense_f32`, then accessed with `[oc*h1_in+ic]` — double mismatch. **Bug S4.1 target.** |
+
+#### S3.2 — head1x1 Application Loop
+
+| Aspect                   | C++ reference                                                                                                  | Detail                                                                                                                                           |
+|:------------------------ |:-------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Head1x1 construction** | `NAM/wavenet/detail.h:75-76` (`_head1x1 = Conv1x1(bottleneck, head1x1_params.out_channels, true, groups)`)     | `Conv1x1(in=bottleneck, out=head1x1_params.out_channels, bias=true, groups)`.                                                                    |
+| **Input source**         | `NAM/wavenet/model.cpp:277,281` (`_head1x1->process_(z.leftCols(), nf)` or `z.topRows(bottleneck).leftCols()`) | Non-gated: all `bottleneck` rows of `_z`. Gated/blended: first `bottleneck` rows.                                                                |
+| **Grouping (C++)**       | `NAM/dsp.cpp:449-646` (inline GEMM)                                                                            | Grouped conv implicit via block-diagonal weight matrix. `output = weight * input` with zeros in off-group blocks.                                |
+| **Grouping (Rust)**      | `src/models/a2/model/dynamic/process.rs:570-586`                                                               | Explicit loop: `h1_groups = bottleneck/h1_in`, `ch_per_group = head_accum_size/h1_groups`. Loop `grp→oc→ic` matches C++ implicit block-diagonal. |
+| **Accumulation (C++)**   | `NAM/wavenet/model.cpp:474-493`                                                                                | `_head_inputs += layer.GetOutputHead()` — element-wise per frame across all layers in an array.                                                  |
+| **Accumulation (Rust)**  | `src/models/a2/model/dynamic/process.rs:587-593`                                                               | First layer copies, subsequent layers add to `head_accum`. Matches C++.                                                                          |
+| **Verdict**              |                                                                                                                | **Rust loop structurally correct.** Bug confined to weight layout (S3.1). Only remaining issue: `head1x1_w` stored wrong.                        |
+
+#### S3.3 — Cascade (Multi-Array) Flow
+
+| Aspect                       | C++ reference                                                              | Detail                                                                                                                                                                           |
+|:---------------------------- |:-------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Array loop**               | `NAM/wavenet/model.cpp:754-772`                                            | Array 0: `Process(condition_input, condition_output, nf)` (no head). Arrays 1..N-1: `Process(prev_layer, condition, prev_head, nf)` (with head).                                 |
+| **LayerArray::ProcessInner** | `NAM/wavenet/model.cpp:450-511`                                            | `rechannel(layer_inputs)` → layer loop `_head_inputs += GetOutputHead()` → `_head_rechannel.Process(_head_inputs)`.                                                              |
+| **GetHeadOutputs**           | `NAM/wavenet/model.cpp:514-522`                                            | Returns `_head_rechannel.GetOutput()` — **post-rechannel** (Conv1D output).                                                                                                      |
+| **Cascade Rust flow**        | `src/models/a2/model/cascade.rs:132-170`                                   | Array 0: `cascade_write_mono_input` → `cascade_layer_loop(is_first=true)`. Arrays 1..N-1: `cascade_seed_head` → `cascade_write_residual` → `cascade_layer_loop(is_first=false)`. |
+| **Cascade head propagation** | `src/models/a2/model/dynamic/process.rs:434-448` (`cascade_seed_head`)     | Copies **RAW** `head_accum` (pre-rechannel). **C++ propagates post-rechannel** (`model.cpp:769`). Bug latente para multi-array com `head_kernel_size > 1`.                       |
+| **Final output**             | `NAM/wavenet/model.cpp:774-831`                                            | `output = head_scale × final_head_outputs`; optional `_post_stack_head` (not used by `wavenet_a2_max.nam`).                                                                      |
+| **Rust final output**        | `src/models/a2/model/dynamic/process.rs:348-378` (`cascade_head_finalize`) | `A2HeadConv` (kernel=16, bias, scale) for head_size==1; dense projection for head_size>1.                                                                                        |
+| **Verdict**                  |                                                                            | **Single-array equivalent.** Multi-array head propagation differs (C++ post-rechannel vs Rust raw) — latent, irrelevant for A2 Max golden.                                       |
+
+#### S3.4 — condition_dsp
+
+| Aspect                 | C++ reference                                                                                                  | Detail                                                                                                                          |
+|:---------------------- |:-------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------- |
+| **_process_condition** | `NAM/wavenet/model.cpp:699-729`                                                                                | No dsp: `_condition_output = _condition_input` (pass-through). With dsp: copy input → `condition_dsp->process()` → copy output. |
+| **Input dimension**    | `NAM/wavenet/model.cpp:710` (`_get_condition_dim()`) + `NAM/wavenet/model.h:106` (`return NumInputChannels()`) | `_condition_input` has `in_channels` rows. For A2 Max (mono input): 1.                                                          |
+| **Output dimension**   | `NAM/wavenet/model.cpp:722` (`_condition_dsp->NumOutputChannels()`) + `NAM/wavenet/model.cpp:594` (validation) | `_condition_output` has `NumOutputChannels()` rows. Matches `condition_size` in LayerArrayParams.                               |
+| **Buffer layout**      | `NAM/wavenet/model.cpp:660` (`_condition_output.resize(condition_output_channels, maxBufferSize)`)             | Eigen column-major `(channels × frames)` = interleaved per frame.                                                               |
+| **Rust condition_dsp** | `src/models/a2/model/dynamic/process.rs:89-98`                                                                 | No dsp: `input[pos..]` (raw mono). With dsp: `cond_dsp.process()` → `condition_dsp_output[..nf*cond_size]`.                     |
+| **Rust validation**    | `src/loader/dispatcher/wavenet/mod.rs:271-276`                                                                 | `cond_out == condition_size` — matches C++ `model.cpp:594` assertion.                                                           |
+| **Verdict**            |                                                                                                                | **Aligned.** Both pass-through without dsp; both validate `condition_size == NumOutputChannels()` when dsp present.             |
+
+#### S3.5 — Head Finalization
+
+| Aspect                       | C++ reference                                                                                    | Detail                                                                                                                                                         |
+|:---------------------------- |:------------------------------------------------------------------------------------------------ |:-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Head_size=1 (C++)**        | `NAM/wavenet/model.cpp:382-383` (`_head_rechannel` constructor) + `model.cpp:774-831`            | `_head_rechannel` = Conv1D(in=_head_output_size, out=head_size=1, kernel=head_kernel_size, bias=head_bias). Then `output = head_scale × result`.               |
+| **Head_size=1 (Rust)**       | `src/models/a2/head.rs:38-162` (`A2HeadConv`) + `src/models/a2/model/dynamic/process.rs:293-307` | `A2HeadConv` = Conv1D f32 kernel=16, bias, head_scale over ring buffer. Matches C++ a2_fast.cpp path. Weight count: `16 × head_accum_size + 2`.                |
+| **Head_size>1 (C++)**        | `NAM/wavenet/model.cpp:382-383` (`_head_rechannel`)                                              | Conv1D(in=_head_output_size, out=head_size, kernel=head_kernel_size, bias=head_bias). Weight count: `head_kernel_size × _head_output_size × head_size + bias`. |
+| **Head_size>1 (Rust)**       | `src/models/a2/model/dynamic/process.rs:360-378` + `src/models/a2/model/dynamic/build.rs:300`    | Dense projection `head_accum_size × head_size`, no kernel, no bias, no head_scale. Weight count: `head_accum_size × head_size`.                                |
+| **Mismatch for head_size>1** |                                                                                                  | Rust lacks kernel dimension, temporal context, bias, and head_scale. Only matches C++ when `head_kernel_size==1` and `head_bias==false`.                       |
+| **A2 Max (golden)**          |                                                                                                  | `head_size=1`, `kernel=16`. Both use Conv1D-16+bias+scale. Weight count matched. **No issue for current golden.**                                              |
+
 ---
 
 ## 7. Weight Loading & Parsing
