@@ -1041,6 +1041,129 @@ fn live_cross_validation_v2_lstm_dyn() {
     );
 }
 
+// --- A2 Dynamic Models (Tarefa T4.3) ---
+//
+// Live C++ cross-validation for A2 dynamic geometries (FiLM, Gated, Blended)
+// that exercise the native WaveNetA2Dyn engine paths against the C++ generic
+// Eigen-based WaveNet (C++ a2_fast.cpp rejects these topologies and falls
+// back to the generic path — see Finding 7.6.2).
+
+#[test]
+#[ignore]
+fn live_cross_validation_a2_dynamic_gated() {
+    run_v1(
+        "a2_dynamic_gated_ch8.nam",
+        "a2_dynamic_gated_ch8",
+        "Live A2 Dynamic Gated (CH=8)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_a2_dynamic_blended() {
+    run_v1(
+        "a2_dynamic_blended_ch3.nam",
+        "a2_dynamic_blended_ch3",
+        "Live A2 Dynamic Blended (CH=3)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_film_lite() {
+    run_v1(
+        "wavenet_a2_film_lite.nam",
+        "wavenet_a2_film_lite",
+        "Live WaveNet A2-FiLM-Lite (CH=3)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_film_full() {
+    run_v1(
+        "wavenet_a2_film_full.nam",
+        "wavenet_a2_film_full",
+        "Live WaveNet A2-FiLM-Full (CH=8)",
+        true,
+    );
+}
+
+// wavenet_a2_max — DISABLED (§7.1); model inference is blocked at dispatch
+// by fail-closed guard is_disabled_broken_a2_flagship.
+// Uncomment once condition_dsp parity gap (§4.4) is resolved.
+// #[test]
+// #[ignore]
+// fn live_cross_validation_wavenet_a2_max() {
+//     run_v1(
+//         "wavenet_a2_max.nam",
+//         "wavenet_a2_max",
+//         "Live WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)",
+//         true,
+//     );
+// }
+
+// --- v2 A2 Dynamic Models (Tarefa T4.3) ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_a2_dynamic_gated() {
+    run_v2_multi_sr(
+        "a2_dynamic_gated_ch8.nam",
+        "a2_dynamic_gated_ch8",
+        "Live A2 Dynamic Gated (CH=8) (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_a2_dynamic_blended() {
+    run_v2_multi_sr(
+        "a2_dynamic_blended_ch3.nam",
+        "a2_dynamic_blended_ch3",
+        "Live A2 Dynamic Blended (CH=3) (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_a2_film_lite() {
+    run_v2_multi_sr(
+        "wavenet_a2_film_lite.nam",
+        "wavenet_a2_film_lite",
+        "Live WaveNet A2-FiLM-Lite (CH=3) (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_a2_film_full() {
+    run_v2_multi_sr(
+        "wavenet_a2_film_full.nam",
+        "wavenet_a2_film_full",
+        "Live WaveNet A2-FiLM-Full (CH=8) (v2)",
+        true,
+    );
+}
+
+// wavenet_a2_max v2 — DISABLED (§7.1); see v1 note above.
+// #[test]
+// #[ignore]
+// fn live_cross_validation_v2_wavenet_a2_max() {
+//     run_v2_multi_sr(
+//         "wavenet_a2_max.nam",
+//         "wavenet_a2_max",
+//         "Live WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1) (v2)",
+//         true,
+//     );
+// }
+
 // --- Linear ---
 
 #[test]

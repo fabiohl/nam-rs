@@ -143,7 +143,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 * **Verificação:** `cargo test --test golden_vectors` (ignorado, mas compilável e coerente).
 * **Referência:** Finding 7.5.3, 7.5.4.
 
-### 🟡 Tarefa T4.3: Implementar Live Cross-Validation para Modelos Dinâmicos A2
+### 🟡 Tarefa T4.3: Implementar Live Cross-Validation para Modelos Dinâmicos A2 [DONE]
 
 * **Descrição:** Estender a suite `tests/cpp_parity.rs` para realizar renderização comparativa ao vivo contra o C++ para modelos de FiLM, Blended, Gated e o Flagship Max (uma vez que for destravado).
 * **Ações:**
