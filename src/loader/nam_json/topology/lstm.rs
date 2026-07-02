@@ -20,6 +20,10 @@ pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
     let num_layers = data.config.num_layers?;
     let hidden_size = data.config.hidden_size?;
 
+    if num_layers == 0 {
+        log::warn!("LSTM num_layers=0 — rejected");
+        return None;
+    }
     if num_layers > MAX_LSTM_LAYERS {
         log::warn!("LSTM num_layers={num_layers} exceeds maximum {MAX_LSTM_LAYERS} — rejected");
         return None;

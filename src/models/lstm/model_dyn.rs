@@ -73,6 +73,9 @@ impl LstmModelDyn {
 
     #[target_feature(enable = "avx2,fma,f16c")]
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
+        if self.layers.is_empty() {
+            return;
+        }
         unsafe {
             let n_layers = self.layers.len();
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
@@ -121,6 +124,9 @@ impl LstmModelDyn {
 
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
+        if self.layers.is_empty() {
+            return;
+        }
         unsafe {
             let n_layers = self.layers.len();
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
@@ -169,6 +175,9 @@ impl LstmModelDyn {
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
     unsafe fn process_avx512_vnni_bf16(&mut self, input: &[f32], output: &mut [f32]) {
+        if self.layers.is_empty() {
+            return;
+        }
         unsafe {
             let n_layers = self.layers.len();
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
@@ -236,6 +245,9 @@ impl LstmModelDyn {
     ///
     /// Exclusively for parity tests. Extremely slow.
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        if self.layers.is_empty() {
+            return;
+        }
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
             == crate::math::common::InstructionSet::Avx512VnniBf16;
         let hidden_size = self.head_weights.len();

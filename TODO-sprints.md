@@ -34,7 +34,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 * **Verificação:** Rodar suite de testes WaveNet e garantir integridade.
 * **Referência:** Finding 7.2.1.
 
-### 🔴 Tarefa T1.2: Prevenir UB no `LstmModelDyn` para `num_layers == 0`
+### 🔴 Tarefa T1.2: Prevenir UB no `LstmModelDyn` para `num_layers == 0` [DONE]
 
 * **Descrição:** Rejeitar modelos de LSTM que especifiquem contagem de camadas igual a zero na raiz e adicionar proteção defensiva no hot-path.
 * **Ações:**
