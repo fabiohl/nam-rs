@@ -699,6 +699,13 @@ No other model, in any of the three audited architectures, has a confirmed outpu
 failure. This is the only item that should block a release if `wavenet_a2_max.nam` compatibility
 is a requirement.
 
+> **Mitigado/contido (2026-07-02):** desativado fail-closed na camada de dispatch
+> (`is_disabled_broken_a2_flagship` em `src/loader/dispatcher/wavenet/mod.rs`,
+> ver `TODO-sprints.md` S1). `build_model` rejeita o modelo com `Err` antes de
+> tocar pesos ou construir o motor. O modelo `.nam` e o golden `.bin` permanecem
+> no repositório (disabled, not removed). Reativação depende de fechar a
+> divergência do `condition_dsp` contra o golden C++ (§4.4).
+
 ### 7.2 🟠 Confirmed code bugs — not yet triggered by any known model
 
 Real bugs, found by reading the code, that would produce silently wrong output **if** a

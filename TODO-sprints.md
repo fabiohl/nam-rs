@@ -164,14 +164,14 @@ alcançável. **Ponto de maior atenção da agenda.**
 
 **Direcionado a:** `documentador` (trigger obrigatório por `linting.md` item 2).
 
-- [ ]**S4.T1 — `docs/cpp_parity_map.md` §7.1:** adicionar nota de status "Mitigado/contido:
+- [x]**S4.T1 — `docs/cpp_parity_map.md` §7.1:** adicionar nota de status "Mitigado/contido:
   desativado fail-closed no dispatch (ver `TODO-sprints.md` S1); modelo e golden permanecem
   no repo; reativação depende de fechar §4.4". Não alterar o veredito 🔴 (continua broken).
-- [ ]**S4.T2 — `tests/fixtures/README.md`:** a tabela do modelo ainda diz "Rejected —
+- [x]**S4.T2 — `tests/fixtures/README.md`:** a tabela do modelo ainda diz "Rejected —
   structure-incompatible" (stale, §4.4). Atualizar para "Disabled — confirmed broken audio
   output (§7.1); fixture retained, not removed". Corrigir também as menções em
   `tests/fixtures/README.md:524,562`.
-- [ ]**S4.T3 — Fixtures preservados:** confirmar que `wavenet_a2_max.nam` e
+- [x]**S4.T3 — Fixtures preservados:** confirmar que `wavenet_a2_max.nam` e
   `golden_wavenet_a2_max.bin` **não** são tocados/removidos. Nenhuma tarefa de código aqui —
   apenas asserção de review.
 
