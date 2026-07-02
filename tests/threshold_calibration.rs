@@ -386,8 +386,7 @@ fn test_structural_tests_contain_no_bin_references() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let quick_script = project_root.join("utils").join("tests-quick.sh");
 
-    let script = fs::read_to_string(&quick_script)
-        .expect("Failed to read utils/tests-quick.sh");
+    let script = fs::read_to_string(&quick_script).expect("Failed to read utils/tests-quick.sh");
 
     let start_marker = "STRUCTURAL_TESTS=(";
     let start = script
@@ -409,8 +408,8 @@ fn test_structural_tests_contain_no_bin_references() {
     );
 
     const EXCLUDED: &[&str] = &[
-        "threshold_calibration",     // meta-test — catalog integrity, not float comparison
-        "parity_primitives",         // PRNG bit-parity + MR-STFT algorithm verification
+        "threshold_calibration", // meta-test — catalog integrity, not float comparison
+        "parity_primitives",     // PRNG bit-parity + MR-STFT algorithm verification
         "lstm_activation_precision", // TODO: pre-existing violation — measures SNR vs C++ golden
     ];
 
