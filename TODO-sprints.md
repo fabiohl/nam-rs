@@ -279,7 +279,7 @@ gantt
   - Atualizar os comentários de cenário em `render_ir.cpp` para remover a menção ao cenário "stress" que excede o limite arquitetural de 8192 amostras do C++.
   - ✅ **Concluído 2026-07-02:** Arquivo removido (órfão — origem em 870dafc, removido em b683fab, re-adicionado acidentalmente em 1b210c9). Nenhum teste ou script o referenciava. Comentário em `render_ir.cpp` atualizado documentando o limite `mMaxLength`. README.md atualizado (linha removida da tabela, warning atualizado).
 
-#### 📝 Tarefa D.1.2: Invalidação de Cache de Binários por Timestamp
+#### 📝 Tarefa D.1.2: Invalidação de Cache de Binários por Timestamp [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
@@ -289,6 +289,7 @@ gantt
   - Adicionar uma verificação de timestamp (`-nt`) no script `golden_gen_build.sh`.
   - Se `render_ir.cpp` for mais recente que o binário gerado `render_ir`, forçar a recompilação imediata dele (limpando o cache e evitando bugs silenciosos de "código fantasma").
   - Opcional: implementar um mecanismo simples para invalidar o binário `render` principal caso a configuração da build (como compiler/build_type) mude.
+  - ✅ **Concluído 2026-07-02:** Adicionado timestamp check `-nt` para `$IR_BIN` (força rebuild se `render_ir.cpp` mais recente). Adicionado tracking de `BUILD_TYPE`/`CXX` via `.build_config` para `$RENDER_BIN` (força rebuild se config mudar entre execuções).
 
 #### 📝 Tarefa D.1.3: Remoção de Comentário Obsoleto sobre `wavenet_lite`
 
@@ -301,7 +302,7 @@ gantt
 
 #### 🏁 Critérios de Aceite da Sprint D.1
 
-1. Compilar `render_ir`, alterar `render_ir.cpp` e verificar se a próxima execução de `golden_gen_build.sh` reconstrói o binário automaticamente.
+1. ✅ Compilar `render_ir`, alterar `render_ir.cpp` e verificar se a próxima execução de `golden_gen_build.sh` reconstrói o binário automaticamente — timestamp check implementado (D.1.2).
 2. Limpeza completa dos comentários de cenários em `render_ir.cpp` e do `wavenet_lite` obsoleto.
 3. ✅ Decisão final aplicada sobre o destino do arquivo `golden_cabsim_cpp_stress.bin`: removido (D.1.1).
 

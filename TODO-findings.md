@@ -44,7 +44,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | F3b | 🟠 Alto    | Compliance/Parity       | 4 goldens Linear FFT documentados no `testing.md` como cobertos nunca existiram    |
 | F4  | 🟠 Alto    | Manutenibilidade        | Duplicação estrutural `MODELS[]` vs `V2_MODELS[]` (causa raiz de F3/F3b)           |
 | F5  | 🟡 Médio   | Consistência            | ✅ `golden_cabsim_cpp_stress.bin` é artefato órfão, nunca gerado por `render_ir.cpp` — **resolvido D.1.1** |
-| F6  | 🟡 Médio   | Robustez                | Cache de binários (`render`, `render_ir`) nunca invalidado por mudança local       |
+| F6  | 🟡 Médio   | Robustez                | ✅ Cache de binários (`render`, `render_ir`) nunca invalidado por mudança local — **resolvido D.1.2** |
 | F7  | 🟡 Médio   | Observabilidade         | Numeração de fases inconsistente e duplicada no output do script                   |
 | F8  | 🟡 Médio   | Observabilidade         | Truncamento de log (`tail -N`) esconde a causa raiz exatamente na falha            |
 | F9  | 🟢 Baixo   | Robustez                | Skip de ConvNet acoplado a *string matching* de label, não a identidade de modelo  |
@@ -460,6 +460,7 @@ reporta sucesso, os goldens são "regenerados", mas com o binário antigo.
    indefinidamente e que `rm -f tests/fixtures/render_ir build/namcore_render/*/render` é o comando de
    invalidação manual — isso não resolve o problema, mas ao menos o torna um comportamento documentado
    e não uma surpresa descoberta por tentativa e erro.
+4. ✅ **Resolução (2026-07-02, D.1.2):** Implementadas ambas as soluções propostas. Para `$IR_BIN`: timestamp check (`render_ir.cpp -nt $IR_BIN` ⇒ force rebuild). Para `$RENDER_BIN`: arquivo `.build_config` registra `CXX:BUILD_TYPE` da última build; se diferir da execução atual, invalida o cache. O `.build_config` reside em `build/namcore_render/` (já gitignored).
 
 ---
 
@@ -771,7 +772,7 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 ## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [TO-DO]
 
 - **F5** — ✅ Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`. **Resolvido — arquivo removido, render_ir.cpp e README.md saneados em D.1.1.**
-- **F6** — Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config.
+- **F6** — ✅ Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config. **Resolvido — timestamp check para $IR_BIN + .build_config para $RENDER_BIN em D.1.2.**
 - **F10** — Remover comentário stale/contraditório sobre `wavenet_lite`.
 
 ## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C) [TO-DO]

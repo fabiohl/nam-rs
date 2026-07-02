@@ -174,6 +174,19 @@ echo ""
 echo "[4/11] Building render tool..."
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
+BUILD_CONFIG_FILE="$BUILD_DIR/.build_config"
+
+# Invalidate render cache if BUILD_TYPE or CXX changed since last build.
+# Prevents silent reuse of a Debug (or clang++) binary when the caller
+# asks for Release (or g++).
+if [ -f "$RENDER_BIN" ] && [ -f "$BUILD_CONFIG_FILE" ]; then
+    STORED_CONFIG=$(cat "$BUILD_CONFIG_FILE")
+    CURRENT_CONFIG="$CXX:$BUILD_TYPE"
+    if [ "$STORED_CONFIG" != "$CURRENT_CONFIG" ]; then
+        echo "  Build config changed ($STORED_CONFIG → $CURRENT_CONFIG) — forcing rebuild"
+        rm -f "$RENDER_BIN"
+    fi
+fi
 
 if [ -f "$RENDER_BIN" ]; then
     echo "  Render binary already exists: $RENDER_BIN"
@@ -208,6 +221,7 @@ else
             exit 1
         fi
     fi
+    echo "$CXX:$BUILD_TYPE" > "$BUILD_CONFIG_FILE"
 fi
 echo "  Render: $RENDER_BIN"
 
@@ -433,6 +447,13 @@ echo "[9/11] Building C++ IR reference (dsp::ImpulseResponse)..."
 
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
+
+# Timestamp check: force rebuild if render_ir.cpp is newer than the cached binary.
+# Prevents "phantom fix" bugs where source patches silently go unused.
+if [ -f "$IR_BIN" ] && [ "$FIXTURES_DIR/render_ir.cpp" -nt "$IR_BIN" ]; then
+    echo "  Source render_ir.cpp is newer than binary — forcing rebuild"
+    rm -f "$IR_BIN"
+fi
 
 if [ -f "$IR_BIN" ]; then
     echo "  IR reference binary already exists: $IR_BIN"
