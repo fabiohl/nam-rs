@@ -1,11 +1,4 @@
 * /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
-  Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "utils/tests-performance-regression.sh".
-  Ele parece um pouco com os objetivos "tests-quick.sh" - mas é muito prematuro pensar em fusão, já que seu escopo é específico para um rol especial de atividades.
-  Mas analise o seu papel. Otimize-o e deixe enxuto (takvez compartilhando em utils/_lib.sh). Ele não é repetitivo aos demais scripts. Ele é apenas uma parede defensiva estritamente focada em barrar regressões de performance.
-  Penso que ele é o local real onde os benchmarks devem ficar. Não que o "utils/tests-long.sh" não deva ter benchmark (isso debateremos em fórum especídico). Mas ele é o local natural de defender a performance - que é o papel de um bench.
-  Tendo muito em vista o espírito e os objetivos da arquitetura de testes (vide "docs/testing.md") e de bench (vide "docs/benchmarks.md"), analise criticamente o que temos aqui.
-  Ao final, atualizar o "docs/testing.md" e o "docs/benchmarks.md" para refletir a nossa nova visão constuida aqui. Inclusive organize bem o papel de cada documento.
-* /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
   Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "utils/tests-long.sh"
   Assim como o "utils/tests-quick.sh" não deve repetir o "utils/lints.sh", da mesma forma o "utils/tests-long.sh" não repete o "utils/tests-quick.sh". Ele apenas vai além do escopo daqueles teste, sendo o extremo caçador final executado noturnamente.
   Ele precisa ser completo (na verdade, complementar os demais) no sentido de verificar tudo o que o NAM-rs tenha de suíte QA mais avançada disponível (mais ainda assim não repetindo os demais).

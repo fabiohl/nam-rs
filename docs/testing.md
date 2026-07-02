@@ -7,6 +7,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 This document tracks and categorizes the test suite of `nam-rs` according to its required Cargo features and execution phases. By using targeted feature gating and specific test runners, the project ensures **100% regression coverage** and **strict RT-safety validation** while minimizing compilation and execution overhead.
 
+> [!NOTE]
+> **Document scope.** This document covers the *functional/correctness* `cargo test`
+> architecture: `utils/tests-quick.sh` (agile first line) and `utils/tests-long.sh`
+> (nightly/pre-release audit). Static analysis (`utils/lints.sh`) and performance
+> benchmarking are deliberately out of scope here and are **not** duplicated:
+>
+> - `utils/tests-performance-regression.sh` is the canonical, baseline-gated
+>   performance-regression wall. Its full rationale, workflow, and troubleshooting
+>   live in [benchmarks.md](benchmarks.md) ("Regression Gate" section).
+> - `utils/tests-long.sh` Phase 5 (§4 below) additionally runs the full Criterion
+>   bench suite for the record, with no baseline gating of its own.
+
 ---
 
 ## 1. Crate Features Taxonomy

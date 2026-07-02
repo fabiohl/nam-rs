@@ -2,9 +2,19 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
+
 # Performance Benchmarks (Criterion)
 
 The NAM-rs project uses **Criterion.rs** as its official performance benchmarking suite. Given the latency-sensitive nature of a real-time audio engine (DSP), conducting measurements with statistical rigor is essential to avoid being misled by operating system variations (noise, context switches, clock fluctuations).
+
+> [!NOTE]
+> **Document scope.** This is the authoritative reference for Criterion benchmarking in
+> nam-rs: how to run/interpret benches, and the full rationale, workflow, and
+> troubleshooting for the performance regression gate (`utils/tests-performance-regression.sh`).
+> The functional/correctness `cargo test` suites (`utils/tests-quick.sh`, `utils/tests-long.sh`)
+> and their feature/phase architecture are documented separately in
+> [testing.md](testing.md); that document only cross-references benchmarks, it does not
+> duplicate this one.
 
 ## How to Run the Benchmarks
 
@@ -69,7 +79,14 @@ All historical tracking metrics are recorded in local files within your project 
 
 ## Regression Gate — Catching Latency Degradation Before It Ships
 
-The project maintains a **performance regression gate** (`utils/tests-performance-regression.sh`) that acts as a CI guard: it compares the current build against a persisted statistical baseline and fails the pipeline if a slowdown is detected. This is your primary tool to ensure that no commit silently pushes latency toward the 1.33 ms real-time deadline.
+`utils/tests-performance-regression.sh` is the **canonical home of benchmark-based
+performance defense** in nam-rs: the one script whose entire job is to stand as a
+statistical wall against DSP hot-path decay. It acts as a CI guard — it compares the
+current build against a persisted statistical baseline and fails the pipeline if a
+slowdown is detected. This is your primary tool to ensure that no commit silently pushes
+latency toward the 1.33 ms real-time deadline. It is deliberately narrow in scope (unlike
+`utils/tests-quick.sh` and `utils/tests-long.sh`, which cover functional/correctness
+regressions): its only mandate is baseline-gated performance.
 
 ### How It Works
 
@@ -119,12 +136,12 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 
 ### Relationship to Other QA Tools
 
-| Tool                                    | Role                                                                                                                                               |
-|:--------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/rt_deadline.rs`                  | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                     |
-| `utils/tests-performance-regression.sh` | **Relative guard** — catches degradations *within* the safe zone (e.g., a model slowing from 100 μs to 150 μs, still under 1.33 ms but 50% worse). |
-| `utils/tests-long.sh` Phase 5           | Runs all benches (including `regression_gate`) as part of the full ~38 min audit suite.                                                            |
-| `utils/tests-quick.sh`                  | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use this script directly for perf checks.                     |
+| Tool                                    | Role                                                                                                                                                                                              |
+|:--------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rt_deadline.rs`                  | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                                                                    |
+| `utils/tests-performance-regression.sh` | **Relative guard, baseline-gated** — the canonical home for perf-regression benchmarking. Catches degradations *within* the safe zone (e.g., 100 μs → 150 μs, still under 1.33 ms but 50% worse). |
+| `utils/tests-long.sh` Phase 5           | Runs the full bench suite (including `regression_gate`) as part of the nightly audit, purely **for the record** — no baseline comparison, no pass/fail on slowdown.                               |
+| `utils/tests-quick.sh`                  | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use `tests-performance-regression.sh` directly for perf checks.                                              |
 
 > [!IMPORTANT]
 > **Always run `--check` before pushing.** A passing `tests-quick.sh` and `tests-long.sh` does
@@ -145,12 +162,12 @@ If the script exits with `❌ PERFORMANCE REGRESSION DETECTED`:
 
 Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
 
-| Topology      | Implementation      | Latency (Average) | Speedup    |
-|:------------- |:------------------- |:----------------- |:---------- |
-| **LSTM 1x8**  | Scalar (Baseline)   | ~45.12 µs         | -          |
-| **LSTM 1x8**  | **SIMD Fused**      | **~2.27 µs**      | **19.84x** |
-| **LSTM 2x16** | Scalar (Baseline)   | ~45.19 µs         | -          |
-| **LSTM 2x16** | **SIMD Fused**      | **~10.86 µs**     | **4.16x**  |
+| Topology      | Implementation    | Latency (Average) | Speedup    |
+|:------------- |:----------------- |:----------------- |:---------- |
+| **LSTM 1x8**  | Scalar (Baseline) | ~45.12 µs         | -          |
+| **LSTM 1x8**  | **SIMD Fused**    | **~2.27 µs**      | **19.84x** |
+| **LSTM 2x16** | Scalar (Baseline) | ~45.19 µs         | -          |
+| **LSTM 2x16** | **SIMD Fused**    | **~10.86 µs**     | **4.16x**  |
 
 ### Technical Conclusion
 
@@ -204,10 +221,10 @@ The goal was to eliminate redundant memory passes in the final output stage by f
 
 ### Measurement Results (64 samples, 48kHz, AVX2)
 
-| Topology        | Before Fusion | After Fusion        | Gain (%)  |
-|:--------------- |:------------- |:------------------- |:--------- |
-| **WaveNet Std** | ~98.0 µs      | ~92.6 µs            | **~5.5%** |
-| **LSTM 2x16**   | ~11.4 µs      | ~10.9 µs            | **~4.5%** |
+| Topology        | Before Fusion | After Fusion | Gain (%)  |
+|:--------------- |:------------- |:------------ |:--------- |
+| **WaveNet Std** | ~98.0 µs      | ~92.6 µs     | **~5.5%** |
+| **LSTM 2x16**   | ~11.4 µs      | ~10.9 µs     | **~4.5%** |
 
 ### Conclusion
 
