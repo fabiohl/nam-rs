@@ -31,7 +31,7 @@ gantt
 
 ### 🏃 Sprint A.1: Hardening & Observabilidade (Duração: Est. 3 dias)
 
-#### 📝 Tarefa A.1.1: Correção do Tratamento de Erros e Controle de Fluxo
+#### 📝 Tarefa A.1.1: Correção do Tratamento de Erros e Controle de Fluxo [DONE]
 
 - **Prioridade:** 🔴 Crítica
 - **Risco:** Alto (pode quebrar a execução do script se o fluxo de loop for corrompido)
@@ -44,7 +44,7 @@ gantt
   - Permitir que o loop continue para os modelos restantes usando `continue`.
   - ✅ **CONCLUÍDO 2026-07-02**: Padrão adotado: `set +o pipefail` local + captura explícita de `$?` + restauração de `pipefail`, seguindo a abordagem "mais robusta e sem subshell" proposta em F1. O loop v2 (linha 370) já usava subshell como workaround; o loop v1 agora usa o mesmo tratamento de erro explícito. Nenhuma outra chamada de pipeline em loop com `continue` foi encontrada — todas as demais estão fora de loops e abortar via `set -e` é o comportamento correto.
 
-#### 📝 Tarefa A.1.2: Persistência de Logs Completos por Fase
+#### 📝 Tarefa A.1.2: Persistência de Logs Completos por Fase [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Baixo
@@ -55,6 +55,13 @@ gantt
   - Redirecionar a saída completa (`stdout` e `stderr`) de cada subcomando barulhento (ex: `cmake`, `cargo build`, renderizadores) para arquivos de log dedicados (ex: `build/namcore_render/logs/phase_3_build.log`).
   - Manter o console limpo usando `tail -N` no caminho de sucesso (exibindo apenas um resumo informativo no console).
   - Em caso de falha de qualquer fase, imprimir uma mensagem de erro em destaque instruindo o desenvolvedor a verificar o arquivo de log persistente correspondente.
+  - ✅ **CONCLUÍDO 2026-07-02**: Logs estruturados em `build/namcore_render/logs/` com nomes descritivos (não fase-dependentes, pois A.1.3 renumerará fases):
+    - `render_cmake.log` — cmake configure + build (append)
+    - `rust_build.log` — cargo build (gen_stress + wav_to_golden)
+    - `render_v1.log` — render v1 acumulado de todos os modelos (append via temp)
+    - `render_v2.log` — render v2 multi-SR acumulado (append via temp)
+    - `render_ir_build.log` — compilação C++ do render_ir
+    - Padrão de falha uniforme: `cmd > "$LOG" 2>&1 || { tail -5; echo "ERROR: ..."; exit 1; }` com mensagem apontando para o log persistente. Gen_stress e wav_to_golden mantidos sem log por serem leves. As chamadas de render agora usam arquivo temporário por modelo → `cat >>` para o log mestre.
 
 #### 📝 Tarefa A.1.3: Renumeração Consistente das Fases do Script
 

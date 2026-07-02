@@ -58,8 +58,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NAM_CORE_DIR="$SCRIPT_DIR/NeuralAmpModelerCore"
 NAM_PLUGIN_DIR="$SCRIPT_DIR/NeuralAmpModelerPlugin"
 BUILD_DIR="$PROJECT_ROOT/build/namcore_render"
+LOGS_DIR="$BUILD_DIR/logs"
 MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
+mkdir -p "$LOGS_DIR"
 
 # Pinned upstream commits for reproducibility.
 # Update these when regenerating goldens with a newer upstream version.
@@ -159,13 +161,26 @@ if [ -f "$RENDER_BIN" ]; then
 else
     echo "  Building render tool (v0.5.4 + A2-fast)..."
     mkdir -p "$BUILD_DIR"
+    CMAKE_LOG="$LOGS_DIR/render_cmake.log"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_CXX_STANDARD=20 \
         -DNAM_ENABLE_A2_FAST=ON \
-        2>&1 | tail -5
-    cmake --build "$BUILD_DIR" --target render -j"$(nproc)" 2>&1 | tail -5
+        > "$CMAKE_LOG" 2>&1 || {
+        cmake_status=$?
+        tail -5 "$CMAKE_LOG"
+        echo "ERROR: cmake configure failed (exit=$cmake_status). Full log: $CMAKE_LOG"
+        exit 1
+    }
+    tail -5 "$CMAKE_LOG"
+    cmake --build "$BUILD_DIR" --target render -j"$(nproc)" >> "$CMAKE_LOG" 2>&1 || {
+        build_status=$?
+        tail -5 "$CMAKE_LOG"
+        echo "ERROR: cmake build failed (exit=$build_status). Full log: $CMAKE_LOG"
+        exit 1
+    }
+    tail -5 "$CMAKE_LOG"
 
     if [ ! -f "$RENDER_BIN" ]; then
         RENDER_BIN=$(find "$BUILD_DIR" -name render -type f -executable | head -1)
@@ -183,7 +198,14 @@ echo "  Render: $RENDER_BIN"
 echo ""
 echo "[3/5] Building Rust tools (gen_stress + wav_to_golden)..."
 
-cargo build --release --bin gen_stress --bin wav_to_golden 2>&1 | tail -3
+RUST_LOG="$LOGS_DIR/rust_build.log"
+cargo build --release --bin gen_stress --bin wav_to_golden > "$RUST_LOG" 2>&1 || {
+    rust_status=$?
+    tail -5 "$RUST_LOG"
+    echo "ERROR: cargo build failed (exit=$rust_status). Full log: $RUST_LOG"
+    exit 1
+}
+tail -3 "$RUST_LOG"
 GEN_STRESS="$PROJECT_ROOT/target/release/gen_stress"
 WAV_TO_GOLDEN="$PROJECT_ROOT/target/release/wav_to_golden"
 
@@ -270,12 +292,16 @@ for entry in "${MODELS[@]}"; do
         continue
     fi
 
+    TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_render.log"
     set +o pipefail
-    "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
+    "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" > "$TEMP_RENDER_LOG" 2>&1
     render_status=$?
+    tail -1 "$TEMP_RENDER_LOG"
+    cat "$TEMP_RENDER_LOG" >> "$LOGS_DIR/render_v1.log"
+    rm -f "$TEMP_RENDER_LOG"
     set -o pipefail
     if [ "$render_status" -ne 0 ] || [ ! -f "$OUTPUT_WAV" ]; then
-        echo "  ERROR: Render failed for $label (exit=$render_status)"
+        echo "  ERROR: Render failed for $label (exit=$render_status). Full log: $LOGS_DIR/render_v1.log"
         continue
     fi
 
@@ -369,10 +395,16 @@ for entry in "${V2_MODELS[@]}"; do
 
         echo "    $label @ ${sr} Hz (v2)..."
 
-        (set +o pipefail; "$RENDER_BIN" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" 2>&1 | tail -1)
-
-        if [ ! -f "$v2_out_wav" ]; then
-            echo "    SKIP: render failed for $label @ ${sr} Hz (likely SR mismatch in C++ tool)"
+        TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_v2_${sr}_render.log"
+        set +o pipefail
+        "$RENDER_BIN" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" > "$TEMP_RENDER_LOG" 2>&1
+        render_status=$?
+        tail -1 "$TEMP_RENDER_LOG"
+        cat "$TEMP_RENDER_LOG" >> "$LOGS_DIR/render_v2.log"
+        rm -f "$TEMP_RENDER_LOG"
+        set -o pipefail
+        if [ "$render_status" -ne 0 ] || [ ! -f "$v2_out_wav" ]; then
+            echo "    SKIP: render failed for $label @ ${sr} Hz (likely SR mismatch in C++ tool). Full log: $LOGS_DIR/render_v2.log"
             continue
         fi
 
@@ -396,6 +428,7 @@ if [ -f "$IR_BIN" ]; then
     echo "  IR reference binary already exists: $IR_BIN"
 else
     echo "  Compiling render_ir.cpp..."
+    IR_LOG="$LOGS_DIR/render_ir_build.log"
     "$CXX" -std=c++17 -O2 \
         -I "$AUDIO_DSP_TOOLS_DIR" \
         -I "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen" \
@@ -407,7 +440,13 @@ else
         "$AUDIO_DSP_TOOLS_DIR/dsp/wav.cpp" \
         -o "$IR_BIN" \
         -lstdc++fs \
-        2>&1
+        > "$IR_LOG" 2>&1 || {
+        ir_status=$?
+        tail -5 "$IR_LOG"
+        echo "ERROR: Failed to build render_ir binary (exit=$ir_status). Full log: $IR_LOG"
+        exit 1
+    }
+    tail -5 "$IR_LOG"
 
     if [ ! -f "$IR_BIN" ]; then
         echo "  ERROR: Failed to build render_ir binary."
