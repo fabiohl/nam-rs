@@ -149,17 +149,16 @@ alcançável. **Ponto de maior atenção da agenda.**
 
 **Direcionado a:** `implementador`.
 
-- [ ]**S3.T1 — Novo teste `test_wavenet_a2_max_dispatch_is_disabled_broken`.** Em
+- [x]**S3.T1 — Novo teste `test_wavenet_a2_max_dispatch_is_disabled_broken`.** Em
   `tests/golden_vectors.rs` (substituindo o espírito do antigo `test_loader_gap_*`): carrega
   `tests/fixtures/models/wavenet_a2_max.nam`, chama `build_model`, e `assert!(result.is_err())`
   cuja mensagem contém "disabled" e "§7.1". **Este teste roda no `cargo test`** e prova que a
   guarda fail-closed está ativa — é a testemunha de que o modelo quebrado está contido.
-- [ ]**S3.T2 — Cobertura negativa de não-regressão.** No mesmo teste (ou um par
+- [x]**S3.T2 — Cobertura negativa de não-regressão.** No mesmo teste (ou um par
   `test_wavenet_condition_dsp_still_loads`), carregar `wavenet_condition_dsp.nam` e asserar
   `build_model` **Ok** — prova que a guarda não bloqueia modelos vizinhos válidos.
 
-- **Critério de aceite S3:** S3.T1 falha (vermelho) se a guarda S1 for removida; S3.T2 falha
-  se a guarda ficar super-abrangente. Ambos passam no estado final.
+- **Critério de aceite S3:** ✅ S3.T1 (`test_wavenet_a2_max_dispatch_is_disabled_broken`) — verde, asserta `Err` com "disabled" + "§7.1" (falharia se a guarda S1 fosse removida). S3.T2 (`test_wavenet_condition_dsp_still_loads`) — verde, asserta `Ok` para modelo vizinho válido `wavenet_condition_dsp.nam` (falharia se a guarda fosse super-abrangente). Ambos rodam no `cargo test` sem `#[ignore]`.
 
 ### Sprint S4 — Documentação e fixtures (disabled, not removed)
 

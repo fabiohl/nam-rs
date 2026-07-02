@@ -5,8 +5,8 @@
   "7.5 📄 Stale documentation — misleading, but not code bugs"
   "7.6 Coverage gaps — not correctness bugs, but validation-depth gaps"
 * /revisor-auditor [Sonnet][Fable] totalmente focado na role "Compliance and Parity Auditor".
-  Auditar e atualizar o "docs/cpp_parity_map.md". Atualizado, limpo, útil!
-  Assegure que os testes acionáveis por "utils/tests-quick.sh" estão corretamente calibrados e corretos.
+  Auditar e atualizar o "docs/cpp_parity_map.md" e o "tests/fixtures/README.md". Atualizados, limpos, úteis!
+  Assegure que os testes acionáveis por "utils/tests-quick.sh" estão calibrados e corretos.
   E o que os seus resultados dizem da qualidade do nam-rs que possam ser melhorados.
 
 * /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".

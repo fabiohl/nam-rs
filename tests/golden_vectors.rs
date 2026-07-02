@@ -941,7 +941,7 @@ fn test_golden_vectors_a2_example_slimmable() {
 /// `build_model` returns `Err` with the expected "disabled" message
 /// and cite to §7.1, proving the guard is active.
 #[test]
-fn test_wavenet_a2_max_disabled_broken() {
+fn test_wavenet_a2_max_dispatch_is_disabled_broken() {
     let path = model_path("wavenet_a2_max.nam");
     assert!(path.exists());
     let json = fs::read_to_string(&path).expect("Failed to read wavenet_a2_max.nam");
@@ -961,6 +961,29 @@ fn test_wavenet_a2_max_disabled_broken() {
         err_msg.contains("§7.1"),
         "Error message must cite §7.1, got: {}",
         err_msg
+    );
+}
+
+/// Test 8k-1: `wavenet_condition_dsp.nam` still loads — non-regression guard.
+///
+/// Proves that the fail-closed dispatch guard in `is_disabled_broken_a2_flagship`
+/// does **not** block valid neighboring models. The `wavenet_condition_dsp.nam`
+/// model is a multi-array cascade with `condition_dsp` and `condition_size=3`,
+/// which does not match the broken-flagship signature (it has `num_arrays=2`,
+/// which falls outside the `num_arrays==1` predicate).
+///
+/// If this test fails, the guard is over-broad and must be narrowed.
+#[test]
+fn test_wavenet_condition_dsp_still_loads() {
+    let path = model_path("wavenet_condition_dsp.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_dsp.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_dsp.nam");
+    let result = build_model(&data);
+    assert!(
+        result.is_ok(),
+        "wavenet_condition_dsp.nam must load successfully (guard is over-broad). Error: {:?}",
+        result.err()
     );
 }
 
