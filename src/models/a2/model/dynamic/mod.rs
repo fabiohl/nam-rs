@@ -61,8 +61,14 @@ pub struct WaveNetA2Dyn {
     /// Used when head_size == 1 (mono output).
     pub head_conv: Option<A2HeadConv>,
     /// Head rechannel weights for multi-channel output (head_size > 1).
-    /// Maps channels → head_size (no bias, no scale).
+    /// Layout: per output channel `[K][head_accum_size]` column-major per tap,
+    /// concatenated as `head_size * K * head_accum_size` f32, matching
+    /// the Conv1D(head_accum_size → 1, K=16, bias, head_scale) per output channel.
     pub head_rechannel_w: AlignedVec<f32>,
+    /// Head rechannel per-output-channel bias. Size: `head_size`.
+    pub head_rechannel_b: AlignedVec<f32>,
+    /// Head rechannel per-output-channel scale. Size: `head_size`.
+    pub head_rechannel_scale: AlignedVec<f32>,
 
     /// Head accumulator ring buffer (channels-wide, pow2 size).
     pub head_accum: AlignedVec<f32>,
@@ -260,7 +266,12 @@ impl WaveNetA2Dyn {
             rechannel_w: AlignedVec::new(input_channels * channels, 0u16),
             rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32),
             head_conv: None,
-            head_rechannel_w: AlignedVec::new(head_size.max(1) * head_accum_size, 0.0f32),
+            head_rechannel_w: AlignedVec::new(
+                head_size.max(1) * super::super::params::A2_HEAD_KERNEL_SIZE * head_accum_size,
+                0.0f32,
+            ),
+            head_rechannel_b: AlignedVec::new(head_size.max(1), 0.0f32),
+            head_rechannel_scale: AlignedVec::new(head_size.max(1), 0.0f32),
             head_accum: AlignedVec::new(head_ring_size * head_accum_size, 0.0f32),
             head_write_pos: rf,
             head_ring_mask,

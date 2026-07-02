@@ -106,13 +106,18 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
   * `process.rs`: Substituído o método `cascade_seed_head` (que copiava `head_accum` bruto com stride incorreto usando `channels` em vez de `head_accum_size`) por `cascade_seed_head_from_output` que recebe a saída de cabeça já processada.
   * 1077 testes passam (incluindo todos os 235 testes A2, 96 testes wavenet e o golden vector `test_golden_vectors_wavenet_condition_dsp` do modelo cascade multi-array).
 
-### 🟡 Tarefa T3.3: Implementar Convolução de Cabeça Completa no A2 para `head_size > 1`
+### 🟡 Tarefa T3.3: Implementar Convolução de Cabeça Completa no A2 para `head_size > 1` [DONE]
 
 * **Descrição:** Habilitar suporte completo a Conv1D com bias e escala na finalização de modelos A2 que possuam tamanho de cabeça estendido.
 * **Ações:**
   1. Modificar o processo em `src/models/a2/model/static/process.rs` (e correspondente dinâmico) para aplicar convolução 1D completa ao invés de projeção linear pura para `head_size > 1`.
 * **Verificação:** Testes de fixtures sintéticos estendidos.
 * **Referência:** Finding 7.4.3.
+* **Conclusão (2026-07-02):**
+  * `mod.rs` (`WaveNetA2Dyn`): Adicionados `head_rechannel_b: AlignedVec<f32>` e `head_rechannel_scale: AlignedVec<f32>` para bias e escala por canal de saída. `head_rechannel_w` agora armazena `head_size * K * head_accum_size` elementos (Conv1D por canal).
+  * `build.rs` (`load_head_conv_and_scale`): Para `head_size > 1`, carrega `head_size × K × head_accum_size` pesos + `head_size` bias + `head_size` escala, com transposição `transpose_head_w` por canal de saída. Validado com checagem de finitude em bias e escala.
+  * `process.rs` (`cascade_head_finalize`): Substituída a projeção densa por Conv1D(K=16) completo com bias e escala por canal de saída, igualando o comportamento do C++ (`a2_fast.cpp`).
+  * 235 testes A2 + 30 golden vectors (incluindo `wavenet_condition_dsp` cascade) passam. Nenhum warning de clippy.
 
 ---
 

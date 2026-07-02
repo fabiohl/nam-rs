@@ -343,7 +343,8 @@ impl WaveNetA2Dyn {
 
     /// Finalizes the head convolution for cascade — uses the current
     /// head_write_pos (set by cascade_layer_loop).
-    /// When head_size > 1, uses dense head_rechannel instead of head_conv.
+    /// When head_size > 1, applies full Conv1D(CH→1, K=16, bias, head_scale)
+    /// per output channel matching the C++ reference.
     #[inline(always)]
     pub(crate) fn cascade_head_finalize(&mut self, nf: usize, output: &mut [f32]) {
         let head_size = self.head_size;
@@ -358,21 +359,30 @@ impl WaveNetA2Dyn {
                 );
             }
         } else {
-            // Multi-channel head_rechannel: dense projection channels → head_size.
             let channels = self.head_accum_size;
+            let k = crate::models::a2::params::A2_HEAD_KERNEL_SIZE;
             let hw = &self.head_rechannel_w;
+            let hb = &self.head_rechannel_b;
+            let hs = &self.head_rechannel_scale;
             let ha = &self.head_accum;
             let wp = self.head_write_pos;
             let mask = self.head_ring_mask;
+            let base = wp.wrapping_sub(nf);
             for f in 0..nf {
-                let ha_off = ((wp + f) & mask) * channels;
+                let col_base = base.wrapping_add(f);
                 let out_off = f * head_size;
                 for oc in 0..head_size {
-                    let mut sum = 0.0f32;
-                    for ic in 0..channels {
-                        sum += ha[ha_off + ic] * hw[ic * head_size + oc];
+                    let w_base = oc * k * channels;
+                    let mut y = hb[oc];
+                    for t in 0..k {
+                        let col = col_base.wrapping_sub(k - 1 - t) & mask;
+                        let ha_off = col * channels;
+                        let w_off = w_base + t * channels;
+                        for ic in 0..channels {
+                            y += hw[w_off + ic] * ha[ha_off + ic];
+                        }
                     }
-                    output[out_off + oc] = sum;
+                    output[out_off + oc] = y * hs[oc];
                 }
             }
         }

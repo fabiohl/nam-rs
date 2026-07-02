@@ -57,19 +57,9 @@ impl WaveNetA2Dyn {
 
         self.load_head1x1_weights(weights, pos, total)?;
 
-        let (head_w, head_b, head_scale) = self.load_head_conv_and_scale(weights, pos, total)?;
+        self.load_head_conv_and_scale(weights, pos, total)?;
 
         self.layers = layers;
-        if self.head_size == 1 {
-            self.head_conv = Some(A2HeadConv::new(
-                head_w,
-                head_b,
-                head_scale,
-                self.head_accum_size,
-            ));
-        } else {
-            self.head_rechannel_w = head_w;
-        }
 
         Ok(())
     }
@@ -245,22 +235,23 @@ impl WaveNetA2Dyn {
         Ok(())
     }
 
-    /// Loads head conv weights (K=16), bias, and head scale from the stream
-    /// (for head_size == 1), or head_rechannel weights (for head_size > 1).
-    /// S14.1 (PM-15): multi-array cascade arrays may have head_size > 1,
-    /// in which case the stream contains a dense head_rechannel
-    /// (channels × head_size, no bias, no scale) instead of head_conv.
+    /// Loads head conv weights (K=16), bias, and head scale from the stream.
+    ///
+    /// For head_size == 1, builds a mono `A2HeadConv`.
+    /// S14.1 (PM-15): for head_size > 1 (multi-array cascade arrays with
+    /// multi-channel output), loads a full Conv1D per output channel:
+    /// `head_size × K × head_accum_size` weights + `head_size` bias + `head_size` scale.
     fn load_head_conv_and_scale(
-        &self,
+        &mut self,
         weights: &[f32],
         pos: &mut usize,
         total: usize,
-    ) -> Result<(AlignedVec<f32>, f32, f32), String> {
+    ) -> Result<(), String> {
         let channels = self.head_accum_size;
+        let head_k = crate::models::a2::params::A2_HEAD_KERNEL_SIZE;
         let head_size = self.head_size;
 
         if head_size == 1 {
-            let head_k = crate::models::a2::params::A2_HEAD_KERNEL_SIZE;
             let head_w_f32 = super::super::set_weights::read_slice(
                 weights,
                 pos,
@@ -294,21 +285,66 @@ impl WaveNetA2Dyn {
                 s[0]
             };
 
-            Ok((head_w, head_b, head_scale))
+            self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, channels));
         } else {
-            // Multi-channel head: dense rechannel (channels × head_size, no bias).
-            let hw_count = self.head_accum_size * head_size;
-            let hw_f32 = super::super::set_weights::read_slice(
+            // Multi-channel head: full Conv1D per output channel.
+            let per_oc_w_count = head_k * channels;
+            let total_w_count = head_size * per_oc_w_count;
+            let head_w_f32 = super::super::set_weights::read_slice(
                 weights,
                 pos,
-                hw_count,
+                total_w_count,
                 total,
                 "head_rechannel_w",
             )?;
-            let mut head_w = AlignedVec::new(hw_count, 0.0f32);
-            head_w.copy_from_slice(hw_f32);
-            // head_b = 0.0, head_scale = 1.0 (not used for multi-channel).
-            Ok((head_w, 0.0, 1.0))
+            let mut head_w = AlignedVec::new(total_w_count, 0.0f32);
+            for oc in 0..head_size {
+                let src = &head_w_f32[oc * per_oc_w_count..(oc + 1) * per_oc_w_count];
+                let dst = &mut head_w[oc * per_oc_w_count..(oc + 1) * per_oc_w_count];
+                transpose_head_w(src, dst, channels, head_k);
+            }
+
+            let head_b_f32 = super::super::set_weights::read_slice(
+                weights,
+                pos,
+                head_size,
+                total,
+                "head_rechannel_b",
+            )?;
+            for &b in head_b_f32 {
+                if !b.is_finite() {
+                    return Err(format!(
+                        "set_weights: head_rechannel_b contains non-finite value (value: {:e})",
+                        b
+                    ));
+                }
+            }
+            let mut head_b = AlignedVec::new(head_size, 0.0f32);
+            head_b.copy_from_slice(head_b_f32);
+
+            let head_scale_f32 = super::super::set_weights::read_slice(
+                weights,
+                pos,
+                head_size,
+                total,
+                "head_rechannel_scale",
+            )?;
+            for &s in head_scale_f32 {
+                if !s.is_finite() {
+                    return Err(format!(
+                        "set_weights: head_rechannel_scale contains non-finite value (value: {:e})",
+                        s
+                    ));
+                }
+            }
+            let mut head_scale = AlignedVec::new(head_size, 0.0f32);
+            head_scale.copy_from_slice(head_scale_f32);
+
+            self.head_rechannel_w = head_w;
+            self.head_rechannel_b = head_b;
+            self.head_rechannel_scale = head_scale;
         }
+
+        Ok(())
     }
 }
