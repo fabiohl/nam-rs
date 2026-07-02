@@ -125,7 +125,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 
 **Foco:** Limpeza de claims falsos na documentação e expansão de testes cruzados de regressão.
 
-### ⚪ Tarefa T4.1: Atualizar `docs/testing.md` e `tests/fixtures/README.md`
+### ⚪ Tarefa T4.1: Atualizar `docs/testing.md` e `tests/fixtures/README.md` [DONE]
 
 * **Descrição:** Atualizar referências desatualizadas a testes do WaveNet Lite e classificar corretamente o comportamento real de `wavenet_a2_max.nam`.
 * **Ações:**
