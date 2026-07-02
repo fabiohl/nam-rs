@@ -8,28 +8,24 @@
 
 set -euo pipefail
 
-# Style helpers
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+PHASE_TOTAL=5
+source "$SCRIPT_DIR/_lib.sh"
 
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 echo -e "${BLUE}${BOLD}          nam-rs Supply Chain Update & Sync Pipeline            ${NC}"
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 
 # Ensure we are in the project root directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # Load pinned versions from single source of truth (variables.env).
 source "$PROJECT_DIR/variables.env"
 
 # 1. Update Rust Toolchain
-echo -e "\n${BLUE}${BOLD}[1/4] Atualizando a toolchain ativa do Rust (rustup)...${NC}"
+phase "Atualizando a toolchain ativa do Rust (rustup)..."
 if command -v rustup &>/dev/null; then
     rustup update
 else
@@ -37,7 +33,7 @@ else
 fi
 
 # 2. Upgrade dependencies in Cargo.toml
-echo -e "\n${BLUE}${BOLD}[2/4] Atualizando definições de dependências (Cargo.toml)...${NC}"
+phase "Atualizando definições de dependências (Cargo.toml)..."
 if cargo --list | grep -q "upgrade"; then
     cargo upgrade --verbose
 else
@@ -46,11 +42,11 @@ else
 fi
 
 # 3. Update Cargo.lock
-echo -e "\n${BLUE}${BOLD}[3/4] Atualizando versões resolvidas no Cargo.lock...${NC}"
+phase "Atualizando versões resolvidas no Cargo.lock..."
 cargo update --verbose
 
 # 4. Sync upstream C++ fixtures
-echo -e "\n${BLUE}${BOLD}[4/5] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
+phase "Sincronizando fixtures do NeuralAmpModelerCore..."
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
 
 if [ -d "$FIXTURE_DIR" ]; then
@@ -74,7 +70,7 @@ for sub in eigen AudioDSPTools; do
 done
 
 # 5. Sync upstream NeuralAmpModelerPlugin (C++ IR reference)
-echo -e "\n${BLUE}${BOLD}[5/5] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
+phase "Sincronizando fixtures do NeuralAmpModelerPlugin..."
 PLUGIN_DIR="tests/fixtures/NeuralAmpModelerPlugin"
 
 if [ -d "$PLUGIN_DIR" ]; then

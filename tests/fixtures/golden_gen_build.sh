@@ -70,6 +70,10 @@ MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
 mkdir -p "$LOGS_DIR"
 
+# Load common utilities (phase helper, color vars).
+PHASE_TOTAL=11
+source "$PROJECT_ROOT/utils/_lib.sh"
+
 # Load pinned versions from single source of truth (variables.env).
 source "$PROJECT_ROOT/variables.env"
 
@@ -102,8 +106,7 @@ echo "  C++ Compiler: $CXX"
 # =============================================================================
 # Verify NeuralAmpModelerPlugin and dependencies
 # =============================================================================
-echo ""
-echo "[1/10] Verifying NeuralAmpModelerPlugin (C++ IR reference)..."
+phase "Verifying NeuralAmpModelerPlugin (C++ IR reference)..."
 if [ ! -d "$NAM_PLUGIN_DIR" ]; then
     echo "ERROR: NeuralAmpModelerPlugin not found at $NAM_PLUGIN_DIR."
     echo "Please run './utils/mod-update.sh' to download and setup dependencies."
@@ -128,8 +131,7 @@ echo "  NeuralAmpModelerPlugin verified ($NAM_PLUGIN_TAG @ $NAM_PLUGIN_COMMIT, s
 # =============================================================================
 # Verify NeuralAmpModelerCore (standard)
 # =============================================================================
-echo ""
-echo "[2/10] Verifying NeuralAmpModelerCore..."
+phase "Verifying NeuralAmpModelerCore..."
 if [ ! -d "$NAM_CORE_DIR" ]; then
     echo "ERROR: NeuralAmpModelerCore not found at $NAM_CORE_DIR."
     echo "Please run './utils/mod-update.sh' to download and setup dependencies."
@@ -156,8 +158,7 @@ echo "  NeuralAmpModelerCore verified ($NAM_CORE_TAG @ $NAM_CORE_COMMIT, submodu
 # =============================================================================
 # Generate A2 dynamic/FiLM synthetic fixtures
 # =============================================================================
-echo ""
-echo "[3/11] Generating A2 dynamic/FiLM fixtures (Python)..."
+phase "Generating A2 dynamic/FiLM fixtures (Python)..."
 A2_FIXTURES_PY="$FIXTURES_DIR/generate_a2_fixtures.py"
 if [ ! -f "$A2_FIXTURES_PY" ]; then
     echo "ERROR: generate_a2_fixtures.py not found at $A2_FIXTURES_PY"
@@ -169,8 +170,7 @@ echo "  A2 dynamic/FiLM .nam fixtures regenerated in $MODELS_DIR/"
 # =============================================================================
 # Build render tool (single unified binary at v0.5.4 with A2-fast)
 # =============================================================================
-echo ""
-echo "[4/11] Building render tool..."
+phase "Building render tool..."
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
 BUILD_CONFIG_FILE="$BUILD_DIR/.build_config"
@@ -227,8 +227,7 @@ echo "  Render: $RENDER_BIN"
 # =============================================================================
 # Build Rust tools (gen_stress + wav_to_golden)
 # =============================================================================
-echo ""
-echo "[5/11] Building Rust tools (gen_stress + wav_to_golden)..."
+phase "Building Rust tools (gen_stress + wav_to_golden)..."
 
 RUST_LOG="$LOGS_DIR/rust_build.log"
 cargo build --release --bin gen_stress --bin wav_to_golden > "$RUST_LOG" 2>&1 || {
@@ -251,8 +250,7 @@ echo "  wav_to_golden: $WAV_TO_GOLDEN"
 # =============================================================================
 # Generate stress WAV signals
 # =============================================================================
-echo ""
-echo "[6/11] Generating stress signals..."
+phase "Generating stress signals..."
 
 STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 "$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
@@ -270,8 +268,7 @@ done
 # =============================================================================
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================
-echo ""
-echo "[7/11] Running render for each model (v1)..."
+phase "Running render for each model (v1)..."
 
 # Canonical model↔golden catalog — single source of truth for both v1 and v2 loops.
 #
@@ -364,8 +361,7 @@ done
 # =============================================================================
 # Generate v2 multi-SR goldens (one per model × sample_rate)
 # =============================================================================
-echo ""
-echo "[8/11] Generating v2 multi-SR golden vectors..."
+phase "Generating v2 multi-SR golden vectors..."
 
 # v2 uses the same canonical CATALOG defined in §7.
 # Models with v2_scope="none" are skipped entirely;
@@ -440,8 +436,7 @@ done
 # =============================================================================
 # Build and run C++ IR reference (dsp::ImpulseResponse) → golden_cabsim_cpp_*.bin
 # =============================================================================
-echo ""
-echo "[9/11] Building C++ IR reference (dsp::ImpulseResponse)..."
+phase "Building C++ IR reference (dsp::ImpulseResponse)..."
 
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
@@ -490,8 +485,7 @@ echo "  Running render_ir to generate C++ IR golden vectors..."
 # =============================================================================
 # Cleanup
 # =============================================================================
-echo ""
-echo "[10/11] Cleaning up temporary files..."
+phase "Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
@@ -523,8 +517,7 @@ done
 # =============================================================================
 # Generate freshness manifest (.nam ↔ golden)
 # =============================================================================
-echo ""
-echo "[11/11] Generating freshness manifest..."
+phase "Generating freshness manifest..."
 
 MANIFEST="$FIXTURES_DIR/.golden_manifest.sha256"
 echo "# Golden freshness manifest — auto-generated by golden_gen_build.sh" > "$MANIFEST"

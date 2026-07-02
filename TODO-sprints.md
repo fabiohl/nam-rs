@@ -407,7 +407,7 @@ gantt
 
 ### 🏃 Sprint H.1: Faxina Textual & Saneamento de Resíduos (Duração: Est. 2 dias)
 
-#### 📝 Tarefa H.1.1: Helper de Fases Dinâmico Centralizado [TODO]
+#### 📝 Tarefa H.1.1: Helper de Fases Dinâmico Centralizado [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
