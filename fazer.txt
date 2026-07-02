@@ -1,14 +1,7 @@
-* TODO-sprints.md lidar com: docs/cpp_parity_map.md "7.1 🔴 Broken today — confirmed wrong audio output"
-* docs/cpp_parity_map.md: Montar esquema de correção via skill "planejador-arquiteto".
-  "7.2 🟠 Confirmed code bugs — not yet triggered by any known model"
-  "7.4 ⚪ Cosmetic findings — verified zero runtime effect today"
-  "7.5 📄 Stale documentation — misleading, but not code bugs"
-  "7.6 Coverage gaps — not correctness bugs, but validation-depth gaps"
 * /revisor-auditor [Sonnet][Fable] totalmente focado na role "Compliance and Parity Auditor".
   Auditar e atualizar o "docs/cpp_parity_map.md" e o "tests/fixtures/README.md". Atualizados, limpos, úteis!
   Assegure que os testes acionáveis por "utils/tests-quick.sh" estão calibrados e corretos.
   E o que os seus resultados dizem da qualidade do nam-rs que possam ser melhorados.
-
 * /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
   Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "tests/fixtures/golden_gen_build.sh"
   Tendo muito em vista o espírito e os objetivos da arquitetura de testes (vide "docs/testing.md"), analise criticamente o que temos aqui.
