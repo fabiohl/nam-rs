@@ -378,7 +378,6 @@ echo "[8/11] Generating v2 multi-SR golden vectors..."
 # A2-Full, A2-Lite — all 48 kHz) make the C++ render tool reject other SRs with
 # "Input WAV sample rate (X) does not match model expected rate (48000 Hz)". The
 # v2_scope="48k_only" tag prevents those rejections by only running 48 kHz.
-# `wavenet_lite` is intentionally present — P1 RESOLVIDO (T1.2), full v2 coverage.
 
 for entry in "${CATALOG[@]}"; do
     IFS=':' read -r nam_file golden_name label v2_scope skip_srs <<< "$entry"

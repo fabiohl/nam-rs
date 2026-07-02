@@ -48,7 +48,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | F7  | 🟡 Médio   | Observabilidade         | Numeração de fases inconsistente e duplicada no output do script                   |
 | F8  | 🟡 Médio   | Observabilidade         | Truncamento de log (`tail -N`) esconde a causa raiz exatamente na falha            |
 | F9  | 🟢 Baixo   | Robustez                | Skip de ConvNet acoplado a *string matching* de label, não a identidade de modelo  |
-| F10 | 🟢 Baixo   | Documentação (inline)   | Comentário contraditório/stale sobre `wavenet_lite` (linhas 309-310)               |
+| F10 | 🟢 Baixo   | Documentação (inline)   | ✅ Comentário contraditório/stale sobre `wavenet_lite` — **resolvido D.1.3**            |
 | F11 | 🟡 Médio   | Compliance              | Manifesto de frescor é parcial, não-bloqueante, e nunca roda em CI                 |
 | F12 | 🟢 Baixo   | Documentação            | `tests/fixtures/README.md` cita números de linha de `.gitignore` desatualizados    |
 | F13 | 🟡 Médio   | Documentação            | `docs/testing.md` não documenta o pipeline de geração como dependência crítica     |
@@ -596,7 +596,8 @@ apenas anotado como superado.
 **Proposta de solução:** remover a linha 309 (o comentário obsoleto) por completo, mantendo apenas a
 informação de proveniência histórica relevante se necessário (ex.: em `TODO-sprints.md`/changelog, não
 no código ativo), já que comentários "P1 RESOLVIDO" sem remoção da afirmação original são ruído que
-custa tempo de leitura a cada futura auditoria (como demonstrado por esta mesma).
+   custa tempo de leitura a cada futura auditoria (como demonstrado por esta mesma).
+3. ✅ **Resolução (2026-07-02, D.1.3):** Comentário removido por completo. O modelo `wavenet_lite` (`EVH-5150-Lite.nam`) é entrada normal no catálogo com `v2_scope=all`, sem nenhuma exceção ou tratamento especial a justificar comentário de ressalva.
 
 ---
 
@@ -773,7 +774,7 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 
 - **F5** — ✅ Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`. **Resolvido — arquivo removido, render_ir.cpp e README.md saneados em D.1.1.**
 - **F6** — ✅ Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config. **Resolvido — timestamp check para $IR_BIN + .build_config para $RENDER_BIN em D.1.2.**
-- **F10** — Remover comentário stale/contraditório sobre `wavenet_lite`.
+- **F10** — ✅ Remover comentário stale/contraditório sobre `wavenet_lite`. **Resolvido em D.1.3.**
 
 ## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C) [TO-DO]
 

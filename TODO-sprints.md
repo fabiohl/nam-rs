@@ -291,7 +291,7 @@ gantt
   - Opcional: implementar um mecanismo simples para invalidar o binário `render` principal caso a configuração da build (como compiler/build_type) mude.
   - ✅ **Concluído 2026-07-02:** Adicionado timestamp check `-nt` para `$IR_BIN` (força rebuild se `render_ir.cpp` mais recente). Adicionado tracking de `BUILD_TYPE`/`CXX` via `.build_config` para `$RENDER_BIN` (força rebuild se config mudar entre execuções).
 
-#### 📝 Tarefa D.1.3: Remoção de Comentário Obsoleto sobre `wavenet_lite`
+#### 📝 Tarefa D.1.3: Remoção de Comentário Obsoleto sobre `wavenet_lite` [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo
@@ -299,11 +299,12 @@ gantt
 - **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
 - **Descrição:**
   - Localizar e apagar o comentário stale das linhas 309-310 do script que dizia que `wavenet_lite` estava ausente por ser conhecido divergente (uma vez que `wavenet_lite` já foi re-adicionado com sucesso e coberto em v2).
+  - ✅ **Concluído 2026-07-02:** Removido comentário `wavenet_lite` is intentionally present — P1 RESOLVIDO (T1.2) da linha 381 (originalmente 309-310, parcialmente colapsado por commit anterior). O modelo é entrada normal no catálogo, sem exceção a justificar.
 
 #### 🏁 Critérios de Aceite da Sprint D.1
 
 1. ✅ Compilar `render_ir`, alterar `render_ir.cpp` e verificar se a próxima execução de `golden_gen_build.sh` reconstrói o binário automaticamente — timestamp check implementado (D.1.2).
-2. Limpeza completa dos comentários de cenários em `render_ir.cpp` e do `wavenet_lite` obsoleto.
+2. ✅ Limpeza completa dos comentários de cenários em `render_ir.cpp` (D.1.1) e do `wavenet_lite` obsoleto (D.1.3).
 3. ✅ Decisão final aplicada sobre o destino do arquivo `golden_cabsim_cpp_stress.bin`: removido (D.1.1).
 
 ---
