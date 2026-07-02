@@ -60,6 +60,46 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ── Freshness gate (Governança de frescor — Épico E) ────────────────────────
+# Checks the versioned golden freshness manifest against current model files.
+# Fail hard on staleness: a golden from a modified .nam is a non-starter per
+# the "Todo Golden Deve Poder Falhar" principle (tests/fixtures/README.md §Principle).
+# Returns 0 if all models match, 1 if any model is stale or manifest missing.
+check_freshness() {
+    local MANIFEST="tests/fixtures/.golden_manifest.sha256"
+    local MODELS_DIR="tests/fixtures/models"
+
+    if [ ! -f "$MANIFEST" ]; then
+        echo -e "${RED}${BOLD}❌ Freshness manifest missing: $MANIFEST${NC}"
+        echo -e "${RED}   Run './tests/fixtures/golden_gen_build.sh' to generate goldens and manifest.${NC}"
+        return 1
+    fi
+
+    local STALE_COUNT=0
+    while IFS= read -r line; do
+        [[ "$line" == \#* ]] && continue
+        [[ -z "$line" ]] && continue
+        read -r expected_model_sha expected_golden_sha nam_file golden_file <<< "$line"
+        local MODEL_PATH="$MODELS_DIR/$nam_file"
+        if [ -f "$MODEL_PATH" ]; then
+            local CURRENT_MODEL_SHA
+            CURRENT_MODEL_SHA=$(sha256sum "$MODEL_PATH" | cut -d' ' -f1)
+            if [ "$CURRENT_MODEL_SHA" != "$expected_model_sha" ]; then
+                echo -e "  ${RED}▲ STALE: $nam_file — model modified since golden was generated${NC}"
+                STALE_COUNT=$((STALE_COUNT + 1))
+            fi
+        fi
+    done < "$MANIFEST"
+
+    if [ "$STALE_COUNT" -gt 0 ]; then
+        echo -e "${RED}${BOLD}❌ Freshness gate FAILED: $STALE_COUNT model(s) stale.${NC}"
+        echo -e "${RED}   Run './tests/fixtures/golden_gen_build.sh' to regenerate goldens and manifest.${NC}"
+        return 1
+    fi
+    echo -e "  ${GREEN}✓ Freshness gate passed (all model hashes match manifest).${NC}"
+    return 0
+}
+
 # Re-execute with low CPU and I/O priority (nice and ionice) to prevent overloading the system.
 # This can be bypassed by setting NAM_NO_LOW_PRIORITY=1.
 if [ "${NAM_LOW_PRIORITY:-0}" != "1" ] && [ "${NAM_NO_LOW_PRIORITY:-0}" != "1" ]; then
@@ -112,6 +152,13 @@ cargo test --lib "${STRUCTURAL_TESTS[@]/#/--test=}"
 # Gate autoritativo de floats de produção: medem o caminho de codegen que o
 # usuário executa. Em debug mediriam um "fantasma" (sem contração FMA / vet.).
 echo -e "\n${BLUE}${BOLD}[2/3] Oráculos de medida (release — gate de floats de produção)...${NC}"
+
+# Freshness gate (Épico E — bloqueante): detecta modelos .nam modificados sem
+# regeneração do golden correspondente. Hard fail — o princípio "Todo Golden
+# Deve Poder Falhar" não admite placebos.
+if ! check_freshness; then
+    exit 1
+fi
 
 MEASUREMENT_STATUS=0
 GOLDEN_RAN=false

@@ -118,11 +118,11 @@ of this table should be aware of when interpreting "coverage":
   existed and have no generation path in `golden_gen_build.sh` — despite what the
   "Long suite" row of §4 below might otherwise imply, these specific tests never run;
   they remain permanently `#[ignore]`d pending a decision to implement or retire them.
-- **Freshness is warn-only.** `golden_gen_build.sh` emits a `.golden_manifest.sha256`
-  freshness manifest (uncommitted, local-only) checked exclusively by
-  `utils/tests-long.sh` (never blocking, never in CI) — a stale golden from an
-  updated `.nam` will not fail any test on its own; it silently keeps validating
-  against an outdated reference until someone notices.
+- **Freshness is blocking in quick suite (Épico E).** `golden_gen_build.sh` commits a
+  versioned `.golden_manifest.sha256` freshness manifest checked by `utils/tests-quick.sh`
+  Fase 2 — a `sha256sum`-based gate that hard-fails when a `.nam` model has been modified
+  without regenerating the corresponding golden, preventing stale references from silently
+  passing validation.
 
 See `TODO-findings.md` for the full audit (script robustness, `mod-update.sh`
 gaps, catalog duplication) and its proposed remediation Épicos.

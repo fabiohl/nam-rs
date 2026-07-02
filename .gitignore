@@ -35,8 +35,8 @@ scratch.rs
 *.json
 !tests/fixtures/**/*.json
 
-# Manifesto de frescor (não versionar)
-/tests/fixtures/.golden_manifest.sha256
+# Manifesto de frescor versionado — política de governança Épico E
+# /tests/fixtures/.golden_manifest.sha256 (rastreado no VC desde Sprint E.1)
 
 # Proptest regression files (gerados automaticamente)
 *.proptest-regressions

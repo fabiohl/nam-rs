@@ -770,19 +770,19 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
   mortos) a cobertura Linear FFT — **requer decisão humana antes de qualquer implementação**, pois
   envolve julgamento sobre se essa cobertura ainda é desejada.
 
-## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [TO-DO]
+## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [DONE]
 
 - **F5** — ✅ Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`. **Resolvido — arquivo removido, render_ir.cpp e README.md saneados em D.1.1.**
 - **F6** — ✅ Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config. **Resolvido — timestamp check para $IR_BIN + .build_config para $RENDER_BIN em D.1.2.**
 - **F10** — ✅ Remover comentário stale/contraditório sobre `wavenet_lite`. **Resolvido em D.1.3.**
 
-## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C) [TO-DO]
+## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C) [DONE]
 
 - **F11** (parte 2) — Avaliar versionar o manifesto de frescor e decidir política bloqueante vs.
   informativa; avaliar integração no `tests-quick.sh` (Fase 2) em vez de exclusivamente no
   `tests-long.sh`.
 
-## Épico F — Documentação (🟢 concluído parcialmente nesta sessão; itens remanescentes de código-fonte) [TO-DO]
+## Épico F — Documentação (🟢 concluído parcialmente nesta sessão; itens remanescentes de código-fonte) [DONE]
 
 - **F12** — ✅ Aplicado nesta sessão (referências a `.gitignore` corrigidas no README).
 - **F13** — ✅ Aplicado nesta sessão (nova seção de supply-chain em `docs/testing.md`).

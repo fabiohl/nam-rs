@@ -315,7 +315,7 @@ gantt
 
 ### 🏃 Sprint E.1: Versionamento e Verificação no Pipeline (Duração: Est. 2 dias)
 
-#### 📝 Tarefa E.1.1: Governança do Manifesto de Frescor
+#### 📝 Tarefa E.1.1: Governança do Manifesto de Frescor [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
