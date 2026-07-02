@@ -62,13 +62,9 @@ noted per-model. Regenerate goldens with `tests/fixtures/golden_gen_build.sh` wh
 
 ## 2. LSTM Architecture
 
-> **✅ Verified 2026-07-01.** Read against `NAM/lstm.h`, `NAM/lstm.cpp`, `NAM/dsp.h`,
-> `NAM/dsp.cpp`, `NAM/activations.h/.cpp` and the corresponding Rust modules
-> (`src/models/lstm/`, `src/loader/dispatcher/lstm/`, `src/loader/transpose/lstm.rs`,
-> `src/math/lstm/gates.rs`). Test tables were **not** re-executed this pass; the ESR/SNR
-> figures in [§2.7](#27-measured-interop-drift) are carried over from the existing test suite
-> and cross-checked only against the gate constants currently committed in
-> `tests/common/constants.rs` and `tests/cpp_parity.rs` (both match).
+Read against `NAM/lstm.h`, `NAM/lstm.cpp`, `NAM/dsp.h`, `NAM/dsp.cpp`, `NAM/activations.h/.cpp`
+and the corresponding Rust modules (`src/models/lstm/`, `src/loader/dispatcher/lstm/`,
+`src/loader/transpose/lstm.rs`, `src/math/lstm/gates.rs`).
 
 ### 2.1 Reference algorithm (`NAM/lstm.cpp`)
 
@@ -227,10 +223,8 @@ Verified directly against `tests/golden_vectors.rs`, `tests/cpp_parity.rs`, and
 
 ## 3. WaveNet A1 Architecture
 
-> **✅ Verified 2026-07-01.** Read against `NAM/wavenet/model.h`, `NAM/wavenet/model.cpp`,
-> `NAM/wavenet/detail.h`, `NAM/activations.{h,cpp}`, and the corresponding Rust modules
-> (`src/models/wavenet/`, `src/loader/dispatcher/wavenet/`, `src/loader/nam_json/topology/wavenet.rs`).
-> "A1" is a **NAM-rs-only naming convention** — see §3.1 for why this matters.
+Read against `NAM/wavenet/model.h`, `NAM/wavenet/model.cpp`, `NAM/wavenet/detail.h`, `NAM/activations.{h,cpp}`,
+and the corresponding Rust modules (`src/models/wavenet/`, `src/loader/dispatcher/wavenet/`, `src/loader/nam_json/topology/wavenet.rs`).
 
 ### 3.1 There is no C++ concept of "A1" — correcting a fabricated claim
 
@@ -453,11 +447,11 @@ active.
 
 ## 4. WaveNet A2 Architecture
 
-> **✅ Verified 2026-07-01.** Read against `NAM/wavenet/a2_fast.{h,cpp}` (the C++ fast-path,
-> in full) and cross-checked `src/loader/nam_json/topology/a2.rs`,
-> `src/models/a2/model/static/process.rs`, `tests/golden_vectors.rs`, `tests/cpp_parity.rs`,
-> `tests/common/validation.rs`, and `tests/fixtures/README.md` against each other and against
-> current git history. §4.4–§4.6 (the `wavenet_a2_max.nam` investigation) were already
+> Read against `NAM/wavenet/a2_fast.{h,cpp}` (the C++ fast-path, in full) and cross-checked
+> `src/loader/nam_json/topology/a2.rs`, `src/models/a2/model/static/process.rs`,
+> `tests/golden_vectors.rs`, `tests/cpp_parity.rs`, `tests/common/validation.rs`, and
+> `tests/fixtures/README.md` against each other and against current git history.
+> §4.4–§4.6 (the `wavenet_a2_max.nam` investigation) were already
 > established in the previous pass and are corroborated, not re-derived, here.
 
 "A2" designates the newer WaveNet variant: `a2_fast.cpp` is C++'s **optimized, shape-restricted**
@@ -529,8 +523,7 @@ routing rationale:
 ### 4.4 🔴 Status: `wavenet_a2_max.nam` (official flagship, CH=4, `condition_size=8`, `condition_dsp` sub-model) — actively broken
 
 This is the **only currently open, confirmed-broken item** in the A2 audit, under active,
-ongoing investigation (`TODO-findings.md`, `TODO-sprints.md` Sprints S1–S6). Ground truth as of
-the latest commits on this branch:
+ongoing investigation. Ground truth as of the latest commits on this branch:
 
 - **The model loads** and correctly dispatches to `WaveNetA2Dyn` (multi-array cascade,
   `condition_dsp`, and grouped `head1x1` support were added in a prior sprint).
@@ -541,21 +534,6 @@ the latest commits on this branch:
   50.3 dB" figures previously written in this document — those were computed against an
   **internally inconsistent f64 oracle** and have been formally retracted; see
   [§4.5](#45-known-history--do-not-repeat)).
-
-  > **Additional stale references found this pass (not yet corrected in their source files —
-  > flagged here, not edited, since they live outside `docs/`):** `tests/fixtures/README.md`
-  > (model table) still describes `wavenet_a2_max.nam` as "**Rejected** — structure-incompatible"
-  > — true before multi-array `condition_dsp` cascade support was added, false now (it loads and
-  > runs, just produces wrong output). `tests/common/validation.rs:600-612`'s threshold comment
-  > for `wavenet_a2_max` still says "PENDING — model cannot load yet" with a provisional
-  > `max_esr=5.0e-2` — three orders of magnitude tighter than the current real ESR (3.61e1); the
-  > test's `#[ignore]` is what currently prevents this stale threshold from being load-bearing.
-  > `tests/golden_vectors.rs`'s own doc comment for `test_golden_vectors_wavenet_a2_max` cites a
-  > yet **different** stale figure (SNR=4.7 dB, ESR=3.4e-1, from the S14.2 era) that itself
-  > predates the current empirical baseline in `TODO-sprints.md` Sprint S2 (SNR=−15.6 dB,
-  > ESR=3.61e1). None of these change the verdict — the model is confirmed broken either way —
-  > but whoever next touches this code should update all three rather than trusting any of the
-  > embedded numbers at face value.
 - **Root cause is not yet closed.** A line-by-line C++ spec was produced (`Conv1x1` weight
   layout, `head1x1` grouped-conv application, cascade head propagation, `condition_dsp`,
   head finalization — file:line references in `TODO-sprints.md` Sprint S3). The `head1x1`
@@ -576,11 +554,11 @@ live status — this document will be updated once Sprint S4/S5 close.
 
 ### 4.5 Known history — do not repeat
 
-A prior audit round ("Rodada 4") compared production output (`condition_size=8` values/frame)
-against the f64 oracle's `condition_dsp` output (1 value/frame — a bug in the oracle, not
-production) and concluded there was a critical 93 dB regression. Acting on that conclusion, it
-changed production code to match the broken oracle, which **reintroduced** a real divergence
-from C++ that a prior fix had already corrected (the `head1x1` weight count, `out_channels ×
+A prior audit round compared production output (`condition_size=8` values/frame) against the
+f64 oracle's `condition_dsp` output (1 value/frame — a bug in the oracle, not production) and
+concluded there was a critical 93 dB regression. Acting on that conclusion, it changed
+production code to match the broken oracle, which **reintroduced** a real divergence from C++
+that a prior fix had already corrected (the `head1x1` weight count, `out_channels ×
 (bottleneck/groups)` per C++'s `Conv1x1` grouped constructor, vs. the wrong `channels ×
 h1_in_size` the "fix" reverted to). That change was reverted. The lesson, now load-bearing for
 this document's methodology (§1.2): **the C++ golden is the only arbiter; the oracle decomposes

@@ -15,34 +15,21 @@ The following directories are **local-only, gitignored** artifacts created on de
 `golden_gen_build.sh` for cross-reference validation against the upstream C++
 implementations:
 
-| Directory                                | Size    | Purpose                                                        |
-| ---------------------------------------- | ------- | -------------------------------------------------------------- |
-| `tests/fixtures/NeuralAmpModelerCore/`   | ~143 MB | Upstream C++ reference (v0.5.3, `render` tool for ALL goldens) |
-| `tests/fixtures/NeuralAmpModelerPlugin/` | ~164 MB | Upstream C++ plugin (`AudioDSPTools` for cabsim IRs)           |
-| `build/namcore_render/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore                |
+| Directory                                | Size    | Purpose                                                |
+| ---------------------------------------- | ------- | ------------------------------------------------------ |
+| `tests/fixtures/NeuralAmpModelerCore/`   | ~143 MB | Upstream C++ reference (`render` tool for ALL goldens) |
+| `build/namcore_render/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore        |
 
 > [!NOTE]
 > Entries in `.gitignore` (lines 54–55, 58) prevent accidental commits. The golden
 > `.bin` output files are version-controlled (explicitly unignored at
 > `.gitignore:36`), but their C++ generation infrastructure is local.
 
-### Upstream Version Pins
-
-All golden vectors are validated against the **single canonical upstream reference**: NeuralAmpModelerCore v0.5.3 (git tag), pinned at commit `9c7b185de346fe0725dea537bcee4bc38b5bb6d6`. The pinned SHAs are declared at the top of `golden_gen_build.sh`:
-
-| Repository                          | Pinned Commit                              | Tag    |
-| ----------------------------------- | ------------------------------------------ | ------ |
-| `sdatkinson/NeuralAmpModelerCore`   | `9c7b185de346fe0725dea537bcee4bc38b5bb6d6` | v0.5.3 |
-| `sdatkinson/NeuralAmpModelerPlugin` | `96337e9ab6e3beb619459779bbb5c47e1b04d8c4` | —      |
-
-> **Unification:** The A1/LSTM goldens (formerly pinned at `e49c93e`) are byte-identical when rendered from `9c7b185` (SNR = ∞). The diff between these commits is restricted to A2 fast-path code. A single canonical commit now serves all goldens.
-
-To regenerate all fixtures from scratch:
+### To regenerate all fixtures from scratch
 
 ```bash
 # Remove existing mirrors (optional but recommended for clean regeneration)
 rm -rf tests/fixtures/NeuralAmpModelerCore \
-       tests/fixtures/NeuralAmpModelerPlugin \
        build/namcore_render
 
 # Run full regeneration (clones, builds, generates all goldens)
@@ -363,27 +350,45 @@ ESR baselines from published data (`A2Esr.tsx:19-38`, t3k-mushra):
 
 - A1-Standard median: 0.00623 (−22.1 dB)
 - A2-Full median: 0.00334 (−24.8 dB)
+- A2-Lite median: 0.00500 (−23.0 dB)
 
 Nam-rs vs C++ parity target: ESR < 1e-3 (−30 dB conservative gate); actual expected < 1e-5.
 See `docs/perceptual_validation.md` for methodology.
 
 ## Parity Thresholds
 
-| Model            | MSE threshold | SNR threshold | ESR threshold |
-| ---------------- |:-------------:|:-------------:|:-------------:|
-| LSTM 1×3 (Off.)  | < 4.7e-4      | ≥ 28.1 dB     |               |
-| LSTM 1×16        | < 3e-3        | ≥ 15 dB       |               |
-| LSTM 2×8         | < 1e-3        | ≥ 18 dB       |               |
-| WaveNet Feather  | < 3e-7        | ≥ 60 dB       |               |
-| WaveNet Standard | < 3e-7        | ≥ 45 dB       |               |
-| WaveNet Lite     | < 3.16e-9     | ≥ 105 dB      | < 3.5e-11     |
-| WaveNet Nano     | < 9.5e-6      | ≥ 45 dB       |               |
-| A2-Lite (CH=3)   | < 1e30        | ≥ 80 dB       | < 6.0e-9      |
-| A2-Full (CH=8)   | < 1e30        | ≥ 70 dB       | < 8.0e-8      |
+Catalog / headline models (audited 2026-07-02 against `tests/common/validation.rs::topology_thresholds()`
+— corrected this pass; the previous revision of this table had drifted from the current, much
+tighter calibrated gates on every WaveNet catalog row and two of the three LSTM rows):
+
+| Model                       | SNR threshold | ESR threshold | Measured (comment in `validation.rs`) |
+| --------------------------- |:-------------:|:-------------:| ------------------------------------- |
+| LSTM 1×3 (Official)         | ≥ 22.0 dB     | < 6.0e-3      | SNR=29.7 dB, ESR=1.08e-3              |
+| LSTM 1×16                   | ≥ 12.0 dB     | < 6.5e-2      | SNR=19.8 dB, ESR=1.04e-2              |
+| LSTM 2×8                    | ≥ 18.0 dB     | < 2.0e-2      | SNR=25.7 dB, ESR=2.69e-3              |
+| WaveNet Feather (CH=8)      | ≥ 100.0 dB    | < 1.0e-10     | SNR=133.1 dB, ESR=1.74e-12            |
+| WaveNet Standard (CH=16)    | ≥ 105.0 dB    | < 3.0e-11     | SNR=134.6 dB, ESR=4.99e-13            |
+| WaveNet Nano (CH=4)         | ≥ 95.0 dB     | < 3.0e-10     | SNR=132.0 dB, ESR=3.46e-12            |
+| WaveNet Lite (CH=12)        | ≥ 105.0 dB    | < 3.5e-11     | SNR=122.3 dB, ESR=5.84e-13            |
+| WaveNet A1 Standard (CH=16) | ≥ 85.0 dB     | < 3.0e-9      | SNR=123.4 dB, ESR=6.62e-11            |
+| A2-Lite (CH=3)              | ≥ 80.0 dB     | < 6.0e-9      | SNR=90.7 dB, ESR=8.58e-10             |
+| A2-Full (CH=8)              | ≥ 70.0 dB     | < 8.0e-8      | SNR=79.2 dB, ESR=1.21e-8              |
 
 > [!IMPORTANT]
-> Thresholds are per-architecture, auto-computed by `topology_thresholds()` in
-> `tests/common/validation.rs` from C++-generated golden measurements.
+> This table is an illustrative subset of the catalog SKUs, not the complete list. Every
+> calibrated model — including `wavenet_condition_dsp`, `wavenet_a2_film_{full,lite}`,
+> `a2_dynamic_{gated_ch8,blended_ch3}`, `wavenet_dyn_free`, `lstm_dyn_test`, `a2_example`, the
+> non-distributable production captures, and the intentionally-dead `wavenet_a2_max` arm
+> (§7.1) — is calibrated identically via `topology_thresholds()` in `tests/common/validation.rs`,
+> which is the single source of truth. Read that file directly for the full, current, enforced
+> list rather than trusting a second hand-copied table — that is exactly how this table drifted
+> stale in the first place. `tests/threshold_calibration.rs`'s meta-tests
+> (`test_all_golden_models_have_calibrated_thresholds`,
+> `test_all_calibrated_entries_have_measurement_comments`, `test_all_thresholds_anti_placebo`)
+> continuously enforce that every entry in `validation.rs` stays measured, documented, and
+> non-placebo — they do **not**, however, enforce that this README table stays in sync with
+> `validation.rs`; that remains a manual audit responsibility.
+>
 > WaveNet Lite (CH=12) was migrated from the synthetic `BossWN-lite.nam` (0.9 dB SNR)
 > to the real community model `EVH-5150-Lite.nam` (≥ 105 dB SNR).
 > See §Non-Distributable Model Management and `tests/common/validation.rs`.
@@ -615,15 +620,22 @@ Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare agai
 > **Consequence:** NAM-rs produces audio perceptually equivalent to C++, but with measurable numerical differences. These differences are inaudible in any 16-bit or higher audio pipeline.
 >
 > **LSTM divergence:** The LSTM goldens show relatively low SNR
-> (1×16 ≈ 19.8 dB, 2×8 ≈ 25.7 dB, official ≈ 29.7 dB) vs WaveNet 52–68 dB. The hypothesis that
+> (1×16 ≈ 19.8 dB, 2×8 ≈ 25.7 dB, official ≈ 29.7 dB) vs WaveNet's ≥ 100 dB (see the corrected
+> WaveNet divergence note below — the previous revision of this note said "vs WaveNet 52–68 dB",
+> which was stale by the same ~2 orders of magnitude). The hypothesis that
 > FastMath Padé [5,4] tanh is the cause was **refuted**: using exact `f32::tanh` (libm) yields
 > identical SNR (Δ ≈ 0.0 dB). The actual bottleneck is likely BF16 weight quantization or GEMV
 > rounding — **not** the activation approximations. FastMath is adequate for LSTM.
 >
-> **WaveNet divergence:** Exclusively from `tanh`/`sigmoid` approximations — see ADR-001 in
-> `docs/architecture.md §2`. SNR degrades proportionally to model depth:
->
-> - WaveNet Standard (20 layers): SNR ~10 dB
+> **WaveNet divergence — corrected 2026-07-02, the previous revision of this note was
+> stale by ~2 orders of magnitude:** WaveNet's `Standard`-precision `tanh`/`sigmoid`
+> approximations are a small, bounded, and *intentional* divergence from C++'s exact math (see
+> ADR-001, `docs/architecture.md §2`, and `docs/cpp_parity_map.md` §2.5/§5) — they do **not**
+> degrade SNR anywhere near what an earlier draft of this note claimed. Current measured SNR
+> against the C++ golden is **≥ 100 dB across every WaveNet catalog SKU** (Standard 134.6 dB,
+> Feather 133.1 dB, Nano 132.0 dB, Lite 122.3 dB, A1 Standard 123.4 dB — see the Parity Thresholds
+> table above, sourced from `tests/common/validation.rs`), not the "~10 dB" figure this note used
+> to state. Do not resurrect that figure without a fresh, reproducible measurement.
 
 ## Cabsim Golden Fixtures (Synthetic IRs)
 

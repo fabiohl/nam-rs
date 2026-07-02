@@ -5,9 +5,15 @@
 # golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones
 # NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
 #
-# Canonical reference: NeuralAmpModelerCore v0.5.3 (tag), pinned at commit
-# 9c7b185de346fe0725dea537bcee4bc38b5bb6d6. All goldens (A1/LSTM/WaveNet/A2/ConvNet/Dyn)
-# are rendered from this single commit.
+# Canonical reference: NeuralAmpModelerCore v0.5.4 (tag), pinned at commit
+# 1f42f88535884450104b8711d7595019afa0495b. All goldens (A1/LSTM/WaveNet/A2/ConvNet/Dyn)
+# are rendered from this single commit. This must always match the pin in
+# utils/mod-update.sh — both scripts operate on the same vendored working
+# copy at tests/fixtures/NeuralAmpModelerCore/, and a mismatch causes this
+# script's version-mismatch guard (below) to hard-fail after mod-update.sh
+# has synchronized the fixtures. Some older committed goldens were rendered
+# at v0.5.3 (9c7b185); the patch-level diff is below the interop noise floor
+# for all architectures except where explicitly noted in docs/cpp_parity_map.md §1.3.
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
@@ -34,7 +40,7 @@
 #   golden_lstm_1x8.bin, golden_lstm_1x12.bin, golden_lstm_1x16.bin, golden_lstm_1x24.bin, golden_lstm_1x40.bin
 #   golden_lstm_2x8.bin, golden_lstm_2x12.bin, golden_lstm_2x16.bin, golden_lstm_2x24.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
-#   (A2 goldens are cross-reference Rust↔C++ v0.5.3 via ESR/SNR scale-invariant
+#   (A2 goldens are cross-reference Rust↔C++ v0.5.4 via ESR/SNR scale-invariant
 #    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
 #   golden_convnet_test.bin, golden_wavenet_dyn_free.bin, golden_lstm_dyn_test.bin
 #   (ConvNet and dynamic model goldens from Sprint B.1.2 fixtures — sample_rate=48000)
@@ -57,7 +63,7 @@ FIXTURES_DIR="$SCRIPT_DIR"
 
 # Pinned upstream commits for reproducibility.
 # Update these when regenerating goldens with a newer upstream version.
-NAM_CORE_COMMIT="9c7b185de346fe0725dea537bcee4bc38b5bb6d6" # v0.5.3 (canonical)
+NAM_CORE_COMMIT="1f42f88535884450104b8711d7595019afa0495b" # v0.5.4 (canonical; must match utils/mod-update.sh)
 NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"
 
 # =============================================================================
@@ -141,7 +147,7 @@ done
 echo "  NeuralAmpModelerCore verified (pinned commit and submodules present)"
 
 # =============================================================================
-# Build render tool (single unified binary at v0.5.3 with A2-fast)
+# Build render tool (single unified binary at v0.5.4 with A2-fast)
 # =============================================================================
 echo ""
 echo "[2/5] Building render tool..."
@@ -151,7 +157,7 @@ RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
 if [ -f "$RENDER_BIN" ]; then
     echo "  Render binary already exists: $RENDER_BIN"
 else
-    echo "  Building render tool (v0.5.3 + A2-fast)..."
+    echo "  Building render tool (v0.5.4 + A2-fast)..."
     mkdir -p "$BUILD_DIR"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -235,8 +241,9 @@ MODELS=(
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
-    # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
-    #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
+)
+# ^ "convnet_test" above is expected SKIP — C++ v0.5.4 ConvNet is architecturally
+#   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
 mkdir -p "$TEMP_DIR"
@@ -259,7 +266,7 @@ for entry in "${MODELS[@]}"; do
     echo "  Processing $label ($nam_file)..."
 
     if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP: $label — C++ v0.5.3 ConvNet is architecturally incompatible (known)"
+        echo "  SKIP: $label — C++ v0.5.4 ConvNet is architecturally incompatible (known)"
         continue
     fi
 
@@ -321,8 +328,9 @@ V2_MODELS=(
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
-    # ^ expected SKIP — C++ v0.5.3 ConvNet is architecturally incompatible with
-    #   NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
+)
+# ^ "convnet_test" above is expected SKIP — C++ v0.5.4 ConvNet is architecturally
+#   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
 for entry in "${V2_MODELS[@]}"; do
     IFS=':' read -r nam_file golden_name label skip_srs <<< "$entry"
@@ -335,7 +343,7 @@ for entry in "${V2_MODELS[@]}"; do
         continue
     fi
     if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP: $label — C++ v0.5.3 ConvNet is architecturally incompatible (known)"
+        echo "  SKIP: $label — C++ v0.5.4 ConvNet is architecturally incompatible (known)"
         continue
     fi
 
