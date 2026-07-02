@@ -15,7 +15,8 @@
 // samples (mMaxLength) and would silently truncate, making cross-reference
 // validation against C++ meaningless. See tests/cabsim_cpp_parity.rs.
 //
-// Build: see golden_gen_build.sh [5b] section.
+// Build: see the "Building C++ IR reference" section of golden_gen_build.sh
+// (referenced by name, not step number, to survive renumbering).
 
 #include "dsp/ImpulseResponse.h"
 

@@ -7,7 +7,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > Gerado pela skill `planejador-arquiteto`, com base nos achados críticos de supply-chain e robustez documentados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
-Este documento organiza a execução do hardening, a resolução dos gaps de supply-chain, a consolidação de catálogo, o saneamento de artefatos e a governança de frescor mapeados nos **Épicos A, B, C, D, E e F** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento organiza a execução do hardening, a resolução dos gaps de supply-chain, a consolidação de catálogo, o saneamento de artefatos, a governança de frescor e a conformidade estrutural mapeados nos **Épicos A, B, C, D, E, F, G e H** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
@@ -30,6 +30,10 @@ gantt
     Épico E - Governança de Frescor  : 2026-07-17, 2d
     section Sprint 6: Documentação
     Épico F - Governança Contínua    : 2026-07-19, 2d
+    section Sprint 7: Eixo B (FFT)
+    Épico G - Alinhamento Eixo B     : 2026-07-21, 2d
+    section Sprint 8: Resíduos Textuais
+    Épico H - Faxina e Resíduos      : 2026-07-23, 2d
 ```
 
 ---
@@ -356,3 +360,114 @@ gantt
 #### 🏁 Critérios de Aceite da Sprint F.1
 
 1. Todas as alterações em scripts de testes, modelos, oráculos ou dependências devem ser refletidas nos documentos `README.md` e `docs/testing.md` no mesmo commit em que ocorrem.
+
+---
+
+## 🔴 Épico G — Restaurar Conformidade com o Eixo B para os Novos Testes Linear FFT
+
+**Objetivo:** Garantir a conformidade arquitetural com o princípio de que testes com oráculos de floats de produção e comparações binárias rodem unicamente em release (Eixo B de `docs/testing.md` §2).
+
+### 🏃 Sprint G.1: Alinhamento Eixo B & Guard-Rail (Duração: Est. 2 dias)
+
+#### 📝 Tarefa G.1.1: Alinhamento de linear_fft_test ao Eixo B [TODO]
+
+- **Prioridade:** 🔴 Crítica
+- **Risco:** Baixo
+- **Achado Associado:** N1 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1156-L1158)
+- **Arquivos Alvos:**
+  - [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+  - [testing.md](file:///home/fabio/nam-rs/docs/testing.md)
+- **Descrição:**
+  - Remover `linear_fft_test` do array `STRUCTURAL_TESTS` (Fase 1 debug) de [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh).
+  - Adicionar `--test linear_fft_test` à invocação de release da Fase 2 (Ramo A, cobrindo tanto com goldens presentes quanto ausentes).
+  - Atualizar o mapeamento de fases em [testing.md](file:///home/fabio/nam-rs/docs/testing.md) para indicar que `linear_fft_test` executa na Fase 2 (Release) em vez da Fase 1 (Debug).
+
+#### 📝 Tarefa G.1.2: Implementação de Guard-Rail de Isolamento Eixo B (Meta-Teste) [TODO]
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Baixo
+- **Achado Associado:** Risco/Critério de aceite de N1 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1160-L1168)
+- **Arquivo Alvo:**
+  - [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/threshold_calibration.rs)
+- **Descrição:**
+  - Implementar um meta-teste em Rust que leia [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh), extraia os testes da lista `STRUCTURAL_TESTS` (que roda em debug na Fase 1), e verifique se nenhum desses arquivos fontes em `tests/*.rs` faz qualquer referência a arquivos `.bin` ou chamadas de `golden_vectors` / oráculos de floats.
+  - Isso previne de forma automatizada regressões onde testes de medição de floats sejam acidentalmente colocados na fase debug.
+
+#### 🏁 Critérios de Aceite da Sprint G.1
+
+1. A execução de `./utils/tests-quick.sh` deve compilar e rodar `linear_fft_test` no passo de release (Fase 2).
+2. O meta-teste em `threshold_calibration.rs` deve rodar com sucesso e rejeitar caso qualquer arquivo listado em `STRUCTURAL_TESTS` referencie arquivos `.bin`.
+3. Os 3 testes de golden C++ em `linear_fft_test.rs` devem passar com sucesso ao serem rodados em release.
+
+---
+
+## 🟡 Épico H — Fechar os Resíduos Textuais/Estruturais da Rodada Anterior
+
+**Objetivo:** Consolidar a documentação de rationale do catálogo de goldens, sanear warnings e inconsistências documentais, e implementar a centralização estrutural da numeração de fases.
+
+### 🏃 Sprint H.1: Faxina Textual & Saneamento de Resíduos (Duração: Est. 2 dias)
+
+#### 📝 Tarefa H.1.1: Helper de Fases Dinâmico Centralizado [TODO]
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** N2 (herda F7) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1176-L1177)
+- **Arquivos Alvos:**
+  - [_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh) [NEW]
+  - [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh)
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Criar um script utilitário comum [_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh) na pasta `utils/` contendo as variáveis de cores comuns e a função helper `phase()`.
+  - A função `phase()` deve incrementar dinamicamente a variável `$PHASE_NUM` e imprimir o cabeçalho no formato `[PHASE_NUM/PHASE_TOTAL] Descrição...` com cores ANSI.
+  - Importar via `source` o helper em [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) (PHASE_TOTAL=5) e [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) (PHASE_TOTAL=11), substituindo todas as strings de fases hardcoded.
+
+#### 📝 Tarefa H.1.2: Consolidação da Rationale v2_scope=none [TODO]
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Nulo
+- **Achado Associado:** N3 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1178-L1180)
+- **Arquivos Alvos:**
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  - [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md)
+  - [testing.md](file:///home/fabio/nam-rs/docs/testing.md)
+- **Descrição:**
+  - Escrever um comentário robusto explicativo no cabeçalho do `CATALOG` em [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) detalhando a razão técnica dos 4 modelos A2 dinâmicos/FiLM utilizarem `v2_scope=none` (limitação de sample-rates dinâmicos no C++ generic e rejeição pelo `a2_fast`).
+  - Substituir os textos explicativos duplicados em `README.md` (warnings e seção FiLM) e `testing.md` por referências concisas apontando para o comentário explicativo central.
+
+#### 📝 Tarefa H.1.3: Saneamento do Warning de Órfãos e Catalogação no README [TODO]
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** N4 e N6 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1181-L1182)
+- **Arquivo Alvo:**
+  - [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md)
+- **Descrição:**
+  - Revisar se os 4 arquivos `golden_linear_fft_rf*.bin` estão catalogados na tabela principal "Files in this directory" do README.
+  - Reescrever a abertura do bloco `[!WARNING]` "Registry completeness gap" para remover a contradição de termos (uma vez que os Linear FFT foram resolvidos e não são mais orphans).
+
+#### 📝 Tarefa H.1.4: Correção de Referência Stale no render_ir.cpp [TODO]
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** N5 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1183-L1184)
+- **Arquivo Alvo:**
+  - [render_ir.cpp](file:///home/fabio/nam-rs/tests/fixtures/render_ir.cpp)
+- **Descrição:**
+  - Validar e atualizar a linha 18 de [render_ir.cpp](file:///home/fabio/nam-rs/tests/fixtures/render_ir.cpp) para garantir que ela aponte nominativamente para a fase de compilação sem referenciar a numeração dinâmica antiga `[5b]`.
+
+#### 📝 Tarefa H.1.5: Descontinuação da Geração v2 para Linear FFT [TODO]
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** N7 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L1187-L1188)
+- **Arquivo Alvo:**
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Mudar o `v2_scope` de `48k_only` para `none` das 4 entradas de Linear FFT no `CATALOG` em [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh).
+  - Como os testes de Linear FFT cobrem apenas v1 a 48 kHz, isso evita a geração de ~7 MB de arquivos de goldens v2 binários sem qualquer consumidor real.
+
+#### 🏁 Critérios de Aceite da Sprint H.1
+
+1. Executar `./utils/mod-update.sh` e `./tests/fixtures/golden_gen_build.sh` e comprovar a numeração dinâmica linear correta de fases sem saltos ou inconsistências.
+2. Nenhum arquivo de log ou repositório local deve conter arquivos `.bin` de linear FFT com sufixo `_v2_48000.bin` gerados.
+3. Não deve haver referências contraditórias ou numerações antigas nos READMEs ou código C++.

@@ -34,24 +34,53 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sumário Executivo
+## Re-Auditoria (2026-07-02, pós-implementação) — Veredito de Qualidade
 
-| ID  | Severidade | Categoria               | Título                                                                             |
-| --- | ---------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| F1  | 🔴 Crítico | Robustez                | `set -e` + `pipefail` torna o tratamento de erro do loop v1 código morto           |
-| F2  | 🔴 Crítico | Compliance/Supply-chain | `mod-update.sh` nunca sincroniza `NeuralAmpModelerPlugin`; script mente ao usuário |
-| F3  | 🟠 Alto    | Compliance/Parity       | 4 goldens A2 dinâmicos/FiLM usados em teste não são gerados pelo script            |
-| F3b | 🟠 Alto    | Compliance/Parity       | 4 goldens Linear FFT documentados no `testing.md` como cobertos nunca existiram    |
-| F4  | 🟠 Alto    | Manutenibilidade        | Duplicação estrutural `MODELS[]` vs `V2_MODELS[]` (causa raiz de F3/F3b)           |
-| F5  | 🟡 Médio   | Consistência            | ✅ `golden_cabsim_cpp_stress.bin` é artefato órfão, nunca gerado por `render_ir.cpp` — **resolvido D.1.1** |
-| F6  | 🟡 Médio   | Robustez                | ✅ Cache de binários (`render`, `render_ir`) nunca invalidado por mudança local — **resolvido D.1.2** |
-| F7  | 🟡 Médio   | Observabilidade         | Numeração de fases inconsistente e duplicada no output do script                   |
-| F8  | 🟡 Médio   | Observabilidade         | Truncamento de log (`tail -N`) esconde a causa raiz exatamente na falha            |
-| F9  | 🟢 Baixo   | Robustez                | Skip de ConvNet acoplado a *string matching* de label, não a identidade de modelo  |
-| F10 | 🟢 Baixo   | Documentação (inline)   | ✅ Comentário contraditório/stale sobre `wavenet_lite` — **resolvido D.1.3**            |
-| F11 | 🟡 Médio   | Compliance              | Manifesto de frescor é parcial, não-bloqueante, e nunca roda em CI                 |
-| F12 | 🟢 Baixo   | Documentação            | `tests/fixtures/README.md` cita números de linha de `.gitignore` desatualizados    |
-| F13 | 🟡 Médio   | Documentação            | `docs/testing.md` não documenta o pipeline de geração como dependência crítica     |
+Executada a pedido explícito ("re-audite novamente para verificar a qualidade") após a
+implementação de F1–F13, com base em: (a) leitura integral do estado atual de
+`golden_gen_build.sh`, `utils/mod-update.sh`, `variables.env`, `render_ir.cpp`,
+`utils/tests-quick.sh`, `tests/linear_fft_test.rs`, `tests/fixtures/README.md` e
+`docs/testing.md`; (b) o log de execução real fornecido pelo usuário
+(`golden_gen_build.sh` completo + `utils/tests-quick.sh` completo, incluindo todos os
+novos goldens sendo gerados e todos os testes antes mortos agora passando com métricas
+reais de ESR/SNR).
+
+**Veredito: NÃO está impecável, mas está substancialmente sólido.** 11 dos 13 achados
+originais (F1–F6, F8–F13) foram corrigidos corretamente e verificados — o "resolvido"
+não é apenas textual, é confirmado por evidência de execução real (freshness gate
+passou, goldens A2 dinâmicos/FiLM e Linear FFT foram gerados e testados com valores de
+ESR/SNR plausíveis, não com métricas neutralizadas). Um achado (**F7**) não foi
+resolvido — na verdade **regrediu de forma didática**, cometendo exatamente o mesmo erro
+de raiz duas vezes em arquivos diferentes durante a própria correção. A re-auditoria
+encontrou **7 achados complementares novos (N1–N7)**, subprodutos diretos das correções
+aplicadas — o mais grave (**N1**) é uma violação real do princípio Eixo B (documentado no
+próprio `docs/testing.md`) introduzida pela correção de F3b: 3 testes de paridade C++ que
+antes eram `#[ignore]` (portanto inertes) agora executam de verdade, mas em modo debug,
+medindo um "fantasma" de codegen em vez do caminho de produção.
+
+| ID     | Severidade     | Categoria                         | Título                                                                                               | Status                                                                    |
+| ------ | -------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| F1     | 🔴 Crítico     | Robustez                          | `set -e` + `pipefail` torna o tratamento de erro do loop v1 código morto                             | ✅ Resolvido — verificado no código e no log                              |
+| F2     | 🔴 Crítico     | Compliance/Supply-chain           | `mod-update.sh` nunca sincroniza `NeuralAmpModelerPlugin`; script mente ao usuário                   | ✅ Resolvido — verificado no código e no log                              |
+| F3     | 🟠 Alto        | Compliance/Parity                 | 4 goldens A2 dinâmicos/FiLM usados em teste não são gerados pelo script                              | ✅ Resolvido — 4 goldens gerados e testados no log                        |
+| F3b    | 🟠 Alto        | Compliance/Parity                 | 4 goldens Linear FFT documentados no `testing.md` como cobertos nunca existiram                      | ✅ Resolvido — 4 goldens gerados; ver **N1** (efeito colateral)           |
+| F4     | 🟠 Alto        | Manutenibilidade                  | Duplicação estrutural `MODELS[]` vs `V2_MODELS[]` (causa raiz de F3/F3b)                             | ✅ Resolvido — `CATALOG[]` único com `v2_scope`                           |
+| F5     | 🟡 Médio       | Consistência                      | `golden_cabsim_cpp_stress.bin` é artefato órfão, nunca gerado por `render_ir.cpp`                    | ✅ Resolvido (D.1.1)                                                      |
+| F6     | 🟡 Médio       | Robustez                          | Cache de binários (`render`, `render_ir`) nunca invalidado por mudança local                         | ✅ Resolvido (D.1.2)                                                      |
+| F7     | 🟡 Médio       | Observabilidade                   | Numeração de fases inconsistente e duplicada no output do script                                     | ❌ **NÃO resolvido — regrediu.** Ver evidência atualizada abaixo e **N2** |
+| F8     | 🟡 Médio       | Observabilidade                   | Truncamento de log (`tail -N`) esconde a causa raiz exatamente na falha                              | ✅ Resolvido — logs completos persistidos                                 |
+| F9     | 🟢 Baixo       | Robustez                          | Skip de ConvNet acoplado a *string matching* de label, não a identidade de modelo                    | ✅ Resolvido — skip por `$nam_file`                                       |
+| F10    | 🟢 Baixo       | Documentação (inline)             | Comentário contraditório/stale sobre `wavenet_lite`                                                  | ✅ Resolvido (D.1.3)                                                      |
+| F11    | 🟡 Médio       | Compliance                        | Manifesto de frescor é parcial, não-bloqueante, e nunca roda em CI                                   | ✅ Resolvido — versionado + bloqueante em Fase 2                          |
+| F12    | 🟢 Baixo       | Documentação                      | `tests/fixtures/README.md` cita números de linha de `.gitignore` desatualizados                      | ✅ Resolvido                                                              |
+| F13    | 🟡 Médio       | Documentação                      | `docs/testing.md` não documenta o pipeline de geração como dependência crítica                       | ✅ Resolvido — nova seção adicionada                                      |
+| **N1** | 🔴 **Crítico** | **Rigor de teste (Eixo B)**       | **Testes de paridade C++ de Linear FFT (recém-ativados por F3b) executam em `debug`, não `release`** | 🆕 Novo — introduzido pela correção de F3b                                |
+| N2     | 🟡 Médio       | Observabilidade (regressão de F7) | Numeração `[N/total]` inconsistente reaparece em **dois** arquivos após as correções de F2 e F3      | 🆕 Novo (mesma causa raiz de F7, agora 2×)                                |
+| N3     | 🟡 Médio       | Documentação                      | Duas explicações contraditórias para o skip de v2 nos modelos A2 dinâmicos/FiLM                      | 🆕 Novo — introduzido pela correção de F3                                 |
+| N4     | 🟢 Baixo       | Documentação                      | Tabela "Files in this directory" do README não lista os 4 novos goldens Linear FFT                   | 🆕 Novo — lacuna na correção de F3b                                       |
+| N5     | 🟢 Baixo       | Documentação (inline)             | `render_ir.cpp:18` referencia uma seção `[5b]` que não existe mais no script renumerado              | 🆕 Novo (mesma causa raiz de F7)                                          |
+| N6     | 🟢 Baixo       | Documentação                      | Redação contraditória no aviso "Registry completeness gap" do README                                 | 🆕 Novo — resíduo textual da correção de F3b                              |
+| N7     | 🟢 Baixo       | Eficiência/Consistência           | Goldens v2 de Linear FFT serão gerados (`v2_scope=48k_only`) sem nenhum teste que os consuma         | 🆕 Novo — geração sem consumidor (mesmo cheiro que motivou F3/F3b)        |
 
 ---
 
@@ -466,7 +495,13 @@ reporta sucesso, os goldens são "regenerados", mas com o binário antigo.
 
 ## F7 — 🟡 MÉDIO: numeração de fases inconsistente e duplicada no output do script
 
-**Evidência (todas as ocorrências de marcadores de fase no script):**
+> ❌ **NÃO RESOLVIDO — reaberto na re-auditoria de 2026-07-02.** A duplicata `[6/6]` original foi
+> removida, mas o defeito de raiz (denominadores hardcoded que não são atualizados quando uma fase é
+> inserida) **se repetiu de forma quase idêntica** durante a própria implementação de F3/F3b — ver
+> evidência atualizada abaixo e o achado gêmeo **N2** (que documenta a segunda ocorrência, em
+> `utils/mod-update.sh`, causada pela correção de F2). Tratar como o mesmo achado, não resolvido.
+
+**Evidência histórica (estado no momento da auditoria original, já não reflete o arquivo atual):**
 
 | Linha | Marcador | Fase                                        |
 | ----- | -------- | ------------------------------------------- |
@@ -481,21 +516,79 @@ reporta sucesso, os goldens são "regenerados", mas com o binário antigo.
 | 424   | `[6/6]`  | **(duplicado)** Cleaning up temporary files |
 | 457   | `[7/7]`  | Generating freshness manifest               |
 
-**Diagnóstico:** o total de fases declarado muda de `/6` para `/5` e volta para `/6`/`/7` ao longo do
-próprio script, e o marcador `[6/6]` é usado **duas vezes** para duas fases completamente diferentes
-(build da referência C++ IR vs. limpeza de arquivos temporários). Não é um bug funcional, mas é
-diretamente contrário ao espírito do pedido do usuário de "hardenizar com carinho" um script que roda
-raramente e precisa ser fácil de auditar visualmente quando algo dá errado no meio da execução — hoje,
-se o script travar em "`[6/6]`", não é possível saber, só pelo log, qual das duas fases `[6/6]`
-realmente falhou sem reler o script fonte.
+**Evidência atual (pós-implementação de F1–F4, 2026-07-02) — `tests/fixtures/golden_gen_build.sh`:**
 
-**Proposta de solução:** renumerar todos os marcadores de fase sequencialmente e sem ambiguidade,
-refletindo o total real de fases (atualmente 9, contando a duplicata como duas fases distintas):
-`[1/9]` Plugin, `[2/9]` Core, `[3/9]` build render, `[4/9]` build ferramentas Rust, `[5/9]` stress
-signals, `[6/9]` render v1, `[7/9]` render v2, `[8/9]` build+run IR reference, `[9/9]` manifesto +
-limpeza (ou separar limpeza como `[10/10]` se se preferir mantê-la distinta do manifesto). Se o F3/F3b
-forem implementados (nova fase de fixtures A2 sintéticas), renumerar novamente nesse momento — o custo
-de renumeração é baixo e vale a clareza operacional.
+```bash
+$ grep -n '\[[0-9]*/[0-9]*\]' tests/fixtures/golden_gen_build.sh
+106:echo "[1/10] Verifying NeuralAmpModelerPlugin (C++ IR reference)..."
+132:echo "[2/10] Verifying NeuralAmpModelerCore..."
+160:echo "[3/11] Generating A2 dynamic/FiLM fixtures (Python)..."
+173:echo "[4/11] Building render tool..."
+231:echo "[5/11] Building Rust tools (gen_stress + wav_to_golden)..."
+255:echo "[6/11] Generating stress signals..."
+274:echo "[7/11] Running render for each model (v1)..."
+368:echo "[8/11] Generating v2 multi-SR golden vectors..."
+444:echo "[9/11] Building C++ IR reference (dsp::ImpulseResponse)..."
+494:echo "[10/11] Cleaning up temporary files..."
+527:echo "[11/11] Generating freshness manifest..."
+```
+
+A duplicata `[6/6]` foi eliminada (bom sinal — a intenção de F7 foi entendida), mas ao inserir a nova
+fase `[3/11]` ("Generating A2 dynamic/FiLM fixtures (Python)", implementando F3), os dois primeiros
+marcadores (`[1/10]`, `[2/10]`) **não foram atualizados** para `/11`. O denominador muda de `10` para
+`11` a meio do log de execução real — confirmado no log fornecido pelo usuário:
+
+```text
+[1/10] Verifying NeuralAmpModelerPlugin (C++ IR reference)...
+  NeuralAmpModelerPlugin verified (...)
+
+[2/10] Verifying NeuralAmpModelerCore...
+  NeuralAmpModelerCore verified (...)
+
+[3/11] Generating A2 dynamic/FiLM fixtures (Python)...
+```
+
+Este é exatamente o mesmo padrão de defeito documentado na versão original deste achado — apenas
+deslocado de posição. Ver **N2** para a segunda ocorrência (em `utils/mod-update.sh`), que confirma que
+isto não é coincidência isolada, mas uma classe de bug estrutural (números de fase hardcoded em texto,
+sem um mecanismo central que os mantenha consistentes ao inserir/remover fases).
+
+**Diagnóstico (original, ainda válido):** o total de fases declarado muda ao longo do script, o que é
+diretamente contrário ao espírito de "hardenizar com carinho" um script que roda raramente e precisa
+ser fácil de auditar visualmente quando algo dá errado no meio da execução.
+
+**Proposta de solução (revisada):** a proposta original (renumerar manualmente mais uma vez) resolve o
+sintoma de hoje mas, como demonstrado, **não impede a recorrência** — já falhou uma segunda vez sob as
+mãos de quem implementou a própria correção anterior. Preferir uma solução estrutural:
+
+1. Substituir os literais `"[N/TOTAL]"` por uma função helper, ex.:
+
+   ```bash
+   PHASE_TOTAL=11
+   PHASE_NUM=0
+   phase() { PHASE_NUM=$((PHASE_NUM + 1)); echo ""; echo "[$PHASE_NUM/$PHASE_TOTAL] $1"; }
+   # uso: phase "Verifying NeuralAmpModelerPlugin (C++ IR reference)..."
+   ```
+
+   Isso elimina a possibilidade estrutural do bug: inserir/remover uma fase só exige atualizar
+   `PHASE_TOTAL` uma vez, no topo do arquivo, e a numeração sequencial dos `echo`s nunca precisa ser
+   editada manualmente linha a linha (que é precisamente o passo que foi esquecido duas vezes).
+
+2. Aplicar o mesmo padrão em `utils/mod-update.sh` (ver N2), preferencialmente extraindo `phase()` para
+   um script utilitário comum (`utils/_lib.sh` ou similar) se os dois scripts já não compartilharem tal
+   arquivo, para que a correção sirva os dois de uma vez e não precise ser reaplicada uma terceira vez
+   em um terceiro script no futuro.
+
+3. Ao aplicar a correção, o total de fases correto (auditado agora, 2026-07-02) é **11** em
+   `golden_gen_build.sh` e **5** em `mod-update.sh` — usar esses valores no `PHASE_TOTAL` inicial.
+
+4. ~~(Proposta original abaixo, mantida para referência histórica)~~ renumerar todos os marcadores de fase sequencialmente e sem ambiguidade,
+   refletindo o total real de fases (atualmente 9, contando a duplicata como duas fases distintas):
+   `[1/9]` Plugin, `[2/9]` Core, `[3/9]` build render, `[4/9]` build ferramentas Rust, `[5/9]` stress
+   signals, `[6/9]` render v1, `[7/9]` render v2, `[8/9]` build+run IR reference, `[9/9]` manifesto +
+   limpeza (ou separar limpeza como `[10/10]` se se preferir mantê-la distinta do manifesto). Se o F3/F3b
+   forem implementados (nova fase de fixtures A2 sintéticas), renumerar novamente nesse momento — o custo
+   de renumeração é baixo e vale a clareza operacional.
 
 ---
 
@@ -705,6 +798,241 @@ para o catálogo atualizado); e um link cruzado explícito para a seção corres
 
 ---
 
+## Achados Complementares (Re-Auditoria Pós-Implementação, 2026-07-02)
+
+Os achados abaixo (N1–N7) foram descobertos ao re-auditar o estado do repositório **depois** que F1–F13
+foram implementados, cruzando o código atual com o log de execução real de
+`tests/fixtures/golden_gen_build.sh` e `utils/tests-quick.sh` fornecido pelo usuário. Todos são
+subprodutos diretos das próprias correções — nenhum preexistia à implementação. Isso não desvaloriza o
+trabalho feito (11 de 13 achados originais foram corrigidos corretamente, com evidência de execução real
+e não apenas leitura estática); é o padrão esperado quando se corrige uma cadeia de suprimentos
+fragmentada — cada correção move a fronteira do sistema e expõe a próxima costura frágil.
+
+## N1 — 🔴 CRÍTICO (novo): testes de paridade C++ de Linear FFT executam em `debug`, violando o Eixo B
+
+**Evidência:**
+
+- A correção de F3b removeu os atributos `#[ignore = "Requires pre-generated golden_linear_fft_rf*.bin..."]`
+  dos 3 testes `test_golden_vectors_linear_fft_rf{2048,4096,8192}` em `tests/linear_fft_test.rs`,
+  substituindo-os por skip gracioso em runtime (`if !golden_path.exists() { eprintln!(...); return; }`,
+  em `run_fft_golden_bin_test`) — o mesmo padrão usado pelos goldens v1 "sempre ativos" de
+  `tests/golden_vectors.rs`. Isso é uma escolha de design correta *em isolamento*.
+
+- Porém `tests/linear_fft_test.rs` continua listado em `STRUCTURAL_TESTS` dentro de
+  `utils/tests-quick.sh:142`:
+
+  ```bash
+  STRUCTURAL_TESTS=(
+      a2_loader activation_precision adaptive_fsm_proptest cabsim_golden
+      concurrency_stress container_slimmable diagnostic_bundle ebu_lufs_compliance
+      fixture_b1_2_smoke linear_fft_test linear_golden lstm_activation_precision
+      ...
+  )
+  ```
+
+  — e essa lista é executada em **Fase 1 (debug)** via `cargo test --lib "${STRUCTURAL_TESTS[@]/#/--test=}"`
+  (`utils/tests-quick.sh:149`), **sem** `--release`.
+
+- Confirmado no log de execução real fornecido pelo usuário — a saída de
+  `tests/linear_fft_test.rs` aparece dentro do bloco `"[1/3] Estrutural: unit + integração
+  determinística (debug)..."`, imediatamente após `"Compiling nam-rs v2.0.0"` /
+  `"Finished 'test' profile [unoptimized + debuginfo]"` (perfil debug, não release):
+
+  ```text
+  test test_golden_vectors_linear_fft_rf2048 ... ok
+  test test_golden_vectors_linear_fft_rf4096 ... ok
+  test test_golden_vectors_linear_fft_rf8192 ... ok
+  ```
+
+- `docs/testing.md` (atualizado nesta mesma rodada de correções) **codifica esse posicionamento como
+  intencional** na Tabela de Cobertura §3, linha nova:
+
+  ```text
+  | **`linear_fft_test`** | Integration | *None* | **Yes** | No | No | No | Partitioned convolution
+  cross-validation (Linear FFT). Graceful skip when golden absent. |
+  ```
+
+  ("Quick Fase 1 (debug) = Yes", "Quick Fase 2 (release) = No") — certificando por escrito uma
+  classificação que contradiz o próprio §2 do mesmo documento.
+
+**Diagnóstico:** antes da correção de F3b, isso era inofensivo — os 3 testes eram `#[ignore]` e nunca
+executavam de fato, então não importava em qual perfil o binário rodava. A correção de F3b **ativou**
+os 3 testes (removeu o `#[ignore]`) sem reauditar em qual fase/perfil o arquivo que os contém estava
+posicionado. O resultado é uma violação direta do princípio "Eixo B" que o próprio `docs/testing.md`
+declara como fundamento da arquitetura de testes (§2): *"measurement oracles (anything comparing
+floats against a reference) run in `--release`... Measuring in debug guards a 'phantom' — codegen
+without `-O`, without FMA contraction, without auto-vectorization."* Os 3 testes recém-ativados são,
+pela própria definição do documento, oráculos de medida (comparam saída f32 do Rust contra um golden
+renderizado pelo C++ NAMCore) — e agora correm exclusivamente em debug, nunca em release. Isso significa
+que a nova cobertura Linear FFT conquistada por F3b **nunca mede o caminho de codegen que o usuário de
+fato executa** (sem `-O3`, sem contração FMA, sem auto-vetorização) — o mesmo "fantasma" que o Eixo B
+foi desenhado para banir. Pior: como os thresholds de ESR/SNR foram calibrados a partir de uma execução
+debug (ou nunca foram re-calibrados contra release), é possível que o gate nem sequer detecte uma
+regressão real introduzida por uma otimização de release incorreta.
+
+**Impacto:** os 3 testes agora dão uma falsa sensação de segurança "Eixo B-compliant" (aparecem como
+testes normais, não-ignorados, com métricas reais no log) enquanto na prática pertencem à mesma
+categoria estrutural problemática que o Eixo B foi criado para eliminar. Isso é particularmente
+irônico porque a motivação original de F3b era justamente restaurar cobertura de parity real que
+estava morta — a correção logrou o objetivo de "os testes rodam e comparam com o C++", mas não o
+objetivo mais fundamental de "medem o binário que o usuário roda".
+
+**Proposta de solução:**
+
+1. Remover `linear_fft_test` de `STRUCTURAL_TESTS` em `utils/tests-quick.sh:142`.
+2. Adicionar `--test linear_fft_test` à invocação combinada já existente da Fase 2 — Ramo A (sempre
+   executável, `reference_oracle_f64` + `spectral_fidelity`, `utils/tests-quick.sh` linha ~178) — já que
+   os 14 testes puramente estruturais deste arquivo (fronteiras de bloco FFT, pipeline de loader, etc.)
+   não dependem de golden C++ e continuam corretos rodando em release; o custo é recompilar esse binário
+   uma vez em release em vez de debug, o que é aceitável dado que a Fase 2 já paga esse custo de
+   compilação para os outros oráculos combinados na mesma invocação (o comentário do próprio script já
+   explica a motivação: "Combina os oráculos em UMA invocação cargo por ramo de dependência").
+3. Atualizar `docs/testing.md` §3 (linha da tabela de `linear_fft_test`) para refletir a nova
+   classificação correta: "Quick Fase 1 (debug) = No", "Quick Fase 2 (release) = Yes", e ajustar a
+   descrição do "Verification Goal" para deixar explícito que a cross-validação C++ roda em release
+   (Eixo B) enquanto os testes estruturais do mesmo arquivo se beneficiam de rodar junto.
+4. Considerar, como melhoria estrutural de médio prazo, dividir `tests/linear_fft_test.rs` em dois
+   arquivos (`linear_fft_test.rs` estrutural + `linear_fft_golden.rs` oráculo de medida) — mesma
+   separação que `golden_vectors.rs` já recebe hoje — para que a granularidade de fase seja por arquivo
+   sem exigir filtragem por nome de teste (o próprio cabeçalho de `tests-quick.sh` explica por que
+   `--skip` por nome é evitado: colisões como `test_oracle` atingindo `threshold_calibration`). Isso é
+   mais invasivo que a solução 1–3 e pode ficar para uma sessão dedicada.
+
+## N2 — 🟡 MÉDIO (novo, mesma causa raiz de F7): numeração `[N/total]` inconsistente reaparece em `utils/mod-update.sh`
+
+**Evidência — `utils/mod-update.sh` (estado atual, pós-correção de F2):**
+
+```bash
+$ grep -n '\[[0-9]*/[0-9]*\]' utils/mod-update.sh
+32:echo -e "\n${BLUE}${BOLD}[1/4] Atualizando a toolchain ativa do Rust (rustup)...${NC}"
+40:echo -e "\n${BLUE}${BOLD}[2/4] Atualizando definições de dependências (Cargo.toml)...${NC}"
+49:echo -e "\n${BLUE}${BOLD}[3/4] Atualizando versões resolvidas no Cargo.lock...${NC}"
+53:echo -e "\n${BLUE}${BOLD}[4/5] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
+77:echo -e "\n${BLUE}${BOLD}[5/5] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
+```
+
+**Diagnóstico:** exatamente o mesmo defeito de F7 (ver seção F7 atualizada acima), cometido pela
+correção de **F2** (adicionar a fase 5, "Sincronizando fixtures do NeuralAmpModelerPlugin") sem
+atualizar as fases 1–3, que continuam declarando um total de `4`. Esta é a **segunda** ocorrência
+independente da mesma classe de bug em duas correções diferentes (F2 e F3, em dois arquivos diferentes)
+— evidência forte de que o problema não é "esquecimento pontual", é a ausência de um mecanismo que
+torne esse tipo de erro estruturalmente impossível. Ver a proposta de solução consolidada na seção F7
+(função `phase()` compartilhada).
+
+**Proposta de solução:** aplicar a mesma função helper `phase()` proposta em F7 a este script, com
+`PHASE_TOTAL=5`. Se ambos os scripts adotarem o mesmo helper, extrair para um arquivo compartilhado
+(`utils/_lib.sh` ou equivalente, sourced por ambos) para que a próxima inserção de fase — em qualquer um
+dos dois scripts, ou em um terceiro script futuro que adote o mesmo padrão — não possa repetir este erro
+uma terceira vez.
+
+## N3 — 🟡 MÉDIO (novo): duas explicações contraditórias para o skip de v2 nos modelos A2 dinâmicos/FiLM
+
+**Evidência:**
+
+- `tests/fixtures/README.md` (bloco `[!WARNING]` "Automation gaps tracked", adicionado pela correção de
+  F3): *"v2 multi-SR goldens are intentionally skipped (`v2_scope=none`) because the C++ upstream does
+  not support multi-SR for FiLM architectures consistently."* — implica uma **limitação técnica** da
+  ferramenta C++ vendored.
+- `tests/fixtures/README.md`, seção pré-existente "v2 multi-SR coverage for dynamic engines" (não
+  editada pela correção de F3): *"(c) A2 dynamic geometries (`a2_dynamic_gated_ch8`,
+  `a2_dynamic_blended_ch3`, `wavenet_a2_film_*`) are forward-compat parser surface for the fixed A2
+  fast-path and not part of the v2 golden pipeline."* — implica uma **decisão de escopo/arquitetura**
+  deliberada, não uma limitação de ferramenta.
+- `docs/testing.md` (nova seção "Golden Vector Supply Chain", adicionada pela correção de F13) repete a
+  primeira explicação ("porque o C++ upstream não suporta multi-SR para arquiteturas FiLM de forma
+  consistente"), reforçando a divergência ao invés de reconciliá-la com a explicação pré-existente no
+  README.
+
+**Diagnóstico:** este é o mesmo problema estrutural que motivou toda esta auditoria (fragmentação de
+fonte de verdade) reaparecendo *dentro da própria correção* de F3 — duas frases escritas em momentos
+diferentes, por autores/sessões diferentes, sobre a mesma decisão técnica, sem uma consultar a outra.
+Não se sabe, lendo a documentação atual, qual das duas é a razão real (ou se ambas são parcialmente
+verdadeiras e deveriam ser fundidas). Como o `CATALOG[]` agora é a fonte de verdade executável
+(`v2_scope=none` para essas 4 entradas), o comentário inline em `golden_gen_build.sh` acima do array
+(linhas ~276–284) seria o lugar mais apropriado para uma explicação única e definitiva, referenciada por
+ambos os documentos em vez de duplicada.
+
+**Proposta de solução:**
+
+1. Determinar a razão real (provavelmente uma combinação: a ferramenta C++ genérica usada para o
+   caminho FiLM/dinâmico pode não ter sido testada/validada em todos os 5 SRs, **e** o escopo de v2 foi
+   deliberadamente restrito a modelos de catálogo "reais" — não são mutuamente exclusivas).
+2. Escrever essa razão **uma vez só**, como comentário no `CATALOG[]` de `golden_gen_build.sh` (já que é
+   ali que a decisão `v2_scope=none` é codificada).
+3. Editar tanto `tests/fixtures/README.md` (as duas seções) quanto `docs/testing.md` para citarem a
+   mesma explicação consolidada, com uma delas linkando para a outra em vez de repetir o texto (reduz a
+   superfície de drift futuro).
+
+## N4 — 🟢 BAIXO (novo): tabela "Files in this directory" do README não lista os 4 novos goldens Linear FFT
+
+**Evidência:** `tests/fixtures/README.md`, tabela sob "## Files in this directory" (linhas ~63–81),
+lista todos os goldens WaveNet/LSTM/A2/cabsim, incluindo os 4 novos A2 dinâmicos/FiLM adicionados pela
+correção de F3 (`golden_a2_dynamic_gated_ch8.bin`, `golden_a2_dynamic_blended_ch3.bin`, etc.) — mas
+**não** lista `golden_linear_fft_rf{320,2048,4096,8192}.bin`, apesar de esses 4 arquivos existirem em
+disco, serem gerados por `golden_gen_build.sh`, e serem ativamente consumidos por
+`tests/linear_fft_test.rs` (confirmado no log de execução do usuário). Os 4 modelos `.nam`
+correspondentes **foram** adicionados corretamente à tabela "Synthetic Models and Mocks" mais abaixo no
+mesmo arquivo — a lacuna é específica da tabela de catálogo de goldens (que é, pelas convenções do
+próprio arquivo, a tabela canônica "por golden").
+
+**Proposta de solução:** adicionar 4 linhas à tabela "Files in this directory", seguindo o padrão das
+linhas já existentes para A2 dinâmico (Golden File / `.nam` Model / Nature=`Synthetic` / Topology com
+o RF/canais/block size de cada variante).
+
+## N5 — 🟢 BAIXO (novo, mesma causa raiz de F7/N2): `render_ir.cpp` referencia uma seção `[5b]` que não existe mais
+
+**Evidência:** `tests/fixtures/render_ir.cpp:18` — `// Build: see golden_gen_build.sh [5b] section.` — a
+correção de F5 atualizou o comentário de cabeçalho (linhas 11–15) para explicar corretamente por que o
+cenário "stress" não é implementado, mas não notou que a linha 18, imediatamente abaixo, referencia um
+rótulo de fase (`[5b]`) que já não existe no script renumerado — a fase de build da referência IR C++
+agora se chama `[9/11]` ("Building C++ IR reference (dsp::ImpulseResponse)").
+
+**Proposta de solução:** trocar a referência por nome de fase em vez de número (`// Build: see the
+"Building C++ IR reference" section of golden_gen_build.sh.`), eliminando a fragilidade a renumeração
+futura — mesmo princípio da correção estrutural proposta em F7/N2 (não hardcodar números de fase em
+comentários espalhados pelo repositório).
+
+## N6 — 🟢 BAIXO (novo): redação contraditória no aviso "Registry completeness gap" do README
+
+**Evidência:** `tests/fixtures/README.md`, bloco `[!WARNING]` "Registry completeness gap" (linhas
+~120–130): *"Confirmed orphans: `linear_fft_rf{320,2048,4096,8192}.nam`... **now have a generation
+path**..."* — a frase chama os arquivos de "confirmed orphans" na mesma sentença em que explica que eles
+já não são órfãos (têm caminho de geração funcionando, confirmado no log de execução). O bloco
+equivalente para F5/cabsim, imediatamente acima dele no mesmo arquivo, foi redigido corretamente
+("`golden_cabsim_cpp_stress.bin` has been **removed**... F5 resolved in D.1.1.") — o bloco do Linear FFT
+não recebeu o mesmo cuidado de reescrita ao ser atualizado.
+
+**Proposta de solução:** reescrever a abertura do bloco para declarar o estado resolvido diretamente,
+espelhando o padrão já usado no bloco de F5 acima ("`linear_fft_rf{320,2048,4096,8192}.nam` — **F3b
+resolvido**: agora possuem caminho de geração completo via `golden_gen_build.sh` CATALOG entries...").
+
+## N7 — 🟢 BAIXO (novo): goldens v2 de Linear FFT serão gerados sem nenhum teste que os consuma
+
+**Evidência:** o `CATALOG[]` em `golden_gen_build.sh` marca as 4 entradas Linear FFT com
+`v2_scope=48k_only` (linhas 310–313), o que faz o loop v2 (`[8/11]`) gerar
+`golden_linear_fft_rf{320,2048,4096,8192}_v2_48000.bin` (~1.8 MB cada, ~7 MB no total) na próxima
+execução completa do script. Busca em `tests/linear_fft_test.rs` por qualquer referência a
+`_v2_` retorna vazio — **não existe teste algum que carregue esses arquivos v2**. (O log de execução
+fornecido pelo usuário foi truncado antes de alcançar as entradas Linear FFT no loop v2, então os
+arquivos ainda não foram gerados neste ambiente no momento da re-auditoria, mas serão na próxima
+execução completa, dado o `v2_scope=48k_only` codificado.)
+
+**Diagnóstico:** exatamente o tipo de "geração sem consumidor" que motivou parte da tese original desta
+auditoria (goldens que existem mas nada testa — o inverso do problema original de F3/F3b, que era
+"testes sem golden"). Não é grave (não quebra nada, apenas infla o repositório em ~7 MB de artefato
+morto), mas é o tipo de detalhe que esta auditoria existe para capturar antes que se acumule.
+
+**Proposta de solução:** escolher uma de duas rotas, análoga à decisão já tomada para os goldens A2
+dinâmicos/FiLM (que corretamente usam `v2_scope=none`):
+
+1. Trocar `v2_scope=48k_only` para `v2_scope=none` nas 4 entradas Linear FFT do `CATALOG[]`, já que não
+   há consumidor v2 hoje; ou
+2. Se cobertura multi-SR para Linear FFT for de fato desejável, adicionar os testes correspondentes em
+   `tests/linear_fft_test.rs` (mesmo padrão dos testes `test_golden_vectors_v2_*` de `golden_vectors.rs`,
+   `#[ignore]`d por padrão, executados na suíte longa) para que o golden gerado tenha propósito.
+
+---
+
 ## Mudanças de Documentação Aplicadas Nesta Sessão
 
 Conforme solicitado, `docs/testing.md` e `tests/fixtures/README.md` foram atualizados nesta mesma
@@ -718,19 +1046,31 @@ mudanças de comportamento do script, não apenas de documentação.
 
 ## Épicos (para planejamento futuro via `planejador-arquiteto` → `TODO-sprints.md`)
 
-## Épico A — Hardening do Fluxo de Erro do Gerador de Goldens (🔴 Crítico, alto risco) [DONE]
+## Épico A — Hardening do Fluxo de Erro do Gerador de Goldens (🔴 Crítico, alto risco) [PARCIALMENTE DONE — reaberto em 2026-07-02]
 
 Torna o script seguro para operação "raramente executada, sem supervisão constante", que é seu modo de
 uso pretendido segundo o próprio usuário desta auditoria.
 
-- **F1** — Corrigir `pipefail`/`set -e` no loop v1 para não matar o script no primeiro render que falhar.
-- **F8** — Persistir logs completos por fase + apontar para eles na falha (sinérgico com F1).
-- **F7** — Renumerar fases de forma consistente e não-duplicada (barato, mas só vale a pena fazer junto
-  com F1/F8, já que a renumeração final depende de quantas fases existirem após F3).
+- **F1** — ✅ **Resolvido e verificado.** `pipefail`/`set -e` corrigido no loop v1 (e v2); confirmado por
+  leitura de código (`set +o pipefail` / captura explícita de `render_status` / `continue` em falha) e
+  pelo log de execução real (script processou os ~26 modelos do catálogo sem abortar).
+- **F8** — ✅ **Resolvido e verificado.** Logs completos persistidos em `build/namcore_render/logs/`
+  (`render_cmake.log`, `rust_build.log`, `render_v1.log`, `render_v2.log`, `render_ir_build.log`), com
+  `tail -N` apenas no console e mensagem de erro apontando para o log completo em caso de falha.
+- **F7** — ❌ **NÃO resolvido — reaberto.** A duplicata `[6/6]` original foi eliminada, mas o mesmo
+  defeito de raiz (denominadores hardcoded não atualizados ao inserir uma fase) **reapareceu** ao
+  inserir a fase `[3/11]` (implementando F3): os marcadores `[1/10]`/`[2/10]` não foram atualizados para
+  `/11`. Ver seção F7 atualizada e o achado gêmeo **N2** (mesma classe de bug, em `mod-update.sh`, via a
+  correção de F2). Pendente: adotar a solução estrutural proposta (função `phase()` compartilhada) em
+  vez de renumeração manual, precisamente para não falhar uma terceira vez.
+- **N5** (novo, mesma causa raiz) — pendente: `render_ir.cpp:18` referencia a fase antiga `[5b]`, que já
+  não existe.
 
-**Risco/Critério de aceite:** simular uma falha de render controlada (mock/`.nam` inválido) e confirmar
-que o script emite o diagnóstico correto, continua processando os demais modelos, e termina com um
-resumo claro de sucessos/falhas — não com um crash de bash sem contexto.
+**Risco/Critério de aceite (revisado):** F1/F8 confirmados corretos por execução real. F7/N2/N5
+permanecem abertos — critério de aceite original ("simular uma falha de render controlada e confirmar
+que o script continua") ainda vale para F1 (já satisfeito); adicionar um segundo critério para F7:
+"inserir uma fase de teste no meio do script e confirmar que nenhum denominador precisa ser editado
+manualmente em mais de um lugar."
 
 ## Épico B — Fechar o Gap de Supply-Chain do `NeuralAmpModelerPlugin` (🔴 Crítico) [DONE]
 
@@ -754,16 +1094,32 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 - Meta-teste (proposto no F3b item 3): CI-enforced que todo `.nam` referenciado por um teste
   `#[ignore]`-por-golden-ausente tenha entrada no catálogo canônico (ou exceção documentada).
 
-### Épico C1 — Fechar a Lacuna A2 Dinâmico/FiLM (depende de Épico C)
+### Épico C1 — Fechar a Lacuna A2 Dinâmico/FiLM (depende de Épico C) [DONE — verificado por execução real]
 
-- **F3** — Adicionar as 4 entradas A2 dinâmicas/FiLM ao catálogo consolidado; integrar
-  `generate_a2_fixtures.py` como fase automatizada de `golden_gen_build.sh`.
+- **F3** — ✅ **Resolvido.** As 4 entradas A2 dinâmicas/FiLM foram adicionadas ao `CATALOG[]`;
+  `generate_a2_fixtures.py` roda como fase `[3/11]` automatizada. Confirmado no log de execução: os 4
+  `.nam` foram (re)gerados pelo Python, os 4 goldens `.bin` foram renderizados, e os 4 testes
+  correspondentes em `tests/golden_vectors.rs` passaram com métricas reais (ex.: A2-FiLM-Full SNR=36.0
+  dB, ESR=2.50e-4 — não neutralizadas).
+- Pendente (**N3**): consolidar a explicação de por que `v2_scope=none` foi escolhido para essas 4
+  entradas — hoje há duas explicações diferentes e não-reconciliadas em `tests/fixtures/README.md`.
 
-### Épico C2 — Resolver ou Descontinuar Linear FFT (depende de Épico C, decisão de produto necessária primeiro)
+### Épico C2 — Resolver ou Descontinuar Linear FFT (depende de Épico C, decisão de produto necessária primeiro) [DONE, mas ver Épico G]
 
-- **F3b** — Decidir implementar (adicionar ao catálogo) ou descontinuar (remover fixtures + testes
-  mortos) a cobertura Linear FFT — **requer decisão humana antes de qualquer implementação**, pois
-  envolve julgamento sobre se essa cobertura ainda é desejada.
+- **F3b** — ✅ **Resolvido — decisão tomada foi "implementar".** As 4 entradas Linear FFT foram
+  adicionadas ao `CATALOG[]` (`v2_scope=48k_only`); os 4 `.nam` já existiam, os 4 goldens `.bin` foram
+  gerados, e os 3 testes `test_golden_vectors_linear_fft_rf{2048,4096,8192}` tiveram o `#[ignore]`
+  removido — confirmado passando com métricas reais no log de execução.
+- ⚠️ **Efeito colateral crítico não previsto pela proposta original:** ativar esses 3 testes sem
+  reauditar em qual fase/perfil (`debug` vs `release`) o arquivo que os contém roda introduziu uma
+  violação do Eixo B — ver **N1** (novo Épico G, prioridade máxima da próxima rodada).
+- Pendente (**N4**): adicionar os 4 novos `golden_linear_fft_rf*.bin` à tabela "Files in this directory"
+  do README (foram catalogados na tabela de modelos `.nam`, mas não na tabela de goldens).
+- Pendente (**N6**): reescrever a redação contraditória do aviso `[!WARNING]` "Registry completeness
+  gap" que ainda chama esses arquivos de "confirmed orphans" na mesma frase em que explica que já não
+  são.
+- Pendente (**N7**): decidir entre `v2_scope=none` (sem consumidor v2 hoje) ou adicionar testes v2 reais
+  para Linear FFT — evitar gerar ~7 MB de goldens v2 sem nenhum teste que os leia.
 
 ## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [DONE]
 
@@ -785,3 +1141,56 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
   implementados (cada PR que resolver um finding acima deve atualizar `tests/fixtures/README.md` e,
   se aplicável, `docs/testing.md` no mesmo commit — este é o próprio padrão de manutenção que este
   documento recomenda para não se tornar, ele mesmo, uma nova fonte de drift).
+
+---
+
+## Épicos Complementares (Re-Auditoria 2026-07-02)
+
+## Épico G — Restaurar Conformidade com o Eixo B para os Novos Testes Linear FFT (🔴 Crítico, prioridade máxima) [TODO]
+
+O achado mais grave desta re-auditoria. Ativar cobertura real (F3b) sem reauditar a fase/perfil de
+execução criou uma violação do princípio arquitetural mais fundamental do documento de testes do
+projeto (`docs/testing.md` §2, Eixo B). Deve ser a próxima correção, antes de qualquer outro item desta
+lista de Épicos complementares.
+
+- **N1** — Remover `linear_fft_test` de `STRUCTURAL_TESTS` em `utils/tests-quick.sh`; adicionar
+  `--test linear_fft_test` à invocação combinada de release da Fase 2 (Ramo A); atualizar a linha
+  correspondente em `docs/testing.md` §3.
+
+**Risco/Critério de aceite:** rodar `cargo test --release --test linear_fft_test -- --nocapture` e
+confirmar que os 3 testes de golden C++ (`test_golden_vectors_linear_fft_rf{2048,4096,8192}`) e os 14
+testes estruturais do mesmo arquivo passam; confirmar via `utils/tests-quick.sh` que o arquivo não é
+mais compilado/executado em debug (Fase 1). Idealmente, adicionar um teste de meta-nível (na linha de
+`tests/threshold_calibration.rs`) que falhe caso qualquer teste cujo nome contenha `golden_vectors` ou
+compare contra um arquivo `.bin` termine sendo executado fora de um binário de teste marcado como
+"release-only" na configuração do runner — automatizando a detecção desta classe de regressão para o
+futuro (nenhum dos dois novos achados de renumeração, N2 e N5, tem essa proteção automatizada porque são
+puramente cosméticos; este, por afetar rigor de medição, merece um guard-rail automatizado).
+
+## Épico H — Fechar os Resíduos Textuais/Estruturais da Rodada Anterior de Correções (🟡 Médio/🟢 Baixo) [TODO]
+
+Itens de baixo risco individual, mas que — se acumulados sem correção — recriam exatamente o padrão de
+fragmentação documental que motivou a auditoria original. Recomenda-se resolver em lote, numa única
+sessão de "faxina" pós-implementação, dado o baixo custo por item.
+
+- **N2** — Aplicar a mesma correção estrutural de F7 (função `phase()` compartilhada) a
+  `utils/mod-update.sh`, cujos marcadores `[N/4]`→`[N/5]` sofrem do mesmo defeito.
+- **N3** — Consolidar em uma única explicação (idealmente no comentário do `CATALOG[]`) por que os 4
+  modelos A2 dinâmicos/FiLM usam `v2_scope=none`, e referenciá-la de um único lugar em cada documento
+  em vez de duplicar/divergir o texto entre `tests/fixtures/README.md` (duas seções) e `docs/testing.md`.
+- **N4** — Adicionar as 4 linhas faltantes de `golden_linear_fft_rf*.bin` à tabela "Files in this
+  directory" do README.
+- **N5** — Corrigir a referência stale `[5b]` em `render_ir.cpp:18` (trocar por referência textual à
+  fase, não numérica) — fazer junto com N2/F7 já que compartilham a causa raiz.
+- **N6** — Reescrever a abertura do bloco `[!WARNING]` "Registry completeness gap" no README para não
+  chamar os fixtures Linear FFT de "orphans" na mesma frase que anuncia sua resolução.
+- **N7** — Decidir `v2_scope=none` vs. adicionar testes v2 reais para as 4 entradas Linear FFT no
+  `CATALOG[]`, evitando gerar goldens binários sem consumidor.
+
+**Critério de aceite:** nenhum documento (`README.md`, `docs/testing.md`, comentários inline no
+`.sh`/`.cpp`) deve conter uma afirmação sobre o pipeline de goldens que não seja verificável lendo o
+código atual — o mesmo padrão de auditoria aplicado nesta e na rodada anterior deve, ao ser reaplicado
+uma terceira vez, encontrar zero achados novos dessa natureza. Se encontrar, é sinal de que a causa raiz
+(ausência de fonte única de verdade executável) ainda não foi suficientemente endereçada e merece um
+Épico estrutural dedicado (ex.: gerar as tabelas de documentação automaticamente a partir do
+`CATALOG[]` do próprio script, em vez de mantê-las manualmente).

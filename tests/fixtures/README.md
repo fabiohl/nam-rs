@@ -76,6 +76,10 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 | `golden_wavenet_a2_film_lite.bin`   | `wavenet_a2_film_lite.nam`   | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
 | `golden_a2_dynamic_gated_ch8.bin`   | `a2_dynamic_gated_ch8.nam`   | **Synthetic** (dynamic gating engine parity)                               | CH=8, 3 gated layers — cross-reference vs C++ generic                   |
 | `golden_a2_dynamic_blended_ch3.bin` | `a2_dynamic_blended_ch3.nam` | **Synthetic** (dynamic blending engine parity)                             | CH=3, 2 blended layers — cross-reference vs C++ generic                 |
+| `golden_linear_fft_rf320.bin`       | `linear_fft_rf320.nam`       | **Synthetic** (functional parity, partitioned convolution)                 | RF=320, 2 channels, block=128                                           |
+| `golden_linear_fft_rf2048.bin`      | `linear_fft_rf2048.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=2048, 1 channel, block=1024                                          |
+| `golden_linear_fft_rf4096.bin`      | `linear_fft_rf4096.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=4096, 1 channel, block=2048                                          |
+| `golden_linear_fft_rf8192.bin`      | `linear_fft_rf8192.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=8192, 1 channel, block=4096                                          |
 | `golden_cabsim_cpp_short.bin`       | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
 | `golden_cabsim_cpp_medium.bin`      | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
 | `golden_cabsim_cpp_long.bin`        | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
@@ -120,11 +124,15 @@ All captures and models in `.nam` and `.json` format located under [tests/fixtur
 > [!WARNING]
 > **Registry completeness gap (found during the `golden_gen_build.sh` audit,
 > `TODO-findings.md` F3b):** the blanket claim that used to read "there are no orphan,
-> redundant, or garbage files in the directory" is **not currently true**. Confirmed
-> orphans: `linear_fft_rf{320,2048,4096,8192}.nam` (see the dedicated rows below) now
-> have a generation path in `golden_gen_build.sh` (CATALOG entry with `v2_scope=48k_only`
-> and golden output `golden_linear_fft_rf*.bin`) — their tests skip gracefully when goldens
-> are absent. Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
+> redundant, or garbage files in the directory" is **not currently true**.
+> `linear_fft_rf{320,2048,4096,8192}.nam` — **F3b resolved**: these previously-orphaned
+> fixtures now have a complete generation path via `golden_gen_build.sh`'s `CATALOG`
+> entries (`v2_scope=48k_only`, golden output `golden_linear_fft_rf*.bin`; see the
+> dedicated rows in "Files in this directory" above and in the Synthetic Models table
+> below). Their tests (`tests/linear_fft_test.rs`) are no longer `#[ignore]`d and pass
+> with real ESR/SNR measurements — see `TODO-findings.md` N1 for a rigor caveat (they
+> currently run in the `debug` quick-suite phase instead of `release`, tracked
+> separately). Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
 > and `wavenet_dyn_free.nam` are catalogued in the golden files table above but lack
 > dedicated model-provenance rows in the tables below — a documentation-debt gap, not a
 > fixture-quality concern, tracked for a follow-up pass.
