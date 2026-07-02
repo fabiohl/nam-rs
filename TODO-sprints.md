@@ -43,7 +43,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 * **Verificação:** Executar testes unitários do LSTM (`cargo test --lib models::lstm`).
 * **Referência:** Finding 7.2.3.
 
-### 🟠 Tarefa T1.3: Adicionar Validação de Canais Mono no LSTM Loader
+### 🟠 Tarefa T1.3: Adicionar Validação de Canais Mono no LSTM Loader [DONE]
 
 * **Descrição:** Garantir que o loader do LSTM rejeite modelos estéreo ou multi-canal, uma vez que o nam-rs suporta apenas mono.
 * **Ações:**

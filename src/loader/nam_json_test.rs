@@ -365,6 +365,70 @@ fn test_topology_rejected_non_wavenet() {
     );
 }
 
+#[test]
+fn test_lstm_accepts_mono_channels() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 2,
+            "hidden_size": 16,
+            "in_channels": 1,
+            "out_channels": 1,
+            "layers": []
+        },
+        "weights": [0.1, 0.2]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), Some((2, 16)));
+}
+
+#[test]
+fn test_lstm_rejects_multi_in_channels() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 2,
+            "hidden_size": 16,
+            "in_channels": 2,
+            "layers": []
+        },
+        "weights": [0.1, 0.2]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), None);
+}
+
+#[test]
+fn test_lstm_rejects_multi_out_channels() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 2,
+            "hidden_size": 16,
+            "out_channels": 2,
+            "layers": []
+        },
+        "weights": [0.1, 0.2]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), None);
+}
+
+#[test]
+fn test_lstm_accepts_absent_channels() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 1,
+            "hidden_size": 8,
+            "layers": []
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), Some((1, 8)));
+}
+
 // =========================================================================
 // Malformed JSON Rejection Tests
 // =========================================================================

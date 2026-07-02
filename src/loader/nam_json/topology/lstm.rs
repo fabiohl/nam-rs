@@ -24,6 +24,18 @@ pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
         log::warn!("LSTM num_layers=0 — rejected");
         return None;
     }
+    if let Some(c) = data.config.in_channels
+        && c != 1
+    {
+        log::warn!("LSTM in_channels={c} != 1 — rejected (nam-rs only supports mono)");
+        return None;
+    }
+    if let Some(c) = data.config.out_channels
+        && c != 1
+    {
+        log::warn!("LSTM out_channels={c} != 1 — rejected (nam-rs only supports mono)");
+        return None;
+    }
     if num_layers > MAX_LSTM_LAYERS {
         log::warn!("LSTM num_layers={num_layers} exceeds maximum {MAX_LSTM_LAYERS} — rejected");
         return None;
