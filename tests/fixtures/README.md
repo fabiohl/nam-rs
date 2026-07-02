@@ -124,18 +124,18 @@ All captures and models in `.nam` and `.json` format located under [tests/fixtur
 > [!WARNING]
 > **Registry completeness gap (found during the `golden_gen_build.sh` audit,
 > `TODO-findings.md` F3b):** the blanket claim that used to read "there are no orphan,
-> redundant, or garbage files in the directory" is **not currently true**.
-> `linear_fft_rf{320,2048,4096,8192}.nam` — **F3b resolved**: these previously-orphaned
-> fixtures now have a complete generation path via `golden_gen_build.sh`'s `CATALOG`
-> entries (`v2_scope=48k_only`, golden output `golden_linear_fft_rf*.bin`; see the
-> dedicated rows in "Files in this directory" above and in the Synthetic Models table
-> below). Their tests (`tests/linear_fft_test.rs`) are no longer `#[ignore]`d and pass
-> with real ESR/SNR measurements — see `TODO-findings.md` N1 for a rigor caveat (they
-> currently run in the `debug` quick-suite phase instead of `release`, tracked
-> separately). Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
-> and `wavenet_dyn_free.nam` are catalogued in the golden files table above but lack
-> dedicated model-provenance rows in the tables below — a documentation-debt gap, not a
-> fixture-quality concern, tracked for a follow-up pass.
+> redundant, or garbage files in the directory" has been restored to true.
+> `linear_fft_rf{320,2048,4096,8192}.nam` — **F3b resolved**: the previously orphaned
+> Linear FFT fixtures now have a complete generation path via `golden_gen_build.sh`'s
+> `CATALOG` entries (`v2_scope=48k_only`, golden output `golden_linear_fft_rf*.bin`;
+> see the dedicated rows in "Files in this directory" above and in the Synthetic
+> Models table below). Their tests (`tests/linear_fft_test.rs`) are no longer
+> `#[ignore]`d and pass with real ESR/SNR measurements — see `TODO-findings.md` N1 for
+> a rigor caveat (they currently run in the `debug` quick-suite phase instead of
+> `release`, tracked separately). Additionally, `a2_example.nam`, `convnet_test.nam`,
+> `lstm_dyn_test.nam`, and `wavenet_dyn_free.nam` are catalogued in the golden files
+> table above but lack dedicated model-provenance rows in the tables below — a
+> documentation-debt gap, not a fixture-quality concern, tracked for a follow-up pass.
 
 #### 1. High-Quality Real Models (Git Versioned)
 

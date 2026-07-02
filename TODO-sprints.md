@@ -434,7 +434,7 @@ gantt
   - Escrever um comentário robusto explicativo no cabeçalho do `CATALOG` em [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) detalhando a razão técnica dos 4 modelos A2 dinâmicos/FiLM utilizarem `v2_scope=none` (limitação de sample-rates dinâmicos no C++ generic e rejeição pelo `a2_fast`).
   - Substituir os textos explicativos duplicados em `README.md` (warnings e seção FiLM) e `testing.md` por referências concisas apontando para o comentário explicativo central.
 
-#### 📝 Tarefa H.1.3: Saneamento do Warning de Órfãos e Catalogação no README [TODO]
+#### 📝 Tarefa H.1.3: Saneamento do Warning de Órfãos e Catalogação no README [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo
