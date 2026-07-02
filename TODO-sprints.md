@@ -80,7 +80,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 
 **Foco:** Sincronizar o cálculo de preaquecimento de modelos e comportamentos avançados com a referência C++.
 
-### 🟡 Tarefa T3.1: Corrigir Cálculo de Amostras de Prewarm no WaveNet
+### 🟡 Tarefa T3.1: Corrigir Cálculo de Amostras de Prewarm no WaveNet [DONE]
 
 * **Descrição:** Garantir que o método `prewarm_samples()` retorne a soma correta de todos os arrays e inclua a latência de preaquecimento do sub-modelo `condition_dsp`.
 * **Ações:**
@@ -88,6 +88,10 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
   2. Corrigir `WaveNetModelDyn::prewarm_samples()` em `src/models/wavenet/model_dyn.rs` para somar os tamanhos de receptores de todas as camadas na lista, além de somar o valor de prewarm do `condition_dsp` (em vez de usar `.max()`).
 * **Verificação:** Testes de prewarm e integridade.
 * **Referência:** Finding 7.4.1.
+* **Conclusão (2026-07-02):**
+  * `WaveNetModel::prewarm_samples()` (mod.rs:85-86): alterado de `self.array1.receptive_field_size` para `self.array1.receptive_field_size + self.array2.receptive_field_size`.
+  * `WaveNetModelDyn::prewarm_samples()` (mod.rs:111-120): alterado para somar `receptive_field_size` de todos os arrays via `.iter().map(|a| a.receptive_field_size).sum()` e usar `+=` para `cond_dsp.prewarm_samples()` em vez de `.max()`.
+  * 1077 testes passam (incluindo todos os 96 testes wavenet e 11 testes de prewarm).
 
 ### 🟡 Tarefa T3.2: Ajustar Propagação de Saída de Cabeça no Cascade A2
 

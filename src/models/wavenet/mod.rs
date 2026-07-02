@@ -83,7 +83,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
     }
 
     fn prewarm_samples(&self) -> usize {
-        self.array1.receptive_field_size
+        self.array1.receptive_field_size + self.array2.receptive_field_size
     }
 
     fn prewarm_on_reset(&self) -> bool {
@@ -109,9 +109,9 @@ impl NamModel for model_dyn::WaveNetModelDyn {
     }
 
     fn prewarm_samples(&self) -> usize {
-        let mut rf = self.arrays[0].receptive_field_size;
+        let mut rf: usize = self.arrays.iter().map(|a| a.receptive_field_size).sum();
         if let Some(ref cond_dsp) = self.condition_dsp {
-            rf = rf.max(cond_dsp.prewarm_samples());
+            rf += cond_dsp.prewarm_samples();
         }
         if let Some(ref head_proc) = self.post_stack_head {
             rf += head_proc.receptive_field() - 1;

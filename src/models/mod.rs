@@ -77,7 +77,8 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     /// state (receptive field / recurrent memory depth).
     ///
     /// Default: `0` (suitable for LSTM, which stabilizes via recurrence).
-    /// WaveNet variants override this to return `array1.receptive_field_size`.
+    /// WaveNet variants override this to return the sum of all array receptive
+    /// fields plus any condition_dsp prewarm samples.
     fn prewarm_samples(&self) -> usize {
         0
     }
