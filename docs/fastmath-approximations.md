@@ -364,7 +364,7 @@ because:
 
 | Item | Location                          | Topic                                  |
 |:---- |:--------------------------------- |:-------------------------------------- |
-| PM-02| `docs/cpp_parity_map.md` §9.1     | Lite resolved (aligned MirroredBuffer) |
+| PM-02| §9.4 (this document)              | Lite resolved (aligned MirroredBuffer) |
 | PM-08| `TODO-findings.md` PM-08          | Central definition & reference registry|
 
 ---

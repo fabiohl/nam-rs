@@ -148,7 +148,7 @@ WaveNet is feedforward — no recurrent state, ESR ≈ 1e-13 at every rate.)
 
 The parity test caps this drift with a **measured, rate-aware** bound — `≤ 96 kHz: 0.08`,
 `> 96 kHz: 0.20` — never excluding any rate to make the gate pass (see
-[`cpp_parity_map.md`](cpp_parity_map.md) §4.5 and `tests/cpp_parity.rs`).
+[`cpp_parity_map.md`](cpp_parity_map.md) §2.7 and `tests/cpp_parity.rs`).
 
 **Mandatory?** Yes — it is intrinsic to f16c weight quantization in recurrent architectures.
 Mitigations are now implemented (Épico β, Sprints β1–β3):

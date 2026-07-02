@@ -255,7 +255,7 @@ cargo test --release --test cpp_parity \
   `ActivationPrecision::HighFidelity` is active. Error drops from ~2.32e-3 (Padé) to ~2.4e-7
   (HF polynomial) — a ~10,000× improvement. ISA parity confirmed bit-exact (MSE=0.00) for all
   HF paths within the same ISA. Gate calibration completed (β1.3) with C++ interop caps
-  documented in `cpp_parity_map.md` §4.5.
+  documented in `cpp_parity_map.md` §2.5/§2.7.
 - **I4 — Kahan-compensated head accumulation** (β2.1–β2.3): The LSTM head projection (final
   H→1 mapping) uses Kahan compensated summation (`dot_product_f32_native_kahan`) across all
   model variants (model1.rs, model2.rs, model_dyn.rs). Validated for stability via 10M-frame
