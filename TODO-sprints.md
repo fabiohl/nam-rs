@@ -183,7 +183,7 @@ gantt
   - O loop v1 deve processar todas as entradas.
   - O loop v2 deve ler do mesmo array consolidado, pulando itens com `escopo_v2="none"` e respeitando os sample rates especificados ou skips de SR.
 
-#### 📝 Tarefa C.1.2: Ajuste de Skip de ConvNet por Identidade de Modelo
+#### 📝 Tarefa C.1.2: Ajuste de Skip de ConvNet por Identidade de Modelo [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo

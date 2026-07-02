@@ -294,8 +294,8 @@ for entry in "${CATALOG[@]}"; do
 
     echo "  Processing $label ($nam_file)..."
 
-    if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP: $label — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
+    if [ "$nam_file" = "convnet_test.nam" ]; then
+        echo "  SKIP: $label ($nam_file) — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
         continue
     fi
 
@@ -355,8 +355,8 @@ for entry in "${CATALOG[@]}"; do
         continue
     fi
 
-    if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP v2: $label — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
+    if [ "$nam_file" = "convnet_test.nam" ]; then
+        echo "  SKIP v2: $label ($nam_file) — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
         continue
     fi
 
