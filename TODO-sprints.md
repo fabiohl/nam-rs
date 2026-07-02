@@ -25,7 +25,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 
 **Foco:** Mitigar riscos de Comportamento Indefinido (UB) e corrigir anomalias de preaquecimento de modelos.
 
-### 🔴 Tarefa T1.1: Ajustar Prewarm do `condition_dsp` LSTM no WaveNet
+### 🔴 Tarefa T1.1: Ajustar Prewarm do `condition_dsp` LSTM no WaveNet [DONE]
 
 * **Descrição:** Substituir o valor fixo `cond_dsp.prewarm(0)` pela contagem de amostras calculada dinamicamente pelo próprio sub-modelo.
 * **Ações:**

@@ -346,7 +346,7 @@ impl WaveNetModelDyn {
     #[cold]
     unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
         if let Some(ref mut cond_dsp) = self.condition_dsp {
-            cond_dsp.prewarm(0);
+            cond_dsp.prewarm(cond_dsp.prewarm_samples());
         }
 
         let zero_input = [0.0f32];
