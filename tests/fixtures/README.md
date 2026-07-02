@@ -31,7 +31,7 @@ implementations:
 > and drifted stale as the file grew; match by section comment instead.
 > [!WARNING]
 > **`utils/mod-update.sh` only syncs `NeuralAmpModelerCore`.** It does **not** clone or
-> update `NeuralAmpModelerPlugin` (required by `golden_gen_build.sh` §`[1/6]` for the
+> update `NeuralAmpModelerPlugin` (required by `golden_gen_build.sh` §`[1/10]` for the
 > cabsim IR cross-validation step). If `golden_gen_build.sh` reports
 > `NeuralAmpModelerPlugin not found` or a version mismatch, running `mod-update.sh` will
 > **not** fix it — you must clone it manually at the pinned commit until this gap is

@@ -73,6 +73,18 @@ gantt
   - Revisar e renumerar de forma única e estritamente linear todos os marcadores de fase exibidos no output (`stdout`).
   - Remover a duplicidade do marcador `[6/6]` e resolver inconsistências de base de fases (ex: de `/5` para `/6` e `/7`).
   - Atualizar o catálogo documentado em [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md) se houver referência às fases numéricas.
+  - ✅ **CONCLUÍDO 2026-07-02**: Total de 10 fases reais identificado. Renumeração estritamente linear de `[1/10]` a `[10/10]`:
+    1. Plugin verification (era `[1/6]`)
+    2. Core verification (era `[1b/6]` — sub-numeração eliminada)
+    3. Build render tool (era `[2/5]`)
+    4. Build Rust tools (era `[3/5]`)
+    5. Stress signals (era `[4/5]`)
+    6. Render v1 (era `[5/5]`)
+    7. Render v2 (era `[5b/5]` — sub-numeração eliminada)
+    8. IR reference build (era `[6/6]` — duplicata resolvida)
+    9. Cleanup (era `[6/6]` — duplicata resolvida)
+    10. Freshness manifest (era `[7/7]`)
+    - Referência `[1/6]` no `tests/fixtures/README.md:34` atualizada para `[1/10]`.
 
 #### 🏁 Critérios de Aceite da Sprint A.1
 
