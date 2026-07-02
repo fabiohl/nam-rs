@@ -203,7 +203,7 @@ gantt
   - Ajustar a geração do manifesto `.golden_manifest.sha256` para ler diretamente do array unificado `CATALOG`.
   - Garantir que todos os modelos gerados (tanto do loop v1 quanto do loop v2, inclusive os novos modelos dinâmicos uma vez adicionados) sejam devidamente registrados com seus respectivos hashes sha256 no manifesto.
 
-#### 📝 Tarefa C.1.4: Meta-Teste de Coerência de Goldens/Testes Ignorados
+#### 📝 Tarefa C.1.4: Meta-Teste de Coerência de Goldens/Testes Ignorados [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Baixo
