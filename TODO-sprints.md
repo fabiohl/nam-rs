@@ -119,7 +119,7 @@ Registrar **ESR, SNR (dB), MSE, MRSTFT** (via `report_dsp_fidelity`).
   * **C++ (model.cpp:699-729):** Sem condition_dsp: `_condition_output = _condition_input` (pass-through, `condition_dim = _get_condition_dim() = NumInputChannels()`). Com condition_dsp: copia `_condition_input → dsp input buffers → condition_dsp->process() → _condition_output` com `condition_output_channels = _condition_dsp->NumOutputChannels()`. `_condition_output` tem dimensão `condition_output_channels × maxBufferSize` (Eigen column-major = interleaved per frame).
   * **Rust (process.rs:89-98):** Sem condition_dsp: `use_cond_dsp = false`, condition é `input[pos..pos+nf]` (raw mono). Com condition_dsp: `cond_dsp.process(input[pos..], condition_dsp_output[..nf*cond_size])`. `condition_dsp_output` tem dimensão `condition_size × max_buf` (flat, interleaved per frame), mesma do C++ Eigen column-major.
   * **Validação de consistência (dispatcher/mod.rs:271-276):** `cond_out == condition_size` — garante que `condition_dsp.NumOutputChannels()` == `condition_size` da layer array, igual ao C++ `model.cpp:594`.
-  * **Para A2 Max (sem condition_dsp):** ambos usam áudio mono como condition pass-through. **Layout e dimensões equivalentes.**
+  * **Para A2 Max (golden atual):** **tem condition_dsp** — modelo WaveNet com 2 layers (ch=3, bn=6, SiLU gated, head_size=4, FiLM). Issso invalida a premissa "sem condition_dsp" que S3.4 usou para declarar o alinhamento. A divergência do condition_dsp é a provável causa dominante do ESR alto (3.61e1 no baseline). O layout e dimensões estão alinhados com o C++ para a interface (cond_size=8 na saída), mas o processamento interno do sub-modelo condition_dsp (grupos, FiLM, gating) pode divergir.
 
 * [x] **Tarefa S3.5 — head finalize:** ~Estudar head_size==1 vs head_size>1, verificar `head_accum_size × head_size` vs C++.~ **Respondido.**
   * **C++ — head_size==1 (a2_fast.cpp / generic model.cpp):** O `_head_rechannel` é Conv1D(in=_head_output_size, out=head_size=1, kernel=head_kernel_size, bias, dilation=1) aplicado sobre ring buffer da head acumulada. Em `WaveNet::set_weights_` (model.cpp:632), `head_scale` é lida como último peso `*(it++)`. Fluxo: `_head_rechannel.Process() → GetHeadOutputs() → output = head_scale × final_head`. O a2_fast.cpp usa kernel=16 fixo. O generic model.cpp usa `head_kernel_size` do JSON (validado para 16 no A2 estático, valor livre no dinâmico).
@@ -137,9 +137,13 @@ Registrar **ESR, SNR (dB), MSE, MRSTFT** (via `report_dsp_fidelity`).
 **Risco:** Médio (hot-path DSP). **Pré-requisito:** S3. **Múltiplas iterações.**
 **Especialista:** implementador (Rust/DSP).
 
-* **Tarefa S4.1 (PM-D — prioridade):** Resolver o layout do `head1x1`:
+* [x] **Tarefa S4.1 (PM-D — prioridade):** Resolver o layout do `head1x1`:
   * Se C++ **não transpõe** e acessa `[out][in]`: **remover** `transpose_dense_f32` do head1x1 no `build.rs` e manter o acesso `[oc*h1_in+ic]`.
   * Se C++ **transpõe**: ajustar o acesso do `process.rs` para `[ic*out_channels+oc]`. Após cada tentativa, rodar `test_golden_vectors_wavenet_a2_max` e registrar o ESR. Manter a variante com menor ESR.
+    * **Variante A (remove transpose, row-major):** ESR=2.43e2 (MSE=1.66e4, SNR=−23.9dB) — pior que baseline.
+    * **Variante B (keep transpose, column-major `[ic*ch+oc]`):** ESR=2.43e2 — idêntico (para head_accum_size=4, h1_in=2, acesso isomórfico entre row/col-major).
+    * **Original (keep transpose, row-major `[oc*h1_in+ic]` — access pattern bug):** ESR=3.61e1 — menor de todos. Mantido como baseline.
+    * **Conclusão:** Nenhuma correção do layout head1x1 melhora ESR isoladamente. O condition_dsp do `wavenet_a2_max.nam` (WaveNet c/ 2 layers, ch=3, bn=6, SiLU gated, head_size=4, FiLM — ver S3.4 corrigido) é a divergência dominante. **Bloqueado:** S4.2 deve investigar condition_dsp primeiro.
 
 * [ ] **Tarefa S4.2:** Para cada outra divergência Rust↔spec-C++ (S3), aplicar a mudança mínima. Uma divergência por sub-tarefa. Após **cada** mudança: `cargo test --release --test golden_vectors test_golden_vectors_wavenet_a2_max -- --nocapture` + `cargo test --lib`.
 
