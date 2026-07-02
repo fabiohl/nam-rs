@@ -705,6 +705,51 @@ is a requirement.
 > tocar pesos ou construir o motor. O modelo `.nam` e o golden `.bin` permanecem
 > no repositório (disabled, not removed). Reativação depende de fechar a
 > divergência do `condition_dsp` contra o golden C++ (§4.4).
+>
+> **Predicado de detecção (assinatura estrutural estreita):**
+>
+> ```text
+> num_arrays == 1
+>   && data.config.condition_dsp.is_some()
+>   && l0.condition_size.unwrap_or(1) == 8
+> ```
+>
+> A guarda casa **somente** o flagship quebrado (`single-array`, `condition_dsp`
+> presente, `condition_size=8`). `wavenet_condition_dsp.nam` (multi-array,
+> `condition_size=3`) e todos os fixtures FiLM/gated/blended/full/lite não casam
+> — preservados, com golden vectors comprovadamente passando no `cargo test`.
+>
+> **Mensagem de erro ao usuário:**
+>
+> ```text
+> WaveNet A2 flagship (single-array, condition_dsp, condition_size=8) is disabled:
+> confirmed wrong audio output vs NAMcore golden — see docs/cpp_parity_map.md §7.1.
+> Model is not removed; re-enable requires closing the condition_dsp parity gap (§4.4).
+> ```
+>
+> **Impacto nos testes:** nenhum teste em `cargo test` (debug ou release)
+> executa inferência de `wavenet_a2_max.nam`. Inventário completo em
+> `TODO-sprints.md` S2:
+>
+> - `test_loader_gap_wavenet_a2_max` renomeado para
+>   `test_wavenet_a2_max_dispatch_is_disabled_broken` — assera `Err` com a
+>   mensagem acima (prova vivo de que a guarda está ativa).
+> - `test_golden_vectors_wavenet_a2_max` mantido `#[ignore]` com razão citando
+>   §7.1 e bloqueio no dispatch.
+> - `test_oracle_vs_python_anchor_a2_generic` → `#[ignore]` com rastreamento
+>   FU-1 (restauração do oráculo f64, bloqueado por §4.4).
+> - `test_oracle_a2_generic`, `test_decomposition_a2_generic`,
+>   `test_combined_simulation_a2_generic` → `#[ignore]` com razões atualizadas
+>   para §7.1.
+> - Meta-teste `threshold_calibration`: `"wavenet_a2_max"` removido da lista;
+>   braço `validation.rs` mantido como morto documentado.
+>
+> **Invariante garantido:** `grep -rn 'wavenet_a2_max' src/ tests/` mostra
+> apenas a guarda de desativação, o teste de asserção positiva,
+> `#[ignore]`'s rastreados, e referências documentais.
+>
+> **Cobertura de regressão:** `test_wavenet_condition_dsp_still_loads` prova que
+> a guarda não bloqueia modelos vizinhos válidos. `tests-quick.sh` 100% verde.
 
 ### 7.2 🟠 Confirmed code bugs — not yet triggered by any known model
 
