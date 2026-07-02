@@ -7,7 +7,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > Gerado pela skill `planejador-arquiteto`, com base nos achados críticos de supply-chain e robustez documentados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
-Este documento organiza a execução do hardening e a resolução dos gaps de supply-chain mapeados nos **Épicos A e B** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento organiza a execução do hardening, a resolução dos gaps de supply-chain e a consolidação do catálogo de goldens mapeados nos **Épicos A, B e C** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
@@ -21,6 +21,9 @@ gantt
     Épico A - Hardening do Gerador   :active, 2026-07-02, 3d
     section Sprint 2: Supply-Chain
     Épico B - Sincronização de Deps : 2026-07-05, 3d
+    section Sprint 3: Catálogo Canônico
+    Épico C - Consolidação de Catálogo: 2026-07-08, 4d
+    Épicos C1/C2 - Gaps Dinâmicos/FFT : 2026-07-12, 3d
 ```
 
 ---
@@ -143,7 +146,7 @@ gantt
   - Validar que o prompt de instruções instruindo a execução de `./utils/mod-update.sh` esteja correto e sincronizado.
   - ✅ **CONCLUÍDO 2026-07-02**: Referências hardcoded `v0.5.4` substituídas por `$NAM_CORE_TAG` no cabeçalho, mensagem de build e mensagens/comentários de skip do ConvNet. Mensagens de erro e sucesso de validação (Plugin e Core) aprimoradas para exibir `$TAG @ $COMMIT`. Todos os 6 prompts para executar `./utils/mod-update.sh` verificados — corretos e sincronizados desde B.1.2 (que adicionou sincronização do Plugin ao script). Sintaxe validada com `bash -n`.
 
-#### 📝 Tarefa B.1.4: Correção Factuais na Documentação Principal
+#### 📝 Tarefa B.1.4: Correção Factuais na Documentação Principal [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo
@@ -152,9 +155,96 @@ gantt
 - **Descrição:**
   - Atualizar a linha 122 de [README.md](file:///home/fabio/nam-rs/README.md) para listar a versão correta carregada (v0.5.4 em vez de v0.5.3).
   - Confirmar e documentar adequadamente que [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) agora resolve por completo ambas as dependências C++ (`NeuralAmpModelerCore` e `NeuralAmpModelerPlugin`).
+  - ✅ **CONCLUÍDO 2026-07-02**: Linha 122 atualizada com `(v0.5.4)` para Core e `(v0.7.15)` para Plugin, mantendo referência a `variables.env` como fonte canônica. Documentação confirmada — `mod-update.sh` cobre ambas desde B.1.2, e ambas as seções "Third-Party Upstream Fixtures" (linha 69) e "Fresh Clone Setup" (linha 122) já declaram corretamente cobertura completa de ambas as dependências.
 
 #### 🏁 Critérios de Aceite da Sprint B.1
 
 1. Em um clone limpo do projeto (ou deletando localmente as pastas em `tests/fixtures/NeuralAmpModelerCore` e `tests/fixtures/NeuralAmpModelerPlugin`), a execução isolada de `./utils/mod-update.sh` deve criar ambos os diretórios, apontá-los para os commits corretos e inicializar todos os submódulos de dependências com sucesso.
 2. Executar em seguida `./tests/fixtures/golden_gen_build.sh` deve rodar sem erros de validação de dependências e compilar a ferramenta de renderização e referência IR sem problemas.
 3. Não deve restar nenhuma constante com hashes de commit duplicada no código de [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) ou [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh).
+
+---
+
+## 🟠 Épico C — Consolidação do Catálogo Canônico de Modelos↔Goldens
+
+**Objetivo:** Resolver a fragmentação do catálogo de modelos e goldens centralizando as definições no script de geração, de forma a garantir manutenibilidade futura, cobrindo modelos dinâmicos/FiLM e Linear FFT, e validando tudo com meta-testes.
+
+### 🏃 Sprint C.1: Consolidação do Catálogo e Meta-Testes (Duração: Est. 4 dias)
+
+#### 📝 Tarefa C.1.1: Consolidação de Arrays no Gerador de Goldens
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Médio (precisa garantir que todos os 20+ modelos sejam migrados sem erros de sintaxe ou perda de propriedades)
+- **Achado Associado:** F4 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L331-L376)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Substituir os arrays redundantes `MODELS` e `V2_MODELS` por um único array unificado `CATALOG`.
+  - Cada entrada deve usar um formato estruturado: `arquivo.nam:nome_golden:label:escopo_v2[:skip_srs]`.
+  - O loop v1 deve processar todas as entradas.
+  - O loop v2 deve ler do mesmo array consolidado, pulando itens com `escopo_v2="none"` e respeitando os sample rates especificados ou skips de SR.
+
+#### 📝 Tarefa C.1.2: Ajuste de Skip de ConvNet por Identidade de Modelo
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** F9 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L529-L541)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Remover a dependência de string-matching do label (ex: `[[ "$label" == ConvNet* ]]`).
+  - Utilizar um campo explícito no catálogo ou verificar a correspondência exata do nome do modelo (`convnet_test.nam`) para realizar o skip preventivo justificado por incompatibilidade de arquitetura da versão C++.
+
+#### 📝 Tarefa C.1.3: Geração Completa do Manifesto de Frescor
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Baixo
+- **Achado Associado:** F11 (Parte 1) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L601-L640)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Ajustar a geração do manifesto `.golden_manifest.sha256` para ler diretamente do array unificado `CATALOG`.
+  - Garantir que todos os modelos gerados (tanto do loop v1 quanto do loop v2, inclusive os novos modelos dinâmicos uma vez adicionados) sejam devidamente registrados com seus respectivos hashes sha256 no manifesto.
+
+#### 📝 Tarefa C.1.4: Meta-Teste de Coerência de Goldens/Testes Ignorados
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Baixo
+- **Achado Associado:** F3b (Item 3) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L322-L328)
+- **Arquivos Alvos:**
+  - [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/threshold_calibration.rs) (ou novo arquivo de teste sob `tests/`)
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Implementar um meta-teste em Rust que leia o script `golden_gen_build.sh` (ou consuma o manifesto gerado) e garanta que qualquer modelo `.nam` associado a testes com `#[ignore]` por falta de golden (encontrados em arquivos como `golden_vectors.rs` ou `linear_fft_test.rs`) esteja registrado de forma canônica no catálogo/manifesto.
+  - Isso garante a detecção automática via CI de qualquer modelo adicionado a testes mas esquecido no script gerador.
+
+---
+
+### 🏃 Sprint C.2: Fechamento de Gaps de Modelos Dinâmicos e FFT Linear (Duração: Est. 3 dias)
+
+#### 📝 Tarefa C.2.1: Automação da Geração de Modelos A2 Dinâmicos/FiLM
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Médio (envolve a integração de scripts Python executando sob o shell Bash do gerador)
+- **Achado Associado:** F3 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L197-L261)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Adicionar o pré-requisito `python3` (com verificação na Fase 1 do script).
+  - Incluir uma fase no script para rodar `tests/fixtures/generate_a2_fixtures.py` para gerar os arquivos `.nam` dinâmicos sintéticos automaticamente antes de renderizar os goldens.
+  - Adicionar os 4 modelos dinâmicos (`a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam`, `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`) ao catálogo consolidado `CATALOG` com escopo v2 definido como `none` (já que são testados apenas em v1).
+
+#### 📝 Tarefa C.2.2: Triagem e Cobertura Linear FFT
+
+- **Prioridade:** 🟠 Alta (depende de decisão de produto)
+- **Risco:** Médio
+- **Achado Associado:** F3b de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L264-L329)
+- **Arquivos Alvos:**
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  - [linear_fft_test.rs](file:///home/fabio/nam-rs/tests/linear_fft_test.rs)
+- **Descrição:**
+  - **Opção A (Recomendada - Implementar):** Adicionar os 4 modelos Linear FFT ao catálogo unificado `CATALOG` para que os goldens sejam gerados, e reativar os testes `test_golden_vectors_linear_fft_rf*` removendo o `#[ignore]`.
+  - **Opção B (Descontinuar):** Se a validação não for mais relevante, remover os testes `#[ignore]` e os 4 arquivos `.nam` associados das fixtures para sanear o repositório.
+
+#### 🏁 Critérios de Aceite da Sprint C.1 e C.2
+
+1. O script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) deve rodar com sucesso gerando todos os goldens (incluindo os dinâmicos/FiLM e Linear FFT se mantidos) usando o catálogo consolidado.
+2. O manifesto `.golden_manifest.sha256` gerado ao final deve conter todas as entradas do catálogo consolidado de forma transparente.
+3. Nenhum teste em [golden_vectors.rs](file:///home/fabio/nam-rs/tests/golden_vectors.rs) para os modelos dinâmicos FiLM deve falhar por falta de golden atualizado.
+4. O meta-teste deve rodar com sucesso comprovando que não existem testes ignorados órfãos de catálogo no gerador.

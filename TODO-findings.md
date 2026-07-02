@@ -720,7 +720,7 @@ mudanças de comportamento do script, não apenas de documentação.
 
 ## Épicos (para planejamento futuro via `planejador-arquiteto` → `TODO-sprints.md`)
 
-## Épico A — Hardening do Fluxo de Erro do Gerador de Goldens (🔴 Crítico, alto risco)
+## Épico A — Hardening do Fluxo de Erro do Gerador de Goldens (🔴 Crítico, alto risco) [DONE]
 
 Torna o script seguro para operação "raramente executada, sem supervisão constante", que é seu modo de
 uso pretendido segundo o próprio usuário desta auditoria.
@@ -734,7 +734,7 @@ uso pretendido segundo o próprio usuário desta auditoria.
 que o script emite o diagnóstico correto, continua processando os demais modelos, e termina com um
 resumo claro de sucessos/falhas — não com um crash de bash sem contexto.
 
-## Épico B — Fechar o Gap de Supply-Chain do `NeuralAmpModelerPlugin` (🔴 Crítico)
+## Épico B — Fechar o Gap de Supply-Chain do `NeuralAmpModelerPlugin` (🔴 Crítico) [DONE]
 
 - **F2** — Estender `mod-update.sh` para sincronizar `NeuralAmpModelerPlugin` simetricamente ao `Core`.
 - Sub-tarefa: extrair SHAs/tags pinados para uma fonte única compartilhada entre `mod-update.sh` e
@@ -745,7 +745,7 @@ resumo claro de sucessos/falhas — não com um crash de bash sem contexto.
 `./tests/fixtures/golden_gen_build.sh` deve completar sem qualquer intervenção manual em repositórios
 git vendored.
 
-## Épico C — Consolidação do Catálogo Canônico de Modelos↔Goldens (🟠 Alto, fundação para C1/C2)
+## Épico C — Consolidação do Catálogo Canônico de Modelos↔Goldens (🟠 Alto, fundação para C1/C2) [DOING]
 
 Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 
@@ -767,19 +767,19 @@ Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
   mortos) a cobertura Linear FFT — **requer decisão humana antes de qualquer implementação**, pois
   envolve julgamento sobre se essa cobertura ainda é desejada.
 
-## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza)
+## Épico D — Saneamento de Artefatos e Comentários Órfãos (🟡 Médio/🟢 Baixo, baixo risco, alto valor de clareza) [TO-DO]
 
 - **F5** — Investigar proveniência e corrigir classificação (ou remover) `golden_cabsim_cpp_stress.bin`.
 - **F6** — Invalidação de cache de binários (`render`, `render_ir`) por timestamp/config.
 - **F10** — Remover comentário stale/contraditório sobre `wavenet_lite`.
 
-## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C)
+## Épico E — Governança de Frescor de Goldens (🟡 Médio, depende parcialmente do Épico C) [TO-DO]
 
 - **F11** (parte 2) — Avaliar versionar o manifesto de frescor e decidir política bloqueante vs.
   informativa; avaliar integração no `tests-quick.sh` (Fase 2) em vez de exclusivamente no
   `tests-long.sh`.
 
-## Épico F — Documentação (🟢 concluído parcialmente nesta sessão; itens remanescentes de código-fonte)
+## Épico F — Documentação (🟢 concluído parcialmente nesta sessão; itens remanescentes de código-fonte) [TO-DO]
 
 - **F12** — ✅ Aplicado nesta sessão (referências a `.gitignore` corrigidas no README).
 - **F13** — ✅ Aplicado nesta sessão (nova seção de supply-chain em `docs/testing.md`).
