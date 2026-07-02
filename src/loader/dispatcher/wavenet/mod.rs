@@ -49,6 +49,47 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
     Ok(())
 }
 
+/// Predicate that identifies the known-broken WaveNet A2 flagship model
+/// (`wavenet_a2_max.nam`) by structural signature.
+///
+/// The guard is **fail-closed**: it returns `true` only for models whose audio
+/// output is confirmed wrong against the NAMcore C++ golden reference
+/// (see [`docs/cpp_parity_map.md` §7.1][§7.1]). No `unsafe` code; the engine
+/// and cascade code paths remain intact — this function merely prevents
+/// construction at the dispatch layer.
+///
+/// **Detection signature** (narrow enough to preserve all other verified
+/// A2 Dynamic fixtures):
+///
+/// - `num_arrays == 1` (single-array; multi-array cascade models are unaffected)
+/// - `has_condition_dsp` (the model embeds a `condition_dsp` sub-model)
+/// - `condition_size == 8` (the flagship's specific condition input width)
+///
+/// **Invariants:**
+///
+/// - No `unsafe` — pure structural check on parsed model metadata.
+/// - Fail-closed: `true` → reject model before weights are touched.
+/// - Engine code (`process.rs`, `cascade.rs`, `condition_dsp`) is never removed
+///   or altered by this guard.
+///
+/// **Tradeoff (documented):** if a future model with correct output happens to
+/// match this exact signature, it will be blocked. This is acceptable until the
+/// `condition_dsp` parity gap against C++ is closed
+/// ([`docs/cpp_parity_map.md` §4.4][§4.4]) — then the guard is removed or
+/// narrowed.
+///
+/// [§7.1]: docs/cpp_parity_map.md
+/// [§4.4]: docs/cpp_parity_map.md
+#[cold]
+#[inline(never)]
+fn is_disabled_broken_a2_flagship(
+    num_arrays: usize,
+    condition_size: usize,
+    has_condition_dsp: bool,
+) -> bool {
+    num_arrays == 1 && has_condition_dsp && condition_size == 8
+}
+
 // =============================================================================
 // WaveNet dispatcher entry point
 // =============================================================================
@@ -134,6 +175,17 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 }
 
                 let l0 = &data.config.layers[0];
+
+                let condition_size = l0.condition_size.unwrap_or(1);
+                let has_condition_dsp = data.config.condition_dsp.is_some();
+                if is_disabled_broken_a2_flagship(num_arrays, condition_size, has_condition_dsp) {
+                    bail!(
+                        "WaveNet A2 flagship (single-array, condition_dsp, condition_size=8) is disabled: \
+                         confirmed wrong audio output vs NAMcore golden — see docs/cpp_parity_map.md §7.1. \
+                         Model is not removed; re-enable requires closing the condition_dsp parity gap (§4.4)."
+                    );
+                }
+
                 let mut arrays: Vec<WaveNetA2Dyn> = Vec::with_capacity(num_arrays);
 
                 for (ai, layer_cfg) in data.config.layers.iter().enumerate() {

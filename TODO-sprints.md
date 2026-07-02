@@ -94,7 +94,7 @@ alcançável. **Ponto de maior atenção da agenda.**
 
 **Direcionado a:** `implementador` (especialista em Rust/RT-safety).
 
-- [ ]**S1.T1 — Predicado + bail.** Em `src/loader/dispatcher/wavenet/mod.rs`, branch
+- [x]**S1.T1 — Predicado + bail.** Em `src/loader/dispatcher/wavenet/mod.rs`, branch
   `A2TopologyResult::Dynamic`, logo após computar `num_arrays`/`l0`/`condition_size` e
   **antes** do loop de construção de `arrays`, inserir guarda:
   - `let condition_size = l0.condition_size.unwrap_or(1);`
@@ -103,19 +103,17 @@ alcançável. **Ponto de maior atenção da agenda.**
     "WaveNet A2 flagship (single-array, condition_dsp, condition_size=8) is disabled: \
      confirmed wrong audio output vs NAMcore golden — see docs/cpp_parity_map.md §7.1. \
      Model is not removed; re-enable requires closing the condition_dsp parity gap (§4.4)."); }`
-- [ ]**S1.T2 — Marcação "broken" no fonte.** Extrair o predicado para uma função
+- [x]**S1.T2 — Marcação "broken" no fonte.** Extrair o predicado para uma função
   `#[cold] fn is_disabled_broken_a2_flagship(...) -> bool` (ou `const`-expr equivalente) com
   doc-comment rico citando §7.1/§4.4 e os invariantes de segurança (nenhum `unsafe`,
   fail-closed, preservação do código do motor). Mantém coesão e um único ponto de verdade.
-- [ ]**S1.T3 — Rótulo de arquitetura.** Em `src/loader/build.rs:215-219` (mapeamento
+- [x]**S1.T3 — Rótulo de arquitetura.** Em `src/loader/build.rs:215-219` (mapeamento
   `A2TopologyResult → label`), opcionalmente refinar `Dynamic` para que um modelo
   desativado não seja rotulado apenas "A2-Dynamic" — manter como está se a guarda já
   impede a construção (a `label` só é computada para modelos construídos com sucesso).
   **Decisão:** não alterar (a guarda precede a construção); apenas documentar no PR.
 
-- **Critério de aceite S1:** `cargo build` limpo; um binário/CLI que carregue
-  `wavenet_a2_max.nam` recebe o `Err` exato acima; `wavenet_condition_dsp.nam` e os fixtures
-  FiLM/gated/blended/full/lite continuam carregando (sem mudança de behavior).
+- **Critério de aceite S1:** ✅ `cargo build` limpo; `build_model` rejeita `wavenet_a2_max.nam` com `Err` citando "disabled" e "§7.1" (confirmado pelo panic de `test_loader_gap_wavenet_a2_max` em `tests/golden_vectors.rs:947`); `wavenet_condition_dsp.nam` e todos os fixtures FiLM/gated/blended/full/lite continuam carregando (todos os golden vectors passam). `grep -rn 'wavenet_a2_max' src/` mostra apenas a doc-comment da guarda; referências em `tests/` permanecem e serão tratadas em S2.
 
 ### Sprint S2 — Neutralização dos pontos de acesso do `cargo test`
 
