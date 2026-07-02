@@ -1507,8 +1507,8 @@ fn test_poly_regression_gate_wavenet_a2_full() {
 /// routes it to the generic WaveNet path. The Rust dispatcher classifies it
 /// as `A2TopologyResult::Dynamic` and routes to `WaveNetA2Dyn`.
 ///
-/// Run `./tests/fixtures/generate_a2_fixtures.py` then render via
-/// `build/namcore_render/tools/render` to regenerate the golden vectors.
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate all golden vectors,
+/// including the A2 dynamic/FiLM fixtures from generate_a2_fixtures.py.
 #[test]
 fn test_golden_vectors_a2_dynamic_gated_ch8() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1517,10 +1517,7 @@ fn test_golden_vectors_a2_dynamic_gated_ch8() {
     assert!(
         golden_path.exists(),
         "golden_a2_dynamic_gated_ch8.bin not found at {golden_path:?}.\n\
-         Run './tests/fixtures/generate_a2_fixtures.py && ./build/namcore_render/tools/render \
-         tests/fixtures/models/a2_dynamic_gated_ch8.nam tests/fixtures/stress_signal.wav /tmp/out.wav && \
-         cargo run --release --bin wav_to_golden -- --input /tmp/out.wav --reference \
-         tests/fixtures/stress_signal.wav --output tests/fixtures/golden_a2_dynamic_gated_ch8.bin'"
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
     );
 
     let (input, expected) =
@@ -1564,8 +1561,8 @@ fn test_golden_vectors_a2_dynamic_gated_ch8() {
 /// routes it to the generic WaveNet path. The Rust dispatcher classifies it
 /// as `A2TopologyResult::Dynamic` and routes to `WaveNetA2Dyn`.
 ///
-/// Run `./tests/fixtures/generate_a2_fixtures.py` then render via
-/// `build/namcore_render/tools/render` to regenerate the golden vectors.
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate all golden vectors,
+/// including the A2 dynamic/FiLM fixtures from generate_a2_fixtures.py.
 #[test]
 fn test_golden_vectors_a2_dynamic_blended_ch3() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1574,8 +1571,7 @@ fn test_golden_vectors_a2_dynamic_blended_ch3() {
     assert!(
         golden_path.exists(),
         "golden_a2_dynamic_blended_ch3.bin not found at {golden_path:?}.\n\
-         Run './tests/fixtures/generate_a2_fixtures.py' then render via C++ and convert with \
-         wav_to_golden."
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
     );
 
     let (input, expected) =

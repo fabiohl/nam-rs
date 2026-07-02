@@ -19,13 +19,14 @@
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
 #   - cargo (Rust; stress signal generation and WAV→golden conversion are now Rust native)
+#   - python3 (for generating synthetic A2 dynamic/FiLM fixtures)
 #   - git (to clone NeuralAmpModelerCore and NeuralAmpModelerPlugin if needed)
 #
 # Reproducibility:
 #   Upstream commits are pinned in variables.env (NAM_CORE_COMMIT, NAM_PLUGIN_COMMIT).
 #   Update there when regenerating goldens from a newer upstream version.
 #
-# Python is no longer required — gen_stress and wav_to_golden replace the inline Python blocks.
+# Python is required for generating synthetic A2 dynamic/FiLM fixtures (generate_a2_fixtures.py).
 #
 # Usage:
 #   ./tests/fixtures/golden_gen_build.sh
@@ -48,6 +49,9 @@
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
 #   golden_cabsim_cpp_long.bin
 #   (C++ dsp::ImpulseResponse reference for cabsim cross-validation)
+#   golden_a2_dynamic_gated_ch8.bin, golden_a2_dynamic_blended_ch3.bin,
+#   golden_wavenet_a2_film_lite.bin, golden_wavenet_a2_film_full.bin
+#   (Synthetic A2 dynamic/FiLM goldens — v1 only, generated from Python fixtures)
 #
 # These files must be committed so that the Rust golden vector tests
 # run without C++ recompilation.
@@ -72,9 +76,9 @@ source "$PROJECT_ROOT/variables.env"
 # =============================================================================
 echo "=== Golden Vector Generator (NeuralAmpModelerCore) ==="
 
-for cmd in cmake cargo; do
+for cmd in cmake cargo python3; do
     if ! command -v "$cmd" &>/dev/null; then
-        echo "ERROR: '$cmd' not found. Install with: sudo apt install cmake cargo"
+        echo "ERROR: '$cmd' not found. Install with: sudo apt install cmake cargo python3"
         exit 1
     fi
 done
@@ -148,10 +152,23 @@ done
 echo "  NeuralAmpModelerCore verified ($NAM_CORE_TAG @ $NAM_CORE_COMMIT, submodules present)"
 
 # =============================================================================
+# Generate A2 dynamic/FiLM synthetic fixtures
+# =============================================================================
+echo ""
+echo "[3/11] Generating A2 dynamic/FiLM fixtures (Python)..."
+A2_FIXTURES_PY="$FIXTURES_DIR/generate_a2_fixtures.py"
+if [ ! -f "$A2_FIXTURES_PY" ]; then
+    echo "ERROR: generate_a2_fixtures.py not found at $A2_FIXTURES_PY"
+    exit 1
+fi
+python3 "$A2_FIXTURES_PY"
+echo "  A2 dynamic/FiLM .nam fixtures regenerated in $MODELS_DIR/"
+
+# =============================================================================
 # Build render tool (single unified binary at v0.5.4 with A2-fast)
 # =============================================================================
 echo ""
-echo "[3/10] Building render tool..."
+echo "[4/11] Building render tool..."
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
 
@@ -195,7 +212,7 @@ echo "  Render: $RENDER_BIN"
 # Build Rust tools (gen_stress + wav_to_golden)
 # =============================================================================
 echo ""
-echo "[4/10] Building Rust tools (gen_stress + wav_to_golden)..."
+echo "[5/11] Building Rust tools (gen_stress + wav_to_golden)..."
 
 RUST_LOG="$LOGS_DIR/rust_build.log"
 cargo build --release --bin gen_stress --bin wav_to_golden > "$RUST_LOG" 2>&1 || {
@@ -219,7 +236,7 @@ echo "  wav_to_golden: $WAV_TO_GOLDEN"
 # Generate stress WAV signals
 # =============================================================================
 echo ""
-echo "[5/10] Generating stress signals..."
+echo "[6/11] Generating stress signals..."
 
 STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 "$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
@@ -238,7 +255,7 @@ done
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================
 echo ""
-echo "[6/10] Running render for each model (v1)..."
+echo "[7/11] Running render for each model (v1)..."
 
 # Canonical model↔golden catalog — single source of truth for both v1 and v2 loops.
 #
@@ -270,6 +287,10 @@ CATALOG=(
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7:all"
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks):all"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1):all"
+    "a2_dynamic_gated_ch8.nam:golden_a2_dynamic_gated_ch8:A2 Dynamic Gated (CH=8):none"
+    "a2_dynamic_blended_ch3.nam:golden_a2_dynamic_blended_ch3:A2 Dynamic Blended (CH=3):none"
+    "wavenet_a2_film_lite.nam:golden_wavenet_a2_film_lite:A2-FiLM Lite (CH=3):none"
+    "wavenet_a2_film_full.nam:golden_wavenet_a2_film_full:A2-FiLM Full (CH=8):none"
 )
 # ^ "convnet_test" above is expected SKIP — C++ $NAM_CORE_TAG ConvNet is architecturally
 #   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
@@ -324,9 +345,9 @@ done
 # Generate v2 multi-SR goldens (one per model × sample_rate)
 # =============================================================================
 echo ""
-echo "[7/10] Generating v2 multi-SR golden vectors..."
+echo "[8/11] Generating v2 multi-SR golden vectors..."
 
-# v2 uses the same canonical CATALOG defined in §6.
+# v2 uses the same canonical CATALOG defined in §7.
 # Models with v2_scope="none" are skipped entirely;
 # v2_scope="48k_only" only produces the 48 kHz golden;
 # v2_scope="all" generates all 5 sample rates respecting skip_srs.
@@ -401,7 +422,7 @@ done
 # Build and run C++ IR reference (dsp::ImpulseResponse) → golden_cabsim_cpp_*.bin
 # =============================================================================
 echo ""
-echo "[8/10] Building C++ IR reference (dsp::ImpulseResponse)..."
+echo "[9/11] Building C++ IR reference (dsp::ImpulseResponse)..."
 
 AUDIO_DSP_TOOLS_DIR="$NAM_PLUGIN_DIR/AudioDSPTools"
 IR_BIN="$FIXTURES_DIR/render_ir"
@@ -444,7 +465,7 @@ echo "  Running render_ir to generate C++ IR golden vectors..."
 # Cleanup
 # =============================================================================
 echo ""
-echo "[9/10] Cleaning up temporary files..."
+echo "[10/11] Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
@@ -477,7 +498,7 @@ done
 # Generate freshness manifest (.nam ↔ golden)
 # =============================================================================
 echo ""
-echo "[10/10] Generating freshness manifest..."
+echo "[11/11] Generating freshness manifest..."
 
 MANIFEST="$FIXTURES_DIR/.golden_manifest.sha256"
 echo "# Golden freshness manifest — auto-generated by golden_gen_build.sh" > "$MANIFEST"

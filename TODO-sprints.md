@@ -219,7 +219,7 @@ gantt
 
 ### 🏃 Sprint C.2: Fechamento de Gaps de Modelos Dinâmicos e FFT Linear (Duração: Est. 3 dias)
 
-#### 📝 Tarefa C.2.1: Automação da Geração de Modelos A2 Dinâmicos/FiLM
+#### 📝 Tarefa C.2.1: Automação da Geração de Modelos A2 Dinâmicos/FiLM [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Médio (envolve a integração de scripts Python executando sob o shell Bash do gerador)
