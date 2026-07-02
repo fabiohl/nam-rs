@@ -15,15 +15,35 @@ The following directories are **local-only, gitignored** artifacts created on de
 `golden_gen_build.sh` for cross-reference validation against the upstream C++
 implementations:
 
-| Directory                                | Size    | Purpose                                                |
-| ---------------------------------------- | ------- | ------------------------------------------------------ |
-| `tests/fixtures/NeuralAmpModelerCore/`   | ~143 MB | Upstream C++ reference (`render` tool for ALL goldens) |
-| `build/namcore_render/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore        |
+| Directory                                | Size    | Purpose                                                                          |
+| ---------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `tests/fixtures/NeuralAmpModelerCore/`   | ~143 MB | Upstream C++ reference (`render` tool for ALL goldens)                           |
+| `tests/fixtures/NeuralAmpModelerPlugin/` | ~164 MB | Upstream C++ IR reference (`dsp::ImpulseResponse`, cabsim cross-validation only) |
+| `build/namcore_render/`                  | ~6 MB   | CMake build artifacts from NeuralAmpModelerCore                                  |
 
 > [!NOTE]
-> Entries in `.gitignore` (lines 54–55, 58) prevent accidental commits. The golden
-> `.bin` output files are version-controlled (explicitly unignored at
-> `.gitignore:36`), but their C++ generation infrastructure is local.
+> Entries in `.gitignore` (`# Golden vectors de validação numérica` /
+> `!tests/fixtures/*.bin` unignore rule; `# NeuralAmpModelerCore` section, which also
+> ignores `NeuralAmpModelerPlugin/` and `models-nondist`) prevent accidental commits.
+> The golden `.bin` output files are version-controlled (explicitly unignored), but
+> their C++ generation infrastructure is local. Line numbers are intentionally not
+> cited here — a prior revision of this note pinned exact `.gitignore` line numbers
+> and drifted stale as the file grew; match by section comment instead.
+> [!WARNING]
+> **`utils/mod-update.sh` only syncs `NeuralAmpModelerCore`.** It does **not** clone or
+> update `NeuralAmpModelerPlugin` (required by `golden_gen_build.sh` §`[1/6]` for the
+> cabsim IR cross-validation step). If `golden_gen_build.sh` reports
+> `NeuralAmpModelerPlugin not found` or a version mismatch, running `mod-update.sh` will
+> **not** fix it — you must clone it manually at the pinned commit until this gap is
+> closed (see `TODO-findings.md` Épico B):
+>
+> ```bash
+> git clone https://github.com/sdatkinson/NeuralAmpModelerPlugin.git \
+>     tests/fixtures/NeuralAmpModelerPlugin
+> cd tests/fixtures/NeuralAmpModelerPlugin
+> git checkout 96337e9ab6e3beb619459779bbb5c47e1b04d8c4
+> git submodule update --init --recursive
+> ```
 
 ### To regenerate all fixtures from scratch
 
@@ -32,7 +52,8 @@ implementations:
 rm -rf tests/fixtures/NeuralAmpModelerCore \
        build/namcore_render
 
-# Run full regeneration (clones, builds, generates all goldens)
+# Run full regeneration (clones, builds, generates all goldens except the
+# known gaps below — see the [!WARNING] note under "Files in this directory")
 ./tests/fixtures/golden_gen_build.sh
 
 # Run the full audit suite to verify (includes long-duration C++ cross-validation)
@@ -49,25 +70,45 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                       | `.nam` Model               | Nature                                                                     | Topology                                                                |
-| --------------------------------- | -------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `golden_wavenet_standard.bin`     | `BossWN-standard.nam`      | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                           |
-| `golden_wavenet_lite.bin`         | `EVH-5150-Lite.nam`        | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                           |
-| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`       | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                            |
-| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`          | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                            |
-| `golden_wavenet_a1_standard.bin`  | `wavenet_a1_standard.nam`  | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                           |
-| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`        | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                           |
-| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`         | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                           |
-| `golden_lstm_official.bin`        | `lstm.nam`                 | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                            |
-| `golden_wavenet_a2_full.bin`      | `wavenet_a2_full.nam`      | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
-| `golden_wavenet_a2_lite.bin`      | `wavenet_a2_lite.nam`      | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
-| `golden_wavenet_a2_film_full.bin` | `wavenet_a2_film_full.nam` | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=8, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
-| `golden_wavenet_a2_film_lite.bin` | `wavenet_a2_film_lite.nam` | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
-| `golden_cabsim_cpp_short.bin`     | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
-| `golden_cabsim_cpp_medium.bin`    | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
-| `golden_cabsim_cpp_long.bin`      | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
-| `golden_cabsim_cpp_stress.bin`    | N/A                        | C++ reference (synthetic IR)                                               | Cabsim Stress IR (65536 samples) C++ dsp::ImpulseResponse               |
+| Golden File                         | `.nam` Model                 | Nature                                                                     | Topology                                                                |
+| ----------------------------------- | ---------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `golden_wavenet_standard.bin`       | `BossWN-standard.nam`        | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_wavenet_lite.bin`           | `EVH-5150-Lite.nam`          | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                           |
+| `golden_wavenet_feather.bin`        | `BossWN-feather.nam`         | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                            |
+| `golden_wavenet_nano.bin`           | `BossWN-nano.nam`            | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                            |
+| `golden_wavenet_a1_standard.bin`    | `wavenet_a1_standard.nam`    | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_lstm_1x16.bin`              | `BossLSTM-1x16.nam`          | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                           |
+| `golden_lstm_2x8.bin`               | `BossLSTM-2x8.nam`           | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                           |
+| `golden_lstm_official.bin`          | `lstm.nam`                   | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                            |
+| `golden_wavenet_a2_full.bin`        | `wavenet_a2_full.nam`        | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_lite.bin`        | `wavenet_a2_lite.nam`        | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_film_full.bin`   | `wavenet_a2_film_full.nam`   | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=8, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_wavenet_a2_film_lite.bin`   | `wavenet_a2_film_lite.nam`   | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_a2_dynamic_gated_ch8.bin`   | `a2_dynamic_gated_ch8.nam`   | **Synthetic** (dynamic gating engine parity)                               | CH=8, 3 gated layers — cross-reference vs C++ generic                   |
+| `golden_a2_dynamic_blended_ch3.bin` | `a2_dynamic_blended_ch3.nam` | **Synthetic** (dynamic blending engine parity)                             | CH=3, 2 blended layers — cross-reference vs C++ generic                 |
+| `golden_cabsim_cpp_short.bin`       | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
+| `golden_cabsim_cpp_medium.bin`      | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
+| `golden_cabsim_cpp_long.bin`        | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
+| `golden_cabsim_cpp_stress.bin`      | N/A                          | ⚠️ Orphan (see warning below)                                              | 65536 samples — **not** producible by the current C++ reference         |
 
+> [!WARNING]
+> **Automation gap, tracked in `TODO-findings.md` (F3, F5):**
+>
+> - `golden_wavenet_a2_film_{full,lite}.bin`, `golden_a2_dynamic_gated_ch8.bin`, and
+>   `golden_a2_dynamic_blended_ch3.bin` are **not** produced by `golden_gen_build.sh`.
+>   Their `.nam` source models come from `tests/fixtures/generate_a2_fixtures.py`, and
+>   the golden `.bin` itself must be rendered and converted **manually** — see the
+>   dedicated model sections below ("FiLM Fixtures", A2 dynamic sections) for the exact
+>   commands. If you land here from an error message pointing at `golden_gen_build.sh`
+>   for one of these four files, that message is currently misleading (tracked).
+> - `golden_cabsim_cpp_stress.bin` exists on disk but `tests/fixtures/render_ir.cpp`
+>   only implements 3 of the 4 scenarios its own header comment advertises (short,
+>   medium, long — never `stress`). The C++ `dsp::ImpulseResponse` engine hard-caps IR
+>   length at 8192 samples (`mMaxLength`), so a genuine C++ cross-reference for a
+>   65536-sample IR is not achievable with the vendored engine — see
+>   `tests/cabsim_cpp_parity.rs` for the Rust-side rationale. Treat this file as a
+>   historical/orphan artifact, not an active C++ reference, until F5 is resolved.
+>
 > **Nature classification:**
 >
 > - **Official real** — modelo `.nam` com pesos treinados, publicado pelo projeto NAM oficial (`sdatkinson/NeuralAmpModelerCore`).
@@ -85,7 +126,22 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ### Model Files and Trust Levels Registry
 
-All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests. There are no orphan, redundant, or garbage files in the directory.
+All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests.
+
+> [!WARNING]
+> **Registry completeness gap (found during the `golden_gen_build.sh` audit,
+> `TODO-findings.md` F3b):** the blanket claim that used to read "there are no orphan,
+> redundant, or garbage files in the directory" is **not currently true**. Confirmed
+> orphans: `linear_fft_rf{320,2048,4096,8192}.nam` (see the dedicated row below) are
+> referenced only by permanently-`#[ignore]`d tests in `tests/linear_fft_test.rs`
+> whose required `.golden_linear_fft_*.bin` files have never existed and have no
+> generation path — either implement their generation in `golden_gen_build.sh` or
+> retire the fixtures and the dead tests (decision pending, see `TODO-findings.md`
+> Épico C2). Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
+> and `wavenet_dyn_free.nam` are active fixtures (all consumed by
+> `tests/golden_vectors.rs` and included in `golden_gen_build.sh`'s `MODELS[]`) that
+> are simply **not yet catalogued** in the tables below — a documentation-debt gap,
+> not a fixture-quality concern, tracked for a follow-up pass.
 
 #### 1. High-Quality Real Models (Git Versioned)
 
@@ -121,6 +177,10 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 | `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM, post-FiLM DSP)                     | **High** (Near-bit-exact — SNR=139.5 dB)                                                                     | Steve Atkinson official example. CC0.                                    | Golden vectors v1 (dynamic path with FiLM+condition_dsp, §6 of this doc).                                          |
 | `wavenet_a2_film_full.nam`  | Synthetic        | WaveNet A2 (CH=8, FiLM active)                                 | **Medium** (FiLM parity — SNR=36.0 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
 | `wavenet_a2_film_lite.nam`  | Synthetic        | WaveNet A2 (CH=3, FiLM active)                                 | **Medium** (FiLM parity — SNR=18.1 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
+| `linear_fft_rf320.nam`      | Synthetic        | Linear FFT (RF=320, 2 channels, block=128)                     | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
+| `linear_fft_rf2048.nam`     | Synthetic        | Linear FFT (RF=2048, 1 channel, block=1024)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
+| `linear_fft_rf4096.nam`     | Synthetic        | Linear FFT (RF=4096, 1 channel, block=2048)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
+| `linear_fft_rf8192.nam`     | Synthetic        | Linear FFT (RF=8192, 1 channel, block=4096)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
 
 #### 3. Non-Distributable Model Management (`tests/fixtures/models-nondist`)
 
@@ -612,6 +672,19 @@ Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare agai
 ### Layer 2 — Live cross-validation (slow, `utils/tests-long.sh`)
 
 `#[ignore]` tests in `tests/cpp_parity.rs` compile the `render` tool from NeuralAmpModelerCore on-demand and compare C++ vs Rust live. Detects drift if NAMCore is updated and the pre-committed goldens become stale.
+
+### Layer 0 — The Generation Pipeline Itself (audited, gaps tracked)
+
+Both layers above assume `golden_gen_build.sh` faithfully reproduces every golden a test
+needs, on a rarely-executed, mostly-unsupervised run. A dedicated audit of that script
+(triggered by the `revisor-auditor` skill, Compliance and Parity Auditor role) found and
+tracked several concrete gaps — catalog coverage (this file's `[!WARNING]` notes above),
+error-handling robustness (a `pipefail`/`errexit` interaction that can abort the whole
+regeneration on the first failing model instead of skipping it), and a `NeuralAmpModelerPlugin`
+supply-chain gap in `utils/mod-update.sh`. See **`TODO-findings.md`** at the repository root
+for the full findings and the remediation Épicos (A–F). None of these gaps invalidate the
+*already-committed* golden `.bin` files — they affect only the ability to safely and fully
+*regenerate* the catalog from scratch today.
 
 ## Technical Decision: Cross-Reference is NOT Bit-Identical (ADR-002)
 

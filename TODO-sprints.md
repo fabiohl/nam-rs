@@ -1,0 +1,137 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
+
+# TODO-sprints.md — Planejamento de Sprints e Backlog de Tarefas
+
+> Gerado pela skill `planejador-arquiteto`, com base nos achados críticos de supply-chain e robustez documentados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+
+Este documento organiza a execução do hardening e a resolução dos gaps de supply-chain mapeados nos **Épicos A e B** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+
+---
+
+## 🏃 Visão Geral das Sprints
+
+```mermaid
+gantt
+    title Planejamento de Sprints - Goldens & Supply-Chain
+    dateFormat  YYYY-MM-DD
+    section Sprint 1: Robustez & Logs
+    Épico A - Hardening do Gerador   :active, 2026-07-02, 3d
+    section Sprint 2: Supply-Chain
+    Épico B - Sincronização de Deps : 2026-07-05, 3d
+```
+
+---
+
+## 🔴 Épico A — Hardening do Fluxo de Erro do Gerador de Goldens (Alto Risco)
+
+**Objetivo:** Tornar o script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) tolerante a falhas individuais de renderização, enriquecer a observabilidade com logs persistentes e manter a numeração de fases consistente.
+
+### 🏃 Sprint A.1: Hardening & Observabilidade (Duração: Est. 3 dias)
+
+#### 📝 Tarefa A.1.1: Correção do Tratamento de Erros e Controle de Fluxo
+
+- **Prioridade:** 🔴 Crítica
+- **Risco:** Alto (pode quebrar a execução do script se o fluxo de loop for corrompido)
+- **Achado Associado:** F1 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L58-L136)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Desativar temporariamente o `pipefail` (ou capturar o código de saída explicitamente) no render do loop v1 (linha 273).
+  - Garantir que erros individuais de renderização não causem a parada abrupta do script devido ao `set -e` global.
+  - Implementar verificação explícita do status de saída do comando de renderização.
+  - Permitir que o loop continue para os modelos restantes usando `continue`.
+
+#### 📝 Tarefa A.1.2: Persistência de Logs Completos por Fase
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Baixo
+- **Achado Associado:** F8 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L497-L527)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Criar o diretório de logs em `build/namcore_render/logs/`.
+  - Redirecionar a saída completa (`stdout` e `stderr`) de cada subcomando barulhento (ex: `cmake`, `cargo build`, renderizadores) para arquivos de log dedicados (ex: `build/namcore_render/logs/phase_3_build.log`).
+  - Manter o console limpo usando `tail -N` no caminho de sucesso (exibindo apenas um resumo informativo no console).
+  - Em caso de falha de qualquer fase, imprimir uma mensagem de erro em destaque instruindo o desenvolvedor a verificar o arquivo de log persistente correspondente.
+
+#### 📝 Tarefa A.1.3: Renumeração Consistente das Fases do Script
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** F7 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L462-L494)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Revisar e renumerar de forma única e estritamente linear todos os marcadores de fase exibidos no output (`stdout`).
+  - Remover a duplicidade do marcador `[6/6]` e resolver inconsistências de base de fases (ex: de `/5` para `/6` e `/7`).
+  - Atualizar o catálogo documentado em [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md) se houver referência às fases numéricas.
+
+#### 🏁 Critérios de Aceite da Sprint A.1
+
+1. Simular uma falha injetando um arquivo `.nam` inválido temporariamente no catálogo do loop v1 e verificar se o script avisa do erro, continua processando os demais modelos e gera o log em `build/namcore_render/logs/`.
+2. O script deve rodar do início ao fim com todas as fases numeradas de `[1/9]` até `[9/9]` de forma sequencial clara.
+3. Nenhuma falha de render de modelo individual deve causar crash abrupto do Bash sem diagnóstico adequado.
+
+---
+
+## 🔴 Épico B — Fechar o Gap de Supply-Chain do `NeuralAmpModelerPlugin`
+
+**Objetivo:** Garantir a reprodutibilidade dos goldens C++ integrando a sincronização do repositório [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin) ao fluxo oficial, compartilhando as definições de versão entre scripts e corrigindo a documentação do projeto.
+
+### 🏃 Sprint B.1: Alinhamento de Dependências C++ (Duração: Est. 3 dias)
+
+#### 📝 Tarefa B.1.1: Centralização de Versões em Fonte Única de Verdade
+
+- **Prioridade:** 🔴 Crítica
+- **Risco:** Médio (precisa garantir compatibilidade de importação do ambiente no Bash)
+- **Achado Associado:** F2 (sub-tarefa de constantes) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L186-L191)
+- **Arquivos Alvos:**
+  - [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env) [NEW]
+  - [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh)
+  - [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Criar um novo arquivo [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env) contendo os hashes e tags das dependências vendored:
+    - `NAM_CORE_TAG="v0.5.4"`
+    - `NAM_CORE_COMMIT="1f42f88535884450104b8711d7595019afa0495b"`
+    - `NAM_PLUGIN_TAG="v0.5.4"` (ou tag correspondente ao commit abaixo)
+    - `NAM_PLUGIN_COMMIT="96337e9ab6e3beb619459779bbb5c47e1b04d8c4"`
+  - Incluir cabeçalhos de copyright SPDX apropriados em [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env).
+  - Alterar [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) e [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) para carregar essas variáveis via `source` dinâmico do arquivo compartilhado, removendo as declarações duplicadas locais.
+
+#### 📝 Tarefa B.1.2: Extensão de Sincronização do `NeuralAmpModelerPlugin` no `mod-update.sh`
+
+- **Prioridade:** 🔴 Crítica
+- **Risco:** Médio
+- **Achado Associado:** F2 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L138-L195)
+- **Arquivo Alvo:** [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh)
+- **Descrição:**
+  - Adicionar o fluxo de sincronização para o diretório `tests/fixtures/NeuralAmpModelerPlugin`.
+  - Implementar a clonagem simétrica à do Core: se a pasta não existir, clonar a partir do repositório upstream oficial.
+  - Se a pasta já existir, executar fetch e checkout no commit pinado (`NAM_PLUGIN_COMMIT`).
+  - Inicializar os submódulos necessários para o Plugin (`AudioDSPTools`, que por sua vez contém dependências como `eigen` e `nlohmann`).
+
+#### 📝 Tarefa B.1.3: Atualização das Validações no `golden_gen_build.sh`
+
+- **Prioridade:** 🟠 Alta
+- **Risco:** Baixo
+- **Achado Associado:** F2 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L138-L195)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Ajustar as verificações iniciais (Fase 1 e 1b) para garantir que elas validem a integridade das pastas `NeuralAmpModelerPlugin` e `NeuralAmpModelerCore` usando as variáveis do arquivo [pinned_versions.env](file:///home/fabio/nam-rs/tests/fixtures/pinned_versions.env).
+  - Validar que o prompt de instruções instruindo a execução de `./utils/mod-update.sh` esteja correto e sincronizado.
+
+#### 📝 Tarefa B.1.4: Correção Factuais na Documentação Principal
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** F2 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L160-L163)
+- **Arquivo Alvo:** [README.md](file:///home/fabio/nam-rs/README.md)
+- **Descrição:**
+  - Atualizar a linha 122 de [README.md](file:///home/fabio/nam-rs/README.md) para listar a versão correta carregada (v0.5.4 em vez de v0.5.3).
+  - Confirmar e documentar adequadamente que [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) agora resolve por completo ambas as dependências C++ (`NeuralAmpModelerCore` e `NeuralAmpModelerPlugin`).
+
+#### 🏁 Critérios de Aceite da Sprint B.1
+
+1. Em um clone limpo do projeto (ou deletando localmente as pastas em `tests/fixtures/NeuralAmpModelerCore` e `tests/fixtures/NeuralAmpModelerPlugin`), a execução isolada de `./utils/mod-update.sh` deve criar ambos os diretórios, apontá-los para os commits corretos e inicializar todos os submódulos de dependências com sucesso.
+2. Executar em seguida `./tests/fixtures/golden_gen_build.sh` deve rodar sem erros de validação de dependências e compilar a ferramenta de renderização e referência IR sem problemas.
+3. Não deve restar nenhuma constante com hashes de commit duplicada no código de [mod-update.sh](file:///home/fabio/nam-rs/utils/mod-update.sh) ou [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh).

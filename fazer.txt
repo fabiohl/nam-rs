@@ -1,13 +1,4 @@
 * /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
-  Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "tests/fixtures/golden_gen_build.sh"
-  Tendo muito em vista o espírito e os objetivos da arquitetura de testes (vide "docs/testing.md"), analise criticamente o que temos aqui.
-  Os documentos "docs/cpp_parity_map.md" e "docs/audio_fidelity_map.md" também são fontes de contexto essenciais.
-  Vejo ele como um excelente gerador de goldens, que alimentam o "tests-quick.sh".
-  Por isso é essencial assegurar o correto lidar (e tirar proveito) com os .nam que dispomos em "tests/fixtures/models/" e em "tests/fixtures/models-nondist/".
-  Idealmente ele é executado raramente, apenas quando um novo modelo de referência ou arquitetura é adicionada ao NAM-rs.
-  Mas neste momento de saneamento de confiança na qualidade da suíte de testes - e como ele é supply chain de "tests-quick.sh" - cabe auditar e hardeniza-lo com carinho!
-  Ao final, atualizar o "docs/testing.md" e o "tests/fixtures/README.md" para refletir a nossa nova visão constuida aqui.
-* /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
   Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "utils/tests-performance-regression.sh".
   Ele parece um pouco com os objetivos "tests-quick.sh" - mas é muito prematuro pensar em fusão, já que seu escopo é específico para um rol especial de atividades.
   Mas analise o seu papel. Otimize-o e deixe enxuto. Ele não é repetitivo aos demais scripts. Ele é apenas uma parede defensiva estritamente focada em barrar regressões de performance.

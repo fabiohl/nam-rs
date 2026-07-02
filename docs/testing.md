@@ -88,6 +88,44 @@ graph TD
   and `clap-validator` all run in `tests-long.sh` Phase 3–4 in **release** (a
   strict superset of the former debug build). They are out of the quick loop.
 
+### Golden Vector Supply Chain — a critical, rarely-executed dependency
+
+Fase 2's `golden_vectors` (v1) and `isa_parity` (v2), and the long suite's `cpp_parity`
+full matrix and `golden_vectors` v2 multi-SR, do **not** measure against a live C++
+build on every run. They compare against pre-committed `.bin` golden files rendered
+once by [`tests/fixtures/golden_gen_build.sh`](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+against a pinned `NeuralAmpModelerCore`/`NeuralAmpModelerPlugin` commit — a script
+intended to run *rarely*, only when a new reference model or architecture is added
+(see `tests/fixtures/README.md` for the full regeneration walkthrough and the current
+model↔golden catalog).
+
+This makes the golden-generation pipeline a **supply-chain dependency** of Fase 2 and
+of the long suite, not merely a one-off developer convenience script — if it cannot
+reproduce a golden a test depends on, that test is permanently `#[ignore]`d or skips
+gracefully with no real coverage, silently. An audit of this pipeline
+(`TODO-findings.md`, Épicos A–F) found and tracked several concrete gaps that readers
+of this table should be aware of when interpreting "coverage":
+
+- **Known catalog gaps:** four A2 dynamic/FiLM goldens actively consumed by
+  `tests/golden_vectors.rs` (`golden_a2_dynamic_gated_ch8.bin`,
+  `golden_a2_dynamic_blended_ch3.bin`, `golden_wavenet_a2_film_{full,lite}.bin`) are
+  **not** produced by `golden_gen_build.sh` — they require the separate
+  `tests/fixtures/generate_a2_fixtures.py` script plus a manual C++ render step,
+  documented in `tests/fixtures/README.md`.
+- **Linear FFT goldens were never generated.** `tests/linear_fft_test.rs` declares 4
+  models (`linear_fft_rf{320,2048,4096,8192}.nam`) whose C++ goldens have never
+  existed and have no generation path in `golden_gen_build.sh` — despite what the
+  "Long suite" row of §4 below might otherwise imply, these specific tests never run;
+  they remain permanently `#[ignore]`d pending a decision to implement or retire them.
+- **Freshness is warn-only.** `golden_gen_build.sh` emits a `.golden_manifest.sha256`
+  freshness manifest (uncommitted, local-only) checked exclusively by
+  `utils/tests-long.sh` (never blocking, never in CI) — a stale golden from an
+  updated `.nam` will not fail any test on its own; it silently keeps validating
+  against an outdated reference until someone notices.
+
+See `TODO-findings.md` for the full audit (script robustness, `mod-update.sh`
+gaps, catalog duplication) and its proposed remediation Épicos.
+
 ---
 
 ## 3. Test Coverage Matrix
