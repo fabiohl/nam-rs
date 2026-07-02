@@ -402,8 +402,12 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
         let l0_head_bias = l0.head_bias.unwrap_or(false);
         let l1_head_bias = l1.head_bias.unwrap_or(false);
 
-        let catalog_compatible =
-            !l0_gated && !l1_gated && !l0_head_bias && l1_head_bias && condition_size <= 1;
+        let catalog_compatible = !l0_gated
+            && !l1_gated
+            && !l0_head_bias
+            && l1_head_bias
+            && condition_size <= 1
+            && data.config.condition_dsp.is_none();
 
         if catalog_compatible {
             let dils_0 = &dilations[0];

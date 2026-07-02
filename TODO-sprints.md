@@ -66,7 +66,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 * **Verificação:** `cargo test --lib loader` para assegurar integridade dos parsers.
 * **Referência:** Finding 7.2.2.
 
-### 🟠 Tarefa T2.2: Impedir Associação Incorreta de Catálogo WaveNet A1 com `condition_dsp`
+### 🟠 Tarefa T2.2: Impedir Associação Incorreta de Catálogo WaveNet A1 com `condition_dsp` [DONE]
 
 * **Descrição:** Garantir que modelos com sub-modelos de condicionamento não sejam mapeados para os SKUs estáticos rápidos que não processam condicionamento.
 * **Ações:**

@@ -242,6 +242,68 @@ fn test_topology_accepts_f2_multi_condition_as_free() {
     }
 }
 
+/// Catalog Feather model with `condition_dsp` sub-model must NOT match the catalog
+/// SKU (Finding 7.2.4 / Task T2.2). The static const-generic fast-path does not
+/// process condition_dsp, so the model must be routed to the dynamic engine.
+#[test]
+fn test_topology_feather_with_condition_dsp_routes_to_free() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 8, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 8, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02,
+            "condition_dsp": {
+                "version": "0.5.4",
+                "architecture": "WaveNet",
+                "config": {
+                    "layers": [
+                        {
+                            "input_size": 1, "condition_size": 1, "head_size": 1,
+                            "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8],
+                            "activation": "Tanh", "gated": false, "head_bias": true
+                        }
+                    ],
+                    "head": null, "head_scale": 0.02
+                },
+                "weights": [0.0]
+            }
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("Failed to parse Feather with condition_dsp");
+    let result = get_wavenet_topology(&parsed);
+    match &result {
+        WavenetTopologyResult::Known(sku) => {
+            panic!(
+                "Feather with condition_dsp was incorrectly mapped to catalog SKU {:?} — \
+                 should be Free (dynamic engine). condition_dsp={:?}",
+                sku, parsed.config.condition_dsp
+            );
+        }
+        WavenetTopologyResult::Free(geom) => {
+            assert_eq!(geom.channels, vec![8, 8]);
+        }
+        WavenetTopologyResult::Rejected(reason) => {
+            panic!(
+                "Feather with condition_dsp was Rejected: {} — should be Free (dynamic engine)",
+                reason
+            );
+        }
+    }
+}
+
 /// Post-stack head (F6) is now accepted by the topology parser.
 #[test]
 fn test_topology_f6_post_stack_head_accepted() {
