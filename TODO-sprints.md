@@ -134,7 +134,7 @@ Obs: Regularmente atualizar o "docs/cpp_parity_map.md" com o progresso obtido
 * **Verificação:** Visualização dos arquivos de documentação markdown.
 * **Referência:** Finding 7.5.1, 7.5.2.
 
-### ⚪ Tarefa T4.2: Atualizar Placeholders de Threshold do Flagship A2 Max
+### ⚪ Tarefa T4.2: Atualizar Placeholders de Threshold do Flagship A2 Max [DONE]
 
 * **Descrição:** Ajustar comentários e baselines experimentais desatualizados sobre o ESR e SNR reais obtidos pelo flagship `wavenet_a2_max`.
 * **Ações:**

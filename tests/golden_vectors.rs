@@ -1975,8 +1975,10 @@ fn test_golden_vectors_convnet_test() {
 /// Originally validated the `WaveNetA2Dyn` engine with condition_dsp
 /// sub-model against the C++ generic WaveNet reference (C++ a2_fast.cpp
 /// rejects this topology and falls back to Eigen-based generic WaveNet).
-/// Golden vector SNR=4.7 dB, ESR=3.4e-1 — C++ golden was generated with
-/// different condition_dsp processing (Eigen-based generic WaveNet).
+/// Empirically measured (bypassing guard): SNR=−15.6 dB, ESR=3.61e1
+/// (noise power 36× signal power — negative SNR confirms architectural
+/// mismatch between Rust WaveNetA2Dyn native FiLM and C++ Eigen-based
+/// generic WaveNet with different condition_dsp processing).
 ///
 /// Re-enable only after closing the condition_dsp parity gap (§4.4) and
 /// removing the dispatch guard.

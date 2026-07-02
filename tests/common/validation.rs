@@ -604,6 +604,9 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // (`is_disabled_broken_a2_flagship`). Threshold is dead — no test
         // references it; kept only to preserve the match arm for the meta-test
         // calibration discipline (`tests/threshold_calibration.rs`).
+        // Empirically measured (bypassing guard): SNR=−15.6 dB, ESR=3.61e1
+        // (noise power 36× signal power — severe architectural mismatch between
+        // Rust WaveNetA2Dyn native FiLM and C++ Eigen-based generic WaveNet).
         // Original S13.3 (PM-05): Official A2 flagship model with condition_dsp
         // sub-model, 8 FiLM slots, head1x1 (groups=2), Softsign activation,
         // condition_size=8. C++ routes to generic WaveNet (Eigen), Rust routes to
