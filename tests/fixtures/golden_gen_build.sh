@@ -39,8 +39,7 @@
 #
 # Output (tests/fixtures/):
 #   golden_wavenet_standard.bin, golden_wavenet_lite.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
-#   golden_lstm_1x8.bin, golden_lstm_1x12.bin, golden_lstm_1x16.bin, golden_lstm_1x24.bin, golden_lstm_1x40.bin
-#   golden_lstm_2x8.bin, golden_lstm_2x12.bin, golden_lstm_2x16.bin, golden_lstm_2x24.bin
+#   golden_lstm_1x16.bin, golden_lstm_2x8.bin, golden_lstm_official.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (A2 goldens are cross-reference Rust↔C++ v0.5.4 via ESR/SNR scale-invariant
 #    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)

@@ -33,7 +33,7 @@ implementations:
 > **`utils/mod-update.sh` now syncs both `NeuralAmpModelerCore` and
 > `NeuralAmpModelerPlugin`** (including their submodules). Run it to set up or
 > update both vendored copies to the pinned versions defined in
-> [`/variables.env`](../variables.env).
+> [`/variables.env`](../../variables.env).
 
 ### To regenerate all fixtures from scratch
 
@@ -54,7 +54,7 @@ rm -rf tests/fixtures/NeuralAmpModelerCore \
 > `utils/tests-long.sh` automatically regenerates any missing golden vectors (requiring a C++ toolchain and local NeuralAmpModelerCore dependencies). To opt out of this auto-regeneration, run with `NAM_SKIP_GOLDEN_BUILD=1`. The environment variable `NAM_AUTO_BUILD_GOLDENS` is deprecated and ignored.
 
 When the pinned upstream commits are updated (after re-baselining goldens),
-update the values in [`/variables.env`](../variables.env) (sourced by both
+update the values in [`/variables.env`](../../variables.env) (sourced by both
 `golden_gen_build.sh` and `mod-update.sh`). All goldens generated from the new
 version must pass both Layer 1 and Layer 2 validation before committing.
 
@@ -81,15 +81,15 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 | `golden_cabsim_cpp_long.bin`        | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
 
 > [!WARNING]
-> **Automation gap, tracked in `TODO-findings.md` (F3, F5):**
+> **Automation gaps tracked:**
 >
 > - `golden_wavenet_a2_film_{full,lite}.bin`, `golden_a2_dynamic_gated_ch8.bin`, and
->   `golden_a2_dynamic_blended_ch3.bin` are **not** produced by `golden_gen_build.sh`.
->   Their `.nam` source models come from `tests/fixtures/generate_a2_fixtures.py`, and
->   the golden `.bin` itself must be rendered and converted **manually** — see the
->   dedicated model sections below ("FiLM Fixtures", A2 dynamic sections) for the exact
->   commands. If you land here from an error message pointing at `golden_gen_build.sh`
->   for one of these four files, that message is currently misleading (tracked).
+>   `golden_a2_dynamic_blended_ch3.bin` are now **auto-generated** by
+>   `golden_gen_build.sh` for v1 (48000 Hz). Their `.nam` source models are built by
+>   `tests/fixtures/generate_a2_fixtures.py` in step `[3/11]`, and v1 goldens are
+>   rendered in step `[7/11]`. v2 multi-SR goldens are intentionally skipped
+>   (`v2_scope=none`) because the C++ upstream does not support multi-SR for FiLM
+>   architectures consistently.
 > - `golden_cabsim_cpp_stress.bin` has been **removed**. `tests/fixtures/render_ir.cpp`
 >   only implements 3 scenarios (short, medium, long) because the C++
 >   `dsp::ImpulseResponse` engine hard-caps IR length at 8192 samples (`mMaxLength`),
@@ -107,9 +107,10 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 >   **Resumo rápido:** 2 goldens são **oficial real** (A1-Standard, LSTM Official).
 >   6 são **community real** (WaveNet Standard, Lite CH=12, Feather, Nano + LSTM 1×16/2×8,
 >   todos Boss Waza).
->   4 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite —
->   os dois últimos são conformismo PM-05 para cobertura do motor FiLM; os demais validam
->   apenas paridade numérica de fast-path, não timbres reais).
+>   8 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite, A2-Dynamic-Gated-CH8,
+>   A2-Dynamic-Blended-CH3, Linear-FFT-RF320/2048/4096/8192 — os FiLM são conformismo PM-05
+>   para cobertura do motor; os demais validam paridade numérica de fast-path e convolução
+>   particionada, não timbres reais).
 >   Os 3 goldens C++ cabsim são vetores de referência do upstream.
 
 ### Model Files and Trust Levels Registry
@@ -120,16 +121,13 @@ All captures and models in `.nam` and `.json` format located under [tests/fixtur
 > **Registry completeness gap (found during the `golden_gen_build.sh` audit,
 > `TODO-findings.md` F3b):** the blanket claim that used to read "there are no orphan,
 > redundant, or garbage files in the directory" is **not currently true**. Confirmed
-> orphans: `linear_fft_rf{320,2048,4096,8192}.nam` (see the dedicated row below) are
-> referenced only by permanently-`#[ignore]`d tests in `tests/linear_fft_test.rs`
-> whose required `.golden_linear_fft_*.bin` files have never existed and have no
-> generation path — either implement their generation in `golden_gen_build.sh` or
-> retire the fixtures and the dead tests (decision pending, see `TODO-findings.md`
-> Épico C2). Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
-> and `wavenet_dyn_free.nam` are active fixtures (all consumed by
-> `tests/golden_vectors.rs` and included in `golden_gen_build.sh`'s `MODELS[]`) that
-> are simply **not yet catalogued** in the tables below — a documentation-debt gap,
-> not a fixture-quality concern, tracked for a follow-up pass.
+> orphans: `linear_fft_rf{320,2048,4096,8192}.nam` (see the dedicated rows below) now
+> have a generation path in `golden_gen_build.sh` (CATALOG entry with `v2_scope=48k_only`
+> and golden output `golden_linear_fft_rf*.bin`) — their tests skip gracefully when goldens
+> are absent. Additionally, `a2_example.nam`, `convnet_test.nam`, `lstm_dyn_test.nam`,
+> and `wavenet_dyn_free.nam` are catalogued in the golden files table above but lack
+> dedicated model-provenance rows in the tables below — a documentation-debt gap, not a
+> fixture-quality concern, tracked for a follow-up pass.
 
 #### 1. High-Quality Real Models (Git Versioned)
 
@@ -165,10 +163,10 @@ These files contain synthetic weights or partial/invalid structures. They exist 
 | `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM, post-FiLM DSP)                     | **High** (Near-bit-exact — SNR=139.5 dB)                                                                     | Steve Atkinson official example. CC0.                                    | Golden vectors v1 (dynamic path with FiLM+condition_dsp, §6 of this doc).                                          |
 | `wavenet_a2_film_full.nam`  | Synthetic        | WaveNet A2 (CH=8, FiLM active)                                 | **Medium** (FiLM parity — SNR=36.0 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
 | `wavenet_a2_film_lite.nam`  | Synthetic        | WaveNet A2 (CH=3, FiLM active)                                 | **Medium** (FiLM parity — SNR=18.1 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
-| `linear_fft_rf320.nam`      | Synthetic        | Linear FFT (RF=320, 2 channels, block=128)                     | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
-| `linear_fft_rf2048.nam`     | Synthetic        | Linear FFT (RF=2048, 1 channel, block=1024)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
-| `linear_fft_rf4096.nam`     | Synthetic        | Linear FFT (RF=4096, 1 channel, block=2048)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
-| `linear_fft_rf8192.nam`     | Synthetic        | Linear FFT (RF=8192, 1 channel, block=4096)                    | ⚠️ **Orphan** — no C++ golden ever generated                                                                 | Simple weights defined for testing. Apache-2.0.                          | Declared by `tests/linear_fft_test.rs` but permanently `#[ignore]`d — no generation path exists (F3b).             |
+| `linear_fft_rf320.nam`      | Synthetic        | Linear FFT (RF=320, 2 channels, block=128)                     | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf2048.nam`     | Synthetic        | Linear FFT (RF=2048, 1 channel, block=1024)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf4096.nam`     | Synthetic        | Linear FFT (RF=4096, 1 channel, block=2048)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf8192.nam`     | Synthetic        | Linear FFT (RF=8192, 1 channel, block=4096)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
 
 #### 3. Non-Distributable Model Management (`tests/fixtures/models-nondist`)
 

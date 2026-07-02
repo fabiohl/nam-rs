@@ -45,3 +45,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 * Justify critical decisions (e.g., why `SCHED_FIFO`? why `#[repr(align(128))]`?) to prevent regressions due to lack of historical context.
 * Never make irrelevant statements that do not contribute strictly to understanding the code, such as "sprint X", "review done on DDMMYYYY", "requested by PO", etc.
 * Follow the rules in `.agents/rules/`.
+* Toda alteração em arquivos de catálogo de goldens, thresholds de validação, scripts de testes, ou dependências **deve** vir acompanhada da atualização correspondente nos documentos de referência **no mesmo commit**:
+| Se alterar…                                        | Atualizar…                                                        |
+|----------------------------------------------------|-------------------------------------------------------------------|
+| `tests/fixtures/golden_gen_build.sh` (CATALOG)     | `tests/fixtures/README.md` (tabelas de modelo/golden)             |
+| `tests/common/validation.rs` (thresholds)          | `tests/fixtures/README.md` (§Parity Thresholds)                   |
+| `utils/tests-quick.sh` ou `utils/tests-long.sh`    | `docs/testing.md` (§Fases, §Test Coverage Matrix)                 |
+| `.golden_manifest.sha256` (regeneração)            | Commit do manifesto junto com a alteração de modelo               |
+| `Cargo.toml` (features)                            | `docs/testing.md` (§Feature Taxonomy, §Test Coverage Matrix)      |
+Regra de enforcement: o revisor e a IA devem verificar sincronização doc↔código como
+critério de aprovação de qualquer PR que toque nos arquivos acima.

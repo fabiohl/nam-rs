@@ -341,7 +341,7 @@ gantt
 
 ### 🏃 Sprint F.1: Sincronização Contínua de Docs (Duração: Contínuo)
 
-#### 📝 Tarefa F.1.1: Prevenção de Drifts de Documentação
+#### 📝 Tarefa F.1.1: Prevenção de Drifts de Documentação [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo

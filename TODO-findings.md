@@ -601,22 +601,17 @@ no código ativo), já que comentários "P1 RESOLVIDO" sem remoção da afirmaç
 
 ---
 
-## F11 — 🟡 MÉDIO: manifesto de frescor é parcial, não-bloqueante, e nunca roda em CI
+## F11 — 🟡 MÉDIO: manifesto de frescor — resolvido no Épico E (versionado + bloqueante)
 
 **Evidência:**
 
-- `golden_gen_build.sh:459-473` gera `.golden_manifest.sha256` iterando **apenas** `MODELS[]` — não
-  inclui `V2_MODELS`-specific entries (hoje idênticas, mas ver F4), não inclui os 4 goldens do F3, não
-  inclui os goldens cabsim (`render_ir`-based, que não têm um `.nam` de origem para hash — esperado),
-  e não inclui os (inexistentes) goldens Linear FFT do F3b.
-- `.gitignore:39` — `.golden_manifest.sha256` é explicitamente **não versionado**
-  (`/tests/fixtures/.golden_manifest.sha256`), então o manifesto só existe localmente, na máquina de
-  quem rodou `golden_gen_build.sh` por último — não é um artefato de auditoria persistente/compartilhado.
-- `utils/tests-long.sh:209-231` é o **único** consumidor: leitura *warn-only* (nunca bloqueia, nunca
-  retorna código de saída não-zero por staleness) e roda apenas dentro do escopo "pré-release/nightly"
-  do `tests-long.sh`, que segundo o próprio `docs/testing.md:17` **é proibido rodar durante atividades
-  de IA** e não faz parte de nenhum pipeline de CI identificado nesta auditoria (nenhum
-  `.github/workflows` referencia goldens/manifest).
+- `golden_gen_build.sh:527-574` gera `.golden_manifest.sha256` iterando o `CATALOG[]` unificado
+  (consolidado no Épico C) incluindo v1, v2 multi-SR, A2 dynamic/FiLM, e Linear FFT goldens.
+- `.gitignore:38-40` — **Resolvido no Épico E (Sprint E.1)**: `.golden_manifest.sha256` passou a ser
+  versionado (rastreado no VC), tornando-se artefato de auditoria persistente/compartilhado.
+- `utils/tests-quick.sh:67-101` (`check_freshness()`) é agora o enforcement primário: gate bloqueante
+  na Fase 2 que hard-fails quando um `.nam` foi modificado sem regeneração do golden correspondente.
+  O consumo em `utils/tests-long.sh:209-231` permanece como aviso auxiliar.
 
 **Diagnóstico:** o manifesto de frescor é uma boa ideia (detectar quando um `.nam` mudou mas o `.bin`
 correspondente não foi regenerado) implementada com escopo parcial e sem qualquer poder de enforcement
