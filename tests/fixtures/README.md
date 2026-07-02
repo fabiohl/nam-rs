@@ -127,7 +127,7 @@ All captures and models in `.nam` and `.json` format located under [tests/fixtur
 > redundant, or garbage files in the directory" has been restored to true.
 > `linear_fft_rf{320,2048,4096,8192}.nam` — **F3b resolved**: the previously orphaned
 > Linear FFT fixtures now have a complete generation path via `golden_gen_build.sh`'s
-> `CATALOG` entries (`v2_scope=48k_only`, golden output `golden_linear_fft_rf*.bin`;
+> `CATALOG` entries (`v2_scope=none`, golden output `golden_linear_fft_rf*.bin`;
 > see the dedicated rows in "Files in this directory" above and in the Synthetic
 > Models table below). Their tests (`tests/linear_fft_test.rs`) are no longer
 > `#[ignore]`d and pass with real ESR/SNR measurements — see `TODO-findings.md` N1 for

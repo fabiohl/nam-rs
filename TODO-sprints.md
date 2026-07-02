@@ -445,7 +445,7 @@ gantt
   - Revisar se os 4 arquivos `golden_linear_fft_rf*.bin` estão catalogados na tabela principal "Files in this directory" do README.
   - Reescrever a abertura do bloco `[!WARNING]` "Registry completeness gap" para remover a contradição de termos (uma vez que os Linear FFT foram resolvidos e não são mais orphans).
 
-#### 📝 Tarefa H.1.4: Correção de Referência Stale no render_ir.cpp [TODO]
+#### 📝 Tarefa H.1.4: Correção de Referência Stale no render_ir.cpp [DONE]
 
 - **Prioridade:** 🟢 Baixa
 - **Risco:** Nulo
@@ -455,7 +455,7 @@ gantt
 - **Descrição:**
   - Validar e atualizar a linha 18 de [render_ir.cpp](file:///home/fabio/nam-rs/tests/fixtures/render_ir.cpp) para garantir que ela aponte nominativamente para a fase de compilação sem referenciar a numeração dinâmica antiga `[5b]`.
 
-#### 📝 Tarefa H.1.5: Descontinuação da Geração v2 para Linear FFT [TODO]
+#### 📝 Tarefa H.1.5: Descontinuação da Geração v2 para Linear FFT [DONE]
 
 - **Prioridade:** 🟡 Média
 - **Risco:** Baixo
