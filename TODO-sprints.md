@@ -132,7 +132,7 @@ gantt
   - Inicializar os submódulos necessários para o Plugin (`AudioDSPTools`, que por sua vez contém dependências como `eigen` e `nlohmann`).
   - ✅ **CONCLUÍDO 2026-07-02**: Versões verificadas contra GitHub API — Core mantém v0.5.4 (`1f42f88`), Plugin corrigido para v0.7.15 (`96337e9a` — commit mantido, tag estava errada como v0.5.4). `variables.env` atualizado com `NAM_PLUGIN_TAG="v0.7.15"`. Seção `[5/5]` adicionada ao `mod-update.sh` com clone/fetch/checkout simétrico ao Core + `submodule update --init --recursive AudioDSPTools`. Header do script e fase `[4/5]` renumerados. `tests/fixtures/README.md`: WARNING "mod-update.sh não sincroniza Plugin" substituído por NOTE confirmando que ambos são sincronizados.
 
-#### 📝 Tarefa B.1.3: Atualização das Validações no `golden_gen_build.sh`
+#### 📝 Tarefa B.1.3: Atualização das Validações no `golden_gen_build.sh` [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Baixo
@@ -141,6 +141,7 @@ gantt
 - **Descrição:**
   - Ajustar as verificações iniciais (Fase 1 e 1b) para garantir que elas validem a integridade das pastas `NeuralAmpModelerPlugin` e `NeuralAmpModelerCore` usando as variáveis do arquivo [variables.env](file:///home/fabio/nam-rs//variables.env).
   - Validar que o prompt de instruções instruindo a execução de `./utils/mod-update.sh` esteja correto e sincronizado.
+  - ✅ **CONCLUÍDO 2026-07-02**: Referências hardcoded `v0.5.4` substituídas por `$NAM_CORE_TAG` no cabeçalho, mensagem de build e mensagens/comentários de skip do ConvNet. Mensagens de erro e sucesso de validação (Plugin e Core) aprimoradas para exibir `$TAG @ $COMMIT`. Todos os 6 prompts para executar `./utils/mod-update.sh` verificados — corretos e sincronizados desde B.1.2 (que adicionou sincronização do Plugin ao script). Sintaxe validada com `bash -n`.
 
 #### 📝 Tarefa B.1.4: Correção Factuais na Documentação Principal
 

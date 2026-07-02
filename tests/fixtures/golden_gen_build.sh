@@ -5,15 +5,16 @@
 # golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool, clones
 # NeuralAmpModelerPlugin (C++ IR reference), and generates all golden vectors.
 #
-# Canonical reference: NeuralAmpModelerCore v0.5.4 (tag). All goldens
-# (A1/LSTM/WaveNet/A2/ConvNet/Dyn) are rendered from a single pinned commit.
-# Pinned versions (commits, tags, repo URLs) live in variables.env — sourced by
-# both this script and utils/mod-update.sh.  A mismatch between the vendored
-# working copy at tests/fixtures/NeuralAmpModelerCore/ and the pin in variables.env
-# causes this script's version-mismatch guard (below) to hard-fail. Some older
-# committed goldens were rendered at v0.5.3 (9c7b185); the patch-level diff is
-# below the interop noise floor for all architectures except where explicitly
-# noted in docs/cpp_parity_map.md §1.3.
+# Canonical reference: NeuralAmpModelerCore (tag pinned in variables.env),
+# NeuralAmpModelerPlugin (IR reference, tag also pinned in variables.env).
+# All goldens (A1/LSTM/WaveNet/A2/ConvNet/Dyn) are rendered from a single pinned
+# commit.  Pinned versions (commits, tags, repo URLs) live in variables.env —
+# sourced by both this script and utils/mod-update.sh.  A mismatch between the
+# vendored working copy and the pin in variables.env causes this script's
+# version-mismatch guard (below) to hard-fail. Some older committed goldens were
+# rendered at v0.5.3 (9c7b185); the patch-level diff is below the interop noise
+# floor for all architectures except where explicitly noted in
+# docs/cpp_parity_map.md §1.3.
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
@@ -105,7 +106,7 @@ fi
 
 CURRENT_PLUGIN_SHA=$(cd "$NAM_PLUGIN_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
 if [ "$CURRENT_PLUGIN_SHA" != "$NAM_PLUGIN_COMMIT" ]; then
-    echo "ERROR: NeuralAmpModelerPlugin version mismatch (installed: $CURRENT_PLUGIN_SHA, expected: $NAM_PLUGIN_COMMIT)."
+    echo "ERROR: NeuralAmpModelerPlugin version mismatch ($NAM_PLUGIN_TAG @ $NAM_PLUGIN_COMMIT expected, installed: $CURRENT_PLUGIN_SHA)."
     echo "Please run './utils/mod-update.sh' to synchronize dependencies."
     exit 1
 fi
@@ -116,7 +117,7 @@ if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ] || [ ! -d "$AUDIO_DSP
     echo "Please run './utils/mod-update.sh' to initialize submodules."
     exit 1
 fi
-echo "  NeuralAmpModelerPlugin verified (pinned commit and submodules present)"
+echo "  NeuralAmpModelerPlugin verified ($NAM_PLUGIN_TAG @ $NAM_PLUGIN_COMMIT, submodules present)"
 
 # =============================================================================
 # Verify NeuralAmpModelerCore (standard)
@@ -131,7 +132,7 @@ fi
 
 CURRENT_CORE_SHA=$(cd "$NAM_CORE_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
 if [ "$CURRENT_CORE_SHA" != "$NAM_CORE_COMMIT" ]; then
-    echo "ERROR: NeuralAmpModelerCore version mismatch (installed: $CURRENT_CORE_SHA, expected: $NAM_CORE_COMMIT)."
+    echo "ERROR: NeuralAmpModelerCore version mismatch ($NAM_CORE_TAG @ $NAM_CORE_COMMIT expected, installed: $CURRENT_CORE_SHA)."
     echo "Please run './utils/mod-update.sh' to synchronize dependencies."
     exit 1
 fi
@@ -144,7 +145,7 @@ for sub in eigen AudioDSPTools; do
         exit 1
     fi
 done
-echo "  NeuralAmpModelerCore verified (pinned commit and submodules present)"
+echo "  NeuralAmpModelerCore verified ($NAM_CORE_TAG @ $NAM_CORE_COMMIT, submodules present)"
 
 # =============================================================================
 # Build render tool (single unified binary at v0.5.4 with A2-fast)
@@ -157,7 +158,7 @@ RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
 if [ -f "$RENDER_BIN" ]; then
     echo "  Render binary already exists: $RENDER_BIN"
 else
-    echo "  Building render tool (v0.5.4 + A2-fast)..."
+    echo "  Building render tool ($NAM_CORE_TAG + A2-fast)..."
     mkdir -p "$BUILD_DIR"
     CMAKE_LOG="$LOGS_DIR/render_cmake.log"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
@@ -262,7 +263,7 @@ MODELS=(
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
 )
-# ^ "convnet_test" above is expected SKIP — C++ v0.5.4 ConvNet is architecturally
+# ^ "convnet_test" above is expected SKIP — C++ $NAM_CORE_TAG ConvNet is architecturally
 #   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
@@ -286,7 +287,7 @@ for entry in "${MODELS[@]}"; do
     echo "  Processing $label ($nam_file)..."
 
     if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP: $label — C++ v0.5.4 ConvNet is architecturally incompatible (known)"
+        echo "  SKIP: $label — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
         continue
     fi
 
@@ -355,7 +356,7 @@ V2_MODELS=(
     "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks)"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)"
 )
-# ^ "convnet_test" above is expected SKIP — C++ v0.5.4 ConvNet is architecturally
+# ^ "convnet_test" above is expected SKIP — C++ $NAM_CORE_TAG ConvNet is architecturally
 #   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
 
 for entry in "${V2_MODELS[@]}"; do
@@ -369,7 +370,7 @@ for entry in "${V2_MODELS[@]}"; do
         continue
     fi
     if [[ "$label" == ConvNet* ]]; then
-        echo "  SKIP: $label — C++ v0.5.4 ConvNet is architecturally incompatible (known)"
+        echo "  SKIP: $label — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
         continue
     fi
 
