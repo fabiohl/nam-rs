@@ -7,7 +7,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > Gerado pela skill `planejador-arquiteto`, com base nos achados críticos de supply-chain e robustez documentados em [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
-Este documento organiza a execução do hardening, a resolução dos gaps de supply-chain e a consolidação do catálogo de goldens mapeados nos **Épicos A, B e C** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
+Este documento organiza a execução do hardening, a resolução dos gaps de supply-chain, a consolidação de catálogo, o saneamento de artefatos e a governança de frescor mapeados nos **Épicos A, B, C, D, E e F** de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
@@ -24,6 +24,12 @@ gantt
     section Sprint 3: Catálogo Canônico
     Épico C - Consolidação de Catálogo: 2026-07-08, 4d
     Épicos C1/C2 - Gaps Dinâmicos/FFT : 2026-07-12, 3d
+    section Sprint 4: Saneamento & Cache
+    Épico D - Saneamento e Cache     : 2026-07-15, 2d
+    section Sprint 5: Governança
+    Épico E - Governança de Frescor  : 2026-07-17, 2d
+    section Sprint 6: Documentação
+    Épico F - Governança Contínua    : 2026-07-19, 2d
 ```
 
 ---
@@ -230,7 +236,7 @@ gantt
   - Incluir uma fase no script para rodar `tests/fixtures/generate_a2_fixtures.py` para gerar os arquivos `.nam` dinâmicos sintéticos automaticamente antes de renderizar os goldens.
   - Adicionar os 4 modelos dinâmicos (`a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam`, `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`) ao catálogo consolidado `CATALOG` com escopo v2 definido como `none` (já que são testados apenas em v1).
 
-#### 📝 Tarefa C.2.2: Triagem e Cobertura Linear FFT
+#### 📝 Tarefa C.2.2: Triagem e Cobertura Linear FFT [DONE]
 
 - **Prioridade:** 🟠 Alta (depende de decisão de produto)
 - **Risco:** Médio
@@ -248,3 +254,102 @@ gantt
 2. O manifesto `.golden_manifest.sha256` gerado ao final deve conter todas as entradas do catálogo consolidado de forma transparente.
 3. Nenhum teste em [golden_vectors.rs](file:///home/fabio/nam-rs/tests/golden_vectors.rs) para os modelos dinâmicos FiLM deve falhar por falta de golden atualizado.
 4. O meta-teste deve rodar com sucesso comprovando que não existem testes ignorados órfãos de catálogo no gerador.
+
+---
+
+## 🟡 Épico D — Saneamento de Artefatos e Comentários Órfãos
+
+**Objetivo:** Eliminar arquivos redundantes ou obsoletos em `tests/fixtures/`, implementar uma estratégia de invalidação de cache de binários inteligente por timestamp e limpar comentários desatualizados.
+
+### 🏃 Sprint D.1: Saneamento e Invalidação de Cache (Duração: Est. 2 dias)
+
+#### 📝 Tarefa D.1.1: Saneamento do Binário Cabsim Stress
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** F5 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L378-L415)
+- **Arquivos Alvos:**
+  - [render_ir.cpp](file:///home/fabio/nam-rs/tests/fixtures/render_ir.cpp)
+  - [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md)
+  - [golden_cabsim_cpp_stress.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_cabsim_cpp_stress.bin)
+- **Descrição:**
+  - Investigar e decidir a proveniência do arquivo `golden_cabsim_cpp_stress.bin`.
+  - Se não for consumido por nenhum teste, remover o arquivo do repositório.
+  - Caso contrário, corrigir sua documentação em `tests/fixtures/README.md` reclassificando-o como "Self-golden" de Rust (sem validação C++ devido ao limite `mMaxLength`).
+  - Atualizar os comentários de cenário em `render_ir.cpp` para remover a menção ao cenário "stress" que excede o limite arquitetural de 8192 amostras do C++.
+
+#### 📝 Tarefa D.1.2: Invalidação de Cache de Binários por Timestamp
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** F6 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L418-L460)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Adicionar uma verificação de timestamp (`-nt`) no script `golden_gen_build.sh`.
+  - Se `render_ir.cpp` for mais recente que o binário gerado `render_ir`, forçar a recompilação imediata dele (limpando o cache e evitando bugs silenciosos de "código fantasma").
+  - Opcional: implementar um mecanismo simples para invalidar o binário `render` principal caso a configuração da build (como compiler/build_type) mude.
+
+#### 📝 Tarefa D.1.3: Remoção de Comentário Obsoleto sobre `wavenet_lite`
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** F10 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L55-L55)
+- **Arquivo Alvo:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+- **Descrição:**
+  - Localizar e apagar o comentário stale das linhas 309-310 do script que dizia que `wavenet_lite` estava ausente por ser conhecido divergente (uma vez que `wavenet_lite` já foi re-adicionado com sucesso e coberto em v2).
+
+#### 🏁 Critérios de Aceite da Sprint D.1
+
+1. Compilar `render_ir`, alterar `render_ir.cpp` e verificar se a próxima execução de `golden_gen_build.sh` reconstrói o binário automaticamente.
+2. Limpeza completa dos comentários de cenários em `render_ir.cpp` e do `wavenet_lite` obsoleto.
+3. Decisão final aplicada sobre o destino do arquivo `golden_cabsim_cpp_stress.bin`.
+
+---
+
+## 🟡 Épico E — Governança de Frescor de Goldens
+
+**Objetivo:** Decidir e implementar as políticas de versionamento do manifesto de frescor `.golden_manifest.sha256`, estabelecendo verificações no pipeline local e/ou CI.
+
+### 🏃 Sprint E.1: Versionamento e Verificação no Pipeline (Duração: Est. 2 dias)
+
+#### 📝 Tarefa E.1.1: Governança do Manifesto de Frescor
+
+- **Prioridade:** 🟡 Média
+- **Risco:** Baixo
+- **Achado Associado:** F11 (Parte 2) de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L625-L639)
+- **Arquivos Alvos:**
+  - [.gitignore](file:///home/fabio/nam-rs/.gitignore)
+  - [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+- **Descrição:**
+  - Avaliar se o manifesto `.golden_manifest.sha256` deve ser rastreado no controle de versão (removendo a entrada do `.gitignore`).
+  - Decidir se a falha de frescor dos goldens (modelo modificado sem regeneração do binário correspondente) deve se tornar um erro bloqueante de CI ou se manter como um alerta informativo.
+  - Integrar a checagem leve de frescor (por exemplo, checagem rápida com `sha256sum`) à Fase 2 no script `tests-quick.sh` ou CI rápida para garantir que os goldens v1 consumidos em testes estejam em sincronia imediata com as modificações de modelo, sem requerer a execução da suíte de release demorada.
+
+#### 🏁 Critérios de Aceite da Sprint E.1
+
+1. Tendo modificado um arquivo `.nam`, executar `./utils/tests-quick.sh` deve reportar um erro/alerta rápido indicando que o golden correspondente está desatualizado, impedindo commits stale no repositório.
+2. Rastreamento correto e auditável do manifesto `.golden_manifest.sha256` no histórico do Git.
+
+---
+
+## 🟢 Épico F — Governança de Documentação
+
+**Objetivo:** Garantir a sincronização contínua das documentações técnicas à medida que modificações de código e re-baselining de goldens ocorram.
+
+### 🏃 Sprint F.1: Sincronização Contínua de Docs (Duração: Contínuo)
+
+#### 📝 Tarefa F.1.1: Prevenção de Drifts de Documentação
+
+- **Prioridade:** 🟢 Baixa
+- **Risco:** Nulo
+- **Achado Associado:** F12 e F13 de [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L782-L790)
+- **Arquivos Alvos:**
+  - [README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md)
+  - [testing.md](file:///home/fabio/nam-rs/docs/testing.md)
+- **Descrição:**
+  - Estabelecer a disciplina de que qualquer alteração de catálogo no script `golden_gen_build.sh` ou de thresholds em `validation.rs` deve vir acompanhada da atualização correspondente das tabelas explicativas em `tests/fixtures/README.md` e do fluxo de dependências em `docs/testing.md`.
+  - Esta tarefa serve de guia processual contínuo durante a execução das sprints anteriores.
+
+#### 🏁 Critérios de Aceite da Sprint F.1
+
+1. Todas as alterações em scripts de testes, modelos, oráculos ou dependências devem ser refletidas nos documentos `README.md` e `docs/testing.md` no mesmo commit em que ocorrem.

@@ -745,7 +745,7 @@ resumo claro de sucessos/falhas — não com um crash de bash sem contexto.
 `./tests/fixtures/golden_gen_build.sh` deve completar sem qualquer intervenção manual em repositórios
 git vendored.
 
-## Épico C — Consolidação do Catálogo Canônico de Modelos↔Goldens (🟠 Alto, fundação para C1/C2) [DOING]
+## Épico C — Consolidação do Catálogo Canônico de Modelos↔Goldens (🟠 Alto, fundação para C1/C2) [DONE]
 
 Resolve a causa raiz estrutural por trás de F3, F3b, F4, F11.
 
