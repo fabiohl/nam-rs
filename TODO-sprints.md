@@ -193,7 +193,7 @@ gantt
   - Remover a dependência de string-matching do label (ex: `[[ "$label" == ConvNet* ]]`).
   - Utilizar um campo explícito no catálogo ou verificar a correspondência exata do nome do modelo (`convnet_test.nam`) para realizar o skip preventivo justificado por incompatibilidade de arquitetura da versão C++.
 
-#### 📝 Tarefa C.1.3: Geração Completa do Manifesto de Frescor
+#### 📝 Tarefa C.1.3: Geração Completa do Manifesto de Frescor [DONE]
 
 - **Prioridade:** 🟠 Alta
 - **Risco:** Baixo
