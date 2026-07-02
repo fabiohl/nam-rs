@@ -1,7 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # LSTM Recurrent State Quantization Drift
 
 > Root Cause Analysis of ESR above A1-Std baseline and MR-STFT degradation in LSTM topologies.

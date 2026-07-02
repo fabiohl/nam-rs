@@ -1,6 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Perceptual Validation & Measurement Framework
 
@@ -976,13 +977,13 @@ understood and closed.
 **A reference oracle is only "independent" if it is validated against a ground
 truth that is a separate codebase from the one it judges — and that
 independence must be re-proven whenever either side changes.** A second
-implementation written to *mirror* the implementation it is supposed to check
+implementation written to _mirror_ the implementation it is supposed to check
 provides no protection: a shared conceptual bug passes silently in both.
 
 - **The trap (canonical example).** The S5 external anchor `validate_oracle_f64.py`
   was written to "match the Rust oracle layout" (shared flat buffer, transposed
   weight indexing). When the Rust oracle was buggy, the Python reproduced the
-  *same* bug, so `ESR(oracle vs anchor) < 1e-12` looked like proof of correctness
+  _same_ bug, so `ESR(oracle vs anchor) < 1e-12` looked like proof of correctness
   while both were wrong. T8.2 fixed the Rust oracle and the hidden divergence
   surfaced (LSTM ESR jumped to 21.3).
 - **The fix (T8.13).** The anchor must agree with a **third, independent code

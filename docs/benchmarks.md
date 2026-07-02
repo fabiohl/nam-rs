@@ -1,7 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # Performance Benchmarks (Criterion)
 
 The NAM-rs project uses **Criterion.rs** as its official performance benchmarking suite. Given the latency-sensitive nature of a real-time audio engine (DSP), conducting measurements with statistical rigor is essential to avoid being misled by operating system variations (noise, context switches, clock fluctuations).

@@ -1,6 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # NAM-rs Project Dependencies
 
 This documentation lists and explains system and software dependencies configured in `Cargo.toml`. The primary goal is to justify these abstractions against strict architecture and performance rules (avoiding heavy or bloated libraries).

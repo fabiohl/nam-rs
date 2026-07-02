@@ -1,6 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # FastMath: Transcendental Function Approximations
 
 Architectural decisions, experiment results, and normative guidelines for approximating `tanh`, `sigmoid`, and related functions in the NAM-rs DSP hot-path.

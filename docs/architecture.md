@@ -1,7 +1,7 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # NAM-rs Architecture: Standalone Neural Inference Client
 
 The architecture of NAM-rs is designed for low-latency DSP processing and neural inference focused on audio equipment simulation (Neural Amp Modeler). Operating as a standalone PipeWire client (Stable) or as a CLAP plugin (Release) on Linux, it utilizes idiomatic Rust with a focus on RT (Real-Time) safety.
