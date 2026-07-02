@@ -15,33 +15,23 @@
 
 set -euo pipefail
 
-# Style helpers
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+PHASE_TOTAL=5
+source "$(dirname "$0")/_lib.sh"
 
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 echo -e "${BLUE}${BOLD}                 nam-rs Linting & Quality Suite                 ${NC}"
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 
-# Ensure we are in the project root directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
-
 # ---------------------------------------------------------------------------
 # [1/5] Code formatting (applies rustfmt to normalize readability)
 # ---------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[1/5] Aplicando formatação de código (cargo fmt)...${NC}"
+phase "Aplicando formatação de código (cargo fmt)..."
 cargo fmt --all
 
 # ---------------------------------------------------------------------------
 # [2/5] SPDX license header validation (deterministic, no external tooling)
 # ---------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[2/5] Validando cabeçalhos SPDX de licença...${NC}"
+phase "Validando cabeçalhos SPDX de licença..."
 # Candidate scope: Rust sources + shell scripts.
 spdx_scope=$(
     {
@@ -74,7 +64,7 @@ echo -e "  ${GREEN}OK${NC} — todos os arquivos possuem cabeçalho SPDX válido
 # module, otherwise those tests are compiled and executed redundantly by every
 # integration test that links the module.
 # ---------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[3/5] Verificando anti-padrão #[test] em tests/common/...${NC}"
+phase "Verificando anti-padrão #[test] em tests/common/..."
 if grep -rnF "#[test]" tests/common/ >/dev/null 2>&1; then
     echo -e "  ${RED}${BOLD}ERRO: '#[test]' encontrado em tests/common/ (execuções redundantes):${NC}"
     grep -rnF "#[test]" tests/common/ | sed 's/^/    /'
@@ -85,7 +75,7 @@ echo -e "  ${GREEN}OK${NC} — nenhum '#[test]' em tests/common/."
 # ---------------------------------------------------------------------------
 # [4/5] Compilation checks (cargo check) across feature profiles
 # ---------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[4/5] Executando verificações de compilação (cargo check)...${NC}"
+phase "Executando verificações de compilação (cargo check)..."
 
 echo -e "  ${YELLOW}${BOLD}Checking: Pure Core (lib, no features)...${NC}"
 cargo check --lib --no-default-features
@@ -104,7 +94,7 @@ cargo check --all-targets --all-features
 # ---------------------------------------------------------------------------
 # [5/5] Static analysis (cargo clippy) — strict, same feature profiles
 # ---------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[5/5] Executando análise estática estrita (cargo clippy)...${NC}"
+phase "Executando análise estática estrita (cargo clippy)..."
 
 echo -e "  ${YELLOW}${BOLD}Clippy: Pure Core (lib, no features)...${NC}"
 cargo clippy --lib --no-default-features -- -D warnings

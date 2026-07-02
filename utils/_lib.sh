@@ -25,3 +25,11 @@ phase() {
     PHASE_NUM=$((PHASE_NUM + 1))
     echo -e "\n${BLUE}${BOLD}[${PHASE_NUM}/${PHASE_TOTAL}]${NC} $*"
 }
+
+# Resolve project root dynamically relative to this helper script
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$LIB_DIR")"
+
+# Automatically enter the project root directory
+cd "$PROJECT_DIR"
+

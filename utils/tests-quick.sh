@@ -52,13 +52,9 @@
 
 set -euo pipefail
 
-# Style helpers
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+PHASE_TOTAL=3
+source "$(dirname "$0")/_lib.sh"
+
 
 # ── Freshness gate (Governança de frescor — Épico E) ────────────────────────
 # Checks the versioned golden freshness manifest against current model files.
@@ -125,16 +121,13 @@ echo -e "${BLUE}${BOLD}   ± 35 seconds on "hot" target dir${NC}"
 echo -e "${BLUE}${BOLD}   ± 5,5 minutes on "cold" target dir${NC}"
 echo -e "${BLUE}${BOLD}=====================================${NC}"
 
-# Ensure we are in the project root directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
+
 
 # ── Fase 1: Estrutural (debug) ──────────────────────────────────────────────
 # Unit tests (lib, auto-descobertos) + integração determinística (lista explícita).
 # Exclui os 5 oráculos de medida do §7 (→ Fase 2 release) e rt_deadline (→ long).
 # debug-assertions ON captura invariantes baratos que --release mascararia.
-echo -e "\n${BLUE}${BOLD}[1/3] Estrutural: unit + integração determinística (debug)...${NC}"
+phase "Estrutural: unit + integração determinística (debug)..."
 
 STRUCTURAL_TESTS=(
     a2_loader activation_precision adaptive_fsm_proptest cabsim_golden
@@ -151,7 +144,7 @@ cargo test --lib "${STRUCTURAL_TESTS[@]/#/--test=}"
 # ── Fase 2: Oráculos de medida (release, docs/testing.md §7) ───────────────
 # Gate autoritativo de floats de produção: medem o caminho de codegen que o
 # usuário executa. Em debug mediriam um "fantasma" (sem contração FMA / vet.).
-echo -e "\n${BLUE}${BOLD}[2/3] Oráculos de medida (release — gate de floats de produção)...${NC}"
+phase "Oráculos de medida (release — gate de floats de produção)..."
 
 # Freshness gate (Épico E — bloqueante): detecta modelos .nam modificados sem
 # regeneração do golden correspondente. Hard fail — o princípio "Todo Golden
@@ -211,7 +204,7 @@ fi
 # Tier 1: robustez/segurança de parser. Contagem reduzida para agilidade first-line
 # (o long suite roda a contagem completa 5000/100000). Override via env.
 # (proptest_math — Tier 3: consistência/locator — já roda na Fase 1 e no long.)
-echo -e "\n${BLUE}${BOLD}[3/3] Parser fuzzing ágil (release)...${NC}"
+phase "Parser fuzzing ágil (release)..."
 PROPTEST_CASES="${NAM_QUICK_PROPTEST_CASES:-1000}" \
     cargo test --release --test proptest_parsers -- --ignored --nocapture
 

@@ -8,18 +8,13 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
 PHASE_TOTAL=5
-source "$SCRIPT_DIR/_lib.sh"
+source "$(dirname "$0")/_lib.sh"
 
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 echo -e "${BLUE}${BOLD}          nam-rs Supply Chain Update & Sync Pipeline            ${NC}"
 echo -e "${BLUE}${BOLD}================================================================${NC}"
 
-# Ensure we are in the project root directory
-cd "$PROJECT_DIR"
 
 # Load pinned versions from single source of truth (variables.env).
 source "$PROJECT_DIR/variables.env"

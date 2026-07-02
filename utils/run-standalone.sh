@@ -5,12 +5,14 @@
 # Quick manual test script for the standalone NAM-rs binary.
 # Expects target/release/nam-rs to be already compiled (e.g. via utils/build-release.sh).
 
-set -xeuo pipefail
+set -euo pipefail
+
+source "$(dirname "$0")/_lib.sh"
 
 # Ensure the standalone binary is present
 NAM_RS_BIN="$HOME/.local/bin/nam-rs"
 if [ ! -f "$NAM_RS_BIN" ]; then
-    echo "❌ Erro: Binário standalone não encontrado em: $NAM_RS_BIN"
+    echo -e "${RED}${BOLD}❌ Erro: Binário standalone não encontrado em: $NAM_RS_BIN${NC}"
     echo "   Por favor, compile-o primeiro utilizando o pipeline de release:"
     echo "     ./utils/build-release.sh"
     echo "   Ou de forma simples via cargo:"
@@ -18,7 +20,7 @@ if [ ! -f "$NAM_RS_BIN" ]; then
     exit 1
 fi
 
-echo "⚙️ Garantindo que qpwgraph está rodando..."
+echo -e "${BLUE}${BOLD}⚙️ Garantindo que qpwgraph está rodando...${NC}"
 if ! pgrep qpwgraph >/dev/null 2>&1; then
     qpwgraph &
 fi
@@ -28,8 +30,9 @@ if ! pgrep vlc >/dev/null 2>&1; then
     vlc &
 fi
 
-echo "🚀 Iniciando executável standalone..."
+echo -e "${GREEN}${BOLD}🚀 Iniciando executável standalone...${NC}"
 "$NAM_RS_BIN" \
   --model tests/fixtures/models/BossWN-standard.nam \
   --input-gain 2.0 \
   --output-gain 5.0
+
