@@ -934,25 +934,33 @@ fn test_golden_vectors_a2_example_slimmable() {
     );
 }
 
-/// Test 8k: Loader Gap WaveNet A2 Max — S14.2 (PM-15): multi-array A2 cascade
-/// and condition_dsp support now enable loading the flagship A2 model.
-/// Asserts successful model construction.
+/// Test 8k: `wavenet_a2_max.nam` is disabled at dispatch (fail-closed, §7.1).
+///
+/// The model is confirmed broken against the NAMcore C++ golden
+/// (see `docs/cpp_parity_map.md` §7.1). This test asserts that
+/// `build_model` returns `Err` with the expected "disabled" message
+/// and cite to §7.1, proving the guard is active.
 #[test]
-fn test_loader_gap_wavenet_a2_max() {
+fn test_wavenet_a2_max_disabled_broken() {
     let path = model_path("wavenet_a2_max.nam");
     assert!(path.exists());
     let json = fs::read_to_string(&path).expect("Failed to read wavenet_a2_max.nam");
     let data = parse_nam_json(&json).expect("Failed to parse wavenet_a2_max.nam");
-    let model = build_model(&data);
+    let result = build_model(&data);
     assert!(
-        model.is_ok(),
-        "S14.2 (PM-15): wavenet_a2_max.nam should load successfully. Error: {:?}",
-        model.err()
+        result.is_err(),
+        "wavenet_a2_max.nam must be rejected (fail-closed guard is missing or bypassed)"
     );
-    let model = model.unwrap();
+    let err_msg = format!("{}", result.err().unwrap());
     assert!(
-        matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),
-        "A2 Max model must route to WaveNetA2Dyn with condition_dsp"
+        err_msg.contains("disabled"),
+        "Error message must contain 'disabled', got: {}",
+        err_msg
+    );
+    assert!(
+        err_msg.contains("§7.1"),
+        "Error message must cite §7.1, got: {}",
+        err_msg
     );
 }
 
@@ -1936,20 +1944,21 @@ fn test_golden_vectors_convnet_test() {
 
 /// Test 10d: Golden Vectors — WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1)
 ///
-/// Validates the `WaveNetA2Dyn` engine with condition_dsp sub-model against
-/// the C++ generic WaveNet reference (C++ a2_fast.cpp rejects this topology
-/// and falls back to Eigen-based generic WaveNet).
+/// DISABLED — model confirmed broken against NAMcore C++ golden
+/// (see `docs/cpp_parity_map.md` §7.1). Inference path is blocked at
+/// dispatch by fail-closed guard in `is_disabled_broken_a2_flagship`
+/// (`src/loader/dispatcher/wavenet/mod.rs`).
 ///
-/// Reads `tests/fixtures/golden_wavenet_a2_max.bin`, builds the dynamic
-/// `StaticModel` from `wavenet_a2_max.nam`, and compares via ESR/SNR/MSE
-/// fusion report.
-///
-/// S14.2 (PM-15): Model loads and processes successfully via A2 cascade.
+/// Originally validated the `WaveNetA2Dyn` engine with condition_dsp
+/// sub-model against the C++ generic WaveNet reference (C++ a2_fast.cpp
+/// rejects this topology and falls back to Eigen-based generic WaveNet).
 /// Golden vector SNR=4.7 dB, ESR=3.4e-1 — C++ golden was generated with
-/// different condition_dsp processing (Eigen-based generic WaveNet). Pending
-/// condition_dsp parity investigation.
+/// different condition_dsp processing (Eigen-based generic WaveNet).
+///
+/// Re-enable only after closing the condition_dsp parity gap (§4.4) and
+/// removing the dispatch guard.
 #[test]
-#[ignore = "S14.2-followup: condition_dsp output divergence vs C++ golden (Eigen-based condition_dsp in C++ vs A2 cascade in Rust)"]
+#[ignore = "model disabled — confirmed broken (§7.1); inference path blocked at dispatch"]
 fn test_golden_vectors_wavenet_a2_max() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_max.bin");

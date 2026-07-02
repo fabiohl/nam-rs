@@ -612,6 +612,7 @@ fn test_combined_simulation_a2_film() {
 use common::A2_GENERIC_ESR_LIMIT;
 
 #[test]
+#[ignore = "model disabled — confirmed broken (§7.1); restoration tracked as FU-1 in TODO-sprints.md (requires closing condition_dsp parity gap §4.4)"]
 fn test_oracle_vs_python_anchor_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -634,7 +635,7 @@ fn test_oracle_vs_python_anchor_a2_generic() {
 }
 
 #[test]
-#[ignore = "S14.2-followup: condition_dsp output divergence between production and oracle — ESR=1e5 (50 dB). Requires investigation of condition_dsp Cascade vs single-array A2 condition processing path."]
+#[ignore = "model disabled — confirmed broken (§7.1); condition_dsp output divergence between production and oracle — ESR=1e5 (50 dB). Requires investigation of condition_dsp Cascade vs single-array A2 condition processing path."]
 fn test_oracle_a2_generic() {
     let esr = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
     assert!(
@@ -646,7 +647,7 @@ fn test_oracle_a2_generic() {
 }
 
 #[test]
-#[ignore = "S14.2-followup: see test_oracle_a2_generic"]
+#[ignore = "model disabled — confirmed broken (§7.1); inference path blocked at dispatch (see test_oracle_a2_generic)"]
 fn test_decomposition_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -673,7 +674,7 @@ fn test_decomposition_a2_generic() {
 }
 
 #[test]
-#[ignore = "S14.2-followup: see test_oracle_a2_generic"]
+#[ignore = "model disabled — confirmed broken (§7.1); inference path blocked at dispatch (see test_oracle_a2_generic)"]
 fn test_combined_simulation_a2_generic() {
     run_combined_paired_test("wavenet_a2_max.nam", "A2-Generic");
 }

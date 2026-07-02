@@ -598,14 +598,16 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4), Some(0.55)))
         }
         // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
-        // S13.3 (PM-05): Official A2 flagship model with condition_dsp sub-model,
-        // 8 FiLM slots (groups 1-8), head1x1 (groups=2), Softsign activation,
-        // and condition_size=8. C++ routes to generic WaveNet (Eigen), Rust
-        // routes to WaveNetA2Dyn with native FiLM.
-        // Measured: PENDING — model cannot load yet (multi-array condition_dsp
-        // dispatch not implemented). ESR=5.0e-2, MRSTFT=0.49 provisional
-        // based on PM-03 FiLM divergence (RF1, 18-36 dB). Recalibrate after
-        // engine support is complete (S13.3, PM-05).
+        // DISABLED — §7.1 (dead threshold; retained for meta-test calibration
+        // discipline). Model confirmed broken against NAMcore C++ golden;
+        // inference path blocked at dispatch by fail-closed guard
+        // (`is_disabled_broken_a2_flagship`). Threshold is dead — no test
+        // references it; kept only to preserve the match arm for the meta-test
+        // calibration discipline (`tests/threshold_calibration.rs`).
+        // Original S13.3 (PM-05): Official A2 flagship model with condition_dsp
+        // sub-model, 8 FiLM slots, head1x1 (groups=2), Softsign activation,
+        // condition_size=8. C++ routes to generic WaveNet (Eigen), Rust routes to
+        // WaveNetA2Dyn with native FiLM. Re-enable only after closing §4.4.
         "wavenet_a2_max" => {
             let snr_db = 10.0;
             Some((snr_to_mse(snr_db), snr_db, Some(5.0e-2), Some(0.49)))

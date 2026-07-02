@@ -133,20 +133,17 @@ alcançável. **Ponto de maior atenção da agenda.**
 | H   | `src/testing/reference_oracle.rs:735` (comentário)                                                                                             | n/a               | Atualizar comentário p/ registrar que o modelo está desativado (§7.1).                                                                                                                                                     |
 | I   | `tests/fixtures/golden_gen_build.sh:237,323` (geração de golden)                                                                               | n/a (script)      | **Manter** as entradas (script auxiliar, não é `cargo test`). O golden `.bin` permanece no repo. Anotar que a geração só voltará a ser load-bearing quando §4.4 fechar.                                                    |
 
-- [ ]**S2.T1 — Pontos A e B** (`golden_vectors.rs`): inverter A (asserção de desativação),
+- [x]**S2.T1 — Pontos A e B** (`golden_vectors.rs`): inverter A (asserção de desativação),
   ajustar razão de B.
-- [ ]**S2.T2 — Ponto C e D** (`reference_oracle_f64.rs`): `#[ignore]` em C com tarefa de
-  restauração rastreada (criar entrada neste TODO-sprints como follow-up, ver Follow-ups);
-  atualizar razões de D.
-- [ ]**S2.T3 — Pontos E e F** (meta-teste de calibração): garantir que a remoção de
+- [x]**S2.T2 — Ponto C e D** (`reference_oracle_f64.rs`): `#[ignore]` em C com tarefa de
+  restauração rastreada (FU-1 em TODO-sprints.md); atualizar razões de D.
+- [x]**S2.T3 — Pontos E e F** (meta-teste de calibração): garantir que a remoção de
   `"wavenet_a2_max"` da lista `E` e a retenção anotada do braço `F` mantenham
   `tests/threshold_calibration.rs` verde. **Atenção:** o meta-teste valida que cada modelo
   listado possui comentário "Measured:" em `validation.rs`; como `F` é mantido (morto mas
   documentado), remover `E` da lista é a forma limpa de não exigir threshold vivo.
 
-- **Critério de aceite S2:** `cargo test` (e `utils/tests-quick.sh`) verdes; nenhum teste
-  executa inferência de `wavenet_a2_max.nam`; `grep -n 'wavenet_a2_max' tests/` mostra apenas
-  asserção de desativação, `#[ignore]`'s rastreados e referências documentais.
+- **Critério de aceite S2:** ✅ `utils/tests-quick.sh` 100% verde (0 failures em todas as suítes: golden vectors release, reference oracle release, threshold calibration, C++ parity, parser fuzzing). Nenhum teste executa inferência de `wavenet_a2_max.nam`. `grep -n 'wavenet_a2_max' tests/` mostra apenas: `test_wavenet_a2_max_disabled_broken` (asserção de `Err`), `#[ignore]`'s rastreados em `golden_vectors.rs:1962` e `reference_oracle_f64.rs:616/639/650/676`, braço morto documentado em `validation.rs:611`, e comentário em `constants.rs:38`.
 
 ### Sprint S3 — Teste de regressão positiva da desativação
 
