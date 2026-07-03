@@ -19,9 +19,11 @@ Este plano organiza as tarefas necessárias para diagnosticar, corrigir e valida
   * Configurar um container Docker local ou sandbox cgroups limitando memória para 1 GB e CPU a 1 core.
   * Criar script wrapper usando `timeout -s KILL 10` para impedir travamentos prolongados na reprodução.
 
-* [ ] **T1.2 — Execução Diagnóstica com Instrumentação**
+* [x] **T1.2 — Execução Diagnóstica com Instrumentação** ✅ 2026-07-03
   * Executar o teste alvo em modo release compilado com AddressSanitizer (ASan) ativo (`RUSTFLAGS="-Zsanitizer=address"`).
   * Capturar chamadas do sistema com `strace` e profiling com `perf` a partir de um terminal externo independente.
+  * **Resultados:** Hang confirmado (CPU spin puro). ASan não detectou violações. Perf inconclusivo (binário stripped). Detalhes em `TODO-findings.md` §4.
+
 * [ ] **T1.3 — Mapeamento de Pontos de Hang e Execução de Oráculo**
   * Inserir medições seguras off-RT temporárias para verificar se o travamento ocorre durante a desalocação do buffer ou durante a iteração de processamento do sinal.
 
@@ -40,6 +42,7 @@ Este plano organiza as tarefas necessárias para diagnosticar, corrigir e valida
 * [ ] **T2.2 — Blindagem de Indexações de Ring Buffer (`X2Stage`)**
   * Substituir o acesso direto `get_unchecked` por indexações seguras verificadas provisoriamente.
   * Tratar possíveis indexações inconsistentes caso o tamanho do buffer de entrada divirja nos estágios de decimação e interpolação.
+
 * [ ] **T2.3 — Correção de Potenciais Underflows Aritméticos**
   * Revisar a operação de modulo e wrapping em `abs_idx.wrapping_sub(tap_delay) % n` para atestar compatibilidade multiplataforma (32/64 bits) e segurança matemática.
 
@@ -56,6 +59,7 @@ Este plano organiza as tarefas necessárias para diagnosticar, corrigir e valida
 
 * [ ] **T3.2 — Execução Completa da Suíte de Testes Rápida**
   * Rodar `./utils/tests-quick.sh` para atestar que os outros testes do módulo DSP continuam passando perfeitamente.
+
 * [ ] **T3.3 — Benchmark de Impacto de Performance**
   * Avaliar regressões de tempo de processamento com benchmarks Criterion off-line.
   * Verificar se a refatoração do heap allocator ou a substituição de indexações não impacta o orçamento de tempo em threads de áudio PipeWire.

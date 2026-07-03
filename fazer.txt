@@ -3,6 +3,7 @@
   docs/audio_fidelity_map.md "1. Weight Compression — F16C / BF16"; "3. LSTM Recurrent State Quantization Drift".
   docs/cpp_parity_map.md "2.5 Precision divergence: quantized backbone weights", "2.7 Measured interop drift" e "7.2 🟡 Known, measured, accepted tradeoffs — not bugs" / LSTM backbone weight quantization.
   docs/lstm_recurrent_drift.md
+  Pedir um script informativo que informe métricas de performence (comparado ao orçamento) e de qualidade sonora (caparado ao NAMcore e ao oráculo) - ambos com dados técnicos e traduzido para "linguagem humana".
 
 * /refatora-rust [GLM5.2]
 * /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Resilience and Robustness Specialist".

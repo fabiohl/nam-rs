@@ -77,6 +77,73 @@ A implementação de `upsample` e `downsample` faz uso intensivo de acessos dire
   - Armazenar explicitamente a capacidade original (`capacity`) no struct `AlignedVec` ou forçar o alinhamento de `len` a `capacity` se a estrutura for de tamanho fixo.
   - Substituir temporariamente `get_unchecked` por indexações seguras na engine de oversampling durante a fase de depuração para verificar se algum pânico de fora-dos-limites é disparado.
 
+---
+
+## 4. Resultados do Diagnóstico T1.2 — ASan + strace + perf
+
+**Data:** 2026-07-03
+
+### Configuração
+
+- **Toolchain:** nightly-x86_64-unknown-linux-gnu (rustc 1.98.0-nightly, c397dae80 2026-07-02)
+- **Flags:** `RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off"`
+- **Segurança:** `timeout -s KILL 10` envelopando a execução
+- **strace:** `strace -f -o strace.log` (10214 linhas, 1.2 MB)
+- **perf:** `perf record -g -p <PID>` (30 samples, binário stripped — limitado)
+
+### Resultados
+
+#### 1. Hang Confirmado (exit 124 via timeout)
+
+O teste foi morto por `timeout -s KILL` após 10s, confirmando o travamento.
+Nenhum output de teste foi produzido.
+
+#### 2. ASan NÃO Detectou Violações
+
+Nenhuma mensagem `AddressSanitizer`, `heap-use-after-free`,
+`heap-buffer-overflow`, `SEGV` ou `SIGABRT` foi capturada no strace.
+A instrumentação ASan estava ativa (shadow memory mappings observados),
+mas não acusou violação de memória durante os 10s de execução.
+
+#### 3. Análise do strace — CPU Spin Puro
+
+Linha do tempo do processo filho (PID 82978, binário de teste):
+
+| Linha       | Evento                                                                 |
+| ----------- | ---------------------------------------------------------------------- |
+| 9749        | `execve` do binário `nam_rs-cc13e7d4dba838b5`                          |
+| 10192       | `clone3` cria thread "dsp::oversample" (PID 82979)                     |
+| 10202–10214 | Thread 82979 faz `mmap(MAP_FIXED)` — ASan shadow memory setup          |
+| 10197       | Thread pai 82978 entra em `FUTEX_WAIT_BITSET_PRIVATE` (timeout ~8296s) |
+| 10215+      | **Nenhuma syscall adicional** da thread 82979 até `SIGKILL`            |
+
+Conclusão: a thread DSP entrou em **CPU spin puro** (loop infinito sem
+syscalls) após a inicialização ASan. O hang **não é** um deadlock em futex
+— o pai está apenas esperando o filho terminar.
+
+#### 4. Análise do perf — Inconclusiva (símbolos stripped)
+
+O binário de release está com `strip=true` e LTO, impossibilitando resolução
+de símbolos userspace. As 30 amostras capturadas são majoritariamente do
+processo `timeout` (`nanosleep`/`wait4`) e kernel. **Necessário rebuild sem
+strip para perf conclusivo.**
+
+### Impacto para Sprints Seguintes
+
+- O UB em `AlignedVec::drop` (layout de dealloc incorreto) **não** é capturado
+  pelo ASan em 10s de execução. Possíveis explicações:
+  - O hang ocorre durante alocação/desalocação do ASan, não do `AlignedVec`
+  - A corrupção de heap acontece mas não é detectada antes do timeout
+  - O bug pode estar em outro local (ex: loop infinito na lógica DSP)
+- **Recomendação para T2.1:** Corrigir `AlignedVec` primeiro (correção
+  trivial, sem riscos), depois re-executar o diagnóstico com símbolos de
+  debug para confirmar resolução.
+- **Recomendação para diagnóstico futuro:** Compilar com
+  `RUSTFLAGS="-Zsanitizer=address -g"` e `strip="none"` no profile para
+  perf resovable.
+
+---
+
 ### Épico E-3: Validação, Regressão e Reativação do Teste
 
 - **Objetivo:** Assegurar integridade e performance do processamento sem aliasing.
