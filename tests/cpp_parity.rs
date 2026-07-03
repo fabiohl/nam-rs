@@ -1115,7 +1115,7 @@ fn live_cross_validation_v2_a2_dynamic_gated() {
         "a2_dynamic_gated_ch8.nam",
         "a2_dynamic_gated_ch8",
         "Live A2 Dynamic Gated (CH=8) (v2)",
-        true,
+        false,
     );
 }
 
@@ -1126,7 +1126,7 @@ fn live_cross_validation_v2_a2_dynamic_blended() {
         "a2_dynamic_blended_ch3.nam",
         "a2_dynamic_blended_ch3",
         "Live A2 Dynamic Blended (CH=3) (v2)",
-        true,
+        false,
     );
 }
 
