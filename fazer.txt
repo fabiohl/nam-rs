@@ -1,27 +1,19 @@
-            /documentador:
-Atualizar criticamente o "docs/audio_fidelity_map.md" para o estado atual da arquitetura, recentemente revisada como um todo. Atualizado, limpo, útil!
-Vários documentos são complementares a ele: "docs/perceptual_validation.md", "docs/fastmath-approximations.md" e "docs/lstm_recurrent_drift.md".
-Muita informação dispersa, que penso ficar melhor organizada dentro do "docs/audio_fidelity_map.md". Mas cuidado para não aglomerar informações.
-O documento final DEVE ser sintético, fácil de entender, resumido, direto ao ponto, útil e verdadeiro.
-Use os resultados dos testes (logados em "testes.log") para atualizar as informações e tirar insights úteis.
-Obs: observe que ele apontou alguns erros. Não se preocupe com ele, já estão sendo encaminhadis à parte. Foque apenas nos insights seguros e certos que podem ser extraídos.
-
 * /revisor-auditor [GLM5.2] totalmente focado na role "Resilience and Robustness Specialist".
   Aqui vamo focar na vertical do modo plugin CLAP (atualmente documentado em "docs/clap_integration.md" e em "docs/gui-architecture.md").
   Analisar criticamente a qualidade deste sistema e manter a documentação acima mencionada atualizada e correta. Idealmente fundindo-as em um só.
   Mas cuidado para não aglomerar informações. O documento final DEVE ser sintético, fácil de entender, resumido, direto ao ponto, útil e verdadeiro.
 * /documentador: Atualizar criticamente o "docs/architecture.md" para o estado atual da arquitetura, recentemente revisada como um todo. Atualizado, limpo, útil!
-  Buscar não ser repetitivo com nada do restante do diretório "doc/". Deixe que cada documento cumpra o seu papel especializado. Ele é apenas o "diretório geral". E o que não cabe em nenhum outro documento.
-  Fazer parecido com o "docs/dependencies.md". Ele é muito repetitivo com o "README.md" e com o próprio "Cargo.toml"! Idealmente, este arquivo deixa de existir com suas informações absorvidas por outros documentos.
-  Finamente, ataque o "docs/troubleshooting.md". Procedimentos simples de troubleshooting cabem ao "README.md" (usuário final), a skills em ".agents/" ou em outros lugares.
-  Mas cuidado para não aglomerar informações. O documento final DEVE ser sintético, fácil de entender, resumido, direto ao ponto, útil e verdadeiro.
-  E tudo isto feito, atualizar também o ".agents/rules/rust.md". Muito cuidado com este. Ele deve ser enxuto e muito direto. Não ser de forma alguma repetitivo com nada em "docs/*.md". Contém apenas o essencial - os detalhes estão em "docs/*.md".
+  Buscar não ser repetitivo com nada do restante do diretório "doc/". Deixe que cada documento cumpra o seu papel especializado. Ele ("docs/architecture.md") é apenas o "diretório geral". E o que não cabe em nenhum outro documento.
+  Fazer a mesma coisa com o "docs/dependencies.md". Ele é muito repetitivo com o "README.md" e com o próprio "Cargo.toml"! Idealmente, este arquivo deveria deixar de existir, com suas informações sendo absorvidas por outros documentos.
+  Finamente, ataque o "docs/troubleshooting.md". Procedimentos simples de troubleshooting (pelo usuário final) cabem ao "README.md", a skills em ".agents/" ou a outros lugares.
+  E tudo isto feito, atualizar também o ".agents/rules/rust.md". Muito cuidado com este. Ele deve ser enxuto e muito direto. Não ser de forma alguma repetitivo com nada em "docs/*.md". Contém apenas o absoluto essencial - os detalhes estão em "docs/*.md".
+  Depois disto tudo, cuidado para não aglomerar informações. Os documentos final todos DEVEM ser sintético, fáceis de entender, resumidos, diretos ao ponto, útil e verdadeiro.
 
 * Lidar com estes bugs: known-bugs.md
 * [Sonnet] Prova de conceito de impacto (performance e qualidade) da remoção de:
-  docs/audio_fidelity_map.md "1. Weight Compression — F16C / BF16".
-  docs/cpp_parity_map.md "2.5 Precision divergence: quantized backbone weights", "2.7 Measured interop drift" e "7.3 🟡 Known, measured, accepted tradeoffs — not bugs"
-  Identificar outras questões de qualidade latentes documentadas em "docs/cpp_parity_map.md" e em "docs/cpp_parity_map.md".
+  docs/audio_fidelity_map.md "1. Weight Compression — F16C / BF16"; "3. LSTM Recurrent State Quantization Drift".
+  docs/cpp_parity_map.md "2.5 Precision divergence: quantized backbone weights", "2.7 Measured interop drift" e "7.2 🟡 Known, measured, accepted tradeoffs — not bugs" / LSTM backbone weight quantization.
+  docs/lstm_recurrent_drift.md
 
 * /revisor-auditor [Fable] totalmente focado na role "Resilience and Robustness Specialist".
 * /refatora-rust [Deep Seek]

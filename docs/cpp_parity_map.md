@@ -142,7 +142,7 @@ Standard-precision activations also diverge from C++'s exact `sigmoid`/`tanhf`: 
 Padé [5,4] rational tanh (max error ≈ 2.32e-3) and a degree-17 minimax-polynomial sigmoid (max
 error ≈ 4.09e-4) for throughput. This is a secondary, smaller error source relative to weight
 quantization. `HighFidelity` activation mode (polynomial exp-based tanh/sigmoid, error ≈ 2×1e-7)
-trades interop parity for closer-to-ideal math — see `audio_fidelity_map.md` §2/§6.
+trades interop parity for closer-to-ideal math — see `audio_fidelity_map.md` §2.
 
 ### 2.6 Scope divergence: mono-only, no zero-layer support
 

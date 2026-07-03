@@ -78,6 +78,23 @@ contained per-window and does not accumulate across the signal.
 LSTM, in contrast, is fully recurrent — the cell state carries information (and error) from
 one sample to the next, for the **entire signal duration**.
 
+### 2.4 Drift vs. Host Sample Rate
+
+At a fixed 5 s signal duration, higher host sample rates mean more LSTM time steps per second of
+audio, so the same steady-state mechanism (§2.1) produces more accumulated drift:
+
+| Host rate | LSTM 1×16 ESR vs NAMCore | Notes                       |
+|:--------- |:------------------------:|:--------------------------- |
+| 44.1 kHz  | 2.39e-2                  | native                      |
+| 48 kHz    | 2.61e-2                  | native (model's train rate) |
+| 88.2 kHz  | 5.39e-2                  |                             |
+| 96 kHz    | 6.09e-2                  |                             |
+| 192 kHz   | **1.42e-1**              | 4× native — worst case      |
+
+Drift magnitude is architecture-dependent — smaller/shallower LSTMs and lower forget-gate means
+drift less: LSTM 2×8 @ 192 kHz = 4.20e-2; the tiny Official H=3 ≈ 1.23e-3 flat (largely
+rate-insensitive). WaveNet has no recurrent state, so ESR stays ≈ 1e-13 at every rate.
+
 ---
 
 ## 3. Hypotheses Ruled Out
@@ -155,7 +172,7 @@ dynamics. This is unlike WaveNet, where oversampling is transparent and only ant
 The ASR improvement (8–11 dB where applicable) is outweighed by the drastic timbre alteration
 (ESR > 1.0) for BossLSTM architectures. The tiny Official LSTM (H=3) is less affected but
 gains no practical anti-aliasing benefit (already alias-free at all factors). For users seeking
-maximum fidelity from LSTM models, the **HighFidelity activation mode** (§6 of
+maximum fidelity from LSTM models, the **HighFidelity activation mode** (§2.2 of
 `audio_fidelity_map.md`) provides a ~10,000× reduction in activation error without altering
 the recurrent feedback dynamics — and is the recommended path. See also Kahan-compensated
 head accumulation (§7, I4) for an additional ~2 dB of head SNR at negligible cost.
