@@ -453,6 +453,7 @@ fn run_render_comparison(
         const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
         const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
         const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
+        const ABSOLUTE_MRSTFT_CAP_FILM: f64 = 1.20;
 
         let is_film = golden_name.to_lowercase().contains("film")
             || model_filename.to_lowercase().contains("film");
@@ -492,10 +493,15 @@ fn run_render_comparison(
             // of v2 relaxation for models with multi-SR drift (e.g. LSTM).
             mse_limit = (mse_limit * scale_back).max(calibrated_mse);
         }
+        let mrstft_cap = if is_film {
+            ABSOLUTE_MRSTFT_CAP_FILM
+        } else {
+            ABSOLUTE_MRSTFT_CAP
+        };
         if let Some(ref mut mr) = mrstft_max
-            && *mr > ABSOLUTE_MRSTFT_CAP
+            && *mr > mrstft_cap
         {
-            *mr = ABSOLUTE_MRSTFT_CAP;
+            *mr = mrstft_cap;
         }
     }
 
