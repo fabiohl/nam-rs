@@ -30,7 +30,23 @@ Extract from the text pasted by the user:
 - **System information** (version, arch, avx2/fma, os, kernel)
 - **Timestamp** of the occurrence
 
-If the user pasted only the friendly message (without the technical block), ask them to paste the complete block from the shell/terminal — including the "Support information" section that NAM-rs generates.
+If the user pasted only the friendly message (without the technical block), ask them to paste the complete block from the shell/terminal — including the "Support information" section that NAM-rs generates. The user can obtain it via `nam-rs --diagnose` (standalone), the CLAP GUI status bar "Copy Diagnostic" button, or an auto-captured crash report (`~/.cache/nam-rs/crash-*.txt`) — see [README.md](../../../README.md#-quick-start) for the end-user instructions.
+
+A nominal bundle looks like this (paths/model names are redacted by default — see `--diagnose-full` for the unredacted variant):
+
+```text
+──── NAM-rs Diagnostic ────────────────────────────────────────────────
+nam-rs v1.6.0
+──── Runtime State ─────────────────────────────────────────────
+model=NEVE1073-Standard.nam
+sample_rate=48000
+arch=x86_64
+os=linux kernel=7.0.0-22-generic
+pipewire=1.6.2
+features=none (baseline x86-64-v3 only)
+timestamp=2026-06-06T19:24:27Z
+────────────────────────────────────────────────
+```
 
 #### 1.2. Source Code Location
 
