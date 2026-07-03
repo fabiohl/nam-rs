@@ -551,9 +551,20 @@ run_phase "CLAP Release Validation & Concurrency" "run_clap_audit_phase" "phase5
 # not duplicated). `fft_radix4_bench`, `gemv_bench`, and `linear` (bench) are
 # one-off research artifacts documenting past engineering decisions, not
 # regression gates — intentionally excluded from every automated suite.
+#
+# Each bench target is its OWN `cargo bench` invocation (never combined via
+# multiple `--bench` flags in one command). `cargo bench` aborts the entire
+# invocation on the first panicking bench binary and does not proceed to the
+# next `--bench` target — confirmed in practice on 2026-07-02, where a broken
+# `inference_bench` fixture silently prevented `kahan_conv1d_bench` and
+# `regression_gate` from ever running or being recorded for that night. One
+# bench isolated from the others is the whole point of this phase existing.
 run_benchmarks_phase() {
     local status=0
-    cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench dot_4x_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench kahan_conv1d_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench inference_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
     cargo bench --features long_bench --bench long_inference_bench || status=1
     return $status
 }
