@@ -449,8 +449,13 @@ fn run_render_comparison(
             nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
         const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 0.30; // rates ≤ 96 kHz
         const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 0.60; // rates > 96 kHz (e.g. 192 kHz)
+        const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
+        const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
         const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
         const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
+
+        let is_film = golden_name.to_lowercase().contains("film")
+            || model_filename.to_lowercase().contains("film");
 
         let esr_cap = if model_data.architecture == "LSTM" {
             if use_hf {
@@ -463,6 +468,12 @@ fn run_render_comparison(
                 ABSOLUTE_ESR_CAP_LSTM_HIRATE
             } else {
                 ABSOLUTE_ESR_CAP_LSTM_NATIVE
+            }
+        } else if is_film {
+            if use_hf {
+                ABSOLUTE_ESR_CAP_FILM_HF
+            } else {
+                ABSOLUTE_ESR_CAP_FILM_LIVE
             }
         } else if use_hf {
             ABSOLUTE_ESR_CAP_WAVENET_HF
