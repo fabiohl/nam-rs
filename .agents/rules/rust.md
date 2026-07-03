@@ -22,7 +22,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ## 2. DSP & RT-Safe Math
 
 * **Denormals:** Configure FTZ+DAZ at the start of the processing loop. Alternatively, zero states with `if val.abs() < 1e-15 { val = 0.0; }`.
-* **FastMath:** Native `f32::tanh()`/`exp()` are prohibitive on the hot-path. Use Minimax/Padé approximations with error < −80 dB (~1e-4).
+* **FastMath:** Native `f32::tanh()`/`exp()` are prohibitive on the hot-path. Never call them directly; use the existing `simd_tanh`/`simd_sigmoid` kernels (`src/math/activations/`). Do not invent new approximations without measuring the error budget — see [docs/fastmath-approximations.md](../../docs/fastmath-approximations.md) and [docs/audio_fidelity_map.md](../../docs/audio_fidelity_map.md) for the current numbers and precision modes.
 * **Casting:** Avoid frequent `as` between `f32` and integers. Use `.round()`, `.floor()`, or vectorized operations.
 * **Unsafety:** Do your best to keep "unsafe" block the most restrict possible.
 
@@ -45,28 +45,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## 5. Quality Modes: Live vs. HQ / Offline
 
-NAM-rs operates in two distinct quality modes. Code must honor these distinctions:
+NAM-rs operates in two distinct quality modes — **Live** (default: oversampling `Off`, activation precision `Standard`, adaptive compute active, zero added latency) and **HQ/Offline** (oversampling `4×`, activation precision `HighFidelity`, adaptive compute disabled for deterministic output). Never write code that silently mixes the two (e.g. a code path that reads adaptive-compute state while `RenderMode::Offline` is active). Full mode matrix and rationale: [README.md](../../README.md#quality-and-operational-modes) and [docs/audio_fidelity_map.md](../../docs/audio_fidelity_map.md).
 
-* **Live Mode (default):** Oversampling `Off`, activation precision `Standard`, adaptive compute active. Zero added latency. All hot-path code must complete within the RT deadline budget.
-* **HQ / Offline Mode:** Oversampling `4×`, activation precision `HighFidelity`, adaptive compute disabled. Maximum fidelity with deterministic output — no soft-degradation allowed. The CLAP host signals this via `RenderMode::Offline`.
-
-**Off-RT rebuild protocol:** Factor changes (oversampling, model swap, cab IR) are never applied on the audio thread. The main thread constructs new resources (filter allocation, buffer allocation), pushes them via SPSC, and the audio thread atomically swaps. Old resources are disposed via the GC cascade (SPSC → parking-lot → overflow).
-
-**Deterministic offline bounce (CLAP):** When `RenderMode::Offline` is active:
-
-* `AdaptiveCompute` is forced to `Off` (FSM reset to Full, no degradation).
-* All `RT_STATUS_DEGRADE_*` flags are cleared.
-* Block deadline measurements are ignored.
-* User-initiated adaptive-compute mode changes are guarded and rejected.
+Off-RT resource swaps (oversampling factor, model, cab IR) always go through the SPSC → GC-cascade protocol — never mutate or allocate these on the audio thread. See [docs/clap_integration.md](../../docs/clap_integration.md) §6.3.
 
 ---
 
 ## 6. Measurement & Off-RT QA Framework
 
-Measurement and spectral analysis functions are **strictly off-RT** — they allocate on the heap and are never called from the audio thread.
+Measurement and spectral analysis functions are **strictly off-RT** — they allocate on the heap and are never called from the audio thread. Placement, gate calibration, and f64-oracle-wins rules are defined once in [.agents/rules/testing.md](testing.md) — do not duplicate them here.
 
-* **Placement:** All measurement functions belong in `src/testing/`. Never in `src/dsp/` or hot-path code.
-* **True-peak prohibition:** BS.1770-4 Annex 2 true-peak (4× polyphase FIR, 48 taps) is too expensive for the RT thread. Use sample-peak detection on the audio-thread hot-path; true-peak only in integration tests.
-* **f64 oracle authority:** The f64 reference oracle (`src/testing/reference_oracle.rs`) is the absolute mathematical ground truth. When it disagrees with C++ NAMCore or golden vectors, the f64 oracle wins.
-* **Gate calibration:** All metric thresholds must be explicitly documented with measurement comments. `// Measured: SNR=..., ESR=...` format required for every calibrated entry in golden threshold tables.
-* **Baseline versioning:** Metric baselines (ASR, THD+N, Farina FR) are versioned in `tests/fixtures/spectral_fidelity_baseline.json`.
+* **True-peak prohibition (RT-specific):** BS.1770-4 Annex 2 true-peak (4× polyphase FIR, 48 taps) is too expensive for the RT thread. Use sample-peak detection on the audio-thread hot-path; true-peak only in integration tests (`src/testing/perceptual.rs`).

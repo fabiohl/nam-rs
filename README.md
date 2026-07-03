@@ -157,7 +157,7 @@ See [docs/architecture.md §5.0O](docs/architecture.md) for the full oversamplin
 
 ### Quality and Operational Modes
 
-NAM-rs provides a layered quality control surface spanning latency, fidelity, and CPU budget. These controls are exposed through the unified CLI+CLAP parameter matrix (see [docs/architecture.md §8.2.3](docs/architecture.md)):
+NAM-rs provides a layered quality control surface spanning latency, fidelity, and CPU budget. These controls are exposed through the unified CLI+CLAP parameter matrix (see [docs/architecture.md §8.2](docs/architecture.md)):
 
 **Oversampling** — anti-aliasing around the neural stage:
 
@@ -187,7 +187,13 @@ NAM-rs provides a layered quality control surface spanning latency, fidelity, an
 | Latency              | 0 samples            | 24 samples (~0.54 ms)      |
 | Use case             | Monitoring, live gig | Export, mixdown, mastering |
 
-**Diagnostic Mode** (`--diagnose`, `--diagnose-full`): prints a technical support block (system snapshot, runtime telemetry, error context) and exits immediately — no audio processing. The `--diagnose-full` variant includes unredacted file paths. In the CLAP GUI, the diagnostic bundle is accessible via the status bar "Copy Diagnostic" button. See [docs/troubleshooting.md](docs/troubleshooting.md).
+**Diagnostic Mode** (`--diagnose`, `--diagnose-full`): prints a technical support block (system snapshot, runtime telemetry, error context) and exits immediately — no audio processing.
+
+* **Standalone:** `target/release/nam-rs --diagnose`.
+* **CLAP Plugin:** click the **"Copy Diagnostic"** button (`ℹ`) in the GUI status bar — copies the bundle to the clipboard and writes it to `~/.cache/nam-rs/diagnostic-<timestamp>.txt`.
+* **Crash reports:** a panic on either binary auto-captures a diagnostic bundle to `~/.cache/nam-rs/crash-<timestamp>-<component>.txt` (owner-only permissions, `0o600`).
+* **Privacy:** by default, absolute paths are redacted (home directory → `~/...`, model paths shortened to their basename); no audio content or weights are ever recorded. `--diagnose-full` prints unredacted paths for local debugging.
+* **Reporting:** paste the full block (including the `──── NAM-rs Diagnostic ────` headers) into a GitHub Issue, or into an AI chat to trigger the automated triage skill ([`.agents/skills/diagnostico/SKILL.md`](.agents/skills/diagnostico/SKILL.md)).
 
 ### Build, install and run
 
@@ -195,7 +201,12 @@ NAM-rs provides a layered quality control surface spanning latency, fidelity, an
 
 > [!IMPORTANT]
 > **Sudo Privilege Requirement:**
-> Running `utils/build-release.sh` requires `sudo` privileges to temporarily adjust the kernel's `perf_event_paranoid` to `1` or lower. This is mandatory for CPU cycle profiling using `perf` to generate optimized LLVM BOLT layouts. If you want to bypass this interactivity, configure it persistently beforehand as detailed in [System Dependencies](docs/dependencies.md).
+> Running `utils/build-release.sh` requires `sudo` privileges to temporarily adjust the kernel's `perf_event_paranoid` to `1` or lower. This is mandatory for CPU cycle profiling using `perf` to generate optimized LLVM BOLT layouts. To bypass this interactivity, configure it persistently beforehand:
+>
+> ```bash
+> echo "kernel.perf_event_paranoid = 1" | sudo tee /etc/sysctl.d/99-perf.conf
+> sudo sysctl --system
+> ```
 
 ```bash
 utils/build-release.sh
@@ -209,13 +220,19 @@ utils/build-release.sh
 
 ## 📚 Documentation
 
-* [docs/architecture.md](docs/architecture.md) — Topology, modules, design decisions, oversampling engine, and user controls
+* [docs/architecture.md](docs/architecture.md) — Topology, modules, build configuration, and cross-cutting design decisions (the general reference)
+* [docs/audio_fidelity_map.md](docs/audio_fidelity_map.md) — Every off-spec DSP decision (compression, activation precision, resampling, oversampling, adaptive compute) and its quality/performance trade-off
 * [docs/fastmath-approximations.md](docs/fastmath-approximations.md) — Tanh/sigmoid approximation decisions, activation precision modes, benchmarks
-* [docs/dependencies.md](docs/dependencies.md) — System dependencies and Rust crates
+* [docs/clap_integration.md](docs/clap_integration.md) — CLAP plugin thread model, RT-safe GC, and GUI architecture
+* [docs/namb-spec.md](docs/namb-spec.md) — `.namb` binary format specification (header, layouts, CRC32)
+* [docs/testing.md](docs/testing.md) — Test coverage matrix, execution phases, and CI/long-suite policy
+* [docs/perceptual_validation.md](docs/perceptual_validation.md) — Measurement framework (ESR, MR-STFT, ASR, LUFS, f64 oracle) and gate calibration policy
+* [docs/cpp_parity_map.md](docs/cpp_parity_map.md) — Line-by-line parity audit against NeuralAmpModelerCore, with a known-issues ledger
+* [docs/lstm_recurrent_drift.md](docs/lstm_recurrent_drift.md) — Root-cause analysis of LSTM recurrent-state quantization drift
+* [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics and the regression gate
+* [docs/research-references.md](docs/research-references.md) — Annotated bibliography backing the DSP/perceptual design decisions
+* [docs/functional-tests.md](docs/functional-tests.md) — Manual human QA checklist for the CLAP plugin
 * [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector format, stress signal design, and regeneration instructions
-* [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics
-* [docs/clap_integration.md](docs/clap_integration.md) — CLAP (Clever Audio Plug-in) integration strategy
-* [docs/troubleshooting.md](docs/troubleshooting.md) — Technical troubleshooting and diagnostics support
 
 ---
 
@@ -246,7 +263,7 @@ Beyond regression tests, NAM-rs includes a comprehensive off-RT measurement libr
 | **LRA**           | EBU Tech 3342             | Statistical distribution             |
 | **True-peak**     | BS.1770-4 Annex 2         | Inter-sample overs > 0 dBFS detected |
 
-All measurement functions allocate on the heap and are **not** RT-safe — they are designed for integration tests and offline QA tooling. See [docs/architecture.md §5.3](docs/architecture.md) for the full module map and [docs/perceptual_validation.md](docs/perceptual_validation.md) for perceptual benchmarking methodology.
+All measurement functions allocate on the heap and are **not** RT-safe — they are designed for integration tests and offline QA tooling. See [docs/testing.md](docs/testing.md) for the full module map and [docs/perceptual_validation.md](docs/perceptual_validation.md) for perceptual benchmarking methodology.
 
 ### Test Execution Scripts
 

@@ -317,7 +317,7 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 - [`docs/fastmath-approximations.md`](fastmath-approximations.md) — Detailed Padé/minimax analysis, ULP bounds, bench numbers
 - [`docs/lstm_recurrent_drift.md`](lstm_recurrent_drift.md) — Full RCA of LSTM ESR accumulation (§3 above)
 - [`docs/perceptual_validation.md`](perceptual_validation.md) — Measurement framework, gate methodology, ABSOLUTE_ESR_CAP
-- [`docs/architecture.md`](architecture.md) — §2 (weight compression), §3 (resampler), §4 (oversampling), §5 (pipeline flow)
+- [`docs/architecture.md`](architecture.md) — §2.2 (weight compression), §5 (resampler + pipeline flow), §5.0O (oversampling)
 - [`docs/research-references.md`](research-references.md) — Scientific references (Kahles 2019, Sato & Smith 2025, etc.)
 - `src/dsp/oversample.rs` — Oversampling engine
 - `src/dsp/resampler.rs` — Polyphase sinc resampler
