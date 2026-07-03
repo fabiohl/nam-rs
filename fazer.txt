@@ -1,13 +1,5 @@
-* /revisor-auditor totalmente focado na role "Compliance and Parity Auditor".
-  Neste chat aqui vamos dar uma boa organizada nos scripts de testes! Foco: "utils/tests-long.sh"
-  Assim como o "utils/tests-quick.sh" não deve repetir o "utils/lints.sh", da mesma forma o "utils/tests-long.sh" não repete o "utils/tests-quick.sh". Ele apenas vai além do escopo daqueles teste, sendo o extremo caçador final executado noturnamente.
-  Ele precisa ser completo (na verdade, complementar os demais) no sentido de verificar tudo o que o NAM-rs tenha de suíte QA mais avançada disponível (mais ainda assim não repetindo os demais).
-  Idealmente, já compilando com o perfil de release para o produto acabado para o cliente final.
-  Ser completo não significa em hipótese alguma ser desorganizado e bagunçado (bloated). Isso dificulta muito que problemas difíceis de achar sejam notados. Imagine se na rodada noturna ele quebra por bobagem! Ficaremos um dia inteiro sem sua avaliação até a próxima noite?
-  É muito importante entender conceitualmente o espírito e os objetivos da arquitetura de testes (vide "docs/testing.md") para ter uma visão de papeis e expectativas aqui.
-  Ao final, atualizar o "docs/testing.md" para refletir a nossa nova visão constuida aqui.
-  Mas cuidado para não aglomerar informações. O documento final DEVE ser sintético, fácil de entender, resumido, direto ao ponto, útil e verdadeiro.
-  E com o "docs/testing.md" atualizado, atualizar também o ".agents/rules/testing.md". Muito cuidado com este. Ele deve ser enxuto e muito direto (takvez compartilhando em utils/_lib.sh). Não ser de forma alguma repetitivo com o "docs/testing.md". Contém apenas o essencial - os detalhes estão em "docs/testing.md".
+* Debugar isto: docs/testing.md L227-231
+* utils/build-release.sh utils/run-standalone.sh bitwig
 * /documentador: Atualizar criticamente o "docs/audio_fidelity_map.md" para o estado atual da arquitetura, recentemente revisada como um todo. Atualizado, limpo, útil!
   Vários documentos são complementares a ele: "docs/perceptual_validation.md", "docs/fastmath-approximations.md" e "docs/lstm_recurrent_drift.md".
   Muita informação dispersa, que penso ficar melhor organizada dentro do "docs/audio_fidelity_map.md".

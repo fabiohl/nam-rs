@@ -2,9 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
-# Intensive long-duration verification suite for nam-rs.
-# Performs numerical soak tests, proptest fuzzing, NeuralAmpModelerCore parity checks,
-# CLAP release compliance, multi-instance stress tests, and long-running performance benchmarks.
+# Nightly/pre-release audit suite — the final, extreme bug hunter of nam-rs.
+# Runs the full advanced QA surface that `utils/lints.sh` (static analysis)
+# and `utils/tests-quick.sh` (agile first line) deliberately leave out:
+# numerical soak/endurance, full proptest/fuzz case counts, full C++
+# NeuralAmpModelerCore parity matrix (multi-SR), cross-ISA determinism,
+# RT-safety heap-audits, release-mode CLAP compliance + concurrency stress,
+# Criterion benchmarks for the record, and the RT deadline/jitter gate.
+# Everything measuring floats runs `--release` — the codegen path that
+# ships to the end user (see docs/testing.md §2, Axis B).
+#
+# Non-duplication contract (docs/testing.md §2, §4):
+#   - Does NOT repeat `lints.sh` (fmt/check/clippy) or `tests-quick.sh`
+#     (structural debug tests, the 5 measurement oracles, capped parser
+#     fuzzing). It only runs what those two intentionally leave `#[ignore]`d
+#     or out of scope. Every phase below cross-references its quick-suite
+#     counterpart so scope drift is visible at a glance.
+#   - Does NOT repeat `tests-performance-regression.sh` (per-push baseline
+#     gate) — Phase 6 records the full Criterion suite for the nightly
+#     archive, with no baseline gating of its own.
+#
+# Failure isolation: each phase runs to completion independently (§6.2) so
+# one bad phase never hides the rest — a nightly run that dies on a shell
+# bug would cost a full day of blind spots before the next window.
 #
 # Environment variables:
 #   NAM_SKIP_GOLDEN_BUILD=1   Opt-out from automatic generation of missing golden vectors.
@@ -17,25 +37,16 @@ set -euo pipefail
 ## Observação à IA: Dado à longa (por design) duração da execução deste script, é PROIBIDO executa-lo durante atividades de IA.
 ### Se necessário, peça ao desenvolvedor humano para roda-lo e trazer o resultado.
 
-# Style helpers
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+# Shared style helpers (RED/GREEN/YELLOW/BLUE/BOLD/NC) + cd to project root.
+source "$(dirname "$0")/_lib.sh"
 
-# Setup defensive error trap
+# Setup defensive error trap (message-only; phase failures are isolated via
+# `run_phase ... || true` below and never reach this trap — see §6.2).
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 50 minutes)   ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-
-# Ensure we are in the project root directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
 
 # Setup target logs
 rm -rf target/logs/
@@ -230,6 +241,20 @@ else
     echo -e "  ${YELLOW}⚠ No freshness manifest found (.golden_manifest.sha256). Run golden_gen_build.sh to generate.${NC}"
 fi
 
+# ── Catalog↔test coherence gate (blocking) ──
+# `meta_coherence` is a cheap, dependency-free governance test (no NAMCore, no
+# goldens needed — it only parses golden_gen_build.sh + tests/*.rs). It has no
+# home in tests-quick.sh (not a correctness or structural test) and would be
+# silently orphaned ("on demand" only) without this hook. Runs here, before
+# the ± 50 min battery, so a drifted catalog fails fast instead of burning a
+# full nightly window before being noticed.
+echo -e "\n${BLUE}${BOLD}→ Verificando coerência catálogo↔testes (meta_coherence)...${NC}"
+if ! cargo test --release --test meta_coherence; then
+    echo -e "${RED}${BOLD}❌ meta_coherence falhou — catálogo de goldens divergiu dos testes #[ignore].${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Catálogo de goldens coerente com os testes.${NC}"
+
 # Trackers for the final summary
 declare -a PHASE_NAMES
 declare -a PHASE_COMMANDS
@@ -347,12 +372,28 @@ run_phase() {
     return $status
 }
 
-# --- Phase 1: Soak/Stress tests + PipeWire Integration (release, standalone) ---
-run_phase \
-    "Soak Tests (Numerical Stability)" \
-    'status=0; timed_cargo_test "soak_test" --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1; timed_cargo_test "pipeline_soak" --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1; [ $status -eq 0 ]' \
-    "phase1-soak.log" || true
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase bodies — one function per phase. Each function is passed by name to
+# run_phase (never inlined as a giant `;`-chained string) so the suite stays
+# easy to scan and extend without accumulating one-liner cruft (the exact
+# "bagunçado" failure mode we want to avoid in an unattended nightly job).
+# Every phase cross-references its non-overlapping tests-quick.sh counterpart.
+# ═══════════════════════════════════════════════════════════════════════════
 
+# --- Phase 1: Soak/Endurance (release, standalone, --ignored) ---
+# tests-quick.sh runs 1 non-ignored decomposition test per suite (Fase 1,
+# debug); every #[ignore]'d soak/endurance test (10M+ frames) lives here.
+run_soak_phase() {
+    local status=0
+    timed_cargo_test "soak_test" --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1
+    timed_cargo_test "pipeline_soak" --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1
+    return $status
+}
+run_phase "Soak Tests (Numerical Stability)" "run_soak_phase" "phase1-soak.log" || true
+
+# --- Phase 2: PipeWire Integration (release, standalone; graceful skip) ---
+# Never runs in tests-quick.sh (would make the daily suite depend on a live
+# PipeWire daemon). Skips gracefully when no daemon is reachable.
 run_pipewire_phase() {
     echo "  Verificando daemon PipeWire..."
     if pw-cli info >/dev/null 2>&1; then
@@ -363,26 +404,86 @@ run_pipewire_phase() {
         return 0
     fi
 }
+run_phase "PipeWire Integration Test" "run_pipewire_phase" "phase2-pipewire.log" || true
 
-run_phase \
-    "PipeWire Integration Test" \
-    "run_pipewire_phase" \
-    "phase1-pipewire.log" || true
+# --- Phase 3: Property-Based, FSM, Parity, Golden Vectors & ISA (release) ---
+# The full, uncapped counterpart of tests-quick.sh Fase 2/3: every proptest
+# runs at its full case count (Fase 3 caps proptest_parsers at 1000 cases),
+# the C++/golden oracles run their full multi-SR/full-matrix scope (Fase 2
+# only runs the v1/quick_parity subset), and cross-ISA + heavy/dyn parity —
+# entirely absent from the quick suite — run here for the first time.
+run_proptests_parity_phase() {
+    local status=0
+    # Full-count parser/math/gate/FSM fuzzing (quick caps or excludes these).
+    timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1
+    timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1
+    timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1
+    timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1
+    timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1
+    timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1
+    # ModelDyn scalar-vs-SIMD parity proptests (arbitrary topologies) — no
+    # quick-suite equivalent; LstmModelDyn parity is otherwise untested.
+    timed_cargo_test "lstm_model_dyn_validation" --release --no-fail-fast --test lstm_model_dyn_validation -- --ignored --nocapture || status=1
+    # Full C++ NAMCore live parity matrix + CabSim convolution parity
+    # (quick's Fase 2 only runs the 3-model `quick_parity` subset).
+    timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1
+    timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1
+    # Golden vectors v2 (multi-SR); v1 already covered by quick's Fase 2.
+    timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --ignored --nocapture || status=1
+    # Heavy/long receptive-field golden regression (quick only runs the
+    # cheap non-ignored linear_golden cases).
+    timed_cargo_test "linear_golden_heavy" --release --no-fail-fast --test linear_golden -- --ignored --nocapture || status=1
+    # Full cross-ISA determinism matrix (AVX-512, VNNI+BF16 vs AVX2). Quick's
+    # Fase 2 only asserts AVX2 self-consistency; gracefully skips per-model
+    # when the running CPU lacks the target ISA (see skip_if_unsupported!
+    # in tests/isa_parity.rs) — safe to run unconditionally on any machine.
+    timed_cargo_test "isa_parity_full_matrix" --release --no-fail-fast --test isa_parity -- --ignored --test-threads=1 --nocapture || status=1
+    # Per-model spectral fidelity baselines (ASR/THD+N/IMD/Farina vs the
+    # committed fixture). Filtered to `baseline_*` to exclude the manual-only
+    # `generate_spectral_fidelity_baseline` fixture writer (never auto-run).
+    timed_cargo_test "spectral_fidelity_baselines" --release --no-fail-fast --test spectral_fidelity -- baseline_ --ignored --nocapture || status=1
+    # Random block-size sweep for the pipeline resampler chain.
+    timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1
+    # Tier-3 "approx-vs-approx" consistency checks (Padé/poly NR1 vs NR2 vs
+    # div_ps, AVX2 + AVX-512): the f64 Oracle already provides absolute
+    # correctness, so these only guard against silent regressions between two
+    # approximate paths (docs/testing.md §8). AVX-512 variants self-skip via
+    # `is_x86_feature_detected!` when unsupported.
+    timed_cargo_test "tanh_pade_consistency" --release --no-fail-fast --lib -- "math::activations::tanh::" --ignored --nocapture || status=1
+    # Gate FSM envelope continuity proptest (10k cases) — unit-level sibling
+    # of tests/gate_fsm_proptest.rs, covers the DynamicHysteresis reversal
+    # edge case specifically.
+    timed_cargo_test "gate_envelope_continuity_proptest" --release --no-fail-fast --lib -- "dsp::gate::gate_test::tests::gate_envelope_continuity_on_reversal" --ignored --nocapture || status=1
+    # NOTE: `dsp::oversample::oversample_test::test_x2_aliasing_rejection` is
+    # intentionally NOT run here. It was found during this audit to hang
+    # indefinitely in --release (>30s with no output, vs. a synthetic 128-sample
+    # computation that should take microseconds) — a real bug, not a scope
+    # decision. Do not add it back without first fixing the hang; a hang in a
+    # nightly-only job is worse than a failure — it silently eats the whole
+    # ± 50 min window with no report the next morning.
+    return $status
+}
+run_phase "Property-Based, Parity & Golden Vectors in Release" "run_proptests_parity_phase" "phase3-proptests-parity.log" || true
 
-# --- Phase 2: Property-Based, Parity, C++ Parity, Golden Vectors (release, default) ---
-run_phase \
-    "Property-Based, Parity & Golden Vectors in Release" \
-    'status=0; timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1; timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1; timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1; timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1; timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1; timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1; timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1; timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --ignored --nocapture || status=1; timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1; [ $status -eq 0 ]' \
-    "phase2-proptests-parity.log" || true
+# --- Phase 4: RT-Safety Heap-Audit (release, heap-audit) ---
+# Zero-alloc verification under the global counting allocator. No quick-suite
+# equivalent — the `heap-audit` feature is exclusively a long-suite concern.
+run_heap_audit_phase() {
+    local status=0
+    timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1
+    timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1
+    timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1
+    timed_cargo_test "diagnostic_bundle_heap_audit" --release --no-fail-fast --features heap-audit --test diagnostic_bundle -- heap_audit || status=1
+    return $status
+}
+run_phase "Resampler, Cabsim & A2 Heap-Audit" "run_heap_audit_phase" "phase4-heap-audit.log" || true
 
-# --- Phase 3: Resampler Heap-Audit (release, heap-audit) ---
-run_phase \
-    "Resampler, Cabsim & A2 Heap-Audit" \
-    'status=0; timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1; timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1; timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1; timed_cargo_test "diagnostic_bundle_heap_audit" --release --no-fail-fast --features heap-audit --test diagnostic_bundle -- heap_audit || status=1; [ $status -eq 0 ]' \
-    "phase3-heap-audit.log" || true
-
-# --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
-run_clap_audit_local() {
+# --- Phase 5: CLAP Release Validation & Concurrency ---
+# Builds and audits the real release `.so` (SONAME, exported symbols,
+# clap-validator, lifecycle, state migration, multi-instance/GC/concurrency
+# stress). tests-quick.sh only exercises the debug CLAP build; this is its
+# strict release-mode superset and never runs anywhere else.
+run_clap_audit_phase() {
     # Keep RUSTFLAGS consistent across this block to avoid Cargo cache invalidation loops
     local RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap -Clink-arg=-Wl,-u,clap_entry"
     export RUSTFLAGS
@@ -442,23 +543,33 @@ run_clap_audit_local() {
 
     return $audit_status
 }
+run_phase "CLAP Release Validation & Concurrency" "run_clap_audit_phase" "phase5-clap-validation.log" || true
 
-run_phase \
-    "CLAP Release Validation & Concurrency" \
-    "run_clap_audit_local" \
-    "phase4-clap-validation.log" || true
+# --- Phase 6: Long Performance Benchmarks (Criterion, for the record) ---
+# Records the full bench suite nightly. No baseline gating here — that is
+# the exclusive job of `utils/tests-performance-regression.sh` (run per-push,
+# not duplicated). `fft_radix4_bench`, `gemv_bench`, and `linear` (bench) are
+# one-off research artifacts documenting past engineering decisions, not
+# regression gates — intentionally excluded from every automated suite.
+run_benchmarks_phase() {
+    local status=0
+    cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench long_inference_bench || status=1
+    return $status
+}
+run_phase "Long Performance Benchmarks" "run_benchmarks_phase" "phase6-benchmarks.log" || true
 
-# --- Phase 5: Long Benchmarks (Performance) ---
-run_phase \
-    "Long Performance Benchmarks" \
-    'status=0; cargo bench --features long_bench --bench inference_bench --bench dot_4x_bench --bench kahan_conv1d_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1; cargo bench --features long_bench --bench long_inference_bench || status=1; [ $status -eq 0 ]' \
-    "phase5-benchmarks.log" || true
-
-# --- Phase 6: RT Deadline Gate + Jitter/Stress ---
-run_phase \
-    "RT Deadline Gate & Jitter Stress" \
-    'status=0; timed_cargo_test "rt_deadline" --release --no-fail-fast --test rt_deadline -- --nocapture || status=1; timed_cargo_test "rt_jitter" --release --no-fail-fast --test rt_jitter -- --ignored --nocapture || status=1; [ $status -eq 0 ]' \
-    "phase6-rt-deadline.log" || true
+# --- Phase 7: RT Deadline Gate & Jitter Stress (release-only; meaningless in debug) ---
+# Absolute latency ceiling (p99 < 1.33 ms) + jitter characterization under
+# CPU contention. Never runs in tests-quick.sh (needs release + a quiet
+# enough window to be meaningful — the opposite of "run several times a day").
+run_rt_deadline_phase() {
+    local status=0
+    timed_cargo_test "rt_deadline" --release --no-fail-fast --test rt_deadline -- --nocapture || status=1
+    timed_cargo_test "rt_jitter" --release --no-fail-fast --test rt_jitter -- --ignored --nocapture || status=1
+    return $status
+}
+run_phase "RT Deadline Gate & Jitter Stress" "run_rt_deadline_phase" "phase7-rt-deadline.log" || true
 
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"
@@ -490,9 +601,9 @@ for ((i=0; i<PHASE_COUNT; i++)); do
     name="${PHASE_NAMES[$i]}"
     sub_timings="${PHASE_SUB_TIMINGS[$i]}"
 
-    # Phase 5 (benchmarks) uses criterion — parse bench log separately
+    # Phase 6 (benchmarks) uses criterion — parse bench log separately
     if [[ "$name" == *"Benchmark"* ]]; then
-        bench_log="phase5-benchmarks.log"
+        bench_log="phase6-benchmarks.log"
         top_benches=$(extract_top_benches "target/logs/$bench_log" "$N_TOP_SLOWEST" 2>/dev/null)
         if [ -n "$top_benches" ]; then
             echo -e "\n  ${YELLOW}${BOLD}[$name]${NC}"
