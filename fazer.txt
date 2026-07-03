@@ -1,7 +1,3 @@
-* /revisor-auditor [GLM5.2] totalmente focado na role "Resilience and Robustness Specialist".
-  Aqui vamo focar na vertical do modo plugin CLAP (atualmente documentado em "docs/clap_integration.md" e em "docs/gui-architecture.md").
-  Analisar criticamente a qualidade deste sistema e manter a documentação acima mencionada atualizada e correta. Idealmente fundindo-as em um só.
-  Mas cuidado para não aglomerar informações. O documento final DEVE ser sintético, fácil de entender, resumido, direto ao ponto, útil e verdadeiro.
 * /documentador: Atualizar criticamente o "docs/architecture.md" para o estado atual da arquitetura, recentemente revisada como um todo. Atualizado, limpo, útil!
   Buscar não ser repetitivo com nada do restante do diretório "doc/". Deixe que cada documento cumpra o seu papel especializado. Ele ("docs/architecture.md") é apenas o "diretório geral". E o que não cabe em nenhum outro documento.
   Fazer a mesma coisa com o "docs/dependencies.md". Ele é muito repetitivo com o "README.md" e com o próprio "Cargo.toml"! Idealmente, este arquivo deveria deixar de existir, com suas informações sendo absorvidas por outros documentos.
@@ -10,13 +6,13 @@
   Depois disto tudo, cuidado para não aglomerar informações. Os documentos final todos DEVEM ser sintético, fáceis de entender, resumidos, diretos ao ponto, útil e verdadeiro.
 
 * Lidar com estes bugs: known-bugs.md
-* [Sonnet] Prova de conceito de impacto (performance e qualidade) da remoção de:
+* Prova de conceito de impacto (performance e qualidade) da remoção de:
   docs/audio_fidelity_map.md "1. Weight Compression — F16C / BF16"; "3. LSTM Recurrent State Quantization Drift".
   docs/cpp_parity_map.md "2.5 Precision divergence: quantized backbone weights", "2.7 Measured interop drift" e "7.2 🟡 Known, measured, accepted tradeoffs — not bugs" / LSTM backbone weight quantization.
   docs/lstm_recurrent_drift.md
 
-* /revisor-auditor [Fable] totalmente focado na role "Resilience and Robustness Specialist".
-* /refatora-rust [Deep Seek]
+* /refatora-rust [GLM5.2]
+* /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Resilience and Robustness Specialist".
 * /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Performance and Low-Latency Master".
   Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas!
   Analise o "target/dsp_hotpath.asm" gerado pelo "utils/build-release.sh" atrás de insights de performance!

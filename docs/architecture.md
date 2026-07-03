@@ -867,17 +867,17 @@ A segmented control labeled "Oversampling" with three selectable options (**Off*
 
 This is the same lock-free GC cascade pattern used for model hot-swap.
 
-> **References:** [`src/standalone/cli.rs`](../src/standalone/cli.rs), [`src/clap/gui/ui/zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs), [`src/clap/gui/ui/zones/identity.rs`](../src/clap/gui/ui/zones/identity.rs), [`src/clap/gui/ui/zones/meters.rs`](../src/clap/gui/ui/zones/meters.rs), [`src/clap/gui/ui/zones/bypass_zone.rs`](../src/clap/gui/ui/zones/bypass_zone.rs), [`src/clap/gui/ui/status_bar/orchestrator.rs`](../src/clap/gui/ui/status_bar/orchestrator.rs), [`src/clap/processor/events.rs`](../src/clap/processor/events.rs), [`src/clap/plugin/main_thread/housekeeping.rs`](../src/clap/plugin/main_thread/housekeeping.rs), [`docs/gui-architecture.md`](gui-architecture.md).
+> **References:** [`src/standalone/cli.rs`](../src/standalone/cli.rs), [`src/clap/gui/ui/zones/controls.rs`](../src/clap/gui/ui/zones/controls.rs), [`src/clap/gui/ui/zones/identity.rs`](../src/clap/gui/ui/zones/identity.rs), [`src/clap/gui/ui/zones/meters.rs`](../src/clap/gui/ui/zones/meters.rs), [`src/clap/gui/ui/zones/bypass_zone.rs`](../src/clap/gui/ui/zones/bypass_zone.rs), [`src/clap/gui/ui/status_bar/orchestrator.rs`](../src/clap/gui/ui/status_bar/orchestrator.rs), [`src/clap/processor/events.rs`](../src/clap/processor/events.rs), [`src/clap/plugin/main_thread/housekeeping.rs`](../src/clap/plugin/main_thread/housekeeping.rs), [`docs/clap_integration.md`](clap_integration.md).
 
 ---
 
 ## 8.3 Architectural Decisions
 
-Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](clap_integration.md). A comprehensive guide to the graphical user interface architecture, rendering lifecycle, and thread synchronization is available in [docs/gui-architecture.md](gui-architecture.md).
+Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), target DAWs, full GUI module map, rendering lifecycle, and thread synchronization are documented in [docs/clap_integration.md](clap_integration.md).
 
 ### 8.3.1 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
-The graphical interface is decomposed from its original monolithic state into a structure of readable and reusable modules located in [src/clap/gui/ui/](../src/clap/gui/ui/) (see the detailed [docs/gui-architecture.md](gui-architecture.md) for full architectural mapping):
+The graphical interface is decomposed from its original monolithic state into a structure of readable and reusable modules located in [src/clap/gui/ui/](../src/clap/gui/ui/) (see the detailed [docs/clap_integration.md §7](clap_integration.md#7-gui-architecture) for full architectural mapping):
 
 - **`mod.rs`:** Main drawing orchestrator. The `draw_ui` function delegates to 5 zone functions: `draw_zone1_identity`, `draw_zone2_controls`, `draw_zone3_meters`, `draw_zone4_bypass`, and `draw_zone5_status_bar`.
 - **`zones/`:** One file per GUI zone — `identity.rs` (Zone 1 logo + model loader), `controls.rs` (Zone 2 knobs), `meters.rs` (Zone 3 adaptive VU meters), `bypass_zone.rs` (Zone 4 bypass toggle).
@@ -941,7 +941,7 @@ The graphical interface is decomposed from its original monolithic state into a 
 > - **Toast/Loading Animations:** Visual elements that animate or fade out cannot rely solely on the host scheduling frame ticks or on passive repaint flags. Instead, they must actively call `request_repaint()` on the `egui::Context` during their active duration.
 > - **Reduced Idle CPU:** CPU utilization drops to virtually 0% when the UI is open but static (no audio playing and no user interaction).
 
-- **References:** [handler.rs](../src/clap/gui/window/handler.rs), [gui-architecture.md](gui-architecture.md#L154-L172).
+- **References:** [handler.rs](../src/clap/gui/window/handler.rs), [clap_integration.md §7.3](clap_integration.md#73-frame-lifecycle--idle-skip).
 
 ### 8.3.4 CLAP Mono Design and Stereophonic Discard
 

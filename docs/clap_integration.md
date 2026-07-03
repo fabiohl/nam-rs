@@ -2,214 +2,297 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
-# CLAP (Clever Audio Plug-in) Integration Strategy
 
-This document describes the architecture and strategy for transforming the NAM-rs DSP engine into an audio plugin compatible with the CLAP standard.
+# CLAP Integration & GUI Architecture
+
+Architecture, real-time safety model, and graphical interface of the NAM-rs CLAP
+plugin. This document supersedes the former `gui-architecture.md`.
 
 ## 1. Thread Model
 
-The CLAP integration must strictly respect the thread segregation already existing in NAM-rs, mapping them to the host's (DAW) model:
+The plugin maps NAM-rs's existing thread segregation onto the host (DAW) model:
 
-- **Main Thread (Host)**:
-  - Responsible for plugin initialization, parameter scanning, and state management.
-  - In NAM-rs, this thread manages the CLAP lifecycle via `src/clap/plugin/main_thread.rs`.
-  - Manages the loading of `.nam`/`.namb` files via `src/loader/`.
-- **Audio Thread (Real-time)**:
-  - Called by the host via the `process()` callback.
-  - **Critical Requirement**: Must maintain a policy of **ZERO allocations** and **ZERO locks**.
-  - Uses `src/dsp/pipeline/` for processing, adapting CLAP buffers to the internal format.
-  - Unlike PipeWire (which is dual-stream), CLAP provides input and output buffers in a single context, eliminating the need for `DspBridge`.
+- **Main Thread (Host)** — plugin lifecycle, parameter scanning, state
+  save/load, model loading (`src/clap/plugin/main_thread/`), and GC disposal.
+  Loads `.nam`/`.namb` via `src/loader/`.
+- **Audio Thread (RT)** — driven by the host `process()` callback.
+  **Hard contract: zero allocations, zero locks, zero blocking I/O.** Runs the
+  DSP pipeline (`src/clap/processor/dsp/`). Unlike PipeWire's dual-stream model,
+  CLAP delivers input and output in a single callback, so no `DspBridge` is used.
+- **GUI Thread** — dedicated baseview event loop, fully isolated from the audio
+  thread (see §7).
 
-## 2. Parameter Mapping
+## 2. Compilation Strategy
 
-Parameters exposed to the host will be mapped from the `NamPluginParams` structure (see `src/common/params.rs`):
-
-| CLAP Parameter          | ID                      | Unit   | Description                                                                     |
-|:----------------------- |:----------------------- |:------ |:------------------------------------------------------------------------------- |
-| **Input Gain**          | `input_gain_db`         | dB     | Gain applied before neural inference.                                           |
-| **Output Gain**         | `output_gain_db`        | dB     | Gain applied after neural inference.                                            |
-| **Gate Threshold**      | `gate_threshold_db`     | dB     | Noise Gate opening threshold.                                                   |
-| **Bypass**              | `bypass`                | binary | Disables neural processing (Dry/Wet 0/100).                                     |
-| **Active Model**        | `active_model`          | —      | Loaded model name (read-only).                                                  |
-| **Adaptive Compute**    | `adaptive_compute`      | binary | Enables or disables real-time CPU-based quality fallback (FSM).                 |
-| **Slim Override**       | `slim_override`         | —      | Manual quality level override (stepped: Auto, Full, Lite).                      |
-| **Oversampling Factor** | `oversample`            | —      | Neural stage oversampling factor (stepped: Off, 2×, 4×).                        |
-| **Activation Precision**| `activation_precision`  | —      | Neural activation implementation precision (stepped: Standard, HighFidelity).   |
-
-The model path (`model_path`) will be treated as a **State Property**, allowing the DAW to save and load the correct model in the project.
-
-## 3. Compilation Strategy
-
-The project uses *feature flags* to allow multiple build targets:
-
-- `cargo build`: Executable binary with PipeWire backend (default). The `standalone` feature is enabled by default.
-- `cargo build --no-default-features --features clap-plugin --lib`: Dynamic library (`.clap`) with a complete GUI.
-
-The `clap-plugin` feature will omit the entire `src/standalone/` module (PipeWire host, RT setup, and CLI), keeping the final binary free of PipeWire dependencies.
-
-## 4. Framework: `clack-plugin`
-
-- **Reason**: Offers granular control over the implementation without adding unnecessary overhead, allowing direct integration with the RT-safe structures of NAM-rs. Unlike more opinionated frameworks, `clack` maps almost 1:1 to the CLAP spec while providing type safety in Rust.
-- **High-level Frameworks**: Discarded as they force support for VST3, introduce an embedded GUI layer that conflicts with our choice of pure `egui`, and add abstractions that could mask the temporal determinism required by the NAM-rs DSP engine.
-- **Link**: [https://github.com/prokopyl/clack](https://github.com/prokopyl/clack)
-
-## 5. Implemented CLAP Extensions
-
-The integration uses the `clack-extensions` crate to implement the following extensions of the CLAP protocol:
-
-| Extension                      | File                                      | Purpose                                                                                                                 |
-|:------------------------------ |:----------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`      | Explicit declaration of mono input/output ports and support for in-place processing                                     |
-| `clap_plugin_params`           | `src/clap/extensions/params.rs`           | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
-| `clap_plugin_state`            | `src/clap/extensions/state.rs`            | Persistence of plugin state (parameters and model path) in the DAW project                                              |
-| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`          | Dynamic reporting of latency induced by processing and resampling to the host                                           |
-| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`       | Support for host track color to dynamically adapt the GUI's accent color                                                |
-| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`  | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
-| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs` | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
-| `clap_plugin_gui`              | `src/clap/extensions/gui.rs`              | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
-
-> [!NOTE]
-> **Adaptive VU Metering Contract:** While the core DSP processing (neural network inference and noise gate) is mono, the VU meter dynamically adapts to the host's track channel configuration.
->
-> - **Host Configuration & Dynamic Detection:** During the FFI `process()` callback, the plugin inspects the host's `Audio` port buffers inside the real-time thread (`src/clap/processor/dsp/channels.rs`).
-> - **Shared State Update:** If the host provides $\ge 2$ channel buffers (indicating a stereo routing context), the audio thread dynamically stores `2` in the atomic field `shared.rt_to_ui.active_channel_count` (with `Ordering::Relaxed`). Otherwise, it stores `1`.
-> - **UI Layout Adaptation:** The GUI/UI thread reads this atomic variable inside the layout logic (`src/clap/gui/ui/zones/meters.rs`) and adapts the VU meter rendering at runtime: showing two separate L and R bars (36px wide each) or a single centered bar (76px wide).
-
-## 6. Plugin Descriptor
-
-The plugin metadata descriptor will follow this pattern:
-
-- **Plugin ID**: `br.eti.fabiolima.nam-rs`
-- **Name**: `NAM-rs`
-- **Vendor**: `Fabio Lima`
-- **URL**: [https://github.com/fabiohl/nam-rs](https://github.com/fabiohl/nam-rs)
-- **Features**: `["audio-effect", "distortion", "gate", "mono"]` (CLAP 1.2.2 standard features — validated against `include/clap/plugin-features.h`)
-
-> [!NOTE]
-> The NAM standard is, by definition, mono. The CLAP plugin's core DSP processing works strictly as mono (mono-in/mono-out) to align with traditional DAW workflows where channel routing is managed externally by the host. However, the VU meter in Zone 3 is adaptive: it displays a single centered bar when running in a mono track configuration, or two independent L/R bars when the host configures a stereo track (providing $\ge 2$ channels). In contrast, in the Standalone/Pipewire executable, full stereo processing is provided as a convenience for native stereo signals.
-
-## 7. Target DAWs for Validation
-
-- **Bitwig Studio**: Active validation target. The absolute reference platform for CLAP compliance (co-author of the standard). Essential for validating sandboxing behavior, dynamic parameters, state persistence, and sample-accurate automation.
-- **REAPER**: *Not actively tested* — known issues with the Linux PipeWire backend on Debian/Ubuntu-based systems make reproducible validation impractical. Bitwig Studio remains the primary CI target.
-- **Fender Studio Pro 8+**: Active validation target. Since the host runs as a native Wayland client on Linux and the plugin GUI is currently built exclusively for X11 (`CLAP_WINDOW_API_X11`), native embedding is not supported. The plugin instead runs in floating fallback mode (opening as an independent top-level window) or via host-provided generic sliders, verifying DSP, parameter automation sync, and host stability without freezing. Native Wayland GUI support (`CLAP_WINDOW_API_WAYLAND`) is planned for a future release.
-- **CLAP-info / CLAP-host**: Command-line tools for rigorous technical validation of the spec.
-
-## 8. Graphical Interface: Windowing Strategy and Stack
-
-The CLAP plugin GUI operates on a dedicated thread (`UI thread`), completely isolated from the `audio thread`. The architecture is unified on the X11 backend. For a detailed guide on the GUI architecture, drawing sub-modules, frame rendering pipeline lifecycle, synchronization state variables, GPU shaders, CPU fallback path, and keyboard accessibility focus logic, see the dedicated [docs/gui-architecture.md](gui-architecture.md) document.
-
-### Unified Windowing Strategy (Pure X11)
-
-```text
-┌────────────────────────────────────────────────┐
-│                  NAM-rs GUI                    │
-│              (egui + egui_glow)                │
-│    draw_ui() — 100% agnostic UI logic          │
-├────────────────────────────────────────────────┤
-│       NamPluginWindow (WindowHandler)          │
-│   baseview events → egui::RawInput translation │
-│   Rendering via egui_glow::Painter + glow      │
-├────────────────────────────────────────────────┤
-│                  Backend X11                   │
-│   (baseview - raw-window-handle 0.5 → 0.6)    │
-│           Pure X11 / native XWayland           │
-└────────────────────────────────────────────────┘
-```
-
-- **X11 Backend:** The plugin declares exclusive support for `CLAP_WINDOW_API_X11`.
-- **Stack:** `egui v0.34` + `glow v0.17`, with window handle translation (`raw-window-handle 0.5` from host to `0.6` for `egui`/`baseview`).
-- **Implementation:** `NamPluginWindow` implements `baseview::WindowHandler`, translating events to `egui::RawInput` without an intermediate layer.
-
-### Technology Stack
-
-| Component     | Crate/Technology | Role                                                                                          |
-|:------------- |:---------------- |:--------------------------------------------------------------------------------------------- |
-| GUI Framework | `egui`           | Immediate Mode GUI — no persistent state, no GC, no allocations in the render loop            |
-| Renderer      | `egui_glow`      | Bridge egui → OpenGL 3.3 via `glow`. Manual integration (no `egui-baseview`, abandoned ~2021) |
-| Windowing     | `baseview`       | Native embedded X11 window via `RawWindowHandle`. Dedicated event loop                        |
-| File Picker   | `rfd`            | Native asynchronous file dialog (zenity/xdg-portal). Never blocks the UI thread               |
+- `cargo build` — default standalone executable (PipeWire backend, `standalone`
+  feature). Omits `src/clap/gui/`.
+- `cargo build --no-default-features --features clap-plugin --lib` — `.clap`
+  dynamic library with GUI. Omits `src/standalone/` (PipeWire host, RT setup,
+  CLI), keeping the binary free of PipeWire dependencies.
 
 All GUI code lives under `src/clap/gui/` and is gated by `#[cfg(feature = "clap-plugin")]`.
 
-### Thread Isolation (UI ↔ Audio)
+## 3. Plugin Descriptor
 
-The UI thread **never** directly accesses the fields of `NamClapProcessor`. Communication is strictly via:
+| Field    | Value                                                         |
+|:-------- |:------------------------------------------------------------- |
+| ID       | `br.eti.fabiolima.nam-rs`                                     |
+| Name     | `NAM-rs`                                                      |
+| Vendor   | `Fabio Lima`                                                  |
+| URL      | <https://github.com/fabiohl/nam-rs>                           |
+| Features | `["audio-effect", "distortion", "gate", "mono"]` (CLAP 1.2.2) |
 
-- **Telemetry Read (Audio → UI):** Atomic fields in `NamClapShared` (`AtomicU32` for peaks, `AtomicBool` for clipping), read with `Ordering::Relaxed`.
-- **Command Dispatch (UI → Audio):** SPSC parameter channel (`ClapParamPayload`) via `param_tx`, drained at the start of each `process()`.
-- **Metadata (Main → UI):** `Mutex<String>` for the model name — accessed by the UI thread at 500ms intervals.
+The descriptor is returned by `nam_descriptor()` (`src/clap/descriptor.rs`) and
+is allocation-free, as it is read during host scan.
 
-## 9. Lock-Free Communication & Cache-Line Optimization
+> NAM is mono by definition. Core DSP is strictly mono in/mono out; channel
+> routing is managed by the host. The VU meter is adaptive (see §7.4).
 
-To achieve absolute real-time safety, high throughput, and low latency on the audio thread, the CLAP integration avoids mutexes or any blocking operations in the processing hot-path. Communication and synchronization between the GUI/Main thread and the Audio (RT) thread rely on cache-aligned atomic structures and Single-Producer Single-Consumer (SPSC) channels.
+## 4. Parameters
 
-### Cache-Line Isolation (False Sharing Prevention)
+Exposed via `NamPluginParams` (`src/common/params.rs`) and mapped in
+`src/clap/extensions/params/`. IDs are `u32` constants `PARAM_*` (0–8).
 
-Modern CPUs transfer data between cores in cache lines (typically 64 or 128 bytes). If two threads on different cores frequently write to different variables that reside on the same cache line, the cache line bounces between cores (False Sharing), degrading performance.
+| Parameter            | ID                     | Type    | Notes                                          |
+|:-------------------- |:---------------------- |:------- |:---------------------------------------------- |
+| Input Gain           | `input_gain_db`        | dB      | Pre-inference gain, sample-accurate smoothed.  |
+| Output Gain          | `output_gain_db`       | dB      | Post-inference gain, sample-accurate smoothed. |
+| Gate Threshold       | `gate_threshold_db`    | dB      | Noise-gate opening threshold.                  |
+| Bypass               | `bypass`               | binary  | Disables neural processing (dry = wet).        |
+| Active Model         | `active_model`         | —       | Loaded model name (read-only).                 |
+| Adaptive Compute     | `adaptive_compute`     | binary  | CPU-based quality fallback (FSM).              |
+| Slim Override        | `slim_override`        | stepped | Auto / ForceFull / ForceLite.                  |
+| Oversampling Factor  | `oversample`           | stepped | Off / 2× / 4×.                                 |
+| Activation Precision | `activation_precision` | stepped | Standard / HighFidelity.                       |
 
-To prevent this, `NamClapShared` segregates fields into three sub-structs based on access pattern, each isolated using `#[repr(align(128))]` to ensure they never share a cache line:
+The model path is a **State Property**, letting the DAW persist/restore the
+correct model in a project.
 
-1. **`RtToUi` (`#[repr(align(128))]`)**:
-   - **Access Pattern**: Written every audio block by the RT thread, read at the GUI refresh rate by the UI thread.
-   - **Data**: Peak levels (`ui_peak_l`, `ui_peak_r`), clipping flag (`ui_clipped`), reported latency (`current_latency`), and active channel count.
-2. **`UiToRt` (`#[repr(align(128))]`)**:
-   - **Access Pattern**: Written by the UI thread when controls are adjusted, read every block by the RT thread.
-   - **Data**: Target parameters (`param_input_gain`, `param_output_gain`, `param_gate_thresh`, `param_bypass`, `param_adaptive_compute`), gesture modification flags, and the synchronization counter (`gui_param_generation`).
-3. **`ColdShared` (`#[repr(align(128))]`)**:
-   - **Access Pattern**: Low-frequency access by both threads (e.g., initialization, model loading, DAW track changes).
-   - **Data**: SPSC queues (`param_rx`/`param_tx`, `gc_rx`/`gc_tx`), sample rates, model metadata, track accent colors, parameter indications, and UI loading states.
+## 5. CLAP Extensions
 
-### Parameter Synchronization Protocol (`gui_param_generation`)
+Registered in `declare_extensions()` (`src/clap/plugin/mod.rs`) via
+`clack-extensions`:
 
-During standard processing, loading multiple atomic parameters from `UiToRt` (such as gains, gate, and bypass) in every single audio block introduces unnecessary atomic read overhead, even when parameters are stationary.
+| Extension                      | File                                | Purpose                                                                                                                                         |
+|:------------------------------ |:----------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | `extensions/audio_ports.rs`         | Mono in/out ports, in-place pair enabled.                                                                                                       |
+| `clap_plugin_params`           | `extensions/params/`                | Parameter mapping/automation with gesture + `flush()` support.                                                                                  |
+| `clap_plugin_state`            | `extensions/state.rs`               | Persist parameters + model path in the DAW project.                                                                                             |
+| `clap_plugin_state_context`    | `extensions/state_context.rs`       | Distinguish preset save (portable, no abs path) vs project/duplicate.                                                                           |
+| `clap_plugin_latency`          | `extensions/latency.rs`             | Dynamic latency reporting (resampler + oversample + cabsim).                                                                                    |
+| `clap_plugin_track_info`       | `extensions/track_info.rs`          | Host track color → GUI accent color.                                                                                                            |
+| `clap_plugin_remote_controls`  | `extensions/remote_controls.rs`     | "Main" / "Gate" control pages for HW controllers / Device Panel.                                                                                |
+| `clap_plugin_param_indication` | `extensions/param_indication.rs`    | GUI feedback for mapped/automated/overridden parameters.                                                                                        |
+| `clap_plugin_preset_load`      | `extensions/preset_load.rs`         | Load `.nam`/`.namb` from the host preset browser.                                                                                               |
+| `clap_plugin_render`           | `extensions/render.rs`              | Offline mode forces `AdaptiveCompute::Off` + HighFidelity (max quality). `has_hard_realtime_requirement = false` (NAM is deterministic/causal). |
+| `clap_plugin_gui`              | `extensions/gui.rs` *(clap-plugin)* | Native `egui` GUI via `baseview`, X11/XWayland (`CLAP_WINDOW_API_X11`).                                                                         |
 
-To minimize hot-path atomic overhead, the synchronization uses a generation-counter protocol:
+A separate **Preset Discovery Factory** (`src/clap/factory/preset_discovery.rs`)
+indexes `.nam`/`.namb` files from `~/.nam/models` so hosts can list them as
+presets with extracted metadata.
 
-- **UI Thread Update**: When a GUI control (e.g., a knob) is modified, the GUI thread writes the new value to the corresponding atomic parameter in `UiToRt` and increments `gui_param_generation` using `Release` ordering.
-- **RT Thread Check**: At the start of `process_events()`, the RT thread reads `gui_param_generation` using a single `Acquire` load.
-  - If the loaded value matches the cached `last_seen_generation`, no GUI parameters have changed. The RT thread skips reading the individual atomic parameter fields, reducing the block overhead to a single atomic check.
-  - If the value differs, the RT thread updates its `last_seen_generation` and performs `Relaxed` loads on each parameter inside `UiToRt` to synchronize its internal state.
+## 6. Lock-Free Communication & RT Safety
 
-### SPSC Queues & RT-Safe Resource Management
+Cross-thread state lives in `NamClapShared` (`src/clap/plugin/shared.rs`). The
+hot-path uses **no mutexes, no locks, no allocations** — only atomics and SPSC
+queues. Mutexes wrap SPSC channel endpoints solely to allow ownership transfer
+during `activate()`/`deactivate()` and to satisfy the `Sync` bound.
 
-Since loading neural network models and resamplers requires disk access, parsing, and heap allocation, these tasks are offloaded to the Main/UI thread. The CLAP plugin uses lock-free SPSC queues (implemented via `rtrb`) for cross-thread transfers:
+### 6.1 Cache-Line Isolation
 
-1. **Model/Parameter Transfer (`param_tx` / `param_rx`)**:
-   - The Main thread packages new parameters or fully loaded models (and resamplers) into a `ClapParamPayload` enum and sends them via the queue.
-   - The RT thread drains this queue non-blockingly at the start of `process_events()`.
-2. **RT-Safe Garbage Collection (`gc_tx` / `gc_rx`)**:
-   - The RT thread must never drop heap-allocated objects (such as `Box<StaticModel>` or `Box<NamResampler>`), as dropping can trigger system deallocations and block the audio thread.
-   - When a new model is loaded, the RT thread replaces the active model/resampler and pushes the obsolete instances into `gc_tx` as `GcItem` variants.
-   - The Main thread periodically drains `gc_rx` and safely drops the resources.
-     - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
+`NamClapShared` is split into three `#[repr(align(128))]` sub-structs so no two
+share a cache line (false-sharing prevention):
 
-## 10. Model Gain Calibration (input_level_dbu / loudness)
+| Sub-struct   | Writer         | Reader         | Contents                                                                |
+|:------------ |:-------------- |:-------------- |:----------------------------------------------------------------------- |
+| `RtToUi`     | RT (every blk) | UI (refresh)   | `ui_peak_l/r`, `ui_clipped`, `current_latency`, `active_channel_count`. |
+| `UiToRt`     | UI/Main        | RT (every blk) | 8 param atomics, `gesture_flags`, `gui_param_generation`.               |
+| `ColdShared` | both (rare)    | both (rare)    | SPSC queues, sample/buffer size, model metadata, IR state, indications. |
 
-NAM models carry metadata fields `input_level_dbu` and `loudness` that specify the reference
-input level (dBu) and output loudness (dB) used during training. The loader computes calibration
-multipliers (`input_mult_adj` / `output_mult_adj`) from these fields to normalize the model's
-gain to standard reference values (12.0 dBu input, −18 dB loudness).
+### 6.2 Generation-Counter Parameter Sync
 
-**Decision: always apply model calibration (parity with the standalone binary).**
+Loading 8 atomic params every block wastes cycles when params are stationary.
+Protocol:
 
-The CLAP plugin applies model calibration multipliers unconditionally through the DSP pipeline
-context (`input_gain_mult` / `output_gain_mult`), separate from the user-configured input/output
-gain parameters. This design avoids duplicating user gain while ensuring that every model sounds
-at the same level as it does in the standalone binary and in the reference C++ implementation
-(where similar normalization is applied via `calibrated_loudness`).
+1. UI writes the new value to the `UiToRt` atomic and `fetch_add(1, Release)` on
+   `gui_param_generation`.
+2. RT does a single `Acquire` load of `gui_param_generation`. If unchanged, it
+   skips all per-param loads. If changed, it does `Relaxed` loads and feeds
+   targets to `ParamSmoother`.
 
-The flow is:
+### 6.3 Three-Tier RT-Safe Garbage Collection
 
-1. `load_and_build_model()` → computes `input_mult_adj` / `output_mult_adj` from metadata
-   (`src/loader/build.rs:145-151`), stores them in `LoadedModelPair`
-2. CLAP `load_model()` → extracts the multipliers and sends them via `ClapParamPayload::LoadModel`
-3. Audio thread `cold_load_model()` → stores them in `NamClapProcessor.model_input_mult_adj` /
-   `model_output_mult_adj`
-4. Each `process()` block → pipeline context carries `self.model_input_mult_adj` /
-   `self.model_output_mult_adj`, while `smoother_in` / `smoother_out` carry only user gain
+Dropping `Box<StaticModel>`/`Box<NamResampler>`/`ConvEngine`/`OversampleEngine`
+on the RT thread would block (system dealloc). Disposal cascades through three
+tiers, all lock-/alloc-free on the RT side (`gc_cascade` in
+`src/common/spsc/gc.rs`):
 
-This differs from the standalone where `compute_gain_multipliers()` fuses user and model
-multipliers into a single combined value before entering the pipeline. The CLAP approach
-keeps them separate to support sample-accurate parameter smoothing of user gain without
-touching the static model calibration.
+1. **SPSC GC channel** (`gc_tx`, 32 slots) → drained by the main thread
+   (`drain_gc_channels`) in `housekeeping()`.
+2. **16-slot `parking_lot`** (`[Option<GcItem>; 16]` on the processor) — retried
+   every block via `drain_parking_lot()`. Capacity is sized for 3 items/swap at
+   ~0.3–1.5 ms/block ⇒ >96 slots/s throughput.
+3. **`GcOverflowBuffer`** ring (`SPSC_CAPACITY`, packed `AtomicU64` slots) — last
+   resort; overwrites the oldest slot (controlled leak). Sets
+   `RT_STATUS_GC_OVERFLOW`; unknown type-ids on drain are intentionally leaked
+   and set `RT_STATUS_GC_CORRUPTED`.
+
+Telemetry peaks (`ui_peak_l/r`) use `Relaxed` stores; the UI reads them with
+`swap(0)` so silence decays correctly when no audio runs.
+
+### 6.4 FFI Lifetime Safety
+
+- **`alive_fence`** (`Arc<AtomicBool>` in `ColdShared`, cleared in `Drop`): the
+  async file-picker thread and `NamPluginWindow::safe_shared()` check it before
+  dereferencing the shared pointer, preventing use-after-free if the plugin is
+  destroyed while a background thread still holds a reference.
+- **`extend_host_lifetime`** (`src/clap/gui/mod.rs`): `unsafe` transmute of the
+  `HostSharedHandle` to `'static`, documented with the invariant that the GUI
+  window is destroyed before the plugin (guaranteed by the CLAP lifecycle).
+- **Panic hook**: `install_panic_hook("clap")` runs once in `new_shared()`;
+  `Drop` calls `set_shutdown_in_progress()`. A panic crossing the C-ABI FFI
+  boundary is UB, so `on_frame()`/`on_event()` use silent early-returns instead
+  of unwinding.
+
+### 6.5 Deferred Model Load (F3)
+
+State restore can arrive before `activate()` (host buffer size still 0), where
+building the resampler/buffers would allocate on a context without a known
+`max_frames_count`. The model payload is stored in `ColdShared::pending_model`
+and flushed by `flush_pending_model()` — called from `activate()` (primary) and
+`housekeeping()` (fallback for hosts that load state between `activate()` and
+the first `process()`). `set_max_buffer_size` is **never** called on the audio
+thread; the `heap-audit` CI lane enforces this.
+
+### 6.6 Channel Return on `deactivate()`
+
+`deactivate()` returns the `param_rx`, `gc_tx`, and `slimmable_rx` consumers
+back into `ColdShared`, so a host that deactivates/reactivates the processor
+(without recreating the plugin) keeps working.
+
+### 6.7 Render Mode
+
+`clap.render.set()` stores the mode (`Release`). On transition the RT thread
+forces `AdaptiveCompute::Off` + `ActivationPrecision::HighFidelity` in offline
+mode for deterministic max-quality bounce/export, and restores user settings on
+return to realtime.
+
+## 7. GUI Architecture
+
+### 7.1 Windowing Stack (Unified X11)
+
+```text
+┌────────────────────────────────────────────┐
+│            NAM-rs GUI (egui v0.34)         │
+│         draw_ui() — agnostic UI logic       │
+├────────────────────────────────────────────┤
+│     NamPluginWindow (WindowHandler)         │
+│   baseview events → egui::RawInput          │
+│   egui_glow::Painter + glow v0.17           │
+├────────────────────────────────────────────┤
+│             Backend X11 (baseview)          │
+│   raw-window-handle 0.5 → 0.6 translation   │
+│        Pure X11 / native XWayland           │
+└────────────────────────────────────────────┘
+```
+
+| Component   | Crate       | Role                                                                   |
+|:----------- |:----------- |:---------------------------------------------------------------------- |
+| GUI         | `egui`      | Immediate-mode; no persistent state, no GC, no render-loop alloc.      |
+| Renderer    | `egui_glow` | egui → OpenGL 3.3 via `glow`. Manual integration (no `egui-baseview`). |
+| Windowing   | `baseview`  | Native embedded X11 window via `RawWindowHandle`.                      |
+| File Picker | `rfd`       | Native async dialog (zenity/xdg-portal); never blocks UI.              |
+
+Only `CLAP_WINDOW_API_X11` is declared. Native Wayland embedding is planned.
+
+### 7.2 Module Map
+
+- `gui/mod.rs` — entryway; `GUI_WIDTH=600`/`GUI_HEIGHT=275`, `extend_host_lifetime`.
+- `gui/window/state.rs` — `NamPluginWindow`: GL context init, `egui_glow` painter,
+  shader compile, theme, teardown. `safe_shared()` guards `alive_fence`.
+- `gui/window/handler.rs` — `WindowHandler`: `on_frame`/`on_event`, event →
+  `egui::RawInput`, drag-and-drop, conditional paint loop.
+- `gui/window/shaders.rs` — VU GLSL (vertex + fragment).
+- `gui/window/{drag_drop,input_map}.rs` — model-file validation, key/mouse mapping.
+- `gui/ui/mod.rs` — 5-zone layout (`draw_ui`).
+- `gui/ui/zones/` — `identity` (Z1), `controls` (Z2), `meters` (Z3), `bypass_zone` (Z4).
+- `gui/ui/status_bar/` (Z5) — `orchestrator`, `telemetry`, `metadata`.
+- `gui/ui/meter/` — `orchestrator`, `glow` (GPU), `cpu` (fallback), `readout`.
+- `gui/ui/{knob,focus,colors,simd,vsep,bypass,state}.rs` — widgets, a11y, theme.
+
+### 7.3 Frame Lifecycle & Idle Skip
+
+`on_frame()` makes the GL context current, runs `egui_ctx.run_ui(draw_ui)`,
+tessellates, paints, and swaps buffers — unless a skip is decided:
+
+```rust
+let should_skip = !self.dirty
+    && !has_short_repaint
+    && !hold_changed
+    && time_since_paint < Duration::from_millis(22);
+```
+
+- `!dirty` — no input since last paint.
+- `!has_short_repaint` — egui requested a short (<50 ms) repaint (toasts/spinners).
+- `!hold_changed` — VU peak-hold is not decaying.
+- 22 ms throttle — caps active repaint at ~45 FPS, lowering idle CPU with many
+  instances. On skip the GL context is released and the frame exits early.
+
+`on_event` always sets `dirty = true`. Close is signalled via `close_signal`:
+the next `on_frame` destroys GL resources idempotently and closes the window.
+
+### 7.4 Adaptive VU Metering
+
+The core DSP is mono, but the VU meter adapts to the host's track config. During
+`process()`, the RT thread counts channel buffers and stores `1` or `2` in
+`RtToUi::active_channel_count` (`Relaxed`). The UI reads it and renders one
+centered 76 px bar (mono) or two 36 px L/R bars (stereo).
+
+### 7.5 GPU Shaders & CPU Fallback
+
+- **Vertex** (`shaders.rs`): generates a quad from `gl_VertexID` (no VBO); NDC
+  from `u_meter_rect` × `u_viewport`.
+- **Fragment**: 3-color dB gradient (green ≤ −12, yellow −12→−3, red −3→+6 dBFS),
+  distance-field rounded corners, 1.5 px peak-hold line that recolors by range.
+- **Fallback** (`meter/cpu.rs`): if shaders fail to compile or GL features are
+  missing, `vu_program` is `None` and flat rectangles are drawn on the egui
+  painter mesh, keeping the UI usable.
+
+### 7.6 Async File Dialog & Error Toasts
+
+"Load Model" spawns an `rfd` background thread (X11 space, no DAW freeze). While
+open, `ui_loading` shows a loading state. On selection the path lands in
+`ui_pending_model` and `host.request_callback()` schedules a main-thread load.
+On failure, `ui_load_error` + `ui_load_error_msg` drive a red `⚠ Load failed`
+status with a hover tooltip (3 s expiry). Drag-and-drop follows the same path.
+
+### 7.7 Keyboard Accessibility
+
+Focus cycles `Input Gain → Output Gain → Gate → Bypass → Load`
+(`gui/ui/focus.rs`). Tab forward, Shift+Tab backward; focused controls show an
+accent ring; Space/Enter activate the focused Load/Bypass control.
+
+## 8. Model Gain Calibration
+
+NAM models carry `input_level_dbu` and `loudness` metadata. The loader computes
+`input_mult_adj`/`output_mult_adj` (`src/loader/build.rs`) to normalize to
+12.0 dBu / −18 dB. **Calibration is always applied** (parity with the standalone
+binary and the reference C++ `calibrated_loudness`).
+
+Flow: `load_and_build_model()` → `ClapParamPayload::LoadModel` → RT
+`cold_load_model()` stores them in `model_input_mult_adj`/`model_output_mult_adj`
+→ the pipeline context carries them as `input_gain_mult`/`output_gain_mult`,
+while `smoother_in`/`smoother_out` carry only user gain. Unlike the standalone
+(which fuses user + model into one value), CLAP keeps them separate so
+sample-accurate user-gain smoothing never touches static model calibration.
+
+## 9. Target DAWs for Validation
+
+- **Bitwig Studio** — primary CI target; CLAP co-author. Validates sandboxing,
+  dynamic params, state persistence, sample-accurate automation.
+- **REAPER** — not actively tested (Linux PipeWire issues on Debian/Ubuntu make
+  reproducible validation impractical).
+- **Fender Studio Pro 8+** — native Wayland host; GUI is X11-only, so it runs in
+  floating fallback mode or via host generic sliders. Native Wayland GUI support
+  is planned.
+- **CLAP-info / CLAP-host** — CLI tools for spec validation.
