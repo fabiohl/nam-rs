@@ -16,33 +16,51 @@ categories = [
 ]
 
 [dependencies]
+# Lean error signaling for prep/CLI threads; not used on the RT thread.
 anyhow = "1.0.103"
+# Typed errors for the NAMB/loader surface (`src/loader/namb/error.rs`) and CLAP state extensions.
 thiserror = "2.0"
+# POSIX calls with no safe wrapper needed: SCHED_FIFO, core affinity, mlockall, prctl (THP), sigaction.
 libc = "0.2.186"
+# Native Linux audio backend (libpipewire 0.3 bindings). Conditional on `standalone`; absent from clap-plugin builds.
 pipewire = { version = "0.10.0", optional = true }
+# Lock-free SPSC ring buffer for CLI/GUI -> DSP thread communication (params, models, resamplers).
 rtrb = "0.3.4"
+# `.nam` (JSON) model deserialization.
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+# Minimalist, zero-alloc CLI parser for `--model`/`--input-gain`/etc. (avoids `clap`'s binary-size cost).
 lexopt = "0.3.2"
+# Logging facade (`log::info!`/`warn!`/`error!`), zero overhead when disabled.
 log = "0.4.33"
+# `RUST_LOG`-configurable logging backend; `default-features = false` to skip regex/native color deps.
 env_logger = { version = "0.11.11", default-features = false }
+# CLAP plugin framework (typed, no runtime overhead over clap-sys). Chosen over nih-plug: no forced VST3/GUI.
 clack-common = { version = "0.1", optional = true }
 clack-plugin = { version = "0.1", optional = true }
 clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info", "remote-controls", "param-indication", "clack-host", "preset-discovery", "render", "state-context"] }
+# Immediate-mode GUI (egui) + OpenGL renderer (egui_glow/glow) for the CLAP plugin interface.
 egui      = { version = "0.34.3",  optional = true }
 egui_glow = { version = "0.34.3",  optional = true }
 glow      = { version = "0.17.0",  optional = true }
+# Native embedded window (X11) hosting the egui GUI inside the DAW.
 baseview  = { version = "0.1.4", optional = true }
+# Native async file dialog for loading .nam/.namb/.wav from the GUI; never blocks the UI thread.
 rfd       = { version = "0.17.2",  optional = true }
+# Keyboard event types shared between baseview and egui for GUI accessibility (Tab/Shift+Tab focus).
 keyboard-types = { version = "0.6", default-features = false, optional = true }
+# clack-host is only needed here to satisfy state (de)serialization round-trip types shared with the plugin.
 clack-host = { version = "0.1", features = ["clack-plugin"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+# CLAP host harness for integration tests (lifecycle, state migration, multi-instance).
 clack-host = { version = "0.1", features = ["clack-plugin"] }
 clap-sys = "0.5"
+# Statistical benchmarking; `html_reports` left disabled to keep iterative bench compile times low.
 criterion = { version = "0.8.2", default-features = false }
+# Property-based testing for FastMath kernels (`simd_tanh`/`simd_sigmoid`) and parser fuzzing.
 proptest = "1.11.0"
 
 [[bench]]
