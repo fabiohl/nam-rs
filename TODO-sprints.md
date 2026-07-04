@@ -644,6 +644,14 @@ variante B/T1.2**) para tudo abaixo.
 
 ### T2.4 — Canário de iteração (kill-switch determinístico, sem depender de ferramentas externas)
 
+**RESULTADO — CONCLUÍDO.** Canários inseridos nos três laços candidatos
+(`bessel_i0`, `X2Stage::upsample`, `X2Stage::downsample`) + `HalfBandFilter::design`,
+com `black_box` no `bessel_i0` para evitar otimização. **NENHUM canário
+disparou** — o teste continua dando exit 143 (timeout) sem stack trace de
+panic. O hang NÃO está nos laços DSP; a execução nunca chega a `bessel_i0`
+nem a `upsample`/`downsample`. Suspeita redirecionada para alocação de memória
+(`AlignedVec::new`) ou harness de testes. Ver `known-bugs.md` §1.19.
+
 Esta é a técnica mais direta e barata, e resolve diretamente a preocupação
 do operador humano ("o teste não deveria nunca rodar indefinidamente"):
 

@@ -949,6 +949,46 @@ a técnica mais direta e barata, sem dependência de ferramentas externas.
 
 ---
 
+### 1.19 — Canário de iteração (T2.4, 2026-07-04T18:38–18:42-03:00)
+
+Foram inseridos canários temporários de iteração (`guard + panic!`) nos três
+laços candidatos (`bessel_i0`, `X2Stage::upsample`, `X2Stage::downsample`) e
+também em `HalfBandFilter::design`, com teto = (bound matemático × 100) e piso
+de 10.000 iterações. Para `bessel_i0`, `std::hint::black_box(guard)` foi usado
+para impedir que o compilador eliminasse o branch como "impossível" (já que
+`for k in 1..=20` é trivialmente limitado).
+
+**Binário final:** strings `BUG-3 kill-switch: upsample loop`, `downsample
+loop` e `bessel_i0 loop` confirmados presentes no binário de release.
+
+O teste foi executado com o wrapper de isolamento
+`repro_oversample_hang.sh` (RuntimeMaxSec=30s, systemd-run scope, cgroup v2).
+
+**Resultado:** **NENHUM** dos canários disparou. O teste continuou produzindo
+exit 143 (timeout/SIGTERM) sem stack trace de panic.
+
+**Conclusão:** o hang NÃO está em nenhum dos três laços algorítmicos. A
+execução nunca chega a `bessel_i0`, a `upsample`, ou a `downsample`. O hang
+ocorre *antes* da primeira iteração de qualquer loop DSP — o que redireciona
+a suspeita para:
+
+1. A alocação/inicialização de memória em `X2Stage::new()` (especificamente
+   `AlignedVec::new(HB_DELAY, 0.0f32)` ou `AlignedVec::new(HB_TAPS, 0.0f32)`),
+2. O próprio harness de testes da libtest (antes da entrada da função de teste),
+3. Ou uma condição de corrida/compatibilidade entre o binário de teste e o
+   isolamento `systemd-run --scope`.
+
+**Artefatos:** logs em `target/debug-logs/T24-canary.log`,
+`target/debug-logs/T24-canary-v2.log`. Código do canário removido após a
+conclusão da tarefa — ver diff do commit.
+
+**Encaminhamento:** prosseguir com T2.5 (inspeção de assembly) para verificar
+se o compilador gerou código incorreto na inicialização, e considerar T0.3
+(sondas de progresso `eprintln!` com `flush`) para localizar o ponto exato do
+hang.
+
+---
+
 ## 2. Escopo estático do algoritmo (o que É determinístico e limitado)
 
 Antes de qualquer hipótese, seguem os fatos matemáticos/estáticos sobre o
