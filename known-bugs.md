@@ -686,6 +686,173 @@ evidência mais sólida do que antes desta auditoria.**
 
 ---
 
+### 1.15 — Bissecção de crate (T2.0, 2026-07-04T01:28-03:00)
+
+O Sprint 2 (planejado originalmente sobre o crate mínimo) foi redirecionado por
+T1.7, que mostrou que o hang NÃO reproduz no crate mínimo standalone. A
+estratégia de bissecção de crate (T2.0) consistiu em adicionar progressivamente
+os fatores do crate completo ao crate mínimo `/tmp/kilo/repro-oversample/`,
+com rebuild e reteste após cada adição, para isolar qual fator desencadeia o
+hang.
+
+**Ambiente do experimento:**
+
+- Crate base: `/tmp/kilo/repro-oversample/` (T1.7), std-only
+- Perfil: `release` com `lto=fat`, `opt-level=3`, `codegen-units=1`
+- Toolchain: stable (`1.95.0`)
+- Timeout: `timeout -s KILL 15` sobre o binário de teste diretamente
+  (compilação separada com `--no-run` para evitar falsos positivos de timeout
+  durante a fase de build)
+- Build: `cargo clean` entre cada etapa (reprodutibilidade total)
+
+#### Matriz de bissecção (T2.0-A a T2.0-E)
+
+| Etapa | Fatores acumulados                                                                                                                                                                                                                                                                     | Resultado                         | Tempo |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ----- |
+| A     | Flags de linker completas (`--gc-sections`, `-z now`, `--as-needed`, `-u clap_entry`)                                                                                                                                                                                                  | NÃO HANG (exit 101, -5.8 dB, <1s) | <1s   |
+| B     | A + `serde` + `#[derive(Serialize, Deserialize)]` em `OversampleFactor`                                                                                                                                                                                                                | NÃO HANG (exit 101, -5.8 dB, <1s) | <1s   |
+| C     | B + módulo `detect.rs` com `LazyLock<SimdMathConfig>` + `AtomicU8` estáticos globais                                                                                                                                                                                                   | NÃO HANG (exit 101, -5.8 dB, <1s) | <1s   |
+| D     | C + 40+ funções de teste extras, 4 tabelas de dados de 4K elementos (f32, f64, u64), binário inflado (~29M `target/`)                                                                                                                                                                  | NÃO HANG (exit 101, -5.8 dB, <1s) | <1s   |
+| E     | D + todas as dependências do crate completo (`libc`, `log`, `lexopt`, `anyhow`, `thiserror`, `rtrb`, `serde_json`, `criterion`, `proptest`) + `crate-type = ["rlib", "cdylib"]` + `edition = "2024"` + `panic = "unwind"` + `strip = true` + teste que exerce todas as deps ativamente | NÃO HANG (exit 101, -5.8 dB, <1s) | <1s   |
+
+Em todas as cinco etapas, o teste `test_x2_aliasing_rejection` completou em
+menos de 1 segundo com assertion failure idêntico ao de T1.7 (`got -5.8 dB`).
+Nenhuma etapa produziu hang (exit code 124/137/143 do timeout, ou processo
+residual pós-timeout).
+
+#### Conclusão
+
+**A bissecção de crate falhou em isolar um fator desencadeante individual.**
+O hang não é causado por nenhum dos fatores testados, individualmente ou em
+combinação. A implicação é que o hang é uma propriedade **emergente** do crate
+completo como um todo — provavelmente um bug sutil de LTO=fat que só se
+manifesta quando a massa crítica de código, vínculos e módulos de teste do
+crate real atinge um certo limiar de complexidade que o crate estendido de
+T2.0 (com ~52M `target/`) ainda não alcança.
+
+**Próximo passo:** prosseguir com T2.1–T2.5 diretamente sobre o crate
+completo (variante B: stable + release), conforme a cláusula de fallback do
+próprio T2.0: "Se, em algum ponto, adicionar todas as dependências ainda não
+reproduzir o hang, retornar ao crate completo e aplicar T2.1–T2.5 diretamente."
+
+---
+
+### 1.16 — Build com símbolos preservados (T2.1, 2026-07-04T01:41–01:45-03:00)
+
+T2.1 realiza o rebuild da variante reprodutora B (stable + release, lto=fat)
+com símbolos de debug preservados (`strip = false`, `debug = true`), via
+override local de ambiente (sem editar `Cargo.toml`):
+
+```bash
+CARGO_PROFILE_RELEASE_STRIP=false CARGO_PROFILE_RELEASE_DEBUG=true \
+  cargo test --release --lib --no-run -- \
+    test_x2_aliasing_rejection --ignored --test-threads=1
+```
+
+**Build:** 3m 53s (fat LTO, full crate), gerando o binário
+`nam_rs-aa6d4cddf3210679` com `debug_info, not stripped` (ELF x86-64).
+
+**Símbolos verificados** (`nm -C`):
+
+- `nam_rs::dsp::oversample::X2Stage::upsample`
+- `nam_rs::dsp::oversample::X2Stage::downsample`
+- `nam_rs::dsp::oversample::X2Stage::new`
+- `nam_rs::dsp::oversample::HalfBandFilter::design`
+- `nam_rs::dsp::oversample::OversampleEngine::upsample`
+- `nam_rs::dsp::oversample::OversampleEngine::downsample`
+
+**Teste de reprodução:**
+
+| Parâmetro           | Valor                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| Binário             | `nam_rs-aa6d4cddf3210679` (release, debuginfo, unstripped)                                |
+| Timeout             | 30s (`RuntimeMaxSec` via `systemd-run --scope`)                                           |
+| Resultado           | **HANG confirmado** (exit 143)                                                            |
+| Log                 | `target/debug-logs/T21-stable-release-symbols.log`                                        |
+| Processos residuais | Nenhum (falso positivo do pgrep — auto-detecção benigna da própria chain do bash wrapper) |
+
+**Estado do binário para T2.2–T2.5:** o binário `nam_rs-aa6d4cddf3210679` está
+pronto para instrumentação profunda (perf, gdb, coredump) com símbolos
+completos e reprodução confirmada do hang.
+
+---
+
+### 1.17 — Backtrace via coredump (T2.2, 2026-07-04T01:47–01:52-03:00)
+
+T2.2 tentou capturar um backtrace do thread girando via coredump post-mortem,
+conforme a abordagem mais segura recomendada pelo plano.
+
+#### Tentativa 1: `SIGABRT` via `timeout -s ABRT` + `ulimit -c unlimited`
+
+```bash
+ulimit -c unlimited
+timeout -s ABRT 15 target/release/deps/nam_rs-aa6d4cddf3210679 --ignored ...
+```
+
+**Resultado:** exit 124 (timeout confirmado), mas **nenhum core file gerado**.
+O pipeline do apport (`/proc/sys/kernel/core_pattern` ativo) interceptou o core
+mas não o salvou em `/var/crash/` — provavelmente por política de supressão de
+cores de processos não-interativos. Sem root para alterar o
+`kernel.core_pattern`.
+
+#### Tentativa 2: `gcore` via wrapper Python com `prctl(PR_SET_PTRACER)`
+
+Wrapper Python que faz `fork()`, no filho executa `prctl(PR_SET_PTRACER, -1)`
+para permitir ptrace (contorna `yama/ptrace_scope=1`), exec(2) o binário de
+teste; no pai espera 6s e executa `gcore`. Funcionou.
+
+**Core dump:** `/tmp/kilo/core_oversample_fp.129509`, 6s após início do hang.
+
+#### Análise dos threads
+
+**Thread 1 (LWP 129509, main thread):** estacionado em `futex_wait` (syscall # 202), na cadeia `futex_wait → Parker::park → Thread::park → Context::wait_until → mpmc::list::recv<CompletedTest> → run_tests_console → test_main → nam_rs::main`. Este é o harness de testes aguardando o thread de teste completar via canal MPMC — comportamento esperado do libtest, **não é um deadlock**.
+
+**Thread 2 (LWP 129510, test runner thread):** PC em `log10f` (trampolim `jmp
+log10f@plt`). O `log10f` é chamado a partir de `f32::log10()`, que é usado na
+computação da assertion ratio do próprio teste:
+`20.0 * (amp_out / amp_in).log10()`. Isto indica que o algoritmo DSP
+(`X2Stage::upsample` / `X2Stage::downsample`) completou e o teste estava
+computando o valor de assertion.
+
+**Backtrace quebrado** — mesmo com `-Cforce-frame-pointers=y` (reconstruído em
+`nam_rs-29653b893533e53f`), o backtrace mostra apenas:
+
+```text
+#0  log10f
+#1  0x0
+```
+
+A combinação `lto=thin`/`fat` + inlining agressivo elimina os frames
+intermediários. O `saved rip` no stack frame é literalmente `0x0`, sugerindo
+ou corrupção de stack ou tail-call optimization que não empurrou endereço de
+retorno. Stack ao redor de RSP está toda zerada por 128+ bytes.
+
+**Outras restrições encontradas:**
+
+- `perf` bloqueado por `perf_event_paranoid=4` (sem CAP_PERFMON/CAP_SYS_PTRACE)
+- `ptrace_scope=1` (restrito, requer wrapper `prctl(PR_SET_PTRACER)`)
+- `apport` ativo suprime coredumps diretos (sem root para `kernel.core_pattern`)
+
+#### Conclusão 1.17
+
+O coredump capturado é inconclusivo para identificar o PC exato do loop:
+
+1. O backtrace está quebrado devido a LTO + inlining — funções intermediárias
+   não possuem unwind info.
+2. O PC em `log10f` sugere que o teste completou o algoritmo DSP e estava na
+   fase de assertion — mas isso pode ser um artefato do timing da captura, não
+   evidência de que o "hang" não está no algoritmo.
+3. Sem múltiplos snapshots com PC variando é impossível distinguir "loop no
+   algoritmo" de "execução extremamente lenta chegando ao final lentamente".
+
+**Encaminhamento:** T2.2 é insuficiente sozinho. A instrumentação precisa vir
+de T2.3 (`rr` record/replay, se disponível) ou T2.4 (canário de iteração no
+próprio código-fonte). A experiência de T2.2 confirma a observação original
+em `known-bugs.md` §1.4 item 4: sem LTO desabilitado, backtraces simbólicos
+são essencialmente inúteis para este bug.
+
+---
+
 ## 2. Escopo estático do algoritmo (o que É determinístico e limitado)
 
 Antes de qualquer hipótese, seguem os fatos matemáticos/estáticos sobre o

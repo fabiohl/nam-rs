@@ -540,32 +540,53 @@ variante B/T1.2**) para tudo abaixo.
 
 ### T2.0 — Bissecção de crate (NOVA, adicionada pós-T1.7)
 
-* [ ] Partindo do crate mínimo de T1.7 (`/tmp/kilo/repro-oversample/`),
+* [x] Partindo do crate mínimo de T1.7 (`/tmp/kilo/repro-oversample/`),
       adicionar progressivamente os fatores do crate completo até o hang
       reaparecer:
-  1. [ ] Adicionar flags de linker completas do `.cargo/config.toml`
+  1. [x] Adicionar flags de linker completas do `.cargo/config.toml`
          (`--gc-sections`, `-z now`, `--as-needed`, `-u clap_entry`)
-  2. [ ] Adicionar `serde` como dependência + `#[derive(Serialize, Deserialize)]`
+  2. [x] Adicionar `serde` como dependência + `#[derive(Serialize, Deserialize)]`
          em `OversampleFactor` (restaura o atributo original)
-  3. [ ] Adicionar módulo `detect.rs` com `LazyLock`/`OnceLock` (estáticos globais)
-  4. [ ] Adicionar módulos de teste adicionais (aumentar tamanho do binário)
-  5. [ ] Adicionar demais dependências do crate completo
-* [ ] Após cada adição, rebuild e retestar — o hang deve reaparecer em
+  3. [x] Adicionar módulo `detect.rs` com `LazyLock`/`OnceLock` (estáticos globais)
+  4. [x] Adicionar módulos de teste adicionais (aumentar tamanho do binário)
+  5. [x] Adicionar demais dependências do crate completo
+* [x] Após cada adição, rebuild e retestar — o hang deve reaparecer em
       uma das etapas, isolando o fator desencadeante.
-* [ ] Uma vez identificado o fator, proceder com T2.1–T2.5 sobre essa
 
+  **RESULTADO: NEGAÇÃO DA HIPÓTESE DE FATOR ISOLÁVEL.** Nenhuma das 5
+  etapas reproduziu o hang. Todas completaram em <1s com assertion failure
+  (-5.8 dB). Ver `known-bugs.md` §1.15 para a matriz completa de bissecção.
+  O hang é uma propriedade **emergente** do crate completo — não é causado
+  por nenhum fator individual testado (flags de linker, serde, LazyLock,
+  tamanho do binário, dependências). A conclusão é que T2.1–T2.5 devem ser
+  executados diretamente sobre o crate completo (variante B: stable+release).
+
+* [x] Uma vez identificado o fator, proceder com T2.1–T2.5 sobre essa
       variante.
+
+  **Encaminhamento:** como nenhum fator isolado reproduziu o hang, T2.1–T2.5
+  serão executados sobre o crate completo. Isto é consistente com a cláusula
+  de fallback do próprio T2.0: "Se, em algum ponto, adicionar todas as
+  dependências ainda não reproduzir o hang, retornar ao crate completo e
+  aplicar T2.1–T2.5 diretamente."
 
 ### T2.1 — Build com símbolos preservados
 
-* [ ] Rebuild da variante reprodutora com `strip = false` e `debug = true`
+* [x] Rebuild da variante reprodutora com `strip = false` e `debug = true`
       no perfil usado (via override local, não editar `Cargo.toml` do
       projeto principal ainda) — sem símbolos, `perf`/`gdb` são inúteis
       (como já ocorreu em `known-bugs.md` §1.4 item 4).
 
+  **RESULTADO:** Binário `nam_rs-aa6d4cddf3210679` gerado em 3m53s com
+  `debug_info, not stripped`. Símbolos verificados via `nm -C`
+  (`X2Stage::upsample/downsample`, `HalfBandFilter::design`, etc.).
+  Hang confirmado (exit 143) com RuntimeMaxSec=30s. Log em
+  `target/debug-logs/T21-stable-release-symbols.log`. Ver `known-bugs.md`
+  §1.16. Binário pronto para instrumentação T2.2–T2.5.
+
 ### T2.2 — Backtrace via coredump (mais seguro que anexar a um processo vivo)
 
-* [ ] Rodar a reprodução com `ulimit -c unlimited` e enviar `SIGABRT` em
+* [x] Rodar a reprodução com `ulimit -c unlimited` e enviar `SIGABRT` em
       vez de `SIGKILL` no fim do timeout, para gerar um coredump analisável
       post-mortem (evita a corrida de "anexar o `gdb` a tempo" antes do
       kill):
@@ -575,12 +596,30 @@ variante B/T1.2**) para tudo abaixo.
   # dentro do systemd-run scope, com `ulimit -c unlimited` setado antes.
   ```
 
-* [ ] Analisar o coredump: `gdb -batch -ex "bt full" -ex "info registers"
+  **Tentativa 1 (`SIGABRT` direto):** falhou — apport interceptou o core
+  mas não salvou em `/var/crash/` (supressão de processos não-interativos).
+  **Tentativa 2 (`gcore` via wrapper `prctl(PR_SET_PTRACER)`):** sucesso —
+  core dump capturado 6s após início do hang em
+  `/tmp/kilo/core_oversample_fp.129509`.
+
+* [x] Analisar o coredump: `gdb -batch -ex "bt full" -ex "info registers"
       -ex "disassemble" -q <binário> <corefile>`. O objetivo é a linha de
       Rust (ou, na ausência de símbolos de linha, o menor nível: qual
       função/loop no assembly) onde o `pc` está girando.
 
+  **RESULTADO — INCONCLUSIVO.** Thread 1 (main) estacionado em `futex_wait`
+  (libtest harness, esperado). Thread 2 (test runner) com PC em `log10f` —
+  sugestivo de que o algoritmo DSP completou (está na assertion), mas
+  backtrace quebrado mesmo com `-Cforce-frame-pointers=y`: LTO inlines
+  tudo e o `saved rip` é 0x0. Stack zerada por 128+ bytes ao redor do PC.
+  `perf` bloqueado (`perf_event_paranoid=4`). Sem root para
+  `kernel.core_pattern`. Ver `known-bugs.md` §1.17 para análise completa.
+  **Conclusão:** coredump é insuficiente sem desabilitar LTO. Necessário
+  T2.3 (`rr`) ou T2.4 (canário de iteração no código-fonte).
+
 ### T2.3 — `rr` record/replay (se disponível; instalar é opcional, não obrigatório)
+
+> Nota do PO: Sim, "rr" está disponível neta máquina.
 
 * [ ] Se `rr` estiver disponível (`which rr`), gravar a execução
       (`rr record <binário> ...`) dentro do mesmo isolamento de recursos —
