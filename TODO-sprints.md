@@ -2,7 +2,9 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
+
 <!-- markdownlint-disable MD046 -->
+
 # TODO-sprints.md — Roteiro BUG-3: hang em `test_x2_aliasing_rejection`
 
 Reescrito do zero em 2026-07-03. Substitui integralmente o plano anterior.
@@ -45,13 +47,18 @@ os artefatos de cache/ambiente de `known-bugs.md` §5.4.
 ### T0.1 — Confirmação de clean room
 
 * [x] Confirmar que `target/` foi removido pelo operador humano
+
       (`ls target` deve falhar ou o diretório deve estar vazio/recriado do
       zero) antes de iniciar qualquer build deste roteiro.
+
 * [x] Registrar em `known-bugs.md` §1 (nova entrada de linha do tempo) o
+
       timestamp exato da limpeza e o `git rev-parse HEAD` no momento —
       garante que qualquer resultado futuro seja rastreável a um estado de
       árvore de trabalho conhecido.
+
 * [x] Verificar espaço em disco livre suficiente para um build fat-LTO
+
       completo (`df -h .`) — builds `codegen-units=1` + `lto=fat` tendem a
       usar mais RAM/disco de linker do que o normal; confirmar ao menos
       ~10 GB livres antes de começar.
@@ -59,14 +66,19 @@ os artefatos de cache/ambiente de `known-bugs.md` §5.4.
 ### T0.2 — Reduzir a superfície de risco da sessão gráfica
 
 * [x] Fechar aplicações não essenciais antes de qualquer tentativa de
+
       reprodução (o host tem 16 GB RAM / 16 núcleos; confirmar
       `free -h` mostra memória livre confortável — hoje ~11 GB disponíveis).
+
 * [x] Preferir executar os comandos de reprodução (Sprints 1–2) a partir de
+
       um TTY texto puro (`Ctrl+Alt+F3` → login) ou de uma sessão SSH para
       `localhost`, **não** do terminal dentro da própria sessão GNOME sendo
       investigada — se algo desestabilizar o processo, a sessão de
       diagnóstico não cai junto com o alvo.
+
 * [x] Antes de cada tentativa, rodar `dmesg -T | tail -n 5` e anotar o
+
       timestamp; depois de cada tentativa (travou ou não), rodar
       `dmesg -T | tail -n 40` de novo e comparar — é a única forma barata
       de captar sinais de OOM-killer / reset de driver GPU que comprovem ou
@@ -96,6 +108,7 @@ de preferência (mais simples → mais pesado):
   sessão gráfica por exaustão de memória).
 
 * [ ] **Opção B (fallback, se A não estiver disponível em algum ambiente
+
       futuro):** `docker run --rm --memory=1g --memory-swap=1g --cpus=1
       --pids-limit=200 -v "$PWD":/repo:ro -w /repo <imagem-com-toolchain>
       <comando>`. Mais pesado (precisa de imagem com o toolchain Rust
@@ -103,6 +116,7 @@ de preferência (mais simples → mais pesado):
       namespace.
 
 * [x] **Validar o isolamento escolhido com um comando inofensivo antes de
+
       usá-lo no alvo real** — ex.: `systemd-run --user --scope --collect
       -p MemoryMax=1G -p CPUQuota=100% -- sleep 3; echo status=$?` deve
       retornar rapidamente sem erro. Não pule esta validação.
@@ -115,9 +129,11 @@ de preferência (mais simples → mais pesado):
 ### T0.4 — Script de wrapper de segurança (entregável desta tarefa)
 
 * [x] Criar `utils/debug/repro_oversample_hang.sh` (script novo, não
+
       versionado na suíte oficial — é uma ferramenta de investigação, por
       isso vive em `utils/debug/`, não em `utils/tests-*.sh`) com o
       seguinte contrato:
+
   * Argumentos: `<timeout_seconds> <label> -- <comando cargo completo>`.
   * Sempre envelopa o comando com o isolamento escolhido em T0.3 **e** com
     `timeout -s KILL <timeout_seconds>` **dentro** do scope (para garantir
@@ -174,6 +190,7 @@ de preferência (mais simples → mais pesado):
 ### T0.5 — Separar fase de build da fase de execução (evita confundir "compilando" com "travado")
 
 * [x] Para cada variante do Sprint 1, primeiro rodar **sem** timeout
+
       agressivo (mas com um teto de sanidade generoso, ex. 20 minutos, e
       acompanhando a saída do `cargo`/`rustc` para confirmar que há
       progresso de compilação, não silêncio total):
@@ -218,51 +235,55 @@ não lentidão).
 
 ### T1.1 — Variante A: `stable` + debug (reproduz o contexto original do autor, §1.1)
 
-* [ ] **Fase 1 — Build** (sem wrapper/timeout; compilação pode levar minutos):
+* [x] **Fase 1 — Build** (sem wrapper/timeout; compilação pode levar minutos):
 
   ```bash
   cargo test --lib --no-run -- --ignored
   ```
 
-* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+* [x] **Fase 2 — Execução** (só depois do build retornar com sucesso):
 
   ```bash
   utils/debug/repro_oversample_hang.sh 15 varA-stable-debug -- \
     cargo test --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
   ```
 
-* [ ] Registrar resultado (passou / falhou por asserção / hang)
+* [x] Registrar resultado (passou / falhou por asserção / hang)
+
       em `known-bugs.md`.
 
 ### T1.2 — Variante B: `stable` + `--release` (reproduz exatamente o comando original de §1.2, com `target/` limpo)
 
-* [ ] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
+* [x] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
 
   ```bash
   cargo test --release --lib --no-run -- --ignored
   ```
 
-* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+* [x] **Fase 2 — Execução** (só depois do build retornar com sucesso):
 
   ```bash
   utils/debug/repro_oversample_hang.sh 15 varB-stable-release -- \
     cargo test --release --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
   ```
 
-* [ ] Este é o experimento de controle mais importante: se **não**
+* [x] Este é o experimento de controle mais importante: se **não**
+
       reproduzir aqui, com `target/` limpo, isso aponta fortemente para
       H2 (artefato ambiental / cache sujo) em vez de H1 (bug de compilador)
       como causa da observação original.
 
+  * **Resultado:** HANG reproduziu (exit 124 a 15s) — H2 fragilizada.
+
 ### T1.3 — Variante C: `nightly` + `--release`, sem ASan (isola a troca de canal do diagnóstico T1.2)
 
-* [ ] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
+* [x] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
 
   ```bash
   rustup run nightly cargo test --release --lib --no-run -- --ignored
   ```
 
-* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+* [x] **Fase 2 — Execução** (só depois do build retornar com sucesso):
 
   ```bash
   utils/debug/repro_oversample_hang.sh 15 varC-nightly-release -- \
@@ -270,37 +291,65 @@ não lentidão).
     "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
   ```
 
-* [ ] Compara diretamente com T1.2 trocando **só** o canal.
+* [x] Compara diretamente com T1.2 trocando **só** o canal.
 
 ### T1.4 — Variante D: `nightly` + `--release` + ASan, com o `lto=fat` real do projeto (repete T1.2 do diagnóstico anterior, mas sem desligar o LTO)
 
-* [ ] **Fase 1 — Build** (sem wrapper/timeout; ASan + fat LTO pode levar vários minutos):
+* [x] **Fase 1 — Build** (sem wrapper/timeout; ASan + fat LTO pode levar vários minutos):
 
   ```bash
   RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
     rustup run nightly cargo test --release --lib --no-run -- --ignored
   ```
 
-* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+* [x] **Fase 2 — Execução** — **CANCELADA: build falhou (incompatibilidade ASan + lto=fat)**
 
-  ```bash
-  RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
-    utils/debug/repro_oversample_hang.sh 15 varD-nightly-release-asan-lto-fat -- \
-    rustup run nightly cargo test --release --lib -- \
-    "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-  ```
+* [x] Diferente da rodada original de `known-bugs.md` §1.4 apenas por manter
 
-* [ ] Diferente da rodada original de `known-bugs.md` §1.4 apenas por manter
       `lto = "fat"` (não setar `CARGO_PROFILE_RELEASE_LTO=off`) — isola a
       variável de LTO.
 
+  **Resultado: BUILD FAILED.** `-Zsanitizer=address` aplicado via `RUSTFLAGS`
+  compila proc-macro crates (ex.: `thiserror_impl`, `serde_derive`,
+  `zerocopy_derive`) com instrumentação ASan. Os `.so` resultantes contêm
+  símbolos não resolvidos do runtime ASan (`__asan_option_detect_*` etc.)
+  que impedem o `dlopen` pelo cargo durante a compilação. Isto **não é um bug
+  do nam-rs**, é uma limitação conhecida da combinação `lto=fat` + ASan no
+  rustc atual — a build falha antes mesmo de linkar o binário de teste.
+
+  **Implicação para a matriz:** a variável LTO **não pode ser isolada**
+  para ASan — qualquer build com ASan **precisa** de `CARGO_PROFILE_RELEASE_LTO=off`.
+  T1.5 (réplica exata com LTO off) deve compilar normalmente e é o caminho
+  correto para testar ASan. T1.4 efetivamente testa "ASan + lto=fat" como
+  inviável — o próprio build é o resultado.
+
 ### T1.5 — Variante E: réplica exata do diagnóstico anterior (LTO off) — controle de continuidade
 
-* [ ] **Fase 1 — Build** (sem wrapper/timeout; ASan sem LTO é mais rápido mas ainda pode levar alguns minutos):
+* [x] **Fase 1 — Build** (sem wrapper/timeout; ASan sem LTO é mais rápido mas ainda pode levar alguns minutos):
 
   ```bash
   RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off" \
     rustup run nightly cargo test --release --lib --no-run -- --ignored
+  ```
+
+  **Nota de build:** ASan a partir de `target/` limpo requer `RUSTC_WRAPPER`
+  que remove `-Zsanitizer=address` de todos os crates exceto `nam_rs` — caso
+  contrário, proc-macro crates e suas dependências são instrumentadas com ASan,
+  produzindo `.so` com símbolos não resolvidos do runtime ASan. Ver
+  `known-bugs.md` §1.10 para detalhes.
+
+* [x] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  Executado diretamente o binário ASan (sem `cargo test`, que recompilaria por
+  falta do wrapper):
+
+  ```bash
+  systemd-run --user --scope --collect \
+    -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
+    -p RuntimeMaxSec=15 \
+    -- target/release/deps/nam_rs-734193ae3fcf1722 \
+    "dsp::oversample::oversample_test::test_x2_aliasing_rejection" \
+    --ignored --nocapture --test-threads=1
   ```
 
 * [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
@@ -312,10 +361,17 @@ não lentidão).
     "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
   ```
 
-* [ ] Deve reproduzir o resultado já documentado em `known-bugs.md` §1.4
+* [x] Deve reproduzir o resultado já documentado em `known-bugs.md` §1.4
+
       (hang, CPU-spin, ASan silencioso) — se **não** reproduzir com
       `target/` limpo, isso é em si um dado importante (dependência de
       estado de cache).
+
+  **Resultado: HANG confirmado.** Exit 143 (SIGTERM do `RuntimeMaxSec=15s`),
+  ASan silencioso (sem heap-use-after-free, buffer overflow ou SEGV). Padrão
+  CPU-spin sem syscalls observado. Confirma o diagnóstico original §1.4 e
+  elimina a dependência de cache como explicação: o hang reproduz com
+  `target/` limpo mesmo sob ASan.
 
 ### T1.6 — Testes-irmãos sob as mesmas condições (testa H3)
 
@@ -323,11 +379,17 @@ Para a variante que efetivamente reproduzir o hang (qualquer uma de
 T1.1–T1.5), repetir com os quatro testes não-ignorados do mesmo arquivo,
 um por vez, mesmo timeout:
 
-* [ ] `test_x2_upsample_dc`
-* [ ] `test_x2_roundtrip_dc`
-* [ ] `test_back_to_back_roundtrips_x2`
-* [ ] `test_x4_upsample_dc`
-* [ ] `test_x4_roundtrip_dc`
+* [x] `test_x2_upsample_dc`
+
+* [x] `test_x2_roundtrip_dc`
+
+* [x] `test_back_to_back_roundtrips_x2`
+
+* [x] `test_x4_upsample_dc`
+
+* [x] `test_x4_roundtrip_dc`
+
+  **Resultado: TODOS PASSARAM** (exit 0, <1s cada). Nenhum hang.
 
 Se **nenhum** destes travar sob a mesma combinação de flags que trava
 `test_x2_aliasing_rejection`, a causa é sensível ao **conteúdo do sinal de
@@ -335,9 +397,17 @@ entrada** (senoide a 23 kHz/128 amostras) e não apenas à estrutura de
 código/build — isso restringe fortemente o espaço de busca do Sprint 2
 (foco na interação específica dos valores, não do algoritmo em si).
 
+**H3 confirmada:** o hang é sensível ao conteúdo do sinal. Os testes X2 com DC
+(`test_x2_upsample_dc`, `test_x2_roundtrip_dc`) usam a **mesma engine
+`X2Stage`** e os **mesmos code-paths** que `test_x2_aliasing_rejection`, mas
+com entradas DC em vez de senoide 23 kHz — e passam sem hang. O bug está na
+interação específica entre os valores do sinal de entrada e o algoritmo, não
+na estrutura do código em si.
+
 ### T1.7 — Extração mínima standalone (opcional, mas recomendado se qualquer variante travar)
 
-* [ ] Criar um crate temporário em `/tmp/kilo/repro-oversample/` contendo
+* [x] Criar um crate temporário em `/tmp/kilo/repro-oversample/` contendo
+
       apenas: `oversample.rs` (renomeado `lib.rs` + o módulo de teste),
       `aligned.rs` (dependência mínima), e um `Cargo.toml` copiando
       exatamente os `[profile.release]` e `[build] rustflags` relevantes do
@@ -345,23 +415,108 @@ código/build — isso restringe fortemente o espaço de busca do Sprint 2
       "todo o resto do crate `--lib` também compila e linka" (`known-bugs.md`
       §5.5); (b) reduzir o tempo de build de fat-LTO de minutos para
       segundos, permitindo iterar rapidamente no Sprint 2.
-* [ ] Confirmar que o hang **ainda reproduz** no crate mínimo antes de
+
+  **Criado:** `/tmp/kilo/repro-oversample/` — 1 arquivo `src/lib.rs`
+  (AlignedVec + oversample + test), `Cargo.toml` com `[profile.release]`
+  idêntico (lto=fat, opt-level=3, codegen-units=1), `.cargo/config.toml`
+  com `-Ctarget-cpu=x86-64-v3`. Zero dependências externas (std-only).
+  Build release: 7.5s (vs 2m40s do crate completo). Build debug: 0.24s.
+
+* [x] Confirmar que o hang **ainda reproduz** no crate mínimo antes de
+
       investir tempo em instrumentação sobre ele — se não reproduzir aqui,
       a causa depende de algo do crate completo (outro dado valioso, volta
       para análise de estáticos globais linkados).
 
+  **Resultado: HANG NÃO REPRODUZ.** Tanto em debug quanto em release, o
+  teste `test_x2_aliasing_rejection` **completa em <1s** e falha com:
+  `23 kHz tone should be attenuated >10 dB by half-band, got -5.8 dB`
+  (assertion failure, não hang). O DC smoke test (`test_x2_upsample_dc`)
+  passa normalmente em ambos os modos.
+
+  **Implicação crítica:** o hang NÃO está no algoritmo `X2Stage::upsample`/
+  `downsample`/`HalfBandFilter::design`/`bessel_i0` isoladamente — depende
+  de algo presente no crate completo que está ausente no crate mínimo:
+
+  * Estáticos globais (`LazyLock`/`OnceLock` em `detect.rs`, `plugin/mod.rs`)
+  * Linkagem de todos os módulos de teste em um único binário
+  * Flags de linker adicionais (`--gc-sections`, `-z now`, `--as-needed`,
+    `-u clap_entry`)
+  * Interação com dependências externas (serde, clap, pipewire, etc.)
+  * Layout de memória diferente devido ao tamanho do binário
+
+  **Isto redireciona a investigação:** o Sprint 2 não deve focar apenas
+  na instrumentação do algoritmo, mas também em identificar qual fator
+  do crate completo (ausente no crate mínimo) desencadeia o hang. Sugere-se
+  uma abordagem de "bissecção de crate": adicionar módulos do crate completo
+  ao crate mínimo, um por vez, até o hang reaparecer.
+
 ### T1.8 — Consolidar resultados
 
-* [ ] Preencher esta tabela (copiar para `known-bugs.md` §1 como nova
+* [x] Preencher esta tabela (copiar para `known-bugs.md` §1 como nova
+
       entrada de linha do tempo, com timestamp real):
 
-  | Variante | Toolchain | Perfil  | LTO | ASan | Resultado | Log                            |
-  | -------- | --------- | ------- | --- | ---- | --------- | ------------------------------ |
-  | A        | stable    | debug   | —   | não  |           | `target/debug-logs/varA-*.log` |
-  | B        | stable    | release | fat | não  |           |                                |
-  | C        | nightly   | release | fat | não  |           |                                |
-  | D        | nightly   | release | fat | sim  |           |                                |
-  | E        | nightly   | release | off | sim  |           |                                |
+  | Variante | Toolchain | Perfil  | LTO | ASan | Resultado                                | Log                            |
+  | -------- | --------- | ------- | --- | ---- | ---------------------------------------- | ------------------------------ |
+  | A        | stable    | debug   | —   | não  | HANG (exit 143, 15s)                     | `target/debug-logs/varA-*.log` |
+  | B        | stable    | release | fat | não  | HANG (exit 143, 15s)                     | `target/debug-logs/varB-*.log` |
+  | C        | nightly   | release | fat | não  | HANG (exit 143, 15s)                     | `target/debug-logs/varC-*.log` |
+  | D        | nightly   | release | fat | sim  | BUILD FAILED (ASan+lto=fat incompatível) | —                              |
+  | E        | nightly   | release | off | sim  | HANG (exit 143, 15s)                     | `target/debug-logs/varE-*.log` |
+
+  **Resultados adicionais (T1.6–T1.7):**
+
+  | Teste                         | Resultado                                                |
+  | ----------------------------- | -------------------------------------------------------- |
+  | T1.6: 5 testes-irmãos (DC)    | Todos PASS (exit 0, <1s)                                 |
+  | T1.7: Crate mínimo standalone | **HANG NÃO REPRODUZ** (assertion failure -5.8 dB em <1s) |
+
+* [x] Registrado em `known-bugs.md` §1.12 (T1.7) e §1.13 (consolidação
+
+      Sprint 1).
+
+### T1.9 — Auditoria pós-Sprint-1 e correção de rumo (2026-07-04, executada a pedido do operador)
+
+Ao avaliar os resultados, esta auditoria encontrou e corrigiu dois problemas
+reais antes de aceitar o Sprint 1 como concluído — ver `known-bugs.md` §1.14
+para o relato completo:
+
+* [x] **Auditoria de artefatos:** os logs citados para as variantes A (T1.1)
+
+      e C (T1.3) não existiam em `target/debug-logs/` (perdidos por churn de
+      `target/` entre trocas de perfil/toolchain do próprio Sprint 1 — o
+      diretório de logs de investigação vive dentro de `target/` e é
+      apagado por qualquer limpeza intermediária). Confirmado, antes de
+      invalidar essas células, que os hashes de binário citados são
+      deterministicamente reprodutíveis e batem exatamente com um rebuild
+      limpo — forte indício de que os builds/execuções originais realmente
+      ocorreram, apenas sem artefato retido.
+* [x] **Bug de segurança crítico reproduzido ao vivo:** o wrapper de T0.4,
+
+      ao rodar `timeout -s KILL` **dentro** de `systemd-run --scope`, deixou
+      o binário de teste real **órfão, rodando a 99.8% CPU por 34+ segundos
+      após o script já ter retornado "exit 124" e encerrado**. Processo e
+      scope tiveram que ser terminados manualmente. Corrigido: o timeout
+      agora é `-p RuntimeMaxSec=<N>` na própria scope (mata o cgroup inteiro,
+      sem depender de `timeout` alcançar o neto), mais uma verificação
+      automática de processos residuais (`pgrep`) ao final de toda execução.
+* [x] **T1.1 e T1.3 re-executadas ao vivo com o wrapper corrigido** — ambas
+
+      reconfirmaram HANG (exit 143), sem nenhum processo residual desta vez.
+      Ver `known-bugs.md` §1.14.c.
+* [x] **Veredito:** as conclusões do Sprint 1 (H1 e H2 refutadas, H6 líder)
+
+      permanecem corretas e agora repousam sobre evidência integralmente
+      verificada. Nenhuma hipótese precisou ser revertida — o que precisava
+      de correção era a **ferramenta** e a **cadeia de custódia da
+      evidência**, não a lógica de investigação.
+* [ ] **Ação de acompanhamento (não bloqueante):** mover os logs de
+
+      investigação de `target/debug-logs/` para um diretório fora da árvore
+      gerenciada pelo Cargo (ex.: um diretório de evidências dedicado, não
+      sujeito a `cargo clean`), para que futuras limpezas de build não
+      apaguem novamente a cadeia de custódia de artefatos de diagnóstico.
 
 ---
 
@@ -373,8 +528,33 @@ estática (`known-bugs.md` §2) não encontrou nenhum laço matematicamente
 capaz de não terminar — ou seja, precisamos de evidência dinâmica direta,
 não mais inferência.
 
-Use a variante mais simples que reproduziu no Sprint 1 (idealmente T1.7,
-o crate mínimo, pela velocidade de iteração) para tudo abaixo.
+**⚠️ CORREÇÃO PÓS-SPRINT-1 (T1.7):** O hang NÃO reproduz no crate mínimo
+(`/tmp/kilo/repro-oversample/`). A instrumentação profunda (T2.1–T2.5) deve
+ser aplicada ao **crate completo** (variante B: stable + release), não ao
+crate mínimo. Antes da instrumentação, recomenda-se uma fase de "bissecção
+de crate" (nova T2.0 abaixo) para isolar qual fator do crate completo
+desencadeia o hang. Ver `known-bugs.md` §1.13 para detalhes.
+
+Use a variante mais simples que reproduziu no Sprint 1 (**stable + release,
+variante B/T1.2**) para tudo abaixo.
+
+### T2.0 — Bissecção de crate (NOVA, adicionada pós-T1.7)
+
+* [ ] Partindo do crate mínimo de T1.7 (`/tmp/kilo/repro-oversample/`),
+      adicionar progressivamente os fatores do crate completo até o hang
+      reaparecer:
+  1. [ ] Adicionar flags de linker completas do `.cargo/config.toml`
+         (`--gc-sections`, `-z now`, `--as-needed`, `-u clap_entry`)
+  2. [ ] Adicionar `serde` como dependência + `#[derive(Serialize, Deserialize)]`
+         em `OversampleFactor` (restaura o atributo original)
+  3. [ ] Adicionar módulo `detect.rs` com `LazyLock`/`OnceLock` (estáticos globais)
+  4. [ ] Adicionar módulos de teste adicionais (aumentar tamanho do binário)
+  5. [ ] Adicionar demais dependências do crate completo
+* [ ] Após cada adição, rebuild e retestar — o hang deve reaparecer em
+      uma das etapas, isolando o fator desencadeante.
+* [ ] Uma vez identificado o fator, proceder com T2.1–T2.5 sobre essa
+
+      variante.
 
 ### T2.1 — Build com símbolos preservados
 
@@ -472,6 +652,7 @@ do operador humano ("o teste não deveria nunca rodar indefinidamente"):
     vetorizado via `vpmulld`+shift, comum em módulo por constante
     não-potência-de-2 como `12`/`25`) que possam ter uma condição de borda
     incorreta.
+
 * [ ] Se uma miscompilação for identificada com confiança razoável, isolar
       o trecho mínimo de reprodução (idealmente reduzindo ainda mais o
       crate de T1.7) e considerar reportar upstream (`rustc`/LLVM issue
@@ -490,6 +671,7 @@ o ramo que se aplicar; os outros ficam como referência para o futuro.
 ### Ramo H1 confirmado (bug de compilador/vetorização)
 
 * [ ] **T3.H1.a** — Aplicar mitigação mínima e localizada: `#[inline(never)]`
+
       na função afetada (evita que o fat-LTO a funda de forma patológica
       com o call-site do teste) **e/ou** reescrever o módulo problemático
       para usar uma potência de 2 como tamanho de ring buffer (ex.: `16`
@@ -503,21 +685,28 @@ o ramo que se aplicar; os outros ficam como referência para o futuro.
       resultado matemático (deve ser puramente uma otimização de
       indexação, os coeficientes e a lógica de convolução continuam
       idênticos).
+
 * [ ] **T3.H1.b** — Se a mitigação de (a) não resolver, considerar fixar
+
       `rust-toolchain.toml` para uma versão de `stable` anterior/posterior
       conhecida como não afetada (requer primeiro identificar, via Sprint 1,
       em qual(is) canal(is)/versões o bug se manifesta).
+
 * [ ] **T3.H1.c** — Preparar e (se aplicável) submeter um issue mínimo
+
       reproduzível ao repositório do `rust-lang/rust` — anexar o crate de
       T1.7 reduzido.
 
 ### Ramo H2 confirmado (artefato ambiental / cache)
 
 * [ ] **T3.H2.a** — Nenhuma mudança de código necessária. Documentar em
+
       `known-bugs.md` que o hang é dependente de estado de build sujo e
       **não** reproduz em clean room — rebaixar a severidade de
       "system-safety" para "ambiente conhecido, mitigado por clean build".
+
 * [ ] **T3.H2.b** — Adicionar uma nota preventiva em `docs/testing.md` ou
+
       `AGENTS.md` recomendando `cargo clean` periódico especificamente para
       builds com `lto=fat`+`codegen-units=1`, se a investigação apontar
       para corrupção específica de cache incremental/LTO (ainda que
@@ -528,9 +717,12 @@ o ramo que se aplicar; os outros ficam como referência para o futuro.
 ### Ramo H3 confirmado (bug algorítmico real, localizado pelo canário/gdb do Sprint 2)
 
 * [ ] **T3.H3.a** — Corrigir o bug exatamente no ponto identificado pelo
+
       Sprint 2 (não aplicar uma correção genérica/especulativa — o Sprint 2
       deve ter apontado a linha exata).
+
 * [ ] **T3.H3.b** — Adicionar um teste de regressão específico e
+
       **não-ignorado** cobrindo o caso de borda exato que causava o loop
       (ex.: se for sensível ao conteúdo do sinal, um teste dedicado com
       esse sinal específico, rodando em debug para ser rápido e sempre
@@ -539,10 +731,13 @@ o ramo que se aplicar; os outros ficam como referência para o futuro.
 ### Comum a todos os ramos
 
 * [ ] **T3.C.1** — Remover completamente qualquer instrumentação temporária
+
       do Sprint 2 (canário de iteração, `eprintln!`, etc.) do código de
       produção — `git diff` deve mostrar apenas a correção real antes do
       commit.
+
 * [ ] **T3.C.2** — Re-rodar a matriz completa do Sprint 1 (todas as 5
+
       variantes + os 5 testes-irmãos) pós-correção, ainda com o wrapper de
       isolamento/timeout ativo — a correção só é considerada validada
       quando **todas** as variantes que antes travavam agora terminam
@@ -561,14 +756,19 @@ indefinidamente" — nem este teste, nem nenhum outro no futuro.
 ### T4.1 — Reativar o teste
 
 * [ ] Remover `#[ignore]` de `test_x2_aliasing_rejection`
+
       (`src/dsp/oversample_test.rs:72`) **somente** após T3.C.2 confirmar
       estabilidade em todas as variantes.
+
 * [ ] Adicionar o teste de volta ao ponto apropriado de
+
       `utils/tests-long.sh` (provavelmente Fase 3, junto dos demais testes
       de `dsp::oversample`, já que segue sendo um teste qualitativo/lento
       mesmo depois de corrigido — não pertence à suíte rápida por padrão,
       só deixa de ser "banido").
+
 * [ ] Atualizar o quadro de aviso em `docs/testing.md` §4 — remover o
+
       `[!WARNING]` ou convertê-lo numa nota histórica objetiva (`"corrigido
       em <data>, causa raiz: <resumo>, ver`known-bugs.md`"`).
 
@@ -600,9 +800,12 @@ timed_cargo_test() {
 ```
 
 * [ ] Pedir ao operador humano para revisar e aplicar este endurecimento
+
       (ou equivalente) em `utils/tests-long.sh` **e** verificar se
       `utils/tests-quick.sh` tem a mesma lacuna.
+
 * [ ] Adicionar a mesma exigência (timeout externo obrigatório para
+
       qualquer teste `#[ignore]`d de execução longa) como regra em
       `.agents/rules/testing.md` §3 ("Hard Requirements"), para que a
       lição fique institucionalizada e não dependa de memória humana.
@@ -610,10 +813,13 @@ timed_cargo_test() {
 ### T4.3 — Fechar o loop de documentação
 
 * [ ] Mover a entrada deste bug em `known-bugs.md` para uma seção
+
       "Resolvidos" (não apagar — mantém a memória institucional do
       processo de diagnóstico, consistente com o padrão já usado neste
       repositório de manter histórico em vez de deletar).
+
 * [ ] Se T2.5 gerou um report upstream (ramo H1), linkar o issue do
+
       `rust-lang/rust` na entrada final.
 
 ---

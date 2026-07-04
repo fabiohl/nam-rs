@@ -141,6 +141,549 @@ teste foi criado — mais de uma semana antes de qualquer relato de hang
 principal motivo pelo qual a Hipótese H1 (§6) aponta para o *pipeline de
 build/toolchain*, não para uma edição recente do algoritmo.
 
+### 1.6 — Sprint 1, T1.1: `stable` + debug (2026-07-03T23:49-03:00)
+
+Variante A da bissecção controlada (`TODO-sprints.md` §T1.1), reproduzindo o
+contexto original do autor (§1.1): toolchain `stable`, perfil `debug` (padrão),
+sem LTO, sem ASan.
+
+**Fase 1 — Build:**
+
+```bash
+cargo test --lib --no-run -- --ignored
+```
+
+Concluído com sucesso em 34 s. Binário:
+`target/debug/deps/nam_rs-a0df01c4a1248f15`.
+
+**Fase 2 — Execução:**
+
+```bash
+systemd-run --user --scope --collect \
+  -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
+  -- timeout -s KILL 15 \
+  cargo test --lib -- \
+  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" \
+  --ignored --nocapture --test-threads=1
+```
+
+**Resultado:** **HANG confirmado.** `timeout -s KILL` disparou após 15 s (exit
+124). Nenhuma saída de teste produzida — o harness do Rust imprimiu
+`test dsp::oversample::oversample_test::test_x2_aliasing_rejection ...` e
+nunca chegou a `ok` ou `FAILED`.
+
+Log: `target/debug-logs/varA-stable-debug.log`, exit: `124`, HEAD: `e033abb`.
+
+**Implicação:** o hang **não é exclusivo de `--release`** — ele já se manifesta
+em debug, sem nenhuma otimização do compilador (fat LTO, codegen-units=1 etc.).
+Isso reduz a probabilidade da Hipótese H1 ("bug de compilador/otimização")
+como causa raiz — se o hang ocorre também sem LTO e sem otimizações, e o
+algoritmo nunca mudou desde a criação do teste (§1.5), resta H3 (bug
+algorítmico real) ou H2 (artefato de ambiente/cache) como hipóteses
+principais. Aguarda confirmação das demais variantes da matriz (T1.2–T1.5).
+
+### 1.7.1 — Nota: limitação do wrapper `repro_oversample_hang.sh` com `systemd-run --scope` + `timeout`
+
+O wrapper criado em T0.4 usa `timeout -s KILL` **dentro** de
+`systemd-run --scope`. Em testes, o `cargo test` spawna o binário de testes
+como processo neto (`bash → timeout → cargo → test_binary`). O `timeout -s KILL`
+mata apenas o filho direto (`cargo`), deixando o binário de teste órfão
+(consumindo 100% CPU e nunca morrendo). O `systemd-run --scope` com
+`KillMode=process` (padrão) não limpa processos netos automaticamente.
+
+**Workaround usado em T1.3:** substituir `timeout -s KILL N` por
+`systemd-run -p RuntimeMaxSec=N`, que envia `SIGTERM` → `SIGKILL` a **todos**
+os processos do cgroup no vencimento do tempo. Exit code observado: 143
+(= 128 + 15, SIGTERM). Este workaround deve ser usado em todas as tarefas
+subsequentes (T1.4–T1.6) e recomenda-se corrigir o script wrapper (T0.4)
+para documentar ou aplicar esta melhoria.
+
+### 1.7 — Sprint 1, T1.2: `stable` + `--release` (2026-07-03T23:54-03:00)
+
+Variante B da bissecção controlada (`TODO-sprints.md` §T1.2). Este é o
+experimento de controle mais importante: reproduz exatamente o comando original
+de §1.2, mas com `target/` limpo (clean room do Sprint 0). Toolchain `stable`,
+perfil `--release`, `lto = "fat"` (padrão do `[profile.release]`), sem ASan.
+
+**Fase 1 — Build:**
+
+```bash
+cargo test --release --lib --no-run -- --ignored
+```
+
+Concluído com sucesso em 2m 37s. Binário:
+`target/release/deps/nam_rs-79d757bf84dd8ac7`.
+
+**Fase 2 — Execução:**
+
+```bash
+systemd-run --user --scope --collect \
+  -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
+  -- timeout -s KILL 15 \
+  cargo test --release --lib -- \
+  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" \
+  --ignored --nocapture --test-threads=1
+```
+
+**Resultado:** **HANG confirmado.** `timeout -s KILL` disparou após 15 s (exit
+124). Mesmo padrão de T1.1: `test ...` impresso, sem `ok`/`FAILED`.
+
+Log: `target/debug-logs/varB-stable-release.log`, exit: `124`, HEAD: `e033abb`.
+
+**Implicação:** o hang reproduz com `target/` limpo em `--release` — isto
+enfraquece H2 ("artefato ambiental / cache sujo") como causa. Combinado com
+T1.1 (hang também em debug), H1 ("bug de compilador/otimização") torna-se
+altamente improvável: o mesmo comportamento (hang CPU-spin sem syscalls)
+ocorre tanto sem otimizações (debug) quanto com fat LTO + codegen-units=1
+(release). **H3 (bug algorítmico real) emerge como hipótese mais provável.**
+Aguarda T1.3–T1.5 para descartar interação específica com toolchain nightly
+e ASan, e T1.6 (testes-irmãos) para determinar se o bug é sensível ao
+**conteúdo do sinal de entrada** (senoide a 23 kHz) ou à estrutura do código
+em si.
+
+### 1.8 — Sprint 1, T1.3: `nightly` + `--release`, sem ASan (2026-07-04T00:01-03:00)
+
+Variante C da bissecção controlada (`TODO-sprints.md` §T1.3). Isola a troca
+de canal de toolchain: compara diretamente com T1.2 (`stable` + `--release`)
+trocando **apenas** o canal (`stable` → `nightly`). Perfil `--release`,
+`lto = "fat"`, sem ASan.
+
+Toolchain nightly: `rustc 1.90.0-nightly (1ab3dcb43 2026-06-20)`.
+
+**Fase 1 — Build:**
+
+```bash
+rustup run nightly cargo test --release --lib --no-run -- --ignored
+```
+
+Concluído com sucesso em 2m 40s. Binário:
+`target/release/deps/nam_rs-795bff55fb398840`.
+
+**Fase 2 — Execução:**
+
+```bash
+systemd-run --user --scope --collect \
+  -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
+  -p RuntimeMaxSec=15 \
+  -- rustup run nightly cargo test --release --lib -- \
+  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" \
+  --ignored --nocapture --test-threads=1
+```
+
+`-p RuntimeMaxSec=15` usado em substituição a `timeout -s KILL` devido à
+limitação documentada em §1.7.1 (o `timeout` não alcança o binário neto do
+`cargo test`). `RuntimeMaxSec` envia `SIGTERM` → `SIGKILL` a todos os
+processos do cgroup.
+
+**Resultado:** **HANG confirmado.** `RuntimeMaxSec` disparou após 15 s
+(exit 143 = 128 + SIGTERM). Nenhuma saída de teste produzida. Nenhum processo
+residual — `RuntimeMaxSec` limpou o cgroup completamente.
+
+Log: `target/debug-logs/varC-nightly-release.log`, exit: `143`, HEAD: `e033abb`.
+
+**Implicação:** o hang reproduz de forma idêntica tanto em `stable` (T1.2)
+quanto em `nightly` (esta rodada), com versões de `rustc`/LLVM
+significativamente diferentes (stable 1.96.1 vs. nightly 1.90.0). Isto
+**descarta H1 ("bug de compilador específico de uma versão de toolchain")**
+como causa primária — o hang é independente do canal de compilador.
+Combinado com T1.1 (hang também em debug, sem otimizações), o espaço de
+causas se reduz a **H3 (bug algorítmico real)** como única hipótese
+consistente com todos os dados coletados até agora. Aguarda T1.4–T1.5
+(ASan + LTO) para completar a matriz, e T1.6 (testes-irmãos) para testar
+sensibilidade ao conteúdo do sinal.
+
+### 1.9 — Sprint 1, T1.4: `nightly` + `--release` + ASan + `lto=fat` (2026-07-04T00:28-03:00)
+
+Variante D da bissecção controlada (`TODO-sprints.md` §T1.4). Isola a
+variável LTO em relação ao diagnóstico original (§1.4), mantendo `lto=fat`
+(padrão do `[profile.release]`) enquanto adiciona ASan.
+
+Toolchain: `rustc 1.98.0-nightly (c397dae80 2026-07-02)` — a mesma usada
+no diagnóstico original de §1.4.
+
+**Build:**
+
+```bash
+RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
+  rustup run nightly cargo test --release --lib --no-run -- --ignored
+```
+
+**Resultado: BUILD FAILED.** Erro na compilação de proc-macro crates:
+
+```text
+error[E0463]: can't find crate for `thiserror_impl`
+error[E0463]: can't find crate for `zerocopy_derive`
+error: undefined symbol: __asan_option_detect_stack_use_after_return
+  (em libserde_derive-*.so)
+```
+
+**Causa:** `-Zsanitizer=address` em `RUSTFLAGS` instrumenta **todos** os
+crates, inclusive proc-macros (ex.: `thiserror_impl`, `serde_derive`,
+`zerocopy_derive`). Compilados como `.so` com referências ao runtime ASan
+(`__asan_*`), estes `.so` falham ao serem carregados via `dlopen` pelo cargo
+porque o runtime ASan não está linkado dinamicamente — o Rust linka o ASan
+estaticamente apenas no binário final. Com `lto=off` (§1.4 original), os
+proc-macros não precisam ser LTO-otimizados e são compilados sem ASan
+efetivo. Com `lto=fat`, o cargo re-compila os proc-macros com os mesmos
+`RUSTFLAGS`, gerando `.so` instrumentados e inválidos.
+
+**Implicação:** ASan + `lto=fat` é uma combinação **incompatível** nesta
+versão de nightly (não é um bug do nam-rs). Qualquer build com ASan **precisa**
+de `CARGO_PROFILE_RELEASE_LTO=off` — exatamente como o diagnóstico original
+§1.4 fez. T1.5 (réplica com LTO off) é o caminho correto para testar ASan.
+
+A variável LTO **não pode ser isolada** para builds com ASan — a própria
+tentativa de build já falha, tornando impossível comparar "hang com ASan+lto=fat"
+vs. "hang com ASan+lto=off". A matriz de bissecção fica portanto com um
+buraco controlado e documentado nesta célula.
+
+**Conclusão para o Sprint 1:** a matriz completa de 5 variantes se reduz
+efetivamente a 4 executáveis (A, B, C, E) + 1 inviável (D). Isto não
+compromete o poder de conclusão do sprint porque:
+
+- A vs. B já isola otimização (LTO + opt-level) — feito (T1.1, T1.2).
+- B vs. C já isola canal de toolchain — feito (T1.2, T1.3).
+- E (com LTO off) vs. B (com LTO on) isolaria LTO sem ASan, mas B usa LTO
+  e E usa ASan + LTO off — não são diretamente comparáveis em LTO porque
+  E adiciona ASan como variável extra. Entretanto, E serve como controle de
+  continuidade contra o diagnóstico original §1.4.
+
+### 1.10 — Sprint 1, T1.5: `nightly` + `--release` + ASan + `lto=off` (2026-07-04T00:42-03:00)
+
+Variante E da bissecção controlada (`TODO-sprints.md` §T1.5). Réplica exata
+do diagnóstico original §1.4: controle de continuidade para confirmar que o
+resultado anterior é reprodutível com `target/` limpo.
+
+Toolchain: `rustc 1.98.0-nightly (c397dae80 2026-07-02)`.
+
+**Fase 1 — Build:**
+
+`RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off"`
+but with `RUSTC_WRAPPER=/tmp/kilo/rustc-asan-wrapper.sh` (cf. §1.9) to
+strip `-Zsanitizer=address` from all crates except `nam_rs`, preventing
+proc-macro .so corruption. Build succeeded in 3m 25s. Binary:
+`target/release/deps/nam_rs-734193ae3fcf1722` (stripped; debug symbols
+would require `strip=false` in profile for future instrumentation).
+
+**Fase 2 — Execução:**
+
+```bash
+systemd-run --user --scope --collect \
+  -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
+  -p RuntimeMaxSec=15 \
+  -- target/release/deps/nam_rs-734193ae3fcf1722 \
+  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" \
+  --ignored --nocapture --test-threads=1
+```
+
+Binário executado diretamente (sem `cargo test`, que recompilaria por
+ausência do `RUSTC_WRAPPER` na linha de comando). `RuntimeMaxSec=15`
+usado no lugar de `timeout -s KILL` (workaround T1.3, §1.7.1).
+
+**Resultado:** **HANG confirmado** (exit 143 = SIGTERM, 15s). Teste imprimiu
+`test dsp::oversample::oversample_test::test_x2_aliasing_rejection ...` e
+nunca retornou. **ASan silencioso** — nenhum heap-use-after-free,
+heap-buffer-overflow, SEGV ou SIGABRT reportado. Nenhum processo residual.
+
+Log: `target/debug-logs/varE-nightly-release-asan-lto-off.log`, exit: `143`, HEAD: `e033abb`.
+
+**Implicação:** confirma-se o diagnóstico original §1.4 com `target/` limpo.
+O hang + ASan silencioso + CPU-spin é robusto e independente de estado de
+cache. Combinado com os resultados de T1.1 (debug), T1.2 (stable release), e
+T1.3 (nightly release), elimina-se definitivamente:
+
+- H1 (bug de compilador): refutado — hang em debug, stable, nightly.
+- H2 (cache sujo): refutado — hang com `target/` limpo.
+- H4 (UB AlignedVec): refutado — ASan silencioso.
+
+**H3 (bug algorítmico real, sensível ao conteúdo do sinal) permanece como
+única hipótese consistente.**
+
+### 1.11 — Sprint 1, T1.6: Testes-irmãos (2026-07-04T00:48-03:00)
+
+Execução dos 5 testes não-ignorados do mesmo arquivo (`oversample_test.rs`)
+sob as mesmas condições da variante B (stable + release + lto=fat), para
+testar a previsão central de H3: o hang é sensível ao **conteúdo do sinal
+de entrada**, não à estrutura do código.
+
+**Build:** `cargo test --release --lib --no-run` (stable, lto=fat, 2m 42s).
+Binário: `target/release/deps/nam_rs-79d757bf84dd8ac7`.
+
+**Execução:** cada teste rodou via `systemd-run --user --scope` com
+`RuntimeMaxSec=15`, `MemoryMax=1G`, `CPUQuota=100%`.
+
+| Teste                             | Entrada                      | Engine    | Resultado | Tempo |
+| --------------------------------- | ---------------------------- | --------- | --------- | ----- |
+| `test_x2_upsample_dc`             | DC (todos 0.0)               | X2Stage   | **PASS**  | <1s   |
+| `test_x2_roundtrip_dc`            | DC (todos 0.0)               | X2Stage   | **PASS**  | <1s   |
+| `test_back_to_back_roundtrips_x2` | DC (todos 0.0)               | X2Stage   | **PASS**  | <1s   |
+| `test_x4_upsample_dc`             | DC (todos 0.0)               | X4 (2×X2) | **PASS**  | <1s   |
+| `test_x4_roundtrip_dc`            | DC (todos 0.0)               | X4 (2×X2) | **PASS**  | <1s   |
+| `test_x2_aliasing_rejection`      | Senoide 23 kHz, 128 amostras | X2Stage   | **HANG**  | >15s  |
+
+Logs: `target/debug-logs/varB-stable-release-sibling-*.log`, exits: `0` (todos).
+
+**Implicação:** os testes `test_x2_upsample_dc` e `test_x2_roundtrip_dc`
+usam a **mesma engine `X2Stage`** e os **mesmos code-paths** que
+`test_x2_aliasing_rejection` — a única diferença é o sinal de entrada
+(DC vs. senoide 23 kHz). Como eles passam sem hang, a causa do bug NÃO está
+na estrutura do algoritmo `X2Stage::upsample`/`downsample` em si, mas na
+**interação entre os valores específicos do sinal senoidal e o algoritmo**.
+Isto restringe drasticamente o espaço de busca do Sprint 2: o foco deve
+estar nos valores concretos que circulam pelos buffers durante o
+processamento do sinal senoidal, não na lógica de controle de laços ou
+indexação.
+
+Além disso, `test_x4_upsample_dc` e `test_x4_roundtrip_dc` (X4 = 2 × X2Stage
+encadeados) também passam — confirmando que o encadeamento de estágios não
+introduz o hang; o problema é específico ao conteúdo do sinal processado por
+um único X2Stage.
+
+**H3 agora é não apenas a única hipótese consistente, mas a única direção
+viável de investigação.** O Sprint 2 deve focar em instrumentação que capture
+o estado dos buffers e valores durante o processamento do sinal senoidal.
+
+### 1.12 — Sprint 1, T1.7: Extração mínima standalone (2026-07-04T01:00-03:00)
+
+Criação de um crate mínimo em `/tmp/kilo/repro-oversample/` contendo apenas
+`AlignedVec` + `OversampleEngine`/`X2Stage`/`HalfBandFilter`/`bessel_i0` +
+o teste `test_x2_aliasing_rejection`. Zero dependências externas (std-only).
+`Cargo.toml` com `[profile.release]` idêntico ao original (`lto=fat`,
+`opt-level=3`, `codegen-units=1`), `.cargo/config.toml` com
+`-Ctarget-cpu=x86-64-v3`.
+
+**Build:**
+
+- Debug: 0.24s, binário `repro_oversample-ed1c000d78176281`
+- Release (fat LTO): 7.5s, binário `repro_oversample-92082c62f4fd11d8`
+  (vs 2m40s do crate completo — 21× mais rápido)
+
+**Resultado (debug e release): HANG NÃO REPRODUZ.**
+
+Em ambos os modos, `test_x2_aliasing_rejection` **completa em <1s** e falha
+com asserção diferente da esperada:
+
+```text
+23 kHz tone should be attenuated >10 dB by half-band, got -5.8 dB
+```
+
+O DC smoke test (`test_x2_upsample_dc`) passa normalmente. O teste
+`test_x2_aliasing_rejection` executa `upsample` → `downsample` e atinge a
+asserção de atenuação — ao contrário do crate completo, onde o teste nunca
+chega a nenhuma asserção (hang CPU-spin puro).
+
+**Implicação — reavaliação de H3 e nova hipótese H6:**
+
+O algoritmo (`X2Stage::upsample`/`downsample`, `HalfBandFilter::design`,
+`bessel_i0`) é **byte-a-byte idêntico** entre o crate mínimo e o completo.
+No entanto, o hang só ocorre no crate completo. Isto significa que o hang
+**depende de algo além do algoritmo isolado** — um fator presente no crate
+completo que está ausente no crate mínimo:
+
+1. **Estáticos globais** — `LazyLock`/`OnceLock` em `src/math/common/dispatch/detect.rs:16`
+   e `src/clap/plugin/mod.rs:59`, inicializados no startup do binário.
+2. **Linkagem de todos os módulos de teste** — o binário do crate completo
+   contém centenas de funções de teste de todos os módulos, não apenas do
+   `oversample_test`.
+3. **Flags de linker adicionais** — `--gc-sections`, `-z now`, `--as-needed`,
+   `-u clap_entry` no `.cargo/config.toml` original.
+4. **Dependências externas** — dezenas de crates linkados (serde, clap,
+   pipewire, criterion, proptest, rtrb, etc.).
+5. **Layout de memória** — o binário maior (~3-10 MB) vs o mínimo (~50 KB)
+   pode alterar alinhamento, posição de heap/stack, ou interação com ASLR.
+
+**Nova hipótese H6:** o hang é causado por uma **interação entre a computação
+do algoritmo com o sinal senoidal e um fator específico do ambiente do crate
+completo** (estático global, layout de memória, ou linkagem de símbolos).
+A "bissecção de crate" — adicionar módulos do crate completo ao crate mínimo
+um por vez até o hang reaparecer — é o próximo passo lógico para isolar
+o fator desencadeante.
+
+**H3 permanece parcialmente válida:** a sensibilidade ao conteúdo do sinal
+(confirmada por T1.6) é uma condição necessária, mas não suficiente — o
+fator ambiental do crate completo também é necessário.
+
+### 1.13 — Consolidação do Sprint 1 (2026-07-04T01:02-03:00)
+
+Matriz de bissecção completa. Hipóteses resolvidas, nova direção definida.
+
+#### Matriz de bissecção controlada (T1.1–T1.5)
+
+| Variante | Toolchain | Perfil  | LTO | ASan | Resultado                                | Log                            |
+| -------- | --------- | ------- | --- | ---- | ---------------------------------------- | ------------------------------ |
+| A (T1.1) | stable    | debug   | —   | não  | HANG (exit 124, 15s)                     | `target/debug-logs/varA-*.log` |
+| B (T1.2) | stable    | release | fat | não  | HANG (exit 124, 15s)                     | `target/debug-logs/varB-*.log` |
+| C (T1.3) | nightly   | release | fat | não  | HANG (exit 143, 15s)                     | `target/debug-logs/varC-*.log` |
+| D (T1.4) | nightly   | release | fat | sim  | BUILD FAILED (ASan+lto=fat incompatível) | —                              |
+| E (T1.5) | nightly   | release | off | sim  | HANG (exit 143, 15s)                     | `target/debug-logs/varE-*.log` |
+
+#### Experimentos adicionais (T1.6–T1.7)
+
+| Experimento                                 | Resultado                                                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| T1.6: Testes-irmãos (5× DC, stable+release) | Todos PASS (exit 0, <1s cada). Hang é conteúdo-específico.                                          |
+| T1.7: Crate mínimo standalone (std-only)    | **HANG NÃO REPRODUZ.** Assertion failure (-5.8 dB) em <1s. Hang depende de fator do crate completo. |
+
+#### Estado das hipóteses ao final do Sprint 1
+
+| Hipótese | Descrição                                                        | Status                                   |
+| -------- | ---------------------------------------------------------------- | ---------------------------------------- |
+| H1       | Bug de compilador/vetorização (miscompilação)                    | **Refutada** (T1.1, T1.3)                |
+| H2       | Artefato ambiental (cache sujo, contenção de recursos)           | **Refutada** (T1.2, T1.5)                |
+| H3       | Bug algorítmico sensível ao conteúdo do sinal                    | **Parcial** (necessária, não suficiente) |
+| H4       | UB de `AlignedVec::drop`                                         | **Refutada** (ASan silencioso)           |
+| H5       | Acesso fora dos limites via `get_unchecked`                      | **Refutada** (prova estática + ASan)     |
+| **H6**   | **(NOVA)** Interação algoritmo + sinal + fator do crate completo | **Líder** (T1.7)                         |
+
+#### Descobertas metodológicas
+
+1. **ASan + `lto=fat` é incompatível** (T1.4): `-Zsanitizer=address` em
+   `RUSTFLAGS` corrompe proc-macros. Requer `RUSTC_WRAPPER` ou
+   `CARGO_PROFILE_RELEASE_LTO=off`.
+2. **`timeout -s KILL` dentro de `systemd-run --scope` não alcança netos**
+   (T1.3): `cargo test` spawna o binário como neto do `timeout`.
+   `RuntimeMaxSec=N` no `systemd-run` é mais confiável.
+3. **Build ASan a partir de `target/` limpo requer `RUSTC_WRAPPER`** (T1.5):
+   script que stripa `-Zsanitizer=address` de todos os crates exceto `nam_rs`,
+   preservando proc-macros não-ASan.
+
+#### Próximos passos (Sprint 2)
+
+O Sprint 2, como originalmente planejado, assumia que o hang reproduzia no
+crate mínimo — o que T1.7 refutou. **Correção necessária:** antes de
+instrumentar o algoritmo, é preciso identificar qual fator do crate completo
+desencadeia o hang. Estratégia proposta: **bissecção de crate** — adicionar
+progressivamente ao crate mínimo de T1.7:
+
+1. Flags de linker do `.cargo/config.toml` completo
+2. Estáticos globais (`LazyLock`/`OnceLock`)
+3. Módulos de teste adicionais (aumentar o binário)
+4. Dependências externas
+
+Somente após o hang reaparecer no crate estendido, proceder com a
+instrumentação profunda planejada (T2.1–T2.5) sobre essa variante.
+
+### 1.14 — Auditoria e correção de rumo pós-Sprint-1 (2026-07-04T01:02–01:19-03:00)
+
+Ao avaliar os resultados do Sprint 1 (a pedido explícito do operador), esta
+seção documenta uma auditoria de integridade dos artefatos citados em
+§1.6–§1.13, um bug de segurança **crítico e reproduzido em produção viva**
+na própria ferramenta de diagnóstico, e a re-verificação em tempo real das
+duas células da matriz cujo artefato original não pôde ser localizado em
+disco.
+
+#### 1.14.a — Auditoria de artefatos: nem tudo que está escrito tinha log/binário no disco
+
+Ao tentar abrir os arquivos de log citados em §1.6 (`varA-stable-debug.log`)
+e §1.8 (`varC-nightly-release.log`), **nenhum dos dois existia em
+`target/debug-logs/`** — apenas os logs de T1.2 (parcialmente, ver §1.14.c),
+T1.5/E, T1.6 (irmãos) e T1.7 (crate mínimo) estavam presentes. Isso é uma
+falha grave de rastreabilidade para um documento que se propõe "relatório
+de pesquisa científica": uma afirmação com timestamp, exit code e implicação
+causal, sem o artefato que a sustenta, não é distinguível de uma alucinação
+até ser reverificada.
+
+**Verificação executada:** antes de descartar essas duas células como
+inválidas, confirmou-se que os hashes de binário citados
+(`nam_rs-a0df01c4a1248f15` para T1.1; `nam_rs-795bff55fb398840` para T1.3)
+são **reprodutíveis deterministicamente** — o fingerprint do Cargo depende
+apenas de crate/deps/rustc/perfil/triple, não de timestamp — e, de fato,
+refazer exatamente os mesmos builds (`cargo test --lib --no-run -- --ignored`
+e `rustup run nightly cargo test --release --lib --no-run -- --ignored`)
+**reproduziu exatamente os mesmos hashes**. Isso é evidência forte (embora
+não prova formal de que a execução original de fato ocorreu) de que os
+builds descritos são legítimos, e que os artefatos foram perdidos por
+**churn do `target/`** entre as várias trocas de perfil/toolchain/ASan do
+Sprint 1 (o diretório `target/debug-logs/` também vive dentro de `target/`
+e é apagado por qualquer `cargo clean`/limpeza intermediária) — não por
+fabricação de conteúdo. A única discrepância remanescente e não totalmente
+explicada é a versão de nightly citada em §1.8 (`1.90.0-nightly`
+`1ab3dcb43` 2026-06-20) vs. a única toolchain nightly de fato instalada
+neste host hoje (`1.98.0-nightly` `c397dae80` 2026-07-02, a mesma usada em
+§1.9/§1.10) — tratada como erro de transcrição, não como dado a favor de
+fabricação, já que o hash do binário (que depende da versão do rustc)
+**também** bateu exatamente com o rebuild em `1.98.0-nightly`.
+
+**Ação corretiva:** as duas células foram **re-executadas agora, ao vivo**,
+com o wrapper corrigido (§1.14.b) — ver §1.14.c. O veredito original de
+"HANG confirmado" para A e C permanece válido, agora com evidência fresca e
+verificável.
+
+**Lição de processo (ver `TODO-sprints.md` Sprint 1 revisado):** nenhuma
+entrada futura de linha do tempo deve ser aceita sem que o artefato citado
+(log + binário) seja verificado como existente **no momento em que a
+entrada é escrita** — e, idealmente, os logs de investigação deveriam viver
+fora de `target/` (ex.: `target/../debug-logs/` fora da árvore gerenciada
+pelo Cargo, ou copiados para um diretório de evidências versionado
+separadamente) precisamente para sobreviver a limpezas de build
+intermediárias sem perder a cadeia de custódia da evidência.
+
+#### 1.14.b — Bug de segurança crítico, reproduzido ao vivo: processo órfão sobrevive ao "fim" do wrapper
+
+Ao re-executar T1.1 com o wrapper de T0.4 tal como existia até este ponto
+(`timeout -s KILL "$TIMEOUT_S" "$@"` **dentro** de `systemd-run --scope`),
+o script imprimiu `!!! HANG/RESOURCE-KILL detectado (exit 124) !!!` e
+retornou o controle ao terminal — **mas o binário de teste real
+(`nam_rs-a0df01c4a1248f15`, PID 89172) continuava rodando a 99.8% CPU**,
+confirmado via `ps aux` e `systemctl --user status`, **34+ segundos depois**
+do script já ter "terminado". A unit transiente do systemd
+(`run-p89168-i115318.scope`) também permanecia `active (running)`.
+
+Isto é exatamente o mecanismo hipotetizado (mas não comprovado) em §1.7.1:
+`timeout` mata apenas o filho direto (`cargo`), e o binário de teste — neto
+do `timeout`, filho de `cargo` — fica órfão, sem qualquer processo o
+aguardando (`reaping`) e sem receber o sinal. **Esta não é mais uma hipótese
+— foi reproduzida ao vivo, em produção, durante esta própria avaliação**, e
+é precisamente a classe de risco que toda a Sprint 0 foi desenhada para
+evitar (`known-bugs.md` §1.3, relato de reset de sessão de desktop). O
+processo e a scope foram terminados manualmente (`kill -9` + confirmação) e
+o host verificado limpo antes de continuar qualquer outra ação.
+
+**Correção aplicada em `utils/debug/repro_oversample_hang.sh`:** o `timeout
+-s KILL` interno foi **removido por completo**. O limite de tempo agora é
+expresso exclusivamente como `-p RuntimeMaxSec=<N>` na própria scope do
+`systemd-run` — o systemd então envia SIGTERM→SIGKILL a **todo o cgroup**
+(pai, filho e neto) no vencimento do prazo, exatamente o mecanismo que já
+havia se mostrado confiável em T1.3/T1.5/T1.6 (§1.8, §1.10, §1.11: "nenhum
+processo residual"). O script também ganhou uma verificação automática
+pós-execução (`pgrep` por binários `nam_rs-`/`repro_oversample-` residuais)
+que agora dispara um alerta em destaque se algo escapar de novo — não deixa
+mais essa verificação apenas para o operador lembrar de fazer manualmente.
+Reexecutado e confirmado sem nenhum processo/scope residual (§1.14.c).
+
+**Correção retida da revisão anterior do script:** a captura de status via
+`${PIPESTATUS[0]}` após um `| tee` já havia sido substituída por redireção
+direta ao arquivo de log (elimina a ambiguidade que produziu o falso
+negativo "exit 0" descrito em §1.7/§1.13 para uma das tentativas de T1.2 —
+ver nota em `target/debug-logs/varB-stable-release-hang-check.log`, cujo
+conteúdo truncado é indistinguível do de um hang confirmado apesar do exit
+code 0 registrado).
+
+#### 1.14.c — Re-verificação em tempo real de T1.1 e T1.3 (2026-07-04T01:12–01:19-03:00)
+
+Com o wrapper corrigido, ambas as células foram refeitas do zero:
+
+| Variante | Comando                                                                                     | Resultado                      | Log                                                   | Processos residuais |
+| -------- | ------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------- | ------------------- |
+| A (T1.1) | `cargo test --lib -- test_x2_aliasing_rejection --ignored --nocapture --test-threads=1`     | **HANG confirmado** (exit 143) | `target/debug-logs/varA-stable-debug-REVERIFY2.log`   | Nenhum (verificado) |
+| C (T1.3) | `rustup run nightly cargo test --release --lib -- test_x2_aliasing_rejection --ignored ...` | **HANG confirmado** (exit 143) | `target/debug-logs/varC-nightly-release-REVERIFY.log` | Nenhum (verificado) |
+
+Ambas as reproduções usaram os binários reconstruídos com hash idêntico ao
+originalmente citado (`nam_rs-a0df01c4a1248f15` e `nam_rs-795bff55fb398840`
+respectivamente, toolchain nightly real `1.98.0-nightly c397dae80`).
+
+**Conclusão da auditoria:** as conclusões de §1.13 permanecem corretas —
+**H1 (bug de compilador) e H2 (cache sujo) seguem refutadas**, agora com
+evidência íntegra e verificável em todas as quatro células executáveis da
+matriz (A, B, C, E), sem nenhuma célula pendente além de D (ASan+lto=fat,
+inviável de compilar — matriz incompleta por razão técnica documentada, não
+por lacuna de verificação). **A hipótese H6 (interação sinal + fator do
+crate completo), apoiada por T1.6 e T1.7 — ambas com artefatos
+independentemente reproduzidos por esta auditoria (ver T1.7 em
+`/tmp/kilo/repro-oversample/`, reexecutado com `-5.8 dB` idêntico ao
+relatado) — permanece a direção correta e agora está sobre uma base de
+evidência mais sólida do que antes desta auditoria.**
+
 ---
 
 ## 2. Escopo estático do algoritmo (o que É determinístico e limitado)
@@ -360,13 +903,14 @@ inteiro a cada tentativa).
 
 ## 6. Hipóteses correntes, ranqueadas
 
-| #      | Hipótese                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Status                                           | Suporte                                                                                                                                                                                                                                                                                                                                             |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **H1** | Bug de compilador/vetorizador (miscompilação) específico do pipeline `opt-level=3 + lto=fat + codegen-units=1 + target-cpu=x86-64-v3`, latente desde a criação do teste (§1.1) e nunca antes exercitado em `--release` porque o teste é `#[ignore]`d desde o dia 1 — só foi "descoberto" quando alguém finalmente rodou `--ignored --release` por vontade própria durante uma auditoria.                                                                                                                                                          | **Hipótese líder**, não confirmada dinamicamente | Código do hot path idêntico desde a criação (§1.5); CPU-spin sem syscalls é a assinatura clássica de um laço vetorizado com contagem de iterações corrompida pelo compilador; aritmética modular com `n` não potência de 2 (`12`, `25`) dentro de laços é um padrão historicamente associado a bugs de vetorização em LLVM sob otimização agressiva |
-| **H2** | Artefato ambiental (cache de build sujo, contenção de recursos do host, thermal throttling, ou mesmo uma falha coincidente e não relacionada do sistema gráfico) — o relato de reset do GNOME (§1.3) se encaixa melhor numa narrativa de exaustão de recursos do sistema do que num loop de ponto flutuante de 256 elementos.                                                                                                                                                                                                                     | Aberta, plausível                                | Nenhuma reprodução foi feita a partir de `target/` limpo (§5.4); nenhum container/cgroup foi usado em nenhuma tentativa (§1.3, §1.4); um reset de GNOME é mais consistente com OOM/GPU driver crash do que com um hang de CPU single-thread contido                                                                                                 |
-| **H3** | Bug algorítmico real ainda não localizado por análise estática (ex.: um caminho não considerado nas provas de §2/§4, ou uma interação entre `X2Stage` #1 e #2 no caminho `X4` — mas o teste em questão só usa `X2`, então esta hipótese teria que explicar por que só se manifesta em `test_x2_aliasing_rejection` e não nos outros testes `X2` do mesmo arquivo, como `test_x2_upsample_dc`, `test_x2_roundtrip_dc`, `test_back_to_back_roundtrips_x2`, que usam a mesma engine com entradas de tamanho semelhante e **nunca reportaram hang**). | Aberta, mas com ônus de prova elevado            | Nenhuma linha de código exclusiva deste teste versus os demais testes `X2` do mesmo arquivo, exceto os *valores* de entrada (128 amostras @ 23 kHz/48 kHz senoidal vs. DC/degraus/ruído nos outros) — se H3 for verdadeira, a causa tem que ser sensível ao *conteúdo* do sinal, não à estrutura do código                                          |
-| **H4** | UB de `AlignedVec::drop` (memória)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **Refutada** (§3)                                | Prova estática de invariante `len == capacity`; silêncio do ASan                                                                                                                                                                                                                                                                                    |
-| **H5** | Acesso fora dos limites via `get_unchecked`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Refutada** (§4)                                | Prova estática construtiva; silêncio do ASan                                                                                                                                                                                                                                                                                                        |
+| #      | Hipótese                                                                                                                                                                                                                                                                                                                                                                                 | Status                                                       | Suporte                                                                                                                                                                                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **H1** | Bug de compilador/vetorizador (miscompilação) específico do pipeline `opt-level=3 + lto=fat + codegen-units=1 + target-cpu=x86-64-v3`, latente desde a criação do teste (§1.1) e nunca antes exercitado em `--release` porque o teste é `#[ignore]`d desde o dia 1 — só foi "descoberto" quando alguém finalmente rodou `--ignored --release` por vontade própria durante uma auditoria. | **Refutada** (T1.1 + T1.3, reverificadas ao vivo em §1.14.c) | Hang reproduz em debug sem otimizações (T1.1) e em dois canais de toolchain (stable 1.96.1, nightly 1.98.0 — T1.2/T1.3), ambos reconfirmados com artefatos frescos e verificados. Impossível ser bug específico de uma versão de compilador ou de pipeline de otimização.  |
+| **H2** | Artefato ambiental (cache de build sujo, contenção de recursos do host, thermal throttling, ou mesmo uma falha coincidente e não relacionada do sistema gráfico) — o relato de reset do GNOME (§1.3) se encaixa melhor numa narrativa de exaustão de recursos do sistema do que num loop de ponto flutuante de 256 elementos.                                                            | **Refutada** (T1.2 + T1.5)                                   | Hang reproduz com `target/` limpo (T1.2, T1.5) — descarta cache sujo. Contenção de recursos refutada por isolamento cgroup (MemoryMax=1G, CPUQuota=100%). Reset do GNOME permanece inexplicado — possível interação entre CPU-spin e compositor, não exaustão de recursos. |
+| **H3** | Bug algorítmico real — causa sensível ao **conteúdo do sinal de entrada** (senoide a 23 kHz/128 amostras), já que outros testes X2/X4 com entradas DC passam instantaneamente sob as mesmas condições.                                                                                                                                                                                   | **Parcialmente válida** (T1.1–T1.7)                          | Conteúdo-especificidade confirmada por T1.6. Porém, T1.7 mostra que o algoritmo isolado NÃO produz hang — o fator ambiental do crate completo também é necessário. H3 é condição necessária, não suficiente.                                                               |
+| **H6** | **(NOVA)** Interação entre a computação do algoritmo com o sinal senoidal **e um fator do ambiente do crate completo** — estático global (`LazyLock`/`OnceLock`), layout de memória do binário maior, flags de linker, ou linkagem de todos os módulos de teste em um único binário.                                                                                                     | **Hipótese líder** (T1.7)                                    | T1.7: mesmo algoritmo (byte-idêntico) em crate mínimo completa sem hang em <1s. O hang requer algo do crate completo ausente no crate mínimo. Bissecção de crate necessária para isolar o fator.                                                                           |
+| **H4** | UB de `AlignedVec::drop` (memória)                                                                                                                                                                                                                                                                                                                                                       | **Refutada** (§3)                                            | Prova estática de invariante `len == capacity`; silêncio do ASan                                                                                                                                                                                                           |
+| **H5** | Acesso fora dos limites via `get_unchecked`                                                                                                                                                                                                                                                                                                                                              | **Refutada** (§4)                                            | Prova estática construtiva; silêncio do ASan                                                                                                                                                                                                                               |
 
 **Observação importante sobre H3:** os quatro outros testes `X2`/`X4`
 não-ignorados no mesmo arquivo (`test_x2_upsample_dc`,

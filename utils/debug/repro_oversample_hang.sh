@@ -29,10 +29,38 @@
 # Exit codes:
 #   0        — command completed normally within the timeout (success or an
 #              ordinary test failure/assertion; inspect the log for details).
-#   124/137  — HANG or RESOURCE-KILL detected (external `timeout -s KILL` fired,
-#              or the cgroup OOM-killed the process). Printed in bold/highlight.
-#   2        — usage error (bad arguments); never confuse this with 124/137.
-#   other    — whatever the wrapped command itself returned.
+#   128+N    — the whole cgroup was terminated by `RuntimeMaxSec` (systemd
+#              sends SIGTERM=15 first, hence the near-universally observed
+#              143; escalates to SIGKILL=9/137 if the process ignores TERM).
+#              Treat ANY exit >= 128 as HANG/RESOURCE-KILL.
+#   2        — usage error (bad arguments); never confuse this with the above.
+#   other    — whatever the wrapped command itself returned (ordinary pass/fail).
+#
+# CRITICAL FIX (2026-07-04, re-verified live during Sprint 1 evaluation —
+# see known-bugs.md §1.14): the *original* version of this script ran
+# `timeout -s KILL "$TIMEOUT_S" "$@"` *inside* the systemd-run scope. This
+# was PROVEN LIVE to leak the actual test binary as an orphaned, still-running
+# process pinned at ~100% CPU *after* the script had already printed
+# "exit 124" and returned control to the caller — `timeout` only reliably
+# signals its own direct child (`cargo`), not the grandchild test binary that
+# `cargo test` spawns, and the scope's default `KillMode=process` does not
+# clean up the rest of the cgroup on its own. This is exactly the mechanism
+# that must be assumed capable of exhausting host resources unattended if
+# this script is ever run without someone watching `ps`/`systemctl` afterward.
+#
+# FIX: the timeout is now expressed as `-p RuntimeMaxSec=<N>` on the
+# `systemd-run` scope itself (no inner `timeout` process at all). systemd
+# enforces this by sending SIGTERM then SIGKILL to *every* process in the
+# scope's cgroup — verified empirically (known-bugs.md §1.10, §1.11, and the
+# live re-verification in §1.14) to leave zero residual processes. Do not
+# reintroduce an inner `timeout -s KILL` — it is the confirmed root cause of
+# a real, reproduced-live orphan/resource leak, not a theoretical concern.
+#
+# Secondary fix retained from the previous revision: no `| tee` pipe for the
+# authoritative exit-status capture (a `${PIPESTATUS[0]}` read after `tee`
+# separately produced a false-negative exit 0 for a log truncated exactly
+# like a confirmed hang — known-bugs.md §1.14). Output is redirected straight
+# to the log file and `$?` is read immediately, unambiguously.
 
 set -uo pipefail
 
@@ -101,19 +129,47 @@ mkdir -p target/debug-logs
 LOG="target/debug-logs/${LABEL}.log"
 EXIT_FILE="target/debug-logs/${LABEL}.exit"
 
-echo "=== $(date -Is) :: ${LABEL} :: timeout=${TIMEOUT_S}s :: cmd: $* ===" | tee "$LOG"
+echo "=== $(date -Is) :: ${LABEL} :: RuntimeMaxSec=${TIMEOUT_S}s :: cmd: $* ===" >"$LOG"
+cat "$LOG"
 
+# No inner `timeout` process — see the CRITICAL FIX note above. The scope's
+# own `RuntimeMaxSec` is the *only* time limit, and it is enforced by systemd
+# against the whole cgroup (every descendant process), not just the direct
+# child. No pipe into `tee` for the authoritative status capture either (see
+# the "Secondary fix" note above) — `$?` right below is read directly.
 systemd-run --user --scope --collect \
     -p MemoryMax=1G -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=64 \
-    -- timeout -s KILL "$TIMEOUT_S" "$@" 2>&1 | tee -a "$LOG"
-STATUS=${PIPESTATUS[0]}
+    -p "RuntimeMaxSec=${TIMEOUT_S}" \
+    -- "$@" >>"$LOG" 2>&1
+STATUS=$?
 
 echo "$STATUS" >"$EXIT_FILE"
 
-if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
+# Post-run safety net: confirm the cgroup really is gone and nothing from
+# this invocation survived. This is not optional cosmetics — the exact
+# failure mode this guards against (a still-running, ~100% CPU orphaned test
+# binary, minutes after the script already printed a result and exited) was
+# reproduced live during the Sprint 1 evaluation (known-bugs.md §1.14) with
+# the *previous* revision of this script.
+LEFTOVER_PROC="$(pgrep -af 'target/(debug|release)/deps/(nam_rs|repro_oversample)-' 2>/dev/null || true)"
+if [ -n "$LEFTOVER_PROC" ]; then
+    echo -e "${RED}${BOLD}!!! ALERTA: processo(s) residual(is) detectado(s) após o fim do script — mate manualmente agora: !!!${NC}" | tee -a "$LOG"
+    echo "$LEFTOVER_PROC" | tee -a "$LOG"
+fi
+
+if [ "$STATUS" -ge 128 ]; then
     echo -e "${RED}${BOLD}!!! HANG/RESOURCE-KILL detectado (exit ${STATUS}) !!!${NC}" | tee -a "$LOG"
 elif [ "$STATUS" -eq 0 ]; then
-    echo -e "${GREEN}${BOLD}--- comando finalizado normalmente (exit 0) ---${NC}" | tee -a "$LOG"
+    # Post-hoc consistency check: an exit 0 whose log ends mid-line exactly
+    # like libtest's "test <name> ... " in-progress marker (no trailing
+    # "ok"/"FAILED"/"ignored", no "test result:" summary anywhere in the
+    # log) is almost certainly a false negative, not a real pass — flag it
+    # loudly instead of trusting the exit code blindly.
+    if ! grep -q "^test result:" "$LOG"; then
+        echo -e "${RED}${BOLD}!!! SUSPEITO: exit 0 mas nenhuma linha 'test result:' no log — provável falso negativo da ferramenta (ver known-bugs.md §1.14). Trate como INCONCLUSIVO, não como sucesso. !!!${NC}" | tee -a "$LOG"
+    else
+        echo -e "${GREEN}${BOLD}--- comando finalizado normalmente (exit 0) ---${NC}" | tee -a "$LOG"
+    fi
 else
     echo -e "${YELLOW}${BOLD}--- comando finalizado com exit ${STATUS} (não é hang/OOM) ---${NC}" | tee -a "$LOG"
 fi
