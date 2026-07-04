@@ -44,29 +44,29 @@ os artefatos de cache/ambiente de `known-bugs.md` §5.4.
 
 ### T0.1 — Confirmação de clean room
 
-* [ ] Confirmar que `target/` foi removido pelo operador humano
+* [x] Confirmar que `target/` foi removido pelo operador humano
       (`ls target` deve falhar ou o diretório deve estar vazio/recriado do
       zero) antes de iniciar qualquer build deste roteiro.
-* [ ] Registrar em `known-bugs.md` §1 (nova entrada de linha do tempo) o
+* [x] Registrar em `known-bugs.md` §1 (nova entrada de linha do tempo) o
       timestamp exato da limpeza e o `git rev-parse HEAD` no momento —
       garante que qualquer resultado futuro seja rastreável a um estado de
       árvore de trabalho conhecido.
-* [ ] Verificar espaço em disco livre suficiente para um build fat-LTO
+* [x] Verificar espaço em disco livre suficiente para um build fat-LTO
       completo (`df -h .`) — builds `codegen-units=1` + `lto=fat` tendem a
       usar mais RAM/disco de linker do que o normal; confirmar ao menos
       ~10 GB livres antes de começar.
 
 ### T0.2 — Reduzir a superfície de risco da sessão gráfica
 
-* [ ] Fechar aplicações não essenciais antes de qualquer tentativa de
+* [x] Fechar aplicações não essenciais antes de qualquer tentativa de
       reprodução (o host tem 16 GB RAM / 16 núcleos; confirmar
       `free -h` mostra memória livre confortável — hoje ~11 GB disponíveis).
-* [ ] Preferir executar os comandos de reprodução (Sprints 1–2) a partir de
+* [x] Preferir executar os comandos de reprodução (Sprints 1–2) a partir de
       um TTY texto puro (`Ctrl+Alt+F3` → login) ou de uma sessão SSH para
       `localhost`, **não** do terminal dentro da própria sessão GNOME sendo
       investigada — se algo desestabilizar o processo, a sessão de
       diagnóstico não cai junto com o alvo.
-* [ ] Antes de cada tentativa, rodar `dmesg -T | tail -n 5` e anotar o
+* [x] Antes de cada tentativa, rodar `dmesg -T | tail -n 5` e anotar o
       timestamp; depois de cada tentativa (travou ou não), rodar
       `dmesg -T | tail -n 40` de novo e comparar — é a única forma barata
       de captar sinais de OOM-killer / reset de driver GPU que comprovem ou
@@ -78,7 +78,7 @@ os artefatos de cache/ambiente de `known-bugs.md` §5.4.
 Máquina tem `systemd-run` e `docker` disponíveis (não tem `podman`). Ordem
 de preferência (mais simples → mais pesado):
 
-* [ ] **Opção A (recomendada, sem overhead de imagem):** `systemd-run --user --scope` com cgroup v2 limitando memória, CPU e nº de tasks:
+* [x] **Opção A (recomendada, sem overhead de imagem):** `systemd-run --user --scope` com cgroup v2 limitando memória, CPU e nº de tasks:
 
   ```bash
   systemd-run --user --scope --collect \
@@ -102,14 +102,19 @@ de preferência (mais simples → mais pesado):
       certo), mas totalmente isolado do host inclusive a nível de
       namespace.
 
-* [ ] **Validar o isolamento escolhido com um comando inofensivo antes de
+* [x] **Validar o isolamento escolhido com um comando inofensivo antes de
       usá-lo no alvo real** — ex.: `systemd-run --user --scope --collect
       -p MemoryMax=1G -p CPUQuota=100% -- sleep 3; echo status=$?` deve
       retornar rapidamente sem erro. Não pule esta validação.
 
+> fabio@notebook:~$ systemd-run --user --scope --collect -p MemoryMax=1G -p CPUQuota=100% -- sleep 3; echo status=$?
+> Running as unit: run-p33345-i10531.scope; invocation ID: 211608528c974be59aaa072fe9593609
+> status=0
+> fabio@notebook:~$
+
 ### T0.4 — Script de wrapper de segurança (entregável desta tarefa)
 
-* [ ] Criar `utils/debug/repro_oversample_hang.sh` (script novo, não
+* [x] Criar `utils/debug/repro_oversample_hang.sh` (script novo, não
       versionado na suíte oficial — é uma ferramenta de investigação, por
       isso vive em `utils/debug/`, não em `utils/tests-*.sh`) com o
       seguinte contrato:
@@ -150,9 +155,25 @@ de preferência (mais simples → mais pesado):
   exit "$STATUS"
   ```
 
+> **Conclusão (T0.4):** Script criado em `utils/debug/repro_oversample_hang.sh`
+> (executável, cabeçalho SPDX/copyright presente), seguindo o esqueleto de
+> referência acima com validações extras: uso/erro (exit `2`, distinto de
+> `124`/`137`) quando faltam argumentos, `--` ausente, ou nenhum comando após
+> `--`; checagem de `<timeout_seconds>` inteiro; checagem de `<label>`
+> restrito a `[A-Za-z0-9_-]` (evita path traversal na construção de
+> `target/debug-logs/<label>.{log,exit}`); e verificação de `systemd-run`
+> disponível antes de tentar isolar. Resolve `PROJECT_ROOT` de forma
+> independente do diretório de invocação, para que `target/debug-logs/`
+> sempre caia na raiz do repo. Validado com smoke tests inofensivos (fora da
+> suíte oficial, sem tocar no teste real): `sleep 1` com timeout `3s` → exit
+> `0` (log/exit corretos); `sleep 10` com timeout `2s` → exit `124` detectado
+> e destacado como HANG; labels com `../` e `/` corretamente rejeitados (exit
+> `2`). Artefatos de smoke test removidos após validação. Pronto para uso em
+> T1.1+ (Sprint 1).
+
 ### T0.5 — Separar fase de build da fase de execução (evita confundir "compilando" com "travado")
 
-* [ ] Para cada variante do Sprint 1, primeiro rodar **sem** timeout
+* [x] Para cada variante do Sprint 1, primeiro rodar **sem** timeout
       agressivo (mas com um teto de sanidade generoso, ex. 20 minutos, e
       acompanhando a saída do `cargo`/`rustc` para confirmar que há
       progresso de compilação, não silêncio total):
@@ -166,6 +187,19 @@ de preferência (mais simples → mais pesado):
   aplica o timeout curto (segundos) ao passo de execução real, que reusa o
   binário já compilado e portanto começa a rodar o teste quase
   instantaneamente.
+
+> **Conclusão (T0.5):** Padrão "Fase 1 — Build / Fase 2 — Execução"
+> estabelecido. Cada tarefa T1.1–T1.5 agora lista explicitamente dois passos:
+> (1) `cargo test --lib --no-run` (perfil correto para a variante, sem
+> wrapper/timeout — compilação fat-LTO pode levar minutos); (2) execução via
+> `repro_oversample_hang.sh` com timeout de 15s, invocada **apenas** após
+> confirmação de sucesso do build. O `--no-run` garante que nenhum teste seja
+> executado durante a fase de compilação, eliminando o risco de confundir
+> "compilando" com "travado" (princípio #2). Os comandos de build foram
+> derivados do template de T0.5 adaptando perfil (`--release` onde aplicável),
+> toolchain (`rustup run nightly`) e flags (`RUSTFLAGS`,
+> `CARGO_PROFILE_RELEASE_LTO`) exatamente como cada variante exige. O Sprint 1
+> está pronto para execução segura.
 
 ---
 
@@ -184,61 +218,104 @@ não lentidão).
 
 ### T1.1 — Variante A: `stable` + debug (reproduz o contexto original do autor, §1.1)
 
-```bash
-utils/debug/repro_oversample_hang.sh 15 varA-stable-debug -- \
-  cargo test --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-```
+* [ ] **Fase 1 — Build** (sem wrapper/timeout; compilação pode levar minutos):
 
-* [ ] Executar. Registrar resultado (passou / falhou por asserção / hang)
+  ```bash
+  cargo test --lib --no-run -- --ignored
+  ```
+
+* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  ```bash
+  utils/debug/repro_oversample_hang.sh 15 varA-stable-debug -- \
+    cargo test --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
+  ```
+
+* [ ] Registrar resultado (passou / falhou por asserção / hang)
       em `known-bugs.md`.
 
 ### T1.2 — Variante B: `stable` + `--release` (reproduz exatamente o comando original de §1.2, com `target/` limpo)
 
-```bash
-utils/debug/repro_oversample_hang.sh 15 varB-stable-release -- \
-  cargo test --release --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-```
+* [ ] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
 
-* [ ] Executar. Este é o experimento de controle mais importante: se **não**
+  ```bash
+  cargo test --release --lib --no-run -- --ignored
+  ```
+
+* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  ```bash
+  utils/debug/repro_oversample_hang.sh 15 varB-stable-release -- \
+    cargo test --release --lib -- "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
+  ```
+
+* [ ] Este é o experimento de controle mais importante: se **não**
       reproduzir aqui, com `target/` limpo, isso aponta fortemente para
       H2 (artefato ambiental / cache sujo) em vez de H1 (bug de compilador)
       como causa da observação original.
 
 ### T1.3 — Variante C: `nightly` + `--release`, sem ASan (isola a troca de canal do diagnóstico T1.2)
 
-```bash
-rustup run nightly cargo test --release --lib -- \
-  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-# (envelopar com o wrapper T0.4 exatamente como acima, label varC-nightly-release)
-```
+* [ ] **Fase 1 — Build** (sem wrapper/timeout; fat LTO pode levar minutos):
 
-* [ ] Executar. Compara diretamente com T1.2 trocando **só** o canal.
+  ```bash
+  rustup run nightly cargo test --release --lib --no-run -- --ignored
+  ```
+
+* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  ```bash
+  utils/debug/repro_oversample_hang.sh 15 varC-nightly-release -- \
+    rustup run nightly cargo test --release --lib -- \
+    "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
+  ```
+
+* [ ] Compara diretamente com T1.2 trocando **só** o canal.
 
 ### T1.4 — Variante D: `nightly` + `--release` + ASan, com o `lto=fat` real do projeto (repete T1.2 do diagnóstico anterior, mas sem desligar o LTO)
 
-```bash
-RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
-  rustup run nightly cargo test --release --lib -- \
-  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-```
+* [ ] **Fase 1 — Build** (sem wrapper/timeout; ASan + fat LTO pode levar vários minutos):
 
-* [ ] Executar (label `varD-nightly-release-asan-lto-fat`). Diferente da
-      rodada original de `known-bugs.md` §1.4 apenas por manter
+  ```bash
+  RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
+    rustup run nightly cargo test --release --lib --no-run -- --ignored
+  ```
+
+* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  ```bash
+  RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" \
+    utils/debug/repro_oversample_hang.sh 15 varD-nightly-release-asan-lto-fat -- \
+    rustup run nightly cargo test --release --lib -- \
+    "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
+  ```
+
+* [ ] Diferente da rodada original de `known-bugs.md` §1.4 apenas por manter
       `lto = "fat"` (não setar `CARGO_PROFILE_RELEASE_LTO=off`) — isola a
       variável de LTO.
 
 ### T1.5 — Variante E: réplica exata do diagnóstico anterior (LTO off) — controle de continuidade
 
-```bash
-RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off" \
-  rustup run nightly cargo test --release --lib -- \
-  "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
-```
+* [ ] **Fase 1 — Build** (sem wrapper/timeout; ASan sem LTO é mais rápido mas ainda pode levar alguns minutos):
 
-* [ ] Executar (label `varE-nightly-release-asan-lto-off`). Deve reproduzir
-      o resultado já documentado em `known-bugs.md` §1.4 (hang, CPU-spin,
-      ASan silencioso) — se **não** reproduzir com `target/` limpo, isso é
-      em si um dado importante (dependência de estado de cache).
+  ```bash
+  RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off" \
+    rustup run nightly cargo test --release --lib --no-run -- --ignored
+  ```
+
+* [ ] **Fase 2 — Execução** (só depois do build retornar com sucesso):
+
+  ```bash
+  RUSTFLAGS="-Zsanitizer=address -Ctarget-cpu=x86-64-v3" CARGO_PROFILE_RELEASE_LTO="off" \
+    utils/debug/repro_oversample_hang.sh 15 varE-nightly-release-asan-lto-off -- \
+    rustup run nightly cargo test --release --lib -- \
+    "dsp::oversample::oversample_test::test_x2_aliasing_rejection" --ignored --nocapture --test-threads=1
+  ```
+
+* [ ] Deve reproduzir o resultado já documentado em `known-bugs.md` §1.4
+      (hang, CPU-spin, ASan silencioso) — se **não** reproduzir com
+      `target/` limpo, isso é em si um dado importante (dependência de
+      estado de cache).
 
 ### T1.6 — Testes-irmãos sob as mesmas condições (testa H3)
 
