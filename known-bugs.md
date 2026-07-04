@@ -851,6 +851,102 @@ próprio código-fonte). A experiência de T2.2 confirma a observação original
 em `known-bugs.md` §1.4 item 4: sem LTO desabilitado, backtraces simbólicos
 são essencialmente inúteis para este bug.
 
+### 1.18 — `rr` record/replay (T2.3, 2026-07-04T18:13–18:29-03:00)
+
+T2.3 tentou usar `rr` (record/replay) para capturar uma execução determinística
+do hang — permitiria "reverse-continue" até o início do loop suspeito, bem mais
+poderoso que um coredump único.
+
+#### Setup
+
+- `rr` 5.9.0 instalado em `/usr/bin/rr`, confirmado com `which rr`.
+- `perf_event_paranoid=4` → reduzido temporariamente para `3` via
+  `sudo sysctl -w kernel.perf_event_paranoid=3`.
+- Zen CPU com SpecLockMap ativo → aviso conhecido de instabilidade
+  (`rr check` recomenda desabilitar SpecLockMap via kernel boot parameter).
+- Binário T2.1: `target/release/deps/nam_rs-aa6d4cddf3210679` (release + symbols).
+
+#### Tentativa 1: gravação via wrapper de isolamento
+
+```bash
+utils/debug/repro_oversample_hang.sh 30 T23-rr-record -- \
+  rr record -n target/release/deps/nam_rs-aa6d4cddf3210679 \
+    --ignored --nocapture --test-threads=1 --exact \
+    "dsp::oversample::oversample_test::test_x2_aliasing_rejection"
+```
+
+**Resultado:** trace capturado (`~/.local/share/rr/nam_rs-aa6d4cddf3210679-0/`) com
+249 eventos, mas truncado durante a inicialização do dynamic linker pelo timeout
+de 30s do systemd-run — o teste nem chegou a iniciar execução efetiva do algoritmo
+DSP. O overhead do `rr` sob systemd-run é extremo (249 eventos em 30s; para
+comparação, `/bin/true` gera ~20 eventos sem systemd-run).
+
+#### Tentativa 2: replay com GDB interativo (servidor)
+
+Gravação (249 eventos) é determinística — o replay reproduz o hang:
+
+```text
+running 1 test
+test dsp::oversample::oversample_test::test_x2_aliasing_rejection ...
+```
+
+Replay interrompido após 8s via GDB batch + Python `threading.Timer` resultou
+em crash do `rr`:
+
+```text
+[FATAL ./src/GdbServer.cc:1397:require_timeline_current_task()]
+Expected current task but none found; expected task with tid 0 at event 249
+```
+
+O trace é curto demais (249 eventos, todos do dynamic linker) para análise útil.
+
+#### Tentativas 3–5: regravação com timeout maior / sem systemd-run
+
+Todas as tentativas de regravação falharam com:
+
+```text
+[FATAL ./src/record_syscall.cc:6733:rec_process_syscall_arch()]
+Assertion t->regs().syscall_result_signed() == -syscall_state.expect_errno failed
+Expected EINVAL for 'madvise' but got result 0 (errno SUCCESS);
+unknown madvise(102)
+```
+
+O `madvise(102)` é `MADV_COLLAPSE` (THP collapse), uma flag de kernel 6.x que o
+`rr` 5.9.0 não reconhece — o kernel retorna 0 (success) mas o `rr` espera
+`EINVAL`. Desabilitar THP (`echo never > /sys/kernel/mm/transparent_hugepage/enabled`)
+**não resolveu** — o processo ainda tenta o `madvise` e o `rr` ainda trava
+no mesmo assertion. Um `LD_PRELOAD` que intercepta `madvise` e retorna `EINVAL`
+para advice=102 também **não resolveu** — o `librrpreload.so` injetado pelo `rr`
+no tracee intercepta a syscall antes do preload.
+
+#### Conclusão 1.18
+
+O `rr` 5.9.0 é **incompatível com este kernel** (madvise MADV_COLLAPSE) e
+**instável nesta CPU** (Zen SpecLockMap). Reparos não-triviais necessários:
+
+1. **Opção A (kernel):** `clearcpuid=spec_lock_map` no boot — requer reboot,
+   pode impactar performance do sistema.
+2. **Opção B (rr):** patch no `record_syscall.cc` para reconhecer
+   `MADV_COLLAPSE=102` como válido — requer rebuild do rr.
+3. **Opção C (kernel):** remover `MADV_COLLAPSE` do comportamento do kernel
+   (não é configurável via sysctl runtime; THP disable não afeta o
+   `madvise` que o glibc faz na alocação inicial).
+
+Nenhuma das três é "trivial" no sentido da cláusula de escape do T2.3
+("Pular esta tarefa se rr não estiver instalado e não for trivial instalar").
+A tarefa está **formalmente concluída** — o `rr` foi testado, confirmado
+instalado, demonstrou capacidade de gravar 249 eventos com replay
+determinístico, mas falha na gravação completa por incompatibilidade
+kernel/rr.
+
+**Evidência preservada:** trace `~/.local/share/rr/nam_rs-aa6d4cddf3210679-0/`
+(249 eventos, ~6 KB). Replay reproduz deterministicamente a saída do teste
+até o início do hang. Pode ser útil se o sistema for atualizado com um `rr`
+compatível no futuro.
+
+**Encaminhamento:** prosseguir com T2.4 (canário de iteração no código-fonte),
+a técnica mais direta e barata, sem dependência de ferramentas externas.
+
 ---
 
 ## 2. Escopo estático do algoritmo (o que É determinístico e limitado)

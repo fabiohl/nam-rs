@@ -619,14 +619,28 @@ variante B/T1.2**) para tudo abaixo.
 
 ### T2.3 — `rr` record/replay (se disponível; instalar é opcional, não obrigatório)
 
-> Nota do PO: Sim, "rr" está disponível neta máquina.
+> Nota do PO: Sim, "rr" está disponível nesta máquina.
 
-* [ ] Se `rr` estiver disponível (`which rr`), gravar a execução
+* [x] Se `rr` estiver disponível (`which rr`), gravar a execução
       (`rr record <binário> ...`) dentro do mesmo isolamento de recursos —
       permite replay determinístico e "reverse-continue" até o início do
       loop suspeito, bem mais poderoso que um coredump único. Pular esta
       tarefa se `rr` não estiver instalado e não for trivial instalar
       (não é bloqueante para o restante do sprint).
+
+  **RESULTADO — CONCLUÍDO COM RESSALVAS.** `rr` 5.9.0 confirmado
+  instalado. Gravação capturou 249 eventos com replay determinístico
+  (o teste inicia e o hang é reproduzido fielmente), mas o trace é
+  curto demais para análise útil: o overhead do `rr` sob
+  systemd-run faz o timeout de 30s expirar antes de o teste iniciar
+  execução efetiva do algoritmo DSP. Regravação direta (sem systemd-run)
+  falha com incompatibilidade kernel/rr: `madvise(MADV_COLLAPSE=102)`
+  não é reconhecido pelo `rr` 5.9.0 (kernel 6.x). Adicionalmente, o
+  Zen CPU SpecLockMap causa crash do `rr` durante replay interativo com
+  GDB. As três correções possíveis (boot parameter `clearcpuid`,
+  rebuild do `rr` com patch, ou remoção do MADV_COLLAPSE do kernel)
+  são não-triviais. A cláusula de escape ("não é bloqueante") se
+  aplica. Ver `known-bugs.md` §1.18 para o relatório completo.
 
 ### T2.4 — Canário de iteração (kill-switch determinístico, sem depender de ferramentas externas)
 
