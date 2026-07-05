@@ -81,40 +81,107 @@ RUSTC_VER="$(rustc --version 2>/dev/null || echo 'unknown')"
 # in pt_BR the decimal separator is comma, so we force C locale for numbers.
 _nfmt() { LC_NUMERIC=C printf "$@"; }
 
-# Look up ESR vs f64 for a golden label by partial matching against oracle keys
-# Oracle stores data under short labels (LSTM, WaveNet, ConvNet) or .nam filenames.
-# We check if the golden label contains any known oracle key.
+# Per-family provenance map: which single .nam fixture the generic family-level
+# f64-oracle keys ("LSTM", "WaveNet", "A2", "ConvNet") were actually measured on.
+# CORRECTNESS NOTE (Épico EQ audit, 2026-07-05): `test_oracle_lstm()` and friends
+# (tests/reference_oracle_f64.rs) measure the f64-oracle floor for exactly ONE
+# representative fixture per family — for LSTM that fixture is `lstm.nam` (the
+# tiny 3-hidden-unit official example), NOT BossLSTM-1x16.nam/BossLSTM-2x8.nam,
+# which are the models that actually exhibit severe recurrent drift. There is
+# currently no per-model, production-duration (240k-sample) f64-oracle
+# measurement for BossLSTM-1x16/2x8 in the automated suite — only the ignored
+# diagnostic `t33_diagnostic_recurrent_drift_lstm_1x16` provides that, and it
+# must be run explicitly (`--ignored`) to get a real number for those models.
+# This map exists so the report can say "family baseline, not measured for this
+# exact model" instead of silently presenting one model's result as another's.
+declare -A ESR_F64_FAMILY_FIXTURE=(
+    ["LSTM"]="lstm.nam (H=3 official — NOT BossLSTM-1x16/2x8; see t33 diagnostic for those)"
+    ["WaveNet"]="wavenet_official.nam"
+    ["A2"]="wavenet_a2_lite.nam"
+    ["ConvNet"]="convnet_test.nam"
+)
+
+# Look up ESR vs f64 for a golden label by partial matching against oracle keys.
+# Oracle stores data under two kinds of keys: exact `.nam` filenames (from the
+# per-model summary table, trustworthy 1:1) and short family labels ("LSTM",
+# "WaveNet", "ConvNet", "A2" — each backed by exactly one representative
+# fixture, see ESR_F64_FAMILY_FIXTURE above). An exact filename match is always
+# precise; a fuzzy/family match is only an approximation for models other than
+# the one the family key was actually measured on, and is flagged as such via
+# the second return value (echoed on the line after the value: "exact" or
+# "family:<fixture>").
+# Validate that a string actually looks like a scientific-notation ESR value
+# (e.g. "6.13e-14", "0.00e0", "3.17e-3", "0"). Defensive check (2026-07-05):
+# a malformed/interleaved line in a parallel `cargo test` log run has been
+# observed to make an ESR_F64 entry hold a non-numeric label (e.g. "WaveNet")
+# instead of a value — this rejects such garbage before it reaches the
+# report instead of silently displaying it as if it were a measurement.
+_is_numeric_esr() {
+    local v="$1"
+    [[ "$v" =~ ^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$ ]]
+}
+
 _lookup_esr_f64() {
     local golden_label="$1"
     # Normalize strings for robust matching
     local norm_golden
     norm_golden=$(echo "$golden_label" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-    
+
     local best="N/A"
     local best_len=0
-    
+    local best_key=""
+    local best_is_exact=0
+
     set +u
     for okey in "${!ESR_F64[@]}"; do
         local norm_okey
         norm_okey=$(echo "$okey" | tr '[:upper:]' '[:lower:]' | sed 's/\.nam$//; s/[^a-z0-9]//g')
-        
+
+        # Skip any candidate whose stored value isn't actually numeric — a
+        # corrupted/malformed entry must never win a match, exact or fuzzy.
+        _is_numeric_esr "${ESR_F64[$okey]}" || continue
+
         # Exact match is always preferred
         if [ "$norm_golden" = "$norm_okey" ]; then
             best="${ESR_F64[$okey]}"
+            best_key="$okey"
+            best_is_exact=1
             best_len=9999
             break
         fi
-        
+
         # Partial matches: prefer the longest matching key (most specific)
         if [[ "$norm_golden" == *"$norm_okey"* ]] || [[ "$norm_okey" == *"$norm_golden"* ]]; then
             if [ ${#norm_okey} -gt $best_len ]; then
                 best="${ESR_F64[$okey]}"
+                best_key="$okey"
+                best_is_exact=0
                 best_len=${#norm_okey}
             fi
         fi
     done
     set -u
-    echo "$best"
+
+    # Final safety net: even if something upstream slipped through, never
+    # hand back a non-numeric "value" to the caller as if it were an ESR.
+    if [ "$best" = "N/A" ] || ! _is_numeric_esr "$best"; then
+        echo "N/A"
+        echo "none"
+        return
+    fi
+
+    # An "exact" match is only truly exact if the matched key is itself a
+    # `.nam` filename (per-model table), not one of the generic family labels
+    # (LSTM/WaveNet/A2/ConvNet), which are always an approximation for any
+    # model other than their single backing fixture.
+    if [ "$best_is_exact" -eq 1 ] && [[ "$best_key" == *.nam ]]; then
+        echo "$best"
+        echo "exact"
+    else
+        local fixture="${ESR_F64_FAMILY_FIXTURE[$best_key]:-$best_key}"
+        echo "$best"
+        echo "family:${fixture}"
+    fi
 }
 
 # ── Data storage (global associative arrays) ────────────────────────────────
@@ -166,7 +233,13 @@ run_reference_oracle() {
     echo -e "${BLUE}${BOLD}-> Executando reference_oracle_f64...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test reference_oracle_f64 -- --nocapture > "$log" 2>&1 || true
+    # --test-threads=1: this binary's stdout is scanned with a stateful,
+    # multi-line table parser (parse_oracle_f64). Running tests in parallel
+    # (the default) interleaves unrelated tests' output into the middle of
+    # that table, which was confirmed (2026-07-05) to corrupt parsed entries.
+    # Serializing here removes the interleaving at the source; the awk-side
+    # row-shape validation in parse_oracle_f64 is kept as defense-in-depth.
+    cargo test --release --test reference_oracle_f64 -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -326,6 +399,23 @@ parse_oracle_f64() {
     [ -f "$log" ] || return 0
 
     # Parse ESR summary table — skip debug lines (MODEL CLASS LABEL, PROD FIRST, etc.)
+    #
+    # ROOT-CAUSE FIX (Épico EQ audit, 2026-07-05): this table scan used to have
+    # two compounding bugs, both confirmed by direct reproduction:
+    #   (A) `printf "...\t%s\t%s\n", $1, $0` redundantly re-embedded $1 inside
+    #       $0, so every later bash-side `awk '{print $N}'` re-split was off
+    #       by one column (family ended up in the esr_lin slot, etc.) — this
+    #       happened on EVERY row, unconditionally.
+    #   (B) `in_table` only reset on a blank line or a "test " line, so when
+    #       `cargo test` (which runs test functions in parallel by default)
+    #       interleaves another test's stdout into this window, unrelated
+    #       lines (e.g. "<Family> Decomposition:", "ESR(f32 vs f64 oracle): ..."
+    #       from a concurrently-running decomposition test) were vacuumed up
+    #       and misparsed as if they were table rows.
+    # Fix: require the row to actually look like a table row (filename ends
+    # in `.nam`, third field is scientific notation) before accepting it, and
+    # have awk emit the four columns pre-split — no bash-side re-splitting,
+    # no duplicated `$0`, so there is nothing left to shift.
     local parsed="$PARSEDIR/oracle_f64_summary.parsed"
     LC_ALL=C awk '
     BEGIN { in_table = 0 }
@@ -335,20 +425,27 @@ parse_oracle_f64() {
     in_table == 2 && (/^$/ || /^test /) { in_table = 0; next }
     # Skip debug lines mixed into the table
     in_table == 2 && /^(MODEL CLASS LABEL|PROD FIRST|ORACLE FIRST)/ { next }
-    # Capture data rows (model filename as first column)
-    in_table == 2 && /^[A-Za-z]/ {
-        printf "ESR_F64_TABLE\t%s\t%s\n", $1, $0
+    # Capture data rows ONLY if they actually have the expected shape: a
+    # `.nam` filename in column 1 and scientific-notation ESR in column 3.
+    # Anything else (foreign interleaved output) is silently ignored rather
+    # than mis-captured as a row.
+    in_table == 2 && $1 ~ /\.nam$/ && $3 ~ /^[+-]?[0-9]+\.?[0-9]*[eE][+-]?[0-9]+$/ {
+        printf "ESR_F64_TABLE\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4
     }
     ' "$log" > "$parsed"
 
-    while IFS=$'\t' read -r metric rest; do
+    while IFS=$'\t' read -r metric filename family esr_lin esr_db; do
         [[ "$metric" == "ESR_F64_TABLE" ]] || continue
-        local filename family esr_lin esr_db
-        filename=$(echo "$rest" | awk '{print $1}')
-        family=$(echo "$rest" | awk '{print $2}')
-        esr_lin=$(echo "$rest" | awk '{print $3}')
-        esr_db=$(echo "$rest" | awk '{print $4}')
-        [ -n "$filename" ] && [ -n "$esr_lin" ] && ESR_F64["$filename"]="$esr_lin"
+        # Defensive: reject a parsed value that isn't actually numeric — a
+        # second, independent safety net on top of the strict awk shape
+        # check above, in case the log format changes again in the future.
+        if [ -n "$filename" ] && [ -n "$esr_lin" ]; then
+            if _is_numeric_esr "$esr_lin"; then
+                ESR_F64["$filename"]="$esr_lin"
+            else
+                echo "  ⚠ Descartando entrada f64 nao-numerica para '$filename': [$esr_lin] (linha malformada em oracle_f64.log)" >&2
+            fi
+        fi
         [ -n "$filename" ] && [ -n "$esr_db" ] && ESR_F64_DB["$filename"]="$esr_db"
         [ -n "$filename" ] && MODEL_ESR_F64_TABLE["$filename"]="${family}|${esr_lin}|${esr_db}"
     done < "$parsed"
@@ -360,7 +457,14 @@ parse_oracle_f64() {
         label=$(echo "$line" | sed 's/ ESR(f32 vs oracle, prewarm-paired.*//')
         esr=$(echo "$line" | grep -oP ':\s+\K[0-9.e+\-]+' 2>/dev/null || true)
         esr_db=$(echo "$line" | grep -oP '\(\K[-0-9.]+(?= dB\))' 2>/dev/null || true)
-        [ -n "$label" ] && [ -n "$esr" ] && ESR_F64["$label"]="$esr"
+        # Same defensive check as above — see note there.
+        if [ -n "$label" ] && [ -n "$esr" ]; then
+            if _is_numeric_esr "$esr"; then
+                ESR_F64["$label"]="$esr"
+            else
+                echo "  ⚠ Descartando entrada f64 nao-numerica para familia '$label': [$esr] (linha malformada em oracle_f64.log)" >&2
+            fi
+        fi
         [ -n "$label" ] && [ -n "$esr_db" ] && ESR_F64_DB["$label"]="$esr_db"
     done < "$parsed"
 
@@ -670,11 +774,19 @@ render_quick_summary() {
         # Extract model name for f64 lookup (strip rate and mode)
         local f64_label
         f64_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
-        local esr_f64
-        esr_f64=$(_lookup_esr_f64 "$f64_label")
+        local esr_f64 esr_f64_provenance
+        { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$f64_label")
         local esr_f64_display="$esr_f64"
         if [ "$esr_f64_display" != "N/A" ] && [ ${#esr_f64_display} -gt 10 ]; then
             esr_f64_display=$(_nfmt "%.2e" "$esr_f64" 2>/dev/null || echo "$esr_f64")
+        fi
+        # Flag any non-exact (family-level) match: the value was NOT measured
+        # on this specific model, only on the family's one representative
+        # fixture (see ESR_F64_FAMILY_FIXTURE). Do not present it as if it
+        # were this model's own floor.
+        local f64_suffix=""
+        if [[ "$esr_f64_provenance" == family:* ]]; then
+            f64_suffix=" (~fam.)"
         fi
         local esr_f64_colored
         esr_f64_colored=$(_esr_color "$esr_f64_display")
@@ -689,8 +801,8 @@ render_quick_summary() {
             pct_budget=$(budget_pct "$latency")
             cpu_colored=$(_cpu_color "$pct_budget")
         fi
-        printf "  %s %-38s  vs NAMcore: %-10s %b  │  vs Ideal (f64): %-10s  │  ⚡ CPU: %s do budget\n" \
-            "$icon" "${label:0:38}" "$esr_nam_display" "$verdict" "$esr_f64_colored" "$cpu_colored"
+        printf "  %s %-38s  vs NAMcore: %-10s %b  │  vs Ideal (f64): %-10s%s  │  ⚡ CPU: %s do budget\n" \
+            "$icon" "${label:0:38}" "$esr_nam_display" "$verdict" "$esr_f64_colored" "$f64_suffix" "$cpu_colored"
     }
 
     [ -n "$wn_std_key" ]   && _quick_entry "WaveNet Standard (CH16)"  "🎸" "$wn_std_key"    RT_WaveNet_Std_CH16
@@ -704,6 +816,13 @@ render_quick_summary() {
     [ -n "$convnet_key" ]  && _quick_entry "ConvNet"                  "🎸" "$convnet_key"   RT_ConvNet
     [ -n "$linear_key" ]   && _quick_entry "Linear (RF=2048)"         "🎸" "$linear_key"    RT_Linear
 
+    echo ""
+    echo "  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the"
+    echo "  family's single representative fixture instead (see ESR_F64_FAMILY_FIXTURE)."
+    echo "  Notably: BossLSTM-1x16/2x8 currently show the LSTM family value measured on"
+    echo "  lstm.nam (H=3 official), NOT their own f64-oracle floor. Run"
+    echo "  't33_diagnostic_recurrent_drift_lstm_1x16 --ignored' for a real per-model,"
+    echo "  production-duration measurement of BossLSTM-1x16 specifically."
     echo ""
 }
 
@@ -757,11 +876,14 @@ render_fidelity_details() {
         fi
         local model_label
         model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
-        local esr_f64
-        esr_f64=$(_lookup_esr_f64 "$model_label")
+        local esr_f64 esr_f64_provenance
+        { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
         local esr_f64_short="$esr_f64"
         if [ "$esr_f64_short" != "N/A" ] && [ ${#esr_f64_short} -gt 10 ]; then
             esr_f64_short=$(_nfmt "%.2e" "$esr_f64" 2>/dev/null || echo "$esr_f64")
+        fi
+        if [[ "$esr_f64_provenance" == family:* ]]; then
+            esr_f64_short="${esr_f64_short}~"
         fi
         local esr_f64_colored
         esr_f64_colored=$(_esr_color "$esr_f64_short")
@@ -777,6 +899,8 @@ render_fidelity_details() {
     echo -e "    ${GREEN}verde${NC} = imperceptivel (ESR < 1e-5)"
     echo -e "    ${YELLOW}amarelo${NC} = audivel apenas com A/B cientifico (ESR < 1e-2)"
     echo -e "    ${RED}vermelho${NC} = ⚠ audivel — necessita investigacao (ESR >= 1e-1)"
+    echo "  ~ apos o valor 'vs f64' = valor da familia (uma unica fixture representativa,"
+    echo "    ex.: LSTM -> lstm.nam H=3), NAO medido para este modelo especifico."
     echo ""
 }
 
@@ -967,6 +1091,32 @@ render_activation_precision() {
 }
 
 # ── Render: f64 decomposition ───────────────────────────────────────────────
+#
+# CORRECTNESS NOTE (Épico EQ audit, 2026-07-05): the decomposition tests
+# (`test_decomposition_*` in tests/reference_oracle_f64.rs) run the model
+# COLD — a single 256-sample sweep, with NO prewarm — then compare against
+# the f64 oracle. For architectures with a non-trivial receptive field
+# (WaveNet, A2), the entire 256-sample window falls inside the analytical
+# receptive-field-fill transient, so the measured "ESR(f32 vs f64 oracle)"
+# here is dominated by that transient, not by steady-state precision loss.
+# None of the four decomposed sources (f16c, bf16, Padé, f32 accumulation)
+# models transient/prewarm error, so for WaveNet/A2 the sum of sources can
+# differ from the total by many orders of magnitude — this is expected given
+# the cold-start methodology, not a calculation bug. It also means these
+# numbers are NOT comparable to the prewarm-paired "vs Ideal (f64)" values
+# shown in the fidelity table above (measured with 24k-sample warmup): for
+# the same model, the two can differ by 8-12 orders of magnitude. Below, each
+# model's own internal consistency is checked against the project's declared
+# Rule 5 (`docs/perceptual_validation.md`: "Σ sources ≈ total, within 10×")
+# and flagged when violated, so this isn't silently trusted as a calibration
+# input.
+
+# Extract a numeric value following a given label prefix from a decomposition
+# block (e.g. "ESR(f32 vs f64 oracle):  3.17e-3 (-25.0 dB)" -> "3.17e-3").
+_decomp_extract() {
+    local block="$1" label_pattern="$2"
+    echo "$block" | grep -oP "${label_pattern}\\K[0-9.eE+-]+" 2>/dev/null | head -1
+}
 
 render_f64_decomposition() {
     set +u
@@ -978,12 +1128,41 @@ render_f64_decomposition() {
     echo "🔍 F64 ORACLE — Decomposicao de Fontes de Erro"
     echo "══════════════════════════════════════════════"
     echo ""
+    echo "  (i) Estas medicoes sao cold-start (256 amostras, SEM prewarm) — NAO"
+    echo "      comparaveis aos valores 'vs Ideal (f64)' da tabela de fidelidade"
+    echo "      acima (medidos com warmup de 24k amostras). Para WaveNet/A2, o"
+    echo "      campo receptivo e maior que a janela de 256 amostras, entao o"
+    echo "      ESR total abaixo reflete majoritariamente o transiente de"
+    echo "      preenchimento do buffer, nao o piso de precisao em regime"
+    echo "      permanente. Ver docs/lstm_recurrent_drift.md e TODO-findings.md F-Q1."
+    echo ""
     set +u
     for model in "${!F64_DECOMPOSITION[@]}"; do
         echo "  ${model}:"
-        echo "${F64_DECOMPOSITION[$model]}" | while IFS= read -r line; do
+        local block="${F64_DECOMPOSITION[$model]}"
+        echo "$block" | while IFS= read -r line; do
             [ -n "$line" ] && echo "    $line"
         done || true
+
+        # Rule 5 self-check (docs/perceptual_validation.md): Σ sources ≈ total,
+        # within 10×. Flag it here instead of letting a wildly inconsistent
+        # decomposition pass silently as if it were a trustworthy breakdown.
+        local total combined
+        total=$(_decomp_extract "$block" 'ESR\(f32 vs f64 oracle\):\s*')
+        combined=$(_decomp_extract "$block" 'combined \(F16C\+Padé\+F32\):\s*')
+        if [ -n "$total" ] && [ -n "$combined" ]; then
+            local ratio_flag
+            ratio_flag=$(LC_ALL=C awk -v t="$total" -v c="$combined" 'BEGIN {
+                if (c == 0) { print "n/a"; exit }
+                r = t / c; if (r < 1) r = 1 / r;
+                printf "%.0f", r
+            }' 2>/dev/null || echo "n/a")
+            if [ "$ratio_flag" != "n/a" ] && [ "$ratio_flag" -gt 10 ] 2>/dev/null; then
+                echo -e "    ${YELLOW}⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ ${ratio_flag}×.${NC}"
+                echo -e "    ${YELLOW}  Esperado para modelos com campo receptivo > janela de medicao (cold-start).${NC}"
+                echo -e "    ${YELLOW}  Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.${NC}"
+            fi
+        fi
         echo ""
     done
     set -u

@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
+
 # LSTM Recurrent State Quantization Drift
 
 > Root Cause Analysis of ESR above A1-Std baseline and MR-STFT degradation in LSTM topologies.
@@ -112,27 +113,47 @@ The following were systematically tested and **refuted** as explanations for ESR
 
 ---
 
-## 4. Divergence: NAMCore vs f64 Oracle (Corrected, T8.2/T8.3)
+## 4. Divergence: NAMCore vs f64 Oracle (Corrected, T8.2/T8.3 — provenance further corrected 2026-07-05)
 
-The question _"is nam-rs diverging from NAMCore, or is both diverging from the ideal?"_ is resolved with
-two distinct layers:
+The question _"is nam-rs diverging from NAMCore, or is both diverging from the ideal?"_ was
+previously presented as resolved by two directly-comparable numbers. **It is not** — the two
+numbers below come from different models and different measurement windows, and must not be read
+as two views of the same quantity:
 
-| Comparison                            | ESR @ 48 kHz, 240k steps | Meaning                                                                                        |
-| ------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| nam-rs vs NAMCore (f32, interop)      | **2.61e-2** (−15.8 dB)   | Real recurrent drift between the two f32 engines, shared f16c+f32 accumulation.                |
-| nam-rs vs f64 oracle (prewarm-paired) | **3.57e-3** (−24.5 dB)   | Absolute precision floor of the f16c+f32 production path vs double-precision ideal arithmetic. |
-| Pre-T8.2 oracle (unmatched state)     | ~~~1.0~~ (0 dB)          | **Retracted** — inflated ~300× by architectural divergence (unmatched prewarm/initial state).  |
+| Comparison                            | ESR                    | Model actually measured                                                                    | Window                                      |
+| ------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| nam-rs vs NAMCore (f32, interop)      | **2.61e-2** (−15.8 dB) | **BossLSTM-1×16** (`tests/cpp_parity.rs`)                                                  | 240,000 steps (5 s) @ 48 kHz                |
+| nam-rs vs f64 oracle (prewarm-paired) | **3.57e-3** (−24.5 dB) | **`lstm.nam` (H=3, official)** — `test_oracle_lstm()`, `tests/reference_oracle_f64.rs:328` | 24,000 warmup + 256 measured (24,256 total) |
+| Pre-T8.2 oracle (unmatched state)     | ~~~1.0~~ (0 dB)        | (superseded, see below)                                                                    | —                                           |
 
-**Conclusion:** The interop gap (2.61e-2 vs NAMCore) is real and persists — both engines share the
-f16c+f32 recurrent drift. However, the absolute precision floor is **3.57e-3**, not ~1.0. The pre-T8.2
-"~1.0" was an artifact of mismatched initial state between production and oracle, not actual f16c
-precision loss. The decomposition (T8.3) isolates the dominant sources: Padé tanh activation
-(~7.6e-4 ΔESR) and f16c quantization (~5.1e-5), with f32 accumulation negligible (~7.2e-13).
+**Corrected conclusion:** the interop gap (2.61e-2, BossLSTM-1×16, 240k steps) and the absolute
+precision floor (3.57e-3, `lstm.nam` H=3, 24,256 steps) are **not the same model and not the same
+duration**. Comparing them directly (as this document previously did, concluding "the interop gap
+exceeds the absolute floor by ~7×") conflates a large/deep, drift-prone topology measured at
+production duration with a tiny/shallow, drift-resistant topology (§2.4: "largely rate-insensitive")
+measured on a much shorter window. **BossLSTM-1×16's own f64-oracle floor, at 240k-step production
+duration, has never been measured** in the automated suite — `test_summary_table()`
+(`tests/reference_oracle_f64.rs:751`) only includes `lstm.nam`, not `BossLSTM-1x16.nam` or
+`BossLSTM-2x8.nam`, in its per-model list. The only test that _can_ produce this number today is
+the ignored diagnostic `t33_diagnostic_recurrent_drift_lstm_1x16` (§6), which must be run
+explicitly.
 
-The 2.61e-2 interop gap exceeds the 3.57e-3 absolute floor by ~7× — meaning the divergence between
-the two engines is larger than either engine's divergence from the ideal. This suggests the interop
-gap may be partially addressable (e.g., matching bf16 state precision or FMA ordering in the cell
-update), pending the E8 root-cause investigation (AC-7).
+The decomposition (T8.3) numbers — Padé tanh activation (~7.6e-4 ΔESR) and f16c quantization
+(~5.1e-5), f32 accumulation negligible (~7.2e-13) — are likewise measured on `lstm.nam` H=3
+(`test_decomposition_lstm()`, `tests/reference_oracle_f64.rs:380-397`, 256-sample cold-start), not
+on BossLSTM-1×16. Because the whole point of this document is that recurrent drift scales with
+duration and forget-gate retention, and the H=3 official model is documented (§2.4) as
+comparatively immune to that scaling, **this decomposition cannot be used to predict how much of
+BossLSTM-1×16's drift is attributable to f16c weight quantization specifically.** Any such
+prediction (e.g., "removing f16c should cut LSTM ESR by ~34×") is an unverified hypothesis, not a
+calibrated estimate, until a decomposition is run on BossLSTM-1×16 itself at production duration.
+
+The previously-open question of _why_ the interop gap and the absolute floor didn't reconcile (the
+"~7× E8/AC-7" puzzle) is **not actually resolved by this correction** — it is dissolved, because
+the two numbers being compared were never commensurable in the first place (different model,
+different window). E8/AC-7, as originally framed, should be considered moot pending a real,
+same-model, same-window measurement; see Épico EQ (`TODO-findings.md` F-Q1, `TODO-sprints.md`
+SQ2/SQ5) for the active plan to obtain one before/after quantization removal.
 
 ### 4.1 Oversampling Characterization — Anti-Aliasing vs. Timbre Trade-Off
 
@@ -190,12 +211,14 @@ ABSOLUTE_ESR_CAP = A2ESR_A1_STANDARD_MEDIAN = 6.23e-3
 This cap **overrides** any sample-rate relaxation for ESR: even if the calibrated threshold allows
 higher values (e.g., 6.5e-2 for LSTM 1×16), the absolute cap clamps to the WaveNet A1-Std baseline.
 
-For LSTM topologies specifically, `ABSOLUTE_ESR_CAP_LSTM = 0.08` (T8.4, 2026-06-28) provides
-architecture-specific headroom — derived from the measured recurrent drift vs NAMCore
-(2.61e-2 × 3, rounded). The provenance distinguishes two distinct floors documented in the
-code: the interop parity floor (2.61e-2 vs NAMCore, f16c+f32 recurrent drift) and the
-absolute precision floor (3.57e-3 vs corrected f64 oracle, prewarm-paired T8.2/T8.3).
-The interop floor is ~400× larger than the absolute precision floor.
+For LSTM topologies specifically, `ABSOLUTE_ESR_CAP_LSTM_NATIVE = 0.08` (T8.4, 2026-06-28;
+`tests/cpp_parity.rs:441` — the exact constant name, corrected here) provides
+architecture-specific headroom — derived from the measured recurrent drift vs NAMCore for
+**BossLSTM-1×16 at 240k steps** (2.61e-2 × 3, rounded). This cap is self-consistent (same model,
+same measurement axis it's compared against). It should **not** be conflated with the "3.57e-3
+absolute precision floor" figure discussed in §4 above — that number is measured on a different
+model (`lstm.nam` H=3) at a different, shorter window, and the "~400× larger" / "~7×" comparisons
+previously drawn between the two in this document have been retracted (§4).
 
 ### Purpose
 

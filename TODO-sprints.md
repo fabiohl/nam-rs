@@ -7,8 +7,20 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > **Ref**: [TODO-findings.md](TODO-findings.md) — Findings F-Q1, F-Q2, F-Q3
 > **Decisão arquitetural**: Remoção completa e definitiva da compressão f32→u16 (F16C/BF16). Git rollback se o impacto em performance for inaceitável.
-> **Prioridade**: Fidelidade ao ideal (f64) > Paridade NAMCore.
-> **ISA foco**: x86-64-v3 (AVX2) e AVX-512. Apenas f32.
+> **Correção de premissa (2026-07-05, segunda auditoria)**: não existe conflito "Fidelidade vs.
+> Paridade NAMCore" a resolver aqui. Verificado contra o C++ vendorizado
+> (`tests/fixtures/NeuralAmpModelerCore/NAM/`): o NAMCore nunca quantizou seus pesos (tudo é
+> `Eigen::MatrixXf`/`VectorXf`, f32 nativo). Só o nam-rs quantiza. Remover a quantização
+> **converge** com o NAMCore, não diverge. O único eixo de trade-off real é **performance**
+> (memória de pesos dobra, mais pressão em cache L1).
+> **Objetivo declarado (Fábio)**: recuperar precisão sonora. Uma perda leve/moderada de
+> performance é esperada e aceitável como contrapartida. O que **não** é aceitável é uma perda de
+> performance péssima, que comprometa a reprodução em tempo real. Entre esses extremos, a decisão
+> final de Go/NoGo (Sprint SQ5.4) é **humana**, informada pelos dados medidos — não um limiar
+> numérico único e automático.
+> **ISA foco**: x86-64-v3 (AVX2) e AVX-512. Apenas f32. O tier `Avx512VnniBf16` **permanece** —
+> tem consumidores fora do LSTM (resampler, cabsim, linear_fft, capture/input/output stages);
+> apenas o dispatch de quantização de pesos ligado a ele é removido.
 >
 > ⓘ **Nota**: O Sprint SQ1 (Quality Dashboard) é uma **entrega independente de uso geral** do nam-rs. Cobre todas as 6 famílias de arquitetura, todos os 31 modelos fixture, todos os modos de qualidade (Live/HQ), todas as ISAs (AVX2/AVX-512/VNNI-BF16), e permanece no projeto mesmo que a PoC fracasse e seja revertida.
 
@@ -27,14 +39,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Cobertura obrigatória — TODOS os modelos disponíveis** (31 fixtures):
 
-| Família                      | Modelos                                                                                                                                                                                         | Quant u16?            |
-|:---------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------- |
-| **WaveNet A1** (6)           | `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-lite.nam`, `BossWN-nano.nam`, `wavenet_a1_standard.nam`, `wavenet_official.nam`                                                            | ❌ (f32 nativo)       |
-| **WaveNet A2** (4)           | `wavenet_a2_full.nam`, `wavenet_a2_lite.nam`, `wavenet_a2_max.nam`, `wavenet_a2_container.nam`                                                                                                  | ✅ (rechannel + conv) |
-| **A2 FiLM** (2)              | `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`                                                                                                                                          | ✅                    |
-| **A2/WaveNet Dynamic** (4+3) | `wavenet_dyn_free.nam`, `wavenet_condition_dsp.nam`, `a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam` + Slimmable: `slimmable_container.nam`, `slimmable_wavenet.nam`, `a2_example.nam` | Misto                 |
-| **LSTM** (4)                 | `BossLSTM-1x16.nam`, `BossLSTM-2x8.nam`, `lstm.nam`, `lstm_dyn_test.nam`                                                                                                                        | ✅ (backbone + head)  |
-| **ConvNet/Linear** (6)       | `convnet_test.nam`, `linear_test.nam`, `linear_fft_rf320.nam`, `linear_fft_rf2048.nam`, `linear_fft_rf4096.nam`, `linear_fft_rf8192.nam`                                                        | ❌ (f32 nativo)       |
+| Família                      | Modelos                                                                                                                                                                                         | Quant u16?                                                                                               |
+|:---------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------- |
+| **WaveNet A1** (6)           | `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-lite.nam`, `BossWN-nano.nam`, `wavenet_a1_standard.nam`, `wavenet_official.nam`                                                            | ❌ (f32 nativo)                                                                                          |
+| **WaveNet A2** (4)           | `wavenet_a2_full.nam`, `wavenet_a2_lite.nam`, `wavenet_a2_max.nam`, `wavenet_a2_container.nam`                                                                                                  | 🔶 apenas `rechannel_w`, só no caminho estático (conv já é f32; A2 dinâmico não quantiza — código morto) |
+| **A2 FiLM** (2)              | `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`                                                                                                                                          | ✅                                                                                                       |
+| **A2/WaveNet Dynamic** (4+3) | `wavenet_dyn_free.nam`, `wavenet_condition_dsp.nam`, `a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam` + Slimmable: `slimmable_container.nam`, `slimmable_wavenet.nam`, `a2_example.nam` | Misto                                                                                                    |
+| **LSTM** (4)                 | `BossLSTM-1x16.nam`, `BossLSTM-2x8.nam`, `lstm.nam`, `lstm_dyn_test.nam`                                                                                                                        | ✅ (backbone + head)                                                                                     |
+| **ConvNet/Linear** (6)       | `convnet_test.nam`, `linear_test.nam`, `linear_fft_rf320.nam`, `linear_fft_rf2048.nam`, `linear_fft_rf4096.nam`, `linear_fft_rf8192.nam`                                                        | ❌ (f32 nativo)                                                                                          |
 
 **Suítes de teste a executar** (todas em `--release`):
 
@@ -83,8 +95,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   ─────────────────────── │ ──────────────── │ ──────────── │ ────── │ ─────── │ ────
   WaveNet Std CH16 @48k   │ 4.8e-14          │ 6.1e-14      │ 132 dB │ 0.0003  │ Live
   WaveNet Std CH16 @96k   │ ...              │ ...          │ ...    │ ...     │ Live
-  LSTM 1×16 @48k          │ 2.61e-2          │ 3.57e-3      │ ...    │ ...     │ Live
+  LSTM 1×16 @48k          │ 2.61e-2          │ 3.57e-3~     │ ...    │ ...     │ Live
   ...                     │                  │              │        │         │
+
+  (o "~" no ESR vs f64 do LSTM 1×16 indica valor de família — medido em `lstm.nam` H=3, não no
+  próprio BossLSTM-1×16; ver correção de proveniência no cabeçalho deste documento e em
+  `_lookup_esr_f64`/`ESR_F64_FAMILY_FIXTURE` em `utils/quality-dashboard.sh`)
 
 ⚡ PERFORMANCE — Latência por Bloco (64 amostras @ 48kHz)
 ══════════════════════════════════════════════════════════
@@ -153,6 +169,31 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Descrição**: Executar `utils/tests-performance-regression.sh --save` para persistir o baseline Criterion. Este será o ponto de comparação estatístico para a performance pós-remoção.
 
+### Tarefa SQ2.3 — Medir o piso f64 real de BossLSTM-1×16/2×8 (nova, decorrente da auditoria de 2026-07-05)
+
+**Descrição**: O único número de "piso absoluto vs f64" disponível para a família LSTM
+(`3.57e-3`) é medido em `lstm.nam` (H=3, oficial, `test_oracle_lstm()`), não em
+`BossLSTM-1x16.nam`/`BossLSTM-2x8.nam` — os modelos que de fato exibem o drift severo (2.61e-2 →
+1.42e-1 vs. NAMCore). Sem uma medição própria desses modelos, na duração de produção, não há como
+saber quanto do drift é atribuível ao f16c vs. outras fontes, nem calibrar a expectativa de
+melhoria pós-remoção.
+
+**Ação**: rodar explicitamente (uma vez, com `--ignored`, é custoso):
+
+```bash
+cargo test --release --test reference_oracle_f64 \
+  t33_diagnostic_recurrent_drift_lstm_1x16 -- --ignored --nocapture \
+  > docs/baseline-lstm-1x16-f64-floor-with-quantization.log
+```
+
+Se o tempo permitir, adaptar/duplicar o mesmo diagnóstico para `BossLSTM-2x8.nam` (o teste atual
+está hardcoded para `BossLSTM-1x16.nam` — ver `tests/reference_oracle_f64.rs:796`).
+
+**Critério de aceite**:
+
+- [ ] Log salvo com o piso f64 real do BossLSTM-1×16 em função da duração (512 → 240.000 amostras), medido antes da remoção
+- [ ] Resultado documentado como a referência correta a usar em SQ5 (substituindo a suposição a priori "~7.6e-4, 34×" de `TODO-findings.md`)
+
 ---
 
 ## Sprint SQ3 — Remoção da Quantização: Structs e Loaders
@@ -191,20 +232,30 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Tarefa SQ3.2 — Converter structs A2 de `u16` → `f32`
 
-**Descrição**: Alterar os campos de pesos quantizados no A2.
+**Descrição**: Alterar os campos de pesos quantizados no A2. **Correção (auditoria 2026-07-05)**:
+o único campo A2 realmente quantizado é `rechannel_w`, e apenas no caminho **estático**. Os pesos
+de convolução do A2 já são `AlignedVec<f32>` nativo (`set_weights.rs:84-110`,
+`transpose_conv1d_interleaved_4wide`) — nunca passaram por `quantize_weight()`; o comentário
+antigo em `set_weights.rs:37` ("quantized to u16") está desatualizado e deve ser corrigido/removido
+nesta tarefa. O `rechannel_w` do A2 **dinâmico** (`dynamic/mod.rs:56`) é código morto — verificado
+em `dynamic/build.rs:79-80`: os pesos reais são carregados em `rechannel_w_f32` e o campo `u16`
+nunca é populado (fica zerado). Ou seja: nesta tarefa, o A2 dinâmico não precisa de "conversão" de
+dado nenhum — o campo `rechannel_w: AlignedVec<u16>` deve simplesmente ser **removido** (e
+qualquer leitor dele redirecionado para `rechannel_w_f32`, se ainda não for o caso).
 
 **Arquivos a modificar**:
 
-| Arquivo                                 | Mudança                                            |
-|:--------------------------------------- |:-------------------------------------------------- |
-| `src/models/a2/model/static/mod.rs:54`  | `rechannel_w: AlignedVec<u16>` → `AlignedVec<f32>` |
-| `src/models/a2/model/dynamic/mod.rs:56` | `rechannel_w: AlignedVec<u16>` → `AlignedVec<f32>` |
-
-**Atenção**: O A2 `set_weights.rs` também armazena conv weights em layouts interleaved u16. Procurar todos os `AlignedVec<u16>` no set_weights.rs e convertê-los.
+| Arquivo                                 | Mudança                                                                                                       |
+|:--------------------------------------- |:------------------------------------------------------------------------------------------------------------- |
+| `src/models/a2/model/static/mod.rs:54`  | `rechannel_w: AlignedVec<u16>` → `AlignedVec<f32>`                                                            |
+| `src/models/a2/model/dynamic/mod.rs:56` | Remover o campo `rechannel_w: AlignedVec<u16>` (código morto — nunca populado; usar apenas `rechannel_w_f32`) |
+| `src/models/a2/model/set_weights.rs:37` | Corrigir/remover comentário obsoleto que descreve conv weights como quantizados a u16                         |
 
 **Critério de aceite**:
 
-- [ ] Todos os campos de pesos A2 armazenam `f32`
+- [ ] `static/mod.rs` armazena `rechannel_w` em `f32`
+- [ ] `dynamic/mod.rs` não tem mais um campo `rechannel_w: AlignedVec<u16>` morto
+- [ ] Nenhum comentário no código afirma que os pesos de convolução do A2 são quantizados (eles nunca foram)
 - [ ] `cargo check` não passa ainda — esperado
 
 ### Tarefa SQ3.3 — Remover a quantização dos loaders
@@ -220,7 +271,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `src/loader/dispatcher/lstm/dynamic_builder.rs:49`   | Idem                                                         |
 | `src/models/a2/model/set_weights.rs:57`              | Remover `quantize_weight()`, guardar `f32`                   |
 
-**Atenção**: A variável `is_bf16` e todo o caminho de detecção VNNI/BF16 para pesos pode ser removido/simplificado. A detecção de ISA (`SimdMathConfig::get().instruction_set`) pode permanecer para dispatch AVX2 vs AVX-512 dos kernels de inferência, mas o branch BF16-specific para pesos morre.
+**Atenção**: A variável `is_bf16` e a decisão de quantização de pesos ligada a ela podem ser
+removidas. **Não remover o tier de ISA `Avx512VnniBf16` em si** — `InstructionSet::Avx512VnniBf16`
+e a struct `Avx512VnniBf16Math` são usados por `dsp/resampler.rs`, `dsp/pipeline/capture.rs`,
+`input.rs`/`output.rs`, `dsp/cabsim/conv.rs` e `models/linear_fft.rs`, sem relação com pesos LSTM.
+A detecção de ISA (`SimdMathConfig::get().instruction_set`) permanece para dispatch AVX2 vs
+AVX-512 vs VNNI dos kernels de inferência em geral; morre **apenas** o branch BF16-específico para
+pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512`,
+`dot_product_bf16_avx512`, `gemv_overwrite_bf16` quando exclusivos de pesos LSTM).
 
 **Critério de aceite**:
 
@@ -327,30 +385,43 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Tarefa SQ4.5 — Adaptar layer_kernels do LSTM
 
-**Descrição**: `src/models/lstm/layer_kernels.rs` é o arquivo que orquestra o dispatch dos kernels GEMV para o LSTM. Contém lógica de VNNI/BF16 que precisa ser simplificada.
+**Descrição**: `src/models/lstm/layer_kernels.rs` é o arquivo que orquestra o dispatch dos kernels GEMV para o LSTM. Contém lógica de VNNI/BF16 **de pesos** que precisa ser simplificada.
+
+**Atenção (correção, auditoria 2026-07-05)**: simplificar **apenas** o branch BF16-específico de
+pesos (a escolha `is_bf16`/quantização removida em SQ3.3, e os kernels
+`gemv_4gate_bf16_avx512`/`dot_product_bf16_avx512`/`gemv_overwrite_bf16` quando exclusivos de
+pesos LSTM). **Não remover** o `InstructionSet::Avx512VnniBf16` nem a `Avx512VnniBf16Math` do
+dispatch geral de ISA — eles têm consumidores fora do LSTM (`dsp/resampler.rs`,
+`dsp/pipeline/capture.rs`, `input.rs`/`output.rs`, `dsp/cabsim/conv.rs`, `models/linear_fft.rs`) e
+devem continuar disponíveis para AVX2/AVX-512/VNNI em geral.
 
 **Arquivos a modificar**:
 
-- `src/models/lstm/layer_kernels.rs` — simplificar dispatch, remover branches BF16/VNNI para pesos
+- `src/models/lstm/layer_kernels.rs` — simplificar dispatch, remover apenas os branches BF16/VNNI ligados a pesos LSTM
 
 **Critério de aceite**:
 
-- [ ] Dispatch simplificado (AVX2 vs AVX-512 apenas, sem branch BF16)
+- [ ] Dispatch de pesos LSTM simplificado (AVX2 vs AVX-512 apenas, sem branch BF16 de pesos)
 - [ ] Não referencia `state_bf16` (removido em SQ3.1)
+- [ ] `InstructionSet::Avx512VnniBf16` e `Avx512VnniBf16Math` permanecem intactos para seus outros usos (resampler, cabsim, linear_fft, capture/input/output)
 
 ### Tarefa SQ4.6 — Adaptar process kernels do A2
 
-**Descrição**: O A2 `process.rs` (static e dynamic) usa os pesos quantizados u16 do `rechannel_w` e conv weights. Adaptar para ler f32.
+**Descrição**: O A2 `process.rs` (estático) usa o `rechannel_w` quantizado a u16. Adaptar para ler
+f32. **Correção**: os pesos de convolução do A2 já são `f32` nativo (nunca foram quantizados —
+ver SQ3.2); esta tarefa não precisa tocar neles. No A2 dinâmico, `rechannel_w` é código morto
+(nunca populado) — a tarefa aqui é apenas remover o campo, não "adaptar" um dado que nunca existiu.
 
 **Arquivos a modificar**:
 
-- `src/models/a2/model/static/process.rs`
-- `src/models/a2/model/dynamic/` (kernels de inferência)
+- `src/models/a2/model/static/process.rs` — ler `rechannel_w` como `f32`
+- `src/models/a2/model/dynamic/` — remover qualquer referência ao campo `rechannel_w: AlignedVec<u16>` morto (usar só `rechannel_w_f32`, já existente)
 
 **Critério de aceite**:
 
-- [ ] A2 compila e roda com pesos f32
-- [ ] Sem referência a u16 em pesos de A2
+- [ ] A2 estático compila e roda com `rechannel_w` em f32
+- [ ] A2 dinâmico não referencia mais um campo `rechannel_w` u16 morto
+- [ ] Sem referência a u16 em pesos de A2 (estático ou dinâmico)
 
 ### Tarefa SQ4.7 — Compilação verde + testes unitários
 
@@ -372,6 +443,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **Estimativa**: ~2h
 > **Ref**: Findings F-Q1, F-Q2
 > **Pré-requisito**: SQ4 completo (compilação verde).
+> **Premissa desta sprint (corrigida)**: o objetivo é recuperar precisão sonora. Uma perda
+> leve/moderada de performance é esperada e aceitável. Só uma perda **péssima** (que comprometa
+> o tempo real) justifica NoGo. A decisão final (SQ5.4) é humana, não um limiar automático único.
 
 ### Tarefa SQ5.1 — Rodar testes de integração em release
 
@@ -382,18 +456,31 @@ cargo test --release --test golden_vectors -- --nocapture
 cargo test --release --test reference_oracle_f64 -- --nocapture
 cargo test --release --test spectral_fidelity -- --nocapture
 cargo test --release --test isa_parity -- --test-threads=1 --nocapture
+cargo test --release --test reference_oracle_f64 \
+  t33_diagnostic_recurrent_drift_lstm_1x16 -- --ignored --nocapture
 ```
 
-**Atenção**:
+**Atenção (corrigida — auditoria 2026-07-05):**
 
-- `golden_vectors` compara vs NAMCore (que quantiza). Os ESRs vão **piorar** nesta comparação (nam-rs agora mais preciso que NAMCore → mais divergência). Isso é **esperado e correto** — estamos priorizando fidelidade ao ideal.
-- `reference_oracle_f64` ESRs devem **melhorar dramaticamente** (principal vitória).
-- Os thresholds em `tests/common/constants.rs` precisarão ser recalibrados na SQ5.3.
+- `golden_vectors` compara vs NAMCore. **Correção**: o NAMCore nunca quantizou os próprios pesos
+  (verificado no C++ vendorizado, `NAM/lstm.h:38-39` etc. — `Eigen::MatrixXf` nativo, zero
+  ocorrências de half-precision em `NAM/`). Portanto, ao contrário do que esta seção afirmava
+  antes, o ESR de LSTM vs. golden **deve melhorar** (convergência com NAMCore), não piorar. **Se o
+  ESR vs. golden piorar ou ficar igual para qualquer modelo LSTM, isso é um sinal de bug na
+  implementação de SQ3/SQ4 (ex.: pointer arithmetic errado, stride trocado) — investigar antes de
+  prosseguir, não descartar como resultado esperado.**
+- `reference_oracle_f64` ESRs devem **melhorar** para LSTM, mas a magnitude exata só é conhecida
+  após comparar com o baseline de SQ2.3 (medição própria de BossLSTM-1×16/2×8, não o valor
+  genérico de família de `lstm.nam` H=3). Rodar o diagnóstico `t33_*` de novo agora e comparar
+  diretamente com o log salvo em SQ2.3 — esta é a comparação que realmente informa a decisão de
+  SQ5.4, não os testes de família genéricos.
+- Os thresholds em `tests/common/constants.rs` precisarão ser recalibrados na SQ5.5.
 
 **Critério de aceite**:
 
 - [ ] Testes rodaram (mesmo com falhas por thresholds)
-- [ ] Output completo capturado para análise
+- [ ] Output completo capturado para análise, incluindo o diagnóstico `t33_*` pós-remoção
+- [ ] ESR vs. golden (NAMCore) para BossLSTM-1×16/2×8 comparado explicitamente antes/depois — documentado se melhorou (esperado) ou não (investigar)
 
 ### Tarefa SQ5.2 — Rodar dashboard e comparar com baseline
 
@@ -403,6 +490,7 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 
 - [ ] Relatório pós-remoção salvo como `docs/measurement-without-quantization.log`
 - [ ] Comparação documentada: quais métricas melhoraram, pioraram, ou ficaram iguais
+- [ ] Comparar especificamente o log do diagnóstico `t33_*` (SQ2.3 vs. pós-remoção) para BossLSTM-1×16/2×8 — não apenas os valores de família do dashboard
 
 ### Tarefa SQ5.3 — Rodar performance regression gate
 
@@ -410,26 +498,38 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 
 **Critério de aceite**:
 
-- [ ] Resultado documentado: regressão sim/não, magnitude
-- [ ] Se regressão > 20% em qualquer modelo: flag como risco alto para decisão Go/NoGo
+- [ ] Resultado documentado: regressão sim/não, magnitude, por modelo
+- [ ] Regressão classificada por faixa para informar SQ5.4: **leve** (≤15%), **moderada** (15-40%), **severa** (>40%) — ver critérios de decisão em SQ5.4 (não há mais uma zona cinzenta sem critério definido)
 
-### Tarefa SQ5.4 — Decisão Go/NoGo
+### Tarefa SQ5.4 — Decisão Go/NoGo (decisão humana, informada pelos dados)
 
-**Descrição**: Com base nos dados coletados em SQ5.1–SQ5.3, tomar a decisão:
+**Descrição**: Com base nos dados coletados em SQ5.1–SQ5.3, uma pessoa (não um script) toma a
+decisão final. **Objetivo da PoC**: recuperar precisão sonora. Uma perda leve ou moderada de
+performance é esperada e aceitável como contrapartida — não é, por si só, motivo de rollback. O
+único resultado que justifica NoGo é uma perda de performance **péssima**, que comprometa a
+reprodução em tempo real. Os critérios abaixo estruturam a decisão, mas não a substituem:
 
-**Critério de GO (commit)** — TODOS devem ser satisfeitos:
+**Sinais favoráveis a GO:**
 
-- ESR vs f64 oracle melhora para LSTM (confirmando eliminação do drift)
-- Performance (latência) não regride mais de 30% em nenhum modelo
-- Todos os modelos ainda produzem áudio razoável (ESR vs golden < 1.0)
+- ESR vs. f64 oracle melhora para BossLSTM-1×16/2×8 (comparando SQ2.3 com a medição pós-remoção — não o valor de família genérico)
+- ESR vs. golden (NAMCore) melhora ou permanece estável para todos os modelos (conforme esperado pela correção de premissa — NAMCore nunca quantizou)
+- Regressão de performance **leve ou moderada** (até ~40%, ver SQ5.3) em modelos que ainda mantêm folga suficiente para o deadline de tempo real (1.33 ms @ 64 amostras/48 kHz) em hardware de referência
+- Nenhum modelo produz áudio corrompido (ESR vs. golden < 1.0 para todos)
 
-**Critério de NO-GO (rollback)**:
+**Sinais que pesam fortemente para NO-GO:**
 
-- Performance regride > 50% em qualquer modelo principal
-- Algum modelo produz áudio corrupto (ESR > 1.0 vs golden)
+- Regressão de performance **severa** o suficiente para colocar qualquer modelo de referência sem folga real para tempo real (ex.: > 90% do budget de 1.33 ms em blocos de 64 amostras) — isto é a definição operacional de "performance péssima"
+- Algum modelo produz áudio corrompido (ESR > 1.0 vs. golden) sem explicação identificada em SQ3/SQ4
+- ESR vs. golden piora para LSTM sem explicação (ver alerta de bug em SQ5.1) — investigar antes de decidir; uma piora inexplicada não deve ser aceita como custo do trade-off, porque a premissa corrigida prevê melhora, não piora
+
+**Não há uma zona cinzenta sem critério**: entre "leve/moderada e com folga real" e "severa e sem
+folga", a decisão cabe à pessoa responsável, ponderando o hardware de referência do projeto, a
+folga medida por modelo (não apenas a média) e se a perda de fidelidade recuperada compensa o
+custo — exatamente o julgamento que este épico reserva para decisão humana, não automática.
 
 **Se GO**: Prosseguir para SQ5.5 e SQ6.
-**Se NO-GO**: `git checkout -- src/` e registrar a descoberta como lição aprendida em `docs/`.
+**Se NO-GO**: `git checkout -- src/` e registrar a descoberta (incluindo os números medidos e o
+raciocínio da decisão) como lição aprendida em `docs/`.
 
 ### Tarefa SQ5.5 — Recalibrar thresholds de teste (apenas se GO)
 
@@ -469,9 +569,16 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 
 **Mudanças**:
 
-- §1 (Weight Compression): Mover para seção "Histórico" com breve nota: "Removido — medição PoC demonstrou ganho de fidelidade sem impacto inaceitável em performance."
-- §3 (LSTM Recurrent Drift): Atualizar com novos números. Se drift eliminado, reduzir a seção para nota histórica.
-- Tabela Quick Reference: Atualizar status de "Active" para "Removed" para §1; ajustar §3.
+- §1 (Weight Compression): mover para seção "Histórico" com o veredicto **real** medido em SQ5,
+  não uma frase genérica pré-escrita — ex.: "Removido — medição PoC (SQ5) confirmou ganho de
+  fidelidade [X]; impacto em performance foi [leve/moderado, Y%], considerado aceitável pela
+  decisão humana em SQ5.4." Não reafirmar a antiga alegação de que o NAMCore também quantizava —
+  isso já foi corrigido nesta auditoria (2026-07-05) e não deve ser reintroduzido.
+- §3 (LSTM Recurrent Drift): atualizar com os números reais de BossLSTM-1×16/2×8 medidos em SQ2.3
+  e no pós-remoção (não os números de família de `lstm.nam` H=3 usados por engano antes desta
+  auditoria). Se o drift foi eliminado ou substancialmente reduzido, reduzir a seção para nota
+  histórica; se não foi (ou foi só parcialmente), documentar o resultado real, mesmo que módico.
+- Tabela Quick Reference: atualizar status de "🔶 PoC in progress" (já ajustado nesta auditoria) para "Removed" ou "Reverted", conforme a decisão real de SQ5.4.
 
 ### Tarefa SQ6.2 — Atualizar `docs/lstm_recurrent_drift.md`
 
@@ -485,9 +592,16 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 
 **Mudanças**:
 
-- §2.5 (Precision divergence): Atualizar para refletir que nam-rs agora é f32 nativo (diverge do NAMCore que quantiza)
-- §2.7 (Measured interop drift): Os números vão mudar — atualizar com novas medições
-- §7.2 (Known tradeoffs): Remover ou atualizar item de quantização LSTM
+- §1.1 e §2.5 (Precision divergence): **já corrigidas nesta auditoria** (2026-07-05) — o NAMCore
+  nunca quantizou; a formulação errada "both engines use f16c/bf16-quantized weights" foi
+  retratada. Após a remoção, atualizar para o pretérito: nam-rs **agora é f32 nativo, convergindo**
+  com o NAMCore (não "divergindo" — essa era a premissa errada da versão original desta tarefa).
+- §2.7 (Measured interop drift): os números vão mudar — atualizar com as novas medições de
+  BossLSTM-1×16/2×8 (golden vectors e/ou `t33_*`), citando explicitamente o valor antes (SQ2.3) e
+  depois (SQ5.1) da remoção.
+- §7.2 (Known tradeoffs): remover o item de quantização LSTM como tradeoff aceito (deixou de
+  existir); se alguma quantização residual permanecer em outro componente, documentar
+  especificamente qual.
 
 ### Tarefa SQ6.4 — Limpeza de código morto
 
@@ -499,7 +613,10 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 - `src/math/common/half.rs` — se nenhum outro uso sobrevive (verificar com `grep`)
 - Kernels GEMV f16 originais se foram substituídos por versões f32
 - `state_bf16` mirror no LSTM (já removido em SQ3.1)
-- VNNI/BF16 dispatch paths em `layer_kernels.rs` (já simplificado em SQ4.5)
+- **Apenas** o branch BF16-específico de pesos em `layer_kernels.rs` (já simplificado em SQ4.5).
+  **Não remover** `InstructionSet::Avx512VnniBf16` nem `Avx512VnniBf16Math` — permanecem em uso
+  por `dsp/resampler.rs`, `dsp/pipeline/capture.rs`, `input.rs`/`output.rs`, `dsp/cabsim/conv.rs`
+  e `models/linear_fft.rs`, sem relação com pesos LSTM.
 
 **Atenção**: O `half.rs` pode ser usado pelo NAMB binary format ou por testes. Verificar com `grep -rn "half::" src/ tests/ benches/` antes de remover.
 
@@ -536,14 +653,14 @@ graph TD
 
 ## Estimativa Total
 
-| Sprint    | Estimativa  | Risco |
-|:--------- |:----------- |:----- |
-| SQ1       | ~2h         | 🟢    |
-| SQ2       | ~30min      | 🟢    |
-| SQ3       | ~4h         | 🔴    |
-| SQ4       | ~6-8h       | 🔴    |
-| SQ5       | ~2h         | 🟡    |
-| SQ6       | ~2h         | 🟢    |
-| **Total** | **~16-18h** |       |
+| Sprint    | Estimativa                                      | Risco |
+|:--------- |:----------------------------------------------- |:----- |
+| SQ1       | ~2h                                             | 🟢    |
+| SQ2       | ~1h (inclui SQ2.3, diagnóstico `t33_*` custoso) | 🟢    |
+| SQ3       | ~4h                                             | 🔴    |
+| SQ4       | ~6-8h                                           | 🔴    |
+| SQ5       | ~2h                                             | 🟡    |
+| SQ6       | ~2h                                             | 🟢    |
+| **Total** | **~16-18h**                                     |       |
 
 > **Nota**: Os sprints SQ3 e SQ4 são os mais arriscados e devem ser atacados com máxima atenção. Cada tarefa SIMD deve ser verificada com cargo test antes de prosseguir para a seguinte. Erros de pointer arithmetic em SIMD geram output silenciosamente errado (sem crash) — os testes de paridade são a única defesa.

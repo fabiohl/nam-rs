@@ -20,7 +20,7 @@ of the `.nam` / `.namb` file format contract.
 
 | #   | Factor                                                  | Spec? | Mandatory?                   | User-Controllable?       | Quality Impact                                 | Status               |
 |:---:|:------------------------------------------------------- |:-----:|:----------------------------:|:------------------------:|:---------------------------------------------- |:--------------------:|
-| 1   | **Weight compression (F16C/BF16)**                      | ❌    | ✅ Yes                       | ❌ No                    | −80…−100 dBFS error; LSTM drift                | ✅ Active            |
+| 1   | **Weight compression (F16C/BF16)**                      | ❌    | 🔶 Under review (Épico EQ)   | ❌ No                    | −80…−100 dBFS error; LSTM drift                | 🔶 PoC in progress   |
 | 2   | **Activation precision (Padé Standard / HighFidelity)** | ❌    | ✅ Default (Padé); HF opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Padé) → ÷10,000 (HF); ↓ aliasing | ✅ Active            |
 | 3   | **LSTM recurrent drift**                                | ❌    | N/A (consequence of #1)      | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (5 s)           | ✅ Mitigated (β1–β3) |
 | 4   | **Host sample rate resampler**                          | ❌    | ✅ When host ≠ 48 kHz        | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB    | ✅ Active            |
@@ -34,8 +34,13 @@ of the `.nam` / `.namb` file format contract.
 
 ## 1. Weight Compression — F16C / BF16
 
-**What it is.** NAM-rs converts all model weight matrices (Conv1d, DenseLayer, LSTM projections,
-A2 rechannel/conv) from `f32` to 16-bit half-precision during model loading:
+**What it is.** NAM-rs converts specific model weight matrices from `f32` to 16-bit half-precision
+during model loading. This does **not** apply uniformly to every architecture — WaveNet A1's
+`DenseLayer` and A2's convolution weights are already native `f32` and were never quantized. The
+actual quantized fields are: LSTM `input_hidden_weights` and `head_weights` (all variants), the
+LSTM `state_bf16` mirror, and A2's `rechannel_w` (static path only — the dynamic A2 builder never
+populates its own `rechannel_w` field, making it dead code in that path). See `TODO-findings.md`
+F-Q1 for the exhaustive, code-verified inventory.
 
 - **F16C** (default, AVX2 systems): `u16` storage with `_mm256_cvtph_ps` decompression. Mantissa
   10 bits → error per weight ≈ **3.9e-3** (~−48 dB).
@@ -47,11 +52,27 @@ core (AMD Zen / Intel Core). Halving weight size to ~40 KB (f16) eliminates most
 reducing the per-block stall budget by ~14 cycles/miss. This is the single largest performance
 driver for live playback at 32–64 sample blocks.
 
-**Mandatory?** Yes — removing f16c compression would require doubling the weight memory, causing
-L1 cache pressure that makes 32-sample blocks impractical on mid-range hardware.
+**Mandatory?** No longer a settled fact — under active PoC (Épico EQ, see
+[`TODO-findings.md`](../TODO-findings.md) F-Q1). The original rationale was that removing f16c
+compression doubles weight memory, causing L1 cache pressure severe enough to make small blocks
+impractical. This performance cost is real and expected to some degree, but "mandatory" overstated
+the case: some regression is acceptable in exchange for the fidelity gain (§3), and only a
+regression severe enough to break real-time playback would justify keeping quantization. The
+actual magnitude must be measured (Épico EQ, Sprint SQ5) before either keeping or removing it
+becomes the final, informed decision — this is not automatic in either direction.
 
-**NAMCore parity.** NAMCore also quantizes to f16c during inference. Both engines share the same
-quantization floor — neither is "more correct"; they are equivalent in this regard.
+**NAMCore parity — corrected.** Verified directly against the vendored C++ source
+(`tests/fixtures/NeuralAmpModelerCore/NAM/`): NAMCore does **not** quantize anything. All its
+weights are `Eigen::MatrixXf`/`VectorXf` (native f32) — see `lstm.h:38-39,83-84`, `conv1d.h:122`,
+`dsp.h:328`, `wavenet/a2_fast.cpp:83-118`. An exhaustive case-insensitive search of `NAM/` for
+`half`, `f16`, `bf16`, `quantiz`, `cvtph`, `uint16_t` returns zero relevant matches. The previous
+claim here ("NAMCore also quantizes to f16c... both engines share the same quantization floor")
+was **factually wrong** and has been retracted. In reality: **nam-rs is the only engine that
+quantizes weights.** Removing this quantization does not trade fidelity for parity — it *improves
+both simultaneously* for the backbone weights, since nam-rs would then match NAMCore's native f32
+representation instead of diverging from it. The only genuine trade-off is performance (L1 cache
+pressure), not correctness or parity. See `cpp_parity_map.md` §1.1/§2.5 (also corrected) and
+`TODO-findings.md` F-Q1.
 
 **Quality impact.**
 
@@ -108,11 +129,12 @@ removes those harmonics and HF mode suppresses the residual high-order folding.
 ### 2.4 Precision context (validated post-S8)
 
 With the f64 oracle confirmed correct (§3), the combined precision model (f16c + Padé + f32
-accumulation) reproduces production to within ESR ≈ 6.9e-5 (LSTM), 6.7e-8 (WaveNet), 1.8e-7 (A2)
-— the Padé approximation and f16c together fully explain the gap from ideal f64, with no
-unexplained "architectural" residue. Standard (Padé) mode is therefore the well-understood
-production default; HighFidelity buys ~10,000× lower activation error, audibly relevant only when
-paired with oversampling (§5).
+accumulation) reproduces production to within ESR ≈ 6.9e-5 (LSTM, measured on `lstm.nam` H=3 —
+see the provenance note in §3 below; not yet verified on BossLSTM-1×16 at production duration),
+6.7e-8 (WaveNet), 1.8e-7 (A2) — for the small official LSTM, the Padé approximation and f16c
+together fully explain the gap from ideal f64, with no unexplained "architectural" residue.
+Standard (Padé) mode is therefore the well-understood production default; HighFidelity buys
+~10,000× lower activation error, audibly relevant only when paired with oversampling (§5).
 
 **Mandatory?** No. Standard (Padé) mode is the production default. HighFidelity is opt-in via
 `--activation hf` (CLI) or `PARAM_ACTIVATION` (CLAP).
@@ -124,7 +146,7 @@ paired with oversampling (§5).
 
 ---
 
-## 3. LSTM Recurrent State Quantization Drift _(consequence of §1)_
+## 3. LSTM Recurrent State Quantization Drift *(consequence of §1)*
 
 **What it is.** An emergent quality degradation specific to LSTM topologies caused by the
 interaction between f16c weight quantization and recurrent state accumulation. Every LSTM time
@@ -133,19 +155,34 @@ step injects quantization error `εq` into the cell state `cₜ = fₜ·cₜ₋�
 reaches a steady state: `ESR_steady ∝ σ²ε / (1 − ⟨f⟩²)`. WaveNet/A2 are feedforward (no recurrent
 state) and do not exhibit this — ESR stays ≈ 1e-13/1e-10 at any duration or rate.
 
-**Two validated floors (production f32, prewarm-paired against the confirmed f64 oracle — see
-[`perceptual_validation.md`](perceptual_validation.md)):**
+**Two floors, one of them mislabeled — corrected:**
 
-| Reference                               | ESR (LSTM 1×16)               | Meaning                                                         |
-|:--------------------------------------- |:-----------------------------:|:--------------------------------------------------------------- |
-| vs f64 ideal (absolute precision floor) | 3.57e-3 (−24.5 dB)            | Intrinsic cost of f16c+f32 math, matched initial state          |
-| vs NAMCore (interop, both f32 engines)  | 2.61e-2 (−15.8 dB) @ 5s/48kHz | Real drift between the two implementations, ~7× the floor above |
+| Reference                               | ESR                           | Model actually measured                         | Meaning                                                                          |
+|:--------------------------------------- |:-----------------------------:|:----------------------------------------------- |:-------------------------------------------------------------------------------- |
+| vs NAMCore (interop, both f32 engines)  | 2.61e-2 (−15.8 dB) @ 5s/48kHz | **BossLSTM-1×16** (`tests/cpp_parity.rs`)       | Real drift between the two implementations, at production duration               |
+| vs f64 ideal (absolute precision floor) | 3.57e-3 (−24.5 dB)            | **`lstm.nam` (H=3, official)** — see note below | Intrinsic cost of f16c+f32 math for the *small official* LSTM, not BossLSTM-1×16 |
 
-Both grow with signal duration and host sample rate (more recurrent steps); worst case measured
-is 1.42e-1 at 192 kHz / 5 s. Full growth tables, rate breakdown (§2.4), and the ruled-out
-hypotheses (§3) are in [`docs/lstm_recurrent_drift.md`](lstm_recurrent_drift.md) §1–§3. (A historical claim that
-"ESR ≈ 1.0 is the f16c floor" was a bug in the pre-T8.2 oracle's unmatched initial state, not a
-real limit — retracted; see that document §4.)
+> **Provenance correction:** the "3.57e-3" figure was previously presented (here and in
+> `lstm_recurrent_drift.md`, `cpp_parity_map.md`, `perceptual_validation.md`) as if it were
+> BossLSTM-1×16's own f64-oracle floor. It is not — `test_oracle_lstm()`
+> (`tests/reference_oracle_f64.rs:328`) measures it exclusively on `lstm.nam` (the tiny, 3-hidden-unit
+> official example, "largely rate-insensitive" per §2.4 below), using a short 24k-warmup + 256-sample
+> window. `utils/quality-dashboard.sh`'s `_lookup_esr_f64()` then fuzzy-matches every LSTM model name
+> (BossLSTM-1×16, BossLSTM-2×8, LSTM-Dyn, LSTM Official) against this single generic `"LSTM"` family
+> key, which is why `docs/baseline-with-quantization.log` shows the identical `3.57e-3` for all four
+> topologies — a dashboard bug (fixed as part of Épico EQ), not four independent measurements. **The
+> f64-oracle floor of BossLSTM-1×16 specifically, at the 240k-sample production duration, has not yet
+> been measured** as of this writing. Until it is (via `t33_diagnostic_recurrent_drift_lstm_1x16`,
+> `tests/reference_oracle_f64.rs:792`, run at full length), any numeric prediction of "how much the
+> ESR will improve after removing f16c" for BossLSTM-1×16 should be treated as an unverified
+> hypothesis, not a calibrated estimate. See `TODO-findings.md` F-Q1 and Sprint SQ2/SQ5 in
+> `TODO-sprints.md`.
+
+Both known figures grow with signal duration and host sample rate (more recurrent steps); worst
+case measured is 1.42e-1 at 192 kHz / 5 s (interop). Full growth tables, rate breakdown (§2.4), and
+the ruled-out hypotheses (§3) are in [`docs/lstm_recurrent_drift.md`](lstm_recurrent_drift.md)
+§1–§3. (A historical claim that "ESR ≈ 1.0 is the f16c floor" was a bug in the pre-T8.2 oracle's
+unmatched initial state, not a real limit — retracted; see that document §4.)
 
 The parity test caps this drift with a **measured, rate-aware** bound — `≤ 96 kHz: 0.08`,
 `> 96 kHz: 0.20` — never excluding any rate to make the gate pass (see
@@ -156,9 +193,9 @@ mitigations shipped in Épico β (β1–β3):
 
 - **I6 — HighFidelity activations in LSTM gates** (primary mitigation): exp-based polynomial
   kernels (~2.4e-7 error vs ~2.32e-3 Padé) across scalar/AVX2/AVX-512 LSTM gate paths.
-  _Cost:_ +10–15% compute.
+  *Cost:* +10–15% compute.
 - **I4 — Kahan-compensated head accumulation**: compensated summation in the LSTM head
-  projection (H→1). ~2 dB SNR gain in deep heads. _Cost:_ negligible.
+  projection (H→1). ~2 dB SNR gain in deep heads. *Cost:* negligible.
 - **I5 — Oversampling ruled out for LSTM**: external oversampling reduces aliasing (8–11 dB) but
   **changes timbre drastically** (ESR > 1.0 vs Off) because the recurrent feedback delay is fixed
   in absolute samples — 2×/4× halves/quarters that window in seconds. **Not recommended** as a
