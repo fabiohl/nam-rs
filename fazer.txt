@@ -1,7 +1,5 @@
 * report-upstream.md
 * PoC Compressão/Quantização
-Altere os artefatos "TODO" para assegurar que o `docs/quality-dashboard.sh` não produza análises apenas para esta ou aquela aquitetura LSTM ou Wavenet em particular. Mas para TODOs os modos que o nam-rs suporte. É uma ferramenta útil de uso geral do NAM-rs e continuará mesmo que a PoC fracasse e seja revertida.
-* known-bugs.md: Rodar "utils/tests-long.sh" pra assegurar solução real definitiva.
 
 * /refatora-rust [GLM5.2]
 * /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Resilience and Robustness Specialist".

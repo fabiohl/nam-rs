@@ -9,62 +9,142 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **Decisão arquitetural**: Remoção completa e definitiva da compressão f32→u16 (F16C/BF16). Git rollback se o impacto em performance for inaceitável.
 > **Prioridade**: Fidelidade ao ideal (f64) > Paridade NAMCore.
 > **ISA foco**: x86-64-v3 (AVX2) e AVX-512. Apenas f32.
+>
+> ⓘ **Nota**: O Sprint SQ1 (Quality Dashboard) é uma **entrega independente de uso geral** do nam-rs. Cobre todas as 6 famílias de arquitetura, todos os 31 modelos fixture, todos os modos de qualidade (Live/HQ), todas as ISAs (AVX2/AVX-512/VNNI-BF16), e permanece no projeto mesmo que a PoC fracasse e seja revertida.
 
 ---
 
-## Sprint SQ1 — Dashboard de Medição
+## Sprint SQ1 — Dashboard de Qualidade (ferramenta permanente)
 
-> **Objetivo**: Criar o instrumento de medição permanente que será usado antes e depois da remoção.
+> **Objetivo**: Criar o instrumento de medição permanente e de uso geral do nam-rs. Cobre **todas** as arquiteturas, modelos, modos de qualidade e ISAs. Independente da PoC de quantização — permanece no projeto em qualquer cenário.
 > **Risco**: 🟢 Baixo — não modifica código de produção.
-> **Estimativa**: ~2h
+> **Estimativa**: ~3-4h
 > **Ref**: Finding F-Q2
 
-### Tarefa SQ1.1 — Criar `docs/quality-dashboard.sh`
+### Tarefa SQ1.1 — Criar `utils/quality-dashboard.sh`
 
-**Descrição**: Script bash que roda os cargo tests de fidelidade e benchmarks de performance existentes, captura seus outputs, e gera um relatório humano-friendly.
+**Descrição**: Script bash que roda **todas** as suítes de fidelidade e benchmarks de performance existentes, captura seus outputs, e gera um relatório humano-friendly cobrindo o universo completo do nam-rs.
 
-**Testes a executar** (todos em `--release`):
+**Cobertura obrigatória — TODOS os modelos disponíveis** (31 fixtures):
 
-| Teste                | Comando                                                                  | Dados extraídos                              |
-|:-------------------- |:------------------------------------------------------------------------ |:-------------------------------------------- |
-| Golden vectors v1+v2 | `cargo test --release --test golden_vectors -- --nocapture`              | ESR, SNR, MSE, MR-STFT por modelo vs NAMCore |
-| F64 Oracle           | `cargo test --release --test reference_oracle_f64 -- --nocapture`        | ESR vs f64 ideal (piso absoluto de precisão) |
-| ISA Parity           | `cargo test --release --test isa_parity -- --test-threads=1 --nocapture` | Consistência AVX2/AVX-512                    |
-| Spectral Fidelity    | `cargo test --release --test spectral_fidelity -- --nocapture`           | ASR (aliasing)                               |
-| Regression Gate      | `cargo bench --bench regression_gate 2>&1`                               | Latência mediana por modelo (Criterion)      |
+| Família                      | Modelos                                                                                                                                                                                         | Quant u16?            |
+|:---------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------- |
+| **WaveNet A1** (6)           | `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-lite.nam`, `BossWN-nano.nam`, `wavenet_a1_standard.nam`, `wavenet_official.nam`                                                            | ❌ (f32 nativo)       |
+| **WaveNet A2** (4)           | `wavenet_a2_full.nam`, `wavenet_a2_lite.nam`, `wavenet_a2_max.nam`, `wavenet_a2_container.nam`                                                                                                  | ✅ (rechannel + conv) |
+| **A2 FiLM** (2)              | `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`                                                                                                                                          | ✅                    |
+| **A2/WaveNet Dynamic** (4+3) | `wavenet_dyn_free.nam`, `wavenet_condition_dsp.nam`, `a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam` + Slimmable: `slimmable_container.nam`, `slimmable_wavenet.nam`, `a2_example.nam` | Misto                 |
+| **LSTM** (4)                 | `BossLSTM-1x16.nam`, `BossLSTM-2x8.nam`, `lstm.nam`, `lstm_dyn_test.nam`                                                                                                                        | ✅ (backbone + head)  |
+| **ConvNet/Linear** (6)       | `convnet_test.nam`, `linear_test.nam`, `linear_fft_rf320.nam`, `linear_fft_rf2048.nam`, `linear_fft_rf4096.nam`, `linear_fft_rf8192.nam`                                                        | ❌ (f32 nativo)       |
 
-**Formato do output**: Seguir o design aprovado no plano:
+**Suítes de teste a executar** (todas em `--release`):
 
-```shell
-╔══════════════════════════════════╗
-║  nam-rs Quality Dashboard       ║
-╚══════════════════════════════════╝
+| Suite                  | Comando                                                                  | Dados extraídos                                                                       | Cobertura                                                                               |
+|:---------------------- |:------------------------------------------------------------------------ |:------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------- |
+| Golden vectors (v1+v2) | `cargo test --release --test golden_vectors -- --nocapture`              | ESR, SNR, MSE, MR-STFT vs C++ NAMCore por modelo e por sample rate                    | Todos com `.golden.bin`                                                                 |
+| F64 Oracle             | `cargo test --release --test reference_oracle_f64 -- --nocapture`        | ESR vs f64 ideal + decomposição de fontes de erro (quantização, ativação, acumulação) | WaveNet, LSTM, A2, A2-FiLM, ConvNet, A2-Generic                                         |
+| ISA Parity             | `cargo test --release --test isa_parity -- --test-threads=1 --nocapture` | Paridade bitwise AVX2 vs AVX-512 vs VNNI-BF16                                         | Todos                                                                                   |
+| Spectral Fidelity      | `cargo test --release --test spectral_fidelity -- --nocapture`           | ASR (aliasing spectral ratio), harmonic analysis                                      | Todos que tenham spectral tests                                                         |
+| Activation Precision   | `cargo test --release --test lstm_activation_precision -- --nocapture`   | Impacto Standard (Padé) vs HighFidelity (stdlib)                                      | LSTM (mais sensível a ativações)                                                        |
+| Regression Gate        | `cargo bench --bench regression_gate 2>&1`                               | Latência mediana por bloco (64 samp, 48kHz, Criterion stats)                          | 10 modelos: WaveNet Std/Feather/Lite/Nano, A2 Full/Lite, LSTM 1×16/2×8, Linear, ConvNet |
+
+**Formato do output aprovado**:
+
+```text
+╔══════════════════════════════════════════════════════════════════╗
+║              nam-rs Quality Dashboard                           ║
+║              ──────────────────────────────────────              ║
+║              Medido em: 2026-07-05 09:10:42 -03:00              ║
+║              ISA: AVX2 (x86-64-v3) │ CPU: ...                  ║
+╚══════════════════════════════════════════════════════════════════╝
 
 🎯 RESUMO RÁPIDO (para não-cientistas)
-  🎸 Modelo → vs NAMcore / vs Ideal / ⚡ CPU budget
+═══════════════════════════════════════
 
-📊 FIDELIDADE SONORA (tabela técnica)
-⚡ PERFORMANCE (latência vs deadline RT)
+  🎸 WaveNet Standard (A1, CH16)
+     vs NAMcore:  ...  │  vs Ideal (f64):  ...  │  ⚡ CPU: 12.3% do budget
+
+  🎸 LSTM 1×16 (BossLSTM)
+     vs NAMcore:  ...  │  vs Ideal (f64):  ...  │  ⚡ CPU: 8.1% do budget
+
+  🎸 A2 Full (CH8)
+     vs NAMcore:  ...  │  vs Ideal (f64):  ...  │  ⚡ CPU: ...
+
+  🎸 ConvNet
+     vs NAMcore:  ...  │  vs Ideal (f64):  ...  │  ⚡ CPU: ...
+
+  🎸 Linear (RF=2048)
+     vs NAMcore:  ...  │  vs Ideal (f64):  ...  │  ⚡ CPU: ...
+
+  ... (todos os modelos disponíveis)
+
+📊 FIDELIDADE SONORA — Detalhes Técnicos
+═════════════════════════════════════════
+  Modelo                  │ ESR (vs NAMcore) │ ESR (vs f64) │ SNR dB │ MR-STFT │ Modo
+  ─────────────────────── │ ──────────────── │ ──────────── │ ────── │ ─────── │ ────
+  WaveNet Std CH16 @48k   │ 4.8e-14          │ 6.1e-14      │ 132 dB │ 0.0003  │ Live
+  WaveNet Std CH16 @96k   │ ...              │ ...          │ ...    │ ...     │ Live
+  LSTM 1×16 @48k          │ 2.61e-2          │ 3.57e-3      │ ...    │ ...     │ Live
+  ...                     │                  │              │        │         │
+
+⚡ PERFORMANCE — Latência por Bloco (64 amostras @ 48kHz)
+══════════════════════════════════════════════════════════
+  Deadline RT: 1333 µs (1.33 ms)
+
+  Modelo                  │ Latência Mediana │ % do Budget │ Folga
+  ─────────────────────── │ ──────────────── │ ─────────── │ ─────────
+  WaveNet Standard CH16   │    164 µs        │  12.3%      │ 87.7% ✅
+  WaveNet Feather CH8     │     48 µs        │   3.6%      │ 96.4% ✅
+  ...
+
+  ⓘ Folga > 50%:  Pode usar oversampling 2× sem xruns
+  ⓘ Folga > 75%:  Pode usar oversampling 4× sem xruns
+  ⓘ Folga < 25%:  ⚠ Risco de xruns com buffer de 64 amostras
+
+🔬 ISA PARITY
+═════════════
+  AVX2 vs AVX-512: bitwise identical ✅ / divergent ⚠
+
+🎹 ACTIVATION PRECISION
+════════════════════════
+  LSTM Standard (Padé) vs HighFidelity (stdlib): ESR diff = ...
 ```
 
 **Regras de parseamento**:
 
-- Capturar linhas contendo `ESR`, `SNR`, `MSE`, `MR-STFT` do stdout dos testes
+- Capturar linhas contendo `ESR`, `SNR`, `MSE`, `MR-STFT`, `LUFS` do stdout dos testes
+- Identificar o modelo pela label entre `[` e `]` no output de `report_dsp_fidelity`
 - Capturar `time:` do Criterion para extrair latência mediana
 - Calcular `% budget RT = (latência / 1333µs) × 100`
-- Traduzir ESR → veredicto humano (tabela de mapeamento no script)
+- Traduzir ESR → veredicto humano:
+  - ESR < 1e-10: "IDÊNTICO — erro abaixo do chão numérico"
+  - ESR < 1e-5: "IMPERCEPTÍVEL — perfeito para qualquer uso"
+  - ESR < 1e-2: "AUDÍVEL APENAS COM A/B CIENTÍFICO"
+  - ESR < 1e-1: "AUDÍVEL EM COMPARAÇÃO DIRETA"
+  - ESR ≥ 1e-1: "⚠ AUDÍVEL — necessita investigação"
+
+**Features do script**:
+
+- `--save <filename>`: Além de exibir na tela, também salva (como output limpo sem ANSI) em arquivo para comparação A/B
+- `--fidelity-only`: pular benchmarks Criterion (roda apenas testes de fidelidade, ~2 min)
+- `--bench-only`: pular testes de fidelidade (roda apenas benchmarks, ~3 min)
+- Graceful-skip para componentes ausentes (modelo não encontrado, golden não gerado, C++ render indisponível)
+- Exit code 0 com testes skipped (informacional), ≠0 apenas em erros de infraestrutura
+- Informações de sistema no header: ISA detectada, CPU model, data/hora, rustc version
 
 **Critério de aceite**:
 
 - [ ] Script roda sem erros em um sistema com goldens e NAMCore presentes
-- [ ] Script faz graceful-skip para componentes ausentes (goldens, C++ render)
+- [ ] Script faz graceful-skip para componentes ausentes sem abortar
+- [ ] Output cobre **todos os 31 modelos** disponíveis nos fixtures (que tenham testes associados)
+- [ ] Output cobre fidelidade (ESR, SNR, MSE, MR-STFT) + performance (latência Criterion) + ISA parity + activation precision
 - [ ] Output é legível, colorido (ANSI), e fácil de escanear
-- [ ] Segue o padrão dos scripts em `utils/` (usa `_lib.sh`, tem header SPDX)
-- [ ] Arquivo fica em `docs/quality-dashboard.sh` (conforme solicitado)
+- [ ] Flag `--save` gera arquivo sem códigos ANSI (plain text)
+- [ ] Segue o padrão dos scripts existentes (usa `_lib.sh`, header SPDX)
+- [ ] Arquivo fica em `utils/quality-dashboard.sh` (conforme solicitado)
 
 **Arquivos a criar/modificar**:
 
-- `[NEW]` `docs/quality-dashboard.sh`
+- `[NEW]` `utils/quality-dashboard.sh`
 
 ---
 
@@ -78,12 +158,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Tarefa SQ2.1 — Executar o dashboard e salvar baseline
 
-**Descrição**: Rodar `docs/quality-dashboard.sh` e salvar o output como `docs/baseline-with-quantization.log` (commitado, para referência futura).
+**Descrição**: Rodar `utils/quality-dashboard.sh` e salvar o output como `docs/baseline-with-quantization.log` (commitado, para referência futura).
 
 **Critério de aceite**:
 
 - [ ] Baseline capturado e commitado com todas as métricas de fidelidade e performance
-- [ ] Todos os modelos cobertos (WaveNet Std/Feather/Nano/Lite, LSTM 1×16/2×8, A2-Full/Lite)
+- [ ] Todas as 6 famílias cobertas: WaveNet A1 (Std/Feather/Lite/Nano), WaveNet A2 (Full/Lite/Max), A2-FiLM (Lite/Full), A2/WaveNet Dynamic, LSTM (1×16/2×8/Dyn), ConvNet/Linear
 
 ### Tarefa SQ2.2 — Salvar baseline do regression_gate
 
@@ -338,7 +418,7 @@ cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 
 ### Tarefa SQ5.2 — Rodar dashboard e comparar com baseline
 
-**Descrição**: Executar `docs/quality-dashboard.sh` e comparar o relatório lado-a-lado com `docs/baseline-with-quantization.log`.
+**Descrição**: Executar `utils/quality-dashboard.sh` e comparar o relatório lado-a-lado com `docs/baseline-with-quantization.log`.
 
 **Critério de aceite**:
 

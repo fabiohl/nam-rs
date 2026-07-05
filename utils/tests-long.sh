@@ -45,7 +45,7 @@ source "$(dirname "$0")/_lib.sh"
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 50 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 55 minutes)   ${NC}"
 echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Setup target logs

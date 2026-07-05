@@ -94,22 +94,62 @@ ESR_steady ∝ σ²ε / (1 − ⟨f⟩²)    ← forget gate ≈ 0.9–0.99 → 
 
 ---
 
-## Finding F-Q2: Script de Dashboard `docs/quality-dashboard.sh` necessário para medir impacto
+## Finding F-Q2: Script de Dashboard `utils/quality-dashboard.sh` — ferramenta de uso geral
 
 ### Contexto F-Q2
 
-Antes (baseline) e depois (pós-remoção) da mudança, precisamos de um instrumento científico que colha dados dos testes existentes e os apresente de forma amigável. Este instrumento será permanente e reaproveitável para qualquer mudança futura.
+O nam-rs precisa de um instrumento científico permanente que colha dados de **todos** os testes de fidelidade e performance existentes e os apresente de forma amigável a humanos. Este instrumento é uma **ferramenta de uso geral do projeto** — independente da PoC de quantização — e continuará sendo útil para qualquer mudança futura (ativações, oversampling, novos modelos, etc.).
+
+### Cobertura Obrigatória — TODOS os Modelos, Modos e Arquiteturas
+
+#### Arquiteturas (6 famílias)
+
+| Família             | Modelos Fixture                                                                                                                          | Variantes                                                                                   |
+|:------------------- |:---------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------- |
+| **WaveNet A1**      | `BossWN-standard.nam`, `BossWN-feather.nam`, `BossWN-lite.nam`, `BossWN-nano.nam`, `wavenet_a1_standard.nam`, `wavenet_official.nam`     | Static CH4/CH8/CH12/CH16                                                                    |
+| **WaveNet A2**      | `wavenet_a2_full.nam`, `wavenet_a2_lite.nam`, `wavenet_a2_max.nam`, `wavenet_a2_container.nam`                                           | Static CH3/CH8                                                                              |
+| **WaveNet A2 FiLM** | `wavenet_a2_film_lite.nam`, `wavenet_a2_film_full.nam`                                                                                   | Conditioning                                                                                |
+| **WaveNet Dynamic** | `wavenet_dyn_free.nam`, `wavenet_condition_dsp.nam`, `a2_dynamic_gated_ch8.nam`, `a2_dynamic_blended_ch3.nam`                            | Dinâmico + Slimmable (`slimmable_container.nam`, `slimmable_wavenet.nam`, `a2_example.nam`) |
+| **LSTM**            | `BossLSTM-1x16.nam`, `BossLSTM-2x8.nam`, `lstm.nam`, `lstm_dyn_test.nam`                                                                 | Static 1×16, 2×8; Dyn                                                                       |
+| **ConvNet/Linear**  | `convnet_test.nam`, `linear_test.nam`, `linear_fft_rf320.nam`, `linear_fft_rf2048.nam`, `linear_fft_rf4096.nam`, `linear_fft_rf8192.nam` | Variáveis RF                                                                                |
+
+#### Modos de Qualidade (2)
+
+| Modo               | Oversampling | Ativações               | Adaptive Compute |
+|:------------------ |:------------ |:----------------------- |:---------------- |
+| **Live** (default) | Off          | `Standard` (Padé)       | Ativo            |
+| **HQ/Offline**     | 4×           | `HighFidelity` (stdlib) | Desativado       |
+
+#### ISAs Suportadas (3)
+
+- **AVX2** (x86-64-v3) — baseline obrigatório
+- **AVX-512** — dispatch automático
+- **AVX-512 VNNI BF16** — dispatch automático (LSTM/GEMV otimizado)
+
+#### Suítes de Teste Colhidas
+
+| Suite                  | Comando                                                                  | O que mede                                        | Modelos cobertos                                                                        |
+|:---------------------- |:------------------------------------------------------------------------ |:------------------------------------------------- |:--------------------------------------------------------------------------------------- |
+| `golden_vectors`       | `cargo test --release --test golden_vectors -- --nocapture`              | ESR, SNR, MSE, MR-STFT vs C++ NAMCore             | Todos os modelos com `.golden.bin` (v1+v2, multi-SR)                                    |
+| `reference_oracle_f64` | `cargo test --release --test reference_oracle_f64 -- --nocapture`        | ESR vs f64 ideal + decomposição de fontes de erro | WaveNet, LSTM, A2, A2-FiLM, ConvNet, A2-Generic                                         |
+| `spectral_fidelity`    | `cargo test --release --test spectral_fidelity -- --nocapture`           | ASR (aliasing spectral ratio)                     | Todos que tenham spectral tests                                                         |
+| `isa_parity`           | `cargo test --release --test isa_parity -- --test-threads=1 --nocapture` | Paridade bitwise AVX2 vs AVX-512                  | Todos                                                                                   |
+| `activation_precision` | `cargo test --release --test activation_precision -- --nocapture`        | Impacto Standard vs HighFidelity                  | LSTM (mais sensível)                                                                    |
+| `regression_gate`      | `cargo bench --bench regression_gate 2>&1`                               | Latência por bloco (64 samp, 48kHz)               | 10 modelos: WaveNet Std/Feather/Lite/Nano, A2 Full/Lite, LSTM 1×16/2×8, Linear, ConvNet |
 
 ### Solução Proposta F-Q2
 
-Script `docs/quality-dashboard.sh` que:
+Script `utils/quality-dashboard.sh` que:
 
-1. Roda `golden_vectors`, `reference_oracle_f64`, `spectral_fidelity`, `isa_parity` em release
-2. Roda `regression_gate` benchmark
+1. Roda **todas** as suítes acima em `--release`
+2. Faz **graceful-skip** para componentes ausentes (modelo não presente, goldens não gerados, C++ render não disponível)
 3. Parseia o stdout e gera relatório humano com:
-   - Resumo não-científico (ESR → % de erro + veredicto humano)
-   - Latência vs budget RT (% de folga + sugestões de upgrades como oversampling)
-   - Tabela técnica detalhada (ESR, SNR, MSE, MR-STFT)
+   - **Resumo rápido por modelo** — ESR → % de erro + veredicto humano (IDÊNTICO / IMPERCEPTÍVEL / AUDÍVEL COM A/B / AUDÍVEL)
+   - **Tabela de performance** — latência mediana vs deadline RT (1333 µs @64samp/48kHz) + % de folga + sugestões (oversampling 2×/4×, HQ mode)
+   - **Tabela técnica completa** — ESR, SNR, MSE, MR-STFT, LUFS por modelo e por sample rate
+   - **Informações de sistema** — ISA detectada, CPU, baseline Criterion, data/hora
+4. Suporta flag `--save <filename>` para persistir o output (usado para baseline A/B)
+5. Retorna exit code 0 mesmo com testes skipped (informacional), ≠0 somente em erros de infraestrutura
 
 ---
 
@@ -132,7 +172,7 @@ Se a remoção da quantização provar ser benéfica, vários documentos existen
 
 | Sprint  | Descrição                                          | Findings   | Risco    |
 |:------- |:-------------------------------------------------- |:---------- |:-------- |
-| **SQ1** | Dashboard de medição (`docs/quality-dashboard.sh`) | F-Q2       | 🟢 Baixo |
+| **SQ1** | Dashboard de medição (`utils/quality-dashboard.sh`)| F-Q2       | 🟢 Baixo |
 | **SQ2** | Captura do baseline (antes da remoção)             | F-Q2       | 🟢 Baixo |
 | **SQ3** | Remoção da quantização: structs + loaders          | F-Q1       | 🔴 Alto  |
 | **SQ4** | Remoção da quantização: kernels SIMD               | F-Q1       | 🔴 Alto  |
