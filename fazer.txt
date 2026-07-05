@@ -1,4 +1,8 @@
-* Lidar com estes bugs: known-bugs.md
+* [RESOLVIDO] Hang de `test_x2_aliasing_rejection` — causa raiz e correção
+  documentadas em `docs/postmortem-libm-symbol-interposition.md`. Restou como
+  ação opcional: rodar "utils/tests-long.sh" (humano, não IA) pra reconfirmar
+  a suíte completa após a correção.
+
 * Prova de conceito de impacto (performance e qualidade) da remoção de:
   docs/audio_fidelity_map.md "1. Weight Compression — F16C / BF16"; "3. LSTM Recurrent State Quantization Drift".
   docs/cpp_parity_map.md "2.5 Precision divergence: quantized backbone weights", "2.7 Measured interop drift" e "7.2 🟡 Known, measured, accepted tradeoffs — not bugs" / LSTM backbone weight quantization.

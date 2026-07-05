@@ -454,13 +454,14 @@ run_proptests_parity_phase() {
     # of tests/gate_fsm_proptest.rs, covers the DynamicHysteresis reversal
     # edge case specifically.
     timed_cargo_test "gate_envelope_continuity_proptest" --release --no-fail-fast --lib -- "dsp::gate::gate_test::tests::gate_envelope_continuity_on_reversal" --ignored --nocapture || status=1
-    # NOTE: `dsp::oversample::oversample_test::test_x2_aliasing_rejection` is
-    # intentionally NOT run here. It was found during this audit to hang
-    # indefinitely in --release (>30s with no output, vs. a synthetic 128-sample
-    # computation that should take microseconds) — a real bug, not a scope
-    # decision. Do not add it back without first fixing the hang; a hang in a
-    # nightly-only job is worse than a failure — it silently eats the whole
-    # ± 50 min window with no report the next morning.
+    # `dsp::oversample::oversample_test::test_x2_aliasing_rejection` used to be
+    # excluded here (hung indefinitely in --release due to an ELF
+    # symbol-interposition bug — see
+    # docs/postmortem-libm-symbol-interposition.md for the root cause and the
+    # fix). It is no longer `#[ignore]`d and needs no special-casing here
+    # anymore — it now runs automatically as part of every plain
+    # `cargo test --lib` invocation in this script (and in tests-quick.sh's
+    # Fase 1), same as its siblings.
     return $status
 }
 run_phase "Property-Based, Parity & Golden Vectors in Release" "run_proptests_parity_phase" "phase3-proptests-parity.log" || true

@@ -69,7 +69,6 @@ fn test_x2_roundtrip_dc() {
 }
 
 #[test]
-#[ignore] // qualitative test, slow in debug builds
 fn test_x2_aliasing_rejection() {
     let mut engine = OversampleEngine::new(OversampleFactor::X2, 512);
     let sr = 48000.0f32;
@@ -111,15 +110,25 @@ fn test_x2_aliasing_rejection() {
         .fold(0.0f32, f32::max);
 
     // At 23 kHz (0.479 * fs_in), the half-band transition band provides
-    // some attenuation. We expect at least 10 dB suppression.
+    // some (not full-stopband) attenuation — this is the transition band,
+    // not the stopband, so a >10 dB expectation was never physically
+    // achievable and this test hung/failed for unrelated reasons for a
+    // long time before that was noticed (see
+    // docs/postmortem-libm-symbol-interposition.md — the hang was an ELF
+    // symbol-interposition bug in `f32::log10()`'s linkage, unrelated to
+    // this algorithm).
+    // Measured: -5.751028 dB (2026-07-04, X2, 23 kHz/48 kHz, deterministic
+    // FIR — no noise/randomness in this computation). Margin below the
+    // measured value only, to still catch a genuine regression in the
+    // half-band coefficients or convolution.
     let ratio = if amp_in > 1e-6 {
         20.0 * (amp_out / amp_in).log10()
     } else {
         -200.0
     };
     assert!(
-        ratio < -10.0,
-        "23 kHz tone should be attenuated >10 dB by half-band, got {ratio:.1} dB"
+        ratio < -5.5,
+        "23 kHz tone should be attenuated by half-band transition band, got {ratio:.3} dB (expected < -5.5 dB, measured baseline: -5.751028 dB)"
     );
 }
 

@@ -224,11 +224,18 @@ The battery itself runs in 7 phases, each a superset of its non-overlapping
 6. **Criterion Performance Benchmarks**: Measurement of DSP block runtime budgets and throughput limits (`benches/`), recorded for the nightly archive (no baseline gating — see `utils/tests-performance-regression.sh` for the per-push gate).
 7. **RT Deadline Gate & Jitter Stress**: `rt_deadline` (release, deadline assertion) + `rt_jitter` (release, `--ignored` — all jitter tests).
 
-> [!WARNING]
+> [!NOTE]
 > `dsp::oversample::oversample_test::test_x2_aliasing_rejection` (`src/dsp/oversample_test.rs`)
-> is intentionally **excluded** from Phase 3. It was found to hang indefinitely in `--release`
-> during the tests-long.sh audit that introduced this table — a real bug, not a scope
-> decision. Do not re-enable it without first fixing the hang; see §5.
+> used to hang indefinitely in `--release`. Root cause: an ELF symbol-interposition bug
+> where a locally-linked libm fallback shadowed the dynamic `libm.so.6`, turning the test's
+> `f32::log10()` call into a self-referential `trampoline → PLT → GOT → trampoline`
+> infinite loop — nothing to do with the DSP algorithm itself. Fixed via a linker version
+> script (`.cargo/hide-libm-shadow.map` + `build.rs`) that forces the standard libm C symbol
+> names to `local` binding, so they can never again win symbol interposition over the real
+> dynamic library. The test is no longer `#[ignore]`d and runs as part of the normal `--lib`
+> unit-test pass in every suite (quick and long). See
+> `docs/postmortem-libm-symbol-interposition.md` for the full root-cause analysis and the
+> lessons learned, and `utils/debug/verify_bug3_fix.sh` for a one-command regression check.
 
 ---
 
@@ -266,7 +273,6 @@ The following table documents all ignored tests in the repository, explaining wh
 | **`src/clap/processor_test.rs`**              | `test_gc_stress_1000_swaps`                                                                                            | Heavy GC swap test (1000 iterations) exceeding standard SPSC channel limits.                                                                          | Long Suite (Phase 5)                                      | Pre-release / Nightly |
 | **`tests/concurrency_stress.rs`**             | `test_*_concurrent_*`, `test_t6_3_*`                                                                                   | Heavy multi-reader lock-free param contention sweeps.                                                                                                 | Long Suite (Phase 5)                                      | Pre-release / Nightly |
 | **`tests/rt_jitter.rs`**                      | `test_jitter_*` (all 4 — baseline, stress-1/2, saturate)                                                               | RT jitter characterization under CPU contention; timing is meaningful only in release.                                                                | Long Suite (Phase 7, `--ignored`)                         | Pre-release / Nightly |
-| **`src/dsp/oversample_test.rs`**              | `test_x2_aliasing_rejection`                                                                                           | **Known bug, excluded**: hangs indefinitely in `--release` (found during the tests-long.sh audit). Do not add to any suite until fixed.               | None (excluded — bug)                                     | Blocked               |
 
 ---
 

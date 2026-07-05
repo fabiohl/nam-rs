@@ -2,18 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
-# repro_oversample_hang.sh — Safety wrapper for BUG-3 hang-reproduction attempts
-# (see TODO-sprints.md T0.4 and known-bugs.md).
+# repro_oversample_hang.sh — General-purpose safety wrapper for reproducing
+# a suspected indefinite hang. Originally built to investigate and fix a
+# real ELF symbol-interposition hang (see
+# docs/postmortem-libm-symbol-interposition.md for the full writeup and the
+# lessons learned) — kept as a general reusable tool for any future hang
+# investigation, not specific to that one bug.
 #
 # This is a *debug/investigation* tool, deliberately NOT part of the official
-# `utils/tests-*.sh` suite. It never runs unattended CI/nightly checks; it exists
-# solely so a human operator (or an AI, under the non-negotiable rules in
-# TODO-sprints.md §"Princípios não-negociáveis") can run a single reproduction
+# `utils/tests-*.sh` suite. It never runs unattended CI/nightly checks; it
+# exists solely so a human operator (or an AI) can run a single reproduction
 # candidate command with:
 #   1. Resource isolation (systemd-run --user --scope + cgroup v2 limits), so a
 #      runaway process cannot OOM/starve the host or crash the graphical session.
 #   2. An aggressive external kill timeout, since the internal cargo/test-harness
-#      timeout is known to be unreliable for this bug (known-bugs.md §1.2).
+#      timeout is known to be unreliable once a real hang is in play.
 #   3. A durable, timestamped log + exit-code artifact under target/debug-logs/,
 #      plus an automatic dmesg tail, so every attempt is fully reproducible and
 #      post-mortem-able without relying on scrollback.
@@ -36,8 +39,9 @@
 #   2        — usage error (bad arguments); never confuse this with the above.
 #   other    — whatever the wrapped command itself returned (ordinary pass/fail).
 #
-# CRITICAL FIX (2026-07-04, re-verified live during Sprint 1 evaluation —
-# see known-bugs.md §1.14): the *original* version of this script ran
+# CRITICAL FIX (verified live during the investigation this tool was built
+# for — see docs/postmortem-libm-symbol-interposition.md §2 for the general
+# lesson): an earlier version of this script ran
 # `timeout -s KILL "$TIMEOUT_S" "$@"` *inside* the systemd-run scope. This
 # was PROVEN LIVE to leak the actual test binary as an orphaned, still-running
 # process pinned at ~100% CPU *after* the script had already printed
@@ -51,16 +55,16 @@
 # FIX: the timeout is now expressed as `-p RuntimeMaxSec=<N>` on the
 # `systemd-run` scope itself (no inner `timeout` process at all). systemd
 # enforces this by sending SIGTERM then SIGKILL to *every* process in the
-# scope's cgroup — verified empirically (known-bugs.md §1.10, §1.11, and the
-# live re-verification in §1.14) to leave zero residual processes. Do not
-# reintroduce an inner `timeout -s KILL` — it is the confirmed root cause of
-# a real, reproduced-live orphan/resource leak, not a theoretical concern.
+# scope's cgroup — verified empirically to leave zero residual processes. Do
+# not reintroduce an inner `timeout -s KILL` — it is the confirmed root
+# cause of a real, reproduced-live orphan/resource leak, not a theoretical
+# concern.
 #
 # Secondary fix retained from the previous revision: no `| tee` pipe for the
 # authoritative exit-status capture (a `${PIPESTATUS[0]}` read after `tee`
 # separately produced a false-negative exit 0 for a log truncated exactly
-# like a confirmed hang — known-bugs.md §1.14). Output is redirected straight
-# to the log file and `$?` is read immediately, unambiguously.
+# like a confirmed hang). Output is redirected straight to the log file and
+# `$?` is read immediately, unambiguously.
 
 set -uo pipefail
 
@@ -149,8 +153,7 @@ echo "$STATUS" >"$EXIT_FILE"
 # this invocation survived. This is not optional cosmetics — the exact
 # failure mode this guards against (a still-running, ~100% CPU orphaned test
 # binary, minutes after the script already printed a result and exited) was
-# reproduced live during the Sprint 1 evaluation (known-bugs.md §1.14) with
-# the *previous* revision of this script.
+# reproduced live with an earlier revision of this script.
 LEFTOVER_PROC="$(pgrep -af 'target/(debug|release)/deps/(nam_rs|repro_oversample)-' 2>/dev/null || true)"
 if [ -n "$LEFTOVER_PROC" ]; then
     echo -e "${RED}${BOLD}!!! ALERTA: processo(s) residual(is) detectado(s) após o fim do script — mate manualmente agora: !!!${NC}" | tee -a "$LOG"
@@ -166,7 +169,7 @@ elif [ "$STATUS" -eq 0 ]; then
     # log) is almost certainly a false negative, not a real pass — flag it
     # loudly instead of trusting the exit code blindly.
     if ! grep -q "^test result:" "$LOG"; then
-        echo -e "${RED}${BOLD}!!! SUSPEITO: exit 0 mas nenhuma linha 'test result:' no log — provável falso negativo da ferramenta (ver known-bugs.md §1.14). Trate como INCONCLUSIVO, não como sucesso. !!!${NC}" | tee -a "$LOG"
+        echo -e "${RED}${BOLD}!!! SUSPEITO: exit 0 mas nenhuma linha 'test result:' no log — provável falso negativo da ferramenta. Trate como INCONCLUSIVO, não como sucesso. !!!${NC}" | tee -a "$LOG"
     else
         echo -e "${GREEN}${BOLD}--- comando finalizado normalmente (exit 0) ---${NC}" | tee -a "$LOG"
     fi

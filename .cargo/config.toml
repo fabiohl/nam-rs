@@ -30,3 +30,17 @@ rustflags = [
   # Forces retention of the CLAP entry point symbol, preventing it from being discarded by gc-sections
   "-Clink-arg=-Wl,-u,clap_entry",
 ]
+
+# Permanent regression guard for an ELF symbol-interposition hang — see
+# docs/postmortem-libm-symbol-interposition.md for the full writeup and
+# .cargo/hide-libm-shadow.map for the linker version script itself.
+#
+# The `-Wl,--version-script` linker arg that neutralizes the hang is
+# applied via `build.rs` (`cargo:rustc-link-arg`), NOT here. A global
+# `[build] rustflags` entry would also apply to every dependency's own
+# build-script helper binaries (e.g. `libc`'s, `target-lexicon`'s), which
+# resolve relative paths from a different working directory and fail to
+# find the map file at all. Scoping it to our own crate via `build.rs` +
+# `env!("CARGO_MANIFEST_DIR")` avoids that entirely and is also more
+# correct: only our own final binaries (the test harness, the standalone
+# bin, the CLAP cdylib) need this protection.
