@@ -71,10 +71,34 @@ pub unsafe fn gemv_4gate_bf16_fallback(
 ) {
     let out_len = out.len() / 4;
     unsafe {
-        gemv_overwrite_bf16_f32w(in_frame, w0, &bias[0..out_len], &mut out[0..out_len], do_bias);
-        gemv_overwrite_bf16_f32w(in_frame, w1, &bias[out_len..2 * out_len], &mut out[out_len..2 * out_len], do_bias);
-        gemv_overwrite_bf16_f32w(in_frame, w2, &bias[2 * out_len..3 * out_len], &mut out[2 * out_len..3 * out_len], do_bias);
-        gemv_overwrite_bf16_f32w(in_frame, w3, &bias[3 * out_len..4 * out_len], &mut out[3 * out_len..4 * out_len], do_bias);
+        gemv_overwrite_bf16_f32w(
+            in_frame,
+            w0,
+            &bias[0..out_len],
+            &mut out[0..out_len],
+            do_bias,
+        );
+        gemv_overwrite_bf16_f32w(
+            in_frame,
+            w1,
+            &bias[out_len..2 * out_len],
+            &mut out[out_len..2 * out_len],
+            do_bias,
+        );
+        gemv_overwrite_bf16_f32w(
+            in_frame,
+            w2,
+            &bias[2 * out_len..3 * out_len],
+            &mut out[2 * out_len..3 * out_len],
+            do_bias,
+        );
+        gemv_overwrite_bf16_f32w(
+            in_frame,
+            w3,
+            &bias[3 * out_len..4 * out_len],
+            &mut out[3 * out_len..4 * out_len],
+            do_bias,
+        );
     }
 }
 

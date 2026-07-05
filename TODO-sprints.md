@@ -337,7 +337,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 - [ ] Sem `_mm256_cvtph_ps` no arquivo
 - [ ] Pointer arithmetic correta para stride de f32 (4 bytes em vez de 2)
 
-### Tarefa SQ4.2 — Adaptar kernels GEMV 4-gate do LSTM (AVX-512)
+### Tarefa SQ4.2 — Adaptar kernels GEMV 4-gate do LSTM (AVX-512) [DONE]
 
 **Descrição**: Análogo ao SQ4.1, mas para `src/math/gemm/gemv_4gate/avx512.rs`. Usa `_mm512_cvtph_ps` (16 u16 → 16 f32). Muda para `_mm512_loadu_ps`.
 

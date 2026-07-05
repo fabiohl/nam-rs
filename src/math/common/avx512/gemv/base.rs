@@ -282,29 +282,16 @@ macro_rules! impl_avx512_gemv {
         // out_gates.len() == 4 * hidden_size, bias.len() == 4 * hidden_size;
         // CPU supports AVX-512F+VL+F16C (verified by dispatch).
         unsafe fn gemv_overwrite_4gate(
-            in_frame: &[f32],
-            weights: &[u16],
-            bias: &[f32],
-            out_gates: &mut [f32],
-            hidden_size: usize,
-            do_bias: bool,
+            _in_frame: &[f32],
+            _weights: &[u16],
+            _bias: &[f32],
+            _out_gates: &mut [f32],
+            _hidden_size: usize,
+            _do_bias: bool,
         ) {
-            let ih = in_frame.len();
-            let stride = ih * hidden_size;
-            // SAFETY: weights indices [0..4*stride] are within bounds per function invariants;
-            // AVX-512 ISA verified by caller via dispatch.
-            unsafe {
-                crate::math::gemm::gemv_4gate::gemv_4gate_avx512(
-                    in_frame,
-                    &weights[0..stride],
-                    &weights[stride..2 * stride],
-                    &weights[2 * stride..3 * stride],
-                    &weights[3 * stride..4 * stride],
-                    bias,
-                    out_gates,
-                    do_bias,
-                )
-            }
+            unreachable!(
+                "gemv_overwrite_4gate is unused; 4-gate dispatch uses direct kernel functions"
+            );
         }
         #[inline(always)]
         // SAFETY: in_frame (u16 BF16), weights (u16 BF16), bias (f32), out_gates (f32) are

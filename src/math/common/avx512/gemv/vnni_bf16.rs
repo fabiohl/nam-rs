@@ -248,25 +248,16 @@ macro_rules! impl_avx512vnni_bf16_gemv {
         // SAFETY: in_frame, weights (4-gate concatenated), bias, out_gates are valid slices;
         // CPU supports AVX-512 VNNI+BF16.
         unsafe fn gemv_overwrite_4gate(
-            in_frame: &[f32],
-            weights: &[u16],
-            bias: &[f32],
-            out_gates: &mut [f32],
-            hidden_size: usize,
-            do_bias: bool,
+            _in_frame: &[f32],
+            _weights: &[u16],
+            _bias: &[f32],
+            _out_gates: &mut [f32],
+            _hidden_size: usize,
+            _do_bias: bool,
         ) {
-            // SAFETY: arguments satisfy the documented invariants; AVX-512 VNNI+BF16
-            // ISA verified by caller via dispatch.
-            unsafe {
-                Avx512Math::gemv_overwrite_4gate(
-                    in_frame,
-                    weights,
-                    bias,
-                    out_gates,
-                    hidden_size,
-                    do_bias,
-                )
-            }
+            unreachable!(
+                "gemv_overwrite_4gate is unused; 4-gate dispatch uses direct kernel functions"
+            );
         }
         #[inline(always)]
         // SAFETY: in_frame (u16 BF16), weights (u16 BF16), bias (f32), out_gates (f32) are

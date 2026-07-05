@@ -360,7 +360,9 @@ impl SimdMath for Avx2Math {
         _hidden_size: usize,
         _do_bias: bool,
     ) {
-        unreachable!("gemv_overwrite_4gate is unused; 4-gate dispatch uses direct kernel functions");
+        unreachable!(
+            "gemv_overwrite_4gate is unused; 4-gate dispatch uses direct kernel functions"
+        );
     }
 
     /// Equivalent to `gemv_overwrite_4gate` but processing input data represented
