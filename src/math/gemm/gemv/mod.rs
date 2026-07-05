@@ -17,12 +17,12 @@
 //! - FMA dependency chain breaking via multiple accumulators.
 //! - Software prefetch on in_frame to reduce cache miss latency.
 
-#[doc = "f16 GEMV kernels using AVX2 (fused_add_gemv_avx2, gemv_overwrite_avx2)."]
-pub mod f16_avx2;
-#[doc = "f16 GEMV AVX2 specialized kernels for fixed dimensions (1×4, 4×4, 4×6, 8×4, 8×6, 8×8)."]
-pub mod f16_avx2_specialized;
-#[doc = "f16 GEMV kernels using AVX-512 (small, general, batch, fused variants)."]
-pub mod f16_avx512;
+    #[doc = "GEMV kernels using AVX2 (fused_add_gemv_avx2, gemv_overwrite_avx2)."]
+    pub mod f16_avx2;
+    #[doc = "GEMV AVX2 specialized kernels for fixed dimensions (1×4, 4×4, 4×6, 8×4, 8×6, 8×8)."]
+    pub mod f16_avx2_specialized;
+    #[doc = "GEMV kernels using AVX-512 (small, general, batch, fused variants)."]
+    pub mod f16_avx512;
 #[doc = "f32 batched GEMV kernels using AVX2 (with_bias, no_bias)."]
 pub mod f32_avx2;
 #[doc = "f32 batched GEMV kernels using AVX-512 (with_bias, no_bias)."]

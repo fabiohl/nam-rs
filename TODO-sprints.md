@@ -350,7 +350,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 - [ ] Kernel AVX-512 4-gate compila sem erros
 - [ ] Sem `_mm512_cvtph_ps` para pesos no arquivo
 
-### Tarefa SQ4.3 — Adaptar kernels GEMV genéricos f16 (AVX2 + AVX-512)
+### Tarefa SQ4.3 — Adaptar kernels GEMV genéricos f16 (AVX2 + AVX-512) [DONE]
 
 **Descrição**: Os kernels GEMV em `src/math/gemm/gemv/f16_avx2.rs`, `f16_avx2_specialized.rs`, e `f16_avx512.rs` servem o path genérico de GEMV com pesos u16. Estes precisam ser convertidos para carregar `f32` ou substituídos por versões f32 nativas.
 

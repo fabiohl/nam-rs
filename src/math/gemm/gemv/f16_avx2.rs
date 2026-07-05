@@ -3,7 +3,6 @@
 
 use super::f16_avx2_specialized;
 use crate::gemv_kernel;
-use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 // ── AVX2 ──────────────────────────────────────────────────────────────────────
@@ -17,10 +16,10 @@ use core::arch::x86_64::*;
 ///
 /// Uses 8 independent accumulators to break the FMA pipeline dependency chain,
 /// allowing the processor to execute up to 8 FMAs in parallel.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -80,7 +79,7 @@ pub unsafe fn fused_add_gemv_avx2(
                 |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
                 _mm256_add_ps,
-                |ptr| _mm256_cvtph_ps(_mm_loadu_si128(ptr as *const __m128i)),
+                |ptr| _mm256_loadu_ps(ptr as *const f32),
                 _mm256_fmadd_ps,
                 |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );
@@ -90,7 +89,7 @@ pub unsafe fn fused_add_gemv_avx2(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32_f16c(weights[in_c * out_len + out_c]);
+                let w = *weights.get_unchecked(in_c * out_len + out_c);
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) += sum;
@@ -102,10 +101,10 @@ pub unsafe fn fused_add_gemv_avx2(
 /// Performs a linear projection (Y = Bias + W * Z), replacing the previous content.
 ///
 /// Uses 8 independent accumulators to break the FMA pipeline dependency chain.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -165,7 +164,7 @@ pub unsafe fn gemv_overwrite_avx2(
                 |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
                 _mm256_add_ps,
-                |ptr| _mm256_cvtph_ps(_mm_loadu_si128(ptr as *const __m128i)),
+                |ptr| _mm256_loadu_ps(ptr as *const f32),
                 _mm256_fmadd_ps,
                 |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );
@@ -175,7 +174,7 @@ pub unsafe fn gemv_overwrite_avx2(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = *weights.get_unchecked(in_c * out_len + out_c);
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) = sum;

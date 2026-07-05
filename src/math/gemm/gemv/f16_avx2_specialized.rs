@@ -49,41 +49,22 @@ unsafe fn store_partial_ymm(ymm: __m256, dst: &mut [f32], len: usize) {
     }
 }
 
-/// Loads up to `len` f16 values from `src` into a YMM of f32, zeroing excess lanes.
-///
-/// Uses direct `_mm_loadl_epi64` when `len <= 4` to avoid a stack round-trip.
-///
-/// # Safety
-/// `src` must have at least `len` elements.
-#[inline(always)]
-unsafe fn load_partial_f16_ymm(src: &[u16], len: usize) -> __m256 {
-    if len <= 4 {
-        _mm256_cvtph_ps(_mm_loadl_epi64(src.as_ptr() as *const __m128i))
-    } else {
-        let mut tmp = [0u16; 8];
-        for (i, item) in tmp.iter_mut().enumerate().take(len) {
-            *item = *src.get_unchecked(i);
-        }
-        _mm256_cvtph_ps(_mm_loadu_si128(tmp.as_ptr() as *const __m128i))
-    }
-}
-
 // ═════════════════════════════════════════════════════════════════════════════════
 // fused_add_gemv specialized kernels
 // ═════════════════════════════════════════════════════════════════════════════════
 
 /// Specialized fused GEMV for: 1 input × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_1x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
 ) {
     unsafe {
         let v_in = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let vw = load_partial_f16_ymm(weights, 4);
+        let vw = load_partial_ymm(weights, 4);
         let mut acc = _mm256_mul_ps(v_in, vw);
         if do_bias {
             let vb = load_partial_ymm(bias, 4);
@@ -96,10 +77,10 @@ pub unsafe fn fused_add_gemv_avx2_1x4(
 }
 
 /// Specialized fused GEMV for: 4 inputs × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_4x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -112,19 +93,19 @@ pub unsafe fn fused_add_gemv_avx2_4x4(
         };
 
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[4..], 4);
+        let w1 = load_partial_ymm(&weights[4..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[8..], 4);
+        let w2 = load_partial_ymm(&weights[8..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[12..], 4);
+        let w3 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         let out_val = load_partial_ymm(out_frame, 4);
@@ -136,11 +117,11 @@ pub unsafe fn fused_add_gemv_avx2_4x4(
 /// Specialized fused GEMV for: 4 inputs × 6 outputs.
 ///
 /// Lanes 0..3 are processed via SIMD; lanes 4..5 via scalar to avoid
-/// over-reading weight rows with only 6 u16 entries.
-#[target_feature(enable = "avx2,fma,f16c")]
+/// over-reading weight rows with only 6 f32 entries.
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_4x6(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -152,22 +133,22 @@ pub unsafe fn fused_add_gemv_avx2_4x6(
             _mm256_setzero_ps()
         };
 
-        // Weights layout: column-major (6 out × 4 in). Each row = 6 u16 (12 bytes).
-        // Load first 4 f16 weights per row (padded to 8 for cvtph_ps), ignore lanes 4..7.
+        // Weights layout: column-major (6 out × 4 in). Each row = 6 f32 (24 bytes).
+        // Load first 4 f32 weights per row, ignore lanes 4..7.
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[6..], 4);
+        let w1 = load_partial_ymm(&weights[6..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[12..], 4);
+        let w2 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[18..], 4);
+        let w3 = load_partial_ymm(&weights[18..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         let out_val = load_partial_ymm(out_frame, 4);
@@ -178,14 +159,14 @@ pub unsafe fn fused_add_gemv_avx2_4x6(
 
         // Lanes 4..5: scalar computation for remaining 2 outputs.
         for oc in 4..6 {
-            let w = crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(oc));
+            let w = *weights.get_unchecked(oc);
             let mut sum = *in_frame.get_unchecked(0) * w;
             sum += *in_frame.get_unchecked(1)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(6 + oc));
+                * *weights.get_unchecked(6 + oc);
             sum += *in_frame.get_unchecked(2)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(12 + oc));
+                * *weights.get_unchecked(12 + oc);
             sum += *in_frame.get_unchecked(3)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(18 + oc));
+                * *weights.get_unchecked(18 + oc);
             if do_bias {
                 sum += bias[oc];
             }
@@ -199,10 +180,10 @@ pub unsafe fn fused_add_gemv_avx2_4x6(
 }
 
 /// Specialized fused GEMV for: 8 inputs × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_8x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -215,35 +196,35 @@ pub unsafe fn fused_add_gemv_avx2_8x4(
         };
 
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[4..], 4);
+        let w1 = load_partial_ymm(&weights[4..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[8..], 4);
+        let w2 = load_partial_ymm(&weights[8..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[12..], 4);
+        let w3 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         let v4 = _mm256_set1_ps(*in_frame.get_unchecked(4));
-        let w4 = load_partial_f16_ymm(&weights[16..], 4);
+        let w4 = load_partial_ymm(&weights[16..], 4);
         acc = _mm256_fmadd_ps(v4, w4, acc);
 
         let v5 = _mm256_set1_ps(*in_frame.get_unchecked(5));
-        let w5 = load_partial_f16_ymm(&weights[20..], 4);
+        let w5 = load_partial_ymm(&weights[20..], 4);
         acc = _mm256_fmadd_ps(v5, w5, acc);
 
         let v6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
-        let w6 = load_partial_f16_ymm(&weights[24..], 4);
+        let w6 = load_partial_ymm(&weights[24..], 4);
         acc = _mm256_fmadd_ps(v6, w6, acc);
 
         let v7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
-        let w7 = load_partial_f16_ymm(&weights[28..], 4);
+        let w7 = load_partial_ymm(&weights[28..], 4);
         acc = _mm256_fmadd_ps(v7, w7, acc);
 
         let out_val = load_partial_ymm(out_frame, 4);
@@ -255,10 +236,10 @@ pub unsafe fn fused_add_gemv_avx2_8x4(
 /// Specialized fused GEMV for: 8 inputs × 6 outputs.
 ///
 /// Lanes 0..3 processed via SIMD; lanes 4..5 via 8-unrolled scalar for each input.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_8x6(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -281,16 +262,12 @@ pub unsafe fn fused_add_gemv_avx2_8x6(
         for in_c in 0..8 {
             let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
             let w_row = w_ptr.add(in_c * out_len);
-            let w_simd = load_partial_f16_ymm(core::slice::from_raw_parts(w_row, 4), 4);
+            let w_simd = load_partial_ymm(core::slice::from_raw_parts(w_row, 4), 4);
             acc_simd = _mm256_fmadd_ps(vs, w_simd, acc_simd);
             sum4 += *in_frame.get_unchecked(in_c)
-                * crate::math::common::half::f16_bits_to_f32_f16c(
-                    *weights.get_unchecked(in_c * out_len + 4),
-                );
+                * *weights.get_unchecked(in_c * out_len + 4);
             sum5 += *in_frame.get_unchecked(in_c)
-                * crate::math::common::half::f16_bits_to_f32_f16c(
-                    *weights.get_unchecked(in_c * out_len + 5),
-                );
+                * *weights.get_unchecked(in_c * out_len + 5);
         }
 
         let mut tmp = [0.0f32; 8];
@@ -307,10 +284,10 @@ pub unsafe fn fused_add_gemv_avx2_8x6(
 /// Specialized fused GEMV for: 8 inputs × 8 outputs.
 ///
 /// Full 8 accumulators, fully unrolled — no loop branching.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_add_gemv_avx2_8x8(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -340,21 +317,21 @@ pub unsafe fn fused_add_gemv_avx2_8x8(
         let vs6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
         let vs7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
 
-        let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
+        let w0 = _mm256_loadu_ps(w_ptr as *const f32);
         acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-        let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(8) as *const __m128i));
+        let w1 = _mm256_loadu_ps(w_ptr.add(8) as *const f32);
         acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-        let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(16) as *const __m128i));
+        let w2 = _mm256_loadu_ps(w_ptr.add(16) as *const f32);
         acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-        let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(24) as *const __m128i));
+        let w3 = _mm256_loadu_ps(w_ptr.add(24) as *const f32);
         acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-        let w4 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(32) as *const __m128i));
+        let w4 = _mm256_loadu_ps(w_ptr.add(32) as *const f32);
         acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
-        let w5 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(40) as *const __m128i));
+        let w5 = _mm256_loadu_ps(w_ptr.add(40) as *const f32);
         acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
-        let w6 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(48) as *const __m128i));
+        let w6 = _mm256_loadu_ps(w_ptr.add(48) as *const f32);
         acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
-        let w7 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(56) as *const __m128i));
+        let w7 = _mm256_loadu_ps(w_ptr.add(56) as *const f32);
         acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
         acc0 = _mm256_add_ps(acc0, acc1);
@@ -376,17 +353,17 @@ pub unsafe fn fused_add_gemv_avx2_8x8(
 // ═════════════════════════════════════════════════════════════════════════════════
 
 /// Specialized overwrite GEMV for: 1 input × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_1x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
 ) {
     unsafe {
         let v_in = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let vw = load_partial_f16_ymm(weights, 4);
+        let vw = load_partial_ymm(weights, 4);
         let mut acc = _mm256_mul_ps(v_in, vw);
         if do_bias {
             let vb = load_partial_ymm(bias, 4);
@@ -397,10 +374,10 @@ pub unsafe fn gemv_overwrite_avx2_1x4(
 }
 
 /// Specialized overwrite GEMV for: 4 inputs × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_4x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -413,19 +390,19 @@ pub unsafe fn gemv_overwrite_avx2_4x4(
         };
 
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[4..], 4);
+        let w1 = load_partial_ymm(&weights[4..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[8..], 4);
+        let w2 = load_partial_ymm(&weights[8..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[12..], 4);
+        let w3 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         store_partial_ymm(acc, out_frame, 4);
@@ -433,10 +410,10 @@ pub unsafe fn gemv_overwrite_avx2_4x4(
 }
 
 /// Specialized overwrite GEMV for: 4 inputs × 6 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_4x6(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -449,33 +426,33 @@ pub unsafe fn gemv_overwrite_avx2_4x6(
         };
 
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[6..], 4);
+        let w1 = load_partial_ymm(&weights[6..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[12..], 4);
+        let w2 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[18..], 4);
+        let w3 = load_partial_ymm(&weights[18..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         let mut tmp = [0.0f32; 8];
         _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
 
         for oc in 4..6 {
-            let w = crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(oc));
+            let w = *weights.get_unchecked(oc);
             let mut sum = *in_frame.get_unchecked(0) * w;
             sum += *in_frame.get_unchecked(1)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(6 + oc));
+                * *weights.get_unchecked(6 + oc);
             sum += *in_frame.get_unchecked(2)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(12 + oc));
+                * *weights.get_unchecked(12 + oc);
             sum += *in_frame.get_unchecked(3)
-                * crate::math::common::half::f16_bits_to_f32_f16c(*weights.get_unchecked(18 + oc));
+                * *weights.get_unchecked(18 + oc);
             if do_bias {
                 sum += bias[oc];
             }
@@ -489,10 +466,10 @@ pub unsafe fn gemv_overwrite_avx2_4x6(
 }
 
 /// Specialized overwrite GEMV for: 8 inputs × 4 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_8x4(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -505,35 +482,35 @@ pub unsafe fn gemv_overwrite_avx2_8x4(
         };
 
         let v0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
-        let w0 = load_partial_f16_ymm(&weights[0..], 4);
+        let w0 = load_partial_ymm(&weights[0..], 4);
         acc = _mm256_fmadd_ps(v0, w0, acc);
 
         let v1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
-        let w1 = load_partial_f16_ymm(&weights[4..], 4);
+        let w1 = load_partial_ymm(&weights[4..], 4);
         acc = _mm256_fmadd_ps(v1, w1, acc);
 
         let v2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
-        let w2 = load_partial_f16_ymm(&weights[8..], 4);
+        let w2 = load_partial_ymm(&weights[8..], 4);
         acc = _mm256_fmadd_ps(v2, w2, acc);
 
         let v3 = _mm256_set1_ps(*in_frame.get_unchecked(3));
-        let w3 = load_partial_f16_ymm(&weights[12..], 4);
+        let w3 = load_partial_ymm(&weights[12..], 4);
         acc = _mm256_fmadd_ps(v3, w3, acc);
 
         let v4 = _mm256_set1_ps(*in_frame.get_unchecked(4));
-        let w4 = load_partial_f16_ymm(&weights[16..], 4);
+        let w4 = load_partial_ymm(&weights[16..], 4);
         acc = _mm256_fmadd_ps(v4, w4, acc);
 
         let v5 = _mm256_set1_ps(*in_frame.get_unchecked(5));
-        let w5 = load_partial_f16_ymm(&weights[20..], 4);
+        let w5 = load_partial_ymm(&weights[20..], 4);
         acc = _mm256_fmadd_ps(v5, w5, acc);
 
         let v6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
-        let w6 = load_partial_f16_ymm(&weights[24..], 4);
+        let w6 = load_partial_ymm(&weights[24..], 4);
         acc = _mm256_fmadd_ps(v6, w6, acc);
 
         let v7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
-        let w7 = load_partial_f16_ymm(&weights[28..], 4);
+        let w7 = load_partial_ymm(&weights[28..], 4);
         acc = _mm256_fmadd_ps(v7, w7, acc);
 
         store_partial_ymm(acc, out_frame, 4);
@@ -541,10 +518,10 @@ pub unsafe fn gemv_overwrite_avx2_8x4(
 }
 
 /// Specialized overwrite GEMV for: 8 inputs × 6 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_8x6(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -565,16 +542,12 @@ pub unsafe fn gemv_overwrite_avx2_8x6(
         for in_c in 0..8 {
             let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
             let w_row = w_ptr.add(in_c * out_len);
-            let w_simd = load_partial_f16_ymm(core::slice::from_raw_parts(w_row, 4), 4);
+            let w_simd = load_partial_ymm(core::slice::from_raw_parts(w_row, 4), 4);
             acc_simd = _mm256_fmadd_ps(vs, w_simd, acc_simd);
             sum4 += *in_frame.get_unchecked(in_c)
-                * crate::math::common::half::f16_bits_to_f32_f16c(
-                    *weights.get_unchecked(in_c * out_len + 4),
-                );
+                * *weights.get_unchecked(in_c * out_len + 4);
             sum5 += *in_frame.get_unchecked(in_c)
-                * crate::math::common::half::f16_bits_to_f32_f16c(
-                    *weights.get_unchecked(in_c * out_len + 5),
-                );
+                * *weights.get_unchecked(in_c * out_len + 5);
         }
 
         let mut tmp = [0.0f32; 8];
@@ -589,10 +562,10 @@ pub unsafe fn gemv_overwrite_avx2_8x6(
 }
 
 /// Specialized overwrite GEMV for: 8 inputs × 8 outputs.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_overwrite_avx2_8x8(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -622,21 +595,21 @@ pub unsafe fn gemv_overwrite_avx2_8x8(
         let vs6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
         let vs7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
 
-        let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
+        let w0 = _mm256_loadu_ps(w_ptr as *const f32);
         acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-        let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(8) as *const __m128i));
+        let w1 = _mm256_loadu_ps(w_ptr.add(8) as *const f32);
         acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-        let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(16) as *const __m128i));
+        let w2 = _mm256_loadu_ps(w_ptr.add(16) as *const f32);
         acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-        let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(24) as *const __m128i));
+        let w3 = _mm256_loadu_ps(w_ptr.add(24) as *const f32);
         acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-        let w4 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(32) as *const __m128i));
+        let w4 = _mm256_loadu_ps(w_ptr.add(32) as *const f32);
         acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
-        let w5 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(40) as *const __m128i));
+        let w5 = _mm256_loadu_ps(w_ptr.add(40) as *const f32);
         acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
-        let w6 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(48) as *const __m128i));
+        let w6 = _mm256_loadu_ps(w_ptr.add(48) as *const f32);
         acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
-        let w7 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(56) as *const __m128i));
+        let w7 = _mm256_loadu_ps(w_ptr.add(56) as *const f32);
         acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
         acc0 = _mm256_add_ps(acc0, acc1);
