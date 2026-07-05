@@ -306,7 +306,7 @@ mod tests {
         for (_step, &input_val) in test_inputs.iter().enumerate() {
             let input = [input_val];
 
-            layer_scalar.process_sample_scalar(&input, false);
+            layer_scalar.process_sample_scalar(&input);
             layer_simd.process(&input);
 
             for j in 0..h {

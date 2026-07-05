@@ -16,9 +16,7 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
-        $simd_math:ty,
         $gemv_4gate:path,
-        $gemv_4gate_bf16:path,
         $step:expr,
         $load:ident,
         $store:ident,
@@ -27,7 +25,6 @@ macro_rules! define_lstm_process {
         $tanh:path,
         $sigmoid:path,
         $fused_gates:path,
-        $is_bf16:expr
     ) => {
         /// Processes a sample through the LSTM layer.
         ///
@@ -41,52 +38,32 @@ macro_rules! define_lstm_process {
                 // 1. Feed the model's 'memory' with the new audio fragment.
                 self.state[..I].copy_from_slice(&input[..I]);
 
-                // 2. If the hardware supports BF16 (Brain Floating Point), convert the data.
-                // This preserves the audio scale but uses half the space, speeding up the calculation.
-                if $is_bf16 {
-                    use $crate::math::common::SimdMath;
-                    <$simd_math>::f32_to_bf16(&self.state[..I], &mut self.state_bf16[..I]);
-                }
-
-                // 3. 'Prefetch': Notify the processor to fetch the weights from RAM
+                // 2. 'Prefetch': Notify the processor to fetch the weights from RAM
                 // slightly ahead of when they're needed, preventing the computation from stalling for data.
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
 
-                // 4. Matrix-Vector Multiplication (GEMV):
+                // 3. Matrix-Vector Multiplication (GEMV):
                 // Here we multiply the input and previous state by the weights (the trained 'brain').
                 // The result activates the 4 'gates' of the LSTM: Forget, Input, Candidate, and Output.
-                if $is_bf16 {
-                    $gemv_4gate_bf16(
-                        &self.state_bf16.0,
-                        self.input_hidden_weights[0].as_flattened(),
-                        self.input_hidden_weights[1].as_flattened(),
-                        self.input_hidden_weights[2].as_flattened(),
-                        self.input_hidden_weights[3].as_flattened(),
-                        &self.bias.0,
-                        &mut self.gates.0,
-                        true,
-                    );
-                } else {
-                    $gemv_4gate(
-                        &self.state.0,
-                        self.input_hidden_weights[0].as_flattened(),
-                        self.input_hidden_weights[1].as_flattened(),
-                        self.input_hidden_weights[2].as_flattened(),
-                        self.input_hidden_weights[3].as_flattened(),
-                        &self.bias.0,
-                        &mut self.gates.0,
-                        true,
-                    );
-                }
+                $gemv_4gate(
+                    &self.state.0,
+                    self.input_hidden_weights[0].as_flattened(),
+                    self.input_hidden_weights[1].as_flattened(),
+                    self.input_hidden_weights[2].as_flattened(),
+                    self.input_hidden_weights[3].as_flattened(),
+                    &self.bias.0,
+                    &mut self.gates.0,
+                    true,
+                );
 
-                // 5. Map where each of the 4 gates starts in our calculation buffer.
+                // 4. Map where each of the 4 gates starts in our calculation buffer.
                 let f_offset = H; // Forget Gate
                 let g_offset = 2 * H; // Update Gate (Cell Candidate)
                 let o_offset = 3 * H; // Output Gate
                 let h_offset = I; // Where we store the final result for the next step
 
                 let mut i = 0;
-                // 6. Main Loop (SIMD): Process several neurons in parallel (8 or 16 at a time).
+                // 5. Main Loop (SIMD): Process several neurons in parallel (8 or 16 at a time).
                 while i + $step <= H {
                     // Load the pre-computed values of the 4 gates and current memory (cell state).
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
@@ -103,17 +80,10 @@ macro_rules! define_lstm_process {
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
-                    if $is_bf16 {
-                        use $crate::math::common::SimdMath;
-                        <$simd_math>::store_bf16(
-                            self.state_bf16.as_mut_ptr().add(h_offset + i),
-                            h_s,
-                        );
-                    }
                     i += $step;
                 }
 
-                // 7. 'Tail' Handling: If the number of neurons is not an exact multiple of the
+                // 6. 'Tail' Handling: If the number of neurons is not an exact multiple of the
                 // parallel processing, we handle the last elements individually.
                 if i < H {
                     let tail_len = H - i;
@@ -147,9 +117,6 @@ macro_rules! define_lstm_process {
                     for j in 0..tail_len {
                         self.cell_state[i + j] = out_cs[j];
                         self.state[i + j + h_offset] = out_h[j];
-                        if $is_bf16 {
-                            self.state_bf16[i + j + h_offset] = (out_h[j].to_bits() >> 16) as u16;
-                        }
                     }
                 }
             }
@@ -167,9 +134,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         target_feature(enable = "avx2,fma,f16c"),
-        crate::math::common::Avx2Math,
         crate::math::gemm::gemv_4gate_avx2,
-        crate::math::common::gemv_4gate_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -178,7 +143,6 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::activations::simd_tanh_avx2,
         crate::math::activations::simd_sigmoid_avx2,
         crate::math::lstm::fused_lstm_gates_avx2,
-        false
     );
 
     // 2. AVX-512 (F/VL) Specialization:
@@ -187,9 +151,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::common::Avx512Math,
         crate::math::gemm::gemv_4gate_avx512,
-        crate::math::common::gemv_4gate_bf16_fallback, // No native BF16 here
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -198,25 +160,6 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::activations::simd_tanh_avx512,
         crate::math::activations::simd_sigmoid_avx512,
         crate::math::lstm::fused_lstm_gates_avx512,
-        false
-    );
-
-    // 2. AVX-512 (F/VL) Specialization:
-    define_lstm_process!(
-        process_sample_avx512_vnni_bf16,
-        target_feature(enable = "avx512f,avx512vl,avx512bf16"),
-        crate::math::common::Avx512VnniBf16Math,
-        crate::math::gemm::gemv_4gate_avx512,
-        crate::math::gemm::gemv_4gate_bf16_avx512,
-        16,
-        _mm512_loadu_ps,
-        _mm512_storeu_ps,
-        _mm512_add_ps,
-        _mm512_mul_ps,
-        crate::math::activations::simd_tanh_avx512,
-        crate::math::activations::simd_sigmoid_avx512,
-        crate::math::lstm::fused_lstm_gates_avx512,
-        true
     );
 
     /// Scalar processing (fallback) for tests and benchmarks.
@@ -224,7 +167,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// This is the 'manual' and slow version, used only as a reference to ensure
     /// the ultra-fast versions above have no mathematical errors.
     #[inline(always)]
-    pub fn process_sample_scalar(&mut self, input: &[f32], _is_bf16: bool) {
+    pub fn process_sample_scalar(&mut self, input: &[f32]) {
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);

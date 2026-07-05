@@ -132,40 +132,6 @@ impl LstmModelDyn {
     }
 
     // =====================================================================
-    // AVX-512 BF16 VNNI specialization
-    // =====================================================================
-
-    #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
-    unsafe fn process_avx512_vnni_bf16(&mut self, input: &[f32], output: &mut [f32]) {
-        if self.layers.is_empty() {
-            return;
-        }
-        unsafe {
-            let n_layers = self.layers.len();
-            debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
-            let layers_ptr = self.layers.as_mut_ptr();
-
-            for (s, &val) in input.iter().enumerate() {
-                (*layers_ptr).process_sample_avx512_vnni_bf16(&[val]);
-
-                for i in 1..n_layers {
-                    let prev = &*layers_ptr.add(i - 1);
-                    let hidden = &prev.state[prev.input_size..];
-                    (*layers_ptr.add(i)).process_sample_avx512_vnni_bf16(hidden);
-                }
-
-                let last = &*layers_ptr.add(n_layers - 1);
-                let h_f32 = last.get_hidden_state();
-                let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                    h_f32,
-                    &self.head_weights_f32,
-                );
-                output[s] = dot + self.head_bias;
-            }
-        }
-    }
-
-    // =====================================================================
     // Dispatch hub
     // =====================================================================
 
@@ -177,7 +143,7 @@ impl LstmModelDyn {
         unsafe {
             crate::math::common::dispatch_simd!(
                 @self,
-                process_avx512_vnni_bf16,
+                process_avx512,
                 process_avx512,
                 process_avx2,
                 input,
@@ -193,8 +159,6 @@ impl LstmModelDyn {
         if self.layers.is_empty() {
             return;
         }
-        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-            == crate::math::common::InstructionSet::Avx512VnniBf16;
         let n_layers = self.layers.len();
 
         debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
@@ -202,13 +166,13 @@ impl LstmModelDyn {
 
         for s in 0..input.len() {
             unsafe {
-                (*layers_ptr).process_sample_scalar(&[input[s]], is_bf16);
+                (*layers_ptr).process_sample_scalar(&[input[s]]);
 
                 for i in 1..n_layers {
                     let prev = &*layers_ptr.add(i - 1);
                     let hidden = &prev.state[prev.input_size..];
                     let hidden_copy: Vec<f32> = hidden.to_vec();
-                    (*layers_ptr.add(i)).process_sample_scalar(&hidden_copy, is_bf16);
+                    (*layers_ptr.add(i)).process_sample_scalar(&hidden_copy);
                 }
 
                 let last = &*layers_ptr.add(n_layers - 1);

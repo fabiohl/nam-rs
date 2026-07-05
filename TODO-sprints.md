@@ -385,7 +385,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 
 **Conclusão (2026-07-05)**: Kernels adaptados — `dot_product_avx2`, `dot_product_avx512`, `fused_add_gemm_batch_avx2`, `fused_gemm_residual_batch_avx2`, `fused_add_gemm_batch_avx512`, `fused_gemm_residual_batch_avx512`. Todos agora recebem `weights: &[f32]` e usam `_mm256_loadu_ps` / `_mm512_loadu_ps` diretamente. Trait `SimdMath` atualizado (`dot_product`, `fused_add_gemm_batch`, `fused_gemm_residual_batch`). Dispatchers (avx2_impl, avx512/gemv/base, vnni_bf16) adaptados. Testes e benchmarks do dot product corrigidos. `dot_product_bf16_avx512` preservado (BF16 é caso separado). Conversões remanescentes em `dot_4x/`, `dot_8x/`, `dot_16x/` são paths interleaved/separados fora do escopo. `cargo check` bloqueado por: (a) dispatchers GEMV (`fused_add_gemv`, `gemv_overwrite`, `gemv_overwrite_batch`) ainda com `&[u16]` na trait (SQ4.3), (b) `state_bf16` removido mas referenciado em `layer_kernels.rs`/`layer_dyn_kernels.rs` (SQ4.5).
 
-### Tarefa SQ4.5 — Adaptar layer_kernels do LSTM
+### Tarefa SQ4.5 — Adaptar layer_kernels do LSTM [DONE]
 
 **Descrição**: `src/models/lstm/layer_kernels.rs` é o arquivo que orquestra o dispatch dos kernels GEMV para o LSTM. Contém lógica de VNNI/BF16 **de pesos** que precisa ser simplificada.
 
@@ -403,9 +403,11 @@ devem continuar disponíveis para AVX2/AVX-512/VNNI em geral.
 
 **Critério de aceite**:
 
-- [ ] Dispatch de pesos LSTM simplificado (AVX2 vs AVX-512 apenas, sem branch BF16 de pesos)
-- [ ] Não referencia `state_bf16` (removido em SQ3.1)
-- [ ] `InstructionSet::Avx512VnniBf16` e `Avx512VnniBf16Math` permanecem intactos para seus outros usos (resampler, cabsim, linear_fft, capture/input/output)
+- [x] Dispatch de pesos LSTM simplificado (AVX2 vs AVX-512 apenas, sem branch BF16 de pesos)
+- [x] Não referencia `state_bf16` (removido em SQ3.1)
+- [x] `InstructionSet::Avx512VnniBf16` e `Avx512VnniBf16Math` permanecem intactos para seus outros usos (resampler, cabsim, linear_fft, capture/input/output)
+
+**Conclusão (2026-07-05)**: Macro `define_lstm_process!` simplificada — removidos parâmetros `$simd_math`, `$gemv_4gate_bf16`, `$is_bf16` e todos os branches BF16 (f32→bf16, GEMV bf16, store_bf16, tail bf16). Variante `process_sample_avx512_vnni_bf16` removida de `layer_kernels.rs`, `layer_dyn_kernels.rs`, `model1.rs`, `model2.rs` e `model_dyn.rs`. Dispatch em todos os modelos agora mapeia `Avx512VnniBf16 → process_avx512` (o ISA tier e a `Avx512VnniBf16Math` permanecem intactos no `dispatch_simd!` global para consumidores não-LSTM). `process_sample_scalar` perdeu o parâmetro `_is_bf16` (já não usado). `cargo check` limpo de erros LSTM; 6 erros remanescentes são pré-existentes de SQ4.3 (dispatchers GEMV com `&[u16]`).
 
 ### Tarefa SQ4.6 — Adaptar process kernels do A2
 

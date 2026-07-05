@@ -66,18 +66,12 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         target_feature(enable = "avx512f,avx512vl"),
         process_sample_avx512,
     );
-
-    define_lstm1_process!(
-        process_avx512_vnni_bf16,
-        target_feature(enable = "avx512f,avx512vl,avx512bf16"),
-        process_sample_avx512_vnni_bf16,
-    );
     /// Processes an audio block through the model (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::common::dispatch_simd!(
                 @self,
-                process_avx512_vnni_bf16,
+                process_avx512,
                 process_avx512,
                 process_avx2,
                 input,
@@ -90,10 +84,8 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     /// # Note
     /// Exclusively for parity tests. Extremely slow.
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
-        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-            == crate::math::common::InstructionSet::Avx512VnniBf16;
         for i in 0..input.len() {
-            self.layer.process_sample_scalar(&[input[i]], is_bf16);
+            self.layer.process_sample_scalar(&[input[i]]);
             let hidden = self.layer.get_hidden_state();
             let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                 hidden,
