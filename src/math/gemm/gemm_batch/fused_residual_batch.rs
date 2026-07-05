@@ -13,7 +13,6 @@
 use crate::gemm_batch_frame_loop_avx2;
 use crate::gemm_batch_inner_dual_avx2;
 use crate::gemm_batch_outc_loop_avx2;
-use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Fused residual GEMM kernel via AVX2.
@@ -39,10 +38,10 @@ use core::arch::x86_64::*;
 /// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
 ///
 /// All slices must be valid and accessible for reading/writing.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_gemm_residual_batch_avx2(
     in_frames: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     residual: &[f32],
     out_frames: &mut [f32],
@@ -99,9 +98,9 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                         in_len,
                         {
                             let wp_lo = weights.as_ptr().add(in_c * out_len + out_c);
-                            let vw_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp_lo as *const __m128i));
+                            let vw_lo = _mm256_loadu_ps(wp_lo);
                             let wp_hi = weights.as_ptr().add((in_c + 1) * out_len + out_c);
-                            let vw_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp_hi as *const __m128i));
+                            let vw_hi = _mm256_loadu_ps(wp_hi);
 
                             let vs0_lo =
                                 _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
@@ -136,7 +135,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                         },
                         {
                             let wp = weights.as_ptr().add(in_c * out_len + out_c);
-                            let vw = _mm256_cvtph_ps(_mm_loadu_si128(wp as *const __m128i));
+                            let vw = _mm256_loadu_ps(wp);
                             let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                             let vs1 =
                                 _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
@@ -170,9 +169,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                             sum += *bias.get_unchecked(out_c);
                         }
                         for in_c in 0..in_len {
-                            let w = f16_bits_to_f32_f16c(
-                                *weights.get_unchecked(in_c * out_len + out_c),
-                            );
+                            let w = *weights.get_unchecked(in_c * out_len + out_c);
                             sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                         }
                         *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
@@ -194,7 +191,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 for in_c in 0..in_len {
                     let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
                     let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                    let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
+                    let vw = _mm256_loadu_ps(weight_ptr);
                     accum = _mm256_fmadd_ps(vs, vw, accum);
                 }
                 _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
@@ -204,8 +201,8 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 let mut sum = if do_bias { bias[out_c] } else { 0.0 };
                 sum += res_frame[out_c];
                 for in_c in 0..in_len {
-                    let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
-                    sum += *in_frame.get_unchecked(in_c) * w;
+                    sum +=
+                        *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + out_c);
                 }
                 *out_frame.get_unchecked_mut(out_c) = sum;
                 out_c += 1;
@@ -228,7 +225,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
 /// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
 ///
 /// All slices must be valid and accessible for reading/writing.
-#[target_feature(enable = "avx2,fma,f16c")]
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     in_frames: &[f32],
     weights: &[f32],

@@ -13,7 +13,6 @@
 //! 128 calculations at once.
 
 use super::super::gemv::fused_add_gemv_avx512;
-use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Batch version of the fused operation Y = X_res + Bias + W * Z via AVX-512.
@@ -29,10 +28,10 @@ use core::arch::x86_64::*;
 /// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
 ///
 /// All slices must be valid and accessible for reading/writing.
-#[target_feature(enable = "avx512f,avx512vl,f16c")]
+#[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemm_batch_avx512(
     in_frames: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frames: &mut [f32],
     num_frames: usize,
@@ -82,7 +81,7 @@ pub unsafe fn fused_add_gemm_batch_avx512(
             for in_c in 0..in_len {
                 // Load 16 weights common to all frames.
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+                let vw = _mm512_loadu_ps(weight_ptr);
 
                 // Pick 1 input from each of the 8 frames.
                 let vs0 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
@@ -126,8 +125,7 @@ pub unsafe fn fused_add_gemm_batch_avx512(
                     sum += *bias.get_unchecked(out_c);
                 }
                 for in_c in 0..in_len {
-                    let w_bits = *weights.get_unchecked(in_c * out_len + out_c);
-                    let w = f16_bits_to_f32_f16c(w_bits);
+                    let w = *weights.get_unchecked(in_c * out_len + out_c);
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
@@ -164,10 +162,10 @@ pub unsafe fn fused_add_gemm_batch_avx512(
 /// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
 ///
 /// All slices must be valid and accessible for reading/writing.
-#[target_feature(enable = "avx512f,avx512vl,f16c")]
+#[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_gemm_residual_batch_avx512(
     in_frames: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     residual: &[f32], // Separate residual input.
     out_frames: &mut [f32],
@@ -218,7 +216,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
             // Multiply and accumulate for the 8 frames.
             for in_c in 0..in_len {
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+                let vw = _mm512_loadu_ps(weight_ptr);
 
                 acc0 = _mm512_fmadd_ps(
                     _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c)),
@@ -283,7 +281,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
                     sum += *bias.get_unchecked(out_c);
                 }
                 for in_c in 0..in_len {
-                    let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
+                    let w = *weights.get_unchecked(in_c * out_len + out_c);
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
@@ -308,11 +306,8 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
             for in_c in 0..in_len {
                 let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                accum = _mm512_fmadd_ps(
-                    vs,
-                    _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i)),
-                    accum,
-                );
+                let vw = _mm512_loadu_ps(weight_ptr);
+                accum = _mm512_fmadd_ps(vs, vw, accum);
             }
             _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
             out_c += 16;
@@ -321,8 +316,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             sum += res_frame[out_c];
             for in_c in 0..in_len {
-                let w = f16_bits_to_f32_f16c(*weights.get_unchecked(in_c * out_len + out_c));
-                sum += *in_frame.get_unchecked(in_c) * w;
+                sum += *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + out_c);
             }
             *out_frame.get_unchecked_mut(out_c) = sum;
             out_c += 1;
@@ -348,7 +342,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
 /// - If `do_bias` is true, `bias.len()` must be >= `out_len`.
 ///
 /// All slices must be valid and accessible for reading/writing.
-#[target_feature(enable = "avx512f,avx512vl,f16c")]
+#[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_gemm_residual_batch_f32_avx512(
     in_frames: &[f32],
     weights: &[f32],

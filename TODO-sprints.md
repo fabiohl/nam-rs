@@ -367,7 +367,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 - [ ] Nenhum GEMV carrega pesos como u16
 - [ ] Testes unitários de GEMV em `gemv_test.rs` adaptados para f32
 
-### Tarefa SQ4.4 — Adaptar batch-GEMM e dot product
+### Tarefa SQ4.4 — Adaptar batch-GEMM e dot product [DONE]
 
 **Descrição**: Os batch-GEMM em `src/math/gemm/gemm_batch/` e o dot product em `src/math/gemm/dot.rs` também fazem conversão f16→f32 de pesos. Adaptar para f32.
 
@@ -380,8 +380,10 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 
 **Critério de aceite**:
 
-- [ ] Nenhum kernel em `src/math/gemm/` faz conversão f16→f32 de pesos
-- [ ] `cargo check` passa (todos os tipos alinhados: structs f32, kernels f32)
+- [x] Nenhum kernel em `src/math/gemm/` faz conversão f16→f32 de pesos
+- [ ] `cargo check` passa (bloqueado por erros pré-existentes de SQ4.3 e SQ4.5)
+
+**Conclusão (2026-07-05)**: Kernels adaptados — `dot_product_avx2`, `dot_product_avx512`, `fused_add_gemm_batch_avx2`, `fused_gemm_residual_batch_avx2`, `fused_add_gemm_batch_avx512`, `fused_gemm_residual_batch_avx512`. Todos agora recebem `weights: &[f32]` e usam `_mm256_loadu_ps` / `_mm512_loadu_ps` diretamente. Trait `SimdMath` atualizado (`dot_product`, `fused_add_gemm_batch`, `fused_gemm_residual_batch`). Dispatchers (avx2_impl, avx512/gemv/base, vnni_bf16) adaptados. Testes e benchmarks do dot product corrigidos. `dot_product_bf16_avx512` preservado (BF16 é caso separado). Conversões remanescentes em `dot_4x/`, `dot_8x/`, `dot_16x/` são paths interleaved/separados fora do escopo. `cargo check` bloqueado por: (a) dispatchers GEMV (`fused_add_gemv`, `gemv_overwrite`, `gemv_overwrite_batch`) ainda com `&[u16]` na trait (SQ4.3), (b) `state_bf16` removido mas referenciado em `layer_kernels.rs`/`layer_dyn_kernels.rs` (SQ4.5).
 
 ### Tarefa SQ4.5 — Adaptar layer_kernels do LSTM
 

@@ -8,7 +8,6 @@
 
 //! Dot Product kernels — AVX2 and AVX-512.
 
-use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Computes the Dot Product in a blazing-fast manner using hardware acceleration (AVX2).
@@ -16,8 +15,8 @@ use core::arch::x86_64::*;
 /// This function is the "heart" of many neural network models. Instead of multiplying and adding
 /// one number at a time, it processes blocks of data simultaneously (up to 32 numbers at once),
 /// making the most of modern processor power.
-#[target_feature(enable = "f16c")]
-pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
 
@@ -31,23 +30,20 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
         // Main Loop: Processes 32 numbers at a time (4x8 unrolling).
         while i + 32 <= len {
-            // Load and convert data:
-            // The 'b' vector uses compressed numbers (f16/half), which are converted
-            // to high-precision format (f32) instantly by hardware.
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
+            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(va0, vb0, sum0); // Multiply and Add in a single step (FMA)
 
             let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
-            let vb1 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 8) as *const __m128i));
+            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
             sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
 
             let va2 = _mm256_loadu_ps(a.as_ptr().add(i + 16));
-            let vb2 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 16) as *const __m128i));
+            let vb2 = _mm256_loadu_ps(b.as_ptr().add(i + 16));
             sum2 = _mm256_fmadd_ps(va2, vb2, sum2);
 
             let va3 = _mm256_loadu_ps(a.as_ptr().add(i + 24));
-            let vb3 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 24) as *const __m128i));
+            let vb3 = _mm256_loadu_ps(b.as_ptr().add(i + 24));
             sum3 = _mm256_fmadd_ps(va3, vb3, sum3);
 
             i += 32;
@@ -56,11 +52,11 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
         // Handle remaining groups of 16 items.
         while i + 16 <= len {
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
+            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
 
             let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
-            let vb1 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 8) as *const __m128i));
+            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
             sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
 
             i += 16;
@@ -69,7 +65,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
         // Handle the last groups of 8 items.
         while i + 8 <= len {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
+            let vb = _mm256_loadu_ps(b.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(va, vb, sum0);
             i += 8;
         }
@@ -85,7 +81,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
         // Final Cleanup: Processes the very few leftover items (fewer than 8).
         while i < len {
-            let term = a[i] * f16_bits_to_f32_f16c(b[i]);
+            let term = a[i] * b[i];
             (scalar_sum, compensation) =
                 crate::math::common::kahan_add(scalar_sum, compensation, term);
             i += 1;
@@ -97,17 +93,15 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
 /// Dot product f32 with u16 weights using AVX-512.
 /// Basically: (number_a1 * weight_b1) + (number_a2 * weight_b2) + ...
-// f16c added so the scalar tail can use the hardware _mm_cvtph_ps intrinsic.
-// F16C is guaranteed by x86-64-v3 and present on all AVX-512 targets we support.
-#[target_feature(enable = "avx512f,avx512vl,f16c")]
-pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
     let mut sum_v = _mm512_setzero_ps();
     // Process 16 at a time.
     while i + 16 <= len {
         let va = _mm512_loadu_ps(a.as_ptr().add(i));
-        let vb = _mm512_cvtph_ps(_mm256_loadu_si256(b.as_ptr().add(i) as *const __m256i));
+        let vb = _mm512_loadu_ps(b.as_ptr().add(i));
         sum_v = _mm512_fmadd_ps(va, vb, sum_v); // Multiply and accumulate.
         i += 16;
     }
@@ -115,7 +109,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     let mut compensation = 0.0f32;
     while i < len {
-        let term = *a.get_unchecked(i) * f16_bits_to_f32_f16c(*b.get_unchecked(i));
+        let term = *a.get_unchecked(i) * *b.get_unchecked(i);
         (sum, compensation) = crate::math::common::kahan_add(sum, compensation, term);
         i += 1;
     }

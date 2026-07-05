@@ -8,7 +8,6 @@
 //!
 //! # Performance Strategies
 //! - **ILP (Instruction Level Parallelism)**: Multiple accumulators to saturate the FMA ports.
-//! - **F16C Compression**: Weights stored in half-precision to double cache throughput.
 //! - **Interleaved Layout**: Weights organized to maximize data reuse in registers.
 //! - **Tiling**: Block processing to optimize data locality.
 //!

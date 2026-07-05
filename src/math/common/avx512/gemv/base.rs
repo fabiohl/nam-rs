@@ -6,7 +6,7 @@ macro_rules! impl_avx512_gemv {
         #[inline(always)]
         // SAFETY: a and b are valid slices; CPU supports AVX-512F+VL+F16C (verified by dispatch).
         // Kernel uses min(a.len(), b.len()) as bound with unaligned 512-bit loads.
-        unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
             crate::math::gemm::dot::dot_product_avx512(a, b)
         }
         #[inline(always)]
@@ -195,7 +195,7 @@ macro_rules! impl_avx512_gemv {
         // num_frames * dimensions; CPU supports AVX-512F+VL+F16C (verified by dispatch).
         unsafe fn fused_add_gemm_batch(
             in_frames: &[f32],
-            weights: &[u16],
+            weights: &[f32],
             bias: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,
@@ -213,7 +213,7 @@ macro_rules! impl_avx512_gemv {
         // lengths matching num_frames * dimensions; CPU supports AVX-512F+VL+F16C.
         unsafe fn fused_gemm_residual_batch(
             in_frames: &[f32],
-            weights: &[u16],
+            weights: &[f32],
             bias: &[f32],
             residual: &[f32],
             out_frames: &mut [f32],

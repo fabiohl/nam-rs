@@ -51,13 +51,13 @@ pub trait SimdMath {
 
     // --- (A) Dot Products ---
 
-    /// Computes the dot product between an f32 vector and a BF16 weight vector.
+    /// Computes the dot product between two f32 vectors.
     ///
     /// Effective length is `min(a.len(), b.len())`. No alignment required.
     ///
     /// # Safety
-    /// `a` and `b` must be valid slices. `b` must contain valid BF16 bit patterns.
-    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32;
+    /// `a` and `b` must be valid slices.
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32;
 
     /// Computes the dot product between two BF16 vectors.
     ///
@@ -295,7 +295,7 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
-    /// Fused add + batch GEMM kernel (f16c-quantized weights).
+    /// Fused add + batch GEMM kernel (f32 weights).
     ///
     /// No alignment required. Frames are batched in groups of 4 (AVX2)
     /// or 8 (AVX-512) for throughput.
@@ -308,14 +308,14 @@ pub trait SimdMath {
     /// `num_frames > 0`. All slices must be valid and non-aliasing.
     unsafe fn fused_add_gemm_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,
         do_bias: bool,
     );
 
-    /// Fused residual batch GEMM kernel (f16c-quantized weights).
+    /// Fused residual batch GEMM kernel (f32 weights).
     ///
     /// Computes `out = weights^T * in + residual [+ bias]`.
     /// No alignment required.
@@ -326,7 +326,7 @@ pub trait SimdMath {
     /// with `residual.len() / num_frames == out_len`.
     unsafe fn fused_gemm_residual_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         residual: &[f32],
         out_frames: &mut [f32],

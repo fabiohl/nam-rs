@@ -34,7 +34,7 @@ impl SimdMath for Avx2Math {
     // In AVX2, we use 256-bit registers that process 8 numbers at once.
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
-    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
         // SAFETY: arguments satisfy the function's documented invariants.
         unsafe { super::super::gemm::dot::dot_product_avx2(a, b) }
     }
@@ -258,7 +258,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn fused_add_gemm_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,
@@ -279,7 +279,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn fused_gemm_residual_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         residual: &[f32],
         out_frames: &mut [f32],
