@@ -52,8 +52,6 @@ pub struct WaveNetA2Dyn {
     /// l1x1_w has `bottleneck × channels` elements, l1x1_b has `channels`.
     pub layers: Vec<A2Layer>,
 
-    /// Input rechannel weights: `Conv1x1(1 → channels)` (no bias), u16 quantized.
-    pub rechannel_w: AlignedVec<u16>,
     /// Input rechannel weights (pre-decoded f32).
     pub rechannel_w_f32: AlignedVec<f32>,
 
@@ -263,7 +261,6 @@ impl WaveNetA2Dyn {
             bottleneck,
             num_layers,
             layers: Vec::with_capacity(num_layers),
-            rechannel_w: AlignedVec::new(input_channels * channels, 0u16),
             rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32),
             head_conv: None,
             head_rechannel_w: AlignedVec::new(

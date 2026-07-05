@@ -32,9 +32,9 @@ impl<const CH: usize> WaveNetA2<CH> {
     ///
     /// ## Weight order (mirrors `a2_fast.cpp:196-282`)
     ///
-    /// 1. `_rechannel`: weights `CH` f32 (quantized to u16, no bias — matches C++ A2FastModel)
+    /// 1. `_rechannel`: weights `CH` f32 (no bias — matches C++ A2FastModel)
     /// 2. Per layer 0..22:
-    ///    - `_conv`: weights `CH*CH*K` f32 (quantized to u16) + bias `CH` f32
+    ///    - `_conv`: weights `CH*CH*K` f32 + bias `CH` f32
     ///    - `_input_mixin`: weights `CH` f32 (no bias)
     ///    - `_layer1x1`: weights `CH*CH` f32 (col-major) + bias `CH` f32
     /// 3. `_head_rechannel`: conv k=16 weights `16*CH` f32 + head_bias `1` f32

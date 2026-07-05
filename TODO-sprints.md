@@ -204,7 +204,7 @@ está hardcoded para `BossLSTM-1x16.nam` — ver `tests/reference_oracle_f64.rs:
 > **Ref**: Finding F-Q1
 > **Pré-requisito**: SQ2 completo. Nenhuma mudança em kernels SIMD neste sprint (o código não compilará até SQ4).
 
-### Tarefa SQ3.1 — Converter structs LSTM de `u16` → `f32`
+### Tarefa SQ3.1 — Converter structs LSTM de `u16` → `f32` [DONE]
 
 **Descrição**: Alterar os tipos de armazenamento de pesos em todas as structs LSTM.
 
@@ -230,7 +230,7 @@ está hardcoded para `BossLSTM-1x16.nam` — ver `tests/reference_oracle_f64.rs:
 - [ ] Campo `state_bf16` removido de `layer.rs` e `layer_dyn.rs`
 - [ ] `cargo check` não passa ainda (kernels SIMD esperam u16) — esperado
 
-### Tarefa SQ3.2 — Converter structs A2 de `u16` → `f32`
+### Tarefa SQ3.2 — Converter structs A2 de `u16` → `f32` [DONE]
 
 **Descrição**: Alterar os campos de pesos quantizados no A2. **Correção (auditoria 2026-07-05)**:
 o único campo A2 realmente quantizado é `rechannel_w`, e apenas no caminho **estático**. Os pesos
