@@ -826,35 +826,61 @@ aplica. O Sprint 3 é reescrito em torno de H10.
 
 ### T3.0 — Confirmar ou refutar o risco de produção (BLOQUEANTE, maior prioridade absoluta)
 
-* [ ] **T3.0.a** — Construir o binário standalone real
-      (`cargo build --release --features standalone --bin nam-rs`, sem
-      rodar) e, com o mesmo par `nm -C` + `readelf -r`, verificar se o call
-      site nada relacionado a `log10`/`log2`/`ln`/`exp` que existir nesse
-      binário resolve para o mesmo símbolo local suspeito (`T log10f` fora
-      de `libm.so.6`) ou para a `libm` dinâmica de fato. Repetir para
-      `--features clap-plugin` (o `cdylib` real do plugin). **Não é
-      necessário rodar nada com GUI/áudio real** — a pergunta é puramente
-      estrutural de linkagem, respondida por `nm`/`readelf`/`ldd`, sem
-      nenhum risco de hang.
-* [ ] **T3.0.b** — Se o `cdylib`/`standalone` **também** resolver para o
+* [x] **T3.0.a** — **CONCLUÍDO (2026-07-04T21:29–21:45-03:00).** Ambos os
+      targets de produção inspecionados com `nm -D`, `nm -C` (`.symtab`
+      completo, build sem strip), `readelf -r` e `ldd`. Resultados:
+      ***Standalone** (`--features standalone --bin nam-rs`): `log10f`
+        usa `R_X86_64_JUMP_SLOT log10f@GLIBC_2.2.5` → resolve via PLT para
+        `libm.so.6`. O `T log10f` em `.dynsym` (`0x51c9c`) é um trampolim
+        (`jmp log10f@plt`), NÃO uma implementação `compiler_builtins`.
+        **Zero** símbolos `compiler_builtins::math::libm_math` no
+        `.symtab`. `libm.so.6` listada como `NEEDED`. **RISCO REFUTADO.**
+      * **Cdylib** (`--no-default-features --features clap-plugin,stereo
+        --lib`): `log10f`/`expf`/`log2` são **todos** `U` (undefined,
+        importação dinâmica). `R_X86_64_GLOB_DAT` para `expf`/`log2`,
+        `R_X86_64_JUMP_SLOT` para `log10f`. **Zero** símbolos locais de
+        math. O call site `orchestrator.rs:111,116` resolve para
+        `libm.so.6` do host. **RISCO REFUTADO.**
+* [x] **T3.0.b** — **NÃO APLICÁVEL.** Nenhum target de produção resolve
 
-      símbolo local suspeito: escrever um teste isolado, com o mesmo padrão
-      de `black_box`, o mais próximo possível do call site real de
-      `orchestrator.rs` (ou, melhor, invocar a própria função pública que
-      envolve aquele cálculo, se acessível para teste), rodado sob o wrapper
-      de isolamento com timeout curto — para confirmar (ou refutar) que o
-      medidor de picos real trava. Se confirmado: **isto se torna um
-      incidente de severidade máxima**, não apenas um teste `#[ignore]`d —
-      avisar o operador humano imediatamente, independentemente do restante
-      deste roteiro.
-* [ ] **T3.0.c** — Se os targets de produção **não** resolverem para o
+      para o símbolo local suspeito. T3.0.b não é necessário.
+* [x] **T3.0.c** — **CONCLUÍDO.** Diferenças de features/deps entre os três
 
-      símbolo local (ex.: por terem uma árvore de features/dependências
-      diferente do `--lib` de testes), documentar exatamente qual diferença
-      de features/deps evita o problema — isso é uma pista direta para
-      T3.1.
+      targets:
+
+      | Target        | Features                              | Dependências extras vs. produção      |
+      |---------------|---------------------------------------|---------------------------------------|
+      | Standalone    | `standalone` → `pipewire`, `stereo`  | — (baseline)                          |
+      | Cdylib        | `clap-plugin`, `stereo`               | CLAP + egui/glow/baseview/X11         |
+      | Test (`--lib`)| `standalone`, `testing` + dev-deps   | `proptest`, `criterion`, `clack-host`, `clap-sys` |
+
+      **Nenhuma** destas configurações produz símbolos
+      `compiler_builtins::math::libm_math` no build atual. O padrão perigoso
+      `R_X86_64_RELATIVE` de §1.21.d **não é mais reproduzível** em
+      nenhum binário — o binário de testes, que antes era o afetado
+      (hash `aa6d4cddf3210679`), hoje usa `R_X86_64_JUMP_SLOT` como os
+      targets de produção.
+
+      Isto tem implicação direta para T3.1: a bissecção de dependências
+      prevista em T3.1.a pode não conseguir reproduzir o estado quebrado
+      para isolar a dependência causadora — o build atual já está "limpo".
+      Ver nota de encaminhamento abaixo.
 
 ### T3.1 — Identificar a dependência que faz `compiler_builtins::math` prevalecer sobre a `libm` dinâmica
+
+> **Nota T3.0 (2026-07-04):** O build atual NÃO reproduz o estado quebrado
+> de §1.21.d em nenhum binário (test, standalone, cdylib). O padrão perigoso
+> `R_X86_64_RELATIVE` para `log10f` foi substituído por `R_X86_64_JUMP_SLOT`
+> em todos os targets. O `nm -C` (`.symtab`) retorna ZERO símbolos
+> `compiler_builtins::math::libm_math`. A bissecção de T3.1.a, como
+> concebida originalmente ("remover deps até `nm` deixar de mostrar os
+> símbolos"), não encontrará o estado quebrado para isolar — ele já não
+> existe. **Encaminhamento sugerido:** considerar T3.1 ainda válido como
+> investigação preventiva ("o que causava e pode voltar a causar?"), mas
+> adaptar a metodologia (ex.: `git bisect` no `Cargo.lock` entre o commit
+> `56fd900` — onde o estado quebrado foi documentado pela última vez — e
+> `HEAD` para identificar qual atualização de dependência eliminou o
+> símbolo local).
 
 * [ ] **T3.1.a** — Bissecção de dependências: usar `cargo tree -e features`
 

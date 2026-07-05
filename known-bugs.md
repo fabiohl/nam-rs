@@ -1324,7 +1324,44 @@ completamente a leitura de risco deste bug:
   `compiler_builtins::math` prevalecer sobre) a `log10f` dinâmica — a causa
   não é "massa crítica de código" (como especulado em §1.15), é uma
   dependência **específica e ainda não identificada** presente no grafo de
-  dependências real do nam-rs.
+   dependências real do nam-rs.
+
+### 1.22 — T3.0: Risco de produção REFUTADO (2026-07-04T21:29–21:45-03:00)
+
+Inspeção estrutural dos targets de produção (`nm -D`, `nm -C` com `.symtab`
+completo via build sem strip, `readelf -r`, `ldd`), sem execução:
+
+**Standalone** (`cargo build --release --features standalone --bin nam-rs`):
+
+- `log10f`: `R_X86_64_JUMP_SLOT log10f@GLIBC_2.2.5` (`0x31f508`) → resolve
+  via PLT para `libm.so.6` (`NEEDED`, confirmado via `ldd`).
+- `T log10f` em `.dynsym` (`0x51c9c`) é trampolim `jmp log10f@plt`, NÃO
+  implementação `compiler_builtins`.
+- `.symtab`: **zero** símbolos `compiler_builtins::math::libm_math`.
+- **RISCO REFUTADO.**
+
+**Cdylib** (`cargo build --release --no-default-features --features clap-plugin,stereo --lib`):
+
+- `log10f`/`expf`/`log2`: todos `U` (importação dinâmica, `GLIBC_*`).
+- `R_X86_64_GLOB_DAT` (`expf`, `log2`), `R_X86_64_JUMP_SLOT` (`log10f`).
+- **Zero** símbolos locais de math. O call site `orchestrator.rs:111,116`
+  resolve para `libm.so.6` do host (DAW).
+- **RISCO REFUTADO.**
+
+**Achado adicional:** O binário de testes (`cargo test --release --no-run --lib`),
+que em §1.21.d mostrava o padrão perigoso `R_X86_64_RELATIVE` para
+`log10f` (hash `aa6d4cddf3210679`), **hoje também usa `R_X86_64_JUMP_SLOT`**
+— o estado quebrado não é mais reproduzível em nenhum binário do build
+atual. Zero símbolos `compiler_builtins::math::libm_math` em todos os
+`.symtab`. A causa raiz (H10) foi corretamente diagnosticada em §1.21, mas
+a condição específica que a disparava (dependência que forçava
+`compiler_builtins::math` a prevalecer) não está mais ativa no
+`Cargo.lock`/toolchain atuais — ver `TODO-sprints.md` T3.1 (nota de
+encaminhamento).
+
+**Conclusão para produção:** O medidor de picos da GUI do CLAP
+(`orchestrator.rs`) **não está em risco**. Nenhum call site de `f32::log10()`
+em produção resolve para a implementação defeituosa de `compiler_builtins`.
 
 ---
 
@@ -1553,7 +1590,7 @@ inteiro a cada tentativa).
 
 | #       | Hipótese                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status                                                                                                 | Suporte                                                                                                                                                                                                                                                                                                         |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **H10** | **(CONFIRMADA, 2026-07-04 — ver §1.21)** `f32::log10()` sobre um valor calculado em runtime (`amp_out/amp_in`, não constante) resolve, neste binário, para uma implementação estática local de `log10f` (vizinha de símbolos `compiler_builtins::math::libm_math` na tabela de símbolos) que **sombreia** a `libm.so.6` dinâmica (ainda listada por `ldd`) e entra em loop infinito para pelo menos a entrada `0.51576114`. Requer uma dependência real da árvore do nam-rs (não reproduz em crate std vazio com os mesmos flags/perfil) — dependência exata ainda não identificada. | **Confirmada por reprodução mínima isolada, sem código de DSP**                                        | §1.21.c: `black_box(0.51576114f32) / black_box(1.0f32)).log10()`, sozinho, no binário `--lib` do nam-rs, trava (exit 143). O mesmo código, num crate vazio com os mesmos flags de link/LTO, **não trava** (§1.21.d). Sondas de progresso (§1.21.b) provam que todo o pipeline DSP roda em ~90 µs antes do hang. |
+| **H10** | **(CONFIRMADA, 2026-07-04 — ver §1.21; RISCO DE PRODUÇÃO REFUTADO, 2026-07-04 — ver §1.22)** `f32::log10()` sobre um valor calculado em runtime (`amp_out/amp_in`, não constante) resolve, neste binário, para uma implementação estática local de `log10f` (vizinha de símbolos `compiler_builtins::math::libm_math` na tabela de símbolos) que **sombreia** a `libm.so.6` dinâmica (ainda listada por `ldd`) e entra em loop infinito para pelo menos a entrada `0.51576114`. Requer uma dependência real da árvore do nam-rs (não reproduz em crate std vazio com os mesmos flags/perfil) — dependência exata ainda não identificada. **O estado quebrado (`R_X86_64_RELATIVE`) não é mais reproduzível no build atual (§1.22).** | **Confirmada por reprodução mínima isolada, sem código de DSP; produção segura (§1.22)** | §1.21.c: `black_box(0.51576114f32) / black_box(1.0f32)).log10()`, sozinho, no binário `--lib` do nam-rs, trava (exit 143). O mesmo código, num crate vazio com os mesmos flags de link/LTO, **não trava** (§1.21.d). Sondas de progresso (§1.21.b) provam que todo o pipeline DSP roda em ~90 µs antes do hang. **§1.22 (T3.0): standalone e cdylib usam `R_X86_64_JUMP_SLOT`, zero símbolos `compiler_builtins::math::libm_math`.** |
 | **H1**  | Bug de compilador/vetorizador (miscompilação) específico do pipeline `opt-level=3 + lto=fat + codegen-units=1 + target-cpu=x86-64-v3` **em `oversample.rs`**, latente desde a criação do teste (§1.1).                                                                                                                                                                                                                                                                                                                                                                               | **Refutada** (T1.1 + T1.3; e agora irrelevante — §1.21 mostra que a causa nem está em `oversample.rs`) | Hang reproduz em debug sem otimizações (T1.1) e em dois canais de toolchain (stable 1.96.1, nightly 1.98.0 — T1.2/T1.3). Consistente com H10: o bug está em `log10f`, não em código sensível a otimização de `oversample.rs`.                                                                                   |
 | **H2**  | Artefato ambiental (cache de build sujo, contenção de recursos do host, thermal throttling, ou mesmo uma falha coincidente e não relacionada do sistema gráfico) — o relato de reset do GNOME (§1.3) se encaixa melhor numa narrativa de exaustão de recursos do sistema do que num loop de ponto flutuante de 256 elementos.                                                                                                                                                                                                                                                        | **Refutada** (T1.2 + T1.5)                                                                             | Hang reproduz com `target/` limpo (T1.2, T1.5) — descarta cache sujo. Contenção de recursos refutada por isolamento cgroup (MemoryMax=1G, CPUQuota=100%). Reset do GNOME permanece inexplicado — possível interação entre CPU-spin e compositor, não exaustão de recursos.                                      |
 | **H3**  | Bug algorítmico real em `oversample.rs` — causa sensível ao **conteúdo do sinal de entrada** (senoide a 23 kHz/128 amostras).                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **Refutada** (§1.21)                                                                                   | §1.21.b: sondas de progresso provam que `upsample()`/`downsample()` completam corretamente em ~90 µs. A "sensibilidade ao conteúdo" real é sensibilidade do **valor numérico passado a `log10f`**, não do algoritmo de oversampling — coincidência de que só este teste calcula um `log10` de um valor runtime. |
