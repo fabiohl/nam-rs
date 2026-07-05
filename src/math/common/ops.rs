@@ -14,7 +14,10 @@ pub fn f32_to_bf16(f: f32) -> u16 {
 
 /// Quantizes an f32 weight to u16 (BF16 or F16 bits), based on `is_bf16`.
 #[inline(always)]
-#[deprecated(since = "2.0.0", note = "Quantization removed (SQ3); use f32 native storage")]
+#[deprecated(
+    since = "2.0.0",
+    note = "Quantization removed (SQ3); use f32 native storage"
+)]
 pub fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
     if is_bf16 {
         f32_to_bf16(f)

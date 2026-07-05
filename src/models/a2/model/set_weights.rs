@@ -10,9 +10,7 @@
 //! from the stream after each layer's standard weights.
 
 use super::WaveNetA2;
-use crate::math::common::{
-    AlignedVec, PrefetchFn,
-};
+use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::a2::conv1d_ch3::A2Conv1dCh3;
 use crate::models::a2::conv1d_ch8::A2Conv1dCh8;
 use crate::models::a2::film::{FiLMConfig, FiLMLayer};

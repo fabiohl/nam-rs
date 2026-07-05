@@ -286,7 +286,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 - [ ] Pesos são carregados como `f32` nativo
 - [ ] `quantize_weight()` pode ser marcada `#[deprecated]` ou removida (verificar se algum uso externo sobrevive, como no oráculo f64)
 
-### Tarefa SQ3.4 — Remover `use_f32_head` flag do LSTM
+### Tarefa SQ3.4 — Remover `use_f32_head` flag do LSTM [DONE]
 
 **Descrição**: O flag `use_f32_head: bool` nos modelos LSTM controlava se o head projection usava pesos f32 nativos ou u16 quantizados. Com todos os pesos agora em f32, este flag é redundante (sempre `true`).
 

@@ -8,7 +8,6 @@
 
 use super::layer_dyn::LstmLayerDyn;
 use crate::math::common::AlignedVec;
-use crate::math::common::half::f16_bits_to_f32;
 
 /// LSTM model with dynamically-allocated layers and head weights.
 ///
@@ -31,12 +30,10 @@ pub struct LstmModelDyn {
     pub layers: Vec<LstmLayerDyn>,
     /// Output head (linear projection) weights.
     pub head_weights: AlignedVec<f32>,
-    /// Output head weights in full f32 precision (mixed-precision selective).
+    /// Output head weights.
     pub head_weights_f32: AlignedVec<f32>,
     /// Output head bias.
     pub head_bias: f32,
-    /// Whether to use f32 head weights instead of quantized.
-    pub use_f32_head: bool,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
     /// Expected sample rate (Hz) for prewarm calculation. Default: `48000.0`.
@@ -61,7 +58,6 @@ impl LstmModelDyn {
             head_weights: AlignedVec::new(hidden_size, 0.0f32),
             head_weights_f32: AlignedVec::new(hidden_size, 0.0f32),
             head_bias: 0.0,
-            use_f32_head: false,
             prewarm_on_reset: true,
             expected_sample_rate: 48000.0,
         }
@@ -81,39 +77,22 @@ impl LstmModelDyn {
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
             let layers_ptr = self.layers.as_mut_ptr();
 
-            if self.use_f32_head {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx2(&[val]);
+            for (s, &val) in input.iter().enumerate() {
+                (*layers_ptr).process_sample_avx2(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx2(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                        h,
-                        &self.head_weights_f32,
-                    );
-                    output[s] = dot + self.head_bias;
+                for i in 1..n_layers {
+                    let prev = &*layers_ptr.add(i - 1);
+                    let hidden = &prev.state[prev.input_size..];
+                    (*layers_ptr.add(i)).process_sample_avx2(hidden);
                 }
-            } else {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx2(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx2(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h = last.get_hidden_state();
-                    let dot = crate::math::gemm::dot_product_avx2(h, &self.head_weights);
-                    output[s] = dot + self.head_bias;
-                }
+                let last = &*layers_ptr.add(n_layers - 1);
+                let h = last.get_hidden_state();
+                let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                    h,
+                    &self.head_weights_f32,
+                );
+                output[s] = dot + self.head_bias;
             }
         }
     }
@@ -132,39 +111,22 @@ impl LstmModelDyn {
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
             let layers_ptr = self.layers.as_mut_ptr();
 
-            if self.use_f32_head {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx512(&[val]);
+            for (s, &val) in input.iter().enumerate() {
+                (*layers_ptr).process_sample_avx512(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx512(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                        h,
-                        &self.head_weights_f32,
-                    );
-                    output[s] = dot + self.head_bias;
+                for i in 1..n_layers {
+                    let prev = &*layers_ptr.add(i - 1);
+                    let hidden = &prev.state[prev.input_size..];
+                    (*layers_ptr.add(i)).process_sample_avx512(hidden);
                 }
-            } else {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx512(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx512(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h = last.get_hidden_state();
-                    let dot = crate::math::gemm::dot_product_avx512(h, &self.head_weights);
-                    output[s] = dot + self.head_bias;
-                }
+                let last = &*layers_ptr.add(n_layers - 1);
+                let h = last.get_hidden_state();
+                let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                    h,
+                    &self.head_weights_f32,
+                );
+                output[s] = dot + self.head_bias;
             }
         }
     }
@@ -183,39 +145,22 @@ impl LstmModelDyn {
             debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
             let layers_ptr = self.layers.as_mut_ptr();
 
-            if self.use_f32_head {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx512_vnni_bf16(&[val]);
+            for (s, &val) in input.iter().enumerate() {
+                (*layers_ptr).process_sample_avx512_vnni_bf16(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx512_vnni_bf16(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h_f32 = last.get_hidden_state();
-                    let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                        h_f32,
-                        &self.head_weights_f32,
-                    );
-                    output[s] = dot + self.head_bias;
+                for i in 1..n_layers {
+                    let prev = &*layers_ptr.add(i - 1);
+                    let hidden = &prev.state[prev.input_size..];
+                    (*layers_ptr.add(i)).process_sample_avx512_vnni_bf16(hidden);
                 }
-            } else {
-                for (s, &val) in input.iter().enumerate() {
-                    (*layers_ptr).process_sample_avx512_vnni_bf16(&[val]);
 
-                    for i in 1..n_layers {
-                        let prev = &*layers_ptr.add(i - 1);
-                        let hidden = &prev.state[prev.input_size..];
-                        (*layers_ptr.add(i)).process_sample_avx512_vnni_bf16(hidden);
-                    }
-
-                    let last = &*layers_ptr.add(n_layers - 1);
-                    let h = last.get_hidden_state_bf16();
-                    let dot = crate::math::gemm::dot_product_bf16_avx512(h, &self.head_weights);
-                    output[s] = dot + self.head_bias;
-                }
+                let last = &*layers_ptr.add(n_layers - 1);
+                let h_f32 = last.get_hidden_state();
+                let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                    h_f32,
+                    &self.head_weights_f32,
+                );
+                output[s] = dot + self.head_bias;
             }
         }
     }
@@ -250,7 +195,6 @@ impl LstmModelDyn {
         }
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
             == crate::math::common::InstructionSet::Avx512VnniBf16;
-        let hidden_size = self.head_weights.len();
         let n_layers = self.layers.len();
 
         debug_assert!(n_layers > 0, "LstmModelDyn requires at least one layer");
@@ -269,24 +213,10 @@ impl LstmModelDyn {
 
                 let last = &*layers_ptr.add(n_layers - 1);
                 let hidden_last = last.get_hidden_state();
-                let dot = if self.use_f32_head {
-                    crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                        hidden_last,
-                        &self.head_weights_f32,
-                    )
-                } else {
-                    let mut dot = 0.0;
-                    for (j, &h_val) in hidden_last.iter().enumerate().take(hidden_size) {
-                        let w = self.head_weights[j];
-                        let w_f32 = if is_bf16 {
-                            f32::from_bits((w as u32) << 16)
-                        } else {
-                            f16_bits_to_f32(w)
-                        };
-                        dot += h_val * w_f32;
-                    }
-                    dot
-                };
+                let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                    hidden_last,
+                    &self.head_weights_f32,
+                );
                 output[s] = dot + self.head_bias;
             }
         }

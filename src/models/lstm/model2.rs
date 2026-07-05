@@ -4,62 +4,41 @@
 //! 2-layer LSTM model with pipelining and SIMD dispatch.
 
 use super::layer::LstmLayer;
-use crate::math::common::half::f16_bits_to_f32;
 
 macro_rules! define_lstm2_process_pipelined {
     (
         $fn_name:ident,
         $target_meta:meta,
         $layer_proc:ident,
-        $dot_prod:path,
-        $get_h2:ident
     ) => {
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
                 let len = input.len();
                 if len >= 1 {
-                    if self.use_f32_head {
-                        self.layer1.$layer_proc(&[input[0]]);
-                        let mut prev_h1 = [0.0; H];
-                        prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+                    self.layer1.$layer_proc(&[input[0]]);
+                    let mut prev_h1 = [0.0; H];
+                    prev_h1.copy_from_slice(self.layer1.get_hidden_state());
 
-                        for i in 1..len {
-                            self.layer1.$layer_proc(&[input[i]]);
-                            self.layer2.$layer_proc(&prev_h1);
-                            let h_f32 = self.layer2.get_hidden_state();
-                            output[i - 1] =
-                                $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                                    h_f32,
-                                    &self.head_weights_f32,
-                                ) + self.head_bias;
-                            prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-                        }
-
+                    for i in 1..len {
+                        self.layer1.$layer_proc(&[input[i]]);
                         self.layer2.$layer_proc(&prev_h1);
                         let h_f32 = self.layer2.get_hidden_state();
-                        output[len - 1] =
+                        output[i - 1] =
                             $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
                                 h_f32,
                                 &self.head_weights_f32,
                             ) + self.head_bias;
-                    } else {
-                        self.layer1.$layer_proc(&[input[0]]);
-                        let mut prev_h1 = [0.0; H];
                         prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-
-                        for i in 1..len {
-                            self.layer1.$layer_proc(&[input[i]]);
-                            self.layer2.$layer_proc(&prev_h1);
-                            output[i - 1] = $dot_prod(self.layer2.$get_h2(), &self.head_weights)
-                                + self.head_bias;
-                            prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-                        }
-
-                        self.layer2.$layer_proc(&prev_h1);
-                        output[len - 1] =
-                            $dot_prod(self.layer2.$get_h2(), &self.head_weights) + self.head_bias;
                     }
+
+                    self.layer2.$layer_proc(&prev_h1);
+                    let h_f32 = self.layer2.get_hidden_state();
+                    output[len - 1] =
+                        $crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                            h_f32,
+                            &self.head_weights_f32,
+                        ) + self.head_bias;
                 }
             }
         }
@@ -74,12 +53,10 @@ pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     pub layer2: LstmLayer<H, H, H2_IH, H_H4>,
     /// Output head weights.
     pub head_weights: [f32; H],
-    /// Output head weights in full f32 precision (mixed-precision selective).
+    /// Output head weights.
     pub head_weights_f32: [f32; H],
     /// Output head bias.
     pub head_bias: f32,
-    /// Whether to use f32 head weights instead of quantized.
-    pub use_f32_head: bool,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
     /// Expected sample rate (Hz) for prewarm calculation. Default: `48000.0`.
@@ -97,7 +74,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             head_weights: [0.0f32; H],
             head_weights_f32: [0.0f32; H],
             head_bias: 0.0,
-            use_f32_head: false,
             prewarm_on_reset: true,
             expected_sample_rate: 48000.0,
         }
@@ -106,24 +82,18 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx2,
         target_feature(enable = "avx2,fma,f16c"),
         process_sample_avx2,
-        crate::math::gemm::dot_product_avx2,
-        get_hidden_state
     );
 
     define_lstm2_process_pipelined!(
         process_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         process_sample_avx512,
-        crate::math::gemm::dot_product_avx512,
-        get_hidden_state
     );
 
     define_lstm2_process_pipelined!(
         process_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         process_sample_avx512_vnni_bf16,
-        crate::math::gemm::dot_product_bf16_avx512,
-        get_hidden_state_bf16
     );
     /// Processes an audio block through the model (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
@@ -150,24 +120,10 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             self.layer2
                 .process_sample_scalar(self.layer1.get_hidden_state(), is_bf16);
             let hidden2 = self.layer2.get_hidden_state();
-            let dot = if self.use_f32_head {
-                crate::math::common::scalar_ref::dot_product_f32_native_kahan(
-                    hidden2,
-                    &self.head_weights_f32,
-                )
-            } else {
-                let mut dot = 0.0;
-                for (j, &h_val) in hidden2.iter().enumerate().take(H) {
-                    let w = self.head_weights[j];
-                    let w_f32 = if is_bf16 {
-                        f32::from_bits((w as u32) << 16)
-                    } else {
-                        f16_bits_to_f32(w)
-                    };
-                    dot += h_val * w_f32;
-                }
-                dot
-            };
+            let dot = crate::math::common::scalar_ref::dot_product_f32_native_kahan(
+                hidden2,
+                &self.head_weights_f32,
+            );
             output[i] = dot + self.head_bias;
         }
     }

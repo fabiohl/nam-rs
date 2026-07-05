@@ -10,7 +10,6 @@
 //! merged into strict SIMD-vs-scalar parity gates, eliminating weak
 //! `is_finite()` placebo tests.
 
-use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::lstm::LstmModelDyn;
 
 // =============================================================================
@@ -38,28 +37,23 @@ fn fill_model_dyn(model: &mut LstmModelDyn) {
             for j in 0..ih {
                 for hi in 0..h {
                     layer.input_hidden_weights[w_start + j * h + hi] =
-                        f32_to_f16_bits(0.01 * (j + hi + k + li + 1) as f32);
+                        0.01 * (j + hi + k + li + 1) as f32;
                 }
             }
         }
     }
 
     for i in 0..hidden_size {
-        let w = f32_to_f16_bits(0.1 * (i + num_layers) as f32);
-        model.head_weights[i] = w;
+        model.head_weights[i] = 0.1 * (i + num_layers) as f32;
         model.head_weights_f32[i] = 0.1 * (i + num_layers) as f32;
     }
     model.head_bias = 0.25;
-    model.use_f32_head = true;
 }
 
 /// Inner: runs the model on the provided input and asserts SIMD vs scalar parity.
 fn assert_model_dyn_parity_inner(num_layers: usize, hidden_size: usize, zero_input: bool) {
     let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
     let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
-
-    model_simd.use_f32_head = true;
-    model_scalar.use_f32_head = true;
 
     fill_model_dyn(&mut model_simd);
     for li in 0..num_layers {
@@ -209,7 +203,6 @@ fn test_model_dyn_determinism() {
         .head_weights_f32
         .copy_from_slice(&model_a.head_weights_f32);
     model_b.head_bias = model_a.head_bias;
-    model_b.use_f32_head = true;
 
     let input: Vec<f32> = (0..64).map(|i| (i as f32 * 0.13).sin()).collect();
     let mut out_a = vec![0.0f32; 64];
@@ -239,7 +232,6 @@ fn test_model_dyn_block_size_invariance() {
 
     for (idx, &block_size) in block_sizes.iter().enumerate() {
         let mut model = LstmModelDyn::new(3, 8);
-        model.use_f32_head = true;
         fill_model_dyn(&mut model);
 
         let mut out = [0.0f32; 64];
@@ -268,7 +260,6 @@ fn test_model_dyn_block_size_invariance() {
 #[test]
 fn test_model_dyn_reset_states() {
     let mut model = LstmModelDyn::new(3, 8);
-    model.use_f32_head = true;
     fill_model_dyn(&mut model);
 
     // Process to push states away from zero
@@ -313,7 +304,6 @@ fn test_model_dyn_reset_states() {
 #[test]
 fn test_model_dyn_reset_input_slots() {
     let mut model = LstmModelDyn::new(3, 8);
-    model.use_f32_head = true;
     fill_model_dyn(&mut model);
 
     // Process to push hidden/cell away from zero
@@ -370,7 +360,6 @@ fn test_model_dyn_reset_input_slots() {
 #[test]
 fn test_model_dyn_state_evolution() {
     let mut model = LstmModelDyn::new(3, 8);
-    model.use_f32_head = true;
     fill_model_dyn(&mut model);
 
     let input = vec![0.7f32; 1];
@@ -395,87 +384,14 @@ fn test_model_dyn_state_evolution() {
     }
 }
 
-// Quantized head path: SIMD vs scalar parity with use_f32_head=false.
-#[test]
-fn test_model_dyn_parity_quantized_head() {
-    let (num_layers, hidden_size) = (2, 10);
-    let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
-    let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
-
-    fill_model_dyn(&mut model_simd);
-    // Switch to quantized head after filling (fill_model_dyn sets use_f32_head=true)
-    model_simd.use_f32_head = false;
-    model_scalar.use_f32_head = false;
-
-    // Override head with quantized u16 values (not f32)
-    for i in 0..hidden_size {
-        let w = f32_to_f16_bits(0.1 * i as f32);
-        model_simd.head_weights[i] = w;
-        model_scalar.head_weights[i] = w;
-    }
-    model_simd.head_weights_f32.fill(0.0);
-    model_scalar.head_weights_f32.fill(0.0);
-
-    // Copy layer weights
-    for li in 0..num_layers {
-        model_scalar.layers[li]
-            .input_hidden_weights
-            .copy_from_slice(&model_simd.layers[li].input_hidden_weights);
-        model_scalar.layers[li]
-            .bias
-            .copy_from_slice(&model_simd.layers[li].bias);
-        model_scalar.layers[li]
-            .state
-            .copy_from_slice(&model_simd.layers[li].state);
-        model_scalar.layers[li]
-            .cell_state
-            .copy_from_slice(&model_simd.layers[li].cell_state);
-    }
-    model_scalar.head_bias = model_simd.head_bias;
-
-    let n_samples = 64;
-    let input: Vec<f32> = (0..n_samples).map(|i| (i as f32 * 0.1).sin()).collect();
-    let mut out_simd = vec![0.0f32; n_samples];
-    let mut out_scalar = vec![0.0f32; n_samples];
-
-    model_simd.process(&input, &mut out_simd);
-    model_scalar.process_scalar(&input, &mut out_scalar);
-
-    for i in 0..n_samples {
-        let diff = (out_simd[i] - out_scalar[i]).abs();
-        let max_val = out_simd[i].abs().max(out_scalar[i].abs()).max(1.0);
-        let rel_diff = diff / max_val;
-        assert!(
-            rel_diff < 5e-3
-                || (out_simd[i].is_nan() && out_scalar[i].is_nan())
-                || (out_simd[i].is_infinite()
-                    && out_scalar[i].is_infinite()
-                    && out_simd[i].to_bits() == out_scalar[i].to_bits()),
-            "ModelDyn quantized-head parity failed at [{i}]: SIMD={}, Scalar={}, Rel={}",
-            out_simd[i],
-            out_scalar[i],
-            rel_diff,
-        );
-    }
-}
-
 // =============================================================================
 // B. Proptest — ignored (slow), exhaustive random-weight parity
 // =============================================================================
 
 #[cfg(test)]
 mod proptest_tests {
-    use nam_rs::math::common::half::f32_to_f16_bits;
     use nam_rs::models::lstm::LstmModelDyn;
     use proptest::prelude::*;
-
-    fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
-        if is_bf16 {
-            (f.to_bits() >> 16) as u16
-        } else {
-            f32_to_f16_bits(f)
-        }
-    }
 
     proptest! {
             #![proptest_config(ProptestConfig {
@@ -491,9 +407,6 @@ mod proptest_tests {
             num_layers in 1usize..=5usize,
             hidden_size in 2usize..=32usize,
         ) {
-            let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
-                == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
             let n_samples = 32;
             let mut rng = proptest::test_runner::TestRng::deterministic_rng(
                 proptest::test_runner::RngAlgorithm::ChaCha,
@@ -508,11 +421,7 @@ mod proptest_tests {
             let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
             let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
 
-            // Use f32 head for cleaner comparison
-            model_simd.use_f32_head = true;
-            model_scalar.use_f32_head = true;
-
-            // Fill layers with random quantized weights (scaled down for stability)
+            // Fill layers with random weights (scaled down for stability)
             for li in 0..num_layers {
                 let h = hidden_size;
                 let input_size = model_simd.layers[li].input_size;
@@ -522,10 +431,8 @@ mod proptest_tests {
 
                 for i in 0..w_total {
                     let w = (-1.5f32 + rng.random::<f32>() * 3.0) / 8.0;
-                    model_simd.layers[li].input_hidden_weights[i] =
-                        quantize_weight(w, is_bf16);
-                    model_scalar.layers[li].input_hidden_weights[i] =
-                        model_simd.layers[li].input_hidden_weights[i];
+                    model_simd.layers[li].input_hidden_weights[i] = w;
+                    model_scalar.layers[li].input_hidden_weights[i] = w;
                 }
                 for i in 0..h4 {
                     let b = (-1.5f32 + rng.random::<f32>() * 3.0) / 8.0;
@@ -561,92 +468,6 @@ mod proptest_tests {
                             && out_scalar[i].is_infinite()
                             && out_simd[i].to_bits() == out_scalar[i].to_bits()),
                     "ModelDyn proptest {num_layers}x{hidden_size} parity failed at [{i}]: \
-                     SIMD={}, Scalar={}, Delta={}, Rel={}",
-                    out_simd[i],
-                    out_scalar[i],
-                    diff,
-                    rel_diff,
-                );
-            }
-        }
-
-        /// Proptest: random weights with quantized head (use_f32_head=false) —
-        /// scalar vs SIMD parity.
-        #[test]
-        #[ignore]
-        fn test_model_dyn_proptest_quantized_head_parity(
-            num_layers in 1usize..=4usize,
-            hidden_size in 2usize..=24usize,
-        ) {
-            let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
-                == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
-            let n_samples = 32;
-            let mut rng = proptest::test_runner::TestRng::deterministic_rng(
-                proptest::test_runner::RngAlgorithm::ChaCha,
-            );
-
-            let input: Vec<f32> = (0..n_samples)
-                .map(|_| -1.0f32 + rng.random::<f32>() * 2.0)
-                .collect();
-
-            let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
-            let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
-
-            // Quantized head path
-            model_simd.use_f32_head = false;
-            model_scalar.use_f32_head = false;
-
-            // Fill layers with random quantized weights
-            for li in 0..num_layers {
-                let h = hidden_size;
-                let input_size = model_simd.layers[li].input_size;
-                let ih = input_size + h;
-                let h4 = 4 * h;
-                let w_total = 4 * ih * h;
-
-                for i in 0..w_total {
-                    let w = (-1.5f32 + rng.random::<f32>() * 3.0) / 8.0;
-                    model_simd.layers[li].input_hidden_weights[i] =
-                        quantize_weight(w, is_bf16);
-                    model_scalar.layers[li].input_hidden_weights[i] =
-                        model_simd.layers[li].input_hidden_weights[i];
-                }
-                for i in 0..h4 {
-                    let b = (-1.5f32 + rng.random::<f32>() * 3.0) / 8.0;
-                    model_simd.layers[li].bias[i] = b;
-                    model_scalar.layers[li].bias[i] = b;
-                }
-            }
-
-            // Random quantized head weights
-            for i in 0..hidden_size {
-                let w = (-1.0f32 + rng.random::<f32>() * 2.0) / 8.0;
-                let q = quantize_weight(w, is_bf16);
-                model_simd.head_weights[i] = q;
-                model_scalar.head_weights[i] = q;
-            }
-
-            let mut out_simd = vec![0.0f32; n_samples];
-            let mut out_scalar = vec![0.0f32; n_samples];
-
-            model_simd.reset_states();
-            model_scalar.reset_states();
-
-            model_simd.process(&input, &mut out_simd);
-            model_scalar.process_scalar(&input, &mut out_scalar);
-
-            for i in 0..n_samples {
-                let diff = (out_simd[i] - out_scalar[i]).abs();
-                let max_val = out_simd[i].abs().max(out_scalar[i].abs()).max(1.0);
-                let rel_diff = diff / max_val;
-                assert!(
-                    rel_diff < 5e-3
-                        || (out_simd[i].is_nan() && out_scalar[i].is_nan())
-                        || (out_simd[i].is_infinite()
-                            && out_scalar[i].is_infinite()
-                            && out_simd[i].to_bits() == out_scalar[i].to_bits()),
-                    "ModelDyn qhead {num_layers}x{hidden_size} parity failed at [{i}]: \
                      SIMD={}, Scalar={}, Delta={}, Rel={}",
                     out_simd[i],
                     out_scalar[i],
