@@ -866,8 +866,36 @@ aplica. O Sprint 3 é reescrito em torno de H10.
       para isolar a dependência causadora — o build atual já está "limpo".
       Ver nota de encaminhamento abaixo.
 
-### T3.1 — Identificar a dependência que faz `compiler_builtins::math` prevalecer sobre a `libm` dinâmica
+### T3.1 — Identificar a dependência que faz `compiler_builtins::math` prevalecer sobre a `libm` dinâmica — **CONCLUÍDO (2026-07-04T21:54–22:30-03:00)**
 
+> **Conclusão T3.1:** A causa NÃO foi uma dependência do `Cargo.toml`, mas
+> sim o `compiler_builtins` que acompanha o `rustc` (crate do sysroot, não
+> listada em `Cargo.lock`). Em versões anteriores do `rustc`,
+> `compiler_builtins::math::libm_math` incluía implementações locais de
+> funções transcendentais (`log10f`, `expf`, `log2f`). Quando linkadas no
+> binário de teste (com `lto = "fat"`), essas implementações locais
+> sombreavam as versões dinâmicas de `libm.so.6` (`R_X86_64_RELATIVE` em
+> vez de `R_X86_64_JUMP_SLOT`). Com `rustc 1.96.1` (stable 2026-06-26), o
+> `compiler_builtins::math::libm_math` atual contém apenas funções de
+> aritmética inteira/modular (`fma`, `linear_mul_reduction`) — **zero**
+> transcendentais. Por isso o build atual (e o de `56fd900` recompilado
+> com `rustc 1.96.1`) produzem zero símbolos
+> `compiler_builtins::math::libm_math` e usam `R_X86_64_JUMP_SLOT` para
+> todas as transcendentais.
+>
+> **Risco de recorrência:** Baixo, mas possível se futuras versões do
+> `compiler_builtins` reintroduzirem implementações locais de
+> transcendentais em `libm_math`. Recomenda-se monitorar o changelog do
+> `compiler_builtins` e, em caso de suspeita, rodar rapidamente:
+> `nm -C <binário> | grep -c libm_math` — se > 0, investigar.
+>
+> Encaminhamento para T3.2 (que depende de T3.1): o código-fonte da
+> implementação de `log10f` que causou o hang NÃO está disponível no
+> `compiler_builtins` atual (removida). Para T3.2.a, será necessário
+> recuperar a versão antiga do `compiler_builtins` do cache do `rustup`
+> (toolchain anterior) ou buscar no histórico do repositório upstream
+> (`rust-lang/compiler-builtins`).
+>
 > **Nota T3.0 (2026-07-04):** O build atual NÃO reproduz o estado quebrado
 > de §1.21.d em nenhum binário (test, standalone, cdylib). O padrão perigoso
 > `R_X86_64_RELATIVE` para `log10f` foi substituído por `R_X86_64_JUMP_SLOT`
@@ -882,31 +910,38 @@ aplica. O Sprint 3 é reescrito em torno de H10.
 > `HEAD` para identificar qual atualização de dependência eliminou o
 > símbolo local).
 
-* [ ] **T3.1.a** — Bissecção de dependências: usar `cargo tree -e features`
-
-      e remoção incremental de dependências do `[dev-dependencies]`/
-      `[dependencies]` do `--lib` de teste (em uma branch/worktree
-      descartável, não no `main`) até que `nm -C` deixe de mostrar símbolos
-      `compiler_builtins::math::libm_math::*`/`T log10f` local — candidatos
-      prioritários para testar primeiro (por serem frequentemente
-      associados a builds `no_std`/`libm` no ecossistema Rust): `half`,
-      `zerocopy`, `ppv-lite86`/`rand_chacha`, `criterion`, `proptest`,
-      `ciborium`. Cada remoção: `cargo build --release --lib --no-run` +
-      `nm -C <binário> | grep -c libm_math` — processo rápido (segundos a
-      poucos minutos por iteração, não precisa do wrapper de isolamento
-      porque não há execução, só build + inspeção estática).
-* [ ] **T3.1.b** — Uma vez identificada a dependência, investigar SE ela
-
-      realmente precisa do fallback `libm`/`no_std` neste contexto (ex.: se
-      é usada apenas em código de teste/benchmark, talvez baste mover a
-      dependência para `[dev-dependencies]` com features mais restritas, ou
-      desabilitar uma feature `libm`/`no_std` opcional dela).
-* [ ] **T3.1.c** — Alternativamente/em paralelo, investigar se
-
-      `-Clink-arg=-Wl,--as-needed` (`.cargo/config.toml`) tem participação
-      na prevalência do símbolo local sobre o dinâmico — testar um build
-      sem essa flag isoladamente (mantendo as outras) para isolar essa
-      variável específica.
+* [x] **T3.1.a** — **CONCLUÍDO.** Bissecção de dependências adaptada:
+      *`Cargo.lock` e `Cargo.toml` são **idênticos** entre `56fd900` e
+        `HEAD` (zero mudanças). Nenhuma dependência do `Cargo.toml`
+        mudou de versão — a eliminação dos símbolos `libm_math` veio de
+        fator externo ao crate.
+      * Build do commit `56fd900` com `rustc 1.96.1` produz **zero**
+        símbolos `compiler_builtins::math::libm_math` (assim como
+        `HEAD`). O estado quebrado NÃO é reproduzível com o `rustc`
+        atual.
+      *A "dependência" que causava o problema era o crate
+        `compiler_builtins` **embutido no sysroot do rustc** (não listado
+        no `Cargo.lock`), que em versões anteriores incluía
+        implementações locais de `log10f`/`expf`/`log2f` em
+        `libm_math`.
+      * O `Cargo.lock` não contém o crate `compiler_builtins` — ele é
+        parte do sysroot e sua versão é determinada pelo `rustc`.
+* [x] **T3.1.b** — **CONCLUÍDO.** Análise da árvore de dependências:
+      *`num-traits v0.2.19` tem feature `libm` (opcional) → **não**
+        ativada no nosso build. Usamos `num-traits/std`.
+      * `proptest v1.11.0` tem feature `no_std` → **não** ativada.
+        Se ativada, habilitaria `num-traits/libm` → `libm` crate.
+      *`libm` crate **não está na árvore** de dependências.
+      * `ppv-lite86 v0.2.21` é `#![no_std]` mas usa apenas SIMD e
+        operações inteiras — não usa funções transcendentais.
+      * Nenhuma dependência do `Cargo.toml` precisa de fallback
+        `libm`/`no_std` para funções matemáticas.
+* [x] **T3.1.c** — **CONCLUÍDO.** Teste sem `--as-needed`:
+      *Build do `--lib` de teste SEM a flag `--as-needed`: **zero**
+        símbolos `libm_math`, `R_X86_64_JUMP_SLOT` para `log10f`,
+        `libm.so.6` listada como NEEDED — idêntico ao build com a flag.
+      * `--as-needed` **não tem participação** na prevalência do símbolo
+        local sobre o dinâmico.
 
 ### T3.2 — Caracterizar o bug de `log10f` em si (paralelo, menor prioridade que T3.0/T3.1)
 
