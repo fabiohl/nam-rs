@@ -220,6 +220,29 @@ live-path design.
 
 ---
 
+### R13 · Yamamoto, Song & Kim (2020)
+
+**Yamamoto, R.; Song, E.; Kim, J.-M.**
+*"Parallel WaveGAN: A fast waveform generation model based on generative adversarial
+networks with multi-resolution spectrogram."*
+IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), Barcelona, 2020.
+arXiv:1910.11480.
+
+**Why relevant to nam-rs.** Introduces the **Multi-Resolution STFT (MR-STFT) loss** — the composite
+spectral metric combining spectral convergence (L1 of log-magnitude difference) and log-magnitude
+loss (L2) across multiple STFT resolutions. This is the exact technique adopted as the spectral
+regression-detection gate in `src/testing/perceptual.rs`, with per-model calibrated thresholds
+(Tier 1) and a dual hard/soft enforcement strategy. The multi-resolution approach (window sizes
+[256, 1024, 4096] in nam-rs) captures both narrow-band spectral artifacts and broadband transient
+errors that single-window ESR cannot detect.
+
+| Traceability | Reference                                                                                  |
+|:------------ |:------------------------------------------------------------------------------------------ |
+| Finding      | F-2 (MR-STFT como gate espectral); P-5 (complemento a ESR)                                 |
+| Files        | `src/testing/perceptual.rs`, `tests/common/validation.rs`, `docs/perceptual_validation.md` |
+
+---
+
 ## 3. Measurement & Instrumentation
 
 ### R10 · Farina (2000)
@@ -301,11 +324,11 @@ European Broadcasting Union, 2016.
 | P-2 (fidelidade do resampler)                | R3                                                     |
 | P-3 (suíte espectral — THD/IMD/FR/true-peak) | R10, R11, R12                                          |
 | P-4 (oráculo f64)                            | — (norma computacional, não referenciada externamente) |
-| P-5 (erro de ativação — precisão)            | R1, R8, R9                                             |
+| P-5 (erro de ativação — precisão)            | R1, R8, R9, R13                                        |
 | P-6 (LUFS/LRA/true-peak)                     | R12                                                    |
 | P-7 (gates de perf/deadline)                 | — (engenharia interna)                                 |
 | P-8 (matriz cross-ISA)                       | — (engenharia interna)                                 |
-| F-2 (ponto cego de fidelidade)               | R9                                                     |
+| F-2 (ponto cego de fidelidade)               | R9, R13                                                |
 | I5 (oversampling LSTM — timbre, β3.1)        | R7, R7b                                                |
 
 *Cross-referenced with findings in [`TODO-findings.md`](../TODO-findings.md) and sprints in [`TODO-sprints.md`](../TODO-sprints.md).*

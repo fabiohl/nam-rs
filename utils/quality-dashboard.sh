@@ -5,7 +5,7 @@
 # quality-dashboard.sh — nam-rs Quality Dashboard
 #
 # Runs all fidelity suites and performance benchmarks, captures their outputs,
-# and generates a comprehensive human-friendly Tarefa SQ1.1 — Criar `utils/quality-dashboard.sh`report covering the full nam-rs
+# and generates a comprehensive human-friendly report covering the full nam-rs
 # universe: all architectures, models, quality modes, and ISAs.
 #
 # Usage:
@@ -86,13 +86,31 @@ _nfmt() { LC_NUMERIC=C printf "$@"; }
 # We check if the golden label contains any known oracle key.
 _lookup_esr_f64() {
     local golden_label="$1"
+    # Normalize strings for robust matching
+    local norm_golden
+    norm_golden=$(echo "$golden_label" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
+    
     local best="N/A"
+    local best_len=0
+    
     set +u
     for okey in "${!ESR_F64[@]}"; do
-        # Case-insensitive partial match: golden label contains oracle key
-        if echo "$golden_label" | grep -qi "$okey" 2>/dev/null; then
+        local norm_okey
+        norm_okey=$(echo "$okey" | tr '[:upper:]' '[:lower:]' | sed 's/\.nam$//; s/[^a-z0-9]//g')
+        
+        # Exact match is always preferred
+        if [ "$norm_golden" = "$norm_okey" ]; then
             best="${ESR_F64[$okey]}"
+            best_len=9999
             break
+        fi
+        
+        # Partial matches: prefer the longest matching key (most specific)
+        if [[ "$norm_golden" == *"$norm_okey"* ]] || [[ "$norm_okey" == *"$norm_golden"* ]]; then
+            if [ ${#norm_okey} -gt $best_len ]; then
+                best="${ESR_F64[$okey]}"
+                best_len=${#norm_okey}
+            fi
         fi
     done
     set -u
@@ -221,7 +239,7 @@ run_benchmarks() {
 
 parse_golden_vectors() {
     local log="$LOGDIR/golden_vectors.log"
-    [ -f "$log" ] || return
+    [ -f "$log" ] || return 0
 
     local parsed="$PARSEDIR/golden_vectors.parsed"
     LC_ALL=C awk '
@@ -241,6 +259,10 @@ parse_golden_vectors() {
             rate = "48000"
         }
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", lbl)
+        if (lbl ~ /^(T[0-9]|T-)/) {
+            label = ""
+            next
+        }
         label = lbl " @" rate
         mode = "Live"
         if (index($0, "(HQ)") > 0) mode = "HQ"
@@ -301,7 +323,7 @@ parse_golden_vectors() {
 
 parse_oracle_f64() {
     local log="$LOGDIR/oracle_f64.log"
-    [ -f "$log" ] || return
+    [ -f "$log" ] || return 0
 
     # Parse ESR summary table — skip debug lines (MODEL CLASS LABEL, PROD FIRST, etc.)
     local parsed="$PARSEDIR/oracle_f64_summary.parsed"
@@ -354,16 +376,27 @@ parse_oracle_f64() {
         next
     }
     in_decomp {
-        if (/^[[:space:]]*$/ || /^[A-Z]/) {
-            if (lbl != "" && buf != "") { printf "F64_DECOMP\t%s\t%s\n", lbl, buf }
+        if ($0 ~ /^[[:space:]]*(ESR|ΔESR|combined|Δ|accumulation|activation|weights)/) {
+            buf = buf $0 "\n"
+        } else {
+            if (lbl != "" && buf != "") {
+                gsub(/\n/, "@@", buf)
+                printf "F64_DECOMP\t%s\t%s\n", lbl, buf
+            }
             in_decomp = 0; lbl = ""; buf = ""
-        } else { buf = buf $0 "\n" }
+        }
     }
-    END { if (lbl != "" && buf != "") { printf "F64_DECOMP\t%s\t%s\n", lbl, buf } }
+    END {
+        if (lbl != "" && buf != "") {
+            gsub(/\n/, "@@", buf)
+            printf "F64_DECOMP\t%s\t%s\n", lbl, buf
+        }
+    }
     ' "$log" > "$parsed"
 
     while IFS=$'\t' read -r metric label value; do
         [[ "$metric" == "F64_DECOMP" ]] || continue
+        value="${value//@@/$'\n'}"
         F64_DECOMPOSITION["$label"]="$value"
     done < "$parsed"
 }
@@ -372,7 +405,7 @@ parse_oracle_f64() {
 
 parse_isa_parity() {
     local log="$LOGDIR/isa_parity.log"
-    [ -f "$log" ] || return
+    [ -f "$log" ] || return 0
 
     local parsed="$PARSEDIR/isa_parity.parsed"
 
@@ -403,15 +436,15 @@ parse_isa_parity() {
 
 parse_spectral_fidelity() {
     local log="$LOGDIR/spectral_fidelity.log"
-    [ -f "$log" ] || return
-    SPECTRAL_PASSED_COUNT=$(grep -c 'all spectral fidelity metrics within baseline tolerance' "$log" 2>/dev/null | head -1 | tr -d '[:space:]' || echo 0)
+    [ -f "$log" ] || return 0
+    SPECTRAL_PASSED_COUNT=$(grep -c 'all spectral fidelity metrics within baseline tolerance' "$log" 2>/dev/null || true)
 }
 
 # ── Parse: lstm_activation_precision ────────────────────────────────────────
 
 parse_activation_precision() {
     local log="$LOGDIR/activation_precision.log"
-    [ -f "$log" ] || return
+    [ -f "$log" ] || return 0
 
     local parsed="$PARSEDIR/activation.parsed"
     grep -E 'FastMath\(Pad' "$log" > "$parsed" 2>/dev/null || true
@@ -430,7 +463,7 @@ parse_activation_precision() {
 
 parse_benchmarks() {
     local log="$LOGDIR/regression_gate.log"
-    [ -f "$log" ] || return
+    [ -f "$log" ] || return 0
 
     BENCH_MODEL_MAP["RT_WaveNet_Std_CH16"]="WaveNet Standard CH16"
     BENCH_MODEL_MAP["RT_WaveNet_Feather_CH8"]="WaveNet Feather CH8"
@@ -544,13 +577,13 @@ _cpu_color() {
     local f
     f=$(LC_ALL=C awk -v v="$pct" 'BEGIN { printf "%.0f", 100.0 - v }')
     if [ "$f" -gt 75 ]; then
-        echo -e "${GREEN}${pct}%%${NC}"
+        echo -e "${GREEN}${pct}%${NC}"
     elif [ "$f" -gt 50 ]; then
-        echo -e "${GREEN}${pct}%%${NC}"
+        echo -e "${GREEN}${pct}%${NC}"
     elif [ "$f" -gt 25 ]; then
-        echo -e "${YELLOW}${pct}%%${NC}"
+        echo -e "${YELLOW}${pct}%${NC}"
     else
-        echo -e "${RED}${pct}%%${NC}"
+        echo -e "${RED}${pct}%${NC}"
     fi
 }
 
@@ -687,12 +720,12 @@ render_fidelity_details() {
         return
     fi
 
-    printf "  %-38s │ %-16s │ %-12s │ %-8s │ %-8s │ %-6s │ %s\n" \
-        "Modelo" "ESR (vs NAMcore)" "ESR (vs f64)" "SNR dB" "MR-STFT" "Modo" "Qualidade"
-    printf "  %s │ %s │ %s │ %s │ %s │ %s │ %s\n" \
+    printf "  %-38s │ %-16s │ %-12s │ %-8s │ %-8s │ %s\n" \
+        "Modelo" "ESR (vs NAMcore)" "ESR (vs f64)" "SNR dB" "MR-STFT" "Modo"
+    printf "  %s │ %s │ %s │ %s │ %s │ %s\n" \
         "$(printf '─%.0s' {1..38})" "$(printf '─%.0s' {1..16})" \
         "$(printf '─%.0s' {1..12})" "$(printf '─%.0s' {1..8})" \
-        "$(printf '─%.0s' {1..8})" "$(printf '─%.0s' {1..6})" "$(printf '─%.0s' {1..24})"
+        "$(printf '─%.0s' {1..8})" "$(printf '─%.0s' {1..6})"
 
     for key in "${MODEL_ORDER[@]}"; do
         local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
@@ -736,17 +769,11 @@ render_fidelity_details() {
         [[ "$key" == *" HQ"* ]] && mode="HQ"
         local display_key="${key:0:38}"
 
-        # Quality verdict
-        local quality="N/A"
-        if [ "$esr_nam" != "N/A" ]; then
-            quality=$(esr_verdict "$esr_nam")
-        fi
-
-        printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %-6s │ %s\n" \
-            "$display_key" "$esr_nam_short" "$esr_f64_colored" "$snr" "$mrstft_short" "$mode" "$quality"
+        printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %s\n" \
+            "$display_key" "$esr_nam_short" "$esr_f64_colored" "$snr" "$mrstft_short" "$mode"
     done
     echo ""
-    echo "  Legenda ESR vs NAMcore:"
+    echo "  Legenda qualitativa (limites de audibilidade do ESR):"
     echo -e "    ${GREEN}verde${NC} = imperceptivel (ESR < 1e-5)"
     echo -e "    ${YELLOW}amarelo${NC} = audivel apenas com A/B cientifico (ESR < 1e-2)"
     echo -e "    ${RED}vermelho${NC} = ⚠ audivel — necessita investigacao (ESR >= 1e-1)"
@@ -761,14 +788,18 @@ render_performance() {
     echo "  Deadline RT: 1333 µs (1.33 ms)"
     echo ""
 
-    if [ ${#ALL_BENCH_NAMES[@]} -eq 0 ]; then
+    local bench_count
+    set +u
+    bench_count="${#ALL_BENCH_NAMES[@]}"
+    set -u
+    if [ -z "$bench_count" ] || [ "$bench_count" -eq 0 ]; then
         echo -e "  ${YELLOW}(i) Nenhum dado de performance disponivel.${NC}"
         echo ""
         return
     fi
 
     printf "  %-28s │ %-16s │ %-12s │ %s\n" \
-        "Modelo" "Latencia Mediana" "%% do Budget" "Folga"
+        "Modelo" "Latencia Mediana" "% do Budget" "Folga"
     printf "  %s │ %s │ %s │ %s\n" \
         "$(printf '─%.0s' {1..28})" "$(printf '─%.0s' {1..16})" \
         "$(printf '─%.0s' {1..12})" "$(printf '─%.0s' {1..20})"
@@ -789,13 +820,13 @@ render_performance() {
             latency_display=$(_nfmt "%.1f us" "$latency")
         fi
         printf "  %-28s │ %-16s │ %-12s │ %b\n" \
-            "$label" "$latency_display" "${pct}%%" "$folga_colored"
+            "$label" "$latency_display" "${pct}%" "$folga_colored"
     done
 
     echo ""
-    echo "  (i) Folga > 50%%:  Pode usar oversampling 2x sem xruns"
-    echo "  (i) Folga > 75%%:  Pode usar oversampling 4x sem xruns"
-    echo "  (i) Folga < 25%%:  ⚠ Risco de xruns com buffer de 64 amostras"
+    echo "  (i) Folga > 50%:  Pode usar oversampling 2x sem xruns"
+    echo "  (i) Folga > 75%:  Pode usar oversampling 4x sem xruns"
+    echo "  (i) Folga < 25%:  ⚠ Risco de xruns com buffer de 64 amostras"
     echo ""
 }
 
@@ -952,7 +983,7 @@ render_f64_decomposition() {
         echo "  ${model}:"
         echo "${F64_DECOMPOSITION[$model]}" | while IFS= read -r line; do
             [ -n "$line" ] && echo "    $line"
-        done
+        done || true
         echo ""
     done
     set -u
@@ -985,12 +1016,18 @@ render_footer() {
     echo ""
 
     local skipped=0
-    if [ ${#MODEL_ORDER[@]} -eq 0 ] && [ "$MODE" != "bench" ]; then
+    local order_count bench_count
+    set +u
+    order_count="${#MODEL_ORDER[@]}"
+    bench_count="${#ALL_BENCH_NAMES[@]}"
+    set -u
+
+    if { [ -z "$order_count" ] || [ "$order_count" -eq 0 ]; } && [ "$MODE" != "bench" ]; then
         echo -e "  ${YELLOW}(i) Testes de fidelidade nao produziram dados parseaveis.${NC}"
         echo -e "  ${YELLOW}   Verifique se os modelos e golden vectors estao presentes.${NC}"
         skipped=1
     fi
-    if [ ${#ALL_BENCH_NAMES[@]} -eq 0 ] && [ "$MODE" != "fidelity" ]; then
+    if { [ -z "$bench_count" ] || [ "$bench_count" -eq 0 ]; } && [ "$MODE" != "fidelity" ]; then
         echo -e "  ${YELLOW}(i) Benchmarks nao produziram dados parseaveis.${NC}"
         skipped=1
     fi

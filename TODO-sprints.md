@@ -131,17 +131,6 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - Exit code 0 com testes skipped (informacional), ≠0 apenas em erros de infraestrutura
 - Informações de sistema no header: ISA detectada, CPU model, data/hora, rustc version
 
-**Critério de aceite**:
-
-- [ ] Script roda sem erros em um sistema com goldens e NAMCore presentes
-- [ ] Script faz graceful-skip para componentes ausentes sem abortar
-- [ ] Output cobre **todos os 31 modelos** disponíveis nos fixtures (que tenham testes associados)
-- [ ] Output cobre fidelidade (ESR, SNR, MSE, MR-STFT) + performance (latência Criterion) + ISA parity + activation precision
-- [ ] Output é legível, colorido (ANSI), e fácil de escanear
-- [ ] Flag `--save` gera arquivo sem códigos ANSI (plain text)
-- [ ] Segue o padrão dos scripts existentes (usa `_lib.sh`, header SPDX)
-- [ ] Arquivo fica em `utils/quality-dashboard.sh` (conforme solicitado)
-
 **Arquivos a criar/modificar**:
 
 - `[NEW]` `utils/quality-dashboard.sh`
@@ -156,23 +145,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **Ref**: Finding F-Q2
 > **Pré-requisito**: SQ1 completo.
 
-### Tarefa SQ2.1 — Executar o dashboard e salvar baseline
+### Tarefa SQ2.1 — Executar o dashboard e salvar baseline [DONE]
 
 **Descrição**: Rodar `utils/quality-dashboard.sh` e salvar o output como `docs/baseline-with-quantization.log` (commitado, para referência futura).
-
-**Critério de aceite**:
-
-- [ ] Baseline capturado e commitado com todas as métricas de fidelidade e performance
-- [ ] Todas as 6 famílias cobertas: WaveNet A1 (Std/Feather/Lite/Nano), WaveNet A2 (Full/Lite/Max), A2-FiLM (Lite/Full), A2/WaveNet Dynamic, LSTM (1×16/2×8/Dyn), ConvNet/Linear
 
 ### Tarefa SQ2.2 — Salvar baseline do regression_gate
 
 **Descrição**: Executar `utils/tests-performance-regression.sh --save` para persistir o baseline Criterion. Este será o ponto de comparação estatístico para a performance pós-remoção.
-
-**Critério de aceite**:
-
-- [ ] Baseline Criterion salvo em `target/criterion/ci-baseline/`
-- [ ] Sem regressões no baseline atual
 
 ---
 

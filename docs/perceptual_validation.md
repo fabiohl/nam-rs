@@ -48,6 +48,12 @@ produces MSE ~10² even when SNR is 51–57 dB. ESR normalizes error by referenc
 energy, making it invariant to linear scaling. This is the primary threshold for
 all parity gates.
 
+**Limitation.** ESR is a global time-domain error metric — it is insensitive to
+aliasing artifacts (Sato & Smith, DAFx 2025) and does not correlate linearly with
+human auditory perception (Wright & Välimäki, ICASSP 2020). This is why nam-rs
+supplements ESR with spectral metrics (MR-STFT, ASR) that capture frequency-domain
+and aliasing-specific degradation modes that ESR alone cannot detect.
+
 ### Interpretation
 
 | ESR range      | Meaning                                         |
@@ -162,8 +168,11 @@ Where:
 
 Single-window STFT loss is biased toward the chosen time-frequency resolution
 trade-off. MR-STFT combines three window sizes to capture narrow-band and
-transient errors simultaneously. This metric correlates more strongly with
-perceived audio quality than ESR alone.
+transient errors simultaneously. As a regression-detection gate, this metric
+captures frequency-domain degradation modes that ESR alone misses — making it
+a stronger indicator of spectral fidelity changes than time-domain error alone.
+Note: MR-STFT is used here as a spectral regression gate, not as a direct proxy
+for subjective perceptual quality (which requires human listening tests).
 
 ### Dual Gate System
 
@@ -1075,6 +1084,7 @@ This policy is referenced in:
 - AES17: Measurement of digital audio equipment
 - SMPTE RP 120: Intermodulation distortion measurements
 - DAFx 2025: Sato & Smith — Aliasing-to-Signal Ratio (ASR)
+- ICASSP 2020: Yamamoto, Song & Kim — Multi-Resolution STFT Loss (Parallel WaveGAN)
 
 ---
 
@@ -1083,6 +1093,7 @@ This policy is referenced in:
 - `A2ESR_A1_STANDARD_MEDIAN`, `A2ESR_A2_FULL_MEDIAN`, and related constants are derived
   from published data in t3k-mushra/A2Esr.tsx (MIT-licensed).
 - LUFS/LRA computation implements ITU-R BS.1770-4 and EBU Tech 3342.
-- ESR formula follows the standard definition used in NAM literature (Yamamoto et al. 2020).
+- ESR formula follows the standard definition used in NAM literature (Wright et al., Applied Sciences 2020).
+- MR-STFT loss follows Yamamoto, Song & Kim (ICASSP 2020) — Parallel WaveGAN.
 - ASR follows Sato & Smith, DAFx 2025.
 - Farina method follows AES Convention 108 (2000).
