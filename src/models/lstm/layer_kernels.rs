@@ -3,7 +3,6 @@
 
 //! LSTM layer kernel dispatch — SIMD processing paths and scalar fallback.
 
-use crate::math::common::half::f16_bits_to_f32;
 use core::arch::x86_64::*;
 
 use super::layer::LstmLayer;
@@ -225,7 +224,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// This is the 'manual' and slow version, used only as a reference to ensure
     /// the ultra-fast versions above have no mathematical errors.
     #[inline(always)]
-    pub fn process_sample_scalar(&mut self, input: &[f32], is_bf16: bool) {
+    pub fn process_sample_scalar(&mut self, input: &[f32], _is_bf16: bool) {
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);
@@ -237,12 +236,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
                 let mut sum = 0.0;
                 for (j, &s) in self.state.iter().enumerate().take(ih) {
                     let w = self.input_hidden_weights[k][j][i];
-                    let w_f32 = if is_bf16 {
-                        f32::from_bits((w as u32) << 16)
-                    } else {
-                        f16_bits_to_f32(w)
-                    };
-                    sum += w_f32 * s;
+                    sum += w * s;
                 }
                 self.gates[target_gate_offset + i] = sum + self.bias[target_gate_offset + i];
             }

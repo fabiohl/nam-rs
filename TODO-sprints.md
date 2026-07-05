@@ -317,7 +317,7 @@ pesos (a decisão `is_bf16` no carregamento e os kernels `gemv_4gate_bf16_avx512
 > **Pré-requisito**: SQ3 completo.
 > **Estratégia**: Atacar por camada de abstração — GEMV primeiro (LSTM), depois batch-GEMM (A2/WaveNet), depois dot (head).
 
-### Tarefa SQ4.1 — Adaptar kernels GEMV 4-gate do LSTM (AVX2)
+### Tarefa SQ4.1 — Adaptar kernels GEMV 4-gate do LSTM (AVX2) [DONE]
 
 **Descrição**: O LSTM GEMV 4-gate AVX2 (`src/math/gemm/gemv_4gate/avx2.rs`) faz operação matricial com 4 gates (I, F, G, O) em paralelo. Atualmente carrega pesos u16 com `_mm_loadu_si128` + `_mm256_cvtph_ps` (8 pesos de 16-bit → 8 f32). Precisa mudar para `_mm256_loadu_ps` (8 pesos f32 diretos).
 

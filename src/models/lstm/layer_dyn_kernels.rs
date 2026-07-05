@@ -13,7 +13,6 @@ use crate::math::activations::activation_precision;
 use crate::math::activations::scalar_minimax_sigmoid;
 use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
 use crate::math::activations::tanh::scalar_pade_tanh;
-use crate::math::common::half::f16_bits_to_f32;
 use core::arch::x86_64::*;
 
 use super::layer_dyn::LstmLayerDyn;
@@ -28,7 +27,7 @@ impl LstmLayerDyn {
     /// This is the fully manual version, used as a reference to ensure that
     /// the SIMD-accelerated paths produce mathematically identical results.
     #[inline(always)]
-    pub fn process_sample_scalar(&mut self, input: &[f32], is_bf16: bool) {
+    pub fn process_sample_scalar(&mut self, input: &[f32], _is_bf16: bool) {
         let i = self.input_size;
         let h = self.hidden_size;
         let ih = i + h;
@@ -44,12 +43,7 @@ impl LstmLayerDyn {
                 for j in 0..ih {
                     let s = self.state[j];
                     let w = self.input_hidden_weights[w_start + j * h + hi];
-                    let w_f32 = if is_bf16 {
-                        f32::from_bits((w as u32) << 16)
-                    } else {
-                        f16_bits_to_f32(w)
-                    };
-                    sum += w_f32 * s;
+                    sum += w * s;
                 }
                 self.gates[target_gate_offset + hi] = sum + self.bias[target_gate_offset + hi];
             }

@@ -8,7 +8,6 @@
 
 use crate::gemv_4gate_inner_dual_avx2;
 use crate::gemv_4gate_simd_outer_avx2;
-use crate::math::common::half::f16_bits_to_f32_f16c;
 use core::arch::x86_64::*;
 
 /// Performs the linear projection for the 4 "gates" of an LSTM cell simultaneously via AVX2.
@@ -26,10 +25,10 @@ use core::arch::x86_64::*;
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx2(
     in_frame: &[f32],
-    w0: &[u16],
-    w1: &[u16],
-    w2: &[u16],
-    w3: &[u16],
+    w0: &[f32],
+    w1: &[f32],
+    w2: &[f32],
+    w3: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -82,46 +81,46 @@ pub unsafe fn gemv_4gate_avx2(
                         let vs_hi = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
 
                         let wp0_lo = w0.as_ptr().add(in_c * out_len + out_c);
-                        let vw0_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp0_lo as *const __m128i));
+                        let vw0_lo = _mm256_loadu_ps(wp0_lo);
                         acc0_lo = _mm256_fmadd_ps(vs_lo, vw0_lo, acc0_lo);
                         let wp0_hi = w0.as_ptr().add((in_c + 1) * out_len + out_c);
-                        let vw0_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp0_hi as *const __m128i));
+                        let vw0_hi = _mm256_loadu_ps(wp0_hi);
                         acc0_hi = _mm256_fmadd_ps(vs_hi, vw0_hi, acc0_hi);
 
                         let wp1_lo = w1.as_ptr().add(in_c * out_len + out_c);
-                        let vw1_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp1_lo as *const __m128i));
+                        let vw1_lo = _mm256_loadu_ps(wp1_lo);
                         acc1_lo = _mm256_fmadd_ps(vs_lo, vw1_lo, acc1_lo);
                         let wp1_hi = w1.as_ptr().add((in_c + 1) * out_len + out_c);
-                        let vw1_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp1_hi as *const __m128i));
+                        let vw1_hi = _mm256_loadu_ps(wp1_hi);
                         acc1_hi = _mm256_fmadd_ps(vs_hi, vw1_hi, acc1_hi);
 
                         let wp2_lo = w2.as_ptr().add(in_c * out_len + out_c);
-                        let vw2_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp2_lo as *const __m128i));
+                        let vw2_lo = _mm256_loadu_ps(wp2_lo);
                         acc2_lo = _mm256_fmadd_ps(vs_lo, vw2_lo, acc2_lo);
                         let wp2_hi = w2.as_ptr().add((in_c + 1) * out_len + out_c);
-                        let vw2_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp2_hi as *const __m128i));
+                        let vw2_hi = _mm256_loadu_ps(wp2_hi);
                         acc2_hi = _mm256_fmadd_ps(vs_hi, vw2_hi, acc2_hi);
 
                         let wp3_lo = w3.as_ptr().add(in_c * out_len + out_c);
-                        let vw3_lo = _mm256_cvtph_ps(_mm_loadu_si128(wp3_lo as *const __m128i));
+                        let vw3_lo = _mm256_loadu_ps(wp3_lo);
                         acc3_lo = _mm256_fmadd_ps(vs_lo, vw3_lo, acc3_lo);
                         let wp3_hi = w3.as_ptr().add((in_c + 1) * out_len + out_c);
-                        let vw3_hi = _mm256_cvtph_ps(_mm_loadu_si128(wp3_hi as *const __m128i));
+                        let vw3_hi = _mm256_loadu_ps(wp3_hi);
                         acc3_hi = _mm256_fmadd_ps(vs_hi, vw3_hi, acc3_hi);
                     },
                     {
                         let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
                         let wp0 = w0.as_ptr().add(in_c * out_len + out_c);
-                        let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i));
+                        let vw0 = _mm256_loadu_ps(wp0);
                         acc0_lo = _mm256_fmadd_ps(vs, vw0, acc0_lo);
                         let wp1 = w1.as_ptr().add(in_c * out_len + out_c);
-                        let vw1 = _mm256_cvtph_ps(_mm_loadu_si128(wp1 as *const __m128i));
+                        let vw1 = _mm256_loadu_ps(wp1);
                         acc1_lo = _mm256_fmadd_ps(vs, vw1, acc1_lo);
                         let wp2 = w2.as_ptr().add(in_c * out_len + out_c);
-                        let vw2 = _mm256_cvtph_ps(_mm_loadu_si128(wp2 as *const __m128i));
+                        let vw2 = _mm256_loadu_ps(wp2);
                         acc2_lo = _mm256_fmadd_ps(vs, vw2, acc2_lo);
                         let wp3 = w3.as_ptr().add(in_c * out_len + out_c);
-                        let vw3 = _mm256_cvtph_ps(_mm_loadu_si128(wp3 as *const __m128i));
+                        let vw3 = _mm256_loadu_ps(wp3);
                         acc3_lo = _mm256_fmadd_ps(vs, vw3, acc3_lo);
                     }
                 );
@@ -152,10 +151,10 @@ pub unsafe fn gemv_4gate_avx2(
 
                 for in_c in 0..in_len {
                     let s = *in_frame.get_unchecked(in_c);
-                    sum0 += s * f16_bits_to_f32_f16c(*w0.get_unchecked(in_c * out_len + out_c));
-                    sum1 += s * f16_bits_to_f32_f16c(*w1.get_unchecked(in_c * out_len + out_c));
-                    sum2 += s * f16_bits_to_f32_f16c(*w2.get_unchecked(in_c * out_len + out_c));
-                    sum3 += s * f16_bits_to_f32_f16c(*w3.get_unchecked(in_c * out_len + out_c));
+                    sum0 += s * w0.get_unchecked(in_c * out_len + out_c);
+                    sum1 += s * w1.get_unchecked(in_c * out_len + out_c);
+                    sum2 += s * w2.get_unchecked(in_c * out_len + out_c);
+                    sum3 += s * w3.get_unchecked(in_c * out_len + out_c);
                 }
 
                 *out_frame.get_unchecked_mut(out_c) = sum0;

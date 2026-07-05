@@ -23,13 +23,9 @@ prop_compose! {
         bias in prop::collection::vec(-1.0f32..1.0f32, 4 * out_len),
         out_len in Just(out_len),
         do_bias in Just(do_bias),
-    ) -> (Vec<u16>, Vec<u16>, Vec<u16>, Vec<u16>, Vec<u16>, Vec<f32>, usize, bool) {
+    ) -> (Vec<u16>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, usize, bool) {
         let bf16_in: Vec<u16> = in_frame.iter().map(|&v| f32_to_bf16_bits(v)).collect();
-        let bf16_w0: Vec<u16> = w0.iter().map(|&v| f32_to_bf16_bits(v)).collect();
-        let bf16_w1: Vec<u16> = w1.iter().map(|&v| f32_to_bf16_bits(v)).collect();
-        let bf16_w2: Vec<u16> = w2.iter().map(|&v| f32_to_bf16_bits(v)).collect();
-        let bf16_w3: Vec<u16> = w3.iter().map(|&v| f32_to_bf16_bits(v)).collect();
-        (bf16_in, bf16_w0, bf16_w1, bf16_w2, bf16_w3, bias, out_len, do_bias)
+        (bf16_in, w0, w1, w2, w3, bias, out_len, do_bias)
     }
 }
 

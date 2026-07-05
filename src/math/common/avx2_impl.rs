@@ -353,33 +353,14 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn gemv_overwrite_4gate(
-        in_frame: &[f32],
-        weights: &[u16],
-        bias: &[f32],
-        out_gates: &mut [f32],
-        hidden_size: usize,
-        do_bias: bool,
+        _in_frame: &[f32],
+        _weights: &[u16],
+        _bias: &[f32],
+        _out_gates: &mut [f32],
+        _hidden_size: usize,
+        _do_bias: bool,
     ) {
-        let ih = in_frame.len();
-        let stride = ih * hidden_size;
-        // SAFETY: arguments satisfy the function's documented invariants.
-        unsafe {
-            // We split the single contiguous weight matrix into 4 blocks (strides) corresponding to each gate:
-            // - weights[0..stride]: Input Gate weights.
-            // - weights[stride..2*stride]: Forget Gate weights.
-            // - weights[2*stride..3*stride]: Cell Candidate weights.
-            // - weights[3*stride..4*stride]: Output Gate weights.
-            super::super::gemm::gemv_4gate::gemv_4gate_avx2(
-                in_frame,
-                &weights[0..stride],
-                &weights[stride..2 * stride],
-                &weights[2 * stride..3 * stride],
-                &weights[3 * stride..4 * stride],
-                bias,
-                out_gates,
-                do_bias,
-            )
-        }
+        unreachable!("gemv_overwrite_4gate is unused; 4-gate dispatch uses direct kernel functions");
     }
 
     /// Equivalent to `gemv_overwrite_4gate` but processing input data represented
