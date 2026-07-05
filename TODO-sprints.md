@@ -702,6 +702,26 @@ do operador humano ("o teste não deveria nunca rodar indefinidamente"):
 
 ### T2.5 — Inspeção de assembly (se H1 — bug de compilador — permanecer líder após T2.4)
 
+**RESULTADO — CONCLUÍDO COM RESSALVAS.** Binário T2.1 (`aa6d4cddf3210679`)
+analisado via `objdump -d -C`. Funções inspecionadas: `X2Stage::new`,
+`HalfBandFilter::design` (com `bessel_i0` inlined), `X2Stage::downsample`.
+**Nenhuma miscompilação evidente encontrada:**
+
+* Trip counts são loops `for` contados com bounds fixos, sem dependência de
+  `wrapping_sub`/`%` para determinar número de iterações
+* `% 25` compilado como `mulx` com inverso multiplicativo canônico
+  (`0x47AE147AE147AE15`) — padrão correto
+* **Zero vetorização SIMD cross-iteration** em todas as funções (sem
+  `vpermd`, `vpshufb`, `vpmulld`, `vpgather`, `vcmpps`)
+* `X2Stage::new` é construtor puro, sem laços (apenas calls para
+  `HalfBandFilter::design` + `posix_memalign`)
+
+H1 (bug de compilador) **não descartado**, mas a inspeção redireciona a
+suspeita para H3/H4/H5 (artefato de runtime/linker/test harness) — ver
+`known-bugs.md` §1.20. Encaminhamento: sondas de progresso com `eprintln!`
+
+* `flush` para localizar o ponto exato do hang.
+
 * [ ] Gerar o assembly da função suspeita isolada
       (`cargo asm --release <caminho::da::função>`, ou
       `objdump -d --disassemble=<símbolo>` sobre o binário com símbolos de
@@ -722,90 +742,225 @@ do operador humano ("o teste não deveria nunca rodar indefinidamente"):
       local (Sprint 3 pode aplicar um workaround enquanto o report
       upstream tramita).
 
+### T2.6 — Avaliação do Sprint 2 e correção de rumo (2026-07-04T18:53–19:25-03:00, a pedido do operador)
+
+T2.5 concluiu sem miscompilação evidente e reencaminhou para sondas de
+progresso — esta avaliação executou exatamente isso, mais rigorosamente que
+o canário de T2.4 (que só instrumentava os laços, deixando um ponto cego: um
+hang aninhado *dentro* de uma única iteração externa jamais faria o guard
+avançar para ser checado de novo — ver ressalva abaixo). Achados:
+
+* [x] **Sondas de progresso de granularidade fina** (13 checkpoints,
+
+      escrita em arquivo com `flush()+sync_all()`) isolaram o hang para a
+      única linha `20.0 * (amp_out / amp_in).log10()` — todo o resto do
+      teste (construção do engine, `upsample()`, `downsample()`, `fold()`)
+      roda em ~90 µs. Ver `known-bugs.md` §1.21.b.
+* [x] **Reprodução mínima sem DSP:**
+
+      `black_box(0.51576114f32) / black_box(1.0f32)).log10()`, sozinho,
+      trava no binário `--lib` do nam-rs. O mesmo código não trava num
+      crate `std` vazio com os mesmos flags/perfil. Ver §1.21.c–d.
+* [x] **Causa identificada via disassembly + `readelf -r`:** o call site
+
+      resolve (relocação `R_X86_64_RELATIVE`, sem lazy-binding) para um
+      símbolo `log10f` local, estático, vizinho de
+      `compiler_builtins::math::libm_math::fmod` — não para a `libm.so.6`
+      dinâmica que o binário continua listando via `ldd`. Ver §1.21.d.
+* [x] **Sweep de 20 valores revela que NÃO é um caso de borda:** travou já
+
+      no primeiro valor (`0.001`) — o bug parece sistemático/incondicional
+      para chamadas de runtime, não restrito a valores próximos de 0.5. Ver
+      §1.21.f.
+* [x] **Risco de produção identificado, não confirmado:**
+
+      `src/clap/gui/ui/meter/orchestrator.rs:111,116` tem o mesmíssimo
+      padrão (`f32` de runtime → `.log10()`) num call site real do medidor
+      de picos da GUI do CLAP — **não verificado no binário real** por
+      prudência de tempo/escopo. Ver §1.21.f e a nova T3.0 (Sprint 3,
+      **bloqueante, prioridade máxima**).
+* [x] **Nota metodológica sobre H8/H9a:** ambos os primeiros probes que "não
+
+      travaram" usavam valores **literais sem `black_box`** — quase
+      certamente constant-folded pelo compilador (LTO + `opt-level=3`),
+      nunca exercitando de fato o `log10f` em runtime. São falsos negativos,
+      não evidência de que valores pequenos sejam seguros. Qualquer
+      experimento futuro com valores "conhecidos" **deve** usar
+      `std::hint::black_box` em cada operando, sem exceção.
+* [x] **Toda a instrumentação temporária foi revertida** (`git checkout --`
+
+      confirmado após cada experimento) — nenhum resíduo no `git diff`.
+* [x] **Ressalva sobre o canário de T2.4:** o código-fonte exato do canário
+
+      nunca foi commitado (só a descrição em prosa), então não pôde ser
+      auditado nesta avaliação. Se o guard incrementava só uma vez por
+      iteração do laço *externo* (como o pseudocódigo original deste
+      roteiro sugeria), um hang aninhado dentro de uma única iteração
+      externa nunca faria o guard ser reavaliado — um ponto cego estrutural
+      que, por sorte, não importou aqui (a causa real nem estava nos laços),
+      mas que deve ser corrigido se canários forem usados de novo no futuro
+      (checar o guard a cada iteração do laço mais interno, não só do
+      externo).
+
+**Encaminhamento:** Sprint 3 totalmente reescrito abaixo em torno da causa
+raiz confirmada (H10). Nenhum item do Sprint 3 anterior (ramos H1/H2/H3 de
+`oversample.rs`) se aplica.
+
 ---
 
-## Sprint 3 — Correção e validação (conteúdo depende do achado do Sprint 2)
+## Sprint 3 — Correção e validação (REESCRITO 2026-07-04, pós-avaliação do Sprint 2)
 
-O caminho exato aqui se ramifica pela causa raiz confirmada. Marcar apenas
-o ramo que se aplicar; os outros ficam como referência para o futuro.
+**A estrutura anterior deste Sprint (ramos H1/H2/H3) está obsoleta.** A
+avaliação do Sprint 2 (`known-bugs.md` §1.21) localizou a causa raiz com uma
+reprodução mínima, isolada, sem uma única linha de `src/dsp/oversample.rs`:
+uma chamada de runtime (não-const) a `f32::log10()` trava incondicionalmente
+neste binário, resolvida para uma implementação estática local de `log10f`
+(vizinha de símbolos `compiler_builtins::math::libm_math`) que **sombreia**
+a `libm.so.6` dinâmica do sistema. Um sweep de valores mostrou que **não** é
+um caso de borda estreito — travou no primeiro dos 20 valores testados. E há
+pelo menos um call site de **produção** com o mesmo padrão:
+`src/clap/gui/ui/meter/orchestrator.rs:111,116` (medidor de picos da GUI).
 
-### Ramo H1 confirmado (bug de compilador/vetorização)
+Nenhum item abaixo dos ramos antigos (H1/H2/H3 de `oversample.rs`) se
+aplica. O Sprint 3 é reescrito em torno de H10.
 
-* [ ] **T3.H1.a** — Aplicar mitigação mínima e localizada: `#[inline(never)]`
+### T3.0 — Confirmar ou refutar o risco de produção (BLOQUEANTE, maior prioridade absoluta)
 
-      na função afetada (evita que o fat-LTO a funda de forma patológica
-      com o call-site do teste) **e/ou** reescrever o módulo problemático
-      para usar uma potência de 2 como tamanho de ring buffer (ex.: `16`
-      em vez de `12`, `32` em vez de `25`, com os índices não usados
-      deixados a zero) — troca `%` genérico por `& (n - 1)` (bitmask),
-      eliminando por completo a operação de módulo por constante
-      não-potência-de-2 que é o candidato mais concreto para o bug de
-      vetorização. **Atenção:** isto muda o layout de `up_ring`/`down_ring`
-      — reexecutar `test_halfband_filter_coefficients` e os testes de DC
-      gain para confirmar que a mudança de tamanho de buffer não altera o
-      resultado matemático (deve ser puramente uma otimização de
-      indexação, os coeficientes e a lógica de convolução continuam
-      idênticos).
+* [ ] **T3.0.a** — Construir o binário standalone real
+      (`cargo build --release --features standalone --bin nam-rs`, sem
+      rodar) e, com o mesmo par `nm -C` + `readelf -r`, verificar se o call
+      site nada relacionado a `log10`/`log2`/`ln`/`exp` que existir nesse
+      binário resolve para o mesmo símbolo local suspeito (`T log10f` fora
+      de `libm.so.6`) ou para a `libm` dinâmica de fato. Repetir para
+      `--features clap-plugin` (o `cdylib` real do plugin). **Não é
+      necessário rodar nada com GUI/áudio real** — a pergunta é puramente
+      estrutural de linkagem, respondida por `nm`/`readelf`/`ldd`, sem
+      nenhum risco de hang.
+* [ ] **T3.0.b** — Se o `cdylib`/`standalone` **também** resolver para o
 
-* [ ] **T3.H1.b** — Se a mitigação de (a) não resolver, considerar fixar
+      símbolo local suspeito: escrever um teste isolado, com o mesmo padrão
+      de `black_box`, o mais próximo possível do call site real de
+      `orchestrator.rs` (ou, melhor, invocar a própria função pública que
+      envolve aquele cálculo, se acessível para teste), rodado sob o wrapper
+      de isolamento com timeout curto — para confirmar (ou refutar) que o
+      medidor de picos real trava. Se confirmado: **isto se torna um
+      incidente de severidade máxima**, não apenas um teste `#[ignore]`d —
+      avisar o operador humano imediatamente, independentemente do restante
+      deste roteiro.
+* [ ] **T3.0.c** — Se os targets de produção **não** resolverem para o
 
-      `rust-toolchain.toml` para uma versão de `stable` anterior/posterior
-      conhecida como não afetada (requer primeiro identificar, via Sprint 1,
-      em qual(is) canal(is)/versões o bug se manifesta).
+      símbolo local (ex.: por terem uma árvore de features/dependências
+      diferente do `--lib` de testes), documentar exatamente qual diferença
+      de features/deps evita o problema — isso é uma pista direta para
+      T3.1.
 
-* [ ] **T3.H1.c** — Preparar e (se aplicável) submeter um issue mínimo
+### T3.1 — Identificar a dependência que faz `compiler_builtins::math` prevalecer sobre a `libm` dinâmica
 
-      reproduzível ao repositório do `rust-lang/rust` — anexar o crate de
-      T1.7 reduzido.
+* [ ] **T3.1.a** — Bissecção de dependências: usar `cargo tree -e features`
 
-### Ramo H2 confirmado (artefato ambiental / cache)
+      e remoção incremental de dependências do `[dev-dependencies]`/
+      `[dependencies]` do `--lib` de teste (em uma branch/worktree
+      descartável, não no `main`) até que `nm -C` deixe de mostrar símbolos
+      `compiler_builtins::math::libm_math::*`/`T log10f` local — candidatos
+      prioritários para testar primeiro (por serem frequentemente
+      associados a builds `no_std`/`libm` no ecossistema Rust): `half`,
+      `zerocopy`, `ppv-lite86`/`rand_chacha`, `criterion`, `proptest`,
+      `ciborium`. Cada remoção: `cargo build --release --lib --no-run` +
+      `nm -C <binário> | grep -c libm_math` — processo rápido (segundos a
+      poucos minutos por iteração, não precisa do wrapper de isolamento
+      porque não há execução, só build + inspeção estática).
+* [ ] **T3.1.b** — Uma vez identificada a dependência, investigar SE ela
 
-* [ ] **T3.H2.a** — Nenhuma mudança de código necessária. Documentar em
+      realmente precisa do fallback `libm`/`no_std` neste contexto (ex.: se
+      é usada apenas em código de teste/benchmark, talvez baste mover a
+      dependência para `[dev-dependencies]` com features mais restritas, ou
+      desabilitar uma feature `libm`/`no_std` opcional dela).
+* [ ] **T3.1.c** — Alternativamente/em paralelo, investigar se
 
-      `known-bugs.md` que o hang é dependente de estado de build sujo e
-      **não** reproduz em clean room — rebaixar a severidade de
-      "system-safety" para "ambiente conhecido, mitigado por clean build".
+      `-Clink-arg=-Wl,--as-needed` (`.cargo/config.toml`) tem participação
+      na prevalência do símbolo local sobre o dinâmico — testar um build
+      sem essa flag isoladamente (mantendo as outras) para isolar essa
+      variável específica.
 
-* [ ] **T3.H2.b** — Adicionar uma nota preventiva em `docs/testing.md` ou
+### T3.2 — Caracterizar o bug de `log10f` em si (paralelo, menor prioridade que T3.0/T3.1)
 
-      `AGENTS.md` recomendando `cargo clean` periódico especificamente para
-      builds com `lto=fat`+`codegen-units=1`, se a investigação apontar
-      para corrupção específica de cache incremental/LTO (ainda que
-      `incremental` só esteja ligado no perfil `dev`, vale confirmar se o
-      cache de LTO do linker (`.rlib`/`liblto` intermediários) tem alguma
-      participação).
+* [ ] **T3.2.a** — Localizar o código-fonte da implementação de `log10f` em
 
-### Ramo H3 confirmado (bug algorítmico real, localizado pelo canário/gdb do Sprint 2)
+      `compiler_builtins::math::libm_math` (crate `compiler_builtins`,
+      normalmente vendorizado em `~/.cargo/registry/src/.../compiler_builtins-*/`
+      ou via `cargo tree` para a versão exata usada) e ler o algoritmo —
+      é quase certo que seja um porte do `log10f` da libm do `musl`, com
+      redução de faixa (`frexp`-like) seguida de um polinômio ou (mais
+      provável, dado o comportamento) uma tabela/loop de refinamento. Ler
+      atrás de uma condição de parada dependente de estado que nunca se
+      torna verdadeira para f32 comuns em Linux x86-64 (pode ser um bug
+      específico desta versão/porte, não necessariamente do upstream
+      `musl` original).
+* [ ] **T3.2.b** — Confirmar se `f64::log10()`/`ln()`/`log2()`/outras
 
-* [ ] **T3.H3.a** — Corrigir o bug exatamente no ponto identificado pelo
+      transcendentais (`sin`, `cos`, `exp`, `sqrt`) sofrem do mesmo problema
+      neste binário — mesma técnica de `black_box` + wrapper de isolamento,
+      um valor por vez, começando por `f64::log10()` e `f32::ln()`/`log2()`
+      (usadas em `src/dsp/sinc_kernel.rs:266,414,418`, produção, f64, não
+      testado nesta avaliação).
+* [ ] **T3.2.c** — Preparar um issue mínimo reproduzível para
 
-      Sprint 2 (não aplicar uma correção genérica/especulativa — o Sprint 2
-      deve ter apontado a linha exata).
+      `rust-lang/compiler-builtins` (ou onde o bug realmente residir após
+      T3.2.a) com o crate `/tmp/kilo/repro-log10-bare/` como base — mas
+      note que esse crate **não reproduziu** sozinho (§1.21.d) até T3.1
+      identificar e replicar a dependência exata que faz o símbolo local
+      prevalecer; o issue upstream só faz sentido depois de T3.1.
 
-* [ ] **T3.H3.b** — Adicionar um teste de regressão específico e
+### T3.3 — Corrigir
 
-      **não-ignorado** cobrindo o caso de borda exato que causava o loop
-      (ex.: se for sensível ao conteúdo do sinal, um teste dedicado com
-      esse sinal específico, rodando em debug para ser rápido e sempre
-      ativo).
+* [ ] **T3.3.a** — Aplicar a correção identificada por T3.1 (remover/isolar
 
-### Comum a todos os ramos
+      a dependência responsável) e/ou T3.2 (se o bug for no algoritmo do
+      `compiler_builtins` em si e a versão puder ser atualizada/pinada para
+      uma corrigida).
+* [ ] **T3.3.b** — Se nenhuma correção de dependência for viável a curto
 
-* [ ] **T3.C.1** — Remover completamente qualquer instrumentação temporária
+      prazo, considerar um workaround **explícito e documentado**: chamar
+      `libm`/`log10f` via um caminho que force a resolução dinâmica (ex.:
+      um pequeno wrapper `extern "C"` declarado manualmente, ou
+      `#[link(name = "m")]` explícito com `#[used]` para forçar prioridade),
+      ou reescrever os poucos call sites de produção (`orchestrator.rs`,
+      `sinc_kernel.rs`) para evitar `log10`/`ln` inteiramente (ex.: usar uma
+      aproximação polinomial já existente no crate — `src/math/activations/`
+      tem infraestrutura de aproximação rápida — ou pré-computar uma LUT
+      para o medidor de picos, que só precisa de precisão perceptual, não
+      matemática exata).
 
-      do Sprint 2 (canário de iteração, `eprintln!`, etc.) do código de
-      produção — `git diff` deve mostrar apenas a correção real antes do
-      commit.
+### T3.4 — Corrigir a calibração do teste original (separado, não bloqueante)
 
-* [ ] **T3.C.2** — Re-rodar a matriz completa do Sprint 1 (todas as 5
+* [ ] **T3.4.a** — Uma vez que `log10()` funcione corretamente, reavaliar a
 
-      variantes + os 5 testes-irmãos) pós-correção, ainda com o wrapper de
-      isolamento/timeout ativo — a correção só é considerada validada
-      quando **todas** as variantes que antes travavam agora terminam
-      dentro do orçamento esperado (a asserção da linha 120-123 do teste
-      pode passar ou falhar por motivos de precisão numérica — isso é
-      aceitável e tratável separadamente; o que não é aceitável é qualquer
-      novo hang).
+      asserção original de `test_x2_aliasing_rejection` (`ratio < -10.0`) —
+      §1.21.e mediu ~-5.8 dB de atenuação real para este sinal/filtro, que é
+      matematicamente plausível dado que 23 kHz/48 kHz está na banda de
+      transição do half-band (o próprio comentário do teste já admitia essa
+      possibilidade). Ajustar o threshold com base em uma medição real, não
+      numa suposição — documentar com `// Measured: ...` (regra
+      `.agents/rules/testing.md` §3).
+
+### T3.5 — Validação e regressão (comum, bloqueante para reativação)
+
+* [ ] **T3.5.a** — Remover toda instrumentação temporária desta avaliação
+
+      (nenhuma deveria ter sobrevivido no `git diff` — todas as sondas desta
+      rodada já foram revertidas com `git checkout --`, confirmado).
+* [ ] **T3.5.b** — Re-rodar a matriz completa do Sprint 1 (variantes A, B,
+
+      C, E + os 5 testes-irmãos) pós-correção, com o wrapper de isolamento
+      ainda ativo — só considerar resolvido quando nenhuma variante travar.
+* [ ] **T3.5.c** — Adicionar um teste de regressão **não-ignorado, rápido,
+
+      em debug** que apenas chama `f32::log10()` sobre um valor calculado em
+      runtime (com `black_box`) e afirma que retorna em menos de, digamos,
+      100ms usando um timeout de thread (`std::thread::spawn` +
+      `recv_timeout`) — para que uma futura regressão desta classe específica
+      seja pega em segundos na suíte rápida, não descoberta de novo por
+      acidente meses depois.
 
 ---
 

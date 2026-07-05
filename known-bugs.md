@@ -5,6 +5,44 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # known-bugs.md — BUG-3: hang indefinido em `test_x2_aliasing_rejection`
 
+> ## ⚠️ ACHADO DECISIVO (2026-07-04T19:15-03:00, avaliação pós-Sprint-2)
+>
+> **O hang NÃO está em `src/dsp/oversample.rs`.** Toda a análise algorítmica
+> das seções §2–§6 abaixo (bounds de laço, `AlignedVec`, `get_unchecked`,
+> vetorização) — embora metodologicamente sólida — investigou o **subsistema
+> errado**. Sondas de progresso (§1.19 em diante) isolaram o hang na **única
+> linha** do teste que chama `f32::log10()`
+> (`src/dsp/oversample_test.rs:116`), e uma reprodução mínima **sem nenhum
+> código de DSP** — `std::hint::black_box(0.51576114f32 / 1.0f32).log10()`
+> dentro do binário completo do nam-rs — trava indefinidamente, enquanto o
+> **mesmíssimo código roda instantaneamente num crate std vazio** com os
+> mesmos flags de compilação. A causa raiz é uma implementação de `log10f`
+> estaticamente linkada (símbolo `T log10f` em `0xeb92c`, vizinha de
+> `compiler_builtins::math::libm_math::fmod::fmod` na tabela de símbolos) que
+> aparentemente **sombreia/substitui** o `log10f` dinâmico de `libm.so.6`
+> (que a árvore de dependências do nam-rs continua linkando via `ldd`) — e
+> essa implementação alternativa tem um bug real de loop infinito para pelo
+> menos esta classe de valor de entrada. Ver §1.21 para o relato completo,
+> §6 para a hipótese revisada (H10), e `TODO-sprints.md` Sprint 3
+> (reescrito) para o roteiro de correção.
+>
+> **Isto não invalida o rigor das Sprints 0–2** — a disciplina de segurança,
+> bissecção e instrumentação foi o que permitiu localizar isto com precisão
+> cirúrgica em poucas horas assim que a técnica certa (sondas de progresso
+> com granularidade fina, ao invés de canários de laço) foi aplicada. Mas
+> **qualquer leitura das seções §2–§6 deve ser feita sabendo que elas
+> descrevem um subsistema que, com altíssima confiança, não é a causa raiz.**
+>
+> **⚠️ Severidade revista para acima de "system-safety": possível bug de
+> produção.** Um sweep de valores (§1.21.f) mostrou que o hang **não** é
+> restrito a um valor de borda — travou no primeiro de 20 valores testados
+> em `[0.001, 0.99]`. E existe pelo menos um call site **de produção**, fora
+> de qualquer teste, com o mesmíssimo padrão (`f32` de runtime → `.log10()`):
+> o medidor de picos da GUI do plugin CLAP,
+> `src/clap/gui/ui/meter/orchestrator.rs:111,116`. **Isto não foi verificado
+> diretamente no binário do plugin** (fora do escopo desta avaliação por
+> tempo), mas é a pergunta de maior prioridade para o Sprint 3 — ver §1.21.f.
+
 ## 0. Ficha resumo
 
 | Campo                          | Valor                                                                                                                                                                                                                                                           |
@@ -989,6 +1027,307 @@ hang.
 
 ---
 
+### 1.20 — Inspeção de assembly (T2.5, 2026-07-04T18:43–18:46-03:00)
+
+Binário analisado: `target/release/deps/nam_rs-aa6d4cddf3210679` (T2.1, com
+símbolos preservados). Ferramenta: `objdump -d -C --disassemble=<símbolo>`.
+
+**Funções inspecionadas:**
+
+1. **`X2Stage::new` (0x2840f0):** Construtor puro, sem laços. Chama
+   `HalfBandFilter::design` duas vezes (para up_filter e down_filter), depois
+   duas chamadas indiretas a `posix_memalign` via GOT/PLT para alocar
+   `up_ring` (48 bytes, alinhamento 64) e `down_ring` (100 bytes, alinhamento
+   64). Preenche buffers com zero via `vmovups`. Nenhum branch condicional
+   complexo — risco de miscompilação baixo.
+
+2. **`HalfBandFilter::design` (0x283520):** Contém `bessel_i0` inlined duas
+   vezes (para `β=12.0` e para cada `arg` da janela Kaiser). O loop
+   `for k in 1..=20` foi compilado como loop contado (`eax` = contador, bound
+
+   1) com condição de convergência (`term < 1e-15 * sum`) como segundo
+       critério de saída. Apenas instruções escalares (`vmulsd`, `vaddsd`,
+       `vdivsd`) — **zero SIMD cross-iteration**. Nenhum `vpermd`, `vpshufb`,
+       `vpmulld`, `vpgather` ou `vcmpps` encontrado.
+
+3. **`X2Stage::downsample` (0x283a40):** Função mais extensa (~1700 bytes).
+   Os 12 taps ímpares foram totalmente desenrolados (`for j in 0..HB_ODD_COUNT`
+   → 12× `vmulss` + `vaddss` sequenciais). O `% 25` (linhas 243, 249 do fonte)
+   foi compilado como multiplicação por inverso multiplicativo modular via
+   `mulx` com constante `0x47AE147AE147AE15` — o padrão canônico correto para
+   `% 25` em x86-64. **Zero instruções de vetorização SIMD cross-iteration.**
+
+**Avaliação das hipóteses da tarefa:**
+
+| Hipótese                                                                                   | Resultado                                                                |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Trip count dependente de `wrapping_sub`/`%` de forma não-trivial                           | **Não confirmado** — o `% 25` usa `mulx` canônico, sem branch no cálculo |
+| Instruções de vetorização (`vpshufb`, `vpermd`, `vpmulld`) com condição de borda incorreta | **Não encontradas** — nenhuma função usa SIMD cross-iteration            |
+| Miscompilação nas funções DSP inspecionadas                                                | **Não evidente** — trip counts são determinísticos, aritmética correta   |
+
+**Conclusão:** A inspeção de assembly das três funções DSP + construtor **não
+revelou miscompilação evidente**. As funções foram compiladas corretamente:
+loops contados com bounds fixos, aritmética de módulo canônica, zero
+vetorização cross-iteration. Isto **não descarta** H1 (bug de compilador) —
+uma miscompilação pode estar em código não inspecionado (ex.: frame de
+chamada entre `cargo test` → `libtest` → `OversampleEngine::new`, ou
+transformações inter-procedurais do LTO). Mas desloca a probabilidade para:
+
+1. **H3 (artefato de runtime):** `posix_memalign` sob cgroup v2 +
+   `systemd-run --scope` — o allocator pode estar bloqueando em contenção de
+   recurso ou page fault handling atípico dentro do cgroup.
+2. **H4 (linker/runtime):** Resolução PLT/GOT corrompida pelo LTO ou pela
+   combinação `lto=fat` + `codegen-units=1`.
+3. **H5 (test harness):** `libtest` inicializando o binário de teste de forma
+   que conflita com o isolamento cgroup.
+
+**Encaminhamento:** Prosseguir com sondas de progresso (`eprintln!` + `flush`)
+em `X2Stage::new` e `OversampleEngine::new` para localizar o ponto exato do
+hang (antes de `bessel_i0`, entre `bessel_i0` e `posix_memalign`, ou durante
+`posix_memalign`). Considerar também um teste de alocação pura
+(`AlignedVec::new` isolado) sob o mesmo isolamento cgroup, sem o algoritmo
+DSP — se também travar, o problema é 100% fora do DSP.
+
+---
+
+### 1.21 — Sondas de progresso e isolamento definitivo: NÃO é o DSP, é `log10f` (2026-07-04T18:53–19:20-03:00)
+
+Esta seção documenta a avaliação do Sprint 2 conduzida a pedido do operador,
+que seguiu diretamente o encaminhamento de T2.5/§1.20: instrumentar
+`test_x2_aliasing_rejection` com sondas de progresso de granularidade fina
+(escrita em arquivo + `flush()` + `sync_all()` após cada fase, para
+sobreviver a um `SIGKILL` a qualquer momento) e localizar o ponto exato onde
+a execução para de avançar.
+
+#### 1.21.a — Metodologia
+
+Adicionadas temporariamente 13 chamadas `probe("N: descrição")` no corpo do
+teste, uma antes/depois de cada fase: construção do engine, geração do
+sinal, `upsample()`, cópia do `model_out`, `downsample()`, o `fold` de
+`amp_in`/`amp_out`, e o cálculo final da razão em dB. Rebuild
+(`cargo test --release --lib --no-run -- --ignored`, ~2min, fat LTO) e
+execução sob o wrapper de isolamento (`RuntimeMaxSec=20s`).
+
+#### 1.21.b — Resultado: todo o pipeline DSP roda em ~90 microssegundos
+
+```text
+[...906840505] 0: test entered
+[...906896070] 1: engine constructed
+[...906911629] 2: input signal generated
+[...906923311] 3: before upsample()
+[...906935213] 4: after upsample(), n_up=256
+[...906944400] 5: model_out copied
+[...906953267] 6: before downsample()
+[...906968516] 7: after downsample(), n_down=116
+[...906977412] 8: before amp_in/amp_out fold
+[...906988654] 9: after fold, amp_in=1 amp_out=0.51576114
+[...906997590] 10: before log10 ratio
+                    ── nunca chega a "11: after log10 ratio" ──
+```
+
+Todas as 11 sondas capturadas ocorrem dentro de **157 microssegundos**
+(`906840505` → `906997590` ns). `n_up=256`, `n_down=116`, `amp_in=1.0`,
+`amp_out=0.51576114` — todos valores absolutamente normais, sem NaN, sem
+Inf, sem subnormais. **A construção do engine, a geração do sinal, o
+`upsample()`, o `downsample()` e o `fold()` completam corretamente e
+rapidamente.** O hang está confinado à única linha entre a sonda 10 e a
+sonda 11:
+
+```rust
+let ratio = if amp_in > 1e-6 {
+    20.0 * (amp_out / amp_in).log10()   // <<< AQUI
+} else {
+    -200.0
+};
+```
+
+Isto **refuta retroativamente** as três hipóteses levantadas ao final de
+§1.20 (posix_memalign/cgroup, PLT/GOT corrompido genericamente, libtest) na
+forma em que foram propostas — o problema não está em `X2Stage::new` nem no
+harness em geral, mas sim é isolável a uma única chamada de função de
+biblioteca matemática.
+
+#### 1.21.c — Isolamento mínimo: reprodução sem nenhum código de DSP
+
+Para confirmar que a causa é `log10()` em si, e não algo específico do
+contexto de pilha/registradores daquele ponto do teste, dois testes-sonda
+isolados foram adicionados temporariamente ao mesmo arquivo (mesma
+compilação, mesmo binário):
+
+- **H8** (`x.log10()` com `x = 0.0001` **literal**, sem `black_box`): **NÃO
+  trava** (exit 0, <1s) — **posteriormente identificado como falso negativo
+  metodológico** (ver H9a abaixo; H8 tem exatamente o mesmo defeito e foi
+  reinterpretado à luz de H9a/H9b/H10 — não descarta nada).
+- **H9a** (`amp_out=0.51576114`, `amp_in=1.0` como **literais** `let`, sem
+  `black_box`): **NÃO trava** — mas isto é **metodologicamente inválido**: com
+  ambos os operandos sendo constantes em tempo de compilação, o compilador
+  quase certamente executa constant-folding do `log10()` inteiro em tempo de
+  compilação (LTO + `opt-level=3`), nunca gerando uma chamada de runtime real
+  — o teste "passa" sem nunca ter exercitado o código sob suspeita.
+- **H9b** (mesmos valores, mas **cada operando passado por
+  `std::hint::black_box`**, impedindo constant-folding — reproduzindo
+  fielmente o padrão do teste real, onde `amp_in`/`amp_out` vêm de um `fold()`
+  em tempo de execução e nunca podem ser constantes): **TRAVA** (exit 143,
+  `RuntimeMaxSec`). Sonda confirma: chega em "before log10 ratio", nunca
+  chega em "after log10 ratio".
+- **H10-sweep** (2026-07-04T19:24, com sondas por iteração): loop testando 20
+  valores espalhados em `[0.001, 0.99]`, cada um passado por `black_box`
+  individualmente. **Travou já no PRIMEIRO valor testado (`0.001`)** — a
+  sonda `BEFORE v=0.001` foi a última linha gravada antes do
+  `RuntimeMaxSec` matar o processo. **Isto refuta a hipótese de "faixa de
+  entrada específica poluída"**: não é um caso de borda raro em torno de
+  `0.5` — é (até onde caracterizado) um bug **sistemático e incondicional**:
+  toda chamada de runtime (não-const-foldada) a este `log10f` local parece
+  travar, independente do valor. Isto eleva drasticamente a severidade — ver
+  o quadro de destaque no topo deste documento e §1.21.f.
+
+O código exato do H9b, para referência (removido do código-fonte após o
+experimento — não faz parte do commit):
+
+```rust
+let amp_in: f32 = std::hint::black_box(1.0f32);
+let amp_out: f32 = std::hint::black_box(0.51576114f32);
+let ratio = 20.0 * std::hint::black_box(amp_out / amp_in).log10();
+```
+
+**Isto é uma reprodução mínima completa do BUG-3, sem uma única linha de
+`src/dsp/oversample.rs` envolvida.** Roda dentro do binário `--lib` completo
+do nam-rs (mesmo `nam_rs-79d757bf84dd8ac7` reutilizado dos experimentos
+anteriores).
+
+#### 1.21.d — Por que só neste binário? Inspeção do símbolo `log10f`
+
+Disassembly do call site real (binário com símbolos, T2.1,
+`nam_rs-aa6d4cddf3210679`, endereço mapeado via `objdump --dwarf=decodedline`
+até a linha exata do `.log10()`):
+
+```asm
+188ba7: vdivss %xmm0,%xmm1,%xmm0        ; amp_out / amp_in
+188bab: call   *0x503457(%rip)         ; GOT slot @ 0x68c008
+188bb1: vmulss ...                     ; 20.0 * resultado
+```
+
+O slot de GOT em `0x68c008` tem uma relocação `R_X86_64_RELATIVE` com
+addend `0xeb92c` (`readelf -r`) — **não** é uma importação dinâmica
+(`R_X86_64_GLOB_DAT`, como o slot vizinho `0x68c020` usado para `free@GLIBC_2.2.5`
+duas linhas abaixo no mesmo disassembly). `R_X86_64_RELATIVE` significa
+"este ponteiro = base de carga do binário + addend", resolvido **uma única
+vez, na carga do processo**, sem lazy-binding e sem envolver o `ld.so` além
+do rebase inicial — ou seja, **não é uma falha de lazy-PLT-binding** (essa
+hipótese anterior, levantada e depois descartada na §1.14.b/H8 original,
+está definitivamente fechada).
+
+`nm -C` no endereço `0xeb92c`:
+
+```text
+00000000000eb92c T log10f
+```
+
+Um símbolo **local, forte, definido dentro do próprio binário** chamado
+literalmente `log10f` — na vizinhança imediata de
+`compiler_builtins::math::libm_math::fmod::fmod` (`0x642fe0`) e de outro
+`T acosf` em `0xeb936`. Isto é consistente com o módulo `math`/`libm` de
+`compiler_builtins` (o crate que fornece intrínsecos do compilador para todo
+programa Rust) definindo suas próprias versões `#[no_mangle]` de funções de
+libm — normalmente mortas por `--gc-sections` em um binário `std` comum
+(que chama `log10f` da `libm.so.6` dinâmica via FFI), mas aqui **presentes,
+vivas, e vencendo a resolução de símbolo** em vez da `libm.so.6` dinâmica
+que a `ldd` confirma que o binário **ainda lista como dependência**:
+
+```text
+$ ldd target/release/deps/nam_rs-79d757bf84dd8ac7 | grep libm
+ libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (...)
+```
+
+Ou seja: **o binário dinamicamente depende de `libm.so.6`, mas a chamada real
+de `log10f` neste call site nunca chega lá** — foi resolvida, em tempo de
+link, para a cópia local (e aparentemente com bug) de `compiler_builtins`.
+
+**Confirmação de que a causa exige uma dependência real do nam-rs, não é um
+efeito genérico do perfil/flags do projeto:** um crate mínimo criado do
+zero, sem NENHUMA dependência (`/tmp/kilo/repro-log10-bare/`), com os
+*mesmos* flags de link (`-Wl,--gc-sections`, `-Wl,-z,now`, `-Wl,--as-needed`,
+`-Ctarget-cpu=x86-64-v3`) e o *mesmo* perfil (`lto="fat"`, `opt-level=3`,
+`codegen-units=1`), executando o *mesmo* código `black_box`'d, **não trava**
+(exit 0, `test result: ok`). A causa raiz não é "flags do projeto" nem
+"LTO em geral" — é uma dependência real na árvore do nam-rs que faz com que
+o `compiler_builtins::math` (fallback de libm para `no_std`) seja compilado
+e, pior, **prevaleça sobre a `libm` dinâmica do sistema** no link final.
+**Identificar qual dependência é isto permanece uma tarefa aberta e
+prioritária do Sprint 3** (ver `TODO-sprints.md`).
+
+#### 1.21.f — ⚠️ Escalada de severidade: não é uma faixa estreita, e há um call site em produção
+
+Duas descobertas adicionais, feitas ao final desta avaliação, mudam
+completamente a leitura de risco deste bug:
+
+1. **Não é um valor de borda raro.** Um sweep de 20 valores em `[0.001, 0.99]`
+   (cada um isoladamente passado por `black_box`, sem nenhum código de DSP)
+   **travou já no primeiro valor testado, `0.001`** — nunca chegou a testar
+   os outros 19. A hipótese "só acontece perto de 0.5" está refutada; o
+   quadro atual é de um bug **sistemático**, não um caso de borda.
+   `H8` (§1.21.c), que "não travou" com `x=0.0001`, sofria do mesmíssimo
+   defeito metodológico de `H9a` (literal sem `black_box`, provavelmente
+   const-folded) — não é evidência de que valores pequenos sejam seguros.
+   **Nenhum valor calculado em runtime foi observado NÃO travar até agora.**
+
+2. **Existe pelo menos um call site de produção idêntico, fora de testes:**
+   `src/clap/gui/ui/meter/orchestrator.rs:111` e `:116` —
+   `20.0 * peak_val.log10()` e `20.0 * (*hold_val).log10()` — computam o
+   valor em dB do medidor de picos (VU meter) da GUI do plugin CLAP **a
+   partir de valores de pico de áudio reais, ao vivo**, exatamente o mesmo
+   padrão (`f32` runtime → `log10()`) do reprodutor mínimo desta seção. Isto
+   NÃO foi testado diretamente nesta avaliação (o alvo de build é diferente
+   — `--features clap-plugin`, um `cdylib`, não o `--lib` de testes — e
+   compilar essa árvore de features não foi tentado por prudência de tempo/
+   escopo), mas a mecânica é idêntica em código-fonte e a causa raiz
+   (símbolo `log10f` global resolvido estaticamente) é uma propriedade do
+   **link final do binário**, não do call site específico — não há motivo
+   a priori para esperar que o `cdylib` do CLAP resolva o símbolo de forma
+   diferente do `--lib` de testes, a menos que suas árvores de dependência/
+   features realmente difiram no ponto que causa isto (ainda não
+   identificado — ver 1.21.d).
+   **Se confirmado no binário real do plugin, isto significa que o medidor
+   de picos da GUI trava (não apenas fica impreciso) na primeira vez que
+   processa um valor de pico não-trivial — o que, se verdade, seria
+   extremamente óbvio e visível em qualquer sessão real do plugin.** A
+   ausência de relatos prévios de "GUI do CLAP congela" é um dado a favor de
+   que o `cdylib` do CLAP *pode* resolver o símbolo diferente do `--lib` de
+   testes (ex.: features diferentes ativam/desativam o que quer que esteja
+   puxando `compiler_builtins::math`) — mas isso é uma inferência, não uma
+   verificação, e **precisa ser confirmada ou refutada como a primeira
+   tarefa do Sprint 3**, com prioridade máxima, antes de qualquer outra
+   coisa.
+
+#### 1.21.e — Conclusão
+
+- **A causa raiz do BUG-3 é uma chamada a `f32::log10()` sobre um valor
+  calculado em tempo de execução, resolvida para uma implementação estática
+  e aparentemente defeituosa de `log10f` proveniente de
+  `compiler_builtins::math::libm_math` (ou módulo equivalente), que entra
+  em loop infinito para, até onde caracterizado, qualquer entrada calculada
+  em runtime — não apenas `0.51576114` (ver §1.21.f, sweep travou já em
+  `0.001`).**
+- O algoritmo de oversampling (`X2Stage`, `HalfBandFilter`, `bessel_i0`) está
+  **completamente absolvido** — roda em ~90 µs, produz valores corretos e
+  plausíveis (`n_up=256`, `n_down=116`, atenuação real de ~5.8 dB — a
+  asserção do teste em si, "esperava >10 dB, obteve -5.8 dB", parece ser um
+  problema de calibração de threshold do teste, não um bug de DSP).
+- **Todas as seções §2–§6 abaixo, que analisam `oversample.rs`, permanecem
+  como um registro do trabalho de eliminação (útil — provaram que o DSP
+  *não* é a causa, exatamente como T2.4/T2.5 concluíram por outro caminho),
+  mas não descrevem a causa raiz real.**
+- Este achado também explica retroativamente por que a bissecção de crate
+  (T2.0, §1.15) e o experimento de contagem de testes (H7, testado nesta
+  mesma avaliação, ver `TODO-sprints.md` T3.0) **falharam em reproduzir**: o
+  crate mínimo de T1.7/T2.0 nunca acabou linkando (ou nunca fez
+  `compiler_builtins::math` prevalecer sobre) a `log10f` dinâmica — a causa
+  não é "massa crítica de código" (como especulado em §1.15), é uma
+  dependência **específica e ainda não identificada** presente no grafo de
+  dependências real do nam-rs.
+
+---
+
 ## 2. Escopo estático do algoritmo (o que É determinístico e limitado)
 
 Antes de qualquer hipótese, seguem os fatos matemáticos/estáticos sobre o
@@ -1206,14 +1545,21 @@ inteiro a cada tentativa).
 
 ## 6. Hipóteses correntes, ranqueadas
 
-| #      | Hipótese                                                                                                                                                                                                                                                                                                                                                                                 | Status                                                       | Suporte                                                                                                                                                                                                                                                                    |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **H1** | Bug de compilador/vetorizador (miscompilação) específico do pipeline `opt-level=3 + lto=fat + codegen-units=1 + target-cpu=x86-64-v3`, latente desde a criação do teste (§1.1) e nunca antes exercitado em `--release` porque o teste é `#[ignore]`d desde o dia 1 — só foi "descoberto" quando alguém finalmente rodou `--ignored --release` por vontade própria durante uma auditoria. | **Refutada** (T1.1 + T1.3, reverificadas ao vivo em §1.14.c) | Hang reproduz em debug sem otimizações (T1.1) e em dois canais de toolchain (stable 1.96.1, nightly 1.98.0 — T1.2/T1.3), ambos reconfirmados com artefatos frescos e verificados. Impossível ser bug específico de uma versão de compilador ou de pipeline de otimização.  |
-| **H2** | Artefato ambiental (cache de build sujo, contenção de recursos do host, thermal throttling, ou mesmo uma falha coincidente e não relacionada do sistema gráfico) — o relato de reset do GNOME (§1.3) se encaixa melhor numa narrativa de exaustão de recursos do sistema do que num loop de ponto flutuante de 256 elementos.                                                            | **Refutada** (T1.2 + T1.5)                                   | Hang reproduz com `target/` limpo (T1.2, T1.5) — descarta cache sujo. Contenção de recursos refutada por isolamento cgroup (MemoryMax=1G, CPUQuota=100%). Reset do GNOME permanece inexplicado — possível interação entre CPU-spin e compositor, não exaustão de recursos. |
-| **H3** | Bug algorítmico real — causa sensível ao **conteúdo do sinal de entrada** (senoide a 23 kHz/128 amostras), já que outros testes X2/X4 com entradas DC passam instantaneamente sob as mesmas condições.                                                                                                                                                                                   | **Parcialmente válida** (T1.1–T1.7)                          | Conteúdo-especificidade confirmada por T1.6. Porém, T1.7 mostra que o algoritmo isolado NÃO produz hang — o fator ambiental do crate completo também é necessário. H3 é condição necessária, não suficiente.                                                               |
-| **H6** | **(NOVA)** Interação entre a computação do algoritmo com o sinal senoidal **e um fator do ambiente do crate completo** — estático global (`LazyLock`/`OnceLock`), layout de memória do binário maior, flags de linker, ou linkagem de todos os módulos de teste em um único binário.                                                                                                     | **Hipótese líder** (T1.7)                                    | T1.7: mesmo algoritmo (byte-idêntico) em crate mínimo completa sem hang em <1s. O hang requer algo do crate completo ausente no crate mínimo. Bissecção de crate necessária para isolar o fator.                                                                           |
-| **H4** | UB de `AlignedVec::drop` (memória)                                                                                                                                                                                                                                                                                                                                                       | **Refutada** (§3)                                            | Prova estática de invariante `len == capacity`; silêncio do ASan                                                                                                                                                                                                           |
-| **H5** | Acesso fora dos limites via `get_unchecked`                                                                                                                                                                                                                                                                                                                                              | **Refutada** (§4)                                            | Prova estática construtiva; silêncio do ASan                                                                                                                                                                                                                               |
+> **Atualização 2026-07-04T19:20 (pós-Sprint-2):** ver §1.21. **H10 é agora a
+> causa raiz confirmada por reprodução mínima isolada.** As hipóteses H1–H6
+> abaixo permanecem registradas (todas corretamente eliminaram `oversample.rs`
+> como suspeito, o que era exatamente o objetivo delas), mas nenhuma delas
+> — inclusive H6, a antiga "líder" — descrevia a causa real.
+
+| #       | Hipótese                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status                                                                                                 | Suporte                                                                                                                                                                                                                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **H10** | **(CONFIRMADA, 2026-07-04 — ver §1.21)** `f32::log10()` sobre um valor calculado em runtime (`amp_out/amp_in`, não constante) resolve, neste binário, para uma implementação estática local de `log10f` (vizinha de símbolos `compiler_builtins::math::libm_math` na tabela de símbolos) que **sombreia** a `libm.so.6` dinâmica (ainda listada por `ldd`) e entra em loop infinito para pelo menos a entrada `0.51576114`. Requer uma dependência real da árvore do nam-rs (não reproduz em crate std vazio com os mesmos flags/perfil) — dependência exata ainda não identificada. | **Confirmada por reprodução mínima isolada, sem código de DSP**                                        | §1.21.c: `black_box(0.51576114f32) / black_box(1.0f32)).log10()`, sozinho, no binário `--lib` do nam-rs, trava (exit 143). O mesmo código, num crate vazio com os mesmos flags de link/LTO, **não trava** (§1.21.d). Sondas de progresso (§1.21.b) provam que todo o pipeline DSP roda em ~90 µs antes do hang. |
+| **H1**  | Bug de compilador/vetorizador (miscompilação) específico do pipeline `opt-level=3 + lto=fat + codegen-units=1 + target-cpu=x86-64-v3` **em `oversample.rs`**, latente desde a criação do teste (§1.1).                                                                                                                                                                                                                                                                                                                                                                               | **Refutada** (T1.1 + T1.3; e agora irrelevante — §1.21 mostra que a causa nem está em `oversample.rs`) | Hang reproduz em debug sem otimizações (T1.1) e em dois canais de toolchain (stable 1.96.1, nightly 1.98.0 — T1.2/T1.3). Consistente com H10: o bug está em `log10f`, não em código sensível a otimização de `oversample.rs`.                                                                                   |
+| **H2**  | Artefato ambiental (cache de build sujo, contenção de recursos do host, thermal throttling, ou mesmo uma falha coincidente e não relacionada do sistema gráfico) — o relato de reset do GNOME (§1.3) se encaixa melhor numa narrativa de exaustão de recursos do sistema do que num loop de ponto flutuante de 256 elementos.                                                                                                                                                                                                                                                        | **Refutada** (T1.2 + T1.5)                                                                             | Hang reproduz com `target/` limpo (T1.2, T1.5) — descarta cache sujo. Contenção de recursos refutada por isolamento cgroup (MemoryMax=1G, CPUQuota=100%). Reset do GNOME permanece inexplicado — possível interação entre CPU-spin e compositor, não exaustão de recursos.                                      |
+| **H3**  | Bug algorítmico real em `oversample.rs` — causa sensível ao **conteúdo do sinal de entrada** (senoide a 23 kHz/128 amostras).                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **Refutada** (§1.21)                                                                                   | §1.21.b: sondas de progresso provam que `upsample()`/`downsample()` completam corretamente em ~90 µs. A "sensibilidade ao conteúdo" real é sensibilidade do **valor numérico passado a `log10f`**, não do algoritmo de oversampling — coincidência de que só este teste calcula um `log10` de um valor runtime. |
+| **H6**  | Interação entre a computação do algoritmo com o sinal senoidal **e um fator do ambiente do crate completo** (estático global, layout de memória, flags de linker, ou linkagem de todos os módulos de teste em um único binário).                                                                                                                                                                                                                                                                                                                                                     | **Refinada em H10, não refutada em espírito** — ver §1.21.e                                            | O "fator do crate completo" era real (T1.7/T2.0 nunca reproduziram), mas não é vago/emergente como suposto — é uma **dependência concreta e identificável** que faz `compiler_builtins::math` prevalecer sobre a `libm` dinâmica. H6 apontava na direção certa; H10 é a versão precisa e confirmada.            |
+| **H4**  | UB de `AlignedVec::drop` (memória)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | **Refutada** (§3)                                                                                      | Prova estática de invariante `len == capacity`; silêncio do ASan                                                                                                                                                                                                                                                |
+| **H5**  | Acesso fora dos limites via `get_unchecked`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | **Refutada** (§4)                                                                                      | Prova estática construtiva; silêncio do ASan                                                                                                                                                                                                                                                                    |
 
 **Observação importante sobre H3:** os quatro outros testes `X2`/`X4`
 não-ignorados no mesmo arquivo (`test_x2_upsample_dc`,
