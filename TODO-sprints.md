@@ -21,7 +21,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **Estimativa**: ~3-4h
 > **Ref**: Finding F-Q2
 
-### Tarefa SQ1.1 — Criar `utils/quality-dashboard.sh`
+### Tarefa SQ1.1 — Criar `utils/quality-dashboard.sh` [DONE]
 
 **Descrição**: Script bash que roda **todas** as suítes de fidelidade e benchmarks de performance existentes, captura seus outputs, e gera um relatório humano-friendly cobrindo o universo completo do nam-rs.
 
