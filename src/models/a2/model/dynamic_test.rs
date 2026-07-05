@@ -48,7 +48,7 @@ fn test_wavenet_a2_dyn_new_ch3() {
     assert!(!model.head_accum.is_empty());
     assert!(!model.layer_buffers.is_empty());
     assert_eq!(model.layer_buffers.len(), A2_NUM_LAYERS);
-    assert_eq!(model.rechannel_w.len(), 3);
+    assert_eq!(model.rechannel_w_f32.len(), 3);
     assert_eq!(model.layer_in.len(), 3 * model.max_buffer_size);
     assert!(!model.head1x1_active);
 }

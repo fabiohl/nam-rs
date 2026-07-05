@@ -409,7 +409,7 @@ devem continuar disponíveis para AVX2/AVX-512/VNNI em geral.
 
 **Conclusão (2026-07-05)**: Macro `define_lstm_process!` simplificada — removidos parâmetros `$simd_math`, `$gemv_4gate_bf16`, `$is_bf16` e todos os branches BF16 (f32→bf16, GEMV bf16, store_bf16, tail bf16). Variante `process_sample_avx512_vnni_bf16` removida de `layer_kernels.rs`, `layer_dyn_kernels.rs`, `model1.rs`, `model2.rs` e `model_dyn.rs`. Dispatch em todos os modelos agora mapeia `Avx512VnniBf16 → process_avx512` (o ISA tier e a `Avx512VnniBf16Math` permanecem intactos no `dispatch_simd!` global para consumidores não-LSTM). `process_sample_scalar` perdeu o parâmetro `_is_bf16` (já não usado). `cargo check` limpo de erros LSTM; 6 erros remanescentes são pré-existentes de SQ4.3 (dispatchers GEMV com `&[u16]`).
 
-### Tarefa SQ4.6 — Adaptar process kernels do A2
+### Tarefa SQ4.6 — Adaptar process kernels do A2 [DONE]
 
 **Descrição**: O A2 `process.rs` (estático) usa o `rechannel_w` quantizado a u16. Adaptar para ler
 f32. **Correção**: os pesos de convolução do A2 já são `f32` nativo (nunca foram quantizados —
@@ -423,9 +423,11 @@ ver SQ3.2); esta tarefa não precisa tocar neles. No A2 dinâmico, `rechannel_w`
 
 **Critério de aceite**:
 
-- [ ] A2 estático compila e roda com `rechannel_w` em f32
-- [ ] A2 dinâmico não referencia mais um campo `rechannel_w` u16 morto
-- [ ] Sem referência a u16 em pesos de A2 (estático ou dinâmico)
+- [x] A2 estático compila e roda com `rechannel_w` em f32
+- [x] A2 dinâmico não referencia mais um campo `rechannel_w` u16 morto
+- [x] Sem referência a u16 em pesos de A2 (estático ou dinâmico)
+
+**Conclusão (2026-07-05)**: `WaveNetA2<CH>` tinha dois campos `rechannel_w` e `rechannel_w_f32`, ambos `AlignedVec<f32>` — o `process.rs` já usava só `rechannel_w_f32`, então `rechannel_w` era um campo redundante (resquício da migração f16→f32). Removido o campo `rechannel_w` da struct, da inicialização em `new()` e da atribuição em `set_weights()`. Testes de modelo (`model_test.rs:147`, `dynamic_test.rs:51`) atualizados para referenciar `rechannel_w_f32`. Zero novas referências a `u16` em pesos A2. `cargo check` sem novos erros (6 erros pré-existentes de SQ4.3).
 
 ### Tarefa SQ4.7 — Compilação verde + testes unitários
 

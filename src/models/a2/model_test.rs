@@ -144,7 +144,7 @@ fn test_wavenet_a2_default_creates_valid_model() {
     assert!(model.receptive_field_size > 0);
     assert!(!model.head_accum.is_empty());
     assert!(!model.layer_buffers.is_empty());
-    assert_eq!(model.rechannel_w.len(), 3);
+    assert_eq!(model.rechannel_w_f32.len(), 3);
     assert_eq!(model.layer_buffers.len(), A2_NUM_LAYERS);
     assert_eq!(model.layer_ring_sizes.len(), A2_NUM_LAYERS);
     assert_eq!(model.layer_lookbacks.len(), A2_NUM_LAYERS);

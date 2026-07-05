@@ -191,8 +191,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         }
 
         // ── 6. Commit to self (all-or-nothing) ──────────────────────────────
-        self.rechannel_w_f32 = rechannel_w.clone();
-        self.rechannel_w = rechannel_w;
+        self.rechannel_w_f32 = rechannel_w;
         self.layers = layers;
         self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, CH));
 

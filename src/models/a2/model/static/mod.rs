@@ -51,9 +51,6 @@ pub struct WaveNetA2<const CH: usize> {
     pub layers: Vec<A2Layer>,
 
     /// Input rechannel weights: `Conv1x1(1 → CH)` (no bias).
-    pub rechannel_w: AlignedVec<f32>,
-
-    /// Input rechannel weights (pre-decoded f32).
     pub rechannel_w_f32: AlignedVec<f32>,
 
     /// Head convolution (K=16 over skip-connection accumulator, bias, head_scale).
@@ -136,7 +133,6 @@ impl<const CH: usize> WaveNetA2<CH> {
 
         Ok(Self {
             layers: Vec::with_capacity(A2_NUM_LAYERS),
-            rechannel_w: AlignedVec::new(CH, 0.0f32),
             rechannel_w_f32: AlignedVec::new(CH, 0.0f32),
             head_conv: None,
             head_accum: AlignedVec::new(head_ring_size * CH, 0.0f32),
