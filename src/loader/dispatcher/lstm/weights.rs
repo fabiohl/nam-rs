@@ -5,20 +5,18 @@ use std::mem::size_of;
 
 use super::super::WeightCursor;
 use crate::loader::dispatcher::checked_arith;
-use crate::math::common::quantize_weight;
 use crate::models::lstm::{LstmLayer, LstmLayerDyn};
 
-/// Fills `output` (buffer of `u16` with size `4 * hidden * (input + hidden)`)
-/// with the LSTM weights quantized from `raw` (`f32` slice already read from the cursor).
+/// Fills `output` (buffer of `f32` with size `4 * hidden * (input + hidden)`)
+/// with the LSTM weights read from `raw` (`f32` slice already read from the cursor).
 ///
 /// Applies layout transposition when needed (Original → GateMajor).
 pub(crate) fn read_lstm_weights_into(
     raw: &[f32],
-    output: &mut [u16],
+    output: &mut [f32],
     is_gate_major: bool,
     hidden: usize,
     input: usize,
-    is_bf16: bool,
 ) {
     let ih = input + hidden;
     debug_assert!(
@@ -26,16 +24,14 @@ pub(crate) fn read_lstm_weights_into(
         "raw slice too short for LSTM weights"
     );
     if is_gate_major {
-        for i in 0..output.len() {
-            output[i] = quantize_weight(raw[i], is_bf16);
-        }
+        output.copy_from_slice(&raw[..output.len()]);
     } else {
         for k in 0..4 {
             let gate_offset = k * hidden * ih;
             for i in 0..hidden {
                 for j in 0..ih {
                     let v = raw[k * ih * hidden + i * ih + j];
-                    output[gate_offset + j * hidden + i] = quantize_weight(v, is_bf16);
+                    output[gate_offset + j * hidden + i] = v;
                 }
             }
         }
@@ -53,7 +49,6 @@ pub(crate) fn read_lstm_weights_into(
 /// ```
 pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: usize>(
     cursor: &mut WeightCursor<'_>,
-    is_bf16: bool,
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
@@ -64,16 +59,16 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
     let is_gate_major = cursor.is_gate_major_lstm();
 
     let expected_len = H4 * IH;
-    let actual_len = size_of::<[[[u16; H]; IH]; 4]>() / size_of::<u16>();
+    let actual_len = size_of::<[[[f32; H]; IH]; 4]>() / size_of::<f32>();
     assert_eq!(actual_len, expected_len, "LSTM weight buffer size mismatch");
 
     let dst = unsafe {
         core::slice::from_raw_parts_mut(
-            layer.input_hidden_weights.as_mut_ptr() as *mut u16,
+            layer.input_hidden_weights.as_mut_ptr() as *mut f32,
             expected_len,
         )
     };
-    read_lstm_weights_into(raw_weights, dst, is_gate_major, H, I, is_bf16);
+    read_lstm_weights_into(raw_weights, dst, is_gate_major, H, I);
 
     let bias_data = cursor.read_slice(H4)?;
     layer.bias.copy_from_slice(bias_data);
@@ -103,7 +98,6 @@ pub(crate) fn read_lstm_layer_dyn(
     cursor: &mut WeightCursor<'_>,
     input_size: usize,
     hidden_size: usize,
-    is_bf16: bool,
 ) -> anyhow::Result<LstmLayerDyn> {
     let ih = checked_arith::checked_add(input_size, hidden_size)?;
     let h4 = checked_arith::checked_mul(4, hidden_size)?;
@@ -120,7 +114,6 @@ pub(crate) fn read_lstm_layer_dyn(
         is_gate_major,
         hidden_size,
         input_size,
-        is_bf16,
     );
 
     let bias_data = cursor.read_slice(h4)?;

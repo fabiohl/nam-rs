@@ -11,7 +11,7 @@
 
 use super::WaveNetA2;
 use crate::math::common::{
-    AlignedVec, InstructionSet, PrefetchFn, SimdMathConfig, quantize_weight,
+    AlignedVec, PrefetchFn,
 };
 use crate::models::a2::conv1d_ch3::A2Conv1dCh3;
 use crate::models::a2::conv1d_ch8::A2Conv1dCh8;
@@ -47,17 +47,10 @@ impl<const CH: usize> WaveNetA2<CH> {
     pub fn set_weights(&mut self, weights: &[f32]) -> Result<(), String> {
         let total = weights.len();
         let mut pos: usize = 0;
-        let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
 
         // ── 1. Rechannel: Conv1x1(1 → CH) (no bias) ─────────────────────
         let rw_f32 = read_slice(weights, &mut pos, CH, total, "rechannel_w")?;
-        let mut rechannel_w = AlignedVec::new(CH, 0u16);
-        let mut rechannel_w_f32 = AlignedVec::new(CH, 0.0f32);
-        for (i, &v) in rw_f32.iter().enumerate() {
-            let q = quantize_weight(v, is_bf16);
-            rechannel_w[i] = q;
-            rechannel_w_f32[i] = unsafe { crate::math::common::half::f16_bits_to_f32_f16c(q) };
-        }
+        let rechannel_w = AlignedVec::from(rw_f32.to_vec());
 
         // ── 2. Per-layer weights ──────────────────────────────────────────
         let mut layers = Vec::with_capacity(A2_NUM_LAYERS);
@@ -200,8 +193,8 @@ impl<const CH: usize> WaveNetA2<CH> {
         }
 
         // ── 6. Commit to self (all-or-nothing) ──────────────────────────────
+        self.rechannel_w_f32 = rechannel_w.clone();
         self.rechannel_w = rechannel_w;
-        self.rechannel_w_f32 = rechannel_w_f32;
         self.layers = layers;
         self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, CH));
 

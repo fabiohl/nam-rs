@@ -5,8 +5,6 @@ use super::super::WeightCursor;
 use super::weights::read_lstm_layer;
 use crate::loader::loaded_model_pair::DEFAULT_SAMPLE_RATE;
 use crate::loader::nam_json::NamModelData;
-use crate::math::common::quantize_weight;
-use crate::math::common::{InstructionSet, SimdMathConfig};
 use crate::models::lstm::{LstmModel1, LstmModel2};
 use log::info;
 
@@ -26,20 +24,17 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel1<H, H1_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
-    let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
     let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     // Layer 1: input_size=1
-    let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
+    let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
 
     // Head: output linear projection weights
     let head_weights_data = cursor.read_slice(H)?;
-    let mut head_weights = [0u16; H];
+    let mut head_weights = [0.0f32; H];
+    head_weights.copy_from_slice(head_weights_data);
     let mut head_weights_f32 = [0.0f32; H];
-    for i in 0..H {
-        head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
-        head_weights_f32[i] = head_weights_data[i];
-    }
+    head_weights_f32.copy_from_slice(head_weights_data);
     let head_bias = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;
@@ -75,23 +70,20 @@ pub(crate) fn build_lstm_2layer<
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel2<H, H1_IH, H2_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
-    let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
     let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     // Layer 1: input_size=1
-    let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
+    let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
 
     // Layer 2: input_size=H (hidden state from previous layer)
-    let layer2 = read_lstm_layer::<H, H, H2_IH, H_H4>(&mut cursor, is_bf16)?;
+    let layer2 = read_lstm_layer::<H, H, H2_IH, H_H4>(&mut cursor)?;
 
     // Head: final projection weights
     let head_weights_data = cursor.read_slice(H)?;
-    let mut head_weights = [0u16; H];
+    let mut head_weights = [0.0f32; H];
+    head_weights.copy_from_slice(head_weights_data);
     let mut head_weights_f32 = [0.0f32; H];
-    for i in 0..H {
-        head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
-        head_weights_f32[i] = head_weights_data[i];
-    }
+    head_weights_f32.copy_from_slice(head_weights_data);
     let head_bias = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;

@@ -5,8 +5,6 @@ use super::super::WeightCursor;
 use super::weights::read_lstm_layer_dyn;
 use crate::loader::loaded_model_pair::DEFAULT_SAMPLE_RATE;
 use crate::loader::nam_json::NamModelData;
-use crate::math::common::quantize_weight;
-use crate::math::common::{InstructionSet, SimdMathConfig};
 use crate::models::lstm::LstmModelDyn;
 use log::info;
 
@@ -31,24 +29,21 @@ pub(crate) fn build_lstm_dynamic(
     hidden_size: usize,
 ) -> anyhow::Result<LstmModelDyn> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
-    let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
     let sample_rate = data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as f64;
 
     let mut layers = Vec::with_capacity(num_layers);
     for i in 0..num_layers {
         let input_size = if i == 0 { 1 } else { hidden_size };
-        let layer = read_lstm_layer_dyn(&mut cursor, input_size, hidden_size, is_bf16)?;
+        let layer = read_lstm_layer_dyn(&mut cursor, input_size, hidden_size)?;
         layers.push(layer);
     }
 
     let h = hidden_size;
     let head_weights_data = cursor.read_slice(h)?;
-    let mut head_weights = crate::math::common::AlignedVec::new(h, 0u16);
+    let mut head_weights = crate::math::common::AlignedVec::new(h, 0.0f32);
+    head_weights.copy_from_slice(head_weights_data);
     let mut head_weights_f32 = crate::math::common::AlignedVec::new(h, 0.0f32);
-    for i in 0..h {
-        head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
-        head_weights_f32[i] = head_weights_data[i];
-    }
+    head_weights_f32.copy_from_slice(head_weights_data);
     let head_bias = cursor.read_f32_finite()?;
 
     cursor.verify_exhausted()?;

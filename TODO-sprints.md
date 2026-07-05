@@ -258,7 +258,7 @@ qualquer leitor dele redirecionado para `rechannel_w_f32`, se ainda não for o c
 - [ ] Nenhum comentário no código afirma que os pesos de convolução do A2 são quantizados (eles nunca foram)
 - [ ] `cargo check` não passa ainda — esperado
 
-### Tarefa SQ3.3 — Remover a quantização dos loaders
+### Tarefa SQ3.3 — Remover a quantização dos loaders [DONE]
 
 **Descrição**: Os loaders chamam `quantize_weight(f, is_bf16)` para converter f32→u16 durante o carregamento. Agora devem guardar o f32 diretamente.
 
