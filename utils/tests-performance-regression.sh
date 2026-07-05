@@ -28,7 +28,7 @@
 #
 # Environment variables
 # ----------------------
-#   NAM_BENCH_CORE       CPU core to pin via taskset (default: 0).
+#   NAM_BENCH_CORE       CPU core to pin via taskset (default: 1 if multicore, else 0).
 #   NAM_BASELINE_NAME    Criterion baseline name (default: ci-baseline).
 #
 # Usage
@@ -50,7 +50,10 @@ set -euo pipefail
 
 source "$(dirname "$0")/_lib.sh"
 
-BENCH_CORE="${NAM_BENCH_CORE:-0}"
+# Determine default CPU core for taskset. Pinned to middle core (nproc / 2) to avoid OS/IRQ noise.
+NUM_CORES=$(nproc)
+DEFAULT_CORE=$((NUM_CORES / 2))
+BENCH_CORE="${NAM_BENCH_CORE:-$DEFAULT_CORE}"
 BASELINE_NAME="${NAM_BASELINE_NAME:-ci-baseline}"
 BASELINE_DIR="target/criterion/${BASELINE_NAME}"
 MODE="${1:---check}"
@@ -77,11 +80,21 @@ case "$MODE" in
     --save)
         echo -e "\n${GREEN}${BOLD}[SAVE] Persisting new CI baseline...${NC}"
         save_baseline
-        echo -e "${GREEN}✓ Baseline saved to ${BASELINE_DIR}${NC}"
+        echo -e "${GREEN}✓ Baseline saved under target/criterion/*/${BASELINE_NAME}${NC}"
         ;;
     --check)
-        if [ ! -d "$BASELINE_DIR" ]; then
-            echo -e "\n${YELLOW}[CHECK] No baseline found at ${BASELINE_DIR}.${NC}"
+        baseline_exists=false
+        if [ -d "target/criterion" ]; then
+            for d in target/criterion/*/"$BASELINE_NAME"; do
+                if [ -d "$d" ]; then
+                    baseline_exists=true
+                    break
+                fi
+            done
+        fi
+
+        if [ "$baseline_exists" = false ]; then
+            echo -e "\n${YELLOW}[CHECK] No baseline found for '${BASELINE_NAME}' under target/criterion/.${NC}"
             echo -e "  Running first-time baseline save..."
             save_baseline || {
                 echo -e "${YELLOW}⚠ First baseline capture failed — skipping regression gate.${NC}"

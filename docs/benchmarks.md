@@ -90,7 +90,7 @@ regressions): its only mandate is baseline-gated performance.
 
 ### How It Works
 
-1. **Core pinning** — The script uses `taskset -c 0` (configurable via `NAM_BENCH_CORE`) to lock the benchmark to a single CPU core, eliminating scheduler noise and cache-line bouncing between cores.
+1. **Core pinning** — The script uses `taskset -c <core>` (dynamically defaulting to `nproc / 2` to avoid OS/IRQ noise; configurable via `NAM_BENCH_CORE`) to lock the benchmark to a single CPU core, eliminating scheduler noise and cache-line bouncing between cores.
 2. **Statistical rigor** — The `regression_gate` bench suite runs each model (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM 1x16/2x8, Linear, ConvNet) with `sample_size=100, measurement_time=5s, noise_threshold=0.02`, replacing the old weak parameters (`--sample-size 10 --measurement-time 0.5`).
 3. **Baseline comparison** — Criterion performs a two-sample t-test between the current run and the stored baseline. If it detects a statistically significant regression (p < 0.05), the script exits with code 1.
 4. **Baseline storage** — Snapshots live under `target/criterion/<baseline-name>/` (default: `ci-baseline`). Multiple baselines can coexist for different machines or CPU generations.
@@ -131,7 +131,7 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 
 | Variable            | Default       | Purpose                                                 |
 |:------------------- |:------------- |:------------------------------------------------------- |
-| `NAM_BENCH_CORE`    | `0`           | CPU core number to pin benchmarks to via `taskset`.     |
+| `NAM_BENCH_CORE`    | `nproc / 2`   | CPU core number to pin benchmarks to via `taskset`.     |
 | `NAM_BASELINE_NAME` | `ci-baseline` | Criterion baseline name (allows per-machine baselines). |
 
 ### Relationship to Other QA Tools

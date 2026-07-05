@@ -149,7 +149,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Descrição**: Rodar `utils/quality-dashboard.sh` e salvar o output como `docs/baseline-with-quantization.log` (commitado, para referência futura).
 
-### Tarefa SQ2.2 — Salvar baseline do regression_gate
+### Tarefa SQ2.2 — Salvar baseline do regression_gate [DONE]
 
 **Descrição**: Executar `utils/tests-performance-regression.sh --save` para persistir o baseline Criterion. Este será o ponto de comparação estatístico para a performance pós-remoção.
 
