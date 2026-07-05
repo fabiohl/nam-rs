@@ -18,15 +18,12 @@ pub struct LstmLayerDyn {
     pub hidden_size: usize,
     /// Layer weights in Gate-Major layout.
     /// Flat buffer of `4 * (input_size + hidden_size) * hidden_size` elements.
-    pub input_hidden_weights: AlignedVec<u16>,
+    pub input_hidden_weights: AlignedVec<f32>,
     /// Layer linear biases (4 × hidden_size).
     pub bias: AlignedVec<f32>,
     /// Consolidated state buffer [Input | Hidden].
     /// Length = input_size + hidden_size.
     pub state: AlignedVec<f32>,
-    /// State mirror in BF16 for VNNI acceleration.
-    /// Length = input_size + hidden_size.
-    pub state_bf16: AlignedVec<u16>,
     /// LSTM cell state (C). Length = hidden_size.
     pub cell_state: AlignedVec<f32>,
     /// Intermediate gate activations (4 × hidden_size).
@@ -43,10 +40,9 @@ impl LstmLayerDyn {
         Self {
             input_size,
             hidden_size,
-            input_hidden_weights: AlignedVec::new(weights_len, 0u16),
+            input_hidden_weights: AlignedVec::new(weights_len, 0.0f32),
             bias: AlignedVec::new(h4, 0.0f32),
             state: AlignedVec::new(ih, 0.0f32),
-            state_bf16: AlignedVec::new(ih, 0u16),
             cell_state: AlignedVec::new(hidden_size, 0.0f32),
             gates: AlignedVec::new(h4, 0.0f32),
         }
@@ -56,12 +52,6 @@ impl LstmLayerDyn {
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[self.input_size..]
-    }
-
-    /// Returns a reference to the current hidden state mirrored in BF16.
-    #[inline(always)]
-    pub fn get_hidden_state_bf16(&self) -> &[u16] {
-        &self.state_bf16[self.input_size..]
     }
 
     /// Resets only the input slot, preserving the hidden state and cell state.

@@ -1,4 +1,4 @@
-* PoC Compressão/Quantização
+* PoC Compressão/Quantização (Commit de rollback: "ajustes nas medições" b21422ed7424817d8eefcbe5eba84c50118515ae)
 * /refatora-rust [GLM5.2]
 * /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Resilience and Robustness Specialist".
 * /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Performance and Low-Latency Master".

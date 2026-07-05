@@ -29,8 +29,8 @@ pub struct LstmModelDyn {
     /// Layer 0 has `input_size=1` (mono audio), subsequent layers have
     /// `input_size=hidden_size` (stacked recurrent input).
     pub layers: Vec<LstmLayerDyn>,
-    /// Output head (linear projection) weights — quantized.
-    pub head_weights: AlignedVec<u16>,
+    /// Output head (linear projection) weights.
+    pub head_weights: AlignedVec<f32>,
     /// Output head weights in full f32 precision (mixed-precision selective).
     pub head_weights_f32: AlignedVec<f32>,
     /// Output head bias.
@@ -58,7 +58,7 @@ impl LstmModelDyn {
 
         Self {
             layers,
-            head_weights: AlignedVec::new(hidden_size, 0u16),
+            head_weights: AlignedVec::new(hidden_size, 0.0f32),
             head_weights_f32: AlignedVec::new(hidden_size, 0.0f32),
             head_bias: 0.0,
             use_f32_head: false,

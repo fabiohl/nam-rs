@@ -8,13 +8,11 @@ use crate::math::common::Aligned64;
 /// An individual LSTM model layer optimized for SIMD.
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
     /// Layer weights in Gate-Major layout.
-    pub input_hidden_weights: Aligned64<[[[u16; H]; IH]; 4]>,
+    pub input_hidden_weights: Aligned64<[[[f32; H]; IH]; 4]>,
     /// Layer linear biases.
     pub bias: Aligned64<[f32; H4]>,
     /// Consolidated state buffer [Input | Hidden].
     pub state: Aligned64<[f32; IH]>,
-    /// State mirror in BF16 for VNNI acceleration.
-    pub state_bf16: Aligned64<[u16; IH]>,
     /// LSTM cell state (C).
     pub cell_state: Aligned64<[f32; H]>,
     /// Intermediate gate activations.
@@ -25,10 +23,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// Creates a new zero-initialized LSTM layer.
     pub fn new() -> Self {
         Self {
-            input_hidden_weights: Aligned64([[[0u16; H]; IH]; 4]),
+            input_hidden_weights: Aligned64([[[0.0f32; H]; IH]; 4]),
             bias: Aligned64([0.0; H4]),
             state: Aligned64([0.0; IH]),
-            state_bf16: Aligned64([0u16; IH]),
             cell_state: Aligned64([0.0; H]),
             gates: Aligned64([0.0; H4]),
         }
@@ -38,12 +35,6 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[I..]
     }
-    /// Returns a reference to the current hidden state mirrored in BF16.
-    #[inline(always)]
-    pub fn get_hidden_state_bf16(&self) -> &[u16] {
-        &self.state_bf16[I..]
-    }
-
     /// Resets only the input slot, preserving the hidden state and cell state.
     ///
     /// Used during prewarm to avoid discarding the initial `_xh` and `_c` states

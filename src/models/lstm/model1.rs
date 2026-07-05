@@ -42,8 +42,8 @@ macro_rules! define_lstm1_process {
 pub struct LstmModel1<const H: usize, const H1_IH: usize, const H_H4: usize> {
     /// The model's single layer.
     pub layer: LstmLayer<1, H, H1_IH, H_H4>,
-    /// Output head weights (Linear Projection) — quantized.
-    pub head_weights: [u16; H],
+    /// Output head weights (Linear Projection).
+    pub head_weights: [f32; H],
     /// Output head weights in full f32 precision (mixed-precision selective).
     pub head_weights_f32: [f32; H],
     /// Output head bias.
@@ -61,7 +61,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     pub fn new() -> Self {
         Self {
             layer: LstmLayer::new(),
-            head_weights: [0u16; H],
+            head_weights: [0.0f32; H],
             head_weights_f32: [0.0f32; H],
             head_bias: 0.0,
             use_f32_head: false,
