@@ -67,18 +67,26 @@ gantt
 * **Plano de Verificação:**
   * Criar teste unitário injetando pointers desalinhados no callback e garantir que o processamento rejeita de forma segura e não gera abort por desalinhamento SIMD.
 
-### T-103 (F-002) — Correção Estrutural de Alocação e Desalocação no AlignedVec
+### T-103 (F-002) — Correção Estrutural de Alocação e Desalocação no AlignedVec [DONE]
 
-* **Criticidade:** Alta / Risco Médio (Pode causar leaks silenciosos ou dealloc com Layout incorreto quando `len != capacity`).
-* **Arquivos Afetados:**
-  * [aligned.rs](file:///home/fabio/nam-rs/src/math/common/aligned.rs) (Campos e drop de `AlignedVec`).
-* **Abordagem Recomendada:**
-  1. Introduzir o campo `cap: usize` na struct `AlignedVec`.
-  2. Atualizar todos os construtores (`new`, `with_capacity`, `from_vec`, `clone`, `resize`) para preencher `cap`.
-  3. Modificar a implementação de `Drop` para computar o layout de desalocação utilizando `self.cap` em vez de `self.len`.
-  4. Tratar potenciais overflows de multiplicação em `with_capacity` retornando um erro controlado ou acionando `handle_alloc_error`.
-* **Plano de Verificação:**
-  * Criar teste unitário em `aligned.rs` que aloca `AlignedVec` com capacidade excedente, altera o comprimento (len), dropa o vetor e verifica se a memória de capacidade inteira foi desalocada adequadamente (ex: mock ou instrumentação de alloc).
+> **Conclusão (2026-07-06 T-103):**
+> 1. **Campo `cap: usize`** adicionado à struct `AlignedVec` — armazena a capacidade real da alocação, não mais inferida de `len`.
+> 2. **Overflow check** em `with_capacity`: multiplicação `capacity * size_of::<T>()` agora usa `checked_mul`, redirecionando para `handle_alloc_error` em caso de overflow (consistente com o comportamento existente para falha de alocação).
+> 3. **`Drop` corrigido:** layout de desalocação calculado com `self.cap` em vez de `self.len`, eliminando o vazamento silencioso quando `with_capacity` era usado com `len=0` e o UB de layout incorreto quando `len < cap`.
+> 4. **Accessor `cap()`** público adicionado para inspeção da capacidade alocada.
+> 5. **8 novos testes unitários** cobrindo: `with_capacity` (cap set, zero case), `drop` com capacidade excedente, construtores (`new`, `clone`, `resize`, `from_vec`) com verificação `len==cap`, e alinhamento de 64 bytes. 11 testes totais no módulo, todos passam.
+> 6. **Sem regressões:** 1089+ testes do projeto passam; lints (fmt, SPDX, check×4, clippy×4) limpos.
+>
+> * **Criticidade:** Alta / Risco Médio (Pode causar leaks silenciosos ou dealloc com Layout incorreto quando `len != capacity`).
+> * **Arquivos Afetados:**
+>   * [aligned.rs](file:///home/fabio/nam-rs/src/math/common/aligned.rs) (Campos e drop de `AlignedVec`).
+> * **Abordagem Recomendada:**
+>   1. Introduzir o campo `cap: usize` na struct `AlignedVec`.
+>   2. Atualizar todos os construtores (`new`, `with_capacity`, `from_vec`, `clone`, `resize`) para preencher `cap`.
+>   3. Modificar a implementação de `Drop` para computar o layout de desalocação utilizando `self.cap` em vez de `self.len`.
+>   4. Tratar potenciais overflows de multiplicação em `with_capacity` retornando um erro controlado ou acionando `handle_alloc_error`.
+> * **Plano de Verificação:**
+>   * Criar teste unitário em `aligned.rs` que aloca `AlignedVec` com capacidade excedente, altera o comprimento (len), dropa o vetor e verifica se a memória de capacidade inteira foi desalocada adequadamente (ex: mock ou instrumentação de alloc).
 
 ### T-104 (F-008) — Eliminação de unwrap() no Caminho de Tempo Real (Oversampling & Cascades)
 
