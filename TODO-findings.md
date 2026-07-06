@@ -758,7 +758,7 @@ unsafe fn dot_product_avx2_tail(a: &[f32], b: &[f32], i: &mut usize, len: usize,
 
 > Nota do PO: AVX-512 é fora do escopo!
 
-### Épico E-PERF-1: Otimização SIMD do Hot-Path WaveNet/LSTM (x86-64-v3)
+### Épico E-PERF-1: Otimização SIMD do Hot-Path WaveNet/LSTM (x86-64-v3) [DONE]
 
 **Findings:** P-1, P-2
 **Objetivo:** Eliminar stores escalares e branches redundantes nos kernels SIMD mais executados do engine de inferência.

@@ -34,3 +34,29 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Validação:**
   - Execução dos testes unitários e de integração (`utils/tests-quick.sh`).
   - Comparação de performance contra o benchmark salvo de Criterion.
+
+---
+
+## Sprint 2: Otimização do Resampler e Oversampler (x86-64-v3)
+
+**Meta da Sprint:** Otimizar o overhead aritmético do resampler polyphase e vetorizar a convolução escalar do oversampler half-band.
+
+### [x86-64-v3] T-PERF-2.1: Otimização do Fator de Interpolação Fracional no Resampler (`resampler.rs`)
+
+- **Objetivo:** Eliminar a conversão `f64` no cálculo de `frac` usando shift à direita por 9 e conversão para `i32` multiplicada por `1.0 / (1u32 << 31) as f32`.
+- **Finding Associado:** P-3
+- **Arquivos:**
+  - [resampler.rs](file:///home/fabio/nam-rs/src/dsp/resampler.rs)
+- **Risco:** Médio (precisão de interpolação fracional).
+- **Validação:**
+  - Rodar `utils/quality-dashboard.sh` aferindo que o ESR dos modelos em taxas ≠ 48 kHz não apresentou regressão em relação ao ideal.
+
+### [x86-64-v3] T-PERF-2.2: Vetorização AVX2 do Filtro Half-Band no Oversampler (`oversample.rs`)
+
+- **Objetivo:** Implementar double-buffering e separar ring-buffers para amostras pares e ímpares, possibilitando loads SIMD contíguos de 8 e 4 elementos e eliminando indexações modulares por amostra.
+- **Finding Associado:** P-4
+- **Arquivos:**
+  - [oversample.rs](file:///home/fabio/nam-rs/src/dsp/oversample.rs)
+- **Risco:** Baixo.
+- **Validação:**
+  - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
