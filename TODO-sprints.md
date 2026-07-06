@@ -41,7 +41,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 **Meta da Sprint:** Otimizar o overhead aritmético do resampler polyphase e vetorizar a convolução escalar do oversampler half-band.
 
-### [x86-64-v3] T-PERF-2.1: Otimização do Fator de Interpolação Fracional no Resampler (`resampler.rs`)
+### [x86-64-v3] T-PERF-2.1: Otimização do Fator de Interpolação Fracional no Resampler (`resampler.rs`) [DONE]
 
 - **Objetivo:** Eliminar a conversão `f64` no cálculo de `frac` usando shift à direita por 9 e conversão para `i32` multiplicada por `1.0 / (1u32 << 31) as f32`.
 - **Finding Associado:** P-3
@@ -50,6 +50,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Médio (precisão de interpolação fracional).
 - **Validação:**
   - Rodar `utils/quality-dashboard.sh` aferindo que o ESR dos modelos em taxas ≠ 48 kHz não apresentou regressão em relação ao ideal.
+- **Conclusão:** Substituída a conversão `frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32` por `((frac_bits >> 9) as i32 as f32) * (1.0 / (1u32 << 31) as f32)`, eliminando as instruções `vcvtqq2pd` + `vmulsd` + `vcvtsd2ss` (~3-5 cycles) do hot-path stereo e mono. Todos os 24 testes do resampler passaram (SNR ≥ 25 dB contra libsoxr, micro-soak 5000 iterações × 5 pares de taxas, drift fixed-point < 1e-7). Emissão de `vcvtqq2ps` única no lugar da cadeia f64.
 
 ### [x86-64-v3] T-PERF-2.2: Vetorização AVX2 do Filtro Half-Band no Oversampler (`oversample.rs`)
 

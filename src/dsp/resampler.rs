@@ -289,7 +289,7 @@ impl ResamplerCore {
             let phase_idx = (self.phase_accum >> 40) as usize;
             const FRAC_MASK: u64 = (1u64 << 40) - 1;
             let frac_bits = self.phase_accum & FRAC_MASK;
-            let frac = (frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32;
+            let frac = ((frac_bits >> 9) as i32 as f32) * (1.0 / (1u32 << 31) as f32);
 
             // Next phase (with wrap)
             let phase_next = if phase_idx + 1 >= NUM_PHASES {
@@ -365,7 +365,7 @@ impl ResamplerCore {
             let phase_idx = (self.phase_accum >> 40) as usize;
             const FRAC_MASK: u64 = (1u64 << 40) - 1;
             let frac_bits = self.phase_accum & FRAC_MASK;
-            let frac = (frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32;
+            let frac = ((frac_bits >> 9) as i32 as f32) * (1.0 / (1u32 << 31) as f32);
 
             // Next phase (with wrap)
             let phase_next = if phase_idx + 1 >= NUM_PHASES {
