@@ -198,7 +198,7 @@ fn process_internal_mono_avx512bf16(
 }
 
 impl ResamplerCore {
-    fn new(from_rate: u32, to_rate: u32, bank: PolyphaseBank) -> Self {
+    fn new(from_rate: u32, to_rate: u32, bank: PolyphaseBank) -> Result<Self, NamErrorCode> {
         // Capture the empirical group delay and phase type before the bank
         // is consumed by the struct.
         let group_delay = bank.group_delay;
@@ -228,17 +228,17 @@ impl ResamplerCore {
             ),
         };
 
-        Self {
+        Ok(Self {
             bank,
-            state_l: DelayLine::new().expect("failed to allocate resampler delay line"),
-            state_r: DelayLine::new().expect("failed to allocate resampler delay line"),
+            state_l: DelayLine::new()?,
+            state_r: DelayLine::new()?,
             phase_accum: (NUM_PHASES as u64) << 40,
             phase_step,
             process_stereo,
             process_mono,
             group_delay,
             phase_type,
-        }
+        })
     }
 
     /// Returns the empirical group delay in output-rate samples.
@@ -458,12 +458,12 @@ impl NamResampler {
             pw_rate,
             nam_rate,
             generate_polyphase_bank(pw_rate, nam_rate).map_err(|e| anyhow::anyhow!("{e}"))?,
-        );
+        )?;
         let outer = ResamplerCore::new(
             nam_rate,
             pw_rate,
             generate_polyphase_bank(nam_rate, pw_rate).map_err(|e| anyhow::anyhow!("{e}"))?,
-        );
+        )?;
 
         Ok(Self {
             inner: Some(inner),
@@ -500,13 +500,13 @@ impl NamResampler {
             nam_rate,
             generate_polyphase_bank_linear(pw_rate, nam_rate)
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
-        );
+        )?;
         let outer = ResamplerCore::new(
             nam_rate,
             pw_rate,
             generate_polyphase_bank_linear(nam_rate, pw_rate)
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
-        );
+        )?;
 
         Ok(Self {
             inner: Some(inner),
