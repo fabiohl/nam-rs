@@ -766,7 +766,7 @@ unsafe fn dot_product_avx2_tail(a: &[f32], b: &[f32], i: &mut usize, len: usize,
 **Validação:** `utils/quality-dashboard.sh` + `utils/tests-performance-regression.sh --save` antes e `--check` depois.
 **Sequência:** P-1 primeiro (maior impacto, menor risco), P-2 segundo.
 
-### Épico E-PERF-2: Otimização do Resampler e Oversampler
+### Épico E-PERF-2: Otimização do Resampler e Oversampler [DONE]
 
 **Findings:** P-3, P-4
 **Objetivo:** Reduzir overhead do resampler polyphase e vetorizar o filtro half-band do oversampler.
@@ -774,7 +774,7 @@ unsafe fn dot_product_avx2_tail(a: &[f32], b: &[f32], i: &mut usize, len: usize,
 **Validação:** P-3 requer execução completa do quality dashboard com modelos em taxas ≠ 48 kHz. P-4 requer benchmark do oversampling ativo.
 **Sequência:** P-4 primeiro (sem risco de paridade), P-3 segundo (após validação empírica).
 
-### Épico E-PERF-3: Modernização da Stack do Kernel Linux
+### Épico E-PERF-3: Modernização da Stack do Kernel Linux [DOING]
 
 **Findings:** P-7, P-8
 **Objetivo:** Adotar `MADV_COLLAPSE` (Linux 6.1+) e `MFD_NOEXEC_SEAL` (Linux 6.3+) para determinismo de huge pages e hardening de segurança.

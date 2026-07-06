@@ -7,7 +7,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Este documento organiza a execução das otimizações planejadas em Epics do projeto `nam-rs`.
 
-## Sprint 1: Otimização SIMD do Hot-Path WaveNet/LSTM (x86-64-v3)
+## Sprint 1: Otimização SIMD do Hot-Path WaveNet/LSTM (x86-64-v3) [DONE]
 
 **Meta da Sprint:** Reduzir a latência do hot-path WaveNet/LSTM em sistemas x86-64-v3 eliminando stores escalares desnecessários e reduzindo atomic loads e branches redundantes nos loops críticos.
 
@@ -37,7 +37,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 ---
 
-## Sprint 2: Otimização do Resampler e Oversampler (x86-64-v3)
+## Sprint 2: Otimização do Resampler e Oversampler (x86-64-v3) [DONE]
 
 **Meta da Sprint:** Otimizar o overhead aritmético do resampler polyphase e vetorizar a convolução escalar do oversampler half-band.
 
@@ -62,3 +62,29 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Validação:**
   - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
 - **Conclusão:** Upsampler: `up_ring` convertido para double-buffer (24 entradas) com double-write, eliminando `(pos + n - d) % n` por acesso contíguo via `wptr + 5` (center tap) + `_mm256_fmadd_ps` 8-wide + 4 scalar (12 odd taps). Coeficientes invertidos em `HalfBandFilter::design()` para casar com layout oldest-first. Downsampler: `down_ring` substituído por `down_ring_even` (26, double-buffer) + `down_ring_odd` (24, double-buffer), tornando os 12 taps ímpares contíguos no buffer ímpar — mesmo padrão AVX2 FMADD 8+4. Eliminados 12×2 MACs escalares (upsample) e 13×2 MACs escalares (downsample) por amostra. Todos os 15 testes de oversample passaram (DC gain, X2/X4 round-trip, aliasing rejection, perceptual 4×). Suite `tests-quick.sh` completa limpa.
+
+---
+
+## Sprint 3: Modernização da Stack do Kernel Linux (Requisito: Linux 6.3+)
+
+**Meta da Sprint:** Adotar de forma mandatória os recursos modernos de Huge Pages e descritores seguros do Kernel Linux (mínimo Kernel 6.3 para cobertura completa das LTS recentes).
+
+### [Linux 6.1+] T-PERF-3.1: Promoção Síncrona de Huge Pages com `MADV_COLLAPSE` (`huge_alloc.rs`)
+
+- **Objetivo:** Chamar `madvise` com o flag `MADV_COLLAPSE` obrigatoriamente e sem fallbacks de verificação.
+- **Finding Associado:** P-7
+- **Arquivos:**
+  - [huge_alloc.rs](file:///home/fabio/nam-rs/src/math/common/huge_alloc.rs)
+- **Risco:** Mínimo. Requer Kernel Linux 6.1+.
+- **Validação:**
+  - Validação funcional no Linux garantindo compilação e execução corretas em kernel moderno.
+
+### [Linux 6.3+] T-PERF-3.2: Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`)
+
+- **Objetivo:** Passar obrigatoriamente o flag `MFD_NOEXEC_SEAL` na chamada de `memfd_create` para buffers hugetlb e comuns, sem ramificações de fallback.
+- **Finding Associado:** P-8
+- **Arquivos:**
+  - [huge_alloc.rs](file:///home/fabio/nam-rs/src/math/common/huge_alloc.rs)
+- **Risco:** Mínimo. Requer Kernel Linux 6.3+.
+- **Validação:**
+  - Validação funcional garantindo que memfds não executáveis funcionem corretamente para buffers de modelo e alocações de huge pages.
