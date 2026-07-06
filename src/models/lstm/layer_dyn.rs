@@ -3,6 +3,7 @@
 
 //! Dynamic LSTM layer with heap-allocated buffers for arbitrary dimensions.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 
 /// An individual LSTM model layer with runtime-sized buffers.
@@ -32,21 +33,20 @@ pub struct LstmLayerDyn {
 
 impl LstmLayerDyn {
     /// Creates a new zero-initialized dynamic LSTM layer.
-    pub fn new(input_size: usize, hidden_size: usize) -> Self {
+    pub fn new(input_size: usize, hidden_size: usize) -> Result<Self, NamErrorCode> {
         let ih = input_size + hidden_size;
         let h4 = 4 * hidden_size;
         let weights_len = 4 * ih * hidden_size;
 
-        Self {
+        Ok(Self {
             input_size,
             hidden_size,
-            input_hidden_weights: AlignedVec::new(weights_len, 0.0f32)
-                .expect("OOM: LstmLayerDyn weights"),
-            bias: AlignedVec::new(h4, 0.0f32).expect("OOM: LstmLayerDyn bias"),
-            state: AlignedVec::new(ih, 0.0f32).expect("OOM: LstmLayerDyn state"),
-            cell_state: AlignedVec::new(hidden_size, 0.0f32).expect("OOM: LstmLayerDyn cell_state"),
-            gates: AlignedVec::new(h4, 0.0f32).expect("OOM: LstmLayerDyn gates"),
-        }
+            input_hidden_weights: AlignedVec::new(weights_len, 0.0f32)?,
+            bias: AlignedVec::new(h4, 0.0f32)?,
+            state: AlignedVec::new(ih, 0.0f32)?,
+            cell_state: AlignedVec::new(hidden_size, 0.0f32)?,
+            gates: AlignedVec::new(h4, 0.0f32)?,
+        })
     }
 
     /// Returns a reference to the current hidden state.

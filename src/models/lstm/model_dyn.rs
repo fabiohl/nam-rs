@@ -7,6 +7,7 @@
 //! const-generic profiles (`LstmModel1` / `LstmModel2`).
 
 use super::layer_dyn::LstmLayerDyn;
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 
 /// LSTM model with dynamically-allocated layers and head weights.
@@ -46,23 +47,21 @@ impl LstmModelDyn {
     /// Allocates `num_layers` × `LstmLayerDyn` with the appropriate
     /// input_size (1 for layer 0, `hidden_size` for the rest) and
     /// pre-allocates `head_weights` / `head_weights_f32`.
-    pub fn new(num_layers: usize, hidden_size: usize) -> Self {
+    pub fn new(num_layers: usize, hidden_size: usize) -> Result<Self, NamErrorCode> {
         let mut layers = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
             let input_size = if i == 0 { 1 } else { hidden_size };
-            layers.push(LstmLayerDyn::new(input_size, hidden_size));
+            layers.push(LstmLayerDyn::new(input_size, hidden_size)?);
         }
 
-        Self {
+        Ok(Self {
             layers,
-            head_weights: AlignedVec::new(hidden_size, 0.0f32)
-                .expect("OOM: LstmModelDyn head_weights"),
-            head_weights_f32: AlignedVec::new(hidden_size, 0.0f32)
-                .expect("OOM: LstmModelDyn head_weights_f32"),
+            head_weights: AlignedVec::new(hidden_size, 0.0f32)?,
+            head_weights_f32: AlignedVec::new(hidden_size, 0.0f32)?,
             head_bias: 0.0,
             prewarm_on_reset: true,
             expected_sample_rate: 48000.0,
-        }
+        })
     }
 
     // =====================================================================

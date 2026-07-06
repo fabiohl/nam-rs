@@ -8,6 +8,7 @@
 //! (zero-alloc on the hot-path, RT-Safe).
 
 use super::activations::{ActivationFn, ActivationType};
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 use crate::math::common::SimdMath;
 
@@ -139,12 +140,12 @@ impl BlendingActivationConfig {
         input_activation: ActivationType,
         blending_activation: ActivationType,
         ch: usize,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, NamErrorCode> {
+        Ok(Self {
             input_activation,
             blending_activation,
-            scratch: AlignedVec::new(ch, 0.0f32).expect("OOM: BlendingActivationConfig scratch"),
-        }
+            scratch: AlignedVec::new(ch, 0.0f32)?,
+        })
     }
 
     /// Applies blending in-place on a buffer of `2*ch` elements.

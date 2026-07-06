@@ -1567,7 +1567,7 @@ fn make_convnet_block(
 
     let bn_scale = vec![1.0f32; out_ch];
     let bn_offset = vec![0.0f32; out_ch];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     block
 }

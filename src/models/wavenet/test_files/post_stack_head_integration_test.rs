@@ -81,7 +81,7 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
         do_bias: false,
     };
 
-    let layer = WaveNetLayerDyn::new(ch, conv1d, input_mixin, one_by_one);
+    let layer = WaveNetLayerDyn::new(ch, conv1d, input_mixin, one_by_one).unwrap();
 
     let array = WaveNetLayerArrayDyn {
         in_ch: 1,
@@ -355,7 +355,8 @@ fn test_post_stack_head_multi_array_determinism() {
             make_conv(CH, CH),
             make_dense(1, CH, false),
             make_dense(CH, CH, false),
-        );
+        )
+        .unwrap();
 
         let array1 = WaveNetLayerArrayDyn {
             in_ch: 1,
@@ -385,7 +386,8 @@ fn test_post_stack_head_multi_array_determinism() {
             make_conv(HEAD, HEAD),
             make_dense(1, HEAD, false),
             make_dense(HEAD, HEAD, false),
-        );
+        )
+        .unwrap();
 
         let array2 = WaveNetLayerArrayDyn {
             in_ch: CH,

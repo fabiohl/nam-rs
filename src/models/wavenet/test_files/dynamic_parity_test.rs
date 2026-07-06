@@ -235,6 +235,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
                 make_dense_dyn(1, ch, false),
                 make_dense_dyn(ch, ch, false),
             )
+            .unwrap()
         })
         .collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
@@ -275,6 +276,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
                 make_dense_dyn(1, head, false),
                 make_dense_dyn(head, head, false),
             )
+            .unwrap()
         })
         .collect();
     let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())

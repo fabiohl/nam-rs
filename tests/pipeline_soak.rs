@@ -145,8 +145,10 @@ mod tests {
                 samples_l[j] = pcg.next_f32();
                 samples_r[j] = pcg.next_f32();
             }
-            let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
-            let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+            let mut os_engine_l =
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+            let mut os_engine_r =
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
             let ctx = DspPipelineContext {
                 resampler: &mut resampler,
@@ -222,8 +224,10 @@ mod tests {
 
             let start_cycle = Instant::now();
 
-            let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
-            let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+            let mut os_engine_l =
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+            let mut os_engine_r =
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
             let ctx = DspPipelineContext {
                 resampler: &mut resampler,

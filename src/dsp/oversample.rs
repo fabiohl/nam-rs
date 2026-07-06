@@ -300,10 +300,7 @@ impl OversampleEngine {
     ///
     /// `max_input_samples`: max block size at native model rate
     /// (e.g., `MAX_RESAMP_BUF = 8192`).
-    pub fn new(
-        factor: OversampleFactor,
-        max_input_samples: usize,
-    ) -> Result<Self, NamErrorCode> {
+    pub fn new(factor: OversampleFactor, max_input_samples: usize) -> Result<Self, NamErrorCode> {
         let inter_size = if factor.stage_count() >= 2 {
             max_input_samples * 2
         } else {

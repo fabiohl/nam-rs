@@ -347,7 +347,8 @@ pub(crate) fn load_film_for_layer(
             channels,
             film_w.to_vec(),
             film_b.to_vec(),
-        );
+        )
+        .map_err(|e| format!("{e}"))?;
         set_layer_film(layer, config, idx, film_layer)?;
     }
     Ok(())

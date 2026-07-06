@@ -7,6 +7,7 @@
 //! (no input_mixin / 1x1) and no rechannel projection. Output feeds directly
 //! into the next block or the post-stack head.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{AlignedVec, SimdMath};
 use crate::models::a2::activations::ActivationType;
 use crate::models::wavenet::Conv1dDyn;
@@ -107,9 +108,9 @@ impl ConvNetBlock {
     }
 
     /// Loads pre-fused batch norm parameters.
-    pub fn set_bn_params(&mut self, scale: &[f32], offset: &[f32]) {
-        self.bn = BatchNorm1D::from_fused(self.conv.out_ch, scale, offset)
-            .expect("OOM: BatchNorm1D from_fused");
+    pub fn set_bn_params(&mut self, scale: &[f32], offset: &[f32]) -> Result<(), NamErrorCode> {
+        self.bn = BatchNorm1D::from_fused(self.conv.out_ch, scale, offset)?;
+        Ok(())
     }
 
     /// Public dispatch wrapper that selects the optimal SIMD path.

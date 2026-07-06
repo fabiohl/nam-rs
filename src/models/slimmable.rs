@@ -63,6 +63,7 @@
 //! - `Conv1dDyn`: `[block][kernel][in_ch][W]` — W-wide lane-interleaved (W = 4, 8, or 16)
 //! - `DenseLayerDyn`: column-major `weights[in_c * out_ch + out_c]`
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::common::spsc::GcItem;
 use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::AlignedVec;
@@ -112,7 +113,11 @@ pub trait SlimmableModel {
 ///
 /// # Panics
 /// Panics if `new_in_ch > conv.in_ch` or `new_out_ch > conv.out_ch`.
-pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Conv1dDyn {
+pub fn slice_conv1d(
+    conv: &Conv1dDyn,
+    new_in_ch: usize,
+    new_out_ch: usize,
+) -> Result<Conv1dDyn, NamErrorCode> {
     assert!(
         new_in_ch <= conv.in_ch,
         "slice_conv1d: new_in_ch ({}) > in_ch ({})",
@@ -131,8 +136,7 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
     let new_num_blocks = new_out_ch.div_ceil(dst_width);
     let kernel = conv.kernel;
     let new_weights_len = new_num_blocks * dst_width * new_in_ch * kernel;
-    let mut new_weights =
-        AlignedVec::new(new_weights_len, 0.0f32).expect("OOM: slimmable new_weights");
+    let mut new_weights = AlignedVec::new(new_weights_len, 0.0f32)?;
 
     for src_b in 0..new_out_ch.div_ceil(src_width) {
         for k in 0..kernel {
@@ -154,10 +158,10 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
         }
     }
 
-    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32).expect("OOM: slimmable conv1d bias");
+    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32)?;
     new_bias.copy_from_slice(&conv.bias[..new_out_ch]);
 
-    Conv1dDyn {
+    Ok(Conv1dDyn {
         weights: new_weights,
         bias: new_bias,
         do_bias: conv.do_bias,
@@ -168,7 +172,7 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
         interleave_width: dst_width,
         kernel,
         prefetch_fn: conv.prefetch_fn,
-    }
+    })
 }
 
 /// Slices a `DenseLayerDyn` to a reduced channel configuration.
@@ -180,7 +184,11 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
 ///
 /// # Panics
 /// Panics if `new_in_ch > dense.in_ch` or `new_out_ch > dense.out_ch`.
-pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -> DenseLayerDyn {
+pub fn slice_dense(
+    dense: &DenseLayerDyn,
+    new_in_ch: usize,
+    new_out_ch: usize,
+) -> Result<DenseLayerDyn, NamErrorCode> {
     assert!(
         new_in_ch <= dense.in_ch,
         "slice_dense: new_in_ch ({}) > in_ch ({})",
@@ -194,8 +202,7 @@ pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -
         dense.out_ch
     );
 
-    let mut new_weights =
-        AlignedVec::new(new_in_ch * new_out_ch, 0.0f32).expect("OOM: slimmable dense weights");
+    let mut new_weights = AlignedVec::new(new_in_ch * new_out_ch, 0.0f32)?;
 
     for in_c in 0..new_in_ch {
         let src_start = in_c * dense.out_ch;
@@ -204,16 +211,16 @@ pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -
             .copy_from_slice(&dense.weights[src_start..src_start + new_out_ch]);
     }
 
-    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32).expect("OOM: slimmable dense bias");
+    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32)?;
     new_bias.copy_from_slice(&dense.bias[..new_out_ch]);
 
-    DenseLayerDyn {
+    Ok(DenseLayerDyn {
         in_ch: new_in_ch,
         out_ch: new_out_ch,
         weights: new_weights,
         bias: new_bias,
         do_bias: dense.do_bias,
-    }
+    })
 }
 
 /// Creates a new `WaveNetLayerDyn` with reduced internal channel count.
@@ -222,10 +229,13 @@ pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -
 /// - `conv1d`: `(ch, ch)` → `(new_ch, new_ch)`
 /// - `input_mixin`: `(cond, ch)` → `(cond, new_ch)`
 /// - `one_by_one`: `(ch, ch)` → `(new_ch, new_ch)`
-pub fn slice_wavenet_layer(layer: &WaveNetLayerDyn, new_ch: usize) -> WaveNetLayerDyn {
-    let conv1d = slice_conv1d(&layer.conv1d, new_ch, new_ch);
-    let input_mixin = slice_dense(&layer.input_mixin, layer.input_mixin.in_ch, new_ch);
-    let one_by_one = slice_dense(&layer.one_by_one, new_ch, new_ch);
+pub fn slice_wavenet_layer(
+    layer: &WaveNetLayerDyn,
+    new_ch: usize,
+) -> Result<WaveNetLayerDyn, NamErrorCode> {
+    let conv1d = slice_conv1d(&layer.conv1d, new_ch, new_ch)?;
+    let input_mixin = slice_dense(&layer.input_mixin, layer.input_mixin.in_ch, new_ch)?;
+    let one_by_one = slice_dense(&layer.one_by_one, new_ch, new_ch)?;
     WaveNetLayerDyn::new(new_ch, conv1d, input_mixin, one_by_one)
 }
 
@@ -245,19 +255,25 @@ pub fn slice_wavenet_array(
     new_ch: usize,
     alloc_num: &mut usize,
 ) -> std::io::Result<WaveNetLayerArrayDyn> {
-    let rechannel = slice_dense(&array.rechannel, new_in_ch, new_ch);
+    let rechannel = slice_dense(&array.rechannel, new_in_ch, new_ch)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
     let mut layers = Vec::with_capacity(array.layers.len());
     let mut states = Vec::with_capacity(array.layers.len());
 
     for layer in &array.layers {
-        layers.push(slice_wavenet_layer(layer, new_ch));
+        layers.push(
+            slice_wavenet_layer(layer, new_ch).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}"))
+            })?,
+        );
         let rf = (layer.conv1d.kernel - 1) * layer.conv1d.dilation;
         states.push(WaveNetLayerState::new(new_ch, rf, *alloc_num)?);
         *alloc_num += 1;
     }
 
-    let head_rechannel = slice_dense(&array.head_rechannel, new_ch, array.head);
+    let head_rechannel = slice_dense(&array.head_rechannel, new_ch, array.head)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
     let receptive_field_size: usize = array
         .layers

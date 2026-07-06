@@ -13,7 +13,7 @@ fn build_single_block_model() -> ConvNetModel {
 
     let bn_scale = vec![1.0f32];
     let bn_offset = vec![0.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     ConvNetModel {
         blocks: vec![block],
@@ -105,13 +105,15 @@ fn test_two_block_chain() {
         ConvNetBlock::new(1, 2, 1, 1, false, ActivationType::ReLU, 0).expect("block 0");
     let weights0 = vec![1.0f32, 2.0, 0.0, 0.0];
     block0.set_conv_weights(&weights0);
-    block0.set_bn_params(&[1.0f32, 1.0], &[0.0f32, 0.0]);
+    block0
+        .set_bn_params(&[1.0f32, 1.0], &[0.0f32, 0.0])
+        .unwrap();
 
     let mut block1 =
         ConvNetBlock::new(2, 1, 1, 1, false, ActivationType::Tanh, 1).expect("block 1");
     let weights1 = vec![0.5f32, 0.0, 0.0, 0.0, 0.5f32, 0.0, 0.0, 0.0];
     block1.set_conv_weights(&weights1);
-    block1.set_bn_params(&[1.0f32], &[0.0f32]);
+    block1.set_bn_params(&[1.0f32], &[0.0f32]).unwrap();
 
     let model = ConvNetModel {
         blocks: vec![block0, block1],
@@ -154,7 +156,7 @@ fn test_post_stack_head_integration() {
     let mut block = ConvNetBlock::new(1, 1, 1, 1, false, ActivationType::ReLU, 0).expect("block");
     let weights = vec![1.0f32, 0.0, 0.0, 0.0];
     block.set_conv_weights(&weights);
-    block.set_bn_params(&[1.0f32], &[0.0f32]);
+    block.set_bn_params(&[1.0f32], &[0.0f32]).unwrap();
 
     let head_config = HeadConfig {
         channels: Some(1),
@@ -198,7 +200,7 @@ fn test_prewarm_with_head() {
 
     let mut block = ConvNetBlock::new(1, 1, 1, 1, false, ActivationType::ReLU, 0).expect("block");
     block.set_conv_weights(&[1.0, 0.0, 0.0, 0.0]);
-    block.set_bn_params(&[1.0f32], &[0.0f32]);
+    block.set_bn_params(&[1.0f32], &[0.0f32]).unwrap();
 
     let head_config = HeadConfig {
         channels: Some(1),

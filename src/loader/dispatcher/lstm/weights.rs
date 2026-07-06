@@ -105,7 +105,7 @@ pub(crate) fn read_lstm_layer_dyn(
     let h4 = checked_arith::checked_mul(4, hidden_size)?;
     let weights_len = checked_arith::checked_mul(h4, ih)?;
 
-    let mut layer = LstmLayerDyn::new(input_size, hidden_size);
+    let mut layer = LstmLayerDyn::new(input_size, hidden_size)?;
 
     let raw_weights = cursor.read_slice(weights_len)?;
     let is_gate_major = cursor.is_gate_major_lstm();

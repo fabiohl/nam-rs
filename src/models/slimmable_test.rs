@@ -67,7 +67,7 @@ fn make_wavenet_layer(ch: usize) -> WaveNetLayerDyn {
     let conv1d = make_conv1d(ch, ch);
     let input_mixin = make_dense(1, ch);
     let one_by_one = make_dense(ch, ch);
-    WaveNetLayerDyn::new(ch, conv1d, input_mixin, one_by_one)
+    WaveNetLayerDyn::new(ch, conv1d, input_mixin, one_by_one).unwrap()
 }
 
 fn make_wavenet_array(
@@ -143,7 +143,7 @@ fn make_full_model(ch: usize, head: usize) -> WaveNetModelDyn {
 #[test]
 fn test_slice_conv1d_dims() {
     let conv = make_conv1d(CH_FULL, CH_FULL);
-    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM);
+    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM).unwrap();
     assert_eq!(sliced.in_ch, CH_SLIM);
     assert_eq!(sliced.out_ch, CH_SLIM);
     assert_eq!(sliced.kernel, TEST_KERNEL);
@@ -160,7 +160,7 @@ fn test_slice_conv1d_dims() {
 #[test]
 fn test_slice_conv1d_weights_match() {
     let conv = make_conv1d(CH_FULL, CH_FULL);
-    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM);
+    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM).unwrap();
 
     for b in 0..sliced.num_blocks {
         for k in 0..TEST_KERNEL {
@@ -183,7 +183,7 @@ fn test_slice_conv1d_weights_match() {
 #[test]
 fn test_slice_conv1d_bias_match() {
     let conv = make_conv1d(CH_FULL, CH_FULL);
-    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM);
+    let sliced = slice_conv1d(&conv, CH_SLIM, CH_SLIM).unwrap();
     assert_eq!(&sliced.bias[..CH_SLIM], &conv.bias[..CH_SLIM]);
 }
 
@@ -191,14 +191,14 @@ fn test_slice_conv1d_bias_match() {
 #[should_panic(expected = "slice_conv1d: new_in_ch")]
 fn test_slice_conv1d_bigger_in_ch_panics() {
     let conv = make_conv1d(CH_FULL, CH_FULL);
-    slice_conv1d(&conv, CH_FULL + 1, CH_FULL);
+    slice_conv1d(&conv, CH_FULL + 1, CH_FULL).unwrap();
 }
 
 #[test]
 #[should_panic(expected = "slice_conv1d: new_out_ch")]
 fn test_slice_conv1d_bigger_out_ch_panics() {
     let conv = make_conv1d(CH_FULL, CH_FULL);
-    slice_conv1d(&conv, CH_FULL, CH_FULL + 1);
+    slice_conv1d(&conv, CH_FULL, CH_FULL + 1).unwrap();
 }
 
 // =====================================================================
@@ -208,7 +208,7 @@ fn test_slice_conv1d_bigger_out_ch_panics() {
 #[test]
 fn test_slice_dense_dims() {
     let dense = make_dense(CH_FULL, CH_FULL);
-    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM);
+    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM).unwrap();
     assert_eq!(sliced.in_ch, CH_SLIM);
     assert_eq!(sliced.out_ch, CH_SLIM);
     assert_eq!(sliced.do_bias, dense.do_bias);
@@ -219,7 +219,7 @@ fn test_slice_dense_dims() {
 #[test]
 fn test_slice_dense_weights_match() {
     let dense = make_dense(CH_FULL, CH_FULL);
-    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM);
+    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM).unwrap();
 
     for in_c in 0..CH_SLIM {
         for out_c in 0..CH_SLIM {
@@ -237,14 +237,14 @@ fn test_slice_dense_weights_match() {
 #[test]
 fn test_slice_dense_bias_match() {
     let dense = make_dense(CH_FULL, CH_FULL);
-    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM);
+    let sliced = slice_dense(&dense, CH_SLIM, CH_SLIM).unwrap();
     assert_eq!(&sliced.bias[..CH_SLIM], &dense.bias[..CH_SLIM]);
 }
 
 #[test]
 fn test_slice_dense_asymmetric() {
     let dense = make_dense(8, 12);
-    let sliced = slice_dense(&dense, 4, 6);
+    let sliced = slice_dense(&dense, 4, 6).unwrap();
     assert_eq!(sliced.in_ch, 4);
     assert_eq!(sliced.out_ch, 6);
     assert_eq!(sliced.weights.len(), 24);
@@ -263,7 +263,7 @@ fn test_slice_dense_asymmetric() {
 #[should_panic(expected = "slice_dense: new_in_ch")]
 fn test_slice_dense_bigger_in_ch_panics() {
     let dense = make_dense(CH_FULL, CH_FULL);
-    slice_dense(&dense, CH_FULL + 1, CH_FULL);
+    slice_dense(&dense, CH_FULL + 1, CH_FULL).unwrap();
 }
 
 // =====================================================================
@@ -273,7 +273,7 @@ fn test_slice_dense_bigger_in_ch_panics() {
 #[test]
 fn test_slice_wavenet_layer_dims() {
     let layer = make_wavenet_layer(CH_FULL);
-    let sliced = slice_wavenet_layer(&layer, CH_SLIM);
+    let sliced = slice_wavenet_layer(&layer, CH_SLIM).unwrap();
 
     assert_eq!(sliced.conv1d.in_ch, CH_SLIM);
     assert_eq!(sliced.conv1d.out_ch, CH_SLIM);
@@ -288,11 +288,11 @@ fn test_slice_wavenet_layer_dims() {
 #[test]
 fn test_slice_wavenet_layer_weights_preserved() {
     let layer = make_wavenet_layer(CH_FULL);
-    let sliced = slice_wavenet_layer(&layer, CH_SLIM);
+    let sliced = slice_wavenet_layer(&layer, CH_SLIM).unwrap();
 
-    let conv_sliced = slice_conv1d(&layer.conv1d, CH_SLIM, CH_SLIM);
-    let mixin_sliced = slice_dense(&layer.input_mixin, 1, CH_SLIM);
-    let obo_sliced = slice_dense(&layer.one_by_one, CH_SLIM, CH_SLIM);
+    let conv_sliced = slice_conv1d(&layer.conv1d, CH_SLIM, CH_SLIM).unwrap();
+    let mixin_sliced = slice_dense(&layer.input_mixin, 1, CH_SLIM).unwrap();
+    let obo_sliced = slice_dense(&layer.one_by_one, CH_SLIM, CH_SLIM).unwrap();
 
     assert_eq!(&*sliced.conv1d.weights, &*conv_sliced.weights);
     assert_eq!(&*sliced.input_mixin.weights, &*mixin_sliced.weights);
@@ -333,11 +333,11 @@ fn test_slice_wavenet_array_preserves_weights() {
     let mut alloc_num = 0;
     let sliced = slice_wavenet_array(&array, 1, CH_SLIM, &mut alloc_num).unwrap();
 
-    let rec_expected = slice_dense(&array.rechannel, 1, CH_SLIM);
+    let rec_expected = slice_dense(&array.rechannel, 1, CH_SLIM).unwrap();
     assert_eq!(&*sliced.rechannel.weights, &*rec_expected.weights);
 
     for (i, (orig, slic)) in array.layers.iter().zip(sliced.layers.iter()).enumerate() {
-        let conv_expected = slice_conv1d(&orig.conv1d, CH_SLIM, CH_SLIM);
+        let conv_expected = slice_conv1d(&orig.conv1d, CH_SLIM, CH_SLIM).unwrap();
         assert_eq!(
             &*slic.conv1d.weights, &*conv_expected.weights,
             "conv1d mismatch at layer {}",
@@ -345,7 +345,7 @@ fn test_slice_wavenet_array_preserves_weights() {
         );
     }
 
-    let head_expected = slice_dense(&array.head_rechannel, CH_SLIM, 4);
+    let head_expected = slice_dense(&array.head_rechannel, CH_SLIM, 4).unwrap();
     assert_eq!(&*sliced.head_rechannel.weights, &*head_expected.weights);
 }
 

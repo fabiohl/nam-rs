@@ -90,7 +90,7 @@ pub(crate) fn build_convnet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
 
         let bn_scale = cursor.read_slice(out_ch)?;
         let bn_offset = cursor.read_slice(out_ch)?;
-        block.set_bn_params(bn_scale, bn_offset);
+        block.set_bn_params(bn_scale, bn_offset)?;
 
         for &d in dilations {
             total_rf += (kernel - 1) * d;

@@ -193,7 +193,7 @@ pub fn run_pipewire_host(
                         )
                         .param("target_pw_rate", target_pw_rate)
                         .param("target_nam_rate", target_nam_rate)
-                        .param("detail", &e)
+                        .param("detail", e)
                         .emit();
 
                         rt_status.set_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
@@ -273,8 +273,14 @@ pub fn run_pipewire_host(
             let factor_val = rt_status.requested_os_factor.load(Ordering::Relaxed);
             let factor = crate::dsp::oversample::OversampleFactor::from_f32(factor_val as f32);
             match (
-                crate::dsp::oversample::OversampleEngine::new(factor, crate::dsp::pipeline::MAX_RESAMP_BUF),
-                crate::dsp::oversample::OversampleEngine::new(factor, crate::dsp::pipeline::MAX_RESAMP_BUF),
+                crate::dsp::oversample::OversampleEngine::new(
+                    factor,
+                    crate::dsp::pipeline::MAX_RESAMP_BUF,
+                ),
+                crate::dsp::oversample::OversampleEngine::new(
+                    factor,
+                    crate::dsp::pipeline::MAX_RESAMP_BUF,
+                ),
             ) {
                 (Ok(os_l), Ok(os_r)) => {
                     let pair = Box::new(crate::dsp::oversample::OsEnginePair {
@@ -305,7 +311,7 @@ pub fn run_pipewire_host(
                     )
                     .message("Failed to rebuild oversample engine (OOM).")
                     .hint("Audio will continue with the previous oversampling state.")
-                    .param("detail", &e)
+                    .param("detail", e)
                     .emit();
                 }
             }

@@ -96,7 +96,7 @@ fn test_film_process_identity_shift() {
     }
     let bias = vec![0.0f32; channels * 2];
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights, bias);
+    let mut layer = FiLMLayer::load(config, cond_size, channels, weights, bias).unwrap();
 
     // All-ones condition so every scale[c] = Σ weight[c, i] * 1.0 = 1.0
     let condition = vec![1.0f32; cond_size];
@@ -136,7 +136,8 @@ fn test_film_process_scale_only() {
     }
     let bias = vec![0.1f32; channels]; // small bias
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![0.5f32, 0.25, 0.125];
     let mut input = vec![1.0f32; channels];
@@ -198,7 +199,8 @@ fn test_film_process_groups_shift() {
         }
     }
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
     let mut input = vec![0.5f32; channels];
@@ -240,7 +242,8 @@ fn test_film_process_odd_channels() {
     }
     let bias = vec![0.0f32; channels * 2];
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![0.5f32, 0.25, 0.125];
     let mut input = vec![0.5f32, 1.0, 1.5];
@@ -277,7 +280,8 @@ fn test_film_shift_buffer_zeroed_when_shift_false() {
     let weights = vec![1.0f32; channels * cond_size];
     let bias = vec![0.0f32; channels];
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![2.0f32, 3.0];
     let mut input = vec![1.0f32; channels];
@@ -315,7 +319,8 @@ fn test_film_process_cond_size_greater_than_1() {
     }
     let bias = vec![0.0f32; channels * 2];
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![0.25f32, 0.75];
     let mut input = vec![1.0f32, 2.0, 3.0, 4.0];
@@ -375,7 +380,8 @@ fn test_film_process_cond_size_2_groups_2() {
         }
     }
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![0.5f32, 0.5];
     let mut input = vec![1.0f32; channels];
@@ -432,7 +438,8 @@ fn test_film_process_cond_size_4_groups_4_scale_only() {
         }
     }
 
-    let mut layer = FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone());
+    let mut layer =
+        FiLMLayer::load(config, cond_size, channels, weights.clone(), bias.clone()).unwrap();
 
     let condition = vec![0.1f32, 0.2, 0.3, 0.4];
     let mut input = vec![1.0f32; channels];

@@ -30,7 +30,7 @@ fn test_gating_apply_tanh_sigmoid() {
 #[test]
 fn test_blending_apply_tanh_sigmoid() {
     let mut config =
-        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2);
+        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2).unwrap();
     let mut buf = [0.5f32, -0.3f32, 0.8f32, -0.6f32];
     let orig = buf;
     let mut golden = [0.0f32; 2];
@@ -65,7 +65,7 @@ fn test_gating_channel_pairs_zero_input() {
 #[test]
 fn test_blending_channel_pairs_zero_input() {
     let mut config =
-        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 4);
+        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 4).unwrap();
     let mut buf = vec![0.0f32; 8]; // ch=4
     config.apply_blending(&mut buf);
     // tanh(0)=0, sigmoid(0)=0.5, blended = 0 * 0.5 + 0 * 0.5 = 0
@@ -89,7 +89,7 @@ fn test_gating_unity_gate() {
 #[test]
 fn test_blending_alpha_one() {
     let mut config =
-        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2);
+        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2).unwrap();
     let mut buf = vec![0.5f32, -0.3f32, 10.0f32, 10.0f32]; // ch=2
     let mut expected = [0.5f32, -0.3f32];
     ActivationType::Tanh.apply(&mut expected);
@@ -102,7 +102,7 @@ fn test_blending_alpha_one() {
 #[test]
 fn test_blending_alpha_zero() {
     let mut config =
-        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2);
+        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2).unwrap();
     let orig = [0.5f32, -0.3f32];
     let mut buf = [orig[0], orig[1], -10.0f32, -10.0f32]; // ch=2, alpha≈0
     let mut golden = orig;
@@ -127,7 +127,7 @@ fn test_blending_alpha_zero() {
 #[test]
 fn test_blending_scratch_preserved() {
     let mut config =
-        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2);
+        BlendingActivationConfig::new(ActivationType::Tanh, ActivationType::Sigmoid, 2).unwrap();
     assert_eq!(config.channels(), 2);
 
     // Apply twice with same config — scratch must not leak state.

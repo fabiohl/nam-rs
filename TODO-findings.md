@@ -35,7 +35,7 @@
 
 ## Epics & Sprints (Planejamento Ágil)
 
-### Sprint 1: Blindagem de Alocação de Memória e Sanitização de Entradas (Crítico)
+### Sprint 1: Blindagem de Alocação de Memória e Sanitização de Entradas (Crítico) [DONE]
 
 **Objetivo:** Garantir que nenhuma entrada do usuário (IRs ou arquivos `.nam`) seja capaz de causar falhas catastróficas de *Out-Of-Memory* (OOM) no host.
 
@@ -44,7 +44,7 @@
   - **Task 1.1.2 (Loader Wav/IR `cabsim/loader.rs`):** Declarar um limite de segurança rígido para o tamanho máximo permitido de um *Impulse Response* (ex: `MAX_IR_LENGTH = 192000` samples, que corresponde a ~4s em 48kHz). Rejeitar o carregamento do arquivo precocemente (`Result::Err`) antes de submeter os samples a conversões de ponto flutuante ou alocações.
   - **Task 1.1.3 (Suíte de Regressão Negativa):** Criar uma suíte especializada de testes (`loader_malformed_test.rs`) responsável por alimentar propositalmente os módulos com metadados e topologias forjadas ou exageradas, asseverando assertivamente (via `assert!(result.is_err())`) que a biblioteca repulsa as falhas (Soft Reject) graciosamente e com alta performance (< 5ms).
 
-- **Epic 1.2: Refatoração Resiliente de Alocadores (Refere-se ao Finding 1)**
+- **Epic 1.2: Refatoração Resiliente de Alocadores (Refere-se ao Finding 1)** [DONE]
   - **Task 1.2.1 (`huge_alloc.rs`):** Remover terminantemente qualquer uso de `.unwrap()` e `.expect()` associado a `Layout::from_size_align()`. A função deve obrigatoriamente retornar um `Result<T, NamErrorCode>`, mapeando falhas de *layout* para `NamErrorCode::OutOfMemory`. **ATENÇÃO:** É expressamente proibido utilizar *fallbacks silenciosos* (como `unwrap_or_else` retornando ponteiros *dangling* ou vetores vazios) para mascarar o erro internamente.
   - **Task 1.2.2 (`aligned.rs`):** Modificar a assinatura dos construtores base de `AlignedVec` (`new`, `with_capacity`, `from_vec`, `resize`, etc.) para que deixem de retornar `Self` e passem a retornar obrigatoriamente `Result<Self, NamErrorCode>`.
   - **Task 1.2.3 (Cascateamento Rigoroso e Propagação de `Result`):** Inspecionar *toda a árvore de dependências* que chama `AlignedVec::new` ou `huge_alloc`. Isso inclui, mas não se limita a, construtores críticos de áudio no *hot path*, como `NamResampler::new` (`resampler.rs`), `CabSimConv::new` (`cabsim/conv.rs`), e `WaveNetLayerState::new`. O implementador **DEVE** alterar a assinatura dessas funções dependentes para que elas também retornem `Result<Self, NamErrorCode>`. Sob nenhuma circunstância a falha de alocação de memória (OOM) deve resultar na injeção de uma estrutura com capacidade 0 (zero-capacity vector) no motor DSP, o que causaria Segfaults fatais por Undefined Behavior. O erro real de OOM deve cascatear até a *API Host* (e.g. SPSC Payload de carregamento ou extensão CLAP), onde será devidamente tratado/negado em segurança.
@@ -79,11 +79,11 @@
 
 ---
 
-### 🔥 CORREÇÃO RESIDUAL (Planejamento Ágil - Falha na Execução da Epic 1.2)
+### 🔥 CORREÇÃO RESIDUAL (Planejamento Ágil - Falha na Execução da Epic 1.2) [DONE]
 
 **Objetivo:** Erradicar o uso de `.expect()` e panics explícitos que foram injetados indevidamente nas funções de inicialização de DSP (`oversample.rs` e `resampler.rs`) em substituição ao fallback silencioso. O pânico derruba o host e viola a regra de segurança.
 
-- **Epic 1.2 (Retrabalho Obrigatório): Cascateamento Genuíno de `Result`**
+- **Epic 1.2 (Retrabalho Obrigatório): Cascateamento Genuíno de `Result`** [DONE]
   - **Task 1.2.4 (`src/dsp/oversample.rs`):** A estrutura `X2Stage` e `OversampleEngine` instanciam `AlignedVec::new`. O implementador injetou `.expect("OOM: X2Stage up_ring")`. **Ação Exigida:**
     1. Alterar a assinatura de `X2Stage::new(...)` para retornar `Result<Self, NamErrorCode>`.
     2. Substituir o `.expect()` pelo operador `?` (`AlignedVec::new(...)?`).

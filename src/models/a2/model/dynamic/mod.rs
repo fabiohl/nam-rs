@@ -228,7 +228,7 @@ impl WaveNetA2Dyn {
                         activations[i].clone(),
                         sec,
                         bottleneck,
-                    ))
+                    )?)
                 }
                 _ => None,
             };

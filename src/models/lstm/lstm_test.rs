@@ -287,8 +287,8 @@ mod tests {
     fn assert_dyn_layer_parity(hidden_size: usize) {
         let h = hidden_size;
 
-        let mut layer_scalar = LstmLayerDyn::new(1, h);
-        let mut layer_simd = LstmLayerDyn::new(1, h);
+        let mut layer_scalar = LstmLayerDyn::new(1, h).unwrap();
+        let mut layer_simd = LstmLayerDyn::new(1, h).unwrap();
 
         fill_dyn_layer(&mut layer_scalar, h, 1);
         layer_simd
@@ -356,7 +356,7 @@ mod tests {
     fn test_dyn_layer_no_panic() {
         let test_sizes = [3, 7, 20, 40, 64];
         for &h in &test_sizes {
-            let mut layer = LstmLayerDyn::new(1, h);
+            let mut layer = LstmLayerDyn::new(1, h).unwrap();
             fill_dyn_layer(&mut layer, h, 1);
             let input = [0.5];
             layer.process(&input);
@@ -381,8 +381,8 @@ mod tests {
 
     #[test]
     fn test_dyn_layer_determinism() {
-        let mut layer_a = LstmLayerDyn::new(1, 12);
-        let mut layer_b = LstmLayerDyn::new(1, 12);
+        let mut layer_a = LstmLayerDyn::new(1, 12).unwrap();
+        let mut layer_b = LstmLayerDyn::new(1, 12).unwrap();
 
         fill_dyn_layer(&mut layer_a, 12, 1);
         layer_b
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_dyn_layer_state_evolution() {
-        let mut layer = LstmLayerDyn::new(1, 16);
+        let mut layer = LstmLayerDyn::new(1, 16).unwrap();
         fill_dyn_layer(&mut layer, 16, 1);
 
         let initial_hidden: Vec<f32> = layer.state[1..].to_vec();

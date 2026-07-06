@@ -25,6 +25,7 @@
 //! - `NAM/film.h:28-85` (`_cond_to_scale_shift` via Conv1x1 / Dense)
 //! - `NeuralAmpModelerCore/NAM/film.cpp` (per-channel modulation)
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 
 use core::arch::x86_64::*;
@@ -92,21 +93,20 @@ impl FiLMLayer {
         channels: usize,
         weights: Vec<f32>,
         bias: Vec<f32>,
-    ) -> Self {
+    ) -> Result<Self, NamErrorCode> {
         let expected_bias = if config.shift { channels * 2 } else { channels };
         let mut bias_padded = bias;
         if bias_padded.len() < expected_bias {
             bias_padded.resize(expected_bias, 0.0);
         }
-        Self {
+        Ok(Self {
             config,
             cond_size,
             channels,
-            weights: AlignedVec::from_vec(weights).expect("OOM: FiLM weights"),
-            bias: AlignedVec::from_vec(bias_padded).expect("OOM: FiLM bias"),
-            scale_shift_buf: AlignedVec::new(channels * 2, 0.0f32)
-                .expect("OOM: FiLM scale_shift_buf"),
-        }
+            weights: AlignedVec::from_vec(weights)?,
+            bias: AlignedVec::from_vec(bias_padded)?,
+            scale_shift_buf: AlignedVec::new(channels * 2, 0.0f32)?,
+        })
     }
 
     /// Processes FiLM modulation over the input buffer.

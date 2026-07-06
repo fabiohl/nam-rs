@@ -34,7 +34,7 @@ fn test_process_identity_tanh() {
 
     let bn_scale = vec![1.0f32];
     let bn_offset = vec![0.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     let input = [0.5f32];
     let mut output = [0.0f32];
@@ -57,7 +57,7 @@ fn test_process_with_relu() {
 
     let bn_scale = vec![1.0f32];
     let bn_offset = vec![0.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     let input = [0.5f32, -0.3, 0.8, -1.0];
     let mut output = [0.0f32; 4];
@@ -82,7 +82,7 @@ fn test_batch_norm_integration() {
 
     let bn_scale = vec![2.0f32];
     let bn_offset = vec![1.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     let input = [0.5f32];
     let mut output = [0.0f32];
@@ -107,7 +107,7 @@ fn test_multi_frame_causal() {
 
     let bn_scale = vec![1.0f32];
     let bn_offset = vec![0.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     let input = [1.0f32, 2.0, 3.0];
     let mut output = [0.0f32; 3];
@@ -160,7 +160,7 @@ fn test_conv_bias() {
 
     let bn_scale = vec![1.0f32];
     let bn_offset = vec![0.0f32];
-    block.set_bn_params(&bn_scale, &bn_offset);
+    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
 
     let input = [1.0f32];
     let mut output = [0.0f32];

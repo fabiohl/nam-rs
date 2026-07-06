@@ -134,12 +134,12 @@ impl<'a> NamClapMainThread<'a> {
                 OversampleEngine::new(factor, MAX_RESAMP_BUF),
                 OversampleEngine::new(factor, MAX_RESAMP_BUF),
             ) {
-                let _ = self.param_tx.push(
-                    crate::clap::plugin::ClapParamPayload::SetOversample {
+                let _ = self
+                    .param_tx
+                    .push(crate::clap::plugin::ClapParamPayload::SetOversample {
                         os_l: Box::new(l),
                         os_r: Box::new(r),
-                    },
-                );
+                    });
                 self.shared
                     .cold
                     .rt_status

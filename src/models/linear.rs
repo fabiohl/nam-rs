@@ -25,6 +25,7 @@
 use super::NamModel;
 use super::linear_fft::LinearFftState;
 use super::sealed;
+use crate::common::diagnostics::NamErrorCode;
 use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::loader::nam_json::LinearImplementation;
 use crate::math::common::AlignedVec;
@@ -132,7 +133,8 @@ impl LinearModel {
         implementation: LinearImplementation,
     ) -> std::io::Result<Self> {
         let receptive_field = weights.len();
-        let mode = Self::resolve_mode(implementation, receptive_field, &weights);
+        let mode = Self::resolve_mode(implementation, receptive_field, &weights)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
         let mut aligned = AlignedVec::from_vec(weights)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
         aligned.reverse();
@@ -160,19 +162,17 @@ impl LinearModel {
         implementation: LinearImplementation,
         receptive_field: usize,
         weights: &[f32],
-    ) -> LinearMode {
+    ) -> Result<LinearMode, NamErrorCode> {
         match implementation {
-            LinearImplementation::Direct => LinearMode::Direct,
+            LinearImplementation::Direct => Ok(LinearMode::Direct),
             LinearImplementation::Auto => {
                 if receptive_field >= FFT_AUTO_THRESHOLD {
                     let p = select_partition_size(receptive_field);
                     if p < receptive_field {
-                        return LinearMode::Fft(Box::new(
-                            LinearFftState::new(p, weights).expect("OOM: linear FFT state"),
-                        ));
+                        return Ok(LinearMode::Fft(Box::new(LinearFftState::new(p, weights)?)));
                     }
                 }
-                LinearMode::Direct
+                Ok(LinearMode::Direct)
             }
             LinearImplementation::Fft => {
                 if receptive_field < FFT_AUTO_THRESHOLD {
@@ -180,12 +180,10 @@ impl LinearModel {
                         "[Linear] Fft requested but receptive_field={receptive_field} < {FFT_AUTO_THRESHOLD} \
                          — falling back to Direct"
                     );
-                    return LinearMode::Direct;
+                    return Ok(LinearMode::Direct);
                 }
                 let p = select_partition_size(receptive_field);
-                LinearMode::Fft(Box::new(
-                    LinearFftState::new(p, weights).expect("OOM: linear FFT state"),
-                ))
+                Ok(LinearMode::Fft(Box::new(LinearFftState::new(p, weights)?)))
             }
         }
     }

@@ -4,6 +4,7 @@
 use super::common::{WAVENET_MAX_NUM_FRAMES, WavenetProcessContext};
 use super::conv1d_dyn::Conv1dDyn;
 use super::dense_dyn::DenseLayerDyn;
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{AlignedVec, SimdMath};
 
 /// Complete Convolutional Cell (WaveNet Layer) with runtime dimensions.
@@ -34,17 +35,15 @@ impl WaveNetLayerDyn {
         conv1d: Conv1dDyn,
         input_mixin: DenseLayerDyn,
         one_by_one: DenseLayerDyn,
-    ) -> Self {
+    ) -> Result<Self, NamErrorCode> {
         let scratch_size = ch * WAVENET_MAX_NUM_FRAMES;
-        Self {
+        Ok(Self {
             conv1d,
             input_mixin,
             one_by_one,
-            scratch_mixin: AlignedVec::new(scratch_size, 0.0f32)
-                .expect("OOM: WaveNetLayerDyn scratch_mixin"),
-            scratch_conv: AlignedVec::new(scratch_size, 0.0f32)
-                .expect("OOM: WaveNetLayerDyn scratch_conv"),
-        }
+            scratch_mixin: AlignedVec::new(scratch_size, 0.0f32)?,
+            scratch_conv: AlignedVec::new(scratch_size, 0.0f32)?,
+        })
     }
 
     /// Processes a full WaveNet layer with runtime-dimensional scratch buffers.

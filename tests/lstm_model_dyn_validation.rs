@@ -52,8 +52,8 @@ fn fill_model_dyn(model: &mut LstmModelDyn) {
 
 /// Inner: runs the model on the provided input and asserts SIMD vs scalar parity.
 fn assert_model_dyn_parity_inner(num_layers: usize, hidden_size: usize, zero_input: bool) {
-    let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
-    let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
+    let mut model_simd = LstmModelDyn::new(num_layers, hidden_size).unwrap();
+    let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size).unwrap();
 
     fill_model_dyn(&mut model_simd);
     for li in 0..num_layers {
@@ -179,8 +179,8 @@ fn test_model_dyn_parity_edge() {
 // Determinism: two identically-initialized LstmModelDyn produce identical output.
 #[test]
 fn test_model_dyn_determinism() {
-    let mut model_a = LstmModelDyn::new(2, 10);
-    let mut model_b = LstmModelDyn::new(2, 10);
+    let mut model_a = LstmModelDyn::new(2, 10).unwrap();
+    let mut model_b = LstmModelDyn::new(2, 10).unwrap();
 
     fill_model_dyn(&mut model_a);
     // Copy to model_b
@@ -231,7 +231,7 @@ fn test_model_dyn_block_size_invariance() {
     let mut reference_out = [0.0f32; 64];
 
     for (idx, &block_size) in block_sizes.iter().enumerate() {
-        let mut model = LstmModelDyn::new(3, 8);
+        let mut model = LstmModelDyn::new(3, 8).unwrap();
         fill_model_dyn(&mut model);
 
         let mut out = [0.0f32; 64];
@@ -259,7 +259,7 @@ fn test_model_dyn_block_size_invariance() {
 // reset_states() zeros hidden, cell, and gates for all layers.
 #[test]
 fn test_model_dyn_reset_states() {
-    let mut model = LstmModelDyn::new(3, 8);
+    let mut model = LstmModelDyn::new(3, 8).unwrap();
     fill_model_dyn(&mut model);
 
     // Process to push states away from zero
@@ -303,7 +303,7 @@ fn test_model_dyn_reset_states() {
 // reset_input_slots() zeros only input slot, preserving hidden and cell state.
 #[test]
 fn test_model_dyn_reset_input_slots() {
-    let mut model = LstmModelDyn::new(3, 8);
+    let mut model = LstmModelDyn::new(3, 8).unwrap();
     fill_model_dyn(&mut model);
 
     // Process to push hidden/cell away from zero
@@ -359,7 +359,7 @@ fn test_model_dyn_reset_input_slots() {
 // State evolution: hidden state changes across multiple processing steps.
 #[test]
 fn test_model_dyn_state_evolution() {
-    let mut model = LstmModelDyn::new(3, 8);
+    let mut model = LstmModelDyn::new(3, 8).unwrap();
     fill_model_dyn(&mut model);
 
     let input = vec![0.7f32; 1];
@@ -418,8 +418,8 @@ mod proptest_tests {
                 .collect();
 
             // Build model with random weights
-            let mut model_simd = LstmModelDyn::new(num_layers, hidden_size);
-            let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size);
+            let mut model_simd = LstmModelDyn::new(num_layers, hidden_size).unwrap();
+            let mut model_scalar = LstmModelDyn::new(num_layers, hidden_size).unwrap();
 
             // Fill layers with random weights (scaled down for stability)
             for li in 0..num_layers {

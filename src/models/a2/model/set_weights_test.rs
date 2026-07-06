@@ -557,7 +557,7 @@ fn test_set_layer_film_slot_0() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     assert!(layer.conv_pre_film.is_none());
     set_layer_film(&mut layer, &config, 0, film).unwrap();
     assert!(layer.conv_pre_film.is_some());
@@ -571,7 +571,7 @@ fn test_set_layer_film_slot_1() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     assert!(layer.conv_post_film.is_none());
     set_layer_film(&mut layer, &config, 1, film).unwrap();
     assert!(layer.conv_post_film.is_some());
@@ -585,7 +585,7 @@ fn test_set_layer_film_slot_2() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 2, film).unwrap();
     assert!(layer.input_mixin_pre_film.is_some());
 }
@@ -598,7 +598,7 @@ fn test_set_layer_film_slot_3() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 3, film).unwrap();
     assert!(layer.input_mixin_post_film.is_some());
 }
@@ -611,7 +611,7 @@ fn test_set_layer_film_slot_4() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 4, film).unwrap();
     assert!(layer.activation_pre_film.is_some());
 }
@@ -624,7 +624,7 @@ fn test_set_layer_film_slot_5() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 5, film).unwrap();
     assert!(layer.activation_post_film.is_some());
 }
@@ -637,7 +637,7 @@ fn test_set_layer_film_slot_6() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 6, film).unwrap();
     assert!(layer.layer1x1_post_film.is_some());
 }
@@ -650,7 +650,7 @@ fn test_set_layer_film_slot_7() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 7, film).unwrap();
     assert!(layer.head1x1_post_film.is_some());
 }
@@ -663,7 +663,7 @@ fn test_set_layer_film_out_of_range() {
         shift: true,
         groups: 1,
     };
-    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]);
+    let film = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![0.0f32; 8]).unwrap();
     let result = set_layer_film(&mut layer, &config, 8, film);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("out of range"));
@@ -677,8 +677,8 @@ fn test_set_layer_film_overwrite() {
         shift: true,
         groups: 1,
     };
-    let film1 = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![1.0f32; 8]);
-    let film2 = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![2.0f32; 8]);
+    let film1 = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![1.0f32; 8]).unwrap();
+    let film2 = FiLMLayer::load(config, 1, 4, vec![0.0f32; 8], vec![2.0f32; 8]).unwrap();
     set_layer_film(&mut layer, &config, 0, film1).unwrap();
     set_layer_film(&mut layer, &config, 0, film2).unwrap();
     let film = layer.conv_pre_film.as_ref().unwrap();
