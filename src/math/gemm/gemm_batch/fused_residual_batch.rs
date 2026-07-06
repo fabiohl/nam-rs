@@ -201,8 +201,8 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 let mut sum = if do_bias { bias[out_c] } else { 0.0 };
                 sum += res_frame[out_c];
                 for in_c in 0..in_len {
-                    sum +=
-                        *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + out_c);
+                    sum += *in_frame.get_unchecked(in_c)
+                        * *weights.get_unchecked(in_c * out_len + out_c);
                 }
                 *out_frame.get_unchecked_mut(out_c) = sum;
                 out_c += 1;

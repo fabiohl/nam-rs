@@ -161,12 +161,9 @@ pub unsafe fn fused_add_gemv_avx2_4x6(
         for oc in 4..6 {
             let w = *weights.get_unchecked(oc);
             let mut sum = *in_frame.get_unchecked(0) * w;
-            sum += *in_frame.get_unchecked(1)
-                * *weights.get_unchecked(6 + oc);
-            sum += *in_frame.get_unchecked(2)
-                * *weights.get_unchecked(12 + oc);
-            sum += *in_frame.get_unchecked(3)
-                * *weights.get_unchecked(18 + oc);
+            sum += *in_frame.get_unchecked(1) * *weights.get_unchecked(6 + oc);
+            sum += *in_frame.get_unchecked(2) * *weights.get_unchecked(12 + oc);
+            sum += *in_frame.get_unchecked(3) * *weights.get_unchecked(18 + oc);
             if do_bias {
                 sum += bias[oc];
             }
@@ -264,10 +261,8 @@ pub unsafe fn fused_add_gemv_avx2_8x6(
             let w_row = w_ptr.add(in_c * out_len);
             let w_simd = load_partial_ymm(core::slice::from_raw_parts(w_row, 4), 4);
             acc_simd = _mm256_fmadd_ps(vs, w_simd, acc_simd);
-            sum4 += *in_frame.get_unchecked(in_c)
-                * *weights.get_unchecked(in_c * out_len + 4);
-            sum5 += *in_frame.get_unchecked(in_c)
-                * *weights.get_unchecked(in_c * out_len + 5);
+            sum4 += *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + 4);
+            sum5 += *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + 5);
         }
 
         let mut tmp = [0.0f32; 8];
@@ -447,12 +442,9 @@ pub unsafe fn gemv_overwrite_avx2_4x6(
         for oc in 4..6 {
             let w = *weights.get_unchecked(oc);
             let mut sum = *in_frame.get_unchecked(0) * w;
-            sum += *in_frame.get_unchecked(1)
-                * *weights.get_unchecked(6 + oc);
-            sum += *in_frame.get_unchecked(2)
-                * *weights.get_unchecked(12 + oc);
-            sum += *in_frame.get_unchecked(3)
-                * *weights.get_unchecked(18 + oc);
+            sum += *in_frame.get_unchecked(1) * *weights.get_unchecked(6 + oc);
+            sum += *in_frame.get_unchecked(2) * *weights.get_unchecked(12 + oc);
+            sum += *in_frame.get_unchecked(3) * *weights.get_unchecked(18 + oc);
             if do_bias {
                 sum += bias[oc];
             }
@@ -544,10 +536,8 @@ pub unsafe fn gemv_overwrite_avx2_8x6(
             let w_row = w_ptr.add(in_c * out_len);
             let w_simd = load_partial_ymm(core::slice::from_raw_parts(w_row, 4), 4);
             acc_simd = _mm256_fmadd_ps(vs, w_simd, acc_simd);
-            sum4 += *in_frame.get_unchecked(in_c)
-                * *weights.get_unchecked(in_c * out_len + 4);
-            sum5 += *in_frame.get_unchecked(in_c)
-                * *weights.get_unchecked(in_c * out_len + 5);
+            sum4 += *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + 4);
+            sum5 += *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * out_len + 5);
         }
 
         let mut tmp = [0.0f32; 8];

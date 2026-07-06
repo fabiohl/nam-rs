@@ -363,16 +363,14 @@ fn test_lstm_noise_soak() {
     for gate in 0..4 {
         for ih in 0..17 {
             for h in 0..16 {
-                model.layer1.input_hidden_weights.0[gate][ih][h] =
-                    f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+                model.layer1.input_hidden_weights.0[gate][ih][h] = pcg.next_f32() * 0.1 - 0.05;
             }
         }
     }
     for gate in 0..4 {
         for ih in 0..32 {
             for h in 0..16 {
-                model.layer2.input_hidden_weights.0[gate][ih][h] =
-                    f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+                model.layer2.input_hidden_weights.0[gate][ih][h] = pcg.next_f32() * 0.1 - 0.05;
             }
         }
     }
@@ -382,7 +380,7 @@ fn test_lstm_noise_soak() {
     }
     model.head_bias = pcg.next_f32() * 0.1;
     for i in 0..16 {
-        model.head_weights[i] = f32_to_f16_bits(pcg.next_f32() * 0.1 - 0.05);
+        model.head_weights[i] = pcg.next_f32() * 0.1 - 0.05;
     }
 
     let mut input = vec![0.0f32; 64];
@@ -1384,6 +1382,7 @@ fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: us
                 } else {
                     f16_bits_to_f32(a1_mix_u16[oc])
                 };
+
                 mixin[ff * 16 + oc] = mw * cv;
             }
         }

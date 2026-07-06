@@ -3,7 +3,6 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::math::common::half::f32_to_f16_bits;
     use crate::models::lstm::{LstmModel1, LstmModel2};
 
     // Verify that internal buffers (gates and state) are allocated with the correct
@@ -91,7 +90,7 @@ mod tests {
         for k in 0..4 {
             for j in 0..9 {
                 for i in 0..8 {
-                    model.layer.input_hidden_weights[k][j][i] = f32_to_f16_bits(0.05);
+                    model.layer.input_hidden_weights[k][j][i] = 0.05;
                 }
             }
         }
@@ -142,12 +141,12 @@ mod tests {
             for k in 0..4 {
                 for j in 0..9 {
                     for i in 0..8 {
-                        model.layer.input_hidden_weights[k][j][i] = f32_to_f16_bits(0.05);
+                        model.layer.input_hidden_weights[k][j][i] = 0.05;
                     }
                 }
             }
             for i in 0..8 {
-                model.head_weights[i] = f32_to_f16_bits(0.5);
+                model.head_weights[i] = 0.5;
             }
 
             let mut out = [0.0f32; 64];
@@ -228,7 +227,7 @@ mod tests {
         for k in 0..4 {
             for j in 0..17 {
                 for i in 0..8 {
-                    let w = f32_to_f16_bits(0.01 * (i + j + k) as f32);
+                    let w = 0.01 * (i + j + k) as f32;
                     if j < 9 {
                         model_simd.layer1.input_hidden_weights[k][j][i] = w;
                         model_scalar.layer1.input_hidden_weights[k][j][i] = w;
@@ -239,7 +238,7 @@ mod tests {
             }
         }
         for i in 0..8 {
-            let w = f32_to_f16_bits(0.1 * i as f32);
+            let w = 0.1 * i as f32;
             model_simd.head_weights[i] = w;
             model_scalar.head_weights[i] = w;
         }
@@ -278,7 +277,7 @@ mod tests {
             for j in 0..ih {
                 for hi in 0..h {
                     layer.input_hidden_weights[w_start + j * h + hi] =
-                        f32_to_f16_bits(0.01 * (j + hi + k + 1) as f32);
+                        0.01 * (j + hi + k + 1) as f32;
                 }
             }
         }

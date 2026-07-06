@@ -28,6 +28,7 @@ use nam_rs::math::gemm::gemv::fused_add_gemv_avx2;
 struct GemvTestData {
     in_frame: Vec<f32>,
     weights: Vec<u16>,
+    weights_f32: Vec<f32>,
     bias: Vec<f32>,
     out_frame: Vec<f32>,
 }
@@ -42,24 +43,27 @@ fn make_test_data(in_len: usize, out_len: usize) -> GemvTestData {
     let weights: Vec<u16> = (0..in_len * out_len)
         .map(|i| {
             let v = (i as f32 * 0.13).sin() * 0.5;
-            // Software f32→f16 conversion (no F16C hardware requirement for test setup).
             let u = v.to_bits();
             let sign = (u >> 16) & 0x8000;
             let exp = (u >> 23) & 0xFF;
             let frac = (u & 0x7F_FFFF) >> 13;
             if exp < 112 {
-                0 // underflow to zero
+                0
             } else if exp > 142 {
-                (sign | 0x7BFF) as u16 // saturate to max
+                (sign | 0x7BFF) as u16
             } else {
                 (sign | ((exp - 112) << 10) | (frac & 0x3FF)) as u16
             }
         })
         .collect();
+    let weights_f32: Vec<f32> = (0..in_len * out_len)
+        .map(|i| (i as f32 * 0.13).sin() * 0.5)
+        .collect();
     let out_frame = vec![0.0; out_len];
     GemvTestData {
         in_frame,
         weights,
+        weights_f32,
         bias,
         out_frame,
     }
@@ -400,7 +404,13 @@ macro_rules! bench_dim {
             b.iter(|| {
                 let mut out = data.out_frame.clone();
                 unsafe {
-                    fused_add_gemv_avx2(&data.in_frame, &data.weights, &data.bias, &mut out, true);
+                    fused_add_gemv_avx2(
+                        &data.in_frame,
+                        &data.weights_f32,
+                        &data.bias,
+                        &mut out,
+                        true,
+                    );
                 }
                 out
             })
@@ -422,7 +432,7 @@ macro_rules! bench_dim {
                 unsafe {
                     fused_add_gemv_fallback(
                         &data.in_frame,
-                        &data.weights,
+                        &data.weights_f32,
                         &data.bias,
                         &mut out,
                         true,

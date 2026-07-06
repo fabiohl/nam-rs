@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use crate::math::common::half::f16_bits_to_f32;
-
 /// Batch Matrix Processing (GEMM).
 /// GEMM stands for "General Matrix Multiplication". It's the heart of neural networks.
 /// This function processes multiple audio "frames" at once.
@@ -10,7 +8,7 @@ use crate::math::common::half::f16_bits_to_f32;
 #[inline]
 pub unsafe fn fused_add_gemm_batch_fallback(
     in_frames: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32], // "Bias" is a fixed offset added at the end (like the 'b' in y = ax + b).
     out_frames: &mut [f32],
     num_frames: usize,
@@ -45,7 +43,7 @@ pub unsafe fn fused_add_gemm_batch_fallback(
 #[inline]
 pub unsafe fn fused_add_gemv_fallback(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -62,8 +60,7 @@ pub unsafe fn fused_add_gemv_fallback(
         for in_c in 0..in_len {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
-                // Gets the compressed weight and unpacks it.
-                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = *weights.get_unchecked(in_c * out_len + out_c);
                 // Multiplies the input by the weight and accumulates.
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
@@ -82,7 +79,7 @@ pub unsafe fn fused_add_gemv_fallback(
 #[inline]
 pub unsafe fn gemv_overwrite_fallback(
     in_frame: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     out_frame: &mut [f32],
     do_bias: bool,
@@ -94,7 +91,7 @@ pub unsafe fn gemv_overwrite_fallback(
         for in_c in 0..in_len {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
-                let w = f16_bits_to_f32(*weights.get_unchecked(in_c * out_len + out_c));
+                let w = *weights.get_unchecked(in_c * out_len + out_c);
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
         }
@@ -113,7 +110,7 @@ pub unsafe fn gemv_overwrite_fallback(
 #[inline]
 pub unsafe fn fused_gemm_residual_batch_fallback(
     in_frames: &[f32],
-    weights: &[u16],
+    weights: &[f32],
     bias: &[f32],
     residual: &[f32], // This is the "clean" signal that will be added at the end.
     out_frames: &mut [f32],
@@ -132,8 +129,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
             for (out_c, &b) in bias.iter().enumerate().take(out_len) {
                 let mut sum = if do_bias { b } else { 0.0 };
                 for in_c in 0..in_len {
-                    let w_bits = *weights.get_unchecked(in_c * out_len + out_c);
-                    let w = f16_bits_to_f32(w_bits);
+                    let w = *weights.get_unchecked(in_c * out_len + out_c);
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
                 // Final result = (Matrix Processing) + (Original Residual Signal).

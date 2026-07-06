@@ -1,17 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::models::lstm::LstmModel1;
 use proptest::prelude::*;
-
-fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
-    if is_bf16 {
-        (f.to_bits() >> 16) as u16
-    } else {
-        f32_to_f16_bits(f)
-    }
-}
 
 prop_compose! {
     fn lstm_parity_strategy()(
@@ -60,14 +51,7 @@ proptest! {
     #[test]
     #[ignore]
     fn test_lstm_scalar_vs_simd_parity((inputs, weights, bias, head_weights, head_bias) in lstm_parity_strategy()) {
-        let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
-            == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
-        let scale = if is_bf16 {
-            f32::MAX / 4.0
-        } else {
-            60000.0
-        };
+        let scale = f32::MAX / 4.0;
 
         // Force all weights and biases to extreme values (+scale / -scale)
         // to guarantee full saturation according to acceptance criteria.
@@ -83,9 +67,9 @@ proptest! {
         for k in 0..4 {
             for j in 0..9 {
                 for i in 0..8 {
-                    let w_bits = quantize_weight(scaled_weights[w_idx], is_bf16);
-                    model_simd.layer.input_hidden_weights[k][j][i] = w_bits;
-                    model_scalar.layer.input_hidden_weights[k][j][i] = w_bits;
+                    let w = scaled_weights[w_idx];
+                    model_simd.layer.input_hidden_weights[k][j][i] = w;
+                    model_scalar.layer.input_hidden_weights[k][j][i] = w;
                     w_idx += 1;
                 }
             }
@@ -95,9 +79,8 @@ proptest! {
         model_scalar.layer.bias.copy_from_slice(&scaled_bias[..32]);
 
         for (i, &w) in scaled_head_weights.iter().enumerate().take(8) {
-            let hw_bits = quantize_weight(w, is_bf16);
-            model_simd.head_weights[i] = hw_bits;
-            model_scalar.head_weights[i] = hw_bits;
+            model_simd.head_weights[i] = w;
+            model_scalar.head_weights[i] = w;
         }
 
         model_simd.head_bias = scaled_head_bias;
@@ -131,9 +114,6 @@ proptest! {
     #[test]
     #[ignore]
     fn test_lstm_1x40_scalar_simd_parity((inputs, weights, bias, head_weights, head_bias) in lstm_1x40_parity_strategy()) {
-        let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
-            == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
-
         let mut model_simd = LstmModel1::<40, 41, 160>::new();
         let mut model_scalar = LstmModel1::<40, 41, 160>::new();
 
@@ -142,9 +122,9 @@ proptest! {
             for j in 0..41 {
                 for i in 0..40 {
                     // Scale weights for recurrent stability
-                    let w_bits = quantize_weight(weights[w_idx] / 8.0, is_bf16);
-                    model_simd.layer.input_hidden_weights[k][j][i] = w_bits;
-                    model_scalar.layer.input_hidden_weights[k][j][i] = w_bits;
+                    let w = weights[w_idx] / 8.0;
+                    model_simd.layer.input_hidden_weights[k][j][i] = w;
+                    model_scalar.layer.input_hidden_weights[k][j][i] = w;
                     w_idx += 1;
                 }
             }
@@ -159,9 +139,8 @@ proptest! {
         }
 
         for (i, &w) in head_weights.iter().enumerate().take(40) {
-            let hw_bits = quantize_weight(w, is_bf16);
-            model_simd.head_weights[i] = hw_bits;
-            model_scalar.head_weights[i] = hw_bits;
+            model_simd.head_weights[i] = w;
+            model_scalar.head_weights[i] = w;
         }
 
         model_simd.head_bias = head_bias;
@@ -196,8 +175,6 @@ proptest! {
     #[ignore]
     fn test_lstm_2x24_scalar_simd_parity((inputs, w1, w2, b1, b2, head_weights, head_bias) in lstm_2x24_parity_strategy()) {
         use nam_rs::models::lstm::LstmModel2;
-        let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
-            == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
 
         let mut model_simd = LstmModel2::<24, 25, 48, 96>::new();
         let mut model_scalar = LstmModel2::<24, 25, 48, 96>::new();
@@ -207,9 +184,9 @@ proptest! {
             for j in 0..25 {
                 for i in 0..24 {
                     // Scale weights for stability
-                    let w_bits = quantize_weight(w1[w1_idx] / 8.0, is_bf16);
-                    model_simd.layer1.input_hidden_weights[k][j][i] = w_bits;
-                    model_scalar.layer1.input_hidden_weights[k][j][i] = w_bits;
+                    let w = w1[w1_idx] / 8.0;
+                    model_simd.layer1.input_hidden_weights[k][j][i] = w;
+                    model_scalar.layer1.input_hidden_weights[k][j][i] = w;
                     w1_idx += 1;
                 }
             }
@@ -220,9 +197,9 @@ proptest! {
             for j in 0..48 {
                 for i in 0..24 {
                     // Scale weights for stability
-                    let w_bits = quantize_weight(w2[w2_idx] / 8.0, is_bf16);
-                    model_simd.layer2.input_hidden_weights[k][j][i] = w_bits;
-                    model_scalar.layer2.input_hidden_weights[k][j][i] = w_bits;
+                    let w = w2[w2_idx] / 8.0;
+                    model_simd.layer2.input_hidden_weights[k][j][i] = w;
+                    model_scalar.layer2.input_hidden_weights[k][j][i] = w;
                     w2_idx += 1;
                 }
             }
@@ -243,9 +220,8 @@ proptest! {
         }
 
         for (i, &w) in head_weights.iter().enumerate().take(24) {
-            let hw_bits = quantize_weight(w, is_bf16);
-            model_simd.head_weights[i] = hw_bits;
-            model_scalar.head_weights[i] = hw_bits;
+            model_simd.head_weights[i] = w;
+            model_scalar.head_weights[i] = w;
         }
 
         model_simd.head_bias = head_bias;

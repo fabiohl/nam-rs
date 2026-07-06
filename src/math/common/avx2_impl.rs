@@ -238,7 +238,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frame: &mut [f32],
         do_bias: bool,
@@ -320,7 +320,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frame: &mut [f32],
         do_bias: bool,
@@ -929,7 +929,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,

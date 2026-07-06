@@ -429,16 +429,18 @@ ver SQ3.2); esta tarefa não precisa tocar neles. No A2 dinâmico, `rechannel_w`
 
 **Conclusão (2026-07-05)**: `WaveNetA2<CH>` tinha dois campos `rechannel_w` e `rechannel_w_f32`, ambos `AlignedVec<f32>` — o `process.rs` já usava só `rechannel_w_f32`, então `rechannel_w` era um campo redundante (resquício da migração f16→f32). Removido o campo `rechannel_w` da struct, da inicialização em `new()` e da atribuição em `set_weights()`. Testes de modelo (`model_test.rs:147`, `dynamic_test.rs:51`) atualizados para referenciar `rechannel_w_f32`. Zero novas referências a `u16` em pesos A2. `cargo check` sem novos erros (6 erros pré-existentes de SQ4.3).
 
-### Tarefa SQ4.7 — Compilação verde + testes unitários
+### Tarefa SQ4.7 — Compilação verde + testes unitários [DONE]
 
 **Descrição**: Após SQ4.1–SQ4.6, o projeto deve compilar. Rodar `cargo check`, depois `cargo test --lib` para validar testes unitários.
 
 **Critério de aceite**:
 
-- [ ] `cargo check` passa sem erros
-- [ ] `cargo clippy` passa sem warnings novos
-- [ ] `cargo test --lib` — todos os testes unitários passam
-- [ ] Testes unitários de GEMV/dot/GEMM em `src/math/` passam com pesos f32
+- [x] `cargo check` passa sem erros
+- [x] `cargo clippy` passa sem warnings novos
+- [x] `cargo test --lib` — todos os testes unitários passam
+- [x] Testes unitários de GEMV/dot/GEMM em `src/math/` passam com pesos f32
+
+**Conclusão (2026-07-05)**: Corrigidos os 6 erros de tipo remanescentes de SQ4.3 — dispatchers GEMV (`avx2_impl.rs`, `avx512/gemv/base.rs`, `avx512/gemv/vnni_bf16.rs`) e trait `SimdMath` em `traits.rs` ainda declaravam `weights: &[u16]` mas os kernels subjacentes já aceitavam `&[f32]`. Alteradas 16 assinaturas (incluindo scalar fallbacks `scalar_ref/gemm.rs` e `scalar_ref/lstm.rs`) de `&[u16]` → `&[f32]`, removidos `f16_bits_to_f32` dos fallbacks. Corrigidos testes/tarefas auxiliares: `lstm_test.rs` (removidas 7 chamadas a `f32_to_f16_bits`), `soak_test.rs` (3 chamadas LSTM + `uw` via BF16), `lstm_scalar_bf16_parity.rs` (removidas 14 chamadas `quantize_weight`/`f32_to_f16_bits`), `lstm_gate_bf16_parity.rs` (conversão f32→BF16 inline para kernel AVX-512), `gemv_bench.rs` (campo `weights_f32` adicional para paths genéricos). `cargo check` limpo (lib pura, standalone, CLAP+tests). `cargo test --lib`: todos passam. Clippy: 31 warnings pré-existentes em kernels f16 (unnecessary_cast, missing_safety_comment), nenhum novo.
 
 ---
 

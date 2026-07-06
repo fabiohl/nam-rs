@@ -50,7 +50,14 @@ proptest! {
 
         unsafe {
             gemv_4gate_bf16_avx512(
-                &in_frame, &w0, &w1, &w2, &w3, &bias, &mut out_simd, do_bias,
+                &in_frame,
+                &w0.iter().map(|&v| f32_to_bf16_bits(v)).collect::<Vec<u16>>(),
+                &w1.iter().map(|&v| f32_to_bf16_bits(v)).collect::<Vec<u16>>(),
+                &w2.iter().map(|&v| f32_to_bf16_bits(v)).collect::<Vec<u16>>(),
+                &w3.iter().map(|&v| f32_to_bf16_bits(v)).collect::<Vec<u16>>(),
+                &bias,
+                &mut out_simd,
+                do_bias,
             );
             gemv_4gate_bf16_fallback(
                 &in_frame, &w0, &w1, &w2, &w3, &bias, &mut out_scalar, do_bias,

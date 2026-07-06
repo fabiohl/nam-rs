@@ -277,7 +277,7 @@ pub trait SimdMath {
 
     // --- (B) GEMV/GEMM Fused ---
 
-    /// Fused add + GEMV kernel (f16c-quantized weights).
+    /// Fused add + GEMV kernel (f32 weights).
     ///
     /// Computes `out += weights^T * in_frame [+ bias]` in a single pass.
     /// No alignment required.
@@ -289,7 +289,7 @@ pub trait SimdMath {
     /// All slices must be valid; `out_frame` must not alias `in_frame`.
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frame: &mut [f32],
         do_bias: bool,
@@ -364,13 +364,13 @@ pub trait SimdMath {
     /// All slices must be valid; `out_frame` must not alias `in_frame`.
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frame: &mut [f32],
         do_bias: bool,
     );
 
-    /// GEMV overwrite in batch (f16c-quantized weights).
+    /// GEMV overwrite in batch (f32 weights).
     ///
     /// Delegates to per-frame `gemv_overwrite`. No alignment required.
     ///
@@ -378,7 +378,7 @@ pub trait SimdMath {
     /// Same preconditions as `fused_add_gemm_batch`.
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],
-        weights: &[u16],
+        weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,

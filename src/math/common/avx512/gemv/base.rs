@@ -177,7 +177,7 @@ macro_rules! impl_avx512_gemv {
         // CPU supports AVX-512F+VL+F16C (verified by dispatch).
         unsafe fn fused_add_gemv(
             in_frame: &[f32],
-            weights: &[u16],
+            weights: &[f32],
             bias: &[f32],
             out_frame: &mut [f32],
             do_bias: bool,
@@ -251,7 +251,7 @@ macro_rules! impl_avx512_gemv {
         // weights.len() >= in_frame.len() * out_frame.len(); CPU supports AVX-512F+VL+F16C.
         unsafe fn gemv_overwrite(
             in_frame: &[f32],
-            weights: &[u16],
+            weights: &[f32],
             bias: &[f32],
             out_frame: &mut [f32],
             do_bias: bool,
@@ -327,7 +327,7 @@ macro_rules! impl_avx512_gemv {
         // matching num_frames * dimensions; CPU supports AVX-512F+VL+F16C.
         unsafe fn gemv_overwrite_batch(
             in_frames: &[f32],
-            weights: &[u16],
+            weights: &[f32],
             bias: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,

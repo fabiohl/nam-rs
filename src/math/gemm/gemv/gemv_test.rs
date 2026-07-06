@@ -319,21 +319,69 @@ fn test_gemv_no_bias_f32_avx512_batch_vs_fallback() {
 type F32Kernel = unsafe fn(&[f32], &[f32], &[f32], &mut [f32], bool);
 
 const FUSED_ADD_SPECIALIZED: &[(usize, usize, F32Kernel)] = &[
-    (1, 4, f16_avx2_specialized::fused_add_gemv_avx2_1x4 as F32Kernel),
-    (4, 4, f16_avx2_specialized::fused_add_gemv_avx2_4x4 as F32Kernel),
-    (4, 6, f16_avx2_specialized::fused_add_gemv_avx2_4x6 as F32Kernel),
-    (8, 4, f16_avx2_specialized::fused_add_gemv_avx2_8x4 as F32Kernel),
-    (8, 6, f16_avx2_specialized::fused_add_gemv_avx2_8x6 as F32Kernel),
-    (8, 8, f16_avx2_specialized::fused_add_gemv_avx2_8x8 as F32Kernel),
+    (
+        1,
+        4,
+        f16_avx2_specialized::fused_add_gemv_avx2_1x4 as F32Kernel,
+    ),
+    (
+        4,
+        4,
+        f16_avx2_specialized::fused_add_gemv_avx2_4x4 as F32Kernel,
+    ),
+    (
+        4,
+        6,
+        f16_avx2_specialized::fused_add_gemv_avx2_4x6 as F32Kernel,
+    ),
+    (
+        8,
+        4,
+        f16_avx2_specialized::fused_add_gemv_avx2_8x4 as F32Kernel,
+    ),
+    (
+        8,
+        6,
+        f16_avx2_specialized::fused_add_gemv_avx2_8x6 as F32Kernel,
+    ),
+    (
+        8,
+        8,
+        f16_avx2_specialized::fused_add_gemv_avx2_8x8 as F32Kernel,
+    ),
 ];
 
 const OVERWRITE_SPECIALIZED: &[(usize, usize, F32Kernel)] = &[
-    (1, 4, f16_avx2_specialized::gemv_overwrite_avx2_1x4 as F32Kernel),
-    (4, 4, f16_avx2_specialized::gemv_overwrite_avx2_4x4 as F32Kernel),
-    (4, 6, f16_avx2_specialized::gemv_overwrite_avx2_4x6 as F32Kernel),
-    (8, 4, f16_avx2_specialized::gemv_overwrite_avx2_8x4 as F32Kernel),
-    (8, 6, f16_avx2_specialized::gemv_overwrite_avx2_8x6 as F32Kernel),
-    (8, 8, f16_avx2_specialized::gemv_overwrite_avx2_8x8 as F32Kernel),
+    (
+        1,
+        4,
+        f16_avx2_specialized::gemv_overwrite_avx2_1x4 as F32Kernel,
+    ),
+    (
+        4,
+        4,
+        f16_avx2_specialized::gemv_overwrite_avx2_4x4 as F32Kernel,
+    ),
+    (
+        4,
+        6,
+        f16_avx2_specialized::gemv_overwrite_avx2_4x6 as F32Kernel,
+    ),
+    (
+        8,
+        4,
+        f16_avx2_specialized::gemv_overwrite_avx2_8x4 as F32Kernel,
+    ),
+    (
+        8,
+        6,
+        f16_avx2_specialized::gemv_overwrite_avx2_8x6 as F32Kernel,
+    ),
+    (
+        8,
+        8,
+        f16_avx2_specialized::gemv_overwrite_avx2_8x8 as F32Kernel,
+    ),
 ];
 
 fn make_f32_gemv_data(in_len: usize, out_len: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
@@ -348,8 +396,11 @@ fn make_f32_gemv_data(in_len: usize, out_len: usize) -> (Vec<f32>, Vec<f32>, Vec
 }
 
 unsafe fn fused_add_gemv_f32_ref(
-    in_frame: &[f32], weights: &[f32], bias: &[f32],
-    out_frame: &mut [f32], do_bias: bool,
+    in_frame: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
 ) {
     let out_len = out_frame.len();
     let in_len = in_frame.len();
@@ -363,8 +414,11 @@ unsafe fn fused_add_gemv_f32_ref(
 }
 
 unsafe fn gemv_overwrite_f32_ref(
-    in_frame: &[f32], weights: &[f32], bias: &[f32],
-    out_frame: &mut [f32], do_bias: bool,
+    in_frame: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
 ) {
     let out_len = out_frame.len();
     let in_len = in_frame.len();
@@ -396,7 +450,8 @@ fn test_fused_add_gemv_f32_specialized_vs_fallback() {
                 assert!(
                     diff < 5e-4,
                     "fused_add {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}, diff={diff:e}",
-                    out_simd[c], out_fb[c],
+                    out_simd[c],
+                    out_fb[c],
                 );
             }
         }
@@ -422,7 +477,8 @@ fn test_gemv_overwrite_f32_specialized_vs_fallback() {
                 assert!(
                     diff < 5e-4,
                     "overwrite {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}, diff={diff:e}",
-                    out_simd[c], out_fb[c],
+                    out_simd[c],
+                    out_fb[c],
                 );
             }
         }
@@ -460,7 +516,8 @@ fn test_f32_specialized_denormal_f32_inputs() {
                     assert!(
                         diff < 5e-4,
                         "denormal in={d:e} {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}, diff={diff:e}",
-                        out_simd[c], out_fb[c],
+                        out_simd[c],
+                        out_fb[c],
                     );
                 }
             }
@@ -488,7 +545,8 @@ fn test_f32_specialized_all_zeros() {
                 assert!(
                     diff < 5e-4,
                     "zeros fused_add {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}",
-                    out_simd[c], out_fb[c],
+                    out_simd[c],
+                    out_fb[c],
                 );
             }
         }
@@ -512,7 +570,8 @@ fn test_f32_specialized_all_zeros() {
                 assert!(
                     diff < 5e-4,
                     "zeros overwrite {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}",
-                    out_simd[c], out_fb[c],
+                    out_simd[c],
+                    out_fb[c],
                 );
             }
         }
@@ -541,7 +600,9 @@ fn test_f32_specialized_large_values() {
                 assert!(
                     diff / max_val < 5e-4,
                     "large fused_add {in_len}x{out_len} bias={do_bias} ch={c}: simd={}, fb={}, rel_diff={:e}",
-                    out_simd[c], out_fb[c], diff / max_val,
+                    out_simd[c],
+                    out_fb[c],
+                    diff / max_val,
                 );
             }
         }
