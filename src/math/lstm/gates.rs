@@ -23,10 +23,57 @@ use crate::math::activations::tanh::high_fidelity::{
 use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
+/// Fused kernel for LSTM gates (AVX2) — HighFidelity accuracy path.
+/// Uses polynomial exp-based tanh/sigmoid approximations.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn fused_lstm_gates_avx2_hf(
+    gf: __m256,
+    gi: __m256,
+    gg: __m256,
+    go: __m256,
+    cs: __m256,
+) -> (__m256, __m256) {
+    let sig_f = unsafe { simd_sigmoid_poly_avx2(gf) };
+    let sig_i = unsafe { simd_sigmoid_poly_avx2(gi) };
+    let sig_o = unsafe { simd_sigmoid_poly_avx2(go) };
+    let tanh_g = unsafe { simd_tanh_poly_avx2(gg) };
+
+    let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
+    let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_poly_avx2(new_cs) });
+
+    (new_cs, hidden)
+}
+
+/// Fused kernel for LSTM gates (AVX2) — Standard (production) accuracy path.
+/// Uses Padé tanh + minimax sigmoid with interleaved dual-sigmoid.
+///
+/// # Safety
+/// Requires AVX2 and FMA support.
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn fused_lstm_gates_avx2_std(
+    gf: __m256,
+    gi: __m256,
+    gg: __m256,
+    go: __m256,
+    cs: __m256,
+) -> (__m256, __m256) {
+    let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
+    let sig_o = unsafe { simd_sigmoid_avx2(go) };
+    let tanh_g = unsafe { simd_tanh_avx2(gg) };
+
+    let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
+    let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_avx2(new_cs) });
+
+    (new_cs, hidden)
+}
+
 /// Fused kernel for LSTM gates (AVX2).
-/// Computes:
-///   new_cs = sig(gf) * cs + sig(gi) * tanh(gg)
-///   hidden = sig(go) * tanh(new_cs)
+/// Thin dispatch wrapper — prefer `_hf` / `_std` variants in hot paths.
 ///
 /// # Safety
 /// Requires AVX2 and FMA support.
@@ -40,29 +87,62 @@ pub unsafe fn fused_lstm_gates_avx2(
     cs: __m256,
 ) -> (__m256, __m256) {
     if activation_precision() == ActivationPrecision::HighFidelity {
-        let sig_f = unsafe { simd_sigmoid_poly_avx2(gf) };
-        let sig_i = unsafe { simd_sigmoid_poly_avx2(gi) };
-        let sig_o = unsafe { simd_sigmoid_poly_avx2(go) };
-        let tanh_g = unsafe { simd_tanh_poly_avx2(gg) };
-
-        let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
-        let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_poly_avx2(new_cs) });
-
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx2_hf(gf, gi, gg, go, cs) }
     } else {
-        // Interleave sigmoids
-        let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
-        let sig_o = unsafe { simd_sigmoid_avx2(go) };
-        let tanh_g = unsafe { simd_tanh_avx2(gg) };
-
-        let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
-        let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_avx2(new_cs) });
-
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx2_std(gf, gi, gg, go, cs) }
     }
 }
 
+/// Fused kernel for LSTM gates (AVX-512) — HighFidelity accuracy path.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_lstm_gates_avx512_hf(
+    gf: __m512,
+    gi: __m512,
+    gg: __m512,
+    go: __m512,
+    cs: __m512,
+) -> (__m512, __m512) {
+    let sig_f = unsafe { simd_sigmoid_poly_avx512(gf) };
+    let sig_i = unsafe { simd_sigmoid_poly_avx512(gi) };
+    let sig_o = unsafe { simd_sigmoid_poly_avx512(go) };
+    let tanh_g = unsafe { simd_tanh_poly_avx512(gg) };
+
+    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+    let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_poly_avx512(new_cs) });
+
+    (new_cs, hidden)
+}
+
+/// Fused kernel for LSTM gates (AVX-512) — Standard (production) accuracy path.
+///
+/// # Safety
+/// Requires AVX-512F and AVX-512VL support.
+#[inline]
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_lstm_gates_avx512_std(
+    gf: __m512,
+    gi: __m512,
+    gg: __m512,
+    go: __m512,
+    cs: __m512,
+) -> (__m512, __m512) {
+    let sig_f = unsafe { simd_sigmoid_avx512(gf) };
+    let sig_i = unsafe { simd_sigmoid_avx512(gi) };
+    let sig_o = unsafe { simd_sigmoid_avx512(go) };
+    let tanh_g = unsafe { simd_tanh_avx512(gg) };
+
+    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+    let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
+
+    (new_cs, hidden)
+}
+
 /// Fused kernel for LSTM gates (AVX-512).
+/// Thin dispatch wrapper — prefer `_hf` / `_std` variants in hot paths.
 ///
 /// # Safety
 /// Requires AVX-512F and AVX-512VL support.
@@ -76,25 +156,9 @@ pub unsafe fn fused_lstm_gates_avx512(
     cs: __m512,
 ) -> (__m512, __m512) {
     if activation_precision() == ActivationPrecision::HighFidelity {
-        let sig_f = unsafe { simd_sigmoid_poly_avx512(gf) };
-        let sig_i = unsafe { simd_sigmoid_poly_avx512(gi) };
-        let sig_o = unsafe { simd_sigmoid_poly_avx512(go) };
-        let tanh_g = unsafe { simd_tanh_poly_avx512(gg) };
-
-        let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
-        let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_poly_avx512(new_cs) });
-
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs) }
     } else {
-        let sig_f = unsafe { simd_sigmoid_avx512(gf) };
-        let sig_i = unsafe { simd_sigmoid_avx512(gi) };
-        let sig_o = unsafe { simd_sigmoid_avx512(go) };
-        let tanh_g = unsafe { simd_tanh_avx512(gg) };
-
-        let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
-        let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
-
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs) }
     }
 }
 
@@ -107,6 +171,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
     hidden_state: &mut [f32],
     hidden_size: usize,
 ) {
+    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     let mut j = 0;
     while j + 8 <= hidden_size {
         let gi = _mm256_loadu_ps(gates.as_ptr().add(j));
@@ -115,14 +180,17 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
         let go = _mm256_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
         let cs = _mm256_loadu_ps(cell_state.as_ptr().add(j));
 
-        let (new_cs, hidden) = fused_lstm_gates_avx2(gf, gi, gg, go, cs);
+        let (new_cs, hidden) = if is_hf {
+            fused_lstm_gates_avx2_hf(gf, gi, gg, go, cs)
+        } else {
+            fused_lstm_gates_avx2_std(gf, gi, gg, go, cs)
+        };
 
         _mm256_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
         _mm256_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
 
         j += 8;
     }
-    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     while j < hidden_size {
         if is_hf {
             let sig_i = scalar_sigmoid_poly(gates[j]);
@@ -158,6 +226,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
     hidden_state: &mut [f32],
     hidden_size: usize,
 ) {
+    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     let mut j = 0;
     while j + 16 <= hidden_size {
         // Load the 4 decisions (forget, learn, etc.) for 16 cells.
@@ -168,7 +237,11 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
         let cs = _mm512_loadu_ps(cell_state.as_ptr().add(j));
 
         // Perform the memory computation in a fused manner.
-        let (new_cs, hidden) = fused_lstm_gates_avx512(gf, gi, gg, go, cs);
+        let (new_cs, hidden) = if is_hf {
+            fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs)
+        } else {
+            fused_lstm_gates_avx512_std(gf, gi, gg, go, cs)
+        };
 
         _mm512_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
         _mm512_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
@@ -176,7 +249,6 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
         j += 16;
     }
     // Handle the remainder.
-    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
     while j < hidden_size {
         if is_hf {
             let sig_i = scalar_sigmoid_poly(gates[j]);
