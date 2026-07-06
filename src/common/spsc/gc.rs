@@ -87,12 +87,24 @@ impl GcItem {
     /// Converts this GcItem into a packed 64-bit representation for the
     /// overflow buffer.
     ///
-    /// Bits 0-55: user-space pointer (≤ 56 bits on all x86-64 Linux configs).
-    /// Bits 56-63: type ID.
+    /// Layout (little-endian):
+    ///   Bits 0-55:  user-space pointer (≤ 56 bits)
+    ///   Bits 56-63: type ID
+    ///
+    /// ## Platform dependency
+    ///
+    /// This packing scheme relies on **x86-64 canonical addressing**: under
+    /// **4-level paging** (LA48, 48-bit) or **5-level paging** (LA57, 57-bit),
+    /// the Linux kernel maps the user-space virtual address range so that the
+    /// top byte (bits 56–63) of any `malloc`/`Box` pointer on the heap is
+    /// guaranteed to be zero.  Consequently, all live heap pointers fit
+    /// within 56 bits, and repurposing bits 56–63 for the type ID is safe.
+    ///
+    /// Should a future x86-64 extension widen the canonical address range
+    /// beyond 57 bits or a non-Linux kernel violate this convention, the
+    /// `debug_assert!` below will fire and the packing scheme must be revised.
     pub(crate) fn into_packed(self) -> u64 {
         let type_id = self.type_id();
-        // Box::into_raw converts the Box into a raw pointer without dropping.
-        // The pointee layout is erased to *mut c_void for uniform storage.
         let ptr = match self {
             GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
@@ -104,19 +116,39 @@ impl GcItem {
             #[cfg(test)]
             GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
         };
-        // Pack type_id into bits 56-63 and the pointer into bits 0-55.
-        // x86-64 Linux guarantees user-space pointers fit in ≤56 bits
-        // (canonical address range), so no information is lost.
+
+        debug_assert!(
+            (ptr as u64) < (1u64 << 56),
+            "GC pointer 0x{:016X} exceeds 56 bits — packing scheme is unsafe \
+             on this system (requires LA57 with 57-bit canonical addresses or less).",
+            ptr as u64
+        );
+
         ((type_id as u64) << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF)
     }
 
     /// Reconstructs a GcItem from a packed 64-bit value.
     ///
+    /// The complement of [`into_packed`](Self::into_packed): unmarshals the
+    /// raw pointer (bits 0–55) and type ID (bits 56–63) and dispatches via
+    /// [`from_raw_parts`](Self::from_raw_parts).
+    ///
     /// Returns `None` if the packed value is zero (empty slot) or the type
-    /// ID is unknown. On unknown type ID, the caller must leak the pointer.
+    /// ID is unknown. On unknown type ID, the caller must leak the pointer
+    /// to avoid UB.
+    ///
+    /// ## Platform dependency
+    ///
+    /// See [`into_packed`](Self::into_packed) — the same 56-bit canonical
+    /// address assumption applies here, as the pointer is extracted via
+    /// `packed & 0x00FF_FFFF_FFFF_FFFF`.  If that assumption does not hold,
+    /// the pointer will be silently truncated (caught by the `debug_assert!`
+    /// in `into_packed`).
     ///
     /// # Safety
-    /// The pointer embedded in `packed` must be valid for the type encoded in bits 56-63.
+    /// The pointer embedded in `packed` must be valid for the type encoded
+    /// in bits 56–63.  A corrupted type ID leads to a `None` return and a
+    /// controlled leak by the caller.
     unsafe fn from_packed(packed: u64) -> Option<Self> {
         if packed == 0 {
             return None;

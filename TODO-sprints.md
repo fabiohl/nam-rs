@@ -141,7 +141,7 @@ gantt
   * Validar que o código continua compilando e aplicando as prioridades normalmente.
 * **Conclusão (2026-07-06):** O bloco `unsafe` monolítico foi desmembrado em 9 blocos pontuais, cada um encapsulando apenas a chamada FFI necessária (`pthread_self`, `pthread_setname_np`, `CPU_ZERO`+`CPU_SET`, `pthread_setaffinity_np`, `std::mem::zeroed` para `cpuset`/`actual_param`/`param`, `pthread_getschedparam`, `sched_getcpu`, `pthread_setschedparam`). Fluxo de controle de erros, operações atômicas e logs permanecem em código estritamente seguro. Compilação ok, 6/6 testes rt_setup passando.
 
-### T-203 (F-011) — Validação da Assunção de Ponteiros de 56 bits para o Garbage Collector
+### T-203 (F-011) — Validação da Assunção de Ponteiros de 56 bits para o Garbage Collector ✅ [DONE]
 
 * **Criticidade:** Baixa-Média / Risco Baixo-Médio (Defesa contra arquiteturas futuras ou modos de paginação que utilizem o bit 56).
 * **Arquivos Afetados:**
@@ -151,6 +151,7 @@ gantt
   2. Documentar de forma clara nos comentários de `into_packed` e `from_packed` a limitação de paginação e dependência da arquitetura LA57 do Linux.
 * **Plano de Verificação:**
   * Executar suite de testes do GC com asserts ativos.
+* **Conclusão (2026-07-06):** `debug_assert!` adicionado em `into_packed` (linha 120) com mensagem descritiva incluindo o valor do ponteiro. Documentação expandida em ambos `into_packed` e `from_packed` detalhando o esquema de endereçamento canônico x86-64 (LA48/LA57), a garantia de top byte zero do kernel Linux, e as consequências de violação futura. 7/7 testes SPSC passando com `debug_assert!` ativo.
 
 ### T-204 (F-010) — Otimização e Saneamento da Configuração DAZ/FTZ
 
