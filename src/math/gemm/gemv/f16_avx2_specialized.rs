@@ -312,21 +312,21 @@ pub unsafe fn fused_add_gemv_avx2_8x8(
         let vs6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
         let vs7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
 
-        let w0 = _mm256_loadu_ps(w_ptr as *const f32);
+        let w0 = _mm256_loadu_ps(w_ptr);
         acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-        let w1 = _mm256_loadu_ps(w_ptr.add(8) as *const f32);
+        let w1 = _mm256_loadu_ps(w_ptr.add(8));
         acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-        let w2 = _mm256_loadu_ps(w_ptr.add(16) as *const f32);
+        let w2 = _mm256_loadu_ps(w_ptr.add(16));
         acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-        let w3 = _mm256_loadu_ps(w_ptr.add(24) as *const f32);
+        let w3 = _mm256_loadu_ps(w_ptr.add(24));
         acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-        let w4 = _mm256_loadu_ps(w_ptr.add(32) as *const f32);
+        let w4 = _mm256_loadu_ps(w_ptr.add(32));
         acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
-        let w5 = _mm256_loadu_ps(w_ptr.add(40) as *const f32);
+        let w5 = _mm256_loadu_ps(w_ptr.add(40));
         acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
-        let w6 = _mm256_loadu_ps(w_ptr.add(48) as *const f32);
+        let w6 = _mm256_loadu_ps(w_ptr.add(48));
         acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
-        let w7 = _mm256_loadu_ps(w_ptr.add(56) as *const f32);
+        let w7 = _mm256_loadu_ps(w_ptr.add(56));
         acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
         acc0 = _mm256_add_ps(acc0, acc1);
@@ -585,21 +585,21 @@ pub unsafe fn gemv_overwrite_avx2_8x8(
         let vs6 = _mm256_set1_ps(*in_frame.get_unchecked(6));
         let vs7 = _mm256_set1_ps(*in_frame.get_unchecked(7));
 
-        let w0 = _mm256_loadu_ps(w_ptr as *const f32);
+        let w0 = _mm256_loadu_ps(w_ptr);
         acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-        let w1 = _mm256_loadu_ps(w_ptr.add(8) as *const f32);
+        let w1 = _mm256_loadu_ps(w_ptr.add(8));
         acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-        let w2 = _mm256_loadu_ps(w_ptr.add(16) as *const f32);
+        let w2 = _mm256_loadu_ps(w_ptr.add(16));
         acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-        let w3 = _mm256_loadu_ps(w_ptr.add(24) as *const f32);
+        let w3 = _mm256_loadu_ps(w_ptr.add(24));
         acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-        let w4 = _mm256_loadu_ps(w_ptr.add(32) as *const f32);
+        let w4 = _mm256_loadu_ps(w_ptr.add(32));
         acc4 = _mm256_fmadd_ps(vs4, w4, acc4);
-        let w5 = _mm256_loadu_ps(w_ptr.add(40) as *const f32);
+        let w5 = _mm256_loadu_ps(w_ptr.add(40));
         acc5 = _mm256_fmadd_ps(vs5, w5, acc5);
-        let w6 = _mm256_loadu_ps(w_ptr.add(48) as *const f32);
+        let w6 = _mm256_loadu_ps(w_ptr.add(48));
         acc6 = _mm256_fmadd_ps(vs6, w6, acc6);
-        let w7 = _mm256_loadu_ps(w_ptr.add(56) as *const f32);
+        let w7 = _mm256_loadu_ps(w_ptr.add(56));
         acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
         acc0 = _mm256_add_ps(acc0, acc1);

@@ -79,7 +79,7 @@ pub unsafe fn fused_add_gemv_avx2(
                 |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
                 _mm256_add_ps,
-                |ptr| _mm256_loadu_ps(ptr as *const f32),
+                |ptr| _mm256_loadu_ps(ptr),
                 _mm256_fmadd_ps,
                 |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );
@@ -164,7 +164,7 @@ pub unsafe fn gemv_overwrite_avx2(
                 |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
                 _mm256_add_ps,
-                |ptr| _mm256_loadu_ps(ptr as *const f32),
+                |ptr| _mm256_loadu_ps(ptr),
                 _mm256_fmadd_ps,
                 |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );

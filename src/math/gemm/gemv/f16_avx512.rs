@@ -49,14 +49,14 @@ pub unsafe fn gemv_overwrite_avx512_small(
 
         let w_ptr = weights.as_ptr().add(in_c * 16);
 
-        acc0 = _mm512_fmadd_ps(v_in0, _mm512_loadu_ps(w_ptr as *const f32), acc0);
-        acc1 = _mm512_fmadd_ps(v_in1, _mm512_loadu_ps(w_ptr.add(16) as *const f32), acc1);
-        acc2 = _mm512_fmadd_ps(v_in2, _mm512_loadu_ps(w_ptr.add(32) as *const f32), acc2);
-        acc3 = _mm512_fmadd_ps(v_in3, _mm512_loadu_ps(w_ptr.add(48) as *const f32), acc3);
-        acc4 = _mm512_fmadd_ps(v_in4, _mm512_loadu_ps(w_ptr.add(64) as *const f32), acc4);
-        acc5 = _mm512_fmadd_ps(v_in5, _mm512_loadu_ps(w_ptr.add(80) as *const f32), acc5);
-        acc6 = _mm512_fmadd_ps(v_in6, _mm512_loadu_ps(w_ptr.add(96) as *const f32), acc6);
-        acc7 = _mm512_fmadd_ps(v_in7, _mm512_loadu_ps(w_ptr.add(112) as *const f32), acc7);
+        acc0 = _mm512_fmadd_ps(v_in0, _mm512_loadu_ps(w_ptr), acc0);
+        acc1 = _mm512_fmadd_ps(v_in1, _mm512_loadu_ps(w_ptr.add(16)), acc1);
+        acc2 = _mm512_fmadd_ps(v_in2, _mm512_loadu_ps(w_ptr.add(32)), acc2);
+        acc3 = _mm512_fmadd_ps(v_in3, _mm512_loadu_ps(w_ptr.add(48)), acc3);
+        acc4 = _mm512_fmadd_ps(v_in4, _mm512_loadu_ps(w_ptr.add(64)), acc4);
+        acc5 = _mm512_fmadd_ps(v_in5, _mm512_loadu_ps(w_ptr.add(80)), acc5);
+        acc6 = _mm512_fmadd_ps(v_in6, _mm512_loadu_ps(w_ptr.add(96)), acc6);
+        acc7 = _mm512_fmadd_ps(v_in7, _mm512_loadu_ps(w_ptr.add(112)), acc7);
         in_c += 8;
     }
 
@@ -70,11 +70,7 @@ pub unsafe fn gemv_overwrite_avx512_small(
 
     while in_c < in_len {
         let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-        acc0 = _mm512_fmadd_ps(
-            v_in,
-            _mm512_loadu_ps(weights.as_ptr().add(in_c * 16) as *const f32),
-            acc0,
-        );
+        acc0 = _mm512_fmadd_ps(v_in, _mm512_loadu_ps(weights.as_ptr().add(in_c * 16)), acc0);
         in_c += 1;
     }
 
@@ -107,7 +103,7 @@ pub unsafe fn fused_add_gemv_avx512_small(
             |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
             |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
             _mm512_add_ps,
-            |ptr| _mm512_loadu_ps(ptr as *const f32),
+            |ptr| _mm512_loadu_ps(ptr),
             _mm512_fmadd_ps,
             |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
         );
@@ -153,7 +149,7 @@ pub unsafe fn gemv_overwrite_avx512(
                 |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
                 _mm512_add_ps,
-                |ptr| _mm512_loadu_ps(ptr as *const f32),
+                |ptr| _mm512_loadu_ps(ptr),
                 _mm512_fmadd_ps,
                 |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );
@@ -246,7 +242,7 @@ pub unsafe fn fused_add_gemv_avx512(
                 |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
                 |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
                 _mm512_add_ps,
-                |ptr| _mm512_loadu_ps(ptr as *const f32),
+                |ptr| _mm512_loadu_ps(ptr),
                 _mm512_fmadd_ps,
                 |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
             );
