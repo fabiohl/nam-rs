@@ -562,7 +562,7 @@ raciocínio da decisão) como lição aprendida em `docs/`.
 - [ ] Todos os testes em `utils/tests-quick.sh` passam com os novos thresholds
 - [ ] Novos thresholds documentados com comentários de medição (`// Measured: ...`)
 
-### Tarefa SQ5.6 — Salvar novo baseline de performance (apenas se GO)
+### Tarefa SQ5.6 — Salvar novo baseline de performance (apenas se GO) [DONE]
 
 **Descrição**: Executar `utils/tests-performance-regression.sh --save` para persistir o novo baseline pós-remoção.
 
@@ -581,7 +581,7 @@ raciocínio da decisão) como lição aprendida em `docs/`.
 > **Ref**: Finding F-Q3
 > **Pré-requisito**: SQ5 com decisão GO.
 
-### Tarefa SQ6.1 — Atualizar `docs/audio_fidelity_map.md`
+### Tarefa SQ6.1 — Atualizar `docs/audio_fidelity_map.md` [DONE]
 
 **Mudanças**:
 
@@ -596,15 +596,13 @@ raciocínio da decisão) como lição aprendida em `docs/`.
   histórica; se não foi (ou foi só parcialmente), documentar o resultado real, mesmo que módico.
 - Tabela Quick Reference: atualizar status de "🔶 PoC in progress" (já ajustado nesta auditoria) para "Removed" ou "Reverted", conforme a decisão real de SQ5.4.
 
-### Tarefa SQ6.2 — Atualizar `docs/lstm_recurrent_drift.md`
+### Tarefa SQ6.2 — Remover `docs/lstm_recurrent_drift.md` [DONE]
 
 **Mudanças**:
 
-- Adicionar seção "§8 — Resolução: Remoção da Quantização" com os resultados da PoC
-- Preservar o resto como registro histórico de aprendizado (não deletar)
-- Atualizar a conclusão: o drift foi eliminado na raiz, não apenas mitigado
+- Remover também qualquer referência a ele em outros documentos.
 
-### Tarefa SQ6.3 — Atualizar `docs/cpp_parity_map.md`
+### Tarefa SQ6.3 — Atualizar `docs/cpp_parity_map.md` [DONE]
 
 **Mudanças**:
 

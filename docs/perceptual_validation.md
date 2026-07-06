@@ -142,7 +142,7 @@ is proportionally tightened. `min_snr_db` is clamped to at least 5.0 dB.
 
 **Purpose:** The cap acts as a sentinel, not a pass/fail criterion expected to always succeed.
 When a model exceeds it (as all LSTM models do in v2), the test **intentionally fails** and
-routes the case to recurrent drift triage (see `docs/lstm_recurrent_drift.md` for the RCA conclusion).
+routes the case to recurrent drift triage (RCA concluded: f16c quantization was the root cause, now removed).
 This ensures that "passing" always means "at least as precise as WaveNet A1-Std f32 native" —
 preventing the relaxation chain from silently absorbing real regressions.
 
@@ -634,7 +634,7 @@ architectural divergence — a ~300× inflation now corrected. The per-model
 calibrated thresholds reflect this reality: LSTM entries are looser than WaveNet
 because the recurrent f16c+f32 drift is shared with NAMCore. The dominant sources
 are Padé activation (~7.6e-4 ΔESR) and f16c quantization (~5.1e-5), with f32
-accumulation negligible (~7.2e-13). See `docs/lstm_recurrent_drift.md`.
+accumulation negligible (~7.2e-13).
 
 Tests: `tests/reference_oracle_f64.rs:67-268`.
 
@@ -756,7 +756,7 @@ quantization… not fixable without altering the model format."_
     format, confirming the format is indeed the bottleneck — but ~300× less
     severely than T3.3's original statement implied.
 
-For full RCA documentation, see `docs/lstm_recurrent_drift.md`.
+RCA concluded: f16c quantization was the root cause of the drift, now eliminated in v2.
 
 ---
 

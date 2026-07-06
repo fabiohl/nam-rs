@@ -228,7 +228,6 @@ utils/build-release.sh
 * [docs/testing.md](docs/testing.md) — Test coverage matrix, execution phases, and CI/long-suite policy
 * [docs/perceptual_validation.md](docs/perceptual_validation.md) — Measurement framework (ESR, MR-STFT, ASR, LUFS, f64 oracle) and gate calibration policy
 * [docs/cpp_parity_map.md](docs/cpp_parity_map.md) — Line-by-line parity audit against NeuralAmpModelerCore, with a known-issues ledger
-* [docs/lstm_recurrent_drift.md](docs/lstm_recurrent_drift.md) — Root-cause analysis of LSTM recurrent-state quantization drift
 * [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics and the regression gate
 * [docs/research-references.md](docs/research-references.md) — Annotated bibliography backing the DSP/perceptual design decisions
 * [docs/functional-tests.md](docs/functional-tests.md) — Manual human QA checklist for the CLAP plugin

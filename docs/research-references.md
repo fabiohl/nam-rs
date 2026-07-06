@@ -118,14 +118,14 @@ Proceedings of the 22nd International Conference on Digital Audio Effects (DAFx-
 **Why relevant to nam-rs.** Extends ADAA to systems with internal state — the theoretical bridge to
 applying antialiasing to the LSTM cell itself (stateful recurrent nonlinearity). This paper is
 particularly pertinent because the LSTM head is the primary source of recurrent state quantization
-drift (documented in `docs/lstm_recurrent_drift.md`, finding F-2). While ADAA for stateful systems
+drift (previously documented in finding F-2; the f16c root cause has been removed). While ADAA for stateful systems
 was not implemented, this reference anchors future work should oversampling prove insufficient
 for LSTM-family models at high sample rates.
 
-| Traceability | Reference                                          |
-|:------------ |:-------------------------------------------------- |
-| Finding      | P-1 (ADAA para sistemas com estado — LSTM)         |
-| Files        | `src/models/lstm/`, `docs/lstm_recurrent_drift.md` |
+| Traceability | Reference                                  |
+|:------------ |:------------------------------------------ |
+| Finding      | P-1 (ADAA para sistemas com estado — LSTM) |
+| Files        | `src/models/lstm/`                         |
 
 ---
 
@@ -138,16 +138,16 @@ Guildford, UK, 2024.
 
 **Why relevant to nam-rs.** Addresses the core problem of sample-rate dependency in recurrent
 neural networks — the very mechanism that causes LSTM timbre to change drastically under
-oversampling (documented in §4.1 of `docs/lstm_recurrent_drift.md`). Proposes architectural
+oversampling (documented in the former `docs/lstm_recurrent_drift.md` §4.1, removed after f16c elimination). Proposes architectural
 modifications to make RNNs sample-rate independent, directly relevant to the observation that
 LSTM feedback delay is fixed in absolute samples. This paper anchors the theoretical
 understanding of why LSTM oversampling changes timbre (β3.1) and provides a potential path
 for future sample-rate-agnostic LSTM models.
 
-| Traceability | Reference                                                                     |
-|:------------ |:----------------------------------------------------------------------------- |
-| Finding      | I5 (oversampling timbre change, β3.1)                                         |
-| Files        | `docs/lstm_recurrent_drift.md` §4.1, `tests/oversampling_characterization.rs` |
+| Traceability | Reference                                |
+|:------------ |:---------------------------------------- |
+| Finding      | I5 (oversampling timbre change, β3.1)    |
+| Files        | `tests/oversampling_characterization.rs` |
 
 ---
 
@@ -169,10 +169,10 @@ deferred in favor of oversampling + HighFidelity activations (I6), this paper va
 approach and anchors future work should the current mitigation strategy prove insufficient
 for LSTM-family models at high sample rates.
 
-| Traceability | Reference                                                       |
-|:------------ |:--------------------------------------------------------------- |
-| Finding      | I5 (LSTM oversampling trade-off, β3.1); future ADAA             |
-| Files        | `docs/lstm_recurrent_drift.md`, `docs/audio_fidelity_map.md` §3 |
+| Traceability | Reference                                           |
+|:------------ |:--------------------------------------------------- |
+| Finding      | I5 (LSTM oversampling trade-off, β3.1); future ADAA |
+| Files        | `docs/audio_fidelity_map.md` §3                     |
 
 ---
 
