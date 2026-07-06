@@ -39,7 +39,7 @@
 
 **Objetivo:** Garantir que nenhuma entrada do usuário (IRs ou arquivos `.nam`) seja capaz de causar falhas catastróficas de *Out-Of-Memory* (OOM) no host.
 
-- **Epic 1.1: Limites Rígidos (Hard Limits) na Entrada de Dados (Refere-se ao Finding 1)**
+- **Epic 1.1: Limites Rígidos (Hard Limits) na Entrada de Dados (Refere-se ao Finding 1)** [DONE]
   - **Task 1.1.1 (Parser `nam_json.rs`):** Declarar constantes de segurança para limites razoáveis de processamento de redes neurais em áudio real-time, tais como: `MAX_LAYERS = 8`, `MAX_HIDDEN_SIZE = 512`. Injetar lógicas de validação rigorosas logo após o parsing bruto do JSON. Se a arquitetura solicitada exceder tais constantes, retornar um enumerador `Error::UnsupportedTopology` imediatamente.
   - **Task 1.1.2 (Loader Wav/IR `cabsim/loader.rs`):** Declarar um limite de segurança rígido para o tamanho máximo permitido de um *Impulse Response* (ex: `MAX_IR_LENGTH = 192000` samples, que corresponde a ~4s em 48kHz). Rejeitar o carregamento do arquivo precocemente (`Result::Err`) antes de submeter os samples a conversões de ponto flutuante ou alocações.
   - **Task 1.1.3 (Suíte de Regressão Negativa):** Criar uma suíte especializada de testes (`loader_malformed_test.rs`) responsável por alimentar propositalmente os módulos com metadados e topologias forjadas ou exageradas, asseverando assertivamente (via `assert!(result.is_err())`) que a biblioteca repulsa as falhas (Soft Reject) graciosamente e com alta performance (< 5ms).

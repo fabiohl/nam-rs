@@ -55,6 +55,15 @@ pub enum JsonError {
         /// Reason why it is invalid.
         reason: &'static str,
     },
+    /// The topology specified in config exceeds OOM safety limits (MAX_LAYERS or MAX_HIDDEN_SIZE).
+    UnsupportedTopology {
+        /// The declared architecture.
+        architecture: String,
+        /// Description of the exceeded limit.
+        issue: String,
+        /// The specific limit that was exceeded.
+        limit: usize,
+    },
     /// Generic serde_json parse error.
     Serde(String),
 }
@@ -109,6 +118,17 @@ impl std::fmt::Display for JsonError {
                     f,
                     "sample rate is invalid (value: {}, reason: {})",
                     value, reason
+                )
+            }
+            Self::UnsupportedTopology {
+                architecture,
+                issue,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "unsupported topology: architecture={} — {} (limit={})",
+                    architecture, issue, limit
                 )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),

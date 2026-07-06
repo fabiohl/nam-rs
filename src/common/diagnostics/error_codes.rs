@@ -46,6 +46,8 @@ pub enum NamErrorCode {
     NamJsonWeightNotFinite,
     /// JSON `sample_rate` field contains an invalid value (non-finite or <= 0).
     NamJsonInvalidSampleRate,
+    /// JSON topology exceeds OOM safety limits (MAX_LAYERS or MAX_HIDDEN_SIZE).
+    NamJsonUnsupportedTopology,
     /// NAMB non-finite weight detected in binary weight section.
     NambNonFiniteWeight,
     /// NAMB header field contains an invalid value (non-finite, <= 0, etc.).
@@ -121,6 +123,7 @@ impl NamErrorCode {
             Self::NamJsonSubmodelsTooDeep => "E1210",
             Self::NamJsonWeightNotFinite => "E1211",
             Self::NamJsonInvalidSampleRate => "E1214",
+            Self::NamJsonUnsupportedTopology => "E1215",
             Self::NambNonFiniteWeight => "E1212",
             Self::NambInvalidHeaderField => "E1213",
             Self::NambCrc32Mismatch => "E1201",
@@ -166,6 +169,9 @@ impl NamErrorCode {
             Self::NamJsonInvalidSampleRate => {
                 "JSON sample_rate is invalid (must be finite and > 0)"
             }
+            Self::NamJsonUnsupportedTopology => {
+                "JSON topology exceeds OOM safety limits (MAX_LAYERS or MAX_HIDDEN_SIZE)"
+            }
             Self::NambNonFiniteWeight => "NAMB weight is non-finite (NaN/Inf)",
             Self::NambInvalidHeaderField => "NAMB header field is invalid",
             Self::NambCrc32Mismatch => "CRC32 checksum mismatch",
@@ -209,6 +215,7 @@ impl NamErrorCode {
             Self::NamJsonSubmodelsTooDeep => "NAM_JSON_SUBMODELS_TOO_DEEP",
             Self::NamJsonWeightNotFinite => "NAM_JSON_WEIGHT_NOT_FINITE",
             Self::NamJsonInvalidSampleRate => "NAM_JSON_INVALID_SAMPLE_RATE",
+            Self::NamJsonUnsupportedTopology => "NAM_JSON_UNSUPPORTED_TOPOLOGY",
             Self::NambNonFiniteWeight => "NAMB_NON_FINITE_WEIGHT",
             Self::NambInvalidHeaderField => "NAMB_INVALID_HEADER_FIELD",
             Self::NambCrc32Mismatch => "NAMB_CRC32_MISMATCH",

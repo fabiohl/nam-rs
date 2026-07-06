@@ -1083,7 +1083,7 @@ fn test_topology_accepts_null_head() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 use crate::loader::nam_json::validation::{
-    MAX_LSTM_HIDDEN_SIZE, MAX_LSTM_LAYERS, MAX_WAVENET_FREE_CHANNELS,
+    MAX_HIDDEN_SIZE, MAX_LSTM_LAYERS, MAX_WAVENET_FREE_CHANNELS,
 };
 
 // ── LSTM bounds ──
@@ -1100,24 +1100,25 @@ fn test_lstm_rejects_num_layers_too_high() {
 
 #[test]
 fn test_lstm_rejects_hidden_size_too_high() {
+    // Now caught at parse time by the universal MAX_HIDDEN_SIZE=512 check (Epic 1.1)
     let json = format!(
         r#"{{"architecture": "LSTM", "config": {{"num_layers": 2, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
-        MAX_LSTM_HIDDEN_SIZE + 1
+        crate::loader::nam_json::MAX_HIDDEN_SIZE + 1
     );
-    let parsed = parse_nam_json(&json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), None);
+    assert!(parse_nam_json(&json).is_err());
 }
 
 #[test]
 fn test_lstm_accepts_max_bounds() {
+    // MAX_HIDDEN_SIZE = 512 is the universal parse-time cap (Epic 1.1)
     let json = format!(
         r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
-        MAX_LSTM_LAYERS, MAX_LSTM_HIDDEN_SIZE
+        MAX_LSTM_LAYERS, MAX_HIDDEN_SIZE
     );
     let parsed = parse_nam_json(&json).expect("parse");
     assert_eq!(
         get_lstm_topology(&parsed),
-        Some((MAX_LSTM_LAYERS, MAX_LSTM_HIDDEN_SIZE))
+        Some((MAX_LSTM_LAYERS, MAX_HIDDEN_SIZE))
     );
 }
 

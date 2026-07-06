@@ -131,6 +131,9 @@ pub fn load_and_build_model(
                 nam_json::JsonError::InvalidSampleRate { .. } => {
                     NamErrorCode::NamJsonInvalidSampleRate
                 }
+                nam_json::JsonError::UnsupportedTopology { .. } => {
+                    NamErrorCode::NamJsonUnsupportedTopology
+                }
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)

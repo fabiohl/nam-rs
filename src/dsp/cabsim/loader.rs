@@ -18,6 +18,9 @@ use std::path::Path;
 /// Maximum IR file size to guard against malformed/malicious WAVs (1 GiB).
 const MAX_IR_FILE_SIZE: u64 = 1_073_741_824;
 
+/// Maximum IR length in samples to guard against OOM (~4s @ 48kHz).
+const MAX_IR_LENGTH: usize = 192_000;
+
 /// Minimum size for a valid WAV header (44 bytes: RIFF + fmt + data).
 const WAV_HEADER_MIN: usize = 44;
 
@@ -179,6 +182,33 @@ impl CabSimIr {
         }
 
         let (data_start, data_size) = Self::find_data_chunk(data)?;
+
+        // Reject oversized IRs early — compute sample count from data chunk
+        // before any allocation, preventing OOM for malformed/huge WAVs.
+        let bytes_per_sample = match (audio_format, bits_per_sample) {
+            (WAV_FORMAT_PCM, 16) => 2usize,
+            (WAV_FORMAT_PCM, 24) => 3,
+            (WAV_FORMAT_IEEE_FLOAT, 32) => 4,
+            (fmt, bits) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "IR WAV: unsupported format (audio_format={}, bits={})",
+                        fmt, bits
+                    ),
+                ));
+            }
+        };
+        let num_samples = data_size as usize / bytes_per_sample;
+        if num_samples > MAX_IR_LENGTH {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "IR WAV: too many samples ({} samples, max is {})",
+                    num_samples, MAX_IR_LENGTH
+                ),
+            ));
+        }
 
         let samples = match audio_format {
             WAV_FORMAT_PCM => match bits_per_sample {

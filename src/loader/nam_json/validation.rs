@@ -13,6 +13,16 @@ use super::error::JsonError;
 /// Maximum number of floats in the `weights` array (MAX_MODEL_BYTES / 4).
 const MAX_WEIGHTS: usize = (256 * 1024 * 1024 / 4) as usize; // 64 Mi floats
 
+// ── Universal topology bounds (applied at parse time, before topology detection) ──
+
+/// Maximum number of layers across any architecture at parse time.
+/// Universal OOM guard applied immediately after JSON deserialization.
+pub const MAX_LAYERS: usize = 8;
+
+/// Maximum hidden size across any architecture at parse time.
+/// Universal OOM guard applied immediately after JSON deserialization.
+pub const MAX_HIDDEN_SIZE: usize = 512;
+
 /// Maximum size of the `metadata.training` field in bytes.
 const MAX_TRAINING_BYTES: usize = 1024 * 1024; // 1 MiB
 

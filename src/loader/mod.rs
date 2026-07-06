@@ -19,6 +19,10 @@ pub mod transpose;
 pub use build::load_and_build_model;
 pub use loaded_model_pair::*;
 
+#[cfg(test)]
+#[path = "loader_malformed_test.rs"]
+mod loader_malformed_test;
+
 /// Controls loading behaviour and model initialization.
 ///
 /// Produced by the main/UI thread and consumed by the loader before passing
