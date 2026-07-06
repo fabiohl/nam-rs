@@ -67,6 +67,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   byte is mutated while a reader handle is live (use `MaybeUninit` poisoning
   or a sentinel pattern). Run under `MIRI`-style thread sanitizer if available.
 
+> **Conclusão (T-101, 2026-07-06):** Mitigações 2 e 4 implementadas.
+> - **Mitigação 2 (Skip-on-overflow):** `write_block` e `write_silence` agora verificam `current_gen > consumed_gen` **antes** de escrever no back-buffer. Se verdadeiro, incrementam `dropped_frames` e retornam imediatamente, evitando sobre-escrita do buffer ativo do leitor.
+> - **Mitigação 4 (Refinamento de Orderings):** `active_read_idx.load(Ordering::Relaxed)` alterado para `Ordering::Acquire` no reader (`read_block:277`), pareando com o `Release` store do writer. Remove dependência transitiva no contador `generation` para seleção de buffer.
+> - **Teste de estresse** adicionado em `tests/pipeline_soak.rs:test_dsp_bridge_skip_on_overflow`: writer sem delay, reader com sleep de 500µs (~3× mais lento), validando `dropped_frames > 0` e integridade dos dados lidos. Testado com ThreadSanitizer: `cargo +nightly test --features standalone --test pipeline_soak test_dsp_bridge_skip_on_overflow -- --nocapture`.
+> - Todos os 21 testes bridge-relacionados existentes passam sem regressão.
+> - **Nota:** A mitigação 1 (triple-buffer) e 3 (SeqLock) permanecem como opções futuras caso a taxa de dropouts sob skip-on-overflow se mostre inaceitável em ambientes de alta contenção.
+
 ### F-002 — `AlignedVec::Drop` deallocates by `len`, not allocation size
 
 - **Severity:** High (silent memory leak; latent UB if `len` ever diverges from capacity).

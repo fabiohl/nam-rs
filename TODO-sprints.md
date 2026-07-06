@@ -43,7 +43,7 @@ gantt
 
 **Objetivo:** Neutralizar potenciais causas de comportamento indefinido (UB), vazamento de memória do alinhador ou pânicos no thread de áudio de alta prioridade.
 
-### T-101 (F-001) — Mitigação de Data Race no DspBridge entre Captura e Reprodução
+### T-101 (F-001) — Mitigação de Data Race no DspBridge entre Captura e Reprodução [DONE]
 
 * **Criticidade:** Crítica / Risco Altíssimo (Pode corromper buffers de áudio por jitter de agendamento de streams PipeWire concorrentes).
 * **Arquivos Afetados:**

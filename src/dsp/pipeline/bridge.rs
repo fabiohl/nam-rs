@@ -137,6 +137,11 @@ impl DspBridgeWriter {
     }
 
     /// Writes a stereo sample block into the bridge's active back-buffer.
+    ///
+    /// Skip-on-overflow: if the reader hasn't consumed the last published generation,
+    /// the write is skipped and `dropped_frames` is incremented instead of overwriting
+    /// the buffer the reader may be actively reading. This converts potential UB into
+    /// deterministic, measurable dropouts.
     pub fn write_block(
         &self,
         resamp_out_l: &[f32],
@@ -147,6 +152,19 @@ impl DspBridgeWriter {
         // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
+
+            let current_gen = bridge.generation.load(Ordering::Relaxed);
+            let consumed_gen = bridge.consumed_gen.load(Ordering::Acquire);
+            if current_gen > consumed_gen {
+                let _ =
+                    bridge
+                        .dropped_frames
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                            Some(v.saturating_add(1))
+                        });
+                return;
+            }
+
             let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
             let back_buf = &mut (*self.0.as_ptr()).buffers[back_idx];
 
@@ -172,32 +190,18 @@ impl DspBridgeWriter {
             back_buf.n_samples = n_bridge as u32;
 
             bridge.active_read_idx.store(back_idx, Ordering::Release);
-
-            let current_gen = bridge.generation.load(Ordering::Relaxed);
-            let consumed_gen = bridge.consumed_gen.load(Ordering::Acquire);
-            if current_gen > consumed_gen {
-                let _ =
-                    bridge
-                        .dropped_frames
-                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                            Some(v.saturating_add(1))
-                        });
-            }
-
             bridge.generation.store(current_gen + 1, Ordering::Release);
         }
     }
 
     /// Resets the active back-buffer to indicate silence (0 samples).
+    ///
+    /// Skip-on-overflow: same prevention as `write_block` — if the reader hasn't consumed
+    /// the last published generation, the write is skipped and `dropped_frames` is incremented.
     pub fn write_silence(&self) {
         // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
-            let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
-            let back_buf = &mut (*self.0.as_ptr()).buffers[back_idx];
-            back_buf.n_samples = 0;
-
-            bridge.active_read_idx.store(back_idx, Ordering::Release);
 
             let current_gen = bridge.generation.load(Ordering::Relaxed);
             let consumed_gen = bridge.consumed_gen.load(Ordering::Acquire);
@@ -208,8 +212,14 @@ impl DspBridgeWriter {
                         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
                             Some(v.saturating_add(1))
                         });
+                return;
             }
 
+            let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
+            let back_buf = &mut (*self.0.as_ptr()).buffers[back_idx];
+            back_buf.n_samples = 0;
+
+            bridge.active_read_idx.store(back_idx, Ordering::Release);
             bridge.generation.store(current_gen + 1, Ordering::Release);
         }
     }
@@ -264,7 +274,7 @@ impl DspBridgeReader {
             *last_bridge_gen = current_gen;
             bridge.consumed_gen.store(current_gen, Ordering::Release);
 
-            let read_idx = bridge.active_read_idx.load(Ordering::Relaxed);
+            let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
             let front_buf = &bridge.buffers[read_idx];
             let n_samples = front_buf.n_samples as usize;
             if n_samples == 0 || n_samples > MAX_BRIDGE_BUF {

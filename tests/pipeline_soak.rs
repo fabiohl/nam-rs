@@ -22,8 +22,8 @@ mod tests {
     use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
     use nam_rs::dsp::oversample::{OversampleEngine, OversampleFactor};
     use nam_rs::dsp::pipeline::{
-        BridgeBuffer, DspBridge, DspBridgeWriter, DspBuffers, DspPipelineContext, MAX_BRIDGE_BUF,
-        MAX_RESAMP_BUF, capture_dsp_pipeline,
+        BridgeBuffer, DspBridge, DspBridgeReader, DspBridgeWriter, DspBuffers, DspPipelineContext,
+        MAX_BRIDGE_BUF, MAX_RESAMP_BUF, capture_dsp_pipeline,
     };
     use nam_rs::dsp::resampler::NamResampler;
     use nam_rs::loader::dispatcher::build_model;
@@ -358,5 +358,109 @@ mod tests {
     #[ignore]
     fn test_pipeline_soak_a2_lite() {
         run_pipeline_soak_core("wavenet_a2_lite.nam", 5_000_000, 5.0, "A2-Lite");
+    }
+
+    /// DspBridge skip-on-overflow stress test: Writer at 3× Reader rate.
+    ///
+    /// Verifies that when the writer is significantly faster than the reader,
+    /// the skip-on-overflow mitigation kicks in, preventing buffer overwrite
+    /// and producing measurable dropped frames.
+    ///
+    /// Run under ThreadSanitizer:
+    /// `RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test --features standalone --test pipeline_soak test_dsp_bridge_skip_on_overflow -- --nocapture`
+    #[test]
+    fn test_dsp_bridge_skip_on_overflow() {
+        use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+        use std::time::Duration;
+
+        let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
+            buffers: [
+                BridgeBuffer {
+                    buf_l: [0.0; MAX_BRIDGE_BUF],
+                    buf_r: [0.0; MAX_BRIDGE_BUF],
+                    n_samples: 0,
+                },
+                BridgeBuffer {
+                    buf_l: [0.0; MAX_BRIDGE_BUF],
+                    buf_r: [0.0; MAX_BRIDGE_BUF],
+                    n_samples: 0,
+                },
+            ],
+            active_read_idx: AtomicUsize::new(0),
+            generation: AtomicU64::new(0),
+            consumed_gen: AtomicU64::new(0),
+            dropped_frames: AtomicU32::new(0),
+        }));
+
+        let writer = unsafe { DspBridgeWriter::new(bridge as *const DspBridge as *mut DspBridge) };
+        let reader = unsafe { DspBridgeReader::new(bridge as *const DspBridge as *mut DspBridge) };
+
+        let barrier = Arc::new(Barrier::new(2));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let writer_handle = {
+            let barrier = Arc::clone(&barrier);
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || {
+                let mut counter: u64 = 0;
+                barrier.wait();
+                while !stop.load(Ordering::Relaxed) {
+                    let mut buf_l = [0.0f32; 64];
+                    let mut buf_r = [0.0f32; 64];
+                    let base = counter.wrapping_mul(64);
+                    for i in 0..64 {
+                        buf_l[i] = base.wrapping_add(i as u64) as f32;
+                        buf_r[i] = base.wrapping_add(i as u64) as f32;
+                    }
+                    writer.write_block(&buf_l, &buf_r, 64, false);
+                    counter = counter.wrapping_add(1);
+                }
+            })
+        };
+
+        let reader_handle = {
+            let barrier = Arc::clone(&barrier);
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || {
+                let mut last_gen: u64 = 0;
+                let mut seen_gens: u64 = 0;
+                barrier.wait();
+                while !stop.load(Ordering::Relaxed) {
+                    let res = reader.read_block(&mut last_gen, |l, r| {
+                        for &s in l {
+                            assert!(s.is_finite(), "NaN/Inf in reader buf_l");
+                        }
+                        for &s in r {
+                            assert!(s.is_finite(), "NaN/Inf in reader buf_r");
+                        }
+                        l.len()
+                    });
+                    if res.is_some() {
+                        seen_gens = seen_gens.wrapping_add(1);
+                    }
+                    thread::sleep(Duration::from_micros(500));
+                }
+                let _ = seen_gens;
+            })
+        };
+
+        thread::sleep(Duration::from_secs(2));
+        stop.store(true, Ordering::Relaxed);
+
+        writer_handle.join().unwrap();
+        reader_handle.join().unwrap();
+
+        let dropped = bridge.drain_dropped_frames();
+        println!(
+            "DspBridge skip-on-overflow: dropped_frames={}, generation={}",
+            dropped,
+            bridge.generation.load(Ordering::Relaxed)
+        );
+        assert!(
+            dropped > 0,
+            "Expected dropped frames with fast writer / slow reader, got 0"
+        );
     }
 }
