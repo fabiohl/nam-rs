@@ -130,15 +130,33 @@ impl<'a> NamClapMainThread<'a> {
                 .requested_os_factor
                 .load(Ordering::Relaxed);
             let factor = OversampleFactor::from_f32(factor_val as f32);
-            let os_l = Box::new(OversampleEngine::new(factor, MAX_RESAMP_BUF));
-            let os_r = Box::new(OversampleEngine::new(factor, MAX_RESAMP_BUF));
-            let _ = self
-                .param_tx
-                .push(crate::clap::plugin::ClapParamPayload::SetOversample { os_l, os_r });
-            self.shared
-                .cold
-                .rt_status
-                .clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+            if let (Ok(l), Ok(r)) = (
+                OversampleEngine::new(factor, MAX_RESAMP_BUF),
+                OversampleEngine::new(factor, MAX_RESAMP_BUF),
+            ) {
+                let _ = self.param_tx.push(
+                    crate::clap::plugin::ClapParamPayload::SetOversample {
+                        os_l: Box::new(l),
+                        os_r: Box::new(r),
+                    },
+                );
+                self.shared
+                    .cold
+                    .rt_status
+                    .clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+            } else {
+                crate::common::diagnostics::NamDiagnostic::new(
+                    crate::common::diagnostics::NamErrorCode::OutOfMemory,
+                    &self.sys,
+                )
+                .message("Failed to rebuild oversample engine (OOM).")
+                .hint("The current oversampling state will be preserved.")
+                .emit_warning();
+                self.shared
+                    .cold
+                    .rt_status
+                    .clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+            }
         }
 
         // Check if there is a pending model sent by the UI

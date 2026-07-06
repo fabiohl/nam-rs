@@ -87,8 +87,24 @@ impl CaptureState {
             active_model_l: None,
             active_model_r: None,
             resampler: Box::new(resampler),
-            os_l: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF)),
-            os_r: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF)),
+            os_l: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF).unwrap_or_else(|e| {
+                NamDiagnostic::new(NamErrorCode::OutOfMemory, sys)
+                    .message("Failed to create oversample engine (L).")
+                    .hint("Falling back to bypass mode.")
+                    .param("detail", &e)
+                    .emit_warning();
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF)
+                    .expect("bypass oversample engine cannot fail")
+            })),
+            os_r: Box::new(OversampleEngine::new(os, MAX_RESAMP_BUF).unwrap_or_else(|e| {
+                NamDiagnostic::new(NamErrorCode::OutOfMemory, sys)
+                    .message("Failed to create oversample engine (R).")
+                    .hint("Falling back to bypass mode.")
+                    .param("detail", &e)
+                    .emit_warning();
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF)
+                    .expect("bypass oversample engine cannot fail")
+            })),
             active_cabsim: None,
             current_nam_rate: 48_000,
             resamp_mid_l: Box::new([0.0f32; MAX_RESAMP_BUF]),

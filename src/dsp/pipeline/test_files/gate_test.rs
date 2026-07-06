@@ -64,8 +64,8 @@ fn test_hotpath_gate_closed_and_silence() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
-    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
     // We group everything into the "Context" for processing.
     let ctx = DspPipelineContext {
@@ -187,8 +187,8 @@ fn test_hotpath_gate_fading() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
-    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
@@ -291,8 +291,8 @@ fn test_hotpath_clipping_detection() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
-    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
@@ -390,8 +390,8 @@ fn test_hotpath_dropped_frames() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
-    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
@@ -437,8 +437,8 @@ fn test_hotpath_dropped_frames() {
     let mut process_mono2 = false;
     let mut samples_l2 = vec![1.0; n];
     let mut samples_r2 = vec![1.0; n];
-    let mut os_engine_l2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r2 = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
     let ctx2 = DspPipelineContext {
         resampler: &mut resampler,
         os_l: &mut os_engine_l2,

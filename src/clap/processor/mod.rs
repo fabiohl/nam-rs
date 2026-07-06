@@ -157,8 +157,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let conv_engine = None;
 
         // 4b. Oversample engines (Off by default, swapped on factor change).
-        let os_l = Box::new(OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF));
-        let os_r = Box::new(OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF));
+        let os_l = Box::new(
+            OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                PluginError::Message(Box::leak(
+                    format!("Failed to create oversample engine (L): {:?}", e).into_boxed_str(),
+                ))
+            })?,
+        );
+        let os_r = Box::new(
+            OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                PluginError::Message(Box::leak(
+                    format!("Failed to create oversample engine (R): {:?}", e).into_boxed_str(),
+                ))
+            })?,
+        );
 
         // 5. Report initial latency to shared state
         let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);

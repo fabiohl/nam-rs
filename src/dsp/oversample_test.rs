@@ -5,7 +5,7 @@ use super::*;
 
 #[test]
 fn test_oversample_off_bypass() {
-    let mut engine = OversampleEngine::new(OversampleFactor::Off, 256);
+    let mut engine = OversampleEngine::new(OversampleFactor::Off, 256).unwrap();
     assert!(engine.is_bypass());
 
     let input: Vec<f32> = (0..64).map(|i| i as f32 * 0.01).collect();
@@ -22,7 +22,7 @@ fn test_oversample_off_bypass() {
 
 #[test]
 fn test_x2_upsample_dc() {
-    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256);
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256).unwrap();
     assert!(!engine.is_bypass());
     assert_eq!(engine.factor(), OversampleFactor::X2);
 
@@ -43,7 +43,7 @@ fn test_x2_upsample_dc() {
 
 #[test]
 fn test_x2_roundtrip_dc() {
-    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256);
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256).unwrap();
     let input = vec![1.0f32; 256];
     let mut up = vec![0.0f32; 512];
     let mut down = vec![0.0f32; 256];
@@ -70,7 +70,7 @@ fn test_x2_roundtrip_dc() {
 
 #[test]
 fn test_x2_aliasing_rejection() {
-    let mut engine = OversampleEngine::new(OversampleFactor::X2, 512);
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 512).unwrap();
     let sr = 48000.0f32;
     let freq = 23000.0f32;
     let n = 128;
@@ -134,7 +134,7 @@ fn test_x2_aliasing_rejection() {
 
 #[test]
 fn test_x4_upsample_dc() {
-    let mut engine = OversampleEngine::new(OversampleFactor::X4, 256);
+    let mut engine = OversampleEngine::new(OversampleFactor::X4, 256).unwrap();
     assert!(!engine.is_bypass());
     assert_eq!(engine.factor(), OversampleFactor::X4);
 
@@ -153,7 +153,7 @@ fn test_x4_upsample_dc() {
 
 #[test]
 fn test_x4_roundtrip_dc() {
-    let mut engine = OversampleEngine::new(OversampleFactor::X4, 512);
+    let mut engine = OversampleEngine::new(OversampleFactor::X4, 512).unwrap();
     let input = vec![1.0f32; 512];
     let mut up = vec![0.0f32; 2048];
     let mut down = vec![0.0f32; 512];
@@ -180,15 +180,15 @@ fn test_x4_roundtrip_dc() {
 
 #[test]
 fn test_latency_samples() {
-    let off = OversampleEngine::new(OversampleFactor::Off, 256);
+    let off = OversampleEngine::new(OversampleFactor::Off, 256).unwrap();
     assert_eq!(off.latency_samples(), 0);
     assert!(off.is_bypass());
 
-    let x2 = OversampleEngine::new(OversampleFactor::X2, 256);
+    let x2 = OversampleEngine::new(OversampleFactor::X2, 256).unwrap();
     assert_eq!(x2.latency_samples(), 12);
     assert!(!x2.is_bypass());
 
-    let x4 = OversampleEngine::new(OversampleFactor::X4, 256);
+    let x4 = OversampleEngine::new(OversampleFactor::X4, 256).unwrap();
     assert_eq!(x4.latency_samples(), 24);
     assert!(!x4.is_bypass());
 }
@@ -209,7 +209,7 @@ fn test_factor_stage_count() {
 
 #[test]
 fn test_x2_oversampling_factor_matches() {
-    let engine = OversampleEngine::new(OversampleFactor::X2, 256);
+    let engine = OversampleEngine::new(OversampleFactor::X2, 256).unwrap();
     assert_eq!(engine.factor(), OversampleFactor::X2);
     assert!(!engine.is_bypass());
 }
@@ -218,7 +218,7 @@ fn test_x2_oversampling_factor_matches() {
 fn test_back_to_back_roundtrips_x2() {
     // Multiple round-trips through the same engine should remain stable
     // (memoryless nonlinearity check).
-    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256);
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 256).unwrap();
     let input: Vec<f32> = (0..128).map(|i| (i as f32 * 0.02).sin()).collect();
 
     let mut up = vec![0.0f32; 256];

@@ -272,31 +272,42 @@ pub fn run_pipewire_host(
         if rt_status.check_flag_acquire(spsc::RT_STATUS_NEEDS_OS_REBUILD) {
             let factor_val = rt_status.requested_os_factor.load(Ordering::Relaxed);
             let factor = crate::dsp::oversample::OversampleFactor::from_f32(factor_val as f32);
-            let pair = Box::new(crate::dsp::oversample::OsEnginePair {
-                l: Box::new(crate::dsp::oversample::OversampleEngine::new(
-                    factor,
-                    crate::dsp::pipeline::MAX_RESAMP_BUF,
-                )),
-                r: Box::new(crate::dsp::oversample::OversampleEngine::new(
-                    factor,
-                    crate::dsp::pipeline::MAX_RESAMP_BUF,
-                )),
-            });
-            log::info!(
-                "{} Oversampling factor changed to {:?}",
-                "🔄".cyan(),
-                factor,
-            );
-            if os_producer.push(pair).is_err() {
-                crate::common::diagnostics::NamDiagnostic::new(
-                    crate::common::diagnostics::NamErrorCode::ParamChannelFull,
-                    &sys,
-                )
-                .message("OS engine channel full. Rebuild discarded.")
-                .hint("The audio engine is overloaded. If the problem persists, restart NAM-rs.")
-                .emit_warning();
-            } else {
-                rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+            match (
+                crate::dsp::oversample::OversampleEngine::new(factor, crate::dsp::pipeline::MAX_RESAMP_BUF),
+                crate::dsp::oversample::OversampleEngine::new(factor, crate::dsp::pipeline::MAX_RESAMP_BUF),
+            ) {
+                (Ok(os_l), Ok(os_r)) => {
+                    let pair = Box::new(crate::dsp::oversample::OsEnginePair {
+                        l: Box::new(os_l),
+                        r: Box::new(os_r),
+                    });
+                    log::info!(
+                        "{} Oversampling factor changed to {:?}",
+                        "🔄".cyan(),
+                        factor,
+                    );
+                    if os_producer.push(pair).is_err() {
+                        crate::common::diagnostics::NamDiagnostic::new(
+                            crate::common::diagnostics::NamErrorCode::ParamChannelFull,
+                            &sys,
+                        )
+                        .message("OS engine channel full. Rebuild discarded.")
+                        .hint("The audio engine is overloaded. If the problem persists, restart NAM-rs.")
+                        .emit_warning();
+                    } else {
+                        rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+                    }
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    crate::common::diagnostics::NamDiagnostic::new(
+                        crate::common::diagnostics::NamErrorCode::OutOfMemory,
+                        &sys,
+                    )
+                    .message("Failed to rebuild oversample engine (OOM).")
+                    .hint("Audio will continue with the previous oversampling state.")
+                    .param("detail", &e)
+                    .emit();
+                }
             }
         }
 

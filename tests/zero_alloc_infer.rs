@@ -201,8 +201,8 @@ fn test_zero_alloc_capture_pipeline() {
 
     let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
 
-    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+    let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+    let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
     let ctx = DspPipelineContext {
         resampler: &mut resampler,

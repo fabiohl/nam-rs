@@ -21,10 +21,11 @@
 //! ## RT-Safety
 //!
 //! All allocation in `OversampleEngine::new()`. During `process()`,
-//! only pre-allocated buffers — zero alloc, zero heap-drop, no unwrap.
+//! only pre-allocated buffers — zero alloc, zero heap-drop.
 //!
 //! Factor change requires rebuild (off-RT), same path as model hot-swap.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 
 /// Half-band FIR filter length (≡ 1 mod 4 so D=HB_TAPS/2 is even).
@@ -182,20 +183,20 @@ struct X2Stage {
 }
 
 impl X2Stage {
-    fn new() -> Self {
+    fn new() -> Result<Self, NamErrorCode> {
         let dc_up = 2.0;
         let dc_down = 1.0;
-        Self {
+        Ok(Self {
             up_filter: HalfBandFilter::design(12.0, dc_up),
             down_filter: HalfBandFilter::design(12.0, dc_down),
             up_center: (dc_up / 2.0) as f32,
             down_center: (dc_down / 2.0) as f32,
-            up_ring: AlignedVec::new(HB_DELAY, 0.0f32).expect("OOM: X2Stage up_ring"),
+            up_ring: AlignedVec::new(HB_DELAY, 0.0f32)?,
             up_pos: 0,
-            down_ring: AlignedVec::new(HB_TAPS, 0.0f32).expect("OOM: X2Stage down_ring"),
+            down_ring: AlignedVec::new(HB_TAPS, 0.0f32)?,
             down_pos: 0,
             down_abs: 0,
-        }
+        })
     }
 
     fn upsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
@@ -299,7 +300,10 @@ impl OversampleEngine {
     ///
     /// `max_input_samples`: max block size at native model rate
     /// (e.g., `MAX_RESAMP_BUF = 8192`).
-    pub fn new(factor: OversampleFactor, max_input_samples: usize) -> Self {
+    pub fn new(
+        factor: OversampleFactor,
+        max_input_samples: usize,
+    ) -> Result<Self, NamErrorCode> {
         let inter_size = if factor.stage_count() >= 2 {
             max_input_samples * 2
         } else {
@@ -309,21 +313,20 @@ impl OversampleEngine {
         let stages = match factor {
             OversampleFactor::Off => OsStages::Off,
             OversampleFactor::X2 => OsStages::X2 {
-                stage1: X2Stage::new(),
+                stage1: X2Stage::new()?,
             },
             OversampleFactor::X4 => OsStages::X4 {
-                stage1: X2Stage::new(),
-                stage2: X2Stage::new(),
+                stage1: X2Stage::new()?,
+                stage2: X2Stage::new()?,
             },
         };
 
-        Self {
+        Ok(Self {
             factor,
             stages,
-            inter_buf: AlignedVec::new(inter_size, 0.0f32)
-                .expect("OOM: OversampleEngine inter_buf"),
+            inter_buf: AlignedVec::new(inter_size, 0.0f32)?,
             max_samples: max_input_samples,
-        }
+        })
     }
 
     /// Returns the current oversampling factor.

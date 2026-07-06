@@ -52,7 +52,7 @@ fn process_with_os(
     input: &[f32],
     os_factor: OversampleFactor,
 ) -> Vec<f32> {
-    let mut os_engine = OversampleEngine::new(os_factor, BLOCK_SIZE);
+    let mut os_engine = OversampleEngine::new(os_factor, BLOCK_SIZE).unwrap();
     let mult = os_factor.multiplier();
     let max_os = BLOCK_SIZE * mult;
     let mut output = Vec::with_capacity(input.len());

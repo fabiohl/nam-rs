@@ -111,8 +111,8 @@ mod block_tests {
         let mut samples_l = vec![0.1; n];
         let mut samples_r = vec![0.1; n];
 
-        let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
-        let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF);
+        let mut os_engine_l = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
+        let mut os_engine_r = OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).unwrap();
 
         let _guard = TrackingGuard::new();
 
