@@ -4,129 +4,124 @@
 use rtrb::Consumer;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Represents an item that should be safely disposed outside the audio thread.
-/// Dropping these items may involve heavy memory deallocations.
-pub enum GcItem {
-    /// A model instance (LSTM or WaveNet).
-    Model(Box<crate::models::StaticModel>),
-    /// A resampler (boxed to ensure RT-safety on drop).
-    Resampler(Box<crate::dsp::resampler::NamResampler>),
-    /// A cab-sim impulse response (boxed to ensure RT-safety on drop).
+/// Unified declaration of GcItem variants and their dispatch methods.
+///
+/// Each entry maps a variant name to its inner type and a unique `type_id`.
+/// The macro generates the `GcItem` enum plus the three dispatch methods
+/// (`type_id`, `from_raw_parts`, `into_packed`) from this single source
+/// of truth.  To add a new GC item type, only this invocation needs updating —
+/// no more duplicated match blocks.
+macro_rules! define_gc_item {
+    (
+        $(
+            $(#[$attr:meta])*
+            $variant:ident($inner:ty) = $id:literal
+        ),+ $(,)?
+    ) => {
+        /// Represents an item that should be safely disposed outside the audio thread.
+        /// Dropping these items may involve heavy memory deallocations.
+        #[allow(missing_docs)]
+        pub enum GcItem {
+            $(
+                $(#[$attr])*
+                $variant(Box<$inner>),
+            )*
+        }
+
+        impl GcItem {
+            /// Returns the type ID for the overflow buffer.
+            fn type_id(&self) -> u8 {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        GcItem::$variant(_) => $id,
+                    )*
+                }
+            }
+
+            /// Reconstructs a GcItem from a raw pointer and a type ID.
+            ///
+            /// Returns `None` if the type ID is unknown. In that case, the caller
+            /// must intentionally leak the pointer to avoid UB from `Box::from_raw`
+            /// with a mismatched type.
+            ///
+            /// # Safety
+            /// The pointer must have been generated via `Box::into_raw` of an object
+            /// of the corresponding type, validated by the caller against type_id.
+            ///
+            /// ## Dispatch protocol
+            ///
+            /// Each variant is assigned a fixed `type_id`.
+            /// The ID is validated before `Box::from_raw` — an unknown ID results in
+            /// `None`, and the caller must leak the raw pointer. This ensures that
+            /// even if the packed u64 is corrupted in the overflow buffer, the RT
+            /// thread never calls `Box::from_raw` with a mismatched layout.
+            unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Option<Self> {
+                match type_id {
+                    $(
+                        $(#[$attr])*
+                        $id => Some(GcItem::$variant(unsafe {
+                            Box::from_raw(ptr as *mut $inner)
+                        })),
+                    )*
+                    _ => None,
+                }
+            }
+
+            /// Converts this GcItem into a packed 64-bit representation for the
+            /// overflow buffer.
+            ///
+            /// Layout (little-endian):
+            ///   Bits 0-55:  user-space pointer (≤ 56 bits)
+            ///   Bits 56-63: type ID
+            ///
+            /// ## Platform dependency
+            ///
+            /// This packing scheme relies on **x86-64 canonical addressing**: under
+            /// **4-level paging** (LA48, 48-bit) or **5-level paging** (LA57, 57-bit),
+            /// the Linux kernel maps the user-space virtual address range so that the
+            /// top byte (bits 56–63) of any `malloc`/`Box` pointer on the heap is
+            /// guaranteed to be zero.  Consequently, all live heap pointers fit
+            /// within 56 bits, and repurposing bits 56–63 for the type ID is safe.
+            ///
+            /// Should a future x86-64 extension widen the canonical address range
+            /// beyond 57 bits or a non-Linux kernel violate this convention, the
+            /// `debug_assert!` below will fire and the packing scheme must be revised.
+            pub(crate) fn into_packed(self) -> u64 {
+                let type_id = self.type_id();
+                let ptr = match self {
+                    $(
+                        $(#[$attr])*
+                        GcItem::$variant(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+                    )*
+                };
+
+                debug_assert!(
+                    (ptr as u64) < (1u64 << 56),
+                    "GC pointer 0x{:016X} exceeds 56 bits — packing scheme is unsafe \
+                     on this system (requires LA57 with 57-bit canonical addresses or less).",
+                    ptr as u64
+                );
+
+                ((type_id as u64) << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF)
+            }
+        }
+    };
+}
+
+define_gc_item! {
+    Model(crate::models::StaticModel) = 1,
+    Resampler(crate::dsp::resampler::NamResampler) = 2,
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    CabSimIr(Box<crate::dsp::cabsim::loader::CabSimIr>),
-    /// A cab-sim convolution engine (boxed to ensure RT-safety on drop).
+    CabSimIr(crate::dsp::cabsim::loader::CabSimIr) = 3,
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    CabConvEngine(Box<crate::dsp::cabsim::conv::ConvEngine>),
-    /// An oversampling engine (boxed to ensure RT-safety on drop).
-    Oversample(Box<crate::dsp::oversample::OversampleEngine>),
-    /// Test variant for integrity and stress validation.
+    CabConvEngine(crate::dsp::cabsim::conv::ConvEngine) = 4,
+    Oversample(crate::dsp::oversample::OversampleEngine) = 5,
     #[cfg(test)]
-    Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
+    Test(std::sync::Arc<std::sync::atomic::AtomicU32>) = 255,
 }
 
 impl GcItem {
-    /// Returns the type ID for the overflow buffer.
-    fn type_id(&self) -> u8 {
-        match self {
-            GcItem::Model(_) => 1,
-            GcItem::Resampler(_) => 2,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabSimIr(_) => 3,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabConvEngine(_) => 4,
-            GcItem::Oversample(_) => 5,
-            #[cfg(test)]
-            GcItem::Test(_) => 255,
-        }
-    }
-
-    /// Reconstructs a GcItem from a raw pointer and a type ID.
-    ///
-    /// Returns `None` if the type ID is unknown. In that case, the caller
-    /// must intentionally leak the pointer to avoid UB from `Box::from_raw`
-    /// with a mismatched type.
-    ///
-    /// # Safety
-    /// The pointer must have been generated via `Box::into_raw` of an object
-    /// of the corresponding type, validated by the caller against type_id.
-    ///
-    /// ## Dispatch protocol
-    ///
-    /// Each variant is assigned a fixed `type_id` (1..=4, 255 for test).
-    /// The ID is validated before `Box::from_raw` — an unknown ID results in
-    /// `None`, and the caller must leak the raw pointer. This ensures that
-    /// even if the packed u64 is corrupted in the overflow buffer, the RT
-    /// thread never calls `Box::from_raw` with a mismatched layout.
-    unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Option<Self> {
-        match type_id {
-            1 => Some(GcItem::Model(unsafe {
-                Box::from_raw(ptr as *mut crate::models::StaticModel)
-            })),
-            2 => Some(GcItem::Resampler(unsafe {
-                Box::from_raw(ptr as *mut crate::dsp::resampler::NamResampler)
-            })),
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            3 => Some(GcItem::CabSimIr(unsafe {
-                Box::from_raw(ptr as *mut crate::dsp::cabsim::loader::CabSimIr)
-            })),
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            4 => Some(GcItem::CabConvEngine(unsafe {
-                Box::from_raw(ptr as *mut crate::dsp::cabsim::conv::ConvEngine)
-            })),
-            5 => Some(GcItem::Oversample(unsafe {
-                Box::from_raw(ptr as *mut crate::dsp::oversample::OversampleEngine)
-            })),
-            #[cfg(test)]
-            255 => Some(GcItem::Test(unsafe {
-                Box::from_raw(ptr as *mut std::sync::Arc<std::sync::atomic::AtomicU32>)
-            })),
-            _ => None, // unknown type_id → caller leaks pointer, avoids UB
-        }
-    }
-
-    /// Converts this GcItem into a packed 64-bit representation for the
-    /// overflow buffer.
-    ///
-    /// Layout (little-endian):
-    ///   Bits 0-55:  user-space pointer (≤ 56 bits)
-    ///   Bits 56-63: type ID
-    ///
-    /// ## Platform dependency
-    ///
-    /// This packing scheme relies on **x86-64 canonical addressing**: under
-    /// **4-level paging** (LA48, 48-bit) or **5-level paging** (LA57, 57-bit),
-    /// the Linux kernel maps the user-space virtual address range so that the
-    /// top byte (bits 56–63) of any `malloc`/`Box` pointer on the heap is
-    /// guaranteed to be zero.  Consequently, all live heap pointers fit
-    /// within 56 bits, and repurposing bits 56–63 for the type ID is safe.
-    ///
-    /// Should a future x86-64 extension widen the canonical address range
-    /// beyond 57 bits or a non-Linux kernel violate this convention, the
-    /// `debug_assert!` below will fire and the packing scheme must be revised.
-    pub(crate) fn into_packed(self) -> u64 {
-        let type_id = self.type_id();
-        let ptr = match self {
-            GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabConvEngine(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            GcItem::Oversample(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(test)]
-            GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-        };
-
-        debug_assert!(
-            (ptr as u64) < (1u64 << 56),
-            "GC pointer 0x{:016X} exceeds 56 bits — packing scheme is unsafe \
-             on this system (requires LA57 with 57-bit canonical addresses or less).",
-            ptr as u64
-        );
-
-        ((type_id as u64) << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF)
-    }
-
     /// Reconstructs a GcItem from a packed 64-bit value.
     ///
     /// The complement of [`into_packed`](Self::into_packed): unmarshals the
@@ -153,13 +148,10 @@ impl GcItem {
         if packed == 0 {
             return None;
         }
-        // Extract type_id from bits 56-63 (upper byte).
-        // type_id 0 is reserved for "empty slot" — treat as None.
         let type_id = ((packed >> 56) & 0xFF) as u8;
         if type_id == 0 {
             return None;
         }
-        // Extract the raw pointer from bits 0-55.
         let ptr = (packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
         unsafe { Self::from_raw_parts(ptr, type_id) }
     }
