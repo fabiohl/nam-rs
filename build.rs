@@ -21,6 +21,16 @@
 // `[build] rustflags` entry in `.cargo/config.toml` — see the comment
 // there for why that approach failed).
 fn main() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+
+    if target_os == "linux" && target_env != "gnu" {
+        println!(
+            "cargo:warning=Target env is '{target_env}' — global_asm! GLIBC compat \
+             redirect is disabled; build may require musl-compatible symbol resolution"
+        );
+    }
+
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     // `lld` (used by this toolchain via `-fuse-ld=lld`) errors by default on
     // any version-script entry naming a symbol that isn't actually defined

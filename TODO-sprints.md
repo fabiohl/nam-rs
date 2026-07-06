@@ -211,7 +211,7 @@ gantt
 * **Plano de Verificação:**
   * Assegurar que os testes e código consumidor continuam compilando normalmente.
 
-### T-303 (F-012) — Hardening do Redirecionamento global_asm! do libm
+### T-303 (F-012) — Hardening do Redirecionamento global_asm! do libm [DONE]
 
 * **Criticidade:** Baixa / Risco Baixo (Garantir estabilidade de compilação cruzada ou linkagem dinâmica em sistemas não-GNU).
 * **Arquivos Afetados:**

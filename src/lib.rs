@@ -53,7 +53,7 @@ pub mod testing;
 // Redirects math symbols to the stable GLIBC_2.2.5 version.
 // Since external dependencies use these symbols, we declare global wrappers
 // that intercept calls and jump (jmp) via PLT to the compatible versions.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 core::arch::global_asm!(
     ".global log10f",
     ".type log10f, @function",
