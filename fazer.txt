@@ -1,5 +1,5 @@
 * /refatora-rust [GLM5.2]
-* /revisor-auditor [GLM5.2][Antigravity Opus] totalmente focado na role "Resilience and Robustness Specialist".
+* /revisor-auditor [Antigravity] totalmente focado na role "Resilience and Robustness Specialist".
 * /revisor-auditor [GLM5.2][Antigravity Opus] totalmente focado na role "Performance and Low-Latency Master".
   Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas!
   Inclua no workflow, rodadas regulares de `utils/tests-performance-regression.sh` para sempre assegurar ganhos reais.

@@ -30,7 +30,7 @@ Use this skill for a general and holistic codebase review in search of architect
 
 ### Resilience and Robustness Specialist
 
-* Preemptively identify and neutralize exception scenarios, race conditions, undefined behavior, or resource/memory leaks.
+* Relentlessly identify and neutralize bugs of all kinds, exception scenarios, race conditions, undefined behavior, or resource/memory leaks.
 * Eliminate structural redundancies, such as dead code or functions unused under specific conditional branches, promoting maximum cohesion and homogeneity.
 * Resolve logical inconsistencies and structural stability deviations under heavy processing stress.
 * Maximize clean code reuse across modules, adopting the best design patterns from the Rust community.
