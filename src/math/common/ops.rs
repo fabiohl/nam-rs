@@ -101,14 +101,14 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
 
 /// Unified signature for prefetch strategies.
 pub type PrefetchFn =
-    unsafe fn(base_ptr: *const f32, step: usize, k: usize, k_limit: usize, dilation: usize);
+    fn(base_ptr: *const f32, step: usize, k: usize, k_limit: usize, dilation: usize);
 
-/// Safe speculative prefetch to L1 cache (T0 hint), avoiding pointer arithmetic UB.
+/// Speculative prefetch to L1 cache (T0 hint), avoiding pointer arithmetic UB.
 ///
-/// # Safety
-/// The caller must ensure that the base pointer is valid.
+/// `_mm_prefetch` on an invalid address is a non-faulting hint and is defined
+/// behavior on x86-64; the operation is therefore memory-safe.
 #[inline(always)]
-pub unsafe fn prefetch_t0<T>(base: *const T, offset: usize) {
+pub fn prefetch_t0<T>(base: *const T, offset: usize) {
     // SAFETY: prefetch does not dereference the pointer, so using wrapping_add is UB-free even if the address goes out of bounds.
     unsafe {
         core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
@@ -117,12 +117,12 @@ pub unsafe fn prefetch_t0<T>(base: *const T, offset: usize) {
     }
 }
 
-/// Safe speculative prefetch to L2 cache (T1 hint), avoiding pointer arithmetic UB.
+/// Speculative prefetch to L2 cache (T1 hint), avoiding pointer arithmetic UB.
 ///
-/// # Safety
-/// The caller must ensure that the base pointer is valid.
+/// `_mm_prefetch` on an invalid address is a non-faulting hint and is defined
+/// behavior on x86-64; the operation is therefore memory-safe.
 #[inline(always)]
-pub unsafe fn prefetch_t1<T>(base: *const T, offset: usize) {
+pub fn prefetch_t1<T>(base: *const T, offset: usize) {
     // SAFETY: prefetch does not dereference the pointer, so using wrapping_add is UB-free even if the address goes out of bounds.
     unsafe {
         core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(
@@ -132,11 +132,8 @@ pub unsafe fn prefetch_t1<T>(base: *const T, offset: usize) {
 }
 
 /// Simple prefetch strategy for small/medium dilations.
-///
-/// # Safety
-/// The base pointer must be valid.
 #[inline(always)]
-pub unsafe fn prefetch_strategy_simple(
+pub fn prefetch_strategy_simple(
     base_ptr: *const f32,
     _step: usize,
     _k: usize,
@@ -144,17 +141,12 @@ pub unsafe fn prefetch_strategy_simple(
     _dilation: usize,
 ) {
     // SAFETY: Speculative prefetch using wrapping_add is safe from out-of-bounds UB.
-    unsafe {
-        prefetch_t0(base_ptr, 16);
-    }
+    prefetch_t0(base_ptr, 16);
 }
 
 /// 2-stage prefetch strategy for extreme dilations.
-///
-/// # Safety
-/// The base pointer and computed offsets must be valid.
 #[inline(always)]
-pub unsafe fn prefetch_strategy_2stage(
+pub fn prefetch_strategy_2stage(
     base_ptr: *const f32,
     step: usize,
     k: usize,
@@ -163,12 +155,10 @@ pub unsafe fn prefetch_strategy_2stage(
 ) {
     if k + 1 < k_limit {
         // SAFETY: Speculative prefetch using wrapping_add is safe from out-of-bounds UB.
-        unsafe {
-            prefetch_t0(base_ptr, step);
+        prefetch_t0(base_ptr, step);
 
-            if k + 2 < k_limit {
-                prefetch_t1(base_ptr, 2 * step);
-            }
+        if k + 2 < k_limit {
+            prefetch_t1(base_ptr, 2 * step);
         }
     }
 }

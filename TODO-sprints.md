@@ -200,7 +200,7 @@ gantt
 * **Plano de Verificação:**
   * Acionar a skill `documentador` para atestar a conformidade e integridade dos comentários gerados.
 
-### T-302 (F-006) — Saneamento de Helpers de Prefetch Seguros
+### T-302 (F-006) — Saneamento de Helpers de Prefetch Seguros [DONE]
 
 * **Criticidade:** Baixa / Risco Baixo (Facilidade de manutenção, remoção de contaminação de unsafe).
 * **Arquivos Afetados:**
