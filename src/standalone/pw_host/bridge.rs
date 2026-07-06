@@ -8,6 +8,11 @@ use crate::dsp::pipeline::{BridgeBuffer, BridgeRef, DspBridge, MAX_BRIDGE_BUF};
 
 /// Allocates `DspBridge` with double-buffering via `Box::leak` (`'static` lifetime).
 ///
+/// **Standalone-only**: This function lives under `#[cfg(feature = "standalone")]`
+/// because `Box::leak` is only acceptable when the DspBridge lifetime equals the
+/// process lifetime. In the CLAP plugin, no DspBridge is created — audio flows
+/// synchronously within a single `process()` callback.
+///
 /// The buffer is aligned to 128 bytes (`repr(align(128))`) to avoid false-sharing
 /// between the two RT callbacks.
 ///

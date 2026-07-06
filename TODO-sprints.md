@@ -153,7 +153,7 @@ gantt
   * Executar suite de testes do GC com asserts ativos.
 * **Conclusão (2026-07-06):** `debug_assert!` adicionado em `into_packed` (linha 120) com mensagem descritiva incluindo o valor do ponteiro. Documentação expandida em ambos `into_packed` e `from_packed` detalhando o esquema de endereçamento canônico x86-64 (LA48/LA57), a garantia de top byte zero do kernel Linux, e as consequências de violação futura. 7/7 testes SPSC passando com `debug_assert!` ativo.
 
-### T-204 (F-010) — Otimização e Saneamento da Configuração DAZ/FTZ
+### T-204 (F-010) — Otimização e Saneamento da Configuração DAZ/FTZ [CANCELADO]
 
 * **Criticidade:** Baixa / Risco Baixo (Evitar chamadas redundantes e poluição de unsafe no loop de tempo real).
 * **Arquivos Afetados:**
@@ -164,17 +164,24 @@ gantt
 * **Plano de Verificação:**
   * Executar testes de regressão de performance e verificar o perfil do processamento de áudio.
 
-### T-205 (F-009) — Saneamento do Box::leak do DspBridge no Ciclo de Vida do CLAP
+### T-205 (F-009) — Saneamento do Box::leak do DspBridge no Ciclo de Vida do CLAP [DONE]
 
-* **Criticidade:** Baixa / Risco Baixo (Evitar acumulação de vazamentos ao carregar/recarregar a instância de plugin CLAP na DAW).
-* **Arquivos Afetados:**
-  * [bridge.rs](file:///home/fabio/nam-rs/src/standalone/pw_host/bridge.rs)
-  * Integração do CLAP.
-* **Abordagem Recomendada:**
-  1. Garantir que a alocação persistente com `Box::leak` de `DspBridge` ocorra estritamente no executável standalone (onde o tempo de vida é idêntico ao processo).
-  2. Para a versão CLAP, gerenciar o tempo de vida do `DspBridge` associado à instância do plugin, liberando-o (`Box::from_raw`) adequadamente na destruição (`plugin_destroy`) para evitar vazamentos recorrentes em DAW.
-* **Plano de Verificação:**
-  * Verificar criação e destruição repetitiva da instância CLAP sob rastreamento de leaks (valgrind/heap-audit).
+> **Conclusão (2026-07-06 T-205):**
+>
+> A arquitetura atual já endereça completamente o risco. O `Box::leak` do `DspBridge`
+> ocorre exclusivamente em `allocate_dsp_bridge()` (`src/standalone/pw_host/bridge.rs`),
+> que está sob `#[cfg(feature = "standalone")]` — inacessível no build CLAP.
+>
+> No plugin CLAP, **nenhum `DspBridge` é criado ou utilizado**. O processamento de
+> áudio flui sincronamente dentro de um único callback `process()`, usando buffers
+> intermediários alocados em `activate()` e liberados em `deactivate()`. Não há
+> ponte inter-stream porque o CLAP entrega input e output no mesmo callback.
+>
+> Documentação expandida em `allocate_dsp_bridge()` para explicitar que o `Box::leak`
+> é standalone-only e o racional arquitetural.
+>
+> Verificação: `cargo check` limpo para ambas as features (`standalone`, `clap-plugin`);
+> testes de pipeline soak (DspBridge skip-on-overflow) e CLAP lifecycle passam.
 
 ---
 
