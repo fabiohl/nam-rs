@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use std::mem::size_of;
-
 use super::super::WeightCursor;
 use crate::loader::dispatcher::checked_arith;
 use crate::models::lstm::{LstmLayer, LstmLayerDyn};
@@ -58,22 +56,21 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
     let raw_weights = cursor.read_slice(H4 * IH)?;
     let is_gate_major = cursor.is_gate_major_lstm();
 
-    let expected_len = H4 * IH;
-    let actual_len = size_of::<[[[f32; H]; IH]; 4]>() / size_of::<f32>();
-    assert_eq!(actual_len, expected_len, "LSTM weight buffer size mismatch");
-
-    let dst = unsafe {
-        // SAFETY: input_hidden_weights is [[[f32; H]; IH]; 4] — a contiguous f32 array.
-        // expected_len = H4 * IH = 4 * H * (I + H) matches the total element count
-        // (verified by assert_eq! above). f32 has no padding bytes, so the layout is
-        // a flat H4 × IH f32 block. The resulting slice covers all and only the array
-        // elements, which are initialized to 0.0 by LstmLayer::new().
-        core::slice::from_raw_parts_mut(
-            layer.input_hidden_weights.as_mut_ptr() as *mut f32,
-            expected_len,
-        )
-    };
-    read_lstm_weights_into(raw_weights, dst, is_gate_major, H, I);
+    let flat = layer.input_hidden_weights.as_flattened_mut();
+    let ih = I + H;
+    if is_gate_major {
+        for (row, chunk) in flat.iter_mut().zip(raw_weights.chunks_exact(H)) {
+            row.copy_from_slice(chunk);
+        }
+    } else {
+        for k in 0..4 {
+            for i in 0..H {
+                for j in 0..ih {
+                    flat[k * ih + j][i] = raw_weights[k * ih * H + i * ih + j];
+                }
+            }
+        }
+    }
 
     let bias_data = cursor.read_slice(H4)?;
     layer.bias.copy_from_slice(bias_data);

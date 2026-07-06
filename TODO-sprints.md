@@ -222,7 +222,7 @@ gantt
 * **Plano de Verificação:**
   * Compilar o projeto com o target musl e gnu de forma isolada, validando a ausência de linker errors.
 
-### T-304 (F-014) — Uso de Flatten Seguro na Leitura de Camada LSTM
+### T-304 (F-014) — Uso de Flatten Seguro na Leitura de Camada LSTM [DONE]
 
 * **Criticidade:** Baixa / Risco Baixo (Melhorar legibilidade e remover unsafe onde a biblioteca padrão Rust oferece suporte seguro).
 * **Arquivos Afetados:**
@@ -231,6 +231,7 @@ gantt
   1. Substituir a inicialização via `from_raw_parts_mut` pelo método nativo e seguro `.as_flattened_mut()` (ou equivalentemente via slices seguras se a API estiver disponível para a MSRV do projeto).
 * **Plano de Verificação:**
   * Garantir que o parser de modelos continue lendo e carregando os pesos perfeitamente.
+* **Nota de Conclusão:** O bloco `unsafe { core::slice::from_raw_parts_mut(...) }` em `read_lstm_layer` foi removido. A chamada `.as_flattened_mut()` (stabilizada em Rust 1.80) retorna um `&mut [[f32; H]]` 2D seguro. O layout gate-major e a transposição foram reelaborados diretamente sobre a slice 2D obtida, eliminando a dependência de `size_of` e as assertions auxiliares. A função `read_lstm_weights_into` permanece para o caminho dinâmico (`read_lstm_layer_dyn`), onde `AlignedVec<f32>` já provê `DerefMut<[f32]>`. Todos os 28 testes LSTM passam.
 
 ### T-305 (F-013) — Otimização e Simplificação do GcItem Boilerplate
 
