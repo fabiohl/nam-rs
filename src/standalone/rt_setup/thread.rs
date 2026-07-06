@@ -82,108 +82,104 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
         crate::math::common::set_daz_ftz();
     }
 
-    unsafe {
-        let thread_id = libc::pthread_self();
+    let thread_id = unsafe { libc::pthread_self() };
 
+    unsafe {
         let name = b"nam_rs_dsp\0";
         libc::pthread_setname_np(thread_id, name.as_ptr() as *const libc::c_char);
+    }
 
-        if cpu_in_bounds {
-            let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+    if cpu_in_bounds {
+        let mut cpuset: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+        unsafe {
             libc::CPU_ZERO(&mut cpuset);
             libc::CPU_SET(target_cpu, &mut cpuset);
-
-            let ret_aff = libc::pthread_setaffinity_np(
-                thread_id,
-                std::mem::size_of::<libc::cpu_set_t>(),
-                &cpuset,
-            );
-
-            if ret_aff != 0 {
-                log::error!(
-                    "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
-                    target_cpu,
-                    ret_aff,
-                    target_cpu,
-                    ret_aff
-                );
-            }
         }
 
-        // 2. Prior programmatic check: reads policy/prio granted by the kernel via rtkit/PipeWire
-        let mut actual_policy = 0i32;
-        let mut actual_param: libc::sched_param = std::mem::zeroed();
-        let ret_getsched =
-            libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
+        let ret_aff = unsafe {
+            libc::pthread_setaffinity_np(thread_id, std::mem::size_of::<libc::cpu_set_t>(), &cpuset)
+        };
 
-        let actual_cpu = libc::sched_getcpu();
-        rt_status.rt_cpu.store(actual_cpu, Ordering::Relaxed);
-
-        if ret_getsched == 0 {
-            let reset_on_fork_flag = 0x40000000i32;
-            let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
-            let mut base_policy = actual_policy & !reset_on_fork_flag;
-
-            // 3. If PipeWire did not elevate to SCHED_FIFO via rtkit, we force it manually
-            if base_policy != libc::SCHED_FIFO {
-                let mut param: libc::sched_param = std::mem::zeroed();
-                param.sched_priority = 90;
-
-                let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
-                if ret_sched != 0 {
-                    log::error!(
-                        "⚠️ pthread_setschedparam(SCHED_FIFO, 90) failed (errno={}).\n  [E2302 | RT_SCHED_FAILED] Check ulimit -r and rtkit permissions.\n",
-                        ret_sched
-                    );
-                } else {
-                    // Updates variables reflecting the successful application
-                    base_policy = libc::SCHED_FIFO;
-                    actual_param.sched_priority = 90;
-                    has_reset_on_fork = false; // We did not set the reset-on-fork flag
-                }
-            }
-
-            let confirmed_fifo = base_policy == libc::SCHED_FIFO;
-
-            // Publishes actual result via atomic flags — zero I/O on the hot path
-            if confirmed_fifo {
-                rt_status.set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
-            } else {
-                rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
-            }
-
-            rt_status
-                .rt_priority
-                .store(actual_param.sched_priority, Ordering::Relaxed);
-            rt_status
-                .confirmed_priority
-                .store(actual_param.sched_priority, Ordering::Relaxed);
-            rt_status.rt_policy.store(base_policy, Ordering::Relaxed);
-
-            // Inline log in the cold-path (one time only, before the RT deadline) — acceptable.
-            let reset_info = if has_reset_on_fork {
-                " | Reset-on-Fork"
-            } else {
-                ""
-            };
-            log::info!(
-                "{} Thread Optimization: Dedicated core {} with Real-Time priority (FIFO{}, Prio={})",
-                "🔍".blue(),
-                actual_cpu.to_string().cyan(),
-                reset_info,
-                actual_param.sched_priority.to_string().green()
-            );
-        } else {
-            // Publishes verification failure sentinel
-            rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
-            rt_status.rt_priority.store(0, Ordering::Relaxed);
-            rt_status.confirmed_priority.store(-1, Ordering::Relaxed);
-            rt_status.rt_policy.store(-1, Ordering::Relaxed);
-
+        if ret_aff != 0 {
             log::error!(
-                "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam failed (ret={}).\n",
-                ret_getsched
+                "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+                target_cpu,
+                ret_aff,
+                target_cpu,
+                ret_aff
             );
         }
+    }
+
+    let mut actual_policy = 0i32;
+    let mut actual_param: libc::sched_param = unsafe { std::mem::zeroed() };
+    let ret_getsched =
+        unsafe { libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param) };
+
+    let actual_cpu = unsafe { libc::sched_getcpu() };
+    rt_status.rt_cpu.store(actual_cpu, Ordering::Relaxed);
+
+    if ret_getsched == 0 {
+        let reset_on_fork_flag = 0x40000000i32;
+        let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
+        let mut base_policy = actual_policy & !reset_on_fork_flag;
+
+        if base_policy != libc::SCHED_FIFO {
+            let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
+            param.sched_priority = 90;
+
+            let ret_sched =
+                unsafe { libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param) };
+
+            if ret_sched != 0 {
+                log::error!(
+                    "⚠️ pthread_setschedparam(SCHED_FIFO, 90) failed (errno={}).\n  [E2302 | RT_SCHED_FAILED] Check ulimit -r and rtkit permissions.\n",
+                    ret_sched
+                );
+            } else {
+                base_policy = libc::SCHED_FIFO;
+                actual_param.sched_priority = 90;
+                has_reset_on_fork = false;
+            }
+        }
+
+        let confirmed_fifo = base_policy == libc::SCHED_FIFO;
+
+        if confirmed_fifo {
+            rt_status.set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
+        } else {
+            rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
+        }
+
+        rt_status
+            .rt_priority
+            .store(actual_param.sched_priority, Ordering::Relaxed);
+        rt_status
+            .confirmed_priority
+            .store(actual_param.sched_priority, Ordering::Relaxed);
+        rt_status.rt_policy.store(base_policy, Ordering::Relaxed);
+
+        let reset_info = if has_reset_on_fork {
+            " | Reset-on-Fork"
+        } else {
+            ""
+        };
+        log::info!(
+            "{} Thread Optimization: Dedicated core {} with Real-Time priority (FIFO{}, Prio={})",
+            "🔍".blue(),
+            actual_cpu.to_string().cyan(),
+            reset_info,
+            actual_param.sched_priority.to_string().green()
+        );
+    } else {
+        rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
+        rt_status.rt_priority.store(0, Ordering::Relaxed);
+        rt_status.confirmed_priority.store(-1, Ordering::Relaxed);
+        rt_status.rt_policy.store(-1, Ordering::Relaxed);
+
+        log::error!(
+            "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam failed (ret={}).\n",
+            ret_getsched
+        );
     }
 }

@@ -128,7 +128,7 @@ gantt
 * **Plano de Verificação:**
   * Adicionar teste unitário que simula a configuração de um `target_cpu` inválido (ex: 2048) e assegurar que o setup não pânica e cai de volta na configuração padrão.
 
-### T-202 (F-004) — Redução do Escopo de unsafe em configure_realtime_thread
+### T-202 (F-004) — Redução do Escopo de unsafe em configure_realtime_thread ✅ [DONE]
 
 * **Criticidade:** Média / Risco Baixo (Higiene e legibilidade do código).
 * **Arquivos Afetados:**
@@ -139,6 +139,7 @@ gantt
   3. Manter o fluxo de controle de erros, logs (`log::info!`) e leitura de variáveis atômicas em código estritamente seguro.
 * **Plano de Verificação:**
   * Validar que o código continua compilando e aplicando as prioridades normalmente.
+* **Conclusão (2026-07-06):** O bloco `unsafe` monolítico foi desmembrado em 9 blocos pontuais, cada um encapsulando apenas a chamada FFI necessária (`pthread_self`, `pthread_setname_np`, `CPU_ZERO`+`CPU_SET`, `pthread_setaffinity_np`, `std::mem::zeroed` para `cpuset`/`actual_param`/`param`, `pthread_getschedparam`, `sched_getcpu`, `pthread_setschedparam`). Fluxo de controle de erros, operações atômicas e logs permanecem em código estritamente seguro. Compilação ok, 6/6 testes rt_setup passando.
 
 ### T-203 (F-011) — Validação da Assunção de Ponteiros de 56 bits para o Garbage Collector
 
