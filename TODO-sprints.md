@@ -116,7 +116,7 @@ gantt
 
 **Objetivo:** Aprimorar as barreiras defensivas do sistema operacional, tratamento de afinidade de CPU e alocação do DspBridge de acordo com o ambiente (standalone vs plugin).
 
-### T-201 (F-005) — Validação de Limites de CPU para CPU_SET no rt_setup
+### T-201 (F-005) — Validação de Limites de CPU para CPU_SET no rt_setup [DONE]
 
 * **Criticidade:** Média / Risco Médio (Evita corrupção de memória por estouro de pilha na chamada FFI de macro `CPU_SET`).
 * **Arquivos Afetados:**

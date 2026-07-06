@@ -65,9 +65,19 @@ pub fn configure_process_wide() {
 #[cold]
 #[inline(never)]
 pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
-    // Protection against denormals (subnormal numbers that stall the processor):
-    // Enables DAZ (Denormals-Are-Zero) and FTZ (Flush-To-Zero) via the MXCSR register.
-    // Without this, silence blocks could cause extreme FPU slowdown ("death spiral").
+    let cpu_setsize = libc::CPU_SETSIZE as usize;
+    let cpu_in_bounds = target_cpu < cpu_setsize;
+
+    if !cpu_in_bounds {
+        log::error!(
+            "CPU {} is out of bounds (CPU_SETSIZE={}). NAM-rs will continue running without CPU affinity.\n[E2301 | CPU_OUT_OF_BOUNDS] cpu={} max={}",
+            target_cpu,
+            cpu_setsize,
+            target_cpu,
+            cpu_setsize - 1,
+        );
+    }
+
     unsafe {
         crate::math::common::set_daz_ftz();
     }
@@ -78,25 +88,26 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
         let name = b"nam_rs_dsp\0";
         libc::pthread_setname_np(thread_id, name.as_ptr() as *const libc::c_char);
 
-        // 1. Core Affinity: avoids core migration and L1/L2 cache invalidation
-        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
-        libc::CPU_ZERO(&mut cpuset);
-        libc::CPU_SET(target_cpu, &mut cpuset);
+        if cpu_in_bounds {
+            let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+            libc::CPU_ZERO(&mut cpuset);
+            libc::CPU_SET(target_cpu, &mut cpuset);
 
-        let ret_aff = libc::pthread_setaffinity_np(
-            thread_id,
-            std::mem::size_of::<libc::cpu_set_t>(),
-            &cpuset,
-        );
-
-        if ret_aff != 0 {
-            log::error!(
-                "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
-                target_cpu,
-                ret_aff,
-                target_cpu,
-                ret_aff
+            let ret_aff = libc::pthread_setaffinity_np(
+                thread_id,
+                std::mem::size_of::<libc::cpu_set_t>(),
+                &cpuset,
             );
+
+            if ret_aff != 0 {
+                log::error!(
+                    "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+                    target_cpu,
+                    ret_aff,
+                    target_cpu,
+                    ret_aff
+                );
+            }
         }
 
         // 2. Prior programmatic check: reads policy/prio granted by the kernel via rtkit/PipeWire

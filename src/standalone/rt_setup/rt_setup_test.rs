@@ -54,3 +54,11 @@ fn test_rdtsc_nanos_significant() {
     let t = rdtsc_nanos();
     assert!(t > 1_000_000, "Reported time is too low: {} ns", t);
 }
+
+#[test]
+fn test_configure_realtime_thread_invalid_cpu() {
+    let rt_status = std::sync::Arc::new(crate::common::spsc::RtStatusFlags::new());
+    // CPU_SETSIZE is typically 1024; 2048 is well out of bounds.
+    // The function must not panic and must fall back to no-affinity.
+    configure_realtime_thread(2048, rt_status);
+}
