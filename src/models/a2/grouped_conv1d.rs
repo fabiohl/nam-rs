@@ -31,6 +31,7 @@
 //! - `NAM/conv1d.cpp:55-252` (grouped weight loading + depthwise execution)
 //! - `NAM/film.h:28-85` (`_cond_to_scale_shift` pattern)
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{
     AlignedVec, PrefetchFn, prefetch_strategy_2stage, prefetch_strategy_simple,
 };
@@ -99,7 +100,7 @@ impl A2GroupedConv1d {
         kernel: usize,
         groups: usize,
         prefetch_fn: PrefetchFn,
-    ) -> Self {
+    ) -> Result<Self, NamErrorCode> {
         assert!(groups > 0, "groups must be > 0");
         assert_eq!(
             in_ch % groups,
@@ -132,8 +133,8 @@ impl A2GroupedConv1d {
         let total_blocks = groups * num_blocks_per_group;
         let total_padded = total_blocks * 4 * in_per_group * kernel;
 
-        let mut weights = AlignedVec::new(total_padded, 0.0f32);
-        let bias = AlignedVec::from(raw_bias.to_vec());
+        let mut weights = AlignedVec::new(total_padded, 0.0f32)?;
+        let bias = AlignedVec::from_vec(raw_bias.to_vec())?;
 
         // Permute: raw[out][in][kernel] → grouped-interleaved-4-wide
         for g in 0..groups {
@@ -161,7 +162,7 @@ impl A2GroupedConv1d {
             }
         }
 
-        Self {
+        Ok(Self {
             weights,
             bias,
             do_bias,
@@ -175,11 +176,10 @@ impl A2GroupedConv1d {
             total_blocks,
             kernel,
             prefetch_fn,
-        }
+        })
     }
 
     /// Processes a single frame through the grouped dilated convolution using SIMD AVX2.
-    ///
     /// Dispatches to the depthwise fast-path when `groups == in_ch == out_ch`,
     /// otherwise uses the general grouped AVX2 kernel.
     ///

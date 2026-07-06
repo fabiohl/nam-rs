@@ -13,6 +13,7 @@ use crate::models::wavenet::model::*;
 /// Helper: create f32 synthetic dense weights for test models.
 fn test_dense_f32(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![0.01f32; out_ch * in_ch])
+        .expect("allocation should succeed for test-sized buffers")
 }
 
 /// Builds a minimal WaveNetModel<4, 3, 2> for tests with static, controlled data.
@@ -23,7 +24,8 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // In WaveNet, each layer is a functional unit that processes the dilated signal.
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
-        let mut weights = AlignedVec::new(48, 0.0f32);
+        let mut weights =
+            AlignedVec::new(48, 0.0f32).expect("allocation should succeed for test-sized buffers");
         crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
@@ -38,7 +40,8 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 // Dimensions: OUT * K * IN = 4 * 3 * 4.
                 // Here, IN=CH because the layer receives the signal from previous layers.
                 weights,
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -51,12 +54,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             // Dimensions: OUT * IN = 4 * 1.
             input_mixin: DenseLayer {
                 weights: test_dense_f32(1, 4),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
                 weights: test_dense_f32(4, 4),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -68,7 +73,8 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // This array usually has fewer channels and focuses on final audio refinement.
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
-        let mut weights = AlignedVec::new(24, 0.0f32);
+        let mut weights =
+            AlignedVec::new(24, 0.0f32).expect("allocation should succeed for test-sized buffers");
         crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
@@ -79,7 +85,8 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 weights,
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -91,13 +98,15 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             input_mixin: DenseLayer {
                 weights: test_dense_f32(1, 2),
                 // Dimensions: OUT * IN = 2 * 1.
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
                 weights: test_dense_f32(2, 2),
                 // Dimensions: OUT * IN = 2 * 2.
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -130,21 +139,27 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         // Rechannel: Projects raw input (Mono/Stereo) to the internal dimension (Channels).
         rechannel: DenseLayer {
             weights: test_dense_f32(1, 4),
-            bias: AlignedVec::from_vec(vec![0.0; 4]),
+            bias: AlignedVec::from_vec(vec![0.0; 4])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             weights: test_dense_f32(4, 2),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            bias: AlignedVec::from_vec(vec![0.0; 2])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         // Pre-allocated output buffers to ensure RT-Safety (Zero Alloc in the loop).
-        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf1,
         block_size: 4,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // Array2 (Head Definition): The secondary array acts on refined final predictions.
@@ -164,20 +179,26 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         // Projects Array 1 output (HEAD1=2) to Array 2 dimension (CH2=2).
         rechannel: DenseLayer {
             weights: test_dense_f32(4, 2),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            bias: AlignedVec::from_vec(vec![0.0; 2])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
             weights: test_dense_f32(2, 1),
-            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            bias: AlignedVec::from_vec(vec![0.0; 1])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: true, // Enable bias for final DC offset correction.
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf2,
         block_size: 2,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // WaveNetModel orchestrates the array cascade and applies the final gain.

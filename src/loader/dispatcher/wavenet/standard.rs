@@ -162,7 +162,8 @@ pub(crate) fn build_wavenet_array<
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
     let block_size = CH;
-    let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0);
+    let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0)
+        .expect("allocation should succeed for test-sized buffers");
     let num_layers = layers.len();
 
     Ok(WaveNetLayerArray {
@@ -170,9 +171,12 @@ pub(crate) fn build_wavenet_array<
         states,
         rechannel,
         head_rechannel,
-        array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0),
-        head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0),
-        head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0),
+        array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size,
         block_size,
         block_buffer,

@@ -8,6 +8,7 @@ fn make_bn_simple() -> BatchNorm1D {
     // running_mean = [0.0, 0.0], running_var = [4.0, 4.0], eps = 0.0
     // scale = [1/2=0.5, 2/2=1.0], offset = [0, 0]
     BatchNorm1D::from_params(2, &[1.0, 2.0], &[0.0, 0.0], &[0.0, 0.0], &[4.0, 4.0], 0.0)
+        .expect("construction should succeed for test-sized buffers")
 }
 
 #[test]
@@ -25,7 +26,8 @@ fn test_fused_params_with_beta_mean() {
     // scale = [1/1=1, 1/1=1]
     // offset[0] = 2 - 1*1 = 1
     // offset[1] = 3 - 2*1 = 1
-    let bn = BatchNorm1D::from_params(2, &[1.0, 1.0], &[2.0, 3.0], &[1.0, 2.0], &[1.0, 1.0], 0.0);
+    let bn = BatchNorm1D::from_params(2, &[1.0, 1.0], &[2.0, 3.0], &[1.0, 2.0], &[1.0, 1.0], 0.0)
+        .expect("construction should succeed for test-sized buffers");
     assert!((bn.scale[0] - 1.0).abs() < 1e-7);
     assert!((bn.scale[1] - 1.0).abs() < 1e-7);
     assert!((bn.offset[0] - 1.0).abs() < 1e-7);
@@ -37,7 +39,8 @@ fn test_epsilon_effect() {
     // gamma=[1,1], beta=[0,0], mean=[0,0], var=[0,0], eps=1e-2
     // inv_std = 1/sqrt(0.01) = 1/0.1 = 10
     // scale = 10, offset = 0
-    let bn = BatchNorm1D::from_params(1, &[1.0], &[0.0], &[0.0], &[0.0], 1e-2);
+    let bn = BatchNorm1D::from_params(1, &[1.0], &[0.0], &[0.0], &[0.0], 1e-2)
+        .expect("construction should succeed for test-sized buffers");
     assert!((bn.scale[0] - 10.0).abs() < 1e-7);
     assert!((bn.offset[0] - 0.0).abs() < 1e-7);
 }
@@ -45,7 +48,8 @@ fn test_epsilon_effect() {
 #[test]
 fn test_process_scalar_identity_bn() {
     // scale=1, offset=0 -> output == input
-    let bn = BatchNorm1D::from_fused(3, &[1.0, 1.0, 1.0], &[0.0, 0.0, 0.0]);
+    let bn = BatchNorm1D::from_fused(3, &[1.0, 1.0, 1.0], &[0.0, 0.0, 0.0])
+        .expect("construction should succeed for test-sized buffers");
 
     let mut data = vec![
         1.0, 2.0, 3.0, // frame 0
@@ -88,7 +92,8 @@ fn test_process_scalar_simple() {
 #[test]
 fn test_process_scalar_with_offset() {
     // scale=[2, 0.5], offset=[1, -2]
-    let bn = BatchNorm1D::from_fused(2, &[2.0, 0.5], &[1.0, -2.0]);
+    let bn = BatchNorm1D::from_fused(2, &[2.0, 0.5], &[1.0, -2.0])
+        .expect("construction should succeed for test-sized buffers");
 
     let mut data = vec![
         0.0, 4.0, // frame 0
@@ -109,7 +114,8 @@ fn test_process_scalar_with_offset() {
 
 #[test]
 fn test_single_channel() {
-    let bn = BatchNorm1D::from_fused(1, &[3.0], &[-1.0]);
+    let bn = BatchNorm1D::from_fused(1, &[3.0], &[-1.0])
+        .expect("construction should succeed for test-sized buffers");
 
     let mut data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
 
@@ -126,7 +132,8 @@ fn test_single_channel() {
 
 #[test]
 fn test_single_frame_many_channels() {
-    let bn = BatchNorm1D::from_fused(10, &[1.0; 10], &[0.0; 10]);
+    let bn = BatchNorm1D::from_fused(10, &[1.0; 10], &[0.0; 10])
+        .expect("construction should succeed for test-sized buffers");
 
     let mut data: Vec<f32> = (0..10).map(|i| i as f32).collect();
 
@@ -148,9 +155,11 @@ fn test_from_fused_roundtrip() {
         &[0.1, 0.2, 0.3],
         &[1.0, 4.0, 0.25],
         1e-5,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
-    let bn2 = BatchNorm1D::from_fused(3, &bn1.scale, &bn1.offset);
+    let bn2 = BatchNorm1D::from_fused(3, &bn1.scale, &bn1.offset)
+        .expect("construction should succeed for test-sized buffers");
 
     for c in 0..3 {
         assert!((bn1.scale[c] - bn2.scale[c]).abs() < 1e-7);
@@ -161,7 +170,8 @@ fn test_from_fused_roundtrip() {
 /// Validates that `from_fused` constructor preserves exact values.
 #[test]
 fn test_from_fused_exact() {
-    let bn = BatchNorm1D::from_fused(2, &[1.0f32, 2.0], &[3.0f32, 4.0]);
+    let bn = BatchNorm1D::from_fused(2, &[1.0f32, 2.0], &[3.0f32, 4.0])
+        .expect("construction should succeed for test-sized buffers");
     assert_eq!(bn.num_channels, 2);
     assert!((bn.scale[0] - 1.0).abs() < f32::EPSILON);
     assert!((bn.scale[1] - 2.0).abs() < f32::EPSILON);
@@ -215,7 +225,8 @@ fn test_scalar_simd_parity_various_frame_counts() {
         &[0.0, 0.0, 0.0, 0.0],
         &[1.0, 1.0, 1.0, 1.0],
         1e-5,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     for n_frames in [1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 64, 100] {
         let mut original = Vec::with_capacity(n_frames * 4);
@@ -249,7 +260,8 @@ fn test_scalar_simd_parity_various_frame_counts() {
 #[test]
 fn test_zero_gamma_noop() {
     // gamma=0 -> scale=0, offset=beta
-    let bn = BatchNorm1D::from_params(2, &[0.0, 0.0], &[0.5, -0.5], &[1.0, 2.0], &[1.0, 1.0], 0.0);
+    let bn = BatchNorm1D::from_params(2, &[0.0, 0.0], &[0.5, -0.5], &[1.0, 2.0], &[1.0, 1.0], 0.0)
+        .expect("construction should succeed for test-sized buffers");
     assert!((bn.scale[0] - 0.0).abs() < 1e-7);
     assert!((bn.scale[1] - 0.0).abs() < 1e-7);
     assert!((bn.offset[0] - 0.5).abs() < 1e-7);
@@ -269,7 +281,8 @@ fn test_zero_gamma_noop() {
 #[test]
 #[should_panic(expected = "negative")]
 fn test_negative_variance_panics() {
-    BatchNorm1D::from_params(1, &[1.0], &[0.0], &[0.0], &[-1.0], 0.0);
+    BatchNorm1D::from_params(1, &[1.0], &[0.0], &[0.0], &[-1.0], 0.0)
+        .expect("construction should succeed for test-sized buffers");
 }
 
 #[test]
@@ -281,7 +294,8 @@ fn test_clone_preserves_behavior() {
         &[0.0, 1.0, 0.0],
         &[4.0, 1.0, 1.0],
         0.0,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let bn2 = bn1.clone();
 
     let mut data1 = vec![1.0, 2.0, 3.0, -1.0, -2.0, -3.0];

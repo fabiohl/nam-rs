@@ -67,10 +67,12 @@ fn build_identity_head() -> PostStackHead {
 
     let num_blocks = out_ch.div_ceil(4);
     let weights_len = num_blocks * kernel * in_ch * 4;
-    let mut weights = AlignedVec::new(weights_len, 0.0f32);
+    let mut weights = AlignedVec::new(weights_len, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     weights[0] = 1.0;
 
-    let bias = AlignedVec::new(out_ch, 0.0f32);
+    let bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     PostStackHead {
         conv: Conv1dDyn {
@@ -87,7 +89,8 @@ fn build_identity_head() -> PostStackHead {
         },
         activation: ActivationType::Tanh,
         state: WaveNetLayerState::new(in_ch, kernel, 0).expect("create state"),
-        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
     }
 }
 
@@ -168,12 +171,14 @@ fn test_process_with_weights_and_activation() {
     let num_blocks = out_ch.div_ceil(4);
     let weights_len = num_blocks * kernel * in_ch * 4;
 
-    let mut weights = AlignedVec::new(weights_len, 0.0f32);
+    let mut weights = AlignedVec::new(weights_len, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     weights[0] = 0.5;
     weights[4] = 0.3;
     weights[8] = 0.2;
 
-    let bias = AlignedVec::new(out_ch, 0.0f32);
+    let bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     let mut head = PostStackHead {
         conv: Conv1dDyn {
@@ -190,7 +195,8 @@ fn test_process_with_weights_and_activation() {
         },
         activation: ActivationType::Tanh,
         state: WaveNetLayerState::new(in_ch, kernel, 0).expect("create state"),
-        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // Frame 0: k=0 reads buf[-2]=0, k=1 reads buf[-1]=0, k=2 reads buf[+0]=1.0
@@ -251,7 +257,8 @@ fn test_multi_channel_in_out() {
     let num_blocks = out_ch.div_ceil(4);
     let weights_len = num_blocks * kernel * in_ch * 4;
 
-    let mut weights = AlignedVec::new(weights_len, 0.0f32);
+    let mut weights = AlignedVec::new(weights_len, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     // Block 0: out_ch 0,1,2,3 (but out_ch=3 so only 0,1,2)
     // Weights layout: [b][k][in_c][lane]
     // b=0, k=0, in_c=0, lane=0 => weight for out_c=0, in_c=0
@@ -266,7 +273,8 @@ fn test_multi_channel_in_out() {
     weights[2] = 0.3; // out_c=2, in_c=0
     weights[6] = 0.0; // out_c=2, in_c=1
 
-    let bias = AlignedVec::new(out_ch, 0.0f32);
+    let bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     let mut head = PostStackHead {
         conv: Conv1dDyn {
@@ -283,7 +291,8 @@ fn test_multi_channel_in_out() {
         },
         activation: ActivationType::Tanh,
         state: WaveNetLayerState::new(in_ch, kernel, 0).expect("create state"),
-        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        scratch: AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // Frame 0: in=[A=1.0, B=0.5]

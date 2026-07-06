@@ -24,7 +24,8 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         }
     }
 
-    let mut weights = AlignedVec::new(total_padded, 0.0f32);
+    let mut weights = AlignedVec::new(total_padded, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -42,7 +43,8 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         }
     }
 
-    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);
+    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch])
+        .expect("allocation should succeed for test-sized buffers");
 
     let conv = Conv1dDyn {
         weights,
@@ -78,12 +80,14 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
     let num_blocks = out_ch.div_ceil(4);
     let total_padded = num_blocks * 4 * in_ch * kernel;
 
-    let mut weights = AlignedVec::new(total_padded, 0.0f32);
+    let mut weights = AlignedVec::new(total_padded, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     for i in 0..total_padded {
         weights[i] = 1.0;
     }
 
-    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);
+    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch])
+        .expect("allocation should succeed for test-sized buffers");
 
     let conv = Conv1dDyn {
         weights,
@@ -143,8 +147,10 @@ fn test_conv1d_dyn_from_parts_subdimensioned_weights() {
     let padded_total = num_blocks * interleave_width * in_ch * k_size;
 
     let undersized = padded_total / 2;
-    let weights = AlignedVec::new(undersized, 0.0f32);
-    let bias = AlignedVec::new(out_ch, 0.0f32);
+    let weights = AlignedVec::new(undersized, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     Conv1dDyn::from_parts(
         weights,

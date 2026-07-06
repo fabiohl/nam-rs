@@ -187,7 +187,7 @@ fn bench_cabsim_long_run(c: &mut Criterion) {
     };
     use nam_rs::dsp::cabsim::conv::ConvEngine;
     let ir = synth_ir(16384, 440.0, 10.0);
-    let mut engine = ConvEngine::new(&ir, 64);
+    let mut engine = ConvEngine::new(&ir, 64).expect("bench ConvEngine allocation failed");
     let mut input = vec![0.0f32; 4096];
     let mut output = vec![0.0f32; 4096];
 

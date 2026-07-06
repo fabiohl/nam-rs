@@ -55,8 +55,10 @@ impl LstmModelDyn {
 
         Self {
             layers,
-            head_weights: AlignedVec::new(hidden_size, 0.0f32),
-            head_weights_f32: AlignedVec::new(hidden_size, 0.0f32),
+            head_weights: AlignedVec::new(hidden_size, 0.0f32)
+                .expect("OOM: LstmModelDyn head_weights"),
+            head_weights_f32: AlignedVec::new(hidden_size, 0.0f32)
+                .expect("OOM: LstmModelDyn head_weights_f32"),
             head_bias: 0.0,
             prewarm_on_reset: true,
             expected_sample_rate: 48000.0,

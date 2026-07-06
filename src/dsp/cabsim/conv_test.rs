@@ -88,13 +88,15 @@ fn synth_ir(len: usize, freq: f32, decay: f32, sample_rate: u32) -> Vec<f32> {
 
 #[test]
 fn passthrough_on_empty_ir() {
-    let engine = ConvEngine::new(&[], 64);
+    let engine =
+        ConvEngine::new(&[], 64).expect("construction should succeed for test-sized buffers");
     assert!(engine.is_passthrough());
     assert_eq!(engine.num_partitions(), 0);
 
     let input: Vec<f32> = (0..128).map(|i| (i as f32 * 0.01).sin()).collect();
     let mut output = vec![0.0f32; 64];
-    let mut engine2 = ConvEngine::new(&[], 64);
+    let mut engine2 =
+        ConvEngine::new(&[], 64).expect("construction should succeed for test-sized buffers");
     engine2.process(&input[..64], &mut output);
     for i in 0..64 {
         assert!((output[i] - input[i]).abs() < 1e-10);
@@ -109,7 +111,8 @@ fn impulse_response_is_identity_with_latency() {
     ir[0] = 1.0;
 
     let block_size = 32;
-    let mut engine = ConvEngine::new(&ir, block_size);
+    let mut engine = ConvEngine::new(&ir, block_size)
+        .expect("construction should succeed for test-sized buffers");
 
     // Generate input: ramp 0..255
     let signal: Vec<f32> = (0..256).map(|i| i as f32).collect();
@@ -135,7 +138,8 @@ fn impulse_response_is_identity_with_latency() {
 fn latency_equals_partition_size() {
     let ir = synth_ir(100, 440.0, 10.0, 48000);
     for &bs in &[32, 64, 128, 256] {
-        let engine = ConvEngine::new(&ir, bs);
+        let engine =
+            ConvEngine::new(&ir, bs).expect("construction should succeed for test-sized buffers");
         assert_eq!(engine.latency_samples(), bs);
     }
 }
@@ -158,7 +162,8 @@ fn esr_parity_short_ir() {
 
     // UPOLS with block_size = 64
     let block_size = 64;
-    let mut engine = ConvEngine::new(&ir, block_size);
+    let mut engine = ConvEngine::new(&ir, block_size)
+        .expect("construction should succeed for test-sized buffers");
     let upols_out = process_full_signal(&mut engine, &signal);
 
     // The UPOLS output has latency of block_size, and the tail extends by (ir.len() - 1)
@@ -191,7 +196,8 @@ fn esr_parity_medium_ir() {
     let ref_full = direct_convolve(&ir, &signal);
 
     let block_size = 64;
-    let mut engine = ConvEngine::new(&ir, block_size);
+    let mut engine = ConvEngine::new(&ir, block_size)
+        .expect("construction should succeed for test-sized buffers");
     assert_eq!(engine.num_partitions(), 4); // ceil(200/64) = 4
 
     let upols_out = process_full_signal(&mut engine, &signal);
@@ -220,7 +226,8 @@ fn esr_parity_long_ir() {
     let ref_full = direct_convolve(&ir, &signal);
 
     let block_size = 64;
-    let mut engine = ConvEngine::new(&ir, block_size);
+    let mut engine = ConvEngine::new(&ir, block_size)
+        .expect("construction should succeed for test-sized buffers");
     assert!(engine.num_partitions() > 10);
 
     let upols_out = process_full_signal(&mut engine, &signal);
@@ -242,7 +249,8 @@ fn single_sample_ir() {
     let ir = vec![0.75f32];
     let signal: Vec<f32> = (0..256).map(|i| (i as f32 * 0.02).sin()).collect();
 
-    let mut engine = ConvEngine::new(&ir, 32);
+    let mut engine =
+        ConvEngine::new(&ir, 32).expect("construction should succeed for test-sized buffers");
     let output = process_full_signal(&mut engine, &signal);
 
     // Reference: direct convolution
@@ -259,7 +267,8 @@ fn block_size_one() {
     let ir = synth_ir(16, 1000.0, 20.0, 48000);
     let signal: Vec<f32> = (0..128).map(|i| (i as f32 * 0.05).sin()).collect();
 
-    let mut engine = ConvEngine::new(&ir, 1);
+    let mut engine =
+        ConvEngine::new(&ir, 1).expect("construction should succeed for test-sized buffers");
     assert_eq!(engine.fft_size(), 2); // 2 * 1 = 2, already a power of two
 
     let output = process_full_signal(&mut engine, &signal);
@@ -276,7 +285,8 @@ fn non_power_of_two_block_size() {
     let ir = synth_ir(80, 600.0, 12.0, 48000);
     let signal: Vec<f32> = (0..300).map(|i| (i as f32 * 0.03).sin()).collect();
 
-    let mut engine = ConvEngine::new(&ir, 75);
+    let mut engine =
+        ConvEngine::new(&ir, 75).expect("construction should succeed for test-sized buffers");
     assert_eq!(engine.fft_size(), 256);
     assert_eq!(engine.num_partitions(), 2); // ceil(80/75) = 2
 
@@ -300,7 +310,8 @@ fn output_length_matches_reference() {
     let signal: Vec<f32> = (0..200).map(|i| (i as f32 * 0.01).sin()).collect();
     let expected_len = signal.len() + ir.len() - 1; // 200 + 47 - 1 = 246
 
-    let mut engine = ConvEngine::new(&ir, 50);
+    let mut engine =
+        ConvEngine::new(&ir, 50).expect("construction should succeed for test-sized buffers");
     let output = process_full_signal(&mut engine, &signal);
 
     assert!(
@@ -317,8 +328,10 @@ fn deterministic_output() {
     let ir = synth_ir(60, 350.0, 8.0, 48000);
     let signal: Vec<f32> = (0..300).map(|i| (i as f32 * 0.01).sin()).collect();
 
-    let mut engine1 = ConvEngine::new(&ir, 64);
-    let mut engine2 = ConvEngine::new(&ir, 64);
+    let mut engine1 =
+        ConvEngine::new(&ir, 64).expect("construction should succeed for test-sized buffers");
+    let mut engine2 =
+        ConvEngine::new(&ir, 64).expect("construction should succeed for test-sized buffers");
 
     let out1 = process_full_signal(&mut engine1, &signal);
     let out2 = process_full_signal(&mut engine2, &signal);

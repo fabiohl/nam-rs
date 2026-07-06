@@ -38,7 +38,8 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
     let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
     let num_blocks = out_ch.div_ceil(4);
     let interleaved_len = num_blocks * k * in_ch * 4;
-    let mut weights = AlignedVec::new(interleaved_len, 0.0f32);
+    let mut weights = AlignedVec::new(interleaved_len, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -52,11 +53,12 @@ fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32>
 /// Helper: create f32 dense weights.
 fn make_dense_weights(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![SYNTHETIC_WEIGHT; out_ch * in_ch])
+        .expect("allocation should succeed for test-sized buffers")
 }
 
 /// Helper: create a bias AlignedVec of given size filled with zeros.
 fn make_bias(len: usize) -> AlignedVec<f32> {
-    AlignedVec::from_vec(vec![0.0; len])
+    AlignedVec::from_vec(vec![0.0; len]).expect("allocation should succeed for test-sized buffers")
 }
 
 /// Helper: prefetch function based on dilation.
@@ -117,12 +119,16 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
             bias: make_bias(HEAD),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf1,
         block_size: CH,
-        block_buffer: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, HEAD, K> {
@@ -168,12 +174,16 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
             bias: make_bias(1),
             do_bias: true,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf2,
         block_size: HEAD,
-        block_buffer: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     WaveNetModel {
@@ -243,12 +253,16 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         effective_layers: num_layers_1,
         rechannel: make_dense_dyn(1, ch, false),
         head_rechannel: make_dense_dyn(ch, head, false),
-        array_outputs: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf,
         block_size: ch,
-        block_buffer: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; ch * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // Array 2 layers: COND=1, CH=head, K=k
@@ -279,12 +293,16 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         effective_layers: num_layers_2,
         rechannel: make_dense_dyn(ch, head, false),
         head_rechannel: make_dense_dyn(head, 1, true),
-        array_outputs: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf,
         block_size: head,
-        block_buffer: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; head * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     WaveNetModelDyn {
@@ -295,9 +313,11 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
         head_scale: 0.02,
         receptive_field_size: rf,
         condition_dsp: None,
-        condition_dsp_output: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        condition_dsp_output: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         post_stack_head: None,
-        head_output_scratch: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        head_output_scratch: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     }
 }

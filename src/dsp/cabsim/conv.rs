@@ -23,6 +23,7 @@
 //! Gardner, W. G. "Efficient Convolution without Input-Output Delay"
 //! JAES Vol. 43, No. 3, 1995 March.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 use crate::math::common::Avx2Math;
 use crate::math::common::Avx512Math;
@@ -101,7 +102,7 @@ impl ConvEngine {
     /// # Returns
     /// A fully initialized `ConvEngine`. If `ir` is empty, the engine
     /// acts as a passthrough (output = input).
-    pub fn new(ir: &[f32], partition_size: usize) -> Self {
+    pub fn new(ir: &[f32], partition_size: usize) -> Result<Self, NamErrorCode> {
         assert!(partition_size > 0, "partition_size must be positive");
 
         let fft_size = (2 * partition_size).next_power_of_two();
@@ -120,8 +121,8 @@ impl ConvEngine {
 
         // Pre-FFT each kernel partition
         let h_fdl_part_len = num_partitions * n_bins;
-        let mut h_fdl_re = AlignedVec::new(h_fdl_part_len, 0.0_f32);
-        let mut h_fdl_im = AlignedVec::new(h_fdl_part_len, 0.0_f32);
+        let mut h_fdl_re = AlignedVec::new(h_fdl_part_len, 0.0_f32)?;
+        let mut h_fdl_im = AlignedVec::new(h_fdl_part_len, 0.0_f32)?;
 
         let mut ir_buf = vec![0.0f32; fft_size];
         let mut tmp_re = vec![0.0f32; n_bins];
@@ -147,19 +148,19 @@ impl ConvEngine {
 
         // Pre-allocate FDL (all zeros initially)
         let fdl_part_len = num_partitions * n_bins;
-        let fdl_re = AlignedVec::new(fdl_part_len, 0.0_f32);
-        let fdl_im = AlignedVec::new(fdl_part_len, 0.0_f32);
+        let fdl_re = AlignedVec::new(fdl_part_len, 0.0_f32)?;
+        let fdl_im = AlignedVec::new(fdl_part_len, 0.0_f32)?;
 
         // Pre-allocate runtime buffers
-        let input_buf = AlignedVec::new(fft_size, 0.0_f32);
-        let fft_buf_re = AlignedVec::new(n_bins, 0.0_f32);
-        let fft_buf_im = AlignedVec::new(n_bins, 0.0_f32);
-        let acc_re = AlignedVec::new(n_bins, 0.0_f32);
-        let acc_im = AlignedVec::new(n_bins, 0.0_f32);
-        let output_buf = AlignedVec::new(fft_size, 0.0_f32);
+        let input_buf = AlignedVec::new(fft_size, 0.0_f32)?;
+        let fft_buf_re = AlignedVec::new(n_bins, 0.0_f32)?;
+        let fft_buf_im = AlignedVec::new(n_bins, 0.0_f32)?;
+        let acc_re = AlignedVec::new(n_bins, 0.0_f32)?;
+        let acc_im = AlignedVec::new(n_bins, 0.0_f32)?;
+        let output_buf = AlignedVec::new(fft_size, 0.0_f32)?;
         let isa = SimdMathConfig::current().instruction_set;
 
-        Self {
+        Ok(Self {
             fft_size,
             n_bins,
             partition_size,
@@ -178,7 +179,7 @@ impl ConvEngine {
             output_buf,
             output_start,
             isa,
-        }
+        })
     }
 
     /// Returns the partition size (== audio block size) in samples.

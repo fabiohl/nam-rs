@@ -76,7 +76,8 @@ impl WaveNetA2Dyn {
         let rw_count = in_ch * channels;
         let rw_f32 =
             super::super::set_weights::read_slice(weights, pos, rw_count, total, "rechannel_w")?;
-        self.rechannel_w_f32 = AlignedVec::new(rw_count, 0.0f32);
+        self.rechannel_w_f32 = AlignedVec::new(rw_count, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         self.rechannel_w_f32.copy_from_slice(rw_f32);
         Ok(())
     }
@@ -112,7 +113,8 @@ impl WaveNetA2Dyn {
             total,
             &format!("layer[{i}].conv_w"),
         )?;
-        let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
+        let mut conv_w = AlignedVec::new(conv_w_padded, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, channels, conv_out, ksize);
 
         // 2b. Conv bias.
@@ -123,7 +125,8 @@ impl WaveNetA2Dyn {
             total,
             &format!("layer[{i}].conv_b"),
         )?;
-        let conv_b = AlignedVec::from(conv_b_f32.to_vec());
+        let conv_b = AlignedVec::from_vec(conv_b_f32.to_vec())
+            .expect("allocation should succeed for test-sized buffers");
 
         let prefetch_fn: PrefetchFn = if dilation >= 128 {
             crate::math::common::prefetch_strategy_2stage
@@ -153,7 +156,8 @@ impl WaveNetA2Dyn {
             total,
             &format!("layer[{i}].mixin_w"),
         )?;
-        let mixin_w = AlignedVec::from(mixin_w_f32.to_vec());
+        let mixin_w = AlignedVec::from_vec(mixin_w_f32.to_vec())
+            .expect("allocation should succeed for test-sized buffers");
 
         // 2d. L1x1: bottleneck×channels + channels bias.
         let l1x1_w_count = bottleneck * channels;
@@ -164,7 +168,8 @@ impl WaveNetA2Dyn {
             total,
             &format!("layer[{i}].l1x1_w"),
         )?;
-        let mut l1x1_w = AlignedVec::new(l1x1_w_count, 0.0f32);
+        let mut l1x1_w = AlignedVec::new(l1x1_w_count, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         transpose_dense_f32(l1x1_w_f32, &mut l1x1_w, bottleneck, channels);
 
         let l1x1_b_f32 = super::super::set_weights::read_slice(
@@ -174,7 +179,8 @@ impl WaveNetA2Dyn {
             total,
             &format!("layer[{i}].l1x1_b"),
         )?;
-        let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
+        let l1x1_b = AlignedVec::from_vec(l1x1_b_f32.to_vec())
+            .expect("allocation should succeed for test-sized buffers");
 
         let mut layer = A2Layer::new_dyn(
             conv,
@@ -222,12 +228,14 @@ impl WaveNetA2Dyn {
         let h1_w_count = channels * h1_in;
         let h1_w_f32 =
             super::super::set_weights::read_slice(weights, pos, h1_w_count, total, "head1x1_w")?;
-        let mut h1_w = AlignedVec::new(h1_w_count, 0.0f32);
+        let mut h1_w = AlignedVec::new(h1_w_count, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         transpose_dense_f32(h1_w_f32, &mut h1_w, h1_in, channels);
 
         let h1_b_f32 =
             super::super::set_weights::read_slice(weights, pos, channels, total, "head1x1_b")?;
-        let mut h1_b = AlignedVec::new(channels, 0.0f32);
+        let mut h1_b = AlignedVec::new(channels, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         h1_b.copy_from_slice(h1_b_f32);
 
         self.head1x1_w = h1_w;
@@ -259,7 +267,8 @@ impl WaveNetA2Dyn {
                 total,
                 "head_w",
             )?;
-            let mut head_w = AlignedVec::new(head_k * channels, 0.0f32);
+            let mut head_w = AlignedVec::new(head_k * channels, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             transpose_head_w(head_w_f32, &mut head_w, channels, head_k);
 
             let head_b = {
@@ -297,7 +306,8 @@ impl WaveNetA2Dyn {
                 total,
                 "head_rechannel_w",
             )?;
-            let mut head_w = AlignedVec::new(total_w_count, 0.0f32);
+            let mut head_w = AlignedVec::new(total_w_count, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             for oc in 0..head_size {
                 let src = &head_w_f32[oc * per_oc_w_count..(oc + 1) * per_oc_w_count];
                 let dst = &mut head_w[oc * per_oc_w_count..(oc + 1) * per_oc_w_count];
@@ -319,7 +329,8 @@ impl WaveNetA2Dyn {
                     ));
                 }
             }
-            let mut head_b = AlignedVec::new(head_size, 0.0f32);
+            let mut head_b = AlignedVec::new(head_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             head_b.copy_from_slice(head_b_f32);
 
             let head_scale_f32 = super::super::set_weights::read_slice(
@@ -337,7 +348,8 @@ impl WaveNetA2Dyn {
                     ));
                 }
             }
-            let mut head_scale = AlignedVec::new(head_size, 0.0f32);
+            let mut head_scale = AlignedVec::new(head_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             head_scale.copy_from_slice(head_scale_f32);
 
             self.head_rechannel_w = head_w;

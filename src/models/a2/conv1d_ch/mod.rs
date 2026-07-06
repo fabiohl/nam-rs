@@ -19,6 +19,7 @@
 //! `conv1d_ch8/simd.rs` (AVX2 256-bit for CH=8), accessible via the type aliases
 //! `A2Conv1dCh3` (= `A2Conv1dCh<3>`) and `A2Conv1dCh8` (= `A2Conv1dCh<8>`).
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 
 /// CH-padded SIMD stride per input channel.
@@ -65,7 +66,7 @@ impl<const CH: usize> A2Conv1dCh<CH> {
         kernel: usize,
         dilation: usize,
         raw_bias: &[f32],
-    ) -> Self {
+    ) -> Result<Self, NamErrorCode> {
         let ch_pad = ch_pad::<CH>();
         debug_assert_eq!(out_ch, CH);
         debug_assert_eq!(in_ch, CH);
@@ -74,7 +75,7 @@ impl<const CH: usize> A2Conv1dCh<CH> {
         debug_assert_eq!(raw_bias.len(), CH);
 
         let stride = ch_pad * ch_pad;
-        let mut weights = AlignedVec::new(kernel * stride, 0.0f32);
+        let mut weights = AlignedVec::new(kernel * stride, 0.0f32)?;
         for out in 0..out_ch {
             for inp in 0..in_ch {
                 for k in 0..kernel {
@@ -85,14 +86,14 @@ impl<const CH: usize> A2Conv1dCh<CH> {
             }
         }
 
-        let mut bias = AlignedVec::new(ch_pad, 0.0f32);
+        let mut bias = AlignedVec::new(ch_pad, 0.0f32)?;
         bias[..CH].copy_from_slice(&raw_bias[..CH]);
 
-        Self {
+        Ok(Self {
             weights,
             bias,
             dilation,
             kernel,
-        }
+        })
     }
 }

@@ -5,7 +5,8 @@ use super::*;
 
 fn make_test_weights(channels: usize) -> (AlignedVec<f32>, f32, f32) {
     let k = A2HeadConv::HEAD_KERNEL_SIZE;
-    let mut w = AlignedVec::new(k * channels, 0.0f32);
+    let mut w = AlignedVec::new(k * channels, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     let mut state: u32 = 42;
     for i in 0..k * channels {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
@@ -156,7 +157,8 @@ fn test_a2_head_conv_known_values_ch3() {
     let ch = 3;
     let k = A2HeadConv::HEAD_KERNEL_SIZE;
 
-    let mut w = AlignedVec::new(k * ch, 0.0f32);
+    let mut w =
+        AlignedVec::new(k * ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let bias = 0.5;
     let scale = 2.0;
 
@@ -202,7 +204,8 @@ fn test_a2_head_conv_all_taps_ch8() {
     let ch = 8;
     let k = A2HeadConv::HEAD_KERNEL_SIZE;
 
-    let mut w = AlignedVec::new(k * ch, 0.0f32);
+    let mut w =
+        AlignedVec::new(k * ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let bias = 0.1;
     let scale = 1.5;
 

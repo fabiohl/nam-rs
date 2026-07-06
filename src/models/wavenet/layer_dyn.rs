@@ -40,8 +40,10 @@ impl WaveNetLayerDyn {
             conv1d,
             input_mixin,
             one_by_one,
-            scratch_mixin: AlignedVec::new(scratch_size, 0.0f32),
-            scratch_conv: AlignedVec::new(scratch_size, 0.0f32),
+            scratch_mixin: AlignedVec::new(scratch_size, 0.0f32)
+                .expect("OOM: WaveNetLayerDyn scratch_mixin"),
+            scratch_conv: AlignedVec::new(scratch_size, 0.0f32)
+                .expect("OOM: WaveNetLayerDyn scratch_conv"),
         }
     }
 

@@ -119,10 +119,10 @@ fn bench_kahan_inner_loop_isolated(c: &mut Criterion) {
 fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
     raw: &[f32],
 ) -> Conv1d<IN, OUT, K> {
-    let weights = AlignedVec::from_vec(raw.to_vec());
+    let weights = AlignedVec::from_vec(raw.to_vec()).expect("bench allocation failed");
     Conv1d {
         weights,
-        bias: AlignedVec::from_vec(vec![0.0; OUT]),
+        bias: AlignedVec::from_vec(vec![0.0; OUT]).expect("bench allocation failed"),
         do_bias: false,
         dilation: 1,
         prefetch_fn: prefetch_strategy_simple,
@@ -131,8 +131,8 @@ fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
 
 fn conv1d_dyn_from_raw(raw: &[f32], in_ch: usize, out_ch: usize, kernel: usize) -> Conv1dDyn {
     Conv1dDyn {
-        weights: AlignedVec::from_vec(raw.to_vec()),
-        bias: AlignedVec::from_vec(vec![0.0; out_ch]),
+        weights: AlignedVec::from_vec(raw.to_vec()).expect("bench allocation failed"),
+        bias: AlignedVec::from_vec(vec![0.0; out_ch]).expect("bench allocation failed"),
         do_bias: false,
         dilation: 1,
         in_ch,

@@ -143,7 +143,7 @@ impl BlendingActivationConfig {
         Self {
             input_activation,
             blending_activation,
-            scratch: AlignedVec::new(ch, 0.0f32),
+            scratch: AlignedVec::new(ch, 0.0f32).expect("OOM: BlendingActivationConfig scratch"),
         }
     }
 

@@ -102,9 +102,10 @@ impl FiLMLayer {
             config,
             cond_size,
             channels,
-            weights: AlignedVec::from_vec(weights),
-            bias: AlignedVec::from_vec(bias_padded),
-            scale_shift_buf: AlignedVec::new(channels * 2, 0.0f32),
+            weights: AlignedVec::from_vec(weights).expect("OOM: FiLM weights"),
+            bias: AlignedVec::from_vec(bias_padded).expect("OOM: FiLM bias"),
+            scale_shift_buf: AlignedVec::new(channels * 2, 0.0f32)
+                .expect("OOM: FiLM scale_shift_buf"),
         }
     }
 

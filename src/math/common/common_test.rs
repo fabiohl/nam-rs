@@ -352,12 +352,15 @@ fn test_compute_peak_abs_mono_parity() {
 #[test]
 fn test_convolve_stereo_parity() {
     let coeffs =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect())
+            .expect("allocation should succeed for test-sized buffers");
     let input_l = crate::math::common::AlignedVec::from_vec(
         (0..32).map(|i| (32 - i) as f32 * 0.05).collect(),
-    );
+    )
+    .expect("allocation should succeed for test-sized buffers");
     let input_r =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect())
+            .expect("allocation should succeed for test-sized buffers");
 
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe {
@@ -389,10 +392,12 @@ fn test_convolve_stereo_parity() {
 #[test]
 fn test_convolve_mono_parity() {
     let coeffs =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect())
+            .expect("allocation should succeed for test-sized buffers");
     let input = crate::math::common::AlignedVec::from_vec(
         (0..32).map(|i| (32 - i) as f32 * 0.05).collect(),
-    );
+    )
+    .expect("allocation should succeed for test-sized buffers");
 
     let expected =
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
@@ -412,15 +417,19 @@ fn test_convolve_mono_parity() {
 #[test]
 fn test_convolve_stereo_dual_parity() {
     let coeffs0 =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect())
+            .expect("allocation should succeed for test-sized buffers");
     let coeffs1 = crate::math::common::AlignedVec::from_vec(
         (0..32).map(|i| (32 - i) as f32 * 0.007).collect(),
-    );
+    )
+    .expect("allocation should succeed for test-sized buffers");
     let input_l =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect())
+            .expect("allocation should succeed for test-sized buffers");
     let input_r = crate::math::common::AlignedVec::from_vec(
         (0..32).map(|i| (32 - i) as f32 * 0.04).collect(),
-    );
+    )
+    .expect("allocation should succeed for test-sized buffers");
 
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe {
@@ -469,12 +478,15 @@ fn test_convolve_stereo_dual_parity() {
 #[test]
 fn test_convolve_mono_dual_parity() {
     let coeffs0 =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect())
+            .expect("allocation should succeed for test-sized buffers");
     let coeffs1 = crate::math::common::AlignedVec::from_vec(
         (0..32).map(|i| (32 - i) as f32 * 0.007).collect(),
-    );
+    )
+    .expect("allocation should succeed for test-sized buffers");
     let input =
-        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect())
+            .expect("allocation should succeed for test-sized buffers");
 
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe {
@@ -881,7 +893,9 @@ mod huge_alloc_tests {
 
     #[test]
     fn test_allocate_small_uses_heap() {
-        let (ptr, info, status) = allocate_huge_pages(1024);
+        let result = allocate_huge_pages(1024);
+        assert!(result.is_ok());
+        let (ptr, info, status) = result.unwrap();
         assert_eq!(status, HugePageStatus::Heap);
         assert!(!ptr.is_null());
         // SAFETY: ptr is validly allocated via allocate_huge_pages above, and layout matches.
@@ -891,7 +905,9 @@ mod huge_alloc_tests {
     #[test]
     fn test_allocate_large_falls_back_gracefully() {
         let size = 2 * 1024 * 1024;
-        let (ptr, info, _status) = allocate_huge_pages(size);
+        let result = allocate_huge_pages(size);
+        assert!(result.is_ok());
+        let (ptr, info, _status) = result.unwrap();
         assert!(!ptr.is_null());
         // SAFETY: ptr is validly allocated via allocate_huge_pages above, and layout matches size.
         unsafe {
@@ -904,7 +920,9 @@ mod huge_alloc_tests {
     #[test]
     fn test_huge_page_vec_fallback() {
         let len = 3 * 1024 * 1024 / 4;
-        let (vec, status) = HugePageVec::<f32>::new(len, 0.0);
+        let result = HugePageVec::<f32>::new(len, 0.0);
+        assert!(result.is_ok());
+        let (vec, status) = result.unwrap();
         assert_eq!(vec.len(), len);
         for &val in vec.iter() {
             assert_eq!(val, 0.0);
@@ -915,7 +933,9 @@ mod huge_alloc_tests {
 
     #[test]
     fn test_huge_page_vec_with_capacity() {
-        let (vec, _status) = HugePageVec::<f32>::with_capacity(128);
+        let result = HugePageVec::<f32>::with_capacity(128);
+        assert!(result.is_ok());
+        let (vec, _status) = result.unwrap();
         assert_eq!(vec.len(), 0);
     }
 }

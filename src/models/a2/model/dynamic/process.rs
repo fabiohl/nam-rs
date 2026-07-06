@@ -432,7 +432,8 @@ impl WaveNetA2Dyn {
     pub(crate) fn cascade_set_condition(&mut self, cond_buf: &[f32], nf: usize, cond_size: usize) {
         let dest = &mut self.condition_dsp_output;
         if dest.len() < nf * cond_size {
-            *dest = AlignedVec::new(nf * cond_size, 0.0f32);
+            *dest = AlignedVec::new(nf * cond_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
         }
         dest[0..nf * cond_size].copy_from_slice(&cond_buf[0..nf * cond_size]);
     }

@@ -55,8 +55,12 @@ impl ConvNetBlock {
         let weights_len = num_blocks * kernel * in_ch * 4;
 
         let conv = Conv1dDyn {
-            weights: AlignedVec::new(weights_len, 0.0f32),
-            bias: AlignedVec::new(out_ch, 0.0f32),
+            weights: AlignedVec::new(weights_len, 0.0f32).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}"))
+            })?,
+            bias: AlignedVec::new(out_ch, 0.0f32).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}"))
+            })?,
             do_bias,
             dilation,
             in_ch,
@@ -67,12 +71,14 @@ impl ConvNetBlock {
             prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
-        let bn = BatchNorm1D::from_fused(out_ch, &vec![0.0f32; out_ch], &vec![0.0f32; out_ch]);
+        let bn = BatchNorm1D::from_fused(out_ch, &vec![0.0f32; out_ch], &vec![0.0f32; out_ch])
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
         let receptive_field = (kernel - 1) * dilation;
         let state = WaveNetLayerState::new(in_ch, receptive_field, alloc_num)?;
 
-        let scratch = AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32);
+        let scratch = AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
         Ok(Self {
             conv,
@@ -102,7 +108,8 @@ impl ConvNetBlock {
 
     /// Loads pre-fused batch norm parameters.
     pub fn set_bn_params(&mut self, scale: &[f32], offset: &[f32]) {
-        self.bn = BatchNorm1D::from_fused(self.conv.out_ch, scale, offset);
+        self.bn = BatchNorm1D::from_fused(self.conv.out_ch, scale, offset)
+            .expect("OOM: BatchNorm1D from_fused");
     }
 
     /// Public dispatch wrapper that selects the optimal SIMD path.

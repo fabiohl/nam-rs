@@ -247,7 +247,13 @@ impl<'a> NamClapMainThread<'a> {
             )
         })?;
 
-        let engine = ConvEngine::new(&cabsim.samples, partition_size);
+        let engine = ConvEngine::new(&cabsim.samples, partition_size).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(e, &self.sys)
+                    .message("Failed to build convolution engine for cab-sim IR")
+                    .hint("The IR samples require more memory than available."),
+            )
+        })?;
 
         // Store ir_path for state save/load and GUI display
         if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {

@@ -29,6 +29,7 @@
 //! - Hot-path operations use only stack-allocated temporaries and
 //!   pre-existing slice references — zero heap allocation, zero locks.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 use crate::math::common::Avx2Math;
 use crate::math::common::Avx512Math;
@@ -148,7 +149,7 @@ impl LinearFftState {
     /// # Panics
     ///
     /// Panics if `p` is not a power of two, or if `p > weights.len()`.
-    pub fn new(p: usize, weights: &[f32]) -> Self {
+    pub fn new(p: usize, weights: &[f32]) -> Result<Self, NamErrorCode> {
         let n = weights.len();
         assert!(p.is_power_of_two(), "P must be a power of two, got {p}");
         assert!(p <= n, "P ({p}) must be ≤ N ({n})");
@@ -161,13 +162,13 @@ impl LinearFftState {
         let mut rfft = RfftPlanner::<f32>::new(block_size);
 
         let fdl_total = num_partitions * num_bins;
-        let mut h_fdl_re = AlignedVec::<f32>::new(fdl_total, 0.0f32);
-        let mut h_fdl_im = AlignedVec::<f32>::new(fdl_total, 0.0f32);
+        let mut h_fdl_re = AlignedVec::<f32>::new(fdl_total, 0.0f32)?;
+        let mut h_fdl_im = AlignedVec::<f32>::new(fdl_total, 0.0f32)?;
 
         // Reusable padded buffer for the forward RFFT (zero-padded IR segment)
-        let mut padded = AlignedVec::<f32>::new(block_size, 0.0f32);
-        let mut h_re = AlignedVec::<f32>::new(num_bins, 0.0f32);
-        let mut h_im = AlignedVec::<f32>::new(num_bins, 0.0f32);
+        let mut padded = AlignedVec::<f32>::new(block_size, 0.0f32)?;
+        let mut h_re = AlignedVec::<f32>::new(num_bins, 0.0f32)?;
+        let mut h_im = AlignedVec::<f32>::new(num_bins, 0.0f32)?;
 
         for k in 0..num_partitions {
             let start = p + k * p;
@@ -189,15 +190,15 @@ impl LinearFftState {
         }
 
         // Initialize FDL with zeros (no past input yet)
-        let fdl_re = AlignedVec::<f32>::new(fdl_total, 0.0f32);
-        let fdl_im = AlignedVec::<f32>::new(fdl_total, 0.0f32);
+        let fdl_re = AlignedVec::<f32>::new(fdl_total, 0.0f32)?;
+        let fdl_im = AlignedVec::<f32>::new(fdl_total, 0.0f32)?;
 
         // fdl_write_idx starts at K-1 so that the first read uses all-zero
         // FDL entries (correct for silence before the first block).
         let fdl_write_idx = num_partitions.saturating_sub(1);
         let isa = SimdMathConfig::current().instruction_set;
 
-        Self {
+        Ok(Self {
             p,
             n,
             num_partitions,
@@ -208,16 +209,16 @@ impl LinearFftState {
             fdl_re,
             fdl_im,
             fdl_write_idx,
-            input_buf: AlignedVec::<f32>::new(block_size, 0.0f32),
-            fft_re: AlignedVec::<f32>::new(num_bins, 0.0f32),
-            fft_im: AlignedVec::<f32>::new(num_bins, 0.0f32),
-            acc_re: AlignedVec::<f32>::new(num_bins, 0.0f32),
-            acc_im: AlignedVec::<f32>::new(num_bins, 0.0f32),
-            output_buf: AlignedVec::<f32>::new(block_size, 0.0f32),
-            tail_output_buf: AlignedVec::<f32>::new(p, 0.0f32),
+            input_buf: AlignedVec::<f32>::new(block_size, 0.0f32)?,
+            fft_re: AlignedVec::<f32>::new(num_bins, 0.0f32)?,
+            fft_im: AlignedVec::<f32>::new(num_bins, 0.0f32)?,
+            acc_re: AlignedVec::<f32>::new(num_bins, 0.0f32)?,
+            acc_im: AlignedVec::<f32>::new(num_bins, 0.0f32)?,
+            output_buf: AlignedVec::<f32>::new(block_size, 0.0f32)?,
+            tail_output_buf: AlignedVec::<f32>::new(p, 0.0f32)?,
             sample_counter: 0,
             isa,
-        }
+        })
     }
 
     /// Returns a slice over the real spectrum of tail partition `k`.
@@ -401,7 +402,8 @@ mod tests {
     #[test]
     fn new_zero_tail_partitions_when_p_equals_n() {
         let weights = vec![1.0f32; 256];
-        let state = LinearFftState::new(256, &weights);
+        let state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.p, 256);
         assert_eq!(state.n, 256);
         assert_eq!(state.num_partitions, 0);
@@ -414,7 +416,8 @@ mod tests {
     #[test]
     fn new_one_tail_partition_when_n_equals_2p() {
         let weights = vec![1.0f32; 512];
-        let state = LinearFftState::new(256, &weights);
+        let state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.p, 256);
         assert_eq!(state.n, 512);
         assert_eq!(state.num_partitions, 1);
@@ -427,7 +430,8 @@ mod tests {
     #[test]
     fn new_partitions_for_ir_8192_p_512() {
         let weights = vec![0.0f32; 8192];
-        let state = LinearFftState::new(512, &weights);
+        let state = LinearFftState::new(512, &weights)
+            .expect("construction should succeed for test-sized buffers");
         // ceil((8192-512)/512) = ceil(7680/512) = 15
         assert_eq!(state.num_partitions, 15);
         assert_eq!(state.num_bins, 513);
@@ -442,7 +446,8 @@ mod tests {
     fn new_partitions_uneven_last_block() {
         // N=1000, P=256: ceil((1000-256)/256) = ceil(744/256) = 3
         let weights = vec![0.0f32; 1000];
-        let state = LinearFftState::new(256, &weights);
+        let state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 3);
         // Last partition covers IR[768..1000] = 232 samples, zero-padded to 512
     }
@@ -451,21 +456,24 @@ mod tests {
     #[should_panic(expected = "power of two")]
     fn new_panics_on_non_power_of_two_p() {
         let weights = vec![0.0f32; 1024];
-        LinearFftState::new(300, &weights);
+        LinearFftState::new(300, &weights)
+            .expect("construction should succeed for test-sized buffers");
     }
 
     #[test]
     #[should_panic(expected = "P (1024) must be ≤ N (512)")]
     fn new_panics_when_p_greater_than_n() {
         let weights = vec![0.0f32; 512];
-        LinearFftState::new(1024, &weights);
+        LinearFftState::new(1024, &weights)
+            .expect("construction should succeed for test-sized buffers");
     }
 
     #[test]
     fn reset_zeros_runtime_buffers() {
         let mut weights = vec![0.0f32; 256];
         weights[0] = 1.0;
-        let mut state = LinearFftState::new(128, &weights);
+        let mut state = LinearFftState::new(128, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 1);
 
         // Dirty the runtime buffers
@@ -493,7 +501,8 @@ mod tests {
     #[test]
     fn debug_format_does_not_leak_internal_buffers() {
         let weights = vec![1.0f32; 512];
-        let state = LinearFftState::new(256, &weights);
+        let state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         let dbg = format!("{state:?}");
         assert!(dbg.contains("LinearFftState"));
         assert!(dbg.contains("p"));
@@ -506,7 +515,8 @@ mod tests {
         let mut weights = vec![0.0f32; 512];
         // Put an impulse in the tail at index P (256)
         weights[256] = 1.0;
-        let state = LinearFftState::new(256, &weights);
+        let state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 1);
         // The spectrum of an impulse delayed by 0 within its block is all ones (real)
         // But it's zero-padded to 512 then FFT'd of 512 real → 257 complex bins
@@ -519,7 +529,8 @@ mod tests {
     fn weights_head_portion_not_used_for_spectra() {
         // IR: head [1,2,3,4], tail [5,6,7,8] with P=4
         let weights: Vec<f32> = (1..=8).map(|v| v as f32).collect();
-        let state = LinearFftState::new(4, &weights);
+        let state = LinearFftState::new(4, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 1);
         // The head portion [1,2,3,4] should NOT affect h_fdl.
         // Only tail [5,6,7,8] is transformed (zero-padded to 8).
@@ -531,7 +542,8 @@ mod tests {
     #[test]
     fn process_tail_block_noop_when_zero_partitions() {
         let weights = vec![1.0f32; 256];
-        let mut state = LinearFftState::new(256, &weights);
+        let mut state = LinearFftState::new(256, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 0);
         // Should not panic when called with no tail partitions
         state.process_tail_block(&[0.0f32; 512]);
@@ -545,7 +557,8 @@ mod tests {
     fn process_tail_block_first_call_uses_current_spectrum() {
         // P=2, N=4, IR=[1.0, 2.0, 3.0, 4.0], tail=[3.0, 4.0]
         let weights = vec![1.0, 2.0, 3.0, 4.0];
-        let mut state = LinearFftState::new(2, &weights);
+        let mut state = LinearFftState::new(2, &weights)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 1);
         // Fix: first call uses current input spectrum.
         // conv([3,4], [1,2,3,4]) at positions [2,3] = [3*3+4*2=17, 3*4+4*3=24]
@@ -568,7 +581,8 @@ mod tests {
         // head = [0.5, 1.5], tail = [3.0, 4.0]
         let ir = vec![0.5, 1.5, 3.0, 4.0];
         let p = 2;
-        let mut state = LinearFftState::new(p, &ir);
+        let mut state = LinearFftState::new(p, &ir)
+            .expect("construction should succeed for test-sized buffers");
 
         // Block 1: feed [1, 2, 3, 4] — uses current input spectrum.
         // conv([3,4], [1,2,3,4]) valid region [2,3] = [17, 24]
@@ -612,7 +626,8 @@ mod tests {
             0.5, 0.5, // tail partition 2 (delays 6,7)
         ];
         let p = 2;
-        let mut state = LinearFftState::new(p, &ir);
+        let mut state = LinearFftState::new(p, &ir)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 3);
 
         // Block 1: feed [0, 0, 1, 0]
@@ -670,7 +685,8 @@ mod tests {
         // P=2, N=8, K=3
         let ir = vec![0.0f32; 8];
         let p = 2;
-        let mut state = LinearFftState::new(p, &ir);
+        let mut state = LinearFftState::new(p, &ir)
+            .expect("construction should succeed for test-sized buffers");
         assert_eq!(state.num_partitions, 3);
         assert_eq!(state.fdl_write_idx, 2); // K-1
 
@@ -694,7 +710,8 @@ mod tests {
     #[test]
     fn process_tail_block_reset_then_process() {
         let ir = vec![1.0, 2.0, 3.0, 4.0];
-        let mut state = LinearFftState::new(2, &ir);
+        let mut state = LinearFftState::new(2, &ir)
+            .expect("construction should succeed for test-sized buffers");
 
         // Prime FDL with one block
         state.process_tail_block(&[1.0; 4]);

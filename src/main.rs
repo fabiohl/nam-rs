@@ -122,7 +122,8 @@ fn main() -> anyhow::Result<()> {
         };
         match CabSimIr::load(cab_path, target_rate, true) {
             Ok(cabsim) => {
-                let engine = ConvEngine::new(&cabsim.samples, partition_size);
+                let engine = ConvEngine::new(&cabsim.samples, partition_size)
+                    .map_err(|e| anyhow::anyhow!("Cab-sim engine init: {e}"))?;
                 log::info!(
                     "{} Cab-sim IR loaded: {} ({} partitions, FFT={})",
                     "🎛️".cyan(),

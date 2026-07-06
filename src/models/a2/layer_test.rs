@@ -8,14 +8,16 @@ use crate::models::a2::A2_DILATIONS;
 fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0.0f32);
+    let mut weights =
+        AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let mut state = seed;
     for i in 0..total_w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         let v = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
         weights[i] = v;
     }
-    let mut bias = AlignedVec::new(ch, 0.0f32);
+    let mut bias =
+        AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     for i in 0..ch {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         bias[i] = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
@@ -24,7 +26,8 @@ fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<f32>, A
 }
 
 fn make_f32_vec(len: usize, seed: u32) -> AlignedVec<f32> {
-    let mut v = AlignedVec::new(len, 0.0f32);
+    let mut v =
+        AlignedVec::new(len, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let mut state = seed;
     for i in 0..len {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
@@ -419,8 +422,10 @@ fn test_a2_layer_mixin_contribution() {
     // Zero conv weights and bias to isolate mixin.
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let conv_w = AlignedVec::new(total_w, 0.0f32);
-    let conv_bias = AlignedVec::new(ch, 0.0f32);
+    let conv_w =
+        AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
+    let conv_bias =
+        AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let conv = A2Conv1d::new(
         conv_w,
         conv_bias,
@@ -431,9 +436,12 @@ fn test_a2_layer_mixin_contribution() {
         kernel,
         prefetch_strategy_simple,
     );
-    let mixin_w = AlignedVec::from(vec![0.1f32, 0.2, 0.3]);
-    let l1x1_w = AlignedVec::new(ch * ch, 0.0f32);
-    let l1x1_b = AlignedVec::new(ch, 0.0f32);
+    let mixin_w = AlignedVec::from_vec(vec![0.1f32, 0.2, 0.3])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_w =
+        AlignedVec::new(ch * ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
+    let l1x1_b =
+        AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     let layer = A2Layer::new(conv, mixin_w.clone(), l1x1_w, l1x1_b);
 
@@ -483,8 +491,10 @@ fn test_a2_layer_zero_weights_deterministic() {
 
     let num_blocks = ch.div_ceil(4);
     let total_w = num_blocks * 4 * ch * kernel;
-    let conv_w = AlignedVec::new(total_w, 0.0f32);
-    let conv_bias = AlignedVec::new(ch, 0.0f32);
+    let conv_w =
+        AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
+    let conv_bias =
+        AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let conv = A2Conv1d::new(
         conv_w,
         conv_bias.clone(),
@@ -495,9 +505,12 @@ fn test_a2_layer_zero_weights_deterministic() {
         kernel,
         prefetch_strategy_simple,
     );
-    let mixin_w = AlignedVec::from(vec![1.0f32, 2.0, 3.0]);
-    let l1x1_w = AlignedVec::new(ch * ch, 1.0f32);
-    let l1x1_b = AlignedVec::from(vec![0.5f32, 0.5, 0.5]);
+    let mixin_w = AlignedVec::from_vec(vec![1.0f32, 2.0, 3.0])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_w =
+        AlignedVec::new(ch * ch, 1.0f32).expect("allocation should succeed for test-sized buffers");
+    let l1x1_b = AlignedVec::from_vec(vec![0.5f32, 0.5, 0.5])
+        .expect("allocation should succeed for test-sized buffers");
 
     let layer = A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b);
 

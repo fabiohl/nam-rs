@@ -35,7 +35,7 @@ use super::playback;
 /// - `resampler_consumer`: Dedicated channel for receiving pre-built resamplers
 ///   from the main thread — **zero allocations in the RT callback**.
 /// - `resampler_producer`: Producer of the resampler channel — the main thread
-///   builds `NamResampler::new()` here (allocation outside RT) and sends to the callback.
+///   builds `NamResampler::new().expect("construction should succeed for test-sized buffers")` here (allocation outside RT) and sends to the callback.
 /// - `rt_status`: Atomic flags for silent RT→Main communication.
 #[allow(clippy::too_many_arguments)]
 pub fn run_pipewire_host(
@@ -211,7 +211,8 @@ pub fn run_pipewire_host(
             if partition_size > 0 {
                 if let Some(ref samples) = ir_raw_samples {
                     use crate::dsp::cabsim::conv::ConvEngine;
-                    let engine = ConvEngine::new(samples, partition_size);
+                    let engine = ConvEngine::new(samples, partition_size)
+                        .map_err(|e| anyhow::anyhow!("Cab-sim engine: {e}"))?;
                     log::info!(
                         "{} Cab-sim IR rebuilt: partition_size={} ({} partitions, FFT={})",
                         "🔄".cyan(),

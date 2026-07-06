@@ -38,6 +38,7 @@
 //! The linear-phase variant (`new_linear()`, offline) scores significantly higher on multitone
 //! SNR but reintroduces pre-ringing, so it is not the production default.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
 use crate::math::dsp::fft::FftPlanner;
 
@@ -128,7 +129,10 @@ impl PolyphaseBank {
 ///
 /// # Returns
 /// Polyphase bank ready for SIMD convolution.
-pub fn generate_polyphase_bank(from_rate: u32, to_rate: u32) -> PolyphaseBank {
+pub fn generate_polyphase_bank(
+    from_rate: u32,
+    to_rate: u32,
+) -> Result<PolyphaseBank, NamErrorCode> {
     // 1. Generate Sinc + Kaiser prototype in f64.
     //
     // The prototype operates at the conceptual proto rate = from_rate × NUM_PHASES.
@@ -152,10 +156,10 @@ pub fn generate_polyphase_bank(from_rate: u32, to_rate: u32) -> PolyphaseBank {
     let proto_f32: Vec<f32> = min_phase.iter().map(|&x| x as f32).collect();
 
     // 4. Partition into NUM_PHASES sub-filters
-    let mut bank = partition_polyphase(&proto_f32);
+    let mut bank = partition_polyphase(&proto_f32)?;
     bank.group_delay = group_delay;
     bank.phase_type = PhaseType::Minimum;
-    bank
+    Ok(bank)
 }
 
 /// Generates a Sinc FIR kernel with Kaiser windowing.
@@ -306,10 +310,10 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
 ///
 /// Coefficient `proto[n]` goes to phase `n % NUM_PHASES`, tap `n / NUM_PHASES`.
 /// Each phase is zero-padded to `TAPS_PER_PHASE` (multiple of 8).
-fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
+fn partition_polyphase(proto: &[f32]) -> Result<PolyphaseBank, NamErrorCode> {
     let taps = TAPS_PER_PHASE;
     let total = NUM_PHASES * taps;
-    let mut coeffs = AlignedVec::new(total, 0.0f32);
+    let mut coeffs = AlignedVec::new(total, 0.0f32)?;
 
     // Scale by NUM_PHASES to compensate for the polyphase decomposition.
     // In conceptual upsampling (insertion of L-1 zeros between samples),
@@ -345,12 +349,12 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
         }
     }
 
-    PolyphaseBank {
+    Ok(PolyphaseBank {
         coeffs,
         taps_per_phase: taps,
         group_delay: taps as f64 / 2.0,
         phase_type: PhaseType::Linear,
-    }
+    })
 }
 
 /// Generates a linear-phase polyphase bank (without cepstrum transform).
@@ -358,7 +362,10 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
 /// Produces traditional linear-phase FIR filters with symmetric coefficients,
 /// suitable for offline/mixdown use where pre-ringing is acceptable and
 /// exact phase linearity is preferred.
-pub fn generate_polyphase_bank_linear(from_rate: u32, to_rate: u32) -> PolyphaseBank {
+pub fn generate_polyphase_bank_linear(
+    from_rate: u32,
+    to_rate: u32,
+) -> Result<PolyphaseBank, NamErrorCode> {
     let passband_rate = from_rate.min(to_rate) as f64;
     let proto_nyq = from_rate as f64 * NUM_PHASES as f64 / 2.0;
     let cutoff = 0.95 * passband_rate / 2.0 / proto_nyq;

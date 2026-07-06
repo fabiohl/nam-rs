@@ -131,7 +131,8 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
     let new_num_blocks = new_out_ch.div_ceil(dst_width);
     let kernel = conv.kernel;
     let new_weights_len = new_num_blocks * dst_width * new_in_ch * kernel;
-    let mut new_weights = AlignedVec::new(new_weights_len, 0.0f32);
+    let mut new_weights =
+        AlignedVec::new(new_weights_len, 0.0f32).expect("OOM: slimmable new_weights");
 
     for src_b in 0..new_out_ch.div_ceil(src_width) {
         for k in 0..kernel {
@@ -153,7 +154,7 @@ pub fn slice_conv1d(conv: &Conv1dDyn, new_in_ch: usize, new_out_ch: usize) -> Co
         }
     }
 
-    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32);
+    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32).expect("OOM: slimmable conv1d bias");
     new_bias.copy_from_slice(&conv.bias[..new_out_ch]);
 
     Conv1dDyn {
@@ -193,7 +194,8 @@ pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -
         dense.out_ch
     );
 
-    let mut new_weights = AlignedVec::new(new_in_ch * new_out_ch, 0.0f32);
+    let mut new_weights =
+        AlignedVec::new(new_in_ch * new_out_ch, 0.0f32).expect("OOM: slimmable dense weights");
 
     for in_c in 0..new_in_ch {
         let src_start = in_c * dense.out_ch;
@@ -202,7 +204,7 @@ pub fn slice_dense(dense: &DenseLayerDyn, new_in_ch: usize, new_out_ch: usize) -
             .copy_from_slice(&dense.weights[src_start..src_start + new_out_ch]);
     }
 
-    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32);
+    let mut new_bias = AlignedVec::new(new_out_ch, 0.0f32).expect("OOM: slimmable dense bias");
     new_bias.copy_from_slice(&dense.bias[..new_out_ch]);
 
     DenseLayerDyn {
@@ -276,12 +278,16 @@ pub fn slice_wavenet_array(
         states,
         rechannel,
         head_rechannel,
-        array_outputs: AlignedVec::new(new_ch * WAVENET_MAX_NUM_FRAMES, 0.0),
-        head_accum: AlignedVec::new(new_ch * WAVENET_MAX_NUM_FRAMES, 0.0),
-        head_outputs: AlignedVec::new(array.head * WAVENET_MAX_NUM_FRAMES, 0.0),
+        array_outputs: AlignedVec::new(new_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?,
+        head_accum: AlignedVec::new(new_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?,
+        head_outputs: AlignedVec::new(array.head * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?,
         receptive_field_size,
         block_size,
-        block_buffer: AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0),
+        block_buffer: AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?,
         effective_layers: num_layers,
     })
 }
@@ -339,7 +345,8 @@ pub fn slice_wavenet_model(
         .as_ref()
         .map(|h| h.out_channels())
         .unwrap_or(1);
-    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0);
+    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
     let mut rf = arrays
         .iter()
@@ -358,7 +365,8 @@ pub fn slice_wavenet_model(
         head_scale: model.head_scale,
         receptive_field_size: rf,
         condition_dsp: crate::models::clone_condition_dsp(&model.condition_dsp),
-        condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0),
+        condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?,
         post_stack_head: model.post_stack_head.clone(),
         head_output_scratch,
         prewarm_on_reset: model.prewarm_on_reset,

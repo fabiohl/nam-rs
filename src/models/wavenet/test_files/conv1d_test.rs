@@ -17,7 +17,8 @@ fn test_conv1d_identity_kernel() {
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
     }
-    let mut weights = AlignedVec::new(16, 0.0f32);
+    let mut weights =
+        AlignedVec::new(16, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -29,7 +30,8 @@ fn test_conv1d_identity_kernel() {
     // Instantiate 1D Convolution without bias and with dilation 1 (linear processing).
     let conv = Conv1d::<4, 4, 1> {
         weights,
-        bias: AlignedVec::from_vec(vec![0.0; 4]),
+        bias: AlignedVec::from_vec(vec![0.0; 4])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -61,7 +63,8 @@ fn test_conv1d_with_bias() {
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
     }
-    let mut weights = AlignedVec::new(16, 0.0f32);
+    let mut weights =
+        AlignedVec::new(16, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -73,7 +76,8 @@ fn test_conv1d_with_bias() {
     // Configure the layer with Bias of 0.5 on all output channels.
     let conv = Conv1d::<4, 4, 1> {
         weights,
-        bias: AlignedVec::from_vec(vec![0.5; 4]),
+        bias: AlignedVec::from_vec(vec![0.5; 4])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true, // Enable bias vector addition.
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -102,7 +106,8 @@ fn test_conv1d_with_bias() {
 fn test_conv1d_dilation() {
     // Configure unit weights (1.0) to sum all inputs directly.
     let raw_weights = vec![1.0f32; 2 * 3 * 2];
-    let mut weights = AlignedVec::new(24, 0.0f32);
+    let mut weights =
+        AlignedVec::new(24, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -114,7 +119,8 @@ fn test_conv1d_dilation() {
     // Define dilation: 2. This will make the kernel "skip" one frame per tap.
     let conv = Conv1d::<2, 2, 3> {
         weights,
-        bias: AlignedVec::from_vec(vec![0.0; 2]),
+        bias: AlignedVec::from_vec(vec![0.0; 2])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 2,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -159,7 +165,8 @@ fn test_conv1d_dilation() {
 fn test_conv1d_zero_input() {
     // Extremely high weights to test if any residual noise is amplified.
     let raw_weights = vec![100.0f32; 2 * 3 * 2];
-    let mut weights = AlignedVec::new(24, 0.0f32);
+    let mut weights =
+        AlignedVec::new(24, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -170,7 +177,8 @@ fn test_conv1d_zero_input() {
 
     let mut conv = Conv1d::<2, 2, 3> {
         weights: weights.clone(),
-        bias: AlignedVec::from_vec(vec![0.0; 2]),
+        bias: AlignedVec::from_vec(vec![0.0; 2])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -189,7 +197,8 @@ fn test_conv1d_zero_input() {
 
     // Second pass: Activate bias. The output should reflect exactly the injected bias.
     conv.do_bias = true;
-    conv.bias = AlignedVec::from_vec(vec![7.5, 8.5]);
+    conv.bias = AlignedVec::from_vec(vec![7.5, 8.5])
+        .expect("allocation should succeed for test-sized buffers");
 
     unsafe {
         conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
@@ -214,7 +223,8 @@ fn test_conv1d_known_output() {
         -0.5, -1.5, // out1, in0, k0 and k1
         -1.0, -2.0, // out1, in1, k0 and k1
     ];
-    let mut weights = AlignedVec::new(16, 0.0f32);
+    let mut weights =
+        AlignedVec::new(16, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw_weights,
         &mut weights,
@@ -225,7 +235,8 @@ fn test_conv1d_known_output() {
 
     let conv = Conv1d::<2, 2, 2> {
         weights,
-        bias: AlignedVec::from_vec(vec![1.0, -1.0]),
+        bias: AlignedVec::from_vec(vec![1.0, -1.0])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -266,7 +277,8 @@ fn test_conv1d_ch8_wide_interleaving() {
         }
     }
 
-    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32);
+    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_8wide(
         &raw,
         &mut weights,
@@ -277,7 +289,8 @@ fn test_conv1d_ch8_wide_interleaving() {
 
     let conv = Conv1d::<CH, CH, K> {
         weights: weights.clone(),
-        bias: AlignedVec::from_vec(vec![0.1f32; CH]),
+        bias: AlignedVec::from_vec(vec![0.1f32; CH])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -336,7 +349,8 @@ fn test_conv1d_ch16_wide_interleaving() {
         }
     }
 
-    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32);
+    let mut weights = AlignedVec::new(CH * K * CH, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide(
         &raw,
         &mut weights,
@@ -347,7 +361,8 @@ fn test_conv1d_ch16_wide_interleaving() {
 
     let conv = Conv1d::<CH, CH, K> {
         weights: weights.clone(),
-        bias: AlignedVec::from_vec(vec![0.1f32; CH]),
+        bias: AlignedVec::from_vec(vec![0.1f32; CH])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
@@ -406,7 +421,8 @@ fn test_4wide_to_16wide_transpose_correctness() {
     }
 
     let padded_4 = (CH.div_ceil(4)) * 4 * CH * K;
-    let mut weights_4wide = AlignedVec::new(padded_4, 0.0f32);
+    let mut weights_4wide = AlignedVec::new(padded_4, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_4wide(
         &raw,
         &mut weights_4wide,
@@ -415,7 +431,8 @@ fn test_4wide_to_16wide_transpose_correctness() {
         K,
     );
 
-    let mut weights_16wide_via_4to16 = AlignedVec::new(CH * K * CH, 0.0f32);
+    let mut weights_16wide_via_4to16 = AlignedVec::new(CH * K * CH, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::layout::transpose_4wide_to_16wide(
         &weights_4wide,
         &mut weights_16wide_via_4to16,
@@ -424,7 +441,8 @@ fn test_4wide_to_16wide_transpose_correctness() {
         K,
     );
 
-    let mut weights_16wide_direct = AlignedVec::new(CH * K * CH, 0.0f32);
+    let mut weights_16wide_direct = AlignedVec::new(CH * K * CH, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide(
         &raw,
         &mut weights_16wide_direct,
@@ -464,8 +482,10 @@ fn test_conv1d_from_parts_subdimensioned_weights() {
     let padded_total = num_blocks * interleave_width * IN * K;
 
     let undersized = padded_total / 2;
-    let weights = AlignedVec::new(undersized, 0.0f32);
-    let bias = AlignedVec::new(OUT, 0.0f32);
+    let weights = AlignedVec::new(undersized, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let bias =
+        AlignedVec::new(OUT, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     Conv1d::<IN, OUT, K>::from_parts(
         weights,

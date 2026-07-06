@@ -8,8 +8,10 @@ use crate::math::common::AlignedVec;
 use crate::models::a2::film::FilmBlock;
 
 fn make_random_weights(kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
-    let mut w = AlignedVec::new(kernel * 64, 0.0f32);
-    let mut bias = AlignedVec::new(8, 0.0f32);
+    let mut w = AlignedVec::new(kernel * 64, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let mut bias =
+        AlignedVec::new(8, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let mut state = seed;
     for val in w.iter_mut() {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
@@ -265,8 +267,10 @@ fn test_conv1d_ch8_a2conv1dch8_constructor() {
             }
         }
     }
-    let bias = AlignedVec::from(vec![0.0f32; 8]);
-    let conv = A2Conv1dCh8::new(&raw, 8, 8, kernel, 1, &bias);
+    let bias = AlignedVec::from_vec(vec![0.0f32; 8])
+        .expect("allocation should succeed for test-sized buffers");
+    let conv = A2Conv1dCh8::new(&raw, 8, 8, kernel, 1, &bias)
+        .expect("construction should succeed for test-sized buffers");
 
     // Verify: conv.weights[k * 64 + in * 8 + out] == raw[out * 8 * K + in * K + k]
     for out in 0..8 {
@@ -295,11 +299,15 @@ fn test_layer_forward_ch8_k6_parity() {
     let kernel = 6;
     let dilation = 7; // A2_DILATIONS[2]
     let (w, b) = make_random_weights(kernel, 42);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b)
+        .expect("construction should succeed for test-sized buffers");
 
-    let mut mixin_w_vec = AlignedVec::new(8, 0.0f32);
-    let mut l1x1_w_vec = AlignedVec::new(64, 0.0f32);
-    let mut l1x1_b_vec = AlignedVec::new(8, 0.0f32);
+    let mut mixin_w_vec =
+        AlignedVec::new(8, 0.0f32).expect("allocation should succeed for test-sized buffers");
+    let mut l1x1_w_vec =
+        AlignedVec::new(64, 0.0f32).expect("allocation should succeed for test-sized buffers");
+    let mut l1x1_b_vec =
+        AlignedVec::new(8, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let mut state: u32 = 100;
     for v in mixin_w_vec.iter_mut() {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
@@ -397,11 +405,15 @@ fn test_layer_forward_ch8_k15_last_layer_parity() {
     let kernel = 15;
     let dilation = 13;
     let (w, b) = make_random_weights(kernel, 88);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b)
+        .expect("construction should succeed for test-sized buffers");
 
-    let mixin_w_vec = AlignedVec::from(vec![0.1f32; 8]);
-    let l1x1_w_vec = AlignedVec::from(vec![0.5f32; 64]);
-    let l1x1_b_vec = AlignedVec::from(vec![0.0f32; 8]);
+    let mixin_w_vec = AlignedVec::from_vec(vec![0.1f32; 8])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_w_vec = AlignedVec::from_vec(vec![0.5f32; 64])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_b_vec = AlignedVec::from_vec(vec![0.0f32; 8])
+        .expect("allocation should succeed for test-sized buffers");
 
     let num_frames = 16;
     let max_lookback = (kernel - 1) * dilation;
@@ -483,11 +495,15 @@ fn test_layer_forward_ch8_middle_layer_accumulates() {
     let kernel = 6;
     let dilation = 1;
     let (w, b) = make_random_weights(kernel, 33);
-    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b);
+    let conv = A2Conv1dCh8::new(&w, 8, 8, kernel, dilation, &b)
+        .expect("construction should succeed for test-sized buffers");
 
-    let mixin_w_vec = AlignedVec::from(vec![0.1f32; 8]);
-    let l1x1_w_vec = AlignedVec::from(vec![0.0f32; 64]);
-    let l1x1_b_vec = AlignedVec::from(vec![0.0f32; 8]);
+    let mixin_w_vec = AlignedVec::from_vec(vec![0.1f32; 8])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_w_vec = AlignedVec::from_vec(vec![0.0f32; 64])
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_b_vec = AlignedVec::from_vec(vec![0.0f32; 8])
+        .expect("allocation should succeed for test-sized buffers");
 
     let num_frames = 8;
     let max_lookback = (kernel - 1) * dilation;

@@ -40,11 +40,12 @@ impl LstmLayerDyn {
         Self {
             input_size,
             hidden_size,
-            input_hidden_weights: AlignedVec::new(weights_len, 0.0f32),
-            bias: AlignedVec::new(h4, 0.0f32),
-            state: AlignedVec::new(ih, 0.0f32),
-            cell_state: AlignedVec::new(hidden_size, 0.0f32),
-            gates: AlignedVec::new(h4, 0.0f32),
+            input_hidden_weights: AlignedVec::new(weights_len, 0.0f32)
+                .expect("OOM: LstmLayerDyn weights"),
+            bias: AlignedVec::new(h4, 0.0f32).expect("OOM: LstmLayerDyn bias"),
+            state: AlignedVec::new(ih, 0.0f32).expect("OOM: LstmLayerDyn state"),
+            cell_state: AlignedVec::new(hidden_size, 0.0f32).expect("OOM: LstmLayerDyn cell_state"),
+            gates: AlignedVec::new(h4, 0.0f32).expect("OOM: LstmLayerDyn gates"),
         }
     }
 

@@ -238,18 +238,21 @@ impl WaveNetA2Dyn {
 
         let head1x1_w = if head1x1_active {
             AlignedVec::new(head_accum_size * h1_in_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers")
         } else {
-            AlignedVec::new(0, 0.0f32)
+            AlignedVec::new(0, 0.0f32).expect("allocation should succeed for test-sized buffers")
         };
         let head1x1_b = if head1x1_active {
             AlignedVec::new(head_accum_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers")
         } else {
-            AlignedVec::new(0, 0.0f32)
+            AlignedVec::new(0, 0.0f32).expect("allocation should succeed for test-sized buffers")
         };
         let head1x1_scratch = if head1x1_active {
             AlignedVec::new(head_accum_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers")
         } else {
-            AlignedVec::new(0, 0.0f32)
+            AlignedVec::new(0, 0.0f32).expect("allocation should succeed for test-sized buffers")
         };
 
         Ok(Self {
@@ -261,22 +264,28 @@ impl WaveNetA2Dyn {
             bottleneck,
             num_layers,
             layers: Vec::with_capacity(num_layers),
-            rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32),
+            rechannel_w_f32: AlignedVec::new(input_channels * channels, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             head_conv: None,
             head_rechannel_w: AlignedVec::new(
                 head_size.max(1) * super::super::params::A2_HEAD_KERNEL_SIZE * head_accum_size,
                 0.0f32,
-            ),
-            head_rechannel_b: AlignedVec::new(head_size.max(1), 0.0f32),
-            head_rechannel_scale: AlignedVec::new(head_size.max(1), 0.0f32),
-            head_accum: AlignedVec::new(head_ring_size * head_accum_size, 0.0f32),
+            )
+            .expect("allocation should succeed for test-sized buffers"),
+            head_rechannel_b: AlignedVec::new(head_size.max(1), 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_rechannel_scale: AlignedVec::new(head_size.max(1), 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_accum: AlignedVec::new(head_ring_size * head_accum_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             head_write_pos: rf,
             head_ring_mask,
             layer_buffers,
             layer_ring_sizes,
             layer_lookbacks,
             layer_buffer_starts,
-            layer_in: AlignedVec::new(channels * max_buf, 0.0f32),
+            layer_in: AlignedVec::new(channels * max_buf, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             kernel_sizes: kernel_sizes.to_vec(),
             dilations: dilations.to_vec(),
             activations,
@@ -291,11 +300,13 @@ impl WaveNetA2Dyn {
             max_buffer_size: max_buf,
             layer_raw: None,
             condition_size: 1,
-            z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32),
+            z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             head1x1_scratch,
             prewarm_on_reset: true,
             condition_dsp: None,
-            condition_dsp_output: AlignedVec::new(0, 0.0f32),
+            condition_dsp_output: AlignedVec::new(0, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
         })
     }
 
@@ -330,7 +341,8 @@ impl WaveNetA2Dyn {
         } else {
             0
         };
-        self.condition_dsp_output = AlignedVec::new(cond_size * max_buf, 0.0f32);
+        self.condition_dsp_output = AlignedVec::new(cond_size * max_buf, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         self.condition_dsp = cond_dsp;
     }
 
@@ -387,15 +399,18 @@ impl WaveNetA2Dyn {
             self.layer_buffer_starts.push(ring_size);
         }
 
-        self.layer_in = AlignedVec::new(channels * max_buf, 0.0f32);
+        self.layer_in = AlignedVec::new(channels * max_buf, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
 
         let head_ring_size = (rf + max_buf + 1).next_power_of_two();
         self.head_ring_mask = head_ring_size - 1;
-        self.head_accum = AlignedVec::new(head_ring_size * channels, 0.0f32);
+        self.head_accum = AlignedVec::new(head_ring_size * channels, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         self.head_write_pos = rf;
 
         let cond_output_size = self.condition_size * max_buf;
-        self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32);
+        self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
 
         Ok(())
     }

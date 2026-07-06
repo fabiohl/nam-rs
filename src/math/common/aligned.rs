@@ -9,9 +9,11 @@
 //!
 //! For huge-page-backed allocations (> 1 MiB), see `huge_alloc::HugePageVec`.
 
-use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
+
+use crate::common::diagnostics::NamErrorCode;
 
 /// Wrapper to guarantee 64-byte alignment (Cache Line / AVX-512).
 ///
@@ -59,16 +61,47 @@ impl<T> AlignedVec<T> {
     /// The default guaranteed alignment (64 bytes).
     pub const ALIGN: usize = 64;
 
+    /// Allocates a 64-byte aligned block for `capacity` elements.
+    ///
+    /// Returns the raw pointer and the `Layout` used (for later deallocation).
+    /// This is the single allocation entry-point; all constructors route through it.
+    fn alloc_slot(capacity: usize) -> Result<(*mut T, Layout), NamErrorCode> {
+        if capacity == 0 {
+            return Ok((NonNull::dangling().as_ptr(), Layout::new::<()>()));
+        }
+
+        let element_size = std::mem::size_of::<T>();
+        let byte_size = capacity
+            .checked_mul(element_size)
+            .ok_or(NamErrorCode::OutOfMemory)?;
+
+        let layout = Layout::from_size_align(byte_size, Self::ALIGN)
+            .map_err(|_| NamErrorCode::OutOfMemory)?;
+
+        // SAFETY: layout is derived from valid size (capacity * element_size, checked against
+        // overflow) with 64-byte alignment (Self::ALIGN). alloc returns either a valid aligned
+        // pointer or null.
+        let ptr = unsafe { alloc(layout) };
+        if ptr.is_null() {
+            return Err(NamErrorCode::OutOfMemory);
+        }
+
+        Ok((ptr as *mut T, layout))
+    }
+
     /// Creates a new aligned buffer and fills it with an initial value.
     ///
     /// Think of a shelf where each compartment has exactly the size the processor
     /// prefers to read (64 bytes). This function reserves the space and places a "default value"
     /// in each spot, leaving everything ready for immediate use.
-    pub fn new(len: usize, default: T) -> Self
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
+    pub fn new(len: usize, default: T) -> Result<Self, NamErrorCode>
     where
         T: Copy,
     {
-        let mut vec = Self::with_capacity(len);
+        let mut vec = Self::with_capacity(len)?;
         // SAFETY: ptr is non-null (from with_capacity), i < len ≤ cap (loop bound),
         // T: Copy guarantees no double-free on write. All elements are initialized.
         unsafe {
@@ -77,7 +110,7 @@ impl<T> AlignedVec<T> {
             }
         }
         vec.len = len;
-        vec
+        Ok(vec)
     }
 
     /// Reserves memory space with the required alignment, but without filling the data yet.
@@ -86,35 +119,16 @@ impl<T> AlignedVec<T> {
     /// organized in 64-byte blocks, but the "slots" are still empty.
     /// This special alignment allows the processor to read data at maximum
     /// speed, without needing to "adjust" the memory position.
-    pub fn with_capacity(capacity: usize) -> Self {
-        if capacity == 0 {
-            return Self {
-                ptr: NonNull::dangling(),
-                len: 0,
-                cap: 0,
-            };
-        }
-
-        let element_size = std::mem::size_of::<T>();
-        let byte_size = capacity.checked_mul(element_size).unwrap_or_else(|| {
-            handle_alloc_error(Layout::new::<()>());
-        });
-
-        let layout = Layout::from_size_align(byte_size, Self::ALIGN)
-            .expect("Failed to create layout for AlignedVec");
-
-        // SAFETY: layout is derived from valid size (capacity * element_size, checked against overflow)
-        // with 64-byte alignment (Self::ALIGN). alloc returns either a valid aligned pointer or null.
-        let ptr = unsafe { alloc(layout) };
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-
-        Self {
-            ptr: NonNull::new(ptr as *mut T).unwrap(),
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
+    pub fn with_capacity(capacity: usize) -> Result<Self, NamErrorCode> {
+        let (ptr, _layout) = Self::alloc_slot(capacity)?;
+        Ok(Self {
+            ptr: NonNull::new(ptr).unwrap_or(NonNull::dangling()),
             len: 0,
             cap: capacity,
-        }
+        })
     }
 
     /// Returns the number of elements in the buffer.
@@ -134,14 +148,17 @@ impl<T> AlignedVec<T> {
 
     /// Resizes the buffer to a new length, filling new elements with `default`.
     /// If `new_len <= self.len`, this is a no-op (never shrinks).
-    pub fn resize(&mut self, new_len: usize, default: T)
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation for the new capacity fails.
+    pub fn resize(&mut self, new_len: usize, default: T) -> Result<(), NamErrorCode>
     where
         T: Copy,
     {
         if new_len <= self.len {
-            return;
+            return Ok(());
         }
-        let mut new_vec = Self::with_capacity(new_len);
+        let mut new_vec = Self::with_capacity(new_len)?;
         // SAFETY: old_ptr is valid for self.len reads (from self, initialized in new/clone/resize).
         // new_vec.ptr is non-null with cap ≥ new_len (freshly allocated by with_capacity).
         // Ranges [0..self.len] and [self.len..new_len] are disjoint and within bounds.
@@ -158,6 +175,32 @@ impl<T> AlignedVec<T> {
         new_vec.len = new_len;
         let old = std::mem::replace(self, new_vec);
         drop(old);
+        Ok(())
+    }
+
+    /// An optimized conversion from regular vector to aligned buffer.
+    ///
+    /// Uses a direct memory copy to ensure the transfer is as fast as possible,
+    /// maintaining the 64-byte alignment.
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
+    pub fn from_vec(v: Vec<T>) -> Result<Self, NamErrorCode>
+    where
+        T: Copy,
+    {
+        if v.is_empty() {
+            return Self::with_capacity(0);
+        }
+        let mut aligned = Self::with_capacity(v.len())?;
+        // SAFETY: v.as_ptr() is valid for v.len() reads (Vec invariant). aligned.ptr is non-null
+        // with cap = v.len() (freshly allocated by with_capacity). T: Copy guarantees the source
+        // and destination do not overlap (separate allocations), so copy_nonoverlapping is sound.
+        unsafe {
+            std::ptr::copy_nonoverlapping(v.as_ptr(), aligned.ptr.as_ptr(), v.len());
+        }
+        aligned.len = v.len();
+        Ok(aligned)
     }
 }
 
@@ -201,13 +244,18 @@ impl<T> DerefMut for AlignedVec<T> {
 impl<T> Drop for AlignedVec<T> {
     fn drop(&mut self) {
         if self.cap > 0 {
-            let layout =
-                Layout::from_size_align(self.cap * std::mem::size_of::<T>(), Self::ALIGN).unwrap();
-            // SAFETY: self.ptr was allocated by with_capacity using layout with size=cap*size_of::<T>()
-            // and align=64. The layout is recalculated identically here. Drop runs exactly once
-            // (Rust ownership semantics); all elements have been properly dropped via DerefMut or leakage.
-            unsafe {
-                dealloc(self.ptr.as_ptr() as *mut u8, layout);
+            // Layout construction cannot fail here: self.cap was validated during allocation
+            // when alloc_slot produced a valid layout with the same size + alignment.
+            if let Ok(layout) =
+                Layout::from_size_align(self.cap * std::mem::size_of::<T>(), Self::ALIGN)
+            {
+                // SAFETY: self.ptr was allocated by alloc_slot using an identical layout
+                // (size=cap*size_of::<T>(), align=64). The layout is recalculated identically
+                // here. Drop runs exactly once (Rust ownership semantics); all elements have
+                // been properly dropped via DerefMut or leakage.
+                unsafe {
+                    dealloc(self.ptr.as_ptr() as *mut u8, layout);
+                }
             }
         }
     }
@@ -219,10 +267,19 @@ impl<T> Drop for AlignedVec<T> {
 /// one by one, ensuring the new "shelf" is a faithful replica of the original.
 impl<T: Clone> Clone for AlignedVec<T> {
     fn clone(&self) -> Self {
-        let mut new_vec = Self::with_capacity(self.len);
+        // The layout (self.len * size_of::<T>(), 64) is identical to a layout that was
+        // already validated during the original allocation. Therefore, alloc_slot cannot
+        // return Err here — only a true system OOM could fail, which is unrecoverable.
+        let (ptr, _layout) = Self::alloc_slot(self.len)
+            .expect("clone: layout identical to validated original allocation");
+        let mut new_vec = Self {
+            ptr: NonNull::new(ptr).unwrap_or(NonNull::dangling()),
+            len: 0,
+            cap: self.len,
+        };
         // SAFETY: self.ptr is valid for self.len reads (self is initialized). new_vec.ptr is non-null
-        // with cap ≥ self.len (freshly allocated by with_capacity). The clone source is the original
-        // buffer which remains unmodified throughout — no aliasing with the write target.
+        // with cap ≥ self.len. The clone source is the original buffer which remains unmodified
+        // throughout — no aliasing with the write target.
         unsafe {
             for i in 0..self.len {
                 let val = (*self.ptr.as_ptr().add(i)).clone();
@@ -231,40 +288,6 @@ impl<T: Clone> Clone for AlignedVec<T> {
         }
         new_vec.len = self.len;
         new_vec
-    }
-}
-
-/// Allows transforming a regular vector (`Vec`) into an aligned buffer.
-///
-/// It's like transferring items from a regular plastic bag into a case with
-/// custom-fit dividers (64-byte alignment), preparing the data for
-/// high-speed processing.
-impl<T: Copy> From<Vec<T>> for AlignedVec<T> {
-    #[inline]
-    fn from(v: Vec<T>) -> Self {
-        Self::from_vec(v)
-    }
-}
-
-// Safe implementation for empty vec
-impl<T: Copy> AlignedVec<T> {
-    /// An optimized version of the conversion from regular vector to aligned buffer.
-    ///
-    /// Uses a direct memory copy to ensure the transfer is as fast as possible,
-    /// maintaining the 64-byte alignment.
-    pub fn from_vec(v: Vec<T>) -> Self {
-        if v.is_empty() {
-            return Self::with_capacity(0);
-        }
-        let mut aligned = Self::with_capacity(v.len());
-        // SAFETY: v.as_ptr() is valid for v.len() reads (Vec invariant). aligned.ptr is non-null
-        // with cap = v.len() (freshly allocated by with_capacity). T: Copy guarantees the source
-        // and destination do not overlap (separate allocations), so copy_nonoverlapping is sound.
-        unsafe {
-            std::ptr::copy_nonoverlapping(v.as_ptr(), aligned.ptr.as_ptr(), v.len());
-        }
-        aligned.len = v.len();
-        aligned
     }
 }
 
@@ -282,11 +305,12 @@ unsafe impl<T: Sync> Sync for AlignedVec<T> {}
 #[cfg(test)]
 mod tests {
     use super::AlignedVec;
+    use crate::common::diagnostics::NamErrorCode;
 
     #[test]
-    fn aligned_from_empty_vec_is_safe() {
+    fn aligned_from_vec_empty_is_safe() {
         let v: Vec<f32> = Vec::new();
-        let aligned = AlignedVec::from(v);
+        let aligned = AlignedVec::from_vec(v).unwrap();
         assert!(aligned.is_empty());
         assert_eq!(aligned.len(), 0);
         assert_eq!(aligned.cap(), 0);
@@ -295,7 +319,7 @@ mod tests {
     #[test]
     fn aligned_from_vec_preserves_data() {
         let v = vec![1.0f32, 2.0, 3.0];
-        let aligned = AlignedVec::from(v);
+        let aligned = AlignedVec::from_vec(v).unwrap();
         assert_eq!(aligned.len(), 3);
         assert_eq!(aligned.cap(), 3);
         assert_eq!(aligned[0], 1.0);
@@ -306,7 +330,7 @@ mod tests {
     #[test]
     fn aligned_from_vec_empty_capacity_zero() {
         let v: Vec<f64> = Vec::new();
-        let aligned = AlignedVec::from(v);
+        let aligned = AlignedVec::from_vec(v).unwrap();
         assert!(aligned.is_empty());
         assert_eq!(aligned.len(), 0);
         assert_eq!(aligned.cap(), 0);
@@ -314,7 +338,7 @@ mod tests {
 
     #[test]
     fn with_capacity_sets_cap() {
-        let v = AlignedVec::<f32>::with_capacity(100);
+        let v = AlignedVec::<f32>::with_capacity(100).unwrap();
         assert_eq!(v.len(), 0);
         assert_eq!(v.cap(), 100);
         assert!(v.is_empty());
@@ -322,7 +346,7 @@ mod tests {
 
     #[test]
     fn with_capacity_zero() {
-        let v = AlignedVec::<f32>::with_capacity(0);
+        let v = AlignedVec::<f32>::with_capacity(0).unwrap();
         assert_eq!(v.len(), 0);
         assert_eq!(v.cap(), 0);
         assert!(v.is_empty());
@@ -331,13 +355,13 @@ mod tests {
     #[test]
     fn drop_excess_capacity_leak_free() {
         {
-            let _v = AlignedVec::<f32>::with_capacity(1024);
+            let _v = AlignedVec::<f32>::with_capacity(1024).unwrap();
         }
     }
 
     #[test]
     fn new_sets_len_eq_cap() {
-        let v = AlignedVec::new(64, 0.0f32);
+        let v = AlignedVec::new(64, 0.0f32).unwrap();
         assert_eq!(v.len(), 64);
         assert_eq!(v.cap(), 64);
         assert_eq!(v[0], 0.0);
@@ -346,7 +370,7 @@ mod tests {
 
     #[test]
     fn clone_preserves_len_cap() {
-        let original = AlignedVec::new(42, 1.0f64);
+        let original = AlignedVec::new(42, 1.0f64).unwrap();
         let cloned = original.clone();
         assert_eq!(cloned.len(), 42);
         assert_eq!(cloned.cap(), 42);
@@ -356,10 +380,10 @@ mod tests {
 
     #[test]
     fn resize_grows_cap_and_len() {
-        let mut v = AlignedVec::new(2, 0.0f32);
+        let mut v = AlignedVec::new(2, 0.0f32).unwrap();
         assert_eq!(v.len(), 2);
         assert_eq!(v.cap(), 2);
-        v.resize(8, 1.0f32);
+        v.resize(8, 1.0f32).unwrap();
         assert_eq!(v.len(), 8);
         assert_eq!(v.cap(), 8);
         assert_eq!(v[0], 0.0);
@@ -368,19 +392,33 @@ mod tests {
 
     #[test]
     fn resize_noop_preserves_dimensions() {
-        let mut v = AlignedVec::new(8, 0.0f32);
-        v.resize(4, 1.0f32);
+        let mut v = AlignedVec::new(8, 0.0f32).unwrap();
+        v.resize(4, 1.0f32).unwrap();
         assert_eq!(v.len(), 8);
         assert_eq!(v.cap(), 8);
     }
 
     #[test]
     fn alignment_is_64_bytes() {
-        let v = AlignedVec::<f32>::new(1, 0.0f32);
+        let v = AlignedVec::<f32>::new(1, 0.0f32).unwrap();
         assert_eq!(
             v.as_ptr() as usize % AlignedVec::<f32>::ALIGN,
             0,
             "pointer must be 64-byte aligned"
         );
+    }
+
+    #[test]
+    fn new_alloc_oom_on_layout_overflow() {
+        let result = AlignedVec::<f32>::new(isize::MAX as usize, 0.0f32);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), NamErrorCode::OutOfMemory);
+    }
+
+    #[test]
+    fn with_capacity_oom_on_layout_overflow() {
+        let result = AlignedVec::<f32>::with_capacity(isize::MAX as usize);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), NamErrorCode::OutOfMemory);
     }
 }

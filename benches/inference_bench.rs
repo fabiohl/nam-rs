@@ -509,8 +509,10 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
 /// This technique reduces memory bandwidth usage by 50% and improves
 /// L1 cache locality, crucial for WaveNet dense layers.
 fn bench_dot_product_avx2_256(c: &mut Criterion) {
-    let vec_a = AlignedVec::from_vec((0..256).map(|i| (i as f32) * 0.1).collect());
-    let vec_b = AlignedVec::from_vec((0..256).map(|i| (i as f32) * -0.1).collect());
+    let vec_a = AlignedVec::from_vec((0..256).map(|i| (i as f32) * 0.1).collect())
+        .expect("bench allocation failed");
+    let vec_b = AlignedVec::from_vec((0..256).map(|i| (i as f32) * -0.1).collect())
+        .expect("bench allocation failed");
 
     c.bench_function("DotProduct_AVX2_256elem", |b| {
         b.iter(|| unsafe {
@@ -527,8 +529,10 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
 /// Dot product version for small vectors (64 elements).
 /// Represents the typical intermediate layer size in lightweight models.
 fn bench_dot_product_avx2_64(c: &mut Criterion) {
-    let vec_a = AlignedVec::from_vec((0..64).map(|i| (i as f32) * 0.1).collect());
-    let vec_b = AlignedVec::from_vec((0..64).map(|i| (i as f32) * -0.1).collect());
+    let vec_a = AlignedVec::from_vec((0..64).map(|i| (i as f32) * 0.1).collect())
+        .expect("bench allocation failed");
+    let vec_b = AlignedVec::from_vec((0..64).map(|i| (i as f32) * -0.1).collect())
+        .expect("bench allocation failed");
     c.bench_function("DotProduct_AVX2_64elem", |b| {
         b.iter(|| unsafe {
             nam_rs::math::gemm::dot::dot_product_avx2(
@@ -1062,8 +1066,10 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
     {
         let in_size: usize = 16;
         let out_size: usize = 8;
-        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
-        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let weights: AlignedVec<f32> =
+            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
+        let bias: AlignedVec<f32> =
+            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
         let layer = DenseLayer::<16, 8> {
             weights,
             bias,
@@ -1111,8 +1117,10 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
     {
         let in_size: usize = 8;
         let out_size: usize = 1;
-        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
-        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let weights: AlignedVec<f32> =
+            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
+        let bias: AlignedVec<f32> =
+            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
         let layer = DenseLayer::<8, 1> {
             weights,
             bias,
@@ -1160,8 +1168,10 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
     {
         let in_size: usize = 16;
         let out_size: usize = 1;
-        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
-        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let weights: AlignedVec<f32> =
+            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
+        let bias: AlignedVec<f32> =
+            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
         let layer = DenseLayer::<16, 1> {
             weights,
             bias,
@@ -1753,7 +1763,7 @@ fn bench_cabsim_process_block(
     use nam_rs::dsp::cabsim::conv::ConvEngine;
 
     let ir = synth_ir(ir_len, 440.0, 10.0);
-    let mut engine = ConvEngine::new(&ir, partition_size);
+    let mut engine = ConvEngine::new(&ir, partition_size).expect("bench allocation failed");
 
     let mut input = vec![0.0f32; partition_size];
     let mut output = vec![0.0f32; partition_size];
@@ -1803,7 +1813,7 @@ fn bench_cabsim_engine_construction(c: &mut criterion::Criterion) {
 
     c.bench_function("Cabsim_Engine_Construction_2048_64", |b| {
         b.iter(|| {
-            let engine = ConvEngine::new(&ir, 64);
+            let engine = ConvEngine::new(&ir, 64).expect("bench allocation failed");
             std::hint::black_box(engine);
         });
     });
@@ -1816,7 +1826,7 @@ fn bench_cabsim_engine_construction_long(c: &mut criterion::Criterion) {
 
     c.bench_function("Cabsim_Engine_Construction_16384_64", |b| {
         b.iter(|| {
-            let engine = ConvEngine::new(&ir, 64);
+            let engine = ConvEngine::new(&ir, 64).expect("bench allocation failed");
             std::hint::black_box(engine);
         });
     });
@@ -1906,9 +1916,8 @@ fn bench_a2_head_ch8(c: &mut Criterion) {
     const K: usize = 16;
     let write_pos: usize = 200;
 
-    // Deterministic weights via LCG (matches head_test.rs)
     let mut state: u32 = 42;
-    let mut w = AlignedVec::new(K * CH, 0.0f32);
+    let mut w = AlignedVec::new(K * CH, 0.0f32).expect("bench allocation failed");
     for val in &mut *w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
@@ -1979,7 +1988,7 @@ fn bench_a2_head_ch3(c: &mut Criterion) {
     let write_pos: usize = 200;
 
     let mut state: u32 = 42;
-    let mut w = AlignedVec::new(K * CH, 0.0f32);
+    let mut w = AlignedVec::new(K * CH, 0.0f32).expect("bench allocation failed");
     for val in &mut *w {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;

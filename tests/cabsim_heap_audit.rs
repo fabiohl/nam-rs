@@ -41,7 +41,8 @@ mod audit_tests {
     fn run_cabsim_audit(ir_len: usize, partition_size: usize, label: &str) {
         let ir = synth_ir(ir_len, 440.0, 10.0);
 
-        let mut engine = ConvEngine::new(&ir, partition_size);
+        let mut engine = ConvEngine::new(&ir, partition_size)
+            .expect("construction should succeed for test-sized buffers");
 
         let iters = if cfg!(debug_assertions) { 100 } else { 2000 };
         let mut input = vec![0.0f32; partition_size];
@@ -92,7 +93,8 @@ mod audit_tests {
 
     #[test]
     fn test_cabsim_passthrough_heap_audit() {
-        let mut engine = ConvEngine::new(&[], 64);
+        let mut engine =
+            ConvEngine::new(&[], 64).expect("construction should succeed for test-sized buffers");
         assert!(engine.is_passthrough());
 
         let iters = if cfg!(debug_assertions) { 100 } else { 2000 };

@@ -43,12 +43,14 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
     let rf: usize = 0;
 
     // Interleaved 4-wide: [b=0][k=0][in_c=0][lane0..3] = [2.0, 0, 0, 0]
-    let mut conv_weights = AlignedVec::new(4, 0.0f32);
+    let mut conv_weights =
+        AlignedVec::new(4, 0.0f32).expect("allocation should succeed for test-sized buffers");
     conv_weights[0] = 2.0;
 
     let conv1d = Conv1dDyn {
         weights: conv_weights,
-        bias: AlignedVec::new(ch, 0.0f32),
+        bias: AlignedVec::new(ch, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 1,
         in_ch: ch,
@@ -62,16 +64,20 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
     let input_mixin = DenseLayerDyn {
         in_ch: 1,
         out_ch: ch,
-        weights: AlignedVec::new(ch, 0.0f32),
-        bias: AlignedVec::new(ch, 0.0f32),
+        weights: AlignedVec::new(ch, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
+        bias: AlignedVec::new(ch, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
     };
 
     let one_by_one = DenseLayerDyn {
         in_ch: ch,
         out_ch: ch,
-        weights: AlignedVec::new(ch * ch, 0.0f32),
-        bias: AlignedVec::new(ch, 0.0f32),
+        weights: AlignedVec::new(ch * ch, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
+        bias: AlignedVec::new(ch, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
     };
 
@@ -89,23 +95,31 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
         rechannel: DenseLayerDyn {
             in_ch: 1,
             out_ch: ch,
-            weights: AlignedVec::from_vec(vec![0.5f32]),
-            bias: AlignedVec::new(ch, 0.0f32),
+            weights: AlignedVec::from_vec(vec![0.5f32])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::new(ch, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayerDyn {
             in_ch: ch,
             out_ch: head,
-            weights: AlignedVec::from_vec(vec![1.0f32]),
-            bias: AlignedVec::new(head, 0.0f32),
+            weights: AlignedVec::from_vec(vec![1.0f32])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::new(head, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
-        array_outputs: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-        head_accum: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-        head_outputs: AlignedVec::new(head * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        array_outputs: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::new(head * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf,
         block_size: ch,
-        block_buffer: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        block_buffer: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
     };
 
     // PostStackHead: kernel=1, in_ch=1, out_ch=1, weight=3.0, ReLU
@@ -129,9 +143,11 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
         head_scale: 0.5,
         receptive_field_size: 0, // array_rf(0) + head_kernel(1) - 1 = 0
         condition_dsp: None,
-        condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         post_stack_head: Some(post_stack_head),
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     }
 }
@@ -299,8 +315,10 @@ fn test_post_stack_head_multi_array_determinism() {
             DenseLayerDyn {
                 in_ch,
                 out_ch,
-                weights: AlignedVec::from_vec(vec![0.01f32; out_ch * in_ch]),
-                bias: AlignedVec::new(out_ch, 0.0f32),
+                weights: AlignedVec::from_vec(vec![0.01f32; out_ch * in_ch])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::new(out_ch, 0.0f32)
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias,
             }
         };
@@ -308,7 +326,8 @@ fn test_post_stack_head_multi_array_determinism() {
         let make_conv = |in_ch: usize, out_ch: usize| -> Conv1dDyn {
             let raw = vec![0.01f32; out_ch * K * in_ch];
             let num_blocks = out_ch.div_ceil(4);
-            let mut weights = AlignedVec::new(num_blocks * K * in_ch * 4, 0.0f32);
+            let mut weights = AlignedVec::new(num_blocks * K * in_ch * 4, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
                 &raw,
                 &mut weights,
@@ -318,7 +337,8 @@ fn test_post_stack_head_multi_array_determinism() {
             );
             Conv1dDyn {
                 weights,
-                bias: AlignedVec::new(out_ch, 0.0f32),
+                bias: AlignedVec::new(out_ch, 0.0f32)
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation: 1,
                 in_ch,
@@ -348,12 +368,16 @@ fn test_post_stack_head_multi_array_determinism() {
             effective_layers: 1,
             rechannel: make_dense(1, CH, false),
             head_rechannel: make_dense(CH, HEAD, false),
-            array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-            head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-            head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             receptive_field_size: RF,
             block_size: CH,
-            block_buffer: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            block_buffer: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
         };
 
         let layer_a2 = WaveNetLayerDyn::new(
@@ -374,12 +398,16 @@ fn test_post_stack_head_multi_array_determinism() {
             effective_layers: 1,
             rechannel: make_dense(CH, HEAD, false),
             head_rechannel: make_dense(HEAD, 1, true),
-            array_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-            head_accum: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-            head_outputs: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            array_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_accum: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            head_outputs: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             receptive_field_size: RF,
             block_size: HEAD,
-            block_buffer: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            block_buffer: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
         };
 
         // PostStackHead: Tanh, kernel=1, weight=1.0
@@ -401,9 +429,11 @@ fn test_post_stack_head_multi_array_determinism() {
             head_scale: 0.02,
             receptive_field_size: RF, // RF + head_kernel - 1 with kernel=1
             condition_dsp: None,
-            condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            condition_dsp_output: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             post_stack_head: Some(post),
-            head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             prewarm_on_reset: true,
         }
     }

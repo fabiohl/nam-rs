@@ -41,6 +41,7 @@ use super::sinc_kernel::{
     NUM_PHASES, PhaseType, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
     generate_polyphase_bank_linear,
 };
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{
     AlignedVec, Avx2Math, Avx512Math, Avx512VnniBf16Math, InstructionSet, SimdMath,
     effective_instruction_set,
@@ -66,11 +67,11 @@ struct DelayLine {
 }
 
 impl DelayLine {
-    fn new() -> Self {
-        Self {
-            buf: AlignedVec::new(DELAY_LINE_LEN, 0.0f32),
+    fn new() -> Result<Self, NamErrorCode> {
+        Ok(Self {
+            buf: AlignedVec::new(DELAY_LINE_LEN, 0.0f32)?,
             pos: 0,
-        }
+        })
     }
 
     /// Inserts a sample into the delay line (double-write for contiguity).
@@ -229,8 +230,8 @@ impl ResamplerCore {
 
         Self {
             bank,
-            state_l: DelayLine::new(),
-            state_r: DelayLine::new(),
+            state_l: DelayLine::new().expect("failed to allocate resampler delay line"),
+            state_r: DelayLine::new().expect("failed to allocate resampler delay line"),
             phase_accum: (NUM_PHASES as u64) << 40,
             phase_step,
             process_stereo,
@@ -456,12 +457,12 @@ impl NamResampler {
         let inner = ResamplerCore::new(
             pw_rate,
             nam_rate,
-            generate_polyphase_bank(pw_rate, nam_rate),
+            generate_polyphase_bank(pw_rate, nam_rate).map_err(|e| anyhow::anyhow!("{e}"))?,
         );
         let outer = ResamplerCore::new(
             nam_rate,
             pw_rate,
-            generate_polyphase_bank(nam_rate, pw_rate),
+            generate_polyphase_bank(nam_rate, pw_rate).map_err(|e| anyhow::anyhow!("{e}"))?,
         );
 
         Ok(Self {
@@ -497,12 +498,14 @@ impl NamResampler {
         let inner = ResamplerCore::new(
             pw_rate,
             nam_rate,
-            generate_polyphase_bank_linear(pw_rate, nam_rate),
+            generate_polyphase_bank_linear(pw_rate, nam_rate)
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
         );
         let outer = ResamplerCore::new(
             nam_rate,
             pw_rate,
-            generate_polyphase_bank_linear(nam_rate, pw_rate),
+            generate_polyphase_bank_linear(nam_rate, pw_rate)
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
         );
 
         Ok(Self {

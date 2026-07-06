@@ -23,7 +23,8 @@ fn test_grouped_conv1d_groups2_single_frame() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 99);
@@ -84,7 +85,8 @@ fn test_grouped_conv1d_groups4_single_frame() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 256;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 77);
@@ -145,7 +147,8 @@ fn test_grouped_conv1d_depthwise() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 31);
@@ -206,7 +209,8 @@ fn test_grouped_conv1d_large_kernel_dilation() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_2stage,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 4096;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 13);
@@ -267,7 +271,8 @@ fn test_grouped_conv1d_with_mixin() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 17);
@@ -347,7 +352,8 @@ fn test_grouped_conv1d_block() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 2048;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 11);
@@ -418,7 +424,8 @@ fn test_grouped_conv1d_groups1_delegates_correctly() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 99);
@@ -478,7 +485,8 @@ fn test_grouped_conv1d_no_bias() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 256;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 33);
@@ -545,7 +553,8 @@ fn should_panic_process_single_frame_out_frame_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(512, in_ch, 99);
     let frame_idx = 400;
     let mut out_frame = vec![0.0f32; out_ch - 1]; // too short by 1
@@ -575,7 +584,8 @@ fn should_panic_process_single_frame_frame_idx_too_low() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(4096, in_ch, 99);
     let frame_idx = 1; // far too low: lookback = 64 * 2 = 128
     let mut out_frame = vec![0.0f32; out_ch];
@@ -605,7 +615,8 @@ fn should_panic_process_single_frame_mixin_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(512, in_ch, 99);
     let frame_idx = 400;
     let mut out_frame = vec![0.0f32; out_ch];
@@ -636,7 +647,8 @@ fn should_panic_process_single_frame_layer_buffer_too_small() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let buffer_frames = 10; // tiny buffer
     let layer_buffer = make_layer_buffer(buffer_frames, in_ch, 99);
     let frame_idx = 400; // way beyond buffer
@@ -667,7 +679,8 @@ fn should_panic_simd_kernel_out_frame_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(512, in_ch, 99);
     let frame_idx = 400;
     let mut out_frame = vec![0.0f32; out_ch - 1];
@@ -697,7 +710,8 @@ fn should_panic_simd_kernel_frame_idx_too_low() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(4096, in_ch, 99);
     let frame_idx = 50; // lookback = 128 * 14 = 1792
     let mut out_frame = vec![0.0f32; out_ch];
@@ -727,7 +741,8 @@ fn should_panic_simd_kernel_mixin_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(512, in_ch, 99);
     let frame_idx = 400;
     let mut out_frame = vec![0.0f32; out_ch];
@@ -764,7 +779,8 @@ fn should_panic_depthwise_out_frame_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(512, in_ch, 99);
     let frame_idx = 400;
     let mut out_frame = vec![0.0f32; out_ch - 1];
@@ -794,7 +810,8 @@ fn should_panic_depthwise_frame_idx_too_low() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(4096, in_ch, 99);
     let frame_idx = 10; // lookback = 32 * 4 = 128
     let mut out_frame = vec![0.0f32; out_ch];
@@ -824,7 +841,8 @@ fn should_panic_process_block_block_too_small() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(4096, in_ch, 99);
     let num_frames = 4;
     let mut block = vec![0.0f32; num_frames * out_ch - 1]; // 1 element short
@@ -855,7 +873,8 @@ fn should_panic_process_block_mixin_too_short() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
     let layer_buffer = make_layer_buffer(4096, in_ch, 99);
     let num_frames = 4;
     let mut block = vec![0.0f32; num_frames * out_ch];
@@ -894,7 +913,8 @@ fn should_panic_new_mismatched_weight_len() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 }
 
 #[test]
@@ -916,7 +936,8 @@ fn should_panic_new_zero_groups() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 }
 
 #[test]
@@ -938,7 +959,8 @@ fn should_panic_new_in_ch_not_divisible_by_groups() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 }
 
 #[test]
@@ -960,5 +982,6 @@ fn should_panic_new_out_ch_not_divisible_by_groups() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 }

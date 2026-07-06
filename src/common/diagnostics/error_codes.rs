@@ -106,6 +106,8 @@ pub enum NamErrorCode {
     GcOverflow,
     /// Corrupted GC overflow buffer slot (inconsistent type/pointer).
     GcCorrupted,
+    /// Memory allocation failed (OOM) — layout overflow or allocator exhaustion.
+    OutOfMemory,
 }
 
 impl NamErrorCode {
@@ -150,6 +152,7 @@ impl NamErrorCode {
             Self::UnknownCommand => "E4101",
             Self::CtrlCHandlerFailed => "E4102",
             Self::IrLoadFailed => "E4103",
+            Self::OutOfMemory => "E5000",
         }
     }
 
@@ -198,6 +201,7 @@ impl NamErrorCode {
             Self::UnknownCommand => "Unknown command",
             Self::CtrlCHandlerFailed => "Ctrl-C handler setup failed",
             Self::IrLoadFailed => "Cab-sim IR load failed",
+            Self::OutOfMemory => "Out of memory",
         }
     }
 
@@ -242,9 +246,12 @@ impl NamErrorCode {
             Self::UnknownCommand => "UNKNOWN_COMMAND",
             Self::CtrlCHandlerFailed => "CTRL_C_HANDLER_FAILED",
             Self::IrLoadFailed => "IR_LOAD_FAILED",
+            Self::OutOfMemory => "OUT_OF_MEMORY",
         }
     }
 }
+
+impl std::error::Error for NamErrorCode {}
 
 impl fmt::Display for NamErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

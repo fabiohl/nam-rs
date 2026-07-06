@@ -20,9 +20,12 @@ fn build_single_block_model() -> ConvNetModel {
         head_scale: 1.0,
         receptive_field_size: 0,
         post_stack_head: None,
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     }
 }
@@ -60,9 +63,12 @@ fn test_empty_model_outputs_silence() {
         head_scale: 1.0,
         receptive_field_size: 0,
         post_stack_head: None,
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     };
 
@@ -112,9 +118,12 @@ fn test_two_block_chain() {
         head_scale: 1.0,
         receptive_field_size: 0,
         post_stack_head: None,
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_a: AlignedVec::new(2 * WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(2 * WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     };
 
@@ -161,9 +170,12 @@ fn test_post_stack_head_integration() {
         head_scale: 1.0,
         receptive_field_size: 0,
         post_stack_head: Some(head),
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     };
 
@@ -202,9 +214,12 @@ fn test_prewarm_with_head() {
         head_scale: 1.0,
         receptive_field_size: 0,
         post_stack_head: Some(head),
-        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
-        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
         prewarm_on_reset: true,
     };
 

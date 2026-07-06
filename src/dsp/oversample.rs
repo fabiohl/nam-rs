@@ -190,9 +190,9 @@ impl X2Stage {
             down_filter: HalfBandFilter::design(12.0, dc_down),
             up_center: (dc_up / 2.0) as f32,
             down_center: (dc_down / 2.0) as f32,
-            up_ring: AlignedVec::new(HB_DELAY, 0.0f32),
+            up_ring: AlignedVec::new(HB_DELAY, 0.0f32).expect("OOM: X2Stage up_ring"),
             up_pos: 0,
-            down_ring: AlignedVec::new(HB_TAPS, 0.0f32),
+            down_ring: AlignedVec::new(HB_TAPS, 0.0f32).expect("OOM: X2Stage down_ring"),
             down_pos: 0,
             down_abs: 0,
         }
@@ -320,7 +320,8 @@ impl OversampleEngine {
         Self {
             factor,
             stages,
-            inter_buf: AlignedVec::new(inter_size, 0.0f32),
+            inter_buf: AlignedVec::new(inter_size, 0.0f32)
+                .expect("OOM: OversampleEngine inter_buf"),
             max_samples: max_input_samples,
         }
     }

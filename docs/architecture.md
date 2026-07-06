@@ -466,7 +466,7 @@ Typed error codes for structured diagnostics. Defined in `src/common/diagnostics
 | `E2xxx` | PipeWire / Audio / RT      | `E2001` DEADLINE_EXCEEDED, `E2100` PIPEWIRE_INIT_FAILED, `E2200` RESAMPLER_BUILD_FAILED, `E2300` SCHED_FIFO_DENIED                           |
 | `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW, `E3102` GC_CORRUPTED                                                                        |
 | `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND, `E4102` CTRL_C_HANDLER_FAILED, `E4103` IR_LOAD_FAILED                                   |
-| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*                                                                                               |
+| `E5xxx` | System / Hardware          | `E5000` OUT_OF_MEMORY                                                                                                                        |
 
 Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` skill (see [SKILL.md](../.agents/skills/diagnostico/SKILL.md)).
 

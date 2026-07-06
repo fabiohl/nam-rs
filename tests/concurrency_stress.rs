@@ -390,7 +390,8 @@ fn test_cabsim_swap_during_process() {
         .collect();
 
     let partition_size: usize = 64;
-    let engine_a = nam_rs::dsp::cabsim::conv::ConvEngine::new(&ir, partition_size);
+    let engine_a = nam_rs::dsp::cabsim::conv::ConvEngine::new(&ir, partition_size)
+        .expect("construction should succeed for test-sized buffers");
 
     let (mut cs_prod, cs_cons) =
         RingBuffer::<Option<Box<nam_rs::dsp::cabsim::conv::ConvEngine>>>::new(4);
@@ -407,10 +408,10 @@ fn test_cabsim_swap_during_process() {
     let it = Arc::clone(&iterations);
     let swapper = thread::spawn(move || {
         for i in 0..500 {
-            let mut current_engine = Some(Box::new(nam_rs::dsp::cabsim::conv::ConvEngine::new(
-                &ir,
-                partition_size,
-            )));
+            let mut current_engine = Some(Box::new(
+                nam_rs::dsp::cabsim::conv::ConvEngine::new(&ir, partition_size)
+                    .expect("construction should succeed for test-sized buffers"),
+            ));
             loop {
                 match cs_prod.push(current_engine) {
                     Ok(()) => break,

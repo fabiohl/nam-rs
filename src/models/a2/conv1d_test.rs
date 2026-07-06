@@ -14,7 +14,8 @@ fn make_test_weights(
 ) -> (AlignedVec<f32>, AlignedVec<f32>) {
     let num_blocks = out_ch.div_ceil(4);
     let total_w = num_blocks * 4 * in_ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0.0f32);
+    let mut weights =
+        AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     let mut state = seed;
     for i in 0..total_w {
@@ -23,7 +24,8 @@ fn make_test_weights(
         weights[i] = v;
     }
 
-    let mut bias = AlignedVec::new(out_ch, 0.0f32);
+    let mut bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     for i in 0..out_ch {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         bias[i] = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
@@ -560,7 +562,8 @@ fn test_a2_conv1d_grouped_groups2_parity() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 99);
@@ -623,7 +626,8 @@ fn test_a2_conv1d_grouped_depthwise_parity() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     assert!(conv.is_depthwise());
     assert_eq!(conv.groups(), 4);
@@ -717,7 +721,8 @@ fn test_a2_conv1d_grouped_with_mixin() {
         kernel,
         groups,
         crate::math::common::prefetch_strategy_simple,
-    );
+    )
+    .expect("construction should succeed for test-sized buffers");
 
     let buf_frames = kernel * dilation + 512;
     let layer_buffer = make_layer_buffer(buf_frames, in_ch, 44);

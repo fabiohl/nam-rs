@@ -29,7 +29,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
         let _raw_weights = vec![0.01f32; 16 * 3 * 16];
         let conv_weights = {
-            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
                 &_raw_weights,
                 &mut fw,
@@ -42,7 +43,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         WaveNetLayer {
             conv1d: Conv1d {
                 weights: conv_weights,
-                bias: AlignedVec::from_vec(vec![0.001; 16]),
+                bias: AlignedVec::from_vec(vec![0.001; 16])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: true,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -52,13 +54,17 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 },
             },
             input_mixin: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 16]),
-                bias: AlignedVec::from_vec(vec![0.0; 16]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 16])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 16])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 16 * 16]),
-                bias: AlignedVec::from_vec(vec![0.0; 16]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 16 * 16])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 16])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -82,21 +88,29 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_1,
         states: states_1,
         rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 16]),
-            bias: AlignedVec::from_vec(vec![0.0; 16]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 16])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 16])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 8 * 16]),
-            bias: AlignedVec::from_vec(vec![0.0; 8]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 8 * 16])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 8])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf,
         block_size: 16,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         effective_layers: layers_1_len,
     };
 
@@ -104,7 +118,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
         let _raw_weights = vec![0.01f32; 8 * 3 * 8];
         let conv_weights = {
-            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32);
+            let mut fw = AlignedVec::new(_raw_weights.len(), 0.0f32)
+                .expect("allocation should succeed for test-sized buffers");
             nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
                 &_raw_weights,
                 &mut fw,
@@ -117,19 +132,24 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         WaveNetLayer {
             conv1d: Conv1d {
                 weights: conv_weights,
-                bias: AlignedVec::from_vec(vec![0.001; 8]),
+                bias: AlignedVec::from_vec(vec![0.001; 8])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: true,
                 dilation,
                 prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 8]),
-                bias: AlignedVec::from_vec(vec![0.0; 8]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 8])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 8])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 8 * 8]),
-                bias: AlignedVec::from_vec(vec![0.0; 8]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 8 * 8])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 8])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -147,21 +167,29 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_2,
         states: states_2,
         rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 16 * 8]),
-            bias: AlignedVec::from_vec(vec![0.0; 8]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 16 * 8])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 8])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 8]),
-            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 8])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 1])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: true,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: 2,
         block_size: 8,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         effective_layers: layers_2_len,
     };
 
@@ -182,7 +210,8 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
 pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 5> {
         let raw_weights = vec![0.01f32; 4 * 5 * 4];
-        let mut weights = AlignedVec::new(5 * 4 * 4, 0.0f32);
+        let mut weights = AlignedVec::new(5 * 4 * 4, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
@@ -193,7 +222,8 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 weights,
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -203,13 +233,17 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
                 },
             },
             input_mixin: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 4]),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 4 * 4]),
-                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 4 * 4])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 4])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -217,7 +251,8 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 5> {
         let raw_weights = vec![0.01f32; 2 * 5 * 2];
-        let mut weights = AlignedVec::new(5 * 2 * 4, 0.0f32);
+        let mut weights = AlignedVec::new(5 * 2 * 4, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
             &raw_weights,
             &mut weights,
@@ -228,7 +263,8 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         WaveNetLayer {
             conv1d: Conv1d {
                 weights,
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -238,13 +274,17 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
                 },
             },
             input_mixin: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 2]),
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: AlignedVec::from_vec(vec![0.01f32; 2 * 2]),
-                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                weights: AlignedVec::from_vec(vec![0.01f32; 2 * 2])
+                    .expect("allocation should succeed for test-sized buffers"),
+                bias: AlignedVec::from_vec(vec![0.0; 2])
+                    .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
         }
@@ -266,21 +306,29 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         layers: layers_1,
         states: states_1,
         rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 4]),
-            bias: AlignedVec::from_vec(vec![0.0; 4]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 4])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 4])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 2 * 4]),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 2 * 4])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 2])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf1,
         block_size: 4,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         effective_layers: dilations_1.len(),
     };
 
@@ -294,21 +342,29 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         layers: layers_2,
         states: states_2,
         rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 4 * 2]),
-            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 4 * 2])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 2])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: AlignedVec::from_vec(vec![0.01f32; 2]),
-            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            weights: AlignedVec::from_vec(vec![0.01f32; 2])
+                .expect("allocation should succeed for test-sized buffers"),
+            bias: AlignedVec::from_vec(vec![0.0; 1])
+                .expect("allocation should succeed for test-sized buffers"),
             do_bias: true,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf2,
         block_size: 2,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES])
+            .expect("allocation should succeed for test-sized buffers"),
         effective_layers: dilations_2.len(),
     };
 

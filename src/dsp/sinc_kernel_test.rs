@@ -106,7 +106,8 @@ fn test_to_minimum_phase_energy_rms() {
 
 #[test]
 fn test_polyphase_bank_dimensions() {
-    let bank = generate_polyphase_bank(44100, 48000);
+    let bank = generate_polyphase_bank(44100, 48000)
+        .expect("construction should succeed for test-sized buffers");
     assert_eq!(bank.taps_per_phase, TAPS_PER_PHASE);
     // Verifies that all phases are accessible
     for p in 0..NUM_PHASES {
@@ -117,7 +118,8 @@ fn test_polyphase_bank_dimensions() {
 
 #[test]
 fn test_polyphase_bank_phase_dc_unity() {
-    let bank = generate_polyphase_bank(44100, 48000);
+    let bank = generate_polyphase_bank(44100, 48000)
+        .expect("construction should succeed for test-sized buffers");
     for p in 0..NUM_PHASES {
         let c = bank.phase_coeffs(p);
         let sum: f32 = c.iter().sum();
@@ -130,7 +132,8 @@ fn test_polyphase_bank_phase_dc_unity() {
 
 #[test]
 fn test_polyphase_bank_minphase_dc_unity() {
-    let bank = generate_polyphase_bank(22050, 48000);
+    let bank = generate_polyphase_bank(22050, 48000)
+        .expect("construction should succeed for test-sized buffers");
     for p in 0..NUM_PHASES {
         let c = bank.phase_coeffs(p);
         let sum: f32 = c.iter().sum();
@@ -143,7 +146,8 @@ fn test_polyphase_bank_minphase_dc_unity() {
 
 #[test]
 fn test_aligned_coeffs_alignment() {
-    let bank = generate_polyphase_bank(44100, 48000);
+    let bank = generate_polyphase_bank(44100, 48000)
+        .expect("construction should succeed for test-sized buffers");
     let ptr = bank.phase_ptr(0) as usize;
     assert_eq!(ptr % 64, 0, "Coefficients must be aligned to 64 bytes");
 }

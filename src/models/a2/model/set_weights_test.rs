@@ -12,8 +12,10 @@ fn make_minimal_layer(channels: usize) -> A2Layer {
     let kernel_size = 6;
     let num_blocks = channels.div_ceil(4);
     let conv_w_padded = num_blocks * 4 * channels * kernel_size;
-    let conv_w = AlignedVec::new(conv_w_padded, 0.0f32);
-    let conv_b = AlignedVec::new(channels, 0.0f32);
+    let conv_w = AlignedVec::new(conv_w_padded, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let conv_b = AlignedVec::new(channels, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     let conv = A2Conv1d::new(
         conv_w,
         conv_b,
@@ -24,9 +26,12 @@ fn make_minimal_layer(channels: usize) -> A2Layer {
         kernel_size,
         crate::math::common::prefetch_strategy_simple,
     );
-    let mixin_w = AlignedVec::new(channels, 0.0f32);
-    let l1x1_w = AlignedVec::new(channels * channels, 0.0f32);
-    let l1x1_b = AlignedVec::new(channels, 0.0f32);
+    let mixin_w = AlignedVec::new(channels, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_w = AlignedVec::new(channels * channels, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
+    let l1x1_b = AlignedVec::new(channels, 0.0f32)
+        .expect("allocation should succeed for test-sized buffers");
     A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b)
 }
 

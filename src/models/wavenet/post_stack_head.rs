@@ -51,8 +51,10 @@ impl PostStackHead {
         let weights_len = num_blocks * kernel * channels * 4;
         let bias_len = out_channels;
 
-        let weights = AlignedVec::new(weights_len, 0.0f32);
-        let bias = AlignedVec::new(bias_len, 0.0f32);
+        let weights = AlignedVec::new(weights_len, 0.0f32)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
+        let bias = AlignedVec::new(bias_len, 0.0f32)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
         let receptive_field = kernel;
         let state = WaveNetLayerState::new(channels, receptive_field, 0)?;
@@ -70,7 +72,8 @@ impl PostStackHead {
             prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
-        let scratch = AlignedVec::new(out_channels * WAVENET_MAX_NUM_FRAMES, 0.0f32);
+        let scratch = AlignedVec::new(out_channels * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
 
         Ok(Self {
             conv,

@@ -11,6 +11,7 @@
 //! access a contiguous virtual window where physical wrap is handled by the
 //! mirrored mapping, eliminating branch logic in the inner loop.
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 
@@ -104,8 +105,8 @@ impl A2Conv1d {
         kernel: usize,
         groups: usize,
         prefetch_fn: PrefetchFn,
-    ) -> Self {
-        Self::Grouped(A2GroupedConv1d::new(
+    ) -> Result<Self, NamErrorCode> {
+        Ok(Self::Grouped(A2GroupedConv1d::new(
             raw_weights,
             raw_bias,
             do_bias,
@@ -115,7 +116,7 @@ impl A2Conv1d {
             kernel,
             groups,
             prefetch_fn,
-        ))
+        )?))
     }
 
     /// Returns the number of groups (1 for `Standard`, >1 for `Grouped`).

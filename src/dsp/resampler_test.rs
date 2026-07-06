@@ -222,7 +222,8 @@ fn test_impulse_response_output() {
 
 #[test]
 fn test_phase_accum_underflow_guard() {
-    let bank = crate::dsp::sinc_kernel::generate_polyphase_bank(44100, 48000);
+    let bank = crate::dsp::sinc_kernel::generate_polyphase_bank(44100, 48000)
+        .expect("construction should succeed for test-sized buffers");
     let mut core = ResamplerCore::new(44100, 48000, bank);
 
     core.phase_accum = 0;

@@ -78,7 +78,8 @@ fn synth_signal_deterministic(len: usize, rng: &mut SimplePcg) -> Vec<f32> {
 // ── Golden verification ──
 
 fn golden_verify(label: &str, ir: &[f32], signal: &[f32], block_size: usize, max_sample_diff: f32) {
-    let mut engine = ConvEngine::new(ir, block_size);
+    let mut engine = ConvEngine::new(ir, block_size)
+        .expect("construction should succeed for test-sized buffers");
     let upols_output = process_full_signal(&mut engine, signal);
 
     let ref_output = direct_convolve(ir, signal);
@@ -175,8 +176,10 @@ fn test_cabsim_bitwise_determinism() {
     let ir = synth_ir_deterministic(128, 440.0, 8.0, 48000, &mut rng);
     let signal = synth_signal_deterministic(512, &mut rng);
 
-    let mut engine1 = ConvEngine::new(&ir, 64);
-    let mut engine2 = ConvEngine::new(&ir, 64);
+    let mut engine1 =
+        ConvEngine::new(&ir, 64).expect("construction should succeed for test-sized buffers");
+    let mut engine2 =
+        ConvEngine::new(&ir, 64).expect("construction should succeed for test-sized buffers");
 
     let out1 = process_full_signal(&mut engine1, &signal);
     let out2 = process_full_signal(&mut engine2, &signal);
@@ -195,13 +198,15 @@ fn test_cabsim_bitwise_determinism() {
 
 #[test]
 fn test_cabsim_passthrough_golden() {
-    let engine = ConvEngine::new(&[], 64);
+    let engine =
+        ConvEngine::new(&[], 64).expect("construction should succeed for test-sized buffers");
     assert!(engine.is_passthrough());
 
     let mut rng = SimplePcg::new(42);
     let signal = synth_signal_deterministic(256, &mut rng);
 
-    let mut engine2 = ConvEngine::new(&[], 64);
+    let mut engine2 =
+        ConvEngine::new(&[], 64).expect("construction should succeed for test-sized buffers");
     let output = process_full_signal(&mut engine2, &signal);
 
     let min_len = signal.len().min(output.len());

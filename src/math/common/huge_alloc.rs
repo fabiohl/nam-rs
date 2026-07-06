@@ -15,8 +15,10 @@
 //!
 //! Callers must use the returned `AllocInfo` to choose the correct deallocation path.
 
-use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ptr;
+
+use crate::common::diagnostics::NamErrorCode;
 
 /// Tracks which allocation strategy was used, to pick the right deallocation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,23 +66,28 @@ const fn align_up(size: usize, alignment: usize) -> usize {
 /// Attempts to allocate `size_bytes` with huge-page preference.
 ///
 /// # Returns
-/// `(ptr, AllocInfo, HugePageStatus)` — the caller must use `AllocInfo` to
+/// `Ok((ptr, AllocInfo, HugePageStatus))` — the caller must use `AllocInfo` to
 /// select the correct deallocation path.
+///
+/// # Errors
+/// Returns `NamErrorCode::OutOfMemory` if the layout could not be constructed
+/// (size overflows `isize::MAX`) or if the global allocator is exhausted.
 ///
 /// # Safety
 /// The caller must eventually deallocate using `deallocate_huge()` with the matching `AllocInfo`.
 /// The returned pointer is guaranteed to be at least 64-byte aligned for AVX-512.
-pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageStatus) {
+pub fn allocate_huge_pages(
+    size_bytes: usize,
+) -> Result<(*mut u8, AllocInfo, HugePageStatus), NamErrorCode> {
     if size_bytes < HUGE_PAGE_THRESHOLD {
-        // Small allocations: standard allocator, no syscall overhead.
-        let layout = Layout::from_size_align(size_bytes, 64)
-            .expect("Failed to create layout for huge_alloc (small)");
+        let layout =
+            Layout::from_size_align(size_bytes, 64).map_err(|_| NamErrorCode::OutOfMemory)?;
         // SAFETY: standard alloc with valid layout.
         let ptr = unsafe { alloc(layout) };
         if ptr.is_null() {
-            handle_alloc_error(layout);
+            return Err(NamErrorCode::OutOfMemory);
         }
-        return (ptr, AllocInfo::Heap, HugePageStatus::Heap);
+        return Ok((ptr, AllocInfo::Heap, HugePageStatus::Heap));
     }
 
     let huge_2m_size = align_up(size_bytes, HUGE_PAGE_2M);
@@ -90,13 +97,13 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
     let ptr = unsafe { try_mmap_huge(ptr::null_mut(), huge_2m_size, -1, 0, true) };
 
     if ptr != libc::MAP_FAILED {
-        return (
+        return Ok((
             ptr as *mut u8,
             AllocInfo::HugeTlb2M {
                 size_bytes: huge_2m_size,
             },
             HugePageStatus::Explicit2MB,
-        );
+        ));
     }
 
     // Strategy 2: anonymous mmap + madvise(MADV_HUGEPAGE) for transparent THP.
@@ -110,24 +117,23 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
         let _madvise_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_HUGEPAGE) };
         // madvise failure is non-fatal — pages may still be promoted later by khugepaged.
 
-        return (
+        return Ok((
             ptr as *mut u8,
             AllocInfo::MmapAnon {
                 size_bytes: thp_size,
             },
             HugePageStatus::Transparent,
-        );
+        ));
     }
 
     // Strategy 3: fallback to standard allocator.
-    let layout = Layout::from_size_align(size_bytes, 64)
-        .expect("Failed to create layout for huge_alloc (fallback)");
+    let layout = Layout::from_size_align(size_bytes, 64).map_err(|_| NamErrorCode::OutOfMemory)?;
     // SAFETY: standard alloc with valid layout.
     let ptr = unsafe { alloc(layout) };
     if ptr.is_null() {
-        handle_alloc_error(layout);
+        return Err(NamErrorCode::OutOfMemory);
     }
-    (ptr, AllocInfo::Heap, HugePageStatus::Heap)
+    Ok((ptr, AllocInfo::Heap, HugePageStatus::Heap))
 }
 
 /// Deallocates memory previously obtained from `allocate_huge_pages()`.
@@ -140,10 +146,12 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
 pub unsafe fn deallocate_huge(ptr: *mut u8, info: AllocInfo, size_bytes: usize) {
     match info {
         AllocInfo::Heap => {
-            let layout = Layout::from_size_align(size_bytes, 64)
-                .expect("Failed to create layout for huge_alloc dealloc");
-            // SAFETY: ptr and layout match the original allocation.
-            unsafe { dealloc(ptr, layout) };
+            // Layout construction cannot fail here: size_bytes was validated
+            // during allocation when the same size+align produced a valid layout.
+            if let Ok(layout) = Layout::from_size_align(size_bytes, 64) {
+                // SAFETY: ptr and layout match the original allocation.
+                unsafe { dealloc(ptr, layout) };
+            }
         }
         AllocInfo::MmapAnon {
             size_bytes: mmap_size,
@@ -277,11 +285,14 @@ pub struct HugePageVec<T> {
 
 impl<T> HugePageVec<T> {
     /// Creates a new huge-page-backed buffer filled with `default`.
-    pub fn new(len: usize, default: T) -> (Self, HugePageStatus)
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
+    pub fn new(len: usize, default: T) -> Result<(Self, HugePageStatus), NamErrorCode>
     where
         T: Copy,
     {
-        let (mut vec, status) = Self::with_capacity(len);
+        let (mut vec, status) = Self::with_capacity(len)?;
         // SAFETY: Inner safety guarantees are upheld by caller invariants.
         unsafe {
             for i in 0..len {
@@ -289,31 +300,34 @@ impl<T> HugePageVec<T> {
             }
         }
         vec.len = len;
-        (vec, status)
+        Ok((vec, status))
     }
 
     /// Reserves capacity with huge-page preference.
-    pub fn with_capacity(capacity: usize) -> (Self, HugePageStatus) {
+    ///
+    /// # Errors
+    /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
+    pub fn with_capacity(capacity: usize) -> Result<(Self, HugePageStatus), NamErrorCode> {
         if capacity == 0 {
-            return (
+            return Ok((
                 Self {
                     ptr: NonNull::dangling(),
                     len: 0,
                     alloc_info: AllocInfo::Heap,
                 },
                 HugePageStatus::Heap,
-            );
+            ));
         }
         let size_bytes = capacity * std::mem::size_of::<T>();
-        let (ptr, alloc_info, status) = allocate_huge_pages(size_bytes);
-        (
+        let (ptr, alloc_info, status) = allocate_huge_pages(size_bytes)?;
+        Ok((
             Self {
                 ptr: NonNull::new(ptr as *mut T).unwrap(),
                 len: 0,
                 alloc_info,
             },
             status,
-        )
+        ))
     }
 
     /// Returns the number of elements.

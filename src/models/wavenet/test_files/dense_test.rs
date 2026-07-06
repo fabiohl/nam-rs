@@ -9,14 +9,16 @@ use super::*;
 #[test]
 fn test_dense_layer_identity() {
     // 4x4 Identity weight matrix (f32).
-    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16]);
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16])
+        .expect("allocation should succeed for test-sized buffers");
     for out_c in 0..4 {
         f32_weights[out_c * 4 + out_c] = 1.0;
     }
 
     let dense = DenseLayer::<4, 4> {
         weights: f32_weights,
-        bias: AlignedVec::from_vec(vec![0.0; 4]),
+        bias: AlignedVec::from_vec(vec![0.0; 4])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
     };
 
@@ -36,14 +38,16 @@ fn test_dense_layer_identity() {
 #[test]
 fn test_dense_layer_with_bias() {
     // Identity f32 weights + Bias of 1.0.
-    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16]);
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 16])
+        .expect("allocation should succeed for test-sized buffers");
     for out_c in 0..4 {
         f32_weights[out_c * 4 + out_c] = 1.0;
     }
 
     let dense = DenseLayer::<4, 4> {
         weights: f32_weights,
-        bias: AlignedVec::from_vec(vec![1.0; 4]),
+        bias: AlignedVec::from_vec(vec![1.0; 4])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
     };
 
@@ -67,7 +71,8 @@ fn test_dense_layer_with_bias() {
 #[test]
 fn test_dense_layer_rectangular() {
     // Asymmetric Matrix: IN=8, OUT=4 (f32, row-major: in_c * out_ch + out_c).
-    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 32]); // 8 * 4
+    let mut f32_weights = AlignedVec::from_vec(vec![0.0f32; 32])
+        .expect("allocation should succeed for test-sized buffers"); // 8 * 4
     f32_weights[0] = 1.0; // in_c=0, out_c=0 → 0*4+0
     f32_weights[4] = 2.0; // in_c=1, out_c=0 → 1*4+0
     f32_weights[9] = 3.0; // in_c=2, out_c=1 → 2*4+1
@@ -77,7 +82,8 @@ fn test_dense_layer_rectangular() {
 
     let dense = DenseLayer::<8, 4> {
         weights: f32_weights,
-        bias: AlignedVec::from_vec(vec![0.5, -0.5, 1.0, -1.0]),
+        bias: AlignedVec::from_vec(vec![0.5, -0.5, 1.0, -1.0])
+            .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
     };
 

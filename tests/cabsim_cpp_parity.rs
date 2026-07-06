@@ -128,7 +128,8 @@ fn compare_golden_cpp(scenario: &CppScenario) {
         &mut rng,
     );
 
-    let mut engine = ConvEngine::new(&ir, scenario.block_size);
+    let mut engine = ConvEngine::new(&ir, scenario.block_size)
+        .expect("construction should succeed for test-sized buffers");
     let upols_output = process_full_signal(&mut engine, &input);
 
     assert!(

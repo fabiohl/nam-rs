@@ -14,6 +14,7 @@
 //! These are precomputed at construction time so the hot-path is a single
 //! FMA per element (lowered to `vfmadd231ps` on x86-64-v3).
 
+use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::{AlignedVec, SimdMath};
 
 /// 1-Dimensional Batch Normalization layer (inference-only).
@@ -54,14 +55,14 @@ impl BatchNorm1D {
         running_mean: &[f32],
         running_var: &[f32],
         eps: f32,
-    ) -> Self {
+    ) -> Result<Self, NamErrorCode> {
         assert_eq!(gamma.len(), num_channels);
         assert_eq!(beta.len(), num_channels);
         assert_eq!(running_mean.len(), num_channels);
         assert_eq!(running_var.len(), num_channels);
 
-        let mut scale = AlignedVec::new(num_channels, 0.0f32);
-        let mut offset = AlignedVec::new(num_channels, 0.0f32);
+        let mut scale = AlignedVec::new(num_channels, 0.0f32)?;
+        let mut offset = AlignedVec::new(num_channels, 0.0f32)?;
 
         for c in 0..num_channels {
             let var = running_var[c];
@@ -71,31 +72,35 @@ impl BatchNorm1D {
             offset[c] = beta[c] - running_mean[c] * scale[c];
         }
 
-        Self {
+        Ok(Self {
             num_channels,
             scale,
             offset,
-        }
+        })
     }
 
     /// Constructs a `BatchNorm1D` from already-fused parameters.
     ///
     /// Useful when the fused scale/offset are provided directly by the
     /// model loader (e.g. from a `.namb` blob prepared by the training script).
-    pub fn from_fused(num_channels: usize, scale: &[f32], offset: &[f32]) -> Self {
+    pub fn from_fused(
+        num_channels: usize,
+        scale: &[f32],
+        offset: &[f32],
+    ) -> Result<Self, NamErrorCode> {
         assert_eq!(scale.len(), num_channels);
         assert_eq!(offset.len(), num_channels);
 
-        let mut s = AlignedVec::new(num_channels, 0.0f32);
-        let mut o = AlignedVec::new(num_channels, 0.0f32);
+        let mut s = AlignedVec::new(num_channels, 0.0f32)?;
+        let mut o = AlignedVec::new(num_channels, 0.0f32)?;
         s.copy_from_slice(scale);
         o.copy_from_slice(offset);
 
-        Self {
+        Ok(Self {
             num_channels,
             scale: s,
             offset: o,
-        }
+        })
     }
 
     /// Applies the batch normalization affine transform in-place, via SIMD dispatch.

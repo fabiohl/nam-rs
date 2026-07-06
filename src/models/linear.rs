@@ -133,7 +133,8 @@ impl LinearModel {
     ) -> std::io::Result<Self> {
         let receptive_field = weights.len();
         let mode = Self::resolve_mode(implementation, receptive_field, &weights);
-        let mut aligned = AlignedVec::from_vec(weights);
+        let mut aligned = AlignedVec::from_vec(weights)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::OutOfMemory, format!("{e}")))?;
         aligned.reverse();
         let history = MirroredBuffer::<f32>::new(receptive_field)?;
         let limit = history.size();
@@ -166,7 +167,9 @@ impl LinearModel {
                 if receptive_field >= FFT_AUTO_THRESHOLD {
                     let p = select_partition_size(receptive_field);
                     if p < receptive_field {
-                        return LinearMode::Fft(Box::new(LinearFftState::new(p, weights)));
+                        return LinearMode::Fft(Box::new(
+                            LinearFftState::new(p, weights).expect("OOM: linear FFT state"),
+                        ));
                     }
                 }
                 LinearMode::Direct
@@ -180,7 +183,9 @@ impl LinearModel {
                     return LinearMode::Direct;
                 }
                 let p = select_partition_size(receptive_field);
-                LinearMode::Fft(Box::new(LinearFftState::new(p, weights)))
+                LinearMode::Fft(Box::new(
+                    LinearFftState::new(p, weights).expect("OOM: linear FFT state"),
+                ))
             }
         }
     }
@@ -442,8 +447,10 @@ mod tests {
         // Let's use explicit Fft with a small P to force many partitions
         // We'll bypass new() and construct manually for this edge case
         let ir = vec![1.0f32; 2048];
-        let fft_state = LinearFftState::new(256, &ir);
-        let mut aligned = AlignedVec::from_vec(ir.clone());
+        let fft_state = LinearFftState::new(256, &ir)
+            .expect("construction should succeed for test-sized buffers");
+        let mut aligned = AlignedVec::from_vec(ir.clone())
+            .expect("allocation should succeed for test-sized buffers");
         aligned.reverse();
         let history = MirroredBuffer::<f32>::new(2048).unwrap();
         let limit = history.size();
@@ -787,8 +794,10 @@ mod tests {
             LinearModel::new(ir.clone(), 0.0, LinearImplementation::Direct).unwrap();
         direct_model.prewarm(0);
 
-        let fft_state = LinearFftState::new(128, &ir);
-        let mut aligned = AlignedVec::from_vec(ir.clone());
+        let fft_state = LinearFftState::new(128, &ir)
+            .expect("construction should succeed for test-sized buffers");
+        let mut aligned = AlignedVec::from_vec(ir.clone())
+            .expect("allocation should succeed for test-sized buffers");
         aligned.reverse();
         let history = MirroredBuffer::<f32>::new(1024).unwrap();
         let limit = history.size();
@@ -812,8 +821,10 @@ mod tests {
             LinearModel::new(nonzero_ir.clone(), 0.1, LinearImplementation::Direct).unwrap();
         direct2.prewarm(0);
 
-        let fft_state2 = LinearFftState::new(128, &nonzero_ir);
-        let mut aligned2 = AlignedVec::from_vec(nonzero_ir.clone());
+        let fft_state2 = LinearFftState::new(128, &nonzero_ir)
+            .expect("construction should succeed for test-sized buffers");
+        let mut aligned2 = AlignedVec::from_vec(nonzero_ir.clone())
+            .expect("allocation should succeed for test-sized buffers");
         aligned2.reverse();
         let history2 = MirroredBuffer::<f32>::new(1024).unwrap();
         let limit2 = history2.size();

@@ -76,11 +76,14 @@ impl WaveNetA2Cascade {
             arrays,
             receptive_field_size: rf,
             condition_dsp,
-            condition_dsp_output: AlignedVec::new(cond_buf_size, 0.0f32),
+            condition_dsp_output: AlignedVec::new(cond_buf_size, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             condition_size,
             prewarm_on_reset: true,
-            cascade_residual: AlignedVec::new(max_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32),
-            intermediate_head_output: AlignedVec::new(max_hs * WAVENET_MAX_NUM_FRAMES, 0.0f32),
+            cascade_residual: AlignedVec::new(max_ch * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            intermediate_head_output: AlignedVec::new(max_hs * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
             max_channels: max_ch,
             max_head_size: max_hs,
             max_buffer_size: WAVENET_MAX_NUM_FRAMES,
@@ -207,9 +210,12 @@ impl WaveNetA2Cascade {
             arr.set_max_buffer_size(max_buf)?;
         }
         let cond_output_size = self.condition_size * max_buf;
-        self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32);
-        self.cascade_residual = AlignedVec::new(self.max_channels * max_buf, 0.0f32);
-        self.intermediate_head_output = AlignedVec::new(self.max_head_size * max_buf, 0.0f32);
+        self.condition_dsp_output = AlignedVec::new(cond_output_size, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
+        self.cascade_residual = AlignedVec::new(self.max_channels * max_buf, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
+        self.intermediate_head_output = AlignedVec::new(self.max_head_size * max_buf, 0.0f32)
+            .expect("allocation should succeed for test-sized buffers");
         Ok(())
     }
 

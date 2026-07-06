@@ -12,7 +12,8 @@ fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedV
     let out_ch = 3usize;
     let num_blocks = 1; // out_ch.div_ceil(4) = 1 for CH=3
     let total_w = num_blocks * 4 * in_ch * kernel;
-    let mut weights = AlignedVec::new(total_w, 0.0f32);
+    let mut weights =
+        AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
     let mut state = seed;
     for i in 0..total_w {
@@ -25,7 +26,8 @@ fn make_ch3_test_weights(kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedV
         weights[i] = v;
     }
 
-    let mut bias = AlignedVec::new(out_ch, 0.0f32);
+    let mut bias =
+        AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     for i in 0..out_ch {
         state = state.wrapping_mul(1664525).wrapping_add(1013904223);
         bias[i] = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
@@ -594,7 +596,8 @@ fn test_a2conv1dch3_k6_vs_scalar_ref() {
     let kernel = 6;
     let dilation = A2_DILATIONS[5];
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 10);
-    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let buf_frames = kernel * dilation + 512;
     let layer_buffer = make_f32_layer_buffer(buf_frames, 99);
     let frame_idx = kernel * dilation + 64;
@@ -632,7 +635,8 @@ fn test_a2conv1dch3_k15_vs_scalar_ref() {
     let kernel = 15;
     let dilation = A2_DILATIONS[15];
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 20);
-    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let buf_frames = kernel * dilation + 512;
     let layer_buffer = make_f32_layer_buffer(buf_frames, 77);
     let frame_idx = kernel * dilation + 64;
@@ -671,7 +675,8 @@ fn test_a2conv1dch3_zero_history_gives_bias() {
     let dilation = 1;
     let raw_w = vec![0.0f32; 3 * 3 * kernel];
     let bias = vec![0.1f32, 0.2, 0.3];
-    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let layer_buffer = vec![0.0f32; (kernel + 4) * 3];
     let frame_idx = kernel;
     let mut out = [0.0f32; 4];
@@ -697,7 +702,8 @@ fn test_layer_fwd_ch3_k6_even_frames_parity() {
     let dilation = A2_DILATIONS[5];
     let num_frames = 16usize;
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 30);
-    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let max_lookback = (kernel - 1) * dilation;
     let layer_buffer = make_f32_layer_buffer(max_lookback + num_frames + 8, 55);
     let frame_start = max_lookback;
@@ -783,7 +789,8 @@ fn test_layer_fwd_ch3_k15_odd_frames_parity() {
     let dilation = A2_DILATIONS[15];
     let num_frames = 17usize;
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 40);
-    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let max_lookback = (kernel - 1) * dilation;
     let layer_buffer = make_f32_layer_buffer(max_lookback + num_frames + 8, 66);
     let frame_start = max_lookback;
@@ -857,7 +864,8 @@ fn test_layer_fwd_ch3_is_last_skips_l1x1() {
     let dilation = 1;
     let num_frames = 8;
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 50);
-    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let max_lookback = (kernel - 1) * dilation;
     let layer_buffer = make_f32_layer_buffer(max_lookback + num_frames + 4, 11);
     let frame_start = max_lookback;
@@ -903,7 +911,8 @@ fn test_layer_fwd_ch3_is_first_assigns_head() {
     let dilation = 1;
     let num_frames = 8;
     let (raw_w, bias) = make_ch3_f32_weights(kernel, 60);
-    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias);
+    let conv = A2Conv1dCh3::new(&raw_w, CH, CH, kernel, dilation, &bias)
+        .expect("construction should succeed for test-sized buffers");
     let max_lookback = (kernel - 1) * dilation;
     let layer_buffer = make_f32_layer_buffer(max_lookback + num_frames + 4, 22);
     let frame_start = max_lookback;
@@ -958,7 +967,8 @@ fn test_a2conv1dch3_k6_all_dilations() {
             continue;
         }
         let dilation = A2_DILATIONS[idx];
-        let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias);
+        let conv = A2Conv1dCh3::new(&raw_w, 3, 3, kernel, dilation, &bias)
+            .expect("construction should succeed for test-sized buffers");
         let frame_idx = 3500usize;
         let mut fast_out = [0.0f32; 4];
         let mut ref_out = [0.0f32; 4];

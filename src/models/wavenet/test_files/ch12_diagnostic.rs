@@ -14,12 +14,12 @@ fn test_dense_ch12_scalar_vs_simd() {
         raw[i] = (i as f32 - 72.0) * 0.01; // range ~[-0.72, 0.72]
     }
     
-    let bias = AlignedVec::from_vec(vec![0.1f32; 12]);
+    let bias = AlignedVec::from_vec(vec![0.1f32; 12]).expect("allocation should succeed for test-sized buffers");
     
     let dense = crate::models::wavenet::DenseLayer::<12, 12> {
         bias: bias.clone(),
         do_bias: true,
-        weights: AlignedVec::from_vec(raw.clone()),
+        weights: AlignedVec::from_vec(raw.clone()).expect("allocation should succeed for test-sized buffers"),
     };
     
     let input: Vec<f32> = (0..12).map(|i| (i as f32 - 6.0) * 0.2).collect();
@@ -61,11 +61,11 @@ fn test_conv1d_ch12_scalar_vs_simd() {
     }
     
     // Transpose to interleaved-4-wide (f32)
-    let mut weights_f32 = AlignedVec::new(CH * K * CH, 0.0f32);
+    let mut weights_f32 = AlignedVec::new(CH * K * CH, 0.0f32).expect("allocation should succeed for test-sized buffers");
     crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
         &raw, &mut weights_f32, CH, CH, K);
     
-    let bias = AlignedVec::from_vec(vec![0.01f32; CH]);
+    let bias = AlignedVec::from_vec(vec![0.01f32; CH]).expect("allocation should succeed for test-sized buffers");
     
     let conv = Conv1d::<CH, CH, K> {
         weights: weights_f32,

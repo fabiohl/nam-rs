@@ -28,9 +28,9 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     let f32_weights = if interleaved {
         let total_4wide = checked_arith::checked_mul4(out_size.div_ceil(4), 4, in_size, k_size)?;
         let raw = cursor.read_slice(total_4wide)?;
-        let mut weights = AlignedVec::new(padded_total, 0.0f32);
+        let mut weights = AlignedVec::new(padded_total, 0.0f32)?;
         if width != 4 {
-            let mut tmp = AlignedVec::new(total_4wide, 0.0f32);
+            let mut tmp = AlignedVec::new(total_4wide, 0.0f32)?;
             tmp.copy_from_slice(raw);
             match width {
                 16 => transpose_4wide_to_16wide(&tmp, &mut weights, in_size, out_size, k_size),
@@ -50,7 +50,7 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     } else {
         let total = checked_arith::checked_conv_total(out_size, in_size, k_size)?;
         let raw = cursor.read_slice(total)?;
-        let mut weights = AlignedVec::new(padded_total, 0.0f32);
+        let mut weights = AlignedVec::new(padded_total, 0.0f32)?;
         match width {
             16 => transpose_conv1d_interleaved_16wide(raw, &mut weights, in_size, out_size, k_size),
             8 => transpose_conv1d_interleaved_8wide(raw, &mut weights, in_size, out_size, k_size),
@@ -60,9 +60,9 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     };
 
     let bias = if do_bias {
-        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())?
     } else {
-        AlignedVec::new(out_size, 0.0)
+        AlignedVec::new(out_size, 0.0)?
     };
 
     // Large dilations need 2-stage prefetch: schedule the load two
@@ -93,7 +93,7 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
 ) -> anyhow::Result<T> {
     let total = checked_arith::checked_dense_total(out_size, in_size)?;
     let raw = cursor.read_slice(total)?;
-    let mut f32_weights = AlignedVec::new(total, 0.0f32);
+    let mut f32_weights = AlignedVec::new(total, 0.0f32)?;
     let interleaved = cursor.is_interleaved4();
 
     if interleaved {
@@ -103,9 +103,9 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
     }
 
     let bias = if do_bias {
-        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())?
     } else {
-        AlignedVec::new(out_size, 0.0)
+        AlignedVec::new(out_size, 0.0)?
     };
 
     Ok(T::from_parts(f32_weights, bias, do_bias, in_size, out_size))
@@ -119,7 +119,7 @@ pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
 ) -> anyhow::Result<T> {
     let total = checked_arith::checked_dense_total(out_size, in_size)?;
     let raw = cursor.read_slice(total)?;
-    let mut f32_weights = AlignedVec::new(total, 0.0f32);
+    let mut f32_weights = AlignedVec::new(total, 0.0f32)?;
     let interleaved = cursor.is_interleaved4();
 
     if interleaved {
@@ -129,9 +129,9 @@ pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
     }
 
     let bias = if do_bias {
-        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())?
     } else {
-        AlignedVec::new(out_size, 0.0)
+        AlignedVec::new(out_size, 0.0)?
     };
 
     Ok(T::from_parts(f32_weights, bias, do_bias, in_size, out_size))

@@ -76,3 +76,20 @@
 - **Epic 3.2: Sanitização Rigorosa via Miri Engine (Refere-se ao Finding 3)**
   - **Task 3.2.1 (Automação de Testes Longos):** Configurar no script base de testes noturnos/longos (`utils/tests-long.sh`) um acionamento isolado, mas obrigatório, para o comando `cargo miri test --target x86_64-unknown-linux-gnu`.
   - **Task 3.2.2 (Isolamento FFI com Decorators):** Demarcar cuidadosamente suítes de testes correntes que utilizam interfaces FFI externas puras de sistema (kernel level ou host DAW) ignorando-as explicitamente da análise via diretiva condicional (`#[cfg(not(miri))]`). Dessa forma, restringe-se eficientemente o tempo computacional da interpretação do Miri apenas à prova de ponteiros lógicos dos módulos iteradores SIMD (`sinc_kernel.rs`) e dos citados alocadores customizados.
+
+---
+
+### 🔥 CORREÇÃO RESIDUAL (Planejamento Ágil - Falha na Execução da Epic 1.2)
+
+**Objetivo:** Erradicar o uso de `.expect()` e panics explícitos que foram injetados indevidamente nas funções de inicialização de DSP (`oversample.rs` e `resampler.rs`) em substituição ao fallback silencioso. O pânico derruba o host e viola a regra de segurança.
+
+- **Epic 1.2 (Retrabalho Obrigatório): Cascateamento Genuíno de `Result`**
+  - **Task 1.2.4 (`src/dsp/oversample.rs`):** A estrutura `X2Stage` e `OversampleEngine` instanciam `AlignedVec::new`. O implementador injetou `.expect("OOM: X2Stage up_ring")`. **Ação Exigida:**
+    1. Alterar a assinatura de `X2Stage::new(...)` para retornar `Result<Self, NamErrorCode>`.
+    2. Substituir o `.expect()` pelo operador `?` (`AlignedVec::new(...)?`).
+    3. Alterar `OversampleEngine::new(...)` para `Result<Self, NamErrorCode>`, cascateando com `?`.
+  - **Task 1.2.5 (`src/dsp/resampler.rs`):** O implementador injetou `.expect("failed to allocate resampler delay line")` na inicialização de `ResamplerCore`. **Ação Exigida:**
+    1. Alterar `ResamplerCore::new(...)` para `Result<Self, NamErrorCode>`.
+    2. Utilizar `DelayLine::new()?` nas atribuições de `state_l` e `state_r`.
+    3. Atualizar as chamadas de `ResamplerCore::new` dentro de `NamResampler::new` (que já retorna `Result` via `anyhow`) para utilizar o operador `?`, mapeando o erro apropriadamente se necessário.
+  - **Task 1.2.6 (`src/dsp/cabsim/conv.rs` e similares):** Varrer a base por qualquer `.expect("OOM...")` residual inserido fora de diretórios de testes (`#[cfg(test)]`). Nenhuma alocação em código de produção deve entrar em pânico. A falha deve seguir o caminho do `Result` até o caller primário.
