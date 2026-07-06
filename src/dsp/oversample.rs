@@ -27,6 +27,8 @@
 
 use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
+use crate::math::common::hsum_avx2;
+use core::arch::x86_64::*;
 
 /// Half-band FIR filter length (≡ 1 mod 4 so D=HB_TAPS/2 is even).
 /// 25 taps, D=12. Kaiser β=12 → >100 dB stop-band rejection.
@@ -35,6 +37,17 @@ const HB_TAPS: usize = 25;
 const HB_DELAY: usize = HB_TAPS / 2;
 /// Number of non-zero odd-index taps (h[1], h[3], ..., h[23]).
 const HB_ODD_COUNT: usize = HB_TAPS / 2; // 12
+
+/// Upsampler ring double-buffer length (HB_DELAY × 2 for contiguous access).
+const UP_DELAY_LINE_LEN: usize = HB_DELAY * 2;
+/// Downsampler even-sample ring size (⌈HB_TAPS/2⌉ = 13).
+const DOWN_EVEN_LEN: usize = (HB_TAPS + 1) / 2;
+/// Downsampler odd-sample ring size (⌊HB_TAPS/2⌋ = 12).
+const DOWN_ODD_LEN: usize = HB_TAPS / 2;
+/// Downsampler even double-buffer length.
+const DOWN_EVEN_DELAY_LINE_LEN: usize = DOWN_EVEN_LEN * 2;
+/// Downsampler odd double-buffer length.
+const DOWN_ODD_DELAY_LINE_LEN: usize = DOWN_ODD_LEN * 2;
 
 /// Oversampling factor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -134,6 +147,11 @@ impl HalfBandFilter {
             }
         }
 
+        // Reverse so coeffs[0] pairs with the oldest sample in the
+        // double-buffer window (oldest-first contiguous layout),
+        // enabling direct AVX2 FMADD without permutes.
+        coeffs.reverse();
+
         HalfBandFilter { coeffs }
     }
 }
@@ -163,9 +181,8 @@ enum OsStages {
 
 /// Single 2× oversampling stage (up + down delay-line state).
 ///
-/// Uses pre-allocated ring buffers for delay lines. At 12 samples (up)
-/// and 25 samples (down), modulo indexing is cheap and avoids
-/// the double-buffer complexity.
+/// Uses pre-allocated double-buffer delay lines for contiguous SIMD access,
+/// eliminating per-sample modulo indexing from the hot-path.
 struct X2Stage {
     /// Filter for upsampling (DC gain = 2.0, center tap multiplier = 1.0).
     up_filter: HalfBandFilter,
@@ -175,11 +192,20 @@ struct X2Stage {
     up_center: f32,
     /// Center tap multiplier for the downsampler (h[D] = dc_gain_down / 2 = 0.5).
     down_center: f32,
+    /// Upsampler double-buffer delay line (24 entries).
     up_ring: AlignedVec<f32>,
+    /// Upsampler write position (0..HB_DELAY-1).
     up_pos: usize,
-    down_ring: AlignedVec<f32>,
-    down_pos: usize,
-    down_abs: u64,
+    /// Downsampler double-buffer for even-position samples (26 entries).
+    down_ring_even: AlignedVec<f32>,
+    /// Downsampler double-buffer for odd-position samples (24 entries).
+    down_ring_odd: AlignedVec<f32>,
+    /// Write position in even ring (0..DOWN_EVEN_LEN-1).
+    down_pos_even: usize,
+    /// Write position in odd ring (0..DOWN_ODD_LEN-1).
+    down_pos_odd: usize,
+    /// Total samples processed (replaces modulo ring tracking).
+    down_total: u64,
 }
 
 impl X2Stage {
@@ -191,36 +217,45 @@ impl X2Stage {
             down_filter: HalfBandFilter::design(12.0, dc_down),
             up_center: (dc_up / 2.0) as f32,
             down_center: (dc_down / 2.0) as f32,
-            up_ring: AlignedVec::new(HB_DELAY, 0.0f32)?,
+            up_ring: AlignedVec::new(UP_DELAY_LINE_LEN, 0.0f32)?,
             up_pos: 0,
-            down_ring: AlignedVec::new(HB_TAPS, 0.0f32)?,
-            down_pos: 0,
-            down_abs: 0,
+            down_ring_even: AlignedVec::new(DOWN_EVEN_DELAY_LINE_LEN, 0.0f32)?,
+            down_ring_odd: AlignedVec::new(DOWN_ODD_DELAY_LINE_LEN, 0.0f32)?,
+            down_pos_even: 0,
+            down_pos_odd: 0,
+            down_total: 0,
         })
     }
 
     fn upsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
         let coeffs = &self.up_filter.coeffs;
         let center = self.up_center;
-        let n_in = input.len();
         let n = HB_DELAY;
+        let n_in = input.len();
 
         for (i, &x) in input.iter().enumerate() {
-            let pos = self.up_pos;
+            let p = self.up_pos;
             unsafe {
-                *self.up_ring.get_unchecked_mut(pos) = x;
+                *self.up_ring.get_unchecked_mut(p) = x;
+                *self.up_ring.get_unchecked_mut(p + n) = x;
             }
-            self.up_pos = (pos + 1) % n;
+            self.up_pos = (p + 1) % n;
 
-            let center_idx = (pos + n - HB_DELAY / 2) % n;
-            let even_out = unsafe { self.up_ring.get_unchecked(center_idx) * center };
+            let wptr = unsafe { self.up_ring.as_ptr().add(self.up_pos) };
 
-            let mut odd_out = 0.0f32;
-            for j in 0..HB_ODD_COUNT {
-                let d = j;
-                let idx = (pos + n - d) % n;
-                odd_out += unsafe { coeffs.get_unchecked(j) * self.up_ring.get_unchecked(idx) };
-            }
+            let even_out = unsafe { *wptr.add(5) * center };
+
+            let odd_out = unsafe {
+                let c8 = _mm256_loadu_ps(coeffs.as_ptr());
+                let s8 = _mm256_loadu_ps(wptr);
+                let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
+                let mut sum = hsum_avx2(acc8);
+                sum += *coeffs.get_unchecked(8) * *wptr.add(8);
+                sum += *coeffs.get_unchecked(9) * *wptr.add(9);
+                sum += *coeffs.get_unchecked(10) * *wptr.add(10);
+                sum += *coeffs.get_unchecked(11) * *wptr.add(11);
+                sum
+            };
 
             unsafe {
                 *output.get_unchecked_mut(2 * i) = even_out;
@@ -234,30 +269,44 @@ impl X2Stage {
     fn downsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
         let coeffs = &self.down_filter.coeffs;
         let center = self.down_center;
-        let n = HB_TAPS;
         let mut out_idx = 0;
 
         for &x in input.iter() {
-            let pos = self.down_pos;
-            unsafe {
-                *self.down_ring.get_unchecked_mut(pos) = x;
+            let is_even = (self.down_total & 1) == 0;
+            if is_even {
+                let p = self.down_pos_even;
+                unsafe {
+                    *self.down_ring_even.get_unchecked_mut(p) = x;
+                    *self.down_ring_even.get_unchecked_mut(p + DOWN_EVEN_LEN) = x;
+                }
+                self.down_pos_even = (p + 1) % DOWN_EVEN_LEN;
+            } else {
+                let p = self.down_pos_odd;
+                unsafe {
+                    *self.down_ring_odd.get_unchecked_mut(p) = x;
+                    *self.down_ring_odd.get_unchecked_mut(p + DOWN_ODD_LEN) = x;
+                }
+                self.down_pos_odd = (p + 1) % DOWN_ODD_LEN;
             }
-            self.down_pos = (pos + 1) % n;
-            self.down_abs += 1;
+            self.down_total += 1;
 
-            if self.down_abs as usize >= n && self.down_abs % 2 == 1 {
-                let abs_idx = (self.down_abs - 1) as usize;
+            if self.down_total >= HB_TAPS as u64 && (self.down_total & 1) == 1 {
+                let ev_ptr =
+                    unsafe { self.down_ring_even.as_ptr().add(self.down_pos_even) };
+                let center_sample = unsafe { *ev_ptr.add(6) };
+                let mut sum = center_sample * center;
 
-                let mut sum = unsafe {
-                    self.down_ring
-                        .get_unchecked((abs_idx.wrapping_sub(HB_DELAY)) % n)
-                        * center
-                };
-
-                for j in 0..HB_ODD_COUNT {
-                    let tap_delay = 2 * j + 1;
-                    let s_idx = abs_idx.wrapping_sub(tap_delay) % n;
-                    sum += unsafe { coeffs.get_unchecked(j) * self.down_ring.get_unchecked(s_idx) };
+                let od_ptr =
+                    unsafe { self.down_ring_odd.as_ptr().add(self.down_pos_odd) };
+                unsafe {
+                    let c8 = _mm256_loadu_ps(coeffs.as_ptr());
+                    let s8 = _mm256_loadu_ps(od_ptr);
+                    let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
+                    sum += hsum_avx2(acc8);
+                    sum += *coeffs.get_unchecked(8) * *od_ptr.add(8);
+                    sum += *coeffs.get_unchecked(9) * *od_ptr.add(9);
+                    sum += *coeffs.get_unchecked(10) * *od_ptr.add(10);
+                    sum += *coeffs.get_unchecked(11) * *od_ptr.add(11);
                 }
 
                 if out_idx < output.len() {

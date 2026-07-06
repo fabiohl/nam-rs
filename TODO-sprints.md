@@ -52,7 +52,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
   - Rodar `utils/quality-dashboard.sh` aferindo que o ESR dos modelos em taxas ≠ 48 kHz não apresentou regressão em relação ao ideal.
 - **Conclusão:** Substituída a conversão `frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32` por `((frac_bits >> 9) as i32 as f32) * (1.0 / (1u32 << 31) as f32)`, eliminando as instruções `vcvtqq2pd` + `vmulsd` + `vcvtsd2ss` (~3-5 cycles) do hot-path stereo e mono. Todos os 24 testes do resampler passaram (SNR ≥ 25 dB contra libsoxr, micro-soak 5000 iterações × 5 pares de taxas, drift fixed-point < 1e-7). Emissão de `vcvtqq2ps` única no lugar da cadeia f64.
 
-### [x86-64-v3] T-PERF-2.2: Vetorização AVX2 do Filtro Half-Band no Oversampler (`oversample.rs`)
+### [x86-64-v3] T-PERF-2.2: Vetorização AVX2 do Filtro Half-Band no Oversampler (`oversample.rs`) [DONE]
 
 - **Objetivo:** Implementar double-buffering e separar ring-buffers para amostras pares e ímpares, possibilitando loads SIMD contíguos de 8 e 4 elementos e eliminando indexações modulares por amostra.
 - **Finding Associado:** P-4
@@ -61,3 +61,4 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Baixo.
 - **Validação:**
   - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
+- **Conclusão:** Upsampler: `up_ring` convertido para double-buffer (24 entradas) com double-write, eliminando `(pos + n - d) % n` por acesso contíguo via `wptr + 5` (center tap) + `_mm256_fmadd_ps` 8-wide + 4 scalar (12 odd taps). Coeficientes invertidos em `HalfBandFilter::design()` para casar com layout oldest-first. Downsampler: `down_ring` substituído por `down_ring_even` (26, double-buffer) + `down_ring_odd` (24, double-buffer), tornando os 12 taps ímpares contíguos no buffer ímpar — mesmo padrão AVX2 FMADD 8+4. Eliminados 12×2 MACs escalares (upsample) e 13×2 MACs escalares (downsample) por amostra. Todos os 15 testes de oversample passaram (DC gain, X2/X4 round-trip, aliasing rejection, perceptual 4×). Suite `tests-quick.sh` completa limpa.
