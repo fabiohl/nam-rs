@@ -70,6 +70,7 @@ gantt
 ### T-103 (F-002) — Correção Estrutural de Alocação e Desalocação no AlignedVec [DONE]
 
 > **Conclusão (2026-07-06 T-103):**
+>
 > 1. **Campo `cap: usize`** adicionado à struct `AlignedVec` — armazena a capacidade real da alocação, não mais inferida de `len`.
 > 2. **Overflow check** em `with_capacity`: multiplicação `capacity * size_of::<T>()` agora usa `checked_mul`, redirecionando para `handle_alloc_error` em caso de overflow (consistente com o comportamento existente para falha de alocação).
 > 3. **`Drop` corrigido:** layout de desalocação calculado com `self.cap` em vez de `self.len`, eliminando o vazamento silencioso quando `with_capacity` era usado com `len=0` e o UB de layout incorreto quando `len < cap`.
@@ -88,7 +89,14 @@ gantt
 > * **Plano de Verificação:**
 >   * Criar teste unitário em `aligned.rs` que aloca `AlignedVec` com capacidade excedente, altera o comprimento (len), dropa o vetor e verifica se a memória de capacidade inteira foi desalocada adequadamente (ex: mock ou instrumentação de alloc).
 
-### T-104 (F-008) — Eliminação de unwrap() no Caminho de Tempo Real (Oversampling & Cascades)
+### T-104 (F-008) — Eliminação de unwrap() no Caminho de Tempo Real (Oversampling & Cascades) [DONE]
+
+> **Conclusão (2026-07-06 T-104):**
+>
+> 1. **`oversample.rs`:** Campos `stage1: Option<X2Stage>` e `stage2: Option<X2Stage>` substituídos pelo enum tipado `OsStages { Off, X2 { stage1 }, X4 { stage1, stage2 } }`. O `match &mut self.stages` em `upsample()` e `downsample()` elimina 6 `unwrap()`s — o discriminante do enum é garantia em tempo de compilação de que os estágios (quando presentes) são sempre válidos.
+> 2. **`cascade.rs`:** Padrão `is_some()` + `unwrap()` unificado em `if let Some(cond_dsp) = self.condition_dsp.as_mut()`.
+> 3. **`process.rs`:** Idem — `if let Some(cond_dsp) = self.condition_dsp.as_mut()`; a flag booleana `use_cond_dsp` é mantida separadamente via `self.condition_dsp.is_some()` para uso em `layer_forward_dispatch`.
+> 4. **Verificação:** `cargo check` limpo; `rg unwrap\(\)` confirma zero chamadas `unwrap()` nos três arquivos; 12 testes de oversampling + 1 teste de cascade GC passam; full suite de 1089 testes da lib sem regressões.
 
 * **Criticidade:** Média / Risco Baixo-Médio (Prevenção de pânico destrutivo no thread de áudio).
 * **Arquivos Afetados:**

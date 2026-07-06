@@ -121,9 +121,7 @@ impl WaveNetA2Cascade {
             let nf = (nf_total - pos).min(WAVENET_MAX_NUM_FRAMES);
 
             // Pre-process condition_dsp at cascade level.
-            let use_cond_dsp = self.condition_dsp.is_some();
-            if use_cond_dsp {
-                let cond_dsp = self.condition_dsp.as_mut().unwrap();
+            if let Some(cond_dsp) = self.condition_dsp.as_mut() {
                 cond_dsp.process(
                     &input[pos..pos + nf],
                     &mut self.condition_dsp_output[0..nf * cond_size],
@@ -131,7 +129,7 @@ impl WaveNetA2Cascade {
             }
 
             // Determine the condition slice for all arrays.
-            let cond_slice: &[f32] = if use_cond_dsp {
+            let cond_slice: &[f32] = if self.condition_dsp.is_some() {
                 &self.condition_dsp_output[0..nf * cond_size]
             } else {
                 &input[pos..pos + nf]

@@ -89,14 +89,13 @@ impl WaveNetA2Dyn {
             // Pre-process input through condition_dsp if present.
             // The condition_dsp output replaces the raw input as the parameter
             // for per-layer mixin and FiLM (C++ _process_condition pattern).
-            let use_cond_dsp = self.condition_dsp.is_some();
-            if use_cond_dsp {
-                let cond_dsp = self.condition_dsp.as_mut().unwrap();
+            if let Some(cond_dsp) = self.condition_dsp.as_mut() {
                 cond_dsp.process(
                     &input[pos..pos + nf],
                     &mut self.condition_dsp_output[0..nf * cond_size],
                 );
             }
+            let use_cond_dsp = self.condition_dsp.is_some();
 
             self.rechannel_prescale(input, pos, nf);
             let head_wp = self.advance_head_ring(nf);

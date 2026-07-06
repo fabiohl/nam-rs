@@ -151,6 +151,15 @@ fn bessel_i0(x: f64) -> f64 {
     sum
 }
 
+/// Typed bundle of oversampling stages, eliminating `Option::unwrap`
+/// on the RT hot-path. Variant discriminant is a zero-cost compile-time
+/// guarantee that the stages (when present) are always valid.
+enum OsStages {
+    Off,
+    X2 { stage1: X2Stage },
+    X4 { stage1: X2Stage, stage2: X2Stage },
+}
+
 /// Single 2× oversampling stage (up + down delay-line state).
 ///
 /// Uses pre-allocated ring buffers for delay lines. At 12 samples (up)
@@ -278,8 +287,7 @@ impl X2Stage {
 /// ```
 pub struct OversampleEngine {
     factor: OversampleFactor,
-    stage1: Option<X2Stage>,
-    stage2: Option<X2Stage>,
+    stages: OsStages,
     /// Scratch for X4 cascaded inter-stage (2× intermediate).
     /// Sized for max_input × 2 (the intermediate upsampled rate between stages).
     inter_buf: AlignedVec<f32>,
@@ -298,10 +306,20 @@ impl OversampleEngine {
             1
         };
 
+        let stages = match factor {
+            OversampleFactor::Off => OsStages::Off,
+            OversampleFactor::X2 => OsStages::X2 {
+                stage1: X2Stage::new(),
+            },
+            OversampleFactor::X4 => OsStages::X4 {
+                stage1: X2Stage::new(),
+                stage2: X2Stage::new(),
+            },
+        };
+
         Self {
             factor,
-            stage1: (factor.stage_count() >= 1).then(X2Stage::new),
-            stage2: (factor.stage_count() >= 2).then(X2Stage::new),
+            stages,
             inter_buf: AlignedVec::new(inter_size, 0.0f32),
             max_samples: max_input_samples,
         }
@@ -316,7 +334,7 @@ impl OversampleEngine {
     /// Returns `true` when oversampling is bypassed (Off).
     #[inline]
     pub fn is_bypass(&self) -> bool {
-        matches!(self.factor, OversampleFactor::Off)
+        matches!(self.stages, OsStages::Off)
     }
 
     /// Returns the group delay in samples at the native (model) rate.
@@ -343,20 +361,18 @@ impl OversampleEngine {
             "oversample: output buffer too small for upsampling factor"
         );
 
-        match self.factor {
-            OversampleFactor::Off => {
+        match &mut self.stages {
+            OsStages::Off => {
                 let n = input.len().min(output.len());
                 unsafe {
                     core::ptr::copy_nonoverlapping(input.as_ptr(), output.as_mut_ptr(), n);
                 }
                 n
             }
-            OversampleFactor::X2 => self.stage1.as_mut().unwrap().upsample(input, output),
-            OversampleFactor::X4 => {
-                let s1 = self.stage1.as_mut().unwrap();
-                let s2 = self.stage2.as_mut().unwrap();
-                let n_x2 = s1.upsample(input, &mut self.inter_buf[..input.len() * 2]);
-                s2.upsample(&self.inter_buf[..n_x2], output)
+            OsStages::X2 { stage1 } => stage1.upsample(input, output),
+            OsStages::X4 { stage1, stage2 } => {
+                let n_x2 = stage1.upsample(input, &mut self.inter_buf[..input.len() * 2]);
+                stage2.upsample(&self.inter_buf[..n_x2], output)
             }
         }
     }
@@ -370,20 +386,18 @@ impl OversampleEngine {
             output.len() >= input.len() / self.factor.multiplier(),
             "oversample: output buffer too small for downsampling factor"
         );
-        match self.factor {
-            OversampleFactor::Off => {
+        match &mut self.stages {
+            OsStages::Off => {
                 let n = input.len().min(output.len());
                 unsafe {
                     core::ptr::copy_nonoverlapping(input.as_ptr(), output.as_mut_ptr(), n);
                 }
                 n
             }
-            OversampleFactor::X2 => self.stage1.as_mut().unwrap().downsample(input, output),
-            OversampleFactor::X4 => {
-                let s1 = self.stage1.as_mut().unwrap();
-                let s2 = self.stage2.as_mut().unwrap();
-                let n_x2 = s2.downsample(input, &mut self.inter_buf[..input.len() / 2]);
-                s1.downsample(&self.inter_buf[..n_x2], output)
+            OsStages::X2 { stage1 } => stage1.downsample(input, output),
+            OsStages::X4 { stage1, stage2 } => {
+                let n_x2 = stage2.downsample(input, &mut self.inter_buf[..input.len() / 2]);
+                stage1.downsample(&self.inter_buf[..n_x2], output)
             }
         }
     }
