@@ -497,26 +497,27 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.45)))
         }
         // --- LSTM 1x16 ---
-        // T5.5 (f64 oracle): format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated
-        // vs PyTorch/NumPy f64 anchor). Recurrent state accumulation adds dominant drift beyond
-        // format floor — inherent, not engine regression.
-        // Measured: SNR=19.8 dB (v1), ESR=1.04e-2, MR-STFT=0.098(v1)/0.82(v2 @ 48k 5s) — oracle Δ~1.2e-4
+        // SQ5.5: post-weight-dequantization. Oracle ΔESR=3.41e-3 (vs 3.57e-3 pre-SQ5).
+        // Recurrent state accumulation remains the dominant drift source (inherent).
+        // f16c weight dequant loss (~5.12e-5) eliminated; Padé activation (~7.64e-4)
+        // is now the primary f32 error source for the oracle path.
+        // Measured (golden v1): SNR=19.8 dB, ESR=1.04e-2, MR-STFT=0.097 (v1)/0.82(v2 @ 48k)
+        // Live cpp_parity v1: ESR=4.69e-12 (near-bit-exact, SQ5.5 — no weight dequant drift)
         "BossLSTM-1x16" | "lstm_1x16" => {
             let snr_db = 12.0;
             Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2), Some(0.20)))
         }
         // --- LSTM 2x8 ---
-        // T5.5: format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated vs PyTorch f64).
-        // Recurrent state accumulation adds dominant drift beyond format floor — inherent.
-        // Measured: SNR=25.7 dB (v1 2048 samples), ESR=2.69e-3, MR-STFT(v1)=0.0665 @ 48 kHz
-        // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz (recurrent drift). Margin: 7.7/0.4 dB (v1/v2).
-        // MR-STFT gate: v1 base=0.12 (80% margin over measured 0.0665).
+        // SQ5.5: post-weight-dequantization. Recurrent state accumulation dominates.
+        // Live cpp_parity now near-bit-exact (f16c dequant was the dominant interop drift).
+        // Measured: SNR=25.7 dB, ESR=2.68e-3, MR-STFT=0.065 (golden v1, 2026-07-05)
+        // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz. Margin: 7.7/0.4 dB (v1/v2).
         "BossLSTM-2x8" | "lstm_2x8" => {
             let snr_db = 18.0;
             Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2), Some(0.12)))
         }
         // --- LSTM Official (H=3) ---
-        // T5.5: format floor ΔESR_combined=1.18e-4 (F16C+Padé+F32Plain, validated vs PyTorch f64).
+        // SQ5.5: post-weight-dequantization. Oracle ESR=3.41e-3 (vs 3.57e-3 pre-SQ5).
         // Measured: SNR=29.7 dB, ESR=1.08e-3, MR-STFT(v1)=0.184 @ 48 kHz
         // MR-STFT gate at 2.2e-1 (19% margin). Margin: SNR - 7.7 dB, ESR factor ~5.5x
         "lstm (Official)" | "lstm_official" => {
@@ -532,20 +533,22 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet A2 Full (CH=8) ---
-        // Measured: SNR = 79.2 dB, ESR = 1.21e-8 (realistic-amplitude fixture, T2.5),
-        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
-        // Margin: SNR - 9.2 dB, ESR factor ~6.6x
+        // SQ5.5: post-weight-dequantization — near-bit-exact (was 79.2 dB / 1.21e-8 with f16c weights).
+        // Measured: SNR = 129.5 dB, ESR = 1.13e-13 (golden v1, 2026-07-05),
+        // MRSTFT = 4.2e-5 (near-bit-exact, gate=0.05 conservative)
+        // Margin: SNR - 24.5 dB, ESR factor ~265×
         "wavenet_a2_full" => {
-            let snr_db = 70.0;
-            Some((1e30, snr_db, Some(8.0e-8), Some(0.08)))
+            let snr_db = 105.0;
+            Some((1e30, snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
-        // Measured: SNR = 90.7 dB, ESR = 8.58e-10 (realistic-amplitude fixture, T2.5),
-        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
-        // Margin: SNR - 10.7 dB, ESR factor ~7.0x
+        // SQ5.5: post-weight-dequantization — near-bit-exact (was 90.7 dB / 8.58e-10 with f16c weights).
+        // Measured: SNR = 132.2 dB, ESR = 6.08e-14 (golden v1, 2026-07-05),
+        // MRSTFT = 2.9e-5 (near-bit-exact, gate=0.05 conservative)
+        // Margin: SNR - 27.2 dB, ESR factor ~576×
         "wavenet_a2_lite" => {
-            let snr_db = 80.0;
-            Some((1e30, snr_db, Some(6.0e-9), Some(0.08)))
+            let snr_db = 105.0;
+            Some((1e30, snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
         // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel

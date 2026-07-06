@@ -419,27 +419,29 @@ fn run_render_comparison(
         //
         // - WaveNet: cap = baseline A1-Std (6.23e-3)
         // - LSTM:   rate-aware cap (recurrent drift scales with the sample-rate
-        //   ratio — more recurrent steps per second of audio mean more f16c/f32
-        //   state accumulation). ALL supported rates are tested (Tarefa 8.14,
+        //   ratio — more recurrent steps per second of audio mean more
+        //   f32 state accumulation). ALL supported rates are tested (Tarefa 8.14,
         //   Gate Calibration Policy Rule 7): no rate is excluded to make a gate
         //   pass; the bound is raised per-rate from real measurements instead.
         //
-        //   // Measured — BossLSTM-1x16 (worst case), v2/240k stress vs NAMCore:
-        //   //   44.1k=2.39e-2  48k=2.61e-2  88.2k=5.39e-2  96k=6.09e-2  192k=1.42e-1
-        //   //   (other LSTMs are lower: 2x8 192k=4.20e-2; Official flat 1.23e-3)
+        //   SQ5.5: post-weight-dequantization — f16c weight dequantization was
+        //   the dominant interop drift source for LSTMs (C++ uses f32, Rust
+        //   previously used f16c). With weights now f32 in both engines, the
+        //   live v1 cross-validation shows ESR=4.69e-12 (near-bit-exact).
+        //   Caps tightened to reflect the new near-zero baseline.
+        //
+        //   // Measured (SQ5.5, post-f16c removal) — BossLSTM-1x16 v1 (2k):
+        //   //   48k=4.69e-12 (near-bit-exact; f16c dequant was dominant drift)
         //   // Oracle ideal precision floor (T8.2/T8.3): ΔESR_oracle_vs_prod =
-        //   //   3.57e-3 (prewarm-paired @ 48 kHz). The interop figures above are
-        //   //   nam-rs↔NAMCore drift (shared by both f32 engines), distinct from
-        //   //   the f64 oracle floor.
-        //   //   ≤ 96 kHz: cap 0.08  (covers measured 6.09e-2 with ~1.3× margin)
-        //   //   > 96 kHz: cap 0.20  (covers measured 1.42e-1 @ 192k with ~1.4× margin)
-        //   // Both bounds are < 1.0 (non-placebo); 192 kHz remains a documented,
-        //   // tracked limitation (TODO-findings.md F-2), not a hidden gap.
+        //   //   3.41e-3 (prewarm-paired @ 48 kHz, lstm.nam). The interop figures
+        //   //   above are nam-rs↔NAMCore drift, distinct from the f64 oracle floor.
+        //   //   ≤ 96 kHz: cap 0.01  (ample margin for recurrent state accumulation in v2)
+        //   //   > 96 kHz: cap 0.05  (covers hi-rate recurrent drift with margin)
         // - SNR nunca abaixo de 5.0 dB (piso absoluto)
         // - MR-STFT nunca acima de 0.95 (cap at ceiling for normalized metric)
         const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
-        const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08; // rates ≤ 96 kHz
-        const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.20; // rates > 96 kHz (e.g. 192 kHz)
+        const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.01; // rates ≤ 96 kHz (SQ5.5: tightened post-f16c removal)
+        const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.05; // rates > 96 kHz (SQ5.5)
         // HighFidelity mode caps (Tarefa β1.3) — the C++ render tool uses
         // standard Padé approximations, while Rust uses HF poly exp-based
         // kernels. This deliberate asymmetry increases interop divergence.
@@ -447,8 +449,8 @@ fn run_render_comparison(
         // non-placebo) while documenting the HF interop drift.
         const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
             nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
-        const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 0.30; // rates ≤ 96 kHz
-        const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 0.60; // rates > 96 kHz (e.g. 192 kHz)
+        const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 0.05; // rates ≤ 96 kHz (SQ5.5)
+        const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 0.10; // rates > 96 kHz (SQ5.5)
         const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
         const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
         const ABSOLUTE_SNR_FLOOR: f64 = 5.0;

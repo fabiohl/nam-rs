@@ -547,7 +547,7 @@ raciocínio da decisão) como lição aprendida em `docs/`.
 > 3. **Regressão de Performance Desprezível**: Apenas o modelo `RT_A2_Full_CH8` apresentou regressão estatisticamente significativa de **2,4%** (subindo de `27.3 µs` para `28.0 µs`), valor insignificante se comparado ao limite aceitável de 40% e incapaz de gerar impactos operacionais.
 > 4. **Imensa Folga para Tempo Real**: Todos os modelos estão operando com uso de CPU extremamente baixo, necessitando de menos de 5% do tempo de processamento limite permitido (1333 µs). O modelo mais complexo (`WaveNet Lite`) finaliza sua execução em `63.9 µs` (apenas 4,8% do orçamento). A margem de segurança contra travamentos de áudio (*xruns*) mantém-se acima de **95%** para todo o portfólio de modelos.
 
-### Tarefa SQ5.5 — Recalibrar thresholds de teste (apenas se GO)
+### Tarefa SQ5.5 — Recalibrar thresholds de teste (apenas se GO) [DONE]
 
 **Descrição**: Atualizar `tests/common/constants.rs` com os novos pisos de precisão medidos. Os ESR limits devem refletir o novo regime f32 (mais preciso que f16c).
 

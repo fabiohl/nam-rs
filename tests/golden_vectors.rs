@@ -1470,11 +1470,11 @@ fn test_poly_regression_gate_wavenet_a2_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // A2 architecture has deeper layers → slightly higher ESR floor from
-    // floating-point ordering drift. Gate relaxed proportionally.
-    const POLY_A2_ESR_MAX: f64 = 2e-4;
+    // SQ5.5: post-weight-dequantization — A2 is now near-bit-exact (ESR=1.13e-13).
+    // Gate matches WaveNet Standard's POLY_WAVENET_ESR_MAX.
+    const POLY_A2_ESR_MAX: f64 = 1e-4;
     const POLY_A2_SNR_MIN: f64 = 65.0;
-    const POLY_A2_MSE_MAX: f64 = 2e-5;
+    const POLY_A2_MSE_MAX: f64 = 1e-5;
 
     report_dsp_fidelity(
         &expected,
