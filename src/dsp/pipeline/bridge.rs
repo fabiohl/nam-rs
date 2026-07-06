@@ -111,11 +111,16 @@ impl BridgeRef {
 pub struct DspBridgeWriter(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeWriter is safe to send between threads for initialization.
-/// Real-time access occurs exclusively/synchronously on the capture thread.
+/// SAFETY: DspBridgeWriter owns a NonNull<DspBridge> that points to a heap-immortal
+/// allocation (Box::leak in standalone mode, or CLAP plugin lifecycle memory).
+/// The capture thread has exclusive write access to the back-buffer; the playback
+/// thread only reads the active front-buffer. All synchronization uses atomic
+/// ordering (Release/Acquire). Sending between threads for initialization is safe.
 unsafe impl Send for DspBridgeWriter {}
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeWriter is safe to share between threads since access is internally atomic/synchronous.
+/// SAFETY: DspBridgeWriter exposes only immutable reference access to the shared
+/// bridge through &self methods. All state transitions are mediated by atomic
+/// loads/stores with appropriate Release/Acquire ordering — no data races possible.
 unsafe impl Sync for DspBridgeWriter {}
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -149,7 +154,9 @@ impl DspBridgeWriter {
         n_pw: usize,
         process_mono: bool,
     ) {
-        // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
+        // SAFETY: self.0 is NonNull<DspBridge> into heap-immortal memory. The back-buffer
+        // (1 - active_read_idx) is exclusively written here; the reader only accesses the
+        // complementary front-buffer. Atomic fences (Release) synchronize visibility.
         unsafe {
             let bridge = self.0.as_ref();
 
@@ -199,7 +206,9 @@ impl DspBridgeWriter {
     /// Skip-on-overflow: same prevention as `write_block` — if the reader hasn't consumed
     /// the last published generation, the write is skipped and `dropped_frames` is incremented.
     pub fn write_silence(&self) {
-        // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
+        // SAFETY: Same rationale as write_block: pointer is NonNull into heap-immortal
+        // memory, back-buffer is write-exclusive, atomic Release fences synchronize
+        // with the reader's Acquire loads.
         unsafe {
             let bridge = self.0.as_ref();
 
@@ -231,11 +240,16 @@ impl DspBridgeWriter {
 pub struct DspBridgeReader(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeReader is safe to send between threads for initialization.
-/// Real-time access occurs exclusively/synchronously on the playback thread.
+/// SAFETY: DspBridgeReader owns a NonNull<DspBridge> pointing to a heap-immortal
+/// allocation (same lifecycle as DspBridgeWriter — Box::leaked or CLAP plugin memory).
+/// The playback thread has exclusive read access to the active front-buffer (indicated
+/// by `active_read_idx`) while the capture thread writes the back-buffer. All
+/// synchronization uses atomic ordering. Sending between threads for init is safe.
 unsafe impl Send for DspBridgeReader {}
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeReader is safe to share between threads since access is internally atomic/synchronous.
+/// SAFETY: DspBridgeReader exposes only &self reads from the bridge's front-buffer
+/// (selected atomically via active_read_idx with Acquire ordering). No mutable
+/// aliasing occurs — the capture thread writes the complementary back-buffer.
 unsafe impl Sync for DspBridgeReader {}
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -264,7 +278,9 @@ impl DspBridgeReader {
     where
         F: FnOnce(&[f32], &[f32]) -> R,
     {
-        // SAFETY: The pointer is valid and active buffer access is exclusive and atomic.
+        // SAFETY: self.0 is NonNull<DspBridge> into heap-immortal memory. The front-buffer
+        // (active_read_idx) is exclusively read here; the writer only accesses the
+        // complementary back-buffer. Acquire loads synchronize with the writer's Release stores.
         unsafe {
             let bridge = self.0.as_ref();
             let current_gen = bridge.generation.load(Ordering::Acquire);

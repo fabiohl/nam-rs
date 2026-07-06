@@ -69,7 +69,8 @@ impl<T> AlignedVec<T> {
         T: Copy,
     {
         let mut vec = Self::with_capacity(len);
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: ptr is non-null (from with_capacity), i < len ≤ cap (loop bound),
+        // T: Copy guarantees no double-free on write. All elements are initialized.
         unsafe {
             for i in 0..len {
                 vec.ptr.as_ptr().add(i).write(default);
@@ -102,7 +103,8 @@ impl<T> AlignedVec<T> {
         let layout = Layout::from_size_align(byte_size, Self::ALIGN)
             .expect("Failed to create layout for AlignedVec");
 
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: layout is derived from valid size (capacity * element_size, checked against overflow)
+        // with 64-byte alignment (Self::ALIGN). alloc returns either a valid aligned pointer or null.
         let ptr = unsafe { alloc(layout) };
         if ptr.is_null() {
             handle_alloc_error(layout);
@@ -140,7 +142,10 @@ impl<T> AlignedVec<T> {
             return;
         }
         let mut new_vec = Self::with_capacity(new_len);
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: old_ptr is valid for self.len reads (from self, initialized in new/clone/resize).
+        // new_vec.ptr is non-null with cap ≥ new_len (freshly allocated by with_capacity).
+        // Ranges [0..self.len] and [self.len..new_len] are disjoint and within bounds.
+        // T: Copy prevents double-free; write(default) does not overlap with reads from old_ptr.
         unsafe {
             let old_ptr = self.ptr.as_ptr();
             for i in 0..self.len {
@@ -167,7 +172,8 @@ impl<T> Deref for AlignedVec<T> {
         if self.len == 0 {
             &[]
         } else {
-            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+            // SAFETY: self.ptr is non-null from with_capacity (or dangling for zero-cap which is guarded
+            // by the len==0 branch above). self.len ≤ self.cap and all elements [0..len) are initialized.
             unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -181,7 +187,8 @@ impl<T> DerefMut for AlignedVec<T> {
         if self.len == 0 {
             &mut []
         } else {
-            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+            // SAFETY: self.ptr is non-null with cap > 0. self.len ≤ self.cap, all elements in [0..len)
+            // are initialized. &mut self guarantees exclusive access — no aliasing possible.
             unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -196,7 +203,9 @@ impl<T> Drop for AlignedVec<T> {
         if self.cap > 0 {
             let layout =
                 Layout::from_size_align(self.cap * std::mem::size_of::<T>(), Self::ALIGN).unwrap();
-            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+            // SAFETY: self.ptr was allocated by with_capacity using layout with size=cap*size_of::<T>()
+            // and align=64. The layout is recalculated identically here. Drop runs exactly once
+            // (Rust ownership semantics); all elements have been properly dropped via DerefMut or leakage.
             unsafe {
                 dealloc(self.ptr.as_ptr() as *mut u8, layout);
             }
@@ -211,7 +220,9 @@ impl<T> Drop for AlignedVec<T> {
 impl<T: Clone> Clone for AlignedVec<T> {
     fn clone(&self) -> Self {
         let mut new_vec = Self::with_capacity(self.len);
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: self.ptr is valid for self.len reads (self is initialized). new_vec.ptr is non-null
+        // with cap ≥ self.len (freshly allocated by with_capacity). The clone source is the original
+        // buffer which remains unmodified throughout — no aliasing with the write target.
         unsafe {
             for i in 0..self.len {
                 let val = (*self.ptr.as_ptr().add(i)).clone();
@@ -246,7 +257,9 @@ impl<T: Copy> AlignedVec<T> {
             return Self::with_capacity(0);
         }
         let mut aligned = Self::with_capacity(v.len());
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: v.as_ptr() is valid for v.len() reads (Vec invariant). aligned.ptr is non-null
+        // with cap = v.len() (freshly allocated by with_capacity). T: Copy guarantees the source
+        // and destination do not overlap (separate allocations), so copy_nonoverlapping is sound.
         unsafe {
             std::ptr::copy_nonoverlapping(v.as_ptr(), aligned.ptr.as_ptr(), v.len());
         }
@@ -259,9 +272,11 @@ impl<T: Copy> AlignedVec<T> {
 ///
 /// This is essential so that audio processing can be distributed across
 /// multiple processor cores with full safety.
-// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+// SAFETY: AlignedVec owns its heap allocation exclusively. When T: Send, all elements can be
+// safely transferred across thread boundaries. Destructors run on the receiving thread only.
 unsafe impl<T: Send> Send for AlignedVec<T> {}
-// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+// SAFETY: AlignedVec's heap allocation is never mutated through shared references
+// (Deref provides &[T]). When T: Sync, shared reads of elements across threads are safe.
 unsafe impl<T: Sync> Sync for AlignedVec<T> {}
 
 #[cfg(test)]

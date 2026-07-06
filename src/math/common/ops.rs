@@ -11,14 +11,17 @@ use core::arch::x86_64::*;
 ///
 /// # Safety
 /// `src` and `dest` must be valid slices. `dest` must have at least `src.len()` elements.
+/// AVX-512F+VL target feature must be available (enforced by CPU dispatch).
 #[target_feature(enable = "avx512f,avx512vl")]
-// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+// SAFETY: Caller must ensure AVX-512F+VL is available and src/dest are valid
+// non-overlapping slices. This `pub unsafe fn` is the trust boundary.
 pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
     let n = core::cmp::min(src.len(), dest.len());
     let mut i = 0;
     // Process 16 conversions at once.
     while i + 16 <= n {
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: i+16 ≤ n (loop condition), so src[..i+16] and dest[..i+16]
+        // are in bounds. _mm512_loadu_ps is an unaligned load — no alignment precondition.
         unsafe {
             let v = _mm512_loadu_ps(src.as_ptr().add(i)); // Load 16 f32 numbers.
             let v_i = _mm512_castps_si512(v); // Treat as integers for bit manipulation.
@@ -30,7 +33,8 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
     }
     // Convert the remainder manually.
     while i < n {
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: i < n (loop condition), so both src.get_unchecked(i) and
+        // dest.get_unchecked_mut(i) are within bounds.
         unsafe {
             *dest.get_unchecked_mut(i) = ((*src.get_unchecked(i)).to_bits() >> 16) as u16;
         }
@@ -43,19 +47,21 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
 /// # Safety
 /// The `ptr` pointer must be valid or within the safe margin of the buffer.
 #[inline(always)]
-// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+// SAFETY: Caller must ensure ptr is valid and the CPU supports SSE (guaranteed on x86-64).
+// _mm_prefetch is a cache hint that never dereferences.
 pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
     if dilation <= 8 {
         // Hardware prefetcher dominates.
     } else if dilation <= 64 {
         // Fetch to L1 (imminent reuse).
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: _mm_prefetch is a cache hint — it never dereferences. ptr cast to
+        // *const i8 is sound; the hardware cache line address is identical.
         unsafe {
             _mm_prefetch::<_MM_HINT_T0>(ptr as *const i8);
         }
     } else {
         // Massive dilations: fetch to L2 to spare L1 from aggressive eviction.
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: Same rationale as T0 — prefetch hint only, ptr is valid.
         unsafe {
             _mm_prefetch::<_MM_HINT_T1>(ptr as *const i8);
         }
@@ -67,14 +73,16 @@ pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
 /// # Safety
 /// The pointers must be valid or within the safe margin of the buffer.
 #[inline(always)]
-// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+// SAFETY: Caller must ensure ptr_next and ptr_next_next are valid pointers.
+// _mm_prefetch only hints the cache and never dereferences.
 pub unsafe fn adaptive_prefetch_2stage_f32(
     ptr_next: *const f32,
     ptr_next_next: *const f32,
     dilation: usize,
 ) {
     if dilation >= 128 {
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: Both _mm_prefetch calls are cache hints that never dereference.
+        // ptr_next and ptr_next_next are valid per caller precondition.
         unsafe {
             // Fetch the next tap to L1 (immediate use in the next k)
             _mm_prefetch::<_MM_HINT_T0>(ptr_next as *const i8);
@@ -83,7 +91,8 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
         }
     } else {
         // Fallback to simple prefetch for smaller dilations
-        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+        // SAFETY: adaptive_prefetch_f32 requires valid ptr; ptr_next satisfies this
+        // per caller precondition.
         unsafe {
             adaptive_prefetch_f32(ptr_next, dilation);
         }
@@ -169,7 +178,9 @@ pub unsafe fn prefetch_strategy_2stage(
 /// # Safety
 /// SSE2 is implicit on x86-64.
 pub unsafe fn set_daz_ftz() {
-    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    // SAFETY: MXCSR manipulation via stmxcsr/ldmxcsr is always safe on x86-64
+    // (SSE2 is guaranteed by the x86-64-v3 target). The asm! block uses a properly
+    // aligned local variable; bits 0x8040 (DAZ | FTZ) are valid MXCSR control flags.
     unsafe {
         let mut mxcsr: u32 = 0;
         core::arch::asm!("stmxcsr [{0}]", in(reg) &mut mxcsr);

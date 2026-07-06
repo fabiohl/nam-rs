@@ -63,6 +63,11 @@ pub(crate) fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, c
     assert_eq!(actual_len, expected_len, "LSTM weight buffer size mismatch");
 
     let dst = unsafe {
+        // SAFETY: input_hidden_weights is [[[f32; H]; IH]; 4] — a contiguous f32 array.
+        // expected_len = H4 * IH = 4 * H * (I + H) matches the total element count
+        // (verified by assert_eq! above). f32 has no padding bytes, so the layout is
+        // a flat H4 × IH f32 block. The resulting slice covers all and only the array
+        // elements, which are initialized to 0.0 by LstmLayer::new().
         core::slice::from_raw_parts_mut(
             layer.input_hidden_weights.as_mut_ptr() as *mut f32,
             expected_len,

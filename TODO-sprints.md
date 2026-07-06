@@ -189,7 +189,7 @@ gantt
 
 **Objetivo:** Garantir qualidade de engenharia de software de longo prazo, adequar comentários à política de conformidade de segurança e reduzir uso de unsafe redundante.
 
-### T-301 (F-003) — Limpeza Geral de Comentários // SAFETY: Vazios ou Genéricos
+### T-301 (F-003) — Limpeza Geral de Comentários // SAFETY: Vazios ou Genéricos [DONE]
 
 * **Criticidade:** Média / Risco Baixo (Preencher requisitos de auditoria e clareza de unsafe).
 * **Arquivos Afetados:**
