@@ -56,6 +56,9 @@ pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
 pub const RT_STATUS_THP_ACTIVE: u64 = 1 << 18;
 /// Flag indicating that an oversampling factor change is needed (set by RT, cleared by main).
 pub const RT_STATUS_NEEDS_OS_REBUILD: u64 = 1 << 19;
+/// Flag indicating that PipeWire provided a buffer violating the FFI contract
+/// (misaligned byte count, offset out of bounds). Set by the RT callback.
+pub const RT_STATUS_HOST_CONTRACT_VIOLATION: u64 = 1 << 20;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -87,6 +90,7 @@ pub const RT_STATUS_NEEDS_OS_REBUILD: u64 = 1 << 19;
 /// | 17 | `NEEDS_SLIMMABLE_REBUILD` | DSP thread requests slimmable model rebuild |
 /// | 18 | `THP_ACTIVE` | Transparent huge pages(madvise) active — not explicit HugeTLB |
 /// | 19 | `NEEDS_OS_REBUILD` | DSP thread requests oversampling engine rebuild |
+/// | 20 | `HOST_CONTRACT_VIOLATION` | PipeWire buffer FFI contract violated (misaligned or OOB) |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

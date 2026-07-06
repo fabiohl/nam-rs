@@ -4,12 +4,26 @@
 //! 5.1.4. REAL-TIME DSP LOGIC
 //! Acquires the raw system buffer and delegates the heavy lifting to the Audio Factory (pipeline).
 
-use crate::common::spsc::RtStatusFlags;
+use crate::common::spsc::{RT_STATUS_HOST_CONTRACT_VIOLATION, RtStatusFlags};
 use crate::dsp::pipeline::{DspBuffers, DspPipelineContext, capture_dsp_pipeline};
 use crate::standalone::rt_setup;
 
 use pipewire as pw;
 use std::sync::atomic::Ordering;
+
+/// Runtime FFI contract validation for a single PipeWire buffer channel.
+///
+/// Returns `(n_bytes, n_samples)` if the contract is satisfied,
+/// or `None` if the buffer violates bounds or alignment guarantees.
+#[inline(always)]
+fn check_ffi_contract(raw: &[u8], offset: usize, size: usize) -> Option<(usize, usize)> {
+    let n_bytes = size.min(raw.len().saturating_sub(offset));
+    let n_samples = n_bytes / std::mem::size_of::<f32>();
+    if offset + n_bytes > raw.len() || n_samples * std::mem::size_of::<f32>() != n_bytes {
+        return None;
+    }
+    Some((n_bytes, n_samples))
+}
 
 /// 5.1.4. REAL-TIME DSP LOGIC
 /// Acquires the raw system buffer and delegates the heavy lifting to the Audio Factory (pipeline).
@@ -39,27 +53,19 @@ pub fn process_dsp_buffer(
             let size_r = chunk_r.size() as usize;
 
             if let (Some(raw_l), Some(raw_r)) = (d_l.data(), d_r.data()) {
-                let n_bytes_l = size_l.min(raw_l.len().saturating_sub(offset_l));
-                let n_bytes_r = size_r.min(raw_r.len().saturating_sub(offset_r));
-                let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
-                let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
+                let contract_l = check_ffi_contract(raw_l, offset_l, size_l);
+                let contract_r = check_ffi_contract(raw_r, offset_r, size_r);
 
-                debug_assert!(
-                    offset_l + n_bytes_l <= raw_l.len(),
-                    "PW host contract: left offset+bytes exceeds buffer length"
-                );
-                debug_assert!(
-                    offset_r + n_bytes_r <= raw_r.len(),
-                    "PW host contract: right offset+bytes exceeds buffer length"
-                );
-                debug_assert!(
-                    n_samples_l * std::mem::size_of::<f32>() == n_bytes_l,
-                    "PW host contract: left n_bytes not aligned to f32"
-                );
-                debug_assert!(
-                    n_samples_r * std::mem::size_of::<f32>() == n_bytes_r,
-                    "PW host contract: right n_bytes not aligned to f32"
-                );
+                let (_n_bytes_l, n_samples_l, _n_bytes_r, n_samples_r) =
+                    match (contract_l, contract_r) {
+                        (Some((bl, sl)), Some((br, sr))) => (bl, sl, br, sr),
+                        _ => {
+                            rt_status_for_process.set_flag(RT_STATUS_HOST_CONTRACT_VIOLATION);
+                            raw_l.fill(0);
+                            raw_r.fill(0);
+                            return;
+                        }
+                    };
 
                 let n_samples = n_samples_l.min(n_samples_r);
 
@@ -126,5 +132,65 @@ pub fn process_dsp_buffer(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ffi_contract_valid_buffer() {
+        let buf = [0u8; 128];
+        assert!(check_ffi_contract(&buf, 0, 64).is_some());
+        assert!(check_ffi_contract(&buf, 4, 60).is_some());
+    }
+
+    #[test]
+    fn ffi_contract_exact_fit() {
+        let buf = [0u8; 128];
+        let (n_bytes, n_samples) = check_ffi_contract(&buf, 0, 128).unwrap();
+        assert_eq!(n_bytes, 128);
+        assert_eq!(n_samples, 32);
+    }
+
+    #[test]
+    fn ffi_contract_misaligned_byte_count_rejected() {
+        let buf = [0u8; 128];
+        // 3 bytes is not a multiple of sizeof(f32)
+        assert!(check_ffi_contract(&buf, 0, 3).is_none());
+        // 5 bytes also not aligned
+        assert!(check_ffi_contract(&buf, 0, 5).is_none());
+        // 1 byte unaligned offset + 4 bytes -> 4 is aligned, OK
+        assert!(check_ffi_contract(&buf, 1, 4).is_some());
+    }
+
+    #[test]
+    fn ffi_contract_offset_oob_rejected() {
+        let buf = [0u8; 128];
+        assert!(check_ffi_contract(&buf, 200, 64).is_none());
+    }
+
+    #[test]
+    fn ffi_contract_size_clamped_rejected_if_offset_oob() {
+        let buf = [0u8; 128];
+        // offset is valid but size > remaining -> size is clamped
+        let r = check_ffi_contract(&buf, 64, 128);
+        assert!(r.is_some());
+        let (n_bytes, n_samples) = r.unwrap();
+        assert_eq!(n_bytes, 64);
+        assert_eq!(n_samples, 16);
+
+        // offset at end -> 0 bytes
+        let r = check_ffi_contract(&buf, 128, 64);
+        assert!(r.is_some());
+        assert_eq!(r.unwrap(), (0, 0));
+    }
+
+    #[test]
+    fn ffi_contract_misaligned_when_clamped() {
+        let buf = [0u8; 5];
+        // size=8 clamped to 5, but 5 is not f32-aligned
+        assert!(check_ffi_contract(&buf, 0, 8).is_none());
     }
 }

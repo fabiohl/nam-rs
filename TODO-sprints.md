@@ -56,7 +56,7 @@ gantt
   * Verificar comportamento livre de concorrência indevida.
   * Executar via ThreadSanitizer se disponível (`RUSTFLAGS="-Zsanitizer=thread" cargo test --test pipeline_soak`).
 
-### T-102 (F-007) — Validação de Contrato FFI no Caminho de Tempo Real (PipeWire Callback)
+### T-102 (F-007) — Validação de Contrato FFI no Caminho de Tempo Real (PipeWire Callback) [DONE]
 
 * **Criticidade:** Alta / Risco Médio-Alto (Possível acesso desalinhado no casting para `&mut [f32]` em builds de release).
 * **Arquivos Afetados:**
