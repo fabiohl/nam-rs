@@ -13,7 +13,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 ### Tarefas Técnicas
 
-#### [x86-64-v3] T-PERF-1.1: Otimização de Stores de Acumuladores em WaveNet (`conv_input.rs`)
+#### [x86-64-v3] T-PERF-1.1: Otimização de Stores de Acumuladores em WaveNet (`conv_input.rs`) [DONE]
 
 - **Objetivo:** Substituir loops de stores escalares nas funções `store_16_accums`, `store_8_accums` e `store_4_accums` por instruções SIMD `_mm256_storeu_ps` / `_mm_storeu_ps`.
 - **Finding Associado:** P-1
