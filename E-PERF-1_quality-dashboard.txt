@@ -1,0 +1,233 @@
+╔══════════════════════════════════════════════════════════════════╗
+║              nam-rs Quality Dashboard                            ║
+║              ------------------------------                      ║
+║              Medido em: 2026-07-06 17:53:08 -0300                ║
+║              ISA: AVX2 (x86-64-v3)                               ║
+║              CPU: AMD Ryzen 7 5700U with Radeon Graphics         ║
+║              rustc: rustc 1.96.1 (31fca3adb 2026-06-26)          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🎯 RESUMO RAPIDO (para nao-cientistas)
+═══════════════════════════════════════
+
+  🎸 WaveNet Standard (CH16)                 vs NAMcore: 2.46e-14   IDENTICO        │  vs Ideal (f64): N/A              │  ⚡ CPU: 3.6% do budget
+  🎸 WaveNet A1 Standard                     vs NAMcore: 8.62e-14   IDENTICO        │  vs Ideal (f64): 6.13e-14 (~fam.) │  ⚡ CPU: 3.6% do budget
+  🎸 WaveNet Feather (CH8)                   vs NAMcore: 4.82e-14   IDENTICO        │  vs Ideal (f64): N/A              │  ⚡ CPU: 2.0% do budget
+  🎸 LSTM 1x16 (BossLSTM)                    vs NAMcore: 1.04e-2    AUDIVEL DIRETO  │  vs Ideal (f64): 3.41e-3 (~fam.)  │  ⚡ CPU: 0.5% do budget
+  🎸 LSTM 2x8 (BossLSTM)                     vs NAMcore: 2.68e-3    A/B CIENTIFICO  │  vs Ideal (f64): 3.41e-3 (~fam.)  │  ⚡ CPU: 0.4% do budget
+  🎸 A2 Full (CH8)                           vs NAMcore: 1.13e-13   IDENTICO        │  vs Ideal (f64): 6.13e-14 (~fam.) │  ⚡ CPU: 2.0% do budget
+  🎸 A2 Lite (CH3)                           vs NAMcore: 6.08e-14   IDENTICO        │  vs Ideal (f64): 2.22e-14 (~fam.) │  ⚡ CPU: 1.5% do budget
+  🎸 A2-FiLM Lite (CH3)                      vs NAMcore: 1.54e-2    AUDIVEL DIRETO  │  vs Ideal (f64): 2.72e-03 (~fam.) │  ⚡ CPU: 1.5% do budget
+  🎸 ConvNet                                 vs NAMcore: N/A        N/A             │  vs Ideal (f64): 2.28e-14         │  ⚡ CPU: 0.3% do budget
+
+  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the
+  family's single representative fixture instead (see ESR_F64_FAMILY_FIXTURE).
+  Notably: BossLSTM-1x16/2x8 currently show the LSTM family value measured on
+  lstm.nam (H=3 official), NOT their own f64-oracle floor. Run
+  't33_diagnostic_recurrent_drift_lstm_1x16 --ignored' for a real per-model,
+  production-duration measurement of BossLSTM-1x16 specifically.
+
+📊 FIDELIDADE SONORA — Detalhes Tecnicos
+═════════════════════════════════════════
+
+  Modelo                                 │ ESR (vs NAMcore) │ ESR (vs f64) │ SNR dB   │ MR-STFT  │ Modo
+  ────────────────────────────────────── │ ──────────────── │ ──────────── │ ──────── │ ──────── │ ──────
+  BossLSTM-1x16 @48000 Live              │ 1.04e-2         │ 3.41e-3~  │ 19.8     │ 0.0966   │ Live
+  BossLSTM-2x8 @48000 Live               │ 2.68e-3         │ 3.41e-3~  │ 25.7     │ 0.0648   │ Live
+  BossWN-feather @48000 Live             │ 4.82e-14        │ N/A       │ 133.2    │ 0.0000   │ Live
+  BossWN-nano @48000 Live                │ 6.20e-14        │ N/A       │ 132.1    │ 0.0000   │ Live
+  BossWN-standard @48000 Live            │ 2.46e-14        │ N/A       │ 136.1    │ 0.0000   │ Live
+  Container A2-Full (CH=8) C++ cross-ref │ 1.13e-13        │ 2.22e-14~ │ 129.5    │ 0.0000   │ Live
+  Container A2-Lite (CH=3) C++ cross-ref │ 6.08e-14        │ 2.22e-14~ │ 132.2    │ 0.0000   │ Live
+  Container File A2-Full (CH=8) C++ cros │ 1.13e-13        │ 2.22e-14~ │ 129.5    │ 0.0000   │ Live
+  Container File A2-Lite (CH=3) C++ cros │ 6.08e-14        │ 2.22e-14~ │ 132.2    │ 0.0000   │ Live
+  ConvNet Test @48000 Live               │ N/A             │ 2.28e-14  │ N/A      │ N/A      │ Live
+  EVH-5150-Lite @48000 Live              │ 1.23e-12        │ N/A       │ 119.1    │ 0.0000   │ Live
+  LSTM-Dyn 1×7 (dynamic path) C++ cross- │ 7.73e-10        │ 3.41e-3~  │ 91.1     │ 0.0632   │ Live
+  lstm (Official) @48000 Live            │ 0.00e0          │ 3.41e-3~  │ inf      │ 0.1851   │ Live
+  SlimmableContainer A2 Example (CH=3→6) │ 3.34e-14        │ 2.22e-14~ │ 134.8    │ 0.0002   │ Live
+  wavenet_a1_standard (Official) @48000  │ 8.62e-14        │ 6.13e-14~ │ 130.6    │ 0.0000   │ Live
+  WaveNet A2 Dynamic Blended (CH=3, blen │ 5.24e-14        │ 6.13e-14~ │ 132.8    │ 0.0000   │ Live
+  WaveNet A2 Dynamic Gated (CH=8, gated  │ 5.02e-11        │ 6.13e-14~ │ 103.0    │ 0.0001   │ Live
+  WaveNet A2-FiLM-Full (CH=8, FiLM activ │ 2.50e-4         │ 2.91e-02~ │ 36.0     │ 0.4646   │ Live
+  WaveNet A2-FiLM-Lite (CH=3, FiLM activ │ 1.54e-2         │ 2.72e-03~ │ 18.1     │ 0.4969   │ Live
+  WaveNet A2-Full (CH=8) C++ cross-refer │ 1.13e-13        │ 6.13e-14~ │ 129.5    │ 0.0000   │ Live
+  WaveNet A2-Lite (CH=3) C++ cross-refer │ 6.08e-14        │ 6.33e-02~ │ 132.2    │ 0.0000   │ Live
+  WaveNet Condition DSP (CH=3, cond=3, d │ 1.13e-14        │ 6.13e-14~ │ 139.5    │ 0.0212   │ Live
+  WaveNetDyn Free-Shape (CH=7→4, dynamic │ 4.09e-13        │ 6.13e-14~ │ 123.9    │ 0.0178   │ Live
+  WaveNet Official (CH=3, dynamic path)  │ 8.96e-14        │ 4.32e-02~ │ 130.5    │ 0.0055   │ Live
+
+  Legenda qualitativa (limites de audibilidade do ESR):
+    verde = imperceptivel (ESR < 1e-5)
+    amarelo = audivel apenas com A/B cientifico (ESR < 1e-2)
+    vermelho = ⚠ audivel — necessita investigacao (ESR >= 1e-1)
+  ~ apos o valor 'vs f64' = valor da familia (uma unica fixture representativa,
+    ex.: LSTM -> lstm.nam H=3), NAO medido para este modelo especifico.
+
+⚡ PERFORMANCE — Latencia por Bloco (64 amostras @ 48kHz)
+══════════════════════════════════════════════════════════
+  Deadline RT: 1333 µs (1.33 ms)
+
+  Modelo                       │ Latencia Mediana │ % do Budget  │ Folga
+  ──────────────────────────── │ ──────────────── │ ──────────── │ ────────────────────
+  WaveNet Standard CH16        │ 47.7 us          │ 3.6%         │ 96.4% ok
+  WaveNet Feather CH8          │ 26.3 us          │ 2.0%         │ 98.0% ok
+  WaveNet Lite CH12            │ 64.0 us          │ 4.8%         │ 95.2% ok
+  WaveNet Nano CH4             │ 21.6 us          │ 1.6%         │ 98.4% ok
+  A2 Full CH8                  │ 27.3 us          │ 2.0%         │ 98.0% ok
+  A2 Lite CH3                  │ 20.2 us          │ 1.5%         │ 98.5% ok
+  LSTM 1x16                    │ 6.0 us           │ 0.5%         │ 99.5% ok
+  LSTM 2x8                     │ 5.3 us           │ 0.4%         │ 99.6% ok
+  Linear RF=2048               │ 0.3 us           │ 0.0%         │ 100.0% ok
+  ConvNet                      │ 3.6 us           │ 0.3%         │ 99.7% ok
+
+  (i) Folga > 50%:  Pode usar oversampling 2x sem xruns
+  (i) Folga > 75%:  Pode usar oversampling 4x sem xruns
+  (i) Folga < 25%:  ⚠ Risco de xruns com buffer de 64 amostras
+
+🔬 ISA PARITY
+═════════════
+
+  AVX2 vs AVX-512: sem dados (CPU pode nao ter AVX-512)
+  Self-consistency checks: 7 executados
+
+🎹 ACTIVATION PRECISION
+════════════════════════
+
+  Modelo               │ FastMath(Pade) │ Exact(tanh)    │ Δ SNR
+  ──────────────────── │ ────────────── │ ────────────── │ ──────────
+  LSTM 1×16           │ 19.8 dB        │ 19.8 dB        │ +0.0 dB
+  LSTM 2×8            │ 25.7 dB        │ 25.7 dB        │ -0.0 dB
+  LSTM Official        │ 29.8 dB        │ 29.8 dB        │ -0.0 dB
+
+  Ganho SNR medio com Exact(tanh): +0,0 dB (sobre 3 modelos LSTM)
+
+🔍 F64 ORACLE — Decomposicao de Fontes de Erro
+══════════════════════════════════════════════
+
+  (i) Estas medicoes sao cold-start (256 amostras, SEM prewarm) — NAO
+      comparaveis aos valores 'vs Ideal (f64)' da tabela de fidelidade
+      acima (medidos com warmup de 24k amostras). Para WaveNet/A2, o
+      campo receptivo e maior que a janela de 256 amostras, entao o
+      ESR total abaixo reflete majoritariamente o transiente de
+      preenchimento do buffer, nao o piso de precisao em regime
+      permanente. Ver docs/lstm_recurrent_drift.md e TODO-findings.md F-Q1.
+
+  LSTM-H3:
+    LSTM-H3 Decomposition:
+    ESR(f32 vs f64 oracle):  3.02e-3 (-25.2 dB)
+    ΔESR f16c weights:       5.12e-5 (-42.9 dB)
+    ΔESR bf16 weights:       3.49e-4 (-34.6 dB)
+    ΔESR Pade activation:    7.64e-4 (-31.2 dB)
+    ΔESR f32 accumulation:   7.21e-13 (-121.4 dB)
+    ΔESR combined (F16C+Padé+F32): 5.37e-4 (-32.7 dB)
+
+  ConvNet-test:
+    ConvNet-test Decomposition:
+    ESR(f32 vs f64 oracle):  2.28e-14 (-136.4 dB)
+    ΔESR f16c weights:       7.09e-8 (-71.5 dB)
+    ΔESR bf16 weights:       5.32e-4 (-32.7 dB)
+    ΔESR Pade activation:    6.71e-32 (-311.7 dB)
+    ΔESR f32 accumulation:   1.63e-14 (-137.9 dB)
+    ΔESR combined (F16C+Padé+F32): 7.09e-8 (-71.5 dB)
+    ⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ 3109649×.
+      Esperado para modelos com campo receptivo > janela de medicao (cold-start).
+      Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.
+
+  WaveNet-official:
+    WaveNet-official Decomposition:
+    ESR(f32 vs f64 oracle):  4.32e-2 (-13.6 dB)
+    ΔESR f16c weights:       3.01e-7 (-65.2 dB)
+    ΔESR bf16 weights:       3.08e-4 (-35.1 dB)
+    ΔESR Pade activation:    5.01e-16 (-153.0 dB)
+    ΔESR f32 accumulation:   9.98e-14 (-130.0 dB)
+    ΔESR combined (F16C+Padé+F32): 3.01e-7 (-65.2 dB)
+    ⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ 143522×.
+      Esperado para modelos com campo receptivo > janela de medicao (cold-start).
+      Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.
+
+  A2-Lite:
+    A2-Lite Decomposition:
+    ESR(f32 vs f64 oracle):  6.33e-2 (-12.0 dB)
+    ΔESR f16c weights:       1.06e-7 (-69.7 dB)
+    ΔESR bf16 weights:       4.82e-5 (-43.2 dB)
+    ΔESR Pade activation:    0.00e0 (-inf dB)
+    ΔESR f32 accumulation:   6.54e-14 (-131.8 dB)
+    ΔESR combined (F16C+Padé+F32): 1.06e-7 (-69.7 dB)
+    ⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ 597170×.
+      Esperado para modelos com campo receptivo > janela de medicao (cold-start).
+      Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.
+
+📈 SPECTRAL FIDELITY
+═════════════════════
+
+  (i) Nenhum resultado de spectral fidelity disponivel.
+
+───────────────────────────────────────────────────────────────
+  Dashboard gerado em 178,8s (fidelidade: 51,1s, performance: 123,1s)
+
+───────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────
+
+fabio@notebook:~/nam-rs$ utils/tests-performance-regression.sh --save
+  Performance Regression Gate
+  Core: 8  Baseline: ci-baseline
+  Estimated time: ± 2.0 minutes
+
+[SAVE] Persisting new CI baseline...
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/regression_gate.rs (target/release/deps/regression_gate-c32e46c5f1da3ecb)
+RT_WaveNet_Std_CH16     time:   [45.816 µs 45.999 µs 46.197 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+
+RT_WaveNet_Feather_CH8  time:   [26.295 µs 26.320 µs 26.350 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+
+RT_WaveNet_Lite_CH12    time:   [63.938 µs 64.102 µs 64.278 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+
+RT_WaveNet_Nano_CH4     time:   [21.809 µs 21.959 µs 22.137 µs]
+Found 13 outliers among 100 measurements (13.00%)
+  5 (5.00%) high mild
+  8 (8.00%) high severe
+
+RT_A2_Full_CH8          time:   [27.242 µs 27.308 µs 27.403 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) high mild
+  6 (6.00%) high severe
+
+RT_A2_Lite_CH3          time:   [20.186 µs 20.221 µs 20.263 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  3 (3.00%) high mild
+  6 (6.00%) high severe
+
+RT_LSTM_1x16            time:   [6.0062 µs 6.0159 µs 6.0285 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+
+RT_LSTM_2x8             time:   [5.8582 µs 5.8741 µs 5.8909 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) low mild
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+
+RT_Linear               time:   [299.91 ns 301.09 ns 302.61 ns]
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+
+RT_ConvNet              time:   [3.6232 µs 3.6286 µs 3.6356 µs]
+Found 11 outliers among 100 measurements (11.00%)
+  4 (4.00%) high mild
+  7 (7.00%) high severe
+
+✓ Baseline saved under target/criterion/*/ci-baseline
+fabio@notebook:~/nam-rs$
