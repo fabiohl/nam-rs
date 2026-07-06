@@ -3,28 +3,7 @@
 
 //! Basic mathematical operations and low-level SIMD utilities.
 
-use crate::math::common::half::f32_to_f16_bits;
 use core::arch::x86_64::*;
-
-/// Converts F32 to BF16 bits (simple truncation).
-#[inline(always)]
-pub fn f32_to_bf16(f: f32) -> u16 {
-    (f.to_bits() >> 16) as u16
-}
-
-/// Quantizes an f32 weight to u16 (BF16 or F16 bits), based on `is_bf16`.
-#[inline(always)]
-#[deprecated(
-    since = "2.0.0",
-    note = "Quantization removed (SQ3); use f32 native storage"
-)]
-pub fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
-    if is_bf16 {
-        f32_to_bf16(f)
-    } else {
-        f32_to_f16_bits(f)
-    }
-}
 
 /// Converts a vector of f32 numbers (normal) to bf16 (compact) via AVX-512.
 /// The bf16 format takes up half the space but maintains the range of f32 numbers,

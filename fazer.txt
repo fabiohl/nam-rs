@@ -1,11 +1,19 @@
-* PoC Compressão/Quantização (Commit de rollback: "ajustes nas medições" b21422ed7424817d8eefcbe5eba84c50118515ae)
 * /refatora-rust [GLM5.2]
-* /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Resilience and Robustness Specialist".
-* /revisor-auditor [GLM5.2][Fable] totalmente focado na role "Performance and Low-Latency Master".
+* /revisor-auditor [GLM5.2][Antigravity Opus] totalmente focado na role "Resilience and Robustness Specialist".
+* /revisor-auditor [GLM5.2][Antigravity Opus] totalmente focado na role "Performance and Low-Latency Master".
+  Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas!
+  Inclua no workflow, rodadas regulares de `utils/tests-performance-regression.sh` para sempre assegurar ganhos reais.
+  É terminantemente PROIBIDO qualquer regressão de paridade com o NAMcore ou qualquer penalização da fidelidade e correção sonora (`utils/quality-dashboard.sh`).
+  Focar exclusivamente no baseline x86-64-v3. Explore-o ao máximo, mega otimizado e universal em TODO o código (não apenas no áudio). Outros ISA's multiversioning serão trabalhados oportunamente, não são foco aqui.
+  Analise também se o NAM-rs está tirando extremo proveito das funcionalidades disponibilizada pela stack moderna do Kernel Linux (7.0), CLAP (1.2.x) e Pipewire (1.6.x). Naturalmente, aplique um filtro crítico para identificar apenas o que realmente pode trazer benefícios palpáveis ao caso de uso realista NAM-rs.
+
+09/07/2026 Quinta-Feira: Plano renovado para $199,00 ($278,60 com créditos) cfe https://kilo.ai/pricing/kilo-pass ?
+* /revisor-auditor [Fable] totalmente focado na role "Resilience and Robustness Specialist".
+* /revisor-auditor [Fable] totalmente focado na role "Performance and Low-Latency Master".
   Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas!
   Analise o "target/dsp_hotpath.asm" gerado pelo "utils/build-release.sh" atrás de insights de performance!
-  Inclua no workflow, rodadas regulares de "tests-performance-regression.sh" para sempre assegurar ganhos reais.
+  Inclua no workflow, rodadas regulares de `utils/tests-performance-regression.sh` para sempre assegurar ganhos reais.
+  É terminantemente PROIBIDO qualquer regressão de paridade com o NAMcore ou qualquer penalização da fidelidade e correção sonora (`utils/quality-dashboard.sh`).
   Focar exclusivamente no baseline x86-64-v3. Explore-o ao máximo, mega otimizado e universal em TODO o código (não apenas no áudio). Outros ISA's multiversioning serão trabalhados oportunamente, não são foco aqui.
-  É terminantemente PROIBIDO qualquer regressão de paridade com o NAMcore ou qualquer penalização da fidelidade e correção sonora.
   Analise também se o NAM-rs está tirando extremo proveito das funcionalidades disponibilizada pela stack moderna do Kernel Linux (7.0), CLAP (1.2.x) e Pipewire (1.6.x). Naturalmente, aplique um filtro crítico para identificar apenas o que realmente pode trazer benefícios palpáveis ao caso de uso realista NAM-rs.
   Ao final, como complemento, ativar a skill "pesquisador-inovador" e ir além. Mas tenha muito cuidado para não alterar o escopo do projeto e trazer complexidade. Tire proveito do que já temos.
