@@ -117,7 +117,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     * Remover a função `log_spaced_tones_dense` (linha 687) e seu respectivo `#[allow(dead_code)]`.
   * **Validação:** `cargo check --tests`.
 
-* [ ] **T2.5 — Limpar constantes mortas em `src/testing/perceptual.rs`**
+* [x] **T2.5 — Limpar constantes mortas em `src/testing/perceptual.rs`**
   * **Origem:** [B5 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L126)
   * **Ação:**
     * Remover as 5 constantes especificadas: `A2ESR_A1_STANDARD_Q1`, `A2ESR_A1_STANDARD_Q3`, `A2ESR_A2_FULL_Q1`, `A2ESR_A2_FULL_Q3` e `NAM_RS_CPP_PARITY_ESR_MAX`.

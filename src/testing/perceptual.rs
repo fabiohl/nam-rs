@@ -6,8 +6,7 @@
 //! Includes ESR (Error-to-Signal Ratio), LUFS (ITU-R BS.1770-4 full 2-pass gating),
 //! LRA (EBU Tech 3342), true-peak (BS.1770-4 Annex 2), MR-STFT, and baseline
 //! constants from published A2/Tone3000 data.
-// Q1/Q3 constants and NAM_RS_CPP_PARITY_ESR_MAX are reference-only baselines; public API used by integration tests.
-
+// Published baselines from t3k-mushra / A2ESR test framework.
 #![allow(dead_code)]
 
 use crate::math::dsp::fft::FftPlanner;
@@ -18,16 +17,10 @@ use crate::math::dsp::fft::FftPlanner;
 
 /// A1-Standard median ESR baseline from t3k-mushra/A2Esr.tsx
 pub const A2ESR_A1_STANDARD_MEDIAN: f64 = 0.00623;
-/// A1-Standard Q1 ESR baseline
-pub const A2ESR_A1_STANDARD_Q1: f64 = 0.00218;
-/// A1-Standard Q3 ESR baseline
-pub const A2ESR_A1_STANDARD_Q3: f64 = 0.01571;
+
 /// A2-Full median ESR baseline from t3k-mushra/A2Esr.tsx
 pub const A2ESR_A2_FULL_MEDIAN: f64 = 0.00334;
-/// A2-Full Q1 ESR baseline
-pub const A2ESR_A2_FULL_Q1: f64 = 0.00114;
-/// A2-Full Q3 ESR baseline
-pub const A2ESR_A2_FULL_Q3: f64 = 0.00913;
+
 /// A2-Lite median ESR baseline (preliminary — pending t3k-mushra publication).
 /// A2-Lite shares the A2-Full architecture with rank-reduced weights; ESR is
 /// expected to be in the same order of magnitude as A2-Full (≤ 0.005).
@@ -36,8 +29,7 @@ pub const A2ESR_A2_LITE_MEDIAN: f64 = 0.005;
 pub const A2ESR_A2_LITE_Q1: f64 = 0.0015;
 /// A2-Lite Q3 ESR baseline (preliminary)
 pub const A2ESR_A2_LITE_Q3: f64 = 0.012;
-/// Conservative ESR gate for nam-rs vs C++ implementation parity (no training error).
-pub const NAM_RS_CPP_PARITY_ESR_MAX: f64 = 1e-3;
+
 
 // =============================================================================
 // Error-to-Signal Ratio (ESR)
