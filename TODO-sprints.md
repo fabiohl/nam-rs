@@ -69,15 +69,17 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 **Meta da Sprint:** Adotar de forma mandatória os recursos modernos de Huge Pages e descritores seguros do Kernel Linux (mínimo Kernel 6.3 para cobertura completa das LTS recentes).
 
-### [Linux 6.1+] T-PERF-3.1: Promoção Síncrona de Huge Pages com `MADV_COLLAPSE` (`huge_alloc.rs`)
+### [Linux 6.1+] T-PERF-3.1: ✅ Promoção Síncrona de Huge Pages com `MADV_COLLAPSE` (`huge_alloc.rs`) — CONCLUÍDO 2026-07-06
 
 - **Objetivo:** Chamar `madvise` com o flag `MADV_COLLAPSE` obrigatoriamente e sem fallbacks de verificação.
 - **Finding Associado:** P-7
 - **Arquivos:**
   - [huge_alloc.rs](file:///home/fabio/nam-rs/src/math/common/huge_alloc.rs)
+  - [mirror_buf/alloc.rs](file:///home/fabio/nam-rs/src/dsp/mirror_buf/alloc.rs) (THP path do MirroredBuffer)
 - **Risco:** Mínimo. Requer Kernel Linux 6.1+.
 - **Validação:**
   - Validação funcional no Linux garantindo compilação e execução corretas em kernel moderno.
+- **Conclusão:** `MADV_COLLAPSE` adicionado após `MADV_HUGEPAGE` nos dois call sites THP (`huge_alloc.rs:120` + `mirror_buf/alloc.rs:235`). Sem verificações de versão de kernel (confia no requisito Linux 6.1+). Constante já disponível em libc 0.2.186. `cargo check`, `cargo clippy` e 4 testes `huge_alloc_tests` + 9 testes `diagnostic_bundle` passam limpo.
 
 ### [Linux 6.3+] T-PERF-3.2: Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`)
 

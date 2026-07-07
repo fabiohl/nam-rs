@@ -39,7 +39,7 @@
 //!
 //! ## Huge Page Support
 //! Attempts 2 MB huge pages (MAP_HUGETLB / MFD_HUGETLB) for the mirror buffer to reduce
-//! TLB pressure in the DSP hot-path. Falls back to regular pages + `madvise(MADV_HUGEPAGE)`.
+//! TLB pressure in the DSP hot-path. Falls back to regular pages + `madvise(MADV_HUGEPAGE)` + `MADV_COLLAPSE` (synchronous THP).
 //! Status is tracked via `MIRROR_BUF_HUGEPAGE_STATE` global to avoid inflating the
 //! struct layout (which would affect hot-path cache performance).
 use libc::{c_void, munmap};
@@ -55,7 +55,7 @@ thread_local! {
 
 /// Huge-page state constants for `MIRROR_BUF_HUGEPAGE_STATE`.
 pub const HUGEPAGE_STATE_STANDARD: u8 = 0;
-/// State indicating Transparent Huge Pages (madvise MADV_HUGEPAGE) were used.
+/// State indicating Transparent Huge Pages (madvise MADV_HUGEPAGE + MADV_COLLAPSE) were used.
 pub const HUGEPAGE_STATE_THP: u8 = 1;
 /// State indicating explicit 2 MB HugeTLB pages (MAP_HUGETLB) are active.
 pub const HUGEPAGE_STATE_HUGETLB: u8 = 2;
@@ -84,7 +84,7 @@ pub fn sync_huge_page_flag(rt_status: &crate::common::spsc::RtStatusFlags) {
 pub enum MirrorHugePageStatus {
     /// Explicit 2 MB huge pages via MAP_HUGETLB | MFD_HUGETLB.
     Explicit2MB,
-    /// Transparent huge pages via madvise(MADV_HUGEPAGE) hint.
+    /// Transparent huge pages via madvise(MADV_HUGEPAGE) + MADV_COLLAPSE (synchronous).
     Transparent,
     /// Standard 4 KB pages (fallback).
     Standard,

@@ -41,7 +41,7 @@ const HB_ODD_COUNT: usize = HB_TAPS / 2; // 12
 /// Upsampler ring double-buffer length (HB_DELAY × 2 for contiguous access).
 const UP_DELAY_LINE_LEN: usize = HB_DELAY * 2;
 /// Downsampler even-sample ring size (⌈HB_TAPS/2⌉ = 13).
-const DOWN_EVEN_LEN: usize = (HB_TAPS + 1) / 2;
+const DOWN_EVEN_LEN: usize = HB_TAPS.div_ceil(2);
 /// Downsampler odd-sample ring size (⌊HB_TAPS/2⌋ = 12).
 const DOWN_ODD_LEN: usize = HB_TAPS / 2;
 /// Downsampler even double-buffer length.
@@ -175,8 +175,13 @@ fn bessel_i0(x: f64) -> f64 {
 /// guarantee that the stages (when present) are always valid.
 enum OsStages {
     Off,
-    X2 { stage1: X2Stage },
-    X4 { stage1: X2Stage, stage2: X2Stage },
+    X2 {
+        stage1: X2Stage,
+    },
+    X4 {
+        stage1: X2Stage,
+        stage2: Box<X2Stage>,
+    },
 }
 
 /// Single 2× oversampling stage (up + down delay-line state).
@@ -291,13 +296,11 @@ impl X2Stage {
             self.down_total += 1;
 
             if self.down_total >= HB_TAPS as u64 && (self.down_total & 1) == 1 {
-                let ev_ptr =
-                    unsafe { self.down_ring_even.as_ptr().add(self.down_pos_even) };
+                let ev_ptr = unsafe { self.down_ring_even.as_ptr().add(self.down_pos_even) };
                 let center_sample = unsafe { *ev_ptr.add(6) };
                 let mut sum = center_sample * center;
 
-                let od_ptr =
-                    unsafe { self.down_ring_odd.as_ptr().add(self.down_pos_odd) };
+                let od_ptr = unsafe { self.down_ring_odd.as_ptr().add(self.down_pos_odd) };
                 unsafe {
                     let c8 = _mm256_loadu_ps(coeffs.as_ptr());
                     let s8 = _mm256_loadu_ps(od_ptr);
@@ -363,7 +366,7 @@ impl OversampleEngine {
             },
             OversampleFactor::X4 => OsStages::X4 {
                 stage1: X2Stage::new()?,
-                stage2: X2Stage::new()?,
+                stage2: Box::new(X2Stage::new()?),
             },
         };
 

@@ -52,7 +52,7 @@ pub const RT_STATUS_SLIMMABLE_SLICE_FAILED: u64 = 1 << 16;
 /// Flag indicating that a WaveNet slimmable rebuild is needed (set by RT, cleared by main).
 pub const RT_STATUS_NEEDS_SLIMMABLE_REBUILD: u64 = 1 << 17;
 /// Flag indicating that Transparent Huge Pages (THP) advice was used
-/// (madvise MADV_HUGEPAGE), as opposed to explicit HugeTLB 2 MB pages.
+/// (madvise MADV_HUGEPAGE + MADV_COLLAPSE), as opposed to explicit HugeTLB 2 MB pages.
 pub const RT_STATUS_THP_ACTIVE: u64 = 1 << 18;
 /// Flag indicating that an oversampling factor change is needed (set by RT, cleared by main).
 pub const RT_STATUS_NEEDS_OS_REBUILD: u64 = 1 << 19;

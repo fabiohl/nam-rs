@@ -227,10 +227,11 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // Hint THP promotion for the data regions.
+        // Hint THP promotion for the data regions, then force synchronous collapse.
         // SAFETY: base_ptr and size_bytes are valid mapped regions.
         unsafe {
             libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE);
+            libc::madvise(base_ptr, size_bytes, libc::MADV_COLLAPSE);
         }
         MIRROR_BUF_HUGEPAGE_STATE.store(HUGEPAGE_STATE_THP, std::sync::atomic::Ordering::Relaxed);
 

@@ -10,7 +10,7 @@
 //!
 //! # Strategy (best-effort, zero regression risk)
 //! 1. `mmap(MAP_HUGETLB | MAP_HUGE_2MB)` — explicit huge pages (requires admin setup).
-//! 2. `mmap(MAP_ANONYMOUS | MAP_PRIVATE)` + `madvise(MADV_HUGEPAGE)` — transparent THP.
+//! 2. `mmap(MAP_ANONYMOUS | MAP_PRIVATE)` + `madvise(MADV_HUGEPAGE)` + `madvise(MADV_COLLAPSE)` — synchronous THP.
 //! 3. `std::alloc::alloc` — fallback (existing behaviour).
 //!
 //! Callers must use the returned `AllocInfo` to choose the correct deallocation path.
@@ -42,7 +42,7 @@ pub enum AllocInfo {
 pub enum HugePageStatus {
     /// Explicit 2 MB huge pages via MAP_HUGETLB succeeded.
     Explicit2MB,
-    /// Transparent huge pages via madvise(MADV_HUGEPAGE) on anonymous mmap.
+    /// Transparent huge pages via madvise(MADV_HUGEPAGE) + MADV_COLLAPSE on anonymous mmap.
     Transparent,
     /// Fallback to standard heap allocation (global allocator).
     Heap,
@@ -106,7 +106,7 @@ pub fn allocate_huge_pages(
         ));
     }
 
-    // Strategy 2: anonymous mmap + madvise(MADV_HUGEPAGE) for transparent THP.
+    // Strategy 2: anonymous mmap + madvise(MADV_HUGEPAGE) + MADV_COLLAPSE for synchronous THP.
     let thp_size = align_up(size_bytes, PAGE_4K);
     // SAFETY: try_mmap_huge with validated size.
     let ptr = unsafe { try_mmap_huge(ptr::null_mut(), thp_size, -1, 0, false) };
@@ -115,7 +115,9 @@ pub fn allocate_huge_pages(
         // Hint the kernel to promote these pages to huge pages.
         // SAFETY: ptr and thp_size are valid from the successful mmap above.
         let _madvise_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_HUGEPAGE) };
-        // madvise failure is non-fatal — pages may still be promoted later by khugepaged.
+        // Synchronous collapse (Linux 6.1+). Mandatory: no kernel-version fallback checks.
+        // SAFETY: ptr and thp_size are valid from the successful mmap above.
+        let _collapse_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_COLLAPSE) };
 
         return Ok((
             ptr as *mut u8,
