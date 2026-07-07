@@ -34,7 +34,6 @@ pub fn checked_mul4(a: usize, b: usize, c: usize, d: usize) -> anyhow::Result<us
 }
 
 /// Checked addition.
-#[allow(dead_code)]
 pub fn checked_add(lhs: usize, rhs: usize) -> anyhow::Result<usize> {
     lhs.checked_add(rhs).ok_or_else(|| {
         anyhow::anyhow!(

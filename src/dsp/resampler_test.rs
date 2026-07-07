@@ -684,7 +684,6 @@ fn log_spaced_tones(sample_rate: u32, num_tones: usize) -> Vec<f32> {
         .collect()
 }
 
-
 fn goertzel_magnitude(signal: &[f32], freq: f32, sample_rate: u32) -> f32 {
     let omega = 2.0 * std::f32::consts::PI * freq / sample_rate as f32;
     let coeff = 2.0 * omega.cos();

@@ -124,7 +124,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     * Executar uma compilação temporária sem o `#![allow(dead_code)]` do módulo para verificar se há mais algum helper inutilizado ou se novos avisos surgem. Caso surjam novos warnings legítimos de código que desejamos manter, reverter e restaurar o `#![allow(dead_code)]`.
   * **Validação:** `cargo check --tests`.
 
-* [ ] **T2.6 — Remover atributos `#[allow(...)]` stale em outros módulos**
+* [x] **T2.6 — Remover atributos `#[allow(...)]` stale em outros módulos**
   * **Origem:** [B6 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L141)
   * **Ação:**
     * Remover `#[allow(dead_code)]` de `max_frames_count` em `src/clap/processor/state.rs:122` (campo é lido ativamente em múltiplos lugares).
@@ -133,6 +133,10 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     * > [!WARNING]
       > **Não alterar** os quatro campos `os_*` com `#[allow(unused)]` em `src/dsp/pipeline/context.rs:87-97` por enquanto (risco de quebrar build de features específicas).
   * **Validação:** `cargo check --tests`.
+  * > [!NOTE]
+    > Somente `checked_add` em `checked_arith.rs` era realmente stale. Os outros dois atributos **não são stale** e foram mantidos:
+    > * `#[allow(dead_code)]` em `max_frames_count` (state.rs) — o campo é atribuído mas nunca lido (reservado para futuras assertions RT-safety).
+    > * `#[allow(unused_imports)]` em `parse_semver` (topology/mod.rs) — a reexportação `pub(crate)` é usada apenas via `nam_json/mod.rs:34`, não diretamente dentro do módulo `topology`.
 
 ---
 
