@@ -106,7 +106,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Validação:**
   - Compilação limpa do projeto com todas as features ativas.
 
-### [x86-64-v3] T-PERF-4.2: Eliminação de Ponteiros de Função Indiretos no Resampler (`resampler.rs`)
+### [x86-64-v3] T-PERF-4.2: Eliminação de Ponteiros de Função Indiretos no Resampler (`resampler.rs`) [DONE]
 
 - **Objetivo:** Refatorar o despacho de processamento do `ResamplerCore` para usar despacho estático monomorfizado, eliminando as chamadas indiretas baseadas em cache de function pointers.
 - **Finding Associado:** P-6

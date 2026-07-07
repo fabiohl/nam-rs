@@ -233,7 +233,7 @@ fn test_phase_accum_underflow_guard() {
     let mut out_l = [0.0f32; 64];
     let mut out_r = [0.0f32; 64];
 
-    let n = (core.process_stereo)(&mut core, &in_l, &in_r, &mut out_l, &mut out_r);
+    let n = core.process_static_stereo(&in_l, &in_r, &mut out_l, &mut out_r);
     assert!(n > 0);
 }
 
