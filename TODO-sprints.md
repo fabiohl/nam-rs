@@ -347,7 +347,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 6
 
-* [ ] **T6.1 — Promover `src/models/a2/model/cascade.rs`**
+* [x] **T6.1 — Promover `src/models/a2/model/cascade.rs`**
   * **Origem:** [D4 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L397)
   * **Ação:** Mover `cascade.rs` para `src/models/a2/model/cascade/mod.rs` sem subdivisões adicionais, atualizando as declarações.
   * **Validação:** Garantir compilação e rodar testes rápidos.
