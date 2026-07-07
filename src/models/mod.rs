@@ -16,6 +16,8 @@ pub mod lstm;
 pub mod slimmable;
 pub mod wavenet;
 
+/// NamModel trait implementation for StaticModel (dispatch methods).
+mod nam_model;
 mod static_model;
 
 // =============================================================================

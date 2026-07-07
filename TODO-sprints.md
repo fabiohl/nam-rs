@@ -199,7 +199,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 4
 
-* [ ] **T4.1 — Split de `src/math/common/scalar_ref/dot.rs`**
+* [x] **T4.1 — Split de `src/math/common/scalar_ref/dot.rs`**
   * **Origem:** [C1 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L180)
   * **Ação:**
     1. Criar o arquivo `src/math/common/scalar_ref/dot_4x.rs` (com cabeçalho SPDX/Copyright).
@@ -219,7 +219,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
   * **Validação:** Garantir compilação e executar `utils/tests-quick.sh`.
 
-* [ ] **T4.2 — Split de `src/models/static_model.rs`**
+* [x] **T4.2 — Split de `src/models/static_model.rs`**
   * **Origem:** [C10 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L286)
   * **Ação:**
     1. Criar o arquivo `src/models/nam_model.rs` (com cabeçalho SPDX/Copyright).
