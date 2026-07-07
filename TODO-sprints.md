@@ -263,7 +263,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 5
 
-* [ ] **T5.1 — Split de `src/models/a2/grouped_conv1d.rs`**
+* [x] **T5.1 — Split de `src/models/a2/grouped_conv1d.rs`**
   * **Origem:** [C2 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L195)
   * **Ação:**
     1. Criar o subdiretório e arquivos correspondentes (ex: `src/models/a2/grouped_conv1d/simd.rs` e `src/models/a2/grouped_conv1d/reference.rs` com cabeçalhos SPDX/Copyright).
