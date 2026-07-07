@@ -321,7 +321,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter o restante em `oversample.rs`.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.8 — Split de `src/models/linear.rs`**
+* [x] **T5.8 — Split de `src/models/linear.rs`**
   * **Origem:** [C8 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L264) (após T1.1)
   * **Ação:**
     1. Criar `src/models/linear/process.rs` (com cabeçalho SPDX/Copyright).
