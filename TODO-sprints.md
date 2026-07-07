@@ -236,7 +236,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter a definição do trait `SlimmableModel` e o módulo de teste inline associado no arquivo `src/models/slimmable.rs` original.
   * **Validação:** Garantir compilação e rodar testes de slimmable.
 
-* [ ] **T4.4 — Split de `src/clap/gui/ui/zones/identity.rs`**
+* [x] **T4.4 — Split de `src/clap/gui/ui/zones/identity.rs`**
   * **Origem:** [C11 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L293)
   * **Ação:**
     1. Criar o arquivo `src/clap/gui/ui/zones/file_dialogs.rs` (com cabeçalho SPDX/Copyright).

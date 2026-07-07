@@ -3,6 +3,7 @@
 
 mod bypass_zone;
 mod controls;
+mod file_dialogs;
 mod identity;
 mod meters;
 
