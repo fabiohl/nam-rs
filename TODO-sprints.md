@@ -69,7 +69,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Em `src/math/dsp/fft_radix4.rs`, declarar o submódulo usando `#[path]`.
   * **Validação:** Compilar e executar `cargo test --lib math::dsp::fft_radix4`.
 
-* [ ] **T1.4 — Extração de testes de `src/math/common/aligned.rs`**
+* [x] **T1.4 — Extração de testes de `src/math/common/aligned.rs`**
   * **Origem:** [A4 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L72)
   * **Ação:**
     1. Criar o arquivo `src/math/common/aligned_test.rs` (com cabeçalho SPDX/Copyright).
