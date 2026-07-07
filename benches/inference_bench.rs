@@ -518,7 +518,7 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
         b.iter(|| unsafe {
             // black_box prevents the compiler from optimizing away the entire loop,
             // ensuring the math computation is actually executed.
-            nam_rs::math::gemm::dot::dot_product_avx2(
+            nam_rs::math::gemm::dot_basic::dot_product_avx2(
                 std::hint::black_box(&vec_a),
                 std::hint::black_box(&vec_b),
             )
@@ -535,7 +535,7 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
         .expect("bench allocation failed");
     c.bench_function("DotProduct_AVX2_64elem", |b| {
         b.iter(|| unsafe {
-            nam_rs::math::gemm::dot::dot_product_avx2(
+            nam_rs::math::gemm::dot_basic::dot_product_avx2(
                 std::hint::black_box(&vec_a),
                 std::hint::black_box(&vec_b),
             )

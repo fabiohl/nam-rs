@@ -36,7 +36,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
         // SAFETY: arguments satisfy the function's documented invariants.
-        unsafe { super::super::gemm::dot::dot_product_avx2(a, b) }
+        unsafe { super::super::gemm::dot_basic::dot_product_avx2(a, b) }
     }
 
     #[inline(always)]

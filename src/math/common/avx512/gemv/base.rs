@@ -7,7 +7,7 @@ macro_rules! impl_avx512_gemv {
         // SAFETY: a and b are valid slices; CPU supports AVX-512F+VL+F16C (verified by dispatch).
         // Kernel uses min(a.len(), b.len()) as bound with unaligned 512-bit loads.
         unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-            crate::math::gemm::dot::dot_product_avx512(a, b)
+            crate::math::gemm::dot_basic::dot_product_avx512(a, b)
         }
         #[inline(always)]
         // SAFETY: a and b are valid u16 slices; no AVX-512 requirement (fallback path).

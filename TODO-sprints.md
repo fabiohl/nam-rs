@@ -245,7 +245,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     4. Declarar o submódulo em `identity.rs` ou `zones/mod.rs`.
   * **Validação:** Compilar sob a feature `clap`.
 
-* [ ] **T4.5 — Renomear `src/math/gemm/dot.rs`**
+* [x] **T4.5 — Renomear `src/math/gemm/dot.rs`**
   * **Origem:** [D2 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L379)
   * **Ação:**
     1. Renomear `src/math/gemm/dot.rs` para `src/math/gemm/dot_basic.rs`.

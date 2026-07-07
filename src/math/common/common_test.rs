@@ -5,7 +5,7 @@ use super::ops::set_daz_ftz;
 use super::traits::SimdMath;
 use crate::math::common::{Avx2Math, Avx512Math};
 use crate::math::dsp::stereo::{compute_energy_avx2, compute_max_diff_avx2};
-use crate::math::gemm::dot::{dot_product_avx2, dot_product_avx512};
+use crate::math::gemm::dot_basic::{dot_product_avx2, dot_product_avx512};
 
 #[test]
 fn test_dot_product_avx2_fma() {
@@ -579,7 +579,7 @@ fn test_dot_product_bf16_avx512_regression() {
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let expected = unsafe { crate::math::common::dot_product_bf16_fallback(&a, &b) };
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
-        let result = unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(&a, &b) };
+        let result = unsafe { crate::math::gemm::dot_basic::dot_product_bf16_avx512(&a, &b) };
 
         let error = (result - expected).abs();
         assert!(

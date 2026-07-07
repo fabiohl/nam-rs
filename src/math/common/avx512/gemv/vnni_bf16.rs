@@ -6,14 +6,14 @@ macro_rules! impl_avx512vnni_bf16_gemv {
         #[inline(always)]
         // SAFETY: a and b are valid slices; CPU supports AVX-512F+VL+F16C (verified by dispatch).
         unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-            crate::math::gemm::dot::dot_product_avx512(a, b)
+            crate::math::gemm::dot_basic::dot_product_avx512(a, b)
         }
         #[inline(always)]
         // SAFETY: a and b are valid u16 (BF16) slices; CPU supports AVX-512 VNNI+BF16
         // (verified by dispatch).
         unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
             // SAFETY: a and b satisfy the function's documented invariants.
-            unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(a, b) }
+            unsafe { crate::math::gemm::dot_basic::dot_product_bf16_avx512(a, b) }
         }
         #[inline(always)]
         // SAFETY: weights and state are valid slices; CPU supports AVX-512 VNNI+BF16.
