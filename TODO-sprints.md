@@ -101,7 +101,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     * Remover a função `weight_f16c_to_f64` (linha 171) e seu respectivo `#[allow(dead_code)]`.
   * **Validação:** `cargo check --tests`.
 
-* [ ] **T2.3 — Remover campo `phase_type` de `src/dsp/resampler.rs`**
+* [x] **T2.3 — Remover campo `phase_type` de `src/dsp/resampler.rs`**
   * **Origem:** [B3 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L108)
   * **Ação:**
     * Remover o campo `phase_type` da struct `ResamplerCore` (linha 120).

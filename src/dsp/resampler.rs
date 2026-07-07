@@ -38,7 +38,7 @@
 use anyhow::{Result, bail};
 
 use super::sinc_kernel::{
-    NUM_PHASES, PhaseType, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
+    NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank,
     generate_polyphase_bank_linear,
 };
 use crate::common::diagnostics::NamErrorCode;
@@ -116,15 +116,11 @@ struct ResamplerCore {
     phase_step: u64,
     /// Empirical group delay in output-rate samples (from source bank).
     group_delay: f64,
-    /// Phase type of the source polyphase bank.
-    #[allow(dead_code)]
-    phase_type: PhaseType,
 }
 
 impl ResamplerCore {
     fn new(from_rate: u32, to_rate: u32, bank: PolyphaseBank) -> Result<Self, NamErrorCode> {
         let group_delay = bank.group_delay;
-        let phase_type = bank.phase_type;
 
         let phase_step_f = (from_rate as f64 / to_rate as f64) * NUM_PHASES as f64;
         let phase_step = (phase_step_f * ((1u64 << 40) as f64)).round() as u64;
@@ -136,7 +132,6 @@ impl ResamplerCore {
             phase_accum: (NUM_PHASES as u64) << 40,
             phase_step,
             group_delay,
-            phase_type,
         })
     }
 
@@ -144,13 +139,6 @@ impl ResamplerCore {
     #[inline]
     pub fn group_delay(&self) -> f64 {
         self.group_delay
-    }
-
-    /// Returns the phase type of the source polyphase bank.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn phase_type(&self) -> PhaseType {
-        self.phase_type
     }
 
     /// Processes a stereo block. RT-safe: zero allocations.
