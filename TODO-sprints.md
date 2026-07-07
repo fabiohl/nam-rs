@@ -111,7 +111,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
       > **Não** remover o enum `PhaseType` em si, pois ele pode ser exposto publicamente na API e é útil estruturalmente; remova apenas o campo interno da struct e seu getter.
   * **Validação:** `cargo check --tests` e executar `cargo test --lib dsp::resampler`.
 
-* [ ] **T2.4 — Remover `log_spaced_tones_dense` de `src/dsp/resampler_test.rs`**
+* [x] **T2.4 — Remover `log_spaced_tones_dense` de `src/dsp/resampler_test.rs`**
   * **Origem:** [B4 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L119)
   * **Ação:**
     * Remover a função `log_spaced_tones_dense` (linha 687) e seu respectivo `#[allow(dead_code)]`.

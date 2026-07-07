@@ -684,25 +684,6 @@ fn log_spaced_tones(sample_rate: u32, num_tones: usize) -> Vec<f32> {
         .collect()
 }
 
-#[allow(dead_code)]
-fn log_spaced_tones_dense(
-    sample_rate: u32,
-    num_tones: usize,
-    f_start: f64,
-    f_end_override: Option<f64>,
-) -> Vec<f32> {
-    let nyquist = sample_rate as f64 / 2.0;
-    let f_end = f_end_override.unwrap_or(0.45 * nyquist);
-    let log_start = f_start.log10();
-    let log_end = f_end.log10();
-    (0..num_tones)
-        .map(|i| {
-            10.0f64
-                .powf(log_start + (log_end - log_start) * i as f64 / (num_tones.max(1) - 1) as f64)
-                as f32
-        })
-        .collect()
-}
 
 fn goertzel_magnitude(signal: &[f32], freq: f32, sample_rate: u32) -> f32 {
     let omega = 2.0 * std::f32::consts::PI * freq / sample_rate as f32;
