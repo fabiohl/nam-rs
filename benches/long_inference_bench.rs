@@ -17,48 +17,17 @@
 //! `cargo bench` (default pass) does not re-run the long soak benchmarks.
 
 #[cfg(feature = "long_bench")]
+#[path = "common.rs"]
+mod common;
+
+#[cfg(feature = "long_bench")]
 use criterion::{Criterion, criterion_group, criterion_main};
 #[cfg(feature = "long_bench")]
 use nam_rs::loader::dispatcher::build_model;
 #[cfg(feature = "long_bench")]
 use nam_rs::loader::nam_json::parse_nam_json;
 #[cfg(feature = "long_bench")]
-use nam_rs::loader::nam_json::{NamConfig, NamModelData};
-#[cfg(feature = "long_bench")]
 use nam_rs::models::NamModel;
-#[cfg(feature = "long_bench")]
-use nam_rs::models::lstm::lstm_weight_count;
-
-#[cfg(feature = "long_bench")]
-fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
-}
-
-#[cfg(feature = "long_bench")]
-fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
-    let total_weights = lstm_weight_count(num_layers, hidden_size);
-    NamModelData {
-        version: Some("0.5.4".to_string()),
-        architecture: "LSTM".to_string(),
-        config: NamConfig {
-            layers: vec![],
-            head: None,
-            head_scale: None,
-            num_layers: Some(num_layers),
-            hidden_size: Some(hidden_size),
-            receptive_field: None,
-            bias: None,
-            submodels: None,
-            ..Default::default()
-        },
-        weights: vec![0.01; total_weights],
-        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
-        sample_rate: Some(48000.0),
-        metadata: None,
-    }
-}
 
 #[cfg(feature = "long_bench")]
 fn bench_wavenet_long_run(c: &mut Criterion) {
@@ -72,7 +41,7 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
     let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
-    let input = generate_sine_440hz(size);
+    let input = common::generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_WaveNet");
     group.measurement_time(std::time::Duration::from_secs(35));
@@ -87,11 +56,11 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
 
 #[cfg(feature = "long_bench")]
 fn bench_lstm_long_run(c: &mut Criterion) {
-    let data = make_lstm_data(2, 16);
+    let data = common::make_lstm_data(2, 16);
     let mut model = build_model(&data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
-    let input = generate_sine_440hz(size);
+    let input = common::generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_LSTM");
     group.measurement_time(std::time::Duration::from_secs(35));
@@ -136,7 +105,7 @@ fn bench_a2_full_long_run(c: &mut Criterion) {
     let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
-    let input = generate_sine_440hz(size);
+    let input = common::generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_A2Full");
     group.measurement_time(std::time::Duration::from_secs(35));
@@ -161,7 +130,7 @@ fn bench_a2_lite_long_run(c: &mut Criterion) {
     let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
-    let input = generate_sine_440hz(size);
+    let input = common::generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_A2Lite");
     group.measurement_time(std::time::Duration::from_secs(35));

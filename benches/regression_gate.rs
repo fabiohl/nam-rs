@@ -24,49 +24,16 @@
 //!
 //! WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM 1x16/2x8, Linear, ConvNet.
 
+#[path = "common.rs"]
+mod common;
+
 use criterion::{Criterion, criterion_group, criterion_main};
-use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::models::NamModel;
-use std::fs;
-use std::path::PathBuf;
-
-fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
-}
-
-fn model_path(filename: &str) -> PathBuf {
-    let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut nondist = base.clone();
-    nondist.push("tests/fixtures/models-nondist");
-    nondist.push(filename);
-    if nondist.exists() {
-        nondist
-    } else {
-        base.push("tests/fixtures/models");
-        base.push(filename);
-        base
-    }
-}
-
-fn load_and_prewarm(filename: &str) -> Option<nam_rs::models::StaticModel> {
-    let path = model_path(filename);
-    if !path.exists() {
-        return None;
-    }
-    let json_data = fs::read_to_string(&path).ok()?;
-    let model_data = parse_nam_json(&json_data).ok()?;
-    let mut model = build_model(&model_data).ok()?;
-    model.prewarm(2048);
-    Some(*model)
-}
 
 macro_rules! regression_bench {
     ($c:expr, $label:expr, $file:expr) => {
-        if let Some(mut model) = load_and_prewarm($file) {
-            let input = generate_sine_440hz(64);
+        if let Some(mut model) = common::load_and_prewarm($file) {
+            let input = common::generate_sine_440hz(64);
             let mut output = vec![0.0f32; 64];
             $c.bench_function($label, |b| {
                 b.iter(|| model.process(&input, &mut output));

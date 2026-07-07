@@ -5,6 +5,10 @@
 //!
 //! Provides deterministic signal generators, synthetic model-data builders,
 //! and model-loader helpers used across the bench suite.
+//!
+//! This module is compiled into multiple bench binaries; individual
+//! functions may appear unused in some binaries during phased migration.
+#![allow(dead_code)]
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamLayerConfig, NamModelData, parse_nam_json};

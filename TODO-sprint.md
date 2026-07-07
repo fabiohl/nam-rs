@@ -40,8 +40,8 @@ gantt
   - Implementar os geradores de dados sintéticos: `generate_sine_440hz` e builders de dados de modelo (`make_lstm_data`, `make_wavenet_dyn_data`, `make_wavenet_a2_dyn_data`).
   - Implementar os resolvedores de caminho de arquivo de modelo (`model_path`) e rotinas de warmup (`load_and_prewarm`).
   - *Referência*: [TODO-findings.md §3.1].
-- **[ ] Tarefa 1.2**: Ajustar `benches/regression_gate.rs` para importar os utilitários de `benches/common.rs` e remover as definições locais duplicadas.
-- **[ ] Tarefa 1.3**: Ajustar `benches/long_inference_bench.rs` para reutilizar as definições de `benches/common.rs` e remover código redundante.
+- **[X] Tarefa 1.2**: Ajustar `benches/regression_gate.rs` para importar os utilitários de `benches/common.rs` e remover as definições locais duplicadas.
+- **[X] Tarefa 1.3**: Ajustar `benches/long_inference_bench.rs` para reutilizar as definições de `benches/common.rs` e remover código redundante.
 - **Risco/Complexidade**: **Baixo**.
   > [IMPORTANT]
   > Como `regression_gate.rs` é o portão de performance principal da CI, esta etapa deve ser validada garantindo que a compilação do gate permanece intacta.
