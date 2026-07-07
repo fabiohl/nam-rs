@@ -163,7 +163,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     4. Excluir o diretório vazio `test_files/`.
   * **Validação:** Compilar e rodar `cargo test --lib dsp::pipeline`.
 
-* [ ] **T3.2 — Achatamento de `src/models/wavenet/test_files/`**
+* [x] **T3.2 — Achatamento de `src/models/wavenet/test_files/`**
   * **Origem:** [D1b em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L362)
   * **Ação:**
     1. Mover os 6 arquivos de teste para `src/models/wavenet/` como irmãos diretos de `wavenet_test.rs` (não há colisão de nomes com arquivos existentes):

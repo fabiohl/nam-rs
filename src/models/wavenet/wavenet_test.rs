@@ -202,17 +202,19 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     }
 }
 
-#[path = "test_files/conv1d_dyn_test.rs"]
+#[path = "conv1d_dyn_test.rs"]
 mod conv1d_dyn_test;
-#[path = "test_files/conv1d_test.rs"]
+#[path = "conv1d_test.rs"]
 mod conv1d_test;
-#[path = "test_files/dense_test.rs"]
+#[path = "dense_test.rs"]
 mod dense_test;
-#[path = "test_files/dynamic_parity_test.rs"]
+#[path = "dynamic_parity_test.rs"]
 mod dynamic_parity_test;
-#[path = "test_files/post_stack_head_integration_test.rs"]
+#[path = "post_stack_head_integration_test.rs"]
 mod post_stack_head_integration_test;
-#[path = "test_files/wavenet_sub_test.rs"]
+#[path = "wavenet_ch12_diagnostic_test.rs"]
+mod wavenet_ch12_diagnostic_test;
+#[path = "wavenet_sub_test.rs"]
 mod wavenet_sub_test;
 
 #[test]
