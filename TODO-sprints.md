@@ -148,7 +148,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 3
 
-* [ ] **T3.1 — Achatamento de `src/dsp/pipeline/test_files/`**
+* [x] **T3.1 — Achatamento de `src/dsp/pipeline/test_files/`**
   * **Origem:** [D1a em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L348)
   * **Ação:**
     1. Mover os arquivos para `src/dsp/pipeline/` renomeando-os para evitar conflito de nomenclatura com outros módulos:

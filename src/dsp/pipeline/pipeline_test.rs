@@ -130,13 +130,13 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "test_files/bypass_test.rs"]
+#[path = "pipeline_bypass_test.rs"]
 mod bypass_test;
 
 #[cfg(test)]
-#[path = "test_files/gate_test.rs"]
+#[path = "pipeline_gate_test.rs"]
 mod gate_test;
 
 #[cfg(test)]
-#[path = "test_files/dither_test.rs"]
+#[path = "pipeline_dither_test.rs"]
 mod dither_test;
