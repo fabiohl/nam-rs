@@ -329,7 +329,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter a definição do modelo, construtores e trait `NamModel` em `linear.rs`.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.9 — Split de `src/models/linear_fft.rs`**
+* [x] **T5.9 — Split de `src/models/linear_fft.rs`**
   * **Origem:** [C9 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L277) (após T1.2)
   * **Ação:**
     1. Criar `src/models/linear_fft/process.rs` (com cabeçalho SPDX/Copyright).
