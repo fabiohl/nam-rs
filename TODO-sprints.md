@@ -38,7 +38,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 1
 
-* [ ] **T1.1 — Extração de testes de `src/models/linear.rs`**
+* [x] **T1.1 — Extração de testes de `src/models/linear.rs`**
   * **Origem:** [A1 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L50)
   * **Ação:**
     1. Criar o arquivo `src/models/linear_test.rs` (com cabeçalho SPDX/Copyright).
