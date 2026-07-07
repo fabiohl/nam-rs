@@ -148,7 +148,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
   - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
 - **Conclusão:** O método `resize` já havia sido otimizado em T-PERF-5.1 com `copy_nonoverlapping` para elementos existentes e `write_bytes` para slots zero. O método `clone` foi otimizado: bound alterado de `T: Clone` para `T: Copy` (todos os usos são f32/f64 = Copy), substituindo o loop clone-por-elemento por um único `copy_nonoverlapping`.
 
-#### [x86-64-v3] T-PERF-5.3: Análise e Separação de Tails SIMD com `#[cold]` (Vários)
+#### [x86-64-v3] T-PERF-5.3: Análise e Separação de Tails SIMD com `#[cold]` (Vários) [DONE]
 
 - **Objetivo:** Analisar se a geração do assembly (`cargo asm`) mantém os tails escalares das funções SIMD principais inline. Caso estejam, extraí-los para funções externas anotadas com `#[cold]` e `#[inline(never)]`.
 - **Finding Associado:** P-15
@@ -157,3 +157,8 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Baixo.
 - **Validação:**
   - Auditoria via análise de assembly de build release.
+- **Conclusão:** Análise do assembly confirmou que todas as funções SIMD do projeto mantêm tails escalares inline (não há outlining automático do compilador). Extraídos tails de 8 funções hot-path para funções `#[cold] #[inline(never)`:
+  - **wavenet/accumulate/avx2.rs:** 6 funções (`accumulate_head`, `tanh_and_accumulate_block`, `gated_activation_and_accumulate_block`, `tanh_and_overwrite_block`, `tanh_and_accumulate_with_seed`, `gated_activation_and_overwrite_block`). Macro `wavenet_simd_avx2!` simplificado para SIMD-only.
+  - **lstm/gates.rs:** 1 tail compartilhado entre `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512` (5.4 KB de código scalar movido para `.text.unlikely`).
+  - Confirmado via `objdump`: todos os 8 tails em seção `.text.unlikely`. `cargo check`/`clippy` limpos, 96 testes wavenet + 28 testes LSTM + suite `tests-quick.sh` completa passando.
+  - Funções de ativação e gain com tails simples (< 3 ops) foram analisadas e mantidas inline: o overhead de `call`/`ret` superaria o benefício de I-cache para esses casos.
