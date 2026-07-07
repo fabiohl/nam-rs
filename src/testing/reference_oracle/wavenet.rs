@@ -1,0 +1,309 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+#![allow(missing_docs)]
+
+use crate::loader::nam_json::model::NamModelData;
+
+use super::*;
+
+pub(crate) fn oracle_wavenet_forward(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    let layers = &model_data.config.layers;
+    let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
+    let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
+    let num_frames = input.len();
+
+    if layers.len() < 2 {
+        return vec![0.0; num_frames];
+    }
+
+    let l0 = &layers[0];
+    let l1 = &layers[1];
+    let a0_ch = l0.channels.unwrap_or(16);
+    let a0_head = l0.head_size.unwrap_or(8);
+    let a0_k = l0.kernel_size.unwrap_or(3);
+    let a0_dilations = l0.dilations.clone().unwrap_or_else(|| vec![1, 2, 4, 8]);
+    let a0_cond = l0.condition_size.unwrap_or(1);
+    let a1_ch = a0_head;
+    let a1_head = l1.head_size.unwrap_or(1);
+    let a1_k = l1.kernel_size.unwrap_or(3);
+    let a1_dilations = l1.dilations.clone().unwrap_or_else(|| vec![1, 2, 4, 8]);
+    let a1_cond = l1.condition_size.unwrap_or(1);
+
+    // Receptive field per array
+    let a0_rf: usize = a0_dilations.iter().map(|&d| (a0_k - 1) * d).sum();
+    let a1_rf: usize = a1_dilations.iter().map(|&d| (a1_k - 1) * d).sum();
+    let max_rf = a0_rf.max(a1_rf) + 64;
+    let acc_mode = config.accumulation;
+
+    let mut output = vec![0.0f64; num_frames];
+
+    struct LayerW {
+        conv_w: Vec<f64>,
+        conv_b: Vec<f64>,
+        mixin_w: Vec<f64>,
+        l1x1_w: Vec<f64>,
+        l1x1_b: Vec<f64>,
+        dilation: usize,
+    }
+
+    // ── Read Array0 weights ────────────────────────────────────────────────
+    let a0_rechannel_w = cursor.read_f64(a0_ch);
+    let a0_num_layers = a0_dilations.len();
+    let mut a0_lws: Vec<LayerW> = Vec::new();
+    for &dil in &a0_dilations {
+        let conv_w = cursor.read_f64(a0_ch * a0_ch * a0_k);
+        let conv_b = cursor.read_f64(a0_ch);
+        let mixin_w = cursor.read_f64(a0_cond * a0_ch);
+        let l1x1_w = cursor.read_f64(a0_ch * a0_ch);
+        let l1x1_b = cursor.read_f64(a0_ch);
+        a0_lws.push(LayerW {
+            conv_w,
+            conv_b,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+            dilation: dil,
+        });
+    }
+    let a0_head_w = cursor.read_f64(a0_ch * a0_head);
+
+    // ── Read Array1 weights ────────────────────────────────────────────────
+    let a1_rechannel_w = cursor.read_f64(a0_ch * a1_ch);
+    let a1_num_layers = a1_dilations.len();
+    let mut a1_lws: Vec<LayerW> = Vec::new();
+    for &dil in &a1_dilations {
+        let conv_w = cursor.read_f64(a1_ch * a1_ch * a1_k);
+        let conv_b = cursor.read_f64(a1_ch);
+        let mixin_w = cursor.read_f64(a1_cond * a1_ch);
+        let l1x1_w = cursor.read_f64(a1_ch * a1_ch);
+        let l1x1_b = cursor.read_f64(a1_ch);
+        a1_lws.push(LayerW {
+            conv_w,
+            conv_b,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+            dilation: dil,
+        });
+    }
+    let a1_head_w = cursor.read_f64(a1_ch * a1_head);
+    let a1_head_b = cursor.read_f64(a1_head);
+
+    // ── Array0 per-layer buffers ───────────────────────────────────────────
+    // a0_bufs[0..N] where N = num_layers + 1 (buf[0] for rechannel, buf[i+1] for layer i output)
+    let buf_size = max_rf + num_frames + 64;
+    let bs = max_rf;
+    let a0_buf_count = a0_num_layers + 1;
+    let mut a0_bufs: Vec<Vec<f64>> = (0..a0_buf_count)
+        .map(|_| vec![0.0f64; buf_size * a0_ch])
+        .collect();
+    let mut a0_ch_out = vec![0.0f64; num_frames * a0_ch];
+    let mut a0_out = vec![0.0f64; num_frames * a0_head];
+    let mut a0_head_accum = vec![0.0f64; num_frames * a0_ch];
+
+    // Rechannel → a0_bufs[0]
+    for (f, &inp) in input.iter().enumerate() {
+        let idx = bs + f;
+        for (c, rec_w) in a0_rechannel_w.iter().enumerate() {
+            a0_bufs[0][idx * a0_ch + c] = inp * *rec_w;
+        }
+    }
+
+    // Array0 layer cascade
+    for (li, lw) in a0_lws.iter().enumerate() {
+        let is_first = li == 0;
+        for (f, &inp) in input.iter().enumerate() {
+            let idx = bs + f;
+
+            // Conv1d + mixin (reads from a0_bufs[li])
+            let conv_out = {
+                let hist = &a0_bufs[li];
+                let mut conv_out = vec![0.0f64; a0_ch];
+                for (oc, cv) in conv_out.iter_mut().enumerate() {
+                    let mut sum = lw.conv_b[oc];
+                    let wb = oc * a0_ch * a0_k;
+                    for kt in 0..a0_k {
+                        let off = (lw.dilation as isize) * ((kt as isize) + 1 - (a0_k as isize));
+                        let ins = ((idx as isize) + off) as usize * a0_ch;
+                        for ic in 0..a0_ch {
+                            if ins + ic < hist.len() {
+                                sum = mul_add_f64(
+                                    hist[ins + ic],
+                                    lw.conv_w[wb + ic * a0_k + kt],
+                                    sum,
+                                    acc_mode,
+                                );
+                            }
+                        }
+                    }
+                    *cv = sum;
+                }
+                for (c, co) in conv_out.iter_mut().enumerate() {
+                    *co = mul_add_f64(inp, lw.mixin_w[c], *co, acc_mode);
+                }
+                for cv in conv_out.iter_mut() {
+                    *cv = oracle_tanh(*cv, config.activation);
+                }
+                conv_out
+            };
+
+            if is_first {
+                for c in 0..a0_ch {
+                    a0_head_accum[f * a0_ch + c] = conv_out[c];
+                }
+            } else {
+                for c in 0..a0_ch {
+                    a0_head_accum[f * a0_ch + c] =
+                        accum_f64(a0_head_accum[f * a0_ch + c], conv_out[c], acc_mode);
+                }
+            }
+
+            // L1x1 residual → next layer's buffer (reads a0_bufs[li] and writes a0_bufs[li+1])
+            for oc in 0..a0_ch {
+                let mut sum = lw.l1x1_b[oc];
+                for (ic, co) in conv_out.iter().enumerate() {
+                    sum = mul_add_f64(*co, lw.l1x1_w[oc * a0_ch + ic], sum, acc_mode);
+                }
+                a0_bufs[li + 1][idx * a0_ch + oc] =
+                    accum_f64(a0_bufs[li][idx * a0_ch + oc], sum, acc_mode);
+            }
+        }
+    }
+
+    // Array0 head rechannel
+    for f in 0..num_frames {
+        for hc in 0..a0_head {
+            let mut sum = 0.0f64;
+            for c in 0..a0_ch {
+                sum = mul_add_f64(
+                    a0_head_accum[f * a0_ch + c],
+                    a0_head_w[hc * a0_ch + c],
+                    sum,
+                    acc_mode,
+                );
+            }
+            a0_out[f * a0_head + hc] = sum;
+        }
+    }
+
+    // Save Array0 channel output for Array1's rechannel
+    for f in 0..num_frames {
+        let idx = bs + f;
+        a0_ch_out[f * a0_ch..f * a0_ch + a0_ch]
+            .copy_from_slice(&a0_bufs[a0_num_layers][idx * a0_ch..idx * a0_ch + a0_ch]);
+    }
+
+    // ── Array1 per-layer buffers ───────────────────────────────────────────
+    let a1_buf_count = a1_num_layers + 1;
+    let mut a1_bufs: Vec<Vec<f64>> = (0..a1_buf_count)
+        .map(|_| vec![0.0f64; buf_size * a1_ch])
+        .collect();
+    let mut a1_head_accum = vec![0.0f64; num_frames * a1_ch];
+
+    // Array1 rechannel from a0_ch_out → a1_bufs[0]
+    for f in 0..num_frames {
+        let idx = bs + f;
+        for c in 0..a1_ch {
+            let mut sum = 0.0f64;
+            for ic in 0..a0_ch {
+                sum = mul_add_f64(
+                    a0_ch_out[f * a0_ch + ic],
+                    a1_rechannel_w[c * a0_ch + ic],
+                    sum,
+                    acc_mode,
+                );
+            }
+            a1_bufs[0][idx * a1_ch + c] = sum;
+        }
+    }
+
+    // Array1 layer cascade
+    for (li, lw) in a1_lws.iter().enumerate() {
+        let is_first = li == 0;
+        for (f, &inp) in input.iter().enumerate() {
+            let idx = bs + f;
+
+            let conv_out = {
+                let hist = &a1_bufs[li];
+                let mut conv_out = vec![0.0f64; a1_ch];
+                for (oc, cv) in conv_out.iter_mut().enumerate() {
+                    let mut sum = lw.conv_b[oc];
+                    let wb = oc * a1_ch * a1_k;
+                    for kt in 0..a1_k {
+                        let off = (lw.dilation as isize) * ((kt as isize) + 1 - (a1_k as isize));
+                        let ins = ((idx as isize) + off) as usize * a1_ch;
+                        for ic in 0..a1_ch {
+                            if ins + ic < hist.len() {
+                                sum = mul_add_f64(
+                                    hist[ins + ic],
+                                    lw.conv_w[wb + ic * a1_k + kt],
+                                    sum,
+                                    acc_mode,
+                                );
+                            }
+                        }
+                    }
+                    *cv = sum;
+                }
+                for (c, co) in conv_out.iter_mut().enumerate() {
+                    *co = mul_add_f64(inp, lw.mixin_w[c], *co, acc_mode);
+                }
+                for cv in conv_out.iter_mut() {
+                    *cv = oracle_tanh(*cv, config.activation);
+                }
+                conv_out
+            };
+
+            if is_first {
+                for c in 0..a1_ch {
+                    a1_head_accum[f * a1_ch + c] =
+                        accum_f64(a0_out[f * a1_ch + c], conv_out[c], acc_mode);
+                }
+            } else {
+                for c in 0..a1_ch {
+                    a1_head_accum[f * a1_ch + c] =
+                        accum_f64(a1_head_accum[f * a1_ch + c], conv_out[c], acc_mode);
+                }
+            }
+
+            // L1x1 residual → next layer's buffer
+            for oc in 0..a1_ch {
+                let mut sum = lw.l1x1_b[oc];
+                for (ic, co) in conv_out.iter().enumerate() {
+                    sum = mul_add_f64(*co, lw.l1x1_w[oc * a1_ch + ic], sum, acc_mode);
+                }
+                a1_bufs[li + 1][idx * a1_ch + oc] =
+                    accum_f64(a1_bufs[li][idx * a1_ch + oc], sum, acc_mode);
+            }
+        }
+    }
+
+    // Array1 head rechannel → 1-channel output × head_scale
+    for f in 0..num_frames {
+        let mut y = a1_head_b[0];
+        for c in 0..a1_ch {
+            y = mul_add_f64(
+                a1_head_accum[f * a1_ch + c],
+                a1_head_w[c * a1_head],
+                y,
+                acc_mode,
+            );
+        }
+        output[f] = y * head_scale;
+    }
+
+    output
+}
+
+// =============================================================================
+// A2 Oracle — Generic topology support (S13.2)
+// =============================================================================
+// Supports arbitrary channel counts, kernel sizes, dilations, bottleneck≠channels,
+// heterogeneous activations, gating/blending, head1x1, condition_size>1, condition_dsp,
+// and all 8 FiLM insertion slots including head1x1_post_film (slot 7).
+// Backward-compatible with the legacy 23-layer A2 fast-path models.
