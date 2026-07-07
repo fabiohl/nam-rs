@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! AVX-512 polynomial exp/tanh/sigmoid kernels (degree-6 Taylor).
+//! AVX-512 polynomial exp/tanh kernels (degree-6 Taylor).
 //!
 //! Depends on scalar fallback functions from `super::high_fidelity`
 //! and polynomial constants from `crate::math::constants`.
+//! Sigmoid polynomial AVX-512 kernels live in
+//! `crate::math::activations::sigmoid::high_fidelity_avx512`.
 
-use super::high_fidelity::scalar_sigmoid_poly;
 use super::high_fidelity::scalar_tanh_poly;
+use crate::math::activations::sigmoid::high_fidelity_avx512::simd_sigmoid_poly_avx512;
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
@@ -81,32 +83,10 @@ pub unsafe fn simd_tanh_poly_avx512(x: __m512) -> __m512 {
     _mm512_max_ps(neg_one, _mm512_min_ps(one, tanh_val))
 }
 
-/// Polynomial `sigmoid(x)` for `__m512` — exp-based, branchless (AVX-512F/VL).
-///
-/// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
-/// Input clamped to [-20, 20] for overflow safety, output clamped to [0, 1].
-///
-/// # Safety
-/// The caller must guarantee AVX-512F and AVX-512VL support.
-#[inline]
-#[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn simd_sigmoid_poly_avx512(x: __m512) -> __m512 {
-    let clamp_lo = _mm512_set1_ps(-POLY_ACTIVATION_CLAMP);
-    let clamp_hi = _mm512_set1_ps(POLY_ACTIVATION_CLAMP);
-    let one = _mm512_set1_ps(1.0f32);
-    let zero = _mm512_set1_ps(0.0f32);
-
-    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
-    let neg_x = _mm512_sub_ps(zero, x);
-    let exp_neg_x = unsafe { simd_exp_poly_avx512(neg_x) };
-    let den = _mm512_add_ps(one, exp_neg_x);
-    let sig = _mm512_div_ps(one, den);
-    _mm512_max_ps(zero, _mm512_min_ps(one, sig))
-}
-
 /// Polynomial `(tanh(x1), sigmoid(x2))` — dual gate (AVX-512F/VL).
 ///
 /// Used in WaveNet gated activation: `tanh(zf) * sigmoid(zg)`.
+/// Delegates sigmoid to `sigmoid::high_fidelity_avx512::simd_sigmoid_poly_avx512`.
 ///
 /// # Safety
 /// The caller must guarantee AVX-512F and AVX-512VL support.
@@ -199,28 +179,5 @@ pub unsafe fn tanh_poly_slice_avx512(slice: &mut [f32]) {
 
     for item in slice.iter_mut().skip(i) {
         *item = scalar_tanh_poly(*item);
-    }
-}
-
-/// Applies polynomial Sigmoid activation to a slice of f32 using AVX-512.
-///
-/// # Safety
-/// Requires AVX-512F and AVX-512VL support.
-#[inline]
-#[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn sigmoid_poly_slice_avx512(slice: &mut [f32]) {
-    let mut i = 0;
-    let len = slice.len();
-
-    unsafe {
-        crate::activation_simd_avx512!(i, len, {
-            let x = _mm512_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_sigmoid_poly_avx512(x);
-            _mm512_storeu_ps(slice.as_mut_ptr().add(i), y);
-        });
-    }
-
-    for item in slice.iter_mut().skip(i) {
-        *item = scalar_sigmoid_poly(*item);
     }
 }

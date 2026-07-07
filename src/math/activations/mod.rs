@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+#![allow(ambiguous_glob_reexports)]
+
 //! Central activations module with automatic SIMD dispatch.
 //!
 //! Provides ultra-fast and branchless implementations of `tanh` and `sigmoid`.
 //! - `tanh(x)` uses piecewise minimax odd polynomials (degree 5) with branchless
 //!   blending for |x| < 4, saturated to [-1, 1] (7 symmetric sub-intervals).
+//!   The production Padé path lives in `tanh/production.rs`; the high-fidelity
+//!   polynomial path in `tanh/high_fidelity.rs`.
 //! - `sigmoid(x)` uses a direct degree-17 minimax polynomial (9 odd terms) for |x| < 8,
 //!   saturated to [0, 1].  Max error ~4.09e-4 vs `f32::exp` reference.
+//!   The production minimax path lives in `sigmoid/production.rs`; the high-fidelity
+//!   polynomial path in `sigmoid/high_fidelity.rs`.
 //!
 //! Reference for tanh: VDT library (CERN), Mineiro & Vorlicek (2016).
 //! Sigmoid coefficients: Lawson-weighted minimax on [-8, 8].

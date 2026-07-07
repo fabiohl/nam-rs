@@ -514,7 +514,7 @@ impl SimdMath for Avx2Math {
     // SAFETY: slices are valid; CPU supports AVX2+FMA (x86-64-v3, verified by dispatch).
     unsafe fn sigmoid_slice_hf(slice: &mut [f32]) {
         // SAFETY: arguments satisfy the function's documented invariants.
-        unsafe { crate::math::activations::tanh::high_fidelity::sigmoid_poly_slice_avx2(slice) }
+        unsafe { crate::math::activations::sigmoid::high_fidelity::sigmoid_poly_slice_avx2(slice) }
     }
 
     #[inline(always)]

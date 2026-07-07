@@ -102,7 +102,7 @@ macro_rules! impl_avx512_activations {
         #[inline(always)]
         // SAFETY: slice is a valid mutable f32 buffer; CPU supports AVX-512F+VL (verified by dispatch).
         unsafe fn sigmoid_slice_hf(slice: &mut [f32]) {
-            crate::math::activations::tanh::high_fidelity::sigmoid_poly_slice_avx512(slice)
+            crate::math::activations::sigmoid::high_fidelity::sigmoid_poly_slice_avx512(slice)
         }
 
         #[inline(always)]

@@ -13,12 +13,14 @@
 
 use crate::math::activations::ActivationPrecision;
 use crate::math::activations::activation_precision;
+use crate::math::activations::sigmoid::high_fidelity::{
+    scalar_sigmoid_poly, simd_sigmoid_poly_avx2, simd_sigmoid_poly_avx512,
+};
 use crate::math::activations::sigmoid::{
     scalar_minimax_sigmoid, simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
 };
 use crate::math::activations::tanh::high_fidelity::{
-    scalar_sigmoid_poly, scalar_tanh_poly, simd_sigmoid_poly_avx2, simd_sigmoid_poly_avx512,
-    simd_tanh_poly_avx2, simd_tanh_poly_avx512,
+    scalar_tanh_poly, simd_tanh_poly_avx2, simd_tanh_poly_avx512,
 };
 use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;

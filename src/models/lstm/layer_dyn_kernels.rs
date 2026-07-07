@@ -11,7 +11,8 @@ use crate::dispatch_simd;
 use crate::math::activations::ActivationPrecision;
 use crate::math::activations::activation_precision;
 use crate::math::activations::scalar_minimax_sigmoid;
-use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
+use crate::math::activations::sigmoid::high_fidelity::scalar_sigmoid_poly;
+use crate::math::activations::tanh::high_fidelity::scalar_tanh_poly;
 use crate::math::activations::tanh::scalar_pade_tanh;
 use core::arch::x86_64::*;
 

@@ -9,7 +9,8 @@ use super::layer::LstmLayer;
 use crate::math::activations::ActivationPrecision;
 use crate::math::activations::activation_precision;
 use crate::math::activations::scalar_minimax_sigmoid;
-use crate::math::activations::tanh::high_fidelity::{scalar_sigmoid_poly, scalar_tanh_poly};
+use crate::math::activations::sigmoid::high_fidelity::scalar_sigmoid_poly;
+use crate::math::activations::tanh::high_fidelity::scalar_tanh_poly;
 use crate::math::activations::tanh::scalar_pade_tanh;
 
 macro_rules! define_lstm_process {

@@ -352,10 +352,11 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
   * **Ação:** Mover `cascade.rs` para `src/models/a2/model/cascade/mod.rs` sem subdivisões adicionais, atualizando as declarações.
   * **Validação:** Garantir compilação e rodar testes rápidos.
 
-* [ ] **T6.2 — Promover `src/math/activations/sigmoid.rs`**
+* [x] **T6.2 — Promover `src/math/activations/sigmoid.rs`**
   * **Origem:** [D5 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L406)
   * **Ação:** Promover para uma estrutura de diretório `sigmoid/mod.rs`, `sigmoid/production.rs` e `sigmoid/high_fidelity.rs`, mantendo a consistência com `tanh/`.
   * **Validação:** Garantir compilação e rodar testes rápidos.
+  * **✅ Concluído:** Estrutura criada com `sigmoid/mod.rs` (re-exports), `sigmoid/production.rs` (minimax kernels), `sigmoid/high_fidelity.rs` (polynomial exp-based, duplicou exp kernel para autossuficiência), `sigmoid/high_fidelity_avx512.rs` e `sigmoid/high_fidelity_test.rs`. Funções sigmoid removidas de `tanh/high_fidelity.rs` e `tanh/high_fidelity_avx512.rs`. Dual gate `simd_tanh_sigmoid_dual_poly_*` mantido em tanh com import delegado. Todos os imports atualizados (lstm/gates.rs, layer_kernels.rs, layer_dyn_kernels.rs, avx2_impl.rs, avx512/activations.rs). `#![allow(ambiguous_glob_reexports)]` adicionado em activations/mod.rs.
 
 * [ ] **T6.3 — Organizar testes de `conv1d_ch3` e `conv1d_ch8`**
   * **Origem:** [D6 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L415)

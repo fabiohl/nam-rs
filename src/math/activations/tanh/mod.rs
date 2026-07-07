@@ -7,10 +7,14 @@
 //!   (`simd_tanh_avx2`, `simd_tanh_dual_avx2`, `simd_tanh_avx512`).
 //! - **Reference path:** Padé NR2 variants retained for benchmarking and
 //!   documentation (`simd_tanh_pade_nr2_avx2`, `simd_tanh_pade_nr2_avx512`).
+//! - **High-fidelity path:** Polynomial exp-based tanh kernels (degree-6 Taylor,
+//!   ≤ 2.4e-7 error). Sigmoid polynomial kernels live in
+//!   `crate::math::activations::sigmoid::high_fidelity`.
 
-/// Polynomial exp-based tanh/sigmoid kernels (degree-6 Taylor, ≤ 1e-6 error).
+/// Polynomial exp-based tanh kernels (degree-6 Taylor, ≤ 2.4e-7 error).
+/// Also exports the `simd_tanh_sigmoid_dual_poly_*` gated fusion.
 pub mod high_fidelity;
-/// AVX-512 polynomial exp/tanh/sigmoid kernels (re-exported by `high_fidelity`).
+/// AVX-512 polynomial exp/tanh kernels (re-exported by `high_fidelity`).
 pub mod high_fidelity_avx512;
 pub mod production;
 /// Experimental / reference Padé NR2 variants retained for benchmarking.

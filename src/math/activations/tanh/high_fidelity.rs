@@ -1,24 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Polynomial Tanh / Sigmoid activation kernels (f32 native weights + degree-6 Taylor exp), AVX2/FMA.
+//! Polynomial Tanh activation kernels (f32 native weights + degree-6 Taylor exp), AVX2/FMA.
 //!
 //! Uses an exp-based formula with a degree-6 Taylor minimax polynomial
 //! and integer range-reduction (`k = round(x·log₂e)`, `r = x − k·ln 2`).
 //!
 //! ```text
 //! tanh(x) = (e²ˣ − 1) / (e²ˣ + 1)    (exp-based, single-division, branchless)
-//! σ(x)    = 1 / (1 + e⁻ˣ)
 //! ```
 //!
 //! - Max absolute error (tanh): ≤ 2.4e-7 vs `f32::tanh` on [-20, 20].
-//! - Max absolute error (sigmoid): ≤ 2.1e-7 vs `f32::exp` reference on [-20, 20].
 //! - Throughput (tanh): ~18 SIMD ops (1 exp + 1 div + 2 mul + 2 add/sub + clamp).
-//! - Throughput (sigmoid): ~17 SIMD ops (1 exp + 1 div + add + clamp).
+//! - Sigmoid polynomial kernels live in `crate::math::activations::sigmoid::high_fidelity`.
 //!
 //! Coefficients in `crate::math::constants` (`POLY_*`).
 
 pub use super::high_fidelity_avx512::*;
+use crate::math::activations::sigmoid::high_fidelity::simd_sigmoid_poly_avx2;
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
@@ -208,36 +207,13 @@ pub unsafe fn simd_tanh_poly_nr2_avx2(x: __m256) -> __m256 {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Public — polynomial Sigmoid kernels
+// Polynomial `(tanh(x1), sigmoid(x2))` — dual gate (AVX2/FMA)
 // ══════════════════════════════════════════════════════════════════════════════
-
-/// Polynomial `sigmoid(x)` for `__m256` — exp-based, branchless (AVX2/FMA).
-///
-/// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
-/// Input clamped to [-20, 20] for overflow safety, output clamped to [0, 1].
-///
-/// # Safety
-/// The caller must guarantee AVX2 and FMA support.
-#[inline]
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_sigmoid_poly_avx2(x: __m256) -> __m256 {
-    let clamp_lo = _mm256_set1_ps(-POLY_ACTIVATION_CLAMP);
-    let clamp_hi = _mm256_set1_ps(POLY_ACTIVATION_CLAMP);
-    let one = _mm256_set1_ps(1.0f32);
-    let zero = _mm256_set1_ps(0.0f32);
-
-    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
-    let neg_x = _mm256_sub_ps(zero, x);
-    let exp_neg_x = unsafe { simd_exp_poly_avx2(neg_x) };
-    let den = _mm256_add_ps(one, exp_neg_x);
-    let sig = _mm256_div_ps(one, den);
-    _mm256_max_ps(zero, _mm256_min_ps(one, sig))
-}
 
 /// Polynomial `(tanh(x1), sigmoid(x2))` — dual gate (AVX2/FMA).
 ///
 /// Used in WaveNet gated activation: `tanh(zf) * sigmoid(zg)`.
-/// Evaluates both lanes independently via the polynomial exp kernel.
+/// Delegates sigmoid to `sigmoid::high_fidelity::simd_sigmoid_poly_avx2`.
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
@@ -248,10 +224,6 @@ pub unsafe fn simd_tanh_sigmoid_dual_poly_avx2(x1: __m256, x2: __m256) -> (__m25
     let s2 = unsafe { simd_sigmoid_poly_avx2(x2) };
     (t1, s2)
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Slice-level functions
-// ══════════════════════════════════════════════════════════════════════════════
 
 /// Applies polynomial Tanh activation to a slice of f32 using AVX2.
 ///
@@ -288,32 +260,8 @@ pub unsafe fn tanh_poly_slice_avx2(slice: &mut [f32]) {
     }
 }
 
-/// Applies polynomial Sigmoid activation to a slice of f32 using AVX2.
-///
-/// # Safety
-/// Requires AVX2 and FMA support.
-#[inline]
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn sigmoid_poly_slice_avx2(slice: &mut [f32]) {
-    let mut i = 0;
-    let len = slice.len();
-
-    while i + 8 <= len {
-        unsafe {
-            let x = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let y = simd_sigmoid_poly_avx2(x);
-            _mm256_storeu_ps(slice.as_mut_ptr().add(i), y);
-        }
-        i += 8;
-    }
-
-    for item in slice.iter_mut().skip(i) {
-        *item = scalar_sigmoid_poly(*item);
-    }
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
-// Scalar polynomial exp/tanh/sigmoid (degree-6 Taylor, range reduction)
+// Scalar polynomial exp/tanh (degree-6 Taylor, range reduction)
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Scalar polynomial `exp(x)` — degree-6 Taylor polynomial with integer
@@ -346,16 +294,6 @@ pub fn scalar_tanh_poly(x: f32) -> f32 {
     let exp_x = scalar_exp_poly_inner(x);
     let e2x = exp_x * exp_x;
     ((e2x - 1.0) / (e2x + 1.0)).clamp(-1.0, 1.0)
-}
-
-/// Scalar polynomial `sigmoid(x)` — exp-based, using degree-6 Taylor.
-/// Formula: `σ(x) = 1 / (1 + e⁻ˣ)`.
-/// Max absolute error: ≤ 2.1e-7 vs `f32::exp` reference on [-20, 20].
-#[inline]
-pub fn scalar_sigmoid_poly(x: f32) -> f32 {
-    let x = x.clamp(-POLY_ACTIVATION_CLAMP, POLY_ACTIVATION_CLAMP);
-    let exp_neg_x = scalar_exp_poly_inner(-x);
-    (1.0 / (1.0 + exp_neg_x)).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
