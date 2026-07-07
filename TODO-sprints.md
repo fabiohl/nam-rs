@@ -53,7 +53,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
   * **Validação:** Garantir compilação com `cargo check --tests` e executar `cargo test --lib models::linear`.
 
-* [ ] **T1.2 — Extração de testes de `src/models/linear_fft.rs`**
+* [x] **T1.2 — Extração de testes de `src/models/linear_fft.rs`**
   * **Origem:** [A2 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L58)
   * **Ação:**
     1. Criar o arquivo `src/models/linear_fft_test.rs` (com cabeçalho SPDX/Copyright).
