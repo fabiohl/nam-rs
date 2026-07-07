@@ -228,7 +228,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     4. Declarar o submódulo correspondente no escopo apropriado.
   * **Validação:** Garantir compilação e executar `utils/tests-quick.sh`.
 
-* [ ] **T4.3 — Split de `src/models/slimmable.rs`**
+* [x] **T4.3 — Split de `src/models/slimmable.rs`**
   * **Origem:** [C13 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L310)
   * **Ação:**
     1. Criar o arquivo `src/models/slicing.rs` (com cabeçalho SPDX/Copyright).
