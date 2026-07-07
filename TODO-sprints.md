@@ -272,7 +272,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     4. Manter a struct `A2GroupedConv1d` e impls de alto nível em `src/models/a2/grouped_conv1d.rs`, declarando e re-exportando os novos submódulos.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.2 — Split de `src/models/a2/model/dynamic/process.rs`**
+* [x] **T5.2 — Split de `src/models/a2/model/dynamic/process.rs`**
   * **Origem:** [C3 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L208)
   * **Ação:**
     1. Criar o arquivo `src/models/a2/model/dynamic/process_cascade.rs` (evitar colisão com `models/a2/model/cascade.rs`).

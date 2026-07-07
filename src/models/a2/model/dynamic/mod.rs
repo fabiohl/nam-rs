@@ -23,6 +23,8 @@ pub mod build;
 pub mod prewarm;
 /// Forward-pass methods (`process`, `process_internal`, per-frame loops).
 pub mod process;
+/// Cascade pipeline methods (shared with `WaveNetA2Cascade` orchestrator).
+pub mod process_cascade;
 
 /// Runtime-dimensioned WaveNet A2 model.
 ///
