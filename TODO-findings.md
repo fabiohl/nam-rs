@@ -782,7 +782,7 @@ unsafe fn dot_product_avx2_tail(a: &[f32], b: &[f32], i: &mut usize, len: usize,
 **Validação:** Testes funcionais (carregamento de modelo, hot-swap) + `utils/tests-quick.sh`.
 **Sequência:** P-7 primeiro (impacto RT), P-8 segundo (hardening).
 
-### Épico E-PERF-4: Limpeza de Dead Code e Consistência Arquitetural [DOING]
+### Épico E-PERF-4: Limpeza de Dead Code e Consistência Arquitetural [DONE]
 
 **Findings:** P-5, P-6
 **Objetivo:** Remover campo `prefetch_fn` morto e alinhar resampler com o padrão de dispatch documentado.

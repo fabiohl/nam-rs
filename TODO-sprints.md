@@ -91,7 +91,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 ---
 
-## Sprint 4: Limpeza de Dead Code e Consistência Arquitetural (x86-64-v3)
+## Sprint 4: Limpeza de Dead Code e Consistência Arquitetural (x86-64-v3) [DONE]
 
 **Meta da Sprint:** Remover campos mortos e indireções desnecessárias por ponteiros de função no Resampler, em conformidade com as diretrizes arquiteturais do projeto.
 
@@ -105,6 +105,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Mínimo.
 - **Validação:**
   - Compilação limpa do projeto com todas as features ativas.
+- **Conclusão:** O campo `prefetch_fn` foi deletado de `Conv1d`, `Conv1dDyn` e `GroupedConv1d`. Foram removidas 246 linhas de código e inicializações em 31 arquivos do repositório (builders, mocks e suites de teste).
 
 ### [x86-64-v3] T-PERF-4.2: Eliminação de Ponteiros de Função Indiretos no Resampler (`resampler.rs`) [DONE]
 
@@ -115,3 +116,42 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Baixo.
 - **Validação:**
   - Executar o conjunto de testes rápidos (`utils/tests-quick.sh`).
+- **Conclusão:** Caching de function pointers (`process_stereo` e `process_mono`) e suas respectivas trampolines removidos de `ResamplerCore`. Criados métodos inlinados de despacho estático `process_static_stereo` e `process_static_mono` via `match` explícito do set de instrução (`InstructionSet`).
+
+---
+
+## Sprint 5: Otimização de Cold-Path e Geração de Código (x86-64-v3)
+
+**Meta da Sprint:** Otimizar alocações e clonagens no `AlignedVec` e analisar se a geração do compilador necessita de hints explícitos de `#[cold]` nos tails de kernels SIMD.
+
+### Tarefas Técnicas
+
+#### [x86-64-v3] T-PERF-5.1: Otimização de Inicialização All-Zero no `AlignedVec` (`aligned.rs`)
+
+- **Objetivo:** Substituir loops de inicialização por `std::ptr::write_bytes(..., 0u8, len)` quando o valor default de tipo `T` for composto apenas por bits zero.
+- **Finding Associado:** P-12
+- **Arquivos:**
+  - [aligned.rs](file:///home/fabio/nam-rs/src/math/common/aligned.rs)
+- **Risco:** Baixo.
+- **Validação:**
+  - Execução dos testes unitários garantindo comportamento idêntico.
+
+#### [x86-64-v3] T-PERF-5.2: Otimização de Cópia e Redimensionamento no `AlignedVec` (`aligned.rs`)
+
+- **Objetivo:** Substituir a cópia elemento-a-elemento no método `resize` por `std::ptr::copy_nonoverlapping` e otimizar o preenchimento de novos slots com `write_bytes` caso aplicável.
+- **Finding Associado:** P-13
+- **Arquivos:**
+  - [aligned.rs](file:///home/fabio/nam-rs/src/math/common/aligned.rs)
+- **Risco:** Baixo.
+- **Validação:**
+  - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
+
+#### [x86-64-v3] T-PERF-5.3: Análise e Separação de Tails SIMD com `#[cold]` (Vários)
+
+- **Objetivo:** Analisar se a geração do assembly (`cargo asm`) mantém os tails escalares das funções SIMD principais inline. Caso estejam, extraí-los para funções externas anotadas com `#[cold]` e `#[inline(never)]`.
+- **Finding Associado:** P-15
+- **Arquivos:**
+  - Kernels SIMD em `src/math/`
+- **Risco:** Baixo.
+- **Validação:**
+  - Auditoria via análise de assembly de build release.
