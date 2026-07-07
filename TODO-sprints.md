@@ -91,7 +91,10 @@ gantt
 
 #### Sprint 4: Redução de `inference_bench.rs` e Integração de QA
 
-- **[ ] Tarefa 4.1**: Limpar o arquivo principal `benches/inference_bench.rs`, mantendo estritamente benchmarks de inferência fim-a-fim de modelos neurais e comparativos (WaveNet, LSTM, A2, ConvNet, Linear, NonDist).
+- **[X] Tarefa 4.1**: Limpar o arquivo principal `benches/inference_bench.rs`, mantendo estritamente benchmarks de inferência fim-a-fim de modelos neurais e comparativos (WaveNet, LSTM, A2, ConvNet, Linear, NonDist).
+  - Removidos 6 benchmarks de kernel-level (head_rechannel_fp32, a2_head_ch8/ch3, convnet_multichannel/large_kernels/dilated).
+  - Helpers locais substituídos por `common::` (generate_sine_440hz, make_lstm_data, make_wavenet_dyn_data, make_wavenet_a2_dyn_data).
+  - Arquivo reduzido de 1532 para 833 linhas.
   - *Referência*: [TODO-findings.md §3.6].
 - **[ ] Tarefa 4.2**: Atualizar o script de QA noturno [utils/tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh) na Fase 6 para executar as novas suítes criadas:
   - `cargo bench --features long_bench --bench math_bench`

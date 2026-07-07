@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Formal inference latency benchmarks for the NAM-rs engine.
+//! End-to-end neural network inference latency benchmarks for the NAM-rs engine.
 //!
 //! Measures the processing time of 1 DSP block (64 samples at 48 kHz = 1.33 ms
-//! deadline) for WaveNet and LSTM neural networks, plus FastMath kernels
-//! that comprise the SIMD activation functions.
+//! deadline) for WaveNet, LSTM, A2, ConvNet, and Linear neural networks.
 //!
 //! ## Available benchmarks
 //!
@@ -15,20 +14,16 @@
 //! | `LSTM_2x16_64samp_48kHz`                | LSTM 2 layers × 16 hidden inference     | Heaviest supported recurrent network     |
 //! | `A2Full_CH8_64samp_48kHz`               | A2-Full (CH=8) inference                | AVX2 col-major T=4 broadcast-FMA         |
 //! | `A2Lite_CH3_64samp_48kHz`               | A2-Lite (CH=3) inference                | u16 interleaved GEMV, CPU-efficient      |
-//! | `FastMath_tanh_AVX2_256elem`            | Padé×rsqrt tanh activation over 256 f32 | Kernel called N×layers/block in WaveNet  |
-//! | `FastMath_sigmoid_AVX2_256elem`         | Sigmoid activation derived from tanh    | Kernel called N×gates/block in LSTM      |
-//! | `WaveNet_Dynamic_CH5_64samp_48kHz`  | WaveNet Dynamic free-geom inference  | Fallback for non-cataloged WaveNet geometries |
-//! | `LSTM_Dynamic_1x7_64samp_48kHz`      | LSTM Dynamic 1×7 inference           | Fallback for non-cataloged LSTM geometries     |
-//! | `ConvNet_Model_64samp_48kHz`         | ConvNet end-to-end model inference   | Full pipeline: 2 blocks CH=8→4 + head_scale    |
-//! | `A2Dyn_Gated_64samp_48kHz`           | A2 Dynamic CH=4 gated inference      | Fallback for non-cataloged A2 geometries       |
+//! | `WaveNet_Dynamic_CH5_64samp_48kHz`      | WaveNet Dynamic free-geom inference     | Fallback for non-cataloged WaveNet geom  |
+//! | `LSTM_Dynamic_1x7_64samp_48kHz`         | LSTM Dynamic 1×7 inference              | Fallback for non-cataloged LSTM geom     |
+//! | `ConvNet_Model_64samp_48kHz`            | ConvNet end-to-end model inference      | Full pipeline: 2 blocks CH=8→4 + head    |
+//! | `A2Dyn_Gated_64samp_48kHz`              | A2 Dynamic CH=4 gated inference         | Fallback for non-cataloged A2 geom       |
 //!
 //! ## Interpreting the results
 //!
 //! - The real-time deadline at 48 kHz with a 64-sample buffer is **1.33 ms**.
 //! - If any inference benchmark exceeds this deadline, the engine will cause
 //!   xruns (buffer underruns) in production with this buffer size.
-//! - FastMath kernels are sub-components called hundreds of times per block;
-//!   their total time contributes to the full inference latency.
 //!
 //! ## Running
 //!
@@ -36,124 +31,17 @@
 //! cargo bench --bench inference_bench
 //! ```
 
+mod common;
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::{NamConfig, NamLayerConfig, NamModelData, parse_nam_json};
-use nam_rs::math::common::AlignedVec;
+use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::models::NamModel;
 use nam_rs::models::StaticModel;
-use nam_rs::models::a2::activations::ActivationType;
 use nam_rs::models::container::ContainerModel;
-use nam_rs::models::convnet::ConvNetBlock;
-use nam_rs::models::lstm::lstm_weight_count;
 use nam_rs::models::slimmable::SlimmableModel;
-use nam_rs::models::wavenet::dense::DenseLayer;
 
-/// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
-/// Used as a stable input to ensure processing load is consistent across
-/// benchmark iterations, avoiding fluctuations from random signals.
-fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
-}
-
-/// Creates a synthetic `NamModelData` struct configured as an LSTM network.
-/// Allows testing different topologies (layers and hidden size) without depending
-/// on external files, easing raw performance validation of the inference engine.
-fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
-    let total_weights = lstm_weight_count(num_layers, hidden_size);
-    NamModelData {
-        version: Some("0.5.4".to_string()),
-        architecture: "LSTM".to_string(),
-        config: NamConfig {
-            layers: vec![],
-            head: None,
-            head_scale: None,
-            num_layers: Some(num_layers),
-            hidden_size: Some(hidden_size),
-            receptive_field: None,
-            bias: None,
-            submodels: None,
-            ..Default::default()
-        },
-        // Weights initialized with a small value (0.01) to avoid premature saturation/infs
-        // during repeated benchmark runs.
-        weights: vec![0.01; total_weights],
-        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
-        sample_rate: Some(48000.0),
-        metadata: None,
-    }
-}
-
-/// Creates a synthetic `NamModelData` for WaveNet Dynamic with free geometry.
-///
-/// CH=5, K=3, COND=3 — forces routing to `WaveNetModelDyn` because
-/// CH ∉ {4,8,12,16} and `condition_size > 1` disqualifies catalog matching.
-fn make_wavenet_dyn_data() -> NamModelData {
-    let channels = 5usize;
-    let kernel_size = 3usize;
-    let condition_size = 3usize;
-    let head_1 = 5usize;
-    let head_2 = 1usize;
-    let dilations = [vec![1, 2, 4, 8, 16], vec![1, 2, 4, 8, 16]];
-    let num_layers_per_array = 5usize;
-
-    let array1_rechannel = channels;
-    let array2_rechannel = channels * channels;
-    let per_layer = channels * kernel_size * channels + channels              // conv1d + bias
-        + condition_size * channels                                // input_mixin
-        + channels * channels + channels; // one_by_one + bias
-    let array1_head = channels * head_1; // no bias
-    let array2_head = channels * head_2 + head_2; // with bias
-    let total_weights = array1_rechannel
-        + num_layers_per_array * per_layer
-        + array1_head
-        + array2_rechannel
-        + num_layers_per_array * per_layer
-        + array2_head
-        + 1; // head_scale
-
-    NamModelData {
-        version: Some("0.5.4".to_string()),
-        architecture: "WaveNet".to_string(),
-        config: NamConfig {
-            layers: vec![
-                nam_rs::loader::nam_json::NamLayerConfig {
-                    input_size: Some(1),
-                    condition_size: Some(condition_size),
-                    head_size: Some(head_1),
-                    channels: Some(channels),
-                    kernel_size: Some(kernel_size),
-                    dilations: Some(dilations[0].clone()),
-                    activation: Some("Tanh".to_string()),
-                    gated: Some(false),
-                    head_bias: Some(false),
-                    ..Default::default()
-                },
-                nam_rs::loader::nam_json::NamLayerConfig {
-                    input_size: Some(channels),
-                    condition_size: Some(condition_size),
-                    head_size: Some(head_2),
-                    channels: Some(channels),
-                    kernel_size: Some(kernel_size),
-                    dilations: Some(dilations[1].clone()),
-                    activation: Some("Tanh".to_string()),
-                    gated: Some(false),
-                    head_bias: Some(true),
-                    ..Default::default()
-                },
-            ],
-            head: None,
-            head_scale: Some(0.02),
-            ..Default::default()
-        },
-        weights: vec![0.01; total_weights],
-        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
-        sample_rate: Some(48000.0),
-        metadata: None,
-    }
-}
+use common::{generate_sine_440hz, make_lstm_data, make_wavenet_a2_dyn_data, make_wavenet_dyn_data};
 
 /// Measures the processing time of a real WaveNet model ("Standard").
 /// This benchmark is the most representative for common guitar use,
@@ -162,7 +50,6 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
 
-    // Silently ignores if the fixture model is not present
     if !path.exists() {
         return;
     }
@@ -170,11 +57,8 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
     let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-    // The dispatcher picks the fastest implementation (static vs dynamic)
     let mut model = build_model(&model_data).expect("Dispatcher failed for benchmark");
 
-    // Prewarm is CRITICAL to populate state buffers and prevent initial resource
-    // allocation inside the model from skewing the benchmark average.
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
@@ -182,7 +66,6 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
 
     c.bench_function("WaveNet_Standard_CH16_64samp_48kHz", |b| {
         b.iter(|| {
-            // Runs inference on a full block (64 samples)
             model.process(&input, &mut output);
         });
     });
@@ -201,7 +84,6 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
 
     c.bench_function("LSTM_2x16_64samp_48kHz", |b| {
         b.iter(|| {
-            // LSTM processing tends to be heavier than WaveNet for small blocks
             model.process(&input, &mut output);
         });
     });
@@ -222,14 +104,12 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("LSTM_1x8_Comparison");
 
-    // Optimized path (SIMD / Auto-vectorized)
     group.bench_function("SIMD_Fused_T3", |b| {
         b.iter(|| {
             model_simd.process(&input, &mut output);
         });
     });
 
-    // Explicit scalar path to measure theoretical speedup
     #[cfg(test)]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::StaticModel::Lstm1x8(m) => {
@@ -307,7 +187,6 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(2048);
 
-    // Tests buffers from 32 to 512 samples
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
@@ -334,56 +213,6 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
                 model.process(&input, &mut output);
             });
         });
-    }
-}
-
-/// Creates a synthetic `NamModelData` for WaveNet A2 Dynamic with free geometry.
-///
-/// CH=4 forces routing to `WaveNetA2Dyn` because CH ∉ {3,8}
-/// disqualifies the const-generic fast-path (A2-Full/Lite).
-fn make_wavenet_a2_dyn_data() -> NamModelData {
-    use nam_rs::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES};
-
-    let channels = 4usize;
-    let bottleneck = 4usize;
-    let head_k = nam_rs::models::a2::params::A2_HEAD_KERNEL_SIZE;
-
-    let mut total_weights = channels; // rechannel_w
-    for &ksize in A2_KERNEL_SIZES.iter() {
-        total_weights += channels * bottleneck * ksize; // conv_w
-        total_weights += bottleneck; // conv_b
-        total_weights += bottleneck; // mixin_w
-        total_weights += bottleneck * channels; // l1x1_w
-        total_weights += channels; // l1x1_b
-    }
-    total_weights += head_k * channels; // head_w
-    total_weights += 1; // head_b
-    total_weights += 1; // head_scale
-
-    NamModelData {
-        version: Some("0.5.4".to_string()),
-        architecture: "WaveNet".to_string(),
-        config: NamConfig {
-            layers: vec![NamLayerConfig {
-                input_size: Some(1),
-                condition_size: Some(1),
-                channels: Some(channels),
-                bottleneck: Some(bottleneck),
-                kernel_sizes: Some(A2_KERNEL_SIZES.to_vec()),
-                dilations: Some(A2_DILATIONS.to_vec()),
-                activation: Some("LeakyReLU".to_string()),
-                gated: Some(true),
-                head_bias: Some(true),
-                ..Default::default()
-            }],
-            head: None,
-            head_scale: Some(0.02),
-            ..Default::default()
-        },
-        weights: vec![0.01; total_weights],
-        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
-        sample_rate: Some(48000.0),
-        metadata: None,
     }
 }
 
@@ -527,8 +356,6 @@ fn bench_prewarm_a2_lite(c: &mut Criterion) {
     });
 }
 
-// ── A2 long-run soak benches → moved to benches/long_inference_bench.rs (T2.2.3) ──
-
 /// Measures the time spent in the `prewarm` function.
 /// Although prewarm runs outside the audio thread, it must be fast enough
 /// so that model switching during a live performance is imperceptible.
@@ -561,8 +388,6 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
         );
     });
 }
-
-// --- Long Benchmarks (Soak Testing) → moved to benches/long_inference_bench.rs (T2.2.3) ---
 
 fn bench_lstm_1x40_process(c: &mut Criterion) {
     let data = make_lstm_data(1, 40);
@@ -648,179 +473,6 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-/// Measures the processing time of `process_block` (head_rechannel FP32)
-/// for three representative shapes, verifying the SIMD vectorization speedup.
-///
-/// Tested shapes:
-/// - `DenseLayer<16,8>`: array1 (head_rechannel of WaveNet Standard)
-/// - `DenseLayer<8,1>`:  array2 dominant case (final head 8→1)
-/// - `DenseLayer<16,1>`: LSTM head single-output
-fn bench_head_rechannel_fp32(c: &mut Criterion) {
-    let num_frames: usize = 64;
-    let mut group = c.benchmark_group("head_rechannel_fp32");
-
-    let avx512_supported =
-        std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl");
-
-    // ── DenseLayer<16,8> ──
-    {
-        let in_size: usize = 16;
-        let out_size: usize = 8;
-        let weights: AlignedVec<f32> =
-            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
-        let bias: AlignedVec<f32> =
-            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
-        let layer = DenseLayer::<16, 8> {
-            weights,
-            bias,
-            do_bias: true,
-        };
-        let input = vec![0.01f32; num_frames * in_size];
-        let mut output = vec![0.0f32; num_frames * out_size];
-
-        group.bench_function("DenseLayer_16x8_64f_AVX2", |b| {
-            b.iter(|| unsafe {
-                layer.process_block::<nam_rs::math::common::Avx2Math>(
-                    &input,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-
-        if avx512_supported {
-            group.bench_function("DenseLayer_16x8_64f_AVX512", |b| {
-                b.iter(|| unsafe {
-                    layer.process_block::<nam_rs::math::common::Avx512Math>(
-                        &input,
-                        &mut output,
-                        num_frames,
-                    )
-                });
-            });
-        }
-
-        group.bench_function("DenseLayer_16x8_64f_Scalar", |b| {
-            b.iter(|| {
-                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
-                    &input,
-                    &layer.weights,
-                    &layer.bias,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-    }
-
-    // ── DenseLayer<8,1> (dominant case) ──
-    {
-        let in_size: usize = 8;
-        let out_size: usize = 1;
-        let weights: AlignedVec<f32> =
-            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
-        let bias: AlignedVec<f32> =
-            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
-        let layer = DenseLayer::<8, 1> {
-            weights,
-            bias,
-            do_bias: true,
-        };
-        let input = vec![0.01f32; num_frames * in_size];
-        let mut output = vec![0.0f32; num_frames * out_size];
-
-        group.bench_function("DenseLayer_8x1_64f_AVX2", |b| {
-            b.iter(|| unsafe {
-                layer.process_block::<nam_rs::math::common::Avx2Math>(
-                    &input,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-
-        if avx512_supported {
-            group.bench_function("DenseLayer_8x1_64f_AVX512", |b| {
-                b.iter(|| unsafe {
-                    layer.process_block::<nam_rs::math::common::Avx512Math>(
-                        &input,
-                        &mut output,
-                        num_frames,
-                    )
-                });
-            });
-        }
-
-        group.bench_function("DenseLayer_8x1_64f_Scalar", |b| {
-            b.iter(|| {
-                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
-                    &input,
-                    &layer.weights,
-                    &layer.bias,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-    }
-
-    // ── DenseLayer<16,1> (LSTM head) ──
-    {
-        let in_size: usize = 16;
-        let out_size: usize = 1;
-        let weights: AlignedVec<f32> =
-            AlignedVec::new(in_size * out_size, 0.01).expect("bench allocation failed");
-        let bias: AlignedVec<f32> =
-            AlignedVec::new(out_size, 0.0).expect("bench allocation failed");
-        let layer = DenseLayer::<16, 1> {
-            weights,
-            bias,
-            do_bias: true,
-        };
-        let input = vec![0.01f32; num_frames * in_size];
-        let mut output = vec![0.0f32; num_frames * out_size];
-
-        group.bench_function("DenseLayer_16x1_64f_AVX2", |b| {
-            b.iter(|| unsafe {
-                layer.process_block::<nam_rs::math::common::Avx2Math>(
-                    &input,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-
-        if avx512_supported {
-            group.bench_function("DenseLayer_16x1_64f_AVX512", |b| {
-                b.iter(|| unsafe {
-                    layer.process_block::<nam_rs::math::common::Avx512Math>(
-                        &input,
-                        &mut output,
-                        num_frames,
-                    )
-                });
-            });
-        }
-
-        group.bench_function("DenseLayer_16x1_64f_Scalar", |b| {
-            b.iter(|| {
-                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
-                    &input,
-                    &layer.weights,
-                    &layer.bias,
-                    &mut output,
-                    num_frames,
-                )
-            });
-        });
-    }
-
-    group.finish();
-}
-// CLAP benchmarks → moved to benches/clap_bench.rs// ── Gate FSM Benchmarks ──
-
-// ── LinearModel Dot Product Benchmarks ──
-
 /// Benchmarks the LinearModel dot product kernel (AVX2/AVX-512 SIMD vs scalar).
 /// With RF 256, the scalar path performs 16k FMAs per 64-sample block;
 /// the SIMD path reduces this by 4-8×.
@@ -851,418 +503,6 @@ fn bench_linear_model_dot_product(c: &mut Criterion) {
             );
         });
     });
-}
-
-// ── ConvNet Multi-Channel Convolution Benchmarks (T3.2.4) ──
-
-/// Creates a synthetic `ConvNetBlock` with identity-like weights for benchmarking
-/// the Conv1D + BatchNorm + Activation pipeline at a specific (in_ch, out_ch) pair.
-fn make_convnet_block(
-    in_ch: usize,
-    out_ch: usize,
-    kernel: usize,
-    dilation: usize,
-    do_bias: bool,
-) -> ConvNetBlock {
-    let mut block = ConvNetBlock::new(
-        in_ch,
-        out_ch,
-        kernel,
-        dilation,
-        do_bias,
-        ActivationType::Tanh,
-        0,
-    )
-    .expect("create convnet block for bench");
-
-    let num_blocks = out_ch.div_ceil(4);
-    let padded_total = num_blocks * kernel * in_ch * 4;
-
-    let mut weights = vec![0.0f32; padded_total];
-    for b in 0..num_blocks {
-        for k in 0..kernel {
-            for c_in in 0..in_ch {
-                for c_out in 0..4usize {
-                    let dst_c = b * 4 + c_out;
-                    if dst_c < out_ch {
-                        let idx = c_out + c_in * 4 + k * in_ch * 4 + b * kernel * in_ch * 4;
-                        weights[idx] = if dst_c == c_in.min(out_ch - 1) {
-                            1.0
-                        } else {
-                            0.01
-                        };
-                    }
-                }
-            }
-        }
-    }
-    block.set_conv_weights(&weights);
-
-    if do_bias {
-        let bias = vec![0.0f32; out_ch];
-        block.set_conv_bias(&bias);
-    }
-
-    let bn_scale = vec![1.0f32; out_ch];
-    let bn_offset = vec![0.0f32; out_ch];
-    block.set_bn_params(&bn_scale, &bn_offset).unwrap();
-
-    block
-}
-
-/// Generates an interleaved multi-channel signal for benchmarking.
-/// Layout: `[f0_c0, f0_c1, ..., f0_c{n-1}, f1_c0, ..., f{t-1}_c{n-1}]`
-fn generate_multichannel_sine(num_frames: usize, num_channels: usize) -> Vec<f32> {
-    (0..num_frames)
-        .flat_map(|f| {
-            let base = (2.0 * std::f32::consts::PI * 440.0 * (f as f32) / 48000.0).sin();
-            (0..num_channels).map(move |c| base * (1.0 + 0.2 * c as f32))
-        })
-        .collect()
-}
-
-/// Benchmarks ConvNetBlock convolution throughput across channel dimensions.
-///
-/// Covers all 9 combinations of `in_ch ∈ {1, 2, 4}` × `out_ch ∈ {1, 2, 4}`
-/// with kernel=3, dilation=1, bias=true — measuring Conv1D + BatchNorm + Tanh
-/// over 64 audio frames at 48 kHz.
-fn bench_convnet_multichannel(c: &mut Criterion) {
-    const NUM_FRAMES: usize = 64;
-    const KERNEL: usize = 3;
-    const DILATION: usize = 1;
-    const DO_BIAS: bool = true;
-
-    let combos: [(usize, usize); 9] = [
-        (1, 1),
-        (1, 2),
-        (1, 4),
-        (2, 1),
-        (2, 2),
-        (2, 4),
-        (4, 1),
-        (4, 2),
-        (4, 4),
-    ];
-
-    let mut group = c.benchmark_group("ConvNet_MultiChannel_64samp");
-    group.sample_size(50);
-
-    for &(in_ch, out_ch) in &combos {
-        let mut block = make_convnet_block(in_ch, out_ch, KERNEL, DILATION, DO_BIAS);
-        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
-        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
-
-        unsafe {
-            block.process_block(&input, &mut output, NUM_FRAMES);
-        }
-
-        group.bench_function(format!("ConvNetBlock_in{}_out{}", in_ch, out_ch), |b| {
-            b.iter(|| unsafe {
-                block.process_block(
-                    std::hint::black_box(&input),
-                    std::hint::black_box(&mut output),
-                    NUM_FRAMES,
-                );
-            });
-        });
-    }
-
-    group.finish();
-}
-
-/// Benchmarks ConvNetBlock with larger kernel sizes (5 and 7) to stress
-/// the tap-pointer prefetch logic in Conv1dDyn convolution.
-fn bench_convnet_large_kernels(c: &mut Criterion) {
-    const NUM_FRAMES: usize = 64;
-    const DO_BIAS: bool = true;
-
-    let mut group = c.benchmark_group("ConvNet_LargeKernel_64samp");
-    group.sample_size(50);
-
-    for &((in_ch, out_ch, kernel), label) in &[
-        ((1, 1, 5), "ConvNetBlock_in1_out1_k5"),
-        ((2, 2, 5), "ConvNetBlock_in2_out2_k5"),
-        ((4, 4, 5), "ConvNetBlock_in4_out4_k5"),
-        ((1, 1, 7), "ConvNetBlock_in1_out1_k7"),
-        ((2, 2, 7), "ConvNetBlock_in2_out2_k7"),
-        ((4, 4, 7), "ConvNetBlock_in4_out4_k7"),
-    ] {
-        let mut block = make_convnet_block(in_ch, out_ch, kernel, 1, DO_BIAS);
-        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
-        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
-
-        unsafe {
-            block.process_block(&input, &mut output, NUM_FRAMES);
-        }
-
-        group.bench_function(label, |b| {
-            b.iter(|| unsafe {
-                block.process_block(
-                    std::hint::black_box(&input),
-                    std::hint::black_box(&mut output),
-                    NUM_FRAMES,
-                );
-            });
-        });
-    }
-
-    group.finish();
-}
-
-/// Benchmarks ConvNetBlock with dilated convolutions (dilation ∈ {1, 2, 4}),
-/// which exercise the full tap-pointer offset computation in Conv1dDyn.
-fn bench_convnet_dilated(c: &mut Criterion) {
-    const NUM_FRAMES: usize = 64;
-    const DO_BIAS: bool = true;
-    const KERNEL: usize = 3;
-
-    let mut group = c.benchmark_group("ConvNet_Dilated_64samp");
-    group.sample_size(50);
-
-    for &(dilation, label) in &[
-        (1, "ConvNetBlock_d1_in4_out4"),
-        (2, "ConvNetBlock_d2_in4_out4"),
-        (4, "ConvNetBlock_d4_in4_out4"),
-    ] {
-        let (in_ch, out_ch) = (4, 4);
-        let mut block = make_convnet_block(in_ch, out_ch, KERNEL, dilation, DO_BIAS);
-        let input = generate_multichannel_sine(NUM_FRAMES, in_ch);
-        let mut output = vec![0.0f32; NUM_FRAMES * out_ch];
-
-        unsafe {
-            block.process_block(&input, &mut output, NUM_FRAMES);
-        }
-
-        group.bench_function(label, |b| {
-            b.iter(|| unsafe {
-                block.process_block(
-                    std::hint::black_box(&input),
-                    std::hint::black_box(&mut output),
-                    NUM_FRAMES,
-                );
-            });
-        });
-    }
-
-    group.finish();
-}
-
-// PGO: name uses _64samp suffix for build-release.sh profiling filter
-/// Measures the end-to-end inference cost of a full ConvNet model (2 blocks, CH=8→4, K=3).
-///
-/// Unlike the ConvNetBlock-level benches, this loads the `convnet_test.nam` fixture,
-/// exercises the full model pipeline (multi-block chaining + head_scale), and profiles
-/// the dispatcher build_model path.
-fn bench_convnet_model_process(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/convnet_test.nam");
-
-    if !path.exists() {
-        return;
-    }
-
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read ConvNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed for ConvNet benchmark");
-    model.prewarm(2048);
-
-    let num_out = match model.as_ref() {
-        StaticModel::ConvNet(c) => c.out_channels(),
-        _ => 1,
-    };
-    let input = generate_sine_440hz(64);
-    let mut output = vec![0.0f32; 64 * num_out];
-
-    c.bench_function("ConvNet_Model_64samp_48kHz", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-}
-
-// cabsim benchmarks → moved to benches/cabsim_bench.rs
-// cabsim_long_run → moved to benches/long_inference_bench.rs (T2.2.3)
-
-// Main benchmark group definition (inference latency and DSP kernels)
-criterion_group!(
-    name = benches;
-    // sample_size(50) is a balance between statistical accuracy and total runtime.
-    config = criterion::Criterion::default().sample_size(50);
-    targets = bench_wavenet_standard_process,
-    bench_wavenet_p10_small_block_sizes,
-    bench_wavenet_standard_block_sizes,
-    bench_lstm_2x16_process,
-    bench_lstm_2x16_block_sizes,
-    bench_lstm_1x8_comparison,
-    bench_lstm_2x16_comparison,
-    bench_lstm_1x40_process,
-    bench_lstm_2x24_process,
-    bench_lstm_1x40_comparison,
-    bench_lstm_2x24_comparison,
-    bench_a2_full_process,
-    bench_a2_full_block_sizes,
-    bench_a2_lite_process,
-    bench_a2_lite_block_sizes,
-    bench_prewarm_wavenet_standard,
-    bench_prewarm_lstm_2x16,
-    bench_prewarm_a2_full,
-    bench_prewarm_a2_lite,
-    bench_a2_head_ch8,
-    bench_a2_head_ch3,
-    bench_head_rechannel_fp32,
-    bench_linear_model_dot_product,
-    bench_container_crossfade_64samp,
-    bench_wavenet_dynamic_process,
-    bench_lstm_dynamic_process,
-    bench_wavenet_a2_dyn_gated_process,
-    bench_wavenet_comparison,
-    bench_a2_comparison,
-    bench_nondist_models,
-    bench_convnet_multichannel,
-    bench_convnet_large_kernels,
-    bench_convnet_dilated,
-    bench_convnet_model_process
-);
-
-/// Bench: A2 Head Conv CH=8 — scalar vs AVX2+FMA (16 frames).
-///
-/// Tests the isolated A2 Head Conv kernel with 8 channels over 16
-/// frames, comparing the scalar reference implementation against
-/// the AVX2+FMA SIMD kernel with T=4 frame-tiling.
-fn bench_a2_head_ch8(c: &mut Criterion) {
-    const NUM_FRAMES: usize = 16;
-    const RING_SIZE: usize = 256;
-    const RING_MASK: usize = RING_SIZE - 1;
-    const CH: usize = 8;
-    const K: usize = 16;
-    let write_pos: usize = 200;
-
-    let mut state: u32 = 42;
-    let mut w = AlignedVec::new(K * CH, 0.0f32).expect("bench allocation failed");
-    for val in &mut *w {
-        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-        *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-    }
-    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-    let head_b = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
-    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-    let head_scale = ((state as f32) / (u32::MAX as f32)) * 0.5 + 0.75;
-
-    let mut history = vec![0.0f32; CH * RING_SIZE];
-    state = 99;
-    for val in &mut history {
-        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-        *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
-    }
-
-    let mut output = vec![0.0f32; NUM_FRAMES];
-    let avx2_available =
-        std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
-
-    let mut group = c.benchmark_group("A2HeadConv_CH8");
-    group.bench_function("a2_head_ch8_scalar", |b| {
-        b.iter(|| {
-            nam_rs::models::a2::a2_head_block_scalar_ref(
-                std::hint::black_box(&w),
-                std::hint::black_box(head_b),
-                std::hint::black_box(head_scale),
-                std::hint::black_box(CH),
-                std::hint::black_box(&history),
-                std::hint::black_box(write_pos),
-                std::hint::black_box(RING_MASK),
-                std::hint::black_box(NUM_FRAMES),
-                std::hint::black_box(&mut output),
-            );
-        });
-    });
-
-    if avx2_available {
-        group.bench_function("a2_head_ch8_avx2", |b| {
-            b.iter(|| unsafe {
-                nam_rs::models::a2::head_process_ch8_avx2(
-                    std::hint::black_box(&w),
-                    std::hint::black_box(head_b),
-                    std::hint::black_box(head_scale),
-                    std::hint::black_box(&history),
-                    std::hint::black_box(write_pos),
-                    std::hint::black_box(RING_MASK),
-                    std::hint::black_box(NUM_FRAMES),
-                    std::hint::black_box(&mut output),
-                );
-            });
-        });
-    }
-    group.finish();
-}
-
-/// Bench: A2 Head Conv CH=3 — scalar vs SSE+FMA (16 frames).
-///
-/// Tests the isolated A2 Head Conv kernel with 3 channels over 16
-/// frames, comparing the scalar reference implementation against
-/// the SSE+FMA SIMD kernel.
-fn bench_a2_head_ch3(c: &mut Criterion) {
-    const NUM_FRAMES: usize = 16;
-    const RING_SIZE: usize = 256;
-    const RING_MASK: usize = RING_SIZE - 1;
-    const CH: usize = 3;
-    const K: usize = 16;
-    let write_pos: usize = 200;
-
-    let mut state: u32 = 42;
-    let mut w = AlignedVec::new(K * CH, 0.0f32).expect("bench allocation failed");
-    for val in &mut *w {
-        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-        *val = ((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25;
-    }
-    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-    let head_b = ((state as f32) / (u32::MAX as f32)) * 0.2 - 0.1;
-    state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-    let head_scale = ((state as f32) / (u32::MAX as f32)) * 0.5 + 0.75;
-
-    let mut history = vec![0.0f32; CH * RING_SIZE];
-    state = 99;
-    for val in &mut history {
-        state = state.wrapping_mul(1664525).wrapping_add(1013904223);
-        *val = ((state as f32) / (u32::MAX as f32)) * 2.0 - 1.0;
-    }
-
-    let mut output = vec![0.0f32; NUM_FRAMES];
-    let sse_available = std::arch::is_x86_feature_detected!("fma");
-
-    let mut group = c.benchmark_group("A2HeadConv_CH3");
-    group.bench_function("a2_head_ch3_scalar", |b| {
-        b.iter(|| {
-            nam_rs::models::a2::a2_head_block_scalar_ref(
-                std::hint::black_box(&w),
-                std::hint::black_box(head_b),
-                std::hint::black_box(head_scale),
-                std::hint::black_box(CH),
-                std::hint::black_box(&history),
-                std::hint::black_box(write_pos),
-                std::hint::black_box(RING_MASK),
-                std::hint::black_box(NUM_FRAMES),
-                std::hint::black_box(&mut output),
-            );
-        });
-    });
-
-    if sse_available {
-        group.bench_function("a2_head_ch3_sse", |b| {
-            b.iter(|| unsafe {
-                nam_rs::models::a2::head_process_ch3_sse(
-                    std::hint::black_box(&w),
-                    std::hint::black_box(head_b),
-                    std::hint::black_box(head_scale),
-                    std::hint::black_box(&history),
-                    std::hint::black_box(write_pos),
-                    std::hint::black_box(RING_MASK),
-                    std::hint::black_box(NUM_FRAMES),
-                    std::hint::black_box(&mut output),
-                );
-            });
-        });
-    }
-    group.finish();
 }
 
 /// Measures the processing cost of a ContainerModel crossfade block
@@ -1309,7 +549,6 @@ fn bench_container_crossfade_64samp(c: &mut Criterion) {
     });
 }
 
-// PGO: group name uses _64samp suffix to match build-release.sh profiling filter
 /// Measures the processing time of a free-geometry WaveNet Dynamic model (CH=5, K=3, COND=3).
 ///
 /// CH=5 and condition_size=3 force the dispatcher to route to `WaveNetModelDyn`
@@ -1330,7 +569,6 @@ fn bench_wavenet_dynamic_process(c: &mut Criterion) {
     });
 }
 
-// PGO: group name uses _64samp suffix to match build-release.sh profiling filter
 /// Measures the processing time of an LSTM Dynamic model (1 layer × 7 hidden).
 ///
 /// H=7 is not in the const-generic dispatch table ({3,8,12,16,24,40}),
@@ -1350,7 +588,6 @@ fn bench_lstm_dynamic_process(c: &mut Criterion) {
     });
 }
 
-// PGO: name uses _64samp suffix for build-release.sh profiling filter
 /// Measures the processing time of a WaveNet A2 Dynamic model (CH=4, gated).
 ///
 /// CH=4 is not in the A2 const-generic dispatch table ({3, 8}),
@@ -1517,7 +754,6 @@ fn bench_nondist_models(c: &mut Criterion) {
         };
         model.prewarm(2048);
 
-        // Run with standard 64 sample block size at 48kHz
         let input = generate_sine_440hz(64);
         let mut output = vec![0.0f32; 64];
 
@@ -1528,5 +764,70 @@ fn bench_nondist_models(c: &mut Criterion) {
         });
     }
 }
+
+/// Measures the end-to-end inference cost of a full ConvNet model (2 blocks, CH=8→4, K=3).
+///
+/// Unlike the ConvNetBlock-level benches (now in separate benches), this loads the
+/// `convnet_test.nam` fixture, exercises the full model pipeline (multi-block chaining
+/// + head_scale), and profiles the dispatcher build_model path.
+fn bench_convnet_model_process(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/convnet_test.nam");
+
+    if !path.exists() {
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read ConvNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for ConvNet benchmark");
+    model.prewarm(2048);
+
+    let num_out = match model.as_ref() {
+        StaticModel::ConvNet(c) => c.out_channels(),
+        _ => 1,
+    };
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64 * num_out];
+
+    c.bench_function("ConvNet_Model_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+criterion_group!(
+    name = benches;
+    config = criterion::Criterion::default().sample_size(50);
+    targets = bench_wavenet_standard_process,
+    bench_wavenet_p10_small_block_sizes,
+    bench_wavenet_standard_block_sizes,
+    bench_lstm_2x16_process,
+    bench_lstm_2x16_block_sizes,
+    bench_lstm_1x8_comparison,
+    bench_lstm_2x16_comparison,
+    bench_lstm_1x40_process,
+    bench_lstm_2x24_process,
+    bench_lstm_1x40_comparison,
+    bench_lstm_2x24_comparison,
+    bench_a2_full_process,
+    bench_a2_full_block_sizes,
+    bench_a2_lite_process,
+    bench_a2_lite_block_sizes,
+    bench_prewarm_wavenet_standard,
+    bench_prewarm_lstm_2x16,
+    bench_prewarm_a2_full,
+    bench_prewarm_a2_lite,
+    bench_linear_model_dot_product,
+    bench_container_crossfade_64samp,
+    bench_wavenet_dynamic_process,
+    bench_lstm_dynamic_process,
+    bench_wavenet_a2_dyn_gated_process,
+    bench_wavenet_comparison,
+    bench_a2_comparison,
+    bench_nondist_models,
+    bench_convnet_model_process
+);
 
 criterion_main!(benches);
