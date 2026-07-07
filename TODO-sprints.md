@@ -11,9 +11,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 **Meta da Sprint:** Reduzir a latência do hot-path WaveNet/LSTM em sistemas x86-64-v3 eliminando stores escalares desnecessários e reduzindo atomic loads e branches redundantes nos loops críticos.
 
-### Tarefas Técnicas
-
-#### [x86-64-v3] T-PERF-1.1: Otimização de Stores de Acumuladores em WaveNet (`conv_input.rs`) [DONE]
+### [x86-64-v3] T-PERF-1.1: Otimização de Stores de Acumuladores em WaveNet (`conv_input.rs`) [DONE]
 
 - **Objetivo:** Substituir loops de stores escalares nas funções `store_16_accums`, `store_8_accums` e `store_4_accums` por instruções SIMD `_mm256_storeu_ps` / `_mm_storeu_ps`.
 - **Finding Associado:** P-1
@@ -24,7 +22,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
   - Garantir compilação com target x86-64-v3.
   - Verificar fidelidade via `utils/quality-dashboard.sh` comparando com o baseline salvo em `E-PERF-1_quality-dashboard.txt`.
 
-#### [x86-64-v3] T-PERF-1.2: Otimização de Branch e Atomic Loads em Gates LSTM (`gates.rs`) [DONE]
+### [x86-64-v3] T-PERF-1.2: Otimização de Branch e Atomic Loads em Gates LSTM (`gates.rs`) [DONE]
 
 - **Objetivo:** Hoistar a verificação `activation_precision() == ActivationPrecision::HighFidelity` para fora do loop principal em `fused_lstm_gates_dyn_avx2` através de bifurcação de loops (loop-fission/bifurcation) e criação de variantes especializadas de processamento de gates para AVX2.
 - **Finding Associado:** P-2
@@ -65,23 +63,22 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 ---
 
-## Sprint 3: Modernização da Stack do Kernel Linux (Requisito: Linux 6.3+)
+## Sprint 3: Modernização da Stack do Kernel Linux (Requisito: Linux 6.3+) [DONE]
 
 **Meta da Sprint:** Adotar de forma mandatória os recursos modernos de Huge Pages e descritores seguros do Kernel Linux (mínimo Kernel 6.3 para cobertura completa das LTS recentes).
 
-### [Linux 6.1+] T-PERF-3.1: ✅ Promoção Síncrona de Huge Pages com `MADV_COLLAPSE` (`huge_alloc.rs`) — CONCLUÍDO 2026-07-06
+### [Linux 6.1+] T-PERF-3.1: Promoção Síncrona de Huge Pages com `MADV_COLLAPSE` (`huge_alloc.rs`) [DONE]
 
 - **Objetivo:** Chamar `madvise` com o flag `MADV_COLLAPSE` obrigatoriamente e sem fallbacks de verificação.
 - **Finding Associado:** P-7
 - **Arquivos:**
   - [huge_alloc.rs](file:///home/fabio/nam-rs/src/math/common/huge_alloc.rs)
-  - [mirror_buf/alloc.rs](file:///home/fabio/nam-rs/src/dsp/mirror_buf/alloc.rs) (THP path do MirroredBuffer)
 - **Risco:** Mínimo. Requer Kernel Linux 6.1+.
 - **Validação:**
   - Validação funcional no Linux garantindo compilação e execução corretas em kernel moderno.
 - **Conclusão:** `MADV_COLLAPSE` adicionado após `MADV_HUGEPAGE` nos dois call sites THP (`huge_alloc.rs:120` + `mirror_buf/alloc.rs:235`). Sem verificações de versão de kernel (confia no requisito Linux 6.1+). Constante já disponível em libc 0.2.186. `cargo check`, `cargo clippy` e 4 testes `huge_alloc_tests` + 9 testes `diagnostic_bundle` passam limpo.
 
-### [Linux 6.3+] T-PERF-3.2: ✅ Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`) — CONCLUÍDO 2026-07-06
+### [Linux 6.3+] T-PERF-3.2: ✅ Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`) [DONE]
 
 - **Objetivo:** Passar obrigatoriamente o flag `MFD_NOEXEC_SEAL` na chamada de `memfd_create` para buffers hugetlb e comuns, sem ramificações de fallback.
 - **Finding Associado:** P-8
@@ -91,3 +88,30 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Validação:**
   - Validação funcional garantindo que memfds não executáveis funcionem corretamente para buffers de modelo e alocações de huge pages.
 - **Conclusão:** `MFD_NOEXEC_SEAL` (`0x0008`, não disponível em libc 0.2.186) adicionado às duas chamadas `memfd_create` em `create_backing_fd` (hugetlb path + regular path). Sem fallback para kernels < 6.3 (requisito mandatório da sprint). Cobertura automática dos 2 call sites em `mirror_buf/alloc.rs`. `cargo check`, `cargo clippy -D warnings`, 4 testes `huge_alloc_tests` e 1 teste `mirror_buf_fault_injection` passam limpo.
+
+---
+
+## Sprint 4: Limpeza de Dead Code e Consistência Arquitetural (x86-64-v3)
+
+**Meta da Sprint:** Remover campos mortos e indireções desnecessárias por ponteiros de função no Resampler, em conformidade com as diretrizes arquiteturais do projeto.
+
+### [x86-64-v3] T-PERF-4.1: Remoção de `prefetch_fn` em Conv1d (`conv1d.rs`)
+
+- **Objetivo:** Remover o campo de prefetch inativo do `Conv1d` e limpar as ~163 referências/inicializações em builders e testes unitários.
+- **Finding Associado:** P-5
+- **Arquivos:**
+  - [conv1d.rs](file:///home/fabio/nam-rs/src/models/wavenet/conv1d.rs)
+  - Builders e arquivos de teste em `src/`
+- **Risco:** Mínimo.
+- **Validação:**
+  - Compilação limpa do projeto com todas as features ativas.
+
+### [x86-64-v3] T-PERF-4.2: Eliminação de Ponteiros de Função Indiretos no Resampler (`resampler.rs`)
+
+- **Objetivo:** Refatorar o despacho de processamento do `ResamplerCore` para usar despacho estático monomorfizado, eliminando as chamadas indiretas baseadas em cache de function pointers.
+- **Finding Associado:** P-6
+- **Arquivos:**
+  - [resampler.rs](file:///home/fabio/nam-rs/src/dsp/resampler.rs)
+- **Risco:** Baixo.
+- **Validação:**
+  - Executar o conjunto de testes rápidos (`utils/tests-quick.sh`).
