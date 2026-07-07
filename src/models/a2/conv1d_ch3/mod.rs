@@ -252,5 +252,5 @@ impl crate::models::wavenet::conv1d_dyn::Conv1dDyn {
 }
 
 #[cfg(test)]
-#[path = "../conv1d_ch3_test.rs"]
+#[path = "conv1d_ch3_test.rs"]
 mod tests;

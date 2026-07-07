@@ -44,5 +44,5 @@ pub use scalar::*;
 pub use simd::*;
 
 #[cfg(test)]
-#[path = "../conv1d_ch8_test.rs"]
+#[path = "conv1d_ch8_test.rs"]
 mod tests;
