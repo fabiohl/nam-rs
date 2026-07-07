@@ -96,12 +96,12 @@ gantt
   - Helpers locais substituídos por `common::` (generate_sine_440hz, make_lstm_data, make_wavenet_dyn_data, make_wavenet_a2_dyn_data).
   - Arquivo reduzido de 1532 para 833 linhas.
   - *Referência*: [TODO-findings.md §3.6].
-- **[ ] Tarefa 4.2**: Atualizar o script de QA noturno [utils/tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh) na Fase 6 para executar as novas suítes criadas:
+- **[X] Tarefa 4.2**: Atualizar o script de QA noturno [utils/tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh) na Fase 6 para executar as novas suítes criadas:
   - `cargo bench --features long_bench --bench math_bench`
   - `cargo bench --features long_bench --bench dsp_bench`
   - `cargo bench --features long_bench --bench cabsim_bench`
   - `cargo bench --features long_bench --bench clap_bench`
-- **[ ] Tarefa 4.3**: Executar compilação sanitária (`cargo check --benches --all-features`) para homologar toda a suíte de medição.
+- **[X] Tarefa 4.3**: Executar compilação sanitária (`cargo check --benches --all-features`) para homologar toda a suíte de medição.
 - **Risco/Complexidade**: **Alto**.
   > [CAUTION]
   > A suíte noturna `tests-long.sh` não pode quebrar sob nenhuma circunstância. Todas as chamadas adicionadas devem ser robustas a falhas de arquivos de golden/fixtures ausentes.

@@ -567,6 +567,10 @@ run_benchmarks_phase() {
     cargo bench --features long_bench --bench inference_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
     cargo bench --features long_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
     cargo bench --features long_bench --bench long_inference_bench || status=1
+    cargo bench --features long_bench --bench math_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench dsp_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench cabsim_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features long_bench --bench clap_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
     return $status
 }
 run_phase "Long Performance Benchmarks" "run_benchmarks_phase" "phase6-benchmarks.log" || true
