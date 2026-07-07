@@ -305,7 +305,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter kernels AVX2 + escalares e testes no arquivo original, expondo os novos com `pub use high_fidelity_avx512::*;`.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.6 — Split de `src/math/dsp/fft.rs`**
+* [x] **T5.6 — Split de `src/math/dsp/fft.rs`**
   * **Origem:** [C7 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L255)
   * **Ação:**
     1. Criar `src/math/dsp/rfft.rs` (com cabeçalho SPDX/Copyright).

@@ -21,4 +21,5 @@ pub mod fft;
 pub mod fft_radix4;
 pub mod gain;
 pub mod gain_lut;
+pub mod rfft;
 pub mod stereo;
