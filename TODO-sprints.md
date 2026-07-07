@@ -126,7 +126,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 ### Tarefas Técnicas
 
-#### [x86-64-v3] T-PERF-5.1: Otimização de Inicialização All-Zero no `AlignedVec` (`aligned.rs`)
+#### [x86-64-v3] T-PERF-5.1: Otimização de Inicialização All-Zero no `AlignedVec` (`aligned.rs`) [DONE]
 
 - **Objetivo:** Substituir loops de inicialização por `std::ptr::write_bytes(..., 0u8, len)` quando o valor default de tipo `T` for composto apenas por bits zero.
 - **Finding Associado:** P-12
@@ -135,6 +135,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Baixo.
 - **Validação:**
   - Execução dos testes unitários garantindo comportamento idêntico.
+- **Conclusão:** Trait `Zeroable` definido e implementado para f32, f64 e inteiros primitivos. `AlignedVec::new` agora usa `std::ptr::write_bytes(ptr, 0u8, len * size_of::<T>())` quando `default.is_zero()`, substituindo o loop elemento-a-elemento por um único `memset`. `AlignedVec::resize` otimizado duplamente: cópia dos elementos existentes via `copy_nonoverlapping` e preenchimento zero dos novos slots via `write_bytes`.
 
 #### [x86-64-v3] T-PERF-5.2: Otimização de Cópia e Redimensionamento no `AlignedVec` (`aligned.rs`)
 

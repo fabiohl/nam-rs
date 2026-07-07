@@ -15,6 +15,57 @@ use std::ptr::NonNull;
 
 use crate::common::diagnostics::NamErrorCode;
 
+/// Marker trait for types where the all-zero bit pattern is a valid representation.
+///
+/// # Safety
+///
+/// The implementor guarantees that calling `std::mem::zeroed::<Self>()` produces
+/// a well-defined, valid value of `Self`. All IEEE 754 floating-point types and
+/// all primitive integers satisfy this invariant (0.0 is all-zero bits, and 0
+/// is all-zero bits).
+pub unsafe trait Zeroable: Copy {
+    /// Returns `true` when all bytes of this value are zero.
+    fn is_zero(&self) -> bool;
+}
+
+macro_rules! impl_zeroable_int {
+    ($($t:ty),*) => {
+        $(
+            // SAFETY: for all primitive integer types, the all-zero bit pattern
+            // is the canonical representation of the value 0 — this is guaranteed
+            // by the Rust language reference.
+            unsafe impl Zeroable for $t {
+                #[inline(always)]
+                fn is_zero(&self) -> bool {
+                    *self == 0
+                }
+            }
+        )*
+    };
+}
+
+impl_zeroable_int!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+
+// SAFETY: IEEE 754 represents +0.0 as all-zero bits (`to_bits() == 0`).
+// `std::mem::zeroed::<f32>()` is thus the canonical +0.0, valid for all
+// arithmetic operations.
+unsafe impl Zeroable for f32 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.to_bits() == 0
+    }
+}
+
+// SAFETY: IEEE 754 represents +0.0 as all-zero bits (`to_bits() == 0`).
+// `std::mem::zeroed::<f64>()` is thus the canonical +0.0, valid for all
+// arithmetic operations.
+unsafe impl Zeroable for f64 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.to_bits() == 0
+    }
+}
+
 /// Wrapper to guarantee 64-byte alignment (Cache Line / AVX-512).
 ///
 /// Stack-allocated counterpart to `AlignedVec`. Use this for fixed-size
@@ -99,14 +150,21 @@ impl<T> AlignedVec<T> {
     /// Returns `NamErrorCode::OutOfMemory` if allocation fails.
     pub fn new(len: usize, default: T) -> Result<Self, NamErrorCode>
     where
-        T: Copy,
+        T: Copy + Zeroable,
     {
         let mut vec = Self::with_capacity(len)?;
-        // SAFETY: ptr is non-null (from with_capacity), i < len ≤ cap (loop bound),
-        // T: Copy guarantees no double-free on write. All elements are initialized.
+        // SAFETY: ptr is non-null with cap ≥ len (from with_capacity).
+        // write_bytes sets raw memory — Zeroable guarantees all-zero bits is a valid T.
+        // Element-by-element write for non-zero default: T: Copy prevents double-free,
+        // and each slot receives a valid bitwise copy of default.
         unsafe {
-            for i in 0..len {
-                vec.ptr.as_ptr().add(i).write(default);
+            let ptr = vec.ptr.as_ptr();
+            if default.is_zero() {
+                std::ptr::write_bytes(ptr as *mut u8, 0u8, len * std::mem::size_of::<T>());
+            } else {
+                for i in 0..len {
+                    ptr.add(i).write(default);
+                }
             }
         }
         vec.len = len;
@@ -153,23 +211,31 @@ impl<T> AlignedVec<T> {
     /// Returns `NamErrorCode::OutOfMemory` if allocation for the new capacity fails.
     pub fn resize(&mut self, new_len: usize, default: T) -> Result<(), NamErrorCode>
     where
-        T: Copy,
+        T: Copy + Zeroable,
     {
         if new_len <= self.len {
             return Ok(());
         }
         let mut new_vec = Self::with_capacity(new_len)?;
-        // SAFETY: old_ptr is valid for self.len reads (from self, initialized in new/clone/resize).
-        // new_vec.ptr is non-null with cap ≥ new_len (freshly allocated by with_capacity).
-        // Ranges [0..self.len] and [self.len..new_len] are disjoint and within bounds.
-        // T: Copy prevents double-free; write(default) does not overlap with reads from old_ptr.
+        // SAFETY: old_ptr is valid for self.len reads (self is initialized).
+        // new_vec.ptr is non-null with cap ≥ new_len (freshly allocated). Source and
+        // destination are separate allocations — no overlap possible.
+        // copy_nonoverlapping moves self.len elements atomically.
+        // write_bytes fills remaining slots with zero bytes; Zeroable guarantees
+        // all-zero bits is a valid T.
+        // Element-by-element write for non-zero default covers remaining slots.
         unsafe {
             let old_ptr = self.ptr.as_ptr();
-            for i in 0..self.len {
-                new_vec.ptr.as_ptr().add(i).write(old_ptr.add(i).read());
-            }
-            for i in self.len..new_len {
-                new_vec.ptr.as_ptr().add(i).write(default);
+            let new_ptr = new_vec.ptr.as_ptr();
+            std::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.len);
+            if default.is_zero() {
+                let fill_start = new_ptr.add(self.len) as *mut u8;
+                let fill_bytes = (new_len - self.len) * std::mem::size_of::<T>();
+                std::ptr::write_bytes(fill_start, 0u8, fill_bytes);
+            } else {
+                for i in self.len..new_len {
+                    new_ptr.add(i).write(default);
+                }
             }
         }
         new_vec.len = new_len;
