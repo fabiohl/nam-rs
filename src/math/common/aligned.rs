@@ -329,9 +329,9 @@ impl<T> Drop for AlignedVec<T> {
 
 /// Creates an identical copy of the buffer and its entire contents.
 ///
-/// Reserves new memory space with the same alignment and copies each item
-/// one by one, ensuring the new "shelf" is a faithful replica of the original.
-impl<T: Clone> Clone for AlignedVec<T> {
+/// Reserves new memory space with the same alignment and performs a single
+/// `copy_nonoverlapping` blit — no element-by-element iteration.
+impl<T: Copy> Clone for AlignedVec<T> {
     fn clone(&self) -> Self {
         // The layout (self.len * size_of::<T>(), 64) is identical to a layout that was
         // already validated during the original allocation. Therefore, alloc_slot cannot
@@ -343,14 +343,12 @@ impl<T: Clone> Clone for AlignedVec<T> {
             len: 0,
             cap: self.len,
         };
-        // SAFETY: self.ptr is valid for self.len reads (self is initialized). new_vec.ptr is non-null
-        // with cap ≥ self.len. The clone source is the original buffer which remains unmodified
-        // throughout — no aliasing with the write target.
+        // SAFETY: self.ptr is valid for self.len reads. new_vec.ptr is non-null with
+        // cap = self.len (freshly allocated). Source and destination are separate
+        // allocations — no overlap possible. T: Copy guarantees that bitwise duplication
+        // is semantically equivalent to Clone::clone.
         unsafe {
-            for i in 0..self.len {
-                let val = (*self.ptr.as_ptr().add(i)).clone();
-                new_vec.ptr.as_ptr().add(i).write(val);
-            }
+            std::ptr::copy_nonoverlapping(self.ptr.as_ptr(), new_vec.ptr.as_ptr(), self.len);
         }
         new_vec.len = self.len;
         new_vec

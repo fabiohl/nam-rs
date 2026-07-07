@@ -137,7 +137,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
   - Execução dos testes unitários garantindo comportamento idêntico.
 - **Conclusão:** Trait `Zeroable` definido e implementado para f32, f64 e inteiros primitivos. `AlignedVec::new` agora usa `std::ptr::write_bytes(ptr, 0u8, len * size_of::<T>())` quando `default.is_zero()`, substituindo o loop elemento-a-elemento por um único `memset`. `AlignedVec::resize` otimizado duplamente: cópia dos elementos existentes via `copy_nonoverlapping` e preenchimento zero dos novos slots via `write_bytes`.
 
-#### [x86-64-v3] T-PERF-5.2: Otimização de Cópia e Redimensionamento no `AlignedVec` (`aligned.rs`)
+#### [x86-64-v3] T-PERF-5.2: Otimização de Cópia e Redimensionamento no `AlignedVec` (`aligned.rs`) [DONE]
 
 - **Objetivo:** Substituir a cópia elemento-a-elemento no método `resize` por `std::ptr::copy_nonoverlapping` e otimizar o preenchimento de novos slots com `write_bytes` caso aplicável.
 - **Finding Associado:** P-13
@@ -146,6 +146,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Baixo.
 - **Validação:**
   - Execução do suite de testes rápidos (`utils/tests-quick.sh`).
+- **Conclusão:** O método `resize` já havia sido otimizado em T-PERF-5.1 com `copy_nonoverlapping` para elementos existentes e `write_bytes` para slots zero. O método `clone` foi otimizado: bound alterado de `T: Clone` para `T: Copy` (todos os usos são f32/f64 = Copy), substituindo o loop clone-por-elemento por um único `copy_nonoverlapping`.
 
 #### [x86-64-v3] T-PERF-5.3: Análise e Separação de Tails SIMD com `#[cold]` (Vários)
 
