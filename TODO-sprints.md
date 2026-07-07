@@ -297,7 +297,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter os helpers privados `load_partial_ymm` e `store_partial_ymm` no arquivo principal e re-exportar os novos módulos.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.5 — Split de `src/math/activations/tanh/high_fidelity.rs`**
+* [x] **T5.5 — Split de `src/math/activations/tanh/high_fidelity.rs`**
   * **Origem:** [C6 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L247)
   * **Ação:**
     1. Criar `src/math/activations/tanh/high_fidelity_avx512.rs` (com cabeçalho SPDX/Copyright).

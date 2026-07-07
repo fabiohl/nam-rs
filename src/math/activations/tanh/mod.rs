@@ -10,6 +10,8 @@
 
 /// Polynomial exp-based tanh/sigmoid kernels (degree-6 Taylor, ≤ 1e-6 error).
 pub mod high_fidelity;
+/// AVX-512 polynomial exp/tanh/sigmoid kernels (re-exported by `high_fidelity`).
+pub mod high_fidelity_avx512;
 pub mod production;
 /// Experimental / reference Padé NR2 variants retained for benchmarking.
 pub mod reference;
