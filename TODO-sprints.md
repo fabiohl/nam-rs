@@ -87,7 +87,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
 
 ### Tarefas da Sprint 2
 
-* [ ] **T2.1 — Remover funções `load_*_accums` de `src/models/wavenet/conv_input.rs`**
+* [x] **T2.1 — Remover funções `load_*_accums` de `src/models/wavenet/conv_input.rs`**
   * **Origem:** [B1 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L87)
   * **Ação:**
     * Remover as funções `load_4_accums` (linhas 12–39), `load_8_accums` (linhas 71–97) e `load_16_accums` (linhas 123–167).
