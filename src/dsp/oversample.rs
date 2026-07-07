@@ -25,29 +25,15 @@
 //!
 //! Factor change requires rebuild (off-RT), same path as model hot-swap.
 
+use super::stage::X2Stage;
 use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
-use crate::math::common::hsum_avx2;
-use core::arch::x86_64::*;
 
 /// Half-band FIR filter length (≡ 1 mod 4 so D=HB_TAPS/2 is even).
 /// 25 taps, D=12. Kaiser β=12 → >100 dB stop-band rejection.
-const HB_TAPS: usize = 25;
+pub(crate) const HB_TAPS: usize = 25;
 /// Filter delay (group delay = HB_TAPS/2 = 12 samples at native rate).
-const HB_DELAY: usize = HB_TAPS / 2;
-/// Number of non-zero odd-index taps (h[1], h[3], ..., h[23]).
-const HB_ODD_COUNT: usize = HB_TAPS / 2; // 12
-
-/// Upsampler ring double-buffer length (HB_DELAY × 2 for contiguous access).
-const UP_DELAY_LINE_LEN: usize = HB_DELAY * 2;
-/// Downsampler even-sample ring size (⌈HB_TAPS/2⌉ = 13).
-const DOWN_EVEN_LEN: usize = HB_TAPS.div_ceil(2);
-/// Downsampler odd-sample ring size (⌊HB_TAPS/2⌋ = 12).
-const DOWN_ODD_LEN: usize = HB_TAPS / 2;
-/// Downsampler even double-buffer length.
-const DOWN_EVEN_DELAY_LINE_LEN: usize = DOWN_EVEN_LEN * 2;
-/// Downsampler odd double-buffer length.
-const DOWN_ODD_DELAY_LINE_LEN: usize = DOWN_ODD_LEN * 2;
+pub(crate) const HB_DELAY: usize = HB_TAPS / 2;
 
 /// Oversampling factor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -101,75 +87,6 @@ impl OversampleFactor {
     }
 }
 
-/// Half-band filter kernel with Kaiser window.
-struct HalfBandFilter {
-    /// Non-zero odd-index coefficients: h[1], h[3], ..., h[HB_TAPS-2].
-    coeffs: [f32; HB_ODD_COUNT],
-}
-
-impl HalfBandFilter {
-    /// Designs a half-band filter with the specified overall DC gain.
-    ///
-    /// For upsampling: `dc_gain = L` (2 for 2× upsampler).
-    /// For downsampling: `dc_gain = 1` (unity passband).
-    fn design(beta: f64, dc_gain: f64) -> Self {
-        let i0_beta = bessel_i0(beta);
-        let half = HB_DELAY as f64;
-        let mut coeffs = [0.0f32; HB_ODD_COUNT];
-
-        for i in 0..HB_TAPS {
-            let offset = i as f64 - half;
-            if offset.abs() < 1e-10 || (offset.abs() as i64) % 2 == 0 {
-                continue;
-            }
-
-            let x = std::f64::consts::PI * offset;
-            let sinc = (x * 0.5).sin() / x;
-            let ratio = offset / half;
-            let arg = beta * (1.0 - ratio * ratio).max(0.0).sqrt();
-            let window = bessel_i0(arg) / i0_beta;
-
-            if i % 2 == 1 {
-                coeffs[i / 2] = (sinc * window) as f32;
-            }
-        }
-
-        // Normalize so h[D] + Σ odd_taps = dc_gain.
-        // h[D] is fixed at dc_gain / 2 in the convolution code.
-        // We scale odd taps to reach the target.
-        let target_h_center = dc_gain / 2.0; // 1.0 for up,  0.5 for down
-        let target_odd_sum = dc_gain - target_h_center; // 1.0 for up,  0.5 for down
-        let odd_sum: f32 = coeffs.iter().sum();
-        if odd_sum.abs() > 1e-10 {
-            let scale = target_odd_sum as f32 / odd_sum;
-            for c in coeffs.iter_mut() {
-                *c *= scale;
-            }
-        }
-
-        // Reverse so coeffs[0] pairs with the oldest sample in the
-        // double-buffer window (oldest-first contiguous layout),
-        // enabling direct AVX2 FMADD without permutes.
-        coeffs.reverse();
-
-        HalfBandFilter { coeffs }
-    }
-}
-
-fn bessel_i0(x: f64) -> f64 {
-    let mut sum = 1.0_f64;
-    let mut term = 1.0_f64;
-    let half_x = x / 2.0;
-    for k in 1..=20 {
-        term *= (half_x / k as f64) * (half_x / k as f64);
-        sum += term;
-        if term < 1e-15 * sum {
-            break;
-        }
-    }
-    sum
-}
-
 /// Typed bundle of oversampling stages, eliminating `Option::unwrap`
 /// on the RT hot-path. Variant discriminant is a zero-cost compile-time
 /// guarantee that the stages (when present) are always valid.
@@ -182,145 +99,6 @@ enum OsStages {
         stage1: X2Stage,
         stage2: Box<X2Stage>,
     },
-}
-
-/// Single 2× oversampling stage (up + down delay-line state).
-///
-/// Uses pre-allocated double-buffer delay lines for contiguous SIMD access,
-/// eliminating per-sample modulo indexing from the hot-path.
-struct X2Stage {
-    /// Filter for upsampling (DC gain = 2.0, center tap multiplier = 1.0).
-    up_filter: HalfBandFilter,
-    /// Filter for downsampling (DC gain = 1.0, center tap multiplier = 0.5).
-    down_filter: HalfBandFilter,
-    /// Center tap multiplier for the upsampler (h[D] = dc_gain_up / 2 = 1.0).
-    up_center: f32,
-    /// Center tap multiplier for the downsampler (h[D] = dc_gain_down / 2 = 0.5).
-    down_center: f32,
-    /// Upsampler double-buffer delay line (24 entries).
-    up_ring: AlignedVec<f32>,
-    /// Upsampler write position (0..HB_DELAY-1).
-    up_pos: usize,
-    /// Downsampler double-buffer for even-position samples (26 entries).
-    down_ring_even: AlignedVec<f32>,
-    /// Downsampler double-buffer for odd-position samples (24 entries).
-    down_ring_odd: AlignedVec<f32>,
-    /// Write position in even ring (0..DOWN_EVEN_LEN-1).
-    down_pos_even: usize,
-    /// Write position in odd ring (0..DOWN_ODD_LEN-1).
-    down_pos_odd: usize,
-    /// Total samples processed (replaces modulo ring tracking).
-    down_total: u64,
-}
-
-impl X2Stage {
-    fn new() -> Result<Self, NamErrorCode> {
-        let dc_up = 2.0;
-        let dc_down = 1.0;
-        Ok(Self {
-            up_filter: HalfBandFilter::design(12.0, dc_up),
-            down_filter: HalfBandFilter::design(12.0, dc_down),
-            up_center: (dc_up / 2.0) as f32,
-            down_center: (dc_down / 2.0) as f32,
-            up_ring: AlignedVec::new(UP_DELAY_LINE_LEN, 0.0f32)?,
-            up_pos: 0,
-            down_ring_even: AlignedVec::new(DOWN_EVEN_DELAY_LINE_LEN, 0.0f32)?,
-            down_ring_odd: AlignedVec::new(DOWN_ODD_DELAY_LINE_LEN, 0.0f32)?,
-            down_pos_even: 0,
-            down_pos_odd: 0,
-            down_total: 0,
-        })
-    }
-
-    fn upsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
-        let coeffs = &self.up_filter.coeffs;
-        let center = self.up_center;
-        let n = HB_DELAY;
-        let n_in = input.len();
-
-        for (i, &x) in input.iter().enumerate() {
-            let p = self.up_pos;
-            unsafe {
-                *self.up_ring.get_unchecked_mut(p) = x;
-                *self.up_ring.get_unchecked_mut(p + n) = x;
-            }
-            self.up_pos = (p + 1) % n;
-
-            let wptr = unsafe { self.up_ring.as_ptr().add(self.up_pos) };
-
-            let even_out = unsafe { *wptr.add(5) * center };
-
-            let odd_out = unsafe {
-                let c8 = _mm256_loadu_ps(coeffs.as_ptr());
-                let s8 = _mm256_loadu_ps(wptr);
-                let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
-                let mut sum = hsum_avx2(acc8);
-                sum += *coeffs.get_unchecked(8) * *wptr.add(8);
-                sum += *coeffs.get_unchecked(9) * *wptr.add(9);
-                sum += *coeffs.get_unchecked(10) * *wptr.add(10);
-                sum += *coeffs.get_unchecked(11) * *wptr.add(11);
-                sum
-            };
-
-            unsafe {
-                *output.get_unchecked_mut(2 * i) = even_out;
-                *output.get_unchecked_mut(2 * i + 1) = odd_out;
-            }
-        }
-
-        n_in * 2
-    }
-
-    fn downsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
-        let coeffs = &self.down_filter.coeffs;
-        let center = self.down_center;
-        let mut out_idx = 0;
-
-        for &x in input.iter() {
-            let is_even = (self.down_total & 1) == 0;
-            if is_even {
-                let p = self.down_pos_even;
-                unsafe {
-                    *self.down_ring_even.get_unchecked_mut(p) = x;
-                    *self.down_ring_even.get_unchecked_mut(p + DOWN_EVEN_LEN) = x;
-                }
-                self.down_pos_even = (p + 1) % DOWN_EVEN_LEN;
-            } else {
-                let p = self.down_pos_odd;
-                unsafe {
-                    *self.down_ring_odd.get_unchecked_mut(p) = x;
-                    *self.down_ring_odd.get_unchecked_mut(p + DOWN_ODD_LEN) = x;
-                }
-                self.down_pos_odd = (p + 1) % DOWN_ODD_LEN;
-            }
-            self.down_total += 1;
-
-            if self.down_total >= HB_TAPS as u64 && (self.down_total & 1) == 1 {
-                let ev_ptr = unsafe { self.down_ring_even.as_ptr().add(self.down_pos_even) };
-                let center_sample = unsafe { *ev_ptr.add(6) };
-                let mut sum = center_sample * center;
-
-                let od_ptr = unsafe { self.down_ring_odd.as_ptr().add(self.down_pos_odd) };
-                unsafe {
-                    let c8 = _mm256_loadu_ps(coeffs.as_ptr());
-                    let s8 = _mm256_loadu_ps(od_ptr);
-                    let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
-                    sum += hsum_avx2(acc8);
-                    sum += *coeffs.get_unchecked(8) * *od_ptr.add(8);
-                    sum += *coeffs.get_unchecked(9) * *od_ptr.add(9);
-                    sum += *coeffs.get_unchecked(10) * *od_ptr.add(10);
-                    sum += *coeffs.get_unchecked(11) * *od_ptr.add(11);
-                }
-
-                if out_idx < output.len() {
-                    output[out_idx] = sum;
-                    out_idx += 1;
-                }
-            }
-        }
-
-        out_idx
-    }
 }
 
 /// RT-safe half-band oversampling engine.

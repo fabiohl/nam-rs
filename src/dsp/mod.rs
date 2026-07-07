@@ -15,4 +15,5 @@ pub mod pipeline;
 pub mod resampler;
 pub mod sinc_kernel;
 pub mod smoother;
+pub mod stage;
 pub mod telemetry;

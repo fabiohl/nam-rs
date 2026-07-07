@@ -313,7 +313,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Manter a definição de `FftFloat` e `FftPlanner` em `fft.rs`.
   * **Validação:** Executar `utils/tests-quick.sh`.
 
-* [ ] **T5.7 — Split de `src/dsp/oversample.rs`**
+* [x] **T5.7 — Split de `src/dsp/oversample.rs`**
   * **Origem:** [C12 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L300)
   * **Ação:**
     1. Criar o arquivo `src/dsp/stage.rs` (com cabeçalho SPDX/Copyright) contendo a struct `X2Stage` e sua implementação.
