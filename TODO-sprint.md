@@ -36,7 +36,7 @@ gantt
 
 #### Sprint 1: Criação do Módulo Comum e Higienização de Helpers
 
-- **[ ] Tarefa 1.1**: Criar o arquivo `benches/common.rs` que servirá de módulo de utilitários compartilhados para toda a suíte.
+- **[X] Tarefa 1.1**: Criar o arquivo `benches/common.rs` que servirá de módulo de utilitários compartilhados para toda a suíte.
   - Implementar os geradores de dados sintéticos: `generate_sine_440hz` e builders de dados de modelo (`make_lstm_data`, `make_wavenet_dyn_data`, `make_wavenet_a2_dyn_data`).
   - Implementar os resolvedores de caminho de arquivo de modelo (`model_path`) e rotinas de warmup (`load_and_prewarm`).
   - *Referência*: [TODO-findings.md §3.1].
