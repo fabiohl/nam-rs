@@ -72,7 +72,6 @@ fn test_conv1d_ch12_scalar_vs_simd() {
         bias: bias.clone(),
         do_bias: true,
         dilation: dil,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
     
     // Create state buffer (CH * 10 elements)

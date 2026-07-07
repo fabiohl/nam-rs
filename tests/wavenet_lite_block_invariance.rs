@@ -30,11 +30,6 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: test_dense_f32(1, 12),
@@ -64,11 +59,6 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: test_dense_f32(1, 6),

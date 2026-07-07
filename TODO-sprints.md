@@ -95,7 +95,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 
 **Meta da Sprint:** Remover campos mortos e indireções desnecessárias por ponteiros de função no Resampler, em conformidade com as diretrizes arquiteturais do projeto.
 
-### [x86-64-v3] T-PERF-4.1: Remoção de `prefetch_fn` em Conv1d (`conv1d.rs`)
+### [x86-64-v3] T-PERF-4.1: Remoção de `prefetch_fn` em Conv1d (`conv1d.rs`) [DONE]
 
 - **Objetivo:** Remover o campo de prefetch inativo do `Conv1d` e limpar as ~163 referências/inicializações em builders e testes unitários.
 - **Finding Associado:** P-5

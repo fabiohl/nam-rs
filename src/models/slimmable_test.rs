@@ -37,7 +37,6 @@ fn make_conv1d(in_ch: usize, out_ch: usize) -> Conv1dDyn {
         num_blocks,
         interleave_width: 4,
         kernel,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     }
 }
 

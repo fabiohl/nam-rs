@@ -61,15 +61,6 @@ fn make_bias(len: usize) -> AlignedVec<f32> {
     AlignedVec::from_vec(vec![0.0; len]).expect("allocation should succeed for test-sized buffers")
 }
 
-/// Helper: prefetch function based on dilation.
-fn prefetch_for(dilation: usize) -> crate::math::common::PrefetchFn {
-    if dilation >= 128 {
-        crate::math::common::prefetch_strategy_2stage
-    } else {
-        crate::math::common::prefetch_strategy_simple
-    }
-}
-
 /// Builds a const-generic `WaveNetModel<CH, K, HEAD>` with synthetic weights.
 fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>()
 -> WaveNetModel<CH, K, HEAD> {
@@ -83,7 +74,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 bias: make_bias(CH),
                 do_bias: false,
                 dilation,
-                prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
                 weights: make_dense_weights(1, CH),
@@ -138,7 +128,6 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 bias: make_bias(HEAD),
                 do_bias: false,
                 dilation,
-                prefetch_fn: prefetch_for(dilation),
             },
             input_mixin: DenseLayer {
                 weights: make_dense_weights(1, HEAD),
@@ -211,7 +200,6 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
             num_blocks: out_ch.div_ceil(4),
             interleave_width: 4,
             kernel: k,
-            prefetch_fn: prefetch_for(dilation),
         }
     };
 

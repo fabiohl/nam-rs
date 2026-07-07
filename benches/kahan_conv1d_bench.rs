@@ -3,7 +3,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::math::common::half::f32_to_f16_bits;
-use nam_rs::math::common::{AlignedVec, Avx2Math, SimdMath, kahan_add, prefetch_strategy_simple};
+use nam_rs::math::common::{AlignedVec, Avx2Math, SimdMath, kahan_add};
 use nam_rs::models::wavenet::{Conv1d, Conv1dDyn};
 use std::hint::black_box;
 
@@ -125,7 +125,6 @@ fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
         bias: AlignedVec::from_vec(vec![0.0; OUT]).expect("bench allocation failed"),
         do_bias: false,
         dilation: 1,
-        prefetch_fn: prefetch_strategy_simple,
     }
 }
 
@@ -140,7 +139,6 @@ fn conv1d_dyn_from_raw(raw: &[f32], in_ch: usize, out_ch: usize, kernel: usize) 
         num_blocks: out_ch.div_ceil(4),
         interleave_width: 4,
         kernel,
-        prefetch_fn: prefetch_strategy_simple,
     }
 }
 

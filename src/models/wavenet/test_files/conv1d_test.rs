@@ -34,7 +34,6 @@ fn test_conv1d_identity_kernel() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     // Simulate a layer buffer (input) with sequential values.
@@ -80,7 +79,6 @@ fn test_conv1d_with_bias() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: true, // Enable bias vector addition.
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
@@ -123,7 +121,6 @@ fn test_conv1d_dilation() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 2,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     // Create a history of 6 frames (12 floats).
@@ -181,7 +178,6 @@ fn test_conv1d_zero_input() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: false,
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     // Buffer filled with zeros.
@@ -239,7 +235,6 @@ fn test_conv1d_known_output() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     // Layer buffer with 2 frames: F0=(2.0, 3.0), F1=(4.0, 5.0).
@@ -293,7 +288,6 @@ fn test_conv1d_ch8_wide_interleaving() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let mut layer_buffer = vec![0.0f32; CH * 10];
@@ -365,7 +359,6 @@ fn test_conv1d_ch16_wide_interleaving() {
             .expect("allocation should succeed for test-sized buffers"),
         do_bias: true,
         dilation: 1,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let mut layer_buffer = vec![0.0f32; CH * 10];
@@ -487,14 +480,5 @@ fn test_conv1d_from_parts_subdimensioned_weights() {
     let bias =
         AlignedVec::new(OUT, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
-    Conv1d::<IN, OUT, K>::from_parts(
-        weights,
-        bias,
-        false,
-        1,
-        IN,
-        OUT,
-        K,
-        crate::math::common::prefetch_strategy_simple,
-    );
+    Conv1d::<IN, OUT, K>::from_parts(weights, bias, false, 1, IN, OUT, K);
 }

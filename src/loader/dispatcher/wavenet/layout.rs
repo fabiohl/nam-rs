@@ -65,14 +65,6 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         AlignedVec::new(out_size, 0.0)?
     };
 
-    // Large dilations need 2-stage prefetch: schedule the load two
-    // iterations ahead to hide the long-stride memory latency.
-    let prefetch_fn = if dilation >= 128 {
-        crate::math::common::prefetch_strategy_2stage
-    } else {
-        crate::math::common::prefetch_strategy_simple
-    };
-
     Ok(T::from_parts(
         f32_weights,
         bias,
@@ -81,7 +73,6 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         in_size,
         out_size,
         k_size,
-        prefetch_fn,
     ))
 }
 

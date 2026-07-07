@@ -56,7 +56,6 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         num_blocks: out_ch.div_ceil(4),
         interleave_width: 4,
         kernel,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let layer_buffer = vec![1.0f32; 5 * in_ch];
@@ -99,7 +98,6 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
         num_blocks: out_ch.div_ceil(4),
         interleave_width: 4,
         kernel,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let layer_buffer = vec![1.0f32; 24];
@@ -152,14 +150,5 @@ fn test_conv1d_dyn_from_parts_subdimensioned_weights() {
     let bias =
         AlignedVec::new(out_ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
 
-    Conv1dDyn::from_parts(
-        weights,
-        bias,
-        false,
-        1,
-        in_ch,
-        out_ch,
-        k_size,
-        crate::math::common::prefetch_strategy_simple,
-    );
+    Conv1dDyn::from_parts(weights, bias, false, 1, in_ch, out_ch, k_size);
 }

@@ -47,11 +47,6 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: true,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 16])
@@ -136,7 +131,6 @@ pub fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: true,
                 dilation,
-                prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 8])
@@ -226,11 +220,6 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 4])
@@ -267,11 +256,6 @@ pub fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 2])

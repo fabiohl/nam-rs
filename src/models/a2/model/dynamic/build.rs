@@ -7,7 +7,7 @@
 //! the model layers with runtime-dimensioned weights. Supports
 //! gating/blending (2× bottleneck), head1x1, and per-layer FiLM.
 
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::AlignedVec;
 use crate::models::a2::gating::GatingMode;
 use crate::models::a2::head::A2HeadConv;
 use crate::models::a2::layer::A2Layer;
@@ -128,21 +128,8 @@ impl WaveNetA2Dyn {
         let conv_b = AlignedVec::from_vec(conv_b_f32.to_vec())
             .expect("allocation should succeed for test-sized buffers");
 
-        let prefetch_fn: PrefetchFn = if dilation >= 128 {
-            crate::math::common::prefetch_strategy_2stage
-        } else {
-            crate::math::common::prefetch_strategy_simple
-        };
-
         let conv = crate::models::a2::conv1d::A2Conv1d::new(
-            conv_w,
-            conv_b,
-            true,
-            dilation,
-            channels,
-            conv_out,
-            ksize,
-            prefetch_fn,
+            conv_w, conv_b, true, dilation, channels, conv_out, ksize,
         );
 
         // 2c. Mixin (conv_out * condition_size elements, applied after conv).

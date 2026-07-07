@@ -69,7 +69,6 @@ impl ConvNetBlock {
             num_blocks,
             interleave_width: 4,
             kernel,
-            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         let bn = BatchNorm1D::from_fused(out_ch, &vec![0.0f32; out_ch], &vec![0.0f32; out_ch])

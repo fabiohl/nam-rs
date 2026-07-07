@@ -46,11 +46,6 @@ fn make_wavenet_layer(
                 .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
             dilation,
-            prefetch_fn: if dilation >= 128 {
-                nam_rs::math::common::prefetch_strategy_2stage
-            } else {
-                nam_rs::math::common::prefetch_strategy_simple
-            },
         },
         input_mixin: wavenet::DenseLayer {
             weights: AlignedVec::from_vec(vec![0.001f32; ch])
@@ -87,11 +82,6 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
                 .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
             dilation,
-            prefetch_fn: if dilation >= 128 {
-                nam_rs::math::common::prefetch_strategy_2stage
-            } else {
-                nam_rs::math::common::prefetch_strategy_simple
-            },
         },
         input_mixin: wavenet::DenseLayer {
             weights: AlignedVec::from_vec(vec![0.001f32; 8])

@@ -171,7 +171,6 @@ pub fn slice_conv1d(
         num_blocks: new_num_blocks,
         interleave_width: dst_width,
         kernel,
-        prefetch_fn: conv.prefetch_fn,
     })
 }
 

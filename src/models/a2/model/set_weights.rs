@@ -10,7 +10,7 @@
 //! from the stream after each layer's standard weights.
 
 use super::WaveNetA2;
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::AlignedVec;
 use crate::models::a2::conv1d_ch3::A2Conv1dCh3;
 use crate::models::a2::conv1d_ch8::A2Conv1dCh8;
 use crate::models::a2::film::{FiLMConfig, FiLMLayer};
@@ -83,14 +83,6 @@ impl<const CH: usize> WaveNetA2<CH> {
             let conv_b = AlignedVec::from_vec(conv_b_f32.to_vec())
                 .expect("allocation should succeed for test-sized buffers");
 
-            // Prefetch strategy: large dilations (≥128) benefit from 2-stage prefetch
-            // (intermediate cache lines), small dilations use simple linear prefetch.
-            let prefetch_fn: PrefetchFn = if dilation >= 128 {
-                crate::math::common::prefetch_strategy_2stage
-            } else {
-                crate::math::common::prefetch_strategy_simple
-            };
-
             // Build the scalar/SIMD fallback conv (interleaved-4-wide f32 weights).
             let conv = crate::models::a2::conv1d::A2Conv1d::new(
                 conv_w,
@@ -100,7 +92,6 @@ impl<const CH: usize> WaveNetA2<CH> {
                 CH,
                 CH,
                 ksize,
-                prefetch_fn,
             );
 
             // Optional col-major-per-tap f32 conv for CH=3 and CH=8.

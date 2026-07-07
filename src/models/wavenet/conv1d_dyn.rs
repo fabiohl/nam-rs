@@ -8,7 +8,7 @@
 //! stages and static WaveNet test/stress kernels.
 
 use crate::math::common::{
-    AlignedVec, PrefetchFn, SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple,
+    AlignedVec, SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple,
 };
 
 use super::common::MAX_KERNEL;
@@ -35,10 +35,6 @@ pub struct Conv1dDyn {
     pub interleave_width: usize,
     /// Physical kernel size.
     pub kernel: usize,
-    /// Pre-computed prefetch strategy.
-    /// No longer used at runtime — dispatch is now static via `self.dilation >= 128`.
-    #[allow(dead_code)]
-    pub prefetch_fn: PrefetchFn,
 }
 
 impl Conv1dDyn {

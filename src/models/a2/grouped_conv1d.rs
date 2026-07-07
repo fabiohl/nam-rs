@@ -32,9 +32,7 @@
 //! - `NAM/film.h:28-85` (`_cond_to_scale_shift` pattern)
 
 use crate::common::diagnostics::NamErrorCode;
-use crate::math::common::{
-    AlignedVec, PrefetchFn, prefetch_strategy_2stage, prefetch_strategy_simple,
-};
+use crate::math::common::{AlignedVec, prefetch_strategy_2stage, prefetch_strategy_simple};
 use crate::models::wavenet::common::MAX_KERNEL;
 
 use core::arch::x86_64::*;
@@ -76,9 +74,6 @@ pub struct A2GroupedConv1d {
     pub total_blocks: usize,
     /// Kernel size.
     pub kernel: usize,
-    /// Pre-computed prefetch strategy.
-    #[allow(dead_code)]
-    pub prefetch_fn: PrefetchFn,
 }
 
 impl A2GroupedConv1d {
@@ -99,7 +94,6 @@ impl A2GroupedConv1d {
         out_ch: usize,
         kernel: usize,
         groups: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Result<Self, NamErrorCode> {
         assert!(groups > 0, "groups must be > 0");
         assert_eq!(
@@ -175,7 +169,6 @@ impl A2GroupedConv1d {
             num_blocks_per_group,
             total_blocks,
             kernel,
-            prefetch_fn,
         })
     }
 

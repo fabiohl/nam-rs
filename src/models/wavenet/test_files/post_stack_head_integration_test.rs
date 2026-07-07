@@ -58,7 +58,6 @@ fn build_minimal_model_with_head() -> WaveNetModelDyn {
         num_blocks: 1,
         interleave_width: 4,
         kernel: k,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
     let input_mixin = DenseLayerDyn {
@@ -346,7 +345,6 @@ fn test_post_stack_head_multi_array_determinism() {
                 num_blocks,
                 interleave_width: 4,
                 kernel: K,
-                prefetch_fn: crate::math::common::prefetch_strategy_simple,
             }
         };
 

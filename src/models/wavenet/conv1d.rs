@@ -12,7 +12,7 @@
 use super::conv_input::{store_4_accums, store_8_accums, store_16_accums};
 use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::math::common::{
-    AlignedVec, PrefetchFn, SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple,
+    AlignedVec, SimdMath, prefetch_strategy_2stage, prefetch_strategy_simple,
 };
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
@@ -27,10 +27,6 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     pub do_bias: bool,
     /// Dilation factor on the causal temporal axis (e.g.: 1, 2, 4.. 512).
     pub dilation: usize,
-    /// Pre-computed prefetch strategy (Branch Elimination).
-    /// No longer used at runtime — dispatch is now static via `self.dilation >= 128`.
-    #[allow(dead_code)]
-    pub prefetch_fn: PrefetchFn,
 }
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {

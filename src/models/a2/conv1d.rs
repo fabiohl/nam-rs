@@ -12,7 +12,7 @@
 //! mirrored mapping, eliminating branch logic in the inner loop.
 
 use crate::common::diagnostics::NamErrorCode;
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::AlignedVec;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 
 use super::grouped_conv1d::A2GroupedConv1d;
@@ -45,7 +45,6 @@ impl A2Conv1d {
         in_ch: usize,
         out_ch: usize,
         kernel_size: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Self {
         // A2 generic (S13.2, S14.1): arbitrary kernel sizes are valid
         // for the dynamic engine. Fast-path const-generic kernels (CH=3,8)
@@ -82,7 +81,6 @@ impl A2Conv1d {
             num_blocks,
             interleave_width: 4,
             kernel: kernel_size,
-            prefetch_fn,
         })
     }
 
@@ -104,7 +102,6 @@ impl A2Conv1d {
         out_ch: usize,
         kernel: usize,
         groups: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Result<Self, NamErrorCode> {
         Ok(Self::Grouped(A2GroupedConv1d::new(
             raw_weights,
@@ -115,7 +112,6 @@ impl A2Conv1d {
             out_ch,
             kernel,
             groups,
-            prefetch_fn,
         )?))
     }
 

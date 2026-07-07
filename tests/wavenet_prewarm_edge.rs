@@ -49,11 +49,6 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 4])
@@ -94,11 +89,6 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::common::prefetch_strategy_2stage
-                } else {
-                    nam_rs::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.01f32; 2])
@@ -357,7 +347,6 @@ fn test_prewarm_zero_rf() {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![0.0f32; 1])

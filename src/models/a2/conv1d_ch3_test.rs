@@ -55,7 +55,6 @@ fn make_ch3_conv_dyn(
         num_blocks: 1,
         interleave_width: 4,
         kernel,
-        prefetch_fn: crate::math::common::prefetch_strategy_simple,
     }
 }
 

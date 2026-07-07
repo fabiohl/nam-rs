@@ -99,10 +99,6 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
     }
 }
 
-/// Unified signature for prefetch strategies.
-pub type PrefetchFn =
-    fn(base_ptr: *const f32, step: usize, k: usize, k_limit: usize, dilation: usize);
-
 /// Speculative prefetch to L1 cache (T0 hint), avoiding pointer arithmetic UB.
 ///
 /// `_mm_prefetch` on an invalid address is a non-faulting hint and is defined

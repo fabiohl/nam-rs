@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::math::common::{Avx2Math, prefetch_strategy_simple};
+use crate::math::common::Avx2Math;
 use crate::models::a2::A2_DILATIONS;
 
 fn make_conv_weights(ch: usize, kernel: usize, seed: u32) -> (AlignedVec<f32>, AlignedVec<f32>) {
@@ -63,7 +63,6 @@ fn test_a2_layer_ch3_kernel6_parity() {
         ch,
         ch,
         kernel,
-        prefetch_strategy_simple,
     );
     let mixin_w = make_f32_vec(ch, 100);
     let l1x1_w = make_f32_vec(ch * ch, 200);
@@ -174,7 +173,6 @@ fn test_a2_layer_ch8_kernel15_parity() {
         ch,
         ch,
         kernel,
-        prefetch_strategy_simple,
     );
     let mixin_w = make_f32_vec(ch, 400);
     let l1x1_w = make_f32_vec(ch * ch, 500);
@@ -282,7 +280,6 @@ fn test_a2_layer_first_middle_last_behavior() {
         ch,
         ch,
         kernel,
-        prefetch_strategy_simple,
     );
     let mixin_w = make_f32_vec(ch, 101);
     let l1x1_w = make_f32_vec(ch * ch, 201);
@@ -427,14 +424,8 @@ fn test_a2_layer_mixin_contribution() {
     let conv_bias =
         AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let conv = A2Conv1d::new(
-        conv_w,
-        conv_bias,
-        false, // no bias — pure conv with zero weights outputs 0
-        dilation,
-        ch,
-        ch,
-        kernel,
-        prefetch_strategy_simple,
+        conv_w, conv_bias, false, // no bias — pure conv with zero weights outputs 0
+        dilation, ch, ch, kernel,
     );
     let mixin_w = AlignedVec::from_vec(vec![0.1f32, 0.2, 0.3])
         .expect("allocation should succeed for test-sized buffers");
@@ -495,16 +486,7 @@ fn test_a2_layer_zero_weights_deterministic() {
         AlignedVec::new(total_w, 0.0f32).expect("allocation should succeed for test-sized buffers");
     let conv_bias =
         AlignedVec::new(ch, 0.0f32).expect("allocation should succeed for test-sized buffers");
-    let conv = A2Conv1d::new(
-        conv_w,
-        conv_bias.clone(),
-        false,
-        dilation,
-        ch,
-        ch,
-        kernel,
-        prefetch_strategy_simple,
-    );
+    let conv = A2Conv1d::new(conv_w, conv_bias.clone(), false, dilation, ch, ch, kernel);
     let mixin_w = AlignedVec::from_vec(vec![1.0f32, 2.0, 3.0])
         .expect("allocation should succeed for test-sized buffers");
     let l1x1_w =

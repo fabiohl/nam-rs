@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::math::common::AlignedVec;
 use crate::models::wavenet::Conv1dDyn;
 use crate::models::wavenet::{Conv1d, DenseLayer, DenseLayerDyn};
 
@@ -18,7 +18,6 @@ pub(crate) trait ConvWeightsOutput: Sized {
         in_ch: usize,
         out_ch: usize,
         k_size: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Self;
 }
 
@@ -32,7 +31,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
         _in_ch: usize,
         _out_ch: usize,
         _k_size: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Self {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
@@ -46,7 +44,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Co
             bias,
             do_bias,
             dilation,
-            prefetch_fn,
         }
     }
 }
@@ -61,7 +58,6 @@ impl ConvWeightsOutput for Conv1dDyn {
         in_ch: usize,
         out_ch: usize,
         k_size: usize,
-        prefetch_fn: PrefetchFn,
     ) -> Self {
         let interleave_width = select_interleave_width(out_ch);
         let num_blocks_effective = out_ch.div_ceil(interleave_width);
@@ -80,7 +76,6 @@ impl ConvWeightsOutput for Conv1dDyn {
             num_blocks: out_ch.div_ceil(4),
             interleave_width,
             kernel: k_size,
-            prefetch_fn,
         }
     }
 }

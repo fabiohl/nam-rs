@@ -51,7 +51,6 @@ fn test_a2_conv1d_kernel6_parity_single_frame() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = 512;
@@ -118,7 +117,6 @@ fn test_a2_conv1d_kernel15_parity_single_frame() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = 4096;
@@ -185,7 +183,6 @@ fn test_a2_conv1d_first_layer_in_ch_1() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = 256;
@@ -252,7 +249,6 @@ fn test_a2_conv1d_with_mixin_kernel6() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = kernel * dilation + 512;
@@ -352,7 +348,6 @@ fn test_a2_conv1d_all_dilations_kernel6() {
             in_ch,
             out_ch,
             kernel,
-            crate::math::common::prefetch_strategy_simple,
         );
 
         let frame_idx = 3500;
@@ -410,7 +405,6 @@ fn test_a2_conv1d_block_processing_kernel15() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = 4096;
@@ -486,7 +480,6 @@ fn test_a2_conv1d_kernel6_non_multiple_of_4_output() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     let buf_frames = 512;
@@ -561,7 +554,6 @@ fn test_a2_conv1d_grouped_groups2_parity() {
         out_ch,
         kernel,
         groups,
-        crate::math::common::prefetch_strategy_simple,
     )
     .expect("construction should succeed for test-sized buffers");
 
@@ -625,7 +617,6 @@ fn test_a2_conv1d_grouped_depthwise_parity() {
         out_ch,
         kernel,
         groups,
-        crate::math::common::prefetch_strategy_simple,
     )
     .expect("construction should succeed for test-sized buffers");
 
@@ -690,7 +681,6 @@ fn test_a2_conv1d_standard_groups_is_1() {
         in_ch,
         out_ch,
         kernel,
-        crate::math::common::prefetch_strategy_simple,
     );
 
     assert_eq!(conv.groups(), 1);
@@ -720,7 +710,6 @@ fn test_a2_conv1d_grouped_with_mixin() {
         out_ch,
         kernel,
         groups,
-        crate::math::common::prefetch_strategy_simple,
     )
     .expect("construction should succeed for test-sized buffers");
 

@@ -44,11 +44,6 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    crate::math::common::prefetch_strategy_2stage
-                } else {
-                    crate::math::common::prefetch_strategy_simple
-                },
             },
             // input_mixin injects conditioning (e.g., timbre metadata) into the signal.
             // Dimensions: OUT * IN = 4 * 1.
@@ -89,11 +84,6 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
                 dilation,
-                prefetch_fn: if dilation >= 128 {
-                    crate::math::common::prefetch_strategy_2stage
-                } else {
-                    crate::math::common::prefetch_strategy_simple
-                },
             },
             input_mixin: DenseLayer {
                 weights: test_dense_f32(1, 2),
