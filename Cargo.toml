@@ -72,6 +72,10 @@ name = "long_inference_bench"
 harness = false
 
 [[bench]]
+name = "dsp_bench"
+harness = false
+
+[[bench]]
 name = "dot_4x_bench"
 harness = false
 
@@ -82,8 +86,10 @@ harness = false
 [[bench]]
 name = "fft_radix4_bench"
 harness = false
-# Research artifact. Preserva reprodutibilidade dos benchmarks
-# que embasaram a decisão de não adotar Radix-4/Stockham/Split-Radix.
+
+[[bench]]
+name = "math_bench"
+harness = false
 
 [[bench]]
 name = "gemv_bench"

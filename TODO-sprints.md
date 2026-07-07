@@ -54,12 +54,12 @@ gantt
 
 #### Sprint 2: Criação de `math_bench.rs` e `dsp_bench.rs`
 
-- **[ ] Tarefa 2.1**: Criar o arquivo `benches/math_bench.rs` e mover:
+- **[X] Tarefa 2.1**: Criar o arquivo `benches/math_bench.rs` e mover:
   - Micro-benchmarks de funções de ativação (Tanh e Sigmoid) para AVX2 e AVX-512.
   - Micro-benchmarks de dot product isolados (`bench_dot_product_avx2_256`, etc.).
   - Declarar o alvo correspondente no `Cargo.toml`.
   - *Referência*: [TODO-findings.md §3.2].
-- **[ ] Tarefa 2.2**: Criar o arquivo `benches/dsp_bench.rs` e mover:
+- **[X] Tarefa 2.2**: Criar o arquivo `benches/dsp_bench.rs` e mover:
   - Medições do `NamResampler` (bypass e resample com diferentes taxas).
   - Medições do `Gate FSM`.
   - Medições do tempo de gravação na telemetria (`LatencyHistogram`).
