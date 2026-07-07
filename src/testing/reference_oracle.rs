@@ -18,7 +18,6 @@
 
 use crate::loader::nam_json::WeightsLayout;
 use crate::loader::nam_json::model::{NamLayerConfig, NamModelData};
-use crate::math::common::half::f16_bits_to_f32;
 use crate::models::a2::weights_layout::{
     FILM_KEYS, film_bias_count, film_bias_count_generic, film_weight_count,
     film_weight_count_generic,
@@ -165,13 +164,6 @@ fn weight_f32_to_f64(w: f32, mode: WeightPrecision) -> f64 {
             f32::from_bits((bf16_bits as u32) << 16) as f64
         }
     }
-}
-
-/// Converts a u16 f16c weight to f64 (for binary-format models with pre-quantized weights).
-#[allow(dead_code)]
-#[inline]
-fn weight_f16c_to_f64(w: u16, _mode: WeightPrecision) -> f64 {
-    f16_bits_to_f32(w) as f64
 }
 
 /// Simple weight stream cursor with optional weight-precision quantization.

@@ -95,7 +95,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     * **Manter** intactas as funções irmãs `store_*_accums`, que são ativamente usadas.
   * **Validação:** `cargo check --tests`.
 
-* [ ] **T2.2 — Remover `weight_f16c_to_f64` de `src/testing/reference_oracle.rs`**
+* [x] **T2.2 — Remover `weight_f16c_to_f64` de `src/testing/reference_oracle.rs`**
   * **Origem:** [B2 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L101)
   * **Ação:**
     * Remover a função `weight_f16c_to_f64` (linha 171) e seu respectivo `#[allow(dead_code)]`.
