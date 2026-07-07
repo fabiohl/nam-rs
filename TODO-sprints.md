@@ -81,7 +81,7 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
   - Validação funcional no Linux garantindo compilação e execução corretas em kernel moderno.
 - **Conclusão:** `MADV_COLLAPSE` adicionado após `MADV_HUGEPAGE` nos dois call sites THP (`huge_alloc.rs:120` + `mirror_buf/alloc.rs:235`). Sem verificações de versão de kernel (confia no requisito Linux 6.1+). Constante já disponível em libc 0.2.186. `cargo check`, `cargo clippy` e 4 testes `huge_alloc_tests` + 9 testes `diagnostic_bundle` passam limpo.
 
-### [Linux 6.3+] T-PERF-3.2: Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`)
+### [Linux 6.3+] T-PERF-3.2: ✅ Hardening de Memfds com `MFD_NOEXEC_SEAL` (`huge_alloc.rs`) — CONCLUÍDO 2026-07-06
 
 - **Objetivo:** Passar obrigatoriamente o flag `MFD_NOEXEC_SEAL` na chamada de `memfd_create` para buffers hugetlb e comuns, sem ramificações de fallback.
 - **Finding Associado:** P-8
@@ -90,3 +90,4 @@ Este documento organiza a execução das otimizações planejadas em Epics do pr
 - **Risco:** Mínimo. Requer Kernel Linux 6.3+.
 - **Validação:**
   - Validação funcional garantindo que memfds não executáveis funcionem corretamente para buffers de modelo e alocações de huge pages.
+- **Conclusão:** `MFD_NOEXEC_SEAL` (`0x0008`, não disponível em libc 0.2.186) adicionado às duas chamadas `memfd_create` em `create_backing_fd` (hugetlb path + regular path). Sem fallback para kernels < 6.3 (requisito mandatório da sprint). Cobertura automática dos 2 call sites em `mirror_buf/alloc.rs`. `cargo check`, `cargo clippy -D warnings`, 4 testes `huge_alloc_tests` e 1 teste `mirror_buf_fault_injection` passam limpo.

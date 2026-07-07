@@ -774,7 +774,7 @@ unsafe fn dot_product_avx2_tail(a: &[f32], b: &[f32], i: &mut usize, len: usize,
 **Validação:** P-3 requer execução completa do quality dashboard com modelos em taxas ≠ 48 kHz. P-4 requer benchmark do oversampling ativo.
 **Sequência:** P-4 primeiro (sem risco de paridade), P-3 segundo (após validação empírica).
 
-### Épico E-PERF-3: Modernização da Stack do Kernel Linux [DOING]
+### Épico E-PERF-3: Modernização da Stack do Kernel Linux [DONE]
 
 **Findings:** P-7, P-8
 **Objetivo:** Adotar `MADV_COLLAPSE` (Linux 6.1+) e `MFD_NOEXEC_SEAL` (Linux 6.3+) para determinismo de huge pages e hardening de segurança.

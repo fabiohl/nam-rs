@@ -184,9 +184,13 @@ pub(crate) unsafe fn create_backing_fd(
 ) -> std::io::Result<std::os::raw::c_int> {
     if use_huge {
         const MFD_HUGETLB: libc::c_uint = 0x0004;
-        // SAFETY: C string pointer is valid and null-terminated; MFD_CLOEXEC flag is valid.
+        const MFD_NOEXEC_SEAL: libc::c_uint = 0x0008;
+        // SAFETY: C string pointer is valid and null-terminated; flags are valid (Linux 6.3+).
         let fd = unsafe {
-            libc::memfd_create(c"nam_huge_buf".as_ptr(), libc::MFD_CLOEXEC | MFD_HUGETLB)
+            libc::memfd_create(
+                c"nam_huge_buf".as_ptr(),
+                libc::MFD_CLOEXEC | MFD_HUGETLB | MFD_NOEXEC_SEAL,
+            )
         };
         if fd != -1 {
             // SAFETY: fd is a valid file descriptor from a successful memfd_create above.
@@ -201,8 +205,10 @@ pub(crate) unsafe fn create_backing_fd(
         // Fall through to regular memfd
     }
 
-    // SAFETY: C string pointer is valid and null-terminated; MFD_CLOEXEC flag is valid.
-    let fd = unsafe { libc::memfd_create(c"nam_buf".as_ptr(), libc::MFD_CLOEXEC) };
+    const MFD_NOEXEC_SEAL: libc::c_uint = 0x0008;
+    // SAFETY: C string pointer is valid and null-terminated; flags are valid (Linux 6.3+).
+    let fd =
+        unsafe { libc::memfd_create(c"nam_buf".as_ptr(), libc::MFD_CLOEXEC | MFD_NOEXEC_SEAL) };
     if fd == -1 {
         return Err(std::io::Error::last_os_error());
     }
