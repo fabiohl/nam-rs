@@ -103,6 +103,14 @@ harness = false
 name = "regression_gate"
 harness = false
 
+[[bench]]
+name = "cabsim_bench"
+harness = false
+
+[[bench]]
+name = "clap_bench"
+harness = false
+
 [features]
 default = ["standalone", "testing"]
 standalone = ["dep:pipewire", "stereo"]

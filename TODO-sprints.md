@@ -69,12 +69,12 @@ gantt
 
 #### Sprint 3: Criação de `cabsim_bench.rs` e `clap_bench.rs`
 
-- **[ ] Tarefa 3.1**: Criar o arquivo `benches/cabsim_bench.rs` e extrair:
+- **[X] Tarefa 3.1**: Criar o arquivo `benches/cabsim_bench.rs` e extrair:
   - Benchmarks de convolução (Short, Medium, Long IR).
   - Benchmarks do tempo de construção/alocação do motor CabSim (`ConvEngine`).
   - Declarar o alvo correspondente no `Cargo.toml`.
   - *Referência*: [TODO-findings.md §3.4].
-- **[ ] Tarefa 3.2**: Criar o arquivo `benches/clap_bench.rs` e mover:
+- **[X] Tarefa 3.2**: Criar o arquivo `benches/clap_bench.rs` e mover:
   - O benchmark de processamento do bloco CLAP (`bench_clap_process_block_64samp`).
   - Mapear sob a feature condicional `#[cfg(feature = "clap-plugin")]`.
   - Declarar o alvo correspondente no `Cargo.toml`.
