@@ -61,7 +61,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     3. Em `src/models/linear_fft.rs`, declarar o submódulo usando `#[path]`.
   * **Validação:** Compilar e executar `cargo test --lib models::linear_fft`.
 
-* [ ] **T1.3 — Extração de testes de `src/math/dsp/fft_radix4.rs`**
+* [x] **T1.3 — Extração de testes de `src/math/dsp/fft_radix4.rs`**
   * **Origem:** [A3 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L65)
   * **Ação:**
     1. Criar o arquivo `src/math/dsp/fft_radix4_test.rs` (com cabeçalho SPDX/Copyright).
