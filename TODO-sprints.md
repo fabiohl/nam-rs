@@ -289,7 +289,7 @@ Ao final de cada sprint (ou tarefa individual significativa), o executor **deve*
     4. Manter a struct `NamResampler` + impl e as diretivas de teste em `src/dsp/resampler.rs`.
   * **Validação:** Medir benchmark de inferência antes/depois; executar `utils/tests-quick.sh`.
 
-* [ ] **T5.4 — Split de `src/math/gemm/gemv/f16_avx2_specialized.rs`**
+* [x] **T5.4 — Split de `src/math/gemm/gemv/f16_avx2_specialized.rs`**
   * **Origem:** [C5 em TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md#L237)
   * **Ação:**
     1. Criar `src/math/gemm/gemv/f16_avx2_fused.rs` (com cabeçalho SPDX/Copyright) e mover os 6 kernels `fused_add_gemv_avx2_*` para ele.

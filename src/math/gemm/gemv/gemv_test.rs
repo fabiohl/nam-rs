@@ -319,68 +319,44 @@ fn test_gemv_no_bias_f32_avx512_batch_vs_fallback() {
 type F32Kernel = unsafe fn(&[f32], &[f32], &[f32], &mut [f32], bool);
 
 const FUSED_ADD_SPECIALIZED: &[(usize, usize, F32Kernel)] = &[
-    (
-        1,
-        4,
-        f16_avx2_specialized::fused_add_gemv_avx2_1x4 as F32Kernel,
-    ),
-    (
-        4,
-        4,
-        f16_avx2_specialized::fused_add_gemv_avx2_4x4 as F32Kernel,
-    ),
-    (
-        4,
-        6,
-        f16_avx2_specialized::fused_add_gemv_avx2_4x6 as F32Kernel,
-    ),
-    (
-        8,
-        4,
-        f16_avx2_specialized::fused_add_gemv_avx2_8x4 as F32Kernel,
-    ),
-    (
-        8,
-        6,
-        f16_avx2_specialized::fused_add_gemv_avx2_8x6 as F32Kernel,
-    ),
-    (
-        8,
-        8,
-        f16_avx2_specialized::fused_add_gemv_avx2_8x8 as F32Kernel,
-    ),
+    (1, 4, f16_avx2_fused::fused_add_gemv_avx2_1x4 as F32Kernel),
+    (4, 4, f16_avx2_fused::fused_add_gemv_avx2_4x4 as F32Kernel),
+    (4, 6, f16_avx2_fused::fused_add_gemv_avx2_4x6 as F32Kernel),
+    (8, 4, f16_avx2_fused::fused_add_gemv_avx2_8x4 as F32Kernel),
+    (8, 6, f16_avx2_fused::fused_add_gemv_avx2_8x6 as F32Kernel),
+    (8, 8, f16_avx2_fused::fused_add_gemv_avx2_8x8 as F32Kernel),
 ];
 
 const OVERWRITE_SPECIALIZED: &[(usize, usize, F32Kernel)] = &[
     (
         1,
         4,
-        f16_avx2_specialized::gemv_overwrite_avx2_1x4 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_1x4 as F32Kernel,
     ),
     (
         4,
         4,
-        f16_avx2_specialized::gemv_overwrite_avx2_4x4 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_4x4 as F32Kernel,
     ),
     (
         4,
         6,
-        f16_avx2_specialized::gemv_overwrite_avx2_4x6 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_4x6 as F32Kernel,
     ),
     (
         8,
         4,
-        f16_avx2_specialized::gemv_overwrite_avx2_8x4 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_8x4 as F32Kernel,
     ),
     (
         8,
         6,
-        f16_avx2_specialized::gemv_overwrite_avx2_8x6 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_8x6 as F32Kernel,
     ),
     (
         8,
         8,
-        f16_avx2_specialized::gemv_overwrite_avx2_8x8 as F32Kernel,
+        f16_avx2_overwrite::gemv_overwrite_avx2_8x8 as F32Kernel,
     ),
 ];
 

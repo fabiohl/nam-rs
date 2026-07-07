@@ -19,6 +19,10 @@
 
 #[doc = "GEMV kernels using AVX2 (fused_add_gemv_avx2, gemv_overwrite_avx2)."]
 pub mod f16_avx2;
+#[doc = "fused_add_gemv AVX2 specialized kernels (1×4, 4×4, 4×6, 8×4, 8×6, 8×8)."]
+pub mod f16_avx2_fused;
+#[doc = "gemv_overwrite AVX2 specialized kernels (1×4, 4×4, 4×6, 8×4, 8×6, 8×8)."]
+pub mod f16_avx2_overwrite;
 #[doc = "GEMV AVX2 specialized kernels for fixed dimensions (1×4, 4×4, 4×6, 8×4, 8×6, 8×8)."]
 pub mod f16_avx2_specialized;
 #[doc = "GEMV kernels using AVX-512 (small, general, batch, fused variants)."]

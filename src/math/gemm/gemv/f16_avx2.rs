@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::f16_avx2_specialized;
+use super::f16_avx2_fused as fused;
+use super::f16_avx2_overwrite as overwrite;
 use crate::gemv_kernel;
 use core::arch::x86_64::*;
 
@@ -30,34 +31,22 @@ pub unsafe fn fused_add_gemv_avx2(
     // Dispatch to specialized kernel for known dimensions.
     match (in_len, out_len) {
         (1, 4) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_1x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_1x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (4, 4) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_4x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_4x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (4, 6) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_4x6(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_4x6(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 4) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_8x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_8x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 6) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_8x6(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_8x6(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 8) => {
-            return f16_avx2_specialized::fused_add_gemv_avx2_8x8(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return fused::fused_add_gemv_avx2_8x8(in_frame, weights, bias, out_frame, do_bias);
         }
         _ => {}
     }
@@ -115,34 +104,22 @@ pub unsafe fn gemv_overwrite_avx2(
     // Dispatch to specialized kernel for known dimensions.
     match (in_len, out_len) {
         (1, 4) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_1x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_1x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (4, 4) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_4x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_4x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (4, 6) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_4x6(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_4x6(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 4) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_8x4(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_8x4(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 6) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_8x6(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_8x6(in_frame, weights, bias, out_frame, do_bias);
         }
         (8, 8) => {
-            return f16_avx2_specialized::gemv_overwrite_avx2_8x8(
-                in_frame, weights, bias, out_frame, do_bias,
-            );
+            return overwrite::gemv_overwrite_avx2_8x8(in_frame, weights, bias, out_frame, do_bias);
         }
         _ => {}
     }
