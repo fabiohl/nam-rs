@@ -501,11 +501,11 @@ run_proptests_parity_phase() {
     # Random block-size sweep for the pipeline resampler chain.
     timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1
     # Tier-3 "approx-vs-approx" consistency checks (Padé/poly NR1 vs NR2 vs
-    # div_ps, AVX2 + AVX-512): the f64 Oracle already provides absolute
-    # correctness, so these only guard against silent regressions between two
-    # approximate paths (docs/testing.md §8). AVX-512 variants self-skip via
-    # `is_x86_feature_detected!` when unsupported.
-    timed_cargo_test "tanh_pade_consistency" --release --no-fail-fast --lib -- "math::activations::tanh::" --ignored --nocapture || status=1
+    # div_ps, AVX2 + AVX-512 for tanh and sigmoid): the f64 Oracle already
+    # provides absolute correctness, so these only guard against silent
+    # regressions between two approximate paths (docs/testing.md §8).
+    # AVX-512 variants self-skip via `is_x86_feature_detected!` when unsupported.
+    timed_cargo_test "activations_consistency" --release --no-fail-fast --lib -- "math::activations::" --ignored --nocapture || status=1
     # Gate FSM envelope continuity proptest (10k cases) — unit-level sibling
     # of tests/gate_fsm_proptest.rs, covers the DynamicHysteresis reversal
     # edge case specifically.
