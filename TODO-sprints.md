@@ -79,6 +79,8 @@ gantt
 - Rodar repetitivamente apenas `cargo check --tests` durante todo o refactor para atestar que os caminhos e arquivos estão publicamente visíveis (leva 1 segundo). **Não execute a suíte longa ainda.**
 
 - **[ ] Tarefa 3.1**: Criar 5 arquivos de testes principais (os "Entry-points"): `tests/models.rs`, `tests/clap.rs`, `tests/perf_soak.rs`, `tests/rt_constraints.rs`, `tests/parity.rs`.
+  > [!NOTE]
+  > **Concluído 2026-07-08.** 5 entry-points criados com declarações `mod` baseadas nos mapeamentos `STRUCT_ENTRY_MAP`/`LONG_ENTRY_MAP`. **3 testes não estavam nos maps originais** e foram classificados: `oversampling_characterization.rs` → models, `linear_fft_test.rs` → models, `reference_oracle_f64.rs` → parity. Distribuição final: models=30, parity=7, perf_soak=5, rt_constraints=5, clap=3 (total=50).
 - **[ ] Tarefa 3.2**: Mover os 50 testes órfãos para subdiretórios correspondentes aos nomes dos Entry-points (ex: o que ia para `tests/a2_loader.rs` vai para `tests/models/a2_loader.rs`).
 - **[ ] Tarefa 3.3**: No cabeçalho de cada arquivo entry-point criado (Tarefa 3.1), adicionar os declaradores de módulo `mod ...;` (ex: em `tests/models.rs`, adicionar `mod a2_loader;`).
 
