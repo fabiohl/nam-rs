@@ -180,13 +180,13 @@ macro_rules! impl_avx512_activations {
             hidden_state: &mut [f32],
             hidden_size: usize,
         ) {
-            let _ = cell_error;
             // SAFETY: gates, cell_state, hidden_state, and hidden_size satisfy the function's
             // documented invariants.
             unsafe {
                 crate::math::lstm::fused_lstm_gates_dyn_avx512(
                     gates,
                     cell_state,
+                    cell_error,
                     hidden_state,
                     hidden_size,
                 )

@@ -125,9 +125,16 @@ impl LstmLayerDyn {
         // 4. Update cell state and hidden state via fused-gate kernel.
         let (gates_slice, _rest) = &mut self.gates.split_at_mut(4 * h);
         let (cell_slice, _) = &mut self.cell_state.split_at_mut(h);
+        let (cell_err_slice, _) = &mut self.cell_error.split_at_mut(h);
         let hidden_slice = &mut self.state[i..];
         unsafe {
-            crate::math::lstm::fused_lstm_gates_dyn_avx2(gates_slice, cell_slice, hidden_slice, h);
+            crate::math::lstm::fused_lstm_gates_dyn_avx2(
+                gates_slice,
+                cell_slice,
+                cell_err_slice,
+                hidden_slice,
+                h,
+            );
         }
     }
 }
@@ -167,11 +174,13 @@ impl LstmLayerDyn {
 
         let (gates_slice, _rest) = &mut self.gates.split_at_mut(4 * h);
         let (cell_slice, _) = &mut self.cell_state.split_at_mut(h);
+        let (cell_err_slice, _) = &mut self.cell_error.split_at_mut(h);
         let hidden_slice = &mut self.state[i..];
         unsafe {
             crate::math::lstm::fused_lstm_gates_dyn_avx512(
                 gates_slice,
                 cell_slice,
+                cell_err_slice,
                 hidden_slice,
                 h,
             );

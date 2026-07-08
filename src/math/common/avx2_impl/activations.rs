@@ -185,12 +185,12 @@ macro_rules! impl_avx2_activations {
             hidden_state: &mut [f32],
             hidden_size: usize,
         ) {
-            let _ = cell_error;
             // SAFETY: arguments satisfy the function's documented invariants.
             unsafe {
                 super::super::lstm::fused_lstm_gates_dyn_avx2(
                     gates,
                     cell_state,
+                    cell_error,
                     hidden_state,
                     hidden_size,
                 )
