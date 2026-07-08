@@ -103,16 +103,12 @@ pub unsafe fn fused_lstm_gates_avx2(
     gg: __m256,
     go: __m256,
     cs: __m256,
-) -> (__m256, __m256) {
-    let cs_err = _mm256_setzero_ps();
+    cs_err: __m256,
+) -> (__m256, __m256, __m256) {
     if activation_precision() == ActivationPrecision::HighFidelity {
-        let (new_cs, _err, hidden) =
-            unsafe { fused_lstm_gates_avx2_hf(gf, gi, gg, go, cs, cs_err) };
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx2_hf(gf, gi, gg, go, cs, cs_err) }
     } else {
-        let (new_cs, _err, hidden) =
-            unsafe { fused_lstm_gates_avx2_std(gf, gi, gg, go, cs, cs_err) };
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx2_std(gf, gi, gg, go, cs, cs_err) }
     }
 }
 
@@ -195,16 +191,12 @@ pub unsafe fn fused_lstm_gates_avx512(
     gg: __m512,
     go: __m512,
     cs: __m512,
-) -> (__m512, __m512) {
-    let cs_err = _mm512_setzero_ps();
+    cs_err: __m512,
+) -> (__m512, __m512, __m512) {
     if activation_precision() == ActivationPrecision::HighFidelity {
-        let (new_cs, _err, hidden) =
-            unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs, cs_err) };
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs, cs_err) }
     } else {
-        let (new_cs, _err, hidden) =
-            unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs, cs_err) };
-        (new_cs, hidden)
+        unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs, cs_err) }
     }
 }
 

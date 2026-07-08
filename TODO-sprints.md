@@ -109,26 +109,26 @@ Nesta etapa, implementamos a lógica matemática real de Kahan nos kernels eleme
 
 Nesta etapa, ligamos a nova matemática estruturada aos laços de execução principais que rodam frame a frame.
 
-#### 🎯 Tarefa 3.1: Atualização do Macro de Geração de Processamento Estático
+#### 🎯 Tarefa 3.1: Atualização do Macro de Geração de Processamento Estático [DONE]
 
-* **Arquivo:** [`src/models/lstm/layer_kernels.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer_kernels.rs)
+* **Arquivos:** [`src/models/lstm/layer_kernels.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer_kernels.rs), [`src/math/lstm/gates.rs`](file:///home/fabio/nam-rs/src/math/lstm/gates.rs)
 * **Ações:**
-  * Modificar a macro `define_lstm_process!` para realizar o carregamento e armazenamento do erro da célula:
-    * Carregar o erro da célula via `$load(self.cell_error.as_ptr().add(i))`.
-    * Receber a tripla de retorno da chamada `$fused_gates(...)`.
-    * Armazenar o novo erro resultante via `$store(self.cell_error.as_mut_ptr().add(i), new_cs_err)`.
-  * Atualizar a seção de tail handling na macro para carregar e descarregar o array `temp_cerr` e salvar os resultados residuais em `self.cell_error[i + j]`.
-  * Atualizar a função de fallback escalar `process_sample_scalar` para carregar `cs_err` do array `self.cell_error`, aplicar a compensação matemática e salvar o novo estado de erro.
-  * **Nota (T2.1):** `fused_lstm_gates_avx2` atualmente mantém assinatura antiga (retorna par) — internamente já usa Kahan com `cs_err = zero` e descarta o erro. Para esta tarefa: (1) alterar `fused_lstm_gates_avx2` para retornar tripla `(__m256, __m256, __m256)`, (2) alterar `fused_lstm_gates_avx512` da mesma forma (depende de T2.2), (3) atualizar a macro para destruturar tripla e carregar/armazenar `cell_error`. O macro é genérico para AVX2 e AVX-512 — ambas as funções precisam retornar tripla antes da alteração do macro.
+  * ~~Modificar a macro `define_lstm_process!` para realizar o carregamento e armazenamento do erro da célula:~~
+    * ~~Carregar o erro da célula via `$load(self.cell_error.as_ptr().add(i))`.~~
+    * ~~Receber a tripla de retorno da chamada `$fused_gates(...)`.~~
+    * ~~Armazenar o novo erro resultante via `$store(self.cell_error.as_mut_ptr().add(i), new_cs_err)`.~~
+  * ~~Atualizar a seção de tail handling na macro para carregar e descarregar o array `temp_cerr` e salvar os resultados residuais em `self.cell_error[i + j]`.~~
+  * ~~Atualizar a função de fallback escalar `process_sample_scalar` para carregar `cs_err` do array `self.cell_error`, aplicar a compensação matemática e salvar o novo estado de erro.~~
+  * ~~**Nota (T2.1):** `fused_lstm_gates_avx2` atualmente mantém assinatura antiga (retorna par) — internamente já usa Kahan com `cs_err = zero` e descarta o erro. Para esta tarefa: (1) alterar `fused_lstm_gates_avx2` para retornar tripla `(__m256, __m256, __m256)`, (2) alterar `fused_lstm_gates_avx512` da mesma forma (depende de T2.2), (3) atualizar a macro para destruturar tripla e carregar/armazenar `cell_error`. O macro é genérico para AVX2 e AVX-512 — ambas as funções precisam retornar tripla antes da alteração do macro.~~
 
-#### 🎯 Tarefa 3.2: Integração nos Kernels Dinâmicos (`LstmLayerDyn`)
+#### 🎯 Tarefa 3.2: Integração nos Kernels Dinâmicos (`LstmLayerDyn`) [CONCLUÍDA]
 
 * **Arquivo:** [`src/models/lstm/layer_dyn_kernels.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer_dyn_kernels.rs)
 * **Ações:**
   * ~~Atualizar os métodos `process_sample_avx2` e `process_sample_avx512` para separar a fatia correspondente ao erro de célula.~~ *(Feito em T2.1)*
   * ~~Propagar `cell_err_slice` para as chamadas de dispatch `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512`.~~ *(Feito em T2.1)*
-  * Atualizar a cauda escalar/fallback `process_sample_scalar` para ler e atualizar os valores residuais do array `self.cell_error`.
-  * **Nota (T2.1):** A extração de `cell_err_slice` e propagação para os kernels SIMD já está feita. Resta apenas aplicar Kahan no fallback escalar `process_sample_scalar` (linhas 62-85) de forma análoga ao `fused_lstm_gates_dyn_tail`.
+  * ~~Atualizar a cauda escalar/fallback `process_sample_scalar` para ler e atualizar os valores residuais do array `self.cell_error`.~~ *(Feito em T2.3)*
+  * **Nota (T3.1):** Confirmado — `process_sample_scalar` em `layer_dyn_kernels.rs:61-96` já implementa Kahan compensation completo (carrega `cell_error[j]`, calcula `f_err`, aplica `(new_cs - f_cs) - y`, salva `new_cs_err` em ambos os caminhos HF e STD). Nenhuma ação pendente nesta tarefa.
 
 ---
 

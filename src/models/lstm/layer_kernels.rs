@@ -72,13 +72,15 @@ macro_rules! define_lstm_process {
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
                     let g_o = $load(self.gates.as_ptr().add(i + o_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
+                    let c_err = $load(self.cell_error.as_ptr().add(i));
 
                     // 'Fused Gates': The LSTM magic happens here.
                     // We decide what to forget from old memory and what to learn from the new input.
-                    let (new_c_s, h_s) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
+                    let (new_c_s, new_c_err, h_s) = $fused_gates(g_f, g_i, g_g, g_o, c_s, c_err);
 
                     // Save the new memory (long-term) and the new output (short-term).
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
+                    $store(self.cell_error.as_mut_ptr().add(i), new_c_err);
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
                     i += $step;
@@ -93,6 +95,7 @@ macro_rules! define_lstm_process {
                     let mut temp_gg = [0.0; $step];
                     let mut temp_go = [0.0; $step];
                     let mut temp_cs = [0.0; $step];
+                    let mut temp_cerr = [0.0; $step];
 
                     for j in 0..tail_len {
                         temp_gf[j] = self.gates[i + j + f_offset];
@@ -100,6 +103,7 @@ macro_rules! define_lstm_process {
                         temp_gg[j] = self.gates[i + j + g_offset];
                         temp_go[j] = self.gates[i + j + o_offset];
                         temp_cs[j] = self.cell_state[i + j];
+                        temp_cerr[j] = self.cell_error[i + j];
                     }
 
                     let g_f = $load(temp_gf.as_ptr());
@@ -107,16 +111,20 @@ macro_rules! define_lstm_process {
                     let g_g = $load(temp_gg.as_ptr());
                     let g_o = $load(temp_go.as_ptr());
                     let c_s = $load(temp_cs.as_ptr());
+                    let c_err = $load(temp_cerr.as_ptr());
 
-                    let (new_c_s, h_val) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
+                    let (new_c_s, new_c_err, h_val) = $fused_gates(g_f, g_i, g_g, g_o, c_s, c_err);
 
                     let mut out_cs = [0.0; $step];
+                    let mut out_err = [0.0; $step];
                     let mut out_h = [0.0; $step];
                     $store(out_cs.as_mut_ptr(), new_c_s);
+                    $store(out_err.as_mut_ptr(), new_c_err);
                     $store(out_h.as_mut_ptr(), h_val);
 
                     for j in 0..tail_len {
                         self.cell_state[i + j] = out_cs[j];
+                        self.cell_error[i + j] = out_err[j];
                         self.state[i + j + h_offset] = out_h[j];
                     }
                 }
@@ -194,29 +202,40 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             let gg = self.gates[j + 2 * h];
             let go = self.gates[j + 3 * h];
             let cs = self.cell_state[j];
+            let cs_err = self.cell_error[j];
 
             if is_hf {
                 let f = scalar_sigmoid_poly(gf);
-                let i = scalar_sigmoid_poly(gi);
+                let in_gate = scalar_sigmoid_poly(gi);
                 let g = scalar_tanh_poly(gg);
                 let o = scalar_sigmoid_poly(go);
 
-                let new_cs = f * cs + i * g;
-                let h_val = o * scalar_tanh_poly(new_cs);
+                let f_cs = f * cs;
+                let f_err = f * cs_err;
+                let i_g = in_gate * g;
+                let y = i_g - f_err;
+                let new_cs = f_cs + y;
+                let new_cs_err = (new_cs - f_cs) - y;
 
                 self.cell_state[j] = new_cs;
-                self.state[I + j] = h_val;
+                self.cell_error[j] = new_cs_err;
+                self.state[I + j] = o * scalar_tanh_poly(new_cs);
             } else {
                 let f = scalar_minimax_sigmoid(gf);
-                let i = scalar_minimax_sigmoid(gi);
+                let in_gate = scalar_minimax_sigmoid(gi);
                 let g = scalar_pade_tanh(gg);
                 let o = scalar_minimax_sigmoid(go);
 
-                let new_cs = f * cs + i * g;
-                let h_val = o * scalar_pade_tanh(new_cs);
+                let f_cs = f * cs;
+                let f_err = f * cs_err;
+                let i_g = in_gate * g;
+                let y = i_g - f_err;
+                let new_cs = f_cs + y;
+                let new_cs_err = (new_cs - f_cs) - y;
 
                 self.cell_state[j] = new_cs;
-                self.state[I + j] = h_val;
+                self.cell_error[j] = new_cs_err;
+                self.state[I + j] = o * scalar_pade_tanh(new_cs);
             }
         }
     }
