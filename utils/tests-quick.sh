@@ -46,9 +46,9 @@
 #   - A Fase 1 lista EXPLICITAMENTE os testes estruturais porque `--skip` por
 #     nome colide (ex.: `test_oracle` atingiria threshold_calibration;
 #     `test_asr` atingiria unitários de aliasing). Manutenção: ao adicionar um
-#     novo teste estrutural em tests/, inclua-o em STRUCTURAL_TESTS abaixo
-#     (vide inventário em docs/testing.md §3). A auto-descoberta de unit tests
-#     (lib) é preservada.
+#     novo teste estrutural em tests/, inclua-o em STRUCT_TESTS e mapeie-o
+#     em STRUCT_ENTRY_MAP (vide inventário em docs/testing.md §3).
+#     A auto-descoberta de unit tests (lib) é preservada.
 
 set -euo pipefail
 
@@ -129,7 +129,46 @@ echo -e "${BLUE}${BOLD}=====================================${NC}"
 # debug-assertions ON captura invariantes baratos que --release mascararia.
 phase "Estrutural: unit + integração determinística (debug)..."
 
-STRUCTURAL_TESTS=(
+# ── Test-to-entry-point mapping (Sprint 2 → Sprint 3 bridge) ────────────────
+# Each structural test is assigned to its future entry-point module (Sprint 3,
+# Tarefas 3.1–3.3). When the entry-point files exist, the script auto-detects
+# and uses the new `--test <entry> <entry>::<test>` format. Otherwise it falls
+# back to legacy `--test=<file>` (flat tests/ layout).
+#
+# To dry-run the Sprint 3 command assembly without executing:
+#   NAM_DRY_RUN_ARCH=1 utils/tests-quick.sh
+
+declare -A STRUCT_ENTRY_MAP=(
+    [a2_loader]="models"
+    [activation_precision]="models"
+    [adaptive_fsm_proptest]="models"
+    [cabsim_golden]="models"
+    [concurrency_stress]="perf_soak"
+    [container_slimmable]="models"
+    [diagnostic_bundle]="models"
+    [ebu_lufs_compliance]="models"
+    [fixture_b1_2_smoke]="models"
+    [linear_golden]="models"
+    [lstm_activation_precision]="models"
+    [lstm_model_dyn_validation]="models"
+    [mirror_buf_fault_injection]="models"
+    [nam_infer_test]="models"
+    [namb_v2_roundtrip]="models"
+    [namb_v2_validation]="models"
+    [nondist_validation]="models"
+    [parity_primitives]="parity"
+    [prewarm_test]="models"
+    [proptest_math]="models"
+    [self_consistency]="models"
+    [soak_test]="perf_soak"
+    [spsc_pipeline]="perf_soak"
+    [threshold_calibration]="models"
+    [wavenet_lite_block_invariance]="models"
+    [wavenet_prewarm_edge]="models"
+    [zero_alloc_infer]="models"
+)
+
+STRUCT_TESTS=(
     a2_loader activation_precision adaptive_fsm_proptest cabsim_golden
     concurrency_stress container_slimmable diagnostic_bundle ebu_lufs_compliance
     fixture_b1_2_smoke linear_golden lstm_activation_precision
@@ -139,7 +178,42 @@ STRUCTURAL_TESTS=(
     threshold_calibration wavenet_lite_block_invariance wavenet_prewarm_edge
     zero_alloc_infer
 )
-cargo test --lib "${STRUCTURAL_TESTS[@]/#/--test=}"
+
+_structural_entry_files_exist() {
+    for entry in models perf_soak parity clap rt_constraints; do
+        [ -f "tests/${entry}.rs" ] || return 1
+    done
+    return 0
+}
+
+if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
+    # ── Sprint 3+ format: `--test models models::a2_loader ...` ─────────────
+    declare -A _entry_test_map=()
+    for t in "${STRUCT_TESTS[@]}"; do
+        _ep="${STRUCT_ENTRY_MAP[$t]:-models}"
+        _entry_test_map[$_ep]="${_entry_test_map[$_ep]} $t"
+    done
+
+    _cmd="cargo test --lib"
+    for _ep in "${!_entry_test_map[@]}"; do
+        _cmd="$_cmd --test $_ep"
+    done
+    for _ep in "${!_entry_test_map[@]}"; do
+        for _t in ${_entry_test_map[$_ep]}; do
+            _cmd="$_cmd ${_ep}::${_t}"
+        done
+    done
+
+    if [ "${NAM_DRY_RUN_ARCH:-0}" = "1" ]; then
+        echo -e "  ${YELLOW}[DRY-RUN] Sprint 3 architecture command:${NC}"
+        echo -e "  ${YELLOW}$_cmd${NC}"
+    else
+        eval "$_cmd"
+    fi
+else
+    # ── Legacy flat-file format (pre-Sprint 3) ───────────────────────────
+    cargo test --lib "${STRUCT_TESTS[@]/#/--test=}"
+fi
 
 # ── Fase 2: Oráculos de medida (release, docs/testing.md §7) ───────────────
 # Gate autoritativo de floats de produção: medem o caminho de codegen que o

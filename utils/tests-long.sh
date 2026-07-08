@@ -37,6 +37,62 @@ set -euo pipefail
 ## Observação à IA: Dado à longa (por design) duração da execução deste script, é PROIBIDO executa-lo durante atividades de IA.
 ### Se necessário, peça ao desenvolvedor humano para roda-lo e trazer o resultado.
 
+# ── Test-to-entry-point mapping (Sprint 2 → Sprint 3 bridge) ────────────────
+# Each test binary is assigned to its future entry-point module (Sprint 3,
+# Tarefas 3.1–3.3). When the entry-point files exist, the script auto-detects
+# and uses the new `--test <entry> <entry>::<test>` format. Otherwise it falls
+# back to legacy `--test <test>` (flat tests/ layout).
+#
+# To dry-run the Sprint 3 command assembly without executing:
+#   NAM_DRY_RUN_ARCH=1 utils/tests-long.sh
+
+declare -A LONG_ENTRY_MAP=(
+    [meta_coherence]="models"
+    [proptest_parsers]="models"
+    [proptest_math]="models"
+    [gate_fsm_proptest]="models"
+    [adaptive_fsm_proptest]="models"
+    [lstm_model_dyn_validation]="models"
+    [golden_vectors]="models"
+    [linear_golden]="models"
+    [spectral_fidelity]="models"
+    [diagnostic_bundle]="models"
+    [lstm_gate_bf16_parity]="parity"
+    [lstm_scalar_bf16_parity]="parity"
+    [cpp_parity]="parity"
+    [cabsim_cpp_parity]="parity"
+    [isa_parity]="parity"
+    [soak_test]="perf_soak"
+    [pipeline_soak]="perf_soak"
+    [concurrency_stress]="perf_soak"
+    [pw_integration_test]="perf_soak"
+    [resampler_heap_audit]="rt_constraints"
+    [cabsim_heap_audit]="rt_constraints"
+    [a2_heap_audit]="rt_constraints"
+    [rt_deadline]="rt_constraints"
+    [rt_jitter]="rt_constraints"
+    [clap_lifecycle_test]="clap"
+    [clap_state_migration]="clap"
+    [clap_multi_instance]="clap"
+)
+
+_entry_files_exist() {
+    for entry in models perf_soak parity clap rt_constraints; do
+        [ -f "tests/${entry}.rs" ] || return 1
+    done
+    return 0
+}
+
+_test_flag() {
+    local test_name="$1"
+    if _entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
+        local entry="${LONG_ENTRY_MAP[$test_name]:-models}"
+        echo "--test $entry ${entry}::${test_name}"
+    else
+        echo "--test $test_name"
+    fi
+}
+
 # Shared style helpers (RED/GREEN/YELLOW/BLUE/BOLD/NC) + cd to project root.
 source "$(dirname "$0")/_lib.sh"
 
@@ -249,7 +305,7 @@ fi
 # the ± 50 min battery, so a drifted catalog fails fast instead of burning a
 # full nightly window before being noticed.
 echo -e "\n${BLUE}${BOLD}→ Verificando coerência catálogo↔testes (meta_coherence)...${NC}"
-if ! cargo test --release --test meta_coherence; then
+if ! cargo test --release $(_test_flag meta_coherence); then
     echo -e "${RED}${BOLD}❌ meta_coherence falhou — catálogo de goldens divergiu dos testes #[ignore].${NC}"
     exit 1
 fi
@@ -385,8 +441,8 @@ run_phase() {
 # debug); every #[ignore]'d soak/endurance test (10M+ frames) lives here.
 run_soak_phase() {
     local status=0
-    timed_cargo_test "soak_test" --release --no-fail-fast --features standalone --test soak_test -- --ignored --nocapture || status=1
-    timed_cargo_test "pipeline_soak" --release --no-fail-fast --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 || status=1
+    timed_cargo_test "soak_test" --release --no-fail-fast --features standalone $(_test_flag soak_test) -- --ignored --nocapture || status=1
+    timed_cargo_test "pipeline_soak" --release --no-fail-fast --features standalone $(_test_flag pipeline_soak) -- --ignored --nocapture --test-threads=1 || status=1
     return $status
 }
 run_phase "Soak Tests (Numerical Stability)" "run_soak_phase" "phase1-soak.log" || true
@@ -398,7 +454,7 @@ run_pipewire_phase() {
     echo "  Verificando daemon PipeWire..."
     if pw-cli info >/dev/null 2>&1; then
         echo "  PipeWire detectado. Executando teste de integração..."
-        cargo test --release --no-fail-fast --features standalone --test pw_integration_test -- --ignored --nocapture
+        cargo test --release --no-fail-fast --features standalone $(_test_flag pw_integration_test) -- --ignored --nocapture
     else
         echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
         return 0
@@ -415,33 +471,33 @@ run_phase "PipeWire Integration Test" "run_pipewire_phase" "phase2-pipewire.log"
 run_proptests_parity_phase() {
     local status=0
     # Full-count parser/math/gate/FSM fuzzing (quick caps or excludes these).
-    timed_cargo_test "proptest_parsers" --release --no-fail-fast --test proptest_parsers -- --ignored || status=1
-    timed_cargo_test "proptest_math" --release --no-fail-fast --test proptest_math -- --ignored || status=1
-    timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast --test lstm_gate_bf16_parity -- --ignored || status=1
-    timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast --test lstm_scalar_bf16_parity -- --ignored || status=1
-    timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast --test gate_fsm_proptest -- --ignored || status=1
-    timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast --test adaptive_fsm_proptest -- --ignored || status=1
+    timed_cargo_test "proptest_parsers" --release --no-fail-fast $(_test_flag proptest_parsers) -- --ignored || status=1
+    timed_cargo_test "proptest_math" --release --no-fail-fast $(_test_flag proptest_math) -- --ignored || status=1
+    timed_cargo_test "lstm_gate_bf16_parity" --release --no-fail-fast $(_test_flag lstm_gate_bf16_parity) -- --ignored || status=1
+    timed_cargo_test "lstm_scalar_bf16_parity" --release --no-fail-fast $(_test_flag lstm_scalar_bf16_parity) -- --ignored || status=1
+    timed_cargo_test "gate_fsm_proptest" --release --no-fail-fast $(_test_flag gate_fsm_proptest) -- --ignored || status=1
+    timed_cargo_test "adaptive_fsm_proptest" --release --no-fail-fast $(_test_flag adaptive_fsm_proptest) -- --ignored || status=1
     # ModelDyn scalar-vs-SIMD parity proptests (arbitrary topologies) — no
     # quick-suite equivalent; LstmModelDyn parity is otherwise untested.
-    timed_cargo_test "lstm_model_dyn_validation" --release --no-fail-fast --test lstm_model_dyn_validation -- --ignored --nocapture || status=1
+    timed_cargo_test "lstm_model_dyn_validation" --release --no-fail-fast $(_test_flag lstm_model_dyn_validation) -- --ignored --nocapture || status=1
     # Full C++ NAMCore live parity matrix + CabSim convolution parity
     # (quick's Fase 2 only runs the 3-model `quick_parity` subset).
-    timed_cargo_test "cpp_parity" --release --no-fail-fast --test cpp_parity -- --ignored --nocapture || status=1
-    timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast --test cabsim_cpp_parity -- --ignored --nocapture || status=1
+    timed_cargo_test "cpp_parity" --release --no-fail-fast $(_test_flag cpp_parity) -- --ignored --nocapture || status=1
+    timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast $(_test_flag cabsim_cpp_parity) -- --ignored --nocapture || status=1
     # Golden vectors v2 (multi-SR); v1 already covered by quick's Fase 2.
-    timed_cargo_test "golden_vectors_v2" --release --no-fail-fast --test golden_vectors -- v2_ --ignored --nocapture || status=1
+    timed_cargo_test "golden_vectors_v2" --release --no-fail-fast $(_test_flag golden_vectors) -- v2_ --ignored --nocapture || status=1
     # Heavy/long receptive-field golden regression (quick only runs the
     # cheap non-ignored linear_golden cases).
-    timed_cargo_test "linear_golden_heavy" --release --no-fail-fast --test linear_golden -- --ignored --nocapture || status=1
+    timed_cargo_test "linear_golden_heavy" --release --no-fail-fast $(_test_flag linear_golden) -- --ignored --nocapture || status=1
     # Full cross-ISA determinism matrix (AVX-512, VNNI+BF16 vs AVX2). Quick's
     # Fase 2 only asserts AVX2 self-consistency; gracefully skips per-model
     # when the running CPU lacks the target ISA (see skip_if_unsupported!
     # in tests/isa_parity.rs) — safe to run unconditionally on any machine.
-    timed_cargo_test "isa_parity_full_matrix" --release --no-fail-fast --test isa_parity -- --ignored --test-threads=1 --nocapture || status=1
+    timed_cargo_test "isa_parity_full_matrix" --release --no-fail-fast $(_test_flag isa_parity) -- --ignored --test-threads=1 --nocapture || status=1
     # Per-model spectral fidelity baselines (ASR/THD+N/IMD/Farina vs the
     # committed fixture). Filtered to `baseline_*` to exclude the manual-only
     # `generate_spectral_fidelity_baseline` fixture writer (never auto-run).
-    timed_cargo_test "spectral_fidelity_baselines" --release --no-fail-fast --test spectral_fidelity -- baseline_ --ignored --nocapture || status=1
+    timed_cargo_test "spectral_fidelity_baselines" --release --no-fail-fast $(_test_flag spectral_fidelity) -- baseline_ --ignored --nocapture || status=1
     # Random block-size sweep for the pipeline resampler chain.
     timed_cargo_test "lib_pipeline_block_proptest" --release --no-fail-fast --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored || status=1
     # Tier-3 "approx-vs-approx" consistency checks (Padé/poly NR1 vs NR2 vs
@@ -471,10 +527,10 @@ run_phase "Property-Based, Parity & Golden Vectors in Release" "run_proptests_pa
 # equivalent — the `heap-audit` feature is exclusively a long-suite concern.
 run_heap_audit_phase() {
     local status=0
-    timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit --test resampler_heap_audit || status=1
-    timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit --test cabsim_heap_audit || status=1
-    timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit --test a2_heap_audit || status=1
-    timed_cargo_test "diagnostic_bundle_heap_audit" --release --no-fail-fast --features heap-audit --test diagnostic_bundle -- heap_audit || status=1
+    timed_cargo_test "resampler_heap_audit" --release --no-fail-fast --features heap-audit $(_test_flag resampler_heap_audit) || status=1
+    timed_cargo_test "cabsim_heap_audit" --release --no-fail-fast --features heap-audit $(_test_flag cabsim_heap_audit) || status=1
+    timed_cargo_test "a2_heap_audit" --release --no-fail-fast --features heap-audit $(_test_flag a2_heap_audit) || status=1
+    timed_cargo_test "diagnostic_bundle_heap_audit" --release --no-fail-fast --features heap-audit $(_test_flag diagnostic_bundle) -- heap_audit || status=1
     return $status
 }
 run_phase "Resampler, Cabsim & A2 Heap-Audit" "run_heap_audit_phase" "phase4-heap-audit.log" || true
@@ -527,17 +583,17 @@ run_clap_audit_phase() {
     fi
 
     echo "  Executando testes de integração CLAP (lifecycle + state migration)..."
-    timed_cargo_test "clap_lifecycle_test" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_lifecycle_test -- --nocapture || audit_status=1
-    timed_cargo_test "clap_state_migration" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_state_migration -- --nocapture || audit_status=1
+    timed_cargo_test "clap_lifecycle_test" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" $(_test_flag clap_lifecycle_test) -- --nocapture || audit_status=1
+    timed_cargo_test "clap_state_migration" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" $(_test_flag clap_state_migration) -- --nocapture || audit_status=1
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test clap_multi_instance -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "clap_multi_instance" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" $(_test_flag clap_multi_instance) -- --ignored --nocapture || audit_status=1
 
     echo "  Executando teste de stress do GC com 1000 swaps..."
     timed_cargo_test "gc_stress_1000_swaps" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib -- clap::processor::processor_gc_stress_test::tests::test_gc_stress_1000_swaps --include-ignored --nocapture || audit_status=1
 
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
-    timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --test concurrency_stress -- --ignored --nocapture || audit_status=1
+    timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" $(_test_flag concurrency_stress) -- --ignored --nocapture || audit_status=1
 
     echo "  Executando testes unitários e de integração em modo Mono..."
     RUSTFLAGS="${RUSTFLAGS:-} -C debug-assertions=on" timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
@@ -581,8 +637,8 @@ run_phase "Long Performance Benchmarks" "run_benchmarks_phase" "phase6-benchmark
 # enough window to be meaningful — the opposite of "run several times a day").
 run_rt_deadline_phase() {
     local status=0
-    timed_cargo_test "rt_deadline" --release --no-fail-fast --test rt_deadline -- --nocapture || status=1
-    timed_cargo_test "rt_jitter" --release --no-fail-fast --test rt_jitter -- --ignored --nocapture || status=1
+    timed_cargo_test "rt_deadline" --release --no-fail-fast $(_test_flag rt_deadline) -- --nocapture || status=1
+    timed_cargo_test "rt_jitter" --release --no-fail-fast $(_test_flag rt_jitter) -- --ignored --nocapture || status=1
     return $status
 }
 run_phase "RT Deadline Gate & Jitter Stress" "run_rt_deadline_phase" "phase7-rt-deadline.log" || true

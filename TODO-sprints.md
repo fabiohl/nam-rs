@@ -57,9 +57,13 @@ gantt
   > [!TIP]
   > Para evitar gastar horas depurando erros bash, teste o output (apenas em `echo`) de formação de strings dentro dos scripts antes de avançar para o Sprint 3.
 
-- **[ ] Tarefa 2.1**: Em `utils/tests-quick.sh`, localizar o vetor `STRUCTURAL_TESTS` e modificar a forma como o Cargo é invocado.
+- **[x] Tarefa 2.1**: Em `utils/tests-quick.sh`, localizar o vetor `STRUCTURAL_TESTS` e modificar a forma como o Cargo é invocado.
   - *Detalhe Técnico*: Atualmente utiliza expansão bash `--test=...`. Precisará ser atualizado para invocar explicitamente os arquivos de entrada (ex: `--test models models::a2_loader`, ou repassar o filtro de forma suportada pelo `cargo test`).
-- **[ ] Tarefa 2.2**: Em `utils/tests-long.sh`, substituir invocações lineares (ex: `--test a2_heap_audit`) para as respectivas chaves (ex: `--test rt_constraints rt_constraints::a2_heap_audit`).
+  > [!NOTE]
+  > **Concluído 2026-07-08.** Substituído `STRUCTURAL_TESTS` plano por `STRUCT_ENTRY_MAP` (associativo test→entry-point) + `STRUCT_TESTS` (legado). Adicionada detecção automática de arquitetura: se `tests/{models,perf_soak,parity,clap,rt_constraints}.rs` existirem (Sprint 3), usa novo formato `--test models models::a2_loader ...`; senão, fallback legado `--test=a2_loader`. Flag `NAM_DRY_RUN_ARCH=1` para dry-run do comando montado. Mapeamento: 23 testes → models, 3 → perf_soak, 1 → parity. Legado verificado com `cargo test --test=a2_loader` (pass).
+- **[x] Tarefa 2.2**: Em `utils/tests-long.sh`, substituir invocações lineares (ex: `--test a2_heap_audit`) para as respectivas chaves (ex: `--test rt_constraints rt_constraints::a2_heap_audit`).
+  > [!NOTE]
+  > **Concluído 2026-07-08.** Adicionado `LONG_ENTRY_MAP` (27 testes → 5 entry-points: models=10, rt_constraints=5, parity=5, perf_soak=4, clap=3) + função `_test_flag()` com detecção automática de arquitetura idêntica à Tarefa 2.1. Substituídas 27 invocações `--test <name>` por `$(_test_flag <name>)`: Phase 1 (soak, pipeline), Phase 2 (pw_integration), Phase 3 (proptests, BF16, FSM, lstm_dyn, cpp_parity, cabsim_parity, golden_vectors, linear, isa_parity, spectral), Phase 4 (resampler, cabsim, a2 heap-audits + diagnostic_bundle), Phase 5 (clap_lifecycle, state_migration, multi_instance, concurrency_stress), Phase 7 (rt_deadline, rt_jitter), meta_coherence. Sintaxe bash validada.
 
 ---
 
