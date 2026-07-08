@@ -117,6 +117,8 @@ pub unsafe fn fused_lstm_gates_avx2(
 }
 
 /// Fused kernel for LSTM gates (AVX-512) — HighFidelity accuracy path.
+/// Uses polynomial exp-based tanh/sigmoid approximations with Kahan
+/// compensated summation for the cell state.
 ///
 /// # Safety
 /// Requires AVX-512F and AVX-512VL support.
@@ -128,19 +130,28 @@ pub unsafe fn fused_lstm_gates_avx512_hf(
     gg: __m512,
     go: __m512,
     cs: __m512,
-) -> (__m512, __m512) {
+    cs_err: __m512,
+) -> (__m512, __m512, __m512) {
     let sig_f = unsafe { simd_sigmoid_poly_avx512(gf) };
     let sig_i = unsafe { simd_sigmoid_poly_avx512(gi) };
     let sig_o = unsafe { simd_sigmoid_poly_avx512(go) };
     let tanh_g = unsafe { simd_tanh_poly_avx512(gg) };
 
-    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+    let f_cs = _mm512_mul_ps(sig_f, cs);
+    let f_err = _mm512_mul_ps(sig_f, cs_err);
+    let i_g = _mm512_mul_ps(sig_i, tanh_g);
+    let y = _mm512_sub_ps(i_g, f_err);
+    let new_cs = _mm512_add_ps(f_cs, y);
+    let new_cs_err = _mm512_sub_ps(_mm512_sub_ps(new_cs, f_cs), y);
+
     let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_poly_avx512(new_cs) });
 
-    (new_cs, hidden)
+    (new_cs, new_cs_err, hidden)
 }
 
 /// Fused kernel for LSTM gates (AVX-512) — Standard (production) accuracy path.
+/// Uses Padé tanh + minimax sigmoid with Kahan compensated summation
+/// for the cell state.
 ///
 /// # Safety
 /// Requires AVX-512F and AVX-512VL support.
@@ -152,16 +163,23 @@ pub unsafe fn fused_lstm_gates_avx512_std(
     gg: __m512,
     go: __m512,
     cs: __m512,
-) -> (__m512, __m512) {
+    cs_err: __m512,
+) -> (__m512, __m512, __m512) {
     let sig_f = unsafe { simd_sigmoid_avx512(gf) };
     let sig_i = unsafe { simd_sigmoid_avx512(gi) };
     let sig_o = unsafe { simd_sigmoid_avx512(go) };
     let tanh_g = unsafe { simd_tanh_avx512(gg) };
 
-    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
+    let f_cs = _mm512_mul_ps(sig_f, cs);
+    let f_err = _mm512_mul_ps(sig_f, cs_err);
+    let i_g = _mm512_mul_ps(sig_i, tanh_g);
+    let y = _mm512_sub_ps(i_g, f_err);
+    let new_cs = _mm512_add_ps(f_cs, y);
+    let new_cs_err = _mm512_sub_ps(_mm512_sub_ps(new_cs, f_cs), y);
+
     let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
 
-    (new_cs, hidden)
+    (new_cs, new_cs_err, hidden)
 }
 
 /// Fused kernel for LSTM gates (AVX-512).
@@ -178,10 +196,15 @@ pub unsafe fn fused_lstm_gates_avx512(
     go: __m512,
     cs: __m512,
 ) -> (__m512, __m512) {
+    let cs_err = _mm512_setzero_ps();
     if activation_precision() == ActivationPrecision::HighFidelity {
-        unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs) }
+        let (new_cs, _err, hidden) =
+            unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs, cs_err) };
+        (new_cs, hidden)
     } else {
-        unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs) }
+        let (new_cs, _err, hidden) =
+            unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs, cs_err) };
+        (new_cs, hidden)
     }
 }
 
@@ -300,17 +323,17 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
         let gg = _mm512_loadu_ps(gates.as_ptr().add(j + 2 * hidden_size));
         let go = _mm512_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
         let cs = _mm512_loadu_ps(cell_state.as_ptr().add(j));
-        let _cs_err = _mm512_loadu_ps(cell_error.as_ptr().add(j));
+        let cs_err = _mm512_loadu_ps(cell_error.as_ptr().add(j));
 
         // Perform the memory computation in a fused manner.
-        let (new_cs, hidden) = if is_hf {
-            fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs)
+        let (new_cs, new_cs_err, hidden) = if is_hf {
+            fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs, cs_err)
         } else {
-            fused_lstm_gates_avx512_std(gf, gi, gg, go, cs)
+            fused_lstm_gates_avx512_std(gf, gi, gg, go, cs, cs_err)
         };
 
         _mm512_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
-        _mm512_storeu_ps(cell_error.as_mut_ptr().add(j), _mm512_setzero_ps());
+        _mm512_storeu_ps(cell_error.as_mut_ptr().add(j), new_cs_err);
         _mm512_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
 
         j += 16;

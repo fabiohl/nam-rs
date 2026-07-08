@@ -85,7 +85,7 @@ Nesta etapa, implementamos a lógica matemática real de Kahan nos kernels eleme
 
   * Retornar `(new_cs, new_cs_err, hidden)`.
 
-#### 🎯 Tarefa 2.2: Implementação Matemática Kahan nos Kernels AVX-512
+#### 🎯 Tarefa 2.2: Implementação Matemática Kahan nos Kernels AVX-512 [DONE]
 
 * **Arquivo:** [`src/math/lstm/gates.rs`](file:///home/fabio/nam-rs/src/math/lstm/gates.rs)
 * **Ações:**
