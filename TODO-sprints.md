@@ -136,7 +136,7 @@ Nesta etapa, ligamos a nova matemática estruturada aos laços de execução pri
 
 Garantir que a implementação não quebre a corretude das simulações existentes e validar a segurança de tempo real.
 
-#### 🎯 Tarefa 4.1: Atualização dos Testes Unitários de Paridade e Determinismo
+#### 🎯 Tarefa 4.1: Atualização dos Testes Unitários de Paridade e Determinismo [DONE]
 
 * **Arquivo:** [`src/models/lstm/lstm_test.rs`](file:///home/fabio/nam-rs/src/models/lstm/lstm_test.rs)
 * **Ações:**
@@ -144,12 +144,12 @@ Garantir que a implementação não quebre a corretude das simulações existent
   * Adicionar uma asserção assertiva validando que os erros de célula das versões escalar e SIMD mantêm paridade exata (`abs() < 1e-2`) ao final de cada passo.
   * Em `test_dyn_layer_determinism`, garantir a cópia de `cell_error` e asserir a igualdade estrita dos vetores pós-processamento.
 
-#### 🎯 Tarefa 4.2: Execução e Auditoria de Testes Rápidos
+#### 🎯 Tarefa 4.2: Execução e Auditoria de Testes Rápidos [DONE]
 
 * **Ações:**
   * Validar que todas as suítes rápidas e a verificação estrutural passem sem falhas nem divergências de paridade com o oráculo de medida `f64`.
 
-#### 🎯 Tarefa 4.3: Microbenchmarks de Latência e CPU Budget
+#### 🎯 Tarefa 4.3: Microbenchmarks de Latência e CPU Budget [DONE]
 
 * **Ações:**
   * Medir e analisar a latência do hot-path de áudio. Assegurar que o impacto de performance seja insignificante e que a folga de CPU continue confortável (< 1% do budget total).

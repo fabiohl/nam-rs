@@ -299,6 +299,9 @@ mod tests {
         layer_simd
             .cell_state
             .copy_from_slice(&layer_scalar.cell_state);
+        layer_simd
+            .cell_error
+            .copy_from_slice(&layer_scalar.cell_error);
 
         let test_inputs = [0.5f32, -0.7, 0.1, 0.9, -1.0, 0.3, -0.3, 0.0];
 
@@ -326,6 +329,15 @@ mod tests {
                     j,
                     layer_scalar.cell_state[j],
                     layer_simd.cell_state[j],
+                );
+                assert!(
+                    (layer_scalar.cell_error[j] - layer_simd.cell_error[j]).abs() < 1e-2,
+                    "Dyn parity H={} step={} cell_error[{}]: {} vs {}",
+                    h,
+                    _step,
+                    j,
+                    layer_scalar.cell_error[j],
+                    layer_simd.cell_error[j],
                 );
             }
         }
@@ -391,6 +403,7 @@ mod tests {
         layer_b.bias.copy_from_slice(&layer_a.bias);
         layer_b.state.copy_from_slice(&layer_a.state);
         layer_b.cell_state.copy_from_slice(&layer_a.cell_state);
+        layer_b.cell_error.copy_from_slice(&layer_a.cell_error);
 
         let input = [0.7];
         layer_a.process(&input);
@@ -409,6 +422,11 @@ mod tests {
                 layer_a.cell_state[j], layer_b.cell_state[j],
                 "Dyn deter cell[{}]: {} vs {}",
                 j, layer_a.cell_state[j], layer_b.cell_state[j]
+            );
+            assert_eq!(
+                layer_a.cell_error[j], layer_b.cell_error[j],
+                "Dyn deter cell_error[{}]: {} vs {}",
+                j, layer_a.cell_error[j], layer_b.cell_error[j]
             );
         }
     }
