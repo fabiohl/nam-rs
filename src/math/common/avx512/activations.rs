@@ -176,9 +176,11 @@ macro_rules! impl_avx512_activations {
         unsafe fn fused_lstm_gates_dyn(
             gates: &mut [f32],
             cell_state: &mut [f32],
+            cell_error: &mut [f32],
             hidden_state: &mut [f32],
             hidden_size: usize,
         ) {
+            let _ = cell_error;
             // SAFETY: gates, cell_state, hidden_state, and hidden_size satisfy the function's
             // documented invariants.
             unsafe {
@@ -339,10 +341,17 @@ macro_rules! impl_avx512vnni_bf16_activations {
         unsafe fn fused_lstm_gates_dyn(
             gates: &mut [f32],
             cell_state: &mut [f32],
+            cell_error: &mut [f32],
             hidden_state: &mut [f32],
             hidden_size: usize,
         ) {
-            Avx512Math::fused_lstm_gates_dyn(gates, cell_state, hidden_state, hidden_size)
+            Avx512Math::fused_lstm_gates_dyn(
+                gates,
+                cell_state,
+                cell_error,
+                hidden_state,
+                hidden_size,
+            )
         }
     };
 }

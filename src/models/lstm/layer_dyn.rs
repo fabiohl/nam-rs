@@ -27,6 +27,8 @@ pub struct LstmLayerDyn {
     pub state: AlignedVec<f32>,
     /// LSTM cell state (C). Length = hidden_size.
     pub cell_state: AlignedVec<f32>,
+    /// Kahan compensation shadow state for cell state accumulation.
+    pub cell_error: AlignedVec<f32>,
     /// Intermediate gate activations (4 × hidden_size).
     pub gates: AlignedVec<f32>,
 }
@@ -45,6 +47,7 @@ impl LstmLayerDyn {
             bias: AlignedVec::new(h4, 0.0f32)?,
             state: AlignedVec::new(ih, 0.0f32)?,
             cell_state: AlignedVec::new(hidden_size, 0.0f32)?,
+            cell_error: AlignedVec::new(hidden_size, 0.0f32)?,
             gates: AlignedVec::new(h4, 0.0f32)?,
         })
     }
@@ -69,6 +72,7 @@ impl LstmLayerDyn {
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);
+        self.cell_error.fill(0.0);
         self.gates.fill(0.0);
     }
 }

@@ -15,6 +15,8 @@ pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: 
     pub state: Aligned64<[f32; IH]>,
     /// LSTM cell state (C).
     pub cell_state: Aligned64<[f32; H]>,
+    /// Kahan compensation shadow state for cell state accumulation.
+    pub cell_error: Aligned64<[f32; H]>,
     /// Intermediate gate activations.
     pub gates: Aligned64<[f32; H4]>,
 }
@@ -27,6 +29,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             bias: Aligned64([0.0; H4]),
             state: Aligned64([0.0; IH]),
             cell_state: Aligned64([0.0; H]),
+            cell_error: Aligned64([0.0; H]),
             gates: Aligned64([0.0; H4]),
         }
     }
@@ -49,6 +52,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);
+        self.cell_error.fill(0.0);
         self.gates.fill(0.0);
     }
 }

@@ -20,11 +20,11 @@ Este documento descreve os Epics, Sprints e Tarefas Técnicas detalhadas para a 
 
 ## 🏃 Épico: Compensação de Round-off Recorrente nas Portas da LSTM
 
-### 📅 Sprint 1: Preparação da Estrutura de Dados e Assinaturas (Camada de Dados)
+### 📅 Sprint 1: Preparação da Estrutura de Dados e Assinaturas (Camada de Dados) [DONE]
 
 Nesta etapa, preparamos o armazenamento persistente do shadow state do erro acumulado para cada célula LSTM.
 
-#### 🎯 Tarefa 1.1: Modificação do Estado Estático (`LstmLayer`)
+#### 🎯 Tarefa 1.1: Modificação do Estado Estático (`LstmLayer`) [DONE]
 
 * **Arquivo:** [`src/models/lstm/layer.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer.rs)
 * **Ações:**
@@ -32,7 +32,7 @@ Nesta etapa, preparamos o armazenamento persistente do shadow state do erro acum
   * Inicializar `cell_error` com `0.0` no método `new()`.
   * Atualizar o método `reset_states()` para limpar `self.cell_error.fill(0.0)`.
 
-#### 🎯 Tarefa 1.2: Modificação do Estado Dinâmico (`LstmLayerDyn`)
+#### 🎯 Tarefa 1.2: Modificação do Estado Dinâmico (`LstmLayerDyn`) [DONE]
 
 * **Arquivo:** [`src/models/lstm/layer_dyn.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer_dyn.rs)
 * **Ações:**
@@ -40,7 +40,7 @@ Nesta etapa, preparamos o armazenamento persistente do shadow state do erro acum
   * Alocar `cell_error` com tamanho `hidden_size` inicializado com `0.0f32` no método `new()`.
   * Atualizar o método `reset_states()` para limpar `self.cell_error.fill(0.0)`.
 
-#### 🎯 Tarefa 1.3: Atualização do Trait `SimdMath` e Dispatches Associados
+#### 🎯 Tarefa 1.3: Atualização do Trait `SimdMath` e Dispatches Associados [DONE]
 
 * **Arquivos:**
   * [`src/math/common/traits.rs`](file:///home/fabio/nam-rs/src/math/common/traits.rs)

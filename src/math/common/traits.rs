@@ -751,11 +751,13 @@ pub trait SimdMath {
     /// # Safety
     /// `gates.len() >= hidden_size * 4`.
     /// `cell_state.len() == hidden_size`.
+    /// `cell_error.len() == hidden_size`.
     /// `hidden_state.len() == hidden_size`.
     /// All slices must be valid and non-aliasing. `hidden_size > 0`.
     unsafe fn fused_lstm_gates_dyn(
         gates: &mut [f32],
         cell_state: &mut [f32],
+        cell_error: &mut [f32],
         hidden_state: &mut [f32],
         hidden_size: usize,
     );

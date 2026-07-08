@@ -181,9 +181,11 @@ macro_rules! impl_avx2_activations {
         unsafe fn fused_lstm_gates_dyn(
             gates: &mut [f32],
             cell_state: &mut [f32],
+            cell_error: &mut [f32],
             hidden_state: &mut [f32],
             hidden_size: usize,
         ) {
+            let _ = cell_error;
             // SAFETY: arguments satisfy the function's documented invariants.
             unsafe {
                 super::super::lstm::fused_lstm_gates_dyn_avx2(
