@@ -5,7 +5,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # NAM-rs Architecture: Standalone Neural Inference Client
 
-This is the general architecture reference for NAM-rs: system topology, module layout, build configuration, and cross-cutting design decisions that don't belong to any single specialized document. For domain-specific detail, see the pointers in each section and [docs/](.) as a whole — this file intentionally does not repeat content that already has a dedicated home (fidelity trade-offs, CLAP/GUI internals, testing methodology, NAMB byte layout, etc.).
+This is the general architecture reference for NAM-rs: system topology, module layout, build configuration, and cross-cutting design decisions that don't belong to any single specialized document. For domain-specific detail, see the pointers in each section and [docs/] as a whole — this file intentionally does not repeat content that already has a dedicated home (fidelity trade-offs, CLAP/GUI internals, testing methodology, NAMB byte layout, etc.).
 
 NAM-rs targets low-latency DSP processing and neural inference for audio equipment simulation (Neural Amp Modeler), operating as a standalone PipeWire client (Stable) or as a CLAP plugin (Release) on Linux, in idiomatic Rust with a focus on RT (Real-Time) safety.
 
@@ -24,19 +24,20 @@ CLAP plugin mode uses a structurally different topology (host-driven `process()`
 
 ### 2.1 Structural Dispatch: `StaticModel` Enum (Zero Vtable Routing)
 
-NAM-rs uses a **static enum dispatch** pattern to route inference calls to the correct model architecture without virtual table (vtable) overhead. The `StaticModel` enum (`src/models/mod.rs:104`) has 23 variants covering all supported architectures:
+NAM-rs uses a **static enum dispatch** pattern to route inference calls to the correct model architecture without virtual table (vtable) overhead. The `StaticModel` enum (`src/models/mod.rs:106`) has 23 variants covering all supported architectures:
 
-| Family             | Variants                                                                                  | Dispatch Strategy                  |
-|:------------------ |:----------------------------------------------------------------------------------------- |:---------------------------------- |
-| **WaveNet A1**     | `Standard` (ch=16), `Lite` (ch=12), `Feather` (ch=8), `Nano` (ch=4)                       | Const-generic monomorphization     |
-| **WaveNet A2**     | `A2Full` (ch=8), `A2Lite` (ch=3)                                                          | Const-generic monomorphization     |
-| **WaveNet A2 Dyn** | `WaveNetA2Dyn`                                                                            | Runtime dimensions (free channels) |
-| **WaveNet Dyn**    | `WaveNetModelDyn`                                                                         | Free geometry fallback             |
-| **LSTM Static**    | `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`, `1×40`, `2×24` (10 profiles) | Const-generic monomorphization     |
-| **LSTM Dyn**       | `LstmModelDyn`                                                                            | Runtime dimensions fallback        |
-| **Container**      | `ContainerModel`                                                                          | Nested `StaticModel` dispatch      |
-| **ConvNet**        | `ConvNetModel`                                                                            | Layer-chain SIMD dispatch          |
-| **Linear**         | `LinearModel`                                                                             | Direct SIMD FIR                    |
+| Family                 | Variants                                                                                                                 | Dispatch Strategy                  |
+|:---------------------- |:------------------------------------------------------------------------------------------------------------------------ |:---------------------------------- |
+| **WaveNet A1**         | `WavenetStandard` (ch=16), `WavenetLite` (ch=12), `WavenetFeather` (ch=8), `WavenetNano` (ch=4)                          | Const-generic monomorphization     |
+| **WaveNet A2**         | `WavenetA2Full` (ch=8), `WavenetA2Lite` (ch=3)                                                                           | Const-generic monomorphization     |
+| **WaveNet A2 Dyn**     | `WavenetA2Dyn`                                                                                                           | Runtime dimensions (free channels) |
+| **WaveNet A2 Cascade** | `WavenetA2Cascade`                                                                                                       | Multi-array dynamic cascade        |
+| **WaveNet Dyn**        | `WavenetDyn` (backed by `WaveNetModelDyn`)                                                                               | Free geometry fallback             |
+| **LSTM Static**        | `Lstm1x3`, `Lstm1x8`, `Lstm1x12`, `Lstm1x16`, `Lstm1x24`, `Lstm2x8`, `Lstm2x12`, `Lstm2x16`, `Lstm1x40`, `Lstm2x24`      | Const-generic monomorphization     |
+| **LSTM Dyn**           | `LstmDyn` (backed by `LstmModelDyn`)                                                                                     | Runtime dimensions fallback        |
+| **Container**          | `Container` (backed by `ContainerModel`)                                                                                 | Nested `StaticModel` dispatch      |
+| **ConvNet**            | `ConvNet` (backed by `ConvNetModel`)                                                                                     | Layer-chain SIMD dispatch          |
+| **Linear**             | `Linear` (backed by `LinearModel`)                                                                                       | Direct SIMD FIR / Partitioned FFT  |
 
 The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs:359`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
 
@@ -45,8 +46,9 @@ The `NamModel::process()` implementation uses a flat `match self` on all 23 vari
 For models whose geometry does not match any of the const-generic profiles, the loader routes to one of three dynamic variants:
 
 - **`WaveNetModelDyn`** (`src/models/wavenet/model_dyn.rs`): Activated when `get_wavenet_topology()` returns `Free(geometry)` — handling arbitrary `channels`, `head`, `condition_size`, and `post_stack_head` dimensions. Supports optional `condition_dsp` (a nested `StaticModel` sub-model that pre-processes raw audio, mirroring C++ `model.cpp:692-722`).
-- **`LstmModelDyn`** (`src/models/lstm/model_dyn.rs`): Activated when the `(num_layers, hidden_size)` pair does not match any of the 10 static LSTM profiles. Supports arbitrary layer counts and hidden sizes, with three SIMD kernels (AVX2+FMA+F16C, AVX-512F+VL, AVX-512 BF16 VNNI).
-- **`WaveNetA2Dyn`** (`src/models/a2/wavenet_a2_dyn.rs`): Activated for models matching the A2 23-layer pattern with channel counts other than 3 or 8. Uses runtime-dimensioned conv1d and GEMV kernels.
+- **`LstmModelDyn`** (`src/models/lstm/model_dyn.rs`): Activated when the `(num_layers, hidden_size)` pair does not match any of the 10 static LSTM profiles. Supports arbitrary layer counts and hidden sizes, with two SIMD kernels (AVX2+FMA+F16C and AVX-512F+VL) plus a scalar fallback.
+- **`WaveNetA2Dyn`** (`src/models/a2/model/dynamic/mod.rs`): Activated for models matching the A2 23-layer pattern with channel counts other than 3 or 8. Uses runtime-dimensioned conv1d and GEMV kernels.
+- **`WaveNetA2Cascade`** (`src/models/a2/model/cascade/mod.rs`): Activated for multi-array A2 models, serializing multiple `WaveNetA2Dyn` instances into a sequential pipeline.
 
 These dynamic paths use heap-allocated `Vec`-based arrays for weights and states instead of stack-allocated const-generic arrays. While they introduce a one-time allocation at load time, the hot inference path remains **zero-allocation** and **RT-safe** via the same `match self` dispatch as const-generic variants.
 
@@ -126,9 +128,9 @@ For multi-array WaveNet models, the head accumulator of the second layer array (
 
 ### 2.6 Decision: Portability and Virtual Allocation of `MirroredBuffer`
 
-> **Decision:** The `MirroredBuffer` structure performs virtual memory mirroring by mapping the same physical block twice consecutively to avoid logical wrap-around in the DSP hot-path. Primary support is strictly targeted at Linux using `memfd_create`. For non-Linux platforms, a fallback (stub) is provided that returns an incompatibility error (`Unsupported`).
+> **Decision:** The `MirroredBuffer` structure performs virtual memory mirroring by mapping the same physical block twice consecutively to avoid logical wrap-around in the DSP hot-path. On Linux, it attempts allocating 2 MB explicit HugeTLB pages (MAP_HUGETLB / MFD_HUGETLB) to reduce TLB pressure, falling back to regular pages with THP (madvise MADV_HUGEPAGE + MADV_COLLAPSE), and finally standard 4 KB pages. For non-Linux platforms, a fallback (stub) is provided that returns an incompatibility error (`Unsupported`).
 >
-> **Trade-off:** Using `memfd_create` on Linux offers an ideal way to allocate mirrored buffers without creating files on physical disk and without requiring complex cleanup on the filesystem. Since the production ecosystem of NAM-rs is exclusively focused on Linux (Standalone PipeWire and CLAP plugin), the implementation of stubs for other platforms is sufficient for static compilation portability of the crate, avoiding additional concurrency or I/O complexity in the cold loading path.
+> **Trade-off:** Using `memfd_create` on Linux offers an ideal way to allocate mirrored buffers without creating files on physical disk and without requiring complex cleanup on the filesystem. Buffer sizing is rounded up to the least common multiple of standard/huge page sizes and `elem_multiple * sizeof(T)` to keep ring arithmetic correct. Since the production ecosystem of NAM-rs is exclusively focused on Linux (Standalone PipeWire and CLAP plugin), the implementation of stubs for other platforms is sufficient for static compilation portability of the crate.
 
 ## 3. Time Management and Isolation (Strict RT)
 
@@ -147,7 +149,7 @@ From v1.4 onwards, NAM-rs adopts a clear modular structure to support multiple h
 
 | Layer                              | Sub-modules                                                    | Responsibility                                                                                                                              |
 |:---------------------------------- |:-------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host`                  | Shared infrastructure, inter-thread communication (SPSC), and host-agnostic abstractions.                                                   |
+| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`                                | Shared infrastructure, inter-thread communication (SPSC), and parameter definitions.                                                        |
 | **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`                         | Native Linux backend. Manages the PipeWire server, hardware setup (FIFO/Affinity), and the command-line interface.                          |
 | **CLAP** (`src/clap/`)             | `plugin`, `processor`, `param_smoother`, `extensions/`, `gui/` | Full CLAP plugin with DSP pipeline, parameters, persistence, egui/baseview visual interface, and anti-zipper smoothing.                     |
 | **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`...                  | Mathematical infrastructure modularized by domain, isolating low-level SIMD kernels from dispatch logic.                                    |
@@ -197,7 +199,7 @@ NAM-rs uses *feature flags* to isolate backends and reduce the final binary foot
 
 | Build Profile            | Compilation Command                                              | Generated Asset        | Main Dependencies                                      |
 |:------------------------ |:---------------------------------------------------------------- |:---------------------- |:------------------------------------------------------ |
-| **Standalone** (default) | `cargo build`                                                    | Executable Binary      | `pipewire`, `rtrb`, `clap` (CLI)                       |
+| **Standalone** (default) | `cargo build`                                                    | Executable Binary      | `pipewire`, `rtrb`, `lexopt` (CLI)                     |
 | **CLAP Plugin**          | `cargo build --no-default-features --features clap-plugin --lib` | `.so` Library (cdylib) | `clack-plugin`, `clack-extensions`, `egui`, `baseview` |
 | **DSP Lib (Pure)**       | `cargo build --no-default-features --lib`                        | Rust Library (`.rlib`) | Core DSP only (no-std ready)                           |
 
@@ -335,8 +337,8 @@ The A2 architecture is NAM's next-generation format (NeuralAmpModelerCore v0.5.2
 
 To run the deep 23-layer A2 network within real-time budgets under AVX2, the engine employs specialized kernels:
 
-- **Fully Unrolled GEMV (A2-Lite, CH=3):** Transposes and fully unrolls the matrix-vector multiplication for 3 channels. Convolutions for both $K=6$ (18 FMAs) and $K=15$ (45 FMAs) are hardcoded without loop overhead (`src/models/a2/conv1d_ch3.rs`).
-- **Tap-Major Frame-Tiled Convolution (A2-Full, CH=8):** Processes blocks using a $T=4$ frame-tiled broadcast-FMA strategy (`src/models/a2/conv1d_ch8.rs`). Weights are permuted once on load into a `col-major-per-tap` layout, enabling contiguous 256-bit SIMD loads of 8 outputs.
+- **Fully Unrolled GEMV (A2-Lite, CH=3):** Transposes and fully unrolls the matrix-vector multiplication for 3 channels. Convolutions for both $K=6$ (18 FMAs) and $K=15$ (45 FMAs) are hardcoded without loop overhead (`src/models/a2/conv1d_ch3/`).
+- **Tap-Major Frame-Tiled Convolution (A2-Full, CH=8):** Processes blocks using a $T=4$ frame-tiled broadcast-FMA strategy (`src/models/a2/conv1d_ch8/`). Weights are permuted once on load into a `col-major-per-tap` layout, enabling contiguous 256-bit SIMD loads of 8 outputs.
 - **Branchless Pow2 Rings (`MirroredBuffer`):** Dilation history uses a virtual double-mapped ring topology. Read lookbacks are mapped branchless via a power-of-two bitwise mask.
 - **Bypass of General A2 Overhead:** Features unused by production capturing (FiLM, heterogenous activations, dynamic gating/gated/blended modes, `condition_dsp`, `bottleneck ≠ channels`) are kept out of the hot-path, parsed into stub surfaces for backward compatibility without runtime overhead.
 
@@ -350,13 +352,13 @@ NAM-rs supports the official A2 distribution format, where models are bundled in
 
 ## 8. DAW Integration (CLAP Integration)
 
-NAM-rs supports execution as a CLAP (Clever Audio Plug-in) plugin via the `AudioHost` trait (`src/common/audio_host.rs`), which defines the host-agnostic communication interface between the DSP engine and the host. Feature flags (`standalone` vs `clap-plugin`) ensure system dependencies like `pipewire` are removed from the plugin binary. `NamPluginParams` (`src/common/params.rs`) centralizes plugin state for DAW automation and state persistence.
+NAM-rs supports execution as a CLAP (Clever Audio Plug-in) plugin by sharing the host-agnostic DSP pipeline configuration (`src/dsp/pipeline/`) and SPSC communication abstractions. Feature flags (`standalone` vs `clap-plugin`) ensure system dependencies like `pipewire` are removed from the plugin binary. `NamPluginParams` (`src/common/params.rs`) centralizes plugin state for DAW automation and state persistence.
 
 Thread model, RT-safe lock-free communication, the three-tier GC cascade, and the full GUI architecture are documented in [docs/clap_integration.md](clap_integration.md) — this section covers only the DSP-pipeline-specific flow and the unified parameter surface that spans both CLI and CLAP.
 
 ### 8.1 CLAP DSP Pipeline
 
-The following diagram traces the detailed layout of parameter updates, event queues, DSP processing, and real-time-safe cleanup inside the audio processing thread ([PluginAudioProcessor::process](../src/clap/processor/mod.rs#L255)):
+The following diagram traces the detailed layout of parameter updates, event queues, DSP processing, and real-time-safe cleanup inside the audio processing thread ([PluginAudioProcessor::process](../src/clap/processor/mod.rs#L279)):
 
 ```mermaid
 graph TD
@@ -408,7 +410,7 @@ graph TD
     SPSC_Gc -.-> |drop()| GcDrop["Main Thread GC Drain"]
 ```
 
-Pipeline stages, in execution order: bypass evaluation ([process_bypass](../src/clap/processor/dsp/bypass.rs#L11)) → channel extraction ([extract_channels](../src/clap/processor/dsp/channels.rs#L10)) → input gain (SIMD + [ParamSmoother](../src/dsp/smoother.rs#L12)) → input dither/gate ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L47), [GateState](../src/dsp/gate.rs#L60)) → inference ([run_inference](../src/dsp/pipeline/stages/inference.rs#L113), resample up → `NamModel::process` → resample down) → output dither compensation/fade/Adaptive-Compute check ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L21)) → output gain → VU peak telemetry ([compute_output_peaks](../src/clap/processor/dsp/peaks.rs#L10)) → cycle-accurate telemetry ([process_telemetry](../src/clap/processor/dsp/telemetry.rs#L10)).
+Pipeline stages, in execution order: bypass evaluation ([process_bypass](../src/clap/processor/dsp/bypass.rs#L11)) → channel extraction ([extract_channels](../src/clap/processor/dsp/channels.rs#L10)) → input gain (SIMD + [ParamSmoother](../src/dsp/smoother.rs#L12)) → input dither/gate ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L48), [GateState](../src/dsp/gate.rs#L60)) → inference ([run_inference](../src/dsp/pipeline/stages/inference.rs#L224), resample up → `NamModel::process` → resample down) → output dither compensation/fade/Adaptive-Compute check ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L22)) → output gain → VU peak telemetry ([compute_output_peaks](../src/clap/processor/dsp/peaks.rs#L10)) → cycle-accurate telemetry ([process_telemetry](../src/clap/processor/dsp/telemetry.rs#L12)).
 
 Parameter synchronization across the three incoming paths (SPSC `param_rx` for cold loads, host DAW automation events, and GUI atomics with a generation counter) is detailed in [docs/clap_integration.md](clap_integration.md) §6.2.
 
@@ -418,19 +420,22 @@ NAM-rs exposes a unified parameter set across standalone CLI and CLAP plugin sur
 
 #### Full Parameter Matrix
 
-| Parameter      | CLI Flag                        | CLAP Param ID | CLAP GUI Zone | Type           | Sync Strategy            |
-|:-------------- |:------------------------------- |:------------- |:------------- |:-------------- |:------------------------ |
-| Model file     | `-m`, `--model <FILE>`          | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadModel` payload |
-| Cabsim IR      | `-c`, `--cab <FILE>`            | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadCabIr` payload |
-| Input gain     | `-i`, `--input-gain <DB>`       | ID=0          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
-| Output gain    | `-o`, `--output-gain <DB>`      | ID=1          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
-| Gate threshold | (reserved)                      | ID=2          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
-| Bypass         | (CLAP-only)                     | ID=3          | Zone 4        | `bool`         | Atomic + DAW auto        |
-| Buffer size    | `-b`, `--buffer-size <SAMPLES>` | (host-driven) | —             | `u32`          | CLI-only, at startup     |
-| Slim override  | `--slim auto\|full\|lite`       | ID=6          | Zone 5        | `SlimOverride` | SPSC `SetSlim` payload   |
-| Oversampling   | `--oversample off\|2x\|4x`      | ID=7          | Zone 2        | stepped enum   | SPSC off-RT rebuild      |
-| Diagnose       | `--diagnose`                    | —             | —             | `bool`         | CLI-only, immediate exit |
-| Diagnose full  | `--diagnose-full`               | —             | —             | `bool`         | CLI-only, immediate exit |
+| Parameter        | CLI Flag                        | CLAP Param ID | CLAP GUI Zone | Type           | Sync Strategy            |
+|:---------------- |:------------------------------- |:------------- |:------------- |:-------------- |:------------------------ |
+| Model file       | `-m`, `--model <FILE>`          | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadModel` payload |
+| Cabsim IR        | `-c`, `--cab <FILE>`            | State-only    | Zone 1        | `PathBuf`      | SPSC `LoadCabIr` payload |
+| Input gain       | `-i`, `--input-gain <DB>`       | ID=0          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Output gain      | `-o`, `--output-gain <DB>`      | ID=1          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Gate threshold   | (reserved)                      | ID=2          | Zone 2 (knob) | `f32` dB       | Atomic + SPSC + DAW auto |
+| Bypass           | (CLAP-only)                     | ID=3          | Zone 4        | `bool`         | Atomic + DAW auto        |
+| Active model     | (CLAP-only, read-only display)  | ID=4          | Zone 1        | `String` name  | GUI readout              |
+| Adaptive compute | (CLAP-only)                     | ID=5          | Zone 5        | stepped enum   | SPSC `SetAdaptiveMode`   |
+| Slim override    | `--slim auto\|full\|lite`       | ID=6          | Zone 5        | `SlimOverride` | SPSC `SetSlim` payload   |
+| Oversampling     | `--oversample off\|2x\|4x`      | ID=7          | Zone 2        | stepped enum   | SPSC off-RT rebuild      |
+| Activation prec. | `--activation standard\|hf`     | ID=8          | Zone 2        | stepped enum   | SPSC change precision    |
+| Buffer size      | `-b`, `--buffer-size <SAMPLES>` | (host-driven) | —             | `u32`          | CLI-only, at startup     |
+| Diagnose         | `--diagnose`                    | —             | —             | `bool`         | CLI-only, immediate exit |
+| Diagnose full    | `--diagnose-full`               | —             | —             | `bool`         | CLI-only, immediate exit |
 
 CLI parameters are parsed in `src/standalone/cli.rs` (`CliArgs`). Model, cab, and oversample changes require off-RT resource allocation and are sent via SPSC to the DSP thread; gain/buffer-size are applied at `RtSetup` initialization. CLAP GUI zone layout, knob widgets, and gesture protocol are documented in [docs/clap_integration.md](clap_integration.md) §7.
 

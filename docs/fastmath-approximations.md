@@ -19,7 +19,7 @@ Architectural decisions, experiment results, and normative guidelines for approx
 tanh(x) ≈ x · (x² + 105) · (x² + 945) / ((15x² + 420) · x² + 945)
 ```
 
-Implemented in `src/math/activations/tanh.rs`:
+Implemented in `src/math/activations/tanh/production.rs`:
 
 - `simd_tanh_avx2(x: __m256)` — 8 floats, AVX2 + FMA
 - `simd_tanh_dual_avx2(x1, x2: __m256)` — 16 floats, coefficients broadcast once
@@ -149,15 +149,15 @@ Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`)
 
 | Source                            | ESR (linear) | ESR (dB)  | Dominance |
 |:--------------------------------- |:------------ |:--------- |:--------- |
-| (a) F16 weight quantization       | 3.24e-7      | −64.9     | **100%**  |
-| (b) tanh Padé [5,4] approximation | 8.49e-15     | −140.7    | ~0%       |
-| (c) f32 accumulation (residual)   | ~0           | −∞        | ~0%       |
-| **Total (a+b+c)**                 | **3.24e-7**  | **−64.9** | —         |
+| (a) F16 weight quantization       | 3.01e-7      | −65.2     | **100%**  |
+| (b) tanh Padé [5,4] approximation | 5.01e-16     | −153.0    | ~0%       |
+| (c) f32 accumulation (residual)   | 9.98e-14     | −130.0    | ~0%       |
+| **Total (a+b+c)**                 | **3.01e-7**  | **−65.2** | —         |
 
 **Key findings:**
 
-1. **Weight quantization dominates entirely** — F16 rounding accounts for essentially 100% of the ESR against the full-precision reference.
-2. **Tanh Padé contribution is negligible** for this topology. The small synthetic weights (0.01) keep internal activations in the linear region of tanh where `tanh(x) ≈ x` with negligible error. This does NOT imply Padé is harmless for real NAM models — real weights are larger and produce activations with `|x| > 1` where Padé error (~2.32e-3 max) becomes significant.
+1. **Weight quantization dominates entirely** — F16 rounding (3.01e-7, −65.2 dB) accounts for essentially 100% of the ESR against the full-precision reference.
+2. **Tanh Padé contribution is negligible** for this topology (5.01e-16, −153.0 dB). The small synthetic weights (0.01) keep internal activations in the linear region of tanh where `tanh(x) ≈ x` with negligible error. This does NOT imply Padé is harmless for real NAM models — real weights are larger and produce activations with `|x| > 1` where Padé error (~2.32e-3 max) becomes significant.
 3. **f32 accumulation error is below measurement noise** — the residual after subtracting quantization and tanh components is effectively zero, confirming that the existing Kahan-compensated primitives are sufficient.
 
 **Recommendation (P2):** Exact mode should prioritize higher-precision weight storage (f32 or compensated F16) over improving the tanh approximation, since the measured weight-quantization ESR dominates by >8 orders of magnitude for this topology. However, a follow-up measurement with real model weights (which produce larger activation ranges) is needed to quantify the tanh contribution under realistic conditions.
@@ -289,11 +289,12 @@ by ~10 orders of magnitude:
 
 | Architecture         | ESR (linear) | ESR (dB) | SNR (dB) | Precision class |
 |:-------------------- |:------------ |:-------- |:-------- |:--------------- |
-| LSTM / Linear        | ~1e-7..1e-9  | −70..−90 | 67–91    | **Bit-exact**   |
-| WaveNet A1-Std CH=16 | 4.58e-13     | −123.4   | 123.4    | f32 + poly tanh |
+| LSTM 1x16 (BossLSTM) | 0.00e0       | −inf     | inf      | **Bit-exact**   |
+| LSTM 2x8 (BossLSTM)  | 2.68e-3      | −25.7    | 25.7     | f32 + poly tanh |
+| WaveNet A1-Std CH=16 | 2.46e-14     | −136.1   | 136.1    | f32 + poly tanh |
 | WaveNet A1-Std (v2)  | *varies*     | *varies* | 101.8*   | f32 + poly tanh |
-| WaveNet Feather CH=8 | 4.92e-14     | −133.1   | 133.1    | f32 + poly tanh |
-| WaveNet Nano CH=4    | 6.30e-14     | −132.0   | 132.0    | f32 + poly tanh |
+| WaveNet Feather CH=8 | 4.82e-14     | −133.2   | 133.2    | f32 + poly tanh |
+| WaveNet Nano CH=4    | 6.20e-14     | −132.1   | 132.1    | f32 + poly tanh |
 
 > \* Worst-case across multi-SR v2 goldens @ 192 kHz.
 > ESR measured against NeuralAmpModelerCore v0.5.3 reference (commit `9c7b185`).

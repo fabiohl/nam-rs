@@ -51,7 +51,7 @@ slow" heuristic:
   codegen path users actually execute). Measuring in debug guards a "phantom" —
   codegen without `-O`, without FMA contraction, without auto-vectorization.
 
-The quick suite ([tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh))
+The quick suite ([tests-quick.sh](utils/tests-quick.sh))
 has three phases that respect both axes:
 
 ```mermaid
@@ -107,7 +107,7 @@ graph TD
 Fase 2's `golden_vectors` (v1) and `isa_parity` (v2), and the long suite's `cpp_parity`
 full matrix and `golden_vectors` v2 multi-SR, do **not** measure against a live C++
 build on every run. They compare against pre-committed `.bin` golden files rendered
-once by [`tests/fixtures/golden_gen_build.sh`](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+once by [`tests/fixtures/golden_gen_build.sh`](tests/fixtures/golden_gen_build.sh)
 against a pinned `NeuralAmpModelerCore`/`NeuralAmpModelerPlugin` commit (pinned
 versions defined in [`/variables.env`](../variables.env)) — a script
 intended to run *rarely*, only when a new reference model or architecture is added
@@ -206,7 +206,7 @@ The following table maps every test suite, target, or binary to the features it 
 
 ## 4. Summary of Decoupled Sprints (Long Audits)
 
-Certain tests are marked as `#[ignore]` in the standard suite to keep execution times fast (~2 minutes). The most critical of these — C++ parity, parser fuzzing, and SIMD precision — are exercised in Phase 2/3 of the unified QA suite. The remaining ignored tests are deferred to the nightly/pre-release auditing script ([tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)).
+Certain tests are marked as `#[ignore]` in the standard suite to keep execution times fast (~2 minutes). The most critical of these — C++ parity, parser fuzzing, and SIMD precision — are exercised in Phase 2/3 of the unified QA suite. The remaining ignored tests are deferred to the nightly/pre-release auditing script ([tests-long.sh](utils/tests-long.sh)).
 
 Before any timed phase, a **blocking pre-flight gate** runs `tests/meta_coherence.rs` — a
 cheap, dependency-free check that every `.nam` model referenced by an `#[ignore]`d golden
@@ -282,14 +282,14 @@ To align test execution with developer workflows and integration schedules, the 
 
 ### 6.1. Fail-Fast (Standard QA Suite)
 
-- **Script**: [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+- **Script**: [tests-quick.sh](utils/tests-quick.sh)
 - **Goal**: Minimize the feedback loop during local iterations and pre-commit checks.
 - **Behavior**: If any test target compilation, test execution, or validation step fails, the script immediately terminates. It does not attempt to execute subsequent phases or steps.
 - **Configuration**: Managed using `set -e` in the bash runner. Cargo commands execute default target-level fail-fast behavior.
 
 ### 6.2. Complete View (Long-Duration Audit Suite)
 
-- **Script**: [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)
+- **Script**: [tests-long.sh](utils/tests-long.sh)
 - **Goal**: Provide a complete, comprehensive report of all test, parity, and performance outcomes for nightlies or release gates.
 - **Behavior**: Even if a test command or phase fails, execution continues. All phases are executed, and all logs are collected.
 - **Configuration**:

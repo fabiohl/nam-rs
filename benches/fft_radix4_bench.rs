@@ -11,8 +11,6 @@
 //! 7–19% mais lento, levando à decisão de manter Radix-2 DIT com SIMD
 //! como algoritmo canônico do projeto.
 //!
-//! Resultados e análise completa: [`TODO-sprints.md`](file:///home/fabio/nam-rs/TODO-sprints.md), Tarefa A9.
-//!
 //! # Running
 //! ```sh
 //! cargo bench --bench fft_radix4_bench

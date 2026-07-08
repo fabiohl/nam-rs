@@ -119,7 +119,7 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ### Model Files and Trust Levels Registry
 
-All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests.
+All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests.
 
 > [!WARNING]
 > **Registry completeness gap (found during the `golden_gen_build.sh` audit,

@@ -39,8 +39,7 @@ outweighed any L1 cache benefit for LSTM models, and that the f16c quantization 
 cause of interop drift for several model topologies (see §8 — Histórico). The removal is the
 production default. All models now use native f32 weights.
 
-**Implementation.** All quantization code paths in `src/models/*/set_weights.rs` and
-`src/math/common/half.rs` have been removed. Weight matrices are loaded as `Vec<f32>` directly.
+**Implementation.** All weight quantization/compression code paths in model loading (`src/models/*/set_weights.rs` or `src/models/*/model.rs`) have been removed. Weight tensors in all active models are loaded and processed natively as `f32` vectors. The conversion helper module (`src/math/common/half.rs`) and corresponding unused SIMD kernels are retained only as test references or benchmarks.
 
 ### 1.1 NAMCore parity — corrected
 
@@ -93,11 +92,11 @@ removes those harmonics and HF mode suppresses the residual high-order folding.
 
 ### 2.4 Precision context (validated post-S8)
 
-With the f64 oracle confirmed correct (§3), the combined precision model (f16c + Padé + f32
-accumulation) reproduces production to within ESR ≈ 6.9e-5 (LSTM, measured on `lstm.nam` H=3 —
-see the provenance note in §3 below; not yet verified on BossLSTM-1×16 at production duration),
-6.7e-8 (WaveNet), 1.8e-7 (A2) — for the small official LSTM, the Padé approximation and f16c
-together fully explain the gap from ideal f64, with no unexplained "architectural" residue.
+With the f64 oracle confirmed correct (§3), the combined precision model (Padé activations + f32
+accumulation) reproduces production to within ESR ≈ 1.04e-3 (LSTM, measured on `lstm.nam` H=3 —
+see the provenance note in §3 below; validated on BossLSTM-1×16 at production duration with ESR = 2.61e-2),
+8.62e-14 (WaveNet), 1.13e-13 (A2) — for the small official LSTM, the Padé approximation
+together with f32 precision fully explains the gap from ideal f64, with no unexplained "architectural" residue.
 Standard (Padé) mode is therefore the well-understood production default; HighFidelity buys
 ~10,000× lower activation error, audibly relevant only when paired with oversampling (§5).
 
@@ -106,7 +105,7 @@ Standard (Padé) mode is therefore the well-understood production default; HighF
 
 **Implementation.** `src/math/activations/mod.rs`, `src/math/activations/tanh/production.rs`
 (Standard), `src/math/activations/tanh/high_fidelity.rs` (HighFidelity),
-`src/math/activations/sigmoid.rs`. Full analysis in
+`src/math/activations/sigmoid/production.rs` (Standard), and `src/math/activations/sigmoid/high_fidelity.rs` (HighFidelity). Full analysis in
 [`docs/fastmath-approximations.md`](fastmath-approximations.md).
 
 ---
@@ -149,12 +148,11 @@ The parity test caps drift with a **measured, rate-aware** bound — `≤ 96 kHz
 BossLSTM-1×16 is actually measured on `lstm.nam` (H=3, the tiny official example, 256-sample
 window) — see `test_oracle_lstm()` at `tests/reference_oracle_f64.rs:328`. Post-SQ5, this family
 value was recalibrated to 3.41e-3. The f64-oracle floor of BossLSTM-1×16 specifically, at the
-240k-sample production duration, **has not yet been measured** (SQ2.3 was never executed; the
-`t33_diagnostic_recurrent_drift_lstm_1x16` test at `tests/reference_oracle_f64.rs:792`
-remains unrun).
+240k-sample production duration, has been measured at **2.61e-2 (ESR, -15.8 dB)** (running the
+`t33_diagnostic_recurrent_drift_lstm_1x16` diagnostic test at `tests/reference_oracle_f64.rs:792`).
 
 **Mitigations carried forward.** The three mitigations shipped in Épico β remain active and
-relevant for the residual drift in BossLSTM-1×16:
+relevant for the residual drift in **BossLSTM-2×8**:
 
 - **I6 — HighFidelity activations in LSTM gates** (primary): exp-based polynomial kernels
   (~2.4e-7 error vs ~2.32e-3 Padé) across scalar/AVX2/AVX-512 LSTM gate paths.
@@ -182,7 +180,7 @@ persists at pre-SQ5 levels. WaveNet models remain unaffected by recurrent drift.
 
 **What it is.** NAM models are trained at 48 kHz. When a DAW host runs at a different rate
 (44.1 kHz is the most common), nam-rs converts using a native minimum-phase polyphase FIR sinc
-resampler (`NamResampler`, `src/dsp/resampler.rs`).
+resampler (`NamResampler`, `src/dsp/resampler/mod.rs`).
 
 **Configuration (post-S6).** 256 phases × 64 taps, Kaiser β=12 windowed sinc, minimum-phase
 by default. A linear-phase variant is available as an internal option for offline use.
@@ -205,7 +203,7 @@ breaking audio at non-48 kHz rates.
 
 **User-controllable?** No. A "Resampler Quality: Standard/HQ" parameter was designed but discarded after quantitative benchmarks. The 64-tap HQ configuration is the permanent production default. Benchmarks showed that a 32-tap configuration saves only ~40 ns per 64-sample block (< 0.1% of the total pipeline) while severely degrading passband SNR from $\ge 100\text{ dB}$ to $\sim 24\text{ dB}$. Thus, Standard (32-tap) mode has been rejected to prioritize fidelity and avoid code complexity.
 
-**Implementation.** `src/dsp/resampler.rs`, `src/dsp/sinc_kernel.rs`.
+**Implementation.** `src/dsp/resampler/mod.rs`, `src/dsp/sinc_kernel.rs`.
 
 ---
 
@@ -313,6 +311,16 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ---
 
+## 8. Historical Context (Histórico)
+
+Decisions on fidelity, trade-offs, and optimization are catalogued below:
+
+- **SQ5 PoC (2026-07-06):** Removed the F16C weight compression/decompression feature because the runtime decoding overhead on x86-64-v3 outweighed the L1/L2 cache compression benefits for LSTM topologies, and f16c quantization was shown to introduce unnecessary interoperability drift. Native `f32` weights became the default.
+- **Sprint S6 Resampler Optimization:** Discarded the dual resampler quality settings (Standard/HQ). HQ (64-tap minimum-phase Kaiser sinc) was made permanent since the lighter 32-tap resampler only saved ~40 ns per block while severely degrading the signal-to-noise ratio from ≥100 dB to ~24 dB.
+- **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the HighFidelity activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh.
+
+---
+
 ## See Also
 
 - [`docs/fastmath-approximations.md`](fastmath-approximations.md) — Detailed Padé/minimax analysis, ULP bounds, bench numbers
@@ -320,5 +328,5 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 - [`docs/architecture.md`](architecture.md) — §2.2 (weight compression — ver §8 acima), §5 (resampler + pipeline flow), §5.0O (oversampling)
 - [`docs/research-references.md`](research-references.md) — Scientific references (Kahles 2019, Sato & Smith 2025, etc.)
 - `src/dsp/oversample.rs` — Oversampling engine
-- `src/dsp/resampler.rs` — Polyphase sinc resampler
+- `src/dsp/resampler/mod.rs` — Polyphase sinc resampler
 - `src/math/activations/` — All activation implementations

@@ -366,26 +366,26 @@ Global limit: `MAX_MODEL_BYTES = 256 MiB`. Files larger than this limit are reje
 
 ## 10. Reference Constants
 
-| Constant            | Value                   | Location                            |
-|:------------------- |:----------------------- |:----------------------------------- |
-| `FLAG_HAS_CRC32`    | `0x01` (u8)             | `src/loader/namb.rs:98`             |
-| `MAX_MODEL_BYTES`   | `268_435_456` (256 MiB) | `src/loader/mod.rs:27`              |
-| Header size         | `80` bytes (0x50)       | `std::mem::size_of::<NambHeader>()` |
-| CRC polynomial      | `0xEDB88320`            | `src/loader/namb.rs:80`             |
-| CRC init            | `0xFFFFFFFF`            | `src/loader/namb.rs:75`             |
-| CRC xorout          | `0xFFFFFFFF`            | `src/loader/namb.rs:83`             |
-| Magic LE            | `0x4E414D42`            | `src/loader/namb.rs:104`            |
-| Default sample rate | `48000.0` (f32)         | `src/loader/mod.rs:25`              |
-| Default input dBu   | `12.0` (f32)            | `src/loader/mod.rs:21`              |
-| Default output dBu  | `-6.0` (f32)            | `src/loader/namb_encoder.rs:64`     |
-| Default loudness    | `-18.0` (f32)           | `src/loader/mod.rs:23`              |
+| Constant            | Value                   | Location                             |
+|:------------------- |:----------------------- |:------------------------------------ |
+| `FLAG_HAS_CRC32`    | `0x01` (u8)             | `src/loader/namb/header.rs:54`       |
+| `MAX_MODEL_BYTES`   | `268_435_456` (256 MiB) | `src/loader/loaded_model_pair.rs:15` |
+| Header size         | `80` bytes (0x50)       | `std::mem::size_of::<NambHeader>()`  |
+| CRC polynomial      | `0xEDB88320`            | `src/loader/namb/header.rs:15`       |
+| CRC init            | `0xFFFFFFFF`            | `src/loader/namb/header.rs:24`       |
+| CRC xorout          | `0xFFFFFFFF`            | `src/loader/namb/header.rs:24`       |
+| Magic LE            | `0x4E414D42`            | `src/loader/namb/header.rs:95`       |
+| Default sample rate | `48000.0` (f32)         | `src/loader/loaded_model_pair.rs:13` |
+| Default input dBu   | `12.0` (f32)            | `src/loader/loaded_model_pair.rs:9`  |
+| Default output dBu  | `-6.0` (f32)            | `src/loader/namb_encoder.rs:69`      |
+| Default loudness    | `-18.0` (f32)           | `src/loader/loaded_model_pair.rs:11` |
 
 ## 11. References
 
-- NAMB Decoder: `src/loader/namb.rs`
+- NAMB Decoder: `src/loader/namb/mod.rs`
 - NAMB Encoder: `src/loader/namb_encoder.rs`
 - Layout Definitions: `src/loader/nam_json/data.rs` (`WeightsLayout`)
-- LSTM Decoder: `src/loader/dispatcher/lstm.rs`
+- LSTM Decoder: `src/loader/dispatcher/lstm/mod.rs`
 - WaveNet Decoder: `src/loader/dispatcher/wavenet/mod.rs`
 - Error Mapping: `src/loader/mod.rs`
 - Error Codes: `src/common/diagnostics/error_codes.rs` (`NamErrorCode`)

@@ -41,8 +41,7 @@
 //!   vs Radix-2 para N=4,16,64,256,1024; roundtrip; impulso; f64).
 //!   Correções aplicadas: bit-reversal em base-4 (ao invés de base-2) e
 //!   swap das fórmulas de X₁/X₃ no butterfly inverso.
-//! * **Benchmarks**: `cargo bench --bench fft_radix4_bench` — resultados em
-//!   [`TODO-sprints.md`](file:///home/fabio/nam-rs/TODO-sprints.md), Tarefa A9.
+//! * **Benchmarks**: `cargo bench --bench fft_radix4_bench`
 //! * **Conclusão**: 2026-06-25. Radix-4, Stockham e Split-Radix não justificam
 //!   a complexidade adicional frente ao Radix-2 SIMD.
 //!

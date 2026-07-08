@@ -5,10 +5,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 # Research References — Annotated Technical Bibliography
 
 Annotated catalog of the scientific and normative literature that underpins the architectural,
-implementation, and quality-assurance decisions of the nam-rs project. Each entry includes a
-complete citation, a relevance annotation, and bidirectional traceability linking it to
-findings in [`TODO-findings.md`](../TODO-findings.md), sprints in
-[`TODO-sprints.md`](../TODO-sprints.md), and source files.
+implementation, and quality-assurance decisions of the nam-rs project.
 
 ---
 
@@ -30,7 +27,7 @@ and high-fidelity tanh (exact, smoother).
 | Traceability | Reference                                                                                |
 |:------------ |:---------------------------------------------------------------------------------------- |
 | Finding      | P-1 (aliasing de ativações não-lineares)                                                 |
-| Files        | `src/math/activations/`, `src/dsp/pipeline/stages/inference.rs`, `src/dsp/oversampling/` |
+| Files        | `src/math/activations/`, `src/dsp/pipeline/stages/inference.rs`, `src/dsp/oversample.rs` |
 
 ---
 
@@ -48,7 +45,7 @@ potential future enhancement for shipped `.nam` models.
 | Traceability | Reference                                |
 |:------------ |:---------------------------------------- |
 | Finding      | P-1 (aliasing de ativações não-lineares) |
-| Files        | `src/dsp/oversampling/`                  |
+| Files        | `src/dsp/oversample.rs`                  |
 
 ---
 
@@ -66,7 +63,7 @@ paper. Also referenced in the resampler redesign for the HQ polyphase bank.
 | Traceability | Reference                                                                       |
 |:------------ |:------------------------------------------------------------------------------- |
 | Finding      | P-1 (filtros de oversampling)                                                   |
-| Files        | `src/dsp/oversampling/`, `src/dsp/sinc_kernel.rs`, `docs/architecture.md` §5.0O |
+| Files        | `src/dsp/oversample.rs`, `src/dsp/sinc_kernel.rs`, `docs/architecture.md` §5.0O |
 
 ---
 
@@ -258,10 +255,10 @@ that measures THD, THD+N, IMD, and frequency response per model SKU. Enables ver
 spectral fingerprinting — the mechanism that converts "does it sound right?" into automated,
 reproducible CI gates.
 
-| Traceability | Reference                                                         |
-|:------------ |:----------------------------------------------------------------- |
-| Finding      | P-3 (suíte de fidelidade espectral — FR, THD por ordem)           |
-| Files        | `tests/spectral_fidelity.rs`, `src/testing/`, `src/math/dsp/fft/` |
+| Traceability | Reference                                                           |
+|:------------ |:------------------------------------------------------------------- |
+| Finding      | P-3 (suíte de fidelidade espectral — FR, THD por ordem)             |
+| Files        | `tests/spectral_fidelity.rs`, `src/testing/`, `src/math/dsp/fft.rs` |
 
 ---
 
@@ -330,5 +327,3 @@ European Broadcasting Union, 2016.
 | P-8 (matriz cross-ISA)                       | — (engenharia interna)                                 |
 | F-2 (ponto cego de fidelidade)               | R9, R13                                                |
 | I5 (oversampling LSTM — timbre, β3.1)        | R7, R7b                                                |
-
-*Cross-referenced with findings in [`TODO-findings.md`](../TODO-findings.md) and sprints in [`TODO-sprints.md`](../TODO-sprints.md).*

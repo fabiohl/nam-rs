@@ -805,8 +805,8 @@ show up as nonzero numbers in the tables throughout this document, but they are 
 
 ## See Also
 
-- [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent drift) pairs with §2.5/§2.7 here
-- [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md) — metrics and gate-calibration policy
-- [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md) / [TODO-sprints.md](file:///home/fabio/nam-rs/TODO-sprints.md) — live status of the open A2 investigation (§4.4) and planned sprints for structural audit findings
-- [tests/cpp_parity.rs](file:///home/fabio/nam-rs/tests/cpp_parity.rs) — live cross-validation against the C++ `render` tool
-- [tests/reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/reference_oracle_f64.rs) + [validate_oracle_f64.py](file:///home/fabio/nam-rs/tests/fixtures/scripts/validate_oracle_f64.py) — f64 oracle and independent NumPy anchor (decomposition tools, §1.2)
+- [audio_fidelity_map.md](docs/audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent drift) pairs with §2.5/§2.7 here
+- [perceptual_validation.md](docs/perceptual_validation.md) — metrics and gate-calibration policy
+- [TODO-findings.md](TODO-findings.md) / [TODO-sprints.md](TODO-sprints.md) — live status of the open A2 investigation (§4.4) and planned sprints for structural audit findings
+- [tests/cpp_parity.rs](tests/cpp_parity.rs) — live cross-validation against the C++ `render` tool
+- [tests/reference_oracle_f64.rs](tests/reference_oracle_f64.rs) + [validate_oracle_f64.py](tests/fixtures/scripts/validate_oracle_f64.py) — f64 oracle and independent NumPy anchor (decomposition tools, §1.2)

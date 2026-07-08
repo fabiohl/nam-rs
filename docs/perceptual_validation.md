@@ -900,9 +900,9 @@ numerical noise, not training error.
 ## Gate Calibration Policy
 
 This policy governs how every threshold and gate in the project is derived, maintained,
-and reviewed. It formalizes the methodology from [AC-5](file:///home/fabio/nam-rs/TODO-findings.md)
+and reviewed. It formalizes the methodology from [AC-5](TODO-findings.md)
 ("Methodology 'calibrate until it passes' inverts the purpose of the test") and
-[AC-9](file:///home/fabio/nam-rs/TODO-findings.md) ("The 'calibrate until it passes +
+[AC-9](TODO-findings.md) ("The 'calibrate until it passes +
 declare done' pattern recurred at the oracle level") of the project's correctness
 audit. All gates in `tests/threshold_calibration.rs`, `tests/cpp_parity.rs`,
 `tests/reference_oracle_f64.rs`, and `tests/common/validation.rs` must comply.

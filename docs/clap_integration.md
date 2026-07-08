@@ -5,8 +5,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # CLAP Integration & GUI Architecture
 
-Architecture, real-time safety model, and graphical interface of the NAM-rs CLAP
-plugin. This document supersedes the former `gui-architecture.md`.
+Architecture, real-time safety model, and graphical interface of the NAM-rs CLAP plugin.
 
 ## 1. Thread Model
 
@@ -73,19 +72,19 @@ correct model in a project.
 Registered in `declare_extensions()` (`src/clap/plugin/mod.rs`) via
 `clack-extensions`:
 
-| Extension                      | File                                | Purpose                                                                                                                                         |
-|:------------------------------ |:----------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | `extensions/audio_ports.rs`         | Mono in/out ports, in-place pair enabled.                                                                                                       |
-| `clap_plugin_params`           | `extensions/params/`                | Parameter mapping/automation with gesture + `flush()` support.                                                                                  |
-| `clap_plugin_state`            | `extensions/state.rs`               | Persist parameters + model path in the DAW project.                                                                                             |
-| `clap_plugin_state_context`    | `extensions/state_context.rs`       | Distinguish preset save (portable, no abs path) vs project/duplicate.                                                                           |
-| `clap_plugin_latency`          | `extensions/latency.rs`             | Dynamic latency reporting (resampler + oversample + cabsim).                                                                                    |
-| `clap_plugin_track_info`       | `extensions/track_info.rs`          | Host track color → GUI accent color.                                                                                                            |
-| `clap_plugin_remote_controls`  | `extensions/remote_controls.rs`     | "Main" / "Gate" control pages for HW controllers / Device Panel.                                                                                |
-| `clap_plugin_param_indication` | `extensions/param_indication.rs`    | GUI feedback for mapped/automated/overridden parameters.                                                                                        |
-| `clap_plugin_preset_load`      | `extensions/preset_load.rs`         | Load `.nam`/`.namb` from the host preset browser.                                                                                               |
-| `clap_plugin_render`           | `extensions/render.rs`              | Offline mode forces `AdaptiveCompute::Off` + HighFidelity (max quality). `has_hard_realtime_requirement = false` (NAM is deterministic/causal). |
-| `clap_plugin_gui`              | `extensions/gui.rs` *(clap-plugin)* | Native `egui` GUI via `baseview`, X11/XWayland (`CLAP_WINDOW_API_X11`).                                                                         |
+| Extension                      | File                                         | Purpose                                                                                                                                         |
+|:------------------------------ |:-------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`         | Mono in/out ports, in-place pair enabled.                                                                                                       |
+| `clap_plugin_params`           | `src/clap/extensions/params/`                | Parameter mapping/automation with gesture + `flush()` support.                                                                                  |
+| `clap_plugin_state`            | `src/clap/extensions/state.rs`               | Persist parameters + model path in the DAW project.                                                                                             |
+| `clap_plugin_state_context`    | `src/clap/extensions/state_context.rs`       | Distinguish preset save (portable, no abs path) vs project/duplicate.                                                                           |
+| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`             | Dynamic latency reporting (resampler + oversample + cabsim).                                                                                    |
+| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`          | Host track color → GUI accent color.                                                                                                            |
+| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`     | "Main" / "Gate" control pages for HW controllers / Device Panel.                                                                                |
+| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`    | GUI feedback for mapped/automated/overridden parameters.                                                                                        |
+| `clap_plugin_preset_load`      | `src/clap/extensions/preset_load.rs`         | Load `.nam`/`.namb` from the host preset browser.                                                                                               |
+| `clap_plugin_render`           | `src/clap/extensions/render.rs`              | Offline mode forces `AdaptiveCompute::Off` + HighFidelity (max quality). `has_hard_realtime_requirement = false` (NAM is deterministic/causal). |
+| `clap_plugin_gui`              | `src/clap/extensions/gui.rs` *(clap-plugin)* | Native `egui` GUI via `baseview`, X11/XWayland (`CLAP_WINDOW_API_X11`).                                                                         |
 
 A separate **Preset Discovery Factory** (`src/clap/factory/preset_discovery.rs`)
 indexes `.nam`/`.namb` files from `~/.nam/models` so hosts can list them as
@@ -184,15 +183,15 @@ return to realtime.
 ```text
 ┌────────────────────────────────────────────┐
 │            NAM-rs GUI (egui v0.34)         │
-│         draw_ui() — agnostic UI logic       │
+│         draw_ui() — agnostic UI logic      │
 ├────────────────────────────────────────────┤
-│     NamPluginWindow (WindowHandler)         │
-│   baseview events → egui::RawInput          │
-│   egui_glow::Painter + glow v0.17           │
+│     NamPluginWindow (WindowHandler)        │
+│   baseview events → egui::RawInput         │
+│   egui_glow::Painter + glow v0.17          │
 ├────────────────────────────────────────────┤
-│             Backend X11 (baseview)          │
-│   raw-window-handle 0.5 → 0.6 translation   │
-│        Pure X11 / native XWayland           │
+│             Backend X11 (baseview)         │
+│   raw-window-handle 0.5 → 0.6 translation  │
+│        Pure X11 / native XWayland          │
 └────────────────────────────────────────────┘
 ```
 
@@ -207,18 +206,18 @@ Only `CLAP_WINDOW_API_X11` is declared. Native Wayland embedding is planned.
 
 ### 7.2 Module Map
 
-- `gui/mod.rs` — entryway; `GUI_WIDTH=600`/`GUI_HEIGHT=275`, `extend_host_lifetime`.
-- `gui/window/state.rs` — `NamPluginWindow`: GL context init, `egui_glow` painter,
+- `src/clap/gui/mod.rs` — entryway; `GUI_WIDTH=600`/`GUI_HEIGHT=275`, `extend_host_lifetime`.
+- `src/clap/gui/window/state.rs` — `NamPluginWindow`: GL context init, `egui_glow` painter,
   shader compile, theme, teardown. `safe_shared()` guards `alive_fence`.
-- `gui/window/handler.rs` — `WindowHandler`: `on_frame`/`on_event`, event →
+- `src/clap/gui/window/handler.rs` — `WindowHandler`: `on_frame`/`on_event`, event →
   `egui::RawInput`, drag-and-drop, conditional paint loop.
-- `gui/window/shaders.rs` — VU GLSL (vertex + fragment).
-- `gui/window/{drag_drop,input_map}.rs` — model-file validation, key/mouse mapping.
-- `gui/ui/mod.rs` — 5-zone layout (`draw_ui`).
-- `gui/ui/zones/` — `identity` (Z1), `controls` (Z2), `meters` (Z3), `bypass_zone` (Z4).
-- `gui/ui/status_bar/` (Z5) — `orchestrator`, `telemetry`, `metadata`.
-- `gui/ui/meter/` — `orchestrator`, `glow` (GPU), `cpu` (fallback), `readout`.
-- `gui/ui/{knob,focus,colors,simd,vsep,bypass,state}.rs` — widgets, a11y, theme.
+- `src/clap/gui/window/shaders.rs` — VU GLSL (vertex + fragment).
+- `src/clap/gui/window/{drag_drop,input_map}.rs` — model-file validation, key/mouse mapping.
+- `src/clap/gui/ui/mod.rs` — 5-zone layout (`draw_ui`).
+- `src/clap/gui/ui/zones/` — `identity` (Z1), `controls` (Z2), `meters` (Z3), `bypass_zone` (Z4).
+- `src/clap/gui/ui/status_bar/` (Z5) — `orchestrator`, `telemetry`, `metadata`.
+- `src/clap/gui/ui/meter/` — `orchestrator`, `glow` (GPU), `cpu` (fallback), `readout`.
+- `src/clap/gui/ui/{knob,focus,colors,simd,vsep,bypass,state}.rs` — widgets, a11y, theme.
 
 ### 7.3 Frame Lifecycle & Idle Skip
 

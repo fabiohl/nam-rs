@@ -12,9 +12,8 @@ The NAM-rs project uses **Criterion.rs** as its official performance benchmarkin
 > nam-rs: how to run/interpret benches, and the full rationale, workflow, and
 > troubleshooting for the performance regression gate (`utils/tests-performance-regression.sh`).
 > The functional/correctness `cargo test` suites (`utils/tests-quick.sh`, `utils/tests-long.sh`)
-> and their feature/phase architecture are documented separately in
-> [testing.md](testing.md); that document only cross-references benchmarks, it does not
-> duplicate this one.
+> and their feature/phase architecture are documented separately in [testing.md];
+> that document only cross-references benchmarks, it does not duplicate this one.
 
 ## How to Run the Benchmarks
 
@@ -29,7 +28,7 @@ cargo bench --bench inference_bench
 To evaluate performance under constant pressure and identify jitter caused by cache misses or TLB misses in large blocks, the project offers a long-duration benchmarking suite (30s+ per function):
 
 ```bash
-cargo bench --features long_bench
+cargo bench --features long_bench --bench long_inference_bench
 ```
 
 Or via the recommended manual trigger script:
@@ -292,7 +291,7 @@ The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callb
 ### Running Gate_FSM bench
 
 ```sh
-cargo bench --bench inference_bench -- "Gate_FSM"
+cargo bench --bench dsp_bench -- "Gate_FSM"
 ```
 
 ## IR Cabsim Convolution
@@ -331,14 +330,14 @@ IR lengths correspond to realistic cabinet impulse response durations:
 
 ```sh
 # Standard benchmarks (Short, Medium, Long IR at 64-sample blocks)
-cargo bench --bench inference_bench -- "Cabsim"
+cargo bench --bench cabsim_bench -- "Cabsim"
 
 # 256-sample block variant
-cargo bench --bench inference_bench -- "Cabsim_MediumIR_2048_256"
+cargo bench --bench cabsim_bench -- "Cabsim_MediumIR_2048_256"
 
 # Construction cost benchmarks
-cargo bench --bench inference_bench -- "Cabsim_Engine_Construction"
-``
+cargo bench --bench cabsim_bench -- "Cabsim_Engine_Construction"
+```
 
 ## Kahan Per-Tap Cost in Conv1d (Removed)
 
@@ -427,6 +426,7 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
    (K ≤ 3 taps)" como caso de não-uso.
 
 The removal was applied to:
+
 * `src/models/wavenet/conv1d.rs`: `kahan_add` → `+=`, compensação removida
 * `src/models/wavenet/conv1d_dual.rs`: idem
 * `src/models/wavenet/conv_input.rs`: `store_kahan_4_accums` renomeada para `store_4_accums`
@@ -441,7 +441,7 @@ cargo bench --bench kahan_conv1d_bench
 ## Long-duration soak (35s+ measurement, 4096-sample blocks)
 
 ```sh
-cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
+cargo bench --features long_bench --bench long_inference_bench -- "Cabsim_LongRun"
 ```
 
 ## RT-Safety on Adaptive Degradation Transition
