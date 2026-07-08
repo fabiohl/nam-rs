@@ -218,7 +218,7 @@ run_golden_vectors() {
     echo -e "\n${BLUE}${BOLD}-> Executando golden_vectors...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test golden_vectors -- --nocapture > "$log" 2>&1 || true
+    cargo test --release --test models golden_vectors -- --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     FIDELITY_DURATION_S=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
     local line_count
@@ -239,7 +239,7 @@ run_reference_oracle() {
     # that table, which was confirmed (2026-07-05) to corrupt parsed entries.
     # Serializing here removes the interleaving at the source; the awk-side
     # row-shape validation in parse_oracle_f64 is kept as defense-in-depth.
-    cargo test --release --test reference_oracle_f64 -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    cargo test --release --test parity reference_oracle_f64 -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -254,7 +254,7 @@ run_isa_parity() {
     echo -e "${BLUE}${BOLD}-> Executando isa_parity...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test isa_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    cargo test --release --test parity isa_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -269,7 +269,7 @@ run_spectral_fidelity() {
     echo -e "${BLUE}${BOLD}-> Executando spectral_fidelity...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test spectral_fidelity -- --nocapture > "$log" 2>&1 || true
+    cargo test --release --test models spectral_fidelity -- --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -284,7 +284,7 @@ run_activation_precision() {
     echo -e "${BLUE}${BOLD}-> Executando lstm_activation_precision...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test lstm_activation_precision -- --nocapture > "$log" 2>&1 || true
+    cargo test --release --test models lstm_activation_precision -- --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -388,7 +388,7 @@ parse_golden_vectors() {
     sorted_keys=$(for k in "${!ESR_NAMCORE[@]}"; do echo "$k"; done | sort -u)
     set -u
     while IFS= read -r key; do
-        MODEL_ORDER+=("$key")
+        [ -n "$key" ] && MODEL_ORDER+=("$key")
     done <<< "$sorted_keys"
 }
 
