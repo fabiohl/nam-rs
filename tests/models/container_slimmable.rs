@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  ContainerModel slimmable switching and crossfade continuity tests.
-// 
+//
 //  Validates RT-safety of `ContainerModel::set_slimmable_size()` — no NaN/Inf,
 //  no panic, finite output across repeated submodel switches.
 //  Also verifies crossfade free of audible clicks by comparing max relative

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Property-Based Tests for critical mathematical intrinsics (AVX2 / AVX-512).
-// 
+//
 //  # Goal
 //  Sweeps millions of random boundary values over Hyperbolic Tangent and Sigmoid, ensuring:
 //  1. Absence of computational failures (NaN / Inf).

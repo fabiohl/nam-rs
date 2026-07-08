@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-use super::common;
 
 //  Dedicated concurrency stress tests with real OS threads.
-// 
+//
 //  These tests exercise the lock-free SPSC/GC pipeline, model/IR hot-swap,
 //  and parameter smoothing under deliberate thread contention.
-// 
+//
 //  **They must run without `--test-threads=1`** so that multiple test
 //  threads (plus internal spawns) exercise the kernel scheduler.  The
 //  heavy variants are marked `#[ignore]` for the long suite.

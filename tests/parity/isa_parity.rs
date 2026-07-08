@@ -2,35 +2,35 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Cross-ISA Determinism Matrix — Task 2.7 (P-8).
-// 
+//
 //  Runs golden vectors through each supported ISA path (AVX2 as reference,
 //  AVX-512, and AVX-512 VNNI+BF16) and asserts end-to-end model output parity.
-// 
+//
 //  # Rationale
-// 
+//
 //  The `dispatch_simd!` macro selects the "best" available ISA at runtime.
 //  This suite overrides the dispatch to force a specific ISA path and compares
 //  the full model output against the AVX2 reference, quantifying the SIMD-vs-
 //  reference error floor for every model architecture.
-// 
+//
 //  Kernel-level scalar-vs-SIMD parity is already covered by unit tests
 //  (`gemv_test.rs`, `dot_4x_test.rs`, `dot_8x_test.rs`, `dot_16x_test.rs`,
 //  `proptest_math.rs`). This suite adds the missing end-to-end model-level
 //  cross-ISA coverage.
-// 
+//
 //  # Running
-// 
+//
 //  These tests manipulate a process-wide ISA override. They must run serially:
-// 
+//
 //  ```sh
 //  cargo test --release --test isa_parity -- --test-threads=1 --nocapture
 //  ```
-// 
+//
 //  Tests requiring AVX-512 or VNNI+BF16 hardware are `#[ignore]` and only
 //  execute in environments that support those ISA levels.
-// 
+//
 //  # ISA Coverage Map
-// 
+//
 //  | ISA Pair                   | CI Coverage | Notes                        |
 //  | -------------------------- | ----------- | ---------------------------- |
 //  | AVX2 (ref) → AVX2          | ✓ always    | Self-consistency, ESR = 0    |

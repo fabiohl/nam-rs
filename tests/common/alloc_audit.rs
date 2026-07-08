@@ -49,6 +49,9 @@ fn set_local_alloc_count(val: usize) {
 #[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 pub struct CountingAllocator;
 
+#[cfg(all(feature = "clap-plugin", feature = "heap-audit"))]
+pub use nam_rs::common::alloc_audit::CountingAllocator;
+
 #[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

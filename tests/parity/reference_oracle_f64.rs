@@ -2,18 +2,18 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Reference oracle f64 — ESR measurement and source decomposition.
-// 
+//
 //  Runs the f64 oracle against production f32 output for all model families,
 //  reporting the absolute error floor and isolating contributions from
 //  weight quantization, activation approximation, and accumulation precision.
-// 
+//
 //  ## T5.3 — External anchoring
-// 
+//
 //  The Rust f64 oracle is validated against a PyTorch/NumPy f64 reference
 //  (pre-generated anchors in `tests/fixtures/f64_anchors/`). The oracle
 //  passes with ESR < 1e-12 for all three model families, proving it is
 //  a correct ground-truth reference.
-// 
+//
 //  ## Caveat
 //  Production models use f16c-quantized weights (LSTM, WaveNet DenseLayers).
 //  The oracle uses full f32→f64 precision weights. The ESR(f32 vs f64) thus

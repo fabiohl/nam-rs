@@ -2,10 +2,8 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Integration Test for WaveNetA2 Heap-Audit Coverage (RT-Safety).
-// 
+//
 //  Validates zero heap allocations on the A2 hot-path using CountingAllocator.
-
-use super::common;
 
 #[cfg(feature = "heap-audit")]
 mod audit_tests {

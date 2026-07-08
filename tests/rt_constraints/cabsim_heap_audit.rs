@@ -2,11 +2,9 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Integration Test for IR Cabsim Heap-Audit Coverage (RT-Safety).
-// 
+//
 //  Validates zero heap allocations on the UPOLS convolution hot-path
 //  using CountingAllocator.
-
-use super::common;
 
 #[cfg(feature = "heap-audit")]
 mod audit_tests {

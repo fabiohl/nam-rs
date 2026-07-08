@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Integration tests for optional prewarm control via `LoadOptions`.
-// 
+//
 //  Validates that:
 //  1. `prewarm: Some(false)` skips the initial prewarm during loading.
 //  2. `reset()` with `prewarm_on_reset == false` does not execute prewarm.

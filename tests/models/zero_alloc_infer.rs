@@ -2,12 +2,12 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Zero-allocation hot path verification tests using the CountingAllocator.
-// 
+//
 //  These tests prove that the inference hot path (`process()`) and the full DSP
 //  pipeline (`capture_dsp_pipeline()`) perform zero heap allocations during
 //  real-time audio processing. The `CountingAllocator` tracks `malloc` calls
 //  per-thread via thread-local storage (TLS) and a `TrackingGuard` RAII gate.
-// 
+//
 //  When the `heap-audit` + `clap-plugin` features are active, the guard delegates
 //  to `nam_rs::common::alloc_audit::TrackingGuard`. Otherwise, it uses the local
 //  `CountingAllocator` global allocator.
@@ -19,10 +19,8 @@ use nam_rs::loader::nam_json::{WavenetTopologyResult, get_wavenet_topology, pars
 use nam_rs::models::NamModel;
 use std::fs;
 
-use super::common;
-#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
-use common::alloc_audit::{TrackingGuard, get_alloc_count};
-use common::*;
+use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
+use crate::common::*;
 
 // =============================================================================
 // Zero-Allocation Hot Path Tests

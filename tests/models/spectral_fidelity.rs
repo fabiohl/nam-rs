@@ -2,19 +2,19 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Spectral fidelity integration tests — ASR, THD, FR, IMD baselines per SKU.
-// 
+//
 //  ## Test structure
-// 
+//
 //  - **Fast validation** (non-model): hard-clip, linear gain, ASR curve sanity.
 //  - **Baseline measurement** (`#[ignore]`): one test per representative SKU,
 //    asserts ASR/THD/FR/IMD measurements against a committed JSON fixture.
 //  - **Fixture generation** (`generate_spectral_fidelity_baseline`): runs all
 //    measurements and prints the JSON baseline. Run manually when models change.
-// 
+//
 //  The committed fixture lives at `tests/fixtures/spectral_fidelity_baseline.json`.
-// 
+//
 //  ## Measured quantities per SKU
-// 
+//
 //  | Metric       | Method               | Input                          |
 //  |-------------|----------------------|--------------------------------|
 //  | ASR typical | compute_asr          | Musical pitches, gain=1.0      |

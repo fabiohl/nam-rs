@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  End-to-end SPSC pipeline, NAMB roundtrip, and rapid hot-swap tests.
-// 
+//
 //  Validates the CLI→SPSC→DSP chain: model loading via SPSC channel,
 //  NAMB binary parser → dispatcher → inference roundtrip, and rapid
 //  sequential model hot-swap via SPSC with ownership integrity.

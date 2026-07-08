@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-use super::common;
-
 
 //  PipeWire Pipeline Integration (End-to-End) Test
-// 
+//
 //  This test ensures the correct initialization of the PipeWire Core context.
 //  Prerequisite: a running PipeWire daemon (session or system). Without it the test is skipped
 //  by the `#[ignore]` attribute; `utils/tests-long.sh` auto-detects the daemon via `pw-cli info`.

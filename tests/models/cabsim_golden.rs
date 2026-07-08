@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Golden convolution tests for the IR Cabsim engine.
-// 
+//
 //  Verifies that the UPOLS convolution engine produces deterministic,
 //  bit-identical output for fixed synthetic IRs and input signals.
 //  The direct convolution reference serves as the golden baseline.

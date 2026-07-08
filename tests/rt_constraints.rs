@@ -5,7 +5,11 @@ mod common;
 
 use common::alloc_audit::CountingAllocator;
 
-#[cfg_attr(not(all(feature = "clap-plugin", feature = "heap-audit")), global_allocator)]
+#[cfg_attr(
+    not(all(feature = "clap-plugin", feature = "heap-audit")),
+    global_allocator
+)]
+#[allow(dead_code)]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 #[path = "rt_constraints/a2_heap_audit.rs"]

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Validation test for the `.namb` v2 format (Pre-transposed Weights).
-// 
+//
 //  Verifies that v2 export and corresponding loading maintain
 //  absolute numerical parity with JSON loading (runtime transposition).
 

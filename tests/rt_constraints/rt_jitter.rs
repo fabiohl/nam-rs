@@ -2,23 +2,23 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  RT jitter & xrun stress test — measures tail latency under concurrent CPU load.
-// 
+//
 //  Runs the DSP processing loop while background stress threads consume CPU,
 //  simulating a loaded RT system. Reports p50/p99/p99.9/exact_max latency
 //  and counts deadline violations.
-// 
+//
 //  ## Running
-// 
+//
 //  ```sh
 //  cargo test --release --test rt_jitter -- --ignored --nocapture
 //  ```
-// 
+//
 //  ## Stress methodology
-// 
+//
 //  Spawns N background threads that spin on a `num_cpus::get()` loop doing
 //  floating-point work (no I/O, no allocations), creating CPU contention.
 //  The DSP thread runs concurrently and records latency via `LatencyHistogram`.
-// 
+//
 //  Marked `#[ignore]` — runs during `tests-long.sh` Phase 6.
 
 use super::common;

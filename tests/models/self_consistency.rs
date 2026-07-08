@@ -2,24 +2,24 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Rust self-consistency (determinism) tests — universal gate.
-// 
+//
 //  # Objective
-// 
+//
 //  Validate that the Rust inference engine produces bitwise-identical results
 //  across independent runs with the same model weights and inputs. This is the
 //  **determinism invariant**: every architecture MUST produce identical output
 //  from two independently-built instances processing the same signal.
-// 
+//
 //  # Pattern
-// 
+//
 //  Each test loads the same `.nam` model twice, builds two independent
 //  `StaticModel` instances, runs prewarm, processes the same 440 Hz sine
 //  test signal through both, and asserts that the MSE between the two output
 //  buffers is exactly 0.0 (bitwise-identical). This generalizes the
 //  `test_cabsim_bitwise_determinism` pattern to every supported architecture.
-// 
+//
 //  # Coverage
-// 
+//
 //  | Architecture            | Models tested                                      |
 //  | ----------------------- | -------------------------------------------------- |
 //  | WaveNet A1              | Standard (CH=16), Feather (CH=8), Nano (CH=4),     |
@@ -31,7 +31,7 @@
 //  | LSTM                    | 1×16, 2×8, Official                                |
 //  | Linear                  | linear_test (RF=16)                                |
 //  | CabSim (UPOLS)          | `tests/cabsim_golden.rs::test_cabsim_bitwise_determinism` |
-// 
+//
 //  These tests do not depend on C++ golden vectors.
 
 use std::fs;

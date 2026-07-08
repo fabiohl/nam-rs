@@ -2,13 +2,11 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Pipeline Integration Soak Test (Numerical, Telemetry, and RSS Stability).
-// 
+//
 //  Evaluates the full DSP pipeline context (Capture -> DSP -> Bridge -> Playback)
 //  under prolonged load of 10M frames with alternating white noise and silence.
-// 
+//
 //  Run manually via: `cargo test --release --features standalone --test pipeline_soak -- --ignored --nocapture`
-
-use super::common;
 
 #[cfg(feature = "standalone")]
 mod tests {
@@ -30,7 +28,7 @@ mod tests {
     use nam_rs::loader::nam_json::parse_nam_json;
     use nam_rs::models::NamModel;
 
-    use super::common::model_path;
+    use crate::common::model_path;
 
     /// Simple deterministic LCG PRNG for reproducible white noise.
     struct SimplePcg {

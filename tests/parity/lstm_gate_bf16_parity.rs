@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-use super::common;
-
 use nam_rs::math::common::gemv_4gate_bf16_fallback;
 use nam_rs::math::gemm::gemv_4gate_bf16_avx512;
 use proptest::prelude::*;

@@ -3,8 +3,6 @@
 
 //  Integration Test for NamResampler Heap-Audit Coverage.
 
-use super::common;
-
 #[cfg(feature = "heap-audit")]
 mod audit_tests {
     use nam_rs::dsp::resampler::NamResampler;

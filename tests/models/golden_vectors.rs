@@ -2,17 +2,17 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Golden Vector Cross-Reference Tests.
-// 
+//
 //  Compares NAM-rs Rust engine output against C++ reference golden vectors
 //  (NeuralAmpModelerCore — Steven Atkinson) recorded in `tests/fixtures/*.bin`.
-// 
+//
 //  ## `.golden.bin` Format
 //  ```text
 //  [u32 num_samples LE]
 //  [f32×N input samples LE]       — stress signal (2048 samples @ 48 kHz)
 //  [f32×N expected output LE]     — output from C++ NeuralAmpModelerCore (render tool)
 //  ```
-// 
+//
 //  ## Regenerating golden vectors
 //  Run `tests/fixtures/golden_gen_build.sh` with NeuralAmpModelerCore.
 //  The resulting `.golden.bin` files should be committed in `tests/fixtures/`.

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-use super::common;
 
 //  Property-Based Tests for the Adaptive Compute FSM.
-// 
+//
 //  Evaluates the behavior of the adaptive degradation hysteresis FSM under
 //  adversarial input sequences, verifying transitions, invariants, and telemetry
 //  consistency (RtStatusFlags).

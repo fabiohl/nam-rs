@@ -2,11 +2,11 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Numerical Stability Suite (Soak Test) for NAM-rs.
-// 
+//
 //  These tests are designed to run for millions of iterations, checking
 //  numerical drift, filter stability, absence of NaNs/Infs, and circular
 //  buffer integrity under long-duration execution.
-// 
+//
 //  Execution: `cargo test --release -- --ignored --nocapture`
 
 use nam_rs::common::params::AdaptiveComputeMode;
@@ -24,8 +24,6 @@ use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2, a2_weight_count};
 use nam_rs::models::lstm::*;
 
 use super::common;
-#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
-use common::alloc_audit::CountingAllocator;
 use common::alloc_audit::{TrackingGuard, get_alloc_count};
 use common::io_helpers::model_path;
 use common::model_builders::build_soak_wavenet;

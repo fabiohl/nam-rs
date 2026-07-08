@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Stress tests for WaveNet prewarm backfill underflow prevention (S4.T01).
-// 
+//
 //  Validates that models with large receptive fields (RF up to 2048) execute
 //  `prewarm()` without panics, segfaults, or underflow warnings in the backfill path.
-// 
+//
 //  ## Test Scenarios
 //  1. Custom static model with RF=2046 (10 layers, K=3, dilations up to 512).
 //  2. Deterministic output equality across two identically-constructed models with large RF.

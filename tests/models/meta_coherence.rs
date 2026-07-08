@@ -2,12 +2,12 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Meta-tests that enforce catalog↔test coherence.
-// 
+//
 //  Ensures every `.nam` model referenced by an `#[ignore]` test
 //  (golden-missing reason) is registered in the canonical CATALOG
 //  array in `golden_gen_build.sh`. Prevents silent drift where a
 //  model is added to tests but forgotten in the golden generator.
-// 
+//
 //  Part of Tarefa C.1.4 (Épico C — Sprint C.1).
 
 use std::collections::HashSet;

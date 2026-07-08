@@ -3,20 +3,20 @@
 
 //  RT deadline gate — asserts that all SKUs meet the 1.33 ms processing
 //  deadline for a 64-sample block at 48 kHz.
-// 
+//
 //  Uses `LatencyHistogram` to measure per-block processing time and enforces
 //  an `assert!` on p99 latency. This gate catches performance regressions
 //  before they cause xruns in production.
-// 
+//
 //  ## Running
-// 
+//
 //  ```sh
 //  cargo test --release --test rt_deadline -- --nocapture
 //  taskset -c 0 cargo test --release --test rt_deadline -- --nocapture
 //  ```
-// 
+//
 //  ## Constants
-// 
+//
 //  - `RT_DEADLINE_US`: 1330 (1.33 ms @ 48 kHz, 64-sample block)
 //  - `WARMUP_BLOCKS`: 256 (stabilize CPU caches and branch predictor)
 //  - `MEASURE_BLOCKS`: 2048 (sufficient for stable p99)

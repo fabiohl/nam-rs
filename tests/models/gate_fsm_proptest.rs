@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Property-Based Tests for the Noise Gate FSM.
-// 
+//
 //  Evaluates the behavior of the gate's Finite State Machine under adversarial
 //  input sequences, verifying transitions, boundaries, and invariants.
 

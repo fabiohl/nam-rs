@@ -2,31 +2,31 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Meta-tests that enforce threshold calibration discipline.
-// 
+//
 //  Ensures every model with a committed golden `.bin` fixture has a
 //  calibrated entry in `get_calibrated_threshold()` — never silently
 //  falling back to heuristic thresholds.
-// 
+//
 //  Part of T3.3: formalizing the calibration infrastructure.
-// 
+//
 //  All meta-tests implement the Gate Calibration Policy from
 //  docs/perceptual_validation.md (Rules 1–5): validated reference,
 //  below placebo, provenance comment, link to independent measurement,
 //  sanity-check Σ sources ≈ total.
-// 
+//
 //  ## F10 Investigation (E2.1 — 2026-06-24)
-// 
+//
 //  Fidelity Margin ≤ 0.5 dB in `live_cross_validation_lstm_dyn_1x7 (v2)`
 //  and `live_cross_validation_linear (v2)` was investigated via `git bisect`
 //  between current HEAD and pre-Épico-B commit `ff8a500` ("épico a concluido").
-// 
+//
 //  **Result: PRE-EXISTENT.** The Fidelity Margin values (0.5, 0.4, -0.9, -0.8 dB)
 //  are bit-identical between commits. They originate from golden_vectors tests
 //  (WaveNet A2-Full/Lite and LSTM models) where SNR(anchor) — the C++ model's
 //  own signal degradation — is close to the Rust/C++ parity SNR. The SIMD
 //  kernel rewrites (Épicos B/C: fused dot-product accumulate, unified GEMV,
 //  1-div tanh) introduced zero regressão in Fidelity Margin.
-// 
+//
 //  The cpp_parity tests originally cited (LSTM-Dyn 1×7 v2, Linear v2) show
 //  Fidelity Margin > 40 dB at both commits. The actual low-margin entries
 //  belong to the golden_vectors suite (WaveNet A2-Full/Lite, LSTM Official),

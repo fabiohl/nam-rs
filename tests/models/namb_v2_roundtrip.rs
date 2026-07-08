@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Integration test to verify the encode→decode round-trip of `.namb` v2 layouts.
-// 
+//
 //  Covers 11 topologies (7 LSTM + 4 WaveNet) across layouts:
 //  - `Original` — no transposition, bit-exact identical
 //  - `GateMajorLstm` — LSTM weights pre-transposed [Gate][IH][H]

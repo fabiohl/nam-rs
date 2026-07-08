@@ -2,15 +2,15 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Activation precision measurement under real model weights (T5.3).
-// 
+//
 //  Measures the contribution of Padé [5,4] tanh and minimax degree-17 sigmoid
 //  to the total **ESR** using the f64 oracle with real model weights
 //  and realistic stress signals — fulfilling the recommendation from
 //  `docs/fastmath-approximations.md:162` (the S1.T1.4 measurement used
 //  small synthetic weights where tanh ≈ linear, underestimating Padé error).
-// 
+//
 //  ## Test structure
-// 
+//
 //  - `test_esr_activation_contribution` — oracle with Exact vs Padé activations
 //    (same F16C weights), reports ΔESR(activation) per model with v2 stress signal.
 //  - `test_activation_contribution_summary_table` — formatted Padé vs Exact
@@ -19,9 +19,9 @@
 //    (Wright & Välimäki 2020) alongside flat ESR.
 //  - `test_hf_mode_switch_functional` — verifies the `ActivationPrecision` mode
 //    switch does not crash and produces valid (non-NaN) output.
-// 
+//
 //  ## Caveat
-// 
+//
 //  The `ActivationPrecision` switch currently affects `tanh_slice` / `sigmoid_slice`
 //  dispatch (used by WaveNet standalone activations) but does **not** yet reach
 //  LSTM fused gate kernels (`fused_lstm_gates_*`) which bypass the slice dispatch.
@@ -29,7 +29,7 @@
 //  model families regardless of the runtime switch.  Full LSTM HF path wiring is
 //  deferred to a follow-up (T5.3b or T5.5).
 
-use super::common;
+use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
 
 use std::path::PathBuf;
 
@@ -350,9 +350,6 @@ fn test_hf_mode_switch_functional() {
 // LSTM models are included in the audit: the switch call itself is zero-alloc
 // regardless of whether the model dispatches to the HF kernel (WaveNet does,
 // LSTM doesn't yet — see Epic β/I6).
-
-#[cfg(not(all(feature = "clap-plugin", feature = "heap-audit")))]
-use common::alloc_audit::{TrackingGuard, get_alloc_count};
 
 /// Zero-alloc: `set_activation_precision()` global atomic write.
 ///

@@ -267,6 +267,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 /// Strategy for `NamLayerConfig` with shrinking.
+#[allow(dead_code)]
 fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
     let channels_s = prop_oneof![
         Just(8usize),
@@ -336,6 +337,7 @@ fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
 /// Strategy for `NamConfig` head field.
 /// Generates `None` (absent), `Some(Value::Null)` (null),
 /// or `Some(Value::Object)` (head config with fields).
+#[allow(dead_code)]
 fn arbitrary_head_value() -> impl Strategy<Value = Option<serde_json::Value>> {
     prop::option::of(prop_oneof![
         Just(serde_json::Value::Null),
@@ -366,6 +368,7 @@ fn arbitrary_head_value() -> impl Strategy<Value = Option<serde_json::Value>> {
 }
 
 /// Strategy for `NamConfig` with shrinking.
+#[allow(dead_code)]
 fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
     (
         prop::collection::vec(arbitrary_layer_config(), 1..6),
@@ -390,6 +393,7 @@ fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
 }
 
 /// Strategy for `NamDate` with shrinking.
+#[allow(dead_code)]
 fn arbitrary_nam_date() -> impl Strategy<Value = NamDate> {
     (
         any::<Option<i32>>(),
@@ -410,6 +414,7 @@ fn arbitrary_nam_date() -> impl Strategy<Value = NamDate> {
 }
 
 /// Strategy for `NamMetadata` with shrinking.
+#[allow(dead_code)]
 fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
     (
         arbitrary_nam_date().prop_map(Some),
@@ -467,6 +472,7 @@ fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
 /// Generates synthetic models (WaveNet or LSTM) with random weights, metadata,
 /// and configuration. Proptest shrinking automatically reduces the model to the
 /// smallest counter-example when an assertion fails.
+#[allow(dead_code)]
 pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
     let arch = prop_oneof![Just("WaveNet".to_string()), Just("LSTM".to_string()),];
 

@@ -2,24 +2,24 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Live cross-validation tests NAM-rs ↔ NeuralAmpModelerCore (Layer 2).
-// 
+//
 //  ## When it runs
 //  - `utils/tests-long.sh` (full slow suite)
 //  - `cargo test --test cpp_parity -- --ignored --nocapture`
-// 
+//
 //  ## Pipeline
 //  1. Compiles the `render` tool from NeuralAmpModelerCore on-demand (idempotent, cached)
 //  2. Generates WAV stress signal via `generate_stress_signal_v1()` or `generate_stress_signal_v2()`
 //  3. Writes WAV, executes render via `std::process::Command`
 //  4. Reads WAV output, compares C++ vs Rust with `report_dsp_fidelity()`
-// 
+//
 //  Tests are `#[ignore]` in normal CI — requires C++ toolchain installed.
-// 
+//
 //  ## Parity Thresholds (Aggressive Live Floors)
-// 
+//
 //  Post-T-HF6.6 thresholds use `live_parity_thresholds()` — aggressive floors
 //  calibrated from live C++ cross-validation measurements (f32-exact, 2026-06-18):
-// 
+//
 //  | Family  | Variant  | Measured SNR | Floor SNR | Margin  |
 //  |---------|----------|-------------|-----------|---------|
 //  | WaveNet | Standard | 134.6 dB    | 105 dB    | 29.6 dB |
@@ -30,11 +30,11 @@
 //  | WaveNet | A2-Lite  | 90.7 dB     | 80.0 dB   | 10.7 dB |
 //  | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //  | Linear  | —        | bit-exact   | 140 dB    | —       |
-// 
+//
 //  Lite (CH=12) P1 resolved (T1.2 ringbuffer alignment fix) — now matches C++.
-// 
+//
 //  ## Multi-Sample-Rate Support
-// 
+//
 //  v2 stress signal supports 44.1k, 48k, 96k, and 192k sample rates.
 //  The `#[test]` functions parametrize model × SR combinations via runtime arrays
 //  instead of statically exploding test functions.

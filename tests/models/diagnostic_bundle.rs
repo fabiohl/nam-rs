@@ -3,8 +3,6 @@
 
 //  Integration tests for DiagnosticBundle and RuntimeSnapshot.
 
-use super::common;
-
 use nam_rs::common::diagnostics::{
     AudioInfo, DiagnosticBundle, HasRuntimeSnapshot, ModelInfo, RtInfo, RuntimeSnapshot,
     TelemetrySnapshot,
@@ -615,7 +613,6 @@ fn test_diagnostic_bundle_model_sample_rate_mismatch() {
 
 #[cfg(feature = "heap-audit")]
 mod heap_audit_tests {
-    #[cfg(not(feature = "clap-plugin"))]
     use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
     use nam_rs::common::spsc::RtStatusFlags;
 

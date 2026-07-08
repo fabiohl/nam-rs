@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  A2 Loader Tests.
-// 
+//
 //  Covers constant parity with C++ `a2_fast.h`, topology detection (`is_a2_shape`,
 //  `is_wavenet_a2` dispatch), fixture loading, real inference sanity, forward‑compatibility
 //  error handling, and A1 model regression.

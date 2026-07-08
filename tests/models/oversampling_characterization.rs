@@ -2,23 +2,23 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Oversampling Characterization for LSTM Models — Sprint β3, Task β3.1.
-// 
+//
 //  Measures the empirical effect of external `OversampleEngine` (Off vs 2× vs 4×)
 //  on LSTM models:
-// 
+//
 //  - **ASR** (Aliasing-to-Signal Ratio): anti-aliasing benefit from oversampling.
 //  - **ESR / MR-STFT**: timbre change introduced by running the model at a higher
 //    internal rate through the half-band filter pipeline.
-// 
+//
 //  ## Hypothesis
-// 
+//
 //  Oversampling serves anti-aliasing (reduces fold-back from nonlinear activations)
 //  but changes timbre because the LSTM feedback delay is fixed in absolute samples —
 //  running at 2× or 4× rate effectively halves or quarters the feedback time window
 //  in seconds, altering the recurrent dynamics.
-// 
+//
 //  ## Tests (all `#[ignore]` — require .nam model files)
-// 
+//
 //  ```bash
 //  cargo test --test oversampling_characterization -- --ignored --nocapture
 //  ```

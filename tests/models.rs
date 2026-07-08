@@ -5,13 +5,17 @@ mod common;
 
 use common::alloc_audit::CountingAllocator;
 
-#[cfg_attr(not(all(feature = "clap-plugin", feature = "heap-audit")), global_allocator)]
+#[cfg_attr(
+    not(all(feature = "clap-plugin", feature = "heap-audit")),
+    global_allocator
+)]
+#[allow(dead_code)]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
-#[path = "models/activation_precision.rs"]
-mod activation_precision;
 #[path = "models/a2_loader.rs"]
 mod a2_loader;
+#[path = "models/activation_precision.rs"]
+mod activation_precision;
 #[path = "models/adaptive_fsm_proptest.rs"]
 mod adaptive_fsm_proptest;
 #[path = "models/cabsim_golden.rs"]
@@ -28,10 +32,10 @@ mod fixture_b1_2_smoke;
 mod gate_fsm_proptest;
 #[path = "models/golden_vectors.rs"]
 mod golden_vectors;
-#[path = "models/linear_golden.rs"]
-mod linear_golden;
 #[path = "models/linear_fft_test.rs"]
 mod linear_fft_test;
+#[path = "models/linear_golden.rs"]
+mod linear_golden;
 #[path = "models/lstm_activation_precision.rs"]
 mod lstm_activation_precision;
 #[path = "models/lstm_model_dyn_validation.rs"]

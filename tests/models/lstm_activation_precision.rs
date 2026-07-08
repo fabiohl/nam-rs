@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //  Investigation [T5.5]: LSTM activation precision — SNR gain analysis.
-// 
+//
 //  Measures the SNR gain from using exact `f32::tanh` (libm) vs the production
 //  Padé [5,4] rational approximant in LSTM fused gates.  Runs the same golden
 //  vector input through both paths and reports the SNR delta.

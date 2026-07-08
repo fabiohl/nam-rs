@@ -3,13 +3,13 @@
 
 //  Golden tests for the Linear architecture using direct convolution as
 //  mathematical oracle.
-// 
+//
 //  The Linear model is a simple FIR filter: `output[n] = bias + Σ w[k]·x[n-k]`.
 //  The mathematical oracle computes this directly (forward-time weights,
 //  scalar accumulator) and compares against the Rust engine (reversed weights,
 //  SIMD dot product via `MirroredBuffer`). No golden `.bin` files or C++
 //  reference are needed — this is a pure mathematical oracle.
-// 
+//
 //  This follows the same pattern as `tests/cabsim_golden.rs`.
 
 use super::common;
