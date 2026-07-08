@@ -82,7 +82,11 @@ gantt
   > [!NOTE]
   > **Concluído 2026-07-08.** 5 entry-points criados com declarações `mod` baseadas nos mapeamentos `STRUCT_ENTRY_MAP`/`LONG_ENTRY_MAP`. **3 testes não estavam nos maps originais** e foram classificados: `oversampling_characterization.rs` → models, `linear_fft_test.rs` → models, `reference_oracle_f64.rs` → parity. Distribuição final: models=30, parity=7, perf_soak=5, rt_constraints=5, clap=3 (total=50).
 - **[ ] Tarefa 3.2**: Mover os 50 testes órfãos para subdiretórios correspondentes aos nomes dos Entry-points (ex: o que ia para `tests/a2_loader.rs` vai para `tests/models/a2_loader.rs`).
+  > [!NOTE]
+  > **Concluído 2026-07-08.** 50 arquivos movidos via `git mv` para `tests/{models,clap,perf_soak,rt_constraints,parity}/`. Devido ao sistema de resolução de módulos do Rust em integration tests não buscar submódulos em subdiretórios de entry-points nomeados, foi necessário usar `#[path = "..."]` nas declarações `mod`. **Correções aplicadas nos 50 arquivos:** (a) `//!` → `// ` (41 arquivos com doc comments inválidos em submódulo), (b) `mod common;` → `use super::common;` (31 arquivos) + `use super::common;` adicionado em 4 arquivos que usavam `common::` sem declará-lo, (c) 7 `#[global_allocator]` consolidados em 3 entry-points (`models`, `perf_soak`, `rt_constraints`), (d) 4 `#![cfg(...)]` inner attributes movidos para `#[cfg(...)]` nos entry-points. `cargo check --tests` passa (0 erros).
 - **[ ] Tarefa 3.3**: No cabeçalho de cada arquivo entry-point criado (Tarefa 3.1), adicionar os declaradores de módulo `mod ...;` (ex: em `tests/models.rs`, adicionar `mod a2_loader;`).
+  > [!NOTE]
+  > Declarações `mod` já integradas aos entry-points durante Tarefas 3.1-3.2 com `#[path]` attributes. Tarefa 3.3 reduz-se a uma verificação de consistência (cada entry-point declara todos os submódulos do seu subdiretório).
 
 - **[ ] Tarefa Final**: Homologação Final Integrada. Estando a sintaxe Rust perfeita (`utils/lints.sh`), é a hora de rodar as suítes de validação de forma otimizada, apenas uma vez:
   1. Primeiro execute `utils/tests-quick.sh` (leva de 1 a 2 min). Se falhar, corrija sem queimar etapas demoradas.

@@ -1,0 +1,477 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//  Meta-tests that enforce threshold calibration discipline.
+// 
+//  Ensures every model with a committed golden `.bin` fixture has a
+//  calibrated entry in `get_calibrated_threshold()` — never silently
+//  falling back to heuristic thresholds.
+// 
+//  Part of T3.3: formalizing the calibration infrastructure.
+// 
+//  All meta-tests implement the Gate Calibration Policy from
+//  docs/perceptual_validation.md (Rules 1–5): validated reference,
+//  below placebo, provenance comment, link to independent measurement,
+//  sanity-check Σ sources ≈ total.
+// 
+//  ## F10 Investigation (E2.1 — 2026-06-24)
+// 
+//  Fidelity Margin ≤ 0.5 dB in `live_cross_validation_lstm_dyn_1x7 (v2)`
+//  and `live_cross_validation_linear (v2)` was investigated via `git bisect`
+//  between current HEAD and pre-Épico-B commit `ff8a500` ("épico a concluido").
+// 
+//  **Result: PRE-EXISTENT.** The Fidelity Margin values (0.5, 0.4, -0.9, -0.8 dB)
+//  are bit-identical between commits. They originate from golden_vectors tests
+//  (WaveNet A2-Full/Lite and LSTM models) where SNR(anchor) — the C++ model's
+//  own signal degradation — is close to the Rust/C++ parity SNR. The SIMD
+//  kernel rewrites (Épicos B/C: fused dot-product accumulate, unified GEMV,
+//  1-div tanh) introduced zero regressão in Fidelity Margin.
+// 
+//  The cpp_parity tests originally cited (LSTM-Dyn 1×7 v2, Linear v2) show
+//  Fidelity Margin > 40 dB at both commits. The actual low-margin entries
+//  belong to the golden_vectors suite (WaveNet A2-Full/Lite, LSTM Official),
+//  which were already at those values before Épico B.
+
+use std::fs;
+use std::path::PathBuf;
+
+use super::common;
+use common::A2_ESR_LIMIT;
+use common::LSTM_ESR_LIMIT;
+use common::WAVENET_ESR_LIMIT;
+use common::validation::get_calibrated_threshold;
+
+/// Maps a committed golden `.bin` filename to the `model_name` key
+/// used in `get_calibrated_threshold()`. Returns `None` for `.bin`
+/// files that don't participate in DSP fidelity validation (e.g.
+/// cabsim goldens use their own oracles).
+///
+/// For v2 multi-SR files (`golden_{name}_v2_{sr}.bin`), the suffix
+/// is stripped to resolve the base model name.
+fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
+    // Strip v2 multi-SR suffix: `golden_X_v2_44100.bin` → `golden_X`
+    let base = if let Some(suffix_start) = filename.find("_v2_") {
+        &filename[..suffix_start]
+    } else {
+        filename.strip_suffix(".bin").unwrap_or(filename)
+    };
+    // Handle `.bin` extension removal if not already stripped
+    let base = base.strip_suffix(".bin").unwrap_or(base);
+
+    match base {
+        "golden_wavenet_standard" => Some("BossWN-standard"),
+        "golden_lstm_1x16" => Some("BossLSTM-1x16"),
+        "golden_lstm_2x8" => Some("BossLSTM-2x8"),
+        "golden_wavenet_a1_standard" => Some("wavenet_a1_standard"),
+        "golden_lstm_official" => Some("lstm (Official)"),
+        "golden_wavenet_feather" => Some("BossWN-feather"),
+        "golden_wavenet_nano" => Some("BossWN-nano"),
+        "golden_wavenet_lite" => Some("EVH-5150-Lite"),
+        "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
+        "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
+        "golden_wavenet_official" => Some("wavenet_official"),
+        // Nondist production models — validated by cpp_parity + golden vectors
+        "golden_wavenet_app_evh" => Some("APP-EVH-Stealth100-Dialled-xSTD"),
+        "golden_wavenet_boss_bd2" => Some("Boss BD-2 H2O Mod T-12_00 G-12_00"),
+        "golden_wavenet_slammin_marshall" => Some("SLAMMIN MARSHALL JTM 45 REISSUE"),
+        // cabsim goldens use their own oracle (convolution / C++ parity),
+        // not topology_thresholds.
+        _ => None,
+    }
+}
+
+/// Every model with a committed golden `.bin` fixture MUST have a
+/// calibrated entry in `get_calibrated_threshold()`. This test
+/// prevents silent fallback to heuristic thresholds.
+#[test]
+fn test_all_golden_models_have_calibrated_thresholds() {
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+
+    let mut tested_count = 0;
+
+    for entry in fs::read_dir(&fixtures_dir).expect("Failed to read fixtures directory") {
+        let entry = entry.expect("Failed to read fixture entry");
+        let filename = entry.file_name();
+        let filename_str = filename.to_string_lossy();
+
+        if !filename_str.ends_with(".bin") {
+            continue;
+        }
+
+        if let Some(model_name) = golden_bin_to_model_name(&filename_str) {
+            let threshold = get_calibrated_threshold(model_name);
+            assert!(
+                threshold.is_some(),
+                "Model '{model_name}' has committed golden '{filename_str}' \
+                 but NO calibrated entry in get_calibrated_threshold(). \
+                 Add an entry with // Measured: SNR=..., ESR=... and recalibrated floors."
+            );
+
+            let (_mse, snr_db, esr_opt, _mrstft) = threshold.unwrap();
+            // Reject fully-neutralized thresholds (SNR ≤ 0 and no ESR gate)
+            if let Some(esr) = esr_opt {
+                assert!(
+                    snr_db > 0.0 || esr < 1.0,
+                    "Model '{model_name}' has both SNR ≤ 0 dB and ESR ≥ 1.0 \
+                     — effectively a neutralized/placebo gate. \
+                     Thresholds must trace a real measurement."
+                );
+            } else {
+                assert!(
+                    snr_db > 0.0,
+                    "Model '{model_name}' has SNR ≤ 0 dB with no ESR gate \
+                     — effectively a neutralized/placebo gate."
+                );
+            }
+
+            tested_count += 1;
+        }
+    }
+
+    assert!(
+        tested_count >= 10,
+        "Expected ≥ 10 golden models with calibrated thresholds, found {tested_count}"
+    );
+}
+
+/// Verify that every calibrated entry in `get_calibrated_threshold()`
+/// has a `// Measured:` comment documenting ESR and MR-STFT
+/// next to the match arm.
+///
+/// This reads the source file of `validation.rs` and checks for the
+/// comment pattern near each distinct match arm.
+///
+/// Uses the **first** string pattern in each match arm to locate the
+/// arm boundary — for `|`-grouped arms this is closest to the
+/// `// Measured:` comment at the top of the block (Tarefa 5.6).
+#[test]
+fn test_all_calibrated_entries_have_measurement_comments() {
+    let validation_src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/common/validation.rs");
+
+    let source =
+        fs::read_to_string(&validation_src).expect("Failed to read tests/common/validation.rs");
+
+    // One representative model name per match arm in get_calibrated_threshold().
+    // These are the FIRST pattern in each arm — closest to the `// Measured:` comment.
+    let models: &[&str] = &[
+        "BossWN-standard",
+        "BossWN-feather",
+        "BossWN-nano",
+        "wavenet_a1_standard",
+        "wavenet_official",
+        "BossLSTM-1x16",
+        "BossLSTM-2x8",
+        "lstm (Official)",
+        "EVH-5150-Lite",
+        "wavenet_a2_full",
+        "wavenet_a2_lite",
+        "wavenet_condition_dsp",
+        // First nondist model — the `// Measured:` comment is above this pattern
+        "APP-EVH-Stealth100-Dialled-xSTD",
+        "wavenet_a2_film_lite",
+        "wavenet_a2_film_full",
+        "a2_dynamic_gated_ch8",
+        "a2_dynamic_blended_ch3",
+        "wavenet_dyn_free",
+        "lstm_dyn_test",
+        "a2_example",
+        "convnet_test",
+    ];
+
+    for &model in models {
+        let model_line = source
+            .lines()
+            .enumerate()
+            .find(|(_, l)| {
+                let t = l.trim();
+                t.starts_with('"') && t.contains(model)
+            })
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Could not find match arm for model '{model}' in validation.rs \
+                     (expected a line containing '\"{model}\"' as a match arm pattern)"
+                )
+            });
+
+        let mut found_measured = false;
+        for offset in 1..=15 {
+            if model_line >= offset {
+                let prev_line = source.lines().nth(model_line - offset).unwrap_or("");
+                if prev_line.contains("// Measured:") {
+                    found_measured = true;
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            found_measured,
+            "Calibrated entry for model '{model}' at line {} is missing \
+             '// Measured: ESR=..., MRSTFT=...' comment within 15 lines above. \
+             Add the measurement documentation. (Tarefa 5.6)",
+            model_line + 1,
+        );
+    }
+}
+
+/// Every model with a committed golden `.bin` MUST NOT have any
+/// placebo (neutralized) threshold component. Unlike T3.3's basic
+/// check (which only rejects when `SNR ≤ 0 AND ESR ≥ 1`), this test
+/// treats each dimension independently — any single neutralized
+/// component makes the gate a placebo.
+///
+/// ## What constitutes a placebo threshold:
+///
+/// 1. `snr_db ≤ 0.0` → SNR gate is neutralized (never catches
+///    regressions). Fails regardless of ESR or MSE values.
+/// 2. `max_esr ≥ 1.0` → ESR gate is neutralized (never catches
+///    regressions). Fails regardless of SNR or MSE values.
+/// 3. `mse_limit ≥ 1e29` → MSE gate is effectively infinite.
+///    This is acceptable ONLY if the remaining SNR and ESR gates
+///    are "rigid" enough to compensate (SNR ≥ 40 dB AND ESR < 0.1).
+///    The A2 Full/Lite models intentionally set `mse_limit = 1e30`
+///    because their ESR gates are ultra-strict (≤ 8e-8), making
+///    MSE redundant.
+/// 4. `mrstft_max ≥ 0.5` → MR-STFT gate is neutralized (never catches
+///    spectral regressions). MR-STFT is a relative metric bounded [0,1];
+///    a threshold ≥ 0.5 would allow severe spectral divergence.
+///    (Tarefa 3.1, F-2)
+///
+/// ## Principle: "todo golden pode falhar"
+///
+/// A golden test **must** be able to fail — that is the whole point
+/// of a gate. A self-golden (output validated against itself) and a
+/// neutralized threshold (SNR ≤ 0, ESR ≥ 1, or MSE ≥ 1e29 without
+/// rigid SNR+ESR) are **not gates** — they are placebos that grant
+/// a false sense of confidence.
+///
+/// Part of T3.4: anti-placebo meta-test.
+#[test]
+fn test_all_thresholds_anti_placebo() {
+    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+
+    let mut tested_count = 0;
+
+    for entry in fs::read_dir(&fixtures_dir).expect("Failed to read fixtures directory") {
+        let entry = entry.expect("Failed to read fixture entry");
+        let filename = entry.file_name();
+        let filename_str = filename.to_string_lossy();
+
+        if !filename_str.ends_with(".bin") {
+            continue;
+        }
+
+        if let Some(model_name) = golden_bin_to_model_name(&filename_str) {
+            let threshold = get_calibrated_threshold(model_name);
+            assert!(
+                threshold.is_some(),
+                "Model '{model_name}' has NO calibrated entry for anti-placebo check."
+            );
+
+            let (mse_limit, snr_db, esr_opt, mrstft_opt) = threshold.unwrap();
+
+            // Rule 1: SNR ≤ 0 → placebo, regardless of other gates.
+            assert!(
+                snr_db > 0.0,
+                "Model '{model_name}' has SNR = {snr_db} dB ≤ 0 — \
+                 placebo gate. SNR must be > 0 to catch regressions."
+            );
+
+            // Rule 2: ESR ≥ 1.0 → placebo, regardless of other gates.
+            if let Some(esr) = esr_opt {
+                assert!(
+                    esr < 1.0,
+                    "Model '{model_name}' has ESR = {esr} ≥ 1.0 — \
+                     placebo gate. ESR must be < 1.0 to catch regressions."
+                );
+            }
+
+            // Rule 3: MSE ≥ 1e29 without rigid SNR+ESR → placebo.
+            if mse_limit >= 1e29 {
+                let esr_rigid = esr_opt.is_some() && esr_opt.unwrap() < 0.1;
+                assert!(
+                    snr_db >= 40.0 && esr_rigid,
+                    "Model '{model_name}' has mse_limit = {mse_limit} ≥ 1e29 \
+                     (effectively infinite MSE gate) but lacks rigid SNR/ESR \
+                     compensation (SNR = {snr_db} dB, ESR = {esr_opt:?}). \
+                     A2 Full/Lite intentionally use mse_limit = 1e30 because \
+                     their ESR gates are ultra-strict (≤ 8e-8). \
+                     To bypass MSE, SNR must be ≥ 40 dB and ESR must be < 0.1."
+                );
+            }
+
+            // Rule 4 (Tarefa 3.1): MR-STFT ≥ 0.5 → placebo.
+            // MR-STFT is a relative metric bounded [0,1]; values approaching 1.0
+            // indicate spectral collapse. A gate with threshold ≥ 0.5 would never
+            // catch meaningful regressions.
+            // Tarefa 5.5 (f64 oracle recalibration): LSTM models are no longer exempt —
+            // their MR-STFT thresholds are now recalibrated from v1 measurements
+            // (format floor + minimal recurrent drift, all < 0.5) with v2 relaxation
+            // handled in cpp_parity.rs via rate-dependent multiplier and ABSOLUTE_MRSTFT_CAP.
+            if let Some(mrstft) = mrstft_opt {
+                assert!(
+                    mrstft < 0.5,
+                    "Model '{model_name}' has MR-STFT = {mrstft} ≥ 0.5 — \
+                     placebo gate (Tarefa 3.1). MR-STFT must be < 0.5 to catch \
+                     spectral regressions. Calibrate from real measurements."
+                );
+            }
+
+            tested_count += 1;
+        }
+    }
+
+    assert!(
+        tested_count >= 10,
+        "Expected ≥ 10 golden models in anti-placebo check, found {tested_count}"
+    );
+}
+
+/// Tarefa 8.6 — Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo.
+///
+/// Reads the oracle ESR limits (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT)
+/// from the shared `tests/common/constants.rs` module and asserts that ALL are
+/// strictly less than 1.0 — the project's placebo threshold (Rule 2, AC-9):
+/// "ESR ≥ 1.0 = placebo gate that never catches regressions."
+///
+/// This is the guard that prevents future calibration rounds from raising
+/// oracle limits back into the placebo zone. It must fail during T8.3
+/// (before limits are fixed) and pass after.
+///
+/// Uses compile-time const assertions: if any limit is raised >= 1.0,
+/// compilation fails with a clear message — not just a test failure.
+#[test]
+fn test_oracle_gates_below_placebo_threshold() {
+    const {
+        assert!(
+            WAVENET_ESR_LIMIT < 1.0,
+            "WaveNet oracle gate is placebo (≥ 1.0)"
+        );
+        assert!(LSTM_ESR_LIMIT < 1.0, "LSTM oracle gate is placebo (≥ 1.0)");
+        assert!(A2_ESR_LIMIT < 1.0, "A2 oracle gate is placebo (≥ 1.0)");
+    }
+}
+
+/// Tarefa G.1.2 — Eixo B isolation guard-rail.
+///
+/// Ensures that no structural test (Phase 1, debug, `STRUCTURAL_TESTS`)
+/// references golden `.bin` files or `golden_vectors` test functions.
+/// Structural tests run with debug assertions ON, where float codegen
+/// is a "phantom" (no `-O`, no FMA contraction, no auto-vectorization).
+/// Any test that compares floats against a reference `.bin` or
+/// `golden_vectors` must run in Phase 2 (release) — the Eixo B principle
+/// from `docs/testing.md` §2.
+///
+/// This meta-test reads `utils/tests-quick.sh`, extracts the
+/// `STRUCTURAL_TESTS` array, and checks each corresponding `tests/*.rs`
+/// source file for forbidden patterns. It acts as an automated gate
+/// that prevents the class of regression where a measurement oracle
+/// is accidentally placed in the debug phase.
+///
+/// ## Exclusions
+///
+/// - `threshold_calibration`: meta-test that validates the golden catalog
+///   metadata — references `.bin` filenames for catalog integrity, not
+///   float comparison.
+/// - `parity_primitives`: references `.bin` for PRNG bit-parity
+///   (Mulberry32 vs TypeScript) and MR-STFT algorithm verification
+///   (vs Python) — structural parity, not production float measurement.
+/// - `lstm_activation_precision` (TODO Eixo B): pre-existing violation —
+///   measures SNR of LSTM models against C++ golden `.bin` files. Runs
+///   non-ignored in Phase 1 debug. Should be moved to Phase 2 release.
+#[test]
+fn test_structural_tests_contain_no_bin_references() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let quick_script = project_root.join("utils").join("tests-quick.sh");
+
+    let script = fs::read_to_string(&quick_script).expect("Failed to read utils/tests-quick.sh");
+
+    let start_marker = "STRUCTURAL_TESTS=(";
+    let start = script
+        .find(start_marker)
+        .expect("STRUCTURAL_TESTS=() array not found in utils/tests-quick.sh");
+    let content_start = start + start_marker.len();
+    let rest = &script[content_start..];
+
+    let end = rest
+        .find("\n)")
+        .expect("Could not find closing ')' of STRUCTURAL_TESTS array in utils/tests-quick.sh");
+    let array_content = &rest[..end];
+
+    let test_names: Vec<&str> = array_content.split_whitespace().collect();
+
+    assert!(
+        !test_names.is_empty(),
+        "STRUCTURAL_TESTS array is empty — check parsing of utils/tests-quick.sh"
+    );
+
+    const EXCLUDED: &[&str] = &[
+        "threshold_calibration", // meta-test — catalog integrity, not float comparison
+        "parity_primitives",     // PRNG bit-parity + MR-STFT algorithm verification
+        "lstm_activation_precision", // TODO: pre-existing violation — measures SNR vs C++ golden
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for &test_name in &test_names {
+        if EXCLUDED.contains(&test_name) {
+            continue;
+        }
+
+        let test_file = project_root.join("tests").join(format!("{test_name}.rs"));
+        if !test_file.exists() {
+            continue;
+        }
+
+        let source = fs::read_to_string(&test_file).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read {test_path}: {e}",
+                test_path = test_file.display()
+            )
+        });
+
+        // Filter out comment lines to avoid false positives from
+        // doc-comments that mention `.bin` without actually loading them
+        // (e.g., "No golden .bin files or C++" in linear_golden.rs).
+        let non_comment: String = source
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                !trimmed.starts_with("//") && !trimmed.starts_with("///")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if non_comment.contains(".bin") {
+            violations.push(format!(
+                "{test_name}.rs references .bin files (forbidden in Phase 1 structural tests)"
+            ));
+        }
+
+        if non_comment.contains("golden_vectors") {
+            violations.push(format!(
+                "{test_name}.rs references golden_vectors (forbidden in Phase 1 structural tests)"
+            ));
+        }
+    }
+
+    if !violations.is_empty() {
+        panic!(
+            "Eixo B isolation guard-rail FAILED (Tarefa G.1.2):\n\
+             \n\
+             The following structural tests (Phase 1, debug) contain references\n\
+             to .bin files or golden_vectors — they MUST run in Phase 2 (release),\n\
+             per the Eixo B principle in docs/testing.md §2:\n\
+             \n{}\n\n\
+             Resolution: remove these tests from STRUCTURAL_TESTS in\n\
+             utils/tests-quick.sh and add them to the Phase 2 release invocation.\n",
+            violations
+                .iter()
+                .map(|v| format!("  ✗ {v}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+}
