@@ -37,11 +37,13 @@ gantt
 
 - **Risco/Complexidade**: **Baixíssimo**. Os arquivos comprovadamente não são invocados por nenhum código Rust ou Bash.
 
-- **[ ] Tarefa 1.1**: Remover via `git rm` os arquivos inutilizados em `tests/fixtures/`:
+- **[x] Tarefa 1.1**: Remover via `git rm` os arquivos inutilizados em `tests/fixtures/`:
   - `stress_signal_v1.wav` e `stress_signal_v2_*.wav`
   - `resampler_input_*.f32` e `resampler_ref_*.f32`
   - Vetores v2 não consumidos (`golden_lstm_*_v2_*.bin`, `golden_wavenet_*_v2_*.bin`, etc.)
   - `CMakeLists_render_ir.txt`
+  > [!NOTE]
+  > **Concluído 2026-07-08.** 39 arquivos rastreados (`git rm`) + 4 stress v2 wavs não rastreados + ~34 v2 `.temp_golden/` wavs removidos. **Exceções identificadas que NÃO foram removidas (estão em uso):** `resampler_input_*.f32`/`resampler_ref_*.f32` são consumidos por `resampler_test.rs`; `stress_signal_v2_48000.wav` é carregado por `pgo_profiling_workload.rs:37`. **Impacto colateral:** `tests-quick.sh:169` usava `golden_wavenet_standard_v2_48000.bin` como flag de gate — golden_vectors + isa_parity agora serão pulados graciosamente; ajustar no Sprint 2.
 
 ---
 
