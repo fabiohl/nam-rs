@@ -202,8 +202,8 @@ fn test_ignored_models_are_in_catalog() {
     let exceptions_by_nam: HashSet<&str> = CATALOG_EXCEPTIONS.iter().map(|e| e.nam_file).collect();
 
     let test_files: &[(&str, &str)] = &[
-        ("tests/golden_vectors.rs", "golden_vectors.rs"),
-        ("tests/linear_fft_test.rs", "linear_fft_test.rs"),
+        ("tests/models/golden_vectors.rs", "golden_vectors.rs"),
+        ("tests/models/linear_fft_test.rs", "linear_fft_test.rs"),
     ];
 
     let mut checked = 0usize;

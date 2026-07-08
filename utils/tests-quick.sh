@@ -186,30 +186,49 @@ _structural_entry_files_exist() {
     return 0
 }
 
-if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
-    # ── Sprint 3+ format: `--test models models::a2_loader ...` ─────────────
-    declare -A _entry_test_map=()
-    for t in "${STRUCT_TESTS[@]}"; do
-        _ep="${STRUCT_ENTRY_MAP[$t]:-models}"
-        _entry_test_map[$_ep]="${_entry_test_map[$_ep]} $t"
-    done
+# ── Phase 2/3 measurement oracle → entry-point mapping ──────────────────
+declare -A MEASUREMENT_ENTRY_MAP=(
+    [reference_oracle_f64]="parity"
+    [spectral_fidelity]="models"
+    [linear_fft_test]="models"
+    [golden_vectors]="models"
+    [isa_parity]="parity"
+    [cpp_parity]="parity"
+    [proptest_parsers]="models"
+)
 
-    _cmd="cargo test --lib"
-    for _ep in "${!_entry_test_map[@]}"; do
-        _cmd="$_cmd --test $_ep"
-    done
-    for _ep in "${!_entry_test_map[@]}"; do
-        for _t in ${_entry_test_map[$_ep]}; do
-            _cmd="$_cmd ${_ep}::${_t}"
+# Helper: builds cargo test args for measurement tests.
+# Uses MEASUREMENT_ENTRY_MAP to find the right entry-point in Sprint 3 mode.
+_cargo_meas() {
+    local extra_args="$1"
+    shift
+    local -a tests=("$@")
+    if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
+        local -A _eps=()
+        local _filters=""
+        for _t in "${tests[@]}"; do
+            local _ep="${MEASUREMENT_ENTRY_MAP[$_t]:-models}"
+            _eps[$_ep]=1
+            _filters="$_filters ${_t}::"
         done
-    done
-
-    if [ "${NAM_DRY_RUN_ARCH:-0}" = "1" ]; then
-        echo -e "  ${YELLOW}[DRY-RUN] Sprint 3 architecture command:${NC}"
-        echo -e "  ${YELLOW}$_cmd${NC}"
+        local _ep_flags=""
+        for _ep in "${!_eps[@]}"; do _ep_flags="$_ep_flags --test $_ep"; done
+        cargo test --release $_ep_flags -- $_filters $extra_args
     else
-        eval "$_cmd"
+        local _legacy=""
+        for _t in "${tests[@]}"; do _legacy="$_legacy --test $_t"; done
+        eval "cargo test --release $_legacy $extra_args"
     fi
+}
+
+if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
+    # ── Sprint 3+ format: single `cargo test` across all entry-points ───────
+    # With 5 entry-points (vs 50 test binaries), all non-ignored structural
+    # tests are already grouped per entry-point — no filter needed. One
+    # compilation per entry-point instead of 28.
+    cargo test --lib \
+        --test models --test perf_soak --test parity \
+        --test clap --test rt_constraints
 else
     # ── Legacy flat-file format (pre-Sprint 3) ───────────────────────────
     cargo test --lib "${STRUCT_TESTS[@]/#/--test=}"
@@ -243,19 +262,16 @@ GOLDEN_RAN=false
 if [ -f "tests/fixtures/golden_wavenet_standard.bin" ] && [ -f "tests/fixtures/golden_wavenet_standard_v2_48000.bin" ]; then
     GOLDEN_RAN=true
     echo -e "  ${BLUE}→ f64 Oracle + Spectral + Linear FFT + Golden v1 + ISA parity (release, 1 compilação)...${NC}"
-    cargo test --release \
-        --test reference_oracle_f64 --test spectral_fidelity \
-        --test linear_fft_test \
-        --test golden_vectors --test isa_parity \
-        -- --test-threads=1 --nocapture || MEASUREMENT_STATUS=1
+    _cargo_meas "-- --test-threads=1 --nocapture" \
+        reference_oracle_f64 spectral_fidelity linear_fft_test golden_vectors isa_parity \
+        || MEASUREMENT_STATUS=1
 else
     echo -e "  ${YELLOW}ⓘ Golden vectors (v1/v2) não encontrados — golden_vectors + isa_parity pulados.${NC}"
     echo -e "  ${YELLOW}  Execute './tests/fixtures/golden_gen_build.sh' para gerá-los.${NC}"
     echo -e "  ${BLUE}→ f64 Oracle + Spectral Fidelity + Linear FFT (release, 1 compilação)...${NC}"
-    cargo test --release \
-        --test reference_oracle_f64 --test spectral_fidelity \
-        --test linear_fft_test \
-        -- --nocapture || MEASUREMENT_STATUS=1
+    _cargo_meas "-- --nocapture" \
+        reference_oracle_f64 spectral_fidelity linear_fft_test \
+        || MEASUREMENT_STATUS=1
 fi
 
 # C++ Parity — invocação SEPARADA porque o filtro `quick_parity` (necessário
@@ -263,7 +279,7 @@ fi
 # Self-skip gracioso se o render C++ não estiver compilado.
 if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
-    cargo test --release --test cpp_parity -- quick_parity --nocapture || MEASUREMENT_STATUS=1
+    _cargo_meas "-- quick_parity --nocapture" cpp_parity || MEASUREMENT_STATUS=1
 else
     echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore não encontrado. Execute './utils/mod-update.sh'.${NC}"
     echo -e "  ${YELLOW}  Pulando cpp_parity (paridade live C++).${NC}"
@@ -280,7 +296,7 @@ fi
 # (proptest_math — Tier 3: consistência/locator — já roda na Fase 1 e no long.)
 phase "Parser fuzzing ágil (release)..."
 PROPTEST_CASES="${NAM_QUICK_PROPTEST_CASES:-1000}" \
-    cargo test --release --test proptest_parsers -- --ignored --nocapture
+    _cargo_meas "-- --ignored --nocapture" proptest_parsers
 
 # ── Resumo ──────────────────────────────────────────────────────────────────
 if [ "$GOLDEN_RAN" = true ]; then

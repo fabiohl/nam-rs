@@ -388,10 +388,10 @@ fn test_structural_tests_contain_no_bin_references() {
 
     let script = fs::read_to_string(&quick_script).expect("Failed to read utils/tests-quick.sh");
 
-    let start_marker = "STRUCTURAL_TESTS=(";
+    let start_marker = "STRUCT_TESTS=(";
     let start = script
         .find(start_marker)
-        .expect("STRUCTURAL_TESTS=() array not found in utils/tests-quick.sh");
+        .expect("STRUCT_TESTS=() array not found in utils/tests-quick.sh");
     let content_start = start + start_marker.len();
     let rest = &script[content_start..];
 
@@ -420,10 +420,28 @@ fn test_structural_tests_contain_no_bin_references() {
             continue;
         }
 
-        let test_file = project_root.join("tests").join(format!("{test_name}.rs"));
-        if !test_file.exists() {
-            continue;
+        const ENTRY_POINTS: &[&str] = &["models", "perf_soak", "parity", "clap", "rt_constraints"];
+        let mut test_file = None;
+        for entry in ENTRY_POINTS {
+            let candidate = project_root
+                .join("tests")
+                .join(entry)
+                .join(format!("{test_name}.rs"));
+            if candidate.exists() {
+                test_file = Some(candidate);
+                break;
+            }
         }
+        // Legacy flat layout fallback
+        if test_file.is_none() {
+            let legacy = project_root.join("tests").join(format!("{test_name}.rs"));
+            if legacy.exists() {
+                test_file = Some(legacy);
+            }
+        }
+        let Some(test_file) = test_file else {
+            continue;
+        };
 
         let source = fs::read_to_string(&test_file).unwrap_or_else(|e| {
             panic!(

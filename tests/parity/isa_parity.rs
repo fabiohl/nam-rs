@@ -338,10 +338,13 @@ const LSTM_ESR_BUDGET: f64 = 1e-2;
 const A2_ESR_BUDGET: f64 = 1e-3;
 
 // ══════════════════════════════════════════════════════════════════════
-// AVX2 self-consistency — always runs in CI (≥ scalar+AVX2 coverage)
+// AVX2 self-consistency — requires golden v2 vectors (generated via
+// golden_gen_build.sh). Ignored by default; run with `--ignored` in
+// Phase 2 / tests-long.sh when goldens are present.
 // ══════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_wavenet_standard_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -353,6 +356,7 @@ fn isa_self_consistency_wavenet_standard_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_wavenet_feather_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -364,6 +368,7 @@ fn isa_self_consistency_wavenet_feather_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_wavenet_nano_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -375,6 +380,7 @@ fn isa_self_consistency_wavenet_nano_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_lstm_1x16_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -386,6 +392,7 @@ fn isa_self_consistency_lstm_1x16_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_lstm_2x8_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -397,6 +404,7 @@ fn isa_self_consistency_lstm_2x8_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_a2_full_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -408,6 +416,7 @@ fn isa_self_consistency_a2_full_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_self_consistency_a2_lite_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     assert_isa_self_consistency(
@@ -561,6 +570,7 @@ fn isa_parity_wavenet_nano_avx2_vs_vnnibf16() {
 // deterministic across repeated runs with the same ISA.
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_hf_self_consistency_wavenet_standard_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     let sr = 48000;
@@ -585,6 +595,7 @@ fn isa_hf_self_consistency_wavenet_standard_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_hf_self_consistency_lstm_1x16_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     let sr = 48000;
@@ -609,6 +620,7 @@ fn isa_hf_self_consistency_lstm_1x16_avx2() {
 }
 
 #[test]
+#[ignore = "requires golden v2 binaries — generated via golden_gen_build.sh"]
 fn isa_hf_self_consistency_lstm_2x8_avx2() {
     let _lock = ISA_LOCK.lock().unwrap();
     let sr = 48000;
