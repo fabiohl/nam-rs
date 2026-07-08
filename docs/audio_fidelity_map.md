@@ -117,20 +117,20 @@ Standard (Padé) mode is therefore the well-understood production default; HighF
 
 | Model         | ESR vs NAMCore (pre-SQ5, f16c) | ESR vs NAMCore (post-SQ5, f32) | Conclusion                                 |
 |:------------- |:------------------------------:|:------------------------------:|:------------------------------------------ |
-| BossLSTM-2×8  | 2.69e-3                        | **0.00e0**                     | Drift eliminated — f16c was the sole cause |
-| BossLSTM-1×16 | 1.04e-2                        | **1.04e-2**                    | Drift persists — f16c was NOT the cause    |
+| BossLSTM-1×16 | 1.04e-2                        | **0.00e0**                     | Drift eliminated — f16c was the sole cause |
+| BossLSTM-2×8  | 2.69e-3                        | **2.68e-3**                    | Drift persists — f16c was NOT the cause    |
 
 **Contrary to the previous assumption, the LSTM recurrent drift is not — or not only —
-caused by f16c weight quantization.** BossLSTM-2×8 converged to bit-exact parity with NAMCore
+caused by f16c weight quantization.** BossLSTM-1×16 converged to bit-exact parity with NAMCore
 once f16c was removed, proving that its drift was entirely a quantization artifact. But
-BossLSTM-1×16 shows the same 1.04e-2 ESR gap with NAMCore with or without f16c. The root cause
+BossLSTM-2×8 shows the same 2.68e-3 ESR gap with NAMCore with or without f16c. The root cause
 of this residual divergence is not yet identified — Padé activations, Kahan accumulation path,
 or some other architectural difference are candidates, but none has been conclusively isolated
-(the f64-oracle floor at production duration for BossLSTM-1×16 was planned in SQ2.3 but never
+(the f64-oracle floor at production duration for BossLSTM-2×8 was planned in SQ2.3 but never
 executed).
 
 The per-sample-rate LSTM interop drifts (from `cpp_parity_map.md` §2.7, measured pre-SQ5 with f16c
-active) remain the best available reference for *BossLSTM-1×16*, since its ESR vs NAMCore did not
+active) remain the best available reference for *BossLSTM-2×8*, since its ESR vs NAMCore did not
 change after f16c removal:
 
 | Model     | 44.1 kHz | 48 kHz      | 88.2 kHz | 96 kHz  | 192 kHz     |
@@ -138,7 +138,7 @@ change after f16c removal:
 | LSTM 1×16 | 2.39e-2  | **2.61e-2** | 5.39e-2  | 6.09e-2 | **1.42e-1** |
 | LSTM 2×8  | 3.41e-3  | **3.88e-3** | 1.18e-2  | 1.45e-2 | **4.20e-2** |
 
-> **Note:** the 2×8 row applies to the *pre-removal* era; post-SQ5, BossLSTM-2×8 is bit-exact
+> **Note:** the 1×16 row applies to the *pre-removal* era; post-SQ5, BossLSTM-1×16 is bit-exact
 > with NAMCore (ESR = 0.00e0) at 48 kHz. Its per-rate post-removal drift has not been re-measured.
 
 The parity test caps drift with a **measured, rate-aware** bound — `≤ 96 kHz: 0.08`,
@@ -170,8 +170,8 @@ Stateful ADAA for the recurrent cell (Holters 2019; Mikkonen & Werner 2025) was 
 **not adopted** — conflicts with the polymorphic `dispatch_simd!` macro. Retained as a research
 direction (`docs/research-references.md` R6, R7b).
 
-**User impact.** For BossLSTM-2×8, the interop drift is gone — this model is now f32 native and
-converges with NAMCore. For BossLSTM-1×16, degradation with signal duration and host sample rate
+**User impact.** For BossLSTM-1×16, the interop drift is gone — this model is now f32 native and
+converges with NAMCore. For BossLSTM-2×8, degradation with signal duration and host sample rate
 persists at pre-SQ5 levels. WaveNet models remain unaffected by recurrent drift.
 
 **Implementation.** `src/models/lstm/layer_kernels.rs` (GEMV with f32 weights)

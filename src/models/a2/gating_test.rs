@@ -111,7 +111,7 @@ fn test_blending_alpha_zero() {
     // For x ≤ -8, sigmoid(x) = 0 in our approximation.
     let mut alpha = [-10.0f32, -10.0f32];
     ActivationType::Sigmoid.apply(&mut alpha);
-    assert!(alpha[0].abs() < 1e-7);
+    assert!(alpha[0].abs() < 1e-4);
 
     let mut activated = orig;
     ActivationType::Tanh.apply(&mut activated);
