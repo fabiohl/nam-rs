@@ -41,7 +41,9 @@ use nam_rs::models::StaticModel;
 use nam_rs::models::container::ContainerModel;
 use nam_rs::models::slimmable::SlimmableModel;
 
-use common::{generate_sine_440hz, make_lstm_data, make_wavenet_a2_dyn_data, make_wavenet_dyn_data};
+use common::{
+    generate_sine_440hz, make_lstm_data, make_wavenet_a2_dyn_data, make_wavenet_dyn_data,
+};
 
 /// Measures the processing time of a real WaveNet model ("Standard").
 /// This benchmark is the most representative for common guitar use,
