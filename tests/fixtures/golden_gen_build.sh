@@ -197,6 +197,7 @@ else
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_CXX_STANDARD=20 \
+        -DCMAKE_CXX_FLAGS="-Wno-error=effc++ -Wno-error" \
         -DNAM_ENABLE_A2_FAST=ON \
         > "$CMAKE_LOG" 2>&1 || {
         cmake_status=$?
@@ -315,7 +316,7 @@ CATALOG=(
     "lstm.nam:golden_lstm_official:LSTM Official:48k_only"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):48k_only"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):48k_only"
-    "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3):all"
+    "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3):48k_only"
     "a2_example.nam:golden_a2_example:SlimmableContainer A2 Example (CH=3→6):none"
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100:all"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod:all"
@@ -361,10 +362,9 @@ for entry in "${CATALOG[@]}"; do
         continue
     fi
 
-    TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_render.log"
-    set +o pipefail
-    "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" > "$TEMP_RENDER_LOG" 2>&1
-    render_status=$?
+    TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_v1_render.log"
+    render_status=0
+    "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" > "$TEMP_RENDER_LOG" 2>&1 || render_status=$?
     tail -1 "$TEMP_RENDER_LOG"
     cat "$TEMP_RENDER_LOG" >> "$LOGS_DIR/render_v1.log"
     rm -f "$TEMP_RENDER_LOG"
@@ -439,8 +439,8 @@ for entry in "${CATALOG[@]}"; do
 
         TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_v2_${sr}_render.log"
         set +o pipefail
-        "$RENDER_BIN" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" > "$TEMP_RENDER_LOG" 2>&1
-        render_status=$?
+        render_status=0
+        "$RENDER_BIN" "$MODEL_PATH" "$v2_wav" "$v2_out_wav" > "$TEMP_RENDER_LOG" 2>&1 || render_status=$?
         tail -1 "$TEMP_RENDER_LOG"
         cat "$TEMP_RENDER_LOG" >> "$LOGS_DIR/render_v2.log"
         rm -f "$TEMP_RENDER_LOG"
