@@ -124,6 +124,8 @@ let new_cs_err = _mm512_sub_ps(_mm512_sub_ps(new_cs, f_cs), y);
 
 ## Achado 3: `wavenet_a2_max.nam` Ativamente Quebrado (Divergência Crítica no `condition_dsp`)
 
+> Vide docs/cpp_parity_map.md §4.4 e §7.1.
+
 **Diagnóstico Detalhado:**
 O modelo `wavenet_a2_max` (CH=4, condition_size=8) é o único flagship do A2 ativamente quebrado, gerando uma saída com erro severo (MSE ≈ 2.46e3, SNR ≈ -15.6 dB, ESR ≈ 36.1). Apesar do modelo carregar corretamente e executar via `WaveNetA2Dyn`, seu áudio de saída não faz sentido e, por cautela, ele foi contido de forma hardcoded no dispatcher (`is_disabled_broken_a2_flagship`).
 
