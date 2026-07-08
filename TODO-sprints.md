@@ -92,16 +92,16 @@ Nesta etapa, implementamos a lógica matemática real de Kahan nos kernels eleme
   * Atualizar as assinaturas das funções `fused_lstm_gates_avx512_hf`, `fused_lstm_gates_avx512_std` e `fused_lstm_gates_avx512` de forma análoga, operando com `__m512` e instruções `_mm512_*`.
   * **Nota (T2.1):** `fused_lstm_gates_dyn_avx512` e `fused_lstm_gates_dyn_tail` já aceitam `cell_error`. A tail já usa Kahan escalar. O loop principal do dyn_avx512 ainda zera `cell_error` (`_mm512_setzero_ps()`) porque os kernels `_hf`/`_std` ainda retornam par. Após atualizar os kernels AVX-512 para retornar tripla, substituir o `_mm512_setzero_ps()` pelo `new_cs_err` real e remover o prefixo `_` de `_cs_err`.
 
-#### 🎯 Tarefa 2.3: Atualização dos Processadores Dinâmicos de Gates [PARCIAL]
+#### 🎯 Tarefa 2.3: Atualização dos Processadores Dinâmicos de Gates [CONCLUÍDA]
 
-* **Arquivo:** [`src/math/lstm/gates.rs`](file:///home/fabio/nam-rs/src/math/lstm/gates.rs)
+* **Arquivo:** [`src/math/lstm/gates.rs`](file:///home/fabio/nam-rs/src/math/lstm/gates.rs), [`src/models/lstm/layer_dyn_kernels.rs`](file:///home/fabio/nam-rs/src/models/lstm/layer_dyn_kernels.rs)
 * **Ações:**
   * ~~Modificar `fused_lstm_gates_dyn_avx2` e `fused_lstm_gates_dyn_avx512` para aceitar `cell_error: &mut [f32]`.~~ *(Feito em T2.1)*
   * ~~Carregar `cs_err` via `_loadu_ps` a partir de `cell_error.as_ptr().add(j)`.~~ *(Feito em T2.1)*
   * ~~Salvar o `new_cs_err` resultante via `_storeu_ps` no endereço `cell_error.as_mut_ptr().add(j)`.~~ *(Feito em T2.1)*
   * ~~Atualizar `fused_lstm_gates_dyn_tail` para aceitar `cell_error: &mut [f32]` e aplicar a lógica de compensação de Kahan na cauda de processamento de forma escalar.~~ *(Feito em T2.1)*
   * **Nota (T2.1):** Os processadores dinâmicos AVX2 já estão completos. O AVX-512 ainda usa `_mm512_setzero_ps()` no loop principal (será corrigido em T2.2). As dispatch wrappers em `avx2_impl/activations.rs` e `avx512/activations.rs` já propagam `cell_error`. As chamadas em `layer_dyn_kernels.rs` já extraem `cell_err_slice`.
-  * **Pendente:** Atualizar o fallback escalar `process_sample_scalar` em `layer_dyn_kernels.rs` com Kahan (ver T3.2).
+  * ~~**Pendente:** Atualizar o fallback escalar `process_sample_scalar` em `layer_dyn_kernels.rs` com Kahan (ver T3.2).~~ *(Feito em T2.3: `process_sample_scalar` agora carrega `cell_error[j]`, aplica Kahan `(new_cs - f_cs) - y` e salva `new_cs_err` em ambos os caminhos HF e STD)*
 
 ---
 

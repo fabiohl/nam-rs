@@ -58,6 +58,7 @@ impl LstmLayerDyn {
             let gg = self.gates[j + 2 * h];
             let go = self.gates[j + 3 * h];
             let cs = self.cell_state[j];
+            let cs_err = self.cell_error[j];
 
             if is_hf {
                 let f = scalar_sigmoid_poly(gf);
@@ -65,22 +66,32 @@ impl LstmLayerDyn {
                 let g = scalar_tanh_poly(gg);
                 let o = scalar_sigmoid_poly(go);
 
-                let new_cs = f * cs + in_gate * g;
-                let h_val = o * scalar_tanh_poly(new_cs);
+                let f_cs = f * cs;
+                let f_err = f * cs_err;
+                let i_g = in_gate * g;
+                let y = i_g - f_err;
+                let new_cs = f_cs + y;
+                let new_cs_err = (new_cs - f_cs) - y;
 
                 self.cell_state[j] = new_cs;
-                self.state[i + j] = h_val;
+                self.cell_error[j] = new_cs_err;
+                self.state[i + j] = o * scalar_tanh_poly(new_cs);
             } else {
                 let f = scalar_minimax_sigmoid(gf);
                 let in_gate = scalar_minimax_sigmoid(gi);
                 let g = scalar_pade_tanh(gg);
                 let o = scalar_minimax_sigmoid(go);
 
-                let new_cs = f * cs + in_gate * g;
-                let h_val = o * scalar_pade_tanh(new_cs);
+                let f_cs = f * cs;
+                let f_err = f * cs_err;
+                let i_g = in_gate * g;
+                let y = i_g - f_err;
+                let new_cs = f_cs + y;
+                let new_cs_err = (new_cs - f_cs) - y;
 
                 self.cell_state[j] = new_cs;
-                self.state[i + j] = h_val;
+                self.cell_error[j] = new_cs_err;
+                self.state[i + j] = o * scalar_pade_tanh(new_cs);
             }
         }
     }
