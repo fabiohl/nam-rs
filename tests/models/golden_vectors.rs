@@ -1979,7 +1979,7 @@ fn test_golden_vectors_convnet_test() {
 /// Re-enable only after closing the condition_dsp parity gap (§4.4) and
 /// removing the dispatch guard.
 #[test]
-#[ignore = "model disabled — confirmed broken (§7.1); inference path blocked at dispatch"]
+#[ignore = "model disabled — confirmed broken; inference path blocked at dispatch"]
 fn test_golden_vectors_wavenet_a2_max() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_a2_max.bin");

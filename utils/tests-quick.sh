@@ -213,7 +213,10 @@ _cargo_meas() {
         done
         local _ep_flags=""
         for _ep in "${!_eps[@]}"; do _ep_flags="$_ep_flags --test $_ep"; done
-        cargo test --release $_ep_flags -- $_filters $extra_args
+        # Strip the leading '-- ' from extra_args so we don't pass a second '--'
+        # to libtest, which would cause it to stop parsing options like --ignored.
+        local libtest_args="${extra_args#-- }"
+        cargo test --release $_ep_flags -- $_filters $libtest_args
     else
         local _legacy=""
         for _t in "${tests[@]}"; do _legacy="$_legacy --test $_t"; done
