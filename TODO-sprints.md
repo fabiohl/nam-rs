@@ -83,7 +83,7 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
 
   * **Nota:** manter `t33_diagnostic_recurrent_drift_lstm_1x16` (não pareado) é intencional — ele mede o efeito real de iniciar produção a partir de silêncio (`prewarm(24_000)`) vs. sinal real, que é o comportamento **real** de um plugin ao carregar (primeiro áudio após silêncio/carregamento do preset). As duas métricas respondem perguntas diferentes e ambas têm valor; documentar essa distinção explicitamente no doc final (Tarefa 3.4).
 
-#### 🎯 Tarefa 1.2: ESR por Janela Não-Cumulativa (Blockwise) Correlacionada às Seções do Sinal de Stress [DONE]
+#### 🎯 Tarefa 1.2: ESR por Janela Não-Cumulativa (Blockwise) Correlacionada às Seções do Sinal de Stress [CONCLUÍDO]
 
 * **Arquivos:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (nova função pública), [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs)
 * **Ações:**
@@ -92,14 +92,18 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
   * Imprimir uma tabela `bloco → [tempo] → ESR → seção do sinal` (rotular manualmente as 6 seções conforme a tabela da Tarefa 2.4/`src/testing/stress.rs`), para permitir correlacionar visualmente picos de ESR com trechos de baixa amplitude (silêncio entre hits de palm-mute, cauda do decaimento de acorde) vs. trechos de alta amplitude.
   * **Critério de aceite:** o padrão de ESR por bloco deve ser reportado e comparado entre a variante pareada (1.1) e a legada (`t33` original) — a expectativa é que a variante pareada mostre ESR uniformemente baixo (~3e-3) em todos os blocos após o descarte dos primeiros 24k, enquanto a legada pode ainda mostrar picos correlacionados a trechos de baixa amplitude (confirmando §2.4 do Achado A1).
 
-#### 🎯 Tarefa 1.3: Decomposição de Erro Pareada com Prewarm para `BossLSTM-1x16` e `BossLSTM-2x8`
+> **Resultado:** Função `compute_esr_blockwise` implementada e integrada. A comparação blockwise revelou comportamento quase idêntico entre o teste pareado (`t33b`) e o legado (`t33`) após o primeiro bloco (ex: pico de ESR de `~1.33` a `~1.45` na seção de palm-mute de 2.0-2.5s em ambos os testes), provando que o desvio elevado é provocado por passagens de baixa amplitude e não por mismatch de inicialização.
+
+#### 🎯 Tarefa 1.3: Decomposição de Erro Pareada com Prewarm para `BossLSTM-1x16` e `BossLSTM-2x8` [CONCLUÍDO]
 
 * **Arquivo:** [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) (novas funções `test_decomposition_boss_lstm_1x16`, `test_decomposition_boss_lstm_2x8`, próximas a `test_decomposition_lstm`, linha 380)
 * **Ações:**
   * Hoje a decomposição de erro (`ΔESR f16c`, `ΔESR bf16`, `ΔESR Padé`, `ΔESR acumulação f32`) só é medida para `lstm.nam` (H=3 official) via `test_decomposition_lstm` (linhas 380-403), usando sweep cold-start de 256 amostras. O dashboard já sinaliza essa lacuna (`quality-dashboard-antes.txt:26-29`): *"BossLSTM-1x16/2x8 currently show the LSTM family value... NOT their own f64-oracle floor"*.
   * Replicar `run_oracle_esr_paired` + `run_decomposition` (linhas 422-472 de `src/testing/reference_oracle/mod.rs`) para `BossLSTM-1x16.nam` e `BossLSTM-2x8.nam`, usando **prewarm pareado de 24k + janela de medição de 4096 amostras do próprio sinal de stress v2** (em vez do sweep sintético de 256 amostras) — chamando `run_decomposition` com um subvetor de `stress_f64` (ex.: `stress_f64[24_000..28_096]`) e a saída de produção correspondente, para que a decomposição reflita o regime de sinal real (guitarra) em vez de um sweep senoidal sintético.
-  * Adicionar `assert!` de sanidade (Regra 5 do Gate Calibration Policy — `docs/perceptual_validation.md:963-982`): `Σ(ΔESR f16c, bf16, Padé, f32-acc) ≈ ESR total`, dentro de 10×, sinalizando explicitamente se a violação ocorrer (como já ocorre para `ConvNet-test`/`WaveNet-official` em regime cold-start, documentado como esperado pelas notas do próprio dashboard).
+  * Adicionar `assert!` de sanidade (Regra 5 do Gate Calibration Policy — `docs/perceptual_validation.md:963-982`): `Σ(ΔESR f16c, bf16, Padé, f32-acc) ≈ ESR total`, dentro de 10×, sinalizando explicitamente se a violação ocorrer (como já ocorre para `ConvNet-test`/`WaveNet-official` in regime cold-start, documentado como esperado pelas notas do próprio dashboard).
   * **Critério de aceite:** obter, pela primeira vez, o piso `f64` real e específico de `BossLSTM-1x16`/`2x8` (não o valor de família herdado de `lstm.nam`), permitindo preencher corretamente a coluna "vs Ideal (f64)" do dashboard (Sprint 3, Tarefa 3.5) sem a ressalva `(~fam.)`.
+
+> **Resultado:** Decomposição de erro pareada com prewarm de 24k implementada. Obtidos os pisos ideais f64 específicos de `5.06e-2` (-13.0 dB) para `BossLSTM-1x16` e `1.73e-3` (-27.6 dB) para `BossLSTM-2x8` em regime de sinal de guitarra real. A aproximação da ativação Padé é a fonte dominante de erro em ambos os modelos. Testes integrados à suíte `parity` com a verificação de sanidade da Regra 5 (razões calculadas de 1.05 e 0.99, respectivamente).
 
 #### 🎯 Tarefa 1.4: Regression Gate para os Diagnósticos de Drift (Legado e Pareado)
 

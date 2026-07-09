@@ -402,6 +402,201 @@ fn test_decomposition_lstm() {
     );
 }
 
+fn run_decomposition_paired(
+    label: &str,
+    architecture: &str,
+    model_data: &NamModelData,
+    production_output: &[f64],
+    input_signal: &[f64],
+    warmup_len: usize,
+) -> nam_rs::testing::reference_oracle::DecompositionResult {
+    let oracle_cfg = PrecisionConfig::default();
+
+    let oracle_out = oracle_forward(model_data, input_signal, &oracle_cfg);
+    let oracle_paired = &oracle_out[warmup_len..];
+    let prod_paired = &production_output[warmup_len..];
+    let esr_f32_vs_f64 = compute_esr_f64(oracle_paired, prod_paired);
+
+    let mut cfg_f16c = oracle_cfg;
+    cfg_f16c.weight_precision = WeightPrecision::F16C;
+    let out_f16c = oracle_forward(model_data, input_signal, &cfg_f16c);
+    let esr_f16c = compute_esr_f64(oracle_paired, &out_f16c[warmup_len..]);
+
+    let mut cfg_bf16 = oracle_cfg;
+    cfg_bf16.weight_precision = WeightPrecision::BF16;
+    let out_bf16 = oracle_forward(model_data, input_signal, &cfg_bf16);
+    let esr_bf16 = compute_esr_f64(oracle_paired, &out_bf16[warmup_len..]);
+
+    let mut cfg_act = oracle_cfg;
+    cfg_act.activation = ActivationMode::PadeMinimax;
+    let out_act = oracle_forward(model_data, input_signal, &cfg_act);
+    let esr_act = compute_esr_f64(oracle_paired, &out_act[warmup_len..]);
+
+    let mut cfg_acc = oracle_cfg;
+    cfg_acc.accumulation = AccumulationMode::F32Plain;
+    let out_acc = oracle_forward(model_data, input_signal, &cfg_acc);
+    let esr_acc = compute_esr_f64(oracle_paired, &out_acc[warmup_len..]);
+
+    let combined_cfg = PrecisionConfig {
+        weight_precision: WeightPrecision::F16C,
+        activation: ActivationMode::PadeMinimax,
+        accumulation: AccumulationMode::F32Plain,
+    };
+    let out_combined = oracle_forward(model_data, input_signal, &combined_cfg);
+    let esr_combined = compute_esr_f64(oracle_paired, &out_combined[warmup_len..]);
+
+    nam_rs::testing::reference_oracle::DecompositionResult {
+        label: label.to_string(),
+        architecture: architecture.to_string(),
+        esr_f32_vs_f64,
+        esr_quant_f16c: Some(esr_f16c),
+        esr_quant_bf16: Some(esr_bf16),
+        esr_activation: Some(esr_act),
+        esr_accumulation: Some(esr_acc),
+        esr_combined: Some(esr_combined),
+    }
+}
+
+#[test]
+fn test_decomposition_boss_lstm_1x16() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let path = models_dir().join("BossLSTM-1x16.nam");
+    let md = load_and_parse(&path);
+
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
+    assert!(
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    while pos < total {
+        let nf = (total - pos).min(64);
+        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+        pos += nf;
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "BossLSTM-1x16",
+        "LSTM",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "BossLSTM-1x16 Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}",
+        total_esr, sum_sources, ratio
+    );
+
+    assert!(
+        ratio <= 10.0 && inverse_ratio <= 10.0,
+        "Sanity check failed: total ESR ({:.2e}) is not consistent with sum of sources ({:.2e}) (ratio = {:.2})",
+        total_esr,
+        sum_sources,
+        ratio
+    );
+}
+
+#[test]
+fn test_decomposition_boss_lstm_2x8() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let path = models_dir().join("BossLSTM-2x8.nam");
+    let md = load_and_parse(&path);
+
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
+    assert!(
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    while pos < total {
+        let nf = (total - pos).min(64);
+        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+        pos += nf;
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "BossLSTM-2x8",
+        "LSTM",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "BossLSTM-2x8 Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}",
+        total_esr, sum_sources, ratio
+    );
+
+    assert!(
+        ratio <= 10.0 && inverse_ratio <= 10.0,
+        "Sanity check failed: total ESR ({:.2e}) is not consistent with sum of sources ({:.2e}) (ratio = {:.2})",
+        total_esr,
+        sum_sources,
+        ratio
+    );
+}
+
 #[test]
 fn test_decomposition_a2() {
     let path = models_dir().join("wavenet_a2_lite.nam");
