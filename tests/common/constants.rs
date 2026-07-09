@@ -36,3 +36,10 @@ pub const CONVNET_ESR_LIMIT: f64 = 1e-12;
 pub const A2_FILM_ESR_LIMIT: f64 = 1e-9;
 // SQ5.5: A2 Generic (wavenet_a2_max.nam) — disabled §7.1, dead threshold retained for meta-test calibration
 pub const A2_GENERIC_ESR_LIMIT: f64 = 1e-9;
+
+// ── Tarefa 1.4: Recurrent State Drift Diagnostic Limits ──
+// Methodology: 5.0s of stress signal v2 (240k samples) comparing production f32 vs oracle f64.
+//   Legacy:    Full 240k, prewarm(24_000) on zeroes. Measured: ESR = 2.611684e-2. Limit = ESR × 1.5.
+//   Paired:    Last 216k, prewarm-paired (no zeroes). Measured: ESR = 2.589060e-2. Limit = ESR × 2.0.
+pub const LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT: f64 = 3.92e-2;
+pub const LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT: f64 = 5.18e-2;

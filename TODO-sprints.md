@@ -105,13 +105,15 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
 
 > **Resultado:** Decomposição de erro pareada com prewarm de 24k implementada. Obtidos os pisos ideais f64 específicos de `5.06e-2` (-13.0 dB) para `BossLSTM-1x16` e `1.73e-3` (-27.6 dB) para `BossLSTM-2x8` em regime de sinal de guitarra real. A aproximação da ativação Padé é a fonte dominante de erro em ambos os modelos. Testes integrados à suíte `parity` com a verificação de sanidade da Regra 5 (razões calculadas de 1.05 e 0.99, respectivamente).
 
-#### 🎯 Tarefa 1.4: Regression Gate para os Diagnósticos de Drift (Legado e Pareado)
+#### 🎯 Tarefa 1.4: Regression Gate para os Diagnósticos de Drift (Legado e Pareado) [CONCLUÍDO]
 
 * **Arquivos:** [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs), [`tests/common/constants.rs`](file:///home/fabio/nam-rs/tests/common/constants.rs)
 * **Ações:**
   * Adicionar em `tests/common/constants.rs`, seguindo o padrão de comentário de proveniência já usado (linhas 16-31): duas novas constantes, `LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT` (baseline = ESR medido na Tarefa 1.1 × 2, margem conservadora) e `LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT` (baseline = ESR do `t33` legado full-duration × 1.5 — margem menor pois este cenário é mais sensível a mudanças de comportamento no hot-path da LSTM, não apenas de precisão).
   * Adicionar `assert!(esr_tail < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT, ...)` ao final de `t33b_diagnostic_recurrent_drift_lstm_1x16_paired` (Tarefa 1.1) e um `assert!` equivalente ao final de `t33_diagnostic_recurrent_drift_lstm_1x16` (legado), transformando ambos de puramente observacionais em *regression gates* reais.
   * **Nota de risco:** manter ambos os testes `#[ignore]` (são caros — ~5s de áudio simulado × múltiplos tamanhos de janela); não promovê-los para a suíte rápida (`tests-quick.sh`), conforme `.agents/rules/testing.md` §1 (testes lentos devem permanecer `#[ignore]`). Adicioná-los ao `tests-long.sh` apenas após rodar standalone e confirmar estabilidade entre execuções (`.agents/rules/testing.md` §3 — "Nunca adicionar teste ao tests-long.sh sem rodá-lo standalone primeiro").
+
+> **Resultado:** Regression Gates implementados com sucesso. Foram adicionadas as constantes `LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT = 3.92e-2` (ESR legado de `2.61e-2` × 1.5) e `LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT = 5.18e-2` (ESR pareado de `2.59e-2` × 2) em `tests/common/constants.rs`. Adicionadas as asserções correspondentes em `t33_diagnostic_recurrent_drift_lstm_1x16` e `t33b_diagnostic_recurrent_drift_lstm_1x16_paired`. Os testes foram mapeados no `utils/tests-long.sh`, e corrigiu-se um bug estrutural no script de auditoria que causava a omissão de todos os testes sob o runner `_test_flag` (devido a um prefixo inválido de namespaces do Sprint 3).
 
 #### 🎯 Tarefa 1.5: Teste Equivalente para `BossLSTM-2x8`
 

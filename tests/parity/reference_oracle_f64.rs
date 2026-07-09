@@ -26,6 +26,8 @@ use super::common;
 use common::A2_ESR_LIMIT;
 use common::A2_FILM_ESR_LIMIT;
 use common::CONVNET_ESR_LIMIT;
+use common::LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT;
+use common::LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
 use common::WAVENET_ESR_LIMIT;
 
@@ -1108,6 +1110,13 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
 
     let esr_blocks_12k = compute_esr_blockwise(&oracle_f32, &output, 12_000);
     print_blockwise_esr_table(&esr_blocks_12k, 12_000, 48000);
+
+    assert!(
+        esr_full < LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT,
+        "Legacy LSTM 1x16 drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_full,
+        LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT
+    );
 }
 
 // ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
@@ -1153,4 +1162,11 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
 
     let esr_blocks_12k = compute_esr_blockwise(&oracle_f32, &output, 12_000);
     print_blockwise_esr_table(&esr_blocks_12k, 12_000, 48000);
+
+    assert!(
+        esr_tail < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
+        "Paired LSTM 1x16 drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail,
+        LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT
+    );
 }

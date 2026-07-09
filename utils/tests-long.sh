@@ -62,6 +62,8 @@ declare -A LONG_ENTRY_MAP=(
     [cpp_parity]="parity"
     [cabsim_cpp_parity]="parity"
     [isa_parity]="parity"
+    [t33_diagnostic_recurrent_drift_lstm_1x16]="parity"
+    [t33b_diagnostic_recurrent_drift_lstm_1x16_paired]="parity"
     [soak_test]="perf_soak"
     [pipeline_soak]="perf_soak"
     [concurrency_stress]="perf_soak"
@@ -87,7 +89,7 @@ _test_flag() {
     local test_name="$1"
     if _entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
         local entry="${LONG_ENTRY_MAP[$test_name]:-models}"
-        echo "--test $entry ${entry}::${test_name}"
+        echo "--test $entry ${test_name}"
     else
         echo "--test $test_name"
     fi
@@ -484,6 +486,9 @@ run_proptests_parity_phase() {
     # (quick's Fase 2 only runs the 3-model `quick_parity` subset).
     timed_cargo_test "cpp_parity" --release --no-fail-fast $(_test_flag cpp_parity) -- --ignored --nocapture || status=1
     timed_cargo_test "cabsim_cpp_parity" --release --no-fail-fast $(_test_flag cabsim_cpp_parity) -- --ignored --nocapture || status=1
+    # Recurrent State Drift Diagnostics (Tarefa 1.4)
+    timed_cargo_test "t33_diagnostic_recurrent_drift_lstm_1x16" --release --no-fail-fast $(_test_flag t33_diagnostic_recurrent_drift_lstm_1x16) -- --ignored --nocapture || status=1
+    timed_cargo_test "t33b_diagnostic_recurrent_drift_lstm_1x16_paired" --release --no-fail-fast $(_test_flag t33b_diagnostic_recurrent_drift_lstm_1x16_paired) -- --ignored --nocapture || status=1
     # Golden vectors v2 (multi-SR); v1 already covered by quick's Fase 2.
     timed_cargo_test "golden_vectors_v2" --release --no-fail-fast $(_test_flag golden_vectors) -- v2_ --ignored --nocapture || status=1
     # Heavy/long receptive-field golden regression (quick only runs the
