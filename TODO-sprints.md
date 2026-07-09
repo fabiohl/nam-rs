@@ -479,7 +479,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 * **Achado:** este é o arquivo com mais menções (19) e o que mais detalha o mecanismo de resolução de fidelidade por-modelo (incluindo, presumivelmente, a seção "BossLSTM default resolution" identificada na auditoria anterior — Achado A1 §7). Provável necessidade de reescrever a seção que descreve o override por-modelo como "resolvido" para refletir que a resolução agora é **universal**, não mais específica de `BossLSTM`.
 * **Ação:** ler o arquivo completo antes de editar (não apenas grep das linhas com `HighFidelity`); identificar se há uma seção estruturalmente dedicada ao override por-modelo que precisa ser removida/reescrita (não apenas renomeada).
 
-#### 🎯 Tarefa 2.4: `docs/perceptual_validation.md` (11 menções) [🟢 provavelmente mecânico, mas verificar por seção]
+#### 🎯 Tarefa 2.4: `docs/perceptual_validation.md` (11 menções) [CONCLUÍDA]
 
 * **Achado:** este arquivo é a autoridade normativa para "Gate Calibration Policy" (Regras 1-7) referenciada por várias outras tarefas neste documento — inclui a análise do "interop gap" que motivou a adoção de `HighFidelity` para `BossLSTM` (linhas ~645-813, segundo mapeamento da auditoria anterior).
 * **Ação:** revisar se a narrativa "HighFidelity mode collapses the gap for BossLSTM" precisa de nota de atualização (universal agora, não específico), similar ao tratamento dado em `TODO-findings.md` Achado A1 (nota de renumeração já aplicada como precedente de estilo).
