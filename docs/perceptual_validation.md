@@ -684,6 +684,7 @@ local approximation error into cₜ, which the forget gate fₜ (0.9–0.99) par
 decays, limiting accumulation to a steady-state: `⟨ESR⟩ ∝ σ²ε/(1−⟨f⟩²)`.
 
 The Sprint 2 investigation (Tarefa 2.3) confirmed:
+
 - `BossLSTM-1×16` (H=16): weight norm L2 = 2.82, pre-activations exceed Padé/
   minimax calibration range → 28–60× more Padé error than other LSTM models
 - `BossLSTM-2×8` (H=8, 2 layers): weight norm L2 = 2.62, mostly within range,
@@ -696,27 +697,24 @@ The Sprint 2 investigation (Tarefa 2.3) confirmed:
 All measurements at 48 kHz, stress signal v2 (5 s, 240k samples), golden_vectors
 vs NAMCore C++ (pre-recorded golden vectors):
 
-| Model            | ESR (vs NAMCore)   | ESR (vs f64 oracle, paired) | SNR (dB) | MR-STFT | Dominant error source |
-| ---------------- | ------------------ | --------------------------- | -------- | ------- | --------------------- |
-| BossLSTM-1×16    | 2.59e-2 (−15.9 dB) | 5.06e-2 (−13.0 dB)         | 15.5     | 0.56    | Padé act. (95%: 4.81e-2 ΔESR) |
-| BossLSTM-2×8     | 3.88e-3 (−24.1 dB) | 1.73e-3 (−27.6 dB)         | 24.1     | 0.56    | Padé act. (~100%: 1.74e-3 ΔESR) |
-| lstm.nam (H=3)   | 1.18e-3 (−29.3 dB) | 3.41e-3 (−24.7 dB)\*       | 29.3     | 0.64    | f32 accumulation + bf16 quant. |
+| Model            | ESR (vs NAMCore)   | ESR (vs f64 oracle, paired) | SNR (dB) | MR-STFT | Dominant error source           |
+| ---------------- | ------------------ | --------------------------- | -------- | ------- | ------------------------------- |
+| BossLSTM-1×16    | 2.59e-2 (−15.9 dB) | 5.06e-2 (−13.0 dB)          | 15.5     | 0.56    | Padé act. (95%: 4.81e-2 ΔESR)   |
+| BossLSTM-2×8     | 3.88e-3 (−24.1 dB) | 1.73e-3 (−27.6 dB)          | 24.1     | 0.56    | Padé act. (~100%: 1.74e-3 ΔESR) |
+| lstm.nam (H=3)   | 1.18e-3 (−29.3 dB) | 3.41e-3 (−24.7 dB)          | 29.3     | 0.64    | f32 accumulation + bf16 quant.  |
 
 \* Oráculo f64 measured on short sweep (256 samples); pad for long-duration.
 
 The ESR grows sub-quadratically with sequence length (not ∝N²), confirming the
 forget gate limits accumulation to a rate-dependent steady-state.
 
-**Key finding (Sprint 2, Tarefa 2.2):** When both NAM-rs and NAMCore C++ use
-`HighFidelity` activations (poly-based exact approximations), the interop gap
-collapses to near-zero:
-- `BossLSTM-1×16`: ESR(vs NAMCore) = 5.05e-11 (−103.0 dB)
-- `BossLSTM-2×8`: ESR(vs NAMCore) = 4.02e-12 (−114.0 dB)
+**Key finding (Sprint 2, Tarefa 2.4):** When Rust is configured in `HighFidelity` mode (native math activations) and C++ NAMCore runs in its default mode (which also uses native math: `using_fast_tanh = false`), the interop gap collapses to near-zero (numerical floor):
+
+- `BossLSTM-1×16`: ESR(vs NAMCore) ≈ 1.06e-10 (−99.7 dB)
+- `BossLSTM-2×8`: ESR(vs NAMCore) ≈ 4.02e-12 (−114.0 dB)
 - `lstm.nam` (H=3): ESR(vs NAMCore) = ~1e-12 (numerical floor)
 
-This proves the interop gap in Standard mode is caused by *different Padé/
-minimax implementations across languages* producing diverging recurrent state
-trajectories — not by a fundamental architectural incompatibility.
+This proves the interop gap in Standard mode is caused by *different math precision/activation formulations across engines* — Rust uses FastMath Padé/minimax approximations while C++ uses standard native math, producing diverging recurrent state trajectories — not by a fundamental architectural incompatibility. When activation functions are matched (HighFidelity in Rust vs default native in C++), both engines achieve virtually identical outputs.
 
 **Pre-Sprint-2 historical note:** The table row in earlier versions of this
 document that read `2.61e-2 | 3.57e-3` conflated two different models: the
@@ -740,17 +738,11 @@ The divergence has two distinct layers, and the relationship between them is
 **model-dependent** — a single "LSTM" figure is misleading:
 
 **1. Interop (nam-rs vs NAMCore):** Golden vector measurements (v2, 240k steps
-@ 48 kHz). Both engines share the same f32 accumulation model and
-approximation family (Padé/minimax), but differ in implementation details
-(FMA ordering, GEMV blocking, activation polynomial evaluation). The
-interop gap is the *lower bound* of ESR for `BossLSTM-1×16` (2.59e-2) because
-both engines suffer similar Padé error. For `BossLSTM-2×8` and `lstm.nam`,
-operating mostly within approximation calibration range, the interop gap
-exceeds the absolute floor.
+@ 48 kHz). NAMCore C++ default mode executes with native activations (`using_fast_tanh = false`).
+In Standard mode, Rust uses FastMath approximations (Padé/minimax), which introduces a math discrepancy.
+The observed interop gap of `2.59e-2` (for `BossLSTM-1×16`) is the accumulated recurrent drift between FastMath (Rust) and native (C++) math.
 
-When `HighFidelity` activations are used, the interop gap collapses to
-near-bit-exact (~1e-11 to ~1e-12) — proving that different activation
-polynomial implementations are the sole source of interop divergence.
+When Rust `HighFidelity` mode is enabled, it uses native activations matching NAMCore C++'s default native activations, and the interop gap collapses to near-bit-exact (~1e-11 to ~1e-12). This confirms that differing activation formulations (FastMath approximations vs native math) are the sole source of the observed interop gap.
 
 **2. Absolute correction (production f32 vs f64 ideal):** Prewarm-paired
 decomposition (Sprint 2 Tarefa 1.3, 24k prewarm + 4096 acoustic samples).
@@ -810,11 +802,11 @@ Padé activation error — not in the 3e-3 range.
 
 **Fixability:**
 
-| Scope                        | BossLSTM-1×16                    | BossLSTM-2×8                  | lstm.nam (H=3)                |
-| ---------------------------- | -------------------------------- | ----------------------------- | ----------------------------- |
+| Scope                        | BossLSTM-1×16                    | BossLSTM-2×8                  | lstm.nam (H=3)               |
+| ---------------------------- | -------------------------------- | ----------------------------- | ---------------------------- |
 | vs NAMCore (interop)         | `HighFidelity` → 5.05e-11 ✓      | `HighFidelity` → 4.02e-12 ✓   | Already ~1e-3, near floor    |
 | vs f64 ideal (absolute)      | `HighFidelity` → ~2.5e-3 ✓       | `HighFidelity` → near floor ✓ | ~3.4e-3, f32-format limited  |
-| CPU cost of HighFidelity     | Higher (poly exp-based)           | Higher                        | Not needed here               |
+| CPU cost of HighFidelity     | Higher (poly exp-based)          | Higher                        | Not needed here              |
 
 The verdict for BossLSTM models: **the interop gap IS fixable via HighFidelity
 activation mode** (already implemented in NAM-rs as opt-in). Whether to make
@@ -1052,13 +1044,13 @@ understood and closed.
 **A reference oracle is only "independent" if it is validated against a ground
 truth that is a separate codebase from the one it judges — and that
 independence must be re-proven whenever either side changes.** A second
-implementation written to _mirror_ the implementation it is supposed to check
+implementation written to *mirror* the implementation it is supposed to check
 provides no protection: a shared conceptual bug passes silently in both.
 
 - **The trap (canonical example).** The S5 external anchor `validate_oracle_f64.py`
   was written to "match the Rust oracle layout" (shared flat buffer, transposed
   weight indexing). When the Rust oracle was buggy, the Python reproduced the
-  _same_ bug, so `ESR(oracle vs anchor) < 1e-12` looked like proof of correctness
+  *same* bug, so `ESR(oracle vs anchor) < 1e-12` looked like proof of correctness
   while both were wrong. T8.2 fixed the Rust oracle and the hidden divergence
   surfaced (LSTM ESR jumped to 21.3).
 - **The fix (T8.13).** The anchor must agree with a **third, independent code
