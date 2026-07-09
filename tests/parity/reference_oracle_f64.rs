@@ -787,6 +787,46 @@ fn test_summary_table() {
 
 // ── T3.3 RCA diagnostic: recurrent state drift ───────────────────────────────
 
+fn print_blockwise_esr_table(esr_blocks: &[f64], block_size: usize, sample_rate: u32) {
+    let block_duration = block_size as f64 / sample_rate as f64;
+    println!(
+        "\nTabela ESR Blockwise (block_size = {} amostras / {:.3}s):",
+        block_size, block_duration
+    );
+    println!(
+        "{:<6} | {:<15} | {:<12} | {:<10} | Seção do Sinal",
+        "Bloco", "Janela Tempo", "ESR linear", "ESR (dB)"
+    );
+    println!("{}", "-".repeat(85));
+
+    for (idx, &esr) in esr_blocks.iter().enumerate() {
+        let start_s = idx as f64 * block_duration;
+        let end_s = (idx + 1) as f64 * block_duration;
+        let t_mid = (start_s + end_s) / 2.0;
+
+        let section = if t_mid < 1.0 {
+            "Single note Low-E (bend+vibrato)"
+        } else if t_mid < 2.0 {
+            "Power chord E2+E3+B3"
+        } else if t_mid < 2.5 {
+            "Palm-mute attack-release (16 hits)"
+        } else if t_mid < 3.5 {
+            "Pinch harmonic train + saw sweep"
+        } else if t_mid < 4.5 {
+            "Bass amp: low-A + transient pluck"
+        } else {
+            "Slow chord ringing decay (C-E-G)"
+        };
+
+        let esr_db = esr_to_db_f64(esr);
+
+        println!(
+            "{:<6} | [{:.2}s - {:.2}s] | {:<12.6e} | {:<10.1} | {}",
+            idx, start_s, end_s, esr, esr_db, section
+        );
+    }
+}
+
 #[test]
 #[ignore]
 fn t33_diagnostic_recurrent_drift_lstm_1x16() {
@@ -865,6 +905,14 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
         esr_full,
         10.0 * esr_full.log10()
     );
+
+    // Blockwise ESR Analysis
+    use nam_rs::testing::perceptual::compute_esr_blockwise;
+    let esr_blocks_48k = compute_esr_blockwise(&oracle_f32, &output, 48_000);
+    print_blockwise_esr_table(&esr_blocks_48k, 48_000, 48000);
+
+    let esr_blocks_12k = compute_esr_blockwise(&oracle_f32, &output, 12_000);
+    print_blockwise_esr_table(&esr_blocks_12k, 12_000, 48000);
 }
 
 // ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
@@ -902,4 +950,12 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
         esr_tail,
         10.0 * esr_tail.log10()
     );
+
+    // Blockwise ESR Analysis
+    use nam_rs::testing::perceptual::compute_esr_blockwise;
+    let esr_blocks_48k = compute_esr_blockwise(&oracle_f32, &output, 48_000);
+    print_blockwise_esr_table(&esr_blocks_48k, 48_000, 48000);
+
+    let esr_blocks_12k = compute_esr_blockwise(&oracle_f32, &output, 12_000);
+    print_blockwise_esr_table(&esr_blocks_12k, 12_000, 48000);
 }

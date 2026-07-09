@@ -61,6 +61,28 @@ pub fn compute_esr(reference: &[f32], test: &[f32]) -> f64 {
     noise_power / signal_power
 }
 
+/// Computes blockwise Error-to-Signal Ratio on disjoint blocks.
+///
+/// Returns a vector of ESR values, one for each block of `block_size` samples.
+/// If the last block is partial, ESR is computed over the remaining samples.
+pub fn compute_esr_blockwise(reference: &[f32], test: &[f32], block_size: usize) -> Vec<f64> {
+    assert_eq!(
+        reference.len(),
+        test.len(),
+        "compute_esr_blockwise: vectors must have same length"
+    );
+    assert!(
+        block_size > 0,
+        "compute_esr_blockwise: block_size must be greater than zero"
+    );
+
+    reference
+        .chunks(block_size)
+        .zip(test.chunks(block_size))
+        .map(|(ref_chunk, test_chunk)| compute_esr(ref_chunk, test_chunk))
+        .collect()
+}
+
 /// Converts linear ESR to dB: `10 * log10(esr)`.
 pub fn esr_to_db(esr: f64) -> f64 {
     if esr <= f64::EPSILON {

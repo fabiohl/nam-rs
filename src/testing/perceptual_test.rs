@@ -27,6 +27,24 @@ fn test_esr_all_zero_test() {
 }
 
 #[test]
+fn test_compute_esr_blockwise() {
+    let sig: Vec<f32> = (0..100).map(|i| i as f32).collect();
+    let mut perturbed = sig.clone();
+    perturbed[5] += 1.0; // Block 0 offset
+    perturbed[55] += 2.0; // Block 1 offset
+
+    let block_size = 50;
+    let esr_blocks = compute_esr_blockwise(&sig, &perturbed, block_size);
+    assert_eq!(esr_blocks.len(), 2);
+
+    let expected_esr_0 = compute_esr(&sig[0..50], &perturbed[0..50]);
+    assert!((esr_blocks[0] - expected_esr_0).abs() < 1e-15);
+
+    let expected_esr_1 = compute_esr(&sig[50..100], &perturbed[50..100]);
+    assert!((esr_blocks[1] - expected_esr_1).abs() < 1e-15);
+}
+
+#[test]
 fn test_compute_lufs_sine() {
     let sr = 48000;
     let n = sr as usize;

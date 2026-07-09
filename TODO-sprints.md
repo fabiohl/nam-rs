@@ -83,7 +83,7 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
 
   * **Nota:** manter `t33_diagnostic_recurrent_drift_lstm_1x16` (não pareado) é intencional — ele mede o efeito real de iniciar produção a partir de silêncio (`prewarm(24_000)`) vs. sinal real, que é o comportamento **real** de um plugin ao carregar (primeiro áudio após silêncio/carregamento do preset). As duas métricas respondem perguntas diferentes e ambas têm valor; documentar essa distinção explicitamente no doc final (Tarefa 3.4).
 
-#### 🎯 Tarefa 1.2: ESR por Janela Não-Cumulativa (Blockwise) Correlacionada às Seções do Sinal de Stress
+#### 🎯 Tarefa 1.2: ESR por Janela Não-Cumulativa (Blockwise) Correlacionada às Seções do Sinal de Stress [DONE]
 
 * **Arquivos:** [`src/testing/perceptual.rs`](file:///home/fabio/nam-rs/src/testing/perceptual.rs) (nova função pública), [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs)
 * **Ações:**
