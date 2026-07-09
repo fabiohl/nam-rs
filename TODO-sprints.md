@@ -149,7 +149,7 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
 
 Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) hipóteses específicas sobre a causa real do gap de ~13 dB, em ordem de probabilidade — começando pela hipótese com maior suporte de evidência histórica do projeto.
 
-#### 🎯 Tarefa 2.1: Confirmar a Hipótese de Mismatch de Estado Inicial (Prioridade Máxima)
+#### 🎯 Tarefa 2.1: Confirmar a Hipótese de Mismatch de Estado Inicial (Prioridade Máxima) [CONCLUÍDO]
 
 * **Risco:** 🔴 Crítica — decide o rumo de todo o restante do épico.
 * **Ações:**
@@ -160,6 +160,21 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
   * **Se `esr_tail` (pareado) ≈ 3-4e-3 (mesma ordem do piso documentado):** a hipótese está **confirmada** — o gap de 13 dB do Achado A1 é majoritariamente artefato de mismatch de estado inicial no `t33` legado, não um fenômeno físico novo não identificado. Prosseguir direto para a Tarefa 2.4 (consolidação), pulando 2.2/2.3.
   * **Se `esr_tail` (pareado) permanecer significativamente > 1e-2 (gap não explicado por mismatch de estado):** a hipótese é **refutada ou apenas parcial** — prosseguir com as Tarefas 2.2 e 2.3 para investigar as demais hipóteses.
   * Documentar o resultado numérico exato (com timestamp e hash de commit) diretamente em `TODO-findings.md` (Achado A1, nova subseção "Resolução" — Tarefa 3.3).
+
+> **Resultado:** Concluído com sucesso. Os testes de longa duração foram executados no commit `902360fb52dc5671fdd84f76fc1d389aa46c2703` (Timestamp: 2026-07-08T22:42:00-03:00).
+>
+> 1. **Modelo `BossLSTM-1x16` (`t33b`)**:
+>    * **ESR Legado (não pareado):** `2.611684e-2` (-15.8 dB)
+>    * **ESR Pareado:** `2.589060e-2` (-15.9 dB)
+>    * **Diferença:** Apenas `-0.1 dB` (redução insignificante de `~0.8%`).
+>    * **Conclusão:** A hipótese de que o gap de erro de ~13 dB do Achado A1 decorria principalmente de mismatch de estado inicial (cold-start) está **refutada** para o modelo 1x16. O desvio persiste de forma quase integral.
+>
+> 2. **Modelo `BossLSTM-2x8` (`t33c`)**:
+>    * **ESR Pareado:** `4.062433e-3` (-23.9 dB)
+>    * **Comparação com o Piso (`3.41e-3`):** Muito próximo ao piso teórico da família LSTM.
+>    * **Comportamento Blockwise:** A análise temporal em janelas de 250ms revelou um comportamento idêntico ao de 1x16: picos locais severos nos trechos de palm-mute (blocos 8 e 9, com ESR de `~1.66e-1` a `~1.67e-1`), indicando que as dinâmicas sob sinal de baixa amplitude são a fonte do desvio.
+>
+> **Decisão de Fluxo:** Como a hipótese foi classificada como **refutada** para a causa dominante do gap de ~13 dB no modelo 1x16, o fluxo deve prosseguir para a **Tarefa 2.2** e **Tarefa 2.3** para investigar as contingências.
 
 #### 🎯 Tarefa 2.2: Testar Hipótese de `ActivationPrecision` Divergente (Contingência)
 
