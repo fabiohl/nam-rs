@@ -866,3 +866,40 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
         10.0 * esr_full.log10()
     );
 }
+
+// ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
+
+#[test]
+#[ignore]
+fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
+    use nam_rs::testing::perceptual::compute_esr;
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let path = models_dir().join("BossLSTM-1x16.nam");
+    let md = load_and_parse(&path);
+    let stress_signal = generate_stress_signal_v2_default(48000); // 240k amostras
+    let stress_f64: Vec<f64> = stress_signal.iter().map(|&x| x as f64).collect();
+
+    // Produção: SEM model.prewarm(zeros) — processa o sinal real desde t=0,
+    // igual ao oráculo, eliminando o mismatch de estado inicial (T8.2-style).
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("build_model");
+    let mut output = vec![0.0f32; stress_signal.len()];
+    let mut pos = 0;
+    while pos < stress_signal.len() {
+        let nf = (stress_signal.len() - pos).min(64);
+        model.process(&stress_signal[pos..pos + nf], &mut output[pos..pos + nf]);
+        pos += nf;
+    }
+
+    let oracle = oracle_forward(&md, &stress_f64, &PrecisionConfig::default());
+    let oracle_f32: Vec<f32> = oracle.iter().map(|&x| x as f32).collect();
+
+    const N_WARMUP: usize = 24_000;
+    let esr_tail = compute_esr(&oracle_f32[N_WARMUP..], &output[N_WARMUP..]);
+    println!(
+        "\nT33b — LSTM 1x16 paired (sem mismatch de estado inicial), cauda de {} amostras: ESR={:.6e} ({:.1} dB)",
+        stress_signal.len() - N_WARMUP,
+        esr_tail,
+        10.0 * esr_tail.log10()
+    );
+}

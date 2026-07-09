@@ -27,7 +27,9 @@ Este documento detalha a execução do Épico proposto em [`TODO-findings.md`](T
 
 Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 do épico anterior de detectar que o fix não resolvia o problema (`TODO-findings.md` §3, itens 2 e 4): ausência de asserção no teste de diagnóstico, ausência de decomposição de erro pareada para os modelos `BossLSTM-*` específicos, e tolerância de teste de paridade Kahan excessivamente larga.
 
-#### 🎯 Tarefa 1.1: Diagnóstico Prewarm-Paired de Longa Duração para `BossLSTM-1x16`
+#### 🎯 Tarefa 1.1: Diagnóstico Prewarm-Paired de Longa Duração para `BossLSTM-1x16` [CONCLUÍDO]
+
+> **Resultado:** O teste `t33b_diagnostic_recurrent_drift_lstm_1x16_paired` foi implementado e executado, retornando `ESR_tail = 2.589060e-2` (-15.9 dB). O gap de ~13 dB permanece idêntico ao do teste legado (`2.611684e-2`), o que **refuta** a hipótese de mismatch de estado inicial como causa do gap.
 
 * **Arquivo:** [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) (nova função, próxima à `t33_diagnostic_recurrent_drift_lstm_1x16`, linha 790)
 
