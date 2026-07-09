@@ -45,7 +45,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## 5. Quality Modes: Live vs. HQ / Offline
 
-NAM-rs operates in two distinct quality modes — **Live** (default: oversampling `Off`, activation precision `Standard`, adaptive compute active, zero added latency) and **HQ/Offline** (oversampling `4×`, activation precision `HighFidelity`, adaptive compute disabled for deterministic output). Never write code that silently mixes the two (e.g. a code path that reads adaptive-compute state while `RenderMode::Offline` is active). Full mode matrix and rationale: [README.md](../../README.md#quality-and-operational-modes) and [docs/audio_fidelity_map.md](../../docs/audio_fidelity_map.md).
+NAM-rs operates in two distinct quality modes — **Live** (default: oversampling `Off`, adaptive compute active, zero added latency) and **HQ/Offline** (oversampling `4×`, adaptive compute disabled for deterministic output). Activation precision defaults to `Standard` (exact-grade) in both modes; `Fast` (Padé approximations) is an explicit opt-in for CPU-constrained scenarios. Never write code that silently mixes the two modes (e.g. a code path that reads adaptive-compute state while `RenderMode::Offline` is active). Full mode matrix and rationale: [README.md](../../README.md#quality-and-operational-modes) and [docs/audio_fidelity_map.md](../../docs/audio_fidelity_map.md).
 
 Off-RT resource swaps (oversampling factor, model, cab IR) always go through the SPSC → GC-cascade protocol — never mutate or allocate these on the audio thread. See [docs/clap_integration.md](../../docs/clap_integration.md) §6.3.
 

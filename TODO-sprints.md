@@ -463,7 +463,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 
 > **Risco:** 🟡 Moderado — mecânico na maioria dos arquivos, mas **3 arquivos exigem reescrita semântica**, não apenas troca de palavra, porque descrevem o mecanismo antigo (override por-modelo de `BossLSTM`, tabela "Live vs. HQ" com ativação diferente por modo) que foi removido no item 3. Tratar cada tarefa como independente e sequencial — nenhuma depende de outra, mas a ordem abaixo prioriza os arquivos de maior risco de leitura incorreta por futuros agentes/desenvolvedores primeiro.
 
-#### 🎯 Tarefa 2.1: `.agents/rules/rust.md` — Regra Operacional Mandatória [🔴 Alta prioridade, requer reescrita semântica]
+#### 🎯 Tarefa 2.1: `.agents/rules/rust.md` — Regra Operacional Mandatória [CONCLUÍDA]
 
 * **Achado:** linha 48 descreve o contrato **antigo**: modo **Live** = `oversampling Off, activation precision Standard(Padé)`; modo **HQ/Offline** = `oversampling 4×, activation precision HighFidelity(exato)`. Isso está **estruturalmente incorreto** pós-rename: `Standard` agora É o modo exato e universal (Live e HQ/Offline usam `Standard` por default); apenas oversampling e adaptive-compute continuam diferindo entre os dois modos.
 * **Ação:** reescrever a frase para refletir que activation precision **não varia mais** entre Live/HQ por default (ambos usam `Standard`); mencionar que `Fast` é um opt-in explícito para quem prioriza CPU sobre fidelidade. **Não fazer rename textual ingênuo** — este é uma regra lida por todos os agentes futuros como fonte de verdade.
