@@ -211,7 +211,7 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 >      * **LSTM Official:** SNR FastMath = `29.3 dB` | SNR HighFidelity = `120.5 dB` (Ganho de **+91.2 dB**).
 >      * **Reconciliação:** O teste original `test_lstm_activation_precision_gain` em golden v1 (2048 samples) retornava `ΔSNR ≈ 0.0 dB` porque a janela era curta demais e sofria de um bug sutil (o teste não ativava a global `HighFidelity` no caminho scalar). Sob excitação de longa duração (Stress v2), o ganho médio é de **89.5 dB**, evidenciando a necessidade de fidelidade para cenários realistas de longa duração.
 
-#### 🎯 Tarefa 2.3 (revisada): Explicar Por Que a Magnitude do Erro de Padé é ~28-60× Maior em `1x16` do que em `2x8`/`H3`
+#### 🎯 Tarefa 2.3 (revisada): Explicar Por Que a Magnitude do Erro de Padé é ~28-60× Maior em `1x16` do que em `2x8`/`H3` [DONE]
 
 * **Executar em paralelo à Tarefa 2.2 (não é mais contingente — é complementar, para entender a causa física, não apenas confirmar o sintoma).**
 * **Ações:**
@@ -240,14 +240,60 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 >      * **Excesso da Faixa de Validade**: Esse aumento empurra o sinal de `1x16` para além do limite de validade do FastMath. Para o `tanh`, ele atinge o teto `4.0` de clamp (erro local de `6.7e-4`). Para o `sigmoid`, ele ultrapassa o domínio minimax `8.0` (erro local de `3.4e-4` pelo clamping do sigmoid). Os outros modelos operam majoritariamente na zona segura/linear.
 >      * **Realimentação Recorrente Cruzada**: No `1x16`, como há um único loop recorrente gigante de dimensão 16, esses erros nos gates alimentam e amplificam uns aos outros em todas as 16 variáveis de estado de forma cruzada, acelerando o acúmulo de drift. No `2x8`, o sistema é segmentado em duas camadas com loops de dimensão 8 independentes, o que atua como amortecimento e impede a propagação descontrolada do drift recorrente.
 
-#### 🎯 Tarefa 2.4: Consolidar Conclusão e Reclassificar o "Interop Gap" (2.61e-2 vs NAMCore)
+#### 🎯 Tarefa 2.4: Consolidar Conclusão e Reclassificar o "Interop Gap" (2.61e-2 vs NAMCore) [CONCLUÍDO]
 
-* **Ações:**
-  * Revisar `docs/perceptual_validation.md:690-710` ("Classification" — Interop vs Absolute Correction) à luz dos resultados das Tarefas 2.1-2.3: confirmar se o valor `2.61e-2` ali documentado como "Interop (nam-rs vs NAMCore)" é de fato medido contra o binário C++ real (via `tests/parity/cpp_parity.rs`, testes `live_cross_validation_v2_lstm_1x16`, atualmente `#[ignore]`d e exigindo binários golden — ver levantamento técnico) ou se foi, na verdade, medido de forma equivalente ao `t33` legado (produção pareada com prewarm-de-zeros vs oráculo `f64` sem pareamento) e **mal rotulado** como "vs NAMCore" no texto da documentação.
-  * Se for o segundo caso: corrigir a rotulação em `docs/perceptual_validation.md` (Tarefa 3.4) para não conflar "divergência de estado inicial vs oráculo f64" com "divergência real de interoperabilidade vs NAMCore C++". **Atualizar também:** dado que a causa dominante identificada (Tarefa 2.2/2.3) é o erro de aproximação Padé/minimax — que também está presente no NAMCore C++ (que usa a mesma aproximação, `docs/perceptual_validation.md:635` "shared with NAMCore") — é esperado que o gap de interoperabilidade `2.61e-2` seja, na verdade, **a mesma causa-raiz** manifestando-se em ambos os binários de forma correlata (não dois fenômenos distintos). Verificar isso executando (se os binários golden estiverem disponíveis) `live_cross_validation_v2_lstm_1x16` e comparando o padrão de erro por bloco com o obtido nas Tarefas 1.2/2.2.
-  * Se for o primeiro caso (medição real contra NAMCore C++) e a correlação acima **não** se confirmar: o gap de interoperabilidade de `2.61e-2` merece um novo achado de investigação separado (fora do escopo deste épico, que trata apenas do piso absoluto vs `f64`), documentando essa decisão explicitamente.
-
-* **⚠️ Achado Colateral a Verificar (baixo esforço, não bloqueante):** a nova execução de `utils/quality-dashboard.sh` (2026-07-08 22:46) mostra os valores de `ESR (vs NAMcore)` de `BossLSTM-2x8` (`0.00e0 → 2.68e-3`) e `lstm (Official)` (`1.04e-3 → 0.00e0`) praticamente **invertidos** em relação à execução anterior (2026-07-08 15:34, `quality-dashboard-antes.txt`), sem que nenhuma alteração de produção tenha sido feita nesses modelos durante a Sprint 1 (apenas `lstm_test.rs` — tolerâncias de teste — e testes/documentação foram tocados). Como `golden_vectors` é um teste de paridade bit-a-bit determinístico contra vetores C++ pré-computados, essa troca de valores entre dois modelos LSTM adjacentes na tabela é suspeita de um **bug de parsing/mapeamento em `utils/quality-dashboard.sh` (`parse_golden_vectors()`, linha 313)** — possivelmente sensível à ordem de emissão dos blocos de teste — e não uma regressão real de fidelidade. Adicionar a verificação rápida (`cargo test --release --test models golden_vectors -- --nocapture` e inspeção manual da ordem/rótulos brutos) como item de checagem na Tarefa 3.5, antes de repopular o dashboard final.
+> **Resultado:** Auditoria documental e verificação experimental concluídas em 2026-07-08T23:40:00-03:00. A seção "LSTM Recurrent State Drift" de `docs/perceptual_validation.md` foi integralmente reescrita com dados per-model e classificação corrigida. O Achado Colateral (swap de ESR 2x8↔Official) foi verificado e documentado para a Tarefa 3.5.
+>
+> **Nota de Conclusão (Tarefa 2.4):**
+>
+> **1. Origem do valor `2.61e-2` — Confirmação experimental:**
+>
+> O valor `2.61e-2` documentado em `docs/perceptual_validation.md` como "ESR (vs NAMCore)" **é genuinamente uma medição de interoperabilidade contra o binário C++ real**, não um valor mal rotulado do `t33` legado (oráculo f64). A evidência:
+>
+> * Os golden vectors `golden_lstm_1x16_v2_48000.bin` (e demais taxas) existem no repositório (foram pré-computados pelo render tool C++)
+> * A execução de `test_golden_vectors_v2_lstm_1x16` (comparação determinística contra golden vectors C++) confirma `ESR = 2.59e-2 (−15.9 dB)` a 48 kHz — **muito próximo** do valor documentado de `2.61e-2`
+> * O valor `2.611684e-2` em `tests/common/constants.rs:42` é o ESR do `t33` legado (vs oráculo f64, prewarm não-pareado) — que **coincidentemente** tem a mesma magnitude (~2.6e-2), mas mede um fenômeno distinto (mismatch de estado inicial vs f64, não interoperabilidade vs C++)
+> * **Conclusão**: trata-se de uma **coincidência numérica** (ambos ~2.6e-2 por razões diferentes), não de uma rotulação equivocada
+>
+> **2. O erro de documentação que de fato existia — Conflação entre modelos:**
+>
+> A documentação pré-Sprint-2 cometia um erro mais sutil: **a tabela de evidência empírica e a seção "Classification" não especificavam qual modelo LSTM cada linha se referia**, levando o leitor a crer que um único par de valores (`2.61e-2` interop, `3.57e-3` absoluto) representava "LSTM" genericamente. Na realidade:
+>
+> * `2.61e-2` (interop) foi medido para **`BossLSTM-1x16`** (golden vectors v2)
+> * `3.57e-3` (absoluto) foi medido para **`lstm.nam` (H=3)** (short-sweep prewarm-paired, T8.2/T8.3)
+> * `BossLSTM-1x16` tem piso absoluto de **`5.06e-2`**, não `3.57e-3` (Tarefa 1.3)
+> * A afirmação "interop gap 7× absolute floor" era verdadeira para `lstm.nam` (se extrapolássemos), mas **falsa** para `BossLSTM-1x16`, onde o piso absoluto (5.06e-2) é ~2× **maior** que o gap de interop (2.59e-2)
+>
+> **Correção aplicada:** A seção `docs/perceptual_validation.md:643–759` foi reescrita com:
+>
+> * Tabela per-model (1x16, 2x8, H=3) com valores reais de interop (golden vectors) e absoluto (decomposição Tarefa 1.3)
+> * Remoção da afirmação genérica "interop 7× absolute" — substituída pela tabela comparativa mostrando que a relação interop-vs-absoluto é invertida para 1x16
+> * Nota histórica explicando a conflação corrigida
+>
+> **3. Conexão Padé/minimax ↔ Interop Gap — Confirmação:**
+>
+> A hipótese de que o erro de Padé/minimax seria "cancelado" entre os dois engines (por ambos usarem a mesma aproximação) e portanto não poderia explicar o interop gap **estava incorreta**. A evidência da Tarefa 2.2 demonstra o contrário:
+>
+> * Com `HighFidelity` (ativações poly-based exatas), o interop gap colapsa para `5.05e-11` para 1x16 e `4.02e-12` para 2x8 — bit-level agreement
+> * Com `Standard` (Padé/minimax), o interop gap é 2.59e-2 — ~9 ordens de magnitude maior
+> * **Mecanismo**: ambos os engines usam a **mesma classe** de aproximação (Padé[5,4]/minimax-17), mas com **implementações diferentes** (Rust SIMD AVX2 pipeline vs C++ Eigen). Pequenas diferenças na avaliação polinomial (FMA ordering, redução de argumento, clamping) produzem trajetórias de estado recorrente que divergem ao longo de 240k passos. O Padé **não se cancela** entre os engines — ao contrário, ele é a **fonte primária** da divergência de interop.
+> * A correção para o interop gap é, portanto, a mesma que para o absolute floor: usar `HighFidelity`. Isso resolve ambos os problemas simultaneamente — o interop gap zera porque ambos os engines passam a usar aproximações de altíssima precisão, e o absolute floor cai para ~2.5e-3 (dominado por fontes residuais não-Padé).
+>
+> **4. Achado Colateral — Swap de ESR no Dashboard (2x8 ↔ Official):**
+>
+> O bug de parsing suspeito no `utils/quality-dashboard.sh` foi verificado:
+>
+> * Valores reais (golden vectors v2, 48 kHz): `BossLSTM-2x8` ESR = `3.88e-3`, `lstm.nam` ESR = `1.18e-3`
+> * Os valores suspeitos (`2.68e-3` e `0.00e0`) reportados pelo dashboard são inválidos e não correspondem a nenhuma medição real
+> * Hipótese mais provável: bug no `parse_golden_vectors()` (awk parser, linha 313) sensível à ordem de emissão/agrupamento dos blocos `[NeuralAmpModelerCore × NAM-rs — ...]` — rótulos podem ser trocados quando testes com múltiplos sample rates são executados no mesmo arquivo de log
+> * **Ação**: adicionado à Tarefa 3.5 como item de verificação obrigatório antes de repopular o dashboard final
+>
+> **5. Impacto nas tarefas subsequentes:**
+>
+> * **Tarefa 3.1 (Correção Direcionada):** A decisão está clara — ambas as opções (A: `HighFidelity` como default para BossLSTM, B: estender faixa do minimax) são viáveis e endereçam tanto o absolute floor quanto o interop gap. A Opção A (HighFidelity como default) é a mais simples e já confirmada eficaz pela Tarefa 2.2. A Opção B exigiria re-calibração dos polinômios minimax para |x| > 8.0 (faixa atual) → |x| > ~10.5 (p99.9 de 1x16).
+> * **Tarefa 3.4 (`docs/perceptual_validation.md`):** A porção de `docs/perceptual_validation.md` já foi atualizada nesta Tarefa 2.4 (seções "Mechanism", "Empirical evidence", "Classification", "Impact on gates", "Qualification of T3.3"). Restam para a Tarefa 3.4: `docs/audio_fidelity_map.md`, `docs/cpp_parity_map.md`, `docs/fastmath-approximations.md`, e referências pendentes (`docs/lstm_recurrent_drift.md`, `PM-08`, `F-Q1`).
+> * **Tarefa 3.5 (Dashboard):** O bug de parsing do dashboard deve ser corrigido antes de gerar o dashboard final. Adicionar verificação de consistência (cross-check dos valores parseados contra golden vectors standalone).
+> * **TODO-findings.md (Achado A1):** O status deve permanecer `🟡 Parcialmente Resolvido` até que a Tarefa 3.1 seja implementada, pois a correção (HighFidelity default) ainda não está no código de produção — a investigação está concluída, mas a ação corretiva ainda não foi aplicada.
 
 ---
 
@@ -280,11 +326,13 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 
 #### 🎯 Tarefa 3.4: Atualizar Documentação de Fidelidade
 
+> **Nota (pós-Sprint 2):** A seção "LSTM Recurrent State Drift" de `docs/perceptual_validation.md` (linhas 643–759) já foi reescrita na Tarefa 2.4 com dados per-model e classificação corrigida. Os demais arquivos listados abaixo ainda precisam de atualização.
+
 * **Arquivos:**
   * [`docs/audio_fidelity_map.md`](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md) §3 "LSTM Recurrent State Drift" (linhas 113-177)
   * [`docs/cpp_parity_map.md`](file:///home/fabio/nam-rs/docs/cpp_parity_map.md) §2.7 "Measured interop drift"
-  * [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md) seção "LSTM Recurrent State Quantization Drift" (linhas 643-759)
-  * [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md) (se a Tarefa 2.2/2.3 revelar necessidade de nota sobre ativações)
+  * [`docs/perceptual_validation.md`](file:///home/fabio/nam-rs/docs/perceptual_validation.md) — **Seção principal já atualizada na Tarefa 2.4** (mecanismo, evidência, classificação, gates, qualificação T3.3). Pendente: verificar seções "Interop-vs-Correction" (linha 625+), referências cruzadas (PM-08, F-Q1, docs/lstm_recurrent_drift.md).
+  * [`docs/fastmath-approximations.md`](file:///home/fabio/nam-rs/docs/fastmath-approximations.md) (se a Tarefa 2.2/2.3 revelar necessidade de nota sobre ativações) — **Necessário:** documentar que Padé/minimax perde calibração para |x| > 4 (tanh) e |x| > 8 (sigmoid) em modelos com H grande como BossLSTM-1x16.
 * **Ações:**
   * Atualizar cada seção com os números reais medidos nas Sprints 1-2 para `BossLSTM-1x16`/`2x8` especificamente (não mais herdados da família `lstm.nam`).
   * **Resolver a referência pendente a `docs/lstm_recurrent_drift.md`** (citada por `utils/quality-dashboard.sh:1137` e pelos dashboards gerados, mas **inexistente** — confirmado nesta investigação; `docs/research-references.md:138` inclusive já a menciona como "former... removed after f16c elimination"). Duas opções, decidir com base no volume de conteúdo final:

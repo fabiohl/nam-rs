@@ -519,7 +519,8 @@ fn run_render_comparison(
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
 
-    model.prewarm(2048);
+    let prewarm_len = model.prewarm_samples();
+    model.prewarm(prewarm_len);
     let mut rust_output_model_sr = vec![0.0f32; input_for_rust.len()];
     process_in_blocks(
         &mut model,
