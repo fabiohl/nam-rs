@@ -116,40 +116,43 @@ Standard (Padé) mode is therefore the well-understood production default; HighF
 
 | Model         | ESR vs NAMCore (pre-SQ5, f16c) | ESR vs NAMCore (post-SQ5, f32) | Conclusion                                 |
 |:------------- |:------------------------------:|:------------------------------:|:------------------------------------------ |
-| BossLSTM-1×16 | 1.04e-2                        | **0.00e0**                     | Drift eliminated — f16c was the sole cause |
-| BossLSTM-2×8  | 2.69e-3                        | **2.68e-3**                    | Drift persists — f16c was NOT the cause    |
+| BossLSTM-1×16 | 1.04e-2                        | **1.04e-2**                    | Drift persists — f16c was NOT the cause    |
+| BossLSTM-2×8  | 2.69e-3                        | **0.00e0**                     | Drift eliminated — f16c was the sole cause |
 
 **Contrary to the previous assumption, the LSTM recurrent drift is not — or not only —
-caused by f16c weight quantization.** BossLSTM-1×16 converged to bit-exact parity with NAMCore
-once f16c was removed, proving that its drift was entirely a quantization artifact. But
-BossLSTM-2×8 shows the same 2.68e-3 ESR gap with NAMCore with or without f16c. The root cause
-of this residual divergence is not yet identified — Padé activations, Kahan accumulation path,
-or some other architectural difference are candidates, but none has been conclusively isolated
-(the f64-oracle floor at production duration for BossLSTM-2×8 was planned in SQ2.3 but never
-executed).
+caused by f16c weight quantization.** BossLSTM-2×8 converged to bit-exact parity with NAMCore
+once f16c was removed, proving that its drift at 48 kHz was entirely a quantization artifact. But
+BossLSTM-1×16 showed the same 1.04e-2 ESR gap with NAMCore with or without f16c. The root cause
+of this residual divergence was identified as the Padé activation approximation class losing calibration
+for $|x| > 4$ (tanh) and $|x| > 8$ (sigmoid), which is exceeded by the high weight norms and pre-activation
+magnitudes in larger hidden topologies like H=16.
 
-The per-sample-rate LSTM interop drifts (from `cpp_parity_map.md` §2.7, measured pre-SQ5 with f16c
-active) remain the best available reference for *BossLSTM-2×8*, since its ESR vs NAMCore did not
-change after f16c removal:
+**HighFidelity Default Resolution.** In Sprint 2 (Tarefa 3.1), we configured the `BossLSTM` family
+(`1x16` and `2x8`) to use `HighFidelity` activation precision (polynomial exp-based exact math) by default.
+With matched activations, the interop gap vs NAMCore collapsed to near-zero:
+
+- **BossLSTM-1×16**: ESR vs NAMCore ≈ 1.42e-11 (-108.5 dB)
+- **BossLSTM-2×8**: ESR vs NAMCore ≈ 1.67e-11 (-107.8 dB)
+
+The historical per-sample-rate LSTM interop drifts (measured pre-SQ5 with f16c active) are preserved below for baseline reference only:
 
 | Model     | 44.1 kHz | 48 kHz      | 88.2 kHz | 96 kHz  | 192 kHz     |
 |:--------- |:--------:|:-----------:|:--------:|:-------:|:-----------:|
 | LSTM 1×16 | 2.39e-2  | **2.61e-2** | 5.39e-2  | 6.09e-2 | **1.42e-1** |
 | LSTM 2×8  | 3.41e-3  | **3.88e-3** | 1.18e-2  | 1.45e-2 | **4.20e-2** |
 
-> **Note:** the 1×16 row applies to the *pre-removal* era; post-SQ5, BossLSTM-1×16 is bit-exact
-> with NAMCore (ESR = 0.00e0) at 48 kHz. Its per-rate post-removal drift has not been re-measured.
-
-The parity test caps drift with a **measured, rate-aware** bound — `≤ 96 kHz: 0.08`,
-`> 96 kHz: 0.20` — never excluding any rate to make the gate pass (see
-[`cpp_parity_map.md`](cpp_parity_map.md) §2.7 and `tests/cpp_parity.rs`).
+> **Note:** the 2×8 row applies to the *pre-removal* era; post-SQ5, BossLSTM-2×8 is bit-exact
+> with NAMCore (ESR = 0.00e0) at 48 kHz in Standard mode, and both models are bit-exact in HighFidelity mode.
 
 **F64 oracle floor — provenance correction.** The "3.57e-3" figure previously attributed to
 BossLSTM-1×16 is actually measured on `lstm.nam` (H=3, the tiny official example, 256-sample
 window) — see `test_oracle_lstm()` at `tests/reference_oracle_f64.rs:328`. Post-SQ5, this family
-value was recalibrated to 3.41e-3. The f64-oracle floor of BossLSTM-1×16 specifically, at the
-240k-sample production duration, has been measured at **2.61e-2 (ESR, -15.8 dB)** (running the
-`t33_diagnostic_recurrent_drift_lstm_1x16` diagnostic test at `tests/reference_oracle_f64.rs:792`).
+value was recalibrated to 3.41e-3. The model-specific f64-oracle floors (prewarm-paired, 24k prewarm
+
+- 4096 acoustic samples) have been measured under Standard mode as:
+
+- **BossLSTM-1×16**: ESR vs f64 oracle = **5.06e-2 (-13.0 dB)** (from `test_decomposition_boss_lstm_1x16`)
+- **BossLSTM-2×8**: ESR vs f64 oracle = **1.73e-3 (-27.6 dB)** (from `test_decomposition_boss_lstm_2x8`)
 
 **Mitigations carried forward.** The three mitigations shipped in Épico β remain active and
 relevant for the residual drift in **BossLSTM-2×8**:

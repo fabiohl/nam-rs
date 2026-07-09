@@ -311,22 +311,22 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 
 * **Nota de Conclusão:** A **Opção A** foi totalmente implementada e homologada com sucesso. Para evitar a poluição de estado global e condições de corrida em testes paralelos, a ativação automática do modo `HighFidelity` para a família `BossLSTM` (`1x16` e `2x8`) foi encapsulada em uma infraestrutura thread-local segura (`ACTIVE_MODEL_PRECISION` e guarda RAII `ActivationPrecisionGuard`). As medições no dashboard de qualidade comprovaram que o ESR do `BossLSTM-1x16` colapsou de `~5e-2` (audível) para `~1.5e-11` (bit-exact em relação à referência C++), e a latência de execução manteve-se estável em `~7.9 us` (0.6% do budget de tempo real de 1.33 ms, em total conformidade com o limite de latência). Os testes de decomposição e caracterização que explicitamente exigem o modo `Standard` foram isolados usando o mesmo override thread-local.
 
-#### 🎯 Tarefa 3.2: Atualizar `TODO-parity.md` (Achado 2) com a Conclusão Final
+#### 🎯 Tarefa 3.2: Atualizar `TODO-parity.md` (Achado, renumerado para "Achado 3") com a Conclusão Final [CONCLUÍDA]
 
-* **Arquivo:** [`TODO-parity.md`](file:///home/fabio/nam-rs/TODO-parity.md) (linha 49)
+> **Nota de Auditoria (2026-07-09):** A execução desta tarefa renumerou os achados de `TODO-parity.md` — o achado de LSTM Recurrent State Drift passou de "Achado 2" para **"Achado 3"** (linha 154), e `wavenet_a2_max.nam` passou de "Achado 3" para **"Achado 2"** (linha 49). Isso deixou referências cruzadas **desatualizadas** em `TODO-findings.md` (múltiplas linhas ainda dizem "Achado 2", agora apontando para o achado errado — `wavenet_a2_max.nam`). Corrigido nesta auditoria — ver `TODO-findings.md` Achado A1 §7.
+
+* **Arquivo:** [`TODO-parity.md`](file:///home/fabio/nam-rs/TODO-parity.md) (achado de LSTM, agora na linha 154)
 * **Ações:**
-  * Substituir a nota de auditoria atual (`[REABERTO — ver TODO-findings.md Achado A1]`) por uma conclusão definitiva:
-    * Se a Tarefa 2.1 confirmou mismatch de estado inicial como causa dominante e nenhuma correção adicional foi necessária: `[FECHADO — causa-raiz reclassificada, ver TODO-findings.md Achado A1 §Resolução]`.
-    * Se uma correção adicional foi implementada (Tarefa 3.1): `[FECHADO — causa-raiz corrigida em <commit>, ver TODO-findings.md Achado A1 §Resolução]`.
+  * Documentado o **Achado 3: LSTM Recurrent State Drift** detalhando a causa-raiz (divergência de formulação FastMath vs C++ nativa) e a resolução definitiva com thread-local overrides e HighFidelity default para a família BossLSTM.
 
-#### 🎯 Tarefa 3.3: Atualizar `TODO-findings.md` (Achado A1) com Seção "Resolução"
+#### 🎯 Tarefa 3.3: Atualizar `TODO-findings.md` (Achado A1) com Seção "Resolução" [CONCLUÍDA]
 
 * **Arquivo:** [`TODO-findings.md`](file:///home/fabio/nam-rs/TODO-findings.md)
 * **Ações:**
-  * Adicionar uma subseção `### 6. Resolução` ao Achado A1 com: resultado numérico exato de cada tarefa da Sprint 2, hipótese confirmada/refutada, e (se aplicável) referência ao commit da correção da Tarefa 3.1.
-  * Atualizar o campo `**Status:**` do Achado A1 de `🔴 Reaberto` para `🟢 Resolvido` (ou `🟡 Parcialmente Resolvido` se o "Interop gap" da Tarefa 2.4 for desmembrado em um novo achado separado).
+  * Adicionado a seção `### 6. Resolução` ao Achado A1 documentando os resultados numéricos exatos (colapso de ESR para ~1.5e-11) e a correção direcionada.
+  * Atualizado o status do Achado A1 de `🔴 Reaberto` para `🟢 Resolvido`.
 
-#### 🎯 Tarefa 3.4: Atualizar Documentação de Fidelidade
+#### 🎯 Tarefa 3.4: Atualizar Documentação de Fidelidade [CONCLUÍDA]
 
 > **Nota (pós-Sprint 2):** A seção "LSTM Recurrent State Drift" de `docs/perceptual_validation.md` (linhas 643–759) já foi reescrita na Tarefa 2.4 com dados per-model e classificação corrigida. Os demais arquivos listados abaixo ainda precisam de atualização.
 
@@ -343,13 +343,61 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
   * Resolver também a referência pendente `PM-08` em `docs/fastmath-approximations.md:370` (`TODO-findings.md` PM-08 — inexistente): ou remover a linha da tabela de cross-reference, ou adicionar a entrada correspondente em `TODO-findings.md` se fizer sentido no contexto deste achado.
   * Corrigir a nota de "F-Q1" gerada por `utils/quality-dashboard.sh` (linha 117 dos dashboards: *"Ver docs/lstm_recurrent_drift.md e TODO-findings.md F-Q1"*) — `F-Q1` também não existe como achado; ou criar essa referência cruzada corretamente apontando para o Achado A1, ou remover o texto do script gerador.
 
-#### 🎯 Tarefa 3.5: Preencher o Piso Real de `f64` para `BossLSTM-1x16`/`2x8` no Dashboard
+#### 🎯 Tarefa 3.5: Preencher o Piso Real de `f64` para `BossLSTM-1x16`/`2x8` no Dashboard [CONCLUÍDA]
 
 * **Arquivo:** [`utils/quality-dashboard.sh`](file:///home/fabio/nam-rs/utils/quality-dashboard.sh) (`parse_oracle_f64()`, linha 397; `render_quick_summary()`, linha 738; `render_fidelity_details()`, linha 831)
 * **Ações:**
   * Consumir a saída dos novos testes de decomposição pareada da Tarefa 1.3 (`test_decomposition_boss_lstm_1x16`, `test_decomposition_boss_lstm_2x8`) no parser `parse_oracle_f64()`, populando as entradas específicas por modelo em vez de cair no fallback de família (`_lookup_esr_f64()`, linha 124).
   * Remover a nota `(~fam.)` e a ressalva explicativa (linhas 24-29 do dashboard atual) para `BossLSTM-1x16`/`2x8` assim que o valor real e específico estiver disponível — mantendo a nota apenas para os demais modelos que ainda não tiverem decomposição pareada dedicada.
   * Regerar `quality-dashboard-antes.txt`/`depois.txt` (ou equivalentes) com o piso real preenchido, para validação final do épico.
+
+---
+
+## 🏁 Conclusão Final do Épico
+
+Este Épico concluiu com êxito a investigação e a resolução definitiva da divergência de fidelidade e do drift recorrente no `BossLSTM` (Achado A1 e Achado 2). As tarefas 3.4 e 3.5 integraram todas as pendências de documentação e instrumentação:
+
+1. **Dashboard de Qualidade Integrado:** O script `utils/quality-dashboard.sh` foi atualizado para fazer o parse dos dados específicos de decomposição do `BossLSTM-1x16` e `BossLSTM-2x8` diretamente do log de f64-oracle. O fallback de família `(~fam.)` foi removido para esses modelos, exibindo seus pisos de precisão ideais de regime permanente (`5.06e-2` e `1.73e-3` em Standard mode).
+2. **Correção de Documentos de Fidelidade:** Toda a documentação técnica foi saneada em `docs/audio_fidelity_map.md`, `docs/cpp_parity_map.md` e `docs/fastmath-approximations.md`. Eliminou-se a conflação histórica entre o `BossLSTM-1x16` e o `2x8`, registrando o comportamento correto de cada um frente à remoção de peso-quantização (SQ5).
+3. **Formalização de Limites Físicos de FastMath:** Documentou-se em `docs/fastmath-approximations.md` que as aproximações de Standard mode perdem calibração para $|x| > 4$ (tanh) e $|x| > 8$ (sigmoid). Esse transbordo era a causa-raiz real do drift no `BossLSTM-1x16` devido ao seu grande hidden size (H=16) e alta magnitude de pesos, totalmente solucionado pela adoção do modo `HighFidelity` por padrão.
+4. **Saneamento de Referências:** Referências a documentos inexistentes como `docs/lstm_recurrent_drift.md` ou achados não-existentes (`F-Q1`, `PM-08`) foram devidamente corrigidas para apontar para a seção correspondente em `docs/perceptual_validation.md#lstm-recurrent-state-drift` e o Achado A1 em `TODO-findings.md`.
+
+Com isso, o objetivo central do épico — identificar e corrigir a causa-raiz do drift de fidelidade de `BossLSTM-1x16`/`2x8` — está **concluído e verificado independentemente** (ver auditoria abaixo).
+
+> **⚠️ Nota de Auditoria Final (2026-07-09):** Uma auditoria independente (re-execução dos testes-chave + inspeção linha-a-linha dos diffs de produção) confirmou o resultado central, mas encontrou 5 problemas na implementação/verificação que não foram capturados antes de marcar as tarefas como concluídas — incluindo um bug de dashboard corrigido nesta auditoria (`utils/quality-dashboard.sh`, `--test-threads=1`) cuja causa hipotética documentada na Tarefa 2.4 estava incorreta. Detalhamento completo em `TODO-findings.md` Achado A1 §7. **O épico não deve ser considerado "exemplarmente encerrado" até que o Épico de Follow-up abaixo seja tratado.**
+
+---
+
+## 🏃 Épico de Follow-up: Correções de Auditoria da Sprint 3 (pós-fechamento)
+
+Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção de fidelidade já aplicada; todos são débitos técnicos/de processo a resolver.
+
+### 📅 Sprint 4: Correções de Precisão de Controle e Performance
+
+#### 🎯 Tarefa 4.1: Restaurar Controle Explícito do Usuário sobre `ActivationPrecision` para `BossLSTM`
+
+* **Achado:** B1 — `--activation standard` via CLI/CLAP não tem efeito em `BossLSTM-1x16`/`2x8` porque `preferred_activation_precision()` sempre vence quando nenhum escopo thread-local está ativo (o que é sempre o caso no caminho de chamada do CLI). O log afirma "Activation precision explicitly set to Standard" enquanto o áudio real roda em `HighFidelity` — comportamento silenciosamente divergente do log.
+* **Ações:**
+  * Distinguir, na configuração global (`src/math/activations/mod.rs`), entre "usuário nunca escolheu" (aplicar `preferred_activation_precision()` como default) e "usuário escolheu explicitamente" (respeitar a escolha, mesmo para `BossLSTM`) — ex.: trocar `Option<ActivationPrecision>` por um enum de 3 estados (`Auto`, `Standard`, `HighFidelity`) no lugar do `AtomicUsize` binário atual, ou adicionar um segundo átomo `USER_OVERRIDE_ACTIVE: AtomicBool`.
+  * Emitir um aviso (log, não `println!` no hot-path) quando o usuário força `Standard` em um modelo cuja fidelidade é conhecidamente comprometida nesse modo (ligar à decomposição da Tarefa 1.3/2.3), para que a escolha seja informada, não silenciosa.
+
+#### 🎯 Tarefa 4.2: Eliminar a Taxa de Performance Universal do Guard de Precisão
+
+* **Achado:** B2 — `ActivationPrecisionGuard` é construído/destruído em todo `process()`/`prewarm()`/`reset()` para todos os modelos, mesmo quando `preferred_activation_precision()` retorna `None`.
+* **Ações:**
+  * Alterar a condição de criação da guarda em `src/models/nam_model.rs` de `if current.is_none()` para `if current.is_none() && self.preferred_activation_precision().is_some()`.
+  * Rodar `cargo bench --bench regression_gate` antes/depois em todos os modelos (não só LSTM) e documentar o delta de latência restaurado, com o comentário de proveniência de medição exigido por `docs/perceptual_validation.md` Regra 3.
+
+#### 🎯 Tarefa 4.3: Corrigir Parser de `parse_activation_precision()` no Dashboard
+
+* **Achado:** B5 — coluna `Exact(tanh)` mostra `N/A dB` para os 3 modelos LSTM apesar do Δ SNR ser capturado corretamente.
+* **Ações:**
+  * Atualizar o parser awk em `utils/quality-dashboard.sh` para reconhecer o formato de saída de `test_lstm_activation_precision_gain_stress_v2` (Tarefa 2.2) e popular corretamente o valor absoluto de `Exact(tanh)`, não apenas o delta.
+
+#### 🎯 Tarefa 4.4: Commitar as Alterações Pendentes de Sprint 3
+
+* **Achado:** processo — no momento desta auditoria, `TODO-findings.md`, `TODO-parity.md`, `TODO-sprints.md`, `docs/audio_fidelity_map.md`, `docs/cpp_parity_map.md`, `docs/fastmath-approximations.md` e `utils/quality-dashboard.sh` estavam todos modificados e não commitados.
+* **Ações:** revisar e commitar (ou descartar, se obsoleto) o estado atual da árvore de trabalho antes de considerar o épico oficialmente encerrado.
 
 ---
 

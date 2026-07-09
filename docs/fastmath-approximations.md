@@ -367,7 +367,6 @@ because:
 | Item | Location                          | Topic                                  |
 |:---- |:--------------------------------- |:-------------------------------------- |
 | PM-02| §9.4 (this document)              | Lite resolved (aligned MirroredBuffer) |
-| PM-08| `TODO-findings.md` PM-08          | Central definition & reference registry|
 
 ---
 
@@ -390,6 +389,9 @@ specialises to whichever path is stable during steady-state inference.
 The production default. Uses the Padé [5,4] rational approximant for tanh and the direct minimax
 degree-17 polynomial for sigmoid — both documented in §§1–3 above. Selected for live monitoring:
 fastest path, ~54 ns for 256-element slice (AVX2), error well below the 16-bit PCM quantization floor.
+
+> [!WARNING]
+> **Calibration Limits under Standard Mode:** The FastMath approximations are optimized for speed over compact domains: tanh is calibrated on $[-4, 4]$ (max absolute error $\approx 2.32\times 10^{-3}$) and sigmoid on $[-8, 8]$ (max absolute error $\approx 4.09\times 10^{-4}$). In models with large hidden layers (such as `BossLSTM-1x16` where weight norms and pre-activation gate values exceed these ranges—e.g., tanh inputs $|g_g| > 4$ and sigmoid inputs $|g_{sig}| > 8$), the approximations lose calibration. In recurrent architectures (LSTM), this leads to cumulative recurrent state drift over time in Standard mode, which is resolved by using the `HighFidelity` precision mode.
 
 ### 10.2 HighFidelity Mode (`ActivationPrecision::HighFidelity = 1`)
 

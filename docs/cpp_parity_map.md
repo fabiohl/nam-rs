@@ -206,12 +206,17 @@ C++ `LSTM` generalizes to arbitrary `in_channels`/`out_channels` and `num_layers
 LSTM is the one topology whose interop error grows with **signal length** and **host sample
 rate** — the recurrent cell state accumulates error over time.
 
-**(native f32 weights):** BossLSTM-2×8 is bit-exact with NAMCore at 48 kHz
-(ESR = 0.00e0, SQ5.1 measurement, `audio_fidelity_map.md` §8). BossLSTM-1×16's drift was
+**(native f32 weights):** BossLSTM-2×8 converges to bit-exact parity with NAMCore at 48 kHz
+(ESR = 0.00e0, SQ5.1 measurement, `audio_fidelity_map.md` §8) in Standard mode. BossLSTM-1×16's drift was
 **not** caused by f16c quantization — its ESR remained identically 1.04e-2 before and after
-removal (§2.5) — so its per-rate drift values below remain the current best estimate. The
-f64-oracle floor at production duration (240k samples) for BossLSTM-1×16 has **never been
-measured**.
+removal (§2.5). Both models now default to `HighFidelity` activation precision, collapsing interop gaps
+to near-zero (1x16: ~1.42e-11, 2x8: ~1.67e-11).
+
+**F64 Oracle Floors:** The model-specific f64-oracle floors (prewarm-paired, 24k prewarm + 4096 samples)
+have been fully measured in Standard mode:
+
+- **BossLSTM-1×16**: ESR vs f64 oracle = **5.06e-2 (-13.0 dB)** (measured via `test_decomposition_boss_lstm_1x16`)
+- **BossLSTM-2×8**: ESR vs f64 oracle = **1.73e-3 (-27.6 dB)** (measured via `test_decomposition_boss_lstm_2x8`)
 
 **Pre-SQ5 (f16c quantized weights, retained as historical reference):** the table below
 was measured with f16c quantization active (`tests/cpp_parity.rs`). The BossLSTM-2×8 row

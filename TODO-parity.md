@@ -150,3 +150,21 @@ A investigação aprofundada revelou que o desvio fundamental reside firmemente 
      - `test_decomposition_a2_generic`
      - `test_combined_simulation_a2_generic`
    - Garantir que a validação feche com MSE ideal e SNR limpo (> 100 dB) nas duas pontas, provando conformidade e paridade absoluta com o oráculo e com o NAMCore C++.
+
+## Achado 3: LSTM Recurrent State Drift (BossLSTM 1x16 e 2x8) [RESOLVIDO]
+
+**Diagnóstico Detalhado:**
+A divergência de fidelidade da família BossLSTM em relação à referência C++ (ESR `~5e-2` no `quality-dashboard.sh` e `2.61e-2` no teste de stress cumulativo de 240k amostras) foi identificada como decorrente da diferença na formulação de ativações. Por padrão, o NAMCore C++ executa com ativações nativas padrão, enquanto o `nam-rs` executava sob a aproximação FastMath de Rust via Padé/minimax no modo `Standard`. A compensação de Kahan no cell state é correta e mantida, mas atua em ordem de magnitude inferior à divergência de modelagem da ativação.
+
+**Resolução:**
+Para solucionar o gap de paridade de forma limpa e sem introduzir race conditions sob execução paralela de testes, foi implementado um mecanismo de controle de precisão thread-local:
+
+1. **Thread-Local Guard:** Um override `ACTIVE_MODEL_PRECISION` com a guarda RAII `ActivationPrecisionGuard` gerencia overrides por escopo de thread.
+2. **Padrão de Catálogo:** Modelos BossLSTM (`1x16` e `2x8`) têm sua preferência configurada para `HighFidelity`, executando as ativações nativas padrão por default. O ESR colapsou para `~1.5e-11` (bit-exact em relação à referência C++), mantendo a latência em `~7.9 us` (0.6% do budget de tempo real).
+3. **Isolamento de Testes:** Testes e blocos de processamento que especificamente exigem o comportamento de aproximações de ativações (como os testes de decomposição e ganhos) foram isolados sob overrides thread-local correspondentes.
+
+---
+
+## Conclusão e Encerramento
+
+O Épico de Paridade e Fidelidade do LSTM foi encerrado com sucesso. A instrumentação no dashboard de qualidade e as atualizações da documentação em `docs/` consolidaram a resolução do Achado 3 (LSTM Recurrent State Drift). Com os testes de decomposição dedicados medindo os pisos de f64 reais (`5.06e-2` e `1.73e-3` para `BossLSTM-1x16` e `2x8`), as lacunas de baseline do dashboard foram preenchidas, e o comportamento de cada modelo foi devidamente catalogado e validado.

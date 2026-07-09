@@ -95,7 +95,7 @@ _nfmt() { LC_NUMERIC=C printf "$@"; }
 # This map exists so the report can say "family baseline, not measured for this
 # exact model" instead of silently presenting one model's result as another's.
 declare -A ESR_F64_FAMILY_FIXTURE=(
-    ["LSTM"]="lstm.nam (H=3 official — NOT BossLSTM-1x16/2x8; see t33 diagnostic for those)"
+    ["LSTM"]="lstm.nam (H=3 official)"
     ["WaveNet"]="wavenet_official.nam"
     ["A2"]="wavenet_a2_lite.nam"
     ["ConvNet"]="convnet_test.nam"
@@ -171,10 +171,10 @@ _lookup_esr_f64() {
     fi
 
     # An "exact" match is only truly exact if the matched key is itself a
-    # `.nam` filename (per-model table), not one of the generic family labels
-    # (LSTM/WaveNet/A2/ConvNet), which are always an approximation for any
-    # model other than their single backing fixture.
-    if [ "$best_is_exact" -eq 1 ] && [[ "$best_key" == *.nam ]]; then
+    # `.nam` filename (per-model table) or a specific model name (e.g. BossLSTM-*),
+    # not one of the generic family labels (LSTM/WaveNet/A2/ConvNet), which
+    # are always an approximation for any model other than their single backing fixture.
+    if [ "$best_is_exact" -eq 1 ] && ( [[ "$best_key" == *.nam ]] || [[ "$best_key" == BossLSTM-* ]] ); then
         echo "$best"
         echo "exact"
     else
@@ -218,7 +218,16 @@ run_golden_vectors() {
     echo -e "\n${BLUE}${BOLD}-> Executando golden_vectors...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test models golden_vectors -- --nocapture > "$log" 2>&1 || true
+    # --test-threads=1: parse_golden_vectors() is a stateful, block-based awk
+    # parser over interleaved println! output. Parallel test execution (the
+    # default) interleaves stdout from concurrently-running tests, corrupting
+    # block boundaries non-deterministically — different models "lose" their
+    # value on different runs. Verified via repeated direct `cargo test`
+    # invocations during the LSTM Recurrent State Drift audit (2026-07-09):
+    # golden_vectors.log always yields BossLSTM-2x8 ESR=2.68e-3 and
+    # lstm(Official) ESR=1.04e-3 with --test-threads=1, but the dashboard
+    # intermittently showed 0.00e0 for one or the other without it.
+    cargo test --release --test models golden_vectors -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     FIDELITY_DURATION_S=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
     local line_count
@@ -498,10 +507,50 @@ parse_oracle_f64() {
     }
     ' "$log" > "$parsed"
 
-    while IFS=$'\t' read -r metric label value; do
+    while IFS=$'\t' read -r metric key value; do
         [[ "$metric" == "F64_DECOMP" ]] || continue
         value="${value//@@/$'\n'}"
-        F64_DECOMPOSITION["$label"]="$value"
+        F64_DECOMPOSITION["$key"]="$value"
+    done < "$parsed"
+
+    # Parse per-model f64 ESR from decomposition blocks to populate ESR_F64/ESR_F64_DB
+    LC_ALL=C awk '
+    /Decomposition:/ {
+        lbl = $0
+        sub(/Decomposition:.*/, "", lbl)
+        sub(/.* \.\.\. /, "", lbl)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", lbl)
+        in_block = 1
+        next
+    }
+    in_block {
+        if ($0 ~ /ESR\(f32 vs f64 oracle\):/) {
+            esr = $0
+            sub(/.*ESR\(f32 vs f64 oracle\):[[:space:]]*/, "", esr)
+            db = esr
+            sub(/[[:space:]]*\(.*/, "", esr)
+            sub(/.*\(/, "", db)
+            sub(/[[:space:]]*dB\).*/, "", db)
+            gsub(/[[:space:]]/, "", esr)
+            gsub(/[[:space:]]/, "", db)
+            printf "%s\t%s\t%s\n", lbl, esr, db
+            in_block = 0
+        } else if ($0 ~ /Decomposition:/) {
+            lbl = $0
+            sub(/Decomposition:.*/, "", lbl)
+            sub(/.* \.\.\. /, "", lbl)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", lbl)
+            in_block = 1
+        }
+    }
+    ' "$log" > "$parsed"
+
+    while IFS=$'\t' read -r label esr db; do
+        [ -n "$label" ] && [ -n "$esr" ] || continue
+        if _is_numeric_esr "$esr"; then
+            ESR_F64["$label"]="$esr"
+            [ -n "$db" ] && ESR_F64_DB["$label"]="$db"
+        fi
     done < "$parsed"
 }
 
@@ -819,10 +868,6 @@ render_quick_summary() {
     echo ""
     echo "  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the"
     echo "  family's single representative fixture instead (see ESR_F64_FAMILY_FIXTURE)."
-    echo "  Notably: BossLSTM-1x16/2x8 currently show the LSTM family value measured on"
-    echo "  lstm.nam (H=3 official), NOT their own f64-oracle floor. Run"
-    echo "  't33_diagnostic_recurrent_drift_lstm_1x16 --ignored' for a real per-model,"
-    echo "  production-duration measurement of BossLSTM-1x16 specifically."
     echo ""
 }
 
@@ -1134,7 +1179,7 @@ render_f64_decomposition() {
     echo "      campo receptivo e maior que a janela de 256 amostras, entao o"
     echo "      ESR total abaixo reflete majoritariamente o transiente de"
     echo "      preenchimento do buffer, nao o piso de precisao em regime"
-    echo "      permanente. Ver docs/lstm_recurrent_drift.md e TODO-findings.md F-Q1."
+    echo "      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado A1."
     echo ""
     set +u
     for model in "${!F64_DECOMPOSITION[@]}"; do
