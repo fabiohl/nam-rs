@@ -300,27 +300,27 @@ fn test_hf_mode_switch_functional() {
         }
         let md = load_and_parse(&path);
 
+        set_activation_precision(ActivationPrecision::Fast);
+        let out_fast = run_f32_inference(&md, input);
+
         set_activation_precision(ActivationPrecision::Standard);
         let out_std = run_f32_inference(&md, input);
 
-        set_activation_precision(ActivationPrecision::HighFidelity);
-        let out_hf = run_f32_inference(&md, input);
-
-        for (&x, &y) in out_std.iter().zip(out_hf.iter()) {
-            assert!(x.is_finite(), "{label} Standard output NaN/Inf");
-            assert!(y.is_finite(), "{label} HighFidelity output NaN/Inf");
+        for (&x, &y) in out_fast.iter().zip(out_std.iter()) {
+            assert!(x.is_finite(), "{label} Fast output NaN/Inf");
+            assert!(y.is_finite(), "{label} Standard output NaN/Inf");
         }
 
-        let diff_count = out_std
+        let diff_count = out_fast
             .iter()
-            .zip(out_hf.iter())
+            .zip(out_std.iter())
             .filter(|&(&a, &b)| (a - b).abs() > 1e-7)
             .count();
 
         if diff_count > 0 {
             println!(
                 "  {label}: {diff_count}/{len} samples differ > 1e-7 (mode switch active)",
-                len = out_std.len()
+                len = out_fast.len()
             );
         } else {
             println!(
@@ -360,9 +360,9 @@ fn test_hf_mode_switch_functional() {
 fn test_zero_alloc_activation_switch_primitive() {
     let count = {
         let _guard = TrackingGuard::new();
+        set_activation_precision(ActivationPrecision::Fast);
         set_activation_precision(ActivationPrecision::Standard);
-        set_activation_precision(ActivationPrecision::HighFidelity);
-        set_activation_precision(ActivationPrecision::Standard);
+        set_activation_precision(ActivationPrecision::Fast);
         get_alloc_count()
     };
     assert_eq!(
@@ -409,15 +409,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
         let count = {
             let _guard = TrackingGuard::new();
 
-            set_activation_precision(ActivationPrecision::Standard);
-            for i in (0..256).step_by(64) {
-                model.process(
-                    std::hint::black_box(&input[i..i + 64]),
-                    std::hint::black_box(&mut output[i..i + 64]),
-                );
-            }
-
-            set_activation_precision(ActivationPrecision::HighFidelity);
+            set_activation_precision(ActivationPrecision::Fast);
             for i in (0..256).step_by(64) {
                 model.process(
                     std::hint::black_box(&input[i..i + 64]),
@@ -426,6 +418,14 @@ fn test_zero_alloc_activation_hot_path_switch() {
             }
 
             set_activation_precision(ActivationPrecision::Standard);
+            for i in (0..256).step_by(64) {
+                model.process(
+                    std::hint::black_box(&input[i..i + 64]),
+                    std::hint::black_box(&mut output[i..i + 64]),
+                );
+            }
+
+            set_activation_precision(ActivationPrecision::Fast);
             for i in (0..256).step_by(64) {
                 model.process(
                     std::hint::black_box(&input[i..i + 64]),
@@ -454,7 +454,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
 /// Zero-alloc: CLI flow simulation (parse + apply).
 ///
 /// Simulates the full standalone CLI activation flow:
-/// 1. Parse `--activation hf|standard` from command-line args.
+/// 1. Parse `--activation standard|fast` from command-line args.
 /// 2. Call `set_activation_precision()` with the parsed value.
 /// 3. Verify zero allocations.
 #[cfg(feature = "standalone")]
@@ -469,12 +469,12 @@ fn test_zero_alloc_cli_activation_flow() {
             ActivationPrecision::Standard,
         ),
         (
-            vec!["nam-rs", "--activation", "hf"],
-            ActivationPrecision::HighFidelity,
+            vec!["nam-rs", "--activation", "std"],
+            ActivationPrecision::Standard,
         ),
         (
-            vec!["nam-rs", "--activation", "highfidelity"],
-            ActivationPrecision::HighFidelity,
+            vec!["nam-rs", "--activation", "fast"],
+            ActivationPrecision::Fast,
         ),
     ];
 
@@ -510,9 +510,9 @@ fn test_zero_alloc_cli_activation_flow() {
 ///
 /// Verifies that switching modes mid-stream produces valid (non-NaN, finite)
 /// output and that the mode switch does not silently fall back to incorrect
-/// behavior. For WaveNet, output differs (HF path active); for LSTM, output
-/// is identical to Standard (known limitation, Epic β/I6). Both cases confirm
-/// the global atomic path is properly synchronized.
+/// behavior. For WaveNet, output differs (Standard path active); for LSTM,
+/// output is identical to Fast (known limitation, Epic β/I6). Both cases
+/// confirm the global atomic path is properly synchronized.
 #[test]
 fn test_activation_switch_output_idempotent() {
     let models = [
@@ -530,7 +530,7 @@ fn test_activation_switch_output_idempotent() {
         }
         let md = load_and_parse(&path);
 
-        set_activation_precision(ActivationPrecision::Standard);
+        set_activation_precision(ActivationPrecision::Fast);
         let mut model =
             nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
         model.prewarm(2048);
@@ -541,16 +541,16 @@ fn test_activation_switch_output_idempotent() {
             model.process(&input[i..i + 64], &mut scratch[i..i + 64]);
         }
 
-        // Run: Standard → HF → Standard (mid-stream switch)
+        // Run: Fast → Standard → Fast (mid-stream switch)
         let mut out_mixed = vec![0.0f32; 256];
         let mut pos = 0;
         while pos < input.len() {
             let nf = (input.len() - pos).min(64);
             if pos == 128 {
-                set_activation_precision(ActivationPrecision::HighFidelity);
+                set_activation_precision(ActivationPrecision::Standard);
             }
             if pos == 192 {
-                set_activation_precision(ActivationPrecision::Standard);
+                set_activation_precision(ActivationPrecision::Fast);
             }
             model.process(&input[pos..pos + nf], &mut out_mixed[pos..pos + nf]);
             pos += nf;
@@ -606,9 +606,9 @@ fn test_clap_pattern_block_boundary_activation_switch() {
             if block_start % 256 == 0 {
                 toggle = !toggle;
                 if toggle {
-                    set_activation_precision(ActivationPrecision::HighFidelity);
-                } else {
                     set_activation_precision(ActivationPrecision::Standard);
+                } else {
+                    set_activation_precision(ActivationPrecision::Fast);
                 }
             }
             model.process(

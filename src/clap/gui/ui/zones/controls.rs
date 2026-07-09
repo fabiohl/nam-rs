@@ -217,13 +217,15 @@ pub(crate) fn draw_zone2_controls(
                             .font(egui::FontId::proportional(10.0))
                             .color(egui::Color32::GRAY),
                     );
+                    // Value 1 = Standard (exact-grade, universal default);
+                    // Value 0 = Fast (Padé/minimax approximation, opt-in).
                     let resp = ui.selectable_value(
-                        &mut (act_val_i32 == 0),
+                        &mut (act_val_i32 == 1),
                         true,
                         egui::RichText::new("Standard").font(egui::FontId::proportional(11.0)),
                     );
-                    if resp.clicked() && act_val_i32 != 0 {
-                        shared.ui_to_rt.param_activation.store(0, Ordering::Relaxed);
+                    if resp.clicked() && act_val_i32 != 1 {
+                        shared.ui_to_rt.param_activation.store(1, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_ACTIVATION as usize,
                             0,
@@ -231,12 +233,12 @@ pub(crate) fn draw_zone2_controls(
                         shared.bump_generation();
                     }
                     let resp = ui.selectable_value(
-                        &mut (act_val_i32 == 1),
+                        &mut (act_val_i32 == 0),
                         true,
-                        egui::RichText::new("HF").font(egui::FontId::proportional(11.0)),
+                        egui::RichText::new("Fast").font(egui::FontId::proportional(11.0)),
                     );
-                    if resp.clicked() && act_val_i32 != 1 {
-                        shared.ui_to_rt.param_activation.store(1, Ordering::Relaxed);
+                    if resp.clicked() && act_val_i32 != 0 {
+                        shared.ui_to_rt.param_activation.store(0, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_ACTIVATION as usize,
                             0,

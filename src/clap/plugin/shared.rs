@@ -111,7 +111,7 @@ pub struct UiToRt {
     pub param_slim_override: AtomicU32,
     /// Latest Oversampling factor parameter value (0=Off, 1=X2, 2=X4).
     pub param_oversample: AtomicU32,
-    /// Latest Activation Precision parameter value (0=Standard, 1=HighFidelity).
+    /// Latest Activation Precision parameter value (0=Fast, 1=Standard).
     pub param_activation: AtomicU32,
     /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
     /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):

@@ -25,7 +25,7 @@ use crate::math::activations::tanh::high_fidelity::{
 use crate::math::activations::tanh::{scalar_pade_tanh, simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
-/// Fused kernel for LSTM gates (AVX2) — HighFidelity accuracy path.
+/// Fused kernel for LSTM gates (AVX2) — Standard (exact-grade) accuracy path.
 /// Uses polynomial exp-based tanh/sigmoid approximations with Kahan
 /// compensated summation for the cell state.
 ///
@@ -58,7 +58,7 @@ pub unsafe fn fused_lstm_gates_avx2_hf(
     (new_cs, new_cs_err, hidden)
 }
 
-/// Fused kernel for LSTM gates (AVX2) — Standard (production) accuracy path.
+/// Fused kernel for LSTM gates (AVX2) — Fast (production) accuracy path.
 /// Uses Padé tanh + minimax sigmoid with interleaved dual-sigmoid and
 /// Kahan compensated summation for the cell state.
 ///
@@ -105,14 +105,14 @@ pub unsafe fn fused_lstm_gates_avx2(
     cs: __m256,
     cs_err: __m256,
 ) -> (__m256, __m256, __m256) {
-    if activation_precision() == ActivationPrecision::HighFidelity {
+    if activation_precision() == ActivationPrecision::Standard {
         unsafe { fused_lstm_gates_avx2_hf(gf, gi, gg, go, cs, cs_err) }
     } else {
         unsafe { fused_lstm_gates_avx2_std(gf, gi, gg, go, cs, cs_err) }
     }
 }
 
-/// Fused kernel for LSTM gates (AVX-512) — HighFidelity accuracy path.
+/// Fused kernel for LSTM gates (AVX-512) — Standard (exact-grade) accuracy path.
 /// Uses polynomial exp-based tanh/sigmoid approximations with Kahan
 /// compensated summation for the cell state.
 ///
@@ -145,7 +145,7 @@ pub unsafe fn fused_lstm_gates_avx512_hf(
     (new_cs, new_cs_err, hidden)
 }
 
-/// Fused kernel for LSTM gates (AVX-512) — Standard (production) accuracy path.
+/// Fused kernel for LSTM gates (AVX-512) — Fast (production) accuracy path.
 /// Uses Padé tanh + minimax sigmoid with Kahan compensated summation
 /// for the cell state.
 ///
@@ -193,7 +193,7 @@ pub unsafe fn fused_lstm_gates_avx512(
     cs: __m512,
     cs_err: __m512,
 ) -> (__m512, __m512, __m512) {
-    if activation_precision() == ActivationPrecision::HighFidelity {
+    if activation_precision() == ActivationPrecision::Standard {
         unsafe { fused_lstm_gates_avx512_hf(gf, gi, gg, go, cs, cs_err) }
     } else {
         unsafe { fused_lstm_gates_avx512_std(gf, gi, gg, go, cs, cs_err) }
@@ -210,7 +210,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
     hidden_state: &mut [f32],
     hidden_size: usize,
 ) {
-    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
+    let is_hf = activation_precision() == ActivationPrecision::Standard;
     let mut j = 0;
     while j + 8 <= hidden_size {
         let gi = _mm256_loadu_ps(gates.as_ptr().add(j));
@@ -306,7 +306,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
     hidden_state: &mut [f32],
     hidden_size: usize,
 ) {
-    let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
+    let is_hf = activation_precision() == ActivationPrecision::Standard;
     let mut j = 0;
     while j + 16 <= hidden_size {
         // Load the 4 decisions (forget, learn, etc.) for 16 cells.

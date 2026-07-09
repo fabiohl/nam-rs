@@ -51,7 +51,7 @@ impl LstmLayerDyn {
         }
 
         // Manual activation of the LSTM gates.
-        let is_hf = activation_precision() == ActivationPrecision::HighFidelity;
+        let is_hf = activation_precision() == ActivationPrecision::Standard;
         for j in 0..h {
             let gf = self.gates[j + h];
             let gi = self.gates[j];

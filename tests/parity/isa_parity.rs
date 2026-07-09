@@ -76,13 +76,14 @@ impl Drop for IsaGuard {
     }
 }
 
-/// Sets `ActivationPrecision::HighFidelity` and returns a guard that
-/// restores `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3).
+/// Sets `ActivationPrecision::Standard` (exact-grade, universal default)
+/// and returns a guard that restores `Standard` on drop. Ensures
+/// panic-safe cleanup (Tarefa β1.3).
 struct PrecisionGuard;
 
 impl PrecisionGuard {
     fn set() -> Self {
-        set_activation_precision(ActivationPrecision::HighFidelity);
+        set_activation_precision(ActivationPrecision::Standard);
         PrecisionGuard
     }
 }
@@ -144,10 +145,12 @@ fn run_under_isa(
 
     // CRITICAL: set override BEFORE building model — the builder reads
     // SimdMathConfig::get() to decide BF16 vs non-BF16 weight layout.
-    // Also explicitly pin Standard activation precision — HF tests may
-    // have left the global atomic dirty (Tarefa β1.3).
+    // Also explicitly pin Fast activation precision — this measures ISA
+    // parity of the Padé/minimax kernels specifically (the `_hf` sibling
+    // function below measures the Standard/exact-grade kernels instead).
+    // Standard-mode tests may have left the global atomic dirty (Tarefa β1.3).
     let _guard = IsaGuard::set(isa);
-    set_activation_precision(ActivationPrecision::Standard);
+    set_activation_precision(ActivationPrecision::Fast);
 
     let mut model = build_model(&model_data).unwrap_or_else(|e| panic!("Build failed: {e}"));
     model.prewarm(V2_PREWARM_SAMPLES);
@@ -160,7 +163,7 @@ fn run_under_isa(
 }
 
 /// Loads a model and runs golden-vector inference under a specific ISA
-/// with `ActivationPrecision::HighFidelity` enabled.
+/// with `ActivationPrecision::Standard` (exact-grade) enabled.
 ///
 /// Returns the model output buffer and the expected (C++ reference) output.
 fn run_under_isa_hf(
@@ -240,7 +243,7 @@ fn assert_isa_parity(
 }
 
 /// Convenience: runs cross-ISA comparison for one model at 48 kHz
-/// in `ActivationPrecision::HighFidelity` mode.
+/// in `ActivationPrecision::Standard` (exact-grade) mode.
 fn check_isa_parity_for_model_hf(
     model_filename: &str,
     golden_name: &str,
@@ -563,7 +566,7 @@ fn isa_parity_wavenet_nano_avx2_vs_vnnibf16() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// HighFidelity mode self-consistency (AVX2) — always runs
+// Standard (exact-grade) mode self-consistency (AVX2) — always runs
 // ══════════════════════════════════════════════════════════════════════
 //
 // Tarefa β1.3: verify that the HF activation paths (scalar + SIMD) are
@@ -645,10 +648,10 @@ fn isa_hf_self_consistency_lstm_2x8_avx2() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// HighFidelity cross-ISA parity — AVX2 (ref) vs AVX-512 (ignored)
+// Standard (exact-grade) cross-ISA parity — AVX2 (ref) vs AVX-512 (ignored)
 // ══════════════════════════════════════════════════════════════════════
 //
-// Tarefa β1.3: verify cross-ISA parity in HighFidelity mode.
+// Tarefa β1.3: verify cross-ISA parity in Standard (exact-grade) mode.
 // HF polynomial kernels use the same mathematical approximation (degree-6
 // Taylor with range reduction) across ISAs, so cross-ISA parity should be
 // comparable to or better than standard mode.

@@ -46,7 +46,7 @@ pub fn print_help() {
     println!(
         "      --oversample off|2x|4x Half-band oversampling around neural stage [default: off]"
     );
-    println!("      --activation MODE    Activation precision: standard (default) or hf");
+    println!("      --activation MODE    Activation precision: standard (default, exact-grade) or fast");
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -78,7 +78,9 @@ pub struct CliArgs {
     pub slim_override: SlimOverride,
     /// Oversampling factor for the neural stage (off, 2x, 4x).
     pub oversample: OversampleFactor,
-    /// Activation precision mode (Standard or HighFidelity).
+    /// Activation precision mode (`Standard`, the universal default, or `Fast`).
+    /// `None` means the user did not pass `--activation`; the library-level
+    /// default (`Standard`) applies.
     pub activation: Option<ActivationPrecision>,
 }
 
@@ -151,9 +153,9 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     .unwrap_or_else(|_| exit_with_error("Invalid activation precision value."));
                 activation = Some(match val_str.to_lowercase().as_str() {
                     "standard" | "std" => ActivationPrecision::Standard,
-                    "hf" | "highfidelity" | "high" => ActivationPrecision::HighFidelity,
+                    "fast" => ActivationPrecision::Fast,
                     other => exit_with_error(format!(
-                        "Invalid activation precision: '{}'. Expected 'standard' or 'hf'.",
+                        "Invalid activation precision: '{}'. Expected 'standard' or 'fast'.",
                         other
                     )),
                 });

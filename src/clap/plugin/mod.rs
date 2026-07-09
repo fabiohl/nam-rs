@@ -81,7 +81,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 param_adaptive_compute: AtomicU32::new(1), // Conservative by default in CLAP plugin
                 param_slim_override: AtomicU32::new(0),    // Auto by default
                 param_oversample: AtomicU32::new(0),       // Off by default
-                param_activation: AtomicU32::new(0),       // Standard by default
+                param_activation: AtomicU32::new(1),       // Standard (exact-grade) by default
                 gesture_flags: AtomicU32::new(0),
                 gui_param_generation: AtomicU32::new(0),
             },

@@ -53,24 +53,40 @@ fn test_parse_args_activation_standard() {
 }
 
 #[test]
-fn test_parse_args_activation_hf() {
-    let args = vec!["nam-rs", "--activation", "hf"];
+fn test_parse_args_activation_fast() {
+    let args = vec!["nam-rs", "--activation", "fast"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(cli_args.activation, Some(ActivationPrecision::HighFidelity));
+    assert_eq!(cli_args.activation, Some(ActivationPrecision::Fast));
 }
 
 #[test]
-fn test_parse_args_activation_highfidelity() {
-    let args = vec!["nam-rs", "--activation", "highfidelity"];
+fn test_parse_args_activation_std_alias() {
+    let args = vec!["nam-rs", "--activation", "std"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(cli_args.activation, Some(ActivationPrecision::HighFidelity));
+    assert_eq!(cli_args.activation, Some(ActivationPrecision::Standard));
 }
+
+// Note: "hf"/"highfidelity"/"high" were retired as CLI aliases in the
+// Standard/Fast rename (only "standard"/"std" and "fast" are accepted now).
+// `--activation highfidelity` now calls `exit_with_error` -> `process::exit(1)`,
+// which cannot be safely exercised from an in-process `#[test]` (it terminates
+// the whole test binary, not just the test) — not covered here by design.
 
 #[test]
 fn test_parse_args_activation_default() {
-    let args: Vec<&str> = vec!["nam-rs"];
+    // Pre-existing hazard (found while auditing this rename, unrelated to it):
+    // `parse_args_from` treats a zero-real-argument invocation (only the
+    // program name, which lexopt's `Parser::from_iter` consumes as the bin
+    // name) as "no args at all" and calls `print_help(); std::process::exit(0);`.
+    // That is a *real* process exit — inside a `#[test]` it would silently
+    // kill the entire test binary process (not just this test), truncating
+    // the whole `cargo test` run while still reporting exit code 0. Passing
+    // a harmless real flag (`--buffer-size 256`, the documented default)
+    // keeps `has_args = true` and exercises the same "activation not passed"
+    // path without tripping that exit.
+    let args: Vec<&str> = vec!["nam-rs", "--buffer-size", "256"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
     assert_eq!(cli_args.activation, None);

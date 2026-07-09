@@ -60,7 +60,8 @@ pub struct NamPluginParams {
     /// Path to the loaded cab-sim impulse response (.wav).
     #[serde(default)]
     pub ir_path: Option<PathBuf>,
-    /// Activation precision mode (Standard or HighFidelity). Default: Standard.
+    /// Activation precision mode (`Standard` or `Fast`).
+    /// Default: `Standard` (universal, exact-grade — matches NAMCore C++).
     #[serde(default)]
     pub activation_precision: ActivationPrecision,
 }

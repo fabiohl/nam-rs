@@ -132,7 +132,9 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     module: b"",
                     min_value: 0.0,
                     max_value: 1.0,
-                    default_value: 0.0,
+                    // Universal default is `Standard` (exact-grade, value 1.0),
+                    // not `Fast` (value 0.0) — see ACTIVATION_STANDARD/ACTIVATION_FAST.
+                    default_value: 1.0,
                 });
             }
             _ => {}
@@ -246,7 +248,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 _ => writer.write_str("Off"),
             },
             PARAM_ACTIVATION => match value.round() as i32 {
-                1 => writer.write_str("HighFidelity"),
+                0 => writer.write_str("Fast"),
                 _ => writer.write_str("Standard"),
             },
             _ => Ok(()),
@@ -309,8 +311,8 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 _ => text_str.parse::<f64>().ok(),
             },
             PARAM_ACTIVATION => match text_str.to_lowercase().as_str() {
-                "standard" | "0" => Some(0.0),
-                "highfidelity" | "hf" | "high fidelity" | "1" => Some(1.0),
+                "fast" | "0" => Some(0.0),
+                "standard" | "1" => Some(1.0),
                 _ => text_str.parse::<f64>().ok(),
             },
             _ => None,

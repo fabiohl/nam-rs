@@ -52,17 +52,17 @@ is allocation-free, as it is read during host scan.
 Exposed via `NamPluginParams` (`src/common/params.rs`) and mapped in
 `src/clap/extensions/params/`. IDs are `u32` constants `PARAM_*` (0–8).
 
-| Parameter            | ID                     | Type    | Notes                                          |
-|:-------------------- |:---------------------- |:------- |:---------------------------------------------- |
-| Input Gain           | `input_gain_db`        | dB      | Pre-inference gain, sample-accurate smoothed.  |
-| Output Gain          | `output_gain_db`       | dB      | Post-inference gain, sample-accurate smoothed. |
-| Gate Threshold       | `gate_threshold_db`    | dB      | Noise-gate opening threshold.                  |
-| Bypass               | `bypass`               | binary  | Disables neural processing (dry = wet).        |
-| Active Model         | `active_model`         | —       | Loaded model name (read-only).                 |
-| Adaptive Compute     | `adaptive_compute`     | binary  | CPU-based quality fallback (FSM).              |
-| Slim Override        | `slim_override`        | stepped | Auto / ForceFull / ForceLite.                  |
-| Oversampling Factor  | `oversample`           | stepped | Off / 2× / 4×.                                 |
-| Activation Precision | `activation_precision` | stepped | Standard / HighFidelity.                       |
+| Parameter            | ID                     | Type    | Notes                                                                    |
+|:-------------------- |:---------------------- |:------- |:------------------------------------------------------------------------ |
+| Input Gain           | `input_gain_db`        | dB      | Pre-inference gain, sample-accurate smoothed.                            |
+| Output Gain          | `output_gain_db`       | dB      | Post-inference gain, sample-accurate smoothed.                           |
+| Gate Threshold       | `gate_threshold_db`    | dB      | Noise-gate opening threshold.                                            |
+| Bypass               | `bypass`               | binary  | Disables neural processing (dry = wet).                                  |
+| Active Model         | `active_model`         | —       | Loaded model name (read-only).                                           |
+| Adaptive Compute     | `adaptive_compute`     | binary  | CPU-based quality fallback (FSM).                                        |
+| Slim Override        | `slim_override`        | stepped | Auto / ForceFull / ForceLite.                                            |
+| Oversampling Factor  | `oversample`           | stepped | Off / 2× / 4×.                                                           |
+| Activation Precision | `activation_precision` | stepped | Standard (exact-grade, universal default) / Fast (Padé/minimax, opt-in). |
 
 The model path is a **State Property**, letting the DAW persist/restore the
 correct model in a project.
@@ -72,19 +72,19 @@ correct model in a project.
 Registered in `declare_extensions()` (`src/clap/plugin/mod.rs`) via
 `clack-extensions`:
 
-| Extension                      | File                                         | Purpose                                                                                                                                         |
-|:------------------------------ |:-------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`         | Mono in/out ports, in-place pair enabled.                                                                                                       |
-| `clap_plugin_params`           | `src/clap/extensions/params/`                | Parameter mapping/automation with gesture + `flush()` support.                                                                                  |
-| `clap_plugin_state`            | `src/clap/extensions/state.rs`               | Persist parameters + model path in the DAW project.                                                                                             |
-| `clap_plugin_state_context`    | `src/clap/extensions/state_context.rs`       | Distinguish preset save (portable, no abs path) vs project/duplicate.                                                                           |
-| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`             | Dynamic latency reporting (resampler + oversample + cabsim).                                                                                    |
-| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`          | Host track color → GUI accent color.                                                                                                            |
-| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`     | "Main" / "Gate" control pages for HW controllers / Device Panel.                                                                                |
-| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`    | GUI feedback for mapped/automated/overridden parameters.                                                                                        |
-| `clap_plugin_preset_load`      | `src/clap/extensions/preset_load.rs`         | Load `.nam`/`.namb` from the host preset browser.                                                                                               |
-| `clap_plugin_render`           | `src/clap/extensions/render.rs`              | Offline mode forces `AdaptiveCompute::Off` + HighFidelity (max quality). `has_hard_realtime_requirement = false` (NAM is deterministic/causal). |
-| `clap_plugin_gui`              | `src/clap/extensions/gui.rs` *(clap-plugin)* | Native `egui` GUI via `baseview`, X11/XWayland (`CLAP_WINDOW_API_X11`).                                                                         |
+| Extension                      | File                                         | Purpose                                                                                                                                                                         |
+|:------------------------------ |:-------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`         | Mono in/out ports, in-place pair enabled.                                                                                                                                       |
+| `clap_plugin_params`           | `src/clap/extensions/params/`                | Parameter mapping/automation with gesture + `flush()` support.                                                                                                                  |
+| `clap_plugin_state`            | `src/clap/extensions/state.rs`               | Persist parameters + model path in the DAW project.                                                                                                                             |
+| `clap_plugin_state_context`    | `src/clap/extensions/state_context.rs`       | Distinguish preset save (portable, no abs path) vs project/duplicate.                                                                                                           |
+| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`             | Dynamic latency reporting (resampler + oversample + cabsim).                                                                                                                    |
+| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`          | Host track color → GUI accent color.                                                                                                                                            |
+| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`     | "Main" / "Gate" control pages for HW controllers / Device Panel.                                                                                                                |
+| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`    | GUI feedback for mapped/automated/overridden parameters.                                                                                                                        |
+| `clap_plugin_preset_load`      | `src/clap/extensions/preset_load.rs`         | Load `.nam`/`.namb` from the host preset browser.                                                                                                                               |
+| `clap_plugin_render`           | `src/clap/extensions/render.rs`              | Offline mode forces `AdaptiveCompute::Off` + `Standard` activation precision (max quality, exact-grade). `has_hard_realtime_requirement = false` (NAM is deterministic/causal). |
+| `clap_plugin_gui`              | `src/clap/extensions/gui.rs` *(clap-plugin)* | Native `egui` GUI via `baseview`, X11/XWayland (`CLAP_WINDOW_API_X11`).                                                                                                         |
 
 A separate **Preset Discovery Factory** (`src/clap/factory/preset_discovery.rs`)
 indexes `.nam`/`.namb` files from `~/.nam/models` so hosts can list them as
@@ -172,9 +172,9 @@ back into `ColdShared`, so a host that deactivates/reactivates the processor
 ### 6.7 Render Mode
 
 `clap.render.set()` stores the mode (`Release`). On transition the RT thread
-forces `AdaptiveCompute::Off` + `ActivationPrecision::HighFidelity` in offline
-mode for deterministic max-quality bounce/export, and restores user settings on
-return to realtime.
+forces `AdaptiveCompute::Off` + `ActivationPrecision::Standard` (exact-grade)
+in offline mode for deterministic max-quality bounce/export, and restores
+user settings on return to realtime.
 
 ## 7. GUI Architecture
 

@@ -173,9 +173,10 @@ fn test_lstm_activation_precision_gain() {
 
     if avg_gain < 3.0 {
         eprintln!(
-            "  VERDICT: FastMath Padé [5,4] is adequate for LSTM goldens.\n\
+            "  VERDICT: Fast Padé [5,4] is adequate for LSTM goldens.\n\
                The SNR gain from exact tanh is negligible (< 3 dB avg).\n\
-               Keeping FastMath as the default production path."
+               Note: `Standard` (exact-grade) is the universal production\n\
+               default; `Fast` remains available as an explicit opt-in."
         );
     } else if avg_gain < 6.0 {
         eprintln!(
@@ -194,16 +195,16 @@ fn test_lstm_activation_precision_gain() {
     eprintln!();
 }
 
-/// [T5.5] Precision investigation: measure SNR gain of exact HighFidelity vs FastMath Padé on full stress v2.
+/// [T5.5] Precision investigation: measure SNR gain of exact-grade `Standard` vs `Fast` Padé on full stress v2.
 ///
-/// Runs the 3 LSTM models through both SIMD (FastMath) and SIMD (HighFidelity)
+/// Runs the 3 LSTM models through both SIMD (`Fast`) and SIMD (`Standard`)
 /// paths, computing SNR against the f64 exact reference oracle on the stress v2 signal.
 #[test]
 fn test_lstm_activation_precision_gain_stress_v2() {
     eprintln!();
     eprintln!("══════════════════════════════════════════════════════════════════");
     eprintln!("  [T5.5] LSTM Activation Precision Investigation (STRESS V2)");
-    eprintln!("  Comparing FastMath (Padé tanh) vs HighFidelity (exp-based)");
+    eprintln!("  Comparing Fast (Padé tanh) vs Standard (exp-based, exact-grade)");
     eprintln!("  SNR vs f64 Exact Reference Oracle");
     eprintln!("══════════════════════════════════════════════════════════════════");
 
@@ -272,9 +273,10 @@ fn test_lstm_activation_precision_gain_stress_v2() {
 
     if avg_gain < 3.0 {
         eprintln!(
-            "  VERDICT: FastMath Padé [5,4] is adequate for LSTM.\n\
+            "  VERDICT: Fast Padé [5,4] is adequate for LSTM.\n\
                The SNR gain from exact tanh is negligible (< 3 dB avg).\n\
-               Keeping FastMath as the default production path."
+               Note: `Standard` (exact-grade) is the universal production\n\
+               default; `Fast` remains available as an explicit opt-in."
         );
     } else if avg_gain < 6.0 {
         eprintln!(
@@ -313,12 +315,12 @@ fn measure_lstm_snr_stress_v2(model_filename: &str, label: &str) -> (f64, f64) {
     let oracle_out = oracle_forward(&model_data, &stress_f64, &PrecisionConfig::default());
     let expected: Vec<f32> = oracle_out.iter().map(|&x| x as f32).collect();
 
-    // --- FastMath path (SIMD Padé tanh + minimax sigmoid) ---
+    // --- Fast path (SIMD Padé tanh + minimax sigmoid) ---
     let mut model_fast = build_model(&model_data).expect("Dispatcher failed");
     let mut output_fast = vec![0.0f32; stress_signal.len()];
     let mut pos = 0;
     {
-        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::Standard));
+        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::Fast));
         while pos < stress_signal.len() {
             let nf = (stress_signal.len() - pos).min(64);
             model_fast.process(
@@ -330,12 +332,12 @@ fn measure_lstm_snr_stress_v2(model_filename: &str, label: &str) -> (f64, f64) {
     }
     let snr_fast = compute_snr_db(&expected, &output_fast);
 
-    // --- HighFidelity path (SIMD HighFidelity tanh + HighFidelity sigmoid) ---
+    // --- Standard path (SIMD exact-grade polynomial tanh + sigmoid) ---
     let mut model_exact = build_model(&model_data).expect("Dispatcher failed");
     let mut output_exact = vec![0.0f32; stress_signal.len()];
     pos = 0;
     {
-        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::HighFidelity));
+        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::Standard));
         while pos < stress_signal.len() {
             let nf = (stress_signal.len() - pos).min(64);
             model_exact.process(
@@ -348,7 +350,7 @@ fn measure_lstm_snr_stress_v2(model_filename: &str, label: &str) -> (f64, f64) {
     let snr_exact = compute_snr_db(&expected, &output_exact);
 
     println!(
-        "{label:>22}  FastMath(Padé): {snr_fast:6.1} dB  |  HighFidelity: {snr_exact:6.1} dB  |  Δ={gain:+.1} dB",
+        "{label:>22}  Fast(Padé): {snr_fast:6.1} dB  |  Standard(exact): {snr_exact:6.1} dB  |  Δ={gain:+.1} dB",
         gain = snr_exact - snr_fast,
     );
 

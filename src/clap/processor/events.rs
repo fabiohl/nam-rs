@@ -143,9 +143,9 @@ impl<'a> NamClapProcessor<'a> {
                     &self.rt_status,
                 );
                 self.params.activation_precision =
-                    crate::common::params::ActivationPrecision::HighFidelity;
+                    crate::common::params::ActivationPrecision::Standard;
                 crate::math::activations::set_activation_precision(
-                    crate::common::params::ActivationPrecision::HighFidelity,
+                    crate::common::params::ActivationPrecision::Standard,
                 );
             } else {
                 let user_mode = crate::common::params::AdaptiveComputeMode::from_f32(

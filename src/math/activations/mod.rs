@@ -56,19 +56,30 @@ pub use tanh::*;
 
 /// Activation precision mode for tanh/sigmoid approximation.
 ///
-/// Controls whether the production Padé/minimax kernels or the
-/// high-fidelity polynomial exp-based kernels are used.
+/// Controls whether the high-fidelity polynomial exp-based kernels or the
+/// cheaper production Padé/minimax kernels are used.
+///
+/// # Naming History
+/// Prior to this rename, `Standard` denoted the Padé/minimax approximation
+/// (now `Fast`) and `HighFidelity` denoted the exact-grade polynomial path
+/// (now `Standard`). `Standard` is the universal production default for
+/// every model in nam-rs — `Fast` is an explicit, opt-in trade-off of
+/// fidelity for CPU headroom. Numeric discriminants are unchanged from the
+/// previous naming, so existing CLAP host automation/state (raw `0`/`1`
+/// values) keeps selecting the same underlying kernel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(usize)]
 #[allow(clippy::module_name_repetitions)]
 pub enum ActivationPrecision {
-    /// Padé [5,4] tanh (~2.32e-3) + minimax degree-17 sigmoid (~4.09e-4).
-    /// Current production default — fastest path.
-    #[default]
-    Standard = 0,
     /// Polynomial exp-based tanh/sigmoid (~2.4e-7 / ~2.1e-7).
-    /// Higher cost, lower error, lower aliasing (offline/mixdown).
-    HighFidelity = 1,
+    /// Universal production default — exact-grade, matches the NAMCore
+    /// C++ reference (`using_fast_tanh = false`) to bit-exact precision.
+    #[default]
+    Standard = 1,
+    /// Padé [5,4] tanh (~2.32e-3) + minimax degree-17 sigmoid (~4.09e-4).
+    /// Cheaper/faster approximation; opt-in via `--activation fast` (CLI)
+    /// or the CLAP "Activation Precision" parameter.
+    Fast = 0,
 }
 
 impl ActivationPrecision {
@@ -76,7 +87,7 @@ impl ActivationPrecision {
     #[inline]
     pub fn from_f32(val: f32) -> Self {
         match val.round() as i32 {
-            1 => Self::HighFidelity,
+            0 => Self::Fast,
             _ => Self::Standard,
         }
     }
@@ -88,7 +99,7 @@ impl ActivationPrecision {
     }
 }
 
-/// Global activation precision mode (default: `Standard`).
+/// Global activation precision mode (default: `Standard`, exact-grade).
 ///
 /// # Thread Safety
 /// This is a relaxed atomic — the mode is set once during initialisation
@@ -146,7 +157,7 @@ pub fn activation_precision() -> ActivationPrecision {
         precision
     } else {
         match ACTIVATION_MODE.load(core::sync::atomic::Ordering::Relaxed) {
-            1 => ActivationPrecision::HighFidelity,
+            0 => ActivationPrecision::Fast,
             _ => ActivationPrecision::Standard,
         }
     }
@@ -155,7 +166,7 @@ pub fn activation_precision() -> ActivationPrecision {
 /// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
 #[inline(always)]
 pub fn tanh_slice(data: &mut [f32]) {
-    if activation_precision() == ActivationPrecision::HighFidelity {
+    if activation_precision() == ActivationPrecision::Standard {
         crate::math::common::dispatch_simd!(tanh_slice_hf(data));
     } else {
         crate::math::common::dispatch_simd!(tanh_slice(data));
@@ -165,7 +176,7 @@ pub fn tanh_slice(data: &mut [f32]) {
 /// Applies Sigmoid activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn sigmoid_slice(data: &mut [f32]) {
-    if activation_precision() == ActivationPrecision::HighFidelity {
+    if activation_precision() == ActivationPrecision::Standard {
         crate::math::common::dispatch_simd!(sigmoid_slice_hf(data));
     } else {
         crate::math::common::dispatch_simd!(sigmoid_slice(data));

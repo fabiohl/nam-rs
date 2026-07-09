@@ -52,13 +52,16 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Sets `ActivationPrecision::HighFidelity` and returns a guard that
-/// restores `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3).
+/// Sets `ActivationPrecision::Standard` (exact-grade, matching the C++
+/// reference's `using_fast_tanh = false`) and returns a guard that restores
+/// `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3). `Standard`
+/// is also the universal production default, so this guard is primarily
+/// defensive against other tests leaving the global mode set to `Fast`.
 struct PrecisionGuard;
 
 impl PrecisionGuard {
     fn set() -> Self {
-        set_activation_precision(ActivationPrecision::HighFidelity);
+        set_activation_precision(ActivationPrecision::Standard);
         PrecisionGuard
     }
 }
@@ -442,8 +445,9 @@ fn run_render_comparison(
         const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
         const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08; // rates ≤ 96 kHz (relaxed to fit FastMath/Padé vs native math recurrent drift)
         const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.18; // rates > 96 kHz (relaxed to fit high sample-rate recurrent drift)
-        // HighFidelity mode caps (Tarefa β1.3) — when HighFidelity is enabled, Rust uses
-        // native math, matching C++ NAMCore's default native activation precision (using_fast_tanh = false).
+        // Standard (exact-grade) mode caps (Tarefa β1.3) — when `use_hf` selects the
+        // exact-grade path (`ActivationPrecision::Standard`), Rust uses native math,
+        // matching C++ NAMCore's default native activation precision (using_fast_tanh = false).
         // The interop gap collapses to near-bit-exact levels (~1e-10 ESR), allowing tight thresholds.
         const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
             nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
@@ -505,11 +509,12 @@ fn run_render_comparison(
         }
     }
 
-    // Set HighFidelity activation mode if requested (Tarefa β1.3).
+    // Set exact-grade (`ActivationPrecision::Standard`) mode if requested (Tarefa β1.3).
     // The C++ NAMCore render tool uses native math activations by default.
-    // In Standard mode, Rust uses FastMath (Padé/minimax), which introduces a recurrent state drift.
-    // In HighFidelity mode, Rust uses native math, aligning both engines to near-bit-exact agreement.
-    // Uses RAII guard for panic-safe restoration to Standard.
+    // In `Fast` mode, Rust uses FastMath (Padé/minimax), which introduces a recurrent state drift.
+    // In `Standard` mode, Rust uses native math, aligning both engines to near-bit-exact agreement.
+    // `Standard` is also the universal production default, so `PrecisionGuard` is mostly
+    // defensive here. Uses RAII guard for panic-safe restoration to `Standard`.
     let _precision: Option<PrecisionGuard> = if use_hf {
         Some(PrecisionGuard::set())
     } else {
@@ -576,7 +581,7 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
     );
 }
 
-/// Helper: run v1 comparison in HighFidelity mode (Tarefa β1.3).
+/// Helper: run v1 comparison in Standard (exact-grade) mode (Tarefa β1.3).
 fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
     let _ = run_render_comparison(
         model_filename,
@@ -1203,7 +1208,7 @@ fn live_cross_validation_v2_linear() {
 }
 
 // =============================================================================
-// HighFidelity mode cpp_parity tests (Tarefa β1.3)
+// Standard (exact-grade) mode cpp_parity tests (Tarefa β1.3)
 // =============================================================================
 //
 // C++ NAMCore uses standard Padé/minimax approximations for tanh/sigmoid.

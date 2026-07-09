@@ -487,7 +487,7 @@ fn test_decomposition_boss_lstm_1x16() {
     let mut pos = 0;
     {
         let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
-            nam_rs::math::activations::ActivationPrecision::Standard,
+            nam_rs::math::activations::ActivationPrecision::Fast,
         ));
         while pos < total {
             let nf = (total - pos).min(64);
@@ -562,7 +562,7 @@ fn test_decomposition_boss_lstm_2x8() {
     let mut pos = 0;
     {
         let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
-            nam_rs::math::activations::ActivationPrecision::Standard,
+            nam_rs::math::activations::ActivationPrecision::Fast,
         ));
         while pos < total {
             let nf = (total - pos).min(64);
@@ -1192,7 +1192,20 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
     }
     let _restore = RestoreStandard;
 
-    // 1. Run with Standard precision (default)
+    // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
+    set_activation_precision(ActivationPrecision::Fast);
+    let (esr_tail_fast, _) = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (Fast)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (Fast)",
+        12_000,
+    );
+
+    // 2. Run with Standard precision (exact-grade, universal default)
     set_activation_precision(ActivationPrecision::Standard);
     let (esr_tail_std, _) = run_paired_drift_diagnostic(
         "BossLSTM-1x16.nam",
@@ -1205,48 +1218,35 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
         12_000,
     );
 
-    // 2. Run with HighFidelity precision
-    set_activation_precision(ActivationPrecision::HighFidelity);
-    let (esr_tail_hf, _) = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (HighFidelity)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (HighFidelity)",
-        12_000,
-    );
-
     println!("\nLSTM 1x16 Diagnostic Comparison:");
     println!(
-        "  Standard ESR_tail:     {:.6e} ({:.1} dB)",
+        "  Fast ESR_tail:     {:.6e} ({:.1} dB)",
+        esr_tail_fast,
+        10.0 * esr_tail_fast.log10()
+    );
+    println!(
+        "  Standard ESR_tail: {:.6e} ({:.1} dB)",
         esr_tail_std,
         10.0 * esr_tail_std.log10()
     );
     println!(
-        "  HighFidelity ESR_tail: {:.6e} ({:.1} dB)",
-        esr_tail_hf,
-        10.0 * esr_tail_hf.log10()
-    );
-    println!(
-        "  Delta:                 {:.6e}",
-        esr_tail_std - esr_tail_hf
+        "  Delta:             {:.6e}",
+        esr_tail_fast - esr_tail_std
     );
 
-    // Standard mode gate
+    // Fast mode gate
     assert!(
-        esr_tail_std < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
-        "Standard LSTM 1x16 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
-        esr_tail_std,
+        esr_tail_fast < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
+        "Fast LSTM 1x16 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail_fast,
         LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT
     );
 
-    // HighFidelity confirmation gate: expected to drop to near zero (< 1e-8) because there is no cold-start mismatch
+    // Standard confirmation gate: expected to drop to near zero (< 1e-8) because there is no cold-start mismatch
     assert!(
-        esr_tail_hf < 1.0e-8,
-        "HighFidelity LSTM 1x16 paired drift ESR not near zero: {:.6e}",
-        esr_tail_hf
+        esr_tail_std < 1.0e-8,
+        "Standard LSTM 1x16 paired drift ESR not near zero: {:.6e}",
+        esr_tail_std
     );
 }
 
@@ -1263,7 +1263,20 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
     }
     let _restore = RestoreStandard;
 
-    // 1. Run with Standard precision (default)
+    // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
+    set_activation_precision(ActivationPrecision::Fast);
+    let (esr_tail_fast, _) = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (Fast)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (Fast)",
+        12_000,
+    );
+
+    // 2. Run with Standard precision (exact-grade, universal default)
     set_activation_precision(ActivationPrecision::Standard);
     let (esr_tail_std, _) = run_paired_drift_diagnostic(
         "BossLSTM-2x8.nam",
@@ -1276,48 +1289,35 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
         12_000,
     );
 
-    // 2. Run with HighFidelity precision
-    set_activation_precision(ActivationPrecision::HighFidelity);
-    let (esr_tail_hf, _) = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (HighFidelity)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (HighFidelity)",
-        12_000,
-    );
-
     println!("\nLSTM 2x8 Diagnostic Comparison:");
     println!(
-        "  Standard ESR_tail:     {:.6e} ({:.1} dB)",
+        "  Fast ESR_tail:     {:.6e} ({:.1} dB)",
+        esr_tail_fast,
+        10.0 * esr_tail_fast.log10()
+    );
+    println!(
+        "  Standard ESR_tail: {:.6e} ({:.1} dB)",
         esr_tail_std,
         10.0 * esr_tail_std.log10()
     );
     println!(
-        "  HighFidelity ESR_tail: {:.6e} ({:.1} dB)",
-        esr_tail_hf,
-        10.0 * esr_tail_hf.log10()
-    );
-    println!(
-        "  Delta:                 {:.6e}",
-        esr_tail_std - esr_tail_hf
+        "  Delta:             {:.6e}",
+        esr_tail_fast - esr_tail_std
     );
 
-    // Standard mode gate
+    // Fast mode gate
+    assert!(
+        esr_tail_fast < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
+        "Fast LSTM 2x8 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail_fast,
+        LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
+    );
+
+    // Standard control gate (ensure it stays below limit)
     assert!(
         esr_tail_std < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
         "Standard LSTM 2x8 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
         esr_tail_std,
-        LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
-    );
-
-    // HighFidelity control gate (ensure it stays below limit)
-    assert!(
-        esr_tail_hf < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
-        "HighFidelity LSTM 2x8 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
-        esr_tail_hf,
         LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
     );
 }

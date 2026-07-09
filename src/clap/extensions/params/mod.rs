@@ -22,7 +22,7 @@ pub const PARAM_ADAPTIVE_COMPUTE: u32 = 5;
 pub const PARAM_SLIM_OVERRIDE: u32 = 6;
 /// Oversampling factor parameter ID (stepped: Off/2x/4x).
 pub const PARAM_OVERSAMPLE: u32 = 7;
-/// Activation precision parameter ID (stepped: Standard/HighFidelity).
+/// Activation precision parameter ID (stepped: Fast/Standard).
 pub const PARAM_ACTIVATION: u32 = 8;
 
 /// Bypass atomic value: off.
@@ -48,16 +48,19 @@ pub fn bypass_f32_to_bool(val: f32) -> bool {
     val > 0.5
 }
 
-/// Activation precision atomic value: Standard.
-pub const ACTIVATION_STANDARD: u32 = 0;
-/// Activation precision atomic value: HighFidelity.
-pub const ACTIVATION_HF: u32 = 1;
+/// Activation precision atomic value: Fast (Padé/minimax approximation).
+pub const ACTIVATION_FAST: u32 = 0;
+/// Activation precision atomic value: Standard (exact-grade, universal default).
+pub const ACTIVATION_STANDARD: u32 = 1;
 
 /// Convert a `u32` atomic activation value to `ActivationPrecision`.
+///
+/// Any value other than `ACTIVATION_FAST` (including unrecognized/garbage
+/// values) resolves to `Standard`, matching the universal default.
 #[inline]
 pub fn activation_u32_to_enum(val: u32) -> crate::math::activations::ActivationPrecision {
-    if val == ACTIVATION_HF {
-        crate::math::activations::ActivationPrecision::HighFidelity
+    if val == ACTIVATION_FAST {
+        crate::math::activations::ActivationPrecision::Fast
     } else {
         crate::math::activations::ActivationPrecision::Standard
     }

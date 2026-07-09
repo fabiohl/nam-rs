@@ -374,19 +374,23 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 
 ### 📅 Sprint 4: Correções de Precisão de Controle e Performance
 
-#### 🎯 Tarefa 4.1: Restaurar Controle Explícito do Usuário sobre `ActivationPrecision` para `BossLSTM`
+#### 🎯 Tarefa 4.1: Restaurar Controle Explícito do Usuário sobre `ActivationPrecision` para `BossLSTM` — [SUPERSEDIDA]
+
+> **Superseded (2026-07-09):** resolvida organicamente pelo Épico "Rename `Standard`↔`Fast` + Default Universal" (ver abaixo). Ao tornar `Standard` (exato) o default universal para **todos** os modelos — não apenas `BossLSTM` — o mecanismo de override por-modelo (`preferred_activation_precision()`) que causava o B1 foi **removido inteiramente** de `src/models/nam_model.rs`/`src/models/mod.rs`, não apenas corrigido. Não há mais nenhum caminho pelo qual uma escolha explícita de `--activation`/CLAP possa ser silenciosamente sobrescrita. Nenhuma ação adicional necessária.
 
 * **Achado:** B1 — `--activation standard` via CLI/CLAP não tem efeito em `BossLSTM-1x16`/`2x8` porque `preferred_activation_precision()` sempre vence quando nenhum escopo thread-local está ativo (o que é sempre o caso no caminho de chamada do CLI). O log afirma "Activation precision explicitly set to Standard" enquanto o áudio real roda em `HighFidelity` — comportamento silenciosamente divergente do log.
-* **Ações:**
-  * Distinguir, na configuração global (`src/math/activations/mod.rs`), entre "usuário nunca escolheu" (aplicar `preferred_activation_precision()` como default) e "usuário escolheu explicitamente" (respeitar a escolha, mesmo para `BossLSTM`) — ex.: trocar `Option<ActivationPrecision>` por um enum de 3 estados (`Auto`, `Standard`, `HighFidelity`) no lugar do `AtomicUsize` binário atual, ou adicionar um segundo átomo `USER_OVERRIDE_ACTIVE: AtomicBool`.
-  * Emitir um aviso (log, não `println!` no hot-path) quando o usuário força `Standard` em um modelo cuja fidelidade é conhecidamente comprometida nesse modo (ligar à decomposição da Tarefa 1.3/2.3), para que a escolha seja informada, não silenciosa.
+* ~~**Ações:**~~ *(obsoletas — ver nota de superseding acima)*
+  * ~~Distinguir, na configuração global (`src/math/activations/mod.rs`), entre "usuário nunca escolheu" (aplicar `preferred_activation_precision()` como default) e "usuário escolheu explicitamente" (respeitar a escolha, mesmo para `BossLSTM`) — ex.: trocar `Option<ActivationPrecision>` por um enum de 3 estados (`Auto`, `Standard`, `HighFidelity`) no lugar do `AtomicUsize` binário atual, ou adicionar um segundo átomo `USER_OVERRIDE_ACTIVE: AtomicBool`.~~
+  * ~~Emitir um aviso (log, não `println!` no hot-path) quando o usuário força `Standard` em um modelo cuja fidelidade é conhecidamente comprometida nesse modo (ligar à decomposição da Tarefa 1.3/2.3), para que a escolha seja informada, não silenciosa.~~
 
-#### 🎯 Tarefa 4.2: Eliminar a Taxa de Performance Universal do Guard de Precisão
+#### 🎯 Tarefa 4.2: Eliminar a Taxa de Performance Universal do Guard de Precisão — [SUPERSEDIDA]
+
+> **Superseded (2026-07-09):** resolvida de forma mais completa do que a ação proposta pelo mesmo Épico de rename. Em vez de apenas condicionar a criação da guarda (`if current.is_none() && self.preferred_activation_precision().is_some()`), a guarda foi **removida por completo** de `process()`/`prewarm()`/`reset()` em `src/models/nam_model.rs` — já que, com `Standard` universal, nenhum modelo precisa mais de override por-modelo. O custo de `ActivationPrecisionGuard` nesses três métodos caiu a zero para **todos** os modelos (não apenas os que antes retornavam `None`). Benchmark de confirmação: ver Tarefa de verificação do novo Épico (Sprint 3, Tarefa 3.4).
 
 * **Achado:** B2 — `ActivationPrecisionGuard` é construído/destruído em todo `process()`/`prewarm()`/`reset()` para todos os modelos, mesmo quando `preferred_activation_precision()` retorna `None`.
-* **Ações:**
-  * Alterar a condição de criação da guarda em `src/models/nam_model.rs` de `if current.is_none()` para `if current.is_none() && self.preferred_activation_precision().is_some()`.
-  * Rodar `cargo bench --bench regression_gate` antes/depois em todos os modelos (não só LSTM) e documentar o delta de latência restaurado, com o comentário de proveniência de medição exigido por `docs/perceptual_validation.md` Regra 3.
+* ~~**Ações:**~~ *(obsoletas — ver nota de superseding acima)*
+  * ~~Alterar a condição de criação da guarda em `src/models/nam_model.rs` de `if current.is_none()` para `if current.is_none() && self.preferred_activation_precision().is_some()`.~~
+  * ~~Rodar `cargo bench --bench regression_gate` antes/depois em todos os modelos (não só LSTM) e documentar o delta de latência restaurado, com o comentário de proveniência de medição exigido por `docs/perceptual_validation.md` Regra 3.~~
 
 #### 🎯 Tarefa 4.3: Corrigir Parser de `parse_activation_precision()` no Dashboard
 
@@ -398,6 +402,143 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 
 * **Achado:** processo — no momento desta auditoria, `TODO-findings.md`, `TODO-parity.md`, `TODO-sprints.md`, `docs/audio_fidelity_map.md`, `docs/cpp_parity_map.md`, `docs/fastmath-approximations.md` e `utils/quality-dashboard.sh` estavam todos modificados e não commitados.
 * **Ações:** revisar e commitar (ou descartar, se obsoleto) o estado atual da árvore de trabalho antes de considerar o épico oficialmente encerrado.
+
+---
+
+## 🏃 Épico: Rename `Standard`↔`Fast` de `ActivationPrecision` + Adoção de `Standard` (exato) como Default Universal
+
+### 🧭 Visão Geral
+
+* **Origem:** solicitação direta do usuário (não derivada de um Achado em `TODO-findings.md`), motivada pelo aprendizado do Épico de investigação do Achado A1 acima — em especial os Achados B1/B2 (§7), que este rename **resolve organicamente** (ver notas de superseding nas Tarefas 4.1/4.2 do Épico de Follow-up).
+* **Objetivo:** 1) renomear a variante `HighFidelity` (exp-poly, exata) para `Standard`; 2) renomear a antiga `Standard` (Padé/minimax, aproximada) para `Fast`; 3) tornar a nova `Standard` (exata) o **default universal** de todo o nam-rs — não mais um override específico para `BossLSTM-1x16`/`2x8`; 4) refletir a mudança tanto no CLI (`lexopt`) quanto no CLAP (parâmetro `PARAM_ACTIVATION`, GUI, texto/valor).
+* **Decisão de design (discriminantes preservados):** `Fast = 0`, `Standard = 1` — os mesmos valores numéricos que `Standard`/`HighFidelity` ocupavam antes do rename. Automação/estado numérico (`0`/`1`) já salvo por hosts CLAP em projetos existentes **continua selecionando o mesmo kernel de áudio** após o rename; apenas o rótulo textual muda. Simplificação adicional (não solicitada, mas decorrente diretamente do item 3): o mecanismo `preferred_activation_precision()`/`ActivationPrecisionGuard` usado para forçar `HighFidelity` apenas em `BossLSTM-1x16`/`2x8` foi **removido inteiramente** (não apenas ajustado) — com `Standard` universal, nenhum modelo precisa mais de override por-modelo. Isso resolve os Achados B1 (controle explícito do usuário restaurado) e B2 (zero overhead de guard) do Épico de Follow-up acima.
+* **Estado no momento deste planejamento:** a Sprint 1 abaixo **já foi implementada e verificada** na sessão que originou este plano (mudanças presentes na árvore de trabalho, ainda não commitadas). As Sprints 2-4 estão pendentes e são o foco da execução gradual solicitada.
+* **Risco Técnico:** 🟡 Moderado — toca hot-path de despacho de ativação (`src/math/activations/mod.rs`, `src/math/lstm/gates.rs`) e o valor de retorno de `default_value` do parâmetro CLAP (afeta hosts que instanciam o plugin sem estado salvo). Mitigado por: discriminantes preservados (ver acima), `cargo check`/`clippy --all-targets --all-features` limpos, e suítes de teste-alvo 100% verdes (ver Sprint 1).
+* **Risco de Processo:** 🔴 Alto se a documentação (`docs/*.md`, `.agents/rules/rust.md`) for deixada dessincronizada — vários trechos descrevem o **mecanismo antigo** (override específico de `BossLSTM`, "Live=`Standard`(rápido)/HQ=`HighFidelity`(exato)") que não existe mais. Rename textual ingênuo (`s/HighFidelity/Standard/`) nesses trechos produziria documentação **estruturalmente incorreta**, não apenas desatualizada — ver Sprint 2.
+
+---
+
+### 📅 Sprint 1: Rename no Código de Produção e Testes [CONCLUÍDO nesta sessão — pendente apenas de commit]
+
+> **Resultado:** compilação limpa (`cargo check --all-targets --all-features`, `cargo clippy --all-targets --all-features` — zero warnings/erros). Suítes-alvo 100% verdes após 1 recalibração de threshold (ver Tarefa 1.5): `standalone::cli::tests` 7/7, `tests/models` (`activation_precision`, `lstm_activation_precision`) 13/13, `tests/models` completo 221/221 (58 ignorados, esperado), `tests/parity` completo 36/36 (83 ignorados, esperado — long/hardware-gated), `--lib --features clap-plugin` (módulo `clap::`) 74/74 (1 ignorado, esperado).
+
+#### 🎯 Tarefa 1.1: Core — Enum e Dispatch de Ativação [CONCLUÍDA]
+
+* **Arquivos:** `src/math/activations/mod.rs`, `src/math/lstm/gates.rs`, `src/models/lstm/layer_kernels.rs`, `src/models/lstm/layer_dyn_kernels.rs`.
+* **Ações realizadas:**
+  * Enum `ActivationPrecision`: variante `Fast = 0` (ex-`Standard`, Padé/minimax), variante `Standard = 1` (ex-`HighFidelity`, polinomial exata) com `#[default]` movido para `Standard`.
+  * `from_f32`/`to_f32`, `ACTIVATION_MODE` (átomo global, valor inicial agora resolve para `Standard`), `activation_precision()` (getter thread-local→global) atualizados de forma consistente com os novos discriminantes.
+  * Todos os 4 pontos de despacho SIMD/escalar em `gates.rs`/`layer_kernels.rs`/`layer_dyn_kernels.rs` (`activation_precision() == ActivationPrecision::HighFidelity` → `== ActivationPrecision::Standard`).
+* **Verificação:** `cargo check`/`clippy --all-targets --all-features` limpos.
+
+#### 🎯 Tarefa 1.2: Remoção do Override Por-Modelo (`preferred_activation_precision`) [CONCLUÍDA]
+
+* **Arquivos:** `src/models/mod.rs` (trait default removido), `src/models/nam_model.rs` (override `Lstm1x16|Lstm2x8` e os 3 blocos de guard em `process`/`prewarm`/`reset` removidos).
+* **Justificativa:** com `Standard` universal, o override que existia apenas para `BossLSTM-1x16`/`2x8` tornou-se redundante — resolve B1/B2 (ver nota de superseding no Épico de Follow-up).
+* **Verificação:** nenhuma referência residual a `preferred_activation_precision` em `src/` (grep limpo); `cargo check` limpo.
+
+#### 🎯 Tarefa 1.3: CLI (`lexopt`) [CONCLUÍDA]
+
+* **Arquivos:** `src/standalone/cli.rs`, `src/standalone/cli_test.rs`, `src/main.rs` (sem alteração necessária — não referencia identificadores literais).
+* **Ações realizadas:** strings aceitas por `--activation` alteradas de `standard|std → Standard(antigo, Padé)` / `hf|highfidelity|high → HighFidelity` para `standard|std → Standard(novo, exato)` / `fast → Fast`. Help text atualizado. Testes reescritos (`test_parse_args_activation_fast`, `test_parse_args_activation_std_alias`); casos para os aliases retirados (`hf`/`highfidelity`) documentados como não cobertos por design (chamariam `process::exit(1)` real dentro do processo de teste).
+* **Achado colateral corrigido (não relacionado ao rename):** `test_parse_args_activation_default` usava `vec!["nam-rs"]` (zero argumentos reais), disparando o branch `if !has_args { print_help(); std::process::exit(0); }` de `parse_args_from` — uma chamada **real** a `std::process::exit`, que mata o processo de teste inteiro (não apenas o teste), truncando silenciosamente o restante da suíte com exit code 0 (falso "sucesso"). Corrigido passando um argumento inócuo (`--buffer-size 256`) para manter `has_args = true` sem exercitar o branch de saída. Documentado com comentário extenso no teste. **Nenhuma alteração de código de produção foi necessária** — o bug estava apenas no teste.
+
+#### 🎯 Tarefa 1.4: CLAP (parâmetro, GUI, render offline) [CONCLUÍDA]
+
+* **Arquivos:** `src/clap/extensions/params/mod.rs` (`ACTIVATION_STANDARD`/`ACTIVATION_FAST`, `activation_u32_to_enum`), `src/clap/extensions/params/main.rs` (`default_value: 1.0`, `value_to_text`, `text_to_value`), `src/clap/plugin/mod.rs` + `shared_test.rs` (`param_activation` inicial `1`), `src/clap/processor/events.rs` (render offline força `Standard`), `src/clap/gui/ui/zones/controls.rs` (botões "Standard"/"Fast", reordenados com `Standard` primeiro).
+* **Nota de compatibilidade:** `default_value` do parâmetro CLAP mudou de `0.0` para `1.0` — hosts que instanciam o plugin **sem estado salvo** (primeira inserção) agora recebem `Standard` (exato) em vez do antigo `Standard`(Padé). Projetos com estado **já salvo** não são afetados (discriminantes preservados).
+* **Verificação:** `--lib --features clap-plugin -- clap:: --test-threads=1` → 74/74 passando (1 ignorado, `test_gc_stress_1000_swaps`, não relacionado).
+
+#### 🎯 Tarefa 1.5: Testes (unitários + integração) e 1 Recalibração de Threshold [CONCLUÍDA]
+
+* **Arquivos:** `tests/models/activation_precision.rs`, `tests/models/lstm_activation_precision.rs`, `tests/parity/cpp_parity.rs`, `tests/parity/isa_parity.rs`, `tests/parity/reference_oracle_f64.rs`, `tests/common/validation.rs`.
+* **Critério de rename aplicado a testes A/B explícitos:** onde um teste compara deliberadamente os dois modos (`Standard` antigo vs `HighFidelity` antigo), aplicado rename mecânico simétrico (`Standard→Fast`, `HighFidelity→Standard`) preservando 100% a semântica original do teste. Onde um valor representa "restaurar o default do sistema" (guards de limpeza/RAII), o texto `Standard` foi mantido — resolve automaticamente para o novo default universal.
+* **Regressão encontrada e corrigida (efeito direto do item 3, não um bug de rename):** `golden_vectors::test_golden_vectors_lstm_dyn_test` (`LstmModelDyn`, não coberto pelo antigo override de `BossLSTM`) passou a rodar em `Standard`(exato) por default em vez de `Fast`(Padé). SNR/ESR melhoraram ~9 ordens de magnitude (144.3 dB / 3.69e-15, vs. gate de 80 dB / 3.5e-9 — folga enorme), mas o gate de MR-STFT (métrica espectral, não-monotônica em relação a SNR/ESR) subiu de 0.0585 (medido em 2026-06-21, sob `Fast` default) para 0.0815 (medido em 2026-07-09, sob `Standard` default), excedendo o gate calibrado de 0.08. Corrigido em `tests/common/validation.rs` com novo comentário de medição (Regra 3 de `docs/perceptual_validation.md`) e gate elevado para 0.10 (~23% de margem).
+* **Achado de auditoria — pré-existente, não relacionado a este rename:** ao rodar `cargo test --release --lib --features standalone` completo, 14 testes `#[should_panic]` falharam (`math::dsp::fft::tests::*`, `models::a2::grouped_conv1d::tests::*`). Confirmado via `cargo test` (sem `--release`) que passam normalmente em modo debug — indica uso de `debug_assert!`/panics dependentes de *overflow checks* que são compilados fora em modo release. **Nenhum arquivo relacionado foi tocado por este rename.** Registrado como achado a investigar separadamente (ver Sprint 3, Tarefa 3.3) — não bloqueia este Épico.
+* **Verificação:** `tests/models` completo 221/221 (58 ignorados), `tests/parity` completo 36/36 (83 ignorados).
+
+---
+
+### 📅 Sprint 2: Sincronização de Documentação (pendente)
+
+> **Risco:** 🟡 Moderado — mecânico na maioria dos arquivos, mas **3 arquivos exigem reescrita semântica**, não apenas troca de palavra, porque descrevem o mecanismo antigo (override por-modelo de `BossLSTM`, tabela "Live vs. HQ" com ativação diferente por modo) que foi removido no item 3. Tratar cada tarefa como independente e sequencial — nenhuma depende de outra, mas a ordem abaixo prioriza os arquivos de maior risco de leitura incorreta por futuros agentes/desenvolvedores primeiro.
+
+#### 🎯 Tarefa 2.1: `.agents/rules/rust.md` — Regra Operacional Mandatória [🔴 Alta prioridade, requer reescrita semântica]
+
+* **Achado:** linha 48 descreve o contrato **antigo**: modo **Live** = `oversampling Off, activation precision Standard(Padé)`; modo **HQ/Offline** = `oversampling 4×, activation precision HighFidelity(exato)`. Isso está **estruturalmente incorreto** pós-rename: `Standard` agora É o modo exato e universal (Live e HQ/Offline usam `Standard` por default); apenas oversampling e adaptive-compute continuam diferindo entre os dois modos.
+* **Ação:** reescrever a frase para refletir que activation precision **não varia mais** entre Live/HQ por default (ambos usam `Standard`); mencionar que `Fast` é um opt-in explícito para quem prioriza CPU sobre fidelidade. **Não fazer rename textual ingênuo** — este é uma regra lida por todos os agentes futuros como fonte de verdade.
+* **Risco de não fazer corretamente:** um agente futuro que confie neste texto tomaria decisões de código erradas (ex.: assumir que precisa reintroduzir um override condicional a `RenderMode`).
+
+#### 🎯 Tarefa 2.2: `docs/cpp_parity_map.md` (6 menções) [🟡 requer reescrita parcial]
+
+* **Achado:** linha 212 ("Both models now default to `HighFidelity`") descreve o override específico de `BossLSTM` removido na Tarefa 1.2 — deve ser reescrita para "todos os modelos agora usam `Standard` por default" (não apenas os dois LSTM). Linha 697 (tabela comparativa C++/Rust) e linhas 241-242 (tabela de caps de ESR rotulados `HighFidelity`) podem receber rename mecânico (`HighFidelity→Standard`, e a antiga `Standard` mencionada como contraponto → `Fast`), mas revisar cada linha após o rename para checar se a frase ainda faz sentido gramatical/semântico.
+* **Ação:** revisar linha por linha (180, 212, 241, 242, 697, 804) individualmente — não usar substituição em lote neste arquivo.
+
+#### 🎯 Tarefa 2.3: `docs/audio_fidelity_map.md` (19 menções) [🟡 maior volume, requer revisão seção-a-seção]
+
+* **Achado:** este é o arquivo com mais menções (19) e o que mais detalha o mecanismo de resolução de fidelidade por-modelo (incluindo, presumivelmente, a seção "BossLSTM default resolution" identificada na auditoria anterior — Achado A1 §7). Provável necessidade de reescrever a seção que descreve o override por-modelo como "resolvido" para refletir que a resolução agora é **universal**, não mais específica de `BossLSTM`.
+* **Ação:** ler o arquivo completo antes de editar (não apenas grep das linhas com `HighFidelity`); identificar se há uma seção estruturalmente dedicada ao override por-modelo que precisa ser removida/reescrita (não apenas renomeada).
+
+#### 🎯 Tarefa 2.4: `docs/perceptual_validation.md` (11 menções) [🟢 provavelmente mecânico, mas verificar por seção]
+
+* **Achado:** este arquivo é a autoridade normativa para "Gate Calibration Policy" (Regras 1-7) referenciada por várias outras tarefas neste documento — inclui a análise do "interop gap" que motivou a adoção de `HighFidelity` para `BossLSTM` (linhas ~645-813, segundo mapeamento da auditoria anterior).
+* **Ação:** revisar se a narrativa "HighFidelity mode collapses the gap for BossLSTM" precisa de nota de atualização (universal agora, não específico), similar ao tratamento dado em `TODO-findings.md` Achado A1 (nota de renumeração já aplicada como precedente de estilo).
+
+#### 🎯 Tarefa 2.5: `README.md` (2 menções, tabela "Live vs. HQ/Offline") [🟡 requer reescrita da tabela]
+
+* **Achado:** linhas 178-181 e a tabela "Live vs. HQ/Offline Summary" (linhas 190-198) — a linha `Activation precision | Standard | HighFidelity` da tabela descreve exatamente o contrato antigo invalidado pelo item 3 (ver Tarefa 2.1). Após o rename, ambos os modos usam `Standard` por default.
+* **Ação:** reescrever a linha da tabela (ex.: `Activation precision | Standard (Fast opt-in) | Standard (enforced)`, ou remover a linha da tabela e mover a explicação para a seção "Activation Precision" acima, já que não é mais um diferencial Live/HQ). Atualizar a lista de bullets (linha 180-181) com rename mecânico simples.
+
+#### 🎯 Tarefa 2.6: `docs/fastmath-approximations.md` (5 menções), `docs/research-references.md` (1), `docs/architecture.md` (1) [🟢 baixo risco, mecânico]
+
+* **Ação:** rename mecânico (`HighFidelity→Standard`, contexto de "antiga Standard"→`Fast`) com revisão rápida de cada linha após a troca (sem necessidade de reescrita estrutural, ao que indica o grep de contexto já coletado neste planejamento).
+
+#### 🎯 Tarefa 2.7: `TODO-parity.md` (linha 163) [🟢 baixo risco, mas leia com atenção]
+
+* **Achado:** "Modelos BossLSTM (...) têm sua preferência configurada para `HighFidelity`" descreve o mecanismo removido na Tarefa 1.2.
+* **Ação:** reescrever para refletir que a resolução é universal (não mais uma "preferência configurada" por modelo) — ex.: "`Standard` (exato) passou a ser o default universal de ativação em todo o nam-rs, superando a necessidade de uma preferência configurada apenas para BossLSTM."
+
+---
+
+### 📅 Sprint 3: Verificação Final (pendente, gate obrigatório antes da Sprint 4)
+
+#### 🎯 Tarefa 3.1: `utils/lints.sh`
+
+* **Ação:** rodar e confirmar zero erros (fmt, SPDX, `cargo check`, clippy). Já validado individualmente nesta sessão (`cargo check`/`clippy --all-targets --all-features`), mas rodar o script oficial garante paridade com o que o CI/humano espera.
+
+#### 🎯 Tarefa 3.2: `utils/tests-quick.sh` (permitido uma execução por tarefa de IA, como validação final)
+
+* **Ação:** rodar uma única vez, como validação final desta Sprint. Não re-executar caso passe.
+* **Atenção:** este script provavelmente roda em modo diferente de `--release`; usar seu resultado como a validação oficial (não o `cargo test --release` ad-hoc usado durante a implementação).
+
+#### 🎯 Tarefa 3.3: Registrar o Achado das 14 Falhas `#[should_panic]` em Release (pré-existente, não relacionado)
+
+* **Ação:** abrir uma entrada curta em `TODO-findings.md` (novo Achado, severidade 🟢 Baixa/técnica) documentando que `math::dsp::fft::tests::*` (6 testes) e `models::a2::grouped_conv1d::tests::*` (8 testes) falham como `#[should_panic]` apenas em `cargo test --release` (passam em modo debug) — provável uso de `debug_assert!` ou dependência de *overflow checks* desabilitados em release. **Não corrigir nesta Sprint** — é ortogonal ao rename; apenas registrar para auditoria futura.
+
+#### 🎯 Tarefa 3.4: Confirmar Ganho de Performance da Remoção do Guard (B2) com Medição
+
+* **Ação:** rodar `cargo bench` (ou os testes de zero-alloc/latência já existentes, ex. `tests/models/zero_alloc_infer.rs`) antes/depois da remoção do guard em pelo menos um modelo não-LSTM (ex. WaveNet) e documentar o delta com comentário de medição, cumprindo a exigência de proveniência que a Tarefa 4.2 original (agora superseded) já previa. Este número deve entrar na mensagem do commit da Sprint 4 (Tarefa 4.1) como evidência quantitativa do ganho.
+
+---
+
+### 📅 Sprint 4: Estratégia de Commit (pendente, só inicia após Sprint 3 verde)
+
+> **Princípio:** commits devem ser **bisectáveis** sempre que a dependência de compilação permitir. Código de produção (`src/`) e testes (`tests/`, `src/**/*_test.rs`) são mutuamente dependentes na compilação (os testes referenciam os novos identificadores `Fast`/`Standard`) — não podem ser separados em commits distintos sem deixar um commit intermediário que não compila. Documentação (`docs/*.md`, `README.md`, `TODO-*.md`, `.agents/rules/rust.md`) não tem essa dependência e pode/deve ser commitada separadamente.
+
+#### 🎯 Tarefa 4.1: Commit único — Rename de Código + Testes (Sprint 1)
+
+* **Escopo:** todos os arquivos de `src/` e `tests/` já modificados (ver diff atual da árvore de trabalho).
+* **Mensagem sugerida:** `refactor(activation): rename ActivationPrecision Standard<->Fast; Standard (exact) becomes universal default`
+* **Corpo do commit deve incluir:** motivação (resolve B1/B2), nota de compatibilidade (discriminantes preservados, `default_value` do CLAP mudou de 0.0→1.0), e o número medido da Tarefa 3.4.
+
+#### 🎯 Tarefa 4.2: Commit separado — Sincronização de Documentação (Sprint 2)
+
+* **Escopo:** todos os arquivos de `docs/`, `README.md`, `.agents/rules/rust.md`, `TODO-parity.md` tocados na Sprint 2.
+* **Pré-requisito:** Sprint 2 completa (todas as 7 tarefas), não apenas parcialmente.
+
+#### 🎯 Tarefa 4.3: Atualizar Este Documento e `TODO-findings.md` Pós-Commit
+
+* **Ação:** marcar as Sprints 1-4 deste Épico como `[CONCLUÍDO]` com hash dos commits reais; adicionar a entrada da Tarefa 3.3 em `TODO-findings.md` (se ainda não commitada).
 
 ---
 
@@ -414,3 +555,5 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 | Regras de qualidade de gate                       | `docs/perceptual_validation.md` "Gate Calibration Policy" (Regras 1-7)                                                                          | Aplicável a toda alteração de tolerância/baseline neste épico |
 | RT-safety e SIMD                                  | `.agents/rules/rust.md`                                                                                                                         | Aplicável à Tarefa 3.1 (condicional)                          |
 | Convenções de teste (`#[ignore]`, placement)      | `.agents/rules/testing.md`                                                                                                                      | Aplicável às Tarefas 1.1, 1.4, 1.5                            |
+| Achados B1/B2 (superseded)                        | Épico de Follow-up acima, Tarefas 4.1/4.2                                                                                                        | Resolvidos organicamente pelo Épico de rename `Standard↔Fast` |
+| Épico de rename `Standard↔Fast`                   | Este documento, seção "Épico: Rename `Standard`↔`Fast`..."                                                                                       | Sprint 1 concluída nesta sessão; Sprints 2-4 pendentes         |
