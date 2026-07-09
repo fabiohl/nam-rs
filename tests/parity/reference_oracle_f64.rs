@@ -1061,7 +1061,10 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
     println!("\n=== T3.3 — Recurrent State Drift Analysis ===");
     println!("Model:   BossLSTM-1×16");
     println!("Signal:  v2 stress, 5s @ 48 kHz (240k samples)");
-    println!("Baseline A1-Std ESR: 6.23e-3");
+    println!(
+        "Baseline pareado esperado (LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT/2): {:.2e}",
+        LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT / 2.0
+    );
     println!(
         "{:<12} {:<18} {:<12} {:<18}",
         "Samples", "ESR(vs oracle)", "ESR dB", "Time (ms)"

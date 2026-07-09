@@ -134,12 +134,14 @@ Nesta etapa, corrigimos as lacunas de instrumentação que impediram o Sprint 4 
 
 > **Resultado:** Concluído. A tolerância de `cell_error` foi reduzida com sucesso de `1e-2` para `1e-5` (o desvio máximo medido permaneceu sob `4.77e-7` em todos os tamanhos). As tolerâncias de `state`/hidden e `cell_state` foram ajustadas para `5e-5` e `2e-4`, respectivamente, após a tentativa inicial com `1e-5` falhar para H=24 no passo 3. A investigação detalhada revelou que a divergência não decorre de bug lógico, mas do acúmulo de erro de arredondamento: a ordem de acumulação distinta no GEMV do kernel SIMD (duplo acumulador com FMA) vs escalar gera uma diferença de 1 ULP nas entradas dos gates, a qual é amplificada para a ordem de `2.3e-5` pelo ruído numérico do polinômio minimax de grau 17 da ativação (fenômeno de cancelamento catastrófico ao avaliar termos alternantes de alta magnitude em precisão f32). A suíte de testes `cargo test --release lstm` passou integralmente.
 
-#### 🎯 Tarefa 1.7: Higienizar Debug Output Obsoleto
+#### 🎯 Tarefa 1.7: Higienizar Debug Output Obsoleto [CONCLUÍDO]
 
 * **Arquivo:** [`tests/parity/reference_oracle_f64.rs`](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) (dentro de `t33_diagnostic_recurrent_drift_lstm_1x16`)
 * **Ações:**
   * Remover a linha `println!("Baseline A1-Std ESR: 6.23e-3");` (referência à baseline de WaveNet A1-Std, não à própria LSTM — provável copy-paste desatualizado; ver `docs/perceptual_validation.md:646` onde `6.23e-3` é citado como *baseline do WaveNet A1-Std para contraste*, não uma medição de LSTM).
   * Substituir por um print que referencie corretamente os valores agora versionados em `tests/common/constants.rs` (Tarefa 1.4), ex.: `println!("Baseline pareado esperado (LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT/2): {:.2e}", LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT / 2.0);`.
+
+> **Resultado:** Concluído. A mensagem obsoleta de baseline do WaveNet A1-Std (`6.23e-3`) foi removida e substituída por uma referência ao limite de drift pareado esperado (`LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT / 2.0` = `2.59e-2`), refletindo fielmente a modelagem da LSTM 1x16 sob sinal de stress v2. As suítes de lints e testes rápidos passaram com sucesso.
 
 ---
 
