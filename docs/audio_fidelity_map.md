@@ -18,17 +18,17 @@ of the `.nam` / `.namb` file format contract.
 
 ## Quick Reference
 
-| #   | Factor                                                  | Spec? | Mandatory?                   | User-Controllable?       | Quality Impact                                         | Status                |
-|:---:|:------------------------------------------------------- |:-----:|:----------------------------:|:------------------------:|:------------------------------------------------------ |:---------------------:|
-| 1   | **Weight compression (F16C/BF16)**                      | ❌    | Was under review — removed   | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §8 | Removed (SQ5)         |
-| 2   | **Activation precision (Padé Standard / HighFidelity)** | ❌    | ✅ Default (Padé); HF opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Padé) → ÷10,000 (HF); ↓ aliasing         | ✅ Active             |
-| 3   | **LSTM recurrent drift**                                | ❌    | Partial (model-dependent)    | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (1×16); zeroed for 2×8  | ✅ Partially resolved |
-| 4   | **Host sample rate resampler**                          | ❌    | ✅ When host ≠ 48 kHz        | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB            | ✅ Active             |
-| 5   | **Neural stage oversampling**                           | ❌    | ❌ Off by default            | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU                   | ✅ Active             |
-| 6   | **Denormal dither + FTZ/DAZ**                           | ❌    | ✅ Yes                       | ❌ No                    | No audible impact (−220 dBFS)                          | ✅ Active             |
-| 7   | **Adaptive Compute (quality fallback)**                 | ❌    | ✅ Default                   | 🔶 `--slim` flag         | Silent quality drop under CPU load                     | ✅ Active             |
+| #   | Factor                                                      | Spec? | Mandatory?                         | User-Controllable?       | Quality Impact                                         | Status                |
+|:---:|:----------------------------------------------------------- |:-----:|:----------------------------------:|:------------------------:|:------------------------------------------------------ |:---------------------:|
+| 1   | **Weight compression (F16C/BF16)**                          | ❌    | Was under review — removed         | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §8 | Removed (SQ5)         |
+| 2   | **Activation precision (Fast Padé / Standard exact-grade)** | ❌    | ✅ Default (Standard); Fast opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Fast) → ÷10,000 (Standard); ↓ aliasing   | ✅ Active             |
+| 3   | **LSTM recurrent drift**                                    | ❌    | Partial (model-dependent)          | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (1×16); zeroed for 2×8  | ✅ Partially resolved |
+| 4   | **Host sample rate resampler**                              | ❌    | ✅ When host ≠ 48 kHz              | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB            | ✅ Active             |
+| 5   | **Neural stage oversampling**                               | ❌    | ❌ Off by default                  | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU                   | ✅ Active             |
+| 6   | **Denormal dither + FTZ/DAZ**                               | ❌    | ✅ Yes                             | ❌ No                    | No audible impact (−220 dBFS)                          | ✅ Active             |
+| 7   | **Adaptive Compute (quality fallback)**                     | ❌    | ✅ Default                         | 🔶 `--slim` flag         | Silent quality drop under CPU load                     | ✅ Active             |
 
-† Resampler quality (Standard/HQ) was rejected after benchmarking — see §4. HF activation mode is exposed via CLI (`--activation`) and CLAP (`PARAM_ACTIVATION=8`). LSTM models fully support HighFidelity activation gates since Épico β (Sprint β1).
+† Resampler quality (Standard/HQ) was rejected after benchmarking — see §4. Activation precision is exposed via CLI (`--activation fast|standard`) and CLAP (`PARAM_ACTIVATION=8`). Standard (exact-grade) is the universal default across all model families.
 
 ---
 
@@ -50,7 +50,7 @@ now matches NAMCore's native f32 representation for all weight matrices.
 
 ---
 
-## 2. Activation Precision — Standard (Padé) vs HighFidelity
+## 2. Activation Precision — Fast (Padé) vs Standard (exact-grade)
 
 **What it is.** Neural models use non-linear activations. nam-rs replaces exact `f32::tanh` and
 `f32::exp` with one of two selectable polynomial approximation modes, held in the
@@ -58,54 +58,58 @@ now matches NAMCore's native f32 representation for all weight matrices.
 
 | Mode                   | Activation                                 | Max error               | Approx error (dBFS) | Cost            |
 |:---------------------- |:------------------------------------------ |:-----------------------:|:-------------------:|:---------------:|
-| **Standard** (default) | Padé [5,4] tanh, clamped \|x\| ≤ 4         | 2.32e-3                 | ≈ −53 dB            | Baseline        |
-| **Standard** (default) | Minimax degree-17 sigmoid                  | 4.09e-4                 | ≈ −68 dB            | Baseline        |
-| **HighFidelity**       | Taylor-based exp kernels, degree-6 minimax | ~2.4e-7 (10,000× lower) | ≈ −133 dB           | +10–15% compute |
+| **Fast**               | Padé [5,4] tanh, clamped \|x\| ≤ 4         | 2.32e-3                 | ≈ −53 dB            | Baseline        |
+| **Fast**               | Minimax degree-17 sigmoid                  | 4.09e-4                 | ≈ −68 dB            | Baseline        |
+| **Standard** (default) | Taylor-based exp kernels, degree-6 minimax | ~2.4e-7 (10,000× lower) | ≈ −133 dB           | +10–15% compute |
 
 The Padé clamp at `|x| > 4` introduces a derivative discontinuity — a weak source of spectral
 aliasing at high gain settings. The minimax sigmoid has no clamping discontinuity, and the
-HighFidelity kernels eliminate the clamp discontinuity entirely.
+Standard kernels eliminate the clamp discontinuity entirely.
 
-### 2.1 Standard mode — why approximate at all
+### 2.1 Fast mode — opt-in for CPU-constrained scenarios
 
 `f32::tanh` on x86-64 costs ~150 ns per 256-element AVX2 vector via the scalar fallback path. The
-Padé implementation runs in ~10 ns. For a WaveNet Standard processing hundreds of thousands of
-activations per 1.3 ms RT window, this is the difference between real-time and not. Standard
-(Padé/minimax) mode is therefore the production default.
+Padé implementation runs in ~10 ns. For a large WaveNet model processing hundreds of thousands of
+activations per 1.3 ms RT window, this can be the difference between real-time and not. Fast
+(Padé/minimax) mode is an explicit opt-in (`--activation fast`) for CPU-constrained setups;
+`Standard` (exact-grade polynomial exp-based) is the universal production default.
 
-### 2.2 HighFidelity mode — runtime switch
+### 2.2 Standard mode — universal default
 
-`ActivationPrecision::HighFidelity` replaces Padé/minimax with the Taylor-based polynomial exp
-kernels above. It is opt-in and user-selectable at runtime — applied at startup (CLI
-`--activation standard|hf`) or switched live (CLAP `PARAM_ACTIVATION=8`, at the block boundary,
-with GUI sync, persistence, and an offline-render override forcing HighFidelity) — via a single
-relaxed atomic store, with no rebuild or allocation. **All model families — WaveNet (A1/A2),
-ConvNet, Linear, LSTM — dispatch to both kernels**, including all LSTM gate paths (scalar, AVX2,
-AVX-512), completed in Épico β. Full dispatch/topology matrix in
+`ActivationPrecision::Standard` uses Taylor-based polynomial exp kernels for tanh/sigmoid
+(max error ≈ 2.4e-7, ~10,000× lower than Fast). It is the universal default, active from
+startup, and user-switchable at runtime — applied via CLI (`--activation standard|fast`) or
+switched live (CLAP `PARAM_ACTIVATION=8`, at the block boundary, with GUI sync, persistence,
+and an offline-render override forcing `Standard`) — via a single relaxed atomic store, with
+no rebuild or allocation. **All model families — WaveNet (A1/A2), ConvNet, Linear, LSTM —
+dispatch to both kernels**, including all LSTM gate paths (scalar, AVX2, AVX-512), completed
+in Épico β. Full dispatch/topology matrix in
 [`docs/fastmath-approximations.md`](fastmath-approximations.md) §10.
 
 ### 2.3 Interaction with oversampling
 
-HighFidelity is most effective combined with 4× oversampling (§5): without OS, aliased harmonics
+Standard (exact-grade) is most effective combined with 4× oversampling (§5): without OS, aliased harmonics
 fold back into the baseband regardless of activation precision; with 4× OS, the half-band filter
-removes those harmonics and HF mode suppresses the residual high-order folding.
+removes those harmonics and exact-grade mode suppresses the residual high-order folding.
 
 ### 2.4 Precision context (validated post-S8)
 
 With the f64 oracle confirmed correct (§3), the combined precision model (Padé activations + f32
 accumulation) reproduces production to within ESR ≈ 1.04e-3 (LSTM, measured on `lstm.nam` H=3 —
 see the provenance note in §3 below; validated on BossLSTM-1×16 at production duration with ESR = 2.61e-2),
-8.62e-14 (WaveNet), 1.13e-13 (A2) — for the small official LSTM, the Padé approximation
+8.62e-14 (WaveNet), 1.13e-13 (A2) — for the small official LSTM, the Padé (Fast) approximation
 together with f32 precision fully explains the gap from ideal f64, with no unexplained "architectural" residue.
-Standard (Padé) mode is therefore the well-understood production default; HighFidelity buys
-~10,000× lower activation error, audibly relevant only when paired with oversampling (§5).
+Fast (Padé) mode is the well-understood opt-in for CPU-constrained scenarios; Standard (exact-grade)
+buys ~10,000× lower activation error as the universal default, audibly most relevant when paired with
+oversampling (§5).
 
-**Mandatory?** No. Standard (Padé) mode is the production default. HighFidelity is opt-in via
-`--activation hf` (CLI) or `PARAM_ACTIVATION` (CLAP).
+**Mandatory?** No. Standard (exact-grade) mode is the universal default. Fast (Padé) is opt-in via
+`--activation fast` (CLI) or `PARAM_ACTIVATION` (CLAP).
 
 **Implementation.** `src/math/activations/mod.rs`, `src/math/activations/tanh/production.rs`
-(Standard), `src/math/activations/tanh/high_fidelity.rs` (HighFidelity),
-`src/math/activations/sigmoid/production.rs` (Standard), and `src/math/activations/sigmoid/high_fidelity.rs` (HighFidelity). Full analysis in
+(Fast: Padé/minimax), `src/math/activations/tanh/high_fidelity.rs` (Standard: exact-grade polynomial),
+`src/math/activations/sigmoid/production.rs` (Fast), `src/math/activations/sigmoid/high_fidelity.rs`
+(Standard). Full analysis in
 [`docs/fastmath-approximations.md`](fastmath-approximations.md).
 
 ---
@@ -127,8 +131,10 @@ of this residual divergence was identified as the Padé activation approximation
 for $|x| > 4$ (tanh) and $|x| > 8$ (sigmoid), which is exceeded by the high weight norms and pre-activation
 magnitudes in larger hidden topologies like H=16.
 
-**HighFidelity Default Resolution.** In Sprint 2 (Tarefa 3.1), we configured the `BossLSTM` family
-(`1x16` and `2x8`) to use `HighFidelity` activation precision (polynomial exp-based exact math) by default.
+**Standard (exact-grade) Universal Default.** As of Sprint 2 (Tarefa 1.2), `ActivationPrecision::Standard`
+(polynomial exp-based exact math, max error ≈ 2.4e-7) is the **universal default** for all models —
+LSTM, WaveNet (A1/A2), ConvNet, and Linear. The former per-model override that applied `HighFidelity`
+only to the `BossLSTM` family was removed — activation precision is no longer model-specific.
 With matched activations, the interop gap vs NAMCore collapsed to near-zero:
 
 - **BossLSTM-1×16**: ESR vs NAMCore ≈ 1.42e-11 (-108.5 dB)
@@ -142,7 +148,7 @@ The historical per-sample-rate LSTM interop drifts (measured pre-SQ5 with f16c a
 | LSTM 2×8  | 3.41e-3  | **3.88e-3** | 1.18e-2  | 1.45e-2 | **4.20e-2** |
 
 > **Note:** the 2×8 row applies to the *pre-removal* era; post-SQ5, BossLSTM-2×8 is bit-exact
-> with NAMCore (ESR = 0.00e0) at 48 kHz in Standard mode, and both models are bit-exact in HighFidelity mode.
+> with NAMCore (ESR = 0.00e0) at 48 kHz in Standard mode, confirming exact-grade activation precision.
 
 **F64 oracle floor — provenance correction.** The "3.57e-3" figure previously attributed to
 BossLSTM-1×16 is actually measured on `lstm.nam` (H=3, the tiny official example, 256-sample
@@ -157,8 +163,8 @@ value was recalibrated to 3.41e-3. The model-specific f64-oracle floors (prewarm
 **Mitigations carried forward.** The three mitigations shipped in Épico β remain active and
 relevant for the residual drift in **BossLSTM-2×8**:
 
-- **I6 — HighFidelity activations in LSTM gates** (primary): exp-based polynomial kernels
-  (~2.4e-7 error vs ~2.32e-3 Padé) across scalar/AVX2/AVX-512 LSTM gate paths.
+- **I6 — Standard (exact-grade) activations in LSTM gates** (primary): exp-based polynomial kernels
+  (~2.4e-7 error vs ~2.32e-3 Padé/Fast) across scalar/AVX2/AVX-512 LSTM gate paths.
   *Cost:* +10–15% compute.
 - **I4 — Kahan-compensated head accumulation**: compensated summation in the LSTM head
   projection (H→1). ~2 dB SNR gain in deep heads. *Cost:* negligible.
@@ -241,7 +247,7 @@ listening where CPU headroom exists.
 
 **Quality impact.** Reduces ASR (Aliasing-to-Signal Ratio, Sato & Smith DAFx 2025). Measured
 reduction is architecture-dependent; WaveNet benefits most from 4× (ReLU/tanh corner). Most
-effective when combined with the HighFidelity activation mode (§2.2).
+effective when combined with the Standard (exact-grade) activation mode (§2.2).
 
 **Why ADAA was rejected.** Antiderivative Anti-Aliasing (Parker DAFx-16; Bilbao IEEE SPL 2017)
 requires per-activation analytical antiderivatives, which conflicts with the polymorphic
@@ -320,7 +326,7 @@ Decisions on fidelity, trade-offs, and optimization are catalogued below:
 
 - **SQ5 PoC (2026-07-06):** Removed the F16C weight compression/decompression feature because the runtime decoding overhead on x86-64-v3 outweighed the L1/L2 cache compression benefits for LSTM topologies, and f16c quantization was shown to introduce unnecessary interoperability drift. Native `f32` weights became the default.
 - **Sprint S6 Resampler Optimization:** Discarded the dual resampler quality settings (Standard/HQ). HQ (64-tap minimum-phase Kaiser sinc) was made permanent since the lighter 32-tap resampler only saved ~40 ns per block while severely degrading the signal-to-noise ratio from ≥100 dB to ~24 dB.
-- **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the HighFidelity activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh.
+- **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the exact-grade activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh — now the universal `Standard` default.
 
 ---
 

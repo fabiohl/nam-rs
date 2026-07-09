@@ -474,7 +474,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 * **Achado:** linha 212 ("Both models now default to `HighFidelity`") descreve o override específico de `BossLSTM` removido na Tarefa 1.2 — deve ser reescrita para "todos os modelos agora usam `Standard` por default" (não apenas os dois LSTM). Linha 697 (tabela comparativa C++/Rust) e linhas 241-242 (tabela de caps de ESR rotulados `HighFidelity`) podem receber rename mecânico (`HighFidelity→Standard`, e a antiga `Standard` mencionada como contraponto → `Fast`), mas revisar cada linha após o rename para checar se a frase ainda faz sentido gramatical/semântico.
 * **Ação:** revisar linha por linha (180, 212, 241, 242, 697, 804) individualmente — não usar substituição em lote neste arquivo.
 
-#### 🎯 Tarefa 2.3: `docs/audio_fidelity_map.md` (19 menções) [🟡 maior volume, requer revisão seção-a-seção]
+#### 🎯 Tarefa 2.3: `docs/audio_fidelity_map.md` (19 menções) [CONCLUÍDA]
 
 * **Achado:** este é o arquivo com mais menções (19) e o que mais detalha o mecanismo de resolução de fidelidade por-modelo (incluindo, presumivelmente, a seção "BossLSTM default resolution" identificada na auditoria anterior — Achado A1 §7). Provável necessidade de reescrever a seção que descreve o override por-modelo como "resolvido" para refletir que a resolução agora é **universal**, não mais específica de `BossLSTM`.
 * **Ação:** ler o arquivo completo antes de editar (não apenas grep das linhas com `HighFidelity`); identificar se há uma seção estruturalmente dedicada ao override por-modelo que precisa ser removida/reescrita (não apenas renomeada).
