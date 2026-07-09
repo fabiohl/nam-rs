@@ -1229,10 +1229,7 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
         esr_tail_std,
         10.0 * esr_tail_std.log10()
     );
-    println!(
-        "  Delta:             {:.6e}",
-        esr_tail_fast - esr_tail_std
-    );
+    println!("  Delta:             {:.6e}", esr_tail_fast - esr_tail_std);
 
     // Fast mode gate
     assert!(
@@ -1265,16 +1262,10 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
     set_activation_precision(ActivationPrecision::Fast);
-    let (esr_tail_fast, _) = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (Fast)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (Fast)",
-        12_000,
-    );
+    let (esr_tail_fast, _) =
+        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired (Fast)", 48_000);
+    let _ =
+        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired (Fast)", 12_000);
 
     // 2. Run with Standard precision (exact-grade, universal default)
     set_activation_precision(ActivationPrecision::Standard);
@@ -1300,10 +1291,7 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
         esr_tail_std,
         10.0 * esr_tail_std.log10()
     );
-    println!(
-        "  Delta:             {:.6e}",
-        esr_tail_fast - esr_tail_std
-    );
+    println!("  Delta:             {:.6e}", esr_tail_fast - esr_tail_std);
 
     // Fast mode gate
     assert!(

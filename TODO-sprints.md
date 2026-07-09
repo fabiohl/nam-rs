@@ -493,7 +493,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 
 * **Ação:** rename mecânico (`HighFidelity→Standard`, contexto de "antiga Standard"→`Fast`) com revisão rápida de cada linha após a troca (sem necessidade de reescrita estrutural, ao que indica o grep de contexto já coletado neste planejamento).
 
-#### 🎯 Tarefa 2.7: `TODO-parity.md` (linha 163) [🟢 baixo risco, mas leia com atenção]
+#### 🎯 Tarefa 2.7: `TODO-parity.md` (linha 163) [CONCLUÍDA]
 
 * **Achado:** "Modelos BossLSTM (...) têm sua preferência configurada para `HighFidelity`" descreve o mecanismo removido na Tarefa 1.2.
 * **Ação:** reescrever para refletir que a resolução é universal (não mais uma "preferência configurada" por modelo) — ex.: "`Standard` (exato) passou a ser o default universal de ativação em todo o nam-rs, superando a necessidade de uma preferência configurada apenas para BossLSTM."
@@ -556,4 +556,71 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 | RT-safety e SIMD                                  | `.agents/rules/rust.md`                                                                                                                         | Aplicável à Tarefa 3.1 (condicional)                          |
 | Convenções de teste (`#[ignore]`, placement)      | `.agents/rules/testing.md`                                                                                                                      | Aplicável às Tarefas 1.1, 1.4, 1.5                            |
 | Achados B1/B2 (superseded)                        | Épico de Follow-up acima, Tarefas 4.1/4.2                                                                                                       | Resolvidos organicamente pelo Épico de rename `Standard↔Fast` |
-| Épico de rename `Standard↔Fast`                   | Este documento, seção "Épico: Rename `Standard`↔`Fast`..."                                                                                      | Sprint 1 concluída nesta sessão; Sprints 2-4 pendentes        |
+| Épico de rename `Standard↔Fast`                   | Este documento, seção "Épico: Rename `Standard`↔`Fast`..."                                                                                      | Sprints 1-4 concluídas; Sprint 5 pendente (achados da auditoria de execução) |
+
+---
+
+### 📅 Sprint 5: Correções da Auditoria de Execução (pós-Sprint 4, pendente)
+
+> **Origem:** auditoria do usuário sobre `/testes.log` (execução real de `utils/lints.sh` + `utils/tests-quick.sh` + `utils/quality-dashboard.sh` após as Sprints 1-4 acima). Resultado geral: **verde** (0 testes falhando nas 3 execuções) — mas a auditoria encontrou 1 achado novo e mais sério que o esperado (regressão silenciosa de apresentação no dashboard, não pega por `cargo test`), 1 warning de build pré-existente com causa raiz identificada, e confirmou que as Tarefas 3.3/3.4 da Sprint 3 permaneceram pendentes. **Nenhuma execução foi realizada para validar as correções abaixo — ver notas de verificação em cada tarefa.**
+
+#### 🎯 Tarefa 5.1: Corrigir Regressão Silenciosa no Painel "🎹 ACTIVATION PRECISION" do Dashboard [🔴 Prioridade Alta]
+
+* **Achado:** `utils/quality-dashboard.sh` → `parse_activation_precision()` usa o padrão ambíguo `grep -E 'FastMath\(Pad'`, que originalmente batia (de forma imprevisível, por ordem de sobrescrita no array associativo) em **duas** linhas de saída distintas de `tests/models/lstm_activation_precision.rs`: a de `measure_lstm_snr` (comparação scalar-libm vs SIMD-Padé, **não relacionada** ao enum `ActivationPrecision`, não tocada pelo rename da Sprint 1) e a de `measure_lstm_snr_stress_v2` (a comparação real `Fast` vs `Standard`, corretamente renomeada na Sprint 1 para `"Fast(Padé): ... | Standard(exact): ..."`). Como a Sprint 1 só alterou o segundo texto, o grep agora bate **exclusivamente** na linha errada — o painel exibe `Δ SNR ≈ +0.0/+0.1 dB` para `BossLSTM-1x16`/`2x8`, contradizendo diretamente o achado central do Épico anterior (ganho de ~87-91 dB, colapso de 9 ordens de magnitude no ESR ao usar `Standard`). É uma regressão **silenciosa**: `cargo test` continua 100% verde (os testes Rust em si estão corretos), o problema é exclusivamente na camada de apresentação do dashboard — mas o painel é justamente o "🎯 RESUMO RAPIDO (para não-cientistas)" usado para comunicar a decisão. Resolve de forma definitiva o Achado B5 (fragilidade de parsing já conhecida) do Épico de Follow-up.
+* **Ações:**
+  * Em `utils/quality-dashboard.sh`, função `parse_activation_precision()`: trocar o padrão de captura para ancorar nos dois rótulos exclusivos da linha de `measure_lstm_snr_stress_v2`:
+
+    ```bash
+    # era: grep -E 'FastMath\(Pad' "$log" > "$parsed"
+    grep -E 'Fast\(Padé\).*Standard\(exact\)' "$log" > "$parsed"
+    ```
+
+  * Atualizar as extrações correspondentes na mesma função:
+
+    ```bash
+    # era: sed 's/[[:space:]]*FastMath(Pad.*//'
+    sed 's/[[:space:]]*Fast(Pad.*//'
+    # era: grep -oP 'FastMath\(Pad.*\):\s+\K[0-9.]+'
+    grep -oP 'Fast\(Pad.*\):\s+\K[0-9.]+'
+    # era: grep -oP 'Exact\(tanh\):\s+\K[0-9.]+'
+    grep -oP 'Standard\(exact\):\s+\K[0-9.]+'
+    ```
+
+  * Atualizar os headers de exibição da tabela (linhas próximas a `"FastMath(Pade)"`/`"Exact(tanh)"` na função de render do painel) para `"Fast(Pade)"`/`"Standard(exact)"`, mantendo consistência com os novos rótulos.
+* **Verificação (pendente de execução):** rodar `utils/quality-dashboard.sh` uma única vez após a correção e confirmar visualmente que `BossLSTM-1x16`/`2x8` voltam a exibir `Δ SNR` na faixa de +80-95 dB (consistente com os valores já documentados em `TODO-findings.md` Achado A1: Standard `2.589060e-2` → `5.046395e-11` para 1x16, `4.062433e-3` → `4.024454e-12` para 2x8).
+
+#### 🎯 Tarefa 5.2: Remover Bloco `global: *;` Redundante em `.cargo/hide-libm-shadow.map` [🟡 Prioridade Média]
+
+* **Achado:** o warning `rust-lld: wildcard pattern '*' is used for both 'local' and 'global' scopes in version script` (recorrente em toda compilação nova, visto 4× em `/testes.log`) tem causa raiz identificada: `.cargo/hide-libm-shadow.map` lista ~90 símbolos sob `local:` e depois adiciona um catch-all redundante `global: *;`. Pela semântica de version-script do `ld`/`lld`, qualquer símbolo não listado em `local:` já é `global` por padrão quando não existe bloco `global:` explícito — o catch-all é desnecessário e é exatamente o que o `lld` (mais estrito que `bfd`) sinaliza como ambíguo. Confirmado que `.cargo/config.toml` não duplica o flag (só `build.rs` o aplica) e que `docs/postmortem-libm-symbol-interposition.md` não documenta essa linha como decisão deliberada.
+* **Ações:**
+  * Em `.cargo/hide-libm-shadow.map`, remover as duas últimas linhas do bloco (`global:` e `*;`), mantendo apenas:
+
+    ```diff
+        rintf; roundf; roundevenf; scalbnf; sinf; sinhf; sqrtf; tanf; tanhf;
+        tgammaf; truncf;
+    -  global:
+    -    *;
+      };
+    ```
+
+  * **Nenhuma mudança de comportamento esperada** — todos os símbolos já listados continuam `local`; todos os demais continuam `global` (default do linker na ausência do bloco `global:`).
+* **Verificação (pendente de execução):** rodar `cargo check` (ou `utils/lints.sh`) uma vez e confirmar que o warning desaparece; rodar o script de regressão citado no cabeçalho do `.map` (`utils/debug/verify_bug3_fix.sh`) — **achado secundário:** este script não existe no repositório atualmente (referência pendente/quebrada nos comentários de `build.rs`/`.cargo/hide-libm-shadow.map`); se não for recriado, validar manualmente que o binário standalone e o `cdylib` do CLAP ainda iniciam e processam áudio sem hang (regressão original documentada em `docs/postmortem-libm-symbol-interposition.md`).
+
+#### 🎯 Tarefa 5.3: Desambiguar Rótulo de `measure_lstm_snr` (Prevenção, Opcional) [🟢 Baixo risco]
+
+* **Achado:** mesmo após a Tarefa 5.1, o texto `"FastMath(Padé): ... | Exact(tanh): ..."` em `measure_lstm_snr` (linha ~99 de `tests/models/lstm_activation_precision.rs`, comparação scalar-libm vs SIMD-Padé, não relacionada ao enum `ActivationPrecision`) continua compartilhando prefixo com o texto de `measure_lstm_snr_stress_v2`. Isso não quebra a Tarefa 5.1 (o novo padrão de grep já é suficientemente específico), mas mantém um risco de colisão futura caso alguém edite qualquer um dos dois formatos sem lembrar do outro.
+* **Ações:**
+  * Renomear os rótulos de `measure_lstm_snr` para algo inequívoco e descritivo do que de fato compara, ex.: `"Scalar(libm): {snr_fast:6.1} dB  |  SIMD(Padé): {snr_exact:6.1} dB  |  Δ={gain:+.1} dB"`.
+  * Não requer nenhuma mudança em `utils/quality-dashboard.sh` (este teste nunca foi, e não deveria ser, fonte do painel "ACTIVATION PRECISION").
+* **Verificação (pendente de execução):** `cargo test --release --test models lstm_activation_precision -- --nocapture` e confirmar que a saída permanece legível e sem ambiguidade.
+
+#### 🎯 Tarefa 5.4: Fechar as Pendências da Sprint 3 (Tarefas 3.3 e 3.4)
+
+* **Achado:** a auditoria de `/testes.log` confirmou que `utils/tests-quick.sh` nunca executa `--lib --release` (só `--test <alvo> --release` para os testes de medida), então os 14 testes `#[should_panic]` que falham apenas em modo release (`math::dsp::fft::tests::*`, `models::a2::grouped_conv1d::tests::*`) nunca aparecem no fluxo normal — mas o achado permanece **não registrado** em `TODO-findings.md` (Tarefa 3.3). O dashboard mostrou latência de LSTM em 7.3-7.6 µs (vs. ~7.9-8.0 µs antes da remoção do guard universal na Sprint 1) como evidência favorável à Tarefa 3.4, mas isso não substitui uma medição formal com comentário de proveniência.
+* **Ações:**
+  * Tarefa 3.3: abrir uma entrada curta em `TODO-findings.md` (novo Achado, severidade 🟢 Baixa/técnica) documentando os 14 testes `#[should_panic]` que só falham em `cargo test --release --lib` (confirmado que passam em modo debug) — provável uso de `debug_assert!`/dependência de *overflow checks* desabilitados em release. Não corrigir os testes nesta tarefa, apenas registrar.
+  * Tarefa 3.4: rodar `cargo bench` (ou os testes de zero-alloc/latência já existentes) para ao menos um modelo não-LSTM (ex. WaveNet) comparando o estado antes/depois da remoção do guard (`git show 112e6db^:src/models/nam_model.rs` vs `HEAD`), documentando o delta com comentário de medição (Regra 3 de `docs/perceptual_validation.md`). Usar os números já coletados do dashboard (7.3-7.6 µs LSTM) como ponto de partida, mas complementar com WaveNet/A2 para cobertura completa.
+
+---
+
+## 📋 Referências Cruzadas

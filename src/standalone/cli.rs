@@ -46,7 +46,9 @@ pub fn print_help() {
     println!(
         "      --oversample off|2x|4x Half-band oversampling around neural stage [default: off]"
     );
-    println!("      --activation MODE    Activation precision: standard (default, exact-grade) or fast");
+    println!(
+        "      --activation MODE    Activation precision: standard (default, exact-grade) or fast"
+    );
     println!("  -h, --help              Show this help message and exit");
 }
 
