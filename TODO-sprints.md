@@ -484,7 +484,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 * **Achado:** este arquivo é a autoridade normativa para "Gate Calibration Policy" (Regras 1-7) referenciada por várias outras tarefas neste documento — inclui a análise do "interop gap" que motivou a adoção de `HighFidelity` para `BossLSTM` (linhas ~645-813, segundo mapeamento da auditoria anterior).
 * **Ação:** revisar se a narrativa "HighFidelity mode collapses the gap for BossLSTM" precisa de nota de atualização (universal agora, não específico), similar ao tratamento dado em `TODO-findings.md` Achado A1 (nota de renumeração já aplicada como precedente de estilo).
 
-#### 🎯 Tarefa 2.5: `README.md` (2 menções, tabela "Live vs. HQ/Offline") [🟡 requer reescrita da tabela]
+#### 🎯 Tarefa 2.5: `README.md` (2 menções, tabela "Live vs. HQ/Offline") [CONCLUÍDA]
 
 * **Achado:** linhas 178-181 e a tabela "Live vs. HQ/Offline Summary" (linhas 190-198) — a linha `Activation precision | Standard | HighFidelity` da tabela descreve exatamente o contrato antigo invalidado pelo item 3 (ver Tarefa 2.1). Após o rename, ambos os modos usam `Standard` por default.
 * **Ação:** reescrever a linha da tabela (ex.: `Activation precision | Standard (Fast opt-in) | Standard (enforced)`, ou remover a linha da tabela e mover a explicação para a seção "Activation Precision" acima, já que não é mais um diferencial Live/HQ). Atualizar a lista de bullets (linha 180-181) com rename mecânico simples.

@@ -177,22 +177,21 @@ NAM-rs provides a layered quality control surface spanning latency, fidelity, an
 
 **Activation Precision** — tanh/sigmoid approximation fidelity:
 
-* `Standard` (default): Padé [5,4] tanh + minimax sigmoid. Error ~2.32e-3. Fastest path.
-* `HighFidelity`: polynomial exp-based. Error ~2.4e-7 (~10,000× lower). Best combined with 4× oversampling.
+* `Standard` (default): polynomial exp-based, exact-grade. Error ~2.4e-7 (~10,000× lower than `Fast`). Universal default for all modes.
+* `Fast`: Padé [5,4] tanh + minimax sigmoid. Error ~2.32e-3. Opt-in for CPU-constrained setups (`--activation fast`).
 
 **Adaptive Compute** — graceful CPU fallback to prevent xruns:
 
 * An hysteresis FSM monitors block deadlines and soft-degrades model complexity (layer-skipping in WaveNet/LSTM, A2-Full → A2-Lite switching) under CPU pressure.
 * **Slim Override** (`--slim auto|full|lite`): forces a fixed quality level, bypassing the FSM. `full` locks at maximum complexity; `lite` locks at minimum. Default `auto` lets the FSM decide.
 
-**Offline Render Mode** (CLAP only): during DAW export/bounce, the host signals `RenderMode::Offline`. The engine disables adaptive compute (deterministic max-quality output), clears all degradation flags, and ignores block deadline measurements. No soft-degradation can compromise a rendered file.
+**Offline Render Mode** (CLAP only): during DAW export/bounce, the host signals `RenderMode::Offline`. The engine disables adaptive compute (deterministic max-quality output), clears all degradation flags, and ignores block deadline measurements. No soft-degradation can compromise a rendered file. Activation precision defaults to `Standard` (exact-grade) in both Live and HQ/Offline modes; `Fast` (Padé) is an explicit opt-in (see Activation Precision above).
 
 **Live vs. HQ/Offline Summary:**
 
 | Aspect               | Live (default)       | HQ / Offline               |
 |:-------------------- |:-------------------- |:-------------------------- |
 | Oversampling         | `Off`                | `4×`                       |
-| Activation precision | `Standard`           | `HighFidelity`             |
 | Adaptive compute     | Active (FSM-driven)  | Disabled (deterministic)   |
 | Latency              | 0 samples            | 24 samples (~0.54 ms)      |
 | Use case             | Monitoring, live gig | Export, mixdown, mastering |
