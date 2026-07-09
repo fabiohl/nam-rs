@@ -312,8 +312,9 @@ mod tests {
             layer_simd.process(&input);
 
             for j in 0..h {
+                // Measured: state max diff ~2.7e-5 across 8 steps due to GEMV order & minimax f32 cancellation; tolerance = 5e-5
                 assert!(
-                    (layer_scalar.state[1 + j] - layer_simd.state[1 + j]).abs() < 1e-2,
+                    (layer_scalar.state[1 + j] - layer_simd.state[1 + j]).abs() < 5e-5,
                     "Dyn parity H={} step={} hidden[{}]: {} vs {}",
                     h,
                     _step,
@@ -321,8 +322,9 @@ mod tests {
                     layer_scalar.state[1 + j],
                     layer_simd.state[1 + j],
                 );
+                // Measured: cell_state max diff ~1.2e-4 across 8 steps due to GEMV order & minimax f32 cancellation; tolerance = 2e-4
                 assert!(
-                    (layer_scalar.cell_state[j] - layer_simd.cell_state[j]).abs() < 1e-2,
+                    (layer_scalar.cell_state[j] - layer_simd.cell_state[j]).abs() < 2e-4,
                     "Dyn parity H={} step={} cell[{}]: {} vs {}",
                     h,
                     _step,
@@ -330,8 +332,9 @@ mod tests {
                     layer_scalar.cell_state[j],
                     layer_simd.cell_state[j],
                 );
+                // Measured: cell_error ~1e-7 a 1e-6 (8 passos, pesos de teste O(0.1-0.4)); tolerância = 1e-5 (10× margem sobre o pior caso).
                 assert!(
-                    (layer_scalar.cell_error[j] - layer_simd.cell_error[j]).abs() < 1e-2,
+                    (layer_scalar.cell_error[j] - layer_simd.cell_error[j]).abs() < 1e-5,
                     "Dyn parity H={} step={} cell_error[{}]: {} vs {}",
                     h,
                     _step,

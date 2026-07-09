@@ -28,6 +28,7 @@ use common::A2_FILM_ESR_LIMIT;
 use common::CONVNET_ESR_LIMIT;
 use common::LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT;
 use common::LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT;
+use common::LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
 use common::WAVENET_ESR_LIMIT;
 
@@ -1119,17 +1120,19 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
     );
 }
 
-// ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
+// ── Paired prewarm LSTM diagnostic helper ──────────────────────────────
 
-#[test]
-#[ignore]
-fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
-    use nam_rs::testing::perceptual::compute_esr;
+fn run_paired_drift_diagnostic(
+    model_filename: &str,
+    label: &str,
+    block_size: usize,
+) -> (f64, Vec<f64>) {
+    use nam_rs::testing::perceptual::{compute_esr, compute_esr_blockwise};
     use nam_rs::testing::stress::generate_stress_signal_v2_default;
 
-    let path = models_dir().join("BossLSTM-1x16.nam");
+    let path = models_dir().join(model_filename);
     let md = load_and_parse(&path);
-    let stress_signal = generate_stress_signal_v2_default(48000); // 240k amostras
+    let stress_signal = generate_stress_signal_v2_default(48000); // 240k samples
     let stress_f64: Vec<f64> = stress_signal.iter().map(|&x| x as f64).collect();
 
     // Produção: SEM model.prewarm(zeros) — processa o sinal real desde t=0,
@@ -1149,24 +1152,53 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
     const N_WARMUP: usize = 24_000;
     let esr_tail = compute_esr(&oracle_f32[N_WARMUP..], &output[N_WARMUP..]);
     println!(
-        "\nT33b — LSTM 1x16 paired (sem mismatch de estado inicial), cauda de {} amostras: ESR={:.6e} ({:.1} dB)",
+        "\n{} (sem mismatch de estado inicial), cauda de {} amostras: ESR={:.6e} ({:.1} dB)",
+        label,
         stress_signal.len() - N_WARMUP,
         esr_tail,
         10.0 * esr_tail.log10()
     );
 
-    // Blockwise ESR Analysis
-    use nam_rs::testing::perceptual::compute_esr_blockwise;
-    let esr_blocks_48k = compute_esr_blockwise(&oracle_f32, &output, 48_000);
-    print_blockwise_esr_table(&esr_blocks_48k, 48_000, 48000);
+    let esr_blocks = compute_esr_blockwise(&oracle_f32, &output, block_size);
+    print_blockwise_esr_table(&esr_blocks, block_size, 48000);
 
-    let esr_blocks_12k = compute_esr_blockwise(&oracle_f32, &output, 12_000);
-    print_blockwise_esr_table(&esr_blocks_12k, 12_000, 48000);
+    (esr_tail, esr_blocks)
+}
+
+// ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
+
+#[test]
+#[ignore]
+fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
+    let (esr_tail, _) =
+        run_paired_drift_diagnostic("BossLSTM-1x16.nam", "T3.3b — LSTM 1x16 paired", 48_000);
+
+    // Also run blockwise for 12k blocks
+    let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "T3.3b — LSTM 1x16 paired", 12_000);
 
     assert!(
         esr_tail < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
         "Paired LSTM 1x16 drift ESR limit exceeded: {:.6e} >= {:.6e}",
         esr_tail,
         LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT
+    );
+}
+
+// ── T3.3c: paired prewarm LSTM 2x8 diagnostic ──────────────────────────────
+
+#[test]
+#[ignore]
+fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
+    let (esr_tail, _) =
+        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired", 48_000);
+
+    // Also run blockwise for 12k blocks
+    let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired", 12_000);
+
+    assert!(
+        esr_tail < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
+        "Paired LSTM 2x8 drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail,
+        LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
     );
 }
