@@ -186,7 +186,7 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 >
 > **Rota ajustada:** as Tarefas 2.2 e 2.3 originais (genéricas, sequenciais/contingentes) são **substituídas** pelas Tarefas 2.2 e 2.3 revisadas abaixo, que testam diretamente — com prioridade máxima e já assumindo alta probabilidade de confirmação — a hipótese de erro de aproximação Padé/minimax amplificado por magnitude de pré-ativação, usando o caminho de dispatch real de produção (não apenas a simulação isolada do oráculo).
 
-#### 🎯 Tarefa 2.2 (revisada): Confirmar em Produção Real que `HighFidelity` Fecha o Gap para `BossLSTM-1x16`
+#### 🎯 Tarefa 2.2 (revisada): Confirmar em Produção Real que `HighFidelity` Fecha o Gap para `BossLSTM-1x16` [DONE]
 
 * **Risco:** 🔴 Crítica — se confirmada, aponta diretamente para a correção da Sprint 3 (usar ativações exatas/HighFidelity, não uma reformulação do Kahan).
 * **Ações:**
@@ -216,9 +216,29 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
 * **Executar em paralelo à Tarefa 2.2 (não é mais contingente — é complementar, para entender a causa física, não apenas confirmar o sintoma).**
 * **Ações:**
   * Instrumentar temporariamente (via teste, não em produção) a captura da distribuição de valores de pré-ativação (`gf`, `gi`, `gg`, `go` — entradas de `scalar_pade_tanh`/`scalar_minimax_sigmoid`/`simd_tanh_avx2`/`simd_sigmoid_avx2`) durante o processamento do sinal de stress v2 completo para `BossLSTM-1x16`, `BossLSTM-2x8` e `lstm.nam` (H=3), registrando percentis (p50, p99, p99.9, max absoluto) de `|gg|` (gate do candidato de célula, entrada de `tanh`) e `|gf|`/`|gi|`/`|go|` (entradas de `sigmoid`).
-  * Comparar essas distribuições com a faixa de validade documentada das aproximações em `docs/fastmath-approximations.md` §1 ("Production Decision: Tanh — Padé [5,4]") e §3 ("Production Decision: Sigmoid — Direct Minimax (Degree 17)") — identificar se `1x16` produz pré-ativações que excedem significativamente a faixa para a qual o erro do polinômio foi calibrado/validado.
+  * Comparar essas distribuições com a faixa de validade documentada das aproximações em `docs/fastmath-approximations.md` §1 ("Production Decision: Tanh — Padé [5,4]") and §3 ("Production Decision: Sigmoid — Direct Minimax (Degree 17)") — identificar se `1x16` produz pré-ativações que excedem significativamente a faixa para a qual o erro do polinômio foi calibrado/validado.
   * Hipótese de causa física mais provável a confirmar: `hidden_size = 16` (vs. `H=8` de `2x8` e `H=3` de `lstm.nam`) permite normas de peso (`input_hidden_weights`) maiores por neurônio nas camadas GEMV, produzindo pré-ativações de magnitude mais alta para este modelo treinado especificamente — não uma propriedade universal de "modelos LSTM maiores", mas uma característica dos pesos aprendidos deste checkpoint `BossLSTM-1x16.nam` específico. Validar computando a norma L2 média das 4×(I+H)×H colunas de peso e comparando entre os 3 modelos.
   * Este resultado, mesmo que não gere uma correção de código adicional (se a Tarefa 2.2 já confirmar que `HighFidelity` resolve o problema), é valioso para a documentação (Tarefa 3.4): explica *por que* apenas `1x16` é afetado, prevenindo que o mesmo padrão (Padé/minimax subestimando erro fora da faixa calibrada) surpreenda futuros modelos maiores adicionados ao catálogo.
+
+> * **Conclusão (Tarefa 2.3):** Causa física da divergência de magnitude investigada e confirmada via instrumentação estatística.
+>   1. **Percentis de Pré-Ativação e Limites das Aproximações**:
+>      * **LSTM 1x16**:
+>        * `|gg|` (tanh): p50 = `0.89`, p99 = `3.85`, p99.9 = `4.07`, max = `4.20` (Excede o limite `PADE_TANH_CLAMP = 4.0` em ~0.1% das amostras).
+>        * `|g_sig|` (sigmoid): p50 = `3.36`, p99 = `9.20`, p99.9 = `9.86`, max = `10.46` (Mais de 1% das amostras excedem a faixa minimax de `8.0`).
+>      * **LSTM 2x8**:
+>        * `|gg|` (tanh): p50 = `0.70`, p99 = `2.37`, p99.9 = `2.90`, max = `3.32` (Dentro dos limites de validade de `4.0`).
+>        * `|g_sig|` (sigmoid): p50 = `2.98`, p99 = `7.11`, p99.9 = `7.96`, max = `8.97` (Grande maioria dentro dos limites de `8.0`).
+>      * **LSTM Official (1x3)**:
+>        * `|gg|` (tanh): p50 = `0.17`, max = `0.67` (Região linear; erro de Padé é infinitesimal, na ordem de `~1e-8`).
+>        * `|g_sig|` (sigmoid): p50 = `3.76`, max = `5.22` (Totalmente dentro de `8.0`).
+>   2. **Normas de Pesos e Correlação Física**:
+>      * **LSTM 1x16**: Norma L2 média das colunas = `2.82` (Gate de saída `go` chega a `3.80`).
+>      * **LSTM 2x8**: Norma L2 média das colunas = `2.62` (Layer 1 = `3.06`, Layer 2 = `2.18`).
+>      * **LSTM Official (1x3)**: Norma L2 média das colunas = `0.78`.
+>   3. **Mecanismo da Divergência (Por que 28-60× maior em 1x16)**:
+>      * **Aumento do Espaço de Input**: O modelo `1x16` possui um tamanho oculto maior (`H=16`, `IH=17` inputs por linha de GEMV vs. `IH=9` em `2x8` camada 1). Dado que as magnitudes de pesos são similares, a soma do GEMV sobre o dobro de termos resulta em pré-ativações com maior variância e valores máximos.
+>      * **Excesso da Faixa de Validade**: Esse aumento empurra o sinal de `1x16` para além do limite de validade do FastMath. Para o `tanh`, ele atinge o teto `4.0` de clamp (erro local de `6.7e-4`). Para o `sigmoid`, ele ultrapassa o domínio minimax `8.0` (erro local de `3.4e-4` pelo clamping do sigmoid). Os outros modelos operam majoritariamente na zona segura/linear.
+>      * **Realimentação Recorrente Cruzada**: No `1x16`, como há um único loop recorrente gigante de dimensão 16, esses erros nos gates alimentam e amplificam uns aos outros em todas as 16 variáveis de estado de forma cruzada, acelerando o acúmulo de drift. No `2x8`, o sistema é segmentado em duas camadas com loops de dimensão 8 independentes, o que atua como amortecimento e impede a propagação descontrolada do drift recorrente.
 
 #### 🎯 Tarefa 2.4: Consolidar Conclusão e Reclassificar o "Interop Gap" (2.61e-2 vs NAMCore)
 
