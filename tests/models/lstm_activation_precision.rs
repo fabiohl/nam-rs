@@ -9,6 +9,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
+use nam_rs::math::activations::{ActivationPrecision, set_activation_precision};
 use nam_rs::models::NamModel;
 use nam_rs::testing::perceptual::compute_snr_db;
 use std::fs;
@@ -189,4 +190,161 @@ fn test_lstm_activation_precision_gain() {
         );
     }
     eprintln!();
+}
+
+/// [T5.5] Precision investigation: measure SNR gain of exact HighFidelity vs FastMath Padé on full stress v2.
+///
+/// Runs the 3 LSTM models through both SIMD (FastMath) and SIMD (HighFidelity)
+/// paths, computing SNR against the f64 exact reference oracle on the stress v2 signal.
+#[test]
+fn test_lstm_activation_precision_gain_stress_v2() {
+    eprintln!();
+    eprintln!("══════════════════════════════════════════════════════════════════");
+    eprintln!("  [T5.5] LSTM Activation Precision Investigation (STRESS V2)");
+    eprintln!("  Comparing FastMath (Padé tanh) vs HighFidelity (exp-based)");
+    eprintln!("  SNR vs f64 Exact Reference Oracle");
+    eprintln!("══════════════════════════════════════════════════════════════════");
+
+    // Make sure we restore Standard precision in case of panic
+    struct RestoreStandard;
+    impl Drop for RestoreStandard {
+        fn drop(&mut self) {
+            set_activation_precision(ActivationPrecision::Standard);
+        }
+    }
+    let _restore = RestoreStandard;
+
+    let results = [
+        measure_lstm_snr_stress_v2("BossLSTM-1x16.nam", "LSTM 1×16"),
+        measure_lstm_snr_stress_v2("BossLSTM-2x8.nam", "LSTM 2×8"),
+        measure_lstm_snr_stress_v2("lstm.nam", "LSTM Official"),
+    ];
+
+    let valid: Vec<_> = results
+        .iter()
+        .filter(|(fast, exact)| fast.is_finite() && exact.is_finite())
+        .collect();
+
+    if valid.is_empty() {
+        eprintln!("\n  All tests SKIPPED (models missing).");
+        return;
+    }
+
+    let parsed: Vec<SnrResult> = results
+        .iter()
+        .enumerate()
+        .filter(|(_, (f, e))| f.is_finite() && e.is_finite())
+        .map(|(i, &(snr_fastmath_db, snr_exact_tanh_db))| SnrResult {
+            model_name: ["LSTM 1×16", "LSTM 2×8", "LSTM Official"][i].to_string(),
+            gain_db: snr_exact_tanh_db - snr_fastmath_db,
+        })
+        .collect();
+
+    let min_gain = parsed
+        .iter()
+        .map(|r| r.gain_db)
+        .fold(f64::INFINITY, f64::min);
+    let max_gain = parsed
+        .iter()
+        .map(|r| r.gain_db)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let avg_gain = parsed.iter().map(|r| r.gain_db).sum::<f64>() / parsed.len() as f64;
+
+    eprintln!();
+    eprintln!("  ────────────────────────────────────────────────────────────────");
+    eprintln!("  Summary (Stress V2):");
+    for r in &parsed {
+        eprintln!(
+            "    {:<16}  SNR gain: {:+5.1} dB  →  {}",
+            r.model_name,
+            r.gain_db,
+            r.verdict()
+        );
+    }
+    let separator = "-".repeat(16);
+    eprintln!(
+        "    {separator}  SNR gain range: [{:+.1}, {:.1}] dB  avg: {:.1} dB",
+        min_gain, max_gain, avg_gain,
+    );
+    eprintln!("  ────────────────────────────────────────────────────────────────");
+
+    if avg_gain < 3.0 {
+        eprintln!(
+            "  VERDICT: FastMath Padé [5,4] is adequate for LSTM.\n\
+               The SNR gain from exact tanh is negligible (< 3 dB avg).\n\
+               Keeping FastMath as the default production path."
+        );
+    } else if avg_gain < 6.0 {
+        eprintln!(
+            "  VERDICT: Modest SNR gain detected ({} dB avg).\n\
+               Consider an optional high-precision LSTM feature flag\n\
+               for users who prioritize accuracy over speed.",
+            avg_gain
+        );
+    } else {
+        eprintln!(
+            "  VERDICT: Significant SNR gain ({} dB avg).\n\
+               A higher-precision LSTM tanh kernel is warranted.",
+            avg_gain
+        );
+    }
+    eprintln!();
+}
+
+fn measure_lstm_snr_stress_v2(model_filename: &str, label: &str) -> (f64, f64) {
+    use nam_rs::testing::reference_oracle::{PrecisionConfig, oracle_forward};
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let nam_path = model_path(model_filename);
+    if !nam_path.exists() {
+        eprintln!("SKIP: {} not found.", model_filename);
+        return (f64::NAN, f64::NAN);
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+
+    let stress_signal = generate_stress_signal_v2_default(48000); // 240k samples
+    let stress_f64: Vec<f64> = stress_signal.iter().map(|&x| x as f64).collect();
+
+    // Compute expected output via f64 reference oracle
+    let oracle_out = oracle_forward(&model_data, &stress_f64, &PrecisionConfig::default());
+    let expected: Vec<f32> = oracle_out.iter().map(|&x| x as f32).collect();
+
+    // --- FastMath path (SIMD Padé tanh + minimax sigmoid) ---
+    set_activation_precision(ActivationPrecision::Standard);
+    let mut model_fast = build_model(&model_data).expect("Dispatcher failed");
+    let mut output_fast = vec![0.0f32; stress_signal.len()];
+    let mut pos = 0;
+    while pos < stress_signal.len() {
+        let nf = (stress_signal.len() - pos).min(64);
+        model_fast.process(
+            &stress_signal[pos..pos + nf],
+            &mut output_fast[pos..pos + nf],
+        );
+        pos += nf;
+    }
+    let snr_fast = compute_snr_db(&expected, &output_fast);
+
+    // --- HighFidelity path (SIMD HighFidelity tanh + HighFidelity sigmoid) ---
+    set_activation_precision(ActivationPrecision::HighFidelity);
+    let mut model_exact = build_model(&model_data).expect("Dispatcher failed");
+    let mut output_exact = vec![0.0f32; stress_signal.len()];
+    pos = 0;
+    while pos < stress_signal.len() {
+        let nf = (stress_signal.len() - pos).min(64);
+        model_exact.process(
+            &stress_signal[pos..pos + nf],
+            &mut output_exact[pos..pos + nf],
+        );
+        pos += nf;
+    }
+    let snr_exact = compute_snr_db(&expected, &output_exact);
+
+    println!(
+        "{label:>22}  FastMath(Padé): {snr_fast:6.1} dB  |  HighFidelity: {snr_exact:6.1} dB  |  Δ={gain:+.1} dB",
+        gain = snr_exact - snr_fast,
+    );
+
+    (snr_fast, snr_exact)
 }

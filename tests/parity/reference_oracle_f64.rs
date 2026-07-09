@@ -34,6 +34,7 @@ use common::WAVENET_ESR_LIMIT;
 
 use nam_rs::loader::nam_json::model::NamModelData;
 use nam_rs::loader::nam_json::parse::parse_nam_json;
+use nam_rs::math::activations::{ActivationPrecision, set_activation_precision};
 use nam_rs::models::NamModel;
 use nam_rs::testing::reference_oracle::{
     AccumulationMode, ActivationMode, PrecisionConfig, WeightPrecision, compute_esr_f64,
@@ -1173,17 +1174,69 @@ fn run_paired_drift_diagnostic(
 #[test]
 #[ignore]
 fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
-    let (esr_tail, _) =
-        run_paired_drift_diagnostic("BossLSTM-1x16.nam", "T3.3b — LSTM 1x16 paired", 48_000);
+    struct RestoreStandard;
+    impl Drop for RestoreStandard {
+        fn drop(&mut self) {
+            set_activation_precision(ActivationPrecision::Standard);
+        }
+    }
+    let _restore = RestoreStandard;
 
-    // Also run blockwise for 12k blocks
-    let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "T3.3b — LSTM 1x16 paired", 12_000);
+    // 1. Run with Standard precision (default)
+    set_activation_precision(ActivationPrecision::Standard);
+    let (esr_tail_std, _) = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (Standard)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (Standard)",
+        12_000,
+    );
 
+    // 2. Run with HighFidelity precision
+    set_activation_precision(ActivationPrecision::HighFidelity);
+    let (esr_tail_hf, _) = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (HighFidelity)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-1x16.nam",
+        "T3.3b — LSTM 1x16 paired (HighFidelity)",
+        12_000,
+    );
+
+    println!("\nLSTM 1x16 Diagnostic Comparison:");
+    println!(
+        "  Standard ESR_tail:     {:.6e} ({:.1} dB)",
+        esr_tail_std,
+        10.0 * esr_tail_std.log10()
+    );
+    println!(
+        "  HighFidelity ESR_tail: {:.6e} ({:.1} dB)",
+        esr_tail_hf,
+        10.0 * esr_tail_hf.log10()
+    );
+    println!(
+        "  Delta:                 {:.6e}",
+        esr_tail_std - esr_tail_hf
+    );
+
+    // Standard mode gate
     assert!(
-        esr_tail < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
-        "Paired LSTM 1x16 drift ESR limit exceeded: {:.6e} >= {:.6e}",
-        esr_tail,
+        esr_tail_std < LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT,
+        "Standard LSTM 1x16 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail_std,
         LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT
+    );
+
+    // HighFidelity confirmation gate: expected to drop to near zero (< 1e-8) because there is no cold-start mismatch
+    assert!(
+        esr_tail_hf < 1.0e-8,
+        "HighFidelity LSTM 1x16 paired drift ESR not near zero: {:.6e}",
+        esr_tail_hf
     );
 }
 
@@ -1192,16 +1245,69 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
 #[test]
 #[ignore]
 fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
-    let (esr_tail, _) =
-        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired", 48_000);
+    struct RestoreStandard;
+    impl Drop for RestoreStandard {
+        fn drop(&mut self) {
+            set_activation_precision(ActivationPrecision::Standard);
+        }
+    }
+    let _restore = RestoreStandard;
 
-    // Also run blockwise for 12k blocks
-    let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired", 12_000);
+    // 1. Run with Standard precision (default)
+    set_activation_precision(ActivationPrecision::Standard);
+    let (esr_tail_std, _) = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (Standard)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (Standard)",
+        12_000,
+    );
 
+    // 2. Run with HighFidelity precision
+    set_activation_precision(ActivationPrecision::HighFidelity);
+    let (esr_tail_hf, _) = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (HighFidelity)",
+        48_000,
+    );
+    let _ = run_paired_drift_diagnostic(
+        "BossLSTM-2x8.nam",
+        "T3.3c — LSTM 2x8 paired (HighFidelity)",
+        12_000,
+    );
+
+    println!("\nLSTM 2x8 Diagnostic Comparison:");
+    println!(
+        "  Standard ESR_tail:     {:.6e} ({:.1} dB)",
+        esr_tail_std,
+        10.0 * esr_tail_std.log10()
+    );
+    println!(
+        "  HighFidelity ESR_tail: {:.6e} ({:.1} dB)",
+        esr_tail_hf,
+        10.0 * esr_tail_hf.log10()
+    );
+    println!(
+        "  Delta:                 {:.6e}",
+        esr_tail_std - esr_tail_hf
+    );
+
+    // Standard mode gate
     assert!(
-        esr_tail < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
-        "Paired LSTM 2x8 drift ESR limit exceeded: {:.6e} >= {:.6e}",
-        esr_tail,
+        esr_tail_std < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
+        "Standard LSTM 2x8 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail_std,
+        LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
+    );
+
+    // HighFidelity control gate (ensure it stays below limit)
+    assert!(
+        esr_tail_hf < LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT,
+        "HighFidelity LSTM 2x8 paired drift ESR limit exceeded: {:.6e} >= {:.6e}",
+        esr_tail_hf,
         LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT
     );
 }

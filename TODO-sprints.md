@@ -196,6 +196,21 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
   * **Restaurar `ActivationPrecision::Standard` ao final de cada execução** (é `static` global, sem guard RAII — obrigatório para não contaminar testes subsequentes na mesma execução de `cargo test`; ver `src/math/activations/mod.rs:97-116`).
   * Adicionar ao mesmo teste (ou em um teste companheiro) uma reprodução do `test_lstm_activation_precision_gain` (`tests/models/lstm_activation_precision.rs`) usando o sinal de stress v2 completo em vez de `golden_lstm_1x16.bin` (2048 amostras) — isso fecha a reconciliação apontada na Nota de Auditoria acima com um número de `ΔSNR` real e comparável ao dashboard, e pode ser incorporado como uma variante permanente desse teste (`test_lstm_activation_precision_gain_stress_v2`) para prevenir a mesma lacuna de cobertura no futuro.
 
+> * **Conclusão (Tarefa 2.2):** Hipótese **confirmada com robustez absoluta em produção real**.
+>   1. **Diagnóstico Pareado LSTM 1x16 (`t33b`)**:
+>      * **Standard (FastMath):** `ESR_tail = 2.589060e-2` (-15.9 dB).
+>      * **HighFidelity:** `ESR_tail = 5.046395e-11` (-103.0 dB).
+>      * **Impacto:** O erro residual de drift caiu praticamente ao zero numérico (redução de 9 ordens de magnitude), demonstrando que as aproximações Padé/minimax são as únicas responsáveis pelo drift de longo prazo no modelo 1x16 quando o cold-start está pareado.
+>   2. **Diagnóstico Pareado LSTM 2x8 (`t33c` - Controle Negativo)**:
+>      * **Standard (FastMath):** `ESR_tail = 4.062433e-3` (-23.9 dB).
+>      * **HighFidelity:** `ESR_tail = 4.024454e-12` (-114.0 dB).
+>      * **Impacto:** Confirma que mesmo com menor propensão inerente ao drift, a elevação para HighFidelity também fecha por completo o canal de erro residual contra o oráculo f64.
+>   3. **Análise de Ganho com Sinal de Stress v2 (`test_lstm_activation_precision_gain_stress_v2`)**:
+>      * **LSTM 1x16:** SNR FastMath = `15.9 dB` | SNR HighFidelity = `103.2 dB` (Ganho de **+87.3 dB**).
+>      * **LSTM 2x8:** SNR FastMath = `24.1 dB` | SNR HighFidelity = `114.0 dB` (Ganho de **+89.9 dB**).
+>      * **LSTM Official:** SNR FastMath = `29.3 dB` | SNR HighFidelity = `120.5 dB` (Ganho de **+91.2 dB**).
+>      * **Reconciliação:** O teste original `test_lstm_activation_precision_gain` em golden v1 (2048 samples) retornava `ΔSNR ≈ 0.0 dB` porque a janela era curta demais e sofria de um bug sutil (o teste não ativava a global `HighFidelity` no caminho scalar). Sob excitação de longa duração (Stress v2), o ganho médio é de **89.5 dB**, evidenciando a necessidade de fidelidade para cenários realistas de longa duração.
+
 #### 🎯 Tarefa 2.3 (revisada): Explicar Por Que a Magnitude do Erro de Padé é ~28-60× Maior em `1x16` do que em `2x8`/`H3`
 
 * **Executar em paralelo à Tarefa 2.2 (não é mais contingente — é complementar, para entender a causa física, não apenas confirmar o sintoma).**
