@@ -106,7 +106,7 @@ pub fn knob_widget(
 
     let enabled = ui.is_enabled();
 
-    painter.circle_stroke(center, radius, egui::Stroke::new(3.0, COL_BG));
+    painter.circle_stroke(center, radius, egui::Stroke::new(3.0_f32, COL_BG));
 
     let mut active_arc_color = if !enabled {
         COL_BYPASS_OFF
@@ -146,7 +146,7 @@ pub fn knob_widget(
         }
     }
     if point_count > 1 {
-        let arc_stroke = egui::Stroke::new(3.5, active_arc_color);
+        let arc_stroke = egui::Stroke::new(3.5_f32, active_arc_color);
         for w in points_buf[..point_count].windows(2) {
             painter.line_segment([w[0], w[1]], arc_stroke);
         }
@@ -157,7 +157,7 @@ pub fn knob_widget(
                 active_arc_color.b(),
                 60,
             );
-            let glow_stroke = egui::Stroke::new(7.0, glow_color);
+            let glow_stroke = egui::Stroke::new(7.0_f32, glow_color);
             for w in points_buf[..point_count].windows(2) {
                 painter.line_segment([w[0], w[1]], glow_stroke);
             }
@@ -171,13 +171,13 @@ pub fn knob_widget(
         egui::Color32::from_rgb(32, 36, 44)
     };
     painter.circle_filled(center, body_radius, body_color);
-    painter.circle_stroke(center, body_radius, egui::Stroke::new(1.0, COL_BORDER));
+    painter.circle_stroke(center, body_radius, egui::Stroke::new(1.0_f32, COL_BORDER));
 
     if response.has_focus() && enabled {
         painter.circle_stroke(
             center,
             body_radius + 1.0,
-            egui::Stroke::new(2.0, accent_color),
+            egui::Stroke::new(2.0_f32, accent_color),
         );
     }
 

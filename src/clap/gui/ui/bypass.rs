@@ -74,7 +74,7 @@ pub fn handle_bypass(
     painter.rect_stroke(
         rect,
         5.0,
-        egui::Stroke::new(1.5, COL_BORDER),
+        egui::Stroke::new(1.5_f32, COL_BORDER),
         egui::StrokeKind::Inside,
     );
 
@@ -82,7 +82,7 @@ pub fn handle_bypass(
         painter.rect_stroke(
             rect,
             5.0,
-            egui::Stroke::new(2.0, accent_color),
+            egui::Stroke::new(2.0_f32, accent_color),
             egui::StrokeKind::Outside,
         );
     }

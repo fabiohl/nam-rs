@@ -99,10 +99,9 @@ fn a2_read_topology(layer_cfg: &NamLayerConfig) -> Option<(Vec<usize>, Vec<usize
             return None;
         }
         ks_vec
-    } else if let Some(ks_scalar) = layer_cfg.kernel_size {
-        vec![ks_scalar; nlayers]
     } else {
-        return None;
+        let ks_scalar = layer_cfg.kernel_size?;
+        vec![ks_scalar; nlayers]
     };
     let bn = layer_cfg
         .bottleneck

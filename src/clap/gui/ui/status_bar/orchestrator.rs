@@ -20,7 +20,7 @@ pub(crate) fn draw_zone5_status_bar(
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         ui.painter().line(
             vec![ui.max_rect().left_top(), ui.max_rect().right_top()],
-            egui::Stroke::new(0.5, COL_BORDER),
+            egui::Stroke::new(0.5_f32, COL_BORDER),
         );
 
         let model_meta_opt = if let Ok(guard) = shared.cold.ui_model_metadata.lock() {
@@ -85,7 +85,7 @@ pub(crate) fn draw_zone5_status_bar(
                                     .color(COL_TEXT),
                             )
                             .fill(COL_PANEL)
-                            .stroke(egui::Stroke::new(0.5, COL_BORDER)),
+                            .stroke(egui::Stroke::new(0.5_f32, COL_BORDER)),
                         );
                         if open_btn.clicked() {
                             let home_dir = std::env::var_os("HOME");

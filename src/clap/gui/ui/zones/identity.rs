@@ -86,7 +86,7 @@ pub(crate) fn draw_zone1_identity(
                         .color(COL_TEXT),
                 )
                 .fill(COL_PANEL)
-                .stroke(egui::Stroke::new(1.0, COL_BORDER)),
+                .stroke(egui::Stroke::new(1.0_f32, COL_BORDER)),
             );
             let btn_id = load_btn.id;
             load_btn_id = Some(btn_id);
@@ -96,7 +96,7 @@ pub(crate) fn draw_zone1_identity(
                 ui.painter().rect_stroke(
                     load_btn.rect,
                     2.0,
-                    egui::Stroke::new(2.0, accent_color),
+                    egui::Stroke::new(2.0_f32, accent_color),
                     egui::StrokeKind::Outside,
                 );
             }
@@ -178,7 +178,7 @@ pub(crate) fn draw_zone1_identity(
             let frame_res = egui::Frame::new()
                 .fill(COL_BG)
                 .stroke(egui::Stroke::new(
-                    1.0,
+                    1.0_f32,
                     if is_error_active {
                         COL_VU_RED
                     } else {
@@ -235,7 +235,7 @@ pub(crate) fn draw_zone1_identity(
                         .color(COL_TEXT),
                 )
                 .fill(COL_PANEL)
-                .stroke(egui::Stroke::new(1.0, COL_BORDER)),
+                .stroke(egui::Stroke::new(1.0_f32, COL_BORDER)),
             );
             let ir_btn_id = load_ir_btn.id;
             load_ir_btn_id = Some(ir_btn_id);
@@ -245,7 +245,7 @@ pub(crate) fn draw_zone1_identity(
                 ui.painter().rect_stroke(
                     load_ir_btn.rect,
                     2.0,
-                    egui::Stroke::new(2.0, accent_color),
+                    egui::Stroke::new(2.0_f32, accent_color),
                     egui::StrokeKind::Outside,
                 );
             }
@@ -280,7 +280,7 @@ pub(crate) fn draw_zone1_identity(
                             .color(COL_MUTED),
                     )
                     .fill(COL_PANEL)
-                    .stroke(egui::Stroke::new(1.0, COL_BORDER)),
+                    .stroke(egui::Stroke::new(1.0_f32, COL_BORDER)),
                 );
                 let clear_ir_id = clear_ir_btn.id;
                 ui.memory_mut(|mem| mem.interested_in_focus(clear_ir_id, ui.layer_id()));
@@ -289,7 +289,7 @@ pub(crate) fn draw_zone1_identity(
                     ui.painter().rect_stroke(
                         clear_ir_btn.rect,
                         2.0,
-                        egui::Stroke::new(2.0, accent_color),
+                        egui::Stroke::new(2.0_f32, accent_color),
                         egui::StrokeKind::Outside,
                     );
                 }
@@ -371,7 +371,7 @@ pub(crate) fn draw_zone1_identity(
             let ir_frame_res = egui::Frame::new()
                 .fill(COL_BG)
                 .stroke(egui::Stroke::new(
-                    1.0,
+                    1.0_f32,
                     if ir_is_error { COL_VU_RED } else { COL_BORDER },
                 ))
                 .corner_radius(egui::CornerRadius::same(3))

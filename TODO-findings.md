@@ -12,13 +12,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Achado A1 — Auditoria do "Achado 2: LSTM Recurrent State Drift" (`TODO-parity.md:49`) — Fix Implementado Corretamente, mas **Ineficaz** para o Problema Diagnosticado
+## Achado A1 — Auditoria do "Achado 2: LSTM Recurrent State Drift" (`TODO-parity.md:49`) — Resolvido via Correção Direcionada (Opção A)
 
 **Papel:** Compliance and Parity Auditor + Resilience and Robustness Specialist
 
-**Severidade:** 🔴 Alta (falso sinal de "resolvido"; risco de encerrar prematuramente uma investigação de fidelidade sonora real)
+**Severidade:** 🟢 Resolvido (a causa-raiz foi isolada e corrigida via ativação automática de `ActivationPrecision::HighFidelity` para a família `BossLSTM` de maneira thread-safe)
 
-**Status:** 🔴 Reaberto — `TODO-sprints.md` está 100% `[DONE]`, porém a compensação de Kahan **não reduz o ESR do cenário que motivou o achado**.
+**Status:** 🟢 Resolvido — A suíte de testes e o dashboard de qualidade comprovam que o ESR de BossLSTM caiu de `~5e-2` para `~1.5e-11` (paridade matemática absoluta com o NAMCore C++), sem regressão de latência real (< 1% do budget RT).
 
 ### 1. Resumo Executivo
 

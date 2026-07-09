@@ -5,8 +5,29 @@ use super::slimmable::SlimmableModel;
 use super::{NamModel, StaticModel};
 
 impl NamModel for StaticModel {
+    fn preferred_activation_precision(
+        &self,
+    ) -> Option<crate::math::activations::ActivationPrecision> {
+        match self {
+            Self::Lstm1x16(_) | Self::Lstm2x8(_) => {
+                Some(crate::math::activations::ActivationPrecision::HighFidelity)
+            }
+            _ => None,
+        }
+    }
+
     #[inline(always)]
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        let current = crate::math::activations::thread_local_activation_precision();
+        let _guard = if current.is_none() {
+            Some(
+                crate::math::activations::set_thread_local_activation_precision(
+                    self.preferred_activation_precision(),
+                ),
+            )
+        } else {
+            None
+        };
         match self {
             Self::WavenetStandard(m) => m.process(input, output),
             Self::WavenetLite(m) => m.process(input, output),
@@ -36,6 +57,16 @@ impl NamModel for StaticModel {
 
     #[cold]
     fn prewarm(&mut self, num_samples: usize) {
+        let current = crate::math::activations::thread_local_activation_precision();
+        let _guard = if current.is_none() {
+            Some(
+                crate::math::activations::set_thread_local_activation_precision(
+                    self.preferred_activation_precision(),
+                ),
+            )
+        } else {
+            None
+        };
         match self {
             Self::WavenetStandard(m) => m.prewarm(),
             Self::WavenetLite(m) => m.prewarm(),
@@ -120,6 +151,16 @@ impl NamModel for StaticModel {
     }
 
     fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) -> anyhow::Result<()> {
+        let current = crate::math::activations::thread_local_activation_precision();
+        let _guard = if current.is_none() {
+            Some(
+                crate::math::activations::set_thread_local_activation_precision(
+                    self.preferred_activation_precision(),
+                ),
+            )
+        } else {
+            None
+        };
         match self {
             Self::WavenetStandard(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetLite(m) => m.reset(sample_rate, max_buffer_size),

@@ -75,6 +75,15 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
         Ok(())
     }
 
+    /// Returns the preferred activation precision for this model.
+    ///
+    /// By default, models return `None` (deferring to the global configuration).
+    fn preferred_activation_precision(
+        &self,
+    ) -> Option<crate::math::activations::ActivationPrecision> {
+        None
+    }
+
     /// Returns the number of samples needed to fully stabilize the model's internal
     /// state (receptive field / recurrent memory depth).
     ///

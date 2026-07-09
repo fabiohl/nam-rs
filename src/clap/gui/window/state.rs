@@ -122,9 +122,9 @@ impl NamPluginWindow {
         visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(18, 18, 24);
         visuals.widgets.noninteractive.weak_bg_fill = egui::Color32::from_rgb(25, 25, 35);
         visuals.widgets.noninteractive.bg_stroke =
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(45, 45, 60));
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(45, 45, 60));
         visuals.widgets.noninteractive.fg_stroke =
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 200, 210));
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(200, 200, 210));
         visuals.selection.bg_fill = egui::Color32::from_rgb(120, 90, 230); // Vibrant purple accent
         egui_ctx.set_visuals(visuals);
 

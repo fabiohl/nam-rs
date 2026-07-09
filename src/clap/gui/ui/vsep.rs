@@ -12,7 +12,7 @@ pub fn styled_vsep(ui: &mut egui::Ui) {
         ui.allocate_exact_size(egui::vec2(1.0, ui.available_height()), egui::Sense::hover());
     ui.painter().line(
         vec![rect.center_top(), rect.center_bottom()],
-        egui::Stroke::new(0.5, COL_BORDER),
+        egui::Stroke::new(0.5_f32, COL_BORDER),
     );
     ui.add_space(space);
 }

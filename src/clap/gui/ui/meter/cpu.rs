@@ -66,7 +66,7 @@ pub(crate) fn render_cpu(
                 egui::pos2(meter_rect.left() - 2.0, y_hold),
                 egui::pos2(meter_rect.right() + 2.0, y_hold),
             ],
-            egui::Stroke::new(1.5, hold_color),
+            egui::Stroke::new(1.5_f32, hold_color),
         );
     }
 }

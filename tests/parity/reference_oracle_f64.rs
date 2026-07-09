@@ -485,10 +485,15 @@ fn test_decomposition_boss_lstm_1x16() {
     let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
     let mut prod_output = vec![0.0f32; total];
     let mut pos = 0;
-    while pos < total {
-        let nf = (total - pos).min(64);
-        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
-        pos += nf;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Standard,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
     }
     let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
 
@@ -555,10 +560,15 @@ fn test_decomposition_boss_lstm_2x8() {
     let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
     let mut prod_output = vec![0.0f32; total];
     let mut pos = 0;
-    while pos < total {
-        let nf = (total - pos).min(64);
-        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
-        pos += nf;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Standard,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
     }
     let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
 

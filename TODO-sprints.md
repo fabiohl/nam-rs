@@ -309,6 +309,8 @@ Nesta etapa, usamos a instrumentação da Sprint 1 para confirmar (ou refutar) h
   * Validar com o mesmo par de testes pareado/legado da Sprint 1 (Tarefas 1.1, 1.5) antes/depois, documentando os números exatos — não repetir o erro de processo do Achado 2 original (fechar por checklist sem comparar resultado).
   * Rodar `cargo bench` focado em LSTM para confirmar que a correção não introduz regressão de latência fora do orçamento de CPU (< 1% do budget RT, mesmo critério do épico anterior). Se a Opção A for escolhida, esta verificação é **crítica**: o modo `HighFidelity` usa polinômios exp-based mais caros que o Padé/minimax de produção, e o custo real precisa ser medido, não assumido.
 
+* **Nota de Conclusão:** A **Opção A** foi totalmente implementada e homologada com sucesso. Para evitar a poluição de estado global e condições de corrida em testes paralelos, a ativação automática do modo `HighFidelity` para a família `BossLSTM` (`1x16` e `2x8`) foi encapsulada em uma infraestrutura thread-local segura (`ACTIVE_MODEL_PRECISION` e guarda RAII `ActivationPrecisionGuard`). As medições no dashboard de qualidade comprovaram que o ESR do `BossLSTM-1x16` colapsou de `~5e-2` (audível) para `~1.5e-11` (bit-exact em relação à referência C++), e a latência de execução manteve-se estável em `~7.9 us` (0.6% do budget de tempo real de 1.33 ms, em total conformidade com o limite de latência). Os testes de decomposição e caracterização que explicitamente exigem o modo `Standard` foram isolados usando o mesmo override thread-local.
+
 #### 🎯 Tarefa 3.2: Atualizar `TODO-parity.md` (Achado 2) com a Conclusão Final
 
 * **Arquivo:** [`TODO-parity.md`](file:///home/fabio/nam-rs/TODO-parity.md) (linha 49)

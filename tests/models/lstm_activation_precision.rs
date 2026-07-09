@@ -9,7 +9,9 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
-use nam_rs::math::activations::{ActivationPrecision, set_activation_precision};
+use nam_rs::math::activations::{
+    ActivationPrecision, set_activation_precision, set_thread_local_activation_precision,
+};
 use nam_rs::models::NamModel;
 use nam_rs::testing::perceptual::compute_snr_db;
 use std::fs;
@@ -312,32 +314,36 @@ fn measure_lstm_snr_stress_v2(model_filename: &str, label: &str) -> (f64, f64) {
     let expected: Vec<f32> = oracle_out.iter().map(|&x| x as f32).collect();
 
     // --- FastMath path (SIMD Padé tanh + minimax sigmoid) ---
-    set_activation_precision(ActivationPrecision::Standard);
     let mut model_fast = build_model(&model_data).expect("Dispatcher failed");
     let mut output_fast = vec![0.0f32; stress_signal.len()];
     let mut pos = 0;
-    while pos < stress_signal.len() {
-        let nf = (stress_signal.len() - pos).min(64);
-        model_fast.process(
-            &stress_signal[pos..pos + nf],
-            &mut output_fast[pos..pos + nf],
-        );
-        pos += nf;
+    {
+        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::Standard));
+        while pos < stress_signal.len() {
+            let nf = (stress_signal.len() - pos).min(64);
+            model_fast.process(
+                &stress_signal[pos..pos + nf],
+                &mut output_fast[pos..pos + nf],
+            );
+            pos += nf;
+        }
     }
     let snr_fast = compute_snr_db(&expected, &output_fast);
 
     // --- HighFidelity path (SIMD HighFidelity tanh + HighFidelity sigmoid) ---
-    set_activation_precision(ActivationPrecision::HighFidelity);
     let mut model_exact = build_model(&model_data).expect("Dispatcher failed");
     let mut output_exact = vec![0.0f32; stress_signal.len()];
     pos = 0;
-    while pos < stress_signal.len() {
-        let nf = (stress_signal.len() - pos).min(64);
-        model_exact.process(
-            &stress_signal[pos..pos + nf],
-            &mut output_exact[pos..pos + nf],
-        );
-        pos += nf;
+    {
+        let _guard = set_thread_local_activation_precision(Some(ActivationPrecision::HighFidelity));
+        while pos < stress_signal.len() {
+            let nf = (stress_signal.len() - pos).min(64);
+            model_exact.process(
+                &stress_signal[pos..pos + nf],
+                &mut output_exact[pos..pos + nf],
+            );
+            pos += nf;
+        }
     }
     let snr_exact = compute_snr_db(&expected, &output_exact);
 

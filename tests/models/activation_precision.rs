@@ -483,14 +483,15 @@ fn test_zero_alloc_cli_activation_flow() {
         let cli_args = parse_args_from(parser);
 
         assert_eq!(
-            cli_args.activation as usize, *expected_mode as usize,
+            cli_args.activation.unwrap() as usize,
+            *expected_mode as usize,
             "CLI parsed unexpected mode for {:?}",
             args
         );
 
         let count = {
             let _guard = TrackingGuard::new();
-            set_activation_precision(cli_args.activation);
+            set_activation_precision(cli_args.activation.unwrap());
             get_alloc_count()
         };
 

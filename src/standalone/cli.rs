@@ -79,7 +79,7 @@ pub struct CliArgs {
     /// Oversampling factor for the neural stage (off, 2x, 4x).
     pub oversample: OversampleFactor,
     /// Activation precision mode (Standard or HighFidelity).
-    pub activation: ActivationPrecision,
+    pub activation: Option<ActivationPrecision>,
 }
 
 /// Parses command-line arguments.
@@ -98,7 +98,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut diagnose_full = false;
     let mut slim_override = SlimOverride::Auto;
     let mut oversample = OversampleFactor::Off;
-    let mut activation = ActivationPrecision::Standard;
+    let mut activation = None;
     let mut has_args = false;
 
     while let Some(arg) = parser.next().unwrap_or_else(|e| exit_with_error(e)) {
@@ -149,14 +149,14 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                 let val_str = val
                     .into_string()
                     .unwrap_or_else(|_| exit_with_error("Invalid activation precision value."));
-                activation = match val_str.to_lowercase().as_str() {
+                activation = Some(match val_str.to_lowercase().as_str() {
                     "standard" | "std" => ActivationPrecision::Standard,
                     "hf" | "highfidelity" | "high" => ActivationPrecision::HighFidelity,
                     other => exit_with_error(format!(
                         "Invalid activation precision: '{}'. Expected 'standard' or 'hf'.",
                         other
                     )),
-                };
+                });
             }
             Short('m') | Long("model") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));

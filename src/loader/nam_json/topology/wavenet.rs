@@ -222,9 +222,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
                 ));
             }
         };
-        let k = layer
-            .kernel_size
-            .and_then(|k| if k > 0 { Some(k) } else { None });
+        let k = layer.kernel_size.filter(|&k| k > 0);
         if let Some(k) = k
             && k > MAX_KERNEL_SIZE
         {

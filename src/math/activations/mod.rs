@@ -97,6 +97,22 @@ impl ActivationPrecision {
 static ACTIVATION_MODE: core::sync::atomic::AtomicUsize =
     core::sync::atomic::AtomicUsize::new(ActivationPrecision::Standard as usize);
 
+thread_local! {
+    static ACTIVE_MODEL_PRECISION: std::cell::Cell<Option<ActivationPrecision>> = const { std::cell::Cell::new(None) };
+}
+
+/// RAII Guard that resets the thread-local activation precision override to `None` when dropped.
+pub struct ActivationPrecisionGuard {
+    _private: (),
+}
+
+impl Drop for ActivationPrecisionGuard {
+    #[inline(always)]
+    fn drop(&mut self) {
+        ACTIVE_MODEL_PRECISION.with(|p| p.set(None));
+    }
+}
+
 /// Set the global activation precision mode.
 ///
 /// Must be called **outside** the real-time audio thread (during model build
@@ -106,12 +122,33 @@ pub fn set_activation_precision(mode: ActivationPrecision) {
     ACTIVATION_MODE.store(mode as usize, core::sync::atomic::Ordering::Relaxed);
 }
 
-/// Returns the current global activation precision mode.
+/// Temporarily overrides the global activation precision mode for the current thread.
+///
+/// Returns a guard that resets the override to `None` when dropped.
+#[inline]
+pub fn set_thread_local_activation_precision(
+    mode: Option<ActivationPrecision>,
+) -> ActivationPrecisionGuard {
+    ACTIVE_MODEL_PRECISION.with(|p| p.set(mode));
+    ActivationPrecisionGuard { _private: () }
+}
+
+/// Returns the current thread-local activation precision override (if any).
+#[inline]
+pub fn thread_local_activation_precision() -> Option<ActivationPrecision> {
+    ACTIVE_MODEL_PRECISION.with(|p| p.get())
+}
+
+/// Returns the current active activation precision mode (checks thread-local first, then global).
 #[inline]
 pub fn activation_precision() -> ActivationPrecision {
-    match ACTIVATION_MODE.load(core::sync::atomic::Ordering::Relaxed) {
-        1 => ActivationPrecision::HighFidelity,
-        _ => ActivationPrecision::Standard,
+    if let Some(precision) = ACTIVE_MODEL_PRECISION.with(|p| p.get()) {
+        precision
+    } else {
+        match ACTIVATION_MODE.load(core::sync::atomic::Ordering::Relaxed) {
+            1 => ActivationPrecision::HighFidelity,
+            _ => ActivationPrecision::Standard,
+        }
     }
 }
 

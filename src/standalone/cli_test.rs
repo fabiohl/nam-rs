@@ -49,10 +49,7 @@ fn test_parse_args_activation_standard() {
     let args = vec!["nam-rs", "--activation", "standard"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(
-        cli_args.activation as usize,
-        ActivationPrecision::Standard as usize
-    );
+    assert_eq!(cli_args.activation, Some(ActivationPrecision::Standard));
 }
 
 #[test]
@@ -60,10 +57,7 @@ fn test_parse_args_activation_hf() {
     let args = vec!["nam-rs", "--activation", "hf"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(
-        cli_args.activation as usize,
-        ActivationPrecision::HighFidelity as usize
-    );
+    assert_eq!(cli_args.activation, Some(ActivationPrecision::HighFidelity));
 }
 
 #[test]
@@ -71,10 +65,7 @@ fn test_parse_args_activation_highfidelity() {
     let args = vec!["nam-rs", "--activation", "highfidelity"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(
-        cli_args.activation as usize,
-        ActivationPrecision::HighFidelity as usize
-    );
+    assert_eq!(cli_args.activation, Some(ActivationPrecision::HighFidelity));
 }
 
 #[test]
@@ -82,8 +73,5 @@ fn test_parse_args_activation_default() {
     let args: Vec<&str> = vec!["nam-rs"];
     let parser = lexopt::Parser::from_iter(args);
     let cli_args = parse_args_from(parser);
-    assert_eq!(
-        cli_args.activation as usize,
-        ActivationPrecision::Standard as usize
-    );
+    assert_eq!(cli_args.activation, None);
 }

@@ -195,13 +195,15 @@ fn main() -> anyhow::Result<()> {
     let _ = producer.push(ParamPayload::SlimOverride(args.slim_override));
     let _ = producer.push(ParamPayload::SetOversample(args.oversample));
 
-    // Apply activation precision mode before any audio processing
-    set_activation_precision(args.activation);
-    log::info!(
-        "{} Activation precision set to {:?}",
-        "⚡".yellow(),
-        args.activation
-    );
+    // Apply activation precision mode before any audio processing if explicitly overridden by the user
+    if let Some(activation) = args.activation {
+        set_activation_precision(activation);
+        log::info!(
+            "{} Activation precision explicitly set to {:?}",
+            "⚡".yellow(),
+            activation
+        );
+    }
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.
     // Executed here (outside the cold-path of the first DSP frame) to avoid
