@@ -162,7 +162,7 @@ affecting tonality, **without requiring high oversampling factors**. This is the
 bridge between R4/R5 (ADAA for memoryless nonlinearities) and the LSTM cell — the stateful
 recurrent nonlinearity that nam-rs's oversampling characterization (β3.1) identified as
 problematic for timbre preservation. While ADAA for LSTM was architecturally evaluated and
-deferred in favor of oversampling + HighFidelity activations (I6), this paper validates the
+deferred in favor of oversampling + Standard (exact-grade) activations (I6), this paper validates the
 approach and anchors future work should the current mitigation strategy prove insufficient
 for LSTM-family models at high sample rates.
 

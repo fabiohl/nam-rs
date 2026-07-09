@@ -377,23 +377,24 @@ because:
 - Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput per microarchitecture.
 - [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
 
-## 10. Activation Precision Modes — Standard vs. HighFidelity
+## 10. Activation Precision Modes — Fast (Padé) vs. Standard (exact-grade)
 
 NAM-rs provides a runtime-selectable activation precision switch via the `ActivationPrecision`
 enum in [`src/math/activations/mod.rs`](../src/math/activations/mod.rs). The mode is set once at
 initialisation (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor
 specialises to whichever path is stable during steady-state inference.
 
-### 10.1 Standard Mode (`ActivationPrecision::Standard = 0`)
+### 10.1 Fast Mode (`ActivationPrecision::Fast`)
 
-The production default. Uses the Padé [5,4] rational approximant for tanh and the direct minimax
-degree-17 polynomial for sigmoid — both documented in §§1–3 above. Selected for live monitoring:
-fastest path, ~54 ns for 256-element slice (AVX2), error well below the 16-bit PCM quantization floor.
+Uses the Padé [5,4] rational approximant for tanh and the direct minimax
+degree-17 polynomial for sigmoid — both documented in §§1–3 above. Opt-in for CPU-constrained
+setups: fastest path, ~54 ns for 256-element slice (AVX2), error well below the 16-bit PCM
+quantization floor. `Standard` (exact-grade polynomial) is the universal production default.
 
 > [!WARNING]
-> **Calibration Limits under Standard Mode:** The FastMath approximations are optimized for speed over compact domains: tanh is calibrated on $[-4, 4]$ (max absolute error $\approx 2.32\times 10^{-3}$) and sigmoid on $[-8, 8]$ (max absolute error $\approx 4.09\times 10^{-4}$). In models with large hidden layers (such as `BossLSTM-1x16` where weight norms and pre-activation gate values exceed these ranges—e.g., tanh inputs $|g_g| > 4$ and sigmoid inputs $|g_{sig}| > 8$), the approximations lose calibration. In recurrent architectures (LSTM), this leads to cumulative recurrent state drift over time in Standard mode, which is resolved by using the `HighFidelity` precision mode.
+> **Calibration Limits under Fast Mode:** The FastMath approximations are optimized for speed over compact domains: tanh is calibrated on $[-4, 4]$ (max absolute error $\approx 2.32\times 10^{-3}$) and sigmoid on $[-8, 8]$ (max absolute error $\approx 4.09\times 10^{-4}$). In models with large hidden layers (such as `BossLSTM-1x16` where weight norms and pre-activation gate values exceed these ranges—e.g., tanh inputs $|g_g| > 4$ and sigmoid inputs $|g_{sig}| > 8$), the approximations lose calibration. In recurrent architectures (LSTM), this leads to cumulative recurrent state drift over time in `Fast` mode, which is resolved by using the `Standard` (exact-grade) precision mode.
 
-### 10.2 HighFidelity Mode (`ActivationPrecision::HighFidelity = 1`)
+### 10.2 Standard Mode (`ActivationPrecision::Standard`, universal default)
 
 Uses polynomial exp-based kernels with degree-6 Taylor minimax and integer range reduction
 (`k = round(x·log₂e)`, `r = x − k·ln 2`). Implemented in
@@ -404,7 +405,7 @@ Uses polynomial exp-based kernels with degree-6 Taylor minimax and integer range
 | tanh      | `(e²ˣ − 1) / (e²ˣ + 1)` with exp polynomial        | ≤ 2.4e-7                |
 | sigmoid   | `1 / (1 + e⁻ˣ)` with exp polynomial                | ≤ 2.1e-7                |
 
-Error is ~10,000× lower than Standard mode. The exp-based formulation requires one hardware
+Error is ~10,000× lower than `Fast` mode. The exp-based formulation requires one hardware
 division per activation — throughput is dominated by the `_mm256_div_ps` instruction (~10–14
 cycles latency on modern microarchitectures) rather than the polynomial evaluation.
 
@@ -417,9 +418,9 @@ see [`docs/architecture.md §5.0O`](architecture.md)). The rationale:
    back into the baseband — this aliasing dominates the error floor regardless of activation precision.
 2. With 4× oversampling, half-band filtering removes the majority of folded harmonics. The
    **residual aliasing** is then dominated by tanh/sigmoid approximation error — this is where
-   HighFidelity mode provides measurable improvement.
-3. In practice, Standard + 4× oversampling already achieves **>100 dB SNR** for most use cases.
-   HighFidelity provides a further margin for offline rendering and critical listening.
+   Standard (exact-grade) mode provides measurable improvement.
+3. In practice, Fast + 4× oversampling already achieves **>100 dB SNR** for most use cases.
+   Standard provides a further margin for offline rendering and critical listening.
 
 ### 10.4 Full Topology Coverage (including LSTM Fused Gates)
 

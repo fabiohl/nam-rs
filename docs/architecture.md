@@ -69,7 +69,7 @@ Key fused/tiled kernels built on top of this dispatch:
 - **ConvNet:** Feed-forward chain of `ConvNetBlock` (causal Conv1D → fused-affine BatchNorm1D → activation) via ping-pong scratch buffers, plus an optional `PostStackHead`. No gating, no dual-array architecture. See [`src/models/convnet/`](../src/models/convnet/).
 - **Linear:** FIR filter — convolved input history with weights and a bias.
 
-Activation approximations (Padé tanh, minimax sigmoid, the `Standard`/`HighFidelity` precision modes) and their exact error budgets are **not repeated here** — see [docs/fastmath-approximations.md](fastmath-approximations.md) for the numerical analysis and [docs/audio_fidelity_map.md](audio_fidelity_map.md) §1–2 for the fidelity/performance trade-off.
+Activation approximations (Padé tanh, minimax sigmoid, the `Fast`/`Standard` precision modes) and their exact error budgets are **not repeated here** — see [docs/fastmath-approximations.md](fastmath-approximations.md) for the numerical analysis and [docs/audio_fidelity_map.md](audio_fidelity_map.md) §1–2 for the fidelity/performance trade-off.
 
 #### Decision: Modular Math Reorganization & VNNI Cleanup
 

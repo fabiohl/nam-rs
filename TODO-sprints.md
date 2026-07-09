@@ -489,7 +489,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 * **Achado:** linhas 178-181 e a tabela "Live vs. HQ/Offline Summary" (linhas 190-198) — a linha `Activation precision | Standard | HighFidelity` da tabela descreve exatamente o contrato antigo invalidado pelo item 3 (ver Tarefa 2.1). Após o rename, ambos os modos usam `Standard` por default.
 * **Ação:** reescrever a linha da tabela (ex.: `Activation precision | Standard (Fast opt-in) | Standard (enforced)`, ou remover a linha da tabela e mover a explicação para a seção "Activation Precision" acima, já que não é mais um diferencial Live/HQ). Atualizar a lista de bullets (linha 180-181) com rename mecânico simples.
 
-#### 🎯 Tarefa 2.6: `docs/fastmath-approximations.md` (5 menções), `docs/research-references.md` (1), `docs/architecture.md` (1) [🟢 baixo risco, mecânico]
+#### 🎯 Tarefa 2.6: `docs/fastmath-approximations.md` (5 menções), `docs/research-references.md` (1), `docs/architecture.md` (1) [CONCLUÍDA]
 
 * **Ação:** rename mecânico (`HighFidelity→Standard`, contexto de "antiga Standard"→`Fast`) com revisão rápida de cada linha após a troca (sem necessidade de reescrita estrutural, ao que indica o grep de contexto já coletado neste planejamento).
 
@@ -525,18 +525,18 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
 
 > **Princípio:** commits devem ser **bisectáveis** sempre que a dependência de compilação permitir. Código de produção (`src/`) e testes (`tests/`, `src/**/*_test.rs`) são mutuamente dependentes na compilação (os testes referenciam os novos identificadores `Fast`/`Standard`) — não podem ser separados em commits distintos sem deixar um commit intermediário que não compila. Documentação (`docs/*.md`, `README.md`, `TODO-*.md`, `.agents/rules/rust.md`) não tem essa dependência e pode/deve ser commitada separadamente.
 
-#### 🎯 Tarefa 4.1: Commit único — Rename de Código + Testes (Sprint 1)
+#### 🎯 Tarefa 4.1: Commit único — Rename de Código + Testes (Sprint 1) [CONCLUÍDA]
 
 * **Escopo:** todos os arquivos de `src/` e `tests/` já modificados (ver diff atual da árvore de trabalho).
 * **Mensagem sugerida:** `refactor(activation): rename ActivationPrecision Standard<->Fast; Standard (exact) becomes universal default`
 * **Corpo do commit deve incluir:** motivação (resolve B1/B2), nota de compatibilidade (discriminantes preservados, `default_value` do CLAP mudou de 0.0→1.0), e o número medido da Tarefa 3.4.
 
-#### 🎯 Tarefa 4.2: Commit separado — Sincronização de Documentação (Sprint 2)
+#### 🎯 Tarefa 4.2: Commit separado — Sincronização de Documentação (Sprint 2) [CONCLUÍDA]
 
 * **Escopo:** todos os arquivos de `docs/`, `README.md`, `.agents/rules/rust.md`, `TODO-parity.md` tocados na Sprint 2.
 * **Pré-requisito:** Sprint 2 completa (todas as 7 tarefas), não apenas parcialmente.
 
-#### 🎯 Tarefa 4.3: Atualizar Este Documento e `TODO-findings.md` Pós-Commit
+#### 🎯 Tarefa 4.3: Atualizar Este Documento e `TODO-findings.md` Pós-Commit [CONCLUÍDA]
 
 * **Ação:** marcar as Sprints 1-4 deste Épico como `[CONCLUÍDO]` com hash dos commits reais; adicionar a entrada da Tarefa 3.3 em `TODO-findings.md` (se ainda não commitada).
 
