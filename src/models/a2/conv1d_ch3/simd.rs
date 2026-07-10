@@ -287,14 +287,11 @@ pub unsafe fn layer_forward_ch3_block(
         conv1d_ch3_f32_dispatch(conv, layer_buffer, frame_idx, z_slice);
     }
 
-    // 1b. FiLM: conv_post_film + input_mixin_pre_film (post-conv, pre-mixin).
+    // 1b. FiLM: conv_post_film (post-conv, pre-mixin).
     for f in 0..num_frames {
         let cond = &input_cond[f..f + 1];
         let z_slice = &mut z_buf[f * CH_PAD..f * CH_PAD + CH];
         if let Some(ref mut film) = film.conv_post_film {
-            film.process(z_slice, cond);
-        }
-        if let Some(ref mut film) = film.input_mixin_pre_film {
             film.process(z_slice, cond);
         }
     }
@@ -327,13 +324,30 @@ pub unsafe fn layer_forward_ch3_block(
 
     for f in (0..n_paired).step_by(2) {
         let z_off = f * CH_PAD;
-        let cond0 = input_cond[f];
-        let cond1 = input_cond[f + 1];
+        let mut cond0 = input_cond[f];
+        let mut cond1 = input_cond[f + 1];
+
+        // 2a. Apply input_mixin_pre_film to condition values (self-modulation,
+        // C++ model.cpp:188-197). For cond_size == 1 this is: cond = scale * cond + shift.
+        if let Some(ref mut film) = film.input_mixin_pre_film {
+            let orig0 = cond0;
+            let orig1 = cond1;
+            unsafe {
+                film.process(
+                    core::slice::from_mut(&mut cond0),
+                    core::slice::from_ref(&orig0),
+                );
+                film.process(
+                    core::slice::from_mut(&mut cond1),
+                    core::slice::from_ref(&orig1),
+                );
+            }
+        }
 
         // Load z pair [z_f0[0..4], z_f1[0..4]] as one __m256.
         let mut zv = _mm256_loadu_ps(z_buf.as_ptr().add(z_off));
 
-        // 2a. Mixin: z += mixin_w * cond (per-frame scalar broadcast) — isolated mixin scratch buffer.
+        // Mixin: z += mixin_w * cond (per-frame scalar broadcast) — isolated mixin scratch buffer.
         let cond_v8 = _mm256_setr_ps(cond0, cond0, cond0, cond0, cond1, cond1, cond1, cond1);
         let mix_v8 = _mm256_mul_ps(mixin_v8, cond_v8);
 
@@ -485,12 +499,26 @@ pub unsafe fn layer_forward_ch3_block(
         let z_slice = &mut z_buf[z_off..z_off + CH];
 
         // 3a. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
-        // conv_post_film / input_mixin_pre_film already handled in step 1b.
+        // input_mixin_pre_film is applied to condition below, before mixin.
 
-        // 3b. Mixin (isolated).
+        // 3b. Mixin (isolated) — with optional input_mixin_pre_film on condition.
+        let cond_val = input_cond[f];
+        let cond_for_mixin = if let Some(ref mut film) = film.input_mixin_pre_film {
+            let mut modulated = cond_val;
+            let orig = cond_val;
+            unsafe {
+                film.process(
+                    core::slice::from_mut(&mut modulated),
+                    core::slice::from_ref(&orig),
+                );
+            }
+            modulated
+        } else {
+            cond_val
+        };
         let mut mixin_scratch = [0.0f32; CH];
         for c in 0..CH {
-            mixin_scratch[c] = mixin_w[c] * input_cond[f];
+            mixin_scratch[c] = mixin_w[c] * cond_for_mixin;
         }
 
         if let Some(ref mut film) = film.input_mixin_post_film {

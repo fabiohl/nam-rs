@@ -754,3 +754,96 @@ fn test_wavenet_a2_dyn_bug_b3_l1x1_residual_modulation() {
         actual_val
     );
 }
+
+#[test]
+fn test_wavenet_a2_dyn_bug_c1_mixin_pre_film_modulates_condition() {
+    use crate::math::common::AlignedVec;
+    use crate::models::a2::conv1d::A2Conv1d;
+    use crate::models::a2::film::{FiLMConfig, FiLMLayer};
+    use crate::models::a2::layer::A2Layer;
+
+    let mut model = WaveNetA2Dyn::new(
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        &[1], // kernel_sizes
+        &[1], // dilations
+        vec![ActivationType::LeakyReLU {
+            negative_slope: 1.0, // identity
+        }],
+        vec![GatingMode::None],
+        vec![None],
+        false,
+    )
+    .unwrap();
+
+    model.rechannel_w_f32 = AlignedVec::from_vec(vec![1.0]).unwrap();
+
+    // Dilated causal Conv1D: bias = 3.0, weights = 0.0
+    let conv = A2Conv1d::new(
+        AlignedVec::from_vec(vec![0.0; 4]).unwrap(),
+        AlignedVec::from_vec(vec![3.0]).unwrap(),
+        true,
+        1,
+        1,
+        1,
+        1,
+    );
+    let mixin_w = AlignedVec::from_vec(vec![4.0]).unwrap();
+    let l1x1_w = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let l1x1_b = AlignedVec::from_vec(vec![0.0]).unwrap();
+
+    let mut layer = A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b);
+
+    // Active input_mixin_pre_film FiLM layer: cond_size=1, channels=1
+    let film_config = FiLMConfig {
+        active: true,
+        shift: true,
+        groups: 1,
+    };
+    // scale = 2.0 * cond + 0.0, shift = 1.0 * cond + 0.0
+    let film_layer = FiLMLayer::load(
+        film_config,
+        1, // cond_size
+        1, // channels (= cond_size, C++ convention for slot 2)
+        vec![2.0, 1.0],
+        vec![0.0, 0.0],
+    )
+    .unwrap();
+    layer.input_mixin_pre_film = Some(film_layer);
+
+    model.layers = vec![layer];
+
+    let input = vec![0.5];
+    let mut output = vec![0.0];
+    model.process(&input, &mut output);
+
+    // Mathematical trace (C++ model.cpp:188-197):
+    // conv_out = bias = 3.0
+    // input_mixin_pre_film self-modulates condition (target == cond == 0.5):
+    //   scale = 2.0 * 0.5 + 0.0 = 1.0
+    //   shift = 1.0 * 0.5 + 0.0 = 0.5
+    //   cond_mod = 0.5 * 1.0 + 0.5 = 1.0
+    // mixin = mixin_w[0] * cond_mod = 4.0 * 1.0 = 4.0
+    // z = conv_out + mixin = 3.0 + 4.0 = 7.0
+    // LeakyReLU (identity): unchanged → head_accum = 7.0
+    //
+    // If the old bug were present (FiLM applied to z_scratch instead of condition):
+    //   z_mod = 3.0 * 1.0 + 0.5 = 3.5
+    //   mixin = 4.0 * 0.5 = 2.0
+    //   z = 3.5 + 2.0 = 5.5  (wrong output, 7.0 vs 5.5 distinguishable)
+
+    let head_wp = model.receptive_field_size;
+    let actual_val = model.head_accum[head_wp];
+    let expected_val = 7.0f32;
+
+    assert!(
+        (actual_val - expected_val).abs() < 1e-4,
+        "Bug C1 test failed: expected {}, got {}",
+        expected_val,
+        actual_val
+    );
+}

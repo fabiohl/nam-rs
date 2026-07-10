@@ -667,21 +667,29 @@ pub(crate) fn oracle_a2_forward(
                     z_scratch[oc] = sum;
                 }
 
-                // conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
+                // conv_post_film (slot 1)
                 if let Some(ref mut film) = lw.film[1] {
                     film.apply(&mut z_scratch[..z_out_ch], condition);
                 }
-                if let Some(ref mut film) = lw.film[2] {
-                    film.apply(&mut z_scratch[..z_out_ch], condition);
-                }
 
-                // Mixin
+                // Mixin — input_mixin_pre_film (slot 2) applied to condition
+                // (self-modulation, C++ model.cpp:188-197) before the mixin.
+                let condition_mod = if lw.film[2].is_some() {
+                    let mut cond_copy = condition.to_vec();
+                    lw.film[2]
+                        .as_mut()
+                        .unwrap()
+                        .apply(&mut cond_copy, condition);
+                    cond_copy
+                } else {
+                    condition.to_vec()
+                };
                 let mut mixin_contrib = vec![0.0f64; z_out_ch];
-                if !condition.is_empty() {
+                if !condition_mod.is_empty() {
                     for c in 0..z_out_ch.min(bottleneck) {
                         let mut sum = 0.0;
-                        for k in 0..cond_size.min(condition.len()) {
-                            sum += lw.mixin_w[c * cond_size + k] * condition[k];
+                        for k in 0..cond_size.min(condition_mod.len()) {
+                            sum += lw.mixin_w[c * cond_size + k] * condition_mod[k];
                         }
                         mixin_contrib[c] = sum;
                     }

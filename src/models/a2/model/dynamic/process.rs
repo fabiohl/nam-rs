@@ -244,6 +244,7 @@ impl WaveNetA2Dyn {
             let head_accum = &mut self.head_accum;
             let layer_in = &mut self.layer_in;
             let head1x1_scratch = &mut self.head1x1_scratch;
+            let cond_scratch = &mut self.cond_scratch;
             let head1x1_w = &self.head1x1_w;
             let head1x1_b = &self.head1x1_b;
             let gating_config = self.gating_configs[li].as_ref();
@@ -280,6 +281,7 @@ impl WaveNetA2Dyn {
                         head_accum,
                         layer_in,
                         head1x1_scratch,
+                        cond_scratch,
                         head1x1_w,
                         head1x1_b,
                         gating_config,
@@ -340,6 +342,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     head_accum: &mut [f32],
     layer_in: &mut [f32],
     head1x1_scratch: &mut [f32],
+    cond_scratch: &mut [f32],
     head1x1_w: &[f32],
     head1x1_b: &[f32],
     gating_config: Option<&GatingActivationConfig>,
@@ -367,21 +370,34 @@ unsafe fn process_frame_dyn<M: SimdMath>(
             film.process(&mut z_scratch[..z_out_ch], cond_slice);
         }
     }
-    if let Some(ref mut film) = layer.input_mixin_pre_film {
-        unsafe {
-            film.process(&mut z_scratch[..z_out_ch], cond_slice);
-        }
-    }
 
-    // 2. Input mixin — matrix-vector multiply when cond_size > 1 (A2 generic).
-    // Standard A2 (cond_size == 1) reduces to: mixin_scratch[c] = mixin_w[c] * cond_slice[0].
-    for c in 0..z_out_ch {
-        let base = c * cond_size;
-        let mut sum = 0.0;
-        for k in 0..cond_size {
-            sum += layer.mixin_w[base + k] * cond_slice[k];
+    // 2. Input mixin — matrix-vector multiply.
+    // When input_mixin_pre_film is active, the condition vector is first
+    // modulated by FiLM (self-modulation, C++ model.cpp:188-197), then the
+    // modulated condition feeds the mixin instead of the raw condition.
+    {
+        let mut cond_is_modulated = false;
+        if let Some(ref mut film) = layer.input_mixin_pre_film {
+            cond_scratch[..cond_size].copy_from_slice(cond_slice);
+            unsafe {
+                film.process(&mut cond_scratch[..cond_size], cond_slice);
+            }
+            cond_is_modulated = true;
         }
-        mixin_scratch[c] = sum;
+        let cond_for_mixin: &[f32] = if cond_is_modulated {
+            &cond_scratch[..cond_size]
+        } else {
+            cond_slice
+        };
+
+        for c in 0..z_out_ch {
+            let base = c * cond_size;
+            let mut sum = 0.0;
+            for k in 0..cond_size {
+                sum += layer.mixin_w[base + k] * cond_for_mixin[k];
+            }
+            mixin_scratch[c] = sum;
+        }
     }
 
     // FiLM post-mixin + pre-activation.

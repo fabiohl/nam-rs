@@ -303,16 +303,17 @@ pub(crate) fn load_film_for_layer(
         if !config.active {
             continue;
         }
+        let film_channels = if idx == 2 { cond_size } else { channels };
         let (w_count, b_count) = if cond_size > 1 {
             // A2 generic: integer-safe formula with channels-sized bias
             (
-                film_weight_count_generic(config.groups, cond_size, channels, config.shift),
-                film_bias_count_generic(channels),
+                film_weight_count_generic(config.groups, cond_size, film_channels, config.shift),
+                film_bias_count_generic(film_channels),
             )
         } else {
             (
-                film_weight_count(config.groups, cond_size, channels, config.shift),
-                film_bias_count(channels, config.shift),
+                film_weight_count(config.groups, cond_size, film_channels, config.shift),
+                film_bias_count(film_channels, config.shift),
             )
         };
         let key = FILM_KEYS[idx].0;
@@ -335,7 +336,7 @@ pub(crate) fn load_film_for_layer(
         let film_layer = FiLMLayer::load(
             *config,
             cond_size,
-            channels,
+            film_channels,
             film_w.to_vec(),
             film_b.to_vec(),
         )

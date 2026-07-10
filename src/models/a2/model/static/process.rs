@@ -297,15 +297,25 @@ impl<const CH: usize> WaveNetA2<CH> {
                             film.process(&mut self.z_scratch[..ch], cond);
                         }
                     }
-                    if let Some(ref mut film) = film_block.input_mixin_pre_film {
-                        unsafe {
-                            film.process(&mut self.z_scratch[..ch], cond);
-                        }
-                    }
 
-                    // 2. Input mixin.
+                    // 2. Input mixin — input_mixin_pre_film applied to condition (self-modulation).
+                    let cond_val = input[pos + f];
+                    let cond_for_mixin = if let Some(ref mut film) = film_block.input_mixin_pre_film
+                    {
+                        let mut modulated = cond_val;
+                        let orig = cond_val;
+                        unsafe {
+                            film.process(
+                                core::slice::from_mut(&mut modulated),
+                                core::slice::from_ref(&orig),
+                            );
+                        }
+                        modulated
+                    } else {
+                        cond_val
+                    };
                     for c in 0..ch {
-                        self.z_scratch[c] += mixin_w[c] * input[pos + f];
+                        self.z_scratch[c] += mixin_w[c] * cond_for_mixin;
                     }
 
                     // 2b. FiLM post-mixin.
