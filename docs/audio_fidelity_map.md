@@ -328,6 +328,10 @@ Decisions on fidelity, trade-offs, and optimization are catalogued below:
 - **Sprint S6 Resampler Optimization:** Discarded the dual resampler quality settings (Standard/HQ). HQ (64-tap minimum-phase Kaiser sinc) was made permanent since the lighter 32-tap resampler only saved ~40 ns per block while severely degrading the signal-to-noise ratio from ≥100 dB to ~24 dB.
 - **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the exact-grade activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh — now the universal `Standard` default.
 - **Sprint S10 FiLM Parity Correction (2026-07-10):** Resolved the long-standing A2 FiLM interop gap. The Python synthetic weight generator was corrected to apply the standard `+1.0` bias to the scale channels of the FiLM layer (identity-biased initialization). This collapsed the interop gap from SNR 18–36 dB to standard float32 precision limits (SNR 138+ dB, ESR ~1e-14) against the C++ Eigen path. A zero-biased chaos stress model (`wavenet_a2_film_chaos_stress`) was retained to verify engine consistency under numerical stress.
+- **Sprint S3 FiLM Bug Correction (2026-07-10):** Three production bugs (B1/B2/B3) in `input_mixin_post_film` and `layer1x1_post_film` were corrected — ordering errors where FiLM modulated already-accumulated buffers (conv+mixin, input+l1x1) instead of isolated signals, and `layer1x1_post_film` was incorrectly applied for all gating modes instead of only `BLENDED`. The 2 deactivated slots were restored to the fixtures, yielding full 4-slot coverage (previously only 2 slots were tested). Final measurements against C++ golden (all metrics pass calibrated gates at 120 dB SNR / 1.0e-11 ESR):
+  - `wavenet_a2_film_full` (CH=8): **SNR 139.4 dB**, **ESR 1.15e-14**
+  - `wavenet_a2_film_lite` (CH=3): **SNR 124.2 dB**, **ESR 3.83e-13**
+  - `wavenet_a2_film_chaos_stress` (CH=3): SNR 139.0 dB, ESR 1.25e-14
 
 ---
 

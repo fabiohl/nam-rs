@@ -78,31 +78,31 @@ Defined in `tests/common/validation.rs:435` (`get_calibrated_threshold`). Each m
 empirically measured `(mse_limit, min_snr_db, max_esr, mrstft_max)` at 48 kHz with 2048-sample v1
 stress signal. Source measurements are documented in code comments.
 
-| Model                                | SNR dB | ESR max | MR-STFT max | Notes                                                  |
-| ------------------------------------ | ------ | ------- | ----------- | ------------------------------------------------------ |
-| WaveNet Standard (CH=16)             | 105    | 3.0e-11 | 0.05        | Golden only                                            |
-| WaveNet A1 Standard / Official CH=16 | 85     | 3.0e-9  | 0.05        | Live parity                                            |
-| WaveNet Feather (CH=8)               | 100    | 1.0e-10 | 0.05        | Golden only                                            |
-| WaveNet Nano (CH=4)                  | 95     | 3.0e-10 | 0.05        | Golden only                                            |
-| WaveNet Lite (CH=12)                 | 105    | 3.5e-11 | 0.05        | Golden only                                            |
-| WaveNet Official (CH=3)              | 14     | 3.5e-2  | 0.05        | Live parity, extreme compression                       |
-| WaveNet Cond-DSP                     | 100    | 1.0e-10 | 0.35        | cond=3, dynamic path (see §MR-STFT Sensitivity Caveat) |
-| WaveNet Dyn Free-Shape               | 90     | 1.0e-11 | 0.05        | CH=7→4, head_scale=0.02                                |
-| Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall                   |
-| A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                                       |
-| A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                            |
-| A2-FiLM-Lite (CH=3)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM active, identity-biased                           |
-| A2-FiLM-Full (CH=8)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM active, identity-biased                           |
-| A2-FiLM-Chaos (CH=3)                 | 12     | 3.5e-2  | 0.498       | Chaos stress model (zero-biased scale)                 |
-| A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                                       |
-| A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                                        |
-| A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                                     |
-| ConvNet Test                         | 140    | 1.0e-10 | 0.05        | Self-golden consistency                                |
-| LSTM 1×16                            | 12     | 6.5e-2  | 0.15        | Recurrent drift (see §LSTM Recurrent Drift)            |
-| LSTM 2×8                             | 18     | 2.0e-2  | 0.12        | Recurrent drift                                        |
-| LSTM Official (H=3)                  | 22     | 6.0e-3  | 0.22        | Recurrent drift                                        |
-| LSTM-Dyn 1×7                         | 80     | 3.5e-9  | 0.08        | Non-catalog geometry, 48 kHz only                      |
-| Linear                               | 140    | 1.0e-10 | —           | Bit-exact proxy                                        |
+| Model                                | SNR dB | ESR max | MR-STFT max | Notes                                                                       |
+| ------------------------------------ | ------ | ------- | ----------- | --------------------------------------------------------------------------- |
+| WaveNet Standard (CH=16)             | 105    | 3.0e-11 | 0.05        | Golden only                                                                 |
+| WaveNet A1 Standard / Official CH=16 | 85     | 3.0e-9  | 0.05        | Live parity                                                                 |
+| WaveNet Feather (CH=8)               | 100    | 1.0e-10 | 0.05        | Golden only                                                                 |
+| WaveNet Nano (CH=4)                  | 95     | 3.0e-10 | 0.05        | Golden only                                                                 |
+| WaveNet Lite (CH=12)                 | 105    | 3.5e-11 | 0.05        | Golden only                                                                 |
+| WaveNet Official (CH=3)              | 14     | 3.5e-2  | 0.05        | Live parity, extreme compression                                            |
+| WaveNet Cond-DSP                     | 100    | 1.0e-10 | 0.35        | cond=3, dynamic path (see §MR-STFT Sensitivity Caveat)                      |
+| WaveNet Dyn Free-Shape               | 90     | 1.0e-11 | 0.05        | CH=7→4, head_scale=0.02                                                     |
+| Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall                                        |
+| A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                                                            |
+| A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                                                 |
+| A2-FiLM-Lite (CH=3)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM 4 slots active, identity-biased (meas. SNR 124.2 dB, ESR 3.83e-13)     |
+| A2-FiLM-Full (CH=8)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM 4 slots active, identity-biased (meas. SNR 139.4 dB, ESR 1.15e-14)     |
+| A2-FiLM-Chaos (CH=3)                 | 12     | 3.5e-2  | 0.498       | Chaos stress model, 4 slots, zero-biased (meas. SNR 139.0 dB, ESR 1.25e-14) |
+| A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                                                            |
+| A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                                                             |
+| A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                                                          |
+| ConvNet Test                         | 140    | 1.0e-10 | 0.05        | Self-golden consistency                                                     |
+| LSTM 1×16                            | 12     | 6.5e-2  | 0.15        | Recurrent drift (see §LSTM Recurrent Drift)                                 |
+| LSTM 2×8                             | 18     | 2.0e-2  | 0.12        | Recurrent drift                                                             |
+| LSTM Official (H=3)                  | 22     | 6.0e-3  | 0.22        | Recurrent drift                                                             |
+| LSTM-Dyn 1×7                         | 80     | 3.5e-9  | 0.08        | Non-catalog geometry, 48 kHz only                                           |
+| Linear                               | 140    | 1.0e-10 | —           | Bit-exact proxy                                                             |
 
 Fallback formulas (when a model has no calibrated entry):
 
@@ -630,11 +630,11 @@ For WaveNet, ESR(vs NAMCore) ≈ 1e-13 and ESR(vs f64 oracle, prewarm-paired) =
 For LSTM, the relationship is **model-dependent** — it is incorrect to quote a
 single "LSTM" figure:
 
-| Model            | ESR vs NAMCore  | ESR vs f64 oracle (paired) | Note                               |
-| ---------------- | --------------- | -------------------------- | ---------------------------------- |
-| BossLSTM-1x16    | 2.59e-2 (−15.9) | 5.06e-2 (−13.0)            | Absolute floor *exceeds* interop   |
-| BossLSTM-2x8     | 3.88e-3 (−24.1) | 1.73e-3 (−27.6)            | Interop ~2.2× absolute floor       |
-| lstm.nam (H=3)   | 1.18e-3 (−29.3) | 3.41e-3 (−24.7)            | Interop ~0.35× absolute floor      |
+| Model          | ESR vs NAMCore  | ESR vs f64 oracle (paired) | Note                             |
+| -------------- | --------------- | -------------------------- | -------------------------------- |
+| BossLSTM-1x16  | 2.59e-2 (−15.9) | 5.06e-2 (−13.0)            | Absolute floor *exceeds* interop |
+| BossLSTM-2x8   | 3.88e-3 (−24.1) | 1.73e-3 (−27.6)            | Interop ~2.2× absolute floor     |
+| lstm.nam (H=3) | 1.18e-3 (−29.3) | 3.41e-3 (−24.7)            | Interop ~0.35× absolute floor    |
 
 The dominant error source for BossLSTM-1x16 is **Padé activation approximation**
 (ΔESR = 4.81e-2 of total 5.06e-2, per Sprint 2 Tarefa 1.3 decomposition), not
@@ -698,11 +698,11 @@ The Sprint 2 investigation (Tarefa 2.3) confirmed:
 All measurements at 48 kHz, stress signal v2 (5 s, 240k samples), golden_vectors
 vs NAMCore C++ (pre-recorded golden vectors):
 
-| Model            | ESR (vs NAMCore)   | ESR (vs f64 oracle, paired) | SNR (dB) | MR-STFT | Dominant error source           |
-| ---------------- | ------------------ | --------------------------- | -------- | ------- | ------------------------------- |
-| BossLSTM-1×16    | 2.59e-2 (−15.9 dB) | 5.06e-2 (−13.0 dB)          | 15.5     | 0.56    | Padé act. (95%: 4.81e-2 ΔESR)   |
-| BossLSTM-2×8     | 3.88e-3 (−24.1 dB) | 1.73e-3 (−27.6 dB)          | 24.1     | 0.56    | Padé act. (~100%: 1.74e-3 ΔESR) |
-| lstm.nam (H=3)   | 1.18e-3 (−29.3 dB) | 3.41e-3 (−24.7 dB)          | 29.3     | 0.64    | f32 accumulation + bf16 quant.  |
+| Model          | ESR (vs NAMCore)   | ESR (vs f64 oracle, paired) | SNR (dB) | MR-STFT | Dominant error source           |
+| -------------- | ------------------ | --------------------------- | -------- | ------- | ------------------------------- |
+| BossLSTM-1×16  | 2.59e-2 (−15.9 dB) | 5.06e-2 (−13.0 dB)          | 15.5     | 0.56    | Padé act. (95%: 4.81e-2 ΔESR)   |
+| BossLSTM-2×8   | 3.88e-3 (−24.1 dB) | 1.73e-3 (−27.6 dB)          | 24.1     | 0.56    | Padé act. (~100%: 1.74e-3 ΔESR) |
+| lstm.nam (H=3) | 1.18e-3 (−29.3 dB) | 3.41e-3 (−24.7 dB)          | 29.3     | 0.64    | f32 accumulation + bf16 quant.  |
 
 \* Oráculo f64 measured on short sweep (256 samples); pad for long-duration.
 
@@ -755,11 +755,11 @@ smaller total (ΔESR = 1.74e-3 / 1.73e-3). For `lstm.nam` (H=3), the floor
 
 **Summary of per-model classification:**
 
-| Model            | Interop vs Absolute | Root cause                          | Fixable?                                                      |
-| ---------------- | ------------------- | ----------------------------------- | ------------------------------------------------------------- |
-| BossLSTM-1×16    | Interop < Absolute  | Padé act. out of calibration range  | `Standard` reduces vs-Namcore to ~1e-11; vs-f64 to ~2.5e-3    |
-| BossLSTM-2×8     | Interop > Absolute  | Padé act. at edge of range          | `Standard` reduces vs-Namcore to ~1e-12; vs-f64 to near floor |
-| lstm.nam (H=3)   | Interop < Absolute  | f32 accumulation + bf16 quant.      | Kahan accumulation in head; Padé negligible here              |
+| Model          | Interop vs Absolute | Root cause                         | Fixable?                                                      |
+| -------------- | ------------------- | ---------------------------------- | ------------------------------------------------------------- |
+| BossLSTM-1×16  | Interop < Absolute  | Padé act. out of calibration range | `Standard` reduces vs-Namcore to ~1e-11; vs-f64 to ~2.5e-3    |
+| BossLSTM-2×8   | Interop > Absolute  | Padé act. at edge of range         | `Standard` reduces vs-Namcore to ~1e-12; vs-f64 to near floor |
+| lstm.nam (H=3) | Interop < Absolute  | f32 accumulation + bf16 quant.     | Kahan accumulation in head; Padé negligible here              |
 
 The pre-T8.2 conclusion *"both diverge from the ideal by ~1.0"* was contaminated
 by the oracle's unmatched state. The pre-Sprint-2 conclusion *"interop gap 7×
@@ -803,11 +803,11 @@ Padé activation error — not in the 3e-3 range.
 
 **Fixability:**
 
-| Scope                        | BossLSTM-1×16           | BossLSTM-2×8              | lstm.nam (H=3)              |
-| ---------------------------- | ----------------------- | ------------------------- | --------------------------- |
-| vs NAMCore (interop)         | `Standard` → 5.05e-11 ✓ | `Standard` → 4.02e-12 ✓   | Already ~1e-3, near floor   |
-| vs f64 ideal (absolute)      | `Standard` → ~2.5e-3 ✓  | `Standard` → near floor ✓ | ~3.4e-3, f32-format limited |
-| CPU cost of Standard         | Higher (poly exp-based) | Higher                    | Not needed here             |
+| Scope                   | BossLSTM-1×16           | BossLSTM-2×8              | lstm.nam (H=3)              |
+| ----------------------- | ----------------------- | ------------------------- | --------------------------- |
+| vs NAMCore (interop)    | `Standard` → 5.05e-11 ✓ | `Standard` → 4.02e-12 ✓   | Already ~1e-3, near floor   |
+| vs f64 ideal (absolute) | `Standard` → ~2.5e-3 ✓  | `Standard` → near floor ✓ | ~3.4e-3, f32-format limited |
+| CPU cost of Standard    | Higher (poly exp-based) | Higher                    | Not needed here             |
 
 The verdict for BossLSTM models: **the interop gap IS fixable via `Standard`
 (exact-grade) activation mode** (already implemented in NAM-rs). As of Sprint 2
