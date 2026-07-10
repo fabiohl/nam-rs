@@ -4,6 +4,7 @@
 //! Panic hook facility to capture and write diagnostic bundles to disk on panic.
 
 use crate::common::diagnostics::DiagnosticBundle;
+use std::cell::Cell;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,6 +12,10 @@ use std::sync::OnceLock;
 use std::time::SystemTime;
 
 static SHUTDOWN_IN_PROGRESS: OnceLock<bool> = OnceLock::new();
+
+thread_local! {
+    static PANIC_HOOK_ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
 
 /// Sets the global flag signaling that shutdown is in progress.
 ///
@@ -32,6 +37,11 @@ pub fn install_panic_hook(component: &'static str) {
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         if is_shutdown_in_progress() {
+            prev_hook(info);
+            return;
+        }
+
+        if PANIC_HOOK_ACTIVE.replace(true) {
             prev_hook(info);
             return;
         }
@@ -116,6 +126,7 @@ pub fn install_panic_hook(component: &'static str) {
             }
         }
 
+        PANIC_HOOK_ACTIVE.set(false);
         prev_hook(info);
     }));
 }

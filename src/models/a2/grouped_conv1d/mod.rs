@@ -190,14 +190,22 @@ impl A2GroupedConv1d {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
-        debug_assert!(
+        // SAFETY-CRITICAL: these preconditions gate the raw pointer
+        // arithmetic performed by `process_single_frame_depthwise_avx2`/
+        // `grouped_conv1d_single_frame_simd` below (`frame_idx` in particular
+        // drives an offset into `layer_buffer` computed via
+        // signed-then-unsigned arithmetic that wraps to a huge value if
+        // `frame_idx` is too small). Must be `assert!`, not `debug_assert!`
+        // — confirmed to cause a SIGSEGV in release when elided (see
+        // TODO-findings.md Achado A2).
+        assert!(
             out_frame.len() >= self.out_ch,
             "out_frame len {} < out_ch {}",
             out_frame.len(),
             self.out_ch
         );
         let lookback = self.dilation * (self.kernel.saturating_sub(1));
-        debug_assert!(
+        assert!(
             frame_idx >= lookback,
             "frame_idx {} < lookback {} (dilation={} * kernel-1={})",
             frame_idx,
@@ -205,14 +213,14 @@ impl A2GroupedConv1d {
             self.dilation,
             self.kernel.saturating_sub(1)
         );
-        debug_assert!(
+        assert!(
             layer_buffer.len() > frame_idx * self.in_ch,
             "layer_buffer len {} <= frame_idx {} * in_ch {}",
             layer_buffer.len(),
             frame_idx,
             self.in_ch
         );
-        debug_assert!(
+        assert!(
             mixin.is_none_or(|m| m.len() >= self.out_ch),
             "mixin len {:?} < out_ch {}",
             mixin.map(|m| m.len()),
@@ -248,14 +256,18 @@ impl A2GroupedConv1d {
         num_frames: usize,
         mixin: Option<&[f32]>,
     ) {
-        debug_assert!(
+        // SAFETY-CRITICAL: gates the per-frame slicing below, which feeds
+        // directly into the unsafe SIMD kernel's raw pointer arithmetic.
+        // Must be `assert!`, not `debug_assert!` — see note in
+        // `process_single_frame` above / TODO-findings.md Achado A2.
+        assert!(
             block.len() >= num_frames * self.out_ch,
             "process_block: block len {} < num_frames {} * out_ch {}",
             block.len(),
             num_frames,
             self.out_ch
         );
-        debug_assert!(
+        assert!(
             mixin.is_none_or(|m| m.len() >= num_frames * self.out_ch),
             "process_block: mixin len {:?} < num_frames {} * out_ch {}",
             mixin.map(|m| m.len()),

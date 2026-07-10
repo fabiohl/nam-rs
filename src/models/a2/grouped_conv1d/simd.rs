@@ -21,7 +21,13 @@ pub(crate) unsafe fn load_mixin_4(
     out_c: usize,
     out_ch: usize,
 ) -> (f32, f32, f32, f32) {
-    debug_assert!(
+    // SAFETY-CRITICAL: this precondition gates unchecked slice access
+    // (`get_unchecked`) below. Must be `assert!`, not `debug_assert!` — the
+    // latter is elided in release builds, turning an out-of-bounds `mixin`
+    // into silent UB (out-of-bounds read) instead of a clean panic. See
+    // TODO-findings.md Achado A2 for the release-mode SIGSEGV this exact
+    // class of bug caused in the sibling `grouped_conv1d_single_frame_simd`.
+    assert!(
         mixin.is_none_or(|m| m.len() >= out_ch),
         "load_mixin_4: mixin len {:?} < out_ch {}",
         mixin.map(|m| m.len()),
@@ -67,19 +73,27 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
     debug_assert_eq!(conv.groups, conv.out_ch);
     debug_assert_eq!(conv.in_per_group, 1);
     debug_assert_eq!(conv.out_per_group, 1);
-    debug_assert!(
+    // SAFETY-CRITICAL: `frame_idx`/`layer_buffer` gate raw pointer arithmetic
+    // (`layer_buffer.as_ptr().add(in_start)` below, with `in_start` derived
+    // from `frame_idx` via signed-then-unsigned arithmetic that wraps to a
+    // huge offset if `frame_idx` is too small). Must be `assert!`, not
+    // `debug_assert!` — eliding this check in release does not fail cleanly,
+    // it produces an out-of-bounds pointer dereference (confirmed SIGSEGV in
+    // the sibling `grouped_conv1d_single_frame_simd`, same pattern; see
+    // TODO-findings.md Achado A2).
+    assert!(
         out_frame.len() >= conv.out_ch,
         "depthwise: out_frame len {} < out_ch {}",
         out_frame.len(),
         conv.out_ch
     );
-    debug_assert!(
+    assert!(
         frame_idx >= conv.dilation * (conv.kernel.saturating_sub(1)),
         "depthwise: frame_idx {} < lookback {}",
         frame_idx,
         conv.dilation * (conv.kernel.saturating_sub(1))
     );
-    debug_assert!(
+    assert!(
         layer_buffer.len() > frame_idx * conv.in_ch,
         "depthwise: layer_buffer len {} <= frame_idx {} * in_ch {}",
         layer_buffer.len(),
@@ -193,26 +207,33 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
     frame_idx: usize,
     mixin: Option<&[f32]>,
 ) {
-    debug_assert!(
+    // SAFETY-CRITICAL: `frame_idx`/`layer_buffer` gate raw pointer arithmetic
+    // (`layer_buffer.as_ptr().add(in_start)` below, with `in_start` derived
+    // from `frame_idx` via signed-then-unsigned arithmetic that wraps to a
+    // huge offset if `frame_idx` is too small). Must be `assert!`, not
+    // `debug_assert!` — confirmed to cause a SIGSEGV in release when this
+    // check was elided (see TODO-findings.md Achado A2,
+    // `should_panic_simd_kernel_frame_idx_too_low`).
+    assert!(
         out_frame.len() >= conv.out_ch,
         "simd: out_frame len {} < out_ch {}",
         out_frame.len(),
         conv.out_ch
     );
-    debug_assert!(
+    assert!(
         frame_idx >= conv.dilation * (conv.kernel.saturating_sub(1)),
         "simd: frame_idx {} < lookback {}",
         frame_idx,
         conv.dilation * (conv.kernel.saturating_sub(1))
     );
-    debug_assert!(
+    assert!(
         layer_buffer.len() > frame_idx * conv.in_ch,
         "simd: layer_buffer len {} <= frame_idx {} * in_ch {}",
         layer_buffer.len(),
         frame_idx,
         conv.in_ch
     );
-    debug_assert!(
+    assert!(
         mixin.is_none_or(|m| m.len() >= conv.out_ch),
         "simd: mixin len {:?} < out_ch {}",
         mixin.map(|m| m.len()),

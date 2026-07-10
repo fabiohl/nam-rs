@@ -8,9 +8,17 @@ use nam_rs::common::diagnostics::{
     TelemetrySnapshot,
 };
 use nam_rs::common::spsc::RtStatusFlags;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static HOOK_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Generate a unique `&'static str` component name for panic hook tests
+/// to prevent cross-contamination from concurrent test thread panics.
+fn unique_component(base: &str) -> &'static str {
+    let id = HOOK_ID.fetch_add(1, Ordering::Relaxed);
+    Box::leak(format!("{}-{}", base, id).into_boxed_str())
+}
 
 struct MockSnapshotProvider {
     model: Option<ModelInfo>,
@@ -175,7 +183,7 @@ fn test_panic_hook_behavior() {
     let _ = fs::create_dir_all(&cache_dir);
 
     // Part 1: Test persistence when shutdown is NOT in progress.
-    let component_name = "test-panic-persistence";
+    let component_name = unique_component("test-panic-persistence");
 
     // Clear old files
     if let Ok(entries) = fs::read_dir(&cache_dir) {
@@ -236,7 +244,7 @@ fn test_panic_hook_behavior() {
     let _ = fs::remove_file(report_path);
 
     // Part 2: Test bypass when shutdown IS in progress.
-    let component_bypass = "test-panic-bypass";
+    let component_bypass = unique_component("test-panic-bypass");
 
     // Clear old files
     if let Ok(entries) = fs::read_dir(&cache_dir) {
