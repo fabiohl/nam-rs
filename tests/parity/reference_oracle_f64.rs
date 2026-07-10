@@ -261,6 +261,29 @@ fn test_oracle_vs_python_anchor_a2_film_full() {
     );
 }
 
+#[test]
+fn test_oracle_vs_python_anchor_a2_film_input_mixin_pre() {
+    let path = models_dir().join("wavenet_a2_film_input_mixin_pre.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor =
+        load_f64_binary(&anchors_dir().join("wavenet_a2_film_input_mixin_pre_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "A2-FiLM-InputMixinPre: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-12,
+        "A2-FiLM-InputMixinPre Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
 // ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
 // Oracle ESR limits are defined in tests/common/constants.rs as pub const
 // (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT) and shared between
@@ -811,9 +834,27 @@ fn test_oracle_a2_film_full() {
 }
 
 #[test]
+fn test_oracle_a2_film_input_mixin_pre() {
+    let esr = run_oracle_esr_paired(
+        "wavenet_a2_film_input_mixin_pre.nam",
+        "A2-FiLM-InputMixinPre",
+    );
+    assert!(
+        esr < A2_FILM_ESR_LIMIT,
+        "A2-FiLM-InputMixinPre ESR={:.6e} exceeds calibrated limit {}",
+        esr,
+        A2_FILM_ESR_LIMIT
+    );
+}
+
+#[test]
 fn test_combined_simulation_a2_film() {
     run_combined_paired_test("wavenet_a2_film_lite.nam", "A2-FiLM-Lite");
     run_combined_paired_test("wavenet_a2_film_full.nam", "A2-FiLM-Full");
+    run_combined_paired_test(
+        "wavenet_a2_film_input_mixin_pre.nam",
+        "A2-FiLM-InputMixinPre",
+    );
 }
 
 // ── S13.2: A2 Generic oracle tests ────────────────────────────────────────

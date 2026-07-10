@@ -428,20 +428,26 @@ pub(crate) fn oracle_a2_forward(
                     .and_then(|s| s.as_bool())
                     .unwrap_or(true);
 
+                let film_ch = match slot_idx {
+                    2 => cond_size,
+                    7 => 1.min(cond_size),
+                    _ => ch,
+                };
+
                 let (w_count, b_count) = if cond_size > 1 {
                     (
-                        film_weight_count_generic(g, cond_size, ch, shift),
-                        film_bias_count_generic(ch),
+                        film_weight_count_generic(g, cond_size, film_ch, shift),
+                        film_bias_count_generic(film_ch),
                     )
                 } else {
                     (
-                        film_weight_count(g, cond_size, ch, shift),
-                        film_bias_count(ch, shift),
+                        film_weight_count(g, cond_size, film_ch, shift),
+                        film_bias_count(film_ch, shift),
                     )
                 };
                 let weights = cursor.read_f64(w_count);
                 let bias = cursor.read_f64(b_count);
-                film_slots[slot_idx] = Some(FiLMOracleSlot::new(shift, g, weights, bias, ch));
+                film_slots[slot_idx] = Some(FiLMOracleSlot::new(shift, g, weights, bias, film_ch));
             }
 
             lws.push(A2OracleLayerWeights {

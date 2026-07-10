@@ -761,17 +761,21 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 scfg = film_slot_configs[slot_idx]
                 g = int(scfg["groups"])
                 shift = scfg["shift"]
+                # C++ convention (slimmable.cpp): slot 2 → cond_size, slot 7 → head1x1_out
+                film_ch = (1 if slot_idx == 2 else
+                           1 if slot_idx == 7 else
+                           ch)
                 if cond_size > 1:
-                    wc = film_weight_count_generic(g, cond_size, ch, shift)
-                    bc = film_bias_count_generic(ch)
+                    wc = film_weight_count_generic(g, cond_size, film_ch, shift)
+                    bc = film_bias_count_generic(film_ch)
                 else:
-                    wc = film_weight_count(g, cond_size, ch, shift)
-                    bc = film_bias_count(ch, shift)
+                    wc = film_weight_count(g, cond_size, film_ch, shift)
+                    bc = film_bias_count(film_ch, shift)
                 slot_w = weights[cursor : cursor + wc].copy()
                 cursor += wc
                 slot_b = weights[cursor : cursor + bc].copy()
                 cursor += bc
-                film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, ch)
+                film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, film_ch)
 
             act = _extract_activation(activation_raw, li, num_layers)
             layer_weights.append({
@@ -932,18 +936,20 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                                 hist[ins : ins + ch], lw["conv_w"][oc, :, kt]
                             )
 
-                # conv_post_film (slot 1) + input_mixin_pre_film (slot 2)
+                # conv_post_film (slot 1)
                 if film[1] is not None:
                     film[1].apply(z, condition)
-                if film[2] is not None:
-                    film[2].apply(z, condition)
 
-                # Mixin
+                # Mixin — input_mixin_pre_film (slot 2) applied to condition
+                # (self-modulation, C++ model.cpp:188-197) before the mixin.
+                condition_mod = np.array(condition[:cond_size], dtype=np.float64).copy()
+                if film[2] is not None:
+                    film[2].apply(condition_mod, condition[:cond_size])
                 mixin_contrib = np.zeros_like(z)
-                if len(condition) > 0:
-                    k_used = min(cond_size, len(condition))
+                if len(condition_mod) > 0:
+                    k_used = min(cond_size, len(condition_mod))
                     for c in range(min(conv_out, bottleneck)):
-                        mixin_contrib[c] = np.dot(lw["mixin_w"][c, :k_used], condition[:k_used])
+                        mixin_contrib[c] = np.dot(lw["mixin_w"][c, :k_used], condition_mod[:k_used])
 
                 # input_mixin_post_film (slot 3)
                 if film[3] is not None:

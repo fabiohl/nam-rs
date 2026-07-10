@@ -543,6 +543,6 @@ e antes da cópia para `output_head` — a posição equivalente em Rust é entr
 2. **Implementar `head1x1_post_film`** [DONE]: aplicar FiLM ao buffer `head1x1_scratch` / `output_head`
    após a projeção `head1x1` e antes da acumulação, espelhando `model.cpp:283-287`.
 
-3. **Criar fixture(s) sintético(s)** exercitando `input_mixin_pre_film` e `head1x1_post_film` para
+3. **Criar fixture(s) sintético(s)** [GIT STAGED] exercitando `input_mixin_pre_film` e `head1x1_post_film` para
    cobertura de teste — similar à metodologia do Achado F2 (fixtures sintéticos com ablação de
    slots).

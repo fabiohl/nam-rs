@@ -2153,3 +2153,49 @@ fn test_mrstft_hard_gate_catches_regression() {
          MR-STFT={mr_stft:.4e} should exceed calibrated threshold."
     );
 }
+
+#[test]
+#[ignore = "Requires C++ golden binary — run golden_gen_build.sh to generate"]
+fn test_golden_vectors_wavenet_a2_film_input_mixin_pre() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_film_input_mixin_pre.bin");
+    assert!(
+        golden_path.exists(),
+        "golden binary not found: {} — run tests/fixtures/golden_gen_build.sh",
+        golden_path.display()
+    );
+
+    let (input, expected) = read_golden_bin(&golden_path)
+        .expect("Failed to read golden_wavenet_a2_film_input_mixin_pre.bin");
+
+    let nam_path = model_path("wavenet_a2_film_input_mixin_pre.nam");
+    assert!(
+        nam_path.exists(),
+        "Model file not found: {}",
+        nam_path.display()
+    );
+
+    let json_data = std::fs::read_to_string(&nam_path)
+        .expect("Failed to read wavenet_a2_film_input_mixin_pre.nam");
+    let model_data =
+        parse_nam_json(&json_data).expect("Failed to parse wavenet_a2_film_input_mixin_pre.nam");
+    let mut model =
+        build_model(&model_data).expect("Failed to build wavenet_a2_film_input_mixin_pre.nam");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_film_input_mixin_pre");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        mrstft_max,
+        "WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}

@@ -135,6 +135,19 @@ def generate_weights(ch: int, rng: random.Random) -> List[float]:
     return weights
 
 
+# FiLM key name → slot index (weights_layout.rs FILM_KEYS).
+FILM_KEY_TO_SLOT = {
+    "conv_pre_film": 0,
+    "conv_post_film": 1,
+    "input_mixin_pre_film": 2,
+    "input_mixin_post_film": 3,
+    "activation_pre_film": 4,
+    "activation_post_film": 5,
+    "layer1x1_post_film": 6,
+    "head1x1_post_film": 7,
+}
+
+
 def generate_weights_film(ch: int, num_film_keys: int, rng: random.Random) -> List[float]:
     scales = SCALES[ch]
     ws = scales["weight"]
@@ -148,7 +161,6 @@ def generate_weights_film(ch: int, num_film_keys: int, rng: random.Random) -> Li
         weights.extend(gen_weights(ch, rng, scale=ws))
         weights.extend(gen_weights(ch * ch, rng, scale=ws))
         weights.extend(gen_weights(ch, rng, scale=bs))
-        # FiLM weights per layer (ch*2 for w, ch*2 for b)
         for _ in range(num_film_keys):
             weights.extend(gen_weights(ch * 2, rng, scale=ws))
             scale_bias = [1.0 + v for v in gen_weights(ch, rng, scale=bs)]
@@ -159,6 +171,55 @@ def generate_weights_film(ch: int, num_film_keys: int, rng: random.Random) -> Li
     weights.extend(gen_weights(1, rng, scale=bs))
     weights.extend([0.02])
     return weights
+
+
+def generate_weights_film_per_slot(
+    ch: int, film_slots: list, rng: random.Random
+) -> List[float]:
+    """Generates A2 FiLM weights with correct per-slot channel dimensions.
+
+    C++ convention (slimmable.cpp):
+      Slot 2 (input_mixin_pre_film):  FiLM(cond_size -> cond_size)
+      Slot 7 (head1x1_post_film):    FiLM(cond_size -> head1x1_out)
+      All other slots:               FiLM(cond_size -> ch)
+    """
+    scales = SCALES.get(ch, {"weight": 0.30, "bias": 0.06})
+    ws = scales["weight"]
+    bs = scales["bias"]
+    weights: List[float] = []
+
+    # 1. Rechannel
+    weights.extend(gen_weights(ch, rng, scale=ws))
+    # 2. Per-layer
+    for k in KERNEL_SIZES:
+        weights.extend(gen_weights(ch * ch * k, rng, scale=ws))
+        weights.extend(gen_weights(ch, rng, scale=bs))
+        weights.extend(gen_weights(ch, rng, scale=ws))
+        weights.extend(gen_weights(ch * ch, rng, scale=ws))
+        weights.extend(gen_weights(ch, rng, scale=bs))
+        # FiLM weights with correct per-slot channel count
+        for slot_idx in film_slots:
+            film_ch = 1 if slot_idx in (2, 7) else ch
+            weights.extend(gen_weights(film_ch * 2, rng, scale=ws))
+            scale_bias = [1.0 + v for v in gen_weights(film_ch, rng, scale=bs)]
+            shift_bias = gen_weights(film_ch, rng, scale=bs)
+            weights.extend(scale_bias + shift_bias)
+    # 3. Head rechannel
+    weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=ws))
+    weights.extend(gen_weights(1, rng, scale=bs))
+    weights.extend([0.02])
+    return weights
+
+
+def count_weights_film_per_slot(ch: int, film_slots: list) -> int:
+    """Weight count for generate_weights_film_per_slot."""
+    base = count_weights(ch)
+    for _ in range(NUM_LAYERS):
+        for slot_idx in film_slots:
+            film_ch = 1 if slot_idx in (2, 7) else ch
+            base += film_ch * 2  # film_w
+            base += film_ch * 2  # film_b
+    return base
 
 
 def generate_weights_dynamic(
@@ -444,6 +505,22 @@ def main() -> None:
         with open(out_path, "w") as f:
             json.dump(doc_film, f, indent=2)
         print(f"Written {out_path}  ({len(w_film)} weights)")
+
+    # ── A2-FiLM InputMixinPre — isolated input_mixin_pre_film (slot 2, Bug C1) ──
+    FILM_KEYS_INPUT_MIXIN_PRE = ["input_mixin_pre_film"]
+    ch = 3
+    film_slots = [FILM_KEY_TO_SLOT[k] for k in FILM_KEYS_INPUT_MIXIN_PRE]
+    rng_ip = random.Random(42 + ch + 100)
+    expected_ip = count_weights_film_per_slot(ch, film_slots)
+    w_ip = generate_weights_film_per_slot(ch, film_slots, rng_ip)
+    assert len(w_ip) == expected_ip, (
+        f"A2-FiLM-InputMixinPre: got {len(w_ip)} weights, expected {expected_ip}"
+    )
+    doc_ip = build_nam_film(ch, w_ip, "FiLM-InputMixinPre", FILM_KEYS_INPUT_MIXIN_PRE)
+    out_path = OUTPUT_DIR / "wavenet_a2_film_input_mixin_pre.nam"
+    with open(out_path, "w") as f:
+        json.dump(doc_ip, f, indent=2)
+    print(f"Written {out_path}  ({len(w_ip)} weights)")
 
     print("Done.")
 

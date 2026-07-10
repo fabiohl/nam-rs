@@ -173,6 +173,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "wavenet_a2_film_lite",
         "wavenet_a2_film_full",
         "wavenet_a2_film_chaos_stress",
+        "wavenet_a2_film_input_mixin_pre",
         "a2_dynamic_gated_ch8",
         "a2_dynamic_blended_ch3",
         "wavenet_dyn_free",
