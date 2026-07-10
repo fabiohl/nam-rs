@@ -676,20 +676,28 @@ pub(crate) fn oracle_a2_forward(
                 }
 
                 // Mixin
+                let mut mixin_contrib = vec![0.0f64; z_out_ch];
                 if !condition.is_empty() {
                     for c in 0..z_out_ch.min(bottleneck) {
                         let mut sum = 0.0;
                         for k in 0..cond_size.min(condition.len()) {
                             sum += lw.mixin_w[c * cond_size + k] * condition[k];
                         }
-                        z_scratch[c] += sum;
+                        mixin_contrib[c] = sum;
                     }
                 }
 
-                // input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
+                // input_mixin_post_film (slot 3)
                 if let Some(ref mut film) = lw.film[3] {
-                    film.apply(&mut z_scratch[..z_out_ch], condition);
+                    film.apply(&mut mixin_contrib[..z_out_ch], condition);
                 }
+
+                // Sum mixin output to z_scratch
+                for c in 0..z_out_ch {
+                    z_scratch[c] += mixin_contrib[c];
+                }
+
+                // activation_pre_film (slot 4)
                 if let Some(ref mut film) = lw.film[4] {
                     film.apply(&mut z_scratch[..z_out_ch], condition);
                 }
@@ -770,7 +778,7 @@ pub(crate) fn oracle_a2_forward(
 
                 // L1x1 residual
                 if li < num_layers - 1 {
-                    let mut next = vec![0.0f64; ch];
+                    let mut l1x1_contrib = vec![0.0f64; ch];
                     for oc in 0..ch {
                         let mut sum = lw.l1x1_b[oc];
                         for ic in 0..bottleneck {
@@ -781,10 +789,15 @@ pub(crate) fn oracle_a2_forward(
                                 acc_mode,
                             );
                         }
-                        next[oc] = accum_f64(layer_in[oc], sum, acc_mode);
+                        l1x1_contrib[oc] = sum;
                     }
-                    if let Some(ref mut film) = lw.film[6] {
-                        film.apply(&mut next, condition);
+                    if use_blending && lw.film[6].is_some() {
+                        let film = lw.film[6].as_mut().unwrap();
+                        film.apply(&mut l1x1_contrib, condition);
+                    }
+                    let mut next = vec![0.0f64; ch];
+                    for oc in 0..ch {
+                        next[oc] = accum_f64(layer_in[oc], l1x1_contrib[oc], acc_mode);
                     }
                     for c in 0..ch {
                         fwd_bufs[li + 1][fi * ch + c] = next[c];

@@ -939,14 +939,20 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                     film[2].apply(z, condition)
 
                 # Mixin
+                mixin_contrib = np.zeros_like(z)
                 if len(condition) > 0:
                     k_used = min(cond_size, len(condition))
                     for c in range(min(conv_out, bottleneck)):
-                        z[c] += np.dot(lw["mixin_w"][c, :k_used], condition[:k_used])
+                        mixin_contrib[c] = np.dot(lw["mixin_w"][c, :k_used], condition[:k_used])
 
-                # input_mixin_post_film (slot 3) + activation_pre_film (slot 4)
+                # input_mixin_post_film (slot 3)
                 if film[3] is not None:
-                    film[3].apply(z, condition)
+                    film[3].apply(mixin_contrib, condition)
+
+                # Sum mixin to z
+                z += mixin_contrib
+
+                # activation_pre_film (slot 4)
                 if film[4] is not None:
                     film[4].apply(z, condition)
 
@@ -999,9 +1005,10 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 # L1x1 residual
                 if li < num_layers - 1:
                     residual = z[:bottleneck] @ lw["l1x1_w"].T + lw["l1x1_b"]
+                    if use_blending:
+                        if film[6] is not None:
+                            film[6].apply(residual, condition)
                     layer_in = layer_in + residual
-                    if film[6] is not None:
-                        film[6].apply(layer_in, condition)
                     layer_bufs[li + 1][fi * ch : fi * ch + ch] = layer_in
 
             # Save residual for next array
