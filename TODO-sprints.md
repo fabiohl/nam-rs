@@ -113,14 +113,14 @@ Esta sprint foca em preservar a fixture degenerada original de FiLM como um test
   * [cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md)
   * [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md)
   * [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T2.4: Homologação de Sprints e Execução de Testes Rápidos**
 
 * **Objetivo:** Homologar a entrega e certificar conformidade completa.
 * **Detalhes técnicos:**
   * Executar `utils/lints.sh` e `utils/tests-quick.sh`.
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 ---
 

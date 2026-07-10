@@ -327,6 +327,7 @@ Decisions on fidelity, trade-offs, and optimization are catalogued below:
 - **SQ5 PoC (2026-07-06):** Removed the F16C weight compression/decompression feature because the runtime decoding overhead on x86-64-v3 outweighed the L1/L2 cache compression benefits for LSTM topologies, and f16c quantization was shown to introduce unnecessary interoperability drift. Native `f32` weights became the default.
 - **Sprint S6 Resampler Optimization:** Discarded the dual resampler quality settings (Standard/HQ). HQ (64-tap minimum-phase Kaiser sinc) was made permanent since the lighter 32-tap resampler only saved ~40 ns per block while severely degrading the signal-to-noise ratio from ≥100 dB to ~24 dB.
 - **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the exact-grade activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh — now the universal `Standard` default.
+- **Sprint S10 FiLM Parity Correction (2026-07-10):** Resolved the long-standing A2 FiLM interop gap. The Python synthetic weight generator was corrected to apply the standard `+1.0` bias to the scale channels of the FiLM layer (identity-biased initialization). This collapsed the interop gap from SNR 18–36 dB to standard float32 precision limits (SNR 138+ dB, ESR ~1e-14) against the C++ Eigen path. A zero-biased chaos stress model (`wavenet_a2_film_chaos_stress`) was retained to verify engine consistency under numerical stress.
 
 ---
 

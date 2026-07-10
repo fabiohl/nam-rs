@@ -1737,8 +1737,8 @@ fn test_golden_vectors_wavenet_a2_film_chaos_stress() {
          Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
     );
 
-    let (input, expected) =
-        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_film_chaos_stress.bin");
+    let (input, expected) = read_golden_bin(&golden_path)
+        .expect("Failed to read golden_wavenet_a2_film_chaos_stress.bin");
 
     let nam_path = model_path("wavenet_a2_film_chaos_stress.nam");
     assert!(
@@ -1750,7 +1750,8 @@ fn test_golden_vectors_wavenet_a2_film_chaos_stress() {
     let json_data =
         fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-FiLM-Chaos-Stress model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed to build A2-FiLM-Chaos-Stress");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build A2-FiLM-Chaos-Stress");
 
     assert!(
         matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),

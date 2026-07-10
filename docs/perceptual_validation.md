@@ -91,8 +91,9 @@ stress signal. Source measurements are documented in code comments.
 | Nondist Models (3×)                  | 100    | 1.0e-10 | 0.05        | APP-EVH, Boss BD-2, Slammin Marshall                   |
 | A2-Full (CH=8)                       | 70     | 8.0e-8  | 0.05        | Gating+LeakyReLU                                       |
 | A2-Lite (CH=3)                       | 80     | 6.0e-9  | 0.05        | Gating+tanh                                            |
-| A2-FiLM-Lite (CH=3)                  | 12     | 2.0e-2  | 0.60        | FiLM active, RF1                                       |
-| A2-FiLM-Full (CH=8)                  | 30     | 5.0e-4  | 0.55        | FiLM active, RF1                                       |
+| A2-FiLM-Lite (CH=3)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM active, identity-biased                           |
+| A2-FiLM-Full (CH=8)                  | 120    | 1.0e-11 | 1.0e-4      | FiLM active, identity-biased                           |
+| A2-FiLM-Chaos (CH=3)                 | 12     | 3.5e-2  | 0.498       | Chaos stress model (zero-biased scale)                 |
 | A2 Dyn Gated CH=8                    | 85     | 1.0e-9  | 0.05        | Gating+LeakyReLU                                       |
 | A2 Dyn Blended CH=3                  | 110    | 1.0e-12 | 0.05        | Blend+Tanh gate                                        |
 | A2 Example (Slimmable)               | 70     | 8.0e-9  | 0.08        | SlimmableContainer                                     |
