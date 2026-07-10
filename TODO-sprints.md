@@ -99,7 +99,7 @@ Esta sprint foca em preservar a fixture degenerada original de FiLM como um test
   * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
   * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs)
   * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T2.3: Atualização da Documentação Técnica de Fidelidade e Paridade**
 

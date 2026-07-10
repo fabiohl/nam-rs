@@ -69,6 +69,7 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_wavenet_lite" => Some("EVH-5150-Lite"),
         "golden_wavenet_a2_full" => Some("wavenet_a2_full"),
         "golden_wavenet_a2_lite" => Some("wavenet_a2_lite"),
+        "golden_wavenet_a2_film_chaos_stress" => Some("wavenet_a2_film_chaos_stress"),
         "golden_wavenet_official" => Some("wavenet_official"),
         // Nondist production models — validated by cpp_parity + golden vectors
         "golden_wavenet_app_evh" => Some("APP-EVH-Stealth100-Dialled-xSTD"),
@@ -171,6 +172,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "APP-EVH-Stealth100-Dialled-xSTD",
         "wavenet_a2_film_lite",
         "wavenet_a2_film_full",
+        "wavenet_a2_film_chaos_stress",
         "a2_dynamic_gated_ch8",
         "a2_dynamic_blended_ch3",
         "wavenet_dyn_free",

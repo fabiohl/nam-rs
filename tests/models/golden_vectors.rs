@@ -1722,6 +1722,59 @@ fn test_golden_vectors_wavenet_a2_film_full() {
     );
 }
 
+/// Test 9e: Golden Vectors — WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active)
+///
+/// Validates the `WaveNetA2Dyn` engine with FiLM modulation under chaos/stress
+/// conditions against the C++ generic WaveNet reference.
+#[test]
+fn test_golden_vectors_wavenet_a2_film_chaos_stress() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_film_chaos_stress.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_a2_film_chaos_stress.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate all golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_a2_film_chaos_stress.bin");
+
+    let nam_path = model_path("wavenet_a2_film_chaos_stress.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_a2_film_chaos_stress.nam not found at {nam_path:?}. \
+         This fixture is part of the repository and must exist."
+    );
+
+    let json_data =
+        fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-FiLM-Chaos-Stress model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed to build A2-FiLM-Chaos-Stress");
+
+    assert!(
+        matches!(model.as_ref(), nam_rs::models::StaticModel::WavenetA2Dyn(_)),
+        "FiLM model must route to WaveNetA2Dyn (C++ a2_fast.cpp rejects FiLM)"
+    );
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_a2_film_chaos_stress");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        mrstft_max,
+        "WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
 // =============================================================================
 // Sprint B.2.2: Dynamic Model Golden Vector Tests
 //

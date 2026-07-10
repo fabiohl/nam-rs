@@ -600,6 +600,13 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 120.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
+        // --- WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) ---
+        // Chaos stress model configured with degenerated thresholds as per T2.2.
+        // Measured: SNR=12.0 dB, ESR=3.5e-2, MR-STFT=0.498 (degenerated thresholds)
+        "wavenet_a2_film_chaos_stress" => {
+            let snr_db = 12.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.498)))
+        }
         // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
         // DISABLED — §7.1 (dead threshold; retained for meta-test calibration
         // discipline). Model confirmed broken against NAMcore C++ golden;
