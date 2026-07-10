@@ -86,7 +86,7 @@ Esta sprint foca em preservar a fixture degenerada original de FiLM como um test
   * Atualizar a lista `CATALOG` no script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) para adicionar a entrada `"wavenet_a2_film_chaos_stress.nam:golden_wavenet_a2_film_chaos_stress:A2-FiLM Chaos Stress (CH=3):none"`.
   * Executar `./tests/fixtures/golden_gen_build.sh` para renderizar o golden binary de referência `golden_wavenet_a2_film_chaos_stress.bin`.
 * **Arquivos:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T2.2: Adição do Teste de Golden Vector e Threshold Próprio**
 
