@@ -246,7 +246,7 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs),
   [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:** ⬜ Pendente
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T3.4 [🟡 Consistência — sem impacto funcional atual]: Espelhar B1/B2/B3 nos caminhos estáticos CH=3/CH=8**
 

@@ -138,6 +138,8 @@ pub struct WaveNetA2Dyn {
 
     /// Scratch buffer for head1x1 projection output (channels elements).
     pub head1x1_scratch: AlignedVec<f32>,
+    /// Scratch buffer for layer1x1 projection output (channels elements).
+    pub l1x1_scratch: AlignedVec<f32>,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
 
@@ -308,6 +310,8 @@ impl WaveNetA2Dyn {
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32)
                 .expect("allocation should succeed for test-sized buffers"),
             mixin_scratch: AlignedVec::new(bottleneck * 2, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            l1x1_scratch: AlignedVec::new(channels, 0.0f32)
                 .expect("allocation should succeed for test-sized buffers"),
             head1x1_scratch,
             prewarm_on_reset: true,

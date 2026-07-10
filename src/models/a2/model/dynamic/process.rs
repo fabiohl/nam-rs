@@ -240,6 +240,7 @@ impl WaveNetA2Dyn {
 
             let z_scratch = &mut self.z_scratch;
             let mixin_scratch = &mut self.mixin_scratch;
+            let l1x1_scratch = &mut self.l1x1_scratch;
             let head_accum = &mut self.head_accum;
             let layer_in = &mut self.layer_in;
             let head1x1_scratch = &mut self.head1x1_scratch;
@@ -275,6 +276,7 @@ impl WaveNetA2Dyn {
                         self.head1x1_active,
                         z_scratch,
                         mixin_scratch,
+                        l1x1_scratch,
                         head_accum,
                         layer_in,
                         head1x1_scratch,
@@ -334,6 +336,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     head1x1_active: bool,
     z_scratch: &mut [f32],
     mixin_scratch: &mut [f32],
+    l1x1_scratch: &mut [f32],
     head_accum: &mut [f32],
     layer_in: &mut [f32],
     head1x1_scratch: &mut [f32],
@@ -484,12 +487,15 @@ unsafe fn process_frame_dyn<M: SimdMath>(
             for ic in 0..bottleneck {
                 sum += l1x1_w[ic * channels + oc] * z_scratch[ic];
             }
-            layer_in[base + oc] += sum;
+            l1x1_scratch[oc] = sum;
         }
         if let Some(ref mut film) = layer.layer1x1_post_film.as_mut().filter(|_| use_blending) {
             unsafe {
-                film.process(&mut layer_in[base..base + channels], cond_slice);
+                film.process(&mut l1x1_scratch[..channels], cond_slice);
             }
+        }
+        for oc in 0..channels {
+            layer_in[base + oc] += l1x1_scratch[oc];
         }
     }
 }
