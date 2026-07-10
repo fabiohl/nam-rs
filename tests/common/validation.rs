@@ -583,22 +583,22 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // from C++ generic WaveNet path. The Rust WaveNetA2Dyn engine implements FiLM
         // natively; C++ a2_fast.cpp rejects FiLM and falls back to Eigen-based generic
         // WaveNet. The divergence is inherent — not an engine regression.
-        // Measured: SNR=15.1 dB, ESR=3.07e-2 (2026-07-03, SR-invariant Δ≈3e-7),
-        // MR-STFT=1.162 (FiLM vs generic @ 48 kHz), gate=1.20 (3% margin via T1.3 cap)
-        // Margin: SNR - 3.1 dB, ESR factor ~1.14x
+        // Measured: SNR=138.3 dB, ESR=1.48e-14 (2026-07-10, float32 precision limit after T1.2 corrections),
+        // MR-STFT=3.92e-5 (FiLM vs generic @ 48 kHz), gate=1.0e-4 (generous tolerance margin)
+        // Margin: SNR - 18.3 dB, ESR factor ~6.7e2x
         "wavenet_a2_film_lite" => {
-            let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.60)))
+            let snr_db = 120.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
         // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
         // FiLM modulation on 8-channel A2 model. C++ routes to generic WaveNet
         // (Eigen), Rust routes to WaveNetA2Dyn with native FiLM support.
-        // Measured: SNR=36.0 dB, ESR=2.50e-4 (2026-06-21),
-        // MR-STFT=0.465 (FiLM vs generic), gate=0.55 (18% margin)
-        // Margin: SNR - 6.0 dB, ESR factor ~2.0x
+        // Measured: SNR=138.8 dB, ESR=1.31e-14 (2026-07-10, float32 precision limit),
+        // MR-STFT=3.28e-5 (FiLM vs generic), gate=1.0e-4 (generous margin)
+        // Margin: SNR - 18.8 dB, ESR factor ~7.6e2x
         "wavenet_a2_film_full" => {
-            let snr_db = 30.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-4), Some(0.55)))
+            let snr_db = 120.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
         // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
         // DISABLED — §7.1 (dead threshold; retained for meta-test calibration

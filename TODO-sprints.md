@@ -44,7 +44,7 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
   * [wavenet_a2_film_full.nam](file:///home/fabio/nam-rs/tests/fixtures/models/wavenet_a2_film_full.nam)
   * [golden_wavenet_a2_film_lite.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_wavenet_a2_film_lite.bin)
   * [golden_wavenet_a2_film_full.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_wavenet_a2_film_full.bin)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 #### **Tarefa T1.3: Medição dos Novos Valores de ESR/SNR**
 
@@ -52,7 +52,7 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
 * **Detalhes técnicos:**
   * Executar a suíte de testes de golden vectors para os modelos FiLM, capturando as falhas intencionais de threshold antigos e extraindo as medições exatas de SNR, ESR e MR-STFT.
   * A expectativa é de que o SNR suba para a faixa de `>90 dB` (ESR `<1e-9`).
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 #### **Tarefa T1.4: Recalibração de Thresholds de Validação (Rust)**
 
@@ -61,7 +61,7 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
   * Ajustar as chaves `"wavenet_a2_film_lite"` (linhas 589-592) e `"wavenet_a2_film_full"` (linhas 599-602) em [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs).
   * Atualizar as descrições nos comentários que detalham os valores medidos e a margem de tolerância adicionada.
 * **Arquivos:** [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 #### **Tarefa T1.5: Homologação e Verificação Final (Lints & Quick Tests)**
 
@@ -69,7 +69,7 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
 * **Detalhes técnicos:**
   * Rodar `utils/lints.sh` para verificar formatação e cabeçalhos SPDX.
   * Rodar `utils/tests-quick.sh` para atestar a validação completa de fidelidade sob os novos limites.
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 ---
 

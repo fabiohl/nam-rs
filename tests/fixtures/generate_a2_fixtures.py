@@ -426,9 +426,7 @@ def main() -> None:
     # ── A2-FiLM model (Tarefa B.1.1: FiLM routing policy) ──────────────────
     FILM_KEYS_ACTIVE = [
         "conv_post_film",
-        "input_mixin_post_film",
         "activation_post_film",
-        "layer1x1_post_film",
     ]
     for ch, label, fname in [(3, "FiLM-Lite", "wavenet_a2_film_lite.nam"),
                                (8, "FiLM-Full", "wavenet_a2_film_full.nam")]:
