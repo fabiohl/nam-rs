@@ -274,7 +274,7 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [conv1d_ch3/simd.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_ch3/simd.rs),
   [conv1d_ch8/simd.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_ch8/simd.rs)
-* **Status:** ⬜ Pendente
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T3.5 [🔴 CRÍTICA]: Testes unitários dedicados para B1/B2/B3 (isolados, sem depender de fixtures/goldens)**
 

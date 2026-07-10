@@ -136,6 +136,7 @@ pub unsafe fn layer_forward_ch8_block(
     l1x1_w: &[f32],
     l1x1_b: &[f32],
     film: &mut FilmBlock<'_>,
+    use_blending: bool,
     layer_buffer: &[f32],
     frame_start: usize,
     num_frames: usize,
@@ -180,28 +181,32 @@ pub unsafe fn layer_forward_ch8_block(
         }
     }
 
-    // 2. Post-conv: mixin (in-place on z_buf).
+    // 2. Post-conv: mixin (isolated scratch buffer).
     {
         let z = z_buf.as_mut_ptr();
         let mixin_v = _mm256_loadu_ps(mixin_w.as_ptr());
         for (f, cond_val) in input_cond.iter().take(num_frames).enumerate() {
             let off = f * ch;
-            let mut zv = _mm256_loadu_ps(z.add(off));
             let cond_v = _mm256_set1_ps(*cond_val);
-            zv = _mm256_fmadd_ps(mixin_v, cond_v, zv);
-            _mm256_storeu_ps(z.add(off), zv);
-        }
-    }
+            let mix_v = _mm256_mul_ps(mixin_v, cond_v);
 
-    // 2b. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
-    for f in 0..num_frames {
-        let cond = &input_cond[f..f + 1];
-        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
-        if let Some(ref mut film) = film.input_mixin_post_film {
-            film.process(z_slice, cond);
-        }
-        if let Some(ref mut film) = film.activation_pre_film {
-            film.process(z_slice, cond);
+            let mut mixin_scratch = [0.0f32; 8];
+            _mm256_storeu_ps(mixin_scratch.as_mut_ptr(), mix_v);
+
+            let cond = &input_cond[f..f + 1];
+            if let Some(ref mut film) = film.input_mixin_post_film {
+                film.process(&mut mixin_scratch, cond);
+            }
+
+            let mix_v_modulated = _mm256_loadu_ps(mixin_scratch.as_ptr());
+            let mut zv = _mm256_loadu_ps(z.add(off));
+            zv = _mm256_add_ps(zv, mix_v_modulated);
+            _mm256_storeu_ps(z.add(off), zv);
+
+            let z_slice = &mut z_buf[off..off + ch];
+            if let Some(ref mut film) = film.activation_pre_film {
+                film.process(z_slice, cond);
+            }
         }
     }
 
@@ -243,7 +248,7 @@ pub unsafe fn layer_forward_ch8_block(
         }
     }
 
-    // 5. Layer1x1 residual (skipped on last layer).
+    // 5. Layer1x1 residual (skipped on last layer) — isolated scratch buffer.
     if !is_last {
         let lin = layer_in.as_mut_ptr();
         let l1x1_b_v = _mm256_loadu_ps(l1x1_b.as_ptr());
@@ -257,17 +262,22 @@ pub unsafe fn layer_forward_ch8_block(
                 let w_col = _mm256_loadu_ps(l1x1_w_ptr.add(u * ch));
                 acc = _mm256_fmadd_ps(zu_v, w_col, acc);
             }
-            let lv = _mm256_loadu_ps(lin.add(off));
-            _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, acc));
-        }
 
-        // 5b. FiLM: layer1x1_post_film (post-l1x1, on layer_in).
-        for f in 0..num_frames {
+            let mut l1x1_scratch = [0.0f32; 8];
+            _mm256_storeu_ps(l1x1_scratch.as_mut_ptr(), acc);
+
             let cond = &input_cond[f..f + 1];
-            let lin_slice = &mut layer_in[f * ch..(f + 1) * ch];
-            if let Some(ref mut film) = film.layer1x1_post_film {
-                film.process(lin_slice, cond);
+            if let Some(film) = film
+                .layer1x1_post_film
+                .as_deref_mut()
+                .filter(|_| use_blending)
+            {
+                film.process(&mut l1x1_scratch, cond);
             }
+
+            let l1x1_v_modulated = _mm256_loadu_ps(l1x1_scratch.as_ptr());
+            let lv = _mm256_loadu_ps(lin.add(off));
+            _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, l1x1_v_modulated));
         }
     }
 }
@@ -290,6 +300,7 @@ pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
     l1x1_w: &[f32],
     l1x1_b: &[f32],
     film: &mut FilmBlock<'_>,
+    use_blending: bool,
     layer_buffer: &[f32],
     frame_start: usize,
     num_frames: usize,
@@ -357,28 +368,32 @@ pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
         }
     }
 
-    // 2. Post-conv: mixin (in-place on z_buf).
+    // 2. Post-conv: mixin (isolated scratch buffer).
     {
         let z = z_buf.as_mut_ptr();
         let mixin_v = _mm256_loadu_ps(mixin_w.as_ptr());
         for (f, cond_val) in input_cond.iter().take(num_frames).enumerate() {
             let off = f * ch;
-            let mut zv = _mm256_loadu_ps(z.add(off));
             let cond_v = _mm256_set1_ps(*cond_val);
-            zv = _mm256_fmadd_ps(mixin_v, cond_v, zv);
-            _mm256_storeu_ps(z.add(off), zv);
-        }
-    }
+            let mix_v = _mm256_mul_ps(mixin_v, cond_v);
 
-    // 2b. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
-    for f in 0..num_frames {
-        let cond = &input_cond[f..f + 1];
-        let z_slice = &mut z_buf[f * ch..(f + 1) * ch];
-        if let Some(ref mut film) = film.input_mixin_post_film {
-            film.process(z_slice, cond);
-        }
-        if let Some(ref mut film) = film.activation_pre_film {
-            film.process(z_slice, cond);
+            let mut mixin_scratch = [0.0f32; 8];
+            _mm256_storeu_ps(mixin_scratch.as_mut_ptr(), mix_v);
+
+            let cond = &input_cond[f..f + 1];
+            if let Some(ref mut film) = film.input_mixin_post_film {
+                film.process(&mut mixin_scratch, cond);
+            }
+
+            let mix_v_modulated = _mm256_loadu_ps(mixin_scratch.as_ptr());
+            let mut zv = _mm256_loadu_ps(z.add(off));
+            zv = _mm256_add_ps(zv, mix_v_modulated);
+            _mm256_storeu_ps(z.add(off), zv);
+
+            let z_slice = &mut z_buf[off..off + ch];
+            if let Some(ref mut film) = film.activation_pre_film {
+                film.process(z_slice, cond);
+            }
         }
     }
 
@@ -420,7 +435,7 @@ pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
         }
     }
 
-    // 5. Layer1x1 residual (skipped on last layer).
+    // 5. Layer1x1 residual (skipped on last layer) — isolated scratch buffer.
     if !is_last {
         let lin = layer_in.as_mut_ptr();
         let l1x1_b_v = _mm256_loadu_ps(l1x1_b.as_ptr());
@@ -434,17 +449,22 @@ pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
                 let w_col = _mm256_loadu_ps(l1x1_w_ptr.add(u * ch));
                 acc = _mm256_fmadd_ps(zu_v, w_col, acc);
             }
-            let lv = _mm256_loadu_ps(lin.add(off));
-            _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, acc));
-        }
 
-        // 5b. FiLM: layer1x1_post_film (post-l1x1, on layer_in).
-        for f in 0..num_frames {
+            let mut l1x1_scratch = [0.0f32; 8];
+            _mm256_storeu_ps(l1x1_scratch.as_mut_ptr(), acc);
+
             let cond = &input_cond[f..f + 1];
-            let lin_slice = &mut layer_in[f * ch..(f + 1) * ch];
-            if let Some(ref mut film) = film.layer1x1_post_film {
-                film.process(lin_slice, cond);
+            if let Some(film) = film
+                .layer1x1_post_film
+                .as_deref_mut()
+                .filter(|_| use_blending)
+            {
+                film.process(&mut l1x1_scratch, cond);
             }
+
+            let l1x1_v_modulated = _mm256_loadu_ps(l1x1_scratch.as_ptr());
+            let lv = _mm256_loadu_ps(lin.add(off));
+            _mm256_storeu_ps(lin.add(off), _mm256_add_ps(lv, l1x1_v_modulated));
         }
     }
 }

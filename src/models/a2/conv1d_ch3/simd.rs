@@ -256,6 +256,7 @@ pub unsafe fn layer_forward_ch3_block(
     l1x1_w: &[f32],  // [9] f32 col-major l1x1 weights (padded to [12]? no, use 3×3)
     l1x1_b: &[f32],  // [3] f32 l1x1 bias
     film: &mut FilmBlock<'_>,
+    use_blending: bool,
     layer_buffer: &[f32],
     frame_start: usize,
     num_frames: usize,
@@ -332,34 +333,47 @@ pub unsafe fn layer_forward_ch3_block(
         // Load z pair [z_f0[0..4], z_f1[0..4]] as one __m256.
         let mut zv = _mm256_loadu_ps(z_buf.as_ptr().add(z_off));
 
-        // 2a. Mixin: z += mixin_w * cond (per-frame scalar broadcast).
+        // 2a. Mixin: z += mixin_w * cond (per-frame scalar broadcast) — isolated mixin scratch buffer.
         let cond_v8 = _mm256_setr_ps(cond0, cond0, cond0, cond0, cond1, cond1, cond1, cond1);
-        zv = _mm256_fmadd_ps(mixin_v8, cond_v8, zv);
+        let mix_v8 = _mm256_mul_ps(mixin_v8, cond_v8);
 
-        // Store back for FiLM post-mixin access.
-        _mm256_storeu_ps(z_buf.as_mut_ptr().add(z_off), zv);
+        let mut mixin_scratch = [0.0f32; 8];
+        _mm256_storeu_ps(mixin_scratch.as_mut_ptr(), mix_v8);
 
-        // 2a-fiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
+        // Apply input_mixin_post_film on isolated mixin scratch buffer.
         {
             let cond = &input_cond[f..f + 1];
             if let Some(ref mut film) = film.input_mixin_post_film {
-                film.process(&mut z_buf[z_off..z_off + CH], cond);
+                film.process(&mut mixin_scratch[0..CH], cond);
             }
+        }
+        {
+            let cond = &input_cond[f + 1..f + 2];
+            if let Some(ref mut film) = film.input_mixin_post_film {
+                film.process(&mut mixin_scratch[CH_PAD..CH_PAD + CH], cond);
+            }
+        }
+
+        // Sum modulated mixin back into post-conv output.
+        let mix_v8_modulated = _mm256_loadu_ps(mixin_scratch.as_ptr());
+        zv = _mm256_add_ps(zv, mix_v8_modulated);
+        _mm256_storeu_ps(z_buf.as_mut_ptr().add(z_off), zv);
+
+        // Apply activation_pre_film on the summed output.
+        {
+            let cond = &input_cond[f..f + 1];
             if let Some(ref mut film) = film.activation_pre_film {
                 film.process(&mut z_buf[z_off..z_off + CH], cond);
             }
         }
         {
             let cond = &input_cond[f + 1..f + 2];
-            if let Some(ref mut film) = film.input_mixin_post_film {
-                film.process(&mut z_buf[z_off + CH_PAD..z_off + CH_PAD + CH], cond);
-            }
             if let Some(ref mut film) = film.activation_pre_film {
                 film.process(&mut z_buf[z_off + CH_PAD..z_off + CH_PAD + CH], cond);
             }
         }
 
-        // Reload zv after FiLM modulation.
+        // Reload zv after activation_pre_film.
         zv = _mm256_loadu_ps(z_buf.as_ptr().add(z_off));
 
         // 2b. LeakyReLU(0.01) branchless.
@@ -414,7 +428,7 @@ pub unsafe fn layer_forward_ch3_block(
             *head_accum.get_unchecked_mut(head_off1 + 2) += z2_hi;
         }
 
-        // 2d. L1x1 residual (skipped on last layer) — pair of frames via AVX2.
+        // 2d. L1x1 residual (skipped on last layer) — pair of frames via AVX2 with isolated scratch buffer.
         if !is_last {
             let z0_f0 = _mm_cvtss_f32(zv_lo);
             let z1_f0 = _mm_cvtss_f32(_mm_shuffle_ps(zv_lo, zv_lo, 0x55));
@@ -432,34 +446,34 @@ pub unsafe fn layer_forward_ch3_block(
             acc8 = _mm256_fmadd_ps(zu1_v8, l1x1_row1_v8, acc8);
             acc8 = _mm256_fmadd_ps(zu2_v8, l1x1_row2_v8, acc8);
 
-            let acc_lo = _mm256_castps256_ps128(acc8);
-            let acc_hi = _mm256_extractf128_ps(acc8, 1);
+            let mut l1x1_scratch = [0.0f32; 8];
+            _mm256_storeu_ps(l1x1_scratch.as_mut_ptr(), acc8);
+
+            // Apply layer1x1_post_film on isolated l1x1 scratch buffer (blending mode only).
+            if use_blending {
+                {
+                    let cond = &input_cond[f..f + 1];
+                    if let Some(ref mut film) = film.layer1x1_post_film {
+                        film.process(&mut l1x1_scratch[0..CH], cond);
+                    }
+                }
+                {
+                    let cond = &input_cond[f + 1..f + 2];
+                    if let Some(ref mut film) = film.layer1x1_post_film {
+                        film.process(&mut l1x1_scratch[CH_PAD..CH_PAD + CH], cond);
+                    }
+                }
+            }
+
+            // Sum back to layer_in.
             let lin_off0 = f * CH;
             let lin_off1 = (f + 1) * CH;
-            *layer_in.get_unchecked_mut(lin_off0) += _mm_cvtss_f32(acc_lo);
-            *layer_in.get_unchecked_mut(lin_off0 + 1) +=
-                _mm_cvtss_f32(_mm_shuffle_ps(acc_lo, acc_lo, 0x55));
-            *layer_in.get_unchecked_mut(lin_off0 + 2) +=
-                _mm_cvtss_f32(_mm_shuffle_ps(acc_lo, acc_lo, 0xAA));
-            *layer_in.get_unchecked_mut(lin_off1) += _mm_cvtss_f32(acc_hi);
-            *layer_in.get_unchecked_mut(lin_off1 + 1) +=
-                _mm_cvtss_f32(_mm_shuffle_ps(acc_hi, acc_hi, 0x55));
-            *layer_in.get_unchecked_mut(lin_off1 + 2) +=
-                _mm_cvtss_f32(_mm_shuffle_ps(acc_hi, acc_hi, 0xAA));
-
-            // 2d-fiLM: layer1x1_post_film (post-l1x1, on layer_in).
-            {
-                let cond = &input_cond[f..f + 1];
-                if let Some(ref mut film) = film.layer1x1_post_film {
-                    film.process(&mut layer_in[lin_off0..lin_off0 + CH], cond);
-                }
-            }
-            {
-                let cond = &input_cond[f + 1..f + 2];
-                if let Some(ref mut film) = film.layer1x1_post_film {
-                    film.process(&mut layer_in[lin_off1..lin_off1 + CH], cond);
-                }
-            }
+            *layer_in.get_unchecked_mut(lin_off0) += l1x1_scratch[0];
+            *layer_in.get_unchecked_mut(lin_off0 + 1) += l1x1_scratch[1];
+            *layer_in.get_unchecked_mut(lin_off0 + 2) += l1x1_scratch[2];
+            *layer_in.get_unchecked_mut(lin_off1) += l1x1_scratch[CH_PAD];
+            *layer_in.get_unchecked_mut(lin_off1 + 1) += l1x1_scratch[CH_PAD + 1];
+            *layer_in.get_unchecked_mut(lin_off1 + 2) += l1x1_scratch[CH_PAD + 2];
         }
     }
 
@@ -473,15 +487,20 @@ pub unsafe fn layer_forward_ch3_block(
         // 3a. FiLM: input_mixin_post_film + activation_pre_film (post-mixin, pre-activation).
         // conv_post_film / input_mixin_pre_film already handled in step 1b.
 
-        // 3b. Mixin (scalar).
+        // 3b. Mixin (isolated).
+        let mut mixin_scratch = [0.0f32; CH];
         for c in 0..CH {
-            z_slice[c] += mixin_w[c] * input_cond[f];
+            mixin_scratch[c] = mixin_w[c] * input_cond[f];
         }
 
-        // 3b-fiLM: input_mixin_post_film + activation_pre_film.
         if let Some(ref mut film) = film.input_mixin_post_film {
-            film.process(z_slice, cond);
+            film.process(&mut mixin_scratch, cond);
         }
+
+        for c in 0..CH {
+            z_slice[c] += mixin_scratch[c];
+        }
+
         if let Some(ref mut film) = film.activation_pre_film {
             film.process(z_slice, cond);
         }
@@ -508,21 +527,28 @@ pub unsafe fn layer_forward_ch3_block(
             }
         }
 
-        // 3e. L1x1 residual.
+        // 3e. L1x1 residual (isolated).
         if !is_last {
             let lin_off = f * CH;
+            let mut l1x1_scratch = [0.0f32; CH];
             for c in 0..CH {
                 let mut sum = l1x1_b[c];
                 for u in 0..CH {
                     sum += l1x1_w[u * CH + c] * z_slice[u];
                 }
-                layer_in[lin_off + c] += sum;
+                l1x1_scratch[c] = sum;
             }
 
-            // 3e-fiLM: layer1x1_post_film.
-            let lin_slice = &mut layer_in[lin_off..lin_off + CH];
-            if let Some(ref mut film) = film.layer1x1_post_film {
-                film.process(lin_slice, cond);
+            if let Some(film) = film
+                .layer1x1_post_film
+                .as_deref_mut()
+                .filter(|_| use_blending)
+            {
+                film.process(&mut l1x1_scratch, cond);
+            }
+
+            for c in 0..CH {
+                layer_in[lin_off + c] += l1x1_scratch[c];
             }
         }
     }
