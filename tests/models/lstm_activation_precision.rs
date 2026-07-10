@@ -96,7 +96,7 @@ fn measure_lstm_snr(golden_path: &str, model_filename: &str, label: &str) -> (f6
     let snr_exact = compute_snr_db(&expected, &output_exact);
 
     println!(
-        "{label:>22}  FastMath(Padé): {snr_fast:6.1} dB  |  Exact(tanh): {snr_exact:6.1} dB  |  Δ={gain:+.1} dB",
+        "{label:>22}  SIMD(Padé): {snr_fast:6.1} dB  |  Scalar(libm): {snr_exact:6.1} dB  |  Δ={gain:+.1} dB",
         gain = snr_exact - snr_fast,
     );
 

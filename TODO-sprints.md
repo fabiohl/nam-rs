@@ -615,6 +615,7 @@ Achados B1-B5 de `TODO-findings.md` Achado A1 §7. Nenhum invalida a correção 
   * Renomear os rótulos de `measure_lstm_snr` para algo inequívoco e descritivo do que de fato compara, ex.: `"Scalar(libm): {snr_fast:6.1} dB  |  SIMD(Padé): {snr_exact:6.1} dB  |  Δ={gain:+.1} dB"`.
   * Não requer nenhuma mudança em `utils/quality-dashboard.sh` (este teste nunca foi, e não deveria ser, fonte do painel "ACTIVATION PRECISION").
 * **Verificação (pendente de execução):** `cargo test --release --test models lstm_activation_precision -- --nocapture` e confirmar que a saída permanece legível e sem ambiguidade.
+  * **✅ T5.3 — CONCLUÍDA (2026-07-09):** rótulos de `measure_lstm_snr` renomeados de `FastMath(Padé)`/`Exact(tanh)` para `SIMD(Padé)`/`Scalar(libm)` em `tests/models/lstm_activation_precision.rs:99`. Labels agora descrevem com precisão o que cada caminho executa (SIMD = `process_in_blocks`, Scalar = `process_in_blocks_scalar` chamando `f32::tanh` via libm) e são totalmente disjuntos dos rótulos de `measure_lstm_snr_stress_v2` (`Fast(Padé)`/`Standard(exact)`). `cargo test --release --test models lstm_activation_precision -- --nocapture` confirmou saída legível e sem colisão de prefixos. Nenhuma alteração necessária em `utils/quality-dashboard.sh`.
 
 #### 🎯 Tarefa 5.4: Fechar as Pendências da Sprint 3 (Tarefas 3.3 e 3.4)
 
