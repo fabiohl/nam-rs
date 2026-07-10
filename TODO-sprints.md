@@ -32,7 +32,7 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
   * Modificar a função `generate_weights_film` em [generate_a2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_a2_fixtures.py) para que a metade correspondente ao bias do canal de `scale` seja deslocada por `+1.0` (tornando-a *identity-biased*), enquanto a metade de `shift` permanece centrada em `0.0`.
   * Preservar a consistência do RNG (Random Number Generator) para não corromper outras partes dos fixtures.
 * **Arquivos:** [generate_a2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_a2_fixtures.py)
-* **Status:** ⬜ A fazer
+* **Status:**  ✅ Concluído
 
 #### **Tarefa T1.2: Regeneração dos Fixtures e Golden Vectors C++**
 

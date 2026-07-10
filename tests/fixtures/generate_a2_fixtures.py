@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+#
 """
 Deterministic A2-Full (CH=8) and A2-Lite (CH=3) fixture generator.
 
@@ -147,7 +151,9 @@ def generate_weights_film(ch: int, num_film_keys: int, rng: random.Random) -> Li
         # FiLM weights per layer (ch*2 for w, ch*2 for b)
         for _ in range(num_film_keys):
             weights.extend(gen_weights(ch * 2, rng, scale=ws))
-            weights.extend(gen_weights(ch * 2, rng, scale=bs))
+            scale_bias = [1.0 + v for v in gen_weights(ch, rng, scale=bs)]
+            shift_bias = gen_weights(ch, rng, scale=bs)
+            weights.extend(scale_bias + shift_bias)
 
     weights.extend(gen_weights(HEAD_KERNEL_SIZE * ch, rng, scale=ws))
     weights.extend(gen_weights(1, rng, scale=bs))
