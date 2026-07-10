@@ -303,7 +303,7 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [film_test.rs](file:///home/fabio/nam-rs/src/models/a2/film_test.rs) (ou novo arquivo de teste
   equivalente para `process.rs`)
-* **Status:** ⬜ Pendente
+* **Status:** ✅ Concluído
 
 ### **Tarefa T3.6 [Dependente de T3.1-T3.5]: Restaurar os 4 slots FiLM originais nos fixtures sintéticos**
 

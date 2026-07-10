@@ -389,7 +389,6 @@ fn test_wavenet_a2_dyn_head_write_pos_wraps_correctly() {
         model.head_write_pos
     );
 }
-
 #[test]
 fn test_wavenet_a2_dyn_head_write_pos_reset_after_prewarm() {
     let mut model = WaveNetA2Dyn::new(
@@ -421,5 +420,337 @@ fn test_wavenet_a2_dyn_head_write_pos_reset_after_prewarm() {
     assert_eq!(
         model.head_write_pos, rf,
         "head_write_pos should be reset to rf after prewarm"
+    );
+}
+
+// ── B1/B2/B3 dedicated unit tests ────────────────────────────────────────────
+
+#[test]
+fn test_wavenet_a2_dyn_bug_b1_mixin_post_film() {
+    use crate::math::common::AlignedVec;
+    use crate::models::a2::conv1d::A2Conv1d;
+    use crate::models::a2::film::{FiLMConfig, FiLMLayer};
+    use crate::models::a2::layer::A2Layer;
+
+    let mut model = WaveNetA2Dyn::new(
+        1,    // input_channels
+        1,    // channels
+        1,    // bottleneck
+        1,    // head_size
+        1,    // head_accum_size
+        1,    // h1_in_size
+        &[1], // kernel_sizes
+        &[1], // dilations
+        vec![ActivationType::LeakyReLU {
+            negative_slope: 1.0,
+        }], // activations (identity)
+        vec![GatingMode::None], // gating_modes
+        vec![None], // secondary_activations
+        false, // head1x1_active
+    )
+    .unwrap();
+
+    model.rechannel_w_f32 = AlignedVec::from_vec(vec![1.0]).unwrap();
+
+    // Dilated causal Conv1D with bias = 3.0 and weights = 0.0 (interleaved 4-wide size = 4)
+    let conv = A2Conv1d::new(
+        AlignedVec::from_vec(vec![0.0; 4]).unwrap(),
+        AlignedVec::from_vec(vec![3.0]).unwrap(),
+        true,
+        1,
+        1,
+        1,
+        1,
+    );
+    let mixin_w = AlignedVec::from_vec(vec![4.0]).unwrap();
+    let l1x1_w = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let l1x1_b = AlignedVec::from_vec(vec![0.0]).unwrap();
+
+    let mut layer = A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b);
+
+    // Active input_mixin_post_film FiLM layer
+    let film_config = FiLMConfig {
+        active: true,
+        shift: true,
+        groups: 1,
+    };
+    // scale weight: 2.5, shift weight: 1.2, scale bias: 0.0, shift bias: 0.0
+    let film_layer = FiLMLayer::load(
+        film_config,
+        1, // cond_size
+        1, // channels
+        vec![2.5, 1.2],
+        vec![0.0, 0.0],
+    )
+    .unwrap();
+    layer.input_mixin_post_film = Some(film_layer);
+
+    model.layers = vec![layer];
+
+    let input = vec![1.5]; // input_x = 1.5, which is also the condition
+    let mut output = vec![0.0];
+
+    // We run the model process. This will run process_internal on the 1-sample input.
+    // The condition value is 1.5.
+    model.process(&input, &mut output);
+
+    // Let's trace mathematically:
+    // conv_out = 3.0
+    // mixin = mixin_w * condition = 4.0 * 1.5 = 6.0
+    // scale = 2.5 * 1.5 + 0.0 = 3.75
+    // shift = 1.2 * 1.5 + 0.0 = 1.8
+    // Since input_mixin_post_film applies only to the mixin:
+    // mixin_modulated = mixin * scale + shift = 6.0 * 3.75 + 1.8 = 22.5 + 1.8 = 24.3
+    // z = conv_out + mixin_modulated = 3.0 + 24.3 = 27.3
+    // This value is written to head_accum at the frame position.
+
+    let head_wp = model.receptive_field_size; // initial head_write_pos
+    let actual_val = model.head_accum[head_wp];
+    let expected_val = 27.3f32;
+
+    assert!(
+        (actual_val - expected_val).abs() < 1e-4,
+        "Bug B1 test failed: expected {}, got {}",
+        expected_val,
+        actual_val
+    );
+}
+
+#[test]
+fn test_wavenet_a2_dyn_bug_b2_l1x1_gating_modes() {
+    use crate::math::common::AlignedVec;
+    use crate::models::a2::conv1d::A2Conv1d;
+    use crate::models::a2::film::{FiLMConfig, FiLMLayer};
+    use crate::models::a2::layer::A2Layer;
+
+    // Helper closure to create and run the 2-layer model with a specific gating mode and film activity
+    let run_model = |gating: GatingMode, film_active: bool| -> f32 {
+        let mut model = WaveNetA2Dyn::new(
+            1,       // input_channels
+            1,       // channels
+            1,       // bottleneck
+            1,       // head_size
+            1,       // head_accum_size
+            1,       // h1_in_size
+            &[1, 1], // kernel_sizes
+            &[1, 1], // dilations
+            vec![
+                ActivationType::LeakyReLU {
+                    negative_slope: 1.0,
+                },
+                ActivationType::LeakyReLU {
+                    negative_slope: 1.0,
+                },
+            ], // activations (identity)
+            vec![gating, GatingMode::None], // gating_modes
+            vec![None, None], // secondary_activations
+            false,   // head1x1_active
+        )
+        .unwrap();
+
+        model.rechannel_w_f32 = AlignedVec::from_vec(vec![1.0]).unwrap();
+
+        let use_g = gating == GatingMode::Gated || gating == GatingMode::Blended;
+        let conv0_out = if use_g { 2 } else { 1 };
+
+        // Layer 0: conv output = 3.0, l1x1_w = 2.0, l1x1_b = 0.5
+        let conv0 = A2Conv1d::new(
+            AlignedVec::from_vec(vec![0.0; conv0_out * 4]).unwrap(),
+            AlignedVec::from_vec(vec![3.0; conv0_out]).unwrap(),
+            true,
+            1,
+            1,
+            conv0_out,
+            1,
+        );
+        let mixin_w0 = AlignedVec::from_vec(vec![0.0; conv0_out]).unwrap();
+        let l1x1_w0 = AlignedVec::from_vec(vec![2.0]).unwrap();
+        let l1x1_b0 = AlignedVec::from_vec(vec![0.5]).unwrap();
+        let mut layer0 = A2Layer::new_dyn(conv0, mixin_w0, l1x1_w0, l1x1_b0, 1, 1, 1);
+
+        // Active layer1x1_post_film FiLM layer on Layer 0 only if film_active is true
+        if film_active {
+            let film_config = FiLMConfig {
+                active: true,
+                shift: true,
+                groups: 1,
+            };
+            // scale weight: 4.0, shift weight: 1.5, scale bias: 0.0, shift bias: 0.0
+            let film_layer = FiLMLayer::load(
+                film_config,
+                1, // cond_size
+                1, // channels
+                vec![4.0, 1.5],
+                vec![0.0, 0.0],
+            )
+            .unwrap();
+            layer0.layer1x1_post_film = Some(film_layer);
+        } else {
+            layer0.layer1x1_post_film = None;
+        }
+
+        // Layer 1: conv weight = 1.0 (interleaved), bias = 0.0
+        let conv1 = A2Conv1d::new(
+            AlignedVec::from_vec(vec![1.0, 0.0, 0.0, 0.0]).unwrap(),
+            AlignedVec::from_vec(vec![0.0]).unwrap(),
+            true,
+            1,
+            1,
+            1,
+            1,
+        );
+        let mixin_w1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+        let l1x1_w1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+        let l1x1_b1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+        let layer1 = A2Layer::new(conv1, mixin_w1, l1x1_w1, l1x1_b1);
+
+        model.layers = vec![layer0, layer1];
+
+        // input_x = 2.0 (so initial layer_in has 2.0), condition = 2.0
+        let input = vec![2.0];
+        let mut output = vec![0.0];
+        model.process(&input, &mut output);
+
+        let head_wp = model.receptive_field_size;
+        model.head_accum[head_wp]
+    };
+
+    let out_none_with = run_model(GatingMode::None, true);
+    let out_none_without = run_model(GatingMode::None, false);
+    let out_gated_with = run_model(GatingMode::Gated, true);
+    let out_gated_without = run_model(GatingMode::Gated, false);
+    let out_blended_with = run_model(GatingMode::Blended, true);
+    let out_blended_without = run_model(GatingMode::Blended, false);
+
+    // Assert that FiLM has no effect in GatingMode::None and GatingMode::Gated
+    assert_eq!(
+        out_none_with, out_none_without,
+        "None mode: expected output to be identical regardless of FiLM layer activity"
+    );
+    assert_eq!(
+        out_gated_with, out_gated_without,
+        "Gated mode: expected output to be identical regardless of FiLM layer activity"
+    );
+
+    // Assert that FiLM is applied in GatingMode::Blended (changing the output from 11.5 to 60.0)
+    assert!(
+        (out_blended_with - 60.0).abs() < 1e-4,
+        "Blended mode with FiLM: expected 60.0, got {}",
+        out_blended_with
+    );
+    assert!(
+        (out_blended_without - 11.5).abs() < 1e-4,
+        "Blended mode without FiLM: expected 11.5, got {}",
+        out_blended_without
+    );
+}
+
+#[test]
+fn test_wavenet_a2_dyn_bug_b3_l1x1_residual_modulation() {
+    use crate::math::common::AlignedVec;
+    use crate::models::a2::conv1d::A2Conv1d;
+    use crate::models::a2::film::{FiLMConfig, FiLMLayer};
+    use crate::models::a2::layer::A2Layer;
+
+    let mut model = WaveNetA2Dyn::new(
+        1,       // input_channels
+        1,       // channels
+        1,       // bottleneck
+        1,       // head_size
+        1,       // head_accum_size
+        1,       // h1_in_size
+        &[1, 1], // kernel_sizes
+        &[1, 1], // dilations
+        vec![
+            ActivationType::LeakyReLU {
+                negative_slope: 1.0,
+            },
+            ActivationType::LeakyReLU {
+                negative_slope: 1.0,
+            },
+        ], // activations (identity)
+        vec![GatingMode::Blended, GatingMode::None], // gating_modes
+        vec![None, None], // secondary_activations
+        false,   // head1x1_active
+    )
+    .unwrap();
+
+    model.rechannel_w_f32 = AlignedVec::from_vec(vec![1.0]).unwrap();
+
+    // Layer 0: conv output = 3.0 (so conv0_out = 2), l1x1_w = 2.0, l1x1_b = 0.5
+    let conv0 = A2Conv1d::new(
+        AlignedVec::from_vec(vec![0.0; 8]).unwrap(),
+        AlignedVec::from_vec(vec![3.0, 3.0]).unwrap(),
+        true,
+        1,
+        1,
+        2,
+        1,
+    );
+    let mixin_w0 = AlignedVec::from_vec(vec![0.0, 0.0]).unwrap();
+    let l1x1_w0 = AlignedVec::from_vec(vec![2.0]).unwrap();
+    let l1x1_b0 = AlignedVec::from_vec(vec![0.5]).unwrap();
+    let mut layer0 = A2Layer::new_dyn(conv0, mixin_w0, l1x1_w0, l1x1_b0, 1, 1, 1);
+
+    // Active layer1x1_post_film FiLM layer on Layer 0
+    let film_config = FiLMConfig {
+        active: true,
+        shift: true,
+        groups: 1,
+    };
+    // scale weight: 4.0, shift weight: 1.5, scale bias: 0.0, shift bias: 0.0
+    let film_layer = FiLMLayer::load(
+        film_config,
+        1, // cond_size
+        1, // channels
+        vec![4.0, 1.5],
+        vec![0.0, 0.0],
+    )
+    .unwrap();
+    layer0.layer1x1_post_film = Some(film_layer);
+
+    // Layer 1: conv weight = 1.0 (interleaved), bias = 0.0
+    let conv1 = A2Conv1d::new(
+        AlignedVec::from_vec(vec![1.0, 0.0, 0.0, 0.0]).unwrap(),
+        AlignedVec::from_vec(vec![0.0]).unwrap(),
+        true,
+        1,
+        1,
+        1,
+        1,
+    );
+    let mixin_w1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let l1x1_w1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let l1x1_b1 = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let layer1 = A2Layer::new(conv1, mixin_w1, l1x1_w1, l1x1_b1);
+
+    model.layers = vec![layer0, layer1];
+
+    // input_x = 2.0 (so initial layer_in has 2.0), condition = 2.0
+    let input = vec![2.0];
+    let mut output = vec![0.0];
+    model.process(&input, &mut output);
+
+    // Trace calculation:
+    // initial layer_in = 2.0
+    // layer 0: z_scratch = 3.0
+    // l1x1_scratch = 0.5 + 2.0 * 3.0 = 6.5
+    // scale = 4.0 * 2.0 = 8.0
+    // shift = 1.5 * 2.0 = 3.0
+    // only l1x1 is modulated:
+    // l1x1_scratch_modulated = 6.5 * 8.0 + 3.0 = 55.0
+    // layer_in after layer 0 = 2.0 + 55.0 = 57.0
+    // layer 1: conv output = 1.0 * 57.0 = 57.0
+    // head_accum = 3.0 + 57.0 = 60.0
+
+    let head_wp = model.receptive_field_size;
+    let actual_val = model.head_accum[head_wp];
+    let expected_val = 60.0f32;
+
+    assert!(
+        (actual_val - expected_val).abs() < 1e-4,
+        "Bug B3 test failed: expected {}, got {}",
+        expected_val,
+        actual_val
     );
 }
