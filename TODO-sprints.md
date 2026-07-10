@@ -200,7 +200,12 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs),
   [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:**  ✅ Concluído
+* **Status:**  ✅ Concluído (commit `2108b3f`)
+* **Verificação (auditoria 2026-07-10):** diff confere linha a linha com a spec — `mixin_scratch`
+  dimensionado `bottleneck * 2` (idêntico a `z_scratch`), inicializado no único construtor de
+  produção (`WaveNetA2Dyn::new`, usado pelo dispatcher real em
+  `src/loader/dispatcher/wavenet/mod.rs:273`), mixin computado isolado, FiLM aplicado só nele, soma
+  para `z_scratch` só depois. `cargo check`/`clippy --all-targets --all-features` limpos.
 
 ### **Tarefa T3.2 [🔴 CRÍTICA — Bug B2]: Restringir `layer1x1_post_film` ao modo `BLENDED` no motor dinâmico**
 
@@ -217,7 +222,10 @@ thresholds contra um motor ainda incorreto.
   * **Dependência de ordem:** aplicar esta tarefa **depois** de T3.1 e **antes** de T3.3, pois
     T3.3 modifica o mesmo bloco de código (residual l1x1).
 * **Arquivos:** [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:** ✅ Concluído
+* **Status:** ✅ Concluído (commit `cc892ae`)
+* **Verificação (auditoria 2026-07-10):** guard `layer.layer1x1_post_film.as_mut().filter(|_|
+  use_blending)` implementado exatamente como especificado — nenhum plumbing extra necessário,
+  confirmado que `use_blending` já existia como parâmetro de `process_frame_dyn`.
 
 ### **Tarefa T3.3 [🔴 CRÍTICA — Bug B3]: Isolar o `layer1x1` em scratch buffer próprio antes do FiLM e antes da soma residual, no motor dinâmico**
 
@@ -246,7 +254,13 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs),
   [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:**  ✅ Concluído
+* **Status:**  ✅ Concluído (commit `8a2de15`)
+* **Verificação (auditoria 2026-07-10):** confirmado que o bias `l1x1_b[oc]` permanece incluído em
+  `l1x1_scratch` antes do FiLM (não foi perdido na refatoração — `l1x1_scratch[oc] = sum` onde
+  `sum` já parte de `l1x1_b[oc]`). Soma residual `layer_in[base+oc] += l1x1_scratch[oc]` ocorre
+  depois do FiLM, como especificado. `a2_dynamic_gated_ch8`/`a2_dynamic_blended_ch3` (risco 🔴 da
+  matriz de risco, bloco de código compartilhado) **não regrediram**: SNR medido 103,0 dB / 132,8
+  dB (era 103/133 dB antes da mudança) — dentro da margem de ruído de medição.
 
 ### **Tarefa T3.4 [🟡 Consistência — sem impacto funcional atual]: Espelhar B1/B2/B3 nos caminhos estáticos CH=3/CH=8**
 
@@ -274,7 +288,28 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [conv1d_ch3/simd.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_ch3/simd.rs),
   [conv1d_ch8/simd.rs](file:///home/fabio/nam-rs/src/models/a2/conv1d_ch8/simd.rs)
-* **Status:**  ✅ Concluído
+* **Status:**  ✅ Concluído (commit `9312124`)
+* **Verificação (auditoria 2026-07-10):** implementação correta nos dois arquivos. Encontrei o
+  novo parâmetro `use_blending` **hardcoded como `false`** nas 3 call-sites de
+  `src/models/a2/model/static/process.rs` — investiguei e confirmei que isso é **correto, não um
+  atalho incompleto**: `check_gating_mode_all_none` (`src/loader/nam_json/topology/a2.rs:182`)
+  garante que o dispatcher só roteia para este caminho estático quando **todas** as camadas têm
+  `gating_mode: "none"` — `GatingMode::Blended` nunca alcança este código, então `false` é sempre
+  o valor real hoje.
+* **Débito técnico identificado (course-correction, não bloqueante):** essa garantia só existe
+  implicitamente, em outro arquivo (`a2.rs`), sem nenhum comentário/assert em
+  `static/process.rs`/`conv1d_ch{3,8}/simd.rs` documentando o invariante. Se a política de
+  roteamento mudar no futuro (o próprio texto desta tarefa cita esse cenário como motivação),
+  `use_blending: false` hardcoded reintroduziria silenciosamente o Bug B2 no caminho estático,
+  sem nenhum teste pegando (é dead code hoje, sem cobertura de golden). Adicionalmente, T3.4 não
+  ganhou testes unitários dedicados equivalentes aos de T3.5 — os testes de `conv1d_ch3_test.rs`/
+  `conv1d_ch8_test.rs` tocados neste commit só atualizam assinaturas de chamada (`+false`) para
+  compilar, não exercitam FiLM ativo (consistente com o código ser inalcançável, mas sem prova
+  formal da correção matemática do espelhamento). **Ação recomendada:** adicionar, em T3.11 ou
+  numa tarefa T3.4.1 dedicada, (a) um comentário/`debug_assert!` em `static/process.rs`
+  referenciando explicitamente `check_gating_mode_all_none` como o invariante que justifica
+  `use_blending: false`, e (b) opcionalmente 1-2 testes unitários no mesmo estilo de T3.5 para
+  `conv1d_ch3`/`conv1d_ch8` (baixa prioridade, sem risco de produção).
 
 ### **Tarefa T3.5 [🔴 CRÍTICA]: Testes unitários dedicados para B1/B2/B3 (isolados, sem depender de fixtures/goldens)**
 
@@ -303,7 +338,15 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [film_test.rs](file:///home/fabio/nam-rs/src/models/a2/film_test.rs) (ou novo arquivo de teste
   equivalente para `process.rs`)
-* **Status:** ✅ Concluído
+* **Status:** ✅ Concluído (commit `14612c1`, em `src/models/a2/model/dynamic_test.rs`)
+* **Verificação (auditoria 2026-07-10):** os 3 testes
+  (`test_wavenet_a2_dyn_bug_b1_mixin_post_film`, `test_wavenet_a2_dyn_bug_b2_l1x1_gating_modes`,
+  `test_wavenet_a2_dyn_bug_b3_l1x1_residual_modulation`) comparam contra cálculo manual `f32`,
+  exatamente como pedido — não dependem de golden/fixture. Reexecutados nesta auditoria:
+  **3/3 passam** (`cargo test --release --lib bug_b1 bug_b2 bug_b3`). Tracei manualmente a
+  matemática de B1 e B3 e confere com os comentários do próprio teste. `cargo test --release
+  --test models a2_dynamic container_a2 a2_full a2_lite` → 24/24 passam, 4 ignorados (esperado),
+  sem regressão nos modelos de risco da matriz (ver nota em T3.4). **T3.6 está desbloqueada.**
 
 ### **Tarefa T3.6 [Dependente de T3.1-T3.5]: Restaurar os 4 slots FiLM originais nos fixtures sintéticos**
 
@@ -324,6 +367,16 @@ thresholds contra um motor ainda incorreto.
   [wavenet_a2_film_lite.nam](file:///home/fabio/nam-rs/tests/fixtures/models/wavenet_a2_film_lite.nam),
   [wavenet_a2_film_full.nam](file:///home/fabio/nam-rs/tests/fixtures/models/wavenet_a2_film_full.nam)
 * **Status:** ⬜ Pendente
+* **Course-correction recomendada (auditoria 2026-07-10, opcional mas recomendada dado o
+  histórico do Achado F1):** antes de regenerar fixtures/goldens/thresholds versionados (T3.6-T3.8
+  — caro e difícil de desfazer), repetir a mesma verificação temporária e revertida que gerou a
+  tabela do Achado F2 (reconstruir `wavenet_a2_film_lite.nam` com os 4 slots ativos em `/tmp`,
+  renderizar golden C++ real, comparar contra o motor **já corrigido por T3.1-T3.3**, sem commitar
+  nada). Isso tem custo menor que executar T3.6-T3.8 por completo e dá confirmação direta de que o
+  SNR volta para a faixa esperada (>90 dB) **antes** de comprometer os fixtures versionados —
+  mitigando exatamente o risco "Correção incompleta mascarada por thresholds permissivos" já
+  listado na Matriz de Risco (linha "Alto"). Os testes unitários de T3.5 (verificados, 3/3 ok) já
+  dão forte evidência disso; este passo é um reforço de baixo custo, não um bloqueio adicional.
 
 ### **Tarefa T3.7 [Dependente de T3.6]: Regenerar goldens C++ e anchors f64, remedir ESR/SNR**
 
@@ -356,8 +409,15 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:** [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
 * **Status:** ⬜ Pendente
 
-### **Tarefa T3.9 [Investigação, não bloqueante]: Quantificar o impacto de B1/B2 em `wavenet_a2_max.nam`**
+### **Tarefa T3.9 [Investigação, não bloqueante — mas recomenda-se antecipar]: Quantificar o impacto de B1/B2 em `wavenet_a2_max.nam`**
 
+* **Course-correction (auditoria 2026-07-10):** recomendo executar esta tarefa **antes ou em
+  paralelo com T3.6**, não "depois, se sobrar tempo" — o motor já está corrigido e verificado
+  (T3.1-T3.5), a medição é barata (contorno local, sem commit, sem alterar fixtures) e dá um dado
+  valioso agora: quanto do ESR≈36,1 do Achado 2 vinha de B1/B2 vs. do `condition_dsp` ainda não
+  fechado. Fazer isso antes de T3.6 não bloqueia nada (dependências no diagrama da seção 4 não
+  mudam) e aproveita o momentum da correção recém-verificada; adiar arrisca essa medição nunca
+  ser feita.
 * **Objetivo:** Medir se a correção de B1/B2 reduz o ESR≈3,61e1 documentado no Achado 2 do
   `TODO-parity.md`, isolando quanto da divergência daquele modelo pertence ao `condition_dsp`
   (ainda não fechado, Achado 2) vs. aos bugs agora corrigidos.
@@ -448,6 +508,17 @@ T3.10 (auditar 4 slots restantes, investigação paralela) ───────
 * **T3.4, T3.9 e T3.10 são independentes** do caminho crítico T3.1→T3.8 e podem ser executadas em
   paralelo por outro engenheiro, sem bloquear a entrega principal.
 * **Nada em T3.6-T3.8 deve começar antes de T3.5 estar verde.**
+* **Auditoria de execução (2026-07-10):** T3.1-T3.5 concluídas, verificadas por leitura de código
+  e por reexecução de testes (3/3 unitários dedicados + 24/24 de regressão, incluindo os dois
+  modelos de risco `a2_dynamic_gated_ch8`/`_blended_ch3` sem regressão de SNR) — ver notas de
+  verificação em cada tarefa acima. **T3.6 está desbloqueada.** Duas correções de rumo
+  recomendadas antes de prosseguir: (1) antecipar T3.9 para antes/paralelo a T3.6 (é barata,
+  não-bloqueante, e dá dado valioso agora — ver nota em T3.9); (2) considerar o checkpoint
+  opcional de baixo custo descrito em T3.6 (repetir a verificação temporária/revertida do Achado
+  F2 com o motor já corrigido) antes de comprometer fixtures/goldens versionados em T3.6-T3.8.
+  Nenhuma correção foi necessária em T3.1/T3.2/T3.3/T3.5; T3.4 tem um débito técnico de baixa
+  prioridade documentado na própria tarefa (invariante `use_blending: false` não documentado no
+  código).
 
 ---
 
@@ -455,10 +526,10 @@ T3.10 (auditar 4 slots restantes, investigação paralela) ───────
 
 | Risco                                                                                                                           | Impacto  | Mitigação                                                                                                                                                                                                                          |
 |:------------------------------------------------------------------------------------------------------------------------------- |:-------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Regressão em `a2_dynamic_gated_ch8`/`a2_dynamic_blended_ch3`** (compartilham o bloco de residual l1x1 hoje em SNR 103/133 dB) | **Alto** | T3.5 exige testes unitários dedicados antes de qualquer fixture; T3.12 roda a suíte completa e compara explicitamente esses dois modelos antes/depois.                                                                             |
-| **Violação de RT-safety / alocação no hot-path** ao introduzir `mixin_scratch`/`l1x1_scratch`                                   | Médio    | Seguir estritamente o padrão já estabelecido por `head1x1_scratch` (pré-alocado no construtor, `&mut [f32]` passado por parâmetro, zero alocação por frame). Validar com `utils/rt-safety-lints.sh` (ou equivalente) se existente. |
-| **Dimensionamento incorreto dos novos scratch buffers para modelos com `groups > 1` ou multi-array (cascade)**                  | Médio    | Dimensionar pelo maior `z_out_ch`/`channels` entre todas as camadas do modelo (mesmo critério de `z_scratch`/`head1x1_scratch` atual), não pelo primeiro layer. Cobrir com teste específico de `groups > 1` em T3.5.               |
-| **Correção incompleta mascarada por thresholds permissivos** (repetição do erro do commit `445b5cb`)                            | Alto     | T3.6 é bloqueada explicitamente até T3.5 passar; T3.7 define um critério de corte (>90 dB) que, se não atingido, impede seguir para T3.8.                                                                                          |
+| **Regressão em `a2_dynamic_gated_ch8`/`a2_dynamic_blended_ch3`** (compartilham o bloco de residual l1x1 hoje em SNR 103/133 dB) | **Alto** | T3.5 exige testes unitários dedicados antes de qualquer fixture; T3.12 roda a suíte completa e compara explicitamente esses dois modelos antes/depois. **✅ Verificado (auditoria 2026-07-10):** SNR remedido em 103,0/132,8 dB pós-T3.1-T3.4, sem regressão. |
+| **Violação de RT-safety / alocação no hot-path** ao introduzir `mixin_scratch`/`l1x1_scratch`                                   | Médio    | Seguir estritamente o padrão já estabelecido por `head1x1_scratch` (pré-alocado no construtor, `&mut [f32]` passado por parâmetro, zero alocação por frame). Validar com `utils/rt-safety-lints.sh` (ou equivalente) se existente. **✅ Verificado:** ambos os novos scratch buffers seguem exatamente o padrão de `head1x1_scratch` (pré-alocados no único construtor de produção). |
+| **Dimensionamento incorreto dos novos scratch buffers para modelos com `groups > 1` ou multi-array (cascade)**                  | Médio    | Dimensionar pelo maior `z_out_ch`/`channels` entre todas as camadas do modelo (mesmo critério de `z_scratch`/`head1x1_scratch` atual), não pelo primeiro layer. Cobrir com teste específico de `groups > 1` em T3.5. ⚠️ **Pendente:** não encontrei um teste dedicado a `groups > 1` especificamente para `mixin_scratch`/`l1x1_scratch` em T3.5 — considerar adicionar em T3.10 ou T3.12. |
+| **Correção incompleta mascarada por thresholds permissivos** (repetição do erro do commit `445b5cb`)                            | Alto     | T3.6 é bloqueada explicitamente até T3.5 passar; T3.7 define um critério de corte (>90 dB) que, se não atingido, impede seguir para T3.8. Ver course-correction em T3.6 (checkpoint opcional de baixo custo antes de comprometer fixtures). |
 | **Escopo crescer para os 4 slots não testados (T3.10)**                                                                         | Baixo    | T3.10 é explicitamente desacoplada desta sprint — qualquer novo bug encontrado abre um Achado F3 separado, não expande o escopo de T3.1-T3.8.                                                                                      |
-| **Código morto (T3.4) consumir tempo de revisão desproporcional ao seu risco real**                                             | Baixo    | T3.4 é marcada como prioridade 🟡 e pode ser adiada para uma sprint futura sem bloquear o fechamento desta, já que é inalcançável em produção sob a política de roteamento atual.                                                  |
+| **Código morto (T3.4) consumir tempo de revisão desproporcional ao seu risco real**                                             | Baixo    | T3.4 é marcada como prioridade 🟡 e pode ser adiada para uma sprint futura sem bloquear o fechamento desta, já que é inalcançável em produção sob a política de roteamento atual. Ver débito técnico documentado na própria tarefa (invariante `use_blending: false` não documentado no código). |
 | **Documentações defasadas (Sprint 2)**                                                                                          | Baixo    | Realizar revisão estrita para certificar que nenhum local ainda refira-se ao diagnóstico incorreto de associatividade SIMD de forma ativa.                                                                                         |
