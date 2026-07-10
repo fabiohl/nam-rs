@@ -200,7 +200,7 @@ thresholds contra um motor ainda incorreto.
 * **Arquivos:**
   [mod.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/mod.rs),
   [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:** ⬜ Pendente
+* **Status:**  ✅ Concluído
 
 ### **Tarefa T3.2 [🔴 CRÍTICA — Bug B2]: Restringir `layer1x1_post_film` ao modo `BLENDED` no motor dinâmico**
 

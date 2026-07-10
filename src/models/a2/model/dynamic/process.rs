@@ -239,6 +239,7 @@ impl WaveNetA2Dyn {
             let layer = &mut self.layers[li];
 
             let z_scratch = &mut self.z_scratch;
+            let mixin_scratch = &mut self.mixin_scratch;
             let head_accum = &mut self.head_accum;
             let layer_in = &mut self.layer_in;
             let head1x1_scratch = &mut self.head1x1_scratch;
@@ -273,6 +274,7 @@ impl WaveNetA2Dyn {
                         self.bottleneck,
                         self.head1x1_active,
                         z_scratch,
+                        mixin_scratch,
                         head_accum,
                         layer_in,
                         head1x1_scratch,
@@ -331,6 +333,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     bottleneck: usize,
     head1x1_active: bool,
     z_scratch: &mut [f32],
+    mixin_scratch: &mut [f32],
     head_accum: &mut [f32],
     layer_in: &mut [f32],
     head1x1_scratch: &mut [f32],
@@ -368,22 +371,29 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     }
 
     // 2. Input mixin — matrix-vector multiply when cond_size > 1 (A2 generic).
-    // Standard A2 (cond_size == 1) reduces to: z[c] += mixin_w[c] * cond_slice[0].
+    // Standard A2 (cond_size == 1) reduces to: mixin_scratch[c] = mixin_w[c] * cond_slice[0].
     for c in 0..z_out_ch {
         let base = c * cond_size;
         let mut sum = 0.0;
         for k in 0..cond_size {
             sum += layer.mixin_w[base + k] * cond_slice[k];
         }
-        z_scratch[c] += sum;
+        mixin_scratch[c] = sum;
     }
 
     // FiLM post-mixin + pre-activation.
+    // Apply FiLM on the isolated mixin buffer before summing.
     if let Some(ref mut film) = layer.input_mixin_post_film {
         unsafe {
-            film.process(&mut z_scratch[..z_out_ch], cond_slice);
+            film.process(&mut mixin_scratch[..z_out_ch], cond_slice);
         }
     }
+
+    // Sum mixin output to z_scratch.
+    for c in 0..z_out_ch {
+        z_scratch[c] += mixin_scratch[c];
+    }
+
     if let Some(ref mut film) = layer.activation_pre_film {
         unsafe {
             film.process(&mut z_scratch[..z_out_ch], cond_slice);

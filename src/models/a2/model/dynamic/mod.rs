@@ -133,6 +133,9 @@ pub struct WaveNetA2Dyn {
     /// When gating/blending is active, the conv output is 2× wide.
     pub z_scratch: AlignedVec<f32>,
 
+    /// Scratch buffer for isolated mixin output before FiLM (2*bottleneck elements).
+    pub mixin_scratch: AlignedVec<f32>,
+
     /// Scratch buffer for head1x1 projection output (channels elements).
     pub head1x1_scratch: AlignedVec<f32>,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
@@ -303,6 +306,8 @@ impl WaveNetA2Dyn {
             layer_raw: None,
             condition_size: 1,
             z_scratch: AlignedVec::new(bottleneck * 2, 0.0f32)
+                .expect("allocation should succeed for test-sized buffers"),
+            mixin_scratch: AlignedVec::new(bottleneck * 2, 0.0f32)
                 .expect("allocation should succeed for test-sized buffers"),
             head1x1_scratch,
             prewarm_on_reset: true,
