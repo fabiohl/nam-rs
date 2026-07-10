@@ -9,7 +9,21 @@ Ensejará atualização de: `docs/audio_fidelity_map.md`, `docs/fastmath-approxi
 
 ## Achado 1: FiLM Floating-Point Associativity Gap
 
-**Diagnóstico Detalhado:**
+> ⚠️ **CORREÇÃO (Revisor Auditor, análise posterior — ver `TODO-findings.md` § Achado F1):** O
+> diagnóstico abaixo ("associatividade de soma em árvore binária SIMD vs. acumulação sequencial")
+> foi investigado a fundo e **refutado**: os dois modelos flagship que exibem o gap
+> (`wavenet_a2_film_lite.nam` / `wavenet_a2_film_full.nam`) têm `condition_size = 1` em todas as
+> camadas — com um único elemento não existe árvore de redução possível, logo `dot_product_avx2`
+> e uma soma escalar sequencial produzem resultado idêntico. A causa raiz real é a inicialização
+> não-identity-biased do canal de "scale" no gerador de fixtures sintéticas
+> (`tests/fixtures/generate_a2_fixtures.py::generate_weights_film`), que produz um fator
+> multiplicativo de média ≈ 0 (em vez de ≈ 1) que esmaga a energia do sinal e infla o ESR
+> artificialmente — não uma incompatibilidade de engine ou de ordem de soma. **Não implementar o
+> "Plano de Correção" abaixo** (seria um no-op para `cond_size=1` e removeria uma rotina AVX2
+> ainda necessária para `cond_size>1`). Ver `TODO-findings.md` para o diagnóstico completo, as
+> evidências, e a proposta de solução correta (correção do fixture, não do código de produção).
+
+**Diagnóstico Detalhado (histórico — mantido para rastreabilidade, ver correção acima):**
 
 1. **Divergência de Paridade:** O teste de fidelidade acusa um ESR de `1.54e-2` (SNR 18.1 dB) audível para o modelo `WaveNet A2-FiLM-Lite (CH=3)` e `2.50e-4` (SNR 36.0 dB) para `WaveNet A2-FiLM-Full (CH=8)`.
 2. **Bit-Parity no Oráculo:** O oráculo f64 do `nam-rs` bate com a produção Rust em `f32` no limite do ponto flutuante (ESR ≈ `1e-14`), comprovando que a topologia, dimensões e mapeamento de pesos/bias estão 100% corretos.
