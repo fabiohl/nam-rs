@@ -600,13 +600,13 @@ parse_activation_precision() {
     [ -f "$log" ] || return 0
 
     local parsed="$PARSEDIR/activation.parsed"
-    grep -E 'FastMath\(Pad' "$log" > "$parsed" 2>/dev/null || true
+    grep -E 'Fast\(Padé\).*Standard\(exact\)' "$log" > "$parsed" 2>/dev/null || true
 
     while IFS= read -r line; do
         local model fast_snr exact_snr delta
-        model=$(echo "$line" | sed 's/[[:space:]]*FastMath(Pad.*//' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-        fast_snr=$(echo "$line" | grep -oP 'FastMath\(Pad.*\):\s+\K[0-9.]+' 2>/dev/null || echo "N/A")
-        exact_snr=$(echo "$line" | grep -oP 'Exact\(tanh\):\s+\K[0-9.]+' 2>/dev/null || echo "N/A")
+        model=$(echo "$line" | sed 's/[[:space:]]*Fast(Pad.*//' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        fast_snr=$(echo "$line" | grep -oP 'Fast\(Pad.*?\):\s+\K[0-9.]+' 2>/dev/null || echo "N/A")
+        exact_snr=$(echo "$line" | grep -oP 'Standard\(exact\):\s+\K[0-9.]+' 2>/dev/null || echo "N/A")
         delta=$(echo "$line" | grep -oP 'Δ=\K[+-][0-9.]+' 2>/dev/null || echo "0.0")
         ACTIVATION_SNR["$model"]="${fast_snr:-N/A}|${exact_snr:-N/A}|${delta:-0.0}"
     done < "$parsed"
@@ -1087,7 +1087,7 @@ render_activation_precision() {
     fi
 
     printf "  %-20s │ %-14s │ %-14s │ %s\n" \
-        "Modelo" "FastMath(Pade)" "Exact(tanh)" "Δ SNR"
+        "Modelo" "Fast(Pade)" "Standard(exact)" "Δ SNR"
     printf "  %s │ %s │ %s │ %s\n" \
         "$(printf '─%.0s' {1..20})" "$(printf '─%.0s' {1..14})" \
         "$(printf '─%.0s' {1..14})" "$(printf '─%.0s' {1..10})"
@@ -1130,7 +1130,7 @@ render_activation_precision() {
     if [ "$count_num" -gt 0 ]; then
         local avg
         avg=$(awk -v t="$total" -v c="$count_num" 'BEGIN { printf "%.1f", t / c }')
-        echo "  Ganho SNR medio com Exact(tanh): +${avg} dB (sobre ${count_num} modelos LSTM)"
+        echo "  Ganho SNR medio com Standard(exact): +${avg} dB (sobre ${count_num} modelos LSTM)"
     fi
     echo ""
 }
