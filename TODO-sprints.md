@@ -217,7 +217,7 @@ thresholds contra um motor ainda incorreto.
   * **Dependência de ordem:** aplicar esta tarefa **depois** de T3.1 e **antes** de T3.3, pois
     T3.3 modifica o mesmo bloco de código (residual l1x1).
 * **Arquivos:** [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
-* **Status:** ⬜ Pendente
+* **Status:** ✅ Concluído
 
 ### **Tarefa T3.3 [🔴 CRÍTICA — Bug B3]: Isolar o `layer1x1` em scratch buffer próprio antes do FiLM e antes da soma residual, no motor dinâmico**
 

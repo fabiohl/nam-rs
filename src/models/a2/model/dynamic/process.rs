@@ -486,7 +486,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
             }
             layer_in[base + oc] += sum;
         }
-        if let Some(ref mut film) = layer.layer1x1_post_film {
+        if let Some(ref mut film) = layer.layer1x1_post_film.as_mut().filter(|_| use_blending) {
             unsafe {
                 film.process(&mut layer_in[base..base + channels], cond_slice);
             }
