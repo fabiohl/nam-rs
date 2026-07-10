@@ -262,8 +262,39 @@ ocorrer na **camada de fixtures/testes**, que é onde a causa raiz reside:
 
 ## Achado F2: `input_mixin_post_film` e `layer1x1_post_film` têm 3 bugs de paridade genuínos e não relacionados ao Achado F1 — mascarados, não corrigidos, pela implementação da Sprint 1/2
 
-**Status:** 🔴 **Novo — confirmado empiricamente e por leitura de código em ambos os lados (Rust e
-C++). Não corrigido. Afeta produção, não apenas fixtures.**
+**Status:** ✅ **Corrigido — Sprint 3 (T3.1-T3.8), commits `2108b3f`(T3.1)/`cc892ae`(T3.2)/`8a2de15`(T3.3)/`9312124`(T3.4)/`14612c1`(T3.5)/`ca8c22e`(T3.6-T3.7), 2026-07-10**
+
+**Correções realizadas (B1/B2/B3 — bugs de produção em `input_mixin_post_film`/`layer1x1_post_film`):**
+
+- **T3.1 (B1):** `input_mixin_post_film` agora modula apenas o mixin isolado (antes: modulava `conv+mixin`).
+- **T3.2 (B2):** `layer1x1_post_film` agora só aplica com `use_blending` (antes: aplicava incondicionalmente).
+- **T3.3 (B3):** `layer1x1_post_film` agora modula apenas o l1x1 isolado (antes: modulava `input+l1x1`).
+- **T3.4:** Espelhamento de B1/B2/B3 nos caminhos estáticos CH=3/CH=8.
+- **T3.5:** Testes unitários dedicados para B1/B2/B3 (3/3 passam).
+- **T3.6:** Restauração dos 4 slots FiLM nos fixtures `wavenet_a2_film_lite`/`_full`.
+- **T3.7:** Goldens C++ regenerados com 4 slots — medições finais abaixo.
+- **T3.8:** Thresholds em `validation.rs` mantidos em 120 dB/`1.0e-11`/`1.0e-4` — passam.
+
+**Medições finais (T3.7, 4 slots ativos, pós-correção B1/B2/B3 vs. golden C++):**
+
+| Modelo                                | SNR          | ESR          | MR-STFT |
+| ------------------------------------- | ------------ | ------------ | ------- |
+| `wavenet_a2_film_full` (CH=8)         | **139.4 dB** | **1.15e-14** | 3.52e-5 |
+| `wavenet_a2_film_lite` (CH=3)         | **124.2 dB** | **3.83e-13** | 2.43e-5 |
+| `wavenet_a2_film_chaos_stress` (CH=3) | 139.0 dB     | 1.25e-14     | —       |
+
+Nota: `_lite` teve SNR ~14 dB menor que na medição de 2 slots pré-correção (138.3 → 124.2 dB), pois
+os 2 slots adicionais (`input_mixin_post_film`/`layer1x1_post_film`) agora estão ativos e corretos.
+Margem ainda confortável: 4.2 dB sobre o gate de 120 dB.
+
+**Investigação T3.9 (impacto em `wavenet_a2_max.nam`):** Após B1/B2/B3, o ESR **piorou** de 3.61e1
+para 1.07e2 (~3×). Conclusão: os bugs de FiLM estavam acidentalmente compensando parte do erro do
+`condition_dsp` — caso clássico de "two wrongs make a right". O `condition_dsp` permanece como único
+bloqueador real. Ver `TODO-parity.md` §Achado 2 → Medição T3.9 e `docs/cpp_parity_map.md` §7.1.
+
+**Investigação T3.10 (auditoria dos 4 slots restantes):** 2 corretos (`conv_pre_film`,
+`activation_pre_film`), 1 bugado (`input_mixin_pre_film` — Bug C1, modula buffer errado), 1 gap
+(`head1x1_post_film` — nunca invocado). Detalhes abaixo em § Achado F3.
 
 **Contexto (auditoria da implementação do Achado F1):** as Sprints 1 e 2 (commits `3faa934`,
 `445b5cb`, `743710d`, `ee5acd1`, `355a852`, `f04e441`) implementaram corretamente a correção do
@@ -348,20 +379,33 @@ com esses slots de FiLM ativos — independentemente de testes automatizados.
    `conv1d_ch3/simd.rs`/`conv1d_ch8/simd.rs`): computar o `mixin` em um buffer temporário separado
    (`mixin_scratch`), aplicar `input_mixin_post_film` a esse buffer isolado, e só então somá-lo ao
    `z_scratch` (que já contém o `conv` output).
+
 2. **Corrigir B2**: adicionar guard `if use_blending { ... }` em torno da chamada a
    `layer.layer1x1_post_film` em `process.rs:479-483` e nos caminhos estáticos equivalentes —
    espelhando exatamente a condição do C++ (`model.cpp:248` só entra no branch `BLENDED`).
+
 3. **Corrigir B3**: computar o `layer1x1` em um buffer temporário isolado, aplicar
    `layer1x1_post_film` a esse buffer isolado (não ao `layer_in` já somado ao residual), e só
    então somar o resultado ao `layer_in`.
+
 4. **Regenerar os fixtures FiLM com os 4 slots originais restaurados** (`input_mixin_post_film` e
    `layer1x1_post_film` de volta a `active: true`) após corrigir B1/B2/B3, e remedir. Só então a
    cobertura de teste do FiLM volta a ser completa (4/8 pontos de inserção, os únicos exercitados
    pelos fixtures sintéticos atuais).
+
 5. **Reexecutar a suíte de `wavenet_a2_max.nam`** (mesmo desabilitada por padrão) após B1/B2/B3,
-   para medir se a correção reduz materialmen­te o ESR≈3,61e1 documentado no Achado 2 — isso
-   ajudaria a isolar quanto da divergência daquele modelo pertence ao `condition_dsp` (ainda não
-   fechado) vs. a estes 3 bugs (agora identificados e corrigíveis).
+    para medir se a correção reduz materialmente o ESR≈3,61e1 documentado no Achado 2 — isso
+    ajudaria a isolar quanto da divergência daquele modelo pertence ao `condition_dsp` (ainda não
+    fechado) vs. a estes 3 bugs (agora identificados e corrigíveis).
+
+   > **✅ Medido em 2026-07-10 (T3.9):** ESR **piorou** de 3.61e1 para 1.07e2, SNR de −15.6 dB
+   > para −20.3 dB, MSE de 2.46e3 para 7.30e3 (~3× pior em todas as métricas). Conclusão:
+   > B1/B2/B3 não são a causa raiz da divergência do `wavenet_a2_max.nam`. Os bugs de FiLM
+   > estavam acidentalmente compensando parte do erro do `condition_dsp`. Com FiLM corrigido e
+   > `condition_dsp` ainda quebrado, o cancelamento parcial de erro desapareceu. O
+   > `condition_dsp` (§4.4 do `cpp_parity_map.md`) permanece como único bloqueador real.
+   > Detalhes completos em `TODO-parity.md` §Achado 2 → Medição T3.9.
+
 6. **Investigar os demais 4 slots de FiLM ainda não testados por nenhum fixture** (`conv_pre_film`,
    `input_mixin_pre_film`, `activation_pre_film`, `head1x1_post_film`) com o mesmo rigor — dado
    que 2 de 4 slots já testados continham bugs, não há garantia de que os slots nunca exercitados
@@ -380,12 +424,125 @@ com esses slots de FiLM ativos — independentemente de testes automatizados.
 ### Epic F2 — Correção dos bugs de aplicação FiLM em `input_mixin_post_film`/`layer1x1_post_film`
 
 1. Corrigir B1 (mixin isolado antes do FiLM) no motor dinâmico e nos caminhos estáticos CH3/CH8.
+
 2. Corrigir B2 (guard de `use_blending`) no motor dinâmico e nos caminhos estáticos CH3/CH8.
+
 3. Corrigir B3 (l1x1 isolado antes do FiLM, soma do residual depois) no motor dinâmico e nos
    caminhos estáticos CH3/CH8.
+
 4. Restaurar os 4 slots FiLM originais nos fixtures `wavenet_a2_film_lite`/`_full`, regenerar
    goldens, remedir e recalibrar thresholds.
+
 5. Reexecutar (mesmo que manualmente) o cenário `wavenet_a2_max.nam` para quantificar o impacto
    nesse modelo ainda desabilitado (Achado 2, `TODO-parity.md`).
+
 6. Auditar os 4 slots FiLM restantes (`conv_pre_film`, `input_mixin_pre_film`,
    `activation_pre_film`, `head1x1_post_film`), hoje sem nenhuma cobertura de teste.
+
+   > **✅ Auditado em 2026-07-10 (T3.10, Achado F3):** 2 de 4 slots restantes estão corretos
+   > (`conv_pre_film` e `activation_pre_film`). Um está **quebrado** (`input_mixin_pre_film` —
+   > Bug C1, modula buffer errado) e um é um **gap documentado** (`head1x1_post_film` — nunca
+   > invocado). Detalhes abaixo em § Achado F3.
+
+---
+
+## Achado F3 — Auditoria dos 4 slots FiLM restantes sem cobertura de teste (T3.10, 2026-07-10)
+
+Metodologia: leitura pareada C++/Rust das implementações de cada slot contra `model.cpp:166-376`
+(A2 Layer::Process) nos três caminhos Rust (dinâmico `process_frame_dyn`, estático CH=3
+`conv1d_ch3/simd.rs`, estático CH=8 `conv1d_ch8/simd.rs`).
+
+### Slot 0: `conv_pre_film` — ✅ CORRETO
+
+| Aspecto                 | C++ (`model.cpp:172-177`)        | Rust (`dynamic/process.rs:206-227`, `static/process.rs:163-176`)                    |
+| ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| **Buffer alvo**         | `input` (sinal de entrada bruto) | `buf` (buffer de histórico, mesma semântica que `input`)                            |
+| **Posição no pipeline** | Antes de `_conv.Process()`       | Antes de `conv.process_single_frame()` (dinâmico) / `conv1d_ch*_forward` (estático) |
+
+**Conclusão:** O FiLM modula o buffer de entrada **antes** da convolução dilatada, modificando o
+sinal que a convolução vê — exatamente como o C++. Semântica e posição no pipeline 100%
+equivalentes nos três caminhos.
+
+### Slot 2: `input_mixin_pre_film` — 🔴 BUG (C1)
+
+| Aspecto                   | C++ (`model.cpp:188-197`)                                                                                          | Rust (`dynamic/process.rs:370-374`, `conv1d_ch3/simd.rs:297-299`, `conv1d_ch8/simd.rs:179-181`) |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| **Buffer alvo**           | `condition` (sinal de condicionamento) — FiLM processa `condition` com `condition` como condição (self-modulation) | `z_scratch` / `z_buf` (saída da convolução dilatada)                                            |
+| **O que consome a saída** | `_input_mixin.process_(film_output)` — mixin opera sobre condição modulada por FiLM                                | `mixin_scratch` é computado a partir de `cond_slice` **raw** (sem modulação FiLM)               |
+| **Equação resultante**    | `mixin_w × film(condition)`                                                                                        | `film(conv_output)` seguido de `mixin_w × condition` (não modulada)                             |
+
+Detalhamento por caminho:
+
+- **Dinâmico** (`process.rs:370-374`): `film.process(&mut z_scratch[..z_out_ch], cond_slice)` — modula `z_scratch` (conv output), mesmo buffer que `conv_post_film`.
+- **Estático CH=3** (`conv1d_ch3/simd.rs:297-299`): `film.process(z_slice, cond)` — idêntico ao `conv_post_film` na linha 294.
+- **Estático CH=8** (`conv1d_ch8/simd.rs:179-181`): `film.process(z_slice, cond)` — idêntico ao `conv_post_film` na linha 176.
+
+**Consequência:** Em Rust, `input_mixin_pre_film` é funcionalmente idêntico a aplicar
+`conv_post_film` uma segunda vez — redundante e semanticamente incorreto. Nenhum fixture
+existente ativa este slot, portanto o bug nunca foi detectado por testes. Todo modelo `.nam`
+real com `input_mixin_pre_film: true` produzirá saída divergente do C++.
+
+**Correção necessária:** Aplicar `input_mixin_pre_film` ao buffer de condição (`cond_slice`)
+antes da multiplicação `mixin_w × cond`, em vez de aplicá-lo a `z_scratch`. Requer buffer
+temporário adicional (pré-modificar `cond_slice` em scratch próprio, ou `mixin_scratch` receber
+`cond` modulada por FiLM antes da multiplicação por `mixin_w`).
+
+### Slot 4: `activation_pre_film` — ✅ CORRETO
+
+| Aspecto                 | C++ (`model.cpp:206-209`)                          | Rust (`dynamic/process.rs:400-404`, `conv1d_ch3/simd.rs:362-373`, `conv1d_ch8/simd.rs:207-209`) |
+| ----------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Buffer alvo**         | `_z` (conv output + input mixin output combinados) | `z_scratch` / `z_buf` após soma `z_scratch[c] += mixin_scratch[c]`                              |
+| **Posição no pipeline** | Após soma mixin, antes da ativação                 | Após soma mixin (linha 397), antes da ativação (linha 406+)                                     |
+
+**Conclusão:** O FiLM modula o buffer combinado conv+mixin **antes** da ativação, exatamente como
+o C++. Todos os três caminhos estão corretos.
+
+### Slot 7: `head1x1_post_film` — 🟡 GAP (não implementado)
+
+| Aspecto                 | C++ (`model.cpp:283-287`)                                                    | Rust               |
+| ----------------------- | ---------------------------------------------------------------------------- | ------------------ |
+| **Buffer alvo**         | `head1x1_output` (saída de `_head1x1`) — FiLM modula a projeção do cabeçalho | **Nunca invocado** |
+| **Posição no pipeline** | Após `head1x1.process_()`, antes da cópia para `output_head`                 | —                  |
+
+O slot é **carregado** corretamente:
+
+- `set_weights.rs:269` — slot 7 mapeia para `layer.head1x1_post_film`
+- `weights_layout.rs:22` — `("head1x1_post_film", 7)`
+- `film.rs:239,271` — presente no `FilmBlock`
+
+Mas **nenhum** caminho de processamento o invoca:
+
+- `dynamic/process.rs` — `layer.head1x1_post_film` nunca é acessado
+- `conv1d_ch3/simd.rs` — `film.head1x1_post_film` nunca é acessado
+- `conv1d_ch8/simd.rs` — `film.head1x1_post_film` nunca é acessado
+
+O comentário em `layer.rs:67` reconhece o gap: `"FiLM after head 1x1 (reserved for future general A2 engine)."`. Não é um bug no sentido estrito (é um gap documentado), mas é uma divergência de
+paridade: qualquer modelo `.nam` com `head1x1_post_film: true` produzirá saída diferente entre
+C++ e Rust.
+
+**Correção necessária:** Aplicar `head1x1_post_film` ao buffer `head1x1_scratch` (dinâmico) /
+`output_head` (estático) antes da acumulação em `head_accum`. O C++ aplica após `head1x1.process_()`
+e antes da cópia para `output_head` — a posição equivalente em Rust é entre a computação do
+`head1x1` e a cópia/soma em `head_accum`.
+
+### Resumo consolidado
+
+| Slot | Nome                   | Status     | Severidade                                               |
+| ---- | ---------------------- | ---------- | -------------------------------------------------------- |
+| 0    | `conv_pre_film`        | ✅ Correto | —                                                        |
+| 2    | `input_mixin_pre_film` | 🔴 Bug C1  | Alta — buffer errado, semântica incorreta                |
+| 4    | `activation_pre_film`  | ✅ Correto | —                                                        |
+| 7    | `head1x1_post_film`    | 🟡 Gap     | Média — documentado como "reserved", mas funcional no C++|
+
+### Proposta de correção (Epic F3)
+
+1. **Corrigir Bug C1** (`input_mixin_pre_film`): modificar o `cond_slice` (ou scratch de condição)
+   com FiLM antes de `mixin_w × cond`, espelhando `model.cpp:188-197`. Aplica-se ao motor
+   dinâmico e aos caminhos estáticos CH=3/CH=8.
+
+2. **Implementar `head1x1_post_film`**: aplicar FiLM ao buffer `head1x1_scratch` / `output_head`
+   após a projeção `head1x1` e antes da acumulação, espelhando `model.cpp:283-287`.
+
+3. **Criar fixture(s) sintético(s)** exercitando `input_mixin_pre_film` e `head1x1_post_film` para
+   cobertura de teste — similar à metodologia do Achado F2 (fixtures sintéticos com ablação de
+   slots).

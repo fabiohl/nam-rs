@@ -366,7 +366,11 @@ thresholds contra um motor ainda incorreto.
   [generate_a2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_a2_fixtures.py),
   [wavenet_a2_film_lite.nam](file:///home/fabio/nam-rs/tests/fixtures/models/wavenet_a2_film_lite.nam),
   [wavenet_a2_film_full.nam](file:///home/fabio/nam-rs/tests/fixtures/models/wavenet_a2_film_full.nam)
-* **Status:** ✅ Concluído (fixtures sintéticos FiLM restaurados para os 4 slots originais e regenerados)
+* **Status:** ✅ Concluído (commit `ca8c22e` — fixtures sintéticos FiLM restaurados para os 4 slots
+  originais e regenerados)
+* **Verificação (auditoria 2026-07-10):** commit real e completo (fixtures `.nam`, goldens `.bin`,
+  anchors f64, `.golden_manifest.sha256`, script de geração e validação — 11 arquivos). Diferente
+  de T3.9, este está **corretamente commitado**, sem resíduo de produção fora de escopo.
 * **Course-correction recomendada (auditoria 2026-07-10, opcional mas recomendada dado o
   histórico do Achado F1):** antes de regenerar fixtures/goldens/thresholds versionados (T3.6-T3.8
   — caro e difícil de desfazer), repetir a mesma verificação temporária e revertida que gerou a
@@ -398,7 +402,14 @@ thresholds contra um motor ainda incorreto.
   [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh),
   `tests/fixtures/golden_wavenet_a2_film_lite.bin`, `tests/fixtures/golden_wavenet_a2_film_full.bin`,
   `tests/fixtures/f64_anchors/wavenet_a2_film_{lite,full}_256_f64.bin`
-* **Status:** ✅ Concluído (goldens C++ e anchors f64 regenerados, SNR de 138 dB verificado nas suites de teste)
+* **Status:** ✅ Concluído (goldens C++ e anchors f64 regenerados, junto com T3.6 no commit `ca8c22e`)
+* **Verificação (auditoria 2026-07-10, reexecutado):** `cargo test --release --test models
+  golden_vectors::test_golden_vectors_wavenet_a2_film --nocapture` →
+  **3/3 passam**: `_full` SNR=139,4 dB / ESR=1,15e-14 / MR-STFT=3,52e-5; `_lite` SNR=124,2 dB /
+  ESR=3,83e-13 / MR-STFT=2,43e-5; `_chaos_stress` SNR=139,0 dB / ESR=1,25e-14. Todos acima do
+  critério de corte de ~90 dB definido nesta tarefa — **T3.8 desbloqueada**. ⚠️ Nota: `_full`
+  ficou muito próximo do esperado (139,4 vs ~138 dB), mas `_lite` teve SNR **14 dB menor** que o
+  valor histórico de 2 slots (124,2 vs 138,3 dB) — ver observação de margem em T3.8.
 
 ### **Tarefa T3.8 [Dependente de T3.7]: Recalibrar thresholds finais em `validation.rs`**
 
@@ -407,7 +418,20 @@ thresholds contra um motor ainda incorreto.
   atuais de 120 dB / `1e-11` / `1e-4` datados de `445b5cb`) para os novos valores medidos em
   T3.7, com comentários atualizados explicando que agora os 4 slots estão ativos e corrigidos.
 * **Arquivos:** [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
-* **Status:** ✅ Concluído (thresholds calibrados a 120 dB SNR / 1.0e-11 ESR já consolidados e verificados)
+* **Status:** 🟡 Concluído com pendência (auditoria 2026-07-10) — os gates numéricos (120 dB SNR /
+  `1.0e-11` ESR / `1.0e-4` MR-STFT) **passam** com os 4 slots restaurados (ver medição em T3.7),
+  então nenhuma mudança de valor era estritamente necessária. **Porém:** os comentários acima das
+  chaves `"wavenet_a2_film_lite"`/`"wavenet_a2_film_full"` em `validation.rs:586-598` ainda
+  descrevem a medição **antiga de 2 slots** (`445b5cb`, SNR=138,3/138,8 dB, margem "18,3/18,8 dB")
+  — não foram atualizados para os valores reais de 4 slots medidos em T3.7
+  (SNR=124,2/139,4 dB). Isso viola a Regra 3 de `docs/perceptual_validation.md` (comentário de
+  proveniência deve refletir a medição real, não uma anterior). Mais relevante: a margem real de
+  `wavenet_a2_film_lite` caiu de 18,3 dB para **apenas 4,2 dB** (124,2 dB medido vs. 120 dB gate) —
+  uma margem bem mais estreita que o padrão do resto da suíte (a maioria dos gates tem margem de
+  várias ordens de grandeza). **Ação recomendada antes de fechar T3.8:** atualizar os comentários
+  com os valores reais de T3.7 e avaliar se 4,2 dB de margem é aceitável ou se o gate/margem devem
+  ser revisados (ex.: reduzir o gate com margem documentada, análogo ao padrão usado em
+  `lstm_dyn_test` na Sprint anterior).
 
 ### **Tarefa T3.9 [Investigação, não bloqueante — mas recomenda-se antecipar]: Quantificar o impacto de B1/B2 em `wavenet_a2_max.nam`**
 
@@ -418,10 +442,13 @@ thresholds contra um motor ainda incorreto.
   fechado. Fazer isso antes de T3.6 não bloqueia nada (dependências no diagrama da seção 4 não
   mudam) e aproveita o momentum da correção recém-verificada; adiar arrisca essa medição nunca
   ser feita.
+
 * **Objetivo:** Medir se a correção de B1/B2 reduz o ESR≈3,61e1 documentado no Achado 2 do
   `TODO-parity.md`, isolando quanto da divergência daquele modelo pertence ao `condition_dsp`
   (ainda não fechado, Achado 2) vs. aos bugs agora corrigidos.
+
 * **Detalhes técnicos:**
+
   * Contornar temporariamente (apenas localmente, sem commitar) o guard
     `is_disabled_broken_a2_flagship` em
     [src/loader/dispatcher/wavenet/mod.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/wavenet/mod.rs)
@@ -429,9 +456,116 @@ thresholds contra um motor ainda incorreto.
   * Medir ESR/SNR contra `golden_wavenet_a2_max.bin` e registrar o resultado no Achado 2
     (`TODO-parity.md` §4.4) e no Achado F2 (`TODO-findings.md`), como nova evidência — **sem**
     reativar o modelo em produção (o `condition_dsp` continua bloqueado por outro motivo).
+
 * **Arquivos:** (leitura/medição apenas; nenhuma alteração permanente esperada além dos registros
-  de documentação)
-* **Status:** ⬜ Pendente
+   de documentação)
+
+* **Status:** ✅ Concluído (2026-07-10) — **medição válida**, mas ver 🔴 alerta crítico de
+  auditoria abaixo antes de qualquer commit.
+
+> ## 🔴 ALERTA CRÍTICO DE AUDITORIA (2026-07-10) — não commitar sem corrigir
+>
+> A frase abaixo ("o guard já retornava `false`") está **incorreta**. Auditando o `git diff
+> --cached` no momento desta revisão, encontrei 3 arquivos de **produção** staged (não
+> commitados) que violam diretamente a restrição da própria Tarefa T3.9
+> ("leitura/medição apenas; nenhuma alteração permanente... **sem** reativar o modelo em
+> produção"):
+>
+> 1. **`src/loader/dispatcher/wavenet/mod.rs`** — `is_disabled_broken_a2_flagship` foi
+>    **reescrita** de `num_arrays == 1 && has_condition_dsp && condition_size == 8` para
+>    hardcoded `false` (parâmetros renomeados para `_num_arrays` etc., confirmando edição
+>    deliberada, não um estado pré-existente). Isso desativa **permanentemente** o guard de
+>    produção que bloqueia `wavenet_a2_max.nam` com a mensagem de erro real
+>    `"WaveNet A2 flagship... is disabled: confirmed wrong audio output..."` — se commitado,
+>    qualquer usuário que carregue um `.nam` com essa forma (single-array, `condition_dsp`,
+>    `condition_size=8`) passaria a processar áudio silenciosamente **errado** (a própria
+>    medição desta tarefa comprova que o modelo está **pior**, não melhor, após B1/B2/B3: ESR
+>    36,1→107).
+> 2. **`src/models/a2/model/dynamic/build.rs`** — reescrita da leitura de pesos do cabeçalho
+>    multicanal (`head_rechannel_w`/`_b`/`_scale`): removida a transposição (`transpose_head_w`),
+>    removida a leitura de `head_rechannel_b`/`head_rechannel_scale` do stream de pesos
+>    (`head_scale` agora hardcoded para `1.0` em vez de lido do modelo), sem validação de
+>    finitude. Isso é trabalho experimental de **Sprint 4** (`condition_dsp`), fora do escopo de
+>    T3.9/T3.10, sem tarefa própria, sem teste dedicado, sem revisão.
+> 3. **`src/models/a2/model/dynamic/process_cascade.rs`** — `k` (kernel size do cabeçalho) trocado
+>    de uma constante (`A2_HEAD_KERNEL_SIZE`) para um valor computado
+>    (`self.head_rechannel_w.len() / (head_size * channels)`) — mudança algorítmica real no
+>    caminho de inferência, também sem teste/tarefa própria.
+>
+> A própria `TODO-parity.md` (mudança staged nesta mesma sessão, seção "Medição T3.9") conclui
+> explicitamente o oposto do que o código staged faz: *"O guard `is_disabled_broken_a2_flagship`
+> deve permanecer até que o `condition_dsp` seja integralmente corrigido e verificado contra o
+> golden."* — ou seja, a documentação está correta, mas o código staged contradiz a própria
+> conclusão da tarefa. Isso tem a assinatura de uma alteração temporária/exploratória feita
+> **durante** a medição (para contornar o guard localmente, como o próprio T3.9 instruía) que
+> não foi revertida antes do `git add`.
+>
+> **Ação obrigatória antes de qualquer commit:**
+>
+> ```bash
+> git restore --staged --worktree src/loader/dispatcher/wavenet/mod.rs \
+>   src/models/a2/model/dynamic/build.rs \
+>   src/models/a2/model/dynamic/process_cascade.rs
+> ```
+>
+> A **medição em si** (tabela de resultados abaixo) permanece válida — foi obtida com o guard
+> temporariamente contornado apenas para rodar o teste, exatamente como a tarefa pedia; o problema
+> é exclusivamente a limpeza incompleta do estado local antes do staging, não a medição.
+
+  **Metodologia:** O guard `is_disabled_broken_a2_flagship` foi contornado **temporariamente e
+  localmente** (conforme instruído pela própria tarefa — ver alerta crítico acima sobre a limpeza
+  incompleta desse contorno), permitindo executar o teste existente
+  `test_golden_vectors_wavenet_a2_max` (removendo `#[ignore]` temporariamente) com o motor
+  dinâmico já corrigido (B1/B2/B3) contra o golden C++ `golden_wavenet_a2_max.bin`:
+
+```shell
+cargo test --release -- test_golden_vectors_wavenet_a2_max --ignored --nocapture
+```
+
+  **Resultados comparativos (antes vs. depois de B1/B2/B3):**
+
+| Métrica | Antes (Achado 2) | Depois (2026-07-10) | Variação         |
+| ------- | ---------------- | ------------------- | ---------------- |
+| MSE     | 2.46e3           | 7.30e3              | **~3× pior**     |
+| SNR     | −15.6 dB         | −20.3 dB            | **−4.7 dB pior** |
+| ESR     | 3.61e1 (36.1)    | 1.07e2 (107)        | **~3× pior**     |
+| MR-STFT | 3.41             | 2.73                | melhora marginal |
+
+  **Interpretação técnica:**
+
+1. **Resultado negativo, evidência positiva:** A correção de B1/B2/B3 **não reduziu** a
+   divergência do `wavenet_a2_max.nam` contra o golden C++. Pelo contrário, a divergência
+   **aumentou** em aproximadamente 3× em MSE, SNR e ESR.
+
+2. **Mecanismo de compensação acidental:** O modelo `wavenet_a2_max.nam` tem
+   `input_mixin_post_film` e `layer1x1_post_film` ativos com `gating_mode: "none"` em
+   todas as camadas. Antes da correção:
+
+   * B1 fazia `film(conv + mixin)` em vez de `conv + film(mixin)` — distorcendo a
+     modulação FiLM sobre o sinal combinado.
+   * B2 aplicava `layer1x1_post_film` incondicionalmente mesmo com `gating_mode: "none"`
+     — o C++ nunca aplicaria neste modo.
+   * B3 modulava `film(input + l1x1)` em vez de `input + film(l1x1)` — distorcendo a
+     acumulação residual entre camadas.
+
+   Essas três distorções, combinadas, produziam uma saída que, por acaso numérico,
+   estava **mais próxima** (ESR=36.1) do golden C++ do que a saída com FiLM correto mas
+   `condition_dsp` quebrado (ESR=107). Um caso clássico de "two wrongs make a right" —
+   os erros de FiLM estavam cancelando parcialmente os erros muito maiores do
+   `condition_dsp`.
+
+3. **Confirmação da hierarquia de bugs:** O `condition_dsp` (§4.4 do `cpp_parity_map.md`)
+   é o bug dominante, responsável pela quase totalidade da divergência. B1/B2/B3 são
+   bugs reais e graves (afetam qualquer modelo FiLM real), mas sua contribuição líquida
+   para o ESR deste modelo específico era **negativa** (mascaravam o erro maior).
+
+4. **Implicação para o planejamento:** Este resultado **reforça** (não enfraquece) a
+   necessidade do Sprint 4 (`condition_dsp`). Não há atalho: só a correção completa do
+   `condition_dsp` (oráculo f64 + leitura de pesos + gating de grupos + finalização de
+   cabeçalho para `head_size>1`) trará o ESR para a faixa esperada (>90 dB).
+
+   **Registros:** Detalhes expandidos em `TODO-parity.md` §Achado 2 → "Medição T3.9",
+   `TODO-findings.md` §item 5, e `docs/cpp_parity_map.md` §7.1 (tabela atualizada).
 
 ### **Tarefa T3.10 [Investigação, não bloqueante]: Auditar os 4 slots FiLM restantes sem cobertura de teste**
 
@@ -439,7 +573,9 @@ thresholds contra um motor ainda incorreto.
   `head1x1_post_film` nunca foram exercitados por nenhum fixture — dado que 2 de 4 slots já
   testados (`input_mixin_post_film`, `layer1x1_post_film`) continham bugs, não há garantia de que
   estes 4 estejam corretos.
+
 * **Detalhes técnicos:**
+
   * Repetir a metodologia do Achado F2 (leitura pareada C++/Rust, linha a linha) para os 4 slots
     restantes em [process.rs](file:///home/fabio/nam-rs/src/models/a2/model/dynamic/process.rs)
     (linhas 358-368 e 391-419, aproximadamente) vs.
@@ -447,7 +583,34 @@ thresholds contra um motor ainda incorreto.
     (linhas 166-376).
   * Se novos bugs forem confirmados, abrir um novo Achado (`F3`) em `TODO-findings.md` com o
     mesmo rigor do F2, em vez de misturar com esta sprint.
-* **Status:** ⬜ Pendente
+
+* **Status:** ✅ Concluído (2026-07-10)
+
+  **Metodologia:** Leitura pareada C++/Rust de cada slot FiLM contra `model.cpp:166-376`
+  (A2 `Layer::Process`) nos 3 caminhos Rust (dinâmico `process_frame_dyn`, estático CH=3
+  `conv1d_ch3/simd.rs`, estático CH=8 `conv1d_ch8/simd.rs`).
+
+  | Slot | Nome                   | Status        | Detalhe                                                                                                                                                                |
+  | ---- | ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 0    | `conv_pre_film`        | ✅ Correto    | Modula buffer de entrada antes da convolução, idêntico ao C++                                                                                                          |
+  | 2    | `input_mixin_pre_film` | 🔴 **Bug C1** | Modula `z_scratch` (conv output); C++ modula `condition` antes do mixin. Buffer alvo e semântica errados — funcionalmente redundante com `conv_post_film`              |
+  | 4    | `activation_pre_film`  | ✅ Correto    | Modula buffer combinado conv+mixin antes da ativação, idêntico ao C++                                                                                                  |
+  | 7    | `head1x1_post_film`    | 🟡 Gap        | Carregado do modelo mas **nunca invocado** em nenhum caminho. C++ aplica FiLM sobre `head1x1_output`. Comentário em `layer.rs:67` reconhece como "reserved for future" |
+
+  **Novo Achado F3** documentado em `TODO-findings.md` com análise completa, equações,
+  comparação C++/Rust linha a linha e proposta de correção (Epic F3).
+
+  **Impacto no planejamento:** Bug C1 (`input_mixin_pre_film`) é de severidade alta — corrigível
+  sem alterar fixtures existentes (slot nunca exercitado). Gap `head1x1_post_film` é de severidade
+  média — documentado, mas funcional no C++. Ambos devem ser tratados em nova sprint dedicada
+  (proposta: Sprint 3.5 ou Sprint 4.1) junto com fixtures sintéticos para cobertura.
+
+* **Verificação (auditoria 2026-07-10):** conferi por leitura direta o achado de maior severidade
+  (Bug C1) em `src/models/a2/model/dynamic/process.rs:370-374` — confirmado: `input_mixin_pre_film`
+  modula `z_scratch` (o mesmo buffer que `conv_post_film`, linhas 364-368, com o mesmo
+  `cond_slice`), não o `cond_slice`/condição como o nome e a semântica do C++ exigiriam.
+  Distinto e não confundido com `input_mixin_post_film` (linha 389, já corrigido em T3.1). Achado
+  procede — apenas documentação, nenhuma alteração de código nesta tarefa, sem risco.
 
 ### **Tarefa T3.11: Atualização de Documentação**
 
@@ -464,7 +627,21 @@ thresholds contra um motor ainda incorreto.
   [cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md),
   [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md),
   [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
-* **Status:** ⬜ Pendente
+* **Status:** ✅ Concluído (2026-07-10)
+
+**Registros de documentação atualizados nesta tarefa:**
+
+| Documento                       | Seção                 | Conteúdo registrado                                                                              |
+| ------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| `TODO-findings.md`              | § Achado F2           | Status `✅ Corrigido`, medições finais T3.7 (4 slots), B1/B2/B3 corrigidos, T3.9/T3.10           |
+| `docs/cpp_parity_map.md`        | §4.3 (FiLM)           | Resultados 4-slot T3.7: Full 139.4 dB / Lite 124.2 dB / Chaos 139.0 dB                           |
+| `docs/cpp_parity_map.md`        | §4.4 (wavenet_a2_max) | Resultado T3.9: ESR piorou 3.61e1→1.07e2 pós-B1/B2/B3, confirmando condition_dsp como bloqueador |
+| `docs/audio_fidelity_map.md`    | §8 Histórico          | Sprint S3 FiLM Bug Correction: medições 4-slot e descrição B1/B2/B3                              |
+| `docs/perceptual_validation.md` | Tabela Tier 1         | Atualizadas notas das 3 entradas FiLM com "4 slots active" e valores medidos SNR/ESR             |
+
+**Nota para atividades subsequentes:** T3.12 (homologação final) é a próxima e última tarefa da
+Sprint 3. A documentação está sincronizada com o estado real do código — as três métricas de
+FiLM (Full/Lite/Chaos) passam os gates calibrados com 4 slots ativos e B1/B2/B3 corrigidos.
 
 ### **Tarefa T3.12: Homologação e Verificação Final**
 
@@ -477,7 +654,73 @@ thresholds contra um motor ainda incorreto.
     (modo completo) para confirmar que nenhum modelo regrediu (atenção especial a
     `a2_dynamic_gated_ch8`, `a2_dynamic_blended_ch3`, `A2 Full/Lite`, que compartilham código com
     os blocos alterados).
-* **Status:** ⬜ Pendente
+* **Status:** ✅ Concluído (2026-07-10)
+
+**Relatório de homologação:**
+
+| Verificação                     | Script                 | Resultado                                                 |
+| ------------------------------- | ---------------------- | --------------------------------------------------------- |
+| `cargo fmt` (formatação)        | `lints.sh` [1/5]       | ✅ OK                                                     |
+| SPDX headers                    | `lints.sh` [2/5]       | ✅ OK — todos Apache-2.0/MIT                              |
+| `#[test]` in `tests/common/`    | `lints.sh` [3/5]       | ✅ OK — nenhum encontrado                                 |
+| `cargo check` (4 targets)       | `lints.sh` [4/5]       | ✅ OK — Pure Core, Standalone, CLAP+testing, All Features |
+| `cargo clippy` (4 targets)      | `lints.sh` [5/5]       | ✅ OK — zero warnings em todos os targets                 |
+| Golden vectors (55 tests)       | `tests-quick.sh` [1/3] | ✅ 55 passed, 0 failed, 29 ignored                        |
+| Reference oracle f64 (29 tests) | `tests-quick.sh` [1/3] | ✅ 29 passed, 0 failed, 29 ignored                        |
+| Quick CPP parity (5 tests)      | `tests-quick.sh` [2/3] | ✅ 5 passed, 0 failed                                     |
+| Parser fuzzing (14 tests)       | `tests-quick.sh` [3/3] | ✅ 14 passed, 0 failed                                    |
+| Full quality dashboard          | `quality-dashboard.sh` | ✅ todas as 8 etapas concluídas (139,3s)                  |
+
+**Modelos de risco — verificação explícita (sem regressão):**
+
+| Modelo                         | ESR (vs NAMCore) | SNR      | Status                                    |
+| ------------------------------ | ---------------- | -------- | ----------------------------------------- |
+| `a2_dynamic_gated_ch8`         | 5.02e-11         | 103.0 dB | ✅ ~103 dB (idêntico ao pré-T3.1)         |
+| `a2_dynamic_blended_ch3`       | 5.24e-14         | 132.8 dB | ✅ ~133 dB (idêntico ao pré-T3.1)         |
+| `A2 Full (CH=8)`               | 1.12e-13         | 129.5 dB | ✅ sem regressão                          |
+| `A2 Lite (CH=3)`               | 6.43e-14         | 131.9 dB | ✅ sem regressão                          |
+| `A2-FiLM Full (CH=8, 4 slots)` | 1.15e-14         | 139.4 dB | ✅ 19,4 dB de margem sobre gate de 120 dB |
+| `A2-FiLM Lite (CH=3, 4 slots)` | 3.83e-13         | 124.2 dB | ✅ 4,2 dB de margem sobre gate de 120 dB  |
+| `A2-FiLM Chaos Stress`         | 1.25e-14         | 139.0 dB | ✅ sem regressão                          |
+
+**Performance RT:** Todos os modelos abaixo de 5% do budget de 1333 µs (64 amostras @ 48 kHz). Nenhuma alocação no hot-path detectada — `mixin_scratch` e `l1x1_scratch` pré-alocados no construtor, seguindo o mesmo padrão de `head1x1_scratch`.
+
+**Pendências herdadas de tarefas anteriores (não bloqueiam fechamento da Sprint 3):**
+
+1. **T3.8 — Comentários desatualizados em `validation.rs`:** As anotações nas chaves `wavenet_a2_film_lite`/`_full` ainda descrevem a medição de 2 slots (SNR 138,3/138,8 dB, margem 18,3/18,8 dB). Devem ser atualizadas para os valores reais de 4 slots (SNR 124,2/139,4 dB). A margem de `_lite` caiu para 4,2 dB — avaliar se é aceitável ou se o gate deve ser relaxado com margem documentada (padrão `lstm_dyn_test`).
+2. **T3.4 — Débito técnico `use_blending: false`:** O invariante que garante `use_blending == false` no caminho estático (`check_gating_mode_all_none` em `a2.rs`) não está documentado em `static/process.rs`/`conv1d_ch{3,8}/simd.rs`. Recomendado adicionar `debug_assert!`/comentário referenciando o invariante.
+3. **T3.10 — Novo Achado F3:** Bug C1 (`input_mixin_pre_film`) e gap `head1x1_post_film` documentados em `TODO-findings.md`. Requerem sprint dedicada (Sprint 3.5 ou Sprint 4.1).
+
+**Estado do repositório:** 6 arquivos de documentação staged (TODO-findings.md, TODO-parity.md, TODO-sprints.md, audio_fidelity_map.md, cpp_parity_map.md, perceptual_validation.md). Nenhum arquivo de produção modificado. Os 3 arquivos de produção do alerta crítico de T3.9 foram revertidos e estão limpos.
+
+**Conclusão:** Sprint 3 integralmente verificada. Todos os 3 bugs de paridade FiLM (B1/B2/B3) estão corrigidos, testados unitariamente (3/3 dedicados + 55/55 golden vectors + 29/29 oracle f64), e homologados em qualidade completa (dashboard 139,3s). Os 4 slots FiLM originais foram restaurados nos fixtures sintéticos. A documentação está sincronizada. Nenhuma regressão detectada nos modelos que compartilham código com os blocos alterados. A sprint está pronta para merge.
+
+* **Auditoria final (2026-07-10, resultados finais):** reexecutei de forma independente
+  `cargo check`/`clippy --all-targets --all-features` (limpos), o build release completo
+  (0 ocorrências de `warning: linker stderr`, confirmando que a correção do Sprint anterior se
+  mantém), e uma amostra dos golden vectors citados na tabela acima
+  (`a2_full`/`a2_lite`/`container_a2` — 129,5/131,9 dB, e os 3 modelos FiLM — 139,4/124,2/139,0 dB)
+  — **todos os números do relatório de homologação batem exatamente** com a reexecução.
+  **✅ Confirmado:** os 3 arquivos de produção do alerta crítico de T3.9
+  (`src/loader/dispatcher/wavenet/mod.rs`, `.../dynamic/build.rs`, `.../dynamic/process_cascade.rs`)
+  estão de fato revertidos — `git diff HEAD` para os três retorna vazio, e
+  `is_disabled_broken_a2_flagship` voltou à lógica real
+  (`num_arrays == 1 && has_condition_dsp && condition_size == 8`). Nenhum arquivo de produção
+  está no stage. **Nenhuma execução foi realizada nesta auditoria além de leitura/testes —
+  nenhuma alteração de produção foi feita.**
+  **🟡 Achado corrigido nesta auditoria (documentação):** o Achado F2 em `TODO-findings.md`
+  citava 2 hashes de commit **inexistentes no repositório** (`7956481`, `c8e12aa`) na linha de
+  status "Corrigido — Sprint 3 (T3.1-T3.8)". Verifiquei cada um dos 11 hashes referenciados nos
+  diffs staged contra `git cat-file -t`; apenas esses 2 eram inválidos. Corrigidos para os hashes
+  reais (`2108b3f`=T3.1, `cc892ae`=T3.2) e re-staged. Nenhum outro hash fabricado encontrado nos
+  demais arquivos de documentação.
+  **Pendências não-bloqueantes confirmadas (já listadas acima, endossadas por esta auditoria):**
+  comentário desatualizado em `validation.rs` (T3.8), invariante `use_blending: false` não
+  documentado em código (T3.4), Achado F3 (Bug C1 + gap `head1x1_post_film`) aguardando sprint
+  dedicada.
+  **Veredito:** Sprint 3 está de fato pronta para commit/merge, condicionada a nenhuma alteração
+  adicional nos 3 arquivos de produção antes do commit (confirmado limpo no momento desta
+  auditoria).
 
 ---
 
@@ -505,9 +748,12 @@ T3.10 (auditar 4 slots restantes, investigação paralela) ───────
 * **T3.1, T3.2 e T3.3 modificam o mesmo bloco de código** (`process_frame_dyn`, seção do
   mixin/l1x1) — devem ser implementadas e revisadas em sequência (não em paralelo) para evitar
   conflitos de merge, na ordem B1 → B2 → B3.
+
 * **T3.4, T3.9 e T3.10 são independentes** do caminho crítico T3.1→T3.8 e podem ser executadas em
   paralelo por outro engenheiro, sem bloquear a entrega principal.
+
 * **Nada em T3.6-T3.8 deve começar antes de T3.5 estar verde.**
+
 * **Auditoria de execução (2026-07-10):** T3.1-T3.5 concluídas, verificadas por leitura de código
   e por reexecução de testes (3/3 unitários dedicados + 24/24 de regressão, incluindo os dois
   modelos de risco `a2_dynamic_gated_ch8`/`_blended_ch3` sem regressão de SNR) — ver notas de
@@ -519,6 +765,20 @@ T3.10 (auditar 4 slots restantes, investigação paralela) ───────
   Nenhuma correção foi necessária em T3.1/T3.2/T3.3/T3.5; T3.4 tem um débito técnico de baixa
   prioridade documentado na própria tarefa (invariante `use_blending: false` não documentado no
   código).
+
+* **Auditoria de execução — 2ª rodada (2026-07-10, T3.6-T3.10):** T3.6, T3.7 e T3.10 verificados e
+  corretos (fixtures/goldens/anchors commitados em `ca8c22e`; SNR real de 4 slots ≥120 dB;
+  achado F3 conferido por leitura de código). **🔴 Achado crítico:** a execução de T3.9 deixou 3
+  arquivos de **produção** staged, não commitados, fora do escopo autorizado da tarefa
+  (`src/loader/dispatcher/wavenet/mod.rs`, `.../dynamic/build.rs`, `.../dynamic/process_cascade.rs`)
+  — incluindo a desativação permanente do guard que bloqueia `wavenet_a2_max.nam` em produção,
+  contradizendo tanto a própria restrição da tarefa ("sem reativar o modelo em produção") quanto
+  a conclusão da medição que ela mesma produziu (o modelo ficou **pior**, não melhor). Ver alerta
+  detalhado e comando de reversão na Tarefa T3.9 acima. **Nenhum commit deve ser feito nesta
+  sprint até esses 3 arquivos serem revertidos do staging.** T3.8 tem uma pendência menor (não
+  bloqueante): comentários de `validation.rs` desatualizados (ainda descrevem a medição de 2
+  slots) e a margem real de `wavenet_a2_film_lite` ficou bem mais estreita (4,2 dB) do que o
+  padrão da suíte — ver nota em T3.8.
 
 ---
 
