@@ -242,7 +242,7 @@ ocorrer na **camada de fixtures/testes**, que é onde a causa raiz reside:
 
 ## Epics (agrupamento para planejamento)
 
-### Epic F1-A — Correção da causa raiz do fixture FiLM (baixo risco, alto valor de credibilidade)
+### Epic F1-A — Correção da causa raiz do fixture FiLM (baixo risco, alto valor de credibilidade) [DONE]
 
 1. Corrigir `generate_weights_film` em `generate_a2_fixtures.py` (deslocamento `+1.0` no canal de
    `scale`).

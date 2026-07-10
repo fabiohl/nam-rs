@@ -11,7 +11,7 @@ Este documento organiza a execução física dos planos de melhoria e correçõe
 
 ## Relação com Achados e Epicos
 
-* **Referência:** `TODO-findings.md` § Epic F1-A — Correção da causa raiz do fixture FiLM (baixo risco, alto valor de credibilidade)
+* **Referência:** `TODO-findings.md` § Epic F1-A (concluído) e Epic F1-B (em planejamento)
 
 ---
 
@@ -73,10 +73,62 @@ Esta sprint foca em corrigir a inicialização do canal de `scale` do FiLM no sc
 
 ---
 
-### 3. Matriz de Risco e Mitigação
+## Sprint 2: Preservação do Teste de Estresse Numérico e Documentação
+
+Esta sprint foca em preservar a fixture degenerada original de FiLM como um teste dedicado de robustez numérica sob adversidades (denominada `wavenet_a2_film_chaos_stress.nam`), garantindo que o motor de inferência processe regimes sem bias de identidade sem produzir inconsistências numéricas (NaN/Inf). Paralelamente, todas as documentações e mapas de paridade são atualizados para refletir a nova realidade das medições ideais do FiLM.
+
+---
+
+### **Tarefa T2.1: Registro e Geração do Golden para o Chaos Stress Fixture**
+
+* **Objetivo:** Registrar o novo fixture `wavenet_a2_film_chaos_stress.nam` no catálogo e gerar seu vetor binário de referência C++.
+* **Detalhes técnicos:**
+  * Atualizar a lista `CATALOG` no script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) para adicionar a entrada `"wavenet_a2_film_chaos_stress.nam:golden_wavenet_a2_film_chaos_stress:A2-FiLM Chaos Stress (CH=3):none"`.
+  * Executar `./tests/fixtures/golden_gen_build.sh` para renderizar o golden binary de referência `golden_wavenet_a2_film_chaos_stress.bin`.
+* **Arquivos:** [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+* **Status:** ⬜ A fazer
+
+### **Tarefa T2.2: Adição do Teste de Golden Vector e Threshold Próprio**
+
+* **Objetivo:** Adicionar o teste unitário de golden vector do novo modelo e configurar os thresholds originais dele no Rust.
+* **Detalhes técnicos:**
+  * Configurar a chave `"wavenet_a2_film_chaos_stress"` em [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) usando os antigos thresholds degenerados (ex: SNR = `12.0` dB, ESR = `3.5e-2`).
+  * Adicionar o teste unitário `test_golden_vectors_wavenet_a2_film_chaos_stress` em [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs).
+  * Registrar a chave `"wavenet_a2_film_chaos_stress"` no teste de calibração em [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs).
+* **Arquivos:**
+  * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
+  * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs)
+  * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs)
+* **Status:** ⬜ A fazer
+
+### **Tarefa T2.3: Atualização da Documentação Técnica de Fidelidade e Paridade**
+
+* **Objetivo:** Atualizar os arquivos markdown do repositório para refletir a correção da causa raiz e as medições reais de SNR/ESR obtidas.
+* **Detalhes técnicos:**
+  * Substituir o diagnóstico incorreto de associatividade pelo correto (bias de inicialização do gerador) no Achado 1 de [TODO-parity.md](file:///home/fabio/nam-rs/TODO-parity.md).
+  * Atualizar a seção §4.3 de [cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md) explicando a causa real e a mitigação pelo teste de estresse de caos numérico.
+  * Atualizar as tabelas de thresholds e medições do FiLM nos arquivos [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md) e [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md).
+* **Arquivos:**
+  * [TODO-parity.md](file:///home/fabio/nam-rs/TODO-parity.md)
+  * [cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md)
+  * [audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md)
+  * [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
+* **Status:** ⬜ A fazer
+
+### **Tarefa T2.4: Homologação de Sprints e Execução de Testes Rápidos**
+
+* **Objetivo:** Homologar a entrega e certificar conformidade completa.
+* **Detalhes técnicos:**
+  * Executar `utils/lints.sh` e `utils/tests-quick.sh`.
+* **Status:** ⬜ A fazer
+
+---
+
+### 3. Matriz de Risco e Mitigação de Ambas as Sprints
 
 | Risco | Impacto | Mitigação |
 | :--- | :--- | :--- |
-| **Quebra do determinismo dos pesos sintéticos** | Médio | Garantir que o RNG use seed fixa e a lógica de geração preserve a dimensionalidade correta dos tensores. |
-| **Tolerâncias de Threshold estritas demais** | Baixo | Adicionar margens adequadas nos novos thresholds (~3 dB em SNR e fator extra de tolerância em ESR) para tolerar pequenas variações ambientais de float. |
-| **Divergências estruturais remanescentes** | Baixo | Validar os resultados contra o oráculo f64 (`reference_oracle`) para ter certeza de que o motor de inferência Rust do FiLM está matematicamente correto. |
+| **Quebra do determinismo dos pesos sintéticos (Sprint 1)** | Médio | Garantir que o RNG use seed fixa e a lógica de geração preserve a dimensionalidade correta dos tensores. |
+| **Tolerâncias de Threshold estritas demais (Sprint 1)** | Baixo | Adicionar margens adequadas nos novos thresholds (~3 dB em SNR e fator extra de tolerância em ESR) para tolerar pequenas variações ambientais de float. |
+| **Divergência imprevista no modelo de caos (Sprint 2)** | Baixo | Como o modelo e os pesos são idênticos aos anteriores, a paridade com o golden original e o C++ deve se manter estável nos níveis reportados antes da correção. |
+| **Documentações defasadas (Sprint 2)** | Baixo | Realizar revisão estrita para certificar que nenhum local ainda refira-se ao diagnóstico incorreto de associatividade SIMD de forma ativa. |
