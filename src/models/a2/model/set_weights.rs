@@ -145,7 +145,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             // 2f. FiLM layers (if active in layer_raw JSON) — read weights after l1x1 bias.
             if let Some(ref raw) = self.layer_raw {
                 let configs = parse_film_configs(raw);
-                load_film_for_layer(&mut layer, &configs, CH, 1, weights, &mut pos, total, i)?;
+                load_film_for_layer(&mut layer, &configs, CH, 1, 1, weights, &mut pos, total, i)?;
             }
 
             layers.push(layer);
@@ -294,6 +294,7 @@ pub(crate) fn load_film_for_layer(
     configs: &[FiLMConfig; 8],
     channels: usize,
     cond_size: usize,
+    head_channels: usize,
     weights: &[f32],
     pos: &mut usize,
     total: usize,
@@ -303,7 +304,11 @@ pub(crate) fn load_film_for_layer(
         if !config.active {
             continue;
         }
-        let film_channels = if idx == 2 { cond_size } else { channels };
+        let film_channels = match idx {
+            2 => cond_size,
+            7 => head_channels,
+            _ => channels,
+        };
         let (w_count, b_count) = if cond_size > 1 {
             // A2 generic: integer-safe formula with channels-sized bias
             (

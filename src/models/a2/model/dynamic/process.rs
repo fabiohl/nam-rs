@@ -471,6 +471,12 @@ unsafe fn process_frame_dyn<M: SimdMath>(
                 head1x1_scratch[oc] = sum;
             }
         }
+        // FiLM after head1x1 projection (C++ model.cpp:283-287).
+        if let Some(ref mut film) = layer.head1x1_post_film {
+            unsafe {
+                film.process(&mut head1x1_scratch[..head_accum_size], cond_slice);
+            }
+        }
         if is_first {
             head_accum[head_off..head_off + head_accum_size]
                 .copy_from_slice(&head1x1_scratch[..head_accum_size]);

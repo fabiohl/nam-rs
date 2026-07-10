@@ -687,7 +687,7 @@ fn test_load_film_no_active_configs() {
     let weights = [1.0f32; 100];
     let mut pos = 5;
     let total = weights.len();
-    let result = load_film_for_layer(&mut layer, &configs, 8, 1, &weights, &mut pos, total, 0);
+    let result = load_film_for_layer(&mut layer, &configs, 8, 1, 1, &weights, &mut pos, total, 0);
     assert!(result.is_ok());
     assert_eq!(
         pos, 5,
@@ -719,7 +719,7 @@ fn test_load_film_one_active_config() {
     }
 
     let mut pos = 0;
-    let result = load_film_for_layer(&mut layer, &configs, 8, 1, &weights, &mut pos, total, 0);
+    let result = load_film_for_layer(&mut layer, &configs, 8, 1, 1, &weights, &mut pos, total, 0);
     assert!(result.is_ok());
     assert_eq!(pos, w_count + b_count);
     assert!(layer.conv_pre_film.is_some());
@@ -760,7 +760,7 @@ fn test_load_film_two_active_configs() {
     }
 
     let mut pos = 0;
-    let result = load_film_for_layer(&mut layer, &configs, 8, 1, &weights, &mut pos, total, 0);
+    let result = load_film_for_layer(&mut layer, &configs, 8, 1, 1, &weights, &mut pos, total, 0);
     assert!(result.is_ok());
     assert_eq!(pos, total);
     assert!(layer.conv_pre_film.is_some());
@@ -795,6 +795,7 @@ fn test_load_film_exhausted_mid_stream() {
         &configs,
         8,
         1,
+        1,
         &weights,
         &mut pos,
         weights.len(),
@@ -821,7 +822,7 @@ fn test_load_film_with_groups() {
     let total = w_count + b_count;
     let weights = vec![0.0f32; total];
     let mut pos = 0;
-    let result = load_film_for_layer(&mut layer, &configs, 8, 4, &weights, &mut pos, total, 0);
+    let result = load_film_for_layer(&mut layer, &configs, 8, 4, 1, &weights, &mut pos, total, 0);
     assert!(result.is_ok());
     assert_eq!(pos, total);
     assert!(layer.activation_post_film.is_some());

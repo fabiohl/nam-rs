@@ -536,11 +536,11 @@ e antes da cópia para `output_head` — a posição equivalente em Rust é entr
 
 ### Proposta de correção (Epic F3)
 
-1. **Corrigir Bug C1** (`input_mixin_pre_film`): modificar o `cond_slice` (ou scratch de condição)
+1. **Corrigir Bug C1** [DONE] (`input_mixin_pre_film`): modificar o `cond_slice` (ou scratch de condição)
    com FiLM antes de `mixin_w × cond`, espelhando `model.cpp:188-197`. Aplica-se ao motor
    dinâmico e aos caminhos estáticos CH=3/CH=8.
 
-2. **Implementar `head1x1_post_film`**: aplicar FiLM ao buffer `head1x1_scratch` / `output_head`
+2. **Implementar `head1x1_post_film`** [DONE]: aplicar FiLM ao buffer `head1x1_scratch` / `output_head`
    após a projeção `head1x1` e antes da acumulação, espelhando `model.cpp:283-287`.
 
 3. **Criar fixture(s) sintético(s)** exercitando `input_mixin_pre_film` e `head1x1_post_film` para

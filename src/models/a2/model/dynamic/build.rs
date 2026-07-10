@@ -187,6 +187,7 @@ impl WaveNetA2Dyn {
                 &configs,
                 channels,
                 self.condition_size,
+                self.head_accum_size.max(1),
                 weights,
                 pos,
                 total,

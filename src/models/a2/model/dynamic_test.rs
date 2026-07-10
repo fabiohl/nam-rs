@@ -847,3 +847,99 @@ fn test_wavenet_a2_dyn_bug_c1_mixin_pre_film_modulates_condition() {
         actual_val
     );
 }
+
+#[test]
+fn test_wavenet_a2_dyn_head1x1_post_film_modulates_projection() {
+    use crate::math::common::AlignedVec;
+    use crate::models::a2::conv1d::A2Conv1d;
+    use crate::models::a2::film::{FiLMConfig, FiLMLayer};
+    use crate::models::a2::layer::A2Layer;
+
+    // Single layer, single channel, head1x1_active with FiLM after projection.
+    let mut model = WaveNetA2Dyn::new(
+        1,    // input_channels
+        1,    // channels
+        1,    // bottleneck
+        1,    // head_size
+        1,    // head_accum_size
+        1,    // h1_in_size (= bottleneck / groups = 1)
+        &[1], // kernel_sizes
+        &[1], // dilations
+        vec![ActivationType::LeakyReLU {
+            negative_slope: 1.0, // identity
+        }],
+        vec![GatingMode::None],
+        vec![None],
+        true, // head1x1_active
+    )
+    .unwrap();
+
+    model.rechannel_w_f32 = AlignedVec::from_vec(vec![1.0]).unwrap();
+    // head1x1_w: [head_accum_size * h1_in_size] = [1 * 1] = 1 element
+    model.head1x1_w = AlignedVec::from_vec(vec![1.0]).unwrap();
+    model.head1x1_b = AlignedVec::from_vec(vec![0.0]).unwrap();
+
+    // Dilated causal Conv1D: bias = 3.0, weights = 0.0
+    let conv = A2Conv1d::new(
+        AlignedVec::from_vec(vec![0.0; 4]).unwrap(),
+        AlignedVec::from_vec(vec![3.0]).unwrap(),
+        true,
+        1,
+        1,
+        1,
+        1,
+    );
+    let mixin_w = AlignedVec::from_vec(vec![4.0]).unwrap();
+    let l1x1_w = AlignedVec::from_vec(vec![0.0]).unwrap();
+    let l1x1_b = AlignedVec::from_vec(vec![0.0]).unwrap();
+
+    let mut layer = A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b);
+
+    // Active head1x1_post_film FiLM: cond_size=1, channels=1 (head_accum_size)
+    let film_config = FiLMConfig {
+        active: true,
+        shift: true,
+        groups: 1,
+    };
+    let film_layer = FiLMLayer::load(
+        film_config,
+        1,
+        1,
+        vec![2.0, 1.0], // scale weight: 2.0, shift weight: 1.0
+        vec![0.0, 0.0],
+    )
+    .unwrap();
+    layer.head1x1_post_film = Some(film_layer);
+
+    model.layers = vec![layer];
+
+    let input = vec![0.5];
+    let mut output = vec![0.0];
+    model.process(&input, &mut output);
+
+    // Mathematical trace (C++ model.cpp:283-287):
+    // conv_out = bias = 3.0
+    // mixin = mixin_w * condition = 4.0 * 0.5 = 2.0
+    // z = conv_out + mixin = 3.0 + 2.0 = 5.0
+    // LeakyReLU (identity): unchanged → 5.0
+    // head1x1: h1_out = head1x1_w[0] * z + head1x1_b[0] = 1.0 * 5.0 + 0.0 = 5.0
+    // head1x1_post_film self-modulates h1_out with condition=0.5:
+    //   scale = 2.0 * 0.5 + 0.0 = 1.0
+    //   shift = 1.0 * 0.5 + 0.0 = 0.5
+    //   modulated = 5.0 * 1.0 + 0.5 = 5.5
+    // head_accum = 5.5 (is_first)
+    //
+    // Without FiLM: head_accum = 5.0
+    // The gap (5.5 vs 5.0) proves FiLM modulates head1x1 output.
+
+    let head_wp = model.receptive_field_size;
+    let actual_val = model.head_accum[head_wp];
+    let expected_val = 5.5f32;
+
+    assert!(
+        (actual_val - expected_val).abs() < 1e-4,
+        "head1x1_post_film test failed: expected {}, got {}",
+        expected_val,
+        actual_val
+    );
+}
