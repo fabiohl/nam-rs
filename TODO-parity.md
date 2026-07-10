@@ -19,7 +19,6 @@ Ensejará atualização de: `docs/audio_fidelity_map.md`, `docs/fastmath-approxi
    - **WaveNet A2-FiLM-Full (CH=8):** SNR de **138.8 dB**, ESR de **1.31e-14**.
 5. **Mitigação pelo Teste de Caos Numérico:** Para garantir que a engine Rust seja robusta a regimes numéricos degenerados e instabilidades, o antigo fixture com bias problemático foi registrado no catálogo como `wavenet_a2_film_chaos_stress.nam` (adicionando um teste de estresse de caos numérico com thresholds degradados intencionalmente: SNR = `12.0` dB, ESR = `3.5e-2`, MR-STFT = `0.498`).
 
-
 ## Achado 2: `wavenet_a2_max.nam` Ativamente Quebrado (Divergência Crítica no `condition_dsp`)
 
 > Vide docs/cpp_parity_map.md §4.4 e §7.1.

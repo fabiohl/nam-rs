@@ -257,3 +257,135 @@ ocorrer na **camada de fixtures/testes**, que é onde a causa raiz reside:
 2. Atualizar `TODO-parity.md` (Achado 1), `docs/cpp_parity_map.md` §4.3, `docs/audio_fidelity_map.md`
    e `docs/perceptual_validation.md` para refletir a causa raiz corrigida e os novos valores
    medidos.
+
+---
+
+## Achado F2: `input_mixin_post_film` e `layer1x1_post_film` têm 3 bugs de paridade genuínos e não relacionados ao Achado F1 — mascarados, não corrigidos, pela implementação da Sprint 1/2
+
+**Status:** 🔴 **Novo — confirmado empiricamente e por leitura de código em ambos os lados (Rust e
+C++). Não corrigido. Afeta produção, não apenas fixtures.**
+
+**Contexto (auditoria da implementação do Achado F1):** as Sprints 1 e 2 (commits `3faa934`,
+`445b5cb`, `743710d`, `ee5acd1`, `355a852`, `f04e441`) implementaram corretamente a correção do
+bias de identidade proposta no Achado F1 — confirmado: `wavenet_a2_film_lite`/`_full` agora medem
+SNR 138,3/138,8 dB (ESR `1.5e-14`/`1.3e-14`), dentro do piso de precisão f32. **Porém**, o commit
+`445b5cb` ("align A2-FiLM active keys") silenciosamente **removeu 2 dos 4 slots FiLM ativos**
+(`input_mixin_post_film` e `layer1x1_post_film`) dos fixtures `wavenet_a2_film_lite.nam` /
+`_full.nam`, sem nenhuma explicação técnica documentada em `TODO-sprints.md`, `TODO-findings.md`
+ou no próprio commit. Isso reduz a cobertura de teste do FiLM de 4/8 para 2/8 pontos de inserção
+possíveis, sem que ninguém tenha investigado **por que** os outros 2 slots continuavam divergindo
+mesmo após a correção do bias de identidade.
+
+### Verificação empírica (auditoria, reproduzível, nenhuma alteração permanente ao repositório)
+
+Reconstruí, em `/tmp/kilo/film_test/`, o fixture `wavenet_a2_film_lite.nam` no estado do commit
+`3faa934` (bias de identidade **já corrigido**, mas com os **4 slots FiLM originais ainda
+ativos** — antes da remoção do commit seguinte). Renderizei o golden C++ real
+(`build/namcore_render/tools/render`) e comparei contra o motor Rust `WaveNetA2Dyn` (via teste
+temporário, revertido após a medição):
+
+| Combinação de slots FiLM ativos                                                      | SNR medido   | ESR medido |
+| ------------------------------------------------------------------------------------ | ------------ | ---------- |
+| `conv_post_film` + `activation_post_film` (2 slots — **o que ficou em produção**)    | **138,3 dB** | `1.48e-14` |
+| `conv_post_film` + `input_mixin_post_film` + `activation_post_film` (sem `layer1x1`) | 18,2 dB      | `1.52e-2`  |
+| `conv_post_film` + `activation_post_film` + `layer1x1_post_film` (sem `input_mixin`) | 0,2 dB       | `9.58e-1`  |
+| Todos os 4 slots originais (`conv`+`mixin`+`act`+`layer1x1`)                         | **−0,8 dB**  | `1.20e0`   |
+
+Isso prova, de forma conclusiva: **o bias de identidade (Achado F1) não tinha absolutamente nada
+a ver com a divergência de `input_mixin_post_film` e `layer1x1_post_film`.** Ambos têm bugs de
+implementação genuínos e severos, confirmados por leitura direta do código-fonte:
+
+### Bug B1 — `input_mixin_post_film` modula `conv + mixin` combinados; C++ modula só o `mixin`
+
+- **C++ (correto):** `tests/fixtures/NeuralAmpModelerCore/NAM/wavenet/model.cpp:198-204` — o FiLM
+  é aplicado à saída do `_input_mixin` **isoladamente**, e só depois de modulado é somado ao
+  `_conv.GetOutput()`: `z = conv + film(mixin)`.
+- **Rust (bugado):** `src/models/a2/model/dynamic/process.rs:370-385` — o laço `for c in
+  0..z_out_ch { z_scratch[c] += sum; }` (soma o mixin ao `z_scratch`, que já contém o conv output)
+  ocorre **antes** de `film.process(&mut z_scratch[..z_out_ch], cond_slice)`. Ou seja, o Rust
+  computa `z = film(conv + mixin)`, modulando também o `conv output`, que o C++ nunca modula neste
+  ponto.
+- **Réplica confirmada** no caminho estático CH=3: `src/models/a2/conv1d_ch3/simd.rs:342-354` (comentário
+  "post-mixin, pre-activation" aplicado sobre o buffer já combinado).
+
+### Bug B2 — `layer1x1_post_film` aplicado incondicionalmente; C++ só aplica no modo `BLENDED`
+
+- **C++:** em `model.cpp:217-228` (modo `NONE`) e `:229-247` (modo `GATED`), **não existe nenhuma
+  chamada** a `_layer1x1_post_film`. Só o branch `BLENDED` (`model.cpp:248-271`, especificamente
+  linhas 265-268) o invoca.
+- **Rust:** `src/models/a2/model/dynamic/process.rs:467-483` aplica
+  `layer.layer1x1_post_film` **sempre que `!is_last`**, sem checar `use_blending` — apesar de
+  `use_blending: bool` já estar disponível como parâmetro da função (`process.rs:326`). Os
+  fixtures `wavenet_a2_film_lite`/`_full` e o modelo ainda-quebrado `wavenet_a2_max.nam` usam
+  `gating_mode: "none"`, para o qual o C++ **nunca** aplicaria este FiLM — o Rust aplica sempre.
+- **Réplica confirmada** no caminho estático: `src/models/a2/conv1d_ch3/simd.rs:450-459`.
+
+### Bug B3 — `layer1x1_post_film`, mesmo se restrito ao modo `BLENDED`, modularia o buffer errado
+
+- **C++:** `model.cpp:265-268` aplica o FiLM à saída do `_layer1x1` **isoladamente**
+  (`layer1x1_output`); só depois, em `model.cpp:359-360`, soma-se `input + layer1x1_output`
+  (já modulado) para formar `_output_next_layer`. Equação: `output = input + film(l1x1(z))`.
+- **Rust:** em `process.rs:467-478`, `layer_in[base+oc] += sum` (soma residual `input + l1x1`)
+  ocorre **antes** de `film.process(&mut layer_in[base..base+channels], ...)` (linhas 479-483).
+  Equação: `output = film(input + l1x1(z))` — o FiLM acaba modulando também o `input` acumulado de
+  camadas anteriores, nunca modulado no C++.
+
+### Conexão crítica com o Achado 2 do `TODO-parity.md` (`wavenet_a2_max.nam` "ativamente quebrado")
+
+Verifiquei que `wavenet_a2_max.nam` (modelo flagship real, `condition_size=8`, atualmente
+desabilitado via `is_disabled_broken_a2_flagship`, ESR≈3,61e1 documentado no Achado 2) **também
+tem `input_mixin_post_film` e `layer1x1_post_film` ativos com `gating_mode: "none"`** em todas as
+suas camadas. Isso significa que os Bugs B1/B2/B3 aqui identificados **são, no mínimo, um
+contribuinte adicional confirmado** para a divergência catastrófica desse modelo — até agora
+atribuída inteiramente ao bug do `condition_dsp` no oráculo f64 (que é um problema de teste, não
+de produção). B1/B2/B3, em contraste, **são bugs de produção** (`src/models/a2/model/dynamic/process.rs`
+e caminhos estáticos espelhados), que afetam qualquer usuário final que carregue um `.nam` real
+com esses slots de FiLM ativos — independentemente de testes automatizados.
+
+### Proposta de solução
+
+1. **Corrigir B1** (`src/models/a2/model/dynamic/process.rs:370-385`, e réplicas em
+   `conv1d_ch3/simd.rs`/`conv1d_ch8/simd.rs`): computar o `mixin` em um buffer temporário separado
+   (`mixin_scratch`), aplicar `input_mixin_post_film` a esse buffer isolado, e só então somá-lo ao
+   `z_scratch` (que já contém o `conv` output).
+2. **Corrigir B2**: adicionar guard `if use_blending { ... }` em torno da chamada a
+   `layer.layer1x1_post_film` em `process.rs:479-483` e nos caminhos estáticos equivalentes —
+   espelhando exatamente a condição do C++ (`model.cpp:248` só entra no branch `BLENDED`).
+3. **Corrigir B3**: computar o `layer1x1` em um buffer temporário isolado, aplicar
+   `layer1x1_post_film` a esse buffer isolado (não ao `layer_in` já somado ao residual), e só
+   então somar o resultado ao `layer_in`.
+4. **Regenerar os fixtures FiLM com os 4 slots originais restaurados** (`input_mixin_post_film` e
+   `layer1x1_post_film` de volta a `active: true`) após corrigir B1/B2/B3, e remedir. Só então a
+   cobertura de teste do FiLM volta a ser completa (4/8 pontos de inserção, os únicos exercitados
+   pelos fixtures sintéticos atuais).
+5. **Reexecutar a suíte de `wavenet_a2_max.nam`** (mesmo desabilitada por padrão) após B1/B2/B3,
+   para medir se a correção reduz materialmen­te o ESR≈3,61e1 documentado no Achado 2 — isso
+   ajudaria a isolar quanto da divergência daquele modelo pertence ao `condition_dsp` (ainda não
+   fechado) vs. a estes 3 bugs (agora identificados e corrigíveis).
+6. **Investigar os demais 4 slots de FiLM ainda não testados por nenhum fixture** (`conv_pre_film`,
+   `input_mixin_pre_film`, `activation_pre_film`, `head1x1_post_film`) com o mesmo rigor — dado
+   que 2 de 4 slots já testados continham bugs, não há garantia de que os slots nunca exercitados
+   estejam corretos.
+
+### Risco e escopo
+
+- **Risco de implementação: médio.** Ao contrário do Achado F1 (só fixtures), esta correção **é
+  código de produção** (`src/models/a2/model/dynamic/process.rs` e os caminhos estáticos
+  `conv1d_ch3`/`conv1d_ch8`), usado por qualquer `.nam` real com FiLM. Requer testes de regressão
+  cuidadosos (buffers temporários adicionais, sem quebrar RT-safety/zero-alocação no hot path).
+- **Prioridade recomendada: alta.** Estes bugs afetam a correção funcional do motor de inferência
+  para qualquer modelo FiLM real (não é uma questão de fixture/documentação como o Achado F1), e
+  têm relação direta com um item já crítico (`wavenet_a2_max.nam`, Achado 2 do `TODO-parity.md`).
+
+### Epic F2 — Correção dos bugs de aplicação FiLM em `input_mixin_post_film`/`layer1x1_post_film`
+
+1. Corrigir B1 (mixin isolado antes do FiLM) no motor dinâmico e nos caminhos estáticos CH3/CH8.
+2. Corrigir B2 (guard de `use_blending`) no motor dinâmico e nos caminhos estáticos CH3/CH8.
+3. Corrigir B3 (l1x1 isolado antes do FiLM, soma do residual depois) no motor dinâmico e nos
+   caminhos estáticos CH3/CH8.
+4. Restaurar os 4 slots FiLM originais nos fixtures `wavenet_a2_film_lite`/`_full`, regenerar
+   goldens, remedir e recalibrar thresholds.
+5. Reexecutar (mesmo que manualmente) o cenário `wavenet_a2_max.nam` para quantificar o impacto
+   nesse modelo ainda desabilitado (Achado 2, `TODO-parity.md`).
+6. Auditar os 4 slots FiLM restantes (`conv_pre_film`, `input_mixin_pre_film`,
+   `activation_pre_film`, `head1x1_post_film`), hoje sem nenhuma cobertura de teste.
