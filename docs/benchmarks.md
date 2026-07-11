@@ -74,6 +74,18 @@ You do not need to compare times mentally. **Criterion automatically saves the b
 
 All historical tracking metrics are recorded in local files within your project under: `target/criterion/`
 
+> [!IMPORTANT]
+> **Current vs. historical numbers.** The authoritative *current* per-model latency
+> figures come from a fresh `regression_gate` run — most conveniently via
+> `utils/quality-dashboard.sh` (PERFORMANCE section, median per 64-sample block).
+> Reference snapshot (2026-07-10, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 41.8 µs,
+> Lite CH12 ≈ 63.6 µs, Feather CH8 ≈ 26.5 µs, Nano CH4 ≈ 21.6 µs, A2-Full ≈ 26.8 µs,
+> A2-Lite ≈ 18.4 µs, LSTM 1×16/2×8 ≈ 7.6 µs, ConvNet ≈ 3.6 µs, Linear ≈ 0.3 µs —
+> all ≤ 4.8% of the 1.33 ms RT budget. The "Experiment Report" sections further down
+> are **historical point-in-time studies** documenting engineering decisions; their
+> absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate later optimizations and are
+> retained only to justify the decisions, not as current performance claims.
+
 *(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
 ## Regression Gate — Catching Latency Degradation Before It Ships

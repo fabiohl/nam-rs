@@ -167,7 +167,7 @@ fuse-dequant-GEMM overhead paradoxically *improved* per-sample latency (§8 of
 - **BossLSTM-1×16's drift was NOT caused by f16c quantization** — its ESR remained
   identically 1.04e-2. The true cause of the 1×16 drift is still unknown; the f64 oracle
   floor at production duration (240k samples) has never been measured for this model
-  (`TODO-sprints.md` SQ2.3 remains unexecuted).
+  (tracked in TODO-findings.md; formerly TODO-sprints.md SQ2.3).
 - **Performance improved despite larger weight footprint:** removal of the GEMV
   dequantization step, simplification of kernel dispatch, and elimination of
   `fuse-dequant-GEMM` overhead reduced per-sample latency: BossLSTM-1×16 −10.4%
@@ -612,14 +612,21 @@ ongoing investigation. Ground truth as of the latest commits on this branch:
     this specific model merely confirms `condition_dsp` as the sole remaining blocker.
   - Every threshold violated by 3+ orders of magnitude. The 2.46e3/3.61e1 baseline is the valid
     C++ golden measurement (not the retracted 93 dB/50.3 dB f64-oracle figures — see §4.5).
-- **Root cause is not yet closed.** A line-by-line C++ spec was produced (`Conv1x1` weight
-  layout, `head1x1` grouped-conv application, cascade head propagation, `condition_dsp`,
-  head finalization — file:line references in `TODO-sprints.md` Sprint S3). The `head1x1`
-  weight-layout hypothesis (transpose vs. access-pattern mismatch) was tested empirically and
-  **ruled out**: neither of the two alternative layouts improves ESR versus the current
-  baseline. The dominant divergence has been narrowed to **`condition_dsp`'s internal processing**
-  (the sub-model itself is a small WaveNet with SiLU gating, `bottleneck=6`, `head_size=4`, and
-  FiLM) — investigation continues in Sprint S4.2, currently blocked.
+- **Root cause identified (2026-07-10, see `TODO-wavenet_a2_max.md`).** The earlier framing
+  ("dominant divergence narrowed to `condition_dsp`'s internal processing") was **refuted as an
+  insufficient explanation**. Three independent production bugs in the A2 dynamic engine were
+  confirmed via paired C++/Rust code reading and an exact weight-budget reconciliation against
+  NAMCore's authoritative `generate_weights_a2.py`:
+  - **Bug A (structural, most severe):** `head1x1` is a **per-layer** submodule in C++ (each
+    dilated layer owns independent weights); Rust's `WaveNetA2Dyn` models it as a single
+    **per-array** component shared by all layers.
+  - **Bug B:** `layer1x1.groups` and `groups_input_mixin` (grouped-convolution parameters
+    declared in the JSON) are silently ignored by the dynamic engine (assumes `groups=1`).
+  - **Bug C:** the final head kernel is hardcoded to 16 taps (`A2_HEAD_KERNEL_SIZE`), but this
+    model's legacy header format (flat `head_size`/`head_bias`) requires `kernel_size=1`
+    (a plain `Conv1x1` projection).
+  The nested `condition_dsp` sub-model activates `head1x1` in both of its arrays, so it suffers
+  Bugs A and C internally as well. Fix plan and epics: `TODO-wavenet_a2_max.md` (Fases A–F).
 - **Test gating:** `test_golden_vectors_wavenet_a2_max` remains `#[ignore]`d with an active
   tracked task (not silently skipped). The three `test_oracle_*_a2_generic` decomposition tests
   are also `#[ignore]`d — the oracle itself has a confirmed dimensional bug in its
@@ -627,7 +634,7 @@ ongoing investigation. Ground truth as of the latest commits on this branch:
   a confirmed `head1x1` weight-count bug, both tracked and must be fixed before the oracle can be
   trusted again for this model.
 
-**Do not treat this section as resolved.** Consult `TODO-sprints.md` (Sprints S1–S6) for the
+**Do not treat this section as resolved.** Consult `TODO-wavenet_a2_max.md` for the
 live status — this document will be updated once Sprint S4/S5 close.
 
 ### 4.5 Known history — do not repeat
@@ -747,9 +754,9 @@ Severity tiers are ordered by how much they should worry a release decision, not
 
 Exactly **one** model, in the entire audited scope, produces confirmed-wrong output:
 
-| Model                                                                          | Symptom                                                                                                                                                                                                                                                                                                                                | Status                                                                                                                         |
-|:------------------------------------------------------------------------------ |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------ |
-| `wavenet_a2_max.nam` (WaveNet A2, official flagship, CH=4, `condition_size=8`) | MSE≈2.46e3, SNR≈−15.6 dB, ESR≈3.61e1, MR-STFT≈3.41 vs. the C++ golden — every threshold missed by 3+ orders of magnitude. **Post-B1/B2/B3 (T3.9, 2026-07-10):** MSE≈7.30e3, SNR≈−20.3 dB, ESR≈1.07e2 — ~3× worse across all metrics, confirming that B1/B2 were accidentally compensating for the `condition_dsp` bug, not causing it. | Loads and runs (no crash), root cause narrowed to `condition_dsp`'s internal processing, fix **blocked** at Sprint S4.2 (§4.4) |
+| Model                                                                    | Symptom                                                                                                                                                                                                                                                                                               | Status                                                                                                                                                                                                                                                  |
+|:------------------------------------------------------------------------ |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wavenet_a2_max.nam` (WaveNet A2, official flagship, `condition_size=8`) | MSE≈2.46e3, SNR≈−15.6 dB, ESR≈3.61e1, MR-STFT≈3.41 vs. the C++ golden — every threshold missed by 3+ orders of magnitude. **Post-B1/B2/B3 (T3.9, 2026-07-10):** MSE≈7.30e3, SNR≈−20.3 dB, ESR≈1.07e2 — the FiLM corrections removed an accidental partial cancellation, exposing the full divergence. | Root cause **identified**: three confirmed production bugs in the A2 dynamic engine (head1x1 per-layer vs per-array; `groups` ignored in `layer1x1`/`input_mixin`; legacy head kernel K=1 vs hardcoded 16). Fix plan in `TODO-wavenet_a2_max.md` (§4.4) |
 
 No other model, in any of the three audited architectures, has a confirmed output-correctness
 failure. This is the only item that should block a release if `wavenet_a2_max.nam` compatibility
@@ -757,7 +764,7 @@ is a requirement.
 
 > **Mitigado/contido (2026-07-02):** desativado fail-closed na camada de dispatch
 > (`is_disabled_broken_a2_flagship` em `src/loader/dispatcher/wavenet/mod.rs`,
-> ver `TODO-sprints.md` S1). `build_model` rejeita o modelo com `Err` antes de
+> ver `TODO-wavenet_a2_max.md`). `build_model` rejeita o modelo com `Err` antes de
 > tocar pesos ou construir o motor. O modelo `.nam` e o golden `.bin` permanecem
 > no repositório (disabled, not removed). Reativação depende de fechar a
 > divergência do `condition_dsp` contra o golden C++ (§4.4).
@@ -785,7 +792,7 @@ is a requirement.
 >
 > **Impacto nos testes:** nenhum teste em `cargo test` (debug ou release)
 > executa inferência de `wavenet_a2_max.nam`. Inventário completo em
-> `TODO-sprints.md` S2:
+> `TODO-wavenet_a2_max.md`:
 >
 > - `test_loader_gap_wavenet_a2_max` renomeado para
 >   `test_wavenet_a2_max_dispatch_is_disabled_broken` — assera `Err` com a
@@ -816,9 +823,11 @@ show up as nonzero numbers in the tables throughout this document, but they are 
   Previously the *suspected* dominant source of LSTM interop drift.
   BossLSTM-2×8 converged to bit-exact interop parity (ESR = 0.00e0), confirming f16c was
   the sole cause of its drift. BossLSTM-1×16 was unaffected (ESR = 1.04e-2 before and after),
-  proving f16c was **not** its drift source — the true cause of the 1×16 drift remains
-  unidentified. Weight storage is now native f32 across all LSTM components; per-sample
-  latency improved by 10–12% due to simpler GEMV kernel dispatch.
+  proving f16c was **not** its drift source — that residual was later root-caused to the Fast
+  (Padé) activation losing calibration at high pre-activation magnitudes and resolved by the
+  `Standard` universal default (interop ESR ≈ 1.4e-11, see next bullet and
+  `audio_fidelity_map.md` §3). Weight storage is now native f32 across all LSTM components;
+  per-sample latency improved by 10–12% due to simpler GEMV kernel dispatch.
 - **`ActivationPrecision::Fast`'s Padé/minimax activation approximations** vs. C++'s exact
   `tanh`/`sigmoid` — small, bounded, and identical in nature for LSTM and WaveNet A1/A2 (§2.5,
   §3.2, §5). `Standard` (exact-grade, universal default) collapsed this gap to match C++ parity
@@ -834,6 +843,6 @@ show up as nonzero numbers in the tables throughout this document, but they are 
 
 - [audio_fidelity_map.md](docs/audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent drift) pairs with §2.5/§2.7 here
 - [perceptual_validation.md](docs/perceptual_validation.md) — metrics and gate-calibration policy
-- [TODO-findings.md](TODO-findings.md) / [TODO-sprints.md](TODO-sprints.md) — live status of the open A2 investigation (§4.4) and planned sprints for structural audit findings
+- [TODO-wavenet_a2_max.md](../TODO-wavenet_a2_max.md) — live status and fix plan for the open A2 flagship investigation (§4.4); [TODO-findings.md](../TODO-findings.md) — current audit findings
 - [tests/cpp_parity.rs](tests/cpp_parity.rs) — live cross-validation against the C++ `render` tool
 - [tests/reference_oracle_f64.rs](tests/reference_oracle_f64.rs) + [validate_oracle_f64.py](tests/fixtures/scripts/validate_oracle_f64.py) — f64 oracle and independent NumPy anchor (decomposition tools, §1.2)

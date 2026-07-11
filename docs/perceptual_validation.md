@@ -180,17 +180,22 @@ for subjective perceptual quality (which requires human listening tests).
 MR-STFT uses a per-model calibrated threshold with a dual enforcement strategy
 (`tests/common/validation.rs:252-277`, `342-349`):
 
-**Hard gate — 44.1/48 kHz (native rates):** MR-STFT < `mrstft_max` from the
-calibrated threshold table (§3-Tier Gate Hierarchy, Tier 1). Failures at these
-rates **assert-panic** the test — there is no excuse for spectral degradation
-at the model's training sample rate. Per-model `mrstft_max` values range from
+**Hard gate — calibrated models at 44.1/48 kHz:** MR-STFT < `mrstft_max` from the
+calibrated threshold table (§3-Tier Gate Hierarchy, Tier 1). The hard gate is armed
+only when **both** conditions hold: the model has a calibrated `mrstft_max`
+(`Some(...)`) **and** the sample rate is native (44.1/48 kHz). Failures
+**assert-panic** the test. Per-model `mrstft_max` values range from
 0.05 (WaveNet SKU, near bit-exact) to 0.22 (LSTM Official, recurrent drift).
 
-**Soft gate — 88.2/96/192 kHz (elevated rates):** `MRSTFT_SOFT_THRESHOLD = 0.15`
-(`tests/common/validation.rs:264`). Informational only — not a hard assertion.
-Higher sample rates accumulate more recurrent artifacts in LSTM architectures
-(see §LSTM Recurrent Drift), making a hard gate inappropriate until S5 characterizes
-the relationship precisely.
+**Soft gate — everything else:** `MRSTFT_SOFT_THRESHOLD = 0.15`
+(`tests/common/validation.rs`). Informational only — not a hard assertion. It
+applies at elevated rates (88.2/96/192 kHz, where LSTM recurrent artifacts
+accumulate) **and also at native rates for models without a calibrated
+`mrstft_max`** — notably the entire Linear architecture family, whose topology
+fallback deliberately sets `mrstft_max = None`. The 0.15 constant is a
+hardcoded heuristic, not a calibrated value, and is known to produce routine
+false-positive warnings on narrow-band test signals (see the Sensitivity
+Caveat below).
 
 FFT via `crate::math::dsp::fft::FftPlanner` (native, SoA, zero-alloc). Purely
 scalar (non-RT), suitable for test validation.
@@ -257,8 +262,20 @@ degradation — both accommodate the log-magnitude sensitivity to spectral spars
 symmetrically to `mse_limit` and `max_esr`. At 48 kHz where `sr_ratio = 1.0`,
 the relaxation is 1.5 dB.
 
+**Narrow-band test signals (Linear FFT suite).** The same log-magnitude
+mechanism produces large MR-STFT values when the **input signal itself** is
+spectrally sparse — e.g. the pure 440 Hz sine used by several
+`linear_fft_test` cases. For a sine, nearly every bin of the 4096-point window
+(weight 0.5 in the multi-resolution sum) sits at the numerical noise floor, so
+noise-floor log-ratios dominate the score: RF=8192 sine runs report MR-STFT
+≈ 1.6–2.6 while ESR is ≈ 1e-12 (−113 dB and better). Broadband stress signals
+reduce this by ~10× (≈ 0.16 for the same convolution engine). These soft-gate
+warnings are metric artifacts, not fidelity defects — ESR is the decisive gate
+for the Linear family.
+
 **Practical guidance.** For any model where the conditioning or gating path
-drives significant spectral regions to near-zero:
+drives significant spectral regions to near-zero, or any test using a
+narrow-band signal:
 
 1. **ESR is the decisive gate.** If ESR/SNR are within calibrated bounds, high
    MR-STFT is a metric artifact, not a fidelity defect.
@@ -269,6 +286,8 @@ drives significant spectral regions to near-zero:
 3. **Do not apply unconditional spectral thresholds.** A single `mrstft_max`
    across all models would either be too strict for sparse models (false
    positives) or too lenient for dense models (masking real degradation).
+4. **Prefer broadband stress signals** over pure sines when a test's goal is
+   spectral regression detection — sines make MR-STFT nearly meaningless.
 
 ---
 
@@ -724,7 +743,7 @@ interop value (2.61e-2) was for `BossLSTM-1×16` while the oracle value
 the legacy t33 diagnostic value (2.611684e-2, f32-vs-f64 unpaired) was a
 coincidence — both happen to measure ~2.6e-2 for different reasons
 (oracle mismatch vs genuine interop). This conflation is now resolved.
-See TODO-sprints.md Sprint 2 Tarefa 2.4 for the reclassification audit.
+The reclassification audit was completed in Sprint 2 (Tarefa 2.4).
 
 ### Hypotheses ruled out
 

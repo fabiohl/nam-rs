@@ -1179,7 +1179,7 @@ render_f64_decomposition() {
     echo "      campo receptivo e maior que a janela de 256 amostras, entao o"
     echo "      ESR total abaixo reflete majoritariamente o transiente de"
     echo "      preenchimento do buffer, nao o piso de precisao em regime"
-    echo "      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado A1."
+    echo "      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado F3."
     echo ""
     set +u
     for model in "${!F64_DECOMPOSITION[@]}"; do

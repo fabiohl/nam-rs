@@ -18,15 +18,15 @@ of the `.nam` / `.namb` file format contract.
 
 ## Quick Reference
 
-| #   | Factor                                                      | Spec? | Mandatory?                         | User-Controllable?       | Quality Impact                                         | Status                |
-|:---:|:----------------------------------------------------------- |:-----:|:----------------------------------:|:------------------------:|:------------------------------------------------------ |:---------------------:|
-| 1   | **Weight compression (F16C/BF16)**                          | ❌    | Was under review — removed         | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §8 | Removed (SQ5)         |
-| 2   | **Activation precision (Fast Padé / Standard exact-grade)** | ❌    | ✅ Default (Standard); Fast opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Fast) → ÷10,000 (Standard); ↓ aliasing   | ✅ Active             |
-| 3   | **LSTM recurrent drift**                                    | ❌    | Partial (model-dependent)          | ✅ HF gates + Kahan head | ESR 2.6e-2 @48k → 1.4e-1 @192k (1×16); zeroed for 2×8  | ✅ Partially resolved |
-| 4   | **Host sample rate resampler**                              | ❌    | ✅ When host ≠ 48 kHz              | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB            | ✅ Active             |
-| 5   | **Neural stage oversampling**                               | ❌    | ❌ Off by default                  | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU                   | ✅ Active             |
-| 6   | **Denormal dither + FTZ/DAZ**                               | ❌    | ✅ Yes                             | ❌ No                    | No audible impact (−220 dBFS)                          | ✅ Active             |
-| 7   | **Adaptive Compute (quality fallback)**                     | ❌    | ✅ Default                         | 🔶 `--slim` flag         | Silent quality drop under CPU load                     | ✅ Active             |
+| #   | Factor                                                      | Spec? | Mandatory?                         | User-Controllable?       | Quality Impact                                                            | Status                |
+|:---:|:----------------------------------------------------------- |:-----:|:----------------------------------:|:------------------------:|:------------------------------------------------------------------------- |:---------------------:|
+| 1   | **Weight compression (F16C/BF16)**                          | ❌    | Was under review — removed         | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §8                    | Removed (SQ5)         |
+| 2   | **Activation precision (Fast Padé / Standard exact-grade)** | ❌    | ✅ Default (Standard); Fast opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Fast) → ÷10,000 (Standard); ↓ aliasing                      | ✅ Active             |
+| 3   | **LSTM recurrent drift**                                    | ❌    | Partial (model-dependent)          | ✅ HF gates + Kahan head | Interop ESR ≈ 1e-11 (Standard); vs f64 ideal: 5.1e-2 (1×16), 1.7e-3 (2×8) | ✅ Resolved (interop) |
+| 4   | **Host sample rate resampler**                              | ❌    | ✅ When host ≠ 48 kHz              | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB                               | ✅ Active             |
+| 5   | **Neural stage oversampling**                               | ❌    | ❌ Off by default                  | ✅ CLI + CLAP            | Reduces aliasing; adds latency + CPU                                      | ✅ Active             |
+| 6   | **Denormal dither + FTZ/DAZ**                               | ❌    | ✅ Yes                             | ❌ No                    | No audible impact (−220 dBFS)                                             | ✅ Active             |
+| 7   | **Adaptive Compute (quality fallback)**                     | ❌    | ✅ Default                         | 🔶 `--slim` flag         | Silent quality drop under CPU load                                        | ✅ Active             |
 
 † Resampler quality (Standard/HQ) was rejected after benchmarking — see §4. Activation precision is exposed via CLI (`--activation fast|standard`) and CLAP (`PARAM_ACTIVATION=8`). Standard (exact-grade) is the universal default across all model families.
 
@@ -150,18 +150,20 @@ The historical per-sample-rate LSTM interop drifts (measured pre-SQ5 with f16c a
 > **Note:** the 2×8 row applies to the *pre-removal* era; post-SQ5, BossLSTM-2×8 is bit-exact
 > with NAMCore (ESR = 0.00e0) at 48 kHz in Standard mode, confirming exact-grade activation precision.
 
-**F64 oracle floor — provenance correction.** The "3.57e-3" figure previously attributed to
-BossLSTM-1×16 is actually measured on `lstm.nam` (H=3, the tiny official example, 256-sample
-window) — see `test_oracle_lstm()` at `tests/reference_oracle_f64.rs:328`. Post-SQ5, this family
-value was recalibrated to 3.41e-3. The model-specific f64-oracle floors (prewarm-paired, 24k prewarm
-
-- 4096 acoustic samples) have been measured under Standard mode as:
+**F64 oracle floor — provenance.** The generic "LSTM family" f64-oracle figure is measured on
+`lstm.nam` (H=3, the tiny official example) — see `test_oracle_lstm()` in
+`tests/parity/reference_oracle_f64.rs`. The model-specific f64-oracle floors (prewarm-paired,
+24k-sample prewarm + acoustic measurement window) under Standard mode are:
 
 - **BossLSTM-1×16**: ESR vs f64 oracle = **5.06e-2 (-13.0 dB)** (from `test_decomposition_boss_lstm_1x16`)
 - **BossLSTM-2×8**: ESR vs f64 oracle = **1.73e-3 (-27.6 dB)** (from `test_decomposition_boss_lstm_2x8`)
 
+Note these floors measure distance from the mathematical f64 ideal (dominated by f32
+accumulation order in the recurrent state), not interop: both models simultaneously match
+NAMCore at ESR ≈ 1e-11 because NAMCore accumulates in f32 the same way.
+
 **Mitigations carried forward.** The three mitigations shipped in Épico β remain active and
-relevant for the residual drift in **BossLSTM-2×8**:
+relevant for the residual drift vs the f64 ideal (largest in **BossLSTM-1×16**):
 
 - **I6 — Standard (exact-grade) activations in LSTM gates** (primary): exp-based polynomial kernels
   (~2.4e-7 error vs ~2.32e-3 Padé/Fast) across scalar/AVX2/AVX-512 LSTM gate paths.
@@ -177,9 +179,10 @@ Stateful ADAA for the recurrent cell (Holters 2019; Mikkonen & Werner 2025) was 
 **not adopted** — conflicts with the polymorphic `dispatch_simd!` macro. Retained as a research
 direction (`docs/research-references.md` R6, R7b).
 
-**User impact.** For BossLSTM-1×16, the interop drift is gone — this model is now f32 native and
-converges with NAMCore. For BossLSTM-2×8, degradation with signal duration and host sample rate
-persists at pre-SQ5 levels. WaveNet models remain unaffected by recurrent drift.
+**User impact.** Interop drift vs NAMCore is gone for both BossLSTM models (ESR ≈ 1e-11 in
+Standard mode). What remains is the intrinsic f32 distance from the f64 ideal (larger for
+1×16), which NAMCore shares identically — inaudible in interop terms. WaveNet models remain
+unaffected by recurrent drift.
 
 **Implementation.** `src/models/lstm/layer_kernels.rs` (GEMV with f32 weights)
 

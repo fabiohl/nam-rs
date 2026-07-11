@@ -63,13 +63,15 @@ graph TD
 ### Fase 1 — Structural (debug, default features)
 
 - **Goal:** logic, parsers, FSM transitions, loaders, SPSC, bitwise determinism.
-- **Scope:** `cargo test --lib` (unit, auto-discovered) + an explicit list of
-  deterministic integration binaries (`STRUCTURAL_TESTS` in the script). The list
-  is explicit because `--skip` by name collides (e.g. `test_oracle` would hit
-  `threshold_calibration`; `asr_` would hit unit tests in `src/testing`).
-- **Excluded by design:**
-  - The 5 measurement oracles (→ Fase 2, release): `golden_vectors`,
-    `cpp_parity`, `reference_oracle_f64`, `isa_parity`, `spectral_fidelity`.
+- **Scope:** `cargo test --lib` (unit, auto-discovered) + the 5 integration
+  entry-points (`models`, `perf_soak`, `parity`, `clap`, `rt_constraints`).
+- **Excluded by design** (via `--skip <module>::` module-prefix filters — exact
+  module matches, immune to the historical bare-name collision problem where
+  e.g. `test_oracle` would hit `threshold_calibration`):
+  - The measurement-oracle modules (→ Fase 2, release): `golden_vectors`,
+    `cpp_parity`, `reference_oracle_f64`, `isa_parity`, `spectral_fidelity`,
+    `linear_fft_test`. Running them in debug would both duplicate Fase 2 and
+    measure a codegen "phantom" (Axis B, §7).
   - `rt_deadline` / `rt_jitter` (timing characterization → long Phase 7,
     release-only; asserting deadlines in debug is meaningless).
   - `proptest_parsers` (parser fuzzing → Fase 3, release `--ignored`).

@@ -117,8 +117,8 @@ trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" fal
 
 echo -e "${BLUE}${BOLD}=====================================${NC}"
 echo -e "${BLUE}${BOLD}   nam-rs Quick QA Suite"
-echo -e "${BLUE}${BOLD}   ± 35 seconds on "hot" target dir${NC}"
-echo -e "${BLUE}${BOLD}   ± 5,5 minutes on "cold" target dir${NC}"
+echo -e "${BLUE}${BOLD}   ± 2 minutes on "hot" target dir${NC}"
+echo -e "${BLUE}${BOLD}   ± 5 minutes on "cold" target dir${NC}"
 echo -e "${BLUE}${BOLD}=====================================${NC}"
 
 
@@ -229,9 +229,22 @@ if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
     # With 5 entry-points (vs 50 test binaries), all non-ignored structural
     # tests are already grouped per entry-point — no filter needed. One
     # compilation per entry-point instead of 28.
+    #
+    # `--skip <module>::` excludes the measurement-oracle modules from this
+    # DEBUG run. Without it they ran TWICE (debug here + release in Fase 2):
+    # a pure waste of ~60-90s per run that also violated the phase's own
+    # design ("EXCLUI os 5 oráculos de medida do §7") — debug floats are a
+    # codegen "ghost" (docs/testing.md §7, Axis B) and quick_parity in debug
+    # additionally triggered the lazy C++ CMake build mid-phase. The
+    # `module::` suffix makes each skip an exact module-prefix match, so the
+    # historical `--skip` name-collision problem (e.g. bare `test_oracle`
+    # matching threshold_calibration) does not apply.
     cargo test --lib \
         --test models --test perf_soak --test parity \
-        --test clap --test rt_constraints
+        --test clap --test rt_constraints -- \
+        --skip golden_vectors:: --skip linear_fft_test:: \
+        --skip spectral_fidelity:: --skip reference_oracle_f64:: \
+        --skip cpp_parity:: --skip isa_parity::
 else
     # ── Legacy flat-file format (pre-Sprint 3) ───────────────────────────
     cargo test --lib "${STRUCT_TESTS[@]/#/--test=}"

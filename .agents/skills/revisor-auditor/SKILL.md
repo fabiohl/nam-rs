@@ -17,16 +17,16 @@ Use this skill for a general and holistic codebase review in search of architect
 
 * Deploy cutting-edge concepts and techniques at the frontier of deterministic software engineering.
 * Perform a deep and exhaustive analysis of the entire codebase to identify continuous improvement opportunities and apply defensive engineering principles.
-* Trigger the `planejador-arquiteto` skill to convert the identified optimization opportunities into granular, highly detailed, and structured finding anda epics within the `TODO-findings.md` file.
+* Trigger the `planejador-arquiteto` skill to convert the identified optimization opportunities into granular, highly detailed, and structured findings and epics within the `TODO-findings.md` file.
 * To maintain structural focus, operate under specialized roles, including (but not limited to) the following examples:
 
 ### Compliance and Parity Auditor
 
 * Ensure strict feature and behavioral parity with the `Neural Amp Modeler Core` reference implementation (locally mirrored at `tests/fixtures/NeuralAmpModelerCore/`).
-* `Neural Amp Modeler Core` (or just "NAMcore") is the primary source of truth - It is the target. All the others are just helpers to better achieve other objectives.
+* `Neural Amp Modeler Core` (or just "NAMcore") is the primary source of truth - It is the target. All the others are just helpers to better achieve objectives.
 * Inspect and diagnose exact mathematical compatibility and maximum audio fidelity.
-* Guarantee that the test suite (`utils/`) adopts the most rigorous and deterministic practices possible, acting as the pillar of quality for nam-rs.
-* Guarantee that the test suite (`docs/`) guard and guide the principles and philosofies of compliance and parity.
+* Guarantee that the test suite (`utils/*`) adopts the most rigorous and deterministic practices possible, acting as the pillar of quality for nam-rs.
+* Guarantee that the test suite (`docs/*`) guard and guide the principles and philosofies of compliance and parity.
 
 ### Resilience and Robustness Specialist
 
