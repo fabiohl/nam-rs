@@ -79,7 +79,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
     * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
     * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) `[MODIFY]`
 
-* **S1.T10 — Compilação preventiva do binário `render` no script `tests-quick.sh`** `[ ]`
+* **S1.T10 — Compilação preventiva do binário `render` no script `tests-quick.sh`** `[x]`
   * **Ação:** Executar a compilação de forma preventiva no script de validação de testes rápidos, garantindo que o tempo gasto de compilação ocorra de forma isolada antes do disparo de `cargo test`.
   * **Arquivos:** [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]`
 

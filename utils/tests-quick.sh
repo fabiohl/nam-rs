@@ -294,8 +294,59 @@ fi
 # para rodar só o subconjunto ágil) suprimiria os demais oráculos se combinado.
 # Self-skip gracioso se o render C++ não estiver compilado.
 if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
-    echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
-    _cargo_meas "-- quick_parity --nocapture" cpp_parity || MEASUREMENT_STATUS=1
+    # ── Preventive render compilation (S1.T10) ────────────────────────────
+    # Build the C++ render binary before cargo test so the CMake build time
+    # is isolated from the test output and doesn't trigger mid-phase.
+    NAM_CORE_DIR="tests/fixtures/NeuralAmpModelerCore"
+    RENDER_BUILD_DIR="build/namcore_render"
+    RENDER_BIN="$RENDER_BUILD_DIR/Release/render"
+    if [ ! -f "$RENDER_BIN" ]; then
+        RENDER_BIN="$RENDER_BUILD_DIR/Debug/render"
+    fi
+    SKIP_CPP_PARITY=false
+    if [ ! -f "$RENDER_BIN" ]; then
+        echo -e "  ${BLUE}→ Compilando render C++ preventivamente (S1.T10)...${NC}"
+        CXX="${CXX:-}"
+        if [ -z "$CXX" ]; then
+            if command -v g++ >/dev/null 2>&1; then
+                CXX=g++
+            elif command -v clang++ >/dev/null 2>&1; then
+                CXX=clang++
+            else
+                CXX=""
+            fi
+        fi
+        if [ -z "$CXX" ]; then
+            echo -e "  ${YELLOW}ⓘ Compilador C++ não encontrado — pulando cpp_parity.${NC}"
+            SKIP_CPP_PARITY=true
+        else
+            source variables.env 2>/dev/null || true
+            mkdir -p "$RENDER_BUILD_DIR"
+            if cmake -S "$NAM_CORE_DIR" -B "$RENDER_BUILD_DIR" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_CXX_COMPILER="$CXX" \
+                -DCMAKE_CXX_STANDARD=20 \
+                -DCMAKE_CXX_FLAGS="-w" \
+                -DNAM_ENABLE_A2_FAST=ON > /dev/null 2>&1; then
+                if cmake --build "$RENDER_BUILD_DIR" --target render -j"$(nproc)" > /dev/null 2>&1; then
+                    echo -e "  ${GREEN}✓ Render C++ compilado preventivamente.${NC}"
+                else
+                    echo -e "  ${YELLOW}ⓘ cmake build falhou — pulando cpp_parity.${NC}"
+                    SKIP_CPP_PARITY=true
+                fi
+            else
+                echo -e "  ${YELLOW}ⓘ cmake configure falhou — pulando cpp_parity.${NC}"
+                SKIP_CPP_PARITY=true
+            fi
+        fi
+    fi
+
+    if [ "$SKIP_CPP_PARITY" = true ]; then
+        echo -e "  ${YELLOW}ⓘ cpp_parity pulado (render C++ não disponível).${NC}"
+    else
+        echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
+        _cargo_meas "-- quick_parity --nocapture" cpp_parity || MEASUREMENT_STATUS=1
+    fi
 else
     echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore não encontrado. Execute './utils/mod-update.sh'.${NC}"
     echo -e "  ${YELLOW}  Pulando cpp_parity (paridade live C++).${NC}"
