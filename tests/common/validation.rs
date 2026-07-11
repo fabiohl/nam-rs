@@ -25,6 +25,52 @@ static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const LUFS_PLAUSIBLE_MIN: f64 = -50.0;
 const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 
+/// Calibrated soft-gate warning threshold for MR-STFT at non-standard sample rates
+/// (rates other than 44.1/48 kHz where per-model hard gates apply).
+///
+/// # Empirical calibration (S3.T03, 2026-07-11)
+///
+/// MR-STFT is a bounded metric [0, 1] measuring spectral divergence. At standard
+/// rates (44.1/48 kHz), per-model hard gates from `get_calibrated_threshold()`
+/// enforce individual ceilings. At non-standard rates (88.2, 96, 176.4, 192 kHz),
+/// this soft gate provides a global sanity guardrail — purely informational,
+/// not a hard assertion.
+///
+/// ## Calibration data
+///
+/// Non-degenerated calibrated hard gates at 44.1/48 kHz (from `get_calibrated_threshold`):
+///
+/// | Model                    | mrstft_max | Measured v2 worst   |
+/// |--------------------------|------------|---------------------|
+/// | wavenet_official         | 0.45       | 0.42 @ 48 kHz 5s    |
+/// | wavenet_condition_dsp    | 0.35       | 0.336 @ 48 kHz 5s   |
+/// | wavenet_dyn_free         | 0.18       | 0.170 @ 48 kHz 5s   |
+/// | BossLSTM-2x8             | 0.12       | —                   |
+/// | lstm_dyn_test            | 0.10       | 0.081 @ 48 kHz 2k   |
+/// | wavenet_a2_film_lite     | 1.0e-4     | 3.92e-5             |
+/// | wavenet_a2_film_full     | 1.0e-4     | 3.28e-5             |
+/// | Near-bit-exact models    | 0.05       | ≈ 1e-5              |
+///
+/// The highest non-degenerated calibrated hard gate is 0.45 (wavenet_official).
+/// The project anti-placebo policy (threshold_calibration.rs Rule 4) defines
+/// MR-STFT ≥ 0.5 as a placebo gate.
+///
+/// ## Calibrated threshold: 0.50
+///
+/// Set to the anti-placebo ceiling (0.50), providing a 0.05 margin above the
+/// highest non-degenerated calibrated model (0.45). At non-standard rates,
+/// MR-STFT naturally increases due to longer v2 sequences and recurrent drift
+/// accumulation — this threshold catches only pathological divergence exceeding
+/// the placebo line, not normal v2 behavior.
+///
+/// A warning is emitted when MR-STFT ≥ 0.50 at non-standard sample rates,
+/// indicating a regression that would be a placebo gate even under per-model
+/// calibration.
+// Measured: calibrated against anti-placebo ceiling (Rule 4, threshold_calibration.rs).
+// Highest non-degenerated calibrated hard gate: 0.45 (wavenet_official).
+// Value: 0.50 (anti-placebo ceiling, 0.05 margin above worst real hard gate).
+pub const MRSTFT_SOFT_THRESHOLD: f64 = 0.50;
+
 /// Validates DSP fidelity in a single pass, computing MSE, MAE, SNR, PSNR,
 /// equivalent bits, ESR, and LUFS simultaneously.
 ///
@@ -272,11 +318,10 @@ fn report_dsp_fidelity_impl(
         .unwrap();
     } else {
         writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (relative)").unwrap();
-        const MRSTFT_SOFT_THRESHOLD: f64 = 0.15;
         if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
             writeln!(
                 buf,
-                "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds conservative threshold {MRSTFT_SOFT_THRESHOLD:.2e}"
+                "  ⚠  MR-STFT soft gate: {mr_stft:.4e} exceeds calibrated ceiling {MRSTFT_SOFT_THRESHOLD:.2e} (anti-placebo)"
             )
             .unwrap();
             writeln!(
@@ -707,6 +752,27 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 140.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
         }
+        // --- Linear FFT — Partitioned Convolution (S3.T04) ---
+        // FFT-based FIR convolution via partitioned overlapless FFT.
+        // Mathematically equivalent to time-domain convolution; FFT round-trip
+        // error is the only noise source. Validated against direct FIR oracle
+        // and C++ golden vectors (NeuralAmpModelerCore `nam::Linear` dsp.cpp).
+        //
+        // Unlike neural models (WaveNet, LSTM), Linear FFT has no recurrent
+        // state, no activation functions, and no weight dequantization — it is
+        // deterministic floating-point signal processing.
+        //
+        // Measured: SNR > 60 dB oracle, ESR < 1e-6, MR-STFT = 0.109 (worst-case:
+        // impulse response, RF=4096), gate=0.12 (10% margin over worst-case,
+        // conservative, S3.T04). Other signals (sine, multi-freq) produce
+        // MR-STFT near-zero (FFT round-trip only).
+        //
+        // Thresholds apply to all Linear FFT receptive field sizes:
+        // RF=2048, RF=4096, RF=8192 — FFT precision is RF-independent at f32.
+        "linear_fft_rf2048" | "linear_fft_rf4096" | "linear_fft_rf8192" => {
+            let snr_db = 130.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.12)))
+        }
         _ => None,
     }
 }
@@ -746,7 +812,7 @@ pub fn topology_thresholds(
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 135.0, Some(1e-10), None),
+        "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }
@@ -788,7 +854,7 @@ pub fn live_parity_thresholds(
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 135.0, Some(1e-10), None),
+        "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }

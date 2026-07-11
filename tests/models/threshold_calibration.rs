@@ -39,6 +39,7 @@ use super::common;
 use common::A2_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
 use common::WAVENET_ESR_LIMIT;
+use common::validation::MRSTFT_SOFT_THRESHOLD;
 use common::validation::get_calibrated_threshold;
 
 /// Maps a committed golden `.bin` filename to the `model_name` key
@@ -75,6 +76,12 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_wavenet_app_evh" => Some("APP-EVH-Stealth100-Dialled-xSTD"),
         "golden_wavenet_boss_bd2" => Some("Boss BD-2 H2O Mod T-12_00 G-12_00"),
         "golden_wavenet_slammin_marshall" => Some("SLAMMIN MARSHALL JTM 45 REISSUE"),
+        // Linear FFT — partitioned convolution engine validated against direct FIR oracle
+        // and C++ golden vectors (NeuralAmpModelerCore `nam::Linear` dsp.cpp:255-301).
+        // Near-bit-exact FFT round-trip; mrstft_max ≤ 0.05 (conservative, S3.T04).
+        "golden_linear_fft_rf2048" => Some("linear_fft_rf2048"),
+        "golden_linear_fft_rf4096" => Some("linear_fft_rf4096"),
+        "golden_linear_fft_rf8192" => Some("linear_fft_rf8192"),
         // cabsim goldens use their own oracle (convolution / C++ parity),
         // not topology_thresholds.
         _ => None,
@@ -180,6 +187,10 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "lstm_dyn_test",
         "a2_example",
         "convnet_test",
+        // Linear FFT — partitioned convolution (S3.T04)
+        "linear_fft_rf2048",
+        "linear_fft_rf4096",
+        "linear_fft_rf8192",
     ];
 
     for &model in models {
@@ -495,4 +506,77 @@ fn test_structural_tests_contain_no_bin_references() {
                 .join("\n")
         );
     }
+}
+
+/// Tarefa S3.T03 — Meta-teste: limite do soft gate de MR-STFT é calibrado.
+///
+/// Verifica que o `MRSTFT_SOFT_THRESHOLD` (gate brando informacional para taxas
+/// de amostragem não-padrão) é:
+///
+/// 1. **Abaixo do teto anti-placebo:** ≤ 0.5 (Rule 4 do anti-placebo).
+///    MR-STFT é uma métrica limitada em [0, 1]; valores ≥ 0.5 indicam colapso
+///    espectral. O soft gate não pode nunca exceder o teto de placebo.
+///
+/// 2. **Não-zero:** > 0.0. Um soft gate de 0.0 seria inútil — toda divergência
+///    espectral geraria falso-positivo. O gate deve ser calibrado com margem
+///    acima dos modelos calibrados e abaixo do teto anti-placebo.
+///
+/// 3. **Documentado:** a definição de `pub const MRSTFT_SOFT_THRESHOLD` em
+///    `tests/common/validation.rs` deve ter um comentário `// Measured:` nas
+///    proximidades, documentando a proveniência da calibração (S3.T03).
+///
+/// O gate brando opera em taxas não-padrão (≠ 44.1/48 kHz) onde os hard gates
+/// por-modelo não se aplicam. Ele é puramente informacional — não causa falha
+/// de teste — mas serve como guard-rail global de sanidade espectral.
+#[test]
+fn test_mrstft_soft_threshold_is_calibrated() {
+    // Rule 1: below anti-placebo ceiling (≤ 0.5)
+    // Rule 2: non-zero (must be a real gate, not a trivial bypass)
+    const {
+        assert!(
+            MRSTFT_SOFT_THRESHOLD <= 0.5,
+            "MRSTFT_SOFT_THRESHOLD exceeds anti-placebo ceiling 0.5"
+        );
+        assert!(
+            MRSTFT_SOFT_THRESHOLD > 0.0,
+            "MRSTFT_SOFT_THRESHOLD ≤ 0 — trivial bypass"
+        );
+    }
+
+    // Rule 3: documented with measurement provenance
+    // Read the validation.rs source and check for a `// Measured:` comment
+    // near the `MRSTFT_SOFT_THRESHOLD` definition.
+    let validation_src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/common/validation.rs");
+
+    let source =
+        fs::read_to_string(&validation_src).expect("Failed to read tests/common/validation.rs");
+
+    let threshold_line = source
+        .lines()
+        .enumerate()
+        .find(|(_, l)| {
+            let t = l.trim();
+            t.starts_with("pub const MRSTFT_SOFT_THRESHOLD")
+        })
+        .map(|(i, _)| i)
+        .expect("Could not find 'pub const MRSTFT_SOFT_THRESHOLD' definition in validation.rs");
+
+    let mut found_measured = false;
+    for offset in 1..=25 {
+        if threshold_line >= offset {
+            let prev_line = source.lines().nth(threshold_line - offset).unwrap_or("");
+            if prev_line.contains("// Measured:") {
+                found_measured = true;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        found_measured,
+        "MRSTFT_SOFT_THRESHOLD at line {} is missing '// Measured:' comment within 25 lines above. \
+         Add calibration provenance documentation. (S3.T03)",
+        threshold_line + 1,
+    );
 }

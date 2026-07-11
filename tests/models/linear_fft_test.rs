@@ -136,13 +136,14 @@ fn verify_against_oracle(label: &str, weights_forward: &[f32], bias: f32, input:
     // Use ESR as primary gate (scale-invariant, robust for FFT precision).
     // LUFS plausibility gate is disabled — IR convolution with large weights
     // legitimately produces output above +10 LUFS (same pattern as cabsim goldens).
+    // MR-STFT gate: 0.12 (calibrated from worst-case impulse response, S3.T04).
     report_dsp_fidelity_no_lufs(
         &reference,
         &output,
         1e-6,
         60.0,
         Some(1e-6),
-        None,
+        Some(0.12),
         label,
         48000,
     );
@@ -355,7 +356,7 @@ fn verify_nam_file_against_oracle(nam_filename: &str, label: &str, input: &[f32]
         1e-6,
         60.0,
         Some(1e-6),
-        None,
+        Some(0.12),
         label,
         48000,
     );

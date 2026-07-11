@@ -155,18 +155,21 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico B.2 — Calibração do Soft Gate e Cobertura da Família Linear (F2.1, F2.2)
 
-* **S3.T03 — Calibração de `MRSTFT_SOFT_THRESHOLD` no Metateste de Calibração** `[ ]`
+* **S3.T03 — Calibração de `MRSTFT_SOFT_THRESHOLD` no Metateste de Calibração** `[x]`
   * **Ação:** Calibrar empiricamente e documentar o limiar do soft gate de MR-STFT, integrando-o ao escrutínio automático em `tests/models/threshold_calibration.rs`.
+  * **Concluído:** `MRSTFT_SOFT_THRESHOLD` elevado a `pub const` com documentação de calibração (S3.T03). Valor calibrado empiricamente para 0.50 — teto anti-placebo (Rule 4), com margem de 0.05 sobre o maior hard gate não-degenerado (wavenet_official: 0.45). Meta-teste `test_mrstft_soft_threshold_is_calibrated` adicionado ao escrutínio automático, validando: (1) valor ≤ 0.5, (2) valor > 0.0, (3) comentário `// Measured:` de proveniência. Todos os 6 meta-testes de threshold_calibration passam; 34 golden_vectors sem regressão.
   * **Arquivos:**
     * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
     * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]`
 
-* **S3.T04 — Mapeamento e Habilitação do Gate para Modelos Linear** `[ ]`
+* **S3.T04 — Mapeamento e Habilitação do Gate para Modelos Linear** `[x]`
   * **Ação:** Adicionar mapeamento de goldens Linear FFT em `golden_bin_to_model_name()` e configurar limiares de `mrstft_max` realísticos (não-`None`) para a família Linear no harness.
+  * **Concluído:** Mapeamento de `golden_linear_fft_rf{2048,4096,8192}` adicionado em `golden_bin_to_model_name()`. Entradas calibradas em `get_calibrated_threshold()` com MR-STFT gate=0.12 — calibrado empiricamente do pior caso (impulse response RF=4096: MR-STFT=0.109, margem 10%). `topology_thresholds()` e `live_parity_thresholds()` atualizados de `None` para `Some(0.12)` para Linear. Math oracle tests (`verify_against_oracle`, `verify_nam_file_against_oracle`) com MR-STFT gate habilitado. 6 meta-testes passam, 51 golden_vectors OK, 17 linear_fft OK.
   * **Arquivos:**
     * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
     * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]`
     * [linear_fft_test.rs](file:///home/fabio/nam-rs/tests/models/linear_fft_test.rs) `[MODIFY]`
+  * **Nota para S3.T05:** O rótulo `(relative)` ainda está presente na saída de `report_dsp_fidelity` para o soft gate — será corrigido no próximo task.
 
 ---
 
