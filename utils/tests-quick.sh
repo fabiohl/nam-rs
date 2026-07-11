@@ -49,6 +49,38 @@
 #     novo teste estrutural em tests/, inclua-o em STRUCT_TESTS e mapeie-o
 #     em STRUCT_ENTRY_MAP (vide inventário em docs/testing.md §3).
 #     A auto-descoberta de unit tests (lib) é preservada.
+#
+# ── Skip conditions (graceful exit 0) ─────────────────────────────────────────
+# The following skip scenarios are handled gracefully (exit code 0 with
+# informational messages). They are designed for CI environments and developer
+# machines that may not have all optional dependencies.
+#
+# Scenario                              Condition                           Consequence
+# ────────────────────────────────────  ──────────────────────────────────  ──────────────────────────────────────────────────
+# Golden vectors (v1/v2) absent         golden_wavenet_standard.bin and     golden_vectors + isa_parity skipped.
+#                                       golden_wavenet_standard_v2_48000    f64 oracle, Spectral Fidelity, Linear FFT
+#                                       .bin missing from tests/fixtures/   still run (mathematical-oracle tests, no
+#                                                                           pre-computed goldens needed).
+#                                       Tracked by: GOLDEN_RAN
+#
+# C++ toolchain not found               Neither g++ nor clang++ in PATH    cpp_parity entirely skipped.
+#                                                                           Tracked by: CPP_PARITY_SKIPPED
+#
+# CMake configure / build failure        cmake fails to configure or       cpp_parity entirely skipped.
+#                                        build the C++ render binary        Tracked by: CPP_PARITY_SKIPPED
+#
+# NAMCore not checked out                tests/fixtures/NeuralAmpModeler   cpp_parity entirely skipped.
+#                                        Core directory absent              Tracked by: CPP_PARITY_SKIPPED
+#
+# All mandatory tests are NOT skippable — their failure always produces exit
+# code 1. These include:
+#   Fase 1: structural unit + integration tests (debug)
+#   Fase 2: f64 oracle, Spectral Fidelity, Linear FFT (always run, no deps)
+#   Fase 3: parser fuzzing (proptest_parsers)
+#
+# CI note: In a minimal CI environment without golden fixtures and without a
+# C++ toolchain, this script exits 0 after running the non-skippable core.
+# No false alarms are raised.
 
 set -euo pipefail
 
@@ -186,6 +218,16 @@ _structural_entry_files_exist() {
     return 0
 }
 
+# Detect whether clap-plugin feature is active (S5.T02).
+# Checks NAM_FEATURES override first, then falls back to parsing Cargo.toml defaults.
+_has_clap_plugin() {
+    if [ -n "${NAM_FEATURES:-}" ]; then
+        [[ ",$NAM_FEATURES," == *",clap-plugin,"* ]] && return 0
+        return 1
+    fi
+    grep '^default' Cargo.toml 2>/dev/null | grep -q '"clap-plugin"'
+}
+
 # ── Phase 2/3 measurement oracle → entry-point mapping ──────────────────
 declare -A MEASUREMENT_ENTRY_MAP=(
     [reference_oracle_f64]="parity"
@@ -239,9 +281,21 @@ if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
     # `module::` suffix makes each skip an exact module-prefix match, so the
     # historical `--skip` name-collision problem (e.g. bare `test_oracle`
     # matching threshold_calibration) does not apply.
-    cargo test --lib \
-        --test models --test perf_soak --test parity \
-        --test clap --test rt_constraints -- \
+    # `--test clap` is conditionally included (S5.T02): when clap-plugin is
+    # not active, all clap tests are #[cfg]-gated and the binary compiles with
+    # 0 tests — a pure waste of ~15-30s. The feature is NOT in default features
+    # (standalone + testing), so it's normally excluded. Use NAM_FEATURES env
+    # var to override (e.g. NAM_FEATURES="standalone,testing,clap-plugin").
+    _struct_targets="models perf_soak parity"
+    if _has_clap_plugin; then
+        _struct_targets="$_struct_targets clap"
+    fi
+    _struct_targets="$_struct_targets rt_constraints"
+    _struct_flags=""
+    for _t in $_struct_targets; do
+        _struct_flags="$_struct_flags --test $_t"
+    done
+    cargo test --lib $_struct_flags -- \
         --skip golden_vectors:: --skip linear_fft_test:: \
         --skip spectral_fidelity:: --skip reference_oracle_f64:: \
         --skip cpp_parity:: --skip isa_parity::
@@ -264,6 +318,7 @@ fi
 
 MEASUREMENT_STATUS=0
 GOLDEN_RAN=false
+CPP_PARITY_SKIPPED=false
 
 # Combina os oráculos em UMA invocação cargo por ramo de dependência, para que
 # o nam-rs (rlib release) seja compilado UMA vez por ramo — não uma por teste.
@@ -343,6 +398,7 @@ if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
 
     if [ "$SKIP_CPP_PARITY" = true ]; then
         echo -e "  ${YELLOW}ⓘ cpp_parity pulado (render C++ não disponível).${NC}"
+        CPP_PARITY_SKIPPED=true
     else
         echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
         _cargo_meas "-- quick_parity --nocapture" cpp_parity || MEASUREMENT_STATUS=1
@@ -350,6 +406,7 @@ if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
 else
     echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore não encontrado. Execute './utils/mod-update.sh'.${NC}"
     echo -e "  ${YELLOW}  Pulando cpp_parity (paridade live C++).${NC}"
+    CPP_PARITY_SKIPPED=true
 fi
 
 if [ "$MEASUREMENT_STATUS" -ne 0 ]; then
@@ -366,13 +423,24 @@ PROPTEST_CASES="${NAM_QUICK_PROPTEST_CASES:-1000}" \
     _cargo_meas "-- --ignored --nocapture" proptest_parsers
 
 # ── Resumo ──────────────────────────────────────────────────────────────────
-if [ "$GOLDEN_RAN" = true ]; then
+if [ "$GOLDEN_RAN" = true ] && [ "$CPP_PARITY_SKIPPED" = false ]; then
     echo -e "${GREEN}${BOLD}================================================================${NC}"
     echo -e "${GREEN}${BOLD}      Todos os testes rápidos passaram! (estrutural + medida)     ${NC}"
     echo -e "${GREEN}${BOLD}================================================================${NC}"
-else
+elif [ "$GOLDEN_RAN" = true ]; then
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+    echo -e "${YELLOW}${BOLD}    Testes rápidos passaram (cpp_parity pulado —                   ${NC}"
+    echo -e "${YELLOW}${BOLD}     C++ render não disponível)                                     ${NC}"
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+elif [ "$CPP_PARITY_SKIPPED" = false ]; then
     echo -e "${YELLOW}${BOLD}================================================================${NC}"
     echo -e "${YELLOW}${BOLD}    Testes rápidos passaram (golden_vectors + isa_parity         ${NC}"
     echo -e "${YELLOW}${BOLD}     pulados — gere os golden vectors para cobertura completa)      ${NC}"
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+else
+    echo -e "${YELLOW}${BOLD}================================================================${NC}"
+    echo -e "${YELLOW}${BOLD}    Testes rápidos passaram (golden_vectors + isa_parity         ${NC}"
+    echo -e "${YELLOW}${BOLD}     e cpp_parity pulados — gere goldens e C++ render para         ${NC}"
+    echo -e "${YELLOW}${BOLD}     cobertura completa)                                            ${NC}"
     echo -e "${YELLOW}${BOLD}================================================================${NC}"
 fi

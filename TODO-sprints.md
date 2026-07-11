@@ -264,14 +264,16 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico E.1 — Validação e robustecimento de Skips no script de testes rápidos (F5 follow-up)
 
-* **S5.T01 — Validação e robustecimento de Skips no script de testes rápidos**
+* **S5.T01 — Validação e robustecimento de Skips no script de testes rápidos** [x]
   * **Ação:** Auditar e documentar no script [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) a saída graciosa (exit code 0 com skips relatados) e as condições sob as quais skips ocorrem (ausência de compilation toolchain C++, falta de fixtures committed), garantindo integridade e ausência de falsos alarmes em ambientes de CI.
+  * **Concluído:** Auditoria completa dos 4 cenários de skip identificados: (1) golden vectors v1/v2 ausentes, (2) toolchain C++ não encontrada, (3) falha de CMake configure/build, (4) NAMCore não checkout. Adicionado header documentando cada cenário com condição/consequência/tracking. Introduzida variável `CPP_PARITY_SKIPPED` para rastrear skip do cpp_parity, independentemente de `MEASUREMENT_STATUS`. Resumo final agora cobre 4 combinações de skips (GOLDEN_RAN × CPP_PARITY_SKIPPED). Todos os caminhos de saída verificados: skips produzem exit 0 com mensagens informativas; apenas falhas reais em testes mandatórios produzem exit 1. Nenhum falso alarme identificado para ambientes CI sem golden fixtures e sem toolchain C++.
   * **Arquivos:** [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]`
 
 ---
 
 ### Épico E.2 — Decisão sobre `--test clap` na Fase 1 (F5 follow-up)
 
-* **S5.T02 — Remoção do target `--test clap` na Fase 1 (sem features)**
+* **S5.T02 — Remoção do target `--test clap` na Fase 1 (sem features)** [x]
   * **Ação:** Remover o parâmetro `--test clap` da chamada de `cargo test` na Fase 1 de [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) quando a feature `clap-plugin` não estiver ativa. Isso evita o custo de compilação e linkagem de um binário de teste vazio (0 testes executados) e acelera o tempo de feedback do desenvolvedor.
+  * **Concluído:** Adicionada função `_has_clap_plugin()` que detecta se a feature está ativa via `NAM_FEATURES` (override explícito) ou parsing do `Cargo.toml` (default features). Como `clap-plugin` NÃO está nas default features (`standalone` + `testing`), `--test clap` é excluído na execução padrão, eliminando ~15-30s de compilação de binário vazio. Quando o desenvolvedor define `NAM_FEATURES="standalone,testing,clap-plugin"`, o target é reincluído automaticamente. O caminho legacy (pre-Sprint 3) não é afetado — `STRUCT_TESTS` nunca incluiu testes clap.
   * **Arquivos:** [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]`
