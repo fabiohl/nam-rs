@@ -248,13 +248,19 @@ time-domain signal is virtually bit-exact.
 
 **Calibrated thresholds for `condition_dsp`.** The MR-STFT hard gate at native
 rates (44.1/48 kHz) uses per-model calibrated `mrstft_max` from Tier 1. The v2
-stress signal (5s) triggers Tier 2 relaxation on `mrstft_max` (same formula as
-ESR/SNR: `10^(snr_relaxation/5.0)` for WaveNet). Neither value reflects audio
-degradation — both accommodate the log-magnitude sensitivity to spectral sparsity:
+stress signal (5s) triggers Tier 2 relaxation on all metrics — including
+`mrstft_max` — via the same dB-to-linear conversion: `10^(snr_relaxation/10.0)`.
+This unifies the relaxation exponent across all quality gates (MSE, ESR, SNRs,
+MR-STFT). MR-STFT is already expressed in log-magnitude (dB-scale) by the
+multi-resolution STFT loss function itself, so the threshold relaxation
+(linear-domain multiplier) correctly applies the standard energy-to-linear
+conversion `10^(dB/10)` to the SNR relaxation amount. Neither the calibrated
+threshold nor the relaxation reflect audio degradation — both accommodate the
+log-magnitude sensitivity to spectral sparsity:
 
 | Metric       | v1 (at 48 kHz) | v2 (at 48 kHz, relaxed) | Relaxation           |
 | ------------ |:--------------:|:-----------------------:| -------------------- |
-| `mrstft_max` | 0.35           | 0.698                   | `10^(snr_relax/5.0)` |
+| `mrstft_max` | 0.35           | 0.698                   | `10^(snr_relax/10.0)`|
 | `max_esr`    | 1.0e-10        | relaxed¹                | Tier 2 relaxation    |
 | `min_snr_db` | 100.0          | relaxed¹                | Tier 2 relaxation    |
 

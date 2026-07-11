@@ -10,6 +10,40 @@ use std::fmt::Write;
 /// block even under `--test-threads > 1` (F-1, Tarefa 1.2).
 static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+// Per-thread flag: when true, `report_dsp_fidelity_impl` suppresses stdout
+// emission. Used by controlled-panic regression tests (e.g.
+// `test_mrstft_hard_gate_catches_regression`) to prevent "✗" and error
+// messages from polluting the green-test output (S3.T07 — Épico B.4).
+thread_local! {
+    static SUPPRESS_REPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// RAII guard that sets [`SUPPRESS_REPORT`] for the current thread on creation
+/// and restores it on drop.
+///
+/// # Usage
+/// ```ignore
+/// {
+///     let _guard = SuppressReportGuard::new();
+///     report_dsp_fidelity(...); // output suppressed
+/// }
+/// // SUPPRESS_REPORT restored to false here
+/// ```
+pub struct SuppressReportGuard;
+
+impl SuppressReportGuard {
+    pub fn new() -> Self {
+        SUPPRESS_REPORT.with(|c| c.set(true));
+        SuppressReportGuard
+    }
+}
+
+impl Drop for SuppressReportGuard {
+    fn drop(&mut self) {
+        SUPPRESS_REPORT.with(|c| c.set(false));
+    }
+}
+
 /// Plausible LUFS range for golden reference output (sanity gate — BS.1770-4 2-pass, T2.5).
 ///
 /// Guitar/amp model output at typical stress-signal levels falls between −35 and 0 LUFS.
@@ -94,7 +128,7 @@ pub const MRSTFT_SOFT_THRESHOLD: f64 = 0.50;
 ///   PSNR    = 14.9 dB
 ///   Bits    = 2.5 bits equiv.
 ///   ESR     = 1.23e-05       (−49.1 dB)   (threshold < 1.0e-1)  ✓   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
-///   MR-STFT = 0.0042         (relative)                      ✓   [hard gate ≤ 0.05 @ 44.1/48 kHz]
+///   MR-STFT = 0.0042         (log-mag abs)                   ✓   [hard gate ≤ 0.05 @ 44.1/48 kHz]
 ///   LUFS    = −23.4 LUFS    (reference)   [plausible: −50.0..+10.0]  ✓
 ///   LUFS    = −65.0 LUFS    (reference)   [plausible: −50.0..+10.0]  ⓘ informational (gate opt-out — expected)
 ///   Fidelity Margin = 48.2 dB (target > 8.0 dB) ✓
@@ -317,7 +351,7 @@ fn report_dsp_fidelity_impl(
         )
         .unwrap();
     } else {
-        writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (relative)").unwrap();
+        writeln!(buf, "  MR-STFT = {mr_stft:.4e}      (log-mag abs)").unwrap();
         if !mr_stft.is_finite() || mr_stft > MRSTFT_SOFT_THRESHOLD {
             writeln!(
                 buf,
@@ -379,7 +413,9 @@ fn report_dsp_fidelity_impl(
 
     {
         let _lock = REPORT_LOCK.lock().unwrap();
-        print!("{buf}");
+        if !SUPPRESS_REPORT.with(|c| c.get()) {
+            print!("{buf}");
+        }
     }
 
     assert!(

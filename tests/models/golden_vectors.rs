@@ -90,7 +90,7 @@ fn run_v2_golden_test(
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
             if let Some(ref mut mr) = mrstft_max {
-                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
+                *mr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
         } else {
             // WaveNet and other models accumulate minor differences over the longer v2 stress signal
@@ -102,7 +102,7 @@ fn run_v2_golden_test(
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
             if let Some(ref mut mr) = mrstft_max {
-                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
+                *mr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
         }
 
@@ -2082,6 +2082,12 @@ fn test_golden_vectors_wavenet_a2_max() {
 /// sample rate, proving the gate is not a placebo.
 #[test]
 fn test_mrstft_hard_gate_catches_regression() {
+    // S3.T07: Suppress report output and panic messages during this
+    // controlled-panic regression test to keep the green-test suite clean.
+    let _report_guard = SuppressReportGuard::new();
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
     // Use WaveNet A1 Standard — always available golden fixture
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_a1_standard.bin");
@@ -2139,6 +2145,11 @@ fn test_mrstft_hard_gate_catches_regression() {
             48000,
         );
     }));
+
+    // Restore the default panic hook before any following asserts,
+    // so test-framework failures are still visible.
+    std::panic::set_hook(prev_hook);
+
     assert!(
         result.is_err(),
         "MR-STFT hard gate did NOT catch the synthetic spectral regression. \

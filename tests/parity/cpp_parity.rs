@@ -362,7 +362,7 @@ fn run_render_comparison(
             if let Some(ref mut mr) = mrstft_max {
                 // MR-STFT grows faster than power metrics for recurrent models
                 // (spectral drift in LSTM hidden states over long sequences)
-                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
+                *mr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
         } else {
             // WaveNet and other models accumulate minor differences over the longer v2 stress signal
@@ -374,7 +374,7 @@ fn run_render_comparison(
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
             if let Some(ref mut mr) = mrstft_max {
-                *mr *= 10.0_f64.powf(snr_relaxation / 5.0);
+                *mr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
         }
     }

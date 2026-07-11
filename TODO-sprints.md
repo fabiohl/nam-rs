@@ -175,11 +175,11 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico B.3 — Higiene de Rótulos e Rationale de Relaxação (F2.3, F2.4)
 
-* **S3.T05 — Rótulo da Métrica de `(relative)` para `(log-mag abs)`** `[ ]`
+* **S3.T05 — Rótulo da Métrica de `(relative)` para `(log-mag abs)`** `[x]`
   * **Ação:** Corrigir a identificação visual impressa pelo harness de teste para que declare a métrica de forma precisa e coerente com a implementação final.
   * **Arquivos:** [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
 
-* **S3.T06 — Unificação e Documentação da Relaxação de `mrstft_max`** `[ ]`
+* **S3.T06 — Unificação e Documentação da Relaxação de `mrstft_max`** `[x]`
   * **Ação:** Unificar o expoente de relaxamento de `mrstft_max` (`/5.0` vs `/10.0`) e documentar o rationale físico/espectral associado no harness e na especificação.
   * **Arquivos:**
     * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs) `[MODIFY]`
@@ -189,7 +189,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico B.4 — Modo Silencioso e Supressão de Pânico em Metatestes (F7)
 
-* **S3.T07 — Modo Silencioso no Harness para Testes de Regressão** `[ ]`
+* **S3.T07 — Modo Silencioso no Harness para Testes de Regressão** `[x]`
   * **Ação:** Implementar controle de supressão de relatório (ex.: flag thread-local `SUPPRESS_REPORT` ou estrutura similar) e registrar panic hook temporário em `test_mrstft_hard_gate_catches_regression` para impedir poluição com símbolos "✗" e "panicked" na suíte de testes verde.
   * **Arquivos:**
     * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
