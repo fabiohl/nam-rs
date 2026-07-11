@@ -1192,29 +1192,27 @@ fn test_summary_table() {
         ("wavenet_a2_film_lite.nam", "A2-FiLM-Lite"),
         ("wavenet_a2_film_full.nam", "A2-FiLM-Full"),
     ];
-    let input = gen_sweep(256, 48000.0);
 
-    println!("\n=== ESR(f32 vs f64 oracle) Summary ===");
+    let mut results: Vec<(&str, &str, f64)> = Vec::new();
+    for (filename, family) in &models {
+        let esr = run_oracle_esr_paired(filename, family);
+        results.push((filename, family, esr));
+    }
+
+    println!("\n=== ESR(f32 vs f64 oracle) Summary (prewarm-paired: 24k + 256) ===");
     println!(
         "{:<30} {:<12} {:<15} {:<15}",
         "Model", "Family", "ESR linear", "ESR (dB)"
     );
     println!("{}", "-".repeat(72));
 
-    for (filename, family) in &models {
-        let path = models_dir().join(filename);
-        let md = load_and_parse(&path);
-        let input_f32: Vec<f32> = input.iter().map(|&x| x as f32).collect();
-        let prod_f32 = run_f32_inference(&md, &input_f32);
-        let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-        let oracle = oracle_forward(&md, &input, &PrecisionConfig::default());
-        let esr = compute_esr_f64(&oracle, &prod_f64);
+    for (filename, family, esr) in &results {
         println!(
             "{:<30} {:<12} {:<15.6e} {:<15.1}",
             filename,
             family,
             esr,
-            esr_to_db_f64(esr)
+            esr_to_db_f64(*esr)
         );
     }
     println!("{}", "-".repeat(72));

@@ -103,7 +103,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico C.2 — Tabela de Resumo de ESR Pareada e Simétrica (F3)
 
-* **S2.T02 — Atualizar `test_summary_table`** `[ ]`
+* **S2.T02 — Atualizar `test_summary_table`** `[x]`
   * **Ação:** Refatorar a tabela de resumo no teste `test_summary_table` para consumir a metodologia de medição pareada (através do helper `run_oracle_esr_paired` com 24k de warmup + 256 de sweep), alinhando a fidelidade real relatada com os limites de tolerância física dos modelos.
   * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
 
