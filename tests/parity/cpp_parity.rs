@@ -145,6 +145,7 @@ fn ensure_render_compiled() -> bool {
         build_dir.to_str().unwrap(),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_FLAGS=-w",
         "-DNAM_ENABLE_A2_FAST=ON",
     ];
 

@@ -197,7 +197,7 @@ else
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_CXX_STANDARD=20 \
-        -DCMAKE_CXX_FLAGS="-Wno-error=effc++ -Wno-error" \
+        -DCMAKE_CXX_FLAGS="-w" \
         -DNAM_ENABLE_A2_FAST=ON \
         > "$CMAKE_LOG" 2>&1 || {
         cmake_status=$?

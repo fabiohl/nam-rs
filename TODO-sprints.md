@@ -73,7 +73,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 #### Épico A.4 — Otimização de Build C++ e Silenciamento de Warnings (F5, F10.3)
 
-* **S1.T09 — Suprimir warnings do compilador C++ vendorizado** `[ ]`
+* **S1.T09 — Suprimir warnings do compilador C++ vendorizado** `[x]`
   * **Ação:** Inserir a flag `-DCMAKE_CXX_FLAGS="-w"` nos processos de build do `render` C++ (em `ensure_render_compiled` e `golden_gen_build.sh`) para silenciar avisos `-Weffc++` que poluem desnecessariamente os consoles e logs de auditoria.
   * **Arquivos:**
     * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
