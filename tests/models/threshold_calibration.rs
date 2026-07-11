@@ -580,3 +580,119 @@ fn test_mrstft_soft_threshold_is_calibrated() {
         threshold_line + 1,
     );
 }
+
+/// S6.T01 — Meta-test: every `set_activation_precision(` call-site in
+/// `tests/**/*.rs` (outside `tests/common/precision.rs`) must have
+/// `PrecisionGuard::new` in the same function.
+///
+/// This meta-test reads all test source files and enforces the rule that
+/// any function calling `set_activation_precision()` is protected by a
+/// `PrecisionGuard`, guarding against race conditions when tests run
+/// in parallel (F11).
+///
+/// ## Mechanism
+///
+/// Parses Rust source files by tracking brace depth to identify function
+/// boundaries, then verifies that every function body containing
+/// `set_activation_precision(` also contains `PrecisionGuard::new`.
+#[test]
+fn test_all_set_activation_calls_are_guarded() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tests_dir = project_root.join("tests");
+    let precision_rs = tests_dir.join("common").join("precision.rs");
+
+    let mut rs_files: Vec<PathBuf> = Vec::new();
+    fn collect_rs(dir: &PathBuf, out: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    collect_rs(&tests_dir, &mut rs_files);
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for file_path in &rs_files {
+        if *file_path == precision_rs {
+            continue;
+        }
+
+        let source = fs::read_to_string(file_path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
+
+        if !source.contains("set_activation_precision(") {
+            continue;
+        }
+
+        let mut depth: i32 = 0;
+        let mut in_fn = false;
+        let mut has_set = false;
+        let mut has_guard = false;
+        let mut fn_start_line: usize = 0;
+
+        for (i, line) in source.lines().enumerate() {
+            let trimmed = line.trim();
+
+            if !in_fn
+                && depth == 0
+                && (trimmed.starts_with("fn ") || trimmed.starts_with("pub fn "))
+            {
+                in_fn = true;
+                has_set = false;
+                has_guard = false;
+                fn_start_line = i + 1;
+            }
+
+            if !in_fn {
+                depth += line.matches('{').count() as i32;
+                depth -= line.matches('}').count() as i32;
+                continue;
+            }
+
+            depth += line.matches('{').count() as i32;
+            depth -= line.matches('}').count() as i32;
+
+            if line.contains("set_activation_precision(") {
+                has_set = true;
+            }
+            if line.contains("PrecisionGuard::new") {
+                has_guard = true;
+            }
+
+            if depth == 0 {
+                if has_set && !has_guard {
+                    violations.push(format!(
+                        "{}:{} — set_activation_precision() without PrecisionGuard::new in the same function",
+                        file_path
+                            .strip_prefix(&project_root)
+                            .unwrap_or(file_path.as_path())
+                            .display(),
+                        fn_start_line,
+                    ));
+                }
+                in_fn = false;
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        panic!(
+            "S6.T01 guard-rail FAILED: unprotected set_activation_precision() call-sites found:\n\
+             \n{}\n\n\
+             Every test function that calls set_activation_precision() must also contain\n\
+             PrecisionGuard::new, acquired BEFORE TrackingGuard, to prevent race conditions\n\
+             when tests run in parallel (F11).\n",
+            violations
+                .iter()
+                .map(|v| format!("  ✗ {v}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+}

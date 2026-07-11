@@ -9,6 +9,7 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
     NamWavenetTopology, WavenetTopologyResult, get_wavenet_topology, parse_nam_json,
 };
+use nam_rs::math::activations::ActivationPrecision;
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::{NamModel, wavenet};
 use std::fs;
@@ -816,6 +817,8 @@ fn test_wavenet_variable_block_sizes() {
     let input = generate_sine_440hz(512);
     let mut ref_output = vec![0.0f32; 512];
 
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
+
     for &bs in &block_sizes {
         let mut model = build_model(&model_data).expect("Failed to build model");
         model.prewarm(2048);
@@ -874,6 +877,8 @@ fn test_lstm_variable_block_sizes() {
     let block_sizes = [1, 16, 32, 64, 128, 256, 512];
     let input = generate_sine_440hz(512);
     let mut ref_output = vec![0.0f32; 512];
+
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     for &bs in &block_sizes {
         let mut model = build_model(&model_data).expect("Failed to build LSTM model");

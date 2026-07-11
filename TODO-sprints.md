@@ -310,7 +310,7 @@ leitura de pesos do A2.
 
 ### Épico G.1 — Fechar o Rollout do `PrecisionGuard` (F11)
 
-* **S6.T01 — Proteger os call-sites remanescentes em `activation_precision.rs`** `[ ]`
+* **S6.T01 — Proteger os call-sites remanescentes em `activation_precision.rs`** `[x]`
   * **Ação:** Envolver `test_zero_alloc_activation_switch_primitive`,
     `test_zero_alloc_activation_hot_path_switch` e
     `test_zero_alloc_cli_activation_flow` com `PrecisionGuard::new(...)`,
@@ -325,14 +325,17 @@ leitura de pesos do A2.
     * [activation_precision.rs](file:///home/fabio/nam-rs/tests/models/activation_precision.rs) `[MODIFY]`
     * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]` (novo meta-teste)
 
-* **S6.T02 — Decidir sobre `--test-threads=1` como defesa em profundidade na Fase 1** `[ ]`
+* **S6.T02 — Decidir sobre `--test-threads=1` como defesa em profundidade na Fase 1** `[x]`
   * **Ação:** Avaliar o custo/benefício de forçar `--test-threads=1` no
     binário `models` em [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
     Fase 1, e documentar a decisão (feita ou rejeitada, com rationale) em
     [testing.md](file:///home/fabio/nam-rs/docs/testing.md) §2.
-  * **Arquivos:**
-    * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]` (se adotado)
-    * [testing.md](file:///home/fabio/nam-rs/docs/testing.md) `[MODIFY]`
+  * **Decisão:** REJEITADO. O custo (+15–30s por execução, várias vezes/dia)
+    supera o benefício marginal dado que: (a) `ACTIVATION_MODE` é o único estado
+    global mutável vulnerável, (b) o meta-teste estático de S6.T01 já captura
+    regressões do padrão conhecido em tempo de build, (c) o projeto investiu
+    explicitamente em suporte paralelo (`REPORT_LOCK`). Documentado em
+    `docs/testing.md` §2.
 
 ---
 

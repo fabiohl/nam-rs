@@ -77,6 +77,32 @@ graph TD
   - `proptest_parsers` (parser fuzzing → Fase 3, release `--ignored`).
 - **Redundancy safe:** does not compile the GUI/CLAP dependency graph.
 
+> [!NOTE]
+> **`--test-threads=1` REJECTED for Fase 1 (S6.T02).** Forcing single-threading on the
+> `models` binary was evaluated as defense-in-depth against global-state race bugs
+> (`TODO-findings.md` F11). The decision is **REJECTED** for the following rationale:
+>
+> 1. **The only race surface is already guarded.** `ACTIVATION_MODE` (`AtomicUsize`,
+>    Relaxed) in `src/math/activation_precision.rs` is the sole process-wide mutable
+>    state that cross-test-thread races can corrupt. All other global state is either
+>    TLS (`thread_local!`), `OnceLock`, `RwLock`, or self-locked (`Mutex<T>`).
+> 2. **S6.T01's static meta-test catches regressions at build time.** The meta-test in
+>    `tests/models/threshold_calibration.rs` scans every `tests/**/*.rs` file and fails
+>    the build if any `set_activation_precision(` appears without `PrecisionGuard::new`
+>    in the same function. This is a compile-time gate — it catches violations before
+>    they reach execution, eliminating the race-class entirely for the known pattern.
+> 3. **Cost outweighs benefit.** `--test-threads=1` on the `models` binary adds ~15–30s
+>    wall-clock per run (serializing ~60 test functions) to a suite executed several
+>    times/day. The project explicitly invested in supporting parallel execution
+>    (`REPORT_LOCK` in `tests/common/validation.rs` was designed for `--test-threads > 1`).
+> 4. **Future new global state should use its own lock, not blanket single-threading.**
+>    If a new mutable static is introduced in test infrastructure, the correct fix is a
+>    dedicated `Mutex<T>` or a meta-test entry — not a `--test-threads=1` band-aid that
+>    silently masks the design issue.
+>
+> This decision may be revisited if a new class of unprotected global mutable state is
+> introduced that cannot be caught by a static meta-test.
+
 ### Fase 2 — Measurement Oracles (release, gate of production floats)
 
 - **Goal:** the 5 canonical oracles of §7 measure the float path that ships.

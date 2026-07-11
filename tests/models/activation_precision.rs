@@ -357,6 +357,7 @@ fn test_hf_mode_switch_functional() {
 /// rely on for RT-safe mode switching.
 #[test]
 fn test_zero_alloc_activation_switch_primitive() {
+    let _prec_guard = PrecisionGuard::new(ActivationPrecision::Standard);
     let count = {
         let _guard = TrackingGuard::new();
         set_activation_precision(ActivationPrecision::Fast);
@@ -378,6 +379,7 @@ fn test_zero_alloc_activation_switch_primitive() {
 /// zero allocations throughout the entire sequence.
 #[test]
 fn test_zero_alloc_activation_hot_path_switch() {
+    let _prec_guard = PrecisionGuard::new(ActivationPrecision::Standard);
     let models = [
         ("wavenet_official.nam", "WaveNet Std"),
         ("BossLSTM-1x16.nam", "LSTM 1x16"),
@@ -446,8 +448,6 @@ fn test_zero_alloc_activation_hot_path_switch() {
             "{label}: non-finite output after activation switch"
         );
     }
-
-    set_activation_precision(ActivationPrecision::Standard);
 }
 
 /// Zero-alloc: CLI flow simulation (parse + apply).
@@ -461,6 +461,8 @@ fn test_zero_alloc_activation_hot_path_switch() {
 fn test_zero_alloc_cli_activation_flow() {
     use lexopt::Parser;
     use nam_rs::standalone::cli::parse_args_from;
+
+    let _prec_guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     let test_cases = [
         (
@@ -500,8 +502,6 @@ fn test_zero_alloc_cli_activation_flow() {
             args, count
         );
     }
-
-    set_activation_precision(ActivationPrecision::Standard);
 }
 
 /// Integration: activation precision switch does not corrupt subsequent

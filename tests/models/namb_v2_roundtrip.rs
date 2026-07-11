@@ -14,9 +14,12 @@ use nam_rs::loader::nam_json::{
 };
 use nam_rs::loader::namb::parse_namb;
 use nam_rs::loader::namb_encoder::encode_namb;
+use nam_rs::math::activations::ActivationPrecision;
 use nam_rs::models::NamModel;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::common::PrecisionGuard;
 
 // =============================================================================
 // Shared helpers
@@ -478,6 +481,8 @@ fn test_wavenet_original_roundtrip() {
 
 #[test]
 fn test_lstm_gate_major_roundtrip() {
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
+
     let topologies = [
         (1, 8),
         (1, 12),
@@ -534,6 +539,8 @@ fn test_lstm_gate_major_roundtrip() {
 
 #[test]
 fn test_wavenet_interleaved4_roundtrip() {
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
+
     for cfg in &wavenet_topologies() {
         let orig_data = make_synthetic_wavenet(cfg);
 
@@ -602,6 +609,8 @@ fn test_real_lstm_2x8_roundtrip() {
 
     let mut model_v2 = build_model(&v2_data).unwrap();
     model_v2.prewarm(1024);
+
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     let input = generate_sine(512);
     let mut out_orig = vec![0.0f32; 512];

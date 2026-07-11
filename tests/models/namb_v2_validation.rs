@@ -10,9 +10,12 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{WeightsLayout, parse_nam_json};
 use nam_rs::loader::namb::parse_namb;
 use nam_rs::loader::namb_encoder::encode_namb;
+use nam_rs::math::activations::ActivationPrecision;
 use nam_rs::models::NamModel;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::common::PrecisionGuard;
 
 /// Helper: resolves the absolute path to test fixtures.
 fn model_path(filename: &str) -> PathBuf {
@@ -75,7 +78,11 @@ fn test_lstm_v2_gate_major_parity() {
     let mut model_v2 = build_model(&v2_data).unwrap();
     model_v2.prewarm(1024);
 
-    // 5. Compare numerical output to guarantee absolute parity (MSE near zero)
+    // 5. Compare numerical output to guarantee absolute parity (MSE near zero).
+    // PrecisionGuard ensures stable ActivationPrecision across both process() calls
+    // — without it, a parallel writer thread could flip the global atomic between
+    // the two inferences, causing spurious MSE divergence (S6.T01/F11 victims).
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
     let input = generate_sine(512);
     let mut out_orig = vec![0.0f32; 512];
     let mut out_v2 = vec![0.0f32; 512];
@@ -120,7 +127,9 @@ fn test_wavenet_v2_interleaved4_parity() {
     let mut model_v2 = build_model(&v2_data).unwrap();
     model_v2.prewarm(2048);
 
-    // 4. Numerical validation
+    // 4. Numerical validation.
+    // See note in test_lstm_v2_gate_major_parity re: PrecisionGuard necessity.
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
     let input = generate_sine(512);
     let mut out_orig = vec![0.0f32; 512];
     let mut out_v2 = vec![0.0f32; 512];
