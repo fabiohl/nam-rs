@@ -849,6 +849,14 @@ pub fn topology_thresholds(
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
         "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
+        "ConvNet" => {
+            // ConvNet multi-block models — no C++ golden available
+            // (NAM Core v0.5.3 incompatible with NAM 0.5.4 multi-block
+            // ConvNet). Self-golden consistency: SNR=bit-exact, ESR=0.
+            // Thresholds reflect expected perfect self-consistency.
+            let snr_db = 140.0;
+            (snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05))
+        }
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }
@@ -891,6 +899,10 @@ pub fn live_parity_thresholds(
             (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
         }
         "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
+        "ConvNet" => {
+            let snr_db = 140.0;
+            (snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05))
+        }
         _ => (5e-2, 9.0, Some(1e-3), None),
     }
 }

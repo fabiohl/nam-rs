@@ -113,7 +113,7 @@ declare -A ESR_F64_FAMILY_FIXTURE=(
 # Validate that a string actually looks like a scientific-notation ESR value
 # (e.g. "6.13e-14", "0.00e0", "3.17e-3", "0"). Defensive check (2026-07-05):
 # a malformed/interleaved line in a parallel `cargo test` log run has been
-# observed to make an ESR_F64 entry hold a non-numeric label (e.g. "WaveNet")
+# observed to make an ESR_F64_PAIRED entry hold a non-numeric label (e.g. "WaveNet")
 # instead of a value — this rejects such garbage before it reaches the
 # report instead of silently displaying it as if it were a measurement.
 _is_numeric_esr() {
@@ -133,17 +133,17 @@ _lookup_esr_f64() {
     local best_is_exact=0
 
     set +u
-    for okey in "${!ESR_F64[@]}"; do
+    for okey in "${!ESR_F64_PAIRED[@]}"; do
         local norm_okey
         norm_okey=$(echo "$okey" | tr '[:upper:]' '[:lower:]' | sed 's/\.nam$//; s/[^a-z0-9]//g')
 
         # Skip any candidate whose stored value isn't actually numeric — a
         # corrupted/malformed entry must never win a match, exact or fuzzy.
-        _is_numeric_esr "${ESR_F64[$okey]}" || continue
+        _is_numeric_esr "${ESR_F64_PAIRED[$okey]}" || continue
 
         # Exact match is always preferred
         if [ "$norm_golden" = "$norm_okey" ]; then
-            best="${ESR_F64[$okey]}"
+            best="${ESR_F64_PAIRED[$okey]}"
             best_key="$okey"
             best_is_exact=1
             best_len=9999
@@ -153,7 +153,7 @@ _lookup_esr_f64() {
         # Partial matches: prefer the longest matching key (most specific)
         if [[ "$norm_golden" == *"$norm_okey"* ]] || [[ "$norm_okey" == *"$norm_golden"* ]]; then
             if [ ${#norm_okey} -gt $best_len ]; then
-                best="${ESR_F64[$okey]}"
+                best="${ESR_F64_PAIRED[$okey]}"
                 best_key="$okey"
                 best_is_exact=0
                 best_len=${#norm_okey}
@@ -188,8 +188,10 @@ _lookup_esr_f64() {
 
 declare -A ESR_NAMCORE
 declare -A ESR_NAMCORE_DB
-declare -A ESR_F64
-declare -A ESR_F64_DB
+declare -A ESR_F64_COLD
+declare -A ESR_F64_PAIRED
+declare -A ESR_F64_DB_COLD
+declare -A ESR_F64_DB_PAIRED
 declare -A SNR_DB
 declare -A MSE_VAL
 declare -A MRSTFT
@@ -377,6 +379,7 @@ parse_golden_vectors() {
         printf "MRSTFT\t%s\t%s\n", label " " mode, mrstft_val
     }
     /^\[ConvNet Self-Golden/ {
+        label = ""
         printf "ESR_NAMCORE\tConvNet Test @48000 Live\tN/A\n"
     }
     ' "$log" > "$parsed"
@@ -450,12 +453,12 @@ parse_oracle_f64() {
         # check above, in case the log format changes again in the future.
         if [ -n "$filename" ] && [ -n "$esr_lin" ]; then
             if _is_numeric_esr "$esr_lin"; then
-                ESR_F64["$filename"]="$esr_lin"
+                ESR_F64_PAIRED["$filename"]="$esr_lin"
             else
                 echo "  ⚠ Descartando entrada f64 nao-numerica para '$filename': [$esr_lin] (linha malformada em oracle_f64.log)" >&2
             fi
         fi
-        [ -n "$filename" ] && [ -n "$esr_db" ] && ESR_F64_DB["$filename"]="$esr_db"
+        [ -n "$filename" ] && [ -n "$esr_db" ] && ESR_F64_DB_PAIRED["$filename"]="$esr_db"
         [ -n "$filename" ] && MODEL_ESR_F64_TABLE["$filename"]="${family}|${esr_lin}|${esr_db}"
     done < "$parsed"
 
@@ -469,12 +472,12 @@ parse_oracle_f64() {
         # Same defensive check as above — see note there.
         if [ -n "$label" ] && [ -n "$esr" ]; then
             if _is_numeric_esr "$esr"; then
-                ESR_F64["$label"]="$esr"
+                ESR_F64_PAIRED["$label"]="$esr"
             else
                 echo "  ⚠ Descartando entrada f64 nao-numerica para familia '$label': [$esr] (linha malformada em oracle_f64.log)" >&2
             fi
         fi
-        [ -n "$label" ] && [ -n "$esr_db" ] && ESR_F64_DB["$label"]="$esr_db"
+        [ -n "$label" ] && [ -n "$esr_db" ] && ESR_F64_DB_PAIRED["$label"]="$esr_db"
     done < "$parsed"
 
     # Parse decomposition blocks
@@ -513,7 +516,7 @@ parse_oracle_f64() {
         F64_DECOMPOSITION["$key"]="$value"
     done < "$parsed"
 
-    # Parse per-model f64 ESR from decomposition blocks to populate ESR_F64/ESR_F64_DB
+    # Parse per-model f64 ESR from decomposition blocks to populate ESR_F64_COLD/ESR_F64_DB_COLD
     LC_ALL=C awk '
     /Decomposition:/ {
         lbl = $0
@@ -548,8 +551,8 @@ parse_oracle_f64() {
     while IFS=$'\t' read -r label esr db; do
         [ -n "$label" ] && [ -n "$esr" ] || continue
         if _is_numeric_esr "$esr"; then
-            ESR_F64["$label"]="$esr"
-            [ -n "$db" ] && ESR_F64_DB["$label"]="$db"
+            ESR_F64_COLD["$label"]="$esr"
+            [ -n "$db" ] && ESR_F64_DB_COLD["$label"]="$db"
         fi
     done < "$parsed"
 }
@@ -771,14 +774,14 @@ folga_color() {
 # ── Render: header ──────────────────────────────────────────────────────────
 
 render_header() {
-    local cpu_short="${CPU_MODEL:0:48}"
+    local cpu_short="${CPU_MODEL:0:46}"
     printf "╔══════════════════════════════════════════════════════════════════╗\n"
     printf "║              nam-rs Quality Dashboard                            ║\n"
     printf "║              ------------------------------                      ║\n"
-    printf "║              Medido em: %s                ║\n" "$NOW"
-    printf "║              ISA: %-52s ║\n" "$ISA"
-    printf "║              CPU: %-52s ║\n" "$cpu_short"
-    printf "║              rustc: %-50s ║\n" "$RUSTC_VER"
+    printf "║              Medido em: %-25.25s                ║\n" "$NOW"
+    printf "║              ISA: %-46.46s ║\n" "$ISA"
+    printf "║              CPU: %-46.46s ║\n" "$cpu_short"
+    printf "║              rustc: %-44.44s ║\n" "$RUSTC_VER"
     printf "╚══════════════════════════════════════════════════════════════════╝\n"
 }
 
@@ -1012,7 +1015,7 @@ render_isa_parity() {
     count="${#ISA_RESULTS[@]}"
     set -u
     if [ -z "$count" ] || [ "$count" -eq 0 ]; then
-        echo -e "  ${YELLOW}(i) Nenhum resultado de ISA parity disponivel.${NC}"
+        echo -e "  ${YELLOW}(i) Nao coberto no modo quick — rode tests-long para verificacao completa.${NC}"
         echo ""
         return
     fi
@@ -1192,8 +1195,15 @@ render_f64_decomposition() {
         # Rule 5 self-check (docs/perceptual_validation.md): Σ sources ≈ total,
         # within 10×. Flag it here instead of letting a wildly inconsistent
         # decomposition pass silently as if it were a trustworthy breakdown.
+        # Extract model short name to look up cold ESR from ESR_F64_COLD
+        # (populated by the decomposition-block parser in parse_oracle_f64).
+        local short_name
+        short_name=$(echo "$model" | sed 's/.* \.\.\. //')
         local total combined
-        total=$(_decomp_extract "$block" 'ESR\(f32 vs f64 oracle\):\s*')
+        total="${ESR_F64_COLD[$short_name]:-}"
+        if [ -z "$total" ]; then
+            total=$(_decomp_extract "$block" 'ESR\(f32 vs f64 oracle\):\s*')
+        fi
         combined=$(_decomp_extract "$block" 'combined \(F16C\+Padé\+F32\):\s*')
         if [ -n "$total" ] && [ -n "$combined" ]; then
             local ratio_flag
@@ -1223,7 +1233,7 @@ render_spectral_summary() {
     if [ "$count" -gt 0 ]; then
         echo -e "  ${GREEN}ok${NC} ${count} modelo(s) com metricas espectrais dentro da baseline."
     else
-        echo -e "  ${YELLOW}(i) Nenhum resultado de spectral fidelity disponivel.${NC}"
+        echo -e "  ${YELLOW}(i) Nao coberto no modo quick — rode tests-long para verificacao completa.${NC}"
     fi
     echo ""
 }

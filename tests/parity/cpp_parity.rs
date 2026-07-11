@@ -741,6 +741,11 @@ fn quick_parity_a2_full() {
     );
 }
 
+#[test]
+fn quick_parity_convnet() {
+    run_v1("convnet_test.nam", "convnet_test", "Quick ConvNet", true);
+}
+
 // =============================================================================
 // Tests — #[ignore] (require C++ toolchain)
 // =============================================================================
@@ -833,6 +838,17 @@ fn live_cross_validation_wavenet_a2_lite() {
         "wavenet_a2_lite.nam",
         "wavenet_a2_lite",
         "Live WaveNet A2-Lite",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_convnet() {
+    run_v1(
+        "convnet_test.nam",
+        "convnet_test",
+        "Live ConvNet Test",
         true,
     );
 }

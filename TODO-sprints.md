@@ -207,7 +207,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico D.1 — Investigar e Normalizar a Linha Container A2-Lite (F6.1)
 
-* **S4.T01 — Correção de vazamento de contexto no parser de golden vectors**
+* **S4.T01 — Correção de vazamento de contexto no parser de golden vectors** [x]
   * **Ação:** No script [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh), na função `parse_golden_vectors`, redefinir `label = ""` quando o parser casar a linha `/^\[ConvNet Self-Golden/`. Isso impede que as métricas do teste de determinismo do ConvNet (ESR=0, SNR=inf) sobrescrevam de forma errônea as métricas reais do Container A2-Lite registradas no bloco anterior.
   * **Arquivos:** [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh) `[MODIFY]`
 
@@ -215,7 +215,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico D.2 — Separar Proveniência Cold/Paired no `ESR_F64` (F3, F6.3)
 
-* **S4.T02 — Separação de metodologias de medição F64 no Dashboard**
+* **S4.T02 — Separação de metodologias de medição F64 no Dashboard** [x]
   * **Ação:** Refatorar o armazenamento do f64 oracle em [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh). Em vez de usar um único array `ESR_F64` compartilhado, criar dois arrays associativos distintos:
     * `ESR_F64_COLD`: Para os dados de decomposição (256 samples sem warmup, transiente ativo).
     * `ESR_F64_PAIRED`: Para as tabelas de fidelidade e resumos (warmup de 24k samples).
@@ -226,7 +226,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico D.3 — Seções ISA/Spectral no Modo Quick (F6.2)
 
-* **S4.T03 — Declaração explícita de cobertura rápida nas seções ISA/Spectral**
+* **S4.T03 — Declaração explícita de cobertura rápida nas seções ISA/Spectral** [x]
   * **Ação:** Modificar as funções de renderização `render_isa_parity` e `render_spectral_summary` em [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh). Caso os arrays de dados correspondentes estejam vazios (indicando uma rodada rápida sem testes de ISA ou fidelidade espectral estendida), exibir explicitamente a mensagem `"Não coberto no modo quick — rode tests-long para verificação completa"` em vez de indicar `"Nenhum resultado disponivel"`.
   * **Arquivos:** [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh) `[MODIFY]`
 
@@ -234,7 +234,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico D.4 — Cobertura de Interoperação ConvNet (F6.4)
 
-* **S4.T04 — Adicionar teste de paridade C++ para ConvNet**
+* **S4.T04 — Adicionar teste de paridade C++ para ConvNet** [x]
   * **Ação:**
     * Em [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs), adicionar os testes de paridade `quick_parity_convnet` (para o loop rápido) e `live_cross_validation_convnet` (para o loop completo) usando o modelo `convnet_test.nam`.
     * No helper `topology_thresholds` em [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs), garantir que existam limites de tolerância calibrados para a família ConvNet.
@@ -246,7 +246,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico D.5 — Correções Cosméticas e Referências no Dashboard (F10.5)
 
-* **S4.T05 — Alinhamento cosmético do cabeçalho e referências textuais**
+* **S4.T05 — Alinhamento cosmético do cabeçalho e referências textuais**[x]
   * **Ação:**
     * Corrigir a largura e o preenchimento de campos (`printf`) na função `render_header` do script [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh) para evitar estouro de bordas quando os rótulos de CPU ou compilador forem longos.
     * Na função `render_f64_decomposition`, atualizar a referência textual `"TODO-findings.md Achado A1"` para `"TODO-findings.md Achado F3"`.
