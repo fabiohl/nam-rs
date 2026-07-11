@@ -95,7 +95,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico C.1 — Decomposições Pareadas com Prewarm para WaveNet/LSTM/A2/ConvNet (F3)
 
-* **S2.T01 — Migrar Decomposições para `run_decomposition_paired`** `[ ]`
+* **S2.T01 — Migrar Decomposições para `run_decomposition_paired`** `[x]`
   * **Ação:** Refatorar os testes de decomposição no arquivo `tests/parity/reference_oracle_f64.rs` (`test_decomposition_wavenet`, `test_decomposition_lstm`, `test_decomposition_a2`, `test_decomposition_convnet`) para que utilizem `run_decomposition_paired` com sinal de estresse e `WARMUP_LEN = 24_000` e `MEASURE_LEN = 4_096`. Isso garante que o cálculo de ESR por componente ocorra em regime permanente.
   * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
 

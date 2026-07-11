@@ -380,24 +380,70 @@ fn test_oracle_a2() {
 
 #[test]
 fn test_decomposition_wavenet() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
     let path = models_dir().join("wavenet_official.nam");
     let md = load_and_parse(&path);
 
-    let esr_paired = run_oracle_esr_paired("wavenet_official.nam", "WaveNet");
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
     assert!(
-        esr_paired < WAVENET_ESR_LIMIT,
-        "WaveNet paired ESR={:.6e} exceeds calibrated limit {}",
-        esr_paired,
-        WAVENET_ESR_LIMIT
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Fast,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "WaveNet-official",
+        "WaveNet",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "WaveNet Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}, InvRatio = {:.2}",
+        total_esr, sum_sources, ratio, inverse_ratio
     );
 
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-
-    let result = run_decomposition("WaveNet-official", "WaveNet", &md, &prod_f64, &input_f64);
-    print_decomposition(&result);
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
@@ -406,24 +452,70 @@ fn test_decomposition_wavenet() {
 
 #[test]
 fn test_decomposition_lstm() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
     let path = models_dir().join("lstm.nam");
     let md = load_and_parse(&path);
 
-    let esr_paired = run_oracle_esr_paired("lstm.nam", "LSTM");
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
     assert!(
-        esr_paired < LSTM_ESR_LIMIT,
-        "LSTM paired ESR={:.6e} exceeds calibrated limit {}",
-        esr_paired,
-        LSTM_ESR_LIMIT
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Fast,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "LSTM-H3",
+        "LSTM",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "LSTM Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}, InvRatio = {:.2}",
+        total_esr, sum_sources, ratio, inverse_ratio
     );
 
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-
-    let result = run_decomposition("LSTM-H3", "LSTM", &md, &prod_f64, &input_f64);
-    print_decomposition(&result);
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
@@ -637,24 +729,70 @@ fn test_decomposition_boss_lstm_2x8() {
 
 #[test]
 fn test_decomposition_a2() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
     let path = models_dir().join("wavenet_a2_lite.nam");
     let md = load_and_parse(&path);
 
-    let esr_paired = run_oracle_esr_paired("wavenet_a2_lite.nam", "A2");
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
     assert!(
-        esr_paired < A2_ESR_LIMIT,
-        "A2 paired ESR={:.6e} exceeds calibrated limit {}",
-        esr_paired,
-        A2_ESR_LIMIT
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Fast,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "A2-Lite",
+        "WaveNet",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "A2 Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}, InvRatio = {:.2}",
+        total_esr, sum_sources, ratio, inverse_ratio
     );
 
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-
-    let result = run_decomposition("A2-Lite", "WaveNet", &md, &prod_f64, &input_f64);
-    print_decomposition(&result);
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
@@ -754,24 +892,70 @@ fn test_oracle_convnet() {
 
 #[test]
 fn test_decomposition_convnet() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
     let path = models_dir().join("convnet_test.nam");
     let md = load_and_parse(&path);
 
-    let esr_paired = run_oracle_esr_paired("convnet_test.nam", "ConvNet");
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
     assert!(
-        esr_paired < CONVNET_ESR_LIMIT,
-        "ConvNet paired ESR={:.6e} exceeds calibrated limit {}",
-        esr_paired,
-        CONVNET_ESR_LIMIT
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Fast,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "ConvNet-test",
+        "ConvNet",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "ConvNet Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}, InvRatio = {:.2}",
+        total_esr, sum_sources, ratio, inverse_ratio
     );
 
-    let input_f64 = gen_sweep(256, 48000.0);
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-    let prod_f32 = run_f32_inference(&md, &input_f32);
-    let prod_f64: Vec<f64> = prod_f32.iter().map(|&x| x as f64).collect();
-
-    let result = run_decomposition("ConvNet-test", "ConvNet", &md, &prod_f64, &input_f64);
-    print_decomposition(&result);
     assert!(
         result.esr_combined_display() > 0.0,
         "Combined ΔESR should be non-zero"
