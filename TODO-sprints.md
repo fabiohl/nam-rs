@@ -32,7 +32,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
   * **Ação:** Registrar e reexportar o novo módulo em [mod.rs](file:///home/fabio/nam-rs/tests/common/mod.rs).
   * **Arquivos:** [mod.rs](file:///home/fabio/nam-rs/tests/common/mod.rs) `[MODIFY]`
 
-* **S1.T03 — Auditoria e refatoração dos call-sites de `set_activation_precision`** `[x]`
+* **S1.T03 — Auditoria e refatoração dos call-sites de `set_activation_precision`** `[x]` ⚠ **REABERTO — ver S6.T01 (Achado F11)**
   * **Ação:** Substituir chamadas diretas que alteram o atômico global pelo uso do `PrecisionGuard` para garantir exclusão mútua e restauração automática.
   * **Arquivos:**
     * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
@@ -40,6 +40,13 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
     * [activation_precision.rs](file:///home/fabio/nam-rs/tests/models/activation_precision.rs) `[MODIFY]`
     * [lstm_activation_precision.rs](file:///home/fabio/nam-rs/tests/models/lstm_activation_precision.rs) `[MODIFY]`
     * [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
+  * **Verificação de acompanhamento (2026-07-11):** auditoria de execução (não
+    apenas revisão estática) encontrou 3 call-sites ainda desprotegidos em
+    `activation_precision.rs` e reproduziu falhas intermitentes reais em
+    `namb_v2_roundtrip.rs`/`namb_v2_validation.rs` causadas por essa lacuna
+    (2 de 4 execuções de `cargo test --release --test models` falharam, cada
+    vez em um teste diferente). Ver `TODO-findings.md` Achado F11 e Sprint 6
+    abaixo para o fechamento.
 
 ---
 
@@ -111,9 +118,15 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico C.3 — Correção Estrutural do Oráculo WaveNet A2 (F4)
 
-* **S2.T03 — Correção do Oráculo WaveNet A2** `[x]`
+* **S2.T03 — Correção do Oráculo WaveNet A2** `[x]` ⚠ **PARCIAL — REABERTO, ver S6.T02 (Achado F12)**
   * **Ação:** Corrigir os caminhos de cálculo e dimensionalidades associadas a `condition_dsp` e leitura de pesos de `head1x1` no oráculo f64 em `src/testing/reference_oracle/a2.rs` conforme detalhado no Épico 6 do `TODO-wavenet_a2_max.md` (não-bloqueante para produção).
   * **Arquivos:** [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs) `[MODIFY]`
+  * **Verificação de acompanhamento (2026-07-11):** executar (não apenas
+    revisar) `test_oracle_vs_python_anchor_a2_generic -- --ignored` revela um
+    **panic** ("range end index 826 out of range for slice of length 818") —
+    o commit `b7a8fb4` corrigiu fórmulas de dimensão mas manteve a estrutura
+    de leitura por-array (mesmo Bug A da produção, replicado no oráculo).
+    Ver `TODO-findings.md` Achado F12 e Sprint 6 abaixo para o fechamento.
 
 ---
 
@@ -277,3 +290,77 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
   * **Ação:** Remover o parâmetro `--test clap` da chamada de `cargo test` na Fase 1 de [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) quando a feature `clap-plugin` não estiver ativa. Isso evita o custo de compilação e linkagem de um binário de teste vazio (0 testes executados) e acelera o tempo de feedback do desenvolvedor.
   * **Concluído:** Adicionada função `_has_clap_plugin()` que detecta se a feature está ativa via `NAM_FEATURES` (override explícito) ou parsing do `Cargo.toml` (default features). Como `clap-plugin` NÃO está nas default features (`standalone` + `testing`), `--test clap` é excluído na execução padrão, eliminando ~15-30s de compilação de binário vazio. Quando o desenvolvedor define `NAM_FEATURES="standalone,testing,clap-plugin"`, o target é reincluído automaticamente. O caminho legacy (pre-Sprint 3) não é afetado — `STRUCT_TESTS` nunca incluiu testes clap.
   * **Arquivos:** [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]`
+
+---
+
+## Sprint 6: Fechamento Residual Verificado por Execução (Épico G)
+
+**Objetivo:** Fechar as duas lacunas encontradas pela auditoria de
+acompanhamento de 2026-07-11, que **executou** (em vez de apenas revisar
+estaticamente) os artefatos das Sprints 1–5 e reproduziu, empiricamente, uma
+falha de flakiness real (F11) e um panic no oráculo A2 (F12). Ver
+`TODO-findings.md` Achado F11/F12 e Épico G para o detalhamento completo.
+
+**Risco:** F11 é baixo esforço/alto valor (causa raiz já isolada a 3 funções);
+F12 é médio esforço e deve ser coordenado com o início do Épico F
+(`TODO-wavenet_a2_max.md` Epic 2), já que ambos tocam a mesma estrutura de
+leitura de pesos do A2.
+
+---
+
+### Épico G.1 — Fechar o Rollout do `PrecisionGuard` (F11)
+
+* **S6.T01 — Proteger os call-sites remanescentes em `activation_precision.rs`** `[ ]`
+  * **Ação:** Envolver `test_zero_alloc_activation_switch_primitive`,
+    `test_zero_alloc_activation_hot_path_switch` e
+    `test_zero_alloc_cli_activation_flow` com `PrecisionGuard::new(...)`,
+    adquirido **antes** do `TrackingGuard`, para não contaminar a contagem de
+    alocações medida. Adicionar meta-teste estático (grep-based, estilo
+    `threshold_calibration.rs`) que falha o build se `set_activation_precision(`
+    aparecer em `tests/**/*.rs` fora de `tests/common/precision.rs` sem
+    `PrecisionGuard::new` na mesma função.
+  * **Critério de aceite:** `cargo test --release --test models` roda **≥ 10×
+    consecutivas sem falha** (hoje falha em ~2 de 4 execuções).
+  * **Arquivos:**
+    * [activation_precision.rs](file:///home/fabio/nam-rs/tests/models/activation_precision.rs) `[MODIFY]`
+    * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]` (novo meta-teste)
+
+* **S6.T02 — Decidir sobre `--test-threads=1` como defesa em profundidade na Fase 1** `[ ]`
+  * **Ação:** Avaliar o custo/benefício de forçar `--test-threads=1` no
+    binário `models` em [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+    Fase 1, e documentar a decisão (feita ou rejeitada, com rationale) em
+    [testing.md](file:///home/fabio/nam-rs/docs/testing.md) §2.
+  * **Arquivos:**
+    * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) `[MODIFY]` (se adotado)
+    * [testing.md](file:///home/fabio/nam-rs/docs/testing.md) `[MODIFY]`
+
+---
+
+### Épico G.2 — Corrigir Estruturalmente o Oráculo A2 (F12)
+
+* **S6.T03 — Reestruturar leitura de `head1x1` para dentro do laço por-camada** `[ ]`
+  * **Ação:** Em [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs),
+    mover a leitura de `head1x1_w`/`head1x1_b` (hoje após o laço `for li in
+    0..num_layers`) para **dentro** do laço, na ordem correta do stream de
+    pesos do C++ (a confirmar por reconciliação campo-a-campo, coordenada com
+    a correção do Bug A na produção — Epic 2 do `TODO-wavenet_a2_max.md`).
+    Corrigir também a condição de formato do head final para depender da
+    presença real de `cfg.head` (não de `head_size == 1`).
+  * **Arquivos:** [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs) `[MODIFY]`
+
+* **S6.T04 — Gate de reconciliação automático de orçamento de pesos** `[ ]`
+  * **Ação:** Ao final de `oracle_a2_forward`, adicionar
+    `assert_eq!(cursor.pos, model_data.weights.len(), "resíduo de pesos não
+    consumidos/lidos em excesso para {model_filename}")` (não-ignorado) —
+    transforma a reconciliação manual de `TODO-wavenet_a2_max.md` §3.5 em
+    salvaguarda permanente.
+  * **Arquivos:** [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs) `[MODIFY]`
+
+* **S6.T05 — Reabilitar e verificar `test_oracle_vs_python_anchor_a2_generic`** `[ ]`
+  * **Ação:** Após S6.T03/S6.T04, executar
+    `cargo test --release --test parity reference_oracle_f64::test_oracle_vs_python_anchor_a2_generic -- --ignored --nocapture`
+    e confirmar que produz um valor de ESR (não um panic). O teste permanece
+    `#[ignore]`d até os Bugs A/B/C de produção (Épico F) também serem
+    corrigidos, mas a mensagem de `#[ignore]` deve ser atualizada para
+    refletir que a medição agora é possível.
+  * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`

@@ -23,6 +23,22 @@ código Rust dos testes/avaliações.
   `audio_fidelity_map.md` §3, `perceptual_validation.md` §MR-STFT,
   `testing.md` §2, `benchmarks.md`).
 
+> [!WARNING]
+> **Atualização (2026-07-11) — auditoria de verificação por execução.** Os
+> Achados F1–F10 abaixo foram implementados (Sprints 1–5, ver
+> `TODO-sprints.md`, todos `[x]`). Uma auditoria de acompanhamento **executou**
+> os artefatos resultantes (em vez de apenas revisá-los estaticamente) e
+> encontrou duas lacunas concretas, ambas com reprodução empírica: **Achado
+> F11** (flakiness real e reproduzida em `tests/models.rs`, causada por
+> rollout incompleto do `PrecisionGuard` do Épico A.1) e **Achado F12**
+> (o oráculo f64 do A2, "corrigido" no Épico C.3, ainda **panica** para
+> `wavenet_a2_max.nam`). Ambos geraram o **Épico G** (residual, novo). Nenhum
+> dos dois invalida o trabalho dos Sprints 1–5 — a maior parte das alegações
+> foi verificada como correta — mas confirma que revisão estática de código
+> não é suficiente para tarefas que tocam estado global compartilhado ou
+> caminhos cobertos só por testes `#[ignore]`d; ver a "Nota de processo" em
+> cada achado.
+
 **Estado geral de paridade (contexto positivo):** a suíte está saudável. Todos os
 golden vectors v1 passam com ESR na faixa 1e-11…1e-14 (interop "IDENTICO" vs
 NAMcore); o oráculo f64 casa com as âncoras NumPy a −153 dB; LSTMs convergiram
@@ -365,6 +381,13 @@ que dependem do modo); auditar via grep todos os call-sites de
 **Arquivos:** `tests/common/`, `tests/parity/cpp_parity.rs:60-73`,
 call-sites de `set_activation_precision` em `tests/` e `src/` (testes unitários).
 
+> **Atualização (2026-07-11) — implementação parcial, ver Achado F11.** O
+> `PrecisionGuard` (`tests/common/precision.rs`) foi criado com exatamente a
+> semântica proposta (Mutex estático + RAII), e a maioria dos call-sites foi
+> migrada. Porém a auditoria de acompanhamento (F11) encontrou 3 call-sites
+> ainda desprotegidos que **já causaram falhas intermitentes reproduzidas**
+> nesta sessão. Este achado permanece aberto até F11 ser resolvido.
+
 ---
 
 ## Achado F10 — 🟡 Higiene menor (agregado)
@@ -383,13 +406,239 @@ call-sites de `set_activation_precision` em `tests/` e `src/` (testes unitários
 
 ---
 
+## Achado F11 — 🔴 Rollout incompleto do `PrecisionGuard` causa flakiness **reproduzida** em `tests/models.rs` (regressão do Épico A.1 / F9)
+
+**Contexto:** o Épico A.1 (F9) foi marcado `[x]`/`[DONE]` em `TODO-sprints.md`
+(S1.T01–S1.T03) com a alegação "auditoria e refatoração dos call-sites de
+`set_activation_precision`". Esta auditoria de acompanhamento **verificou
+essa alegação executando a suíte repetidamente** e encontrou 3 call-sites que
+seguem chamando `set_activation_precision()` diretamente, sem adquirir o
+`PRECISION_MUTEX` via `PrecisionGuard` — e comprovou, empiricamente, que isso
+já produz **falhas intermitentes reais**, não apenas um risco teórico.
+
+**Reprodução (determinística em poucas tentativas, sem qualquer alteração de
+código):**
+
+```text
+$ cargo test --release --test models              # execução 1
+failures: namb_v2_roundtrip::test_lstm_gate_major_roundtrip
+
+$ cargo test --release --test models              # execução 2 (mesmo binário)
+test result: ok. 223 passed; 0 failed …
+
+$ cargo test --release --test models              # execução 3
+failures: namb_v2_validation::test_lstm_v2_gate_major_parity
+```
+
+Falhas **diferentes a cada execução** — assinatura clássica de corrida em
+estado global mutável compartilhado por threads de teste concorrentes (o
+`cargo test` usa `--test-threads = nproc` por padrão; esta máquina tem 16
+threads; `utils/tests-quick.sh` Fase 1 não passa `--test-threads=1` para o
+binário `models`).
+
+**Causa-raiz confirmada:**
+
+1. `tests/models/activation_precision.rs` contém 3 testes que chamam
+   `set_activation_precision(...)` **sem** nenhum `PrecisionGuard` no escopo:
+   `test_zero_alloc_activation_switch_primitive` (linhas 362-364),
+   `test_zero_alloc_activation_hot_path_switch` (411, 419, 427, 450),
+   `test_zero_alloc_cli_activation_flow` (493, 504). Todos vivem no mesmo
+   binário `tests/models.rs` que `lstm_activation_precision.rs` e
+   `lstm_model_dyn_validation.rs` — que **corretamente** usam
+   `PrecisionGuard`, mas cuja proteção é **inútil** porque o `Mutex` só
+   serializa quem tenta adquiri-lo; os 3 testes acima mutam o átomo global
+   por fora, sem esperar ninguém.
+2. Efeito colateral em testes que **nem sabiam que dependiam** de precisão
+   estável: `namb_v2_roundtrip::test_lstm_gate_major_roundtrip` e
+   `namb_v2_validation::test_lstm_v2_gate_major_parity` constroem dois modelos
+   LSTM (original vs. round-trip NAMB v2) e comparam duas chamadas
+   **sequenciais** de `model.process(...)` com `assert!(mse < 1e-12)`. Se o
+   átomo global `ActivationPrecision` flipar entre a primeira e a segunda
+   chamada (porque outro teste, em outra thread, chamou
+   `set_activation_precision(Fast)` naquele instante), as duas saídas passam
+   a vir de modos de ativação diferentes — divergência de ~1e-1…1e-2 em ESR,
+   muito acima do gate de 1e-12 — e o teste falha **por um motivo
+   completamente não relacionado ao que ele se propõe a verificar** (paridade
+   de round-trip do formato binário, não precisão de ativação).
+3. Nenhum desses dois testes-vítima (`namb_v2_*`) faz nada de errado por si
+   só — a premissa implícita de qualquer teste que chama `model.process()`
+   mais de uma vez e compara resultados é que o estado global de precisão
+   permanece estável durante o teste. Essa premissa só pode ser garantida se
+   **todo** call-site que muta o átomo participar do mesmo mecanismo de
+   exclusão — o que hoje não é o caso.
+
+**Por que isso é mais grave que um "risco teórico" (F9 original):** a suíte
+`tests-quick.sh` é descrita como "rodada várias vezes ao dia" — com esta
+flakiness, qualquer desenvolvedor pode ver um teste não relacionado ao seu
+trabalho falhar de forma não reprodutível, perder tempo investigando um
+fantasma, e o hábito de "rodar de novo e passou" mina a confiança em toda a
+suíte (exatamente o tipo de erosão de confiança que a role Compliance and
+Parity Auditor deve combater).
+
+**Proposta de solução (por ordem de robustez, não mutuamente exclusivas):**
+
+1. **Imediata (mitigação pontual):** envolver os 3 call-sites identificados
+   com `PrecisionGuard::new(...)` antes de qualquer chamada direta a
+   `set_activation_precision`, preservando a intenção de cada teste (medir
+   zero-alloc do primitivo) — a aquisição do guard deve ocorrer **antes** de
+   iniciar o `TrackingGuard`/contagem de alocações, para não contaminar a
+   métrica medida.
+2. **Estrutural (recomendada):** não confiar apenas em opt-in. Ou (a) forçar
+   `--test-threads=1` para o binário `models` inteiro em
+   `utils/tests-quick.sh` Fase 1 (simples, custo: perde paralelismo só nesse
+   binário — medir impacto no tempo total), ou (b) adicionar um meta-teste
+   estático (`grep`-based, no estilo dos demais meta-testes de
+   `threshold_calibration.rs`) que falha o build se qualquer
+   `set_activation_precision(` aparecer em `tests/**/*.rs` fora de
+   `tests/common/precision.rs` sem um `PrecisionGuard::new` na mesma função —
+   fechando a porta a novas regressões do mesmo tipo.
+3. **Auditoria imediata:** revisar todos os testes que chamam
+   `model.process()` duas ou mais vezes na mesma função comparando saídas
+   (roundtrip/parity de qualquer formato, não só NAMB) e confirmar que todos
+   rodam sob um `PrecisionGuard` implícito ou explícito — a lista não se
+   limita aos dois casos encontrados aqui (busca não foi exaustiva por todo o
+   repositório, apenas até a primeira reprodução).
+
+**Arquivos:** `tests/models/activation_precision.rs` (362-364, 411-450,
+493-504), `tests/models/namb_v2_roundtrip.rs:480-529` (vítima),
+`tests/models/namb_v2_validation.rs:54-93` (vítima), `tests/common/precision.rs`,
+`utils/tests-quick.sh` (Fase 1, sem `--test-threads=1` no binário `models`).
+
+**Nota de processo:** S1.T03 estava marcado `[x]` em `TODO-sprints.md` com base
+em "auditoria e refatoração dos call-sites" — a auditoria foi real e cobriu a
+maioria dos casos, mas não foi **verificada sob execução paralela repetida**,
+que é o único teste que realmente comprova ausência de corrida. Recomenda-se
+que qualquer tarefa futura envolvendo estado global mutável em testes só seja
+marcada `[x]` após N execuções consecutivas (ex.: 10×) sem falha, não apenas
+após revisão estática do código.
+
+---
+
+## Achado F12 — 🔴 Oráculo f64 do A2 (`src/testing/reference_oracle/a2.rs`) ainda quebra para `wavenet_a2_max.nam` após o "fix" do Épico C.3/Epic 6 — panic, não apenas ESR alto
+
+**Contexto:** `TODO-sprints.md` S2.T03 marca como `[x]` "Correção do Oráculo
+WaveNet A2" (commit `b7a8fb4`, "fix: correct A2 oracle head1x1 dimensions,
+condition_dsp window, and head_b type"), delegando ao Epic 6 do
+`TODO-wavenet_a2_max.md`. Esta auditoria **executou** o único teste ignorado
+do oráculo A2-generic que não depende do guard de dispatch bloqueado
+(`test_oracle_vs_python_anchor_a2_generic`, que chama `oracle_forward`
+diretamente, sem passar por `build_model`) e obteve um **panic**, não uma
+medição de ESR:
+
+```text
+$ cargo test --release --test parity reference_oracle_f64::test_oracle_vs_python_anchor_a2_generic -- --ignored --nocapture
+
+thread '...' panicked at src/testing/reference_oracle/mod.rs:179:38:
+range end index 826 out of range for slice of length 818
+```
+
+**Causa-raiz (confirmada por reconciliação exata do JSON do fixture):**
+
+`wavenet_a2_max.nam` tem `layers[0]` com `head_size=1`, `head_bias=true`,
+`condition_size=8`, `channels=bottleneck=4`, `head1x1={active:true,
+out_channels:4, groups:2}`, `dilations=[1,2]` (**2 camadas**), e — ponto
+central — `cfg.head` é `None` (cabeçalho legado, plano, sem objeto aninhado;
+confirma exatamente a premissa do Bug C do `TODO-wavenet_a2_max.md`). O total
+de pesos do array é **818**, número que casa exatamente com a reconciliação
+manual já publicada em `TODO-wavenet_a2_max.md` §3.5
+(`818 = 4 + 2×404 + 5 + 1`).
+
+O `a2.rs` atual (pós-`b7a8fb4`) lê a seção de `head1x1` e do `head` final **uma
+única vez, depois do laço de camadas** (linhas 468-523 de `a2.rs`) — ou seja,
+modela `head1x1` como **por-array**, exatamente o mesmo formato estruturalmente
+errado que a produção (`WaveNetA2Dyn`) tem, documentado como **Bug A** no
+`TODO-wavenet_a2_max.md`. A reconciliação `818 = 4 + 2×404 + 5 + 1` — com o
+bloco de 404 **repetido por camada** — indica que, na ordem real do stream de
+pesos do C++, `head1x1` (e o cabeçalho, mais modesto) são consumidos **dentro**
+do bloco por-camada, não depois de todas as camadas. Em outras palavras: **o
+oráculo f64 sofre do mesmo Bug A que a produção**, e o commit `b7a8fb4`
+corrigiu apenas as *fórmulas* de dimensão dentro da estrutura por-array
+errada (daí o "fix" ter reduzido, mas não eliminado, a divergência de
+orçamento de pesos — de um erro maior para um resíduo de exatamente
+`826 − 818 = 8`, coincidindo com `condition_size`, mas não necessariamente
+causado só por isso; o valor exato do resíduo depende da ordem de leitura e
+não deve ser tomado como a causa isolada sem nova reconciliação de campo a
+campo).
+
+Adicionalmente, a ramificação `if head_size == 1 { /* usa A2_HEAD_KERNEL=16 */
+} else { /* Conv1x1 */ }` (linha ~502 de `a2.rs`) usa `head_size`
+(**canais de saída do head**, aqui `=1`, ou seja "mono") como proxy para
+"formato canônico A2 de 16 taps" — mas para este fixture o formato correto é
+o cabeçalho legado (`Conv1x1`, K=1), não o de 16 taps. Isso é o mesmo Bug C do
+`TODO-wavenet_a2_max.md`, agora confirmado também no oráculo, e explica por que
+mesmo corrigindo o resíduo de 8 elementos o oráculo ainda consumiria ~64 pesos
+de mais do que deveria para o `head_w` deste modelo.
+
+**Confirmado que o sub-modelo `condition_dsp` aninhado tem exatamente o mesmo
+padrão** (`head1x1.active=true` em ambos os seus 2 arrays, com 2 e 3 camadas
+respectivamente) — ou seja, o mesmo bug se aplicaria recursivamente à chamada
+`oracle_forward(&cond_model, ...)` (linha 292-296 de `a2.rs`) assim que o
+array externo parasse de panicar primeiro.
+
+**Impacto:** Épico 6 do `TODO-wavenet_a2_max.md` ("corrigir o oráculo — não
+bloqueante") está **efetivamente incompleto** — o oráculo não apenas mede
+errado, ele **quebra em runtime**. Isso é crítico para quem for atacar os
+Epics 2–4 daquele plano (corrigir Bugs A/B/C na produção): ao tentar validar o
+progresso comparando produção corrigida contra o oráculo f64, a primeira
+tentativa de rodar qualquer teste do oráculo sobre `wavenet_a2_max.nam`
+**falhará com um panic de índice fora dos limites**, sem sinal algum sobre a
+correção da produção. Nenhum teste passante hoje é afetado (nenhum outro
+fixture combina `head1x1.active=true` com múltiplas camadas — verificado
+individualmente em todos os fixtures A2/FiLM/gated/blended/condition_dsp
+committed), então **não há regressão de cobertura existente**, apenas um
+bloqueador latente para o trabalho futuro.
+
+**Proposta de solução:**
+
+1. Reestruturar o laço de leitura de pesos em `a2.rs` para ler `head1x1` (e,
+   se a reconciliação confirmar, o `head` final) **dentro** do laço por-camada
+   (`for li in 0..num_layers`), na mesma ordem que a correção de produção do
+   Bug A adotar (Épico 2 do `TODO-wavenet_a2_max.md`) — os dois devem ser
+   corrigidos em conjunto/lockstep para permanecerem comparáveis, idealmente
+   compartilhando a mesma função utilitária de cálculo de contagem de pesos
+   entre produção e oráculo, eliminando a duplicação de lógica que permitiu
+   às duas implementações divergirem da mesma fonte de verdade C++ sem que
+   nenhum teste notasse.
+2. Corrigir a condição de formato do head final para se basear na presença
+   real do objeto aninhado `cfg.head` (ou de `head_kernel_size` explícito),
+   não em `head_size == 1` — replicando a correção do Bug C na produção.
+3. **Adicionar um gate de reconciliação de orçamento de pesos, automatizado e
+   não-ignorado**, ao final da leitura: `assert_eq!(cursor.pos,
+   model_data.weights.len(), "resíduo de pesos não consumidos/lidos em
+   excesso para {model_filename}")`. Isso transforma a verificação manual
+   feita nesta auditoria (e em `TODO-wavenet_a2_max.md` §3.5) em uma
+   salvaguarda permanente e automática — teria detectado esta regressão
+   imediatamente, sem depender de rodar manualmente um teste `#[ignore]`d.
+4. Após a correção, restaurar a execução do teste
+   `test_oracle_vs_python_anchor_a2_generic` (hoje ainda `#[ignore]`, o que é
+   correto enquanto quebrado) e confirmar que ele agora produz um número de
+   ESR (não um panic) — mesmo que esse número ainda esteja fora do gate
+   (`< 1e-12`) até que os Bugs A/B/C de produção também sejam corrigidos.
+
+**Arquivos:** `src/testing/reference_oracle/a2.rs` (280-547, especialmente
+468-523), `src/testing/reference_oracle/mod.rs:177-185` (`Cursor::read_f64`,
+local do panic), `tests/parity/reference_oracle_f64.rs:1049-1070`
+(`test_oracle_vs_python_anchor_a2_generic`), `tests/fixtures/models/wavenet_a2_max.nam`.
+
+**Nota de processo:** mesma lição do Achado F11 — S2.T03 foi marcado `[x]` com
+base em revisão de código/fórmulas, mas **sem executar o teste `#[ignore]`d
+que a própria correção deveria habilitar a medir corretamente**. Tarefas que
+"corrigem" um caminho de código coberto apenas por testes `#[ignore]`d devem
+incluir, como critério de aceite explícito, a execução manual
+(`--ignored`) desse(s) teste(s) antes de marcar a tarefa como concluída.
+
+---
+
 ## Épicos (agrupamento para planejamento — gerar `TODO-sprints.md` somente quando solicitado)
 
-### Épico A — Confiabilidade do harness de paridade C++ 🔴 [DONE]
+### Épico A — Confiabilidade do harness de paridade C++ 🔴 [DONE — REABERTO PARCIALMENTE, ver F11]
 
 **Achados:** F1, F9, F10.3. **Risco:** médio (mexe em testes, não em produção).
 
 * A.1 Guard RAII simétrico de `ActivationPrecision` em `tests/common/` (F9).
+  ⚠ **Implementação parcial** — 3 call-sites em `activation_precision.rs`
+  seguem sem o guard e já causaram flakiness reproduzida. Ver **Épico G.1**
+  (F11) para o fechamento definitivo.
 * A.2 Redefinir semântica HF/não-HF dos `quick_parity_*` (fixar `Fast` no
   não-HF com caps calibrados p/ Padé, ou remover os duplicados HF) (F1).
 * A.3 Corrigir comentário `cpp_parity.rs:1228-1241` e o cap `*5.0` do WaveNet
@@ -410,7 +659,7 @@ exige regeração do golden Python em lockstep e recalibração documentada.
   relaxação (F2.3, F2.4).
 * B.4 Modo silencioso do harness para meta-testes (F7).
 
-### Épico C — Metodologia do oráculo f64 🟠 [DONE]
+### Épico C — Metodologia do oráculo f64 🟠 [DONE — C.3 REABERTO, ver F12]
 
 **Achados:** F3, F4. **Risco:** baixo (infra pareada já existe e é usada pelos
 BossLSTM). Sinergia forte com Epics 5-6 do `TODO-wavenet_a2_max.md`.
@@ -418,10 +667,14 @@ BossLSTM). Sinergia forte com Epics 5-6 do `TODO-wavenet_a2_max.md`.
 * C.1 Decomposições WaveNet/LSTM/A2/ConvNet → `run_decomposition_paired()` (F3).
 * C.2 `test_summary_table` pareada (ou fria-vs-fria simétrica rotulada) (F3).
 * C.3 Corrigir oráculo `condition_dsp` (= Epic 6 do TODO-wavenet_a2_max) (F4).
+  ⚠ **Corrigido apenas parcialmente** (commit `b7a8fb4`) — o oráculo A2 ainda
+  **panica** (índice fora dos limites) para `wavenet_a2_max.nam`; a causa é
+  estrutural (mesmo Bug A/C da produção, replicado no oráculo). Ver
+  **Épico G.2** (F12).
 * C.4 Atualizar mensagens `#[ignore]` e estender `meta_coherence` para
   `reference_oracle_f64.rs` (F4.1, F4.2).
 
-### Épico D — Quality Dashboard 🟠 [PLANEJADO]
+### Épico D — Quality Dashboard 🟠 [DONE]
 
 **Achados:** F6, F3 (lado parser), F10.5. **Risco:** baixo (só apresentação),
 mas alto valor de confiança.
@@ -433,7 +686,7 @@ mas alto valor de confiança.
 * D.4 Cobertura interop ConvNet (golden + cpp_parity) (F6.4).
 * D.5 Cosmético: molduras do header; atualizar referência "Achado A1"→"F3" (F10.5).
 
-### Épico E — Suítes de execução ✅ (parcial, follow-ups) [PLANEJADO]
+### Épico E — Suítes de execução ✅ (parcial, follow-ups) [DONE]
 
 **Achados:** F5 (corrigido). Restam: validação em uso contínuo da Fase 1 com
 skips; decisão sobre `--test clap` na Fase 1; pré-build do render (→ A.4).
@@ -444,8 +697,53 @@ Plano completo em [`TODO-wavenet_a2_max.md`](TODO-wavenet_a2_max.md) (Epics 1–
 com as adições registradas no Achado F8 (mensagens de ignore, meta_coherence,
 tabela §4.6 do cpp_parity_map).
 
+### Épico G — Residual pós-implementação (Sprints 1–5): fechar lacunas verificadas por execução 🔴 [NOVO — PLANEJADO]
+
+**Achados:** F11, F12. **Origem:** auditoria de acompanhamento (2026-07-11)
+que **executou** (não apenas revisou estaticamente) os artefatos dos Sprints
+1–5 e encontrou duas lacunas concretas, ambas marcadas `[x]` prematuramente.
+**Risco:** o G.1 é 🔴 alto valor/baixo esforço (a causa raiz da flakiness já
+está isolada a 3 funções); o G.2 é 🟠 médio esforço (exige realinhar a leitura
+de pesos do oráculo com a futura correção de produção do Bug A).
+
+* **G.1 — Fechar o rollout do `PrecisionGuard` (F11):**
+  * G.1.a Envolver os 3 call-sites desprotegidos de
+    `tests/models/activation_precision.rs` (`test_zero_alloc_activation_switch_primitive`,
+    `test_zero_alloc_activation_hot_path_switch`, `test_zero_alloc_cli_activation_flow`)
+    com `PrecisionGuard::new(...)`, adquirido antes do `TrackingGuard`.
+  * G.1.b Adicionar meta-teste estático que falha o build se
+    `set_activation_precision(` aparecer em `tests/**/*.rs` (fora de
+    `tests/common/precision.rs`) sem `PrecisionGuard::new` na mesma função —
+    no estilo dos meta-testes de `threshold_calibration.rs`.
+  * G.1.c Avaliar (e decidir formalmente, com nota no `docs/testing.md`) se
+    `utils/tests-quick.sh` Fase 1 deve forçar `--test-threads=1` no binário
+    `models` como defesa em profundidade, além do fix pontual em G.1.a.
+  * G.1.d **Critério de aceite:** rodar `cargo test --release --test models`
+    **≥ 10× consecutivas** sem nenhuma falha (hoje falha em ~2 de 4 execuções).
+* **G.2 — Corrigir estruturalmente o oráculo A2 para `wavenet_a2_max.nam` (F12):**
+  * G.2.a Reestruturar `src/testing/reference_oracle/a2.rs` para ler
+    `head1x1` (e o `head` final, se a reconciliação confirmar) **dentro** do
+    laço por-camada, em vez de uma única vez após todas as camadas —
+    coordenar com a correção do Bug A na produção (Epic 2 do
+    `TODO-wavenet_a2_max.md`) para que ambos compartilhem a mesma fonte de
+    verdade sobre a ordem do stream de pesos do C++.
+  * G.2.b Corrigir a condição do formato do head final para depender da
+    presença real de `cfg.head` (não de `head_size == 1`) — mesma correção
+    do Bug C, aplicada ao oráculo.
+  * G.2.c Adicionar gate de reconciliação automático
+    (`assert_eq!(cursor.pos, model_data.weights.len(), ...)`) ao final da
+    leitura de pesos do oráculo A2 — não-ignorado, roda em qualquer teste que
+    chame `oracle_a2_forward`.
+  * G.2.d **Critério de aceite:** `cargo test --release --test parity
+    reference_oracle_f64::test_oracle_vs_python_anchor_a2_generic -- --ignored
+    --nocapture` produz um valor de ESR (não um panic) — o valor pode
+    permanecer acima do gate até que os Bugs A/B/C de produção também sejam
+    corrigidos, mas a medição em si deve ser possível.
+
 ---
 
-**Ordem sugerida de ataque:** A (rápido, destrava confiança nos gates) → C
-(metodologia, prepara F) → B (métrica, exige mais cautela) → D (apresentação)
-→ F (produção A2, plano próprio). O Épico E já está essencialmente fechado.
+**Ordem sugerida de ataque:** **G.1 primeiro** (baixo esforço, alto risco de
+flakiness silenciosa se deixado para depois) → A/C/B/D (já concluídos, apenas
+manter) → **G.2** (coordenar com o início do Épico F/Epic 2 do
+`TODO-wavenet_a2_max.md`, já que ambos tocam a mesma estrutura de leitura de
+pesos) → F (produção A2, plano próprio).
