@@ -61,11 +61,11 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 #### Épico A.3 — Correção de Comentários e Limiar do WaveNet HF (F1.1, F1.2)
 
-* **S1.T07 — Correção do comentário descritivo** `[ ]`
+* **S1.T07 — Correção do comentário descritivo** `[x]`
   * **Ação:** Corrigir a descrição em [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) (linhas 1228-1241) para refletir que o C++ na verdade usa matemática exata (`std::tanh`), enquanto o Rust em modo `Fast` usa aproximações Padé.
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 
-* **S1.T08 — Ajuste de cap de erro no WaveNet HF** `[ ]`
+* **S1.T08 — Ajuste de cap de erro no WaveNet HF** `[x]`
   * **Ação:** Corrigir a fórmula/limiar de tolerância de ESR do WaveNet HF (evitando o cap relaxado incoerente `* 5.0` e adotando um limite adequado de ~1e-10, compatível com a medição real de ~2.4e-14).
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 

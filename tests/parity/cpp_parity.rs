@@ -413,8 +413,7 @@ fn run_render_comparison(
     const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
     const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08;
     const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.18;
-    const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
-        nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
+    const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 = 1.0e-10;
     const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5;
     const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4;
     const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
@@ -1197,10 +1196,11 @@ fn live_cross_validation_v2_linear() {
 // Standard (exact-grade) mode cpp_parity tests (Tarefa β1.3)
 // =============================================================================
 //
-// C++ NAMCore uses standard Padé/minimax approximations for tanh/sigmoid.
-// Rust in HF mode uses high-fidelity polynomial exp-based kernels (~2.4e-7
-// error vs ~2.32e-3 for Padé tanh). This deliberate asymmetry means the
-// interop divergence is larger in HF mode than in standard mode.
+// C++ NAMCore uses native math (std::tanh) — exact-grade.
+// Rust in HF (Standard) mode uses high-fidelity polynomial exp-based kernels
+// (~2.4e-7 error vs ~2.32e-3 for Padé tanh in Fast mode). This deliberate
+// asymmetry means the interop divergence is smaller in HF mode than in
+// standard (Fast) mode.
 //
 // These tests characterize that divergence and gate it with HF-specific
 // caps (ABSOLUTE_ESR_CAP_*_HF in run_render_comparison).
