@@ -397,7 +397,7 @@ call-sites de `set_activation_precision` em `tests/` e `src/` (testes unitários
 * A.4 Silenciar warnings do build C++ vendorizado e pré-buildar o render fora
   do corpo dos testes (F5 follow-up, F10.3).
 
-### Épico B — Metrologia MR-STFT 🟠 [DOING]
+### Épico B — Metrologia MR-STFT 🟠 [DONE]
 
 **Achados:** F2, F7. **Risco:** alto se mal feito (muda métrica de gate) —
 exige regeração do golden Python em lockstep e recalibração documentada.
@@ -421,7 +421,7 @@ BossLSTM). Sinergia forte com Epics 5-6 do `TODO-wavenet_a2_max.md`.
 * C.4 Atualizar mensagens `#[ignore]` e estender `meta_coherence` para
   `reference_oracle_f64.rs` (F4.1, F4.2).
 
-### Épico D — Quality Dashboard 🟠
+### Épico D — Quality Dashboard 🟠 [PLANEJADO]
 
 **Achados:** F6, F3 (lado parser), F10.5. **Risco:** baixo (só apresentação),
 mas alto valor de confiança.
@@ -433,12 +433,12 @@ mas alto valor de confiança.
 * D.4 Cobertura interop ConvNet (golden + cpp_parity) (F6.4).
 * D.5 Cosmético: molduras do header; atualizar referência "Achado A1"→"F3" (F10.5).
 
-### Épico E — Suítes de execução ✅ (parcial, follow-ups)
+### Épico E — Suítes de execução ✅ (parcial, follow-ups) [PLANEJADO]
 
 **Achados:** F5 (corrigido). Restam: validação em uso contínuo da Fase 1 com
 skips; decisão sobre `--test clap` na Fase 1; pré-build do render (→ A.4).
 
-### Épico F — `wavenet_a2_max.nam` 🔴 (delegado)
+### Épico F — `wavenet_a2_max.nam` 🔴 (delegado) [ADIADO]
 
 Plano completo em [`TODO-wavenet_a2_max.md`](TODO-wavenet_a2_max.md) (Epics 1–7),
 com as adições registradas no Achado F8 (mensagens de ignore, meta_coherence,
