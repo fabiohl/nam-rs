@@ -317,7 +317,7 @@ pub(crate) fn oracle_a2_forward(
         head1x1_w: Vec<f64>,
         head1x1_b: Vec<f64>,
         head_w: Vec<f64>,
-        head_b: f64,
+        head_b: Vec<f64>,
         fwd_bufs: Vec<Vec<f64>>,
     }
 
@@ -488,12 +488,12 @@ pub(crate) fn oracle_a2_forward(
             bottleneck
         };
         let head1x1_w: Vec<f64> = if head1x1_active {
-            cursor.read_f64(ch * h1_in_size)
+            cursor.read_f64(head_accum_size * h1_in_size)
         } else {
             vec![]
         };
         let head1x1_b: Vec<f64> = if head1x1_active {
-            cursor.read_f64(ch)
+            cursor.read_f64(head_accum_size)
         } else {
             vec![]
         };
@@ -507,13 +507,19 @@ pub(crate) fn oracle_a2_forward(
                     head_w[tap * head_accum_size + c] = head_w_raw[c * A2_HEAD_KERNEL + tap];
                 }
             }
-            let head_b = cursor.read_one_f64();
+            let head_b = vec![cursor.read_one_f64()];
             let _head_scale_val = cursor.read_one_f64();
             (head_w, head_b)
         } else {
             let hw_count = head_accum_size * head_size;
             let head_w = cursor.read_f64(hw_count);
-            (head_w, 0.0f64)
+            let head_bias = layer_cfg.head_bias.unwrap_or(false);
+            let head_b = if head_bias {
+                cursor.read_f64(head_size)
+            } else {
+                vec![0.0f64; head_size]
+            };
+            (head_w, head_b)
         };
 
         // Pre-compute per-array max RF for buffer sizing
@@ -593,10 +599,11 @@ pub(crate) fn oracle_a2_forward(
                 // for condition_size==1 we use the raw audio directly.
                 std::slice::from_ref(&x)
             } else if let Some(ref cond_out) = cond_output {
-                // condition_dsp output: cond_out[f * cond_size..(f+1)*cond_size]
-                let off = f * cond_size;
-                if off + cond_size <= cond_out.len() {
-                    &cond_out[off..off + cond_size]
+                // condition_dsp produces a mono stream; form the per-frame
+                // condition vector by taking a sliding window of cond_size
+                // samples: condition[s] = cond_out[f + s].
+                if f + cond_size <= cond_out.len() {
+                    &cond_out[f..f + cond_size]
                 } else {
                     &[]
                 }
@@ -751,7 +758,7 @@ pub(crate) fn oracle_a2_forward(
                 if arr.head1x1_active {
                     let h1_groups = arr.h1_groups;
                     let h1_in_size = arr.h1_in_size;
-                    let ch_per_group = ch / h1_groups;
+                    let ch_per_group = arr.head_accum_size / h1_groups;
                     head1x1_scratch.fill(0.0);
                     for grp in 0..h1_groups {
                         for oc in grp * ch_per_group..(grp + 1) * ch_per_group {
@@ -837,7 +844,7 @@ pub(crate) fn oracle_a2_forward(
             last_arr.head_size
         };
         let cb = head_col.wrapping_sub(k - 1);
-        let mut y = last_arr.head_b;
+        let mut y = last_arr.head_b[0];
         for t in 0..k {
             let col = cb.wrapping_add(t) & ring_mask;
             let so = col * max_ch;

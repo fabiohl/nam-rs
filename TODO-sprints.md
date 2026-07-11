@@ -111,7 +111,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico C.3 — Correção Estrutural do Oráculo WaveNet A2 (F4)
 
-* **S2.T03 — Correção do Oráculo WaveNet A2** `[ ]`
+* **S2.T03 — Correção do Oráculo WaveNet A2** `[x]`
   * **Ação:** Corrigir os caminhos de cálculo e dimensionalidades associadas a `condition_dsp` e leitura de pesos de `head1x1` no oráculo f64 em `src/testing/reference_oracle/a2.rs` conforme detalhado no Épico 6 do `TODO-wavenet_a2_max.md` (não-bloqueante para produção).
   * **Arquivos:** [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs) `[MODIFY]`
 
