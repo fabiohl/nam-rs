@@ -45,7 +45,7 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 #### Épico A.2 — Redefinir Semântica HF/não-HF dos `quick_parity_*` (F1)
 
-* **S1.T04 — Atualização do pipeline de testes não-HF (modo `Fast`)** `[ ]`
+* **S1.T04 — Atualização do pipeline de testes não-HF (modo `Fast`)** `[x]`
   * **Ação:** Configurar os testes não-HF para usar explicitamente `ActivationPrecision::Fast` via `PrecisionGuard` (anteriormente eles rodavam silenciosamente no modo default `Standard`).
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 

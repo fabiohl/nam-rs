@@ -506,16 +506,22 @@ fn run_render_comparison(
         }
     }
 
-    // Set exact-grade (`ActivationPrecision::Standard`) mode if requested (Tarefa β1.3).
-    // The C++ NAMCore render tool uses native math activations by default.
-    // In `Fast` mode, Rust uses FastMath (Padé/minimax), which introduces a recurrent state drift.
-    // In `Standard` mode, Rust uses native math, aligning both engines to near-bit-exact agreement.
-    // `Standard` is also the universal production default, so `PrecisionGuard` is mostly
-    // defensive here. Uses RAII guard for panic-safe restoration to `Standard`.
-    let _precision: Option<PrecisionGuard> = if use_hf {
+    // Activation precision mode selection via RAII PrecisionGuard.
+    //
+    // C++ NAMCore uses native math activations (`std::tanh`/`std::exp`) — exact-grade.
+    //
+    // Non-HF (use_hf=false) → `ActivationPrecision::Fast` (S1.T04):
+    //   Rust uses Padé/minimax approximations, trading ~2.3e-3 tanh error for throughput.
+    //   This deliberate asymmetry characterizes the C++↔Rust FastMath parity envelope.
+    //
+    // HF (use_hf=true) → `ActivationPrecision::Standard` (S1.T05 / Tarefa β1.3):
+    //   Both engines use native math, aligning to near-bit-exact agreement (~1e-10 ESR).
+    //
+    // PrecisionGuard holds the global PRECISION_MUTEX and restores original mode on Drop.
+    let _precision = if use_hf {
         Some(PrecisionGuard::new(ActivationPrecision::Standard))
     } else {
-        None
+        Some(PrecisionGuard::new(ActivationPrecision::Fast))
     };
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
