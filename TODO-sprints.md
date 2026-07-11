@@ -49,11 +49,11 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
   * **Ação:** Configurar os testes não-HF para usar explicitamente `ActivationPrecision::Fast` via `PrecisionGuard` (anteriormente eles rodavam silenciosamente no modo default `Standard`).
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 
-* **S1.T05 — Atualização do pipeline de testes HF (modo `Standard`)** `[ ]`
+* **S1.T05 — Atualização do pipeline de testes HF (modo `Standard`)** `[x]`
   * **Ação:** Configurar os testes HF (`quick_parity_hf_*`) para fixar explicitamente `ActivationPrecision::Standard`.
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 
-* **S1.T06 — Ajuste de limiares de erro (ESR) para o modo `Fast`** `[ ]`
+* **S1.T06 — Ajuste de limiares de erro (ESR) para o modo `Fast`** `[x]`
   * **Ação:** Como o C++ upstream não implementa aproximações Padé (roda sempre em modo exato), a comparação de Rust `Fast` vs C++ `Standard` resultará em um erro de aproximação conhecido de tanh (~2.3e-3). Ajustar os limites de tolerância de ESR (`ABSOLUTE_ESR_CAP`) nos testes rápidos que rodam em modo `Fast` para evitar falsos-positivos.
   * **Arquivos:** [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
 

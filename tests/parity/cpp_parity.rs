@@ -391,91 +391,84 @@ fn run_render_comparison(
         }
     }
 
-    if use_v2 {
-        // Tarefa 3.2 (F-2) + Tarefa 8.4 (AC-2): Impor teto absoluto à relaxação.
-        // Após toda a relaxação (v2 + resampling), os gates hard não podem
-        // afrouxar além de limites absolutos, para que "passar" continue
-        // significando paridade, não apenas "não totalmente quebrado".
-        //
-        // Caps derivados de medição real, não de "o que faz passar o teste":
-        //
-        // - WaveNet: cap = baseline A1-Std (6.23e-3)
-        // - LSTM:   rate-aware cap (recurrent drift scales with the sample-rate
-        //   ratio — more recurrent steps per second of audio mean more
-        //   f32 state accumulation). ALL supported rates are tested (Tarefa 8.14,
-        //   Gate Calibration Policy Rule 7): no rate is excluded to make a gate
-        //   pass; the bound is raised per-rate from real measurements instead.
-        //
-        //   SQ5.5: post-weight-dequantization — f16c weight dequantization was
-        //   the dominant interop drift source for LSTMs (C++ uses f32, Rust
-        //   previously used f16c). With weights now f32 in both engines, the
-        //   live v1 cross-validation shows ESR=4.69e-12 (near-bit-exact).
-        //   Caps tightened to reflect the new near-zero baseline.
-        //
-        //   // Measured (SQ5.5, post-f16c removal) — BossLSTM-1x16 v1 (2k):
-        //   //   48k=4.69e-12 (near-bit-exact; f16c dequant was dominant drift)
-        //   // Oracle ideal precision floor (T8.2/T8.3): ΔESR_oracle_vs_prod =
-        //   //   3.41e-3 (prewarm-paired @ 48 kHz, lstm.nam). The interop figures
-        //   //   above are nam-rs↔NAMCore drift, distinct from the f64 oracle floor.
-        //   //   ≤ 96 kHz: cap 0.01  (ample margin for recurrent state accumulation in v2)
-        //   //   > 96 kHz: cap 0.05  (covers hi-rate recurrent drift with margin)
-        // - SNR nunca abaixo de 5.0 dB (piso absoluto)
-        // - MR-STFT nunca acima de 0.95 (cap at ceiling for normalized metric)
-        const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
-        const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08; // rates ≤ 96 kHz (relaxed to fit FastMath/Padé vs native math recurrent drift)
-        const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.18; // rates > 96 kHz (relaxed to fit high sample-rate recurrent drift)
-        // Standard (exact-grade) mode caps (Tarefa β1.3) — when `use_hf` selects the
-        // exact-grade path (`ActivationPrecision::Standard`), Rust uses native math,
-        // matching C++ NAMCore's default native activation precision (using_fast_tanh = false).
-        // The interop gap collapses to near-bit-exact levels (~1e-10 ESR), allowing tight thresholds.
-        const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
-            nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
-        const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5; // rates ≤ 96 kHz (tightened to reflect native math parity)
-        const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4; // rates > 96 kHz (tightened to reflect native math parity)
-        const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
-        const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
-        const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
-        const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
-        const ABSOLUTE_MRSTFT_CAP_FILM: f64 = 1.20;
+    let is_film = golden_name.to_lowercase().contains("film")
+        || model_filename.to_lowercase().contains("film");
 
-        let is_film = golden_name.to_lowercase().contains("film")
-            || model_filename.to_lowercase().contains("film");
+    // S1.T06: Absolute ESR/SNR/MR-STFT caps for Fast-mode parity.
+    //
+    // C++ NAMCore uses native math (std::tanh) — exact-grade.
+    // Rust Fast mode uses Padé/minimax tanh (~2.3e-3 pointwise error).
+    // This deliberate asymmetry means ESR can drift well above the tight
+    // calibrated thresholds (which were measured in Standard↔Standard mode).
+    // The caps below prevent false positives in both v1 (quick) and v2 tests.
+    //
+    // Caps are derived from real measurements, not "what makes the test pass":
+    //
+    // - WaveNet non-HF: cap = A2ESR A1-Standard median = 6.23e-3 (perceptual baseline)
+    // - LSTM non-HF:    rate-aware cap — recurrent state accumulates Padé error
+    //   proportionally to sample rate. ≤ 96 kHz: 0.08, > 96 kHz: 0.18.
+    // - HF Standard-mode caps: tight (near-bit-exact), inherited from Tarefa β1.3.
+    // - SNR floor: 5.0 dB (absolute floor — anything lower is equivalent to broken)
+    // - MR-STFT: 0.95 cap (normalized metric ceiling), 1.20 for FiLM
+    const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
+    const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08;
+    const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.18;
+    const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 =
+        nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN * 5.0;
+    const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5;
+    const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4;
+    const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
+    const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
+    const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
+    const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
+    const ABSOLUTE_MRSTFT_CAP_FILM: f64 = 1.20;
 
-        let esr_cap = if model_data.architecture == "LSTM" {
-            if use_hf {
-                if sample_rate > 96_000 {
-                    ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF
-                } else {
-                    ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF
-                }
-            } else if sample_rate > 96_000 {
-                ABSOLUTE_ESR_CAP_LSTM_HIRATE
+    let esr_cap = if model_data.architecture == "LSTM" {
+        if use_hf {
+            if sample_rate > 96_000 {
+                ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF
             } else {
-                ABSOLUTE_ESR_CAP_LSTM_NATIVE
+                ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF
             }
-        } else if is_film {
-            if use_hf {
-                ABSOLUTE_ESR_CAP_FILM_HF
-            } else {
-                ABSOLUTE_ESR_CAP_FILM_LIVE
-            }
-        } else if use_hf {
-            ABSOLUTE_ESR_CAP_WAVENET_HF
+        } else if sample_rate > 96_000 {
+            ABSOLUTE_ESR_CAP_LSTM_HIRATE
         } else {
-            ABSOLUTE_ESR_CAP_WAVENET
-        };
-
-        min_snr_db = min_snr_db.max(ABSOLUTE_SNR_FLOOR);
-        if let Some(ref mut esr) = max_esr
-            && *esr > esr_cap
-        {
-            let scale_back = esr_cap / *esr;
-            *esr = esr_cap;
-            // Scale MSE proportionally, but never tighter than the original
-            // calibrated threshold — otherwise the ESR cap defeats the purpose
-            // of v2 relaxation for models with multi-SR drift (e.g. LSTM).
-            mse_limit = (mse_limit * scale_back).max(calibrated_mse);
+            ABSOLUTE_ESR_CAP_LSTM_NATIVE
         }
+    } else if is_film {
+        if use_hf {
+            ABSOLUTE_ESR_CAP_FILM_HF
+        } else {
+            ABSOLUTE_ESR_CAP_FILM_LIVE
+        }
+    } else if use_hf {
+        ABSOLUTE_ESR_CAP_WAVENET_HF
+    } else {
+        ABSOLUTE_ESR_CAP_WAVENET
+    };
+
+    min_snr_db = min_snr_db.max(ABSOLUTE_SNR_FLOOR);
+    if let Some(ref mut esr) = max_esr
+        && *esr > esr_cap
+    {
+        let scale_back = esr_cap / *esr;
+        *esr = esr_cap;
+        mse_limit = (mse_limit * scale_back).max(calibrated_mse);
+    }
+    {
+        let mrstft_cap = if is_film {
+            ABSOLUTE_MRSTFT_CAP_FILM
+        } else {
+            ABSOLUTE_MRSTFT_CAP
+        };
+        if let Some(ref mut mr) = mrstft_max
+            && *mr > mrstft_cap
+        {
+            *mr = mrstft_cap;
+        }
+    }
+
+    if use_v2 {
         // FiLM v2 MR-STFT floor (Tarefa 3.1 calibration, 2026-07-10):
         // FiLM models (A2-FiLM-Lite/Full) accumulate spectral drift far faster
         // than generic WaveNet over the 5-second v2 stress signal, because the
@@ -493,16 +486,6 @@ fn run_render_comparison(
         const FILM_V2_MRSTFT_FLOOR: f64 = 3.0e-2;
         if is_film && let Some(ref mut mr) = mrstft_max {
             *mr = (*mr).max(FILM_V2_MRSTFT_FLOOR);
-        }
-        let mrstft_cap = if is_film {
-            ABSOLUTE_MRSTFT_CAP_FILM
-        } else {
-            ABSOLUTE_MRSTFT_CAP
-        };
-        if let Some(ref mut mr) = mrstft_max
-            && *mr > mrstft_cap
-        {
-            *mr = mrstft_cap;
         }
     }
 
