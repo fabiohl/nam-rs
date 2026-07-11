@@ -397,7 +397,7 @@ call-sites de `set_activation_precision` em `tests/` e `src/` (testes unitários
 * A.4 Silenciar warnings do build C++ vendorizado e pré-buildar o render fora
   do corpo dos testes (F5 follow-up, F10.3).
 
-### Épico B — Metrologia MR-STFT 🟠
+### Épico B — Metrologia MR-STFT 🟠 [DOING]
 
 **Achados:** F2, F7. **Risco:** alto se mal feito (muda métrica de gate) —
 exige regeração do golden Python em lockstep e recalibração documentada.
@@ -410,7 +410,7 @@ exige regeração do golden Python em lockstep e recalibração documentada.
   relaxação (F2.3, F2.4).
 * B.4 Modo silencioso do harness para meta-testes (F7).
 
-### Épico C — Metodologia do oráculo f64 🟠 [DOING]
+### Épico C — Metodologia do oráculo f64 🟠 [DONE]
 
 **Achados:** F3, F4. **Risco:** baixo (infra pareada já existe e é usada pelos
 BossLSTM). Sinergia forte com Epics 5-6 do `TODO-wavenet_a2_max.md`.

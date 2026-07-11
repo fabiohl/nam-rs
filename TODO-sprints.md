@@ -126,3 +126,66 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 * **S2.T05 — Estender Cobertura de Rastreamento em `meta_coherence`** `[x]`
   * **Ação:** Incluir o arquivo de testes do oráculo `tests/parity/reference_oracle_f64.rs` na lista de arquivos escaneados pelo meta-teste `test_ignored_models_are_in_catalog` para garantir que qualquer modelo `.nam` mencionado em testes ignorados do oráculo f64 esteja formalmente registrado no catálogo de goldens do build.
   * **Arquivos:** [meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs) `[MODIFY]`
+
+---
+
+## Sprint 3: Metrologia MR-STFT (Épico B)
+
+**Objetivo:** Implementar o condicionamento da métrica MR-STFT com máscara de piso de ruído baseada no pico do frame espectral, regerar as âncoras golden bit-a-bit e revalidar os testes de paridade; calibrar o soft gate e integrar a família Linear na metrologia; unificar a nomenclatura e documentar expoentes de relaxação de `mrstft_max`; e introduzir um modo silencioso no harness para evitar o vazamento de relatórios e mensagens de pânico nos logs de meta-testes.
+
+**Risco:** Alto (alterações na métrica de fidelidade espectral exigem regeração sincronizada dos goldens Python e calibração meticulosa para evitar quebra silenciosa de cobertura ou falsos alarmes persistentes).
+
+---
+
+### Épico B.1 — Condicionamento Relativo da Métrica MR-STFT e Regeração de Golden (F2)
+
+* **S3.T01 — Condicionamento da Métrica por Frame em `compute_mr_stft`** `[ ]`
+  * **Ação:** Refatorar a computação em `src/testing/perceptual.rs` para substituir o piso absoluto `eps = 1e-8` por um piso relativo ao pico espectral do frame (ex.: −80 dB em relação ao pico do frame).
+  * **Arquivos:** [perceptual.rs](file:///home/fabio/nam-rs/src/testing/perceptual.rs) `[MODIFY]`
+
+* **S3.T02 — Espelhamento no Script Python e Regeração de `mrstft_golden.bin`** `[ ]`
+  * **Ação:** Criar ou atualizar o script `tests/fixtures/scripts/gen_mrstft_golden.py` com o mesmo piso relativo do Rust, e rodar o script para gerar um novo `tests/fixtures/mrstft_golden.bin` determinístico e bit-a-bit idêntico.
+  * **Arquivos:**
+    * [gen_mrstft_golden.py](file:///home/fabio/nam-rs/tests/fixtures/scripts/gen_mrstft_golden.py) `[NEW]`
+    * [mrstft_golden.bin](file:///home/fabio/nam-rs/tests/fixtures/mrstft_golden.bin) `[MODIFY]`
+
+---
+
+### Épico B.2 — Calibração do Soft Gate e Cobertura da Família Linear (F2.1, F2.2)
+
+* **S3.T03 — Calibração de `MRSTFT_SOFT_THRESHOLD` no Metateste de Calibração** `[ ]`
+  * **Ação:** Calibrar empiricamente e documentar o limiar do soft gate de MR-STFT, integrando-o ao escrutínio automático em `tests/models/threshold_calibration.rs`.
+  * **Arquivos:**
+    * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
+    * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]`
+
+* **S3.T04 — Mapeamento e Habilitação do Gate para Modelos Linear** `[ ]`
+  * **Ação:** Adicionar mapeamento de goldens Linear FFT em `golden_bin_to_model_name()` e configurar limiares de `mrstft_max` realísticos (não-`None`) para a família Linear no harness.
+  * **Arquivos:**
+    * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
+    * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs) `[MODIFY]`
+    * [linear_fft_test.rs](file:///home/fabio/nam-rs/tests/models/linear_fft_test.rs) `[MODIFY]`
+
+---
+
+### Épico B.3 — Higiene de Rótulos e Rationale de Relaxação (F2.3, F2.4)
+
+* **S3.T05 — Rótulo da Métrica de `(relative)` para `(log-mag abs)`** `[ ]`
+  * **Ação:** Corrigir a identificação visual impressa pelo harness de teste para que declare a métrica de forma precisa e coerente com a implementação final.
+  * **Arquivos:** [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
+
+* **S3.T06 — Unificação e Documentação da Relaxação de `mrstft_max`** `[ ]`
+  * **Ação:** Unificar o expoente de relaxamento de `mrstft_max` (`/5.0` vs `/10.0`) e documentar o rationale físico/espectral associado no harness e na especificação.
+  * **Arquivos:**
+    * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs) `[MODIFY]`
+    * [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md) `[MODIFY]`
+
+---
+
+### Épico B.4 — Modo Silencioso e Supressão de Pânico em Metatestes (F7)
+
+* **S3.T07 — Modo Silencioso no Harness para Testes de Regressão** `[ ]`
+  * **Ação:** Implementar controle de supressão de relatório (ex.: flag thread-local `SUPPRESS_REPORT` ou estrutura similar) e registrar panic hook temporário em `test_mrstft_hard_gate_catches_regression` para impedir poluição com símbolos "✗" e "panicked" na suíte de testes verde.
+  * **Arquivos:**
+    * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs) `[MODIFY]`
+    * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs) `[MODIFY]`
