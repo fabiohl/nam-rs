@@ -30,6 +30,7 @@ use common::LSTM_1X16_DRIFT_LEGACY_ESR_LIMIT;
 use common::LSTM_1X16_DRIFT_PAIRED_ESR_LIMIT;
 use common::LSTM_2X8_DRIFT_PAIRED_ESR_LIMIT;
 use common::LSTM_ESR_LIMIT;
+use common::PrecisionGuard;
 use common::WAVENET_ESR_LIMIT;
 
 use nam_rs::loader::nam_json::model::NamModelData;
@@ -1225,13 +1226,7 @@ fn run_paired_drift_diagnostic(
 #[test]
 #[ignore]
 fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
-    struct RestoreStandard;
-    impl Drop for RestoreStandard {
-        fn drop(&mut self) {
-            set_activation_precision(ActivationPrecision::Standard);
-        }
-    }
-    let _restore = RestoreStandard;
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
     set_activation_precision(ActivationPrecision::Fast);
@@ -1293,13 +1288,7 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
 #[test]
 #[ignore]
 fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
-    struct RestoreStandard;
-    impl Drop for RestoreStandard {
-        fn drop(&mut self) {
-            set_activation_precision(ActivationPrecision::Standard);
-        }
-    }
-    let _restore = RestoreStandard;
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
     set_activation_precision(ActivationPrecision::Fast);

@@ -29,6 +29,7 @@
 //  model families regardless of the runtime switch.  Full LSTM HF path wiring is
 //  deferred to a follow-up (T5.3b or T5.5).
 
+use crate::common::PrecisionGuard;
 use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
 
 use std::path::PathBuf;
@@ -300,7 +301,7 @@ fn test_hf_mode_switch_functional() {
         }
         let md = load_and_parse(&path);
 
-        set_activation_precision(ActivationPrecision::Fast);
+        let _guard = PrecisionGuard::new(ActivationPrecision::Fast);
         let out_fast = run_f32_inference(&md, input);
 
         set_activation_precision(ActivationPrecision::Standard);
@@ -327,8 +328,6 @@ fn test_hf_mode_switch_functional() {
                 "  {label}: output identical — LSTM fused gates bypass slice dispatch (known limitation)"
             );
         }
-
-        set_activation_precision(ActivationPrecision::Standard);
     }
     println!("Note: LSTM fused_gates_* functions directly import SIMD kernels,");
     println!("bypassing the activation slice dispatch. Full LSTM HF path wiring");
@@ -530,7 +529,7 @@ fn test_activation_switch_output_idempotent() {
         }
         let md = load_and_parse(&path);
 
-        set_activation_precision(ActivationPrecision::Fast);
+        let _guard = PrecisionGuard::new(ActivationPrecision::Fast);
         let mut model =
             nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
         model.prewarm(2048);
@@ -563,8 +562,6 @@ fn test_activation_switch_output_idempotent() {
 
         println!("{label}: mid-stream switch functional check passed");
     }
-
-    set_activation_precision(ActivationPrecision::Standard);
 }
 
 /// CLAP simulation: block-boundary activation switch pattern.
@@ -595,6 +592,8 @@ fn test_clap_pattern_block_boundary_activation_switch() {
     for i in (0..512).step_by(64) {
         model.process(&input[i..i + 64], &mut output[i..i + 64]);
     }
+
+    let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     let count = {
         let _guard = TrackingGuard::new();
@@ -630,6 +629,4 @@ fn test_clap_pattern_block_boundary_activation_switch() {
         output.iter().all(|&x| x.is_finite()),
         "non-finite output after CLAP-style activation switching"
     );
-
-    set_activation_precision(ActivationPrecision::Standard);
 }

@@ -9,9 +9,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
-use nam_rs::math::activations::{
-    ActivationPrecision, set_activation_precision, set_thread_local_activation_precision,
-};
+use nam_rs::math::activations::{ActivationPrecision, set_thread_local_activation_precision};
 use nam_rs::models::NamModel;
 use nam_rs::testing::perceptual::compute_snr_db;
 use std::fs;
@@ -209,13 +207,7 @@ fn test_lstm_activation_precision_gain_stress_v2() {
     eprintln!("══════════════════════════════════════════════════════════════════");
 
     // Make sure we restore Standard precision in case of panic
-    struct RestoreStandard;
-    impl Drop for RestoreStandard {
-        fn drop(&mut self) {
-            set_activation_precision(ActivationPrecision::Standard);
-        }
-    }
-    let _restore = RestoreStandard;
+    let _restore = PrecisionGuard::new(ActivationPrecision::Standard);
 
     let results = [
         measure_lstm_snr_stress_v2("BossLSTM-1x16.nam", "LSTM 1×16"),

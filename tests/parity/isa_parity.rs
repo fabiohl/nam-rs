@@ -44,7 +44,6 @@ use std::sync::atomic::Ordering;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::math::activations::ActivationPrecision;
-use nam_rs::math::activations::set_activation_precision;
 use nam_rs::math::common::{InstructionSet, TEST_ISA_OVERRIDE, encode_isa_override};
 use nam_rs::models::NamModel;
 
@@ -73,24 +72,6 @@ impl IsaGuard {
 impl Drop for IsaGuard {
     fn drop(&mut self) {
         clear_override();
-    }
-}
-
-/// Sets `ActivationPrecision::Standard` (exact-grade, universal default)
-/// and returns a guard that restores `Standard` on drop. Ensures
-/// panic-safe cleanup (Tarefa β1.3).
-struct PrecisionGuard;
-
-impl PrecisionGuard {
-    fn set() -> Self {
-        set_activation_precision(ActivationPrecision::Standard);
-        PrecisionGuard
-    }
-}
-
-impl Drop for PrecisionGuard {
-    fn drop(&mut self) {
-        set_activation_precision(ActivationPrecision::Standard);
     }
 }
 
@@ -150,7 +131,7 @@ fn run_under_isa(
     // function below measures the Standard/exact-grade kernels instead).
     // Standard-mode tests may have left the global atomic dirty (Tarefa β1.3).
     let _guard = IsaGuard::set(isa);
-    set_activation_precision(ActivationPrecision::Fast);
+    let _prec = PrecisionGuard::new(ActivationPrecision::Fast);
 
     let mut model = build_model(&model_data).unwrap_or_else(|e| panic!("Build failed: {e}"));
     model.prewarm(V2_PREWARM_SAMPLES);
@@ -189,7 +170,7 @@ fn run_under_isa_hf(
     let json_data = std::fs::read_to_string(&nam_path).expect("Failed to read model JSON");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-    let _precision = PrecisionGuard::set();
+    let _precision = PrecisionGuard::new(ActivationPrecision::Standard);
     let _guard = IsaGuard::set(isa);
 
     let mut model = build_model(&model_data).unwrap_or_else(|e| panic!("Build failed: {e}"));

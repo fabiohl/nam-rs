@@ -45,32 +45,11 @@ use common::*;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;
 use nam_rs::math::activations::ActivationPrecision;
-use nam_rs::math::activations::set_activation_precision;
 use nam_rs::models::NamModel;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-
-/// Sets `ActivationPrecision::Standard` (exact-grade, matching the C++
-/// reference's `using_fast_tanh = false`) and returns a guard that restores
-/// `Standard` on drop. Ensures panic-safe cleanup (Tarefa β1.3). `Standard`
-/// is also the universal production default, so this guard is primarily
-/// defensive against other tests leaving the global mode set to `Fast`.
-struct PrecisionGuard;
-
-impl PrecisionGuard {
-    fn set() -> Self {
-        set_activation_precision(ActivationPrecision::Standard);
-        PrecisionGuard
-    }
-}
-
-impl Drop for PrecisionGuard {
-    fn drop(&mut self) {
-        set_activation_precision(ActivationPrecision::Standard);
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ParityOutcome {
@@ -534,7 +513,7 @@ fn run_render_comparison(
     // `Standard` is also the universal production default, so `PrecisionGuard` is mostly
     // defensive here. Uses RAII guard for panic-safe restoration to `Standard`.
     let _precision: Option<PrecisionGuard> = if use_hf {
-        Some(PrecisionGuard::set())
+        Some(PrecisionGuard::new(ActivationPrecision::Standard))
     } else {
         None
     };

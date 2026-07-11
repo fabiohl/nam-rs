@@ -28,11 +28,11 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
     * Implementação de `Drop` que restaura `original_mode` de forma segura.
   * **Arquivos:** [precision.rs](file:///home/fabio/nam-rs/tests/common/precision.rs) `[NEW]`
 
-* **S1.T02 — Registro do módulo comum** `[ ]`
+* **S1.T02 — Registro do módulo comum** `[x]`
   * **Ação:** Registrar e reexportar o novo módulo em [mod.rs](file:///home/fabio/nam-rs/tests/common/mod.rs).
   * **Arquivos:** [mod.rs](file:///home/fabio/nam-rs/tests/common/mod.rs) `[MODIFY]`
 
-* **S1.T03 — Auditoria e refatoração dos call-sites de `set_activation_precision`** `[ ]`
+* **S1.T03 — Auditoria e refatoração dos call-sites de `set_activation_precision`** `[x]`
   * **Ação:** Substituir chamadas diretas que alteram o atômico global pelo uso do `PrecisionGuard` para garantir exclusão mútua e restauração automática.
   * **Arquivos:**
     * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) `[MODIFY]`
