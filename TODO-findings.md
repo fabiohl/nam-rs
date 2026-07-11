@@ -385,7 +385,7 @@ call-sites de `set_activation_precision` em `tests/` e `src/` (testes unitários
 
 ## Épicos (agrupamento para planejamento — gerar `TODO-sprints.md` somente quando solicitado)
 
-### Épico A — Confiabilidade do harness de paridade C++ 🔴
+### Épico A — Confiabilidade do harness de paridade C++ 🔴 [DONE]
 
 **Achados:** F1, F9, F10.3. **Risco:** médio (mexe em testes, não em produção).
 
@@ -410,7 +410,7 @@ exige regeração do golden Python em lockstep e recalibração documentada.
   relaxação (F2.3, F2.4).
 * B.4 Modo silencioso do harness para meta-testes (F7).
 
-### Épico C — Metodologia do oráculo f64 🟠
+### Épico C — Metodologia do oráculo f64 🟠 [DOING]
 
 **Achados:** F3, F4. **Risco:** baixo (infra pareada já existe e é usada pelos
 BossLSTM). Sinergia forte com Epics 5-6 do `TODO-wavenet_a2_max.md`.

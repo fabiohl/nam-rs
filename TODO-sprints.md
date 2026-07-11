@@ -85,11 +85,44 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ---
 
-## Verificação e Compliance
+## Sprint 2: Metodologia do Oráculo f64 (Épico C)
 
-1. **Compilação Incremental:**
-   * Executar `cargo check` e `cargo clippy --tests` para garantir a ausência de warnings.
-2. **Execução de Testes Rápidos:**
-   * Executar `utils/tests-quick.sh` e assegurar que todas as etapas terminem com sucesso (verde), verificando se o log `testes.log` está limpo de warnings C++.
-3. **Não-Regressão de Performance:**
-   * Assegurar que os testes não entrem em deadlock devido ao lock do mutex do `PrecisionGuard`.
+**Objetivo:** Eliminar assimetrias de inicialização (cold-start) nas decomposições e tabelas do oráculo f64, mapear o oráculo WaveNet A2 corrigido e assegurar a rastreabilidade via meta-coerência do build.
+
+**Risco:** Baixo (alterações focadas na infraestrutura de testes/oráculos off-RT e ferramentas de validação estática).
+
+---
+
+### Épico C.1 — Decomposições Pareadas com Prewarm para WaveNet/LSTM/A2/ConvNet (F3)
+
+* **S2.T01 — Migrar Decomposições para `run_decomposition_paired`** `[ ]`
+  * **Ação:** Refatorar os testes de decomposição no arquivo `tests/parity/reference_oracle_f64.rs` (`test_decomposition_wavenet`, `test_decomposition_lstm`, `test_decomposition_a2`, `test_decomposition_convnet`) para que utilizem `run_decomposition_paired` com sinal de estresse e `WARMUP_LEN = 24_000` e `MEASURE_LEN = 4_096`. Isso garante que o cálculo de ESR por componente ocorra em regime permanente.
+  * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
+
+---
+
+### Épico C.2 — Tabela de Resumo de ESR Pareada e Simétrica (F3)
+
+* **S2.T02 — Atualizar `test_summary_table`** `[ ]`
+  * **Ação:** Refatorar a tabela de resumo no teste `test_summary_table` para consumir a metodologia de medição pareada (através do helper `run_oracle_esr_paired` com 24k de warmup + 256 de sweep), alinhando a fidelidade real relatada com os limites de tolerância física dos modelos.
+  * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
+
+---
+
+### Épico C.3 — Correção Estrutural do Oráculo WaveNet A2 (F4)
+
+* **S2.T03 — Correção do Oráculo WaveNet A2** `[ ]`
+  * **Ação:** Corrigir os caminhos de cálculo e dimensionalidades associadas a `condition_dsp` e leitura de pesos de `head1x1` no oráculo f64 em `src/testing/reference_oracle/a2.rs` conforme detalhado no Épico 6 do `TODO-wavenet_a2_max.md` (não-bloqueante para produção).
+  * **Arquivos:** [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs) `[MODIFY]`
+
+---
+
+### Épico C.4 — Mensagens de Ignore e Rastreabilidade de Metamodelo (F4.1, F4.2)
+
+* **S2.T04 — Atualizar Mensagens descritivas do `#[ignore]`** `[ ]`
+  * **Ação:** Modificar os comentários dos atributos `#[ignore]` nos testes de oráculo A2 Generic em `reference_oracle_f64.rs` para refletir as causas-raiz reais identificadas e referenciar explicitamente o plano `TODO-wavenet_a2_max.md`.
+  * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
+
+* **S2.T05 — Estender Cobertura de Rastreamento em `meta_coherence`** `[ ]`
+  * **Ação:** Incluir o arquivo de testes do oráculo `tests/parity/reference_oracle_f64.rs` na lista de arquivos escaneados pelo meta-teste `test_ignored_models_are_in_catalog` para garantir que qualquer modelo `.nam` mencionado em testes ignorados do oráculo f64 esteja formalmente registrado no catálogo de goldens do build.
+  * **Arquivos:** [meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs) `[MODIFY]`
