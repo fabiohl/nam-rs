@@ -130,6 +130,10 @@ pub const MRSTFT_WEIGHTS: [f64; 3] = [0.1, 0.3, 0.5];
 /// 3. Calculates L1 and L2 of log-magnitude differences per frame
 /// 4. Averages frame losses and weights by window size
 ///
+/// Each frame uses a relative floor at −80 dB below its own spectral peak
+/// (absolute floor 1e−8 as fallback for silent frames), replacing the prior
+/// fixed absolute floor of 1e−8.
+///
 /// ```text
 /// MR-STFT = Σ_w weight[w] · mean_frame( L1_sc + L2_sc )
 /// where:
@@ -147,7 +151,7 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
         return 0.0;
     }
 
-    let eps = 1e-8f64;
+    let eps_abs = 1e-8f64;
     let mut total_loss = 0.0f64;
 
     for (&ws, &weight) in MRSTFT_WINDOW_SIZES.iter().zip(MRSTFT_WEIGHTS.iter()) {
@@ -193,15 +197,26 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
             fft.process(&mut buf_ref_re, &mut buf_ref_im);
             fft.process(&mut buf_test_re, &mut buf_test_im);
 
+            // Compute raw magnitudes and find frame spectral peak
+            let mut frame_peak = 0.0f64;
             for i in 0..num_bins {
-                mag_ref[i] = (buf_ref_re[i] * buf_ref_re[i] + buf_ref_im[i] * buf_ref_im[i])
-                    .sqrt()
-                    .max(eps)
-                    .ln();
-                mag_test[i] = (buf_test_re[i] * buf_test_re[i] + buf_test_im[i] * buf_test_im[i])
-                    .sqrt()
-                    .max(eps)
-                    .ln();
+                mag_ref[i] = (buf_ref_re[i] * buf_ref_re[i] + buf_ref_im[i] * buf_ref_im[i]).sqrt();
+                mag_test[i] =
+                    (buf_test_re[i] * buf_test_re[i] + buf_test_im[i] * buf_test_im[i]).sqrt();
+                frame_peak = frame_peak.max(mag_ref[i]).max(mag_test[i]);
+            }
+
+            // Relative floor: −80 dB below frame peak, clamped to absolute minimum
+            let eps_frame = if frame_peak > eps_abs {
+                frame_peak * 1e-4 // 10^(−80/20)
+            } else {
+                eps_abs
+            };
+
+            // Apply floor and take ln
+            for i in 0..num_bins {
+                mag_ref[i] = mag_ref[i].max(eps_frame).ln();
+                mag_test[i] = mag_test[i].max(eps_frame).ln();
             }
 
             let mut l1 = 0.0f64;

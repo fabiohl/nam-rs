@@ -139,12 +139,14 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico B.1 — Condicionamento Relativo da Métrica MR-STFT e Regeração de Golden (F2)
 
-* **S3.T01 — Condicionamento da Métrica por Frame em `compute_mr_stft`** `[ ]`
+* **S3.T01 — Condicionamento da Métrica por Frame em `compute_mr_stft`** `[x]`
   * **Ação:** Refatorar a computação em `src/testing/perceptual.rs` para substituir o piso absoluto `eps = 1e-8` por um piso relativo ao pico espectral do frame (ex.: −80 dB em relação ao pico do frame).
+  * **Concluído:** Substituído `eps = 1e-8` por `eps_frame = max(frame_peak * 1e-4, eps_abs)`. O pico espectral (`frame_peak`) é calculado por frame como o máximo de magnitude entre os espectros de referência e teste. O floor absoluto `1e-8` é mantido como fallback para frames silenciosos. Todos os 46 testes passam (45 perceptual + 1 parity).
   * **Arquivos:** [perceptual.rs](file:///home/fabio/nam-rs/src/testing/perceptual.rs) `[MODIFY]`
 
-* **S3.T02 — Espelhamento no Script Python e Regeração de `mrstft_golden.bin`** `[ ]`
+* **S3.T02 — Espelhamento no Script Python e Regeração de `mrstft_golden.bin`** `[x]`
   * **Ação:** Criar ou atualizar o script `tests/fixtures/scripts/gen_mrstft_golden.py` com o mesmo piso relativo do Rust, e rodar o script para gerar um novo `tests/fixtures/mrstft_golden.bin` determinístico e bit-a-bit idêntico.
+  * **Concluído:** Script criado em `tests/fixtures/scripts/gen_mrstft_golden.py` com o mesmo algoritmo de piso relativo (-80 dB por frame). Golden `mrstft_golden.bin` gerado com 4800 samples (seed=42). `test_mr_stft_parity_with_python` passa com resultado idêntico (1.150806e-2).
   * **Arquivos:**
     * [gen_mrstft_golden.py](file:///home/fabio/nam-rs/tests/fixtures/scripts/gen_mrstft_golden.py) `[NEW]`
     * [mrstft_golden.bin](file:///home/fabio/nam-rs/tests/fixtures/mrstft_golden.bin) `[MODIFY]`
