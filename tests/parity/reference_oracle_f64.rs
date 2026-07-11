@@ -1047,7 +1047,7 @@ fn test_combined_simulation_a2_film() {
 use common::A2_GENERIC_ESR_LIMIT;
 
 #[test]
-#[ignore = "model disabled — confirmed broken"]
+#[ignore = "model disabled — production blocked by guard; 3 confirmed bugs (head1x1 per-layer, grouped convs ignored, head K=1 for legacy format) — see TODO-wavenet_a2_max.md Epics 2–4"]
 fn test_oracle_vs_python_anchor_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -1070,7 +1070,7 @@ fn test_oracle_vs_python_anchor_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — confirmed broken; condition_dsp output divergence between production and oracle — ESR=1e5 (50 dB). Requires investigation of condition_dsp Cascade vs single-array A2 condition processing path."]
+#[ignore = "model disabled — production blocked by guard; root cause: 3 production bugs (head1x1 per-layer, grouped convs ignored, head K=1) — oracle bugs corrected in S2.T03. See TODO-wavenet_a2_max.md Epics 2–4"]
 fn test_oracle_a2_generic() {
     let esr = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
     assert!(
@@ -1082,7 +1082,7 @@ fn test_oracle_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — confirmed broken; inference path blocked at dispatch (see test_oracle_a2_generic)"]
+#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected in S2.T03."]
 fn test_decomposition_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -1109,7 +1109,7 @@ fn test_decomposition_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — confirmed broken; inference path blocked at dispatch (see test_oracle_a2_generic)"]
+#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected in S2.T03."]
 fn test_combined_simulation_a2_generic() {
     run_combined_paired_test("wavenet_a2_max.nam", "A2-Generic");
 }

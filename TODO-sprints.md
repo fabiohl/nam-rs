@@ -119,10 +119,10 @@ Este documento detalha o planejamento ágil para resolução dos achados identif
 
 ### Épico C.4 — Mensagens de Ignore e Rastreabilidade de Metamodelo (F4.1, F4.2)
 
-* **S2.T04 — Atualizar Mensagens descritivas do `#[ignore]`** `[ ]`
+* **S2.T04 — Atualizar Mensagens descritivas do `#[ignore]`** `[x]`
   * **Ação:** Modificar os comentários dos atributos `#[ignore]` nos testes de oráculo A2 Generic em `reference_oracle_f64.rs` para refletir as causas-raiz reais identificadas e referenciar explicitamente o plano `TODO-wavenet_a2_max.md`.
   * **Arquivos:** [reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) `[MODIFY]`
 
-* **S2.T05 — Estender Cobertura de Rastreamento em `meta_coherence`** `[ ]`
+* **S2.T05 — Estender Cobertura de Rastreamento em `meta_coherence`** `[x]`
   * **Ação:** Incluir o arquivo de testes do oráculo `tests/parity/reference_oracle_f64.rs` na lista de arquivos escaneados pelo meta-teste `test_ignored_models_are_in_catalog` para garantir que qualquer modelo `.nam` mencionado em testes ignorados do oráculo f64 esteja formalmente registrado no catálogo de goldens do build.
   * **Arquivos:** [meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs) `[MODIFY]`

@@ -10,6 +10,8 @@
 //  merged into strict SIMD-vs-scalar parity gates, eliminating weak
 //  `is_finite()` placebo tests.
 
+use crate::common::PrecisionGuard;
+use nam_rs::math::activations::ActivationPrecision;
 use nam_rs::models::lstm::LstmModelDyn;
 
 // =============================================================================
@@ -179,6 +181,7 @@ fn test_model_dyn_parity_edge() {
 // Determinism: two identically-initialized LstmModelDyn produce identical output.
 #[test]
 fn test_model_dyn_determinism() {
+    let _precision = PrecisionGuard::new(ActivationPrecision::Standard);
     let mut model_a = LstmModelDyn::new(2, 10).unwrap();
     let mut model_b = LstmModelDyn::new(2, 10).unwrap();
 
@@ -224,6 +227,7 @@ fn test_model_dyn_determinism() {
 // Block-size invariance: processing in chunks of different sizes yields identical result.
 #[test]
 fn test_model_dyn_block_size_invariance() {
+    let _precision = PrecisionGuard::new(ActivationPrecision::Standard);
     let n_samples = 64;
     let input: Vec<f32> = (0..n_samples).map(|i| (i as f32 * 0.1).sin()).collect();
     let block_sizes = [1usize, 8, 16, 32, 64];

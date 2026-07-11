@@ -204,6 +204,10 @@ fn test_ignored_models_are_in_catalog() {
     let test_files: &[(&str, &str)] = &[
         ("tests/models/golden_vectors.rs", "golden_vectors.rs"),
         ("tests/models/linear_fft_test.rs", "linear_fft_test.rs"),
+        (
+            "tests/parity/reference_oracle_f64.rs",
+            "reference_oracle_f64.rs",
+        ),
     ];
 
     let mut checked = 0usize;
