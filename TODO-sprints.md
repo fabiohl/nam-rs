@@ -189,7 +189,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.2 — Otimização de Fase 1 e Skips de Tempo Real (F-D1)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
 * **Descrição**:
@@ -198,6 +198,8 @@ Para fechar o Épico E1 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * Medições de deadline/jitter não rodam na Fase 1.
   * Ganho de tempo de parede (wall-time) confirmado no log.
+
+  **Conclusão (2026-07-12)**: `--skip rt_deadline::` e `--skip rt_jitter::` adicionados ao bloco entry-point da Fase 1. Todos os 18 testes (14 deadline + 4 jitter) são filtrados; `rt_constraints` compila mas roda 0 testes em ~0s. Os testes permanecem ativos no `tests-long.sh` (Fase de release).
 
 ---
 

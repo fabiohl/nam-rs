@@ -307,7 +307,8 @@ if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
     cargo test --lib $_struct_flags -- \
         --skip golden_vectors:: --skip linear_fft_test:: \
         --skip spectral_fidelity:: --skip reference_oracle_f64:: \
-        --skip cpp_parity:: --skip isa_parity::
+        --skip cpp_parity:: --skip isa_parity:: \
+        --skip rt_deadline:: --skip rt_jitter::
 else
     # ── Legacy flat-file format (pre-Sprint 3) ───────────────────────────
     cargo test --lib "${STRUCT_TESTS[@]/#/--test=}"
