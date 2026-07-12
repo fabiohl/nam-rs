@@ -987,6 +987,32 @@ fn test_wavenet_condition_dsp_still_loads() {
     );
 }
 
+/// Test 8k-1b: `wavenet_condition_lstm.nam` loads and processes — T4.1 smoke test.
+///
+/// Validates that the dispatcher correctly builds a WaveNet model with an LSTM
+/// condition_dsp sub-model (1 layer, 3 hidden units). The LSTM is recurrent and
+/// requires proper prewarm initialization of internal `h`/`c` states.
+///
+/// Processes a short silence buffer to exercise the full code path including
+/// condition_dsp process, prewarm, and gain application.
+#[test]
+fn test_wavenet_condition_lstm_loads_and_runs() {
+    let path = model_path("wavenet_condition_lstm.nam");
+    assert!(path.exists());
+    let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_lstm.nam");
+    let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_lstm.nam");
+    let mut model =
+        build_model(&data).expect("Dispatcher failed to build WaveNet Condition DSP LSTM");
+    model.prewarm(2048);
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    model.process(&input, &mut output);
+    assert!(
+        output.iter().all(|&x| x.is_finite()),
+        "Output must be finite after processing silence through LSTM condition_dsp"
+    );
+}
+
 /// Test 8k-2: Loader Gap — Explicit rejection of single-net slimmable WaveNet (PM-12).
 ///
 /// Loads the real fixture `slimmable_wavenet.nam` and validates fail-closed
@@ -1065,6 +1091,63 @@ fn test_golden_vectors_wavenet_condition_dsp() {
         max_esr,
         mrstft_max,
         "WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8l-2: Golden Vectors WaveNet Condition DSP LSTM — T4.1 cross-reference C++ ↔ NAM-rs.
+///
+/// Validates the Rust dynamic engine against the C++ reference for a WaveNet model
+/// whose `condition_dsp` sub-model is an LSTM (1 layer, 3 hidden units). The LSTM
+/// is recurrent and requires proper prewarm to initialize its `h`/`c` states.
+///
+/// Reads `tests/fixtures/golden_wavenet_condition_lstm.bin`, builds the dynamic
+/// `StaticModel` from `wavenet_condition_lstm.nam`, and compares via ESR/SNR/MSE
+/// fusion report.
+///
+/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
+#[test]
+fn test_golden_vectors_wavenet_condition_lstm() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_condition_lstm.bin");
+
+    assert!(
+        golden_path.exists(),
+        "golden_wavenet_condition_lstm.bin not found at {golden_path:?}.\n\
+         Run './tests/fixtures/golden_gen_build.sh' to generate the golden vectors from C++."
+    );
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_condition_lstm.bin");
+
+    let nam_path = model_path("wavenet_condition_lstm.nam");
+    assert!(
+        nam_path.exists(),
+        "wavenet_condition_lstm.nam not found at {nam_path:?}. \
+         Run './tests/fixtures/generate_a2_fixtures.py' to regenerate."
+    );
+
+    let json_data =
+        fs::read_to_string(&nam_path).expect("Failed to read wavenet_condition_lstm.nam");
+    let model_data =
+        parse_nam_json(&json_data).expect("Failed to parse wavenet_condition_lstm.nam JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet Condition DSP LSTM for golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
+        topology_thresholds(&model_data, "wavenet_condition_lstm");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        max_esr,
+        mrstft_max,
+        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) C++ cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }
@@ -1365,6 +1448,18 @@ fn test_golden_vectors_v2_wavenet_condition_dsp() {
         "golden_wavenet_condition_dsp",
         "WaveNet Condition DSP (CH=3, cond=3, dynamic)",
         "wavenet_condition_dsp",
+        SR_48K_ONLY,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_golden_vectors_v2_wavenet_condition_lstm() {
+    run_v2_golden_test(
+        "wavenet_condition_lstm.nam",
+        "golden_wavenet_condition_lstm",
+        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM)",
+        "wavenet_condition_lstm",
         SR_48K_ONLY,
     );
 }

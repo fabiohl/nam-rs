@@ -522,6 +522,131 @@ def main() -> None:
         json.dump(doc_ip, f, indent=2)
     print(f"Written {out_path}  ({len(w_ip)} weights)")
 
+    # ── WaveNet with LSTM condition_dsp (Task T4.1) ───────────────────────
+    # Condition DSP LSTM: 1 layer, 3 hidden units, input_size=1.
+    # Weight count from Rust lstm_weight_count(1, 3) = 4*3*(1+3) + 7*3 + 1 = 70
+    LSTH_HIDDEN = 3
+    LSTH_WEIGHTS = 4 * LSTH_HIDDEN * (1 + LSTH_HIDDEN) + 7 * LSTH_HIDDEN + 1
+    rng_lstm = random.Random(42 + LSTH_HIDDEN + 200)
+    lstm_sub_weights = gen_weights(LSTH_WEIGHTS, rng_lstm, scale=0.5)
+    assert len(lstm_sub_weights) == LSTH_WEIGHTS, (
+        f"LSTM condition_dsp: got {len(lstm_sub_weights)} weights, expected {LSTH_WEIGHTS}"
+    )
+
+    lstm_condition_dsp = {
+        "version": "0.7.0",
+        "architecture": "LSTM",
+        "config": {
+            "input_size": 1,
+            "hidden_size": LSTH_HIDDEN,
+            "num_layers": 1,
+        },
+        "weights": lstm_sub_weights,
+        "sample_rate": 48000,
+        "metadata": {
+            "name": "LSTM Condition DSP Sub-Model (T4.1)",
+            "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
+        },
+    }
+
+    # Outer WaveNet: same structure as wavenet_condition_dsp.nam
+    # 2 arrays: CH=[3,2], HEAD=[2,1], COND=3, K=3, dilations=[[1,2],[8]]
+    # Total weights = 147 (verified against C++ weight stream layout)
+    rng_outer = random.Random(42 + LSTH_HIDDEN + 300)
+    OUTER_CH_0 = 3
+    OUTER_HEAD_0 = 2
+    OUTER_K_0_0 = 3
+    OUTER_K_0_1 = 3
+    OUTER_CH_1 = 2
+    OUTER_HEAD_1 = 1
+    OUTER_K_1 = 3
+    OUTER_COND = 3
+
+    outer_weights: List[float] = []
+
+    # Array 0: IN=1, COND=OUTER_COND, CH=OUTER_CH_0, HEAD=OUTER_HEAD_0, K=OUTER_K_0_0
+    # rechannel: IN*CH = 1*3 = 3 (DoBias=false)
+    outer_weights.extend(gen_weights(1 * OUTER_CH_0, rng_outer, scale=0.3))
+    for _ in range(2):
+        # conv1d: CH*K*CH + CH (bias) = 3*3*3 + 3 = 30
+        outer_weights.extend(gen_weights(OUTER_CH_0 * OUTER_K_0_0 * OUTER_CH_0, rng_outer, scale=0.3))
+        outer_weights.extend(gen_weights(OUTER_CH_0, rng_outer, scale=0.06))
+        # input_mixin: COND*CH = 3*3 = 9 (DoBias=false)
+        outer_weights.extend(gen_weights(OUTER_COND * OUTER_CH_0, rng_outer, scale=0.3))
+        # one_by_one: CH*CH + CH (bias) = 3*3 + 3 = 12
+        outer_weights.extend(gen_weights(OUTER_CH_0 * OUTER_CH_0, rng_outer, scale=0.3))
+        outer_weights.extend(gen_weights(OUTER_CH_0, rng_outer, scale=0.06))
+    # head_rechannel: CH*HEAD = 3*2 = 6 (HasHeadBias=false)
+    outer_weights.extend(gen_weights(OUTER_CH_0 * OUTER_HEAD_0, rng_outer, scale=0.3))
+
+    # Array 1: IN=3, COND=OUTER_COND, CH=OUTER_CH_1, HEAD=OUTER_HEAD_1, K=OUTER_K_1
+    # rechannel: IN*CH = 3*2 = 6 (DoBias=false)
+    outer_weights.extend(gen_weights(OUTER_CH_0 * OUTER_CH_1, rng_outer, scale=0.3))
+    for _ in range(1):
+        # conv1d: CH*K*CH + CH (bias) = 2*3*2 + 2 = 14
+        outer_weights.extend(gen_weights(OUTER_CH_1 * OUTER_K_1 * OUTER_CH_1, rng_outer, scale=0.3))
+        outer_weights.extend(gen_weights(OUTER_CH_1, rng_outer, scale=0.06))
+        # input_mixin: COND*CH = 3*2 = 6 (DoBias=false)
+        outer_weights.extend(gen_weights(OUTER_COND * OUTER_CH_1, rng_outer, scale=0.3))
+        # one_by_one: CH*CH + CH (bias) = 2*2 + 2 = 6
+        outer_weights.extend(gen_weights(OUTER_CH_1 * OUTER_CH_1, rng_outer, scale=0.3))
+        outer_weights.extend(gen_weights(OUTER_CH_1, rng_outer, scale=0.06))
+    # head_rechannel: CH*HEAD + HEAD (bias) = 2*1 + 1 = 3
+    outer_weights.extend(gen_weights(OUTER_CH_1 * OUTER_HEAD_1, rng_outer, scale=0.3))
+    outer_weights.extend(gen_weights(OUTER_HEAD_1, rng_outer, scale=0.06))
+
+    # head_scale: 1
+    outer_weights.extend([0.02])
+
+    EXPECTED_OUTER = 147
+    assert len(outer_weights) == EXPECTED_OUTER, (
+        f"Outer WaveNet: got {len(outer_weights)} weights, expected {EXPECTED_OUTER}"
+    )
+
+    doc_lstm_cond = {
+        "version": "0.7.0",
+        "architecture": "WaveNet",
+        "config": {
+            "condition_dsp": lstm_condition_dsp,
+            "layers": [
+                {
+                    "input_size": 1,
+                    "condition_size": OUTER_COND,
+                    "head_size": OUTER_HEAD_0,
+                    "channels": OUTER_CH_0,
+                    "kernel_size": OUTER_K_0_0,
+                    "dilations": [1, 2],
+                    "activation": "Tanh",
+                    "gated": False,
+                    "head_bias": False,
+                },
+                {
+                    "input_size": OUTER_CH_0,
+                    "condition_size": OUTER_COND,
+                    "head_size": OUTER_HEAD_1,
+                    "channels": OUTER_CH_1,
+                    "kernel_size": OUTER_K_1,
+                    "dilations": [8],
+                    "activation": "Tanh",
+                    "gated": False,
+                    "head_bias": True,
+                },
+            ],
+            "head": None,
+            "head_scale": 0.02,
+        },
+        "weights": outer_weights,
+        "metadata": {
+            "name": "WaveNet Condition DSP LSTM Fixture (T4.1)",
+            "modeled_by": "tests/fixtures/generate_a2_fixtures.py",
+        },
+        "sample_rate": 48000,
+    }
+    out_path = OUTPUT_DIR / "wavenet_condition_lstm.nam"
+    with open(out_path, "w") as f:
+        json.dump(doc_lstm_cond, f, indent=2)
+    print(f"Written {out_path}  ({len(outer_weights)} outer + {len(lstm_sub_weights)} LSTM weights)")
+
     print("Done.")
 
 

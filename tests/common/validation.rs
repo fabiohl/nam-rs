@@ -643,6 +643,15 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 100.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.35)))
         }
+        // --- WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) ---
+        // T4.1: condition_dsp sub-model as LSTM (1 layer, 3 hidden units).
+        // The LSTM is recurrent and accumulates state drift over v2 sequences.
+        // Measured thresholds will be calibrated after golden generation.
+        // Initial conservative floor: SNR 70 dB, ESR 1e-8, MRSTFT 0.50.
+        "wavenet_condition_lstm" => {
+            let snr_db = 70.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-8), Some(0.50)))
+        }
         // --- Nondist Models ---
         // Measured: not individually measured; floors SNR≥100.0 dB, ESR≤1.0e-10, MRSTFT≤0.05
         // (production WaveNet CH=3/4 models validated by cpp_parity + golden vectors,

@@ -973,6 +973,18 @@ fn live_cross_validation_wavenet_condition_dsp() {
 
 #[test]
 #[ignore]
+fn live_cross_validation_wavenet_condition_lstm() {
+    let outcome = run_v1(
+        "wavenet_condition_lstm.nam",
+        "wavenet_condition_lstm",
+        "Live WaveNet Condition DSP LSTM",
+        true,
+    );
+    assert_eq!(outcome, ParityOutcome::Completed);
+}
+
+#[test]
+#[ignore]
 fn live_cross_validation_a2_example_slimmable() {
     let outcome = run_v1(
         "a2_example.nam",
@@ -1125,6 +1137,17 @@ fn live_cross_validation_v2_wavenet_condition_dsp() {
         "wavenet_condition_dsp.nam",
         "wavenet_condition_dsp",
         "Live WaveNet Condition DSP (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_condition_lstm() {
+    run_v2_multi_sr(
+        "wavenet_condition_lstm.nam",
+        "wavenet_condition_lstm",
+        "Live WaveNet Condition DSP LSTM (v2)",
         true,
     );
 }

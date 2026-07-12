@@ -455,7 +455,7 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.1 — Pré-aquecimento do WaveNet Dyn com LSTM Condition DSP (F-A5)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs)
   * [generate_a2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_a2_fixtures.py)
