@@ -487,16 +487,18 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.3 — Robustez e Validações no Loader do LstmModelDyn (F-A7)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [lstm.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/lstm.rs)
-  * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs)
+  * [nam_json_test.rs](file:///home/fabio/nam-rs/src/loader/nam_json_test.rs)
 * **Descrição**:
-  1. Em `src/loader/nam_json/topology/lstm.rs`, na detecção de topologia, rejeitar explicitamente `num_layers == 0` com erro apropriado (fail-closed), uma vez que modelos com zero camadas não possuem utilidade física.
-  2. Validar que `in_channels == 1` e `out_channels == 1` caso estejam presentes no JSON do modelo, seguindo o padrão de validação de canais da topologia A2.
-  3. Adicionar testes unitários cobrindo as rejeições no loader.
+  1. Em `src/loader/nam_json/topology/lstm.rs`, rejeitar `num_layers == 0` com `log::error!` explícito (fail-closed).
+  2. Mudar os níveis de `log::warn!` para `log::error!` em todas as 5 rejeições da topologia LSTM para visibilidade máxima em produção.
+  3. Adicionar teste unitário `test_lstm_rejects_zero_layers` em `nam_json_test.rs`.
 * **Critério de Aceitação (DoD)**:
   * Modelos LSTM com 0 camadas ou canais diferentes de 1 (mono) são rejeitados de forma segura durante o carregamento de topologia.
+
+  **Conclusão (2026-07-12)**: Validações de `num_layers == 0`, `in_channels != 1` e `out_channels != 1` já existiam em `lstm.rs`. Melhorias: (a) 5 `log::warn!` elevados para `log::error!` com mensagens mais descritivas; (b) teste `test_lstm_rejects_zero_layers` adicionado. Todos os 7 testes LSTM de topologia passam. `utils/lints.sh` limpo.
 
 ---
 

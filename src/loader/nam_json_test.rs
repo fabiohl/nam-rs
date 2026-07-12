@@ -1089,6 +1089,21 @@ use crate::loader::nam_json::validation::{
 // ── LSTM bounds ──
 
 #[test]
+fn test_lstm_rejects_zero_layers() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 0,
+            "hidden_size": 8,
+            "layers": []
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    assert_eq!(get_lstm_topology(&parsed), None);
+}
+
+#[test]
 fn test_lstm_rejects_num_layers_too_high() {
     let json = format!(
         r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": 8, "layers": []}}, "weights": [0.0]}}"#,
