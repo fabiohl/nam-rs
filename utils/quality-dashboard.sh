@@ -81,6 +81,18 @@ RUSTC_VER="$(rustc --version 2>/dev/null || echo 'unknown')"
 # in pt_BR the decimal separator is comma, so we force C locale for numbers.
 _nfmt() { LC_NUMERIC=C printf "$@"; }
 
+# Unified metric formatter — locale-safe (LC_ALL=C), auto-detects scientific notation.
+# Values containing [eE] use %.2e; everything else uses %.4f.
+_fmt_metric() {
+    local val="$1"
+    [ -z "$val" ] || [ "$val" = "N/A" ] && { echo "N/A"; return; }
+    if [[ "$val" =~ [eE] ]]; then
+        LC_ALL=C printf "%.2e" "$val" 2>/dev/null || echo "$val"
+    else
+        LC_ALL=C printf "%.4f" "$val" 2>/dev/null || echo "$val"
+    fi
+}
+
 # ESR_F64_FAMILY_MAP — Explicit static map: each golden-label → oracle .nam fixture.
 # The f64 oracle is measured on exactly ONE representative .nam fixture per family.
 # Labels whose model file IS the oracle fixture are also listed in ESR_F64_EXACT_MATCH;
@@ -680,7 +692,7 @@ parse_benchmarks() {
 esr_verdict() {
     local esr="$1"
     [ -z "$esr" ] || [ "$esr" = "N/A" ] && { echo "N/A"; return; }
-    awk -v v="$esr" 'BEGIN {
+    LC_ALL=C awk -v v="$esr" 'BEGIN {
         if (v+0 < 1e-10) print "IDENTICO"
         else if (v+0 < 1e-5) print "IMPERCEPTIVEL"
         else if (v+0 < 1e-2) print "AUDIVEL APENAS COM A/B CIENTIFICO"
@@ -693,7 +705,7 @@ esr_verdict_short() {
     local esr="$1"
     [ -z "$esr" ] || [ "$esr" = "N/A" ] && { echo "N/A"; return; }
     local cmp
-    cmp=$(awk -v v="$esr" 'BEGIN {
+    cmp=$(LC_ALL=C awk -v v="$esr" 'BEGIN {
         if (v+0 < 1e-10) print "1"
         else if (v+0 < 1e-5) print "2"
         else if (v+0 < 1e-2) print "3"
@@ -824,19 +836,15 @@ render_quick_summary() {
     _quick_entry() {
         local label="$1" icon="$2" key="$3" bench_name="$4"
         local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
-        local esr_nam_display="$esr_nam"
-        if [ "$esr_nam_display" != "N/A" ] && [ ${#esr_nam_display} -gt 10 ]; then
-            esr_nam_display=$(_nfmt "%.2e" "$esr_nam" 2>/dev/null || echo "$esr_nam")
-        fi
+        local esr_nam_display
+        esr_nam_display=$(_fmt_metric "$esr_nam")
         # Extract model name for f64 lookup (strip rate and mode)
         local f64_label
         f64_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
         local esr_f64 esr_f64_provenance
         { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$f64_label")
-        local esr_f64_display="$esr_f64"
-        if [ "$esr_f64_display" != "N/A" ] && [ ${#esr_f64_display} -gt 10 ]; then
-            esr_f64_display=$(_nfmt "%.2e" "$esr_f64" 2>/dev/null || echo "$esr_f64")
-        fi
+        local esr_f64_display
+        esr_f64_display=$(_fmt_metric "$esr_f64")
         # Flag any non-exact (family-level) match: the value was NOT measured
         # on this specific model, only on the family's one representative
         # fixture (see ESR_F64_FAMILY_MAP). Do not present it as if it
@@ -901,10 +909,8 @@ render_fidelity_details() {
 
     for key in "${MODEL_ORDER[@]}"; do
         local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
-        local esr_nam_short="$esr_nam"
-        if [ "$esr_nam_short" != "N/A" ] && [ ${#esr_nam_short} -gt 14 ]; then
-            esr_nam_short=$(_nfmt "%.2e" "$esr_nam" 2>/dev/null || echo "$esr_nam")
-        fi
+        local esr_nam_short
+        esr_nam_short=$(_fmt_metric "$esr_nam")
         # Color ESR value by quality
         local esr_color=""
         if [ "$esr_nam" != "N/A" ]; then
@@ -923,22 +929,14 @@ render_fidelity_details() {
         fi
         local snr="${SNR_DB[$key]:-N/A}"
         local mrstft="${MRSTFT[$key]:-N/A}"
-        local mrstft_short="$mrstft"
-        if [ "$mrstft_short" != "N/A" ] && [ ${#mrstft_short} -gt 6 ]; then
-            if [[ "$mrstft" =~ [eE] ]]; then
-                mrstft_short=$(_nfmt "%.2e" "$mrstft" 2>/dev/null || echo "$mrstft")
-            else
-                mrstft_short=$(_nfmt "%.4f" "$mrstft" 2>/dev/null || echo "$mrstft")
-            fi
-        fi
+        local mrstft_short
+        mrstft_short=$(_fmt_metric "$mrstft")
         local model_label
         model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
         local esr_f64 esr_f64_provenance
         { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
-        local esr_f64_short="$esr_f64"
-        if [ "$esr_f64_short" != "N/A" ] && [ ${#esr_f64_short} -gt 10 ]; then
-            esr_f64_short=$(_nfmt "%.2e" "$esr_f64" 2>/dev/null || echo "$esr_f64")
-        fi
+        local esr_f64_short
+        esr_f64_short=$(_fmt_metric "$esr_f64")
         if [[ "$esr_f64_provenance" == family:* ]]; then
             esr_f64_short="${esr_f64_short}~"
         fi

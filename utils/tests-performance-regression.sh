@@ -114,7 +114,7 @@ case "$MODE" in
         BENCH_STATUS=$?
         set -e
 
-        if grep -q "regressed" target/logs/regression-check.log 2>/dev/null; then
+        if grep -qE '(has regressed|Performance has regressed)' target/logs/regression-check.log 2>/dev/null; then
             echo -e "\n${RED}${BOLD}❌ PERFORMANCE REGRESSION DETECTED${NC}"
             echo -e "  Review target/logs/regression-check.log for details."
             echo -e "  If the regression is intentional, re-save the baseline with:"

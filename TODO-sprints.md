@@ -255,7 +255,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.6 — Formatação Numérica e Correções Menores (F-C5, F-C8, F-D3)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
   * [tests-performance-regression.sh](file:///home/fabio/nam-rs/utils/tests-performance-regression.sh)
@@ -269,6 +269,11 @@ Para fechar o Épico E1 em definitivo:
   * Formatação consistente e imune a locais do sistema operacional.
   * Zero falsos-positivos por regressão falsa do Criterion.
   * Banner honesto e limpeza cosmética efetuada.
+
+  **Conclusão (2026-07-12)**:
+  1. `quality-dashboard.sh`: criado helper `_fmt_metric()` com `LC_ALL=C`, auto-detecta notação científica (`%.2e` se `[eE]`, `%.4f` caso contrário). Substituiu 5 chamadas manuais de `_nfmt` + length-check nas funções `render_quick_summary` e `render_fidelity_details`. `esr_verdict` e `esr_verdict_short`: awk prefixado com `LC_ALL=C`.
+  2. `tests-performance-regression.sh`: grep de regressão alterado para `grep -qE '(has regressed|Performance has regressed)'`, eliminando falsos-positivos por match parcial em `regressed`.
+  3. `tests-quick.sh`: banner atualizado para `± 8 minutes`. Documentado motivo de `perf_soak` na Fase 1 (~2s, testes estruturais de concorrência/pipeline, não benchmarks). Removidos `CXX="${CXX:-}"` redundante e `else CXX=""`; uso de `${CXX:-}` no `[ -z ]` para evitar erro `set -u`.
 
 ---
 

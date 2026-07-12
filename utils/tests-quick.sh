@@ -149,8 +149,7 @@ trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" fal
 
 echo -e "${BLUE}${BOLD}=====================================${NC}"
 echo -e "${BLUE}${BOLD}   nam-rs Quick QA Suite"
-echo -e "${BLUE}${BOLD}   ± 2 minutes on "hot" target dir${NC}"
-echo -e "${BLUE}${BOLD}   ± 5 minutes on "cold" target dir${NC}"
+echo -e "${BLUE}${BOLD}   ± 8 minutes${NC}"
 echo -e "${BLUE}${BOLD}=====================================${NC}"
 
 
@@ -158,6 +157,9 @@ echo -e "${BLUE}${BOLD}=====================================${NC}"
 # ── Fase 1: Estrutural (debug) ──────────────────────────────────────────────
 # Unit tests (lib, auto-descobertos) + integração determinística (lista explícita).
 # Exclui os 5 oráculos de medida do §7 (→ Fase 2 release) e rt_deadline (→ long).
+# perf_soak (concurrency_stress, spsc_pipeline, soak_test) permanece na Fase 1:
+# são testes estruturais determinísticos (~2s) que validam invariantes de
+# concorrência/pipeline — não são benchmarks nem stress-tests pesados (→ long).
 # debug-assertions ON captura invariantes baratos que --release mascararia.
 phase "Estrutural: unit + integração determinística (debug)..."
 
@@ -373,14 +375,11 @@ if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     SKIP_CPP_PARITY=false
     if [ ! -f "$RENDER_BIN" ]; then
         echo -e "  ${BLUE}→ Compilando render C++ preventivamente (S1.T10)...${NC}"
-        CXX="${CXX:-}"
-        if [ -z "$CXX" ]; then
+        if [ -z "${CXX:-}" ]; then
             if command -v g++ >/dev/null 2>&1; then
                 CXX=g++
             elif command -v clang++ >/dev/null 2>&1; then
                 CXX=clang++
-            else
-                CXX=""
             fi
         fi
         if [ -z "$CXX" ]; then
