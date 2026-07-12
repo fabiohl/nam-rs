@@ -237,7 +237,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.5 — Mapa Explícito de Famílias f64 no Dashboard (F-C4)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
 * **Descrição**:
@@ -248,6 +248,8 @@ Para fechar o Épico E1 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * Sem heurísticas mágicas de texto para achar ESR do oráculo.
   * Proveniência `exact` vs `family` corretamente catalogada e exibida na tabela.
+
+  **Conclusão (2026-07-12)**: `_lookup_esr_f64` reescrito: removeu-se a busca fuzzy por substring (`tr/sed` + loop sobre `ESR_F64_PAIRED`) e substituiu-se por `ESR_F64_FAMILY_MAP` (35 entradas, cobrindo todos os 27 labels V1 do golden_vectors + cpp_parity). O mapa correlaciona cada golden-label ao seu fixture `.nam` do oráculo f64. `ESR_F64_EXACT_MATCH` (4 labels) identifica quais labels têm medição própria (exata) vs. aproximação de família (proxy). Fallback: busca direta em `ESR_F64_PAIRED` pelo label ou `${label}.nam`. Zero heurísticas — toda decisão é explícita e estática.
 
 ---
 

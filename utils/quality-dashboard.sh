@@ -81,35 +81,61 @@ RUSTC_VER="$(rustc --version 2>/dev/null || echo 'unknown')"
 # in pt_BR the decimal separator is comma, so we force C locale for numbers.
 _nfmt() { LC_NUMERIC=C printf "$@"; }
 
-# Per-family provenance map: which single .nam fixture the generic family-level
-# f64-oracle keys ("LSTM", "WaveNet", "A2", "ConvNet") were actually measured on.
-# CORRECTNESS NOTE (Épico EQ audit, 2026-07-05): `test_oracle_lstm()` and friends
-# (tests/reference_oracle_f64.rs) measure the f64-oracle floor for exactly ONE
-# representative fixture per family — for LSTM that fixture is `lstm.nam` (the
-# tiny 3-hidden-unit official example), NOT BossLSTM-1x16.nam/BossLSTM-2x8.nam,
-# which are the models that actually exhibit severe recurrent drift. There is
-# currently no per-model, production-duration (240k-sample) f64-oracle
-# measurement for BossLSTM-1x16/2x8 in the automated suite — only the ignored
-# diagnostic `t33_diagnostic_recurrent_drift_lstm_1x16` provides that, and it
-# must be run explicitly (`--ignored`) to get a real number for those models.
-# This map exists so the report can say "family baseline, not measured for this
-# exact model" instead of silently presenting one model's result as another's.
-declare -A ESR_F64_FAMILY_FIXTURE=(
-    ["LSTM"]="lstm.nam (H=3 official)"
-    ["WaveNet"]="wavenet_official.nam"
-    ["A2"]="wavenet_a2_lite.nam"
-    ["ConvNet"]="convnet_test.nam"
+# ESR_F64_FAMILY_MAP — Explicit static map: each golden-label → oracle .nam fixture.
+# The f64 oracle is measured on exactly ONE representative .nam fixture per family.
+# Labels whose model file IS the oracle fixture are also listed in ESR_F64_EXACT_MATCH;
+# all other FAMILY_MAP entries are family-level approximations.
+# CORRECTNESS NOTE (Épico EQ audit, 2026-07-05): for LSTM, the oracle fixture is
+# `lstm.nam` (the tiny 3-hidden-unit official example), NOT BossLSTM-1x16.nam/
+# BossLSTM-2x8.nam, which are the models that actually exhibit severe recurrent drift.
+declare -A ESR_F64_FAMILY_MAP=(
+    # WaveNet family — oracle measured on wavenet_official.nam
+    ["BossWN-standard"]="wavenet_official.nam"
+    ["BossWN-feather"]="wavenet_official.nam"
+    ["BossWN-nano"]="wavenet_official.nam"
+    ["EVH-5150-Lite"]="wavenet_official.nam"
+    ["wavenet_a1_standard (Official)"]="wavenet_official.nam"
+    ["WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference"]="wavenet_official.nam"
+    ["WaveNet Official (CH=3, dynamic path) C++ cross-reference"]="wavenet_official.nam"
+    ["WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference"]="wavenet_official.nam"
+    ["T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)"]="wavenet_official.nam"
+    # LSTM family — oracle measured on lstm.nam (H=3 official)
+    ["BossLSTM-1x16"]="lstm.nam"
+    ["BossLSTM-2x8"]="lstm.nam"
+    ["lstm (Official)"]="lstm.nam"
+    ["LSTM-Dyn 1×7 (dynamic path) C++ cross-reference"]="lstm.nam"
+    # A2 family — oracle measured on wavenet_a2_lite.nam
+    ["WaveNet A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["WaveNet A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container File A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container File A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["SlimmableContainer A2 Example (CH=3→6) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)"]="wavenet_a2_lite.nam"
+    ["WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference"]="wavenet_a2_lite.nam"
+    # A2-FiLM-Lite family — oracle measured on wavenet_a2_film_lite.nam
+    ["WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference"]="wavenet_a2_film_lite.nam"
+    ["WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) C++ cross-reference"]="wavenet_a2_film_lite.nam"
+    # A2-FiLM-Full — oracle measured on wavenet_a2_film_full.nam
+    ["WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference"]="wavenet_a2_film_full.nam"
+    # A2-FiLM-InputMixinPre — oracle measured on wavenet_a2_film_input_mixin_pre.nam
+    ["WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference"]="wavenet_a2_film_input_mixin_pre.nam"
+    # ConvNet — oracle measured on convnet_test.nam
+    ["ConvNet Test"]="convnet_test.nam"
 )
 
-# Look up ESR vs f64 for a golden label by partial matching against oracle keys.
-# Oracle stores data under two kinds of keys: exact `.nam` filenames (from the
-# per-model summary table, trustworthy 1:1) and short family labels ("LSTM",
-# "WaveNet", "ConvNet", "A2" — each backed by exactly one representative
-# fixture, see ESR_F64_FAMILY_FIXTURE above). An exact filename match is always
-# precise; a fuzzy/family match is only an approximation for models other than
-# the one the family key was actually measured on, and is flagged as such via
-# the second return value (echoed on the line after the value: "exact" or
-# "family:<fixture>").
+# Labels for which the FAMILY_MAP fixture IS the exact model file (own measurement).
+# All other FAMILY_MAP entries are family-proxy: the oracle measured a different
+# representative fixture from the same architectural family.
+declare -A ESR_F64_EXACT_MATCH=(
+    ["WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference"]=1
+    ["WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference"]=1
+    ["WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference"]=1
+    ["ConvNet Test"]=1
+)
+
 # Validate that a string actually looks like a scientific-notation ESR value
 # (e.g. "6.13e-14", "0.00e0", "3.17e-3", "0"). Defensive check (2026-07-05):
 # a malformed/interleaved line in a parallel `cargo test` log run has been
@@ -123,65 +149,44 @@ _is_numeric_esr() {
 
 _lookup_esr_f64() {
     local golden_label="$1"
-    # Normalize strings for robust matching
-    local norm_golden
-    norm_golden=$(echo "$golden_label" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
 
-    local best="N/A"
-    local best_len=0
-    local best_key=""
-    local best_is_exact=0
-
-    set +u
-    for okey in "${!ESR_F64_PAIRED[@]}"; do
-        local norm_okey
-        norm_okey=$(echo "$okey" | tr '[:upper:]' '[:lower:]' | sed 's/\.nam$//; s/[^a-z0-9]//g')
-
-        # Skip any candidate whose stored value isn't actually numeric — a
-        # corrupted/malformed entry must never win a match, exact or fuzzy.
-        _is_numeric_esr "${ESR_F64_PAIRED[$okey]}" || continue
-
-        # Exact match is always preferred
-        if [ "$norm_golden" = "$norm_okey" ]; then
-            best="${ESR_F64_PAIRED[$okey]}"
-            best_key="$okey"
-            best_is_exact=1
-            best_len=9999
-            break
-        fi
-
-        # Partial matches: prefer the longest matching key (most specific)
-        if [[ "$norm_golden" == *"$norm_okey"* ]] || [[ "$norm_okey" == *"$norm_golden"* ]]; then
-            if [ ${#norm_okey} -gt $best_len ]; then
-                best="${ESR_F64_PAIRED[$okey]}"
-                best_key="$okey"
-                best_is_exact=0
-                best_len=${#norm_okey}
+    # Step 1: Look up in the explicit static family map
+    local oracle_fixture="${ESR_F64_FAMILY_MAP[$golden_label]:-}"
+    if [ -n "$oracle_fixture" ]; then
+        local val
+        set +u; val="${ESR_F64_PAIRED[$oracle_fixture]}"; set -u
+        if [ -n "$val" ] && _is_numeric_esr "$val"; then
+            if [ -n "${ESR_F64_EXACT_MATCH[$golden_label]:-}" ]; then
+                echo "$val"
+                echo "exact"
+            else
+                echo "$val"
+                echo "family:${oracle_fixture}"
             fi
+            return
         fi
-    done
-    set -u
+    fi
 
-    # Final safety net: even if something upstream slipped through, never
-    # hand back a non-numeric "value" to the caller as if it were an ESR.
-    if [ "$best" = "N/A" ] || ! _is_numeric_esr "$best"; then
-        echo "N/A"
-        echo "none"
+    # Step 2: Fallback — try golden_label directly in ESR_F64_PAIRED
+    local direct
+    set +u; direct="${ESR_F64_PAIRED[$golden_label]}"; set -u
+    if [ -n "$direct" ] && _is_numeric_esr "$direct"; then
+        echo "$direct"
+        echo "exact"
         return
     fi
 
-    # An "exact" match is only truly exact if the matched key is itself a
-    # `.nam` filename (per-model table) or a specific model name (e.g. BossLSTM-*),
-    # not one of the generic family labels (LSTM/WaveNet/A2/ConvNet), which
-    # are always an approximation for any model other than their single backing fixture.
-    if [ "$best_is_exact" -eq 1 ] && ( [[ "$best_key" == *.nam ]] || [[ "$best_key" == BossLSTM-* ]] ); then
-        echo "$best"
+    # Step 3: Fallback — try golden_label.nam in ESR_F64_PAIRED
+    local with_nam="${golden_label}.nam"
+    set +u; direct="${ESR_F64_PAIRED[$with_nam]}"; set -u
+    if [ -n "$direct" ] && _is_numeric_esr "$direct"; then
+        echo "$direct"
         echo "exact"
-    else
-        local fixture="${ESR_F64_FAMILY_FIXTURE[$best_key]:-$best_key}"
-        echo "$best"
-        echo "family:${fixture}"
+        return
     fi
+
+    echo "N/A"
+    echo "none"
 }
 
 # ── Data storage (global associative arrays) ────────────────────────────────
@@ -834,7 +839,7 @@ render_quick_summary() {
         fi
         # Flag any non-exact (family-level) match: the value was NOT measured
         # on this specific model, only on the family's one representative
-        # fixture (see ESR_F64_FAMILY_FIXTURE). Do not present it as if it
+        # fixture (see ESR_F64_FAMILY_MAP). Do not present it as if it
         # were this model's own floor.
         local f64_suffix=""
         if [[ "$esr_f64_provenance" == family:* ]]; then
@@ -870,7 +875,7 @@ render_quick_summary() {
 
     echo ""
     echo "  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the"
-    echo "  family's single representative fixture instead (see ESR_F64_FAMILY_FIXTURE)."
+    echo "  family's single representative fixture instead (see ESR_F64_FAMILY_MAP)."
     echo ""
 }
 
