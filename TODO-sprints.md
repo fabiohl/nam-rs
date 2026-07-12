@@ -396,7 +396,7 @@ Para fechar o Épico E2 em definitivo:
 
 #### Tarefa T3.3 — Cobertura Live C++ e Coerência CATALOG ↔ Testes (F-B6)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` — Concluído (2026-07-12). 4 novos testes live cross-validation (film_input_mixin_pre v1+v2, film_chaos_stress v1+v2). Meta-teste test_catalog_models_have_consumers: 29/30 ativos com consumidores.
 * **Arquivos Afetados**:
   * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs)
   * [meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs)

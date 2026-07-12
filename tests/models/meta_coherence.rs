@@ -175,7 +175,144 @@ fn scan_ignored_test_models(
     result
 }
 
-/// Every `.nam` model referenced in an `#[ignore]` test (in golden-relevant
+/// Parses the CATALOG array and returns the set of models that have
+/// a non-empty `skip_reason` field (6th colon-separated field).
+/// These models are intentionally excluded from golden generation
+/// and freshness gates (F-C9, Tarefa T3.2).
+fn parse_skip_reason_models() -> HashSet<String> {
+    let script = golden_gen_build_path();
+    let content = fs::read_to_string(&script).expect("Failed to read golden_gen_build.sh");
+
+    let mut in_catalog = false;
+    let mut skipped = HashSet::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "CATALOG=(" {
+            in_catalog = true;
+            continue;
+        }
+        if in_catalog {
+            if trimmed == ")" {
+                break;
+            }
+            if let Some(inner) = trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                let fields: Vec<&str> = inner.split(':').collect();
+                if fields.len() >= 6
+                    && !fields[5].is_empty()
+                    && let Some(nam_file) = fields.first()
+                    && nam_file.ends_with(".nam")
+                {
+                    skipped.insert(nam_file.to_string());
+                }
+            }
+        }
+    }
+    skipped
+}
+
+/// Scans a file for all `.nam` string literals, regardless of context.
+fn scan_all_nam_strings_in_file(file_path: &PathBuf) -> HashSet<String> {
+    let content = match fs::read_to_string(file_path) {
+        Ok(c) => c,
+        Err(_) => return HashSet::new(),
+    };
+    extract_nam_strings(&content).into_iter().collect()
+}
+
+fn tests_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests")
+}
+
+/// Every model in the CATALOG (except those with `skip_reason`) MUST have
+/// at least one test consumer that references it by `.nam` filename.
+///
+/// This is the **inverse** direction of `test_ignored_models_are_in_catalog`:
+/// that test ensures models in test files are registered in the CATALOG;
+/// THIS test ensures models in the CATALOG are exercised by test files.
+///
+/// Together they form a bidirectional coherence gate (CATALOG ↔ Testes).
+///
+/// ## Implementation
+///
+/// Scans all `.rs` files under `tests/` for `.nam` filename string literals,
+/// then checks that every CATALOG model (minus `skip_reason` models) appears
+/// in the resulting set.
+///
+/// ## Known exemptions
+///
+/// Models with `skip_reason` in the CATALOG are exempt — they are shown to
+/// have known incompatibilities (separately documented in golden_gen_build.sh).
+#[test]
+fn test_catalog_models_have_consumers() {
+    let catalog = parse_catalog();
+    let skip_models = parse_skip_reason_models();
+
+    // Collect all .nam filenames referenced across every test source file
+    let mut consumers: HashSet<String> = HashSet::new();
+    let tests_root = tests_dir();
+
+    fn walk_dir(dir: &std::path::Path, consumers: &mut HashSet<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk_dir(&path, consumers);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let found = scan_all_nam_strings_in_file(&path);
+                    consumers.extend(found);
+                }
+            }
+        }
+    }
+    walk_dir(&tests_root, &mut consumers);
+
+    // Build the set of test-known .nam filenames
+    let consumers: HashSet<String> = consumers
+        .into_iter()
+        .filter(|s| is_valid_model_filename(s))
+        .collect();
+
+    assert!(
+        consumers.len() >= 15,
+        "Expected ≥ 15 .nam consumers across test files, found {}. \
+         Scanner may be broken — check is_valid_model_filename filters.",
+        consumers.len(),
+    );
+
+    let mut missing = Vec::new();
+    for model in catalog.iter() {
+        if skip_models.contains(model.as_str()) {
+            continue;
+        }
+        if !consumers.contains(model.as_str()) {
+            missing.push(model.clone());
+        }
+    }
+
+    if !missing.is_empty() {
+        panic!(
+            "{} model(s) in CATALOG have NO test consumer:\n  {}\n\
+             \n\
+             Add at least one test that references each model by `.nam` filename \
+             (e.g., model_path(\"{}\") or run_v1(\"{}\", ...)).\n\
+             If a model is intentionally untested, add its skip_reason field \
+             to the CATALOG entry in golden_gen_build.sh.",
+            missing.len(),
+            missing.join("\n  "),
+            missing.first().unwrap(),
+            missing.first().unwrap(),
+        );
+    }
+
+    let skipped_count = skip_models.len();
+    let total_catalog = catalog.len();
+    let active = total_catalog - skipped_count;
+    eprintln!(
+        "  ✓ catalog→ tests coherence: {active}/{total_catalog} active models all have consumers \
+         ({skipped_count} skipped via skip_reason).",
+    );
+}
 /// test files) MUST be registered in the canonical CATALOG array of
 /// `golden_gen_build.sh`.
 ///

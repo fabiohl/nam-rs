@@ -1232,6 +1232,30 @@ fn live_cross_validation_wavenet_a2_film_full() {
     assert_eq!(outcome, ParityOutcome::Completed);
 }
 
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_film_input_mixin_pre() {
+    let outcome = run_v1(
+        "wavenet_a2_film_input_mixin_pre.nam",
+        "wavenet_a2_film_input_mixin_pre",
+        "Live WaveNet A2-FiLM-InputMixinPre (CH=3)",
+        true,
+    );
+    assert_eq!(outcome, ParityOutcome::Completed);
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_film_chaos_stress() {
+    let outcome = run_v1(
+        "wavenet_a2_film_chaos_stress.nam",
+        "wavenet_a2_film_chaos_stress",
+        "Live WaveNet A2-FiLM Chaos Stress (CH=3)",
+        true,
+    );
+    assert_eq!(outcome, ParityOutcome::Completed);
+}
+
 // wavenet_a2_max — DISABLED (§7.1); model inference is blocked at dispatch
 // by fail-closed guard is_disabled_broken_a2_flagship.
 // Uncomment once condition_dsp parity gap (§4.4) is resolved.
@@ -1288,6 +1312,28 @@ fn live_cross_validation_v2_wavenet_a2_film_full() {
         "wavenet_a2_film_full.nam",
         "wavenet_a2_film_full",
         "Live WaveNet A2-FiLM-Full (CH=8) (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_a2_film_input_mixin_pre() {
+    run_v2_multi_sr(
+        "wavenet_a2_film_input_mixin_pre.nam",
+        "wavenet_a2_film_input_mixin_pre",
+        "Live WaveNet A2-FiLM-InputMixinPre (CH=3) (v2)",
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_a2_film_chaos_stress() {
+    run_v2_multi_sr(
+        "wavenet_a2_film_chaos_stress.nam",
+        "wavenet_a2_film_chaos_stress",
+        "Live WaveNet A2-FiLM Chaos Stress (CH=3) (v2)",
         true,
     );
 }
