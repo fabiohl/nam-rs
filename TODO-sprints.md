@@ -205,7 +205,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.3 — Correção de Exibição de MR-STFT (F-C2)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
 * **Descrição**:
@@ -213,6 +213,8 @@ Para fechar o Épico E1 em definitivo:
   2. Aplicar esse mesmo comportamento para as outras colunas de métricas que sofrem reformatação por comprimento em `quality-dashboard.sh`.
 * **Critério de Aceitação (DoD)**:
   * Dashboard exibe valores reais de MR-STFT (ex: `9.73e-6`) em vez de `0.0000`.
+
+  **Conclusão (2026-07-12)**: Reformatação do MR-STFT corrigida: valores com notação científica (`[eE]`) usam `%.2e` (ex: `9.73e-06`), demais mantêm `%.4f` (ex: `0.0123`). Demais colunas de métrica (ESR vs NAMcore, ESR vs f64) já utilizavam `%.2e` e não sofriam do problema.
 
 ---
 

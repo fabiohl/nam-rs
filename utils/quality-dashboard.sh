@@ -920,7 +920,11 @@ render_fidelity_details() {
         local mrstft="${MRSTFT[$key]:-N/A}"
         local mrstft_short="$mrstft"
         if [ "$mrstft_short" != "N/A" ] && [ ${#mrstft_short} -gt 6 ]; then
-            mrstft_short=$(_nfmt "%.4f" "$mrstft" 2>/dev/null || echo "$mrstft")
+            if [[ "$mrstft" =~ [eE] ]]; then
+                mrstft_short=$(_nfmt "%.2e" "$mrstft" 2>/dev/null || echo "$mrstft")
+            else
+                mrstft_short=$(_nfmt "%.4f" "$mrstft" 2>/dev/null || echo "$mrstft")
+            fi
         fi
         local model_label
         model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
