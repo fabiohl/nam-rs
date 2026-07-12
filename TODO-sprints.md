@@ -504,7 +504,7 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.4 — Desqualificação de Catálogo A1 para WaveNet com condition_dsp (F-A3)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [wavenet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/wavenet.rs)
 * **Descrição**:
@@ -514,25 +514,29 @@ Para fechar o Épico E3 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * Modelos WaveNet com condicionamento não são classificados no fast path estático e o processamento de áudio é mantido correto.
 
+  **Conclusão (2026-07-12)**: Implementação já existente — `data.config.condition_dsp.is_none()` na condição `catalog_compatible` em `wavenet.rs:408` desqualifica modelos com `condition_dsp` do catálogo estático. Teste `test_topology_feather_with_condition_dsp_routes_to_free` em `nam_json_test.rs:249` cobre o cenário (modelo Feather com condition_dsp → Free, não Known). 13/13 testes de topologia passam.
+
 ---
 
 #### Tarefa T4.5 — Correção do cálculo de prewarm_samples() do WaveNet (F-A6)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
-  * [model.rs](file:///home/fabio/nam-rs/src/models/wavenet/model.rs)
+  * [mod.rs](file:///home/fabio/nam-rs/src/models/wavenet/mod.rs)
   * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs)
 * **Descrição**:
-  1. Em `src/models/wavenet/model.rs` e `model_dyn.rs`, ajustar a implementação de `prewarm_samples()` para alinhar com a fórmula matemática do NAMcore C++.
-  2. A contagem correta deve ser a soma dos campos receptivos de todas as camadas, e não apenas o máximo ou o valor individual do primeiro bloco, incluindo o prewarm do condition_dsp e a cabeça (post-stack head).
+  1. Em `src/models/wavenet/mod.rs`: `prewarm_samples()` estático somava array1 + array2. Melhorias: dinâmico soma todos os arrays, inclui `condition_dsp.prewarm_samples()`, e `post_stack_head.receptive_field() - 1`.
+  2. `condition_dsp.prewarm(0)` → `cond_dsp.prewarm(cond_dsp.prewarm_samples())`.
 * **Critério de Aceitação (DoD)**:
   * O retorno de `prewarm_samples()` bate com os valores calculados pelo C++ em `model.cpp:615-620`.
+
+  **Conclusão (2026-07-12)**: Implementação já existente (commit `8490ff08`). `prewarm_samples()` estático: `array1.rf + array2.rf` (soma). Dinâmico: `.sum()` dos arrays + `.prewarm_samples()` do condition_dsp + `.receptive_field() - 1` do post_stack_head. `condition_dsp.prewarm(0)` corrigido para `cond_dsp.prewarm_samples()`. 6/6 testes de prewarm passam. Auditado contra `cpp_parity_map.md` §3.5.
 
 ---
 
 #### Tarefa T4.6 — Fail-Closed para Recursos Não Suportados no WaveNet A1 (F-A4)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [model.rs](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
   * [wavenet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/wavenet.rs)
@@ -542,6 +546,8 @@ Para fechar o Épico E3 em definitivo:
   2. Rejeitar o carregamento desses modelos com erro claro de formato ("feature X requires the A2 dynamic engine; model rejected to protect audio correctness"), impedindo saídas de áudio matematicamente corrompidas sem aviso.
 * **Critério de Aceitação (DoD)**:
   * Modelos contendo parâmetros de gating ou FiLM fora do caminho A2 apropriado são rejeitados de forma segura pelo loader.
+
+  **Conclusão (2026-07-12)**: Guardrail pré-existente em `wavenet.rs:325-391` já cobria `gating_mode`, `head1x1`, `layer1x1` e FiLM. Adicionada verificação de `gated: true` ao guardrail (antes apenas desqualificava do catálogo estático, sem rejeitar). 6 novos testes unitários (`test_wavenet_a1_rejects_*` + `test_wavenet_a1_accepts_gated_false`) cobrem todos os cinco campos A2-exclusivos rejeitados + contra-prova de A1 válido. 65/65 testes `nam_json_test` passam; 64/64 testes de integração wavenet passam.
 
 ---
 

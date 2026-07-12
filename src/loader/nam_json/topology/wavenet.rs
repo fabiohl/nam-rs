@@ -388,6 +388,11 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
                 ));
             }
         }
+        if layer.gated.unwrap_or(false) {
+            return WavenetTopologyResult::Rejected(format!(
+                "Layer {i} has gated=true — A2 feature not supported in WaveNet A1."
+            ));
+        }
     }
 
     // ── Try matching a known catalog SKU (fast-path) ──

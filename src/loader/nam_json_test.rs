@@ -1201,6 +1201,200 @@ fn test_wavenet_free_accepts_max_channels() {
     );
 }
 
+// ── Fail-Closed: A2 features rejected in A1 WaveNet (T4.6) ──
+
+fn make_a1_wavenet_base_json() -> String {
+    r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8,16,32,64],
+                    "gated": false, "head_bias": false
+                },
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#
+    .to_string()
+}
+
+#[test]
+fn test_wavenet_a1_rejects_gated_true() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [1,2,4,8,16,32,64],
+                    "gated": true, "head_bias": false
+                },
+                {
+                    "channels": 8, "kernel_size": 3, "head_size": 4,
+                    "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("gated=true")),
+        "Expected Rejected(gated=true), got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_a1_accepts_gated_false() {
+    let json = make_a1_wavenet_base_json();
+    let parsed = parse_nam_json(&json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(
+            result,
+            WavenetTopologyResult::Known(_) | WavenetTopologyResult::Free(_)
+        ),
+        "Standard A1 with gated=false should be Known or Free, got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_a1_rejects_gating_mode_non_none() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": false,
+                    "gating_mode": ["none","add","none","none","none","none","none","none","none","none"]
+                },
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("gating_mode")),
+        "Expected Rejected(gating_mode), got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_a1_rejects_head1x1_active() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": false,
+                    "head1x1": {"active": true}
+                },
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("head1x1")),
+        "Expected Rejected(head1x1), got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_a1_rejects_layer1x1_active() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": false,
+                    "layer1x1": {"active": true, "groups": 1}
+                },
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("layer1x1")),
+        "Expected Rejected(layer1x1), got: {result:?}"
+    );
+}
+
+#[test]
+fn test_wavenet_a1_rejects_film_active() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": false,
+                    "conv_pre_film": {"active": true}
+                },
+                {
+                    "channels": 16, "kernel_size": 3, "head_size": 8,
+                    "dilations": [1,2,4,8,16,32,64,128,256,512],
+                    "gated": false, "head_bias": true
+                }
+            ],
+            "head": null, "head_scale": 0.02
+        },
+        "weights": [0.0]
+    }"#;
+    let parsed = parse_nam_json(json).expect("parse");
+    let result = get_wavenet_topology(&parsed);
+    assert!(
+        matches!(result, WavenetTopologyResult::Rejected(ref msg) if msg.contains("conv_pre_film") && msg.contains("A2 feature")),
+        "Expected Rejected(FiLM), got: {result:?}"
+    );
+}
+
 // ── A2-Dynamic channels / bottleneck bounds (exercised through the dispatcher) ──
 
 use crate::loader::dispatcher::wavenet::build_wavenet;
