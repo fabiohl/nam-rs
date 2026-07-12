@@ -641,7 +641,7 @@ Agrupamento para implementação segura e incremental. Ordem recomendada: E1 →
 E4 → E5 (E1 e E2 destravam a confiabilidade da própria malha de testes antes de mexer
 em produção; E5 congela o contrato por último, sobre dados já corretos).
 
-## Épico E1 — "Nenhum teste verde sem evidência" (rigor da malha) 🔴 [DOING]
+## Épico E1 — "Nenhum teste verde sem evidência" (rigor da malha) 🔴 [DONE]
 
 Elimina os falsos-verdes da malha de paridade. **Risco: baixo (só testes).**
 
@@ -652,7 +652,7 @@ Elimina os falsos-verdes da malha de paridade. **Risco: baixo (só testes).**
 4. F-B7 — determinismo ConvNet endurecido p/ MSE == 0.0.
 5. F-B8 — documentar piso f64 das âncoras (docs).
 
-## Épico E2 — Scripts de QA corretos e rápidos 🟠 [TO-DO]
+## Épico E2 — Scripts de QA corretos e rápidos 🟠 [DOING]
 
 Corrige dados exibidos e devolve ~30-40s ao loop diário. **Risco: baixo (shell).**
 
