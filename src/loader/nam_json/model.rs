@@ -275,6 +275,15 @@ pub struct NamConfig {
     /// Linear convolution implementation mode ("Auto", "Direct", "Fft").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub implementation: Option<String>,
+    /// ConvNet C++ flat format: scalar channel count (config root level).
+    #[serde(default, rename = "channels")]
+    pub conv_channels: Option<usize>,
+    /// ConvNet C++ flat format: global dilations array (one per block).
+    #[serde(default, rename = "dilations")]
+    pub conv_dilations: Option<Vec<usize>>,
+    /// ConvNet C++ flat format: global batchnorm flag.
+    #[serde(default, rename = "batchnorm")]
+    pub conv_batchnorm: Option<bool>,
 }
 
 impl NamConfig {

@@ -12,7 +12,7 @@ pub mod model;
 
 pub use batch_norm::BatchNorm1D;
 pub use block::ConvNetBlock;
-pub use model::ConvNetModel;
+pub use model::{ConvNetModel, LinearHead};
 
 use super::NamModel;
 use super::sealed;

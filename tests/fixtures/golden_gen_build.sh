@@ -327,7 +327,7 @@ CATALOG=(
     "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45:48k_only"
     "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4):48k_only"
     "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7:48k_only"
-    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks):all::incompatible"
+    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8, 6 blocks):48k_only"
     "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1):48k_only"
     "a2_dynamic_gated_ch8.nam:golden_a2_dynamic_gated_ch8:A2 Dynamic Gated (CH=8):none"
     "a2_dynamic_blended_ch3.nam:golden_a2_dynamic_blended_ch3:A2 Dynamic Blended (CH=3):none"

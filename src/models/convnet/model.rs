@@ -35,6 +35,24 @@ pub struct ConvNetModel {
     pub(crate) scratch_b: AlignedVec<f32>,
     /// Whether to execute prewarm during `reset()`. Default: `true`.
     pub prewarm_on_reset: bool,
+    /// Optional C++ flat-format linear head weights (no activation).
+    /// Used when `post_stack_head` is `None` but the model has a separate
+    /// linear projection from `in_ch → out_ch`.
+    pub linear_head: Option<LinearHead>,
+}
+
+/// Simple linear projection head for C++ flat ConvNet format.
+#[derive(Clone)]
+#[repr(align(64))]
+pub struct LinearHead {
+    /// Row-major weight matrix: out_ch × in_ch.
+    pub weight: AlignedVec<f32>,
+    /// Bias vector: out_ch.
+    pub bias: AlignedVec<f32>,
+    /// Number of input channels.
+    pub in_ch: usize,
+    /// Number of output channels.
+    pub out_ch: usize,
 }
 
 impl ConvNetModel {
@@ -45,10 +63,13 @@ impl ConvNetModel {
 
     /// Returns the number of output channels produced by the model.
     pub fn out_channels(&self) -> usize {
-        self.post_stack_head
-            .as_ref()
-            .map(|h| h.out_channels())
-            .unwrap_or_else(|| self.blocks.last().map(|b| b.conv.out_ch).unwrap_or(1))
+        if let Some(ref head) = self.post_stack_head {
+            head.out_channels()
+        } else if let Some(ref linear) = self.linear_head {
+            linear.out_ch
+        } else {
+            self.blocks.last().map(|b| b.conv.out_ch).unwrap_or(1)
+        }
     }
 
     /// Resolves the full forward pass and produces waveform samples in zero allocation (DSP).
@@ -135,6 +156,26 @@ impl ConvNetModel {
                 unsafe {
                     M::apply_gain(out_slice, self.head_scale);
                 }
+            } else if let Some(ref linear) = self.linear_head {
+                let lh_out_ch = linear.out_ch;
+                let out_start = pos * out_ch;
+                let out_slice = &mut output[out_start..out_start + num_frames * lh_out_ch];
+                out_slice.fill(linear.bias[0]);
+                for f in 0..num_frames {
+                    let src = &last_slice[f * linear.in_ch..(f + 1) * linear.in_ch];
+                    let dst = &mut out_slice[f * lh_out_ch..(f + 1) * lh_out_ch];
+                    for (o, dst_val) in dst.iter_mut().enumerate().take(lh_out_ch) {
+                        let mut acc = linear.bias[o];
+                        let row_start = o * linear.in_ch;
+                        for (i, &src_val) in src.iter().enumerate().take(linear.in_ch) {
+                            acc += src_val * linear.weight[row_start + i];
+                        }
+                        *dst_val = acc;
+                    }
+                }
+                unsafe {
+                    M::apply_gain(out_slice, self.head_scale);
+                }
             } else {
                 let out_start = pos * out_ch;
                 let out_slice = &mut output[out_start..out_start + num_frames * out_ch];
@@ -175,6 +216,7 @@ impl ConvNetModel {
         if let Some(ref mut head_proc) = self.post_stack_head {
             head_proc.prewarm();
         }
+        // Linear head has no state — no prewarm needed.
     }
 }
 

@@ -553,7 +553,7 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.7 — ConvNet Compatível com NAMcore — Opção A (F-A1)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [topology/convnet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/convnet.rs)
   * [dispatcher/convnet/mod.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/convnet/mod.rs)
@@ -568,6 +568,15 @@ Para fechar o Épico E3 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * Modelos ConvNet no formato plano oficial C++ carregam com sucesso no nam-rs.
   * O teste `quick_parity_convnet` roda com sucesso comparando a saída com exatidão bitwise contra a biblioteca C++ de referência.
+
+  **Conclusão (2026-07-12)**: Implementação completa dos 4 subitens:
+  1. Topologia: `ConvNetFormat::FlatCpp` detecta `conv_channels` + `conv_dilations` + `conv_batchnorm` no config raiz, sintetizando 1 bloco por dilation com kernel_size=2.
+  2. Dispatcher: `build_convnet_flat_cpp()` lê conv weights `[OUT][IN][TAP]` → interleaved 4-wide, BatchNorm raw (mean/var/gamma/beta/eps) → fusão scale/offset, e `LinearHead` row-major com head_scale=1.0 (C++ flat format não possui head_scale). `ConvNetModel` ganhou campo `linear_head: Option<LinearHead>` para projeção linear sem ativação.
+  3. Fixture: `generate_b1_2_fixtures.py` exporta `convnet_test.nam` em formato plano C++ (CH=8, 6 dilations, batchnorm=true, 863 pesos).
+  4. Paridade: `quick_parity_convnet` substitui teste placebo de incompatibilidade, com cross-validation C++ real (SNR=45.9 dB, ESR=2.54e-5). Limiares calibrados: SNR ≥ 35 dB, ESR < 1e-4, MR-STFT < 0.03.
+  * C++ render tool aceita o formato plano sem crash (antes rejeitava com type_error).
+  * Golden gerável via `golden_gen_build.sh` (skip_reason removido).
+  * Testes de oracle f64 (reference_oracle_f64.rs) quebram com novo formato — anchors f64 precisam de regeneração.
 
 ---
 

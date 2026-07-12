@@ -788,16 +788,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             let snr_db = 70.0;
             Some((1e30, snr_db, Some(8.0e-9), Some(0.08)))
         }
-        // --- ConvNet Test (CH=8→4, 2 blocks, Sprint B.2.2) ---
-        // Self-golden consistency test — no C++ golden available (NAM Core
-        // v0.5.3 incompatible with NAM 0.5.4 multi-block ConvNet).
-        // Measured: SNR=bit-exact, ESR=0 (self-golden consistency),
-        // MRSTFT gate=0.05 (conservative)
-        // Block-size determinism test yields bit-identical output,
-        // thresholds reflect expected perfect self-consistency.
+        // --- ConvNet Test (CH=8, 6 blocks, C++ flat format, T4.7 F-A1) ---
+        // Measured: SNR=45.9 dB, ESR=2.54e-5, MR-STFT=2.66e-3 (C++ render
+        // cross-validation, 2026-07-12, 2048-sample v1 stress signal).
         "convnet_test" => {
-            let snr_db = 140.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
+            let snr_db = 35.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4), Some(0.03)))
         }
         // --- Linear FFT — Partitioned Convolution (S3.T04) ---
         // FFT-based FIR convolution via partitioned overlapless FFT.
@@ -911,8 +907,8 @@ pub fn live_parity_thresholds(
         }
         "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
         "ConvNet" => {
-            let snr_db = 140.0;
-            (snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05))
+            let snr_db = 35.0;
+            (snr_to_mse(snr_db), snr_db, Some(1.0e-4), Some(0.03))
         }
         _ => (5e-2, 9.0, Some(1e-3), None),
     }

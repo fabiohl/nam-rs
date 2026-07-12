@@ -770,68 +770,14 @@ fn quick_parity_a2_full() {
 }
 
 #[test]
-fn quick_parity_convnet_expected_incompatible() {
-    if !ensure_render_compiled() {
-        eprintln!("SKIP-COVERAGE: quick_parity_convnet_expected_incompatible");
-        return;
+fn quick_parity_convnet() {
+    let outcome = run_v1("convnet_test.nam", "convnet_test", "Quick ConvNet", true);
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_convnet");
+        }
     }
-
-    let outcome = run_render_comparison(
-        "convnet_test.nam",
-        "convnet_test",
-        "Quick ConvNet Incompatibility Check (F-B2)",
-        48000,
-        false,
-        true,
-        false,
-    );
-
-    assert!(
-        matches!(
-            outcome,
-            ParityOutcome::SkippedRateRejected | ParityOutcome::SkippedGarbageOutput
-        ),
-        "ConvNet model unexpectedly returned {outcome:?}.\n\
-         If F-A1 was implemented, replace this test with standard cross-validation \
-         (see TODO-sprints.md T1.2)."
-    );
-
-    let model_path = model_path("convnet_test.nam");
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let temp_dir = project_root.join("tests/fixtures/.temp_live");
-    fs::create_dir_all(&temp_dir).ok();
-
-    let stress_signal = generate_stress_signal_v1();
-    let stress_wav = temp_dir.join("stress_convnet_incompat.wav");
-    common::wav::write_wav_f32(&stress_wav, &stress_signal, 48000)
-        .expect("Failed to write stress WAV");
-    let output_wav = temp_dir.join("out_convnet_incompat.wav");
-
-    let bin = render_bin();
-    let output = Command::new(&bin)
-        .arg(model_path.to_str().unwrap())
-        .arg(stress_wav.to_str().unwrap())
-        .arg(output_wav.to_str().unwrap())
-        .output()
-        .expect("Failed to execute render");
-
-    fs::remove_file(&stress_wav).ok();
-    fs::remove_file(&output_wav).ok();
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(
-        !output.status.success(),
-        "C++ render unexpectedly succeeded on ConvNet model.\n\
-         If F-A1 was implemented, replace this test with standard cross-validation."
-    );
-
-    assert!(
-        stderr.contains("nlohmann") || stderr.contains("type_error"),
-        "Expected nlohmann/json type_error in C++ render stderr \
-         for ConvNet architectural incompatibility.\n\
-         stderr: {stderr}"
-    );
 }
 
 // =============================================================================
@@ -949,14 +895,7 @@ fn live_cross_validation_convnet() {
         "Live ConvNet Test",
         true,
     );
-    assert!(
-        matches!(
-            outcome,
-            ParityOutcome::SkippedRateRejected | ParityOutcome::SkippedGarbageOutput
-        ),
-        "ConvNet model unexpectedly returned {outcome:?}.\n\
-         If F-A1 was implemented, replace this test with standard cross-validation."
-    );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]

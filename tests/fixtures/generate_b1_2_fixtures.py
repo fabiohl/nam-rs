@@ -32,69 +32,84 @@ def gen_weights(n: int, rng: random.Random, scale: float) -> List[float]:
 
 
 # =============================================================================
-# 1. ConvNet
+# 1. ConvNet — C++ flat format (T4.7 F-A1)
 #
-# NOTE: C++ golden generation NOT currently possible for ConvNet.
-# The NAM 0.5.4 ConvNet uses a multi-block architecture with per-block channels,
-# kernel_size>2, and a `layers`-based JSON config. The C++ render tool (NAM Core
-# v0.5.3) implements a different ConvNet: single `channels` shared across blocks,
-# flat `dilations`, fixed kernel_size=2, and `batchnorm` flag. These are
-# architecturally incompatible — the C++ render will crash with a JSON type_error.
-#
-# Golden vectors for ConvNet must be generated through a NAM 0.5.4+ render pipeline
-# or via a future C++ Core upgrade. For now, this fixture serves Rust-only validation.
+# Compatible with NAM Core v0.5.3+ render tool.
+# Format: scalar `channels`, global `dilations`, `batchnorm` bool,
+# fixed kernel_size=2. One block per dilation.
 # =============================================================================
 
 CONVNET_SEED = 77
-CONVNET_CHANNELS = [8, 4]
-CONVNET_KERNEL = 3
-CONVNET_DILATIONS = [[1, 2, 4], [1, 2, 4]]
+CONVNET_CH = 8
+CONVNET_DILATIONS = [1, 2, 4, 8, 16, 32]
 CONVNET_ACTIVATION = "Tanh"
-CONVNET_HEAD_SCALE = 0.02
+CONVNET_BATCHNORM = True
+CONVNET_HEAD_OUT_CH = 1
 
-# Weight scales per block (conv_w, conv_b, bn_scale, bn_offset)
 CONVNET_SCALES = {
-    8: {"conv_w": 0.20, "conv_b": 0.04, "bn_s": 0.98, "bn_o": 0.02},
-    4: {"conv_w": 0.25, "conv_b": 0.05, "bn_s": 0.98, "bn_o": 0.02},
+    8: {"conv_w": 0.20, "bn_g": 0.98, "bn_b": 0.02},
 }
 
-
-CONVNET_HEAD_OUT_CH = 1
-CONVNET_HEAD_KERNEL = 1
+# Weight layout per C++ convnet.cpp ConvNetBlock::set_weights_ + ConvNet::_Head:
+#
+# For each dilation d:
+#   conv weights: out_ch * in_ch * 2  (tap-interleaved per (out,in) pair)
+#   if batchnorm: running_mean, running_var, gamma, beta, eps
+#   else: conv_bias
+# Head: out_ch * in_ch (row-major) + out_ch bias
 
 
 def count_convnet_weights() -> int:
     count = 0
-    for i, ch in enumerate(CONVNET_CHANNELS):
-        in_ch = 1 if i == 0 else CONVNET_CHANNELS[i - 1]
-        count += ch * in_ch * CONVNET_KERNEL  # conv_w
-        count += ch  # conv_b
-        count += ch  # bn_scale
-        count += ch  # bn_offset
-    # post-stack head (reduces to 1 channel, no bias)
-    last_ch = CONVNET_CHANNELS[-1]
-    count += last_ch * CONVNET_HEAD_OUT_CH * CONVNET_HEAD_KERNEL  # head.conv_w
-    count += 1  # head_scale
+    ch = CONVNET_CH
+    for i, _d in enumerate(CONVNET_DILATIONS):
+        in_ch = 1 if i == 0 else ch
+        count += ch * in_ch * 2  # conv_w (kernel=2, interleaved taps)
+        if CONVNET_BATCHNORM:
+            count += ch * 4 + 1  # mean, var, gamma, beta, eps
+        else:
+            count += ch  # conv_b
+    count += CONVNET_HEAD_OUT_CH * ch  # head.weight
+    count += CONVNET_HEAD_OUT_CH  # head.bias
     return count
 
 
 def generate_convnet_weights(rng: random.Random) -> List[float]:
     weights: List[float] = []
-    for i, ch in enumerate(CONVNET_CHANNELS):
-        in_ch = 1 if i == 0 else CONVNET_CHANNELS[i - 1]
-        sc = CONVNET_SCALES[ch]
-        # Conv1D weights: [OUT][KERNEL][IN] raw row-major (original layout)
-        weights.extend(gen_weights(ch * in_ch * CONVNET_KERNEL, rng, sc["conv_w"]))
-        # Conv1D bias
-        weights.extend(gen_weights(ch, rng, sc["conv_b"]))
-        # BatchNorm scale (near 1.0, low variance)
-        weights.extend([max(0.9, min(1.1, rng.uniform(0.97, 1.03))) for _ in range(ch)])
-        # BatchNorm offset (near 0.0)
-        weights.extend(gen_weights(ch, rng, sc["bn_o"]))
-    # post-stack head: Conv1D(in_ch=4, out_ch=1, kernel=1, bias=false, activation=Tanh)
-    last_ch = CONVNET_CHANNELS[-1]
-    weights.extend(gen_weights(last_ch * CONVNET_HEAD_OUT_CH * CONVNET_HEAD_KERNEL, rng, 0.3))
-    weights.append(CONVNET_HEAD_SCALE)
+    ch = CONVNET_CH
+    sc = CONVNET_SCALES[ch]
+
+    for i, _d in enumerate(CONVNET_DILATIONS):
+        in_ch = 1 if i == 0 else ch
+        # Conv1D weights: kernel=2 taps interleaved per (out, in) pair
+        # C++ order: for out in 0..out_ch, for in in 0..in_ch: tap0, tap1
+        for out_i in range(ch):
+            for in_j in range(in_ch):
+                weights.append(rng.uniform(-1.0, 1.0) * sc["conv_w"])  # tap 0
+                weights.append(rng.uniform(-1.0, 1.0) * sc["conv_w"])  # tap 1
+
+        if CONVNET_BATCHNORM:
+            # running_mean: near 0
+            weights.extend(gen_weights(ch, rng, sc["bn_b"]))
+            # running_var: near 1.0 (small positive variance)
+            weights.extend([max(0.5, min(1.5, rng.uniform(0.98, 1.02))) for _ in range(ch)])
+            # gamma: near 1.0
+            weights.extend([max(0.9, min(1.1, rng.uniform(0.97, 1.03))) for _ in range(ch)])
+            # beta: near 0
+            weights.extend(gen_weights(ch, rng, sc["bn_b"]))
+            # eps: small positive constant
+            weights.append(1e-5)
+        else:
+            weights.extend(gen_weights(ch, rng, 0.04))  # conv_b
+
+    # Head: out_ch × in_ch, row-major order
+    last_ch = ch
+    for out_i in range(CONVNET_HEAD_OUT_CH):
+        for in_j in range(last_ch):
+            weights.append(rng.uniform(-1.0, 1.0) * 0.3)
+    for out_i in range(CONVNET_HEAD_OUT_CH):
+        weights.append(rng.uniform(-0.1, 0.1))
+
     return weights
 
 
@@ -103,27 +118,14 @@ def build_convnet_nam(weights: List[float]) -> dict:
         "version": "0.5.4",
         "architecture": "ConvNet",
         "config": {
-            "layers": [
-                {
-                    "channels": CONVNET_CHANNELS[i],
-                    "kernel_size": CONVNET_KERNEL,
-                    "dilations": CONVNET_DILATIONS[i],
-                    "activation": CONVNET_ACTIVATION,
-                }
-                for i in range(len(CONVNET_CHANNELS))
-            ],
-            "head": {
-                "channels": CONVNET_CHANNELS[-1],
-                "out_channels": CONVNET_HEAD_OUT_CH,
-                "kernel_size": CONVNET_HEAD_KERNEL,
-                "bias": False,
-                "activation": CONVNET_ACTIVATION,
-            },
-            "head_scale": CONVNET_HEAD_SCALE,
+            "channels": CONVNET_CH,
+            "dilations": CONVNET_DILATIONS,
+            "batchnorm": CONVNET_BATCHNORM,
+            "activation": CONVNET_ACTIVATION,
         },
         "weights": weights,
         "metadata": {
-            "name": "ConvNet Test Fixture (2 blocks, CH=8→4, head 4→1)",
+            "name": f"ConvNet Test Fixture (CH={CONVNET_CH}, {len(CONVNET_DILATIONS)} blocks, C++ flat)",
             "modeled_by": "tests/fixtures/generate_b1_2_fixtures.py",
         },
         "sample_rate": 48000,
