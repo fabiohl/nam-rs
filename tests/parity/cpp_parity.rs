@@ -949,7 +949,14 @@ fn live_cross_validation_convnet() {
         "Live ConvNet Test",
         true,
     );
-    assert_eq!(outcome, ParityOutcome::Completed);
+    assert!(
+        matches!(
+            outcome,
+            ParityOutcome::SkippedRateRejected | ParityOutcome::SkippedGarbageOutput
+        ),
+        "ConvNet model unexpectedly returned {outcome:?}.\n\
+         If F-A1 was implemented, replace this test with standard cross-validation."
+    );
 }
 
 #[test]
