@@ -472,7 +472,7 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.2 — Suporte a sample_rate de Sentinela -1.0 no Loader (F-A2)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [validation.rs](file:///home/fabio/nam-rs/src/loader/nam_json/validation.rs)
   * [validation_test.rs](file:///home/fabio/nam-rs/src/loader/nam_json/validation_test.rs)

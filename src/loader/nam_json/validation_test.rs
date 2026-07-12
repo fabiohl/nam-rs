@@ -308,27 +308,31 @@ fn test_sample_rate_valid_is_ok() {
 }
 
 #[test]
-fn test_sample_rate_zero_rejected() {
+fn test_sample_rate_zero_is_none_sentinel() {
     let json = r#"{"sample_rate": 0.0}"#;
-    let result: Result<SampleRateWrapper, _> = serde_json::from_str(json);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
-        "error should mention sample rate: {err_msg}"
-    );
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
 }
 
 #[test]
-fn test_sample_rate_negative_rejected() {
+fn test_sample_rate_negative_is_none_sentinel() {
     let json = r#"{"sample_rate": -44100.0}"#;
-    let result: Result<SampleRateWrapper, _> = serde_json::from_str(json);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("sample rate") || err_msg.contains("InvalidSampleRate"),
-        "error should mention sample rate: {err_msg}"
-    );
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
+}
+
+#[test]
+fn test_sample_rate_exact_cpp_sentinel_is_none() {
+    let json = r#"{"sample_rate": -1.0}"#;
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
+}
+
+#[test]
+fn test_sample_rate_very_negative_is_none_sentinel() {
+    let json = r#"{"sample_rate": -99999.0}"#;
+    let parsed: SampleRateWrapper = serde_json::from_str(json).unwrap();
+    assert!(parsed.sample_rate.is_none());
 }
 
 struct MockDeserializer {

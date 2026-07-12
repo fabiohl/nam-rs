@@ -427,7 +427,11 @@ impl<'de> serde::de::Visitor<'de> for SubmodelsOptionVisitor {
     }
 }
 
-/// Custom deserializer for `sample_rate: Option<f32>` that ensures it is finite and > 0.0.
+/// Custom deserializer for `sample_rate: Option<f32>`.
+///
+/// RFC 7.1: `sample_rate = -1.0` is the NAMcore C++ sentinel for "unknown"
+/// (see `get_dsp.cpp`). All finite ≤ 0.0 values are treated as "unknown" (`None`)
+/// — matching C++ lenience. NaN and ±Inf are rejected with `InvalidSampleRate`.
 pub(crate) fn deserialize_sample_rate<'de, D>(deserializer: D) -> Result<Option<f32>, D::Error>
 where
     D: Deserializer<'de>,
@@ -467,10 +471,7 @@ where
                 }));
             }
             if val <= 0.0 {
-                return Err(serde::de::Error::custom(JsonError::InvalidSampleRate {
-                    value: val,
-                    reason: "must be > 0.0",
-                }));
+                return Ok(None);
             }
             Ok(Some(val))
         }
