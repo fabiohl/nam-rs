@@ -107,7 +107,7 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
 
 #### Tarefa T1.5 — Documentação do Piso f64 das Âncoras (F-B8)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [perceptual_validation.md](file:///home/fabio/nam-rs/docs/perceptual_validation.md)
 * **Descrição**:
@@ -116,6 +116,8 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
   3. Isso evitará suspeitas de clamps artificiais por futuros desenvolvedores ou auditores.
 * **Critério de Aceitação (DoD)**:
   * Documentação atualizada e clara na seção de validação perceptual.
+
+  **Conclusão (2026-07-12)**: Subseção "NumPy Anchor f64 Residual Floor" adicionada na seção do f64 Reference Oracle em `docs/perceptual_validation.md`, documentando o piso f64 teórico de ~5e-16 para feed-forward e ~3.49e-30 para LSTM, esclarecendo que `compute_esr_f64` não possui clamp/floor artificial.
 
 ---
 
