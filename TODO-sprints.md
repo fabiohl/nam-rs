@@ -161,7 +161,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.1 — Correção de _cargo_meas e Validação de Argumentos (F-C1)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
 * **Descrição**:
@@ -182,6 +182,8 @@ Para fechar o Épico E1 em definitivo:
   * Nenhuma string-surgery de flags no shell.
   * Validador impede flags malformados com hífen simples.
   * Execução serializada de `isa_parity` comprovada via ordem das saídas com `--nocapture`.
+
+  **Conclusão (2026-07-12)**: Assinatura de `_cargo_meas` refatorada com argumentos posicionais explícitos (`targets`, `filters`, `libtest_args`). Validador regex `^-[^-]` adicionado para rejeitar flags com hífen simples. As 4 chamadas atualizadas para a nova API. `isa_parity` confirmado com `--test-threads=1 --nocapture` executando serialmente. Nenhum `eval` ou string-surgery remanescente.
 
 ---
 

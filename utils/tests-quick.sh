@@ -242,27 +242,36 @@ declare -A MEASUREMENT_ENTRY_MAP=(
 # Helper: builds cargo test args for measurement tests.
 # Uses MEASUREMENT_ENTRY_MAP to find the right entry-point in Sprint 3 mode.
 _cargo_meas() {
-    local extra_args="$1"
-    shift
-    local -a tests=("$@")
+    local targets="$1"
+    local filters="$2"
+    local -a libtest_args=("${@:3}")
+
+    for arg in "${libtest_args[@]}"; do
+        if [[ "$arg" =~ ^-[^-] ]]; then
+            echo -e "${RED}${BOLD}❌ Erro: argumento libtest malformado '$arg' (use -- duplo, não - simples)${NC}" >&2
+            exit 1
+        fi
+    done
+
+    local -a tests=($targets)
     if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
         local -A _eps=()
         local _filters=""
         for _t in "${tests[@]}"; do
             local _ep="${MEASUREMENT_ENTRY_MAP[$_t]:-models}"
             _eps[$_ep]=1
-            _filters="$_filters ${_t}::"
+            _filters="${_filters}${_t}:: "
         done
+        if [ -n "$filters" ]; then
+            _filters="${_filters}${filters} "
+        fi
         local _ep_flags=""
         for _ep in "${!_eps[@]}"; do _ep_flags="$_ep_flags --test $_ep"; done
-        # Strip the leading '-- ' from extra_args so we don't pass a second '--'
-        # to libtest, which would cause it to stop parsing options like --ignored.
-        local libtest_args="${extra_args#-- }"
-        cargo test --release $_ep_flags -- $_filters $libtest_args
+        cargo test --release $_ep_flags -- $_filters "${libtest_args[@]}"
     else
         local _legacy=""
         for _t in "${tests[@]}"; do _legacy="$_legacy --test $_t"; done
-        eval "cargo test --release $_legacy $extra_args"
+        cargo test --release $_legacy -- $filters "${libtest_args[@]}"
     fi
 }
 
@@ -333,15 +342,17 @@ CPP_PARITY_SKIPPED=false
 if [ -f "tests/fixtures/golden_wavenet_standard.bin" ] && [ -f "tests/fixtures/golden_wavenet_standard_v2_48000.bin" ]; then
     GOLDEN_RAN=true
     echo -e "  ${BLUE}→ f64 Oracle + Spectral + Linear FFT + Golden v1 + ISA parity (release, 1 compilação)...${NC}"
-    _cargo_meas "-- --test-threads=1 --nocapture" \
-        reference_oracle_f64 spectral_fidelity linear_fft_test golden_vectors isa_parity \
+    _cargo_meas "reference_oracle_f64 spectral_fidelity linear_fft_test golden_vectors isa_parity" \
+        "" \
+        --test-threads=1 --nocapture \
         || MEASUREMENT_STATUS=1
 else
     echo -e "  ${YELLOW}ⓘ Golden vectors (v1/v2) não encontrados — golden_vectors + isa_parity pulados.${NC}"
     echo -e "  ${YELLOW}  Execute './tests/fixtures/golden_gen_build.sh' para gerá-los.${NC}"
     echo -e "  ${BLUE}→ f64 Oracle + Spectral Fidelity + Linear FFT (release, 1 compilação)...${NC}"
-    _cargo_meas "-- --nocapture" \
-        reference_oracle_f64 spectral_fidelity linear_fft_test \
+    _cargo_meas "reference_oracle_f64 spectral_fidelity linear_fft_test" \
+        "" \
+        --nocapture \
         || MEASUREMENT_STATUS=1
 fi
 
@@ -401,7 +412,9 @@ if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
         CPP_PARITY_SKIPPED=true
     else
         echo -e "  ${BLUE}→ C++ Parity (quick_parity: LSTM + WaveNet CH16 + A2, live NAMCore)...${NC}"
-        _cargo_meas "-- quick_parity --nocapture" cpp_parity || MEASUREMENT_STATUS=1
+        _cargo_meas "cpp_parity" \
+            "quick_parity" \
+            --nocapture || MEASUREMENT_STATUS=1
     fi
 else
     echo -e "  ${YELLOW}ⓘ NeuralAmpModelerCore não encontrado. Execute './utils/mod-update.sh'.${NC}"
@@ -420,7 +433,9 @@ fi
 # (proptest_math — Tier 3: consistência/locator — já roda na Fase 1 e no long.)
 phase "Parser fuzzing ágil (release)..."
 PROPTEST_CASES="${NAM_QUICK_PROPTEST_CASES:-1000}" \
-    _cargo_meas "-- --ignored --nocapture" proptest_parsers
+    _cargo_meas "proptest_parsers" \
+        "" \
+        --ignored --nocapture
 
 # ── Resumo ──────────────────────────────────────────────────────────────────
 if [ "$GOLDEN_RAN" = true ] && [ "$CPP_PARITY_SKIPPED" = false ]; then
