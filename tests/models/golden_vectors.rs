@@ -1947,8 +1947,8 @@ fn test_golden_vectors_convnet_test() {
 
     for (&a, &b) in output_a.iter().zip(output_b.iter()) {
         assert!(
-            (a - b).abs() < 1e-6,
-            "ConvNet output determinism violated: max diff = {:e}",
+            (a - b).abs() == 0.0,
+            "ConvNet output determinism violated: diff = {:e}",
             (a - b).abs()
         );
     }

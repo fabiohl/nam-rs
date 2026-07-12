@@ -418,9 +418,16 @@ run_phase() {
     # Capture sub-timings for this phase
     PHASE_SUB_TIMINGS[$PHASE_COUNT]="$(extract_sub_timings)"
 
-    if [ $status -eq 0 ]; then
+    if [ $status -eq 77 ]; then
+        echo -e "${YELLOW}⚠ SKIPPED (${duration}s)${NC}"
+        PHASE_STATUS[$PHASE_COUNT]="SKIPPED"
+    elif [ $status -eq 0 ]; then
         echo -e "${GREEN}✓ Sucesso (${duration}s)${NC}"
         PHASE_STATUS[$PHASE_COUNT]="PASSED"
+
+        if [ "$duration" -lt 1 ]; then
+            echo -e "${YELLOW}${BOLD}⚠ AVISO: Fase '${name}' completou com PASSED em < 1s — fase possivelmente vazia/falso-verde.${NC}"
+        fi
     else
         echo -e "${RED}❌ Falha (${duration}s) - Status: $status${NC}"
         PHASE_STATUS[$PHASE_COUNT]="FAILED"
@@ -459,7 +466,7 @@ run_pipewire_phase() {
         cargo test --release --no-fail-fast --features standalone $(_test_flag pw_integration_test) -- --ignored --nocapture
     else
         echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
-        return 0
+        return 77
     fi
 }
 run_phase "PipeWire Integration Test" "run_pipewire_phase" "phase2-pipewire.log" || true
@@ -663,6 +670,8 @@ for ((i=0; i<PHASE_COUNT; i++)); do
 
     if [ "$status" = "PASSED" ]; then
         status_colored="${GREEN}${status}${NC}"
+    elif [ "$status" = "SKIPPED" ]; then
+        status_colored="${YELLOW}${status}${NC}"
     else
         status_colored="${RED}${status}${NC}"
         ANY_FAILED=1

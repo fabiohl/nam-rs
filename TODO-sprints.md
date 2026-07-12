@@ -75,7 +75,7 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
 
 #### Tarefa T1.3 — Status SKIPPED e Alertas no tests-long.sh (F-C6)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)
 * **Descrição**:
@@ -91,7 +91,7 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
 
 #### Tarefa T1.4 — Endurecimento de Determinismo do ConvNet (F-B7)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs)
 * **Descrição**:
@@ -100,6 +100,8 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
   3. Investigar imediatamente qualquer divergência caso ocorra falha (eliminando potenciais fontes de acumuladores indeterministas na implementação da rede).
 * **Critério de Aceitação (DoD)**:
   * Execução de `cargo test --test golden_vectors` passa com sucesso em modo release com tolerância zero.
+
+  **Conclusão (2026-07-12)**: Assertiva alterada de `abs < 1e-6` para `abs == 0.0`. Teste `test_golden_vectors_convnet_test` passa em modo release sem divergências bitwise. O ConvNet já é deterministicamente exato; a tolerância anterior era excessivamente conservadora.
 
 ---
 
