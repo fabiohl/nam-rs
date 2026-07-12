@@ -273,13 +273,16 @@ phase "Running render for each model (v1)..."
 
 # Canonical model↔golden catalog — single source of truth for both v1 and v2 loops.
 #
-# Entry format: nam_file : golden_name : label : v2_scope[:skip_srs]
+# Entry format: nam_file : golden_name : label : v2_scope[:skip_srs[:skip_reason]]
 #   v2_scope ∈ {all, 48k_only, none}
 #     all      — v2 multi-SR for all 5 sample rates (respecting skip_srs)
 #     48k_only — v2 only at 48000 Hz (model declares expected_sample_rate=48000)
 #     none     — no v2 golden generation for this model
 #   skip_srs (optional, comma-separated) — sample rates NOT to generate in v2,
 #   kept in sync with test SR sets in tests/golden_vectors.rs
+#   skip_reason (optional) — if non-empty, skip model entirely in both v1 and v2
+#   loops with an explanatory message. Also suppresses # EXPECTED: lines in the
+#   freshness manifest (F-C9, Tarefa T3.2).
 #
 # Rationale for v2_scope=none (A2 dynamic/FiLM models):
 #   The 4 dynamic/FiLM models (a2_dynamic_gated_ch8, a2_dynamic_blended_ch3,
@@ -318,13 +321,13 @@ CATALOG=(
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):48k_only"
     "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3):48k_only"
     "a2_example.nam:golden_a2_example:SlimmableContainer A2 Example (CH=3→6):none"
-    "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100:all"
-    "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod:all"
-    "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45:all"
-    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4):all"
-    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7:all"
-    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks):all"
-    "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1):all"
+    "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100:48k_only"
+    "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod:48k_only"
+    "SLAMMIN_MARSHALL_J45_VN9_TREBLEBOOSTER_P4_C.nam:golden_wavenet_slammin_marshall:SLAMMIN MARSHALL J45:48k_only"
+    "wavenet_dyn_free.nam:golden_wavenet_dyn_free:WaveNetDyn Free-Shape (CH=7/4):48k_only"
+    "lstm_dyn_test.nam:golden_lstm_dyn_test:LSTM-Dyn 1×7:48k_only"
+    "convnet_test.nam:golden_convnet_test:ConvNet Test (CH=8→4, 2 blocks):all::incompatible"
+    "wavenet_a2_max.nam:golden_wavenet_a2_max:WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1):48k_only"
     "a2_dynamic_gated_ch8.nam:golden_a2_dynamic_gated_ch8:A2 Dynamic Gated (CH=8):none"
     "a2_dynamic_blended_ch3.nam:golden_a2_dynamic_blended_ch3:A2 Dynamic Blended (CH=3):none"
     "wavenet_a2_film_lite.nam:golden_wavenet_a2_film_lite:A2-FiLM Lite (CH=3):none"
@@ -336,17 +339,22 @@ CATALOG=(
     "linear_fft_rf4096.nam:golden_linear_fft_rf4096:Linear FFT RF=4096:none"
     "linear_fft_rf8192.nam:golden_linear_fft_rf8192:Linear FFT RF=8192:none"
 )
-# ^ "convnet_test" above is expected SKIP — C++ $NAM_CORE_TAG ConvNet is architecturally
-#   incompatible with NAM 0.5.4 multi-block ConvNet. Golden not producible via current render.
+# ↑ See skip_reason field above — models with skip_reason set are skipped cleanly
+#   in both v1 and v2 loops (F-C9, Tarefa T3.2).
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"
 mkdir -p "$TEMP_DIR"
 
 for entry in "${CATALOG[@]}"; do
-    IFS=':' read -r nam_file golden_name label v2_scope skip_srs <<< "$entry"
+    IFS=':' read -r nam_file golden_name label v2_scope skip_srs skip_reason <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
     OUTPUT_WAV="$TEMP_DIR/${golden_name}.wav"
     GOLDEN_BIN="$FIXTURES_DIR/${golden_name}.bin"
+
+    if [ -n "$skip_reason" ]; then
+        echo "  SKIP: $label ($nam_file) — skip_reason=$skip_reason"
+        continue
+    fi
 
     if [ ! -f "$MODEL_PATH" ]; then
         MODEL_PATH="$FIXTURES_DIR/models-nondist/$nam_file"
@@ -358,11 +366,6 @@ for entry in "${CATALOG[@]}"; do
     fi
 
     echo "  Processing $label ($nam_file)..."
-
-    if [ "$nam_file" = "convnet_test.nam" ]; then
-        echo "  SKIP: $label ($nam_file) — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
-        continue
-    fi
 
     TEMP_RENDER_LOG="$TEMP_DIR/${golden_name}_v1_render.log"
     render_status=0
@@ -401,7 +404,12 @@ phase "Generating v2 multi-SR golden vectors..."
 # v2_scope="48k_only" tag prevents those rejections by only running 48 kHz.
 
 for entry in "${CATALOG[@]}"; do
-    IFS=':' read -r nam_file golden_name label v2_scope skip_srs <<< "$entry"
+    IFS=':' read -r nam_file golden_name label v2_scope skip_srs skip_reason <<< "$entry"
+
+    if [ -n "$skip_reason" ]; then
+        echo "  SKIP v2: $label ($nam_file) — skip_reason=$skip_reason"
+        continue
+    fi
 
     if [ "$v2_scope" = "none" ]; then
         echo "  SKIP v2: $label ($nam_file) — v2_scope=none"
@@ -414,11 +422,6 @@ for entry in "${CATALOG[@]}"; do
     fi
     if [ ! -f "$MODEL_PATH" ]; then
         echo "  SKIP v2: $nam_file not found at $MODELS_DIR or models-nondist"
-        continue
-    fi
-
-    if [ "$nam_file" = "convnet_test.nam" ]; then
-        echo "  SKIP v2: $label ($nam_file) — C++ $NAM_CORE_TAG ConvNet is architecturally incompatible (known)"
         continue
     fi
 
@@ -552,7 +555,7 @@ echo "# Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$MANIFEST"
 
 # ── v1 goldens ──
 for entry in "${CATALOG[@]}"; do
-    IFS=':' read -r nam_file golden_name label v2_scope skip_srs <<< "$entry"
+    IFS=':' read -r nam_file golden_name label v2_scope skip_srs skip_reason <<< "$entry"
     MODEL_PATH="$MODELS_DIR/$nam_file"
     GOLDEN_PATH="$FIXTURES_DIR/${golden_name}.bin"
     if [ -f "$MODEL_PATH" ] && [ -f "$GOLDEN_PATH" ]; then
@@ -564,7 +567,7 @@ done
 
 # ── v2 multi-SR goldens ──
 for entry in "${CATALOG[@]}"; do
-    IFS=':' read -r nam_file golden_name label v2_scope skip_srs <<< "$entry"
+    IFS=':' read -r nam_file golden_name label v2_scope skip_srs skip_reason <<< "$entry"
     if [ "$v2_scope" = "none" ]; then
         continue
     fi
@@ -586,6 +589,41 @@ for entry in "${CATALOG[@]}"; do
             GOLDEN_SHA=$(sha256sum "$v2_golden" | cut -d' ' -f1)
             echo "$MODEL_SHA $GOLDEN_SHA $nam_file ${golden_name}_v2_${sr}.bin" >> "$MANIFEST"
         fi
+    done
+done
+
+# ── EXPECTED golden files (Freshness Gate, F-C9 / Tarefa T3.2) ──
+# Every file listed below MUST exist on disk. The check_freshness() function
+# in utils/tests-quick.sh reads these lines and fails hard if any are missing.
+# Models with skip_reason set are intentionally excluded — they are known
+# incompatible, so no golden file is expected for them.
+echo "" >> "$MANIFEST"
+echo "# =============================================================================" >> "$MANIFEST"
+echo "# EXPECTED golden files — every entry listed here MUST exist on disk." >> "$MANIFEST"
+echo "# If a file is missing, run './tests/fixtures/golden_gen_build.sh' to regenerate." >> "$MANIFEST"
+echo "# =============================================================================" >> "$MANIFEST"
+
+for entry in "${CATALOG[@]}"; do
+    IFS=':' read -r nam_file golden_name label v2_scope skip_srs skip_reason <<< "$entry"
+    if [ -n "$skip_reason" ]; then
+        continue
+    fi
+    # v1 golden always expected
+    echo "# EXPECTED: ${golden_name}.bin" >> "$MANIFEST"
+
+    # v2 goldens
+    if [ "$v2_scope" = "none" ]; then
+        continue
+    fi
+    for sr_entry in "${V2_STRESS_WAVS[@]}"; do
+        IFS=':' read -r sr v2_wav <<< "$sr_entry"
+        if [ "$v2_scope" = "48k_only" ] && [ "$sr" -ne 48000 ]; then
+            continue
+        fi
+        if [ -n "$skip_srs" ] && [[ ",${skip_srs}," == *",${sr},"* ]]; then
+            continue
+        fi
+        echo "# EXPECTED: ${golden_name}_v2_${sr}.bin" >> "$MANIFEST"
     done
 done
 

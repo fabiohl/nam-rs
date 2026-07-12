@@ -379,7 +379,7 @@ Para fechar o Épico E2 em definitivo:
 
 #### Tarefa T3.2 — Governança Estrita no Freshness Gate (F-C9)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` — Concluído (2026-07-12). CATALOG refactored with skip_reason, manifest extended with # EXPECTED lines (69 total, 0 missing), check_freshness updated with missing-file detection.
 * **Arquivos Afetados**:
   * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
   * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)

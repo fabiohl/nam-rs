@@ -96,6 +96,7 @@ source "$(dirname "$0")/_lib.sh"
 check_freshness() {
     local MANIFEST="tests/fixtures/.golden_manifest.sha256"
     local MODELS_DIR="tests/fixtures/models"
+    local FIXTURES_DIR="tests/fixtures"
 
     if [ ! -f "$MANIFEST" ]; then
         echo -e "${RED}${BOLD}❌ Freshness manifest missing: $MANIFEST${NC}"
@@ -104,8 +105,24 @@ check_freshness() {
     fi
 
     local STALE_COUNT=0
+    local MISSING_COUNT=0
+
     while IFS= read -r line; do
-        [[ "$line" == \#* ]] && continue
+        # ── EXPECTED lines (Freshness Gate — F-C9 / Tarefa T3.2) ──
+        # Every file listed as EXPECTED MUST exist on disk. If the C++ render
+        # tool skipped a golden (e.g., SR mismatch), the CATALOG should be
+        # updated to match reality (e.g., change v2_scope from "all" to
+        # "48k_only" for models declaring expected_sample_rate=48000).
+        if [[ "$line" =~ ^#\ EXPECTED:\ (.+)$ ]]; then
+            local expected_file="${BASH_REMATCH[1]}"
+            if [ ! -f "$FIXTURES_DIR/$expected_file" ]; then
+                echo -e "  ${RED}▲ MISSING: $expected_file — expected golden file not found on disk${NC}"
+                MISSING_COUNT=$((MISSING_COUNT + 1))
+            fi
+            continue
+        fi
+
+        [[ "$line" =~ ^# ]] && continue
         [[ -z "$line" ]] && continue
         read -r expected_model_sha expected_golden_sha nam_file golden_file <<< "$line"
         local MODEL_PATH="$MODELS_DIR/$nam_file"
@@ -119,12 +136,18 @@ check_freshness() {
         fi
     done < "$MANIFEST"
 
+    if [ "$MISSING_COUNT" -gt 0 ]; then
+        echo -e "${RED}${BOLD}❌ Freshness gate FAILED: $MISSING_COUNT expected golden file(s) missing.${NC}"
+        echo -e "${RED}   Run './tests/fixtures/golden_gen_build.sh' to generate missing golden vectors.${NC}"
+        return 1
+    fi
+
     if [ "$STALE_COUNT" -gt 0 ]; then
         echo -e "${RED}${BOLD}❌ Freshness gate FAILED: $STALE_COUNT model(s) stale.${NC}"
         echo -e "${RED}   Run './tests/fixtures/golden_gen_build.sh' to regenerate goldens and manifest.${NC}"
         return 1
     fi
-    echo -e "  ${GREEN}✓ Freshness gate passed (all model hashes match manifest).${NC}"
+    echo -e "  ${GREEN}✓ Freshness gate passed (all model hashes match manifest, all expected goldens present).${NC}"
     return 0
 }
 
