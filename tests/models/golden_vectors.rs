@@ -2158,7 +2158,6 @@ fn test_mrstft_hard_gate_catches_regression() {
 }
 
 #[test]
-#[ignore = "Requires C++ golden binary — run golden_gen_build.sh to generate"]
 fn test_golden_vectors_wavenet_a2_film_input_mixin_pre() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden_wavenet_a2_film_input_mixin_pre.bin");

@@ -689,11 +689,13 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.498)))
         }
         // --- WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film only) ---
-        // Measured: SNR=XXX dB (pending C++ golden), ESR=XXX (pending),
-        // MR-STFT=XXX, gate=XXX
+        // Isolated input_mixin_pre_film (slot 2) with only one FiLM slot active,
+        // producing less divergence than multi-slot FiLM models (Lite/Full).
+        // Measured: SNR=134.4 dB, ESR=3.66e-14, MR-STFT=7.03e-6 (2026-07-12, float32 precision limit)
+        // Margin: SNR - 14.4 dB, ESR factor ~273x, MR-STFT factor ~14x
         "wavenet_a2_film_input_mixin_pre" => {
-            let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(1.0e-3)))
+            let snr_db = 120.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
         // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
         // DISABLED — §7.1 (dead threshold; retained for meta-test calibration

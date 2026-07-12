@@ -361,7 +361,7 @@ Para fechar o Épico E2 em definitivo:
 
 #### Tarefa T3.1 — Ativação e Calibração de wavenet_a2_film_input_mixin_pre (F-B3)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` — Concluído (2026-07-12). Golden gerado, teste ativado, thresholds calibrados.
 * **Arquivos Afetados**:
   * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
   * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
