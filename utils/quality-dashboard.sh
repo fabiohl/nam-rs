@@ -448,7 +448,7 @@ parse_oracle_f64() {
     local parsed="$PARSEDIR/oracle_f64_summary.parsed"
     LC_ALL=C awk '
     BEGIN { in_table = 0 }
-    /^=== ESR\(f32 vs f64 oracle\) Summary ===/ { in_table = 1; next }
+    /^=== ESR\(f32 vs f64 oracle\) Summary/ { in_table = 1; next }
     /^---/ && in_table { in_table = 2; next }
     # Stop table on empty line or test result line (starts with "test ")
     in_table == 2 && (/^$/ || /^test /) { in_table = 0; next }
