@@ -306,7 +306,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.8 — Target Dir Dedicado para Compilação do CLAP (F-C7)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh)
 * **Descrição**:
@@ -317,6 +317,8 @@ Para fechar o Épico E1 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * A compilação do CLAP não invalida o cache do compilador para as fases 6-7.
   * Tempo total de compilação e execução do Long Loop reduzido de forma significativa.
+
+  **Conclusão (2026-07-12)**: `run_clap_audit_phase` isolada em `target/clap-audit/` via `CARGO_TARGET_DIR`. `cargo clean --release` substituído por `rm -rf target/clap-audit/release` (limpeza cirúrgica). `RELEASE_CLAP_BIN` atualizado para `target/clap-audit/release/libnam_rs.so`. `unset CARGO_TARGET_DIR` ao final da fase restaura o diretório default `target/` para Fases 6-7, preservando o cache de compilação principal.
 
 ---
 

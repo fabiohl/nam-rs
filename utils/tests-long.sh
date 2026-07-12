@@ -553,19 +553,18 @@ run_phase "Resampler, Cabsim & A2 Heap-Audit" "run_heap_audit_phase" "phase4-hea
 # stress). tests-quick.sh only exercises the debug CLAP build; this is its
 # strict release-mode superset and never runs anywhere else.
 run_clap_audit_phase() {
-    # Keep RUSTFLAGS consistent across this block to avoid Cargo cache invalidation loops
     local RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap -Clink-arg=-Wl,-u,clap_entry"
     export RUSTFLAGS
 
-    echo "  Limpando binário CLAP anterior e cache local..."
-    cargo clean --release
-    rm -f target/release/libnam_rs.so
-    rm -rf target/release/incremental/
+    echo "  Isolando artefatos CLAP em target/clap-audit/..."
+    export CARGO_TARGET_DIR="target/clap-audit"
+    rm -rf target/clap-audit/release
+    rm -f target/clap-audit/release/libnam_rs.so
 
     echo "  Compilando CLAP Plugin em modo Release..."
     CARGO_INCREMENTAL=0 cargo build --release --no-default-features --features "clap-plugin,heap-audit,testing" --lib
 
-    local RELEASE_CLAP_BIN="target/release/libnam_rs.so"
+    local RELEASE_CLAP_BIN="target/clap-audit/release/libnam_rs.so"
     if [ ! -f "$RELEASE_CLAP_BIN" ]; then
         echo "Erro: libnam_rs.so de release não encontrado." >&2
         return 1
@@ -610,6 +609,7 @@ run_clap_audit_phase() {
     echo "  Executando testes unitários e de integração em modo Mono..."
     RUSTFLAGS="${RUSTFLAGS:-} -C debug-assertions=on" timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
 
+    unset CARGO_TARGET_DIR
     return $audit_status
 }
 run_phase "CLAP Release Validation & Concurrency" "run_clap_audit_phase" "phase5-clap-validation.log" || true
