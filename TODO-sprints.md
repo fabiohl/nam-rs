@@ -60,7 +60,7 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
 
 #### Tarefa T1.2 — Contrato de Incompatibilidade para quick_parity_convnet (F-B2)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs)
 * **Descrição**:
