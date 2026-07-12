@@ -23,7 +23,7 @@ PHASE_NUM=0
 
 phase() {
     PHASE_NUM=$((PHASE_NUM + 1))
-    echo -e "\n${BLUE}${BOLD}[${PHASE_NUM}/${PHASE_TOTAL}]${NC} $*"
+    echo -e "\n${BLUE}${BOLD}[${PHASE_NUM}/${PHASE_TOTAL:-?}]${NC} $*"
 }
 
 # Resolve project root dynamically relative to this helper script

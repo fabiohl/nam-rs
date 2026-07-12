@@ -220,7 +220,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.4 — Sincronização de Fases e Renderização no Dashboard (F-C3)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
   * [_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh)
@@ -230,6 +230,8 @@ Para fechar o Épico E1 em definitivo:
   3. No helper `phase()` de `utils/_lib.sh`, alterar a impressão para `${PHASE_TOTAL:-?}` para que scripts sem totalizador mostrem `[N/?]` em vez de dividir por zero ou exibir valores incorretos.
 * **Critério de Aceitação (DoD)**:
   * A contagem final das fases do dashboard fecha em `[8/8]` no modo full, mostrando progresso consistente.
+
+  **Conclusão (2026-07-12)**: Cálculo de `phase_count` corrigido para não contar a fase "Parseando resultados" em duplicata. Nova fase "Renderizando dashboard" adicionada como último passo de `render_dashboard`. Helper `phase()` em `_lib.sh` alterado para `${PHASE_TOTAL:-?}`, exibindo `[N/?]` quando `PHASE_TOTAL` não está definido. Modos: full `[8/8]`, fidelity-only `[7/7]`, bench-only `[3/3]`.
 
 ---
 

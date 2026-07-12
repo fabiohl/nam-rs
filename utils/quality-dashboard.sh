@@ -1301,14 +1301,14 @@ render_dashboard_plain() {
 # ── Main ────────────────────────────────────────────────────────────────────
 
 main() {
-    local phase_count=0
+    local run_phases=0
     if [ "$MODE" = "full" ] || [ "$MODE" = "fidelity" ]; then
-        phase_count=$((phase_count + 6))  # 5 run phases + 1 parse phase
+        run_phases=$((run_phases + 5))  # golden_vectors, oracle, isa, spectral, activation
     fi
     if [ "$MODE" = "full" ] || [ "$MODE" = "bench" ]; then
-        phase_count=$((phase_count + 2))  # 1 run phase + 1 parse phase
+        run_phases=$((run_phases + 1))  # regression_gate benchmarks
     fi
-    PHASE_TOTAL=$phase_count
+    PHASE_TOTAL=$((run_phases + 2))     # +1 parse, +1 render
 
     echo -e "${BLUE}${BOLD}===============================================================${NC}"
     echo -e "${BLUE}${BOLD}    nam-rs Quality Dashboard${NC}"
@@ -1345,7 +1345,7 @@ main() {
     parse_activation_precision
     parse_benchmarks
 
-    echo ""
+    phase "Renderizando dashboard"
     render_dashboard
 
     if [ -n "$SAVE_FILE" ]; then
