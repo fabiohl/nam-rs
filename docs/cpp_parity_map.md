@@ -21,10 +21,11 @@ when. **For a single-page triage of what is actually broken vs. what is under co
 
 | Architecture                          | Status                                                                                                         | Section                                   |
 |:------------------------------------- |:-------------------------------------------------------------------------------------------------------------- |:----------------------------------------- |
-| **LSTM**                              | ✅ Verified 2026-07-01                                                                                         | [§2](#2-lstm-architecture)                |
-| **WaveNet A1**                        | ✅ Verified 2026-07-01                                                                                         | [§3](#3-wavenet-a1-architecture)          |
+| **LSTM**                              | ✅ Verified 2026-07-01; interop figures re-measured 2026-07-11                                                 | [§2](#2-lstm-architecture)                |
+| **WaveNet A1**                        | ✅ Verified 2026-07-01; interop figures re-measured 2026-07-11                                                 | [§3](#3-wavenet-a1-architecture)          |
 | **WaveNet A2**                        | ✅ Verified 2026-07-01 — 🔴 flagship model (`wavenet_a2_max.nam`) confirmed broken, under active investigation | [§4](#4-wavenet-a2-architecture)          |
-| ConvNet / Linear / Container / Cabsim | Out of current audit scope                                                                                     | [§6](#6-other-architectures-out-of-scope) |
+| **ConvNet**                           | 🟠 Audited 2026-07-11 — confirmed format collision with NAMcore; zero C++ interop coverage                     | [§6](#6-other-architectures-out-of-scope) |
+| Linear / Container / Cabsim           | Out of current audit scope                                                                                     | [§6](#6-other-architectures-out-of-scope) |
 
 ## 1. Methodology
 
@@ -67,6 +68,29 @@ The vendored working copy at `tests/fixtures/NeuralAmpModelerCore/` is checked o
 the tag). Some older committed golden vectors were generated at `v0.5.3` (`9c7b185`). This
 patch-level drift is below the interop noise floor for all architectures except where explicitly
 noted per-model. Regenerate goldens with `tests/fixtures/golden_gen_build.sh` when in doubt.
+
+### 1.4 Fixture governance — `tests/fixtures/README.md` is the operational contract
+
+Everything this document *asserts* about parity is *operationalized* by
+[`tests/fixtures/README.md`](../tests/fixtures/README.md). That README is the canonical
+governance document for the entire golden-vector supply chain and must be read together
+with this audit. It owns:
+
+- **The model↔golden catalog** — every `.nam` fixture, its provenance (real community
+  capture vs. synthetic generator), its golden `.bin` files (v1 48 kHz + v2 multi-SR),
+  and which tests consume them. `golden_gen_build.sh`'s `CATALOG` array is the machine
+  form of that catalog.
+- **The freshness manifest** (`.golden_manifest.sha256`) — sha256 of each model *and*
+  its golden, regenerated at the end of every `golden_gen_build.sh` run and verified as
+  a **hard gate** by `utils/tests-quick.sh` Fase 2. A `.nam` edited without regenerating
+  its golden fails the suite before any oracle runs.
+- **The regeneration walkthrough** — the pinned NAMcore/Plugin commits (`variables.env`),
+  the C++ `render` build, stress-signal generation, and the manifest rewrite.
+- **The calibrated-threshold table** — per-model SNR/ESR gates, cross-checked in code by
+  `tests/models/threshold_calibration.rs` (anti-placebo meta-tests, provenance comments).
+
+Any parity claim in this document that cannot be traced to a catalog entry + manifest
+hash + calibrated threshold in that README should be treated as unverified.
 
 ---
 
@@ -150,7 +174,7 @@ of LSTM interop drift.
 **Removal:** quantization was removed entirely.
 Weight storage grew to native f32, but kernel dispatch was simplified and the GEMV inner
 loops migrated from u16 dequantization to direct f32 accumulation. The elimination of the
-fuse-dequant-GEMM overhead paradoxically *improved* per-sample latency (§8 of
+fuse-dequant-GEMM overhead paradoxically *improved* per-sample latency (§9 of
 `audio_fidelity_map.md`).
 
 **Measured results:**
@@ -172,7 +196,7 @@ fuse-dequant-GEMM overhead paradoxically *improved* per-sample latency (§8 of
   dequantization step, simplification of kernel dispatch, and elimination of
   `fuse-dequant-GEMM` overhead reduced per-sample latency: BossLSTM-1×16 −10.4%
   (6.7 → 6.0 µs), BossLSTM-2×8 −12.4% (5.8 → 5.3 µs). See
-  `audio_fidelity_map.md` §8 for benchmark details.
+  `audio_fidelity_map.md` §9 for benchmark details.
 - **No residual LSTM weight quantization remains** — all LSTM gate weights are native f32,
   verified in the SQ4/SQ5 implementation sequence.
 
@@ -210,7 +234,7 @@ LSTM is the one topology whose interop error grows with **signal length** and **
 rate** — the recurrent cell state accumulates error over time.
 
 **(native f32 weights):** BossLSTM-2×8 converges to bit-exact parity with NAMCore at 48 kHz
-(ESR = 0.00e0, SQ5.1 measurement, `audio_fidelity_map.md` §8) in Standard mode. BossLSTM-1×16's drift was
+(ESR = 0.00e0, SQ5.1 measurement, `audio_fidelity_map.md` §9) in Standard mode. BossLSTM-1×16's drift was
 **not** caused by f16c quantization — its ESR remained identically 1.04e-2 before and after
 removal (§2.5). All models now default to `Standard` (exact-grade) activation precision, collapsing interop gaps
 to near-zero (1x16: ~1.42e-11, 2x8: ~1.67e-11).
@@ -449,13 +473,6 @@ Verified directly against `tests/golden_vectors.rs`, `tests/cpp_parity.rs`, and
   = 5.84e-13, thresholds SNR ≥ 105 dB / ESR ≤ 3.5e-11 — this specific figure is **independently
   re-confirmed in this audit pass**, not carried over.
 
-  > **⚠ `docs/testing.md` is stale on this point.** Its §5 ignored-tests table (as of this audit)
-  > still lists `test_golden_vectors_wavenet_lite` / `_v2_wavenet_lite` as ignored with "SNR = 0.9 dB
-  > (Known Divergent)". That described the **retired synthetic** `BossWN-lite.nam` fixture. The
-  > test was migrated to the real `EVH-5150-Lite.nam` capture, is **not** `#[ignore]`d in the
-  > current source, and passes at 122.3 dB. `docs/testing.md` needs the same kind of pass this
-  > document just got.
-
 - **Golden vectors, non-catalog:** `test_golden_vectors_wavenet_dyn` (`wavenet_dyn_free.nam`) and
   `test_golden_vectors_wavenet_condition_dsp` (`wavenet_condition_dsp.nam`) are **synthetic**,
   purpose-built to exercise `WaveNetModelDyn`'s free-geometry and `condition_dsp` dispatch paths
@@ -489,20 +506,22 @@ Verified directly against `tests/golden_vectors.rs`, `tests/cpp_parity.rs`, and
 
 ### 3.8 Measured interop drift
 
-Previously reported ESR against NAMcore v0.5.3 (`9c7b185`) — **fixture provenance and active
-(non-ignored) status independently confirmed this pass (§3.7); the exact numeric ESR/SNR figures
-below were not independently re-executed**:
+Golden-vector ESR against the committed NAMcore goldens, re-measured 2026-07-11
+(`utils/tests-quick.sh` Fase 2, release, stress signal v1 @ 48 kHz):
 
-| Model          | ESR (linear) | ESR (dB) | SNR (dB) |
-|:-------------- |:------------ |:-------- |:-------- |
-| Standard CH=16 | 4.58e-13     | −123.4   | 123.4    |
-| Feather CH=8   | 4.92e-14     | −133.1   | 133.1    |
-| Nano CH=4      | 6.30e-14     | −132.0   | 132.0    |
-| Lite CH=12     | 5.84e-13     | −122.3   | 122.3    |
+| Model          | ESR (linear) | SNR (dB) | Gate (ESR / SNR)  |
+|:-------------- |:------------ |:-------- |:----------------- |
+| Standard CH=16 | 2.46e-14     | 136.1    | 3.0e-11 / 105 dB  |
+| Feather CH=8   | 4.82e-14     | 133.2    | 1.0e-10 / 100 dB  |
+| Nano CH=4      | 6.20e-14     | 132.1    | 3.0e-10 / 95 dB   |
+| Lite CH=12     | 1.23e-12     | 119.1    | 3.5e-11 / 105 dB  |
+| A1 Standard    | 8.62e-14     | 130.6    | 3.0e-9 / 85 dB    |
+| Official CH=3  | 8.96e-14     | 130.5    | 3.5e-2 / 14 dB    |
 
-The Lite figure is corroborated directly from the current test source (§3.7); Standard/Feather/Nano
-were not independently re-measured but the tests backing them are confirmed real-model-based and
-active.
+All entries pass their calibrated gates with 1–12 orders of magnitude of margin. The
+`wavenet_official` gate (ESR < 3.5e-2 / SNR ≥ 14 dB) is by far the loosest in the A1
+family relative to its measured value (~8.96e-14) — flagged for recalibration in
+`TODO-findings.md`.
 
 ---
 
@@ -551,9 +570,10 @@ rechannel → per-layer (dilated conv → bias → input mixin → LeakyReLU(0.0
 weight-stream read order (`_load_weights`, `a2_fast.cpp:198-273`) matching
 `src/models/a2/model/set_weights.rs` field-for-field.
 
-Previously reported (not independently re-executed this pass, but corroborated by the structural
-match above and by the fixture-quality finding below): A2-Full ESR ≈ 1.21e-8 (79.2 dB SNR),
-A2-Lite ESR ≈ 8.58e-10 (90.7 dB SNR) against NAMcore v0.5.3.
+Re-measured 2026-07-11 (`utils/tests-quick.sh` Fase 2, release): A2-Full ESR = 1.12e-13
+(SNR 129.5 dB), A2-Lite ESR = 6.43e-14 (SNR 131.9 dB) against the committed NAMcore
+goldens — both pass their calibrated gates (3.0e-11 / 3.5e-11, SNR ≥ 105 dB) with
+2+ orders of magnitude of margin.
 
 **Fixture quality caveat (new finding — see §4.6):** unlike LSTM and WaveNet A1, these figures are
 **not** validated against a real trained community model. `wavenet_a2_full.nam` and
@@ -728,12 +748,33 @@ and the C++ `DSP` base class.
 ## 6. Other Architectures (Out of Scope)
 
 ConvNet, Linear, `SlimmableContainer`, and the IR Cabsim convolution stage are **not** part of
-the current LSTM/A1/A2-focused audit. Prior notes (kept for reference, not re-verified):
+the current LSTM/A1/A2-focused audit.
 
-- **ConvNet.** No canonical upstream C++ model exists in `example_models/`; NAM-rs's ConvNet is a
-  bespoke multi-block format incompatible with C++'s flat, kernel=2, matrix-head format. C++
-  interop is considered not applicable by format, not by version. The bespoke format's only
-  correctness witness is the independent f64 oracle (`tests/reference_oracle_f64.rs`).
+- **ConvNet — confirmed architecture-name collision (audited 2026-07-11).** The vendored
+  NAMcore **does** implement a ConvNet (`NAM/convnet.cpp`, registered as `"ConvNet"` in the
+  config-parser registry), but with a fundamentally different contract than NAM-rs's:
+  - **C++ config:** flat `channels: int`, `dilations: [int]` (one block per dilation),
+    `batchnorm: bool`, single `activation`, fixed `kernel_size = 2`
+    (`convnet.cpp::parse_config_json`).
+  - **C++ weight stream:** conv weights, conv bias **only if `!batchnorm`**, then **raw**
+    BatchNorm params per block — `running_mean[ch], running_var[ch], gamma[ch], beta[ch],
+    eps` (4·ch+1 floats), fused to scale/loc at load (`convnet.cpp::BatchNorm`).
+  - **NAM-rs config:** per-block `layers: [{channels, kernel_size, dilations, activation}]`
+    (`src/loader/nam_json/topology/convnet.rs`) — the C++ flat form returns `None`
+    (topology not detected).
+  - **NAM-rs weight stream:** conv weights, bias **always**, then **pre-fused**
+    `bn_scale[ch] + bn_offset[ch]` (2·ch floats) (`src/loader/dispatcher/convnet/mod.rs`).
+
+  **Consequence:** real-world ConvNet `.nam` files produced by the official NAM trainer
+  (which serialize the C++ form) do **not** load in NAM-rs, and NAM-rs's `convnet_test.nam`
+  crashes the C++ `render` tool (`json.exception.type_error.302`). There is therefore
+  **zero NAMcore cross-validation for ConvNet**: `quick_parity_convnet` skips at runtime,
+  `golden_gen_build.sh` skips golden generation for it (documented), and the quality
+  dashboard shows "vs NAMcore: N/A". The bespoke format's only correctness witnesses are
+  the independent f64 oracle + NumPy anchor (`tests/parity/reference_oracle_f64.rs`,
+  ESR vs anchor ≈ 5e-16) and self-consistency goldens. Resolution options (implement the
+  C++-compatible format, or rename/document the bespoke one as a NAM-rs extension) are
+  tracked in `TODO-findings.md`.
 - **Linear.** Trivial affine model; no known parity concerns.
 - **`SlimmableContainer`.** Multi-model crossfade orchestration, implemented and tested
   (`src/models/container.rs`, `tests/container_slimmable.rs`). Distinct from `SlimmableWavenet`
@@ -836,6 +877,25 @@ show up as nonzero numbers in the tables throughout this document, but they are 
   this was shown to be caused by a zero-biased initialization in the synthetic weight generator.
   Following the fix to apply standard identity-biased weights, the gap collapsed to float32 precision
   limits (SNR 138+ dB / ESR ~1e-14), achieving near-bit-exact parity (§4.3).
+
+### 7.3 🟠 Test-infrastructure caveats — parity coverage that can silently vanish
+
+These do not produce wrong audio, but they can make the *evidence* for parity evaporate
+without failing CI (audited 2026-07-11; remediation tracked in `TODO-findings.md`):
+
+- **Silent SKIP in v1 live cross-validation.** `tests/parity/cpp_parity.rs::run_v1` /
+  `run_v1_hf` discard the `ParityOutcome` (`let _ = run_render_comparison(...)`). Any
+  skip condition — C++ toolchain absent, model missing, render crash, garbage output —
+  prints `SKIP:` to stderr and the test still reports `ok`. The non-ignored
+  `quick_parity_*` subset in `tests-quick.sh` Fase 2 is therefore capable of passing
+  green with **zero** cross-validations executed. (`run_v2_multi_sr_impl` does this
+  correctly: it tracks outcomes and asserts the completed-rate set.)
+- **`quick_parity_convnet` always skips** (§6 — architecture incompatibility) yet
+  reports `ok`, giving the false impression of a 4-model quick-parity matrix when only
+  3 models are actually cross-validated.
+- **`wavenet_a2_film_input_mixin_pre.nam`** is in the CATALOG and has a NumPy anchor,
+  but its C++ golden `.bin` was never generated/committed; its golden test is
+  `#[ignore]`d with placeholder (unmeasured) thresholds in `tests/common/validation.rs`.
 
 ---
 

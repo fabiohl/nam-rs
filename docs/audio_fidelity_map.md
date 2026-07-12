@@ -20,7 +20,7 @@ of the `.nam` / `.namb` file format contract.
 
 | #   | Factor                                                      | Spec? | Mandatory?                         | User-Controllable?       | Quality Impact                                                            | Status                |
 |:---:|:----------------------------------------------------------- |:-----:|:----------------------------------:|:------------------------:|:------------------------------------------------------------------------- |:---------------------:|
-| 1   | **Weight compression (F16C/BF16)**                          | ❌    | Was under review — removed         | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §8                    | Removed (SQ5)         |
+| 1   | **Weight compression (F16C/BF16)**                          | ❌    | Was under review — removed         | ❌ No                    | Removed (SQ5, 2026-07-06): LSTMs became faster; see §9                    | Removed (SQ5)         |
 | 2   | **Activation precision (Fast Padé / Standard exact-grade)** | ❌    | ✅ Default (Standard); Fast opt-in | ✅ CLI + CLAP            | −80…−97 dBFS (Fast) → ÷10,000 (Standard); ↓ aliasing                      | ✅ Active             |
 | 3   | **LSTM recurrent drift**                                    | ❌    | Partial (model-dependent)          | ✅ HF gates + Kahan head | Interop ESR ≈ 1e-11 (Standard); vs f64 ideal: 5.1e-2 (1×16), 1.7e-3 (2×8) | ✅ Resolved (interop) |
 | 4   | **Host sample rate resampler**                              | ❌    | ✅ When host ≠ 48 kHz              | ❌ No†                   | Passband ripple < 0.05 dB; stopband ≥ 25 dB                               | ✅ Active             |
@@ -36,7 +36,7 @@ of the `.nam` / `.namb` file format contract.
 
 This optimization was removed after the SQ5 PoC confirmed that f16c decompression overhead
 outweighed any L1 cache benefit for LSTM models, and that the f16c quantization was the sole
-cause of interop drift for several model topologies (see §8 — Histórico). The removal is the
+cause of interop drift for several model topologies (see §9 — Histórico). The removal is the
 production default. All models now use native f32 weights.
 
 **Implementation.** All weight quantization/compression code paths in model loading (`src/models/*/set_weights.rs` or `src/models/*/model.rs`) have been removed. Weight tensors in all active models are loaded and processed natively as `f32` vectors. The conversion helper module (`src/math/common/half.rs`) and corresponding unused SIMD kernels are retained only as test references or benchmarks.
@@ -92,16 +92,17 @@ Standard (exact-grade) is most effective combined with 4× oversampling (§5): w
 fold back into the baseband regardless of activation precision; with 4× OS, the half-band filter
 removes those harmonics and exact-grade mode suppresses the residual high-order folding.
 
-### 2.4 Precision context (validated post-S8)
+### 2.4 Precision context (re-measured 2026-07-11)
 
-With the f64 oracle confirmed correct (§3), the combined precision model (Padé activations + f32
-accumulation) reproduces production to within ESR ≈ 1.04e-3 (LSTM, measured on `lstm.nam` H=3 —
-see the provenance note in §3 below; validated on BossLSTM-1×16 at production duration with ESR = 2.61e-2),
-8.62e-14 (WaveNet), 1.13e-13 (A2) — for the small official LSTM, the Padé (Fast) approximation
-together with f32 precision fully explains the gap from ideal f64, with no unexplained "architectural" residue.
-Fast (Padé) mode is the well-understood opt-in for CPU-constrained scenarios; Standard (exact-grade)
-buys ~10,000× lower activation error as the universal default, audibly most relevant when paired with
-oversampling (§5).
+With the f64 oracle confirmed correct (§3), the combined precision simulation
+(F16C + Padé activations + f32 accumulation) reproduces production to within ESR ≈
+2.7e-3 (LSTM, `lstm.nam` H=3), 6.7e-8 (WaveNet), 2.0e-7 (A2), 8.7e-8 (ConvNet) —
+`test_combined_simulation_*` in `tests/parity/reference_oracle_f64.rs`, prewarm-paired.
+For the small official LSTM, the Padé (Fast) approximation together with f32 precision
+fully explains the gap from ideal f64, with no unexplained "architectural" residue.
+Fast (Padé) mode is the well-understood opt-in for CPU-constrained scenarios; Standard
+(exact-grade) buys ~10,000× lower activation error as the universal default, audibly
+most relevant when paired with oversampling (§5).
 
 **Mandatory?** No. Standard (exact-grade) mode is the universal default. Fast (Padé) is opt-in via
 `--activation fast` (CLI) or `PARAM_ACTIVATION` (CLAP).
@@ -323,7 +324,27 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 ---
 
-## 8. Historical Context (Histórico)
+## 8. How These Claims Stay True — Fixture Governance
+
+Every fidelity number in this document is backed by the golden-vector supply chain
+governed by [`tests/fixtures/README.md`](../tests/fixtures/README.md) — the canonical
+operational contract for measurement fixtures. It defines:
+
+- **The model↔golden catalog** (real community captures vs. synthetic generator fixtures,
+  v1 48 kHz + v2 multi-SR goldens) and the regeneration workflow
+  (`tests/fixtures/golden_gen_build.sh`, pinned NAMcore commit in `variables.env`).
+- **The freshness manifest** (`.golden_manifest.sha256`) — enforced as a hard gate by
+  `utils/tests-quick.sh`: a modified `.nam` without a regenerated golden fails the suite.
+- **Per-model calibrated thresholds** (SNR/ESR/MR-STFT), meta-audited by
+  `tests/models/threshold_calibration.rs` (anti-placebo rules, mandatory `// Measured:`
+  provenance comments).
+
+Numbers quoted here without a matching catalog entry + manifest hash should be treated
+as historical, not current. The live view is `utils/quality-dashboard.sh`.
+
+---
+
+## 9. Historical Context (Histórico)
 
 Decisions on fidelity, trade-offs, and optimization are catalogued below:
 
@@ -342,7 +363,7 @@ Decisions on fidelity, trade-offs, and optimization are catalogued below:
 
 - [`docs/fastmath-approximations.md`](fastmath-approximations.md) — Detailed Padé/minimax analysis, ULP bounds, bench numbers
 - [`docs/perceptual_validation.md`](perceptual_validation.md) — Measurement framework, gate methodology, ABSOLUTE_ESR_CAP
-- [`docs/architecture.md`](architecture.md) — §2.2 (weight compression — ver §8 acima), §5 (resampler + pipeline flow), §5.0O (oversampling)
+- [`docs/architecture.md`](architecture.md) — §2.2 (weight compression — ver §9 acima), §5 (resampler + pipeline flow), §5.0O (oversampling)
 - [`docs/research-references.md`](research-references.md) — Scientific references (Kahles 2019, Sato & Smith 2025, etc.)
 - `src/dsp/oversample.rs` — Oversampling engine
 - `src/dsp/resampler/mod.rs` — Polyphase sinc resampler

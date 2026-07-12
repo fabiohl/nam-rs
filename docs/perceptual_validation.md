@@ -258,11 +258,11 @@ conversion `10^(dB/10)` to the SNR relaxation amount. Neither the calibrated
 threshold nor the relaxation reflect audio degradation — both accommodate the
 log-magnitude sensitivity to spectral sparsity:
 
-| Metric       | v1 (at 48 kHz) | v2 (at 48 kHz, relaxed) | Relaxation           |
-| ------------ |:--------------:|:-----------------------:| -------------------- |
-| `mrstft_max` | 0.35           | 0.698                   | `10^(snr_relax/10.0)`|
-| `max_esr`    | 1.0e-10        | relaxed¹                | Tier 2 relaxation    |
-| `min_snr_db` | 100.0          | relaxed¹                | Tier 2 relaxation    |
+| Metric       | v1 (at 48 kHz) | v2 (at 48 kHz, relaxed) | Relaxation            |
+| ------------ |:--------------:|:-----------------------:| --------------------- |
+| `mrstft_max` | 0.35           | 0.698                   | `10^(snr_relax/10.0)` |
+| `max_esr`    | 1.0e-10        | relaxed¹                | Tier 2 relaxation     |
+| `min_snr_db` | 100.0          | relaxed¹                | Tier 2 relaxation     |
 
 ¹ Relaxation formula: `min_snr −= 1.5 × sr_ratio` (capped at 4 dB), applied
 symmetrically to `mse_limit` and `max_esr`. At 48 kHz where `sr_ratio = 1.0`,
@@ -609,7 +609,8 @@ Tests: `src/testing/perceptual_test.rs:346-408`.
 
 ## f64 Reference Oracle — Absolute Error Floor
 
-**File:** `src/testing/reference_oracle.rs:232` (`oracle_forward`)
+**Module:** `src/testing/reference_oracle/` (`mod.rs` + per-architecture `wavenet.rs`,
+`lstm.rs`, `a2.rs`, `convnet.rs`)
 
 Computes the ideal forward pass of WaveNet, LSTM, and A2 topologies using f64
 arithmetic, exact activation functions (`f64::tanh`, `f64::exp`), and Kahan/Neumaier
@@ -627,8 +628,8 @@ high-precision reference that:
 
 ### Decomposition Pipeline
 
-`run_decomposition()` (`src/testing/reference_oracle.rs:775`) runs the oracle
-under 5 configurations and returns a `DecompositionResult` (`src/testing/reference_oracle.rs:765`):
+`run_decomposition()` (`src/testing/reference_oracle/mod.rs`) runs the oracle
+under 5 configurations and returns a `DecompositionResult`:
 
 | Field              | What it isolates                                      |
 | ------------------ | ----------------------------------------------------- |
@@ -675,7 +676,7 @@ that the Padé approximation is the root-cause for the interop divergence as
 well — different Padé/minimax implementations across languages produce slightly
 different recurrent state trajectories that diverge over 240k steps.
 
-Tests: `tests/reference_oracle_f64.rs:67-268`, `tests/parity/reference_oracle_f64.rs` (t33/t33b/t33c), `tests/models/golden_vectors.rs` (v2 golden vectors).
+Tests: `tests/parity/reference_oracle_f64.rs` (oracle, anchors, decomposition, t33 diagnostics), `tests/models/golden_vectors.rs` (v2 golden vectors).
 
 ---
 
@@ -742,14 +743,9 @@ forget gate limits accumulation to a rate-dependent steady-state.
 
 This proves the interop gap in `Fast` mode is caused by *different math precision/activation formulations across engines* — Rust uses FastMath Padé/minimax approximations while C++ uses standard native math, producing diverging recurrent state trajectories — not by a fundamental architectural incompatibility. When activation functions are matched (Standard in Rust vs default native in C++), both engines achieve virtually identical outputs.
 
-**Pre-Sprint-2 historical note:** The table row in earlier versions of this
-document that read `2.61e-2 | 3.57e-3` conflated two different models: the
-interop value (2.61e-2) was for `BossLSTM-1×16` while the oracle value
-(3.57e-3) was for `lstm.nam` (H=3). The coincidence of `2.61e-2` matching
-the legacy t33 diagnostic value (2.611684e-2, f32-vs-f64 unpaired) was a
-coincidence — both happen to measure ~2.6e-2 for different reasons
-(oracle mismatch vs genuine interop). This conflation is now resolved.
-The reclassification audit was completed in Sprint 2 (Tarefa 2.4).
+> Historical note: earlier versions of this table conflated per-model interop and
+> oracle figures across different models; the reclassification audit (Sprint 2,
+> Tarefa 2.4) resolved this — the values above are per-model and current.
 
 ### Hypotheses ruled out
 
@@ -808,23 +804,13 @@ oracle floor for `lstm.nam` (H=3). The corrected picture above is per-model.
   not to long-duration stress v2 — where `BossLSTM-1×16` has a floor of
   5.06e-2, far exceeding this gate (as expected for its architecture).
 
-### Qualification of T3.3 conclusion ("not fixable without changing format")
+### Fixability verdict (final, post-Sprint-2)
 
-**T3.3 (2026-06-27)** concluded: *"ESR ≈ 1.0 vs ideal = inherent floor of f16c
-quantization… not fixable without altering the model format."*
-
-**Post-T8.2/T8.3 (2026-06-28) correction:** The "~1.0" was architectural
-divergence in the oracle (unmatched prewarm state), not f16c precision loss.
-The real absolute floor for `lstm.nam` (H=3) is 3.41e-3 (~300× smaller). The
-mechanism of recurrent state drift is correct and remains valid.
-
-**Post-Sprint-2 (2026-07-08) final correction:** The root cause for
-`BossLSTM-1×16` and `BossLSTM-2×8` (the production-relevant models) is
-**Padé/minimax activation approximation error**, not f16c weight quantization
-(the latter was already eliminated in SQ5.5 for the f16c-to-f32 weight
-conversion, and bf16 quantization is only present in `lstm.nam` H=3). The
-absolute floor for `BossLSTM-1×16` is 5.06e-2 (−13.0 dB), dominated 95% by
-Padé activation error — not in the 3e-3 range.
+Earlier conclusions ("ESR ≈ 1.0 vs ideal, not fixable without changing the model
+format" — T3.3) were twice corrected: the "~1.0" was an oracle prewarm-state artifact,
+and the true root cause for the production-relevant BossLSTM models is **Padé/minimax
+activation approximation error** (f16c quantization was eliminated in SQ5.5). The
+absolute floor for `BossLSTM-1×16` is 5.06e-2 (−13.0 dB), 95% Padé-dominated.
 
 **Fixability:**
 
@@ -990,8 +976,8 @@ and reviewed. It formalizes the methodology from [AC-5](TODO-findings.md)
 ("Methodology 'calibrate until it passes' inverts the purpose of the test") and
 [AC-9](TODO-findings.md) ("The 'calibrate until it passes +
 declare done' pattern recurred at the oracle level") of the project's correctness
-audit. All gates in `tests/threshold_calibration.rs`, `tests/cpp_parity.rs`,
-`tests/reference_oracle_f64.rs`, and `tests/common/validation.rs` must comply.
+audit. All gates in `tests/models/threshold_calibration.rs`, `tests/parity/cpp_parity.rs`,
+`tests/parity/reference_oracle_f64.rs`, and `tests/common/validation.rs` must comply.
 
 ### Rule 1 — Derivation from Validated Reference
 
@@ -1138,24 +1124,29 @@ This policy is referenced in:
 
 ## Quick Reference — File/Line Map
 
-| Metric            | Implementation                        | Tests                                                                |
-| ----------------- | ------------------------------------- | -------------------------------------------------------------------- |
-| ESR (f32)         | `src/testing/perceptual.rs:51`        | `tests/common/metrics.rs:40`                                         |
-| ESR (f64)         | `src/testing/reference_oracle.rs:201` | `tests/reference_oracle_f64.rs:67`                                   |
-| MR-STFT           | `src/testing/perceptual.rs:126`       | `tests/common/validation.rs:264`                                     |
-| ASR               | `src/testing/aliasing.rs:133`         | `src/testing/aliasing_test.rs:*`, `tests/spectral_fidelity.rs:34`    |
-| Farina FR+THD     | `src/testing/spectral.rs:224`         | `src/testing/spectral_test.rs:108`, `tests/spectral_fidelity.rs:401` |
-| THD+N AES17       | `src/testing/spectral.rs:456`         | `src/testing/spectral_test.rs:248`, `tests/spectral_fidelity.rs:441` |
-| IMD SMPTE         | `src/testing/spectral.rs:579`         | `src/testing/spectral_test.rs:299`, `tests/spectral_fidelity.rs:461` |
-| LUFS              | `src/testing/perceptual.rs:328`       | `src/testing/perceptual_test.rs:30`                                  |
-| LRA               | `src/testing/perceptual.rs:397`       | `src/testing/perceptual_test.rs:218`                                 |
-| True-Peak dBTP    | `src/testing/perceptual.rs:652`       | `src/testing/perceptual_test.rs:462`                                 |
-| Combined Loudness | `src/testing/perceptual.rs:522`       | `src/testing/perceptual_test.rs:346`                                 |
-| f64 Oracle        | `src/testing/reference_oracle.rs:232` | `tests/reference_oracle_f64.rs:67`                                   |
-| Fidelity Report   | `tests/common/validation.rs:55`       | `tests/cpp_parity.rs`, `tests/golden_vectors.rs`                     |
-| ISA Parity        | `tests/isa_parity.rs:144`             | `tests/isa_parity.rs:257`                                            |
-| RT Telemetry      | `src/dsp/telemetry.rs:41`             | `src/dsp/telemetry.rs:114`                                           |
-| Stress Signals    | `src/testing/stress.rs:40,92`         | `src/testing/stress_test.rs`                                         |
+| Metric            | Implementation                            | Tests                                                                   |
+| ----------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| ESR (f32)         | `src/testing/perceptual.rs`               | `tests/common/metrics.rs`                                               |
+| ESR (f64)         | `src/testing/reference_oracle/mod.rs`     | `tests/parity/reference_oracle_f64.rs`                                  |
+| MR-STFT           | `src/testing/perceptual.rs`               | `tests/common/validation.rs`                                            |
+| ASR               | `src/testing/aliasing.rs`                 | `src/testing/aliasing_test.rs`, `tests/models/spectral_fidelity.rs`     |
+| Farina FR+THD     | `src/testing/spectral.rs`                 | `src/testing/spectral_test.rs`, `tests/models/spectral_fidelity.rs`     |
+| THD+N AES17       | `src/testing/spectral.rs`                 | `src/testing/spectral_test.rs`, `tests/models/spectral_fidelity.rs`     |
+| IMD SMPTE         | `src/testing/spectral.rs`                 | `src/testing/spectral_test.rs`, `tests/models/spectral_fidelity.rs`     |
+| LUFS              | `src/testing/perceptual.rs`               | `src/testing/perceptual_test.rs`, `tests/models/ebu_lufs_compliance.rs` |
+| LRA               | `src/testing/perceptual.rs`               | `src/testing/perceptual_test.rs`                                        |
+| True-Peak dBTP    | `src/testing/perceptual.rs`               | `src/testing/perceptual_test.rs`                                        |
+| Combined Loudness | `src/testing/perceptual.rs`               | `src/testing/perceptual_test.rs`                                        |
+| f64 Oracle        | `src/testing/reference_oracle/` (4 archs) | `tests/parity/reference_oracle_f64.rs`                                  |
+| Fidelity Report   | `tests/common/validation.rs`              | `tests/parity/cpp_parity.rs`, `tests/models/golden_vectors.rs`          |
+| ISA Parity        | `tests/parity/isa_parity.rs`              | `tests/parity/isa_parity.rs`                                            |
+| RT Telemetry      | `src/dsp/telemetry.rs`                    | `src/dsp/telemetry.rs` (unit tests)                                     |
+| Stress Signals    | `src/testing/stress.rs`                   | `src/testing/stress_test.rs`                                            |
+
+**Fixture governance:** every golden `.bin`, model fixture, and per-model threshold used
+by these tests is catalogued and version-pinned in
+[`tests/fixtures/README.md`](../tests/fixtures/README.md) — the canonical supply-chain
+contract (catalog, `.golden_manifest.sha256` freshness gate, regeneration workflow).
 
 ---
 

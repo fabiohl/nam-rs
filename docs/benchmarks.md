@@ -78,13 +78,14 @@ All historical tracking metrics are recorded in local files within your project 
 > **Current vs. historical numbers.** The authoritative *current* per-model latency
 > figures come from a fresh `regression_gate` run — most conveniently via
 > `utils/quality-dashboard.sh` (PERFORMANCE section, median per 64-sample block).
-> Reference snapshot (2026-07-10, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 41.8 µs,
-> Lite CH12 ≈ 63.6 µs, Feather CH8 ≈ 26.5 µs, Nano CH4 ≈ 21.6 µs, A2-Full ≈ 26.8 µs,
-> A2-Lite ≈ 18.4 µs, LSTM 1×16/2×8 ≈ 7.6 µs, ConvNet ≈ 3.6 µs, Linear ≈ 0.3 µs —
-> all ≤ 4.8% of the 1.33 ms RT budget. The "Experiment Report" sections further down
-> are **historical point-in-time studies** documenting engineering decisions; their
-> absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate later optimizations and are
-> retained only to justify the decisions, not as current performance claims.
+> Reference snapshot (2026-07-11, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 41.7 µs,
+> Lite CH12 ≈ 63.9 µs, Feather CH8 ≈ 26.4 µs, Nano CH4 ≈ 21.5 µs, A2-Full ≈ 26.6 µs,
+> A2-Lite ≈ 18.1 µs, LSTM 1×16 ≈ 7.6 µs, LSTM 2×8 ≈ 7.5 µs, ConvNet ≈ 3.6 µs,
+> Linear ≈ 0.3 µs — all ≤ 4.8% of the 1.33 ms RT budget. The "Experiment Report"
+> sections further down are **historical point-in-time studies** documenting
+> engineering decisions; their absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate
+> later optimizations and are retained only to justify the decisions, not as current
+> performance claims.
 
 *(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
@@ -151,7 +152,7 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 |:--------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/rt_deadline.rs`                  | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                                                                    |
 | `utils/tests-performance-regression.sh` | **Relative guard, baseline-gated** — the canonical home for perf-regression benchmarking. Catches degradations *within* the safe zone (e.g., 100 μs → 150 μs, still under 1.33 ms but 50% worse). |
-| `utils/tests-long.sh` Phase 5           | Runs the full bench suite (including `regression_gate`) as part of the nightly audit, purely **for the record** — no baseline comparison, no pass/fail on slowdown.                               |
+| `utils/tests-long.sh` Phase 6           | Runs the full bench suite (including `regression_gate`) as part of the nightly audit, purely **for the record** — no baseline comparison, no pass/fail on slowdown.                               |
 | `utils/tests-quick.sh`                  | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use `tests-performance-regression.sh` directly for perf checks.                                              |
 
 > [!IMPORTANT]
