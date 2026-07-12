@@ -21,16 +21,16 @@ pub const V2_STRESS_DURATION_SECS: f64 = 5.0;
 // and oracle (f64 ideal) fed the same signal; ESR measured on last 256 samples.
 // Limit = measured ESR × 2 (conservative margin).
 //
-// Measured (post-SQ5, f32 weights, prewarm-paired, 256-sample sweep @ 48 kHz):
+// Measured (post-SQ5, post-Standard-engine default, f32 weights, prewarm-paired, 256-sample sweep @ 48 kHz):
 //   WaveNet: ESR = 6.13e-14  →  WAVENET_ESR_LIMIT = 6.13e-14 × 2  →  1e-12 (numerical floor)
-//   LSTM:    ESR = 3.41e-3   →  LSTM_ESR_LIMIT    = 3.41e-3 × 2   →  7.0e-3
+//   LSTM:    ESR = 2.71e-12  →  LSTM_ESR_LIMIT    = 2.71e-12 × 2  →  1e-11 (conservative, post-Standard exact activations)
 //   A2:      ESR = 2.22e-14  →  A2_ESR_LIMIT      = 2.22e-14 × 2  →  1e-12 (numerical floor, SQ5.5)
 //   ConvNet: ESR = 1.83e-14  →  CONVNET_ESR_LIMIT = 1e-12 (numerical floor)
 //   A2-FiLM-Lite:  ESR = 9.52e-15  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor, S10.3)
 //   A2-FiLM-Full:  ESR = 1.15e-14  →  A2_FILM_ESR_LIMIT = 1e-12 (numerical floor, S10.3)
 
 pub const WAVENET_ESR_LIMIT: f64 = 1e-12;
-pub const LSTM_ESR_LIMIT: f64 = 7.0e-3;
+pub const LSTM_ESR_LIMIT: f64 = 1e-11;
 pub const A2_ESR_LIMIT: f64 = 1e-12;
 pub const CONVNET_ESR_LIMIT: f64 = 1e-12;
 pub const A2_FILM_ESR_LIMIT: f64 = 1e-9;

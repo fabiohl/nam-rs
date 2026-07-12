@@ -578,32 +578,31 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.45)))
         }
         // --- LSTM 1x16 ---
-        // SQ5.5: post-weight-dequantization. Oracle ΔESR=3.41e-3 (vs 3.57e-3 pre-SQ5).
-        // Recurrent state accumulation remains the dominant drift source (inherent).
-        // f16c weight dequant loss (~5.12e-5) eliminated; Padé activation (~7.64e-4)
-        // is now the primary f32 error source for the oracle path.
-        // Measured (golden v1): SNR=19.8 dB, ESR=1.04e-2, MR-STFT=0.097 (v1)/0.82(v2 @ 48k)
-        // Live cpp_parity v1: ESR=4.69e-12 (near-bit-exact, SQ5.5 — no weight dequant drift)
+        // Measured: SNR=108.5 dB, ESR=1.42e-11 (golden v1, 2026-07-12, Standard engine).
+        // Post-Standard-default (exact polynomial activations): LSTM golden fidelity
+        // improved by ~89 dB SNR / ~9 orders of magnitude ESR vs old Fast (Padé) mode.
+        // Floor: SNR - 15.5 dB, ESR factor ~106× (conservative, LSTM v2 drift reserve).
         "BossLSTM-1x16" | "lstm_1x16" => {
-            let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(6.5e-2), Some(0.20)))
+            let snr_db = 93.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.5e-9), Some(0.20)))
         }
         // --- LSTM 2x8 ---
-        // SQ5.5: post-weight-dequantization. Recurrent state accumulation dominates.
-        // Live cpp_parity now near-bit-exact (f16c dequant was the dominant interop drift).
-        // Measured: SNR=25.7 dB, ESR=2.68e-3, MR-STFT=0.065 (golden v1, 2026-07-05)
-        // v2: SNR=18.4 dB / ESR=1.45e-2 @ 96 kHz. Margin: 7.7/0.4 dB (v1/v2).
+        // Measured: SNR=107.8 dB, ESR=1.67e-11 (golden v1, 2026-07-12, Standard engine).
+        // Post-Standard-default: LSTM golden fidelity improved by ~82 dB SNR /
+        // ~8 orders of magnitude ESR vs old Fast (Padé) mode.
+        // Floor: SNR - 14.8 dB, ESR factor ~102× (conservative, LSTM v2 drift reserve).
         "BossLSTM-2x8" | "lstm_2x8" => {
-            let snr_db = 18.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(2.0e-2), Some(0.12)))
+            let snr_db = 93.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.7e-9), Some(0.12)))
         }
         // --- LSTM Official (H=3) ---
-        // SQ5.5: post-weight-dequantization. Oracle ESR=3.41e-3 (vs 3.57e-3 pre-SQ5).
-        // Measured: SNR=29.7 dB, ESR=1.08e-3, MR-STFT(v1)=0.184 @ 48 kHz
-        // MR-STFT gate at 2.2e-1 (19% margin). Margin: SNR - 7.7 dB, ESR factor ~5.5x
+        // Measured: SNR=120.8 dB, ESR=8.30e-13 (golden v1, 2026-07-12, Standard engine).
+        // Post-Standard-default: LSTM golden fidelity improved by ~91 dB SNR /
+        // ~9 orders of magnitude ESR vs old Fast (Padé) mode.
+        // Floor: SNR - 15.8 dB, ESR factor ~108× (conservative, LSTM v2 drift reserve).
         "lstm (Official)" | "lstm_official" => {
-            let snr_db = 22.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(6.0e-3), Some(0.22)))
+            let snr_db = 105.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(9.0e-11), Some(0.22)))
         }
         // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
         // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration),
@@ -673,11 +672,11 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // from C++ generic WaveNet path. The Rust WaveNetA2Dyn engine implements FiLM
         // natively; C++ a2_fast.cpp rejects FiLM and falls back to Eigen-based generic
         // WaveNet. The divergence is inherent — not an engine regression.
-        // Measured: SNR=138.3 dB, ESR=1.48e-14 (2026-07-10, float32 precision limit after T1.2 corrections),
-        // MR-STFT=3.92e-5 (FiLM vs generic @ 48 kHz), gate=1.0e-4 (generous tolerance margin)
-        // Margin: SNR - 18.3 dB, ESR factor ~6.7e2x
+        // Measured: SNR=124.2 dB, ESR=3.83e-13 (golden v1, 2026-07-12, Standard engine),
+        // MR-STFT=1.65e-5 (FiLM vs generic @ 48 kHz), gate=1.0e-4 (generous tolerance margin)
+        // Margin: SNR - 10.2 dB, ESR factor ~26×
         "wavenet_a2_film_lite" => {
-            let snr_db = 120.0;
+            let snr_db = 114.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
         // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
@@ -691,11 +690,14 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
         }
         // --- WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) ---
-        // Chaos stress model configured with degenerated thresholds as per T2.2.
-        // Measured: SNR=12.0 dB, ESR=3.5e-2, MR-STFT=0.498 (degenerated thresholds)
+        // Measured: SNR=139.0 dB, ESR=1.25e-14, MR-STFT=7.32e-6
+        // (golden v1, 2026-07-12, Standard engine). Post-Standard-default:
+        // chaos stress model is near-bit-exact — exact polynomial activations
+        // replaced Padé approximations that previously caused divergence.
+        // Floor: SNR - 19.0 dB, ESR factor ~80×, MR-STFT factor ~6.8×.
         "wavenet_a2_film_chaos_stress" => {
-            let snr_db = 12.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.498)))
+            let snr_db = 120.0;
+            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12), Some(5.0e-5)))
         }
         // --- WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film only) ---
         // Isolated input_mixin_pre_film (slot 2) with only one FiLM slot active,
@@ -781,12 +783,14 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         }
         // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
         // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
-        // Measured: SNR=81.5 dB, ESR=7.12e-9 (2026-06-26),
-        // MRSTFT gate=0.08 (calibrated from cpp_parity, near-bit-exact)
-        // Margin: SNR - 11.5 dB, ESR factor ~1.1x
+        // Measured: SNR=134.9 dB, ESR=3.27e-14, MR-STFT=9.22e-6
+        // (golden v1, 2026-07-12, Standard engine). Post-Standard-default:
+        // A2 container golden fidelity improved by ~53 dB SNR / ~5 orders of
+        // magnitude ESR vs old Fast (Padé) mode.
+        // Floor: SNR - 14.9 dB, ESR factor ~107×.
         "a2_example" => {
-            let snr_db = 70.0;
-            Some((1e30, snr_db, Some(8.0e-9), Some(0.08)))
+            let snr_db = 120.0;
+            Some((1e30, snr_db, Some(3.5e-12), Some(0.08)))
         }
         // --- ConvNet Test (CH=8, 6 blocks, C++ flat format, T4.7 F-A1) ---
         // Measured: SNR=45.9 dB, ESR=2.54e-5, MR-STFT=2.66e-3 (C++ render
@@ -805,15 +809,16 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // state, no activation functions, and no weight dequantization — it is
         // deterministic floating-point signal processing.
         //
-        // Measured: SNR > 60 dB oracle, ESR < 1e-6, MR-STFT = 0.109 (worst-case:
-        // impulse response, RF=4096), gate=0.12 (10% margin over worst-case,
-        // conservative, S3.T04). Other signals (sine, multi-freq) produce
-        // MR-STFT near-zero (FFT round-trip only).
+        // Measured: SNR=137.9 dB (worst RF=2048), ESR=1.62e-14, MR-STFT=2.02e-6
+        // (golden v1, 2026-07-12, Standard engine). Other signals (sine, multi-freq)
+        // produce MR-STFT near-zero (FFT round-trip only).
+        //
+        // Floor: SNR - 12.9 dB from worst measured (RF=2048), ESR factor ~6.2e3×.
         //
         // Thresholds apply to all Linear FFT receptive field sizes:
         // RF=2048, RF=4096, RF=8192 — FFT precision is RF-independent at f32.
         "linear_fft_rf2048" | "linear_fft_rf4096" | "linear_fft_rf8192" => {
-            let snr_db = 130.0;
+            let snr_db = 125.0;
             Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.12)))
         }
         _ => None,

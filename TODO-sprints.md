@@ -582,7 +582,7 @@ Para fechar o Épico E3 em definitivo:
 
 #### Tarefa T4.8 — Recalibração de Gates de Fidelidade Frouxos (F-B4)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
   * [constants.rs](file:///home/fabio/nam-rs/tests/common/constants.rs)
@@ -592,6 +592,27 @@ Para fechar o Épico E3 em definitivo:
   3. Anotar cada linha recalibrada com o comentário explicativo `// Measured: SNR=... dB, ESR=...`.
 * **Critério de Aceitação (DoD)**:
   * Todos os gates de fidelidade estão calibrados e protegendo o código contra regressões realistas de precisão, mantendo a suite verde.
+
+  **Conclusão (2026-07-12)**: 7 modelos recalibrados + 1 constante de oráculo atualizada:
+
+  **Impacto principal — Ativações Standard (exatas) vs Fast (Padé) antigo:**
+  A mudança do default global de `Fast` para `Standard` (ativações polinomiais exatas em vez de aproximações Padé/minimax) eliminou a fonte dominante de erro nos modelos LSTM e WaveNet A2. O ganho é de ~80–90 dB SNR e ~9 ordens de magnitude ESR para os modelos LSTM.
+
+  | Modelo | SNR antes → depois | ESR antes → depois | Comentário |
+  |--------|-------------------|---------------------|------------|
+  | `BossLSTM-1x16` | 12 → 93 dB | 6.5e-2 → 1.5e-9 | Medido: SNR=108.5 dB, ESR=1.42e-11 |
+  | `BossLSTM-2x8` | 18 → 93 dB | 2.0e-2 → 1.7e-9 | Medido: SNR=107.8 dB, ESR=1.67e-11 |
+  | `lstm_official` | 22 → 105 dB | 6.0e-3 → 9.0e-11 | Medido: SNR=120.8 dB, ESR=8.30e-13 |
+  | `a2_example` | 70 → 120 dB | 8.0e-9 → 3.5e-12 | Medido: SNR=134.9 dB, ESR=3.27e-14 |
+  | `wavenet_a2_film_lite` | 120 → 114 dB | 1.0e-11 (mantido) | SNR margin de 4.2→10.2 dB; ESR medido 3.83e-13 |
+  | `wavenet_a2_film_chaos_stress` | 12 → 120 dB | 3.5e-2 → 1.0e-12 | Deixou de ser degenerado com Standard |
+  | `linear_fft` | 130 → 125 dB | 1.0e-10 (mantido) | SNR margin de 7.7→12.9 dB, `// Measured:` adicionado |
+  | `LSTM_ESR_LIMIT` (oracle) | 7.0e-3 → 1e-11 | — | Oracle ESR caiu de 3.41e-3 para 2.71e-12 |
+
+  * Todos os 36 testes golden_vectors (v1) passam com os novos gates; único failure é `wavenet_condition_lstm` (golden ainda não gerado — pré-existente).
+  * 16/18 testes oracle f64 passam; 2 failures são ConvNet (pré-existente, âncoras f64 precisam de regeneração — T4.7).
+  * Meta-testes `threshold_calibration` (8/8) passam — todos os gates têm `// Measured:` e estão abaixo do teto anti-placebo.
+  * Margens seguem a política de calibração: SNR −10 a −15 dB do valor medido, ESR ×10 a ×100 do valor medido.
 
 ---
 
