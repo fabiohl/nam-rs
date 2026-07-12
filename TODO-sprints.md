@@ -419,3 +419,256 @@ Para fechar o Épico E3 em definitivo:
 2. `utils/tests-quick.sh` roda com sucesso em todas as fases.
 3. Todas as modificações em arquivos de código Rust contêm a licença de Copyright no cabeçalho.
 4. Nenhuma alteração adicionou código não real-time safe nas rotas DSP críticas.
+
+---
+
+## Eixo e Épico Correspondente S4
+
+* **Épico**: [Épico E4 — Paridade NAMcore no código de produção](file:///home/fabio/nam-rs/TODO-findings.md#L674)
+* **Objetivo Geral**: Implementar melhorias e correções de paridade na engine de produção do nam-rs para garantir conformidade plena com o NAMcore C++, incluindo suporte ao formato oficial do ConvNet e desqualificação/validação de recursos inconsistentes.
+* **Complexidade/Risco**: Médio (alterações em componentes de produção da biblioteca DSP e do loader JSON, exigindo verificação de não-regressão em goldens).
+
+---
+
+## Sprint 4 — Paridade NAMcore no Código de Produção (Épico E4)
+
+### Metas da Sprint 4 (Sprint Goals)
+
+1. **Prewarm de WaveNet com LSTM Condition DSP (F-A5)**: Garantir que a inicialização do sub-modelo recorrente LSTM de condicionamento seja realizada corretamente com `cond_dsp.prewarm_samples()` iterações e incluir fixture sintética de cobertura.
+2. **Suporte a sample_rate unknown (F-A2)**: Permitir sample rates do JSON com valor `-1.0` mapeando-os para `None` ("unknown") sem falhar a validação.
+3. **Validação do LstmModelDyn (F-A7)**: Rejeitar `num_layers == 0` na topologia e validar que canais de entrada/saída são mono (`in_channels == 1 && out_channels == 1`).
+4. **Desqualificação de SKU A1 com condition_dsp (F-A3)**: Impedir que modelos WaveNet com condition_dsp entrem no caminho rápido estático de catálogo que ignora esses parâmetros.
+5. **Cálculo Preciso de prewarm_samples (F-A6)**: Atualizar as estimativas analíticas de prewarm da WaveNet para corresponderem à soma de RFs do C++.
+6. **Fail-Closed para Recursos Não Suportados (F-A4)**: Rejeitar arquivos WaveNet A1 contendo recursos exclusivos da engine dinâmica A2 (ex. gating_mode diferente de "none", gated, FiLM, etc.).
+7. **Paridade Plena do ConvNet C++ — Opção A (F-A1)**: Implementar load do formato plano do trainer C++ (BatchNorm cru e bias condicional), gerar fixture ConvNet real no formato C++, e reativar testes de paridade.
+8. **Recalibração dos Gates de Fidelidade (F-B4)**: Ajustar os thresholds de SNR, ESR e MR-STFT em `validation.rs` de acordo com os limites físicos reais dos modelos com a engine Standard.
+9. **Enum de MseGate Explícito (F-B5)**: Substituir o placeholder mágico `1e30` por um enum explicitando campos não aplicáveis.
+
+### S4 Papéis Necessários (Roles Needed)
+
+* **Engenheiro de Software DSP / Rust**: Alterações no loader de topologia, dispatcher, modelos DSP, testes unitários, testes de golden, e validação de fidelidade.
+* **Engenheiro de Infraestrutura de QA / DevOps**: Scripts Python de fixtures e scripts de build/geração de goldens.
+
+---
+
+### S4 Detalhamento das Tarefas Técnicas (Technical Tasks)
+
+#### Tarefa T4.1 — Pré-aquecimento do WaveNet Dyn com LSTM Condition DSP (F-A5)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs)
+  * [generate_a2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_a2_fixtures.py)
+  * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+* **Descrição**:
+  1. Em `src/models/wavenet/model_dyn.rs`, alterar a inicialização `cond_dsp.prewarm(0)` para `cond_dsp.prewarm(cond_dsp.prewarm_samples())` (ou `.max(1)`), garantindo que condicionamentos recorrentes como LSTM inicializem seus estados internos `h`/`c` adequadamente.
+  2. Em `tests/fixtures/generate_a2_fixtures.py`, criar um modelo WaveNet sintético com `condition_dsp` do tipo LSTM (ex: 1 camada, 3 unidades ocultas), nomeando-o `wavenet_condition_lstm.nam`.
+  3. No `golden_gen_build.sh`, incluir a geração de golden correspondente para este modelo e adicionar a validação na malha de testes Rust para garantir estabilidade.
+* **Critério de Aceitação (DoD)**:
+  * A inicialização de condition_dsp recorrentes é executada com o número correto de amostras.
+  * O novo modelo `wavenet_condition_lstm.nam` é gerado e validado sem divergências contra o oráculo f64 e a paridade live C++.
+
+---
+
+#### Tarefa T4.2 — Suporte a sample_rate de Sentinela -1.0 no Loader (F-A2)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [validation.rs](file:///home/fabio/nam-rs/src/loader/nam_json/validation.rs)
+  * [validation_test.rs](file:///home/fabio/nam-rs/src/loader/nam_json/validation_test.rs)
+* **Descrição**:
+  1. Em `src/loader/nam_json/validation.rs`, ajustar o validador de `sample_rate` para interceptar o valor `-1.0` (sentinela do NAMcore C++ para "unknown") e mapeá-lo para `None` ("unknown"), em vez de disparar erro `InvalidSampleRate`.
+  2. Opcionalmente, estender o mapeamento para qualquer valor `<=` 0.0 finito (decidindo conforme `get_dsp.cpp` C++).
+  3. Adicionar testes unitários em `validation_test.rs` cobrindo o comportamento para `-1.0 → None` e garantindo que NaN/±Inf ainda sejam devidamente rejeitados.
+* **Critério de Aceitação (DoD)**:
+  * Modelos com `sample_rate: -1.0` carregam com sucesso e são tratados como sample_rate desconhecido (None), assim como no NAMcore C++.
+
+---
+
+#### Tarefa T4.3 — Robustez e Validações no Loader do LstmModelDyn (F-A7)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [lstm.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/lstm.rs)
+  * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/lstm/model_dyn.rs)
+* **Descrição**:
+  1. Em `src/loader/nam_json/topology/lstm.rs`, na detecção de topologia, rejeitar explicitamente `num_layers == 0` com erro apropriado (fail-closed), uma vez que modelos com zero camadas não possuem utilidade física.
+  2. Validar que `in_channels == 1` e `out_channels == 1` caso estejam presentes no JSON do modelo, seguindo o padrão de validação de canais da topologia A2.
+  3. Adicionar testes unitários cobrindo as rejeições no loader.
+* **Critério de Aceitação (DoD)**:
+  * Modelos LSTM com 0 camadas ou canais diferentes de 1 (mono) são rejeitados de forma segura durante o carregamento de topologia.
+
+---
+
+#### Tarefa T4.4 — Desqualificação de Catálogo A1 para WaveNet com condition_dsp (F-A3)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [wavenet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/wavenet.rs)
+* **Descrição**:
+  1. Em `src/loader/nam_json/topology/wavenet.rs`, na função `get_wavenet_topology`, verificar a presença de `data.config.condition_dsp.is_some()`.
+  2. Se presente, desqualificar o modelo do catálogo rápido estático (Known/Standard) e encaminhá-lo para a engine dinâmica `WaveNetModelDyn`, que implementa o processamento correto do sinal de condicionamento.
+  3. Adicionar teste de topologia garantindo que modelos com a assinatura visual do catálogo mas contendo `condition_dsp` sejam devidamente direcionados para a engine dinâmica.
+* **Critério de Aceitação (DoD)**:
+  * Modelos WaveNet com condicionamento não são classificados no fast path estático e o processamento de áudio é mantido correto.
+
+---
+
+#### Tarefa T4.5 — Correção do cálculo de prewarm_samples() do WaveNet (F-A6)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [model.rs](file:///home/fabio/nam-rs/src/models/wavenet/model.rs)
+  * [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs)
+* **Descrição**:
+  1. Em `src/models/wavenet/model.rs` e `model_dyn.rs`, ajustar a implementação de `prewarm_samples()` para alinhar com a fórmula matemática do NAMcore C++.
+  2. A contagem correta deve ser a soma dos campos receptivos de todas as camadas, e não apenas o máximo ou o valor individual do primeiro bloco, incluindo o prewarm do condition_dsp e a cabeça (post-stack head).
+* **Critério de Aceitação (DoD)**:
+  * O retorno de `prewarm_samples()` bate com os valores calculados pelo C++ em `model.cpp:615-620`.
+
+---
+
+#### Tarefa T4.6 — Fail-Closed para Recursos Não Suportados no WaveNet A1 (F-A4)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [model.rs](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs)
+  * [wavenet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/wavenet.rs)
+  * [dynamic.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/wavenet/dynamic.rs)
+* **Descrição**:
+  1. No parser e loader de topologia do WaveNet, detectar a presença de campos exclusivos da especificação A2 (`gating_mode` diferente de "none", `gated: true`, `head1x1`, `layer1x1` com canais incompatíveis ou slots FiLM ativos) em modelos que não sejam classificados como A2.
+  2. Rejeitar o carregamento desses modelos com erro claro de formato ("feature X requires the A2 dynamic engine; model rejected to protect audio correctness"), impedindo saídas de áudio matematicamente corrompidas sem aviso.
+* **Critério de Aceitação (DoD)**:
+  * Modelos contendo parâmetros de gating ou FiLM fora do caminho A2 apropriado são rejeitados de forma segura pelo loader.
+
+---
+
+#### Tarefa T4.7 — ConvNet Compatível com NAMcore — Opção A (F-A1)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [topology/convnet.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/convnet.rs)
+  * [dispatcher/convnet/mod.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/convnet/mod.rs)
+  * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs)
+  * [generate_b1_2_fixtures.py](file:///home/fabio/nam-rs/tests/fixtures/generate_b1_2_fixtures.py)
+* **Descrição**:
+  1. **Loader de Topologia**: Em `topology/convnet.rs`, detectar o config plano gerado pelo trainer oficial do C++ (`channels` escalar + array global de `dilations` + `batchnorm` bool) e sintetizar a estrutura de camadas equivalente (um bloco por dilation, kernel_size fixo de 2).
+  2. **Dispatcher de Pesos**: Em `dispatcher/convnet/mod.rs`, quando processando no formato plano C++, ler os pesos na ordem crua (bias condicionado a `!batchnorm`; parâmetros do BatchNorm crus: mean, var, gamma, beta, eps) e fundi-los em scale e offset no carregamento (`scale = gamma / sqrt(var + eps)` e `offset = beta - scale * mean`).
+  3. **Fixtures e Goldens**: Atualizar `generate_b1_2_fixtures.py` para exportar a fixture `convnet_test.nam` no formato plano oficial C++.
+  4. **Ativação de Paridade**: No `golden_gen_build.sh`, remover a marca de skip para o ConvNet, gerar seu golden real via render C++ e reativar o teste de paridade real `quick_parity_convnet` (substituindo a verificação de incompatibilidade placebo de T1.2).
+* **Critério de Aceitação (DoD)**:
+  * Modelos ConvNet no formato plano oficial C++ carregam com sucesso no nam-rs.
+  * O teste `quick_parity_convnet` roda com sucesso comparando a saída com exatidão bitwise contra a biblioteca C++ de referência.
+
+---
+
+#### Tarefa T4.8 — Recalibração de Gates de Fidelidade Frouxos (F-B4)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
+  * [constants.rs](file:///home/fabio/nam-rs/tests/common/constants.rs)
+* **Descrição**:
+  1. Em `tests/common/validation.rs`, atualizar os limites de tolerância física (SNR e ESR) de todas as fixtures principais para refletirem a fidelidade ultra-alta do motor `Standard` default.
+  2. Seguir a política de calibração do gate: definir o novo limite como o valor real medido com margem de segurança coerente (ex: 10× a 100× para ESR e -10 a -15 dB para SNR) para evitar falsos-positivos inter-máquinas/ISA.
+  3. Anotar cada linha recalibrada com o comentário explicativo `// Measured: SNR=... dB, ESR=...`.
+* **Critério de Aceitação (DoD)**:
+  * Todos os gates de fidelidade estão calibrados e protegendo o código contra regressões realistas de precisão, mantendo a suite verde.
+
+---
+
+#### Tarefa T4.9 — Semântica MseGate::NotApplicable Explícita (F-B5)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
+  * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs)
+* **Descrição**:
+  1. Substituir a representação mágica de `mse_limit = 1e30` (usada para ignorar a validação de MSE em modelos onde o ESR é o gate primário) por um tipo explicitado no enum `MseGate::NotApplicable` (ou um tipo `Option<f64>` no relatório).
+  2. Ajustar a renderização dos relatórios de teste e o dashboard de qualidade para exibir `gate: N/A` ou similar em vez de `1.0e30`, limpando o ruído nos logs.
+  3. Atualizar as asserções do meta-teste anti-placebo em `threshold_calibration.rs` para verificar o uso dessa variante explícita.
+* **Critério de Aceitação (DoD)**:
+  * Remoção do placeholder mágico `1e30` dos logs e relatórios.
+  * O meta-teste de calibração de gates continua passando com sucesso.
+
+---
+
+## Critérios de Aceitação Gerais da Sprint 4 (Definition of Done)
+
+Para fechar o Épico E4 em definitivo:
+
+1. `utils/lints.sh` executa sem nenhum erro de formatação, clippy, ou cabeçalho SPDX.
+2. `utils/tests-quick.sh` roda com sucesso em todas as fases de fidelidade e paridade, sem skips.
+3. Todas as modificações em arquivos de código Rust contêm a licença de Copyright no cabeçalho.
+4. Nenhuma alteração adicionou código não real-time safe nas rotas DSP críticas.
+
+---
+
+## Eixo e Épico Correspondente S5
+
+* **Épico**: [Épico E5 — Contrato de Qualidade (tarefa final da sprint)](file:///home/fabio/nam-rs/TODO-findings.md#L692)
+* **Objetivo Geral**: Congelar os índices de qualidade e performance do projeto sob um contrato versionado unificado, impedindo regressões silenciosas na malha de testes e documentando o fluxo de manutenção do contrato.
+* **Complexidade/Risco**: Médio (alteração direta no script do painel de qualidade e definição do arquivo de baseline formal).
+
+---
+
+## Sprint 5 — Contrato de Qualidade (Épico E5)
+
+### Metas da Sprint 5 (Sprint Goals)
+
+1. **Unificação do Contrato de Qualidade**: Adicionar a capacidade de salvar baseline (`--save`) e verificar conformidade (`--check`) de fidelidade e latência sob as margens especificadas diretamente em `utils/quality-dashboard.sh` (conforme preferência do PO).
+2. **Definição da Baseline Oficial**: Registrar o primeiro contrato de fidelidade e latência oficial no arquivo de controle `docs/quality-contract.txt`.
+3. **Documentação de Manutenção**: Garantir que as diretrizes para atualização de baselines e gerenciamento do contrato estejam registradas nos manuais de teste e benchmark.
+
+### S5 Papéis Necessários (Roles Needed)
+
+* **Engenheiro de Infraestrutura de QA / DevOps**: Edição de `utils/quality-dashboard.sh` e geração do baseline oficial.
+* **Engenheiro de Software DSP / Rust**: Atualização e revisão da documentação de processos em `docs/`.
+
+---
+
+### S5 Detalhamento das Tarefas Técnicas (Technical Tasks)
+
+#### Tarefa T5.1 — Implementação de Verificação de Contrato em quality-dashboard.sh (F-E1)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
+* **Descrição**:
+  1. Implementar a opção `--check <file>` no script `utils/quality-dashboard.sh`.
+  2. Quando acionado com `--check`, o script deverá executar as fases habilitadas pelo `--fidelity-only` ou `--bench-only` (ou modo `full`), parsear os resultados para um arquivo temporário em formato plain text, e compará-los contra o arquivo do contrato fornecido.
+  3. Aplicar as seguintes margens para a comparação:
+     * **Fidelidade (ESR/SNR/MR-STFT)**: O teste falhará se `novo_esr > contrato_esr * 10.0` (absorvendo variações ISA/f64) ou se `novo_snr < contrato_snr - 6.0` (em dB). Se o campo correspondente no contrato for `N/A`, ignorar o gate correspondente.
+     * **Performance (latência mediana)**: O teste falhará se `nova_lat > contrato_lat * 1.10` (margem de ruído de 10%). Se o benchmark acusar regressão mas estiver dentro da margem, o script `tests-performance-regression.sh` continua sendo a autoridade estatística primária.
+  4. Caso ocorra alguma violação de contrato, o script deve retornar código de erro diferente de zero e imprimir um sumário das métricas regredidas em vermelho.
+* **Critério de Aceitação (DoD)**:
+  * Executar `./utils/quality-dashboard.sh --check <file>` valida os resultados atuais contra o baseline, identificando violações fora das tolerâncias descritas e retornando exit code correspondente.
+
+---
+
+#### Tarefa T5.2 — Baseline Oficial e Documentação do Fluxo (F-E1)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [quality-contract.txt](file:///home/fabio/nam-rs/docs/quality-contract.txt) [NEW]
+  * [testing.md](file:///home/fabio/nam-rs/docs/testing.md)
+  * [benchmarks.md](file:///home/fabio/nam-rs/docs/benchmarks.md)
+* **Descrição**:
+  1. Gerar o arquivo oficial de contrato rodando `./utils/quality-dashboard.sh --save docs/quality-contract.txt` com todas as fases corretas após a conclusão do Épico E4.
+  2. Gerar `docs/quality-contract.txt` como a linha de base imutável para a qualidade do nam-rs.
+  3. Adicionar seções explicativas em `docs/testing.md` e `docs/benchmarks.md` descrevendo o funcionamento da verificação do contrato e detalhando o procedimento para renovação deliberada da baseline (por exemplo, exigindo justificativa expressa no commit com a flag `--save`).
+* **Critério de Aceitação (DoD)**:
+  * O arquivo `docs/quality-contract.txt` está salvo no repositório.
+  * O manual `docs/testing.md` e `docs/benchmarks.md` explicam claramente as políticas de conformidade do contrato de qualidade e suas margens de tolerância.
+
+---
+
+## Critérios de Aceitação Gerais da Sprint 5 (Definition of Done)
+
+Para fechar o Épico E5 em definitivo:
+
+1. `utils/lints.sh` executa sem nenhum erro de formatação, clippy, ou cabeçalho SPDX.
+2. `utils/tests-quick.sh` roda com sucesso.
+3. Todas as modificações em arquivos de código contêm a licença de Copyright no cabeçalho.
+4. O arquivo `docs/quality-contract.txt` está gerado e a verificação integrada passa localmente.
