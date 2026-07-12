@@ -652,7 +652,7 @@ Elimina os falsos-verdes da malha de paridade. **Risco: baixo (só testes).**
 4. F-B7 — determinismo ConvNet endurecido p/ MSE == 0.0.
 5. F-B8 — documentar piso f64 das âncoras (docs).
 
-## Épico E2 — Scripts de QA corretos e rápidos 🟠 [DOING]
+## Épico E2 — Scripts de QA corretos e rápidos 🟠 [DONE]
 
 Corrige dados exibidos e devolve ~30-40s ao loop diário. **Risco: baixo (shell).**
 
@@ -665,7 +665,7 @@ Corrige dados exibidos e devolve ~30-40s ao loop diário. **Risco: baixo (shell)
 7. F-D2 — case-counts dos proptests de ativação parametrizados (quick vs long).
 8. F-C7 — target dir dedicado p/ CLAP no tests-long (preserva cache das fases 6-7).
 
-## Épico E3 — Fixtures completas e auto-verificáveis 🟠 [TO-DO]
+## Épico E3 — Fixtures completas e auto-verificáveis 🟠 [DOING]
 
 1. F-B3 — gerar golden do `wavenet_a2_film_input_mixin_pre`, calibrar, ativar teste.
 2. F-C9 — freshness gate falha em golden esperado ausente (seção `# EXPECTED`).

@@ -330,3 +330,92 @@ Para fechar o Épico E2 em definitivo:
 2. `utils/tests-quick.sh` roda com sucesso em todas as fases.
 3. Todas as modificações em arquivos de código Rust contêm a licença de Copyright no cabeçalho.
 4. Nenhuma alteração adicionou código não real-time safe nas rotas DSP críticas.
+
+---
+
+## Eixo e Épico Correspondente S3
+
+* **Épico**: [Épico E3 — Fixtures completas e auto-verificáveis](file:///home/fabio/nam-rs/TODO-findings.md#L668)
+* **Objetivo Geral**: Garantir a completude e verificação automática de todos os fixtures do projeto, implementando governança estrita de freshness e paridade live bidirecional.
+* **Complexidade/Risco**: Baixo (infraestrutura de testes e validações off-RT).
+
+---
+
+## Sprint 3 — Fixtures Completas e Auto-Verificáveis (Épico E3)
+
+### Metas da Sprint 3 (Sprint Goals)
+
+1. **Ativação Segura do Modelo de FiLM InputMixinPre**: Gerar o golden vector para `wavenet_a2_film_input_mixin_pre`, calibrar seus thresholds de fidelidade com base em medições reais e ativar o teste golden correspondente.
+2. **Governança Estrita de Frescor dos Goldens (Freshness Gate)**: Evitar gaps silenciosos de testes não exercitados, garantindo que o manifest de frescor declare todos os arquivos golden esperados (incluindo escopos v2) e que o `check_freshness` falhe caso algum arquivo esperado não exista.
+3. **Ampliação da Cobertura de Paridade Live C++**: Garantir paridade em tempo real (on-the-fly) contra o renderizador de referência C++ para todos os modelos dinâmicos/FiLM da arquitetura A2.
+4. **Coerência Bidirecional CATALOG ↔ Testes**: Implementar verificação estática que garanta que todo modelo registrado no catálogo do gerador de goldens possua ao menos um teste consumidor na malha de testes Rust.
+
+### S3 Papéis Necessários (Roles Needed)
+
+* **Engenheiro de Software DSP / Rust**: Edição de `tests/models/golden_vectors.rs`, `tests/common/validation.rs`, `tests/parity/cpp_parity.rs` e `tests/models/meta_coherence.rs`.
+* **Engenheiro de Infraestrutura de QA / DevOps**: Edição de `tests/fixtures/golden_gen_build.sh` e `utils/tests-quick.sh`.
+
+---
+
+### S3 Detalhamento das Tarefas Técnicas (Technical Tasks)
+
+#### Tarefa T3.1 — Ativação e Calibração de wavenet_a2_film_input_mixin_pre (F-B3)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  * [validation.rs](file:///home/fabio/nam-rs/tests/common/validation.rs)
+  * [golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs)
+* **Descrição**:
+  1. Executar `./tests/fixtures/golden_gen_build.sh` para produzir o arquivo `tests/fixtures/golden_wavenet_a2_film_input_mixin_pre.bin`.
+  2. Remover a marcação `#[ignore]` do teste `test_golden_vectors_wavenet_a2_film_input_mixin_pre()` em `tests/models/golden_vectors.rs`.
+  3. Rodar o teste em modo release para capturar as medições de fidelidade reais (SNR, ESR, MR-STFT).
+  4. Atualizar os limites no arquivo `tests/common/validation.rs` na chave `"wavenet_a2_film_input_mixin_pre"` sob as regras de calibração, inserindo o comentário explicativo no formato `// Measured: SNR=... dB, ESR=..., MR-STFT=...`.
+* **Critério de Aceitação (DoD)**:
+  * O teste `test_golden_vectors_wavenet_a2_film_input_mixin_pre` roda incondicionalmente no loop rápido e passa com sucesso.
+  * O threshold de fidelidade segue a política de calibração do projeto com margens seguras justificadas em comentários.
+
+---
+
+#### Tarefa T3.2 — Governança Estrita no Freshness Gate (F-C9)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh)
+  * [tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh)
+* **Descrição**:
+  1. Modificar o CATALOG no `golden_gen_build.sh` para incluir um quinto campo opcional `skip_reason` (ex: `convnet_test.nam:...:incompatible`).
+  2. Refatorar o gerador para pular os modelos que possuem `skip_reason` preenchido de forma limpa e documentada no cabeçalho do CATALOG.
+  3. Estender a Fase 11 de `golden_gen_build.sh` para escrever uma seção `# EXPECTED: <golden_filename>` no arquivo `.golden_manifest.sha256` para cada golden que deveria ter sido gerado (respeitando o `v2_scope` e os `skip_srs` de cada modelo no catálogo, pulando se houver `skip_reason`).
+  4. Atualizar a função `check_freshness()` no `utils/tests-quick.sh` para ler as linhas de comentário `# EXPECTED:` do manifest e asseverar a existência física de todos os arquivos listados. Se algum arquivo esperado estiver ausente do disco, falhar com erro claro.
+* **Critério de Aceitação (DoD)**:
+  * Executar `tests-quick.sh` e comprovar que o Freshness Gate passa quando todos os arquivos estão íntegros e presentes.
+  * Remover temporariamente um arquivo golden esperado e confirmar que o gate aborta com erro sinalizando a ausência.
+
+---
+
+#### Tarefa T3.3 — Cobertura Live C++ e Coerência CATALOG ↔ Testes (F-B6)
+
+* **Status**: `[ ]`
+* **Arquivos Afetados**:
+  * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs)
+  * [meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs)
+* **Descrição**:
+  1. Adicionar os testes de paridade live `live_cross_validation_wavenet_a2_film_input_mixin_pre` e sua respectiva versão v2 `live_cross_validation_v2_wavenet_a2_film_input_mixin_pre` no arquivo `tests/parity/cpp_parity.rs`, marcando-os com `#[ignore]` para rodarem apenas no loop longo (Phase 3).
+  2. Adicionar de forma análoga `live_cross_validation_wavenet_a2_film_chaos_stress` e sua versão v2 no mesmo arquivo.
+  3. Em `tests/models/meta_coherence.rs`, implementar o teste `test_catalog_models_have_consumers()` que analisa a direção inversa CATALOG → Testes: lê todas as entradas do CATALOG do script `golden_gen_build.sh` e valida se cada modelo possui ao menos um consumidor nas suítes de teste (realizando leitura direta de arquivos `.rs` relevantes da pasta `tests/`).
+* **Critério de Aceitação (DoD)**:
+  * Compilação limpa e livre de warnings.
+  * O teste `test_catalog_models_have_consumers` passa com sucesso.
+  * Os novos testes de validação cruzada live estão devidamente mapeados sob `#[ignore]` e integrados à cobertura de paridade.
+
+---
+
+## Critérios de Aceitação Gerais da Sprint 3 (Definition of Done)
+
+Para fechar o Épico E3 em definitivo:
+
+1. `utils/lints.sh` executa sem nenhum erro de formatação, clippy, ou cabeçalho SPDX.
+2. `utils/tests-quick.sh` roda com sucesso em todas as fases.
+3. Todas as modificações em arquivos de código Rust contêm a licença de Copyright no cabeçalho.
+4. Nenhuma alteração adicionou código não real-time safe nas rotas DSP críticas.
