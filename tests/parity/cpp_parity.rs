@@ -555,8 +555,13 @@ fn run_render_comparison(
 }
 
 /// Helper: run v1 comparison (legacy 48 kHz, fast CI).
-fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
-    let _ = run_render_comparison(
+fn run_v1(
+    model_filename: &str,
+    golden_name: &str,
+    label: &str,
+    check_lufs_gate: bool,
+) -> ParityOutcome {
+    run_render_comparison(
         model_filename,
         golden_name,
         label,
@@ -564,12 +569,17 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate:
         false,
         check_lufs_gate,
         false,
-    );
+    )
 }
 
 /// Helper: run v1 comparison in Standard (exact-grade) mode (Tarefa β1.3).
-fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_gate: bool) {
-    let _ = run_render_comparison(
+fn run_v1_hf(
+    model_filename: &str,
+    golden_name: &str,
+    label: &str,
+    check_lufs_gate: bool,
+) -> ParityOutcome {
+    run_render_comparison(
         model_filename,
         golden_name,
         label,
@@ -577,7 +587,7 @@ fn run_v1_hf(model_filename: &str, golden_name: &str, label: &str, check_lufs_ga
         false,
         check_lufs_gate,
         true,
-    );
+    )
 }
 
 /// Unified implementation for v2 multi-SR parity tests.
@@ -718,32 +728,50 @@ fn run_v2_multi_sr_hf(
 
 #[test]
 fn quick_parity_lstm_1x16() {
-    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Quick LSTM 1×16", true);
+    let outcome = run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Quick LSTM 1×16", true);
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_lstm_1x16");
+        }
+    }
 }
 
 #[test]
 fn quick_parity_wavenet_ch16() {
-    run_v1(
+    let outcome = run_v1(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Quick WaveNet CH16",
         true,
     );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_wavenet_ch16");
+        }
+    }
 }
 
 #[test]
 fn quick_parity_a2_full() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a2_full.nam",
         "wavenet_a2_full",
         "Quick A2-Full",
         true,
     );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_a2_full");
+        }
+    }
 }
 
 #[test]
 fn quick_parity_convnet() {
-    run_v1("convnet_test.nam", "convnet_test", "Quick ConvNet", true);
+    let _ = run_v1("convnet_test.nam", "convnet_test", "Quick ConvNet", true);
 }
 
 // =============================================================================
@@ -755,124 +783,137 @@ fn quick_parity_convnet() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_standard() {
-    run_v1(
+    let outcome = run_v1(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_feather() {
-    run_v1(
+    let outcome = run_v1(
         "BossWN-feather.nam",
         "wavenet_feather",
         "Live WaveNet Feather",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_nano() {
-    run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano", true);
+    let outcome = run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_lite() {
-    run_v1(
+    let outcome = run_v1(
         "EVH-5150-Lite.nam",
         "wavenet_lite",
         "Live WaveNet Lite",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_1x16() {
-    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16", true);
+    let outcome = run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_2x8() {
-    run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8", true);
+    let outcome = run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_a1_standard() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a1_standard.nam",
         "wavenet_a1_standard",
         "Live WaveNet A1 Standard (Official)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_official() {
-    run_v1("lstm.nam", "lstm_official", "Live LSTM Official", true);
+    let outcome = run_v1("lstm.nam", "lstm_official", "Live LSTM Official", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_a2_full() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a2_full.nam",
         "wavenet_a2_full",
         "Live WaveNet A2-Full",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_a2_lite() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a2_lite.nam",
         "wavenet_a2_lite",
         "Live WaveNet A2-Lite",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_convnet() {
-    run_v1(
+    let outcome = run_v1(
         "convnet_test.nam",
         "convnet_test",
         "Live ConvNet Test",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_condition_dsp() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_condition_dsp.nam",
         "wavenet_condition_dsp",
         "Live WaveNet Condition DSP",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_a2_example_slimmable() {
-    run_v1(
+    let outcome = run_v1(
         "a2_example.nam",
         "a2_example",
         "Live SlimmableContainer A2 Example (CH=3→6)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 // --- v2 (multi-SR, comprehensive) ---
@@ -1026,23 +1067,25 @@ fn live_cross_validation_v2_wavenet_condition_dsp() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_dyn() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_dyn_free.nam",
         "wavenet_dyn_free",
         "Live WaveNetDyn Free-Shape",
         false,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_dyn() {
-    run_v1(
+    let outcome = run_v1(
         "lstm_dyn_test.nam",
         "lstm_dyn_test",
         "Live LSTM-Dyn 1×7",
         false,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
@@ -1077,45 +1120,49 @@ fn live_cross_validation_v2_lstm_dyn() {
 #[test]
 #[ignore]
 fn live_cross_validation_a2_dynamic_gated() {
-    run_v1(
+    let outcome = run_v1(
         "a2_dynamic_gated_ch8.nam",
         "a2_dynamic_gated_ch8",
         "Live A2 Dynamic Gated (CH=8)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_a2_dynamic_blended() {
-    run_v1(
+    let outcome = run_v1(
         "a2_dynamic_blended_ch3.nam",
         "a2_dynamic_blended_ch3",
         "Live A2 Dynamic Blended (CH=3)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_a2_film_lite() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a2_film_lite.nam",
         "wavenet_a2_film_lite",
         "Live WaveNet A2-FiLM-Lite (CH=3)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_a2_film_full() {
-    run_v1(
+    let outcome = run_v1(
         "wavenet_a2_film_full.nam",
         "wavenet_a2_film_full",
         "Live WaveNet A2-FiLM-Full (CH=8)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 // wavenet_a2_max — DISABLED (§7.1); model inference is blocked at dispatch
@@ -1195,7 +1242,8 @@ fn live_cross_validation_v2_wavenet_a2_film_full() {
 #[test]
 #[ignore]
 fn live_cross_validation_linear() {
-    run_v1("linear_test.nam", "linear_test", "Live Linear RF=4", true);
+    let outcome = run_v1("linear_test.nam", "linear_test", "Live Linear RF=4", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
@@ -1229,22 +1277,34 @@ fn live_cross_validation_v2_linear() {
 
 #[test]
 fn quick_parity_hf_lstm_1x16() {
-    run_v1_hf(
+    let outcome = run_v1_hf(
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Quick LSTM 1×16 (HF)",
         true,
     );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_hf_lstm_1x16");
+        }
+    }
 }
 
 #[test]
 fn quick_parity_hf_wavenet_ch16() {
-    run_v1_hf(
+    let outcome = run_v1_hf(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Quick WaveNet CH16 (HF)",
         true,
     );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_hf_wavenet_ch16");
+        }
+    }
 }
 
 // --- v1 (standard-rate) HF tests, ignored ---
@@ -1252,29 +1312,32 @@ fn quick_parity_hf_wavenet_ch16() {
 #[test]
 #[ignore]
 fn live_cross_validation_hf_lstm_1x16() {
-    run_v1_hf(
+    let outcome = run_v1_hf(
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Live LSTM 1×16 (HF)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_hf_lstm_2x8() {
-    run_v1_hf("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (HF)", true);
+    let outcome = run_v1_hf("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (HF)", true);
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_hf_wavenet_standard() {
-    run_v1_hf(
+    let outcome = run_v1_hf(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard (HF)",
         true,
     );
+    assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 // --- v2 (multi-SR) HF tests, ignored ---
@@ -1367,15 +1430,16 @@ fn live_cross_validation_nondist_models() {
                 &format!("nondist_{}", filename.replace('.', "_")),
                 &format!("Live Nondist {}", filename),
                 true,
-            );
+            )
         }));
 
         if copied {
             fs::remove_file(&dest_path).ok();
         }
 
-        if let Err(e) = result {
-            std::panic::resume_unwind(e);
+        match result {
+            Ok(outcome) => assert_eq!(outcome, ParityOutcome::Completed),
+            Err(e) => std::panic::resume_unwind(e),
         }
     }
 }

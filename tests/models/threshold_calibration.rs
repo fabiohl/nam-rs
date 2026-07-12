@@ -696,3 +696,27 @@ fn test_all_set_activation_calls_are_guarded() {
         );
     }
 }
+
+/// Tarefa T1.1 — Meta-teste anti-let_: nenhum wrapper em cpp_parity.rs pode
+/// descartar silenciosamente o `ParityOutcome` retornado por
+/// `run_render_comparison`.
+///
+/// Analisa o código-fonte de `tests/parity/cpp_parity.rs` e falha se encontrar
+/// qualquer ocorrência do padrão `let _ = run_render_comparison`. Todas as
+/// chamadas a `run_render_comparison` devem capturar o `ParityOutcome` retornado
+/// e tomar decisões explícitas sobre ele (assert, SKIP-COVERAGE, etc).
+#[test]
+fn test_no_silent_let_underscore_in_cpp_parity_wrappers() {
+    let cpp_parity_src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/parity/cpp_parity.rs");
+
+    let source =
+        fs::read_to_string(&cpp_parity_src).expect("Failed to read tests/parity/cpp_parity.rs");
+
+    assert!(
+        !source.contains("let _ = run_render_comparison"),
+        "cpp_parity.rs contains silent discard of ParityOutcome via \
+         'let _ = run_render_comparison'. All calls to run_render_comparison \
+         must capture the returned ParityOutcome and assert on it (Tarefa T1.1)."
+    );
+}

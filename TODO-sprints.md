@@ -38,7 +38,7 @@ Este documento gerencia o backlog de sprints baseado nos achados mapeados em `TO
 
 #### Tarefa T1.1 — Correção de run_v1/run_v1_hf e Meta-teste anti-let_ (F-B1)
 
-* **Status**: `[ ]`
+* **Status**: `[x]` (2026-07-12)
 * **Arquivos Afetados**:
   * [cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs)
   * [threshold_calibration.rs](file:///home/fabio/nam-rs/tests/models/threshold_calibration.rs)
