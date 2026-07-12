@@ -279,7 +279,7 @@ Para fechar o Épico E1 em definitivo:
 
 #### Tarefa T2.7 — Parametrização e Limite de Casos nos Proptests de Ativação (F-D2)
 
-* **Status**: `[ ]`
+* **Status**: `[x]`
 * **Arquivos Afetados**:
   * [activations_test.rs](file:///home/fabio/nam-rs/src/math/activations/activations_test.rs)
 * **Descrição**:
@@ -299,6 +299,8 @@ Para fechar o Épico E1 em definitivo:
 * **Critério de Aceitação (DoD)**:
   * O tempo dos testes estruturais de ativação cai sensivelmente em debug (Fase 1).
   * Execução completa e rigorosa mantida em release/long loop.
+
+  **Conclusão (2026-07-12)**: 5 proptests em `activations_test.rs` convertidos de `ProptestConfig::with_cases(10_000)` hardcoded para leitura dinâmica de `PROPTEST_CASES` com fallback `cfg!(debug_assertions)`: 1_000 em debug, 100_000 em release. Debug reduz de 10k para 1k casos por proptest (5× menos, ~5× mais rápido na Fase 1). Release sobe de 10k para 100k (10× mais rigoroso no long loop). Compilação verificada.
 
 ---
 

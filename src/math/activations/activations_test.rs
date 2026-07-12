@@ -51,7 +51,13 @@ fn test_tanh_slice_dispatch_smoke() {
 // Proptest: validates scalar tanh precision against f32::tanh reference.
 // 100k uniform inputs in [-10, 10].
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        cases: std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(if cfg!(debug_assertions) { 1_000 } else { 100_000 }),
+        .. ProptestConfig::default()
+    })]
     #[test]
     fn test_tanh_pade_proptest_100k(x in -10.0f32..10.0f32) {
         let expected = x.tanh();
@@ -107,7 +113,13 @@ fn test_tanh_piecewise_saturation() {
 
 // Proptest targeting the sub-intervals uniformly — 50k samples.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        cases: std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(if cfg!(debug_assertions) { 1_000 } else { 100_000 }),
+        .. ProptestConfig::default()
+    })]
     #[test]
     fn test_tanh_piecewise_proptest_50k(x in -4.1f32..4.1f32) {
         let expected = x.tanh();
@@ -200,7 +212,13 @@ fn test_tanh_pade_nr2_sweep() {
 // uniform random inputs in `[-10, 10]`.  Maximum absolute error must be
 // `< 5e-3`.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        cases: std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(if cfg!(debug_assertions) { 1_000 } else { 100_000 }),
+        .. ProptestConfig::default()
+    })]
     #[test]
     fn test_tanh_pade_nr2_proptest_100k(x in -10.0f32..10.0f32) {
         use std::arch::x86_64::*;
@@ -294,7 +312,13 @@ fn test_tanh_pade_nr2_sweep_avx512() {
 // 100k uniform random inputs in `[-10, 10]`.  Only executes on hardware
 // with AVX-512F+VL+DQ support.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        cases: std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(if cfg!(debug_assertions) { 1_000 } else { 100_000 }),
+        .. ProptestConfig::default()
+    })]
     #[test]
     fn test_tanh_pade_nr2_proptest_100k_avx512(x in -10.0f32..10.0f32) {
         use std::arch::x86_64::*;
@@ -360,7 +384,13 @@ fn test_sigmoid_slice_dispatch_smoke() {
 // Proptest: validates sigmoid scalar precision against reference.
 // 100k uniform inputs in [-10, 10].
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        cases: std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(if cfg!(debug_assertions) { 1_000 } else { 100_000 }),
+        .. ProptestConfig::default()
+    })]
     #[test]
     fn test_sigmoid_pade_proptest_100k(x in -10.0f32..10.0f32) {
         let expected = 1.0 / (1.0 + (-x).exp());
