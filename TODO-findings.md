@@ -671,7 +671,7 @@ Corrige dados exibidos e devolve ~30-40s ao loop diário. **Risco: baixo (shell)
 2. F-C9 — freshness gate falha em golden esperado ausente (seção `# EXPECTED`).
 3. F-B6 — live cross-validation p/ FiLM/gated/blended + meta_coherence bidirecional.
 
-## Épico E4 — Paridade NAMcore no código de produção 🟡→🟠 [DOING]
+## Épico E4 — Paridade NAMcore no código de produção 🟡→🟠 [DONE]
 
 Mudanças em `src/` — exigem golden verde antes/depois e review rigoroso.
 **Risco: médio.** Ordem interna do mais contido ao mais amplo:
@@ -689,7 +689,7 @@ Mudanças em `src/` — exigem golden verde antes/depois e review rigoroso.
    sobre o estado final do código).
 9. F-B5 — `MseGate::NotApplicable` explícito.
 
-## Épico E5 — Contrato de Qualidade (tarefa final da sprint) 🟠 [DOING]
+## Épico E5 — Contrato de Qualidade (tarefa final da sprint) 🟠 [DONE]
 
 **Depende de:** E2 (dashboard correto) e idealmente E4.8 (gates recalibrados).
 > **Nota do PO:** Eu prefiro que esta funcionalidade fosse unificada como um script único.

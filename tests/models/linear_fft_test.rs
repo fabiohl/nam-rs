@@ -140,7 +140,7 @@ fn verify_against_oracle(label: &str, weights_forward: &[f32], bias: f32, input:
     report_dsp_fidelity_no_lufs(
         &reference,
         &output,
-        1e-6,
+        Some(1e-6),
         60.0,
         Some(1e-6),
         Some(0.12),
@@ -353,7 +353,7 @@ fn verify_nam_file_against_oracle(nam_filename: &str, label: &str, input: &[f32]
     report_dsp_fidelity_no_lufs(
         &reference,
         &output,
-        1e-6,
+        Some(1e-6),
         60.0,
         Some(1e-6),
         Some(0.12),

@@ -162,7 +162,7 @@ fn compare_golden_cpp(scenario: &CppScenario) {
     report_dsp_fidelity_no_lufs(
         &cpp_compensated,
         upols_slice,
-        5e-2,
+        Some(5e-2),
         10.0,
         Some(1e-3),
         None,

@@ -243,12 +243,12 @@ fn test_all_calibrated_entries_have_measurement_comments() {
 ///    regressions). Fails regardless of ESR or MSE values.
 /// 2. `max_esr ≥ 1.0` → ESR gate is neutralized (never catches
 ///    regressions). Fails regardless of SNR or MSE values.
-/// 3. `mse_limit ≥ 1e29` → MSE gate is effectively infinite.
+/// 3. `mse_limit = None` → MSE gate explicitly not applicable.
 ///    This is acceptable ONLY if the remaining SNR and ESR gates
 ///    are "rigid" enough to compensate (SNR ≥ 40 dB AND ESR < 0.1).
-///    The A2 Full/Lite models intentionally set `mse_limit = 1e30`
-///    because their ESR gates are ultra-strict (≤ 8e-8), making
-///    MSE redundant.
+///    The A2 Full/Lite/a2_example models intentionally use `None`
+///    because their ESR gates are ultra-strict, making
+///    MSE redundant. (Tarefa 4.9 — MseGate::NotApplicable Explicite.)
 /// 4. `mrstft_max ≥ 0.5` → MR-STFT gate is neutralized (never catches
 ///    spectral regressions). MR-STFT is a relative metric bounded [0,1];
 ///    a threshold ≥ 0.5 would allow severe spectral divergence.
@@ -303,17 +303,17 @@ fn test_all_thresholds_anti_placebo() {
                 );
             }
 
-            // Rule 3: MSE ≥ 1e29 without rigid SNR+ESR → placebo.
-            if mse_limit >= 1e29 {
+            // Rule 3: MSE gate explicitly not applicable (None) without rigid SNR+ESR → placebo.
+            // A2 Full/Lite/a2_example intentionally use None (was 1e30)
+            // because their ESR gates are ultra-strict, making MSE redundant.
+            if mse_limit.is_none() {
                 let esr_rigid = esr_opt.is_some() && esr_opt.unwrap() < 0.1;
                 assert!(
                     snr_db >= 40.0 && esr_rigid,
-                    "Model '{model_name}' has mse_limit = {mse_limit} ≥ 1e29 \
-                     (effectively infinite MSE gate) but lacks rigid SNR/ESR \
+                    "Model '{model_name}' has mse_limit = None \
+                     (MSE gate not applicable — ESR primary) but lacks rigid SNR/ESR \
                      compensation (SNR = {snr_db} dB, ESR = {esr_opt:?}). \
-                     A2 Full/Lite intentionally use mse_limit = 1e30 because \
-                     their ESR gates are ultra-strict (≤ 8e-8). \
-                     To bypass MSE, SNR must be ≥ 40 dB and ESR must be < 0.1."
+                     For MSE gate to be not applicable, SNR must be ≥ 40 dB and ESR must be < 0.1."
                 );
             }
 

@@ -355,7 +355,9 @@ fn run_render_comparison(
             let sr_ratio = sample_rate as f64 / 48000.0;
             let snr_relaxation = (3.5 * sr_ratio).min(10.0);
             min_snr_db = (min_snr_db - snr_relaxation).max(7.0);
-            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut m) = mse_limit {
+                *m *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
@@ -369,7 +371,9 @@ fn run_render_comparison(
             let sr_ratio = sample_rate as f64 / 48000.0;
             let snr_relaxation = (1.5 * sr_ratio).min(4.0);
             min_snr_db -= snr_relaxation;
-            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut m) = mse_limit {
+                *m *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
@@ -381,7 +385,9 @@ fn run_render_comparison(
     if use_v2 && actual_sr != model_sr {
         // Resampling introduces minor interpolation/approximation errors, relax thresholds slightly
         min_snr_db -= 1.5;
-        mse_limit *= 1.5;
+        if let Some(ref mut m) = mse_limit {
+            *m *= 1.5;
+        }
         if let Some(ref mut esr) = max_esr {
             *esr *= 1.5;
         }
@@ -453,7 +459,14 @@ fn run_render_comparison(
     {
         let scale_back = esr_cap / *esr;
         *esr = esr_cap;
-        mse_limit = (mse_limit * scale_back).max(calibrated_mse);
+        if let Some(ref mut m) = mse_limit {
+            let scaled = *m * scale_back;
+            *m = if let Some(ref cm) = calibrated_mse {
+                scaled.max(*cm)
+            } else {
+                scaled
+            };
+        }
     }
     {
         let mrstft_cap = if is_film {

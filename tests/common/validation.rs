@@ -139,7 +139,7 @@ pub const MRSTFT_SOFT_THRESHOLD: f64 = 0.50;
 pub fn report_dsp_fidelity(
     reference: &[f32],
     test: &[f32],
-    mse_limit: f64,
+    mse_limit: Option<f64>,
     min_snr_db: f64,
     max_esr: Option<f64>,
     mrstft_max: Option<f64>,
@@ -176,7 +176,7 @@ pub fn report_dsp_fidelity(
 pub fn report_dsp_fidelity_no_lufs(
     reference: &[f32],
     test: &[f32],
-    mse_limit: f64,
+    mse_limit: Option<f64>,
     min_snr_db: f64,
     max_esr: Option<f64>,
     mrstft_max: Option<f64>,
@@ -201,7 +201,7 @@ pub fn report_dsp_fidelity_no_lufs(
 fn report_dsp_fidelity_impl(
     reference: &[f32],
     test: &[f32],
-    mse_limit: f64,
+    mse_limit: Option<f64>,
     min_snr_db: f64,
     max_esr: Option<f64>,
     mrstft_max: Option<f64>,
@@ -290,12 +290,20 @@ fn report_dsp_fidelity_impl(
     let mut buf = String::with_capacity(1024);
     writeln!(buf).unwrap();
     writeln!(buf, "[NeuralAmpModelerCore × NAM-rs — {label}]").unwrap();
-    writeln!(
-        buf,
-        "  MSE     = {mse:.2e}      (threshold < {mse_limit:.1e})  {}",
-        if mse < mse_limit { "✓" } else { "✗" }
-    )
-    .unwrap();
+    if let Some(limit) = mse_limit {
+        writeln!(
+            buf,
+            "  MSE     = {mse:.2e}      (threshold < {limit:.1e})  {}",
+            if mse < limit { "✓" } else { "✗" }
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            buf,
+            "  MSE     = {mse:.2e}      (gate: N/A — ESR primary)  ⓘ"
+        )
+        .unwrap();
+    }
     writeln!(buf, "  MAE     = {mae:.2e}").unwrap();
     if snr.is_finite() {
         writeln!(
@@ -418,10 +426,12 @@ fn report_dsp_fidelity_impl(
         }
     }
 
-    assert!(
-        mse < mse_limit,
-        "[{label}] MSE={mse:.6e} exceeds threshold {mse_limit:.1e} (MAE={mae:.6e}, SNR={snr:.1} dB)"
-    );
+    if let Some(limit) = mse_limit {
+        assert!(
+            mse < limit,
+            "[{label}] MSE={mse:.6e} exceeds threshold {limit:.1e} (MAE={mae:.6e}, SNR={snr:.1} dB)"
+        );
+    }
     assert!(
         snr >= min_snr_db,
         "[{label}] SNR={snr:.1} dB below minimum {min_snr_db:.1} dB (MSE={mse:.6e}, MAE={mae:.6e})"
@@ -526,8 +536,13 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 /// The meta-test `tests/threshold_calibration.rs` enforces this invariant.
 ///
 /// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)`.
+/// `mse_limit` is `None` when MSE gate is not applicable (ESR is the primary gate,
+/// explicit `MseGate::NotApplicable` semantics).
 /// `mrstft_max` is asserted as a hard gate at 44.1/48 kHz (Tarefa 3.1, F-2).
-pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f64>, Option<f64>)> {
+#[allow(clippy::type_complexity)]
+pub fn get_calibrated_threshold(
+    model_name: &str,
+) -> Option<(Option<f64>, f64, Option<f64>, Option<f64>)> {
     let base_name = if let Some(idx) = model_name.find("_v2_") {
         &model_name[..idx]
     } else {
@@ -540,7 +555,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // pós-nuke f32. Floor: SNR - 18 dB margin from v2 worst, ESR factor ~60x
         "BossWN-standard" | "wavenet_standard" => {
             let snr_db = 105.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-11), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet Feather (CH=8) ---
         // Measured: SNR=133.1 dB (live v1), SNR=117.6 dB (v2 worst @ 192 kHz), ESR=1.74e-12,
@@ -548,7 +563,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // pós-nuke f32. Floor: SNR - 17 dB margin from v2 worst, ESR factor ~57x
         "BossWN-feather" | "wavenet_feather" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- WaveNet Nano (CH=4) ---
         // Measured: SNR=132.0 dB (live v1), SNR=114.6 dB (v2 worst @ 192 kHz), ESR=3.46e-12,
@@ -556,7 +571,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // pós-nuke f32. Floor: SNR - 19 dB margin from v2 worst, ESR factor ~87x
         "BossWN-nano" | "wavenet_nano" => {
             let snr_db = 95.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-10), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.0e-10), Some(0.05)))
         }
         // --- WaveNet A1 Standard (Official) (CH=16) ---
         // Measured: SNR=123.4 dB (live v1), SNR=101.8 dB (v2 worst @ 192 kHz), ESR=6.62e-11,
@@ -564,7 +579,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // pós-nuke f32. Floor: SNR - 16 dB margin from v2 worst, ESR factor ~45x
         "wavenet_a1_standard" => {
             let snr_db = 85.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.0e-9), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.0e-9), Some(0.05)))
         }
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
         // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
@@ -575,7 +590,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Measured: SNR=130.4 dB, ESR=1.8e-12, MR-STFT=0.42 (v2 @ 48 kHz, 5s stress)
         "wavenet_official" => {
             let snr_db = 14.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-2), Some(0.45)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.5e-2), Some(0.45)))
         }
         // --- LSTM 1x16 ---
         // Measured: SNR=108.5 dB, ESR=1.42e-11 (golden v1, 2026-07-12, Standard engine).
@@ -584,7 +599,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 15.5 dB, ESR factor ~106× (conservative, LSTM v2 drift reserve).
         "BossLSTM-1x16" | "lstm_1x16" => {
             let snr_db = 93.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.5e-9), Some(0.20)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.5e-9), Some(0.20)))
         }
         // --- LSTM 2x8 ---
         // Measured: SNR=107.8 dB, ESR=1.67e-11 (golden v1, 2026-07-12, Standard engine).
@@ -593,7 +608,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 14.8 dB, ESR factor ~102× (conservative, LSTM v2 drift reserve).
         "BossLSTM-2x8" | "lstm_2x8" => {
             let snr_db = 93.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.7e-9), Some(0.12)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.7e-9), Some(0.12)))
         }
         // --- LSTM Official (H=3) ---
         // Measured: SNR=120.8 dB, ESR=8.30e-13 (golden v1, 2026-07-12, Standard engine).
@@ -602,7 +617,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 15.8 dB, ESR factor ~108× (conservative, LSTM v2 drift reserve).
         "lstm (Official)" | "lstm_official" => {
             let snr_db = 105.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(9.0e-11), Some(0.22)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(9.0e-11), Some(0.22)))
         }
         // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
         // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration),
@@ -610,7 +625,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 17.3 dB margin, ESR factor ~60x
         "EVH-5150-Lite" | "wavenet_lite" => {
             let snr_db = 105.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-11), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet A2 Full (CH=8) ---
         // SQ5.5: post-weight-dequantization — near-bit-exact (was 79.2 dB / 1.21e-8 with f16c weights).
@@ -619,7 +634,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 24.5 dB, ESR factor ~265×
         "wavenet_a2_full" => {
             let snr_db = 105.0;
-            Some((1e30, snr_db, Some(3.0e-11), Some(0.05)))
+            Some((None, snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
         // SQ5.5: post-weight-dequantization — near-bit-exact (was 90.7 dB / 8.58e-10 with f16c weights).
@@ -628,7 +643,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 27.2 dB, ESR factor ~576×
         "wavenet_a2_lite" => {
             let snr_db = 105.0;
-            Some((1e30, snr_db, Some(3.5e-11), Some(0.05)))
+            Some((None, snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
         // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel
@@ -640,7 +655,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         //   drift over 5-second v2 sequences. Flag for Tarefa 3.3.
         "wavenet_condition_dsp" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.35)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.35)))
         }
         // --- WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) ---
         // T4.1: condition_dsp sub-model as LSTM (1 layer, 3 hidden units).
@@ -649,7 +664,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Initial conservative floor: SNR 70 dB, ESR 1e-8, MRSTFT 0.50.
         "wavenet_condition_lstm" => {
             let snr_db = 70.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-8), Some(0.50)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-8), Some(0.50)))
         }
         // --- Nondist Models ---
         // Measured: not individually measured; floors SNR≥100.0 dB, ESR≤1.0e-10, MRSTFT≤0.05
@@ -665,7 +680,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         | "wavenet_boss_bd2"
         | "wavenet_slammin_marshall" => {
             let snr_db = 100.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.05)))
         }
         // --- WaveNet A2-FiLM-Lite (CH=3, FiLM active, RF1 🔴) ---
         // FiLM modulation adds per-frame conditioning (FiLM gamma/beta) that diverges
@@ -677,7 +692,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 10.2 dB, ESR factor ~26×
         "wavenet_a2_film_lite" => {
             let snr_db = 114.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
+            Some((
+                Some(snr_to_mse(snr_db)),
+                snr_db,
+                Some(1.0e-11),
+                Some(1.0e-4),
+            ))
         }
         // --- WaveNet A2-FiLM-Full (CH=8, FiLM active, RF1 🔴) ---
         // FiLM modulation on 8-channel A2 model. C++ routes to generic WaveNet
@@ -687,7 +707,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 18.8 dB, ESR factor ~7.6e2x
         "wavenet_a2_film_full" => {
             let snr_db = 120.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
+            Some((
+                Some(snr_to_mse(snr_db)),
+                snr_db,
+                Some(1.0e-11),
+                Some(1.0e-4),
+            ))
         }
         // --- WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) ---
         // Measured: SNR=139.0 dB, ESR=1.25e-14, MR-STFT=7.32e-6
@@ -697,7 +722,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 19.0 dB, ESR factor ~80×, MR-STFT factor ~6.8×.
         "wavenet_a2_film_chaos_stress" => {
             let snr_db = 120.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12), Some(5.0e-5)))
+            Some((
+                Some(snr_to_mse(snr_db)),
+                snr_db,
+                Some(1.0e-12),
+                Some(5.0e-5),
+            ))
         }
         // --- WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film only) ---
         // Isolated input_mixin_pre_film (slot 2) with only one FiLM slot active,
@@ -706,7 +736,12 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 14.4 dB, ESR factor ~273x, MR-STFT factor ~14x
         "wavenet_a2_film_input_mixin_pre" => {
             let snr_db = 120.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(1.0e-4)))
+            Some((
+                Some(snr_to_mse(snr_db)),
+                snr_db,
+                Some(1.0e-11),
+                Some(1.0e-4),
+            ))
         }
         // --- WaveNet A2 Max (CH=4, cond=8, FiLM, head1x1, real capture) ---
         // DISABLED — §7.1 (dead threshold; retained for meta-test calibration
@@ -724,7 +759,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // WaveNetA2Dyn with native FiLM. Re-enable only after closing §4.4.
         "wavenet_a2_max" => {
             let snr_db = 10.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(5.0e-2), Some(0.49)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(5.0e-2), Some(0.49)))
         }
         // --- WaveNet A2 Dynamic Gated CH=8 (Task 3.3) ---
         // Gating doubles conv output (channels × 2*bottleneck) and applies
@@ -735,7 +770,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 18.0 dB, ESR factor ~20x
         "a2_dynamic_gated_ch8" => {
             let snr_db = 85.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-9), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-9), Some(0.05)))
         }
         // --- WaveNet A2 Dynamic Blended CH=3 (Task 3.3) ---
         // Blending mixes main activation (LeakyReLU) with Tanh gate via linear
@@ -746,7 +781,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 23.0 dB, ESR factor ~20x
         "a2_dynamic_blended_ch3" => {
             let snr_db = 110.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-12), Some(0.05)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-12), Some(0.05)))
         }
         // --- WaveNetDyn Free-Shape (CH=7→4, Sprint B.2.2) ---
         // Free-geometry dynamic path, 2 arrays, Tanh activation, head_scale=0.02.
@@ -757,7 +792,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Margin: SNR - 34.2 dB, ESR factor ~26x
         "wavenet_dyn_free" => {
             let snr_db = 90.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-11), Some(0.18)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-11), Some(0.18)))
         }
         // --- LSTM-Dyn 1×7 (Sprint B.2.2) ---
         // Single-layer LSTM with hidden_size=7, non-catalog geometry routed to
@@ -779,7 +814,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // from 0.08 to 0.10 (~23% margin over the new measured value).
         "lstm_dyn_test" => {
             let snr_db = 80.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(3.5e-9), Some(0.10)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.5e-9), Some(0.10)))
         }
         // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
         // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
@@ -790,14 +825,14 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // Floor: SNR - 14.9 dB, ESR factor ~107×.
         "a2_example" => {
             let snr_db = 120.0;
-            Some((1e30, snr_db, Some(3.5e-12), Some(0.08)))
+            Some((None, snr_db, Some(3.5e-12), Some(0.08)))
         }
         // --- ConvNet Test (CH=8, 6 blocks, C++ flat format, T4.7 F-A1) ---
         // Measured: SNR=45.9 dB, ESR=2.54e-5, MR-STFT=2.66e-3 (C++ render
         // cross-validation, 2026-07-12, 2048-sample v1 stress signal).
         "convnet_test" => {
             let snr_db = 35.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-4), Some(0.03)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-4), Some(0.03)))
         }
         // --- Linear FFT — Partitioned Convolution (S3.T04) ---
         // FFT-based FIR convolution via partitioned overlapless FFT.
@@ -819,7 +854,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
         // RF=2048, RF=4096, RF=8192 — FFT precision is RF-independent at f32.
         "linear_fft_rf2048" | "linear_fft_rf4096" | "linear_fft_rf8192" => {
             let snr_db = 125.0;
-            Some((snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.12)))
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.12)))
         }
         _ => None,
     }
@@ -836,7 +871,7 @@ pub fn get_calibrated_threshold(model_name: &str) -> Option<(f64, f64, Option<f6
 pub fn topology_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,
-) -> (f64, f64, Option<f64>, Option<f64>) {
+) -> (Option<f64>, f64, Option<f64>, Option<f64>) {
     if let Some(thresholds) = get_calibrated_threshold(model_name) {
         return thresholds;
     }
@@ -849,7 +884,7 @@ pub fn topology_thresholds(
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
             let (mse, snr, esr) = wavenet_thresholds(channels as u32);
-            (mse, snr, esr, None)
+            (Some(mse), snr, esr, None)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -858,18 +893,18 @@ pub fn topology_thresholds(
             let snr_db = (30.0 - complexity * 0.65).clamp(12.0, 30.0);
             let mse = snr_to_mse(snr_db);
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
-            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
+            (Some(mse.clamp(1e-4, 5e-2)), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
+        "Linear" => (Some(1e-10), 135.0, Some(1e-10), Some(0.12)),
         "ConvNet" => {
             // ConvNet multi-block models — no C++ golden available
             // (NAM Core v0.5.3 incompatible with NAM 0.5.4 multi-block
             // ConvNet). Self-golden consistency: SNR=bit-exact, ESR=0.
             // Thresholds reflect expected perfect self-consistency.
             let snr_db = 140.0;
-            (snr_to_mse(snr_db), snr_db, Some(1.0e-10), Some(0.05))
+            (Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.05))
         }
-        _ => (5e-2, 9.0, Some(1e-3), None),
+        _ => (Some(5e-2), 9.0, Some(1e-3), None),
     }
 }
 
@@ -886,7 +921,7 @@ pub fn topology_thresholds(
 pub fn live_parity_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,
-) -> (f64, f64, Option<f64>, Option<f64>) {
+) -> (Option<f64>, f64, Option<f64>, Option<f64>) {
     if let Some(thresholds) = get_calibrated_threshold(model_name) {
         return thresholds;
     }
@@ -899,7 +934,7 @@ pub fn live_parity_thresholds(
                 .and_then(|l| l.channels)
                 .unwrap_or(16);
             let (mse, snr, esr) = wavenet_thresholds(channels as u32);
-            (mse, snr, esr, None)
+            (Some(mse), snr, esr, None)
         }
         "LSTM" => {
             let num_layers = data.config.num_layers.unwrap_or(1);
@@ -908,13 +943,13 @@ pub fn live_parity_thresholds(
             let snr_db = (85.0 - complexity * 1.0).clamp(45.0, 75.0);
             let mse = snr_to_mse(snr_db);
             let esr = 10.0_f64.powf(-snr_db / 10.0) * 2.0;
-            (mse.clamp(1e-4, 5e-2), snr_db, Some(esr), None)
+            (Some(mse.clamp(1e-4, 5e-2)), snr_db, Some(esr), None)
         }
-        "Linear" => (1e-10, 135.0, Some(1e-10), Some(0.12)),
+        "Linear" => (Some(1e-10), 135.0, Some(1e-10), Some(0.12)),
         "ConvNet" => {
             let snr_db = 35.0;
-            (snr_to_mse(snr_db), snr_db, Some(1.0e-4), Some(0.03))
+            (Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-4), Some(0.03))
         }
-        _ => (5e-2, 9.0, Some(1e-3), None),
+        _ => (Some(5e-2), 9.0, Some(1e-3), None),
     }
 }

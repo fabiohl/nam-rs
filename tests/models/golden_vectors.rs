@@ -85,7 +85,9 @@ fn run_v2_golden_test(
             let sr_ratio = sr as f64 / 48000.0;
             let snr_relaxation = (3.5 * sr_ratio).min(10.0);
             min_snr_db = (min_snr_db - snr_relaxation).max(7.0);
-            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut m) = mse_limit {
+                *m *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
@@ -97,7 +99,9 @@ fn run_v2_golden_test(
             let sr_ratio = sr as f64 / 48000.0;
             let snr_relaxation = (1.5 * sr_ratio).min(4.0);
             min_snr_db -= snr_relaxation;
-            mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
+            if let Some(ref mut m) = mse_limit {
+                *m *= 10.0_f64.powf(snr_relaxation / 10.0);
+            }
             if let Some(ref mut esr) = max_esr {
                 *esr *= 10.0_f64.powf(snr_relaxation / 10.0);
             }
@@ -1521,7 +1525,7 @@ fn test_poly_regression_gate_wavenet_standard() {
     report_dsp_fidelity(
         &expected,
         &output,
-        POLY_MSE_MAX,
+        Some(POLY_MSE_MAX),
         POLY_SNR_MIN,
         Some(POLY_ESR_MAX),
         None,
@@ -1574,7 +1578,7 @@ fn test_poly_regression_gate_wavenet_a2_full() {
     report_dsp_fidelity(
         &expected,
         &output,
-        POLY_A2_MSE_MAX,
+        Some(POLY_A2_MSE_MAX),
         POLY_A2_SNR_MIN,
         Some(POLY_A2_ESR_MAX),
         None,
@@ -2073,14 +2077,20 @@ fn test_golden_vectors_convnet_test() {
         topology_thresholds(&model_data, "convnet_test");
     let mse = noise_power;
 
-    println!();
-    println!("[ConvNet Self-Golden — Output Determinism]");
-    println!(
-        "  MSE     = {:.2e}      (threshold < {:.1e})  {}",
-        mse,
-        mse_limit,
-        if mse < mse_limit { "✓" } else { "✗" }
-    );
+    if let Some(mse_limit_val) = mse_limit {
+        println!();
+        println!("[ConvNet Self-Golden — Output Determinism]");
+        println!(
+            "  MSE     = {:.2e}      (threshold < {:.1e})  {}",
+            mse,
+            mse_limit_val,
+            if mse < mse_limit_val { "✓" } else { "✗" }
+        );
+        assert!(
+            mse < mse_limit_val,
+            "[ConvNet Self-Golden] MSE={mse:.6e} exceeds threshold {mse_limit_val:.1e}"
+        );
+    }
     println!(
         "  SNR     = {:.1} dB       (threshold ≥ {:.1} dB)   {}",
         self_golden_snr,
