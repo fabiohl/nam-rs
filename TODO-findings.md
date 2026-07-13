@@ -397,7 +397,7 @@ sample-rate ausente; aliases do Linear + diagnóstico LSTM multi-canal. Critéri
 paridade em `docs/cpp_parity_map.md` sem entradas DIVERGENT não-intencionais; novos testes
 negativos cobrindo cada caso.
 
-### EP6 — Cobertura adormecida e posicionamento do modo Fast
+### EP6 — Cobertura adormecida e posicionamento do modo Fast [DOING]
 
 Achados: **F-T5**, **F-I3**, **F-T6**.
 Promover 1 golden v2 ao quick; validar `condition_lstm` via oráculo f64; advisory/deprecação do

@@ -363,3 +363,90 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
   * **F-P4-a:** `get_lstm_topology` alterado de `Option<(usize, usize)>` para `Result<Option<(usize, usize)>, JsonError>`. Multi-channel (`in_channels != 1` ou `out_channels != 1`) retorna `Err(JsonError::UnsupportedMultiChannel)` com `architecture`, `field` e `value` — erro estruturado E1218 (`NAM_JSON_UNSUPPORTED_MULTI_CHANNEL`). Callers em `build.rs` e `dispatch.rs` atualizados. Derive `PartialEq` adicionado a `JsonError` para facilitar testes.
   * **F-P4-b:** `LinearImplementation::from_str` agora aceita aliases C++: `"partitioned_fft"` / `"partitioned-fft"` → `Fft`, `"legacy"` / `"old"` → `Auto`. Testes expandidos: `parse_linear_implementation_aliases_partitioned_fft` e `parse_linear_implementation_aliases_legacy` com case-insensitivity. Teste `parse_linear_implementation_invalid` atualizado (legacy não é mais Err).
   * 125/125 `nam_json` tests pass, 8/8 LSTM integration tests pass, clippy clean.
+
+---
+
+## Sprint 5: Cobertura Adormecida e Posicionamento do Modo Fast (EP6)
+
+Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmicas/v2, a validação do oráculo f64 com sub-modelos de condição LSTM, o reposicionamento do modo Fast em modelos LSTM devido ao seu comportamento sonoro inadequado (alto erro cumulativo), e a documentação das constantes e heurísticas perceptual/aliasing adotadas nos testes.
+
+### [ ] Tarefa 5.1: Corrigir validate_oracle_f64.py para sub-modelos condition_dsp LSTM (F-T5-a)
+
+* **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L194) — Cobertura morta/adormecida: `condition_lstm` golden.
+* **Complexidade/Risco:** Médio.
+* **Descrição:**
+  Ajustar o script `validate_oracle_f64.py` para que a resolução recursiva de `condition_dsp` use um despachante genérico `forward_dispatch` em vez de chamar diretamente `a2_forward`, permitindo a simulação correta de sub-modelos de condição que não sejam da família A2 (especificamente o LSTM de `wavenet_condition_lstm.nam`).
+  Gerar o arquivo de âncora `wavenet_condition_lstm_256_f64.bin` usando o script corrigido e adicioná-lo ao diretório `f64_anchors/`.
+  Un-ignorar e atualizar `test_golden_vectors_wavenet_condition_lstm` em `golden_vectors.rs` para realizar a validação da inferência f32 contra o oráculo f64 em Rust gerado em tempo de execução (com a cadeia de confiança amarrada pelo teste de âncora em `reference_oracle_f64.rs`).
+* **Arquivos Afetados:**
+  * [tests/fixtures/scripts/validate_oracle_f64.py](file:///home/fabio/nam-rs/tests/fixtures/scripts/validate_oracle_f64.py) — Despacho genérico em `a2_forward`.
+  * [tests/models/golden_vectors.rs](file:///home/fabio/nam-rs/tests/models/golden_vectors.rs) — Un-ignore de `test_golden_vectors_wavenet_condition_lstm` e validação dinâmica contra o oráculo f64.
+  * [tests/fixtures/f64_anchors/wavenet_condition_lstm_256_f64.bin](file:///home/fabio/nam-rs/tests/fixtures/f64_anchors/wavenet_condition_lstm_256_f64.bin) [NEW] — Âncora binária de referência f64.
+* **Critério de Aceitação:**
+  * O script `validate_oracle_f64.py` executa e simula corretamente o WaveNet com sub-modelo LSTM.
+  * O teste `test_golden_vectors_wavenet_condition_lstm` passa validando com fidelidade espectral em relação ao oráculo f64 em tempo de execução.
+
+---
+
+### [ ] Tarefa 5.2: Validação Externa e Cobertura de Âncoras do Oráculo f64 (F-T5-a parte 2)
+
+* **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L194) — Cobertura morta/adormecida: `condition_lstm` no oráculo.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Adicionar o teste `test_oracle_vs_python_anchor_wavenet_condition_lstm` em `reference_oracle_f64.rs` para validar o oráculo f64 em Rust contra a âncora NumPy gerada pelo script Python, garantindo erro menor que $10^{-12}$.
+  Adicionar `wavenet_condition_lstm.nam` ao vetor de modelos mapeados em `test_summary_table` para constar explicitamente no dashboard.
+  Adicionar o teste de decomposição `test_decomposition_wavenet_condition_lstm` para fins diagnósticos.
+* **Arquivos Afetados:**
+  * [tests/parity/reference_oracle_f64.rs](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs) — Novos testes de âncora, decomposição e adição na lista de sumário do oráculo.
+* **Critério de Aceitação:**
+  * Execução do teste de âncora com sucesso (`ESR < 1e-12`).
+  * Exibição correta da linha de sumário para `wavenet_condition_lstm.nam` no console de testes.
+
+---
+
+### [ ] Tarefa 5.3: Promoção de Teste de Formato v2 ao Quick Suite (F-T5-b)
+
+* **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L201) — Promoção de golden v2 ao quick.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Promover o teste v2 representativo (WaveNet Standard v2 a 48 kHz, com sinal de 5s) para a lista de testes rápidos não-ignorados do quick parity. Isso garante que as otimizações e o novo despachante híbrido para formatos v2 sejam testados constantemente nas execuções rápidas de pré-commit.
+* **Arquivos Afetados:**
+  * [tests/parity/cpp_parity.rs](file:///home/fabio/nam-rs/tests/parity/cpp_parity.rs) — Promoção/Adição de `quick_parity_wavenet_standard_v2_48k`.
+* **Critério de Aceitação:**
+  * O teste `quick_parity_wavenet_standard_v2_48k` é executado na suíte ágil rápida.
+  * O teste passa com sucesso de paridade em menos de 1s.
+
+---
+
+### [ ] Tarefa 5.4: Aviso de Deprecação / Advisory para Ativação Fast em LSTM (F-I3)
+
+* **Achado Associado:** [F-I3](file:///home/fabio/nam-rs/TODO-findings.md#L332) — Modo Fast em LSTM: erro audível e inadequado.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Como o modo de ativação Fast (Padé) degrada a fidelidade dos LSTMs de forma audível (~ -13 dB ESR), o projeto padronizou a ativação Standard. Devemos documentar o status de deprecação e recomendação contra o uso de ativação Fast para LSTMs nos documentos do projeto.
+  Além disso, implementar um aviso em tempo de carregamento no executável CLI/standalone (`src/main.rs`) que loga um alerta explicativo (`log::warn!`) se `--activation fast` for explicitamente solicitado com um modelo que utilize a arquitetura LSTM.
+* **Arquivos Afetados:**
+  * [src/main.rs](file:///home/fabio/nam-rs/src/main.rs) — Aviso se `--activation fast` + `is_lstm()`.
+  * [docs/audio_fidelity_map.md](file:///home/fabio/nam-rs/docs/audio_fidelity_map.md) — Documentar a política e a decisão registrada de desaconselhar/depreciar o Fast em LSTM.
+* **Critério de Aceitação:**
+  * Executar a CLI com um modelo LSTM e a flag `--activation fast` exibe um aviso claro no console.
+  * A documentação reflete o posicionamento e os dados medidos do erro.
+
+---
+
+### [ ] Tarefa 5.5: Documentação de Constantes, Janelamento e Fórmulas de Teste (F-T6)
+
+* **Achado Associado:** [F-T6](file:///home/fabio/nam-rs/TODO-findings.md#L206) — Precisão dos avaliadores de métricas.
+* **Complexidade/Risco:** Baixo (Documentação).
+* **Descrição:**
+  Melhorar os comentários de código da suíte de teste/análise espectral documentando decisões heurísticas e bases matemáticas:
+  * Janela Hann do MR-STFT: documentar que usamos a variante simétrica (`ws-1` no denominador).
+  * Sato & Smith: citar a origem teórica (DAFx) para o limiar heurístico $6\times$ no ASR.
+  * Tolerância harmônica de 1.5 bins no ASR: explicar a justificativa para compensação de leakage.
+  * Farina THD: documentar a recomposição matemática de energia a partir das porcentagens harmônicas.
+* **Arquivos Afetados:**
+  * [src/testing/perceptual.rs](file:///home/fabio/nam-rs/src/testing/perceptual.rs) — Documentar janela Hann.
+  * [src/testing/aliasing.rs](file:///home/fabio/nam-rs/src/testing/aliasing.rs) — Documentar ASR threshold e bins.
+  * [src/testing/spectral.rs](file:///home/fabio/nam-rs/src/testing/spectral.rs) — Documentar recomposição de energia Farina THD.
+* **Critério de Aceitação:**
+  * Comentários explicativos claros e citações adicionadas aos respectivos arquivos.
