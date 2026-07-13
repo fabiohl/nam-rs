@@ -17,7 +17,9 @@ pub struct PrecisionGuard {
 impl PrecisionGuard {
     #[must_use]
     pub fn new(mode: ActivationPrecision) -> Self {
-        let _lock = PRECISION_MUTEX.lock().expect("PRECISION_MUTEX poisoned");
+        let _lock = PRECISION_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let original_mode = activation_precision();
         set_activation_precision(mode);
         Self {
