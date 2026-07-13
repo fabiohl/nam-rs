@@ -372,7 +372,7 @@ migração do parser → coluna f64 por modelo (aposentar `~fam.`) → ingestão
 (resolve o N/A do ConvNet) → documentar tolerâncias no contrato. Critério: dashboard sem N/A
 espúrios, imune a locale, contrato com tolerâncias explícitas.
 
-### EP3 — Recalibração de gates (rigor sem flakiness)
+### EP3 — Recalibração de gates (rigor sem flakiness) [DOING]
 
 Achados: **F-T1** (crítico), **F-T3**, **F-T4**, **F-T7**.
 Gate MR-STFT por classe de sinal (impulso); recalibrar `wavenet_official`; rebaixar cap FiLM

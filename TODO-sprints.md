@@ -165,3 +165,115 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
   * [docs/quality-contract.txt](file:///home/fabio/nam-rs/docs/quality-contract.txt)
 * **Critério de Aceitação:**
   * Inserção da documentação no cabeçalho do contrato de modo que seja visível para humanos e ignorada pelo parser de validação do script.
+
+---
+
+## Sprint 3: Cadeia de Suprimentos de Fixtures Determinística (EP4)
+
+Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de fixtures e goldens (tanto C++ quanto Rust). O objetivo é garantir que todas as fixtures de áudio e manifestos de validação sejam determinísticos, imunes a otimizações agressivas de compiladores, e completamente auditáveis.
+
+### [ ] Tarefa 3.1: Imposição de Flags IEEE-Strict na Compilação do Renderizador C++ (F-X1)
+
+* **Achado Associado:** [F-X1](file:///home/fabio/nam-rs/TODO-findings.md#L81) — Goldens C++ gerados com `-Ofast` — determinismo cross-compilador comprometido.
+* **Complexidade/Risco:** Alto (risco de alteração generalizada de thresholds/hashes de goldens).
+* **Descrição:**
+  Atualmente, as ferramentas de renderização do `NeuralAmpModelerCore` são compiladas sob o perfil Release com a flag `-Ofast` (que inclui `-ffast-math` e relaxa a estrita conformidade com a norma IEEE 754) e otimização `LTO`. Isso inviabiliza o determinismo rigoroso cross-compiler/cross-OS, gerando drifts de ponto flutuante de precisão fina (SNR > 120 dB) entre máquinas.
+  * Modificar o script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh#L196) para desativar ou neutralizar `-Ofast` no build do renderizador. Devemos fazer isso aplicando uma substituição pontual via `sed` (ou similar) no `CMakeLists.txt` do `NeuralAmpModelerCore` clonado localmente, ou sobrescrevendo as flags de CXX no `cmake` (ex.: `-DCMAKE_CXX_FLAGS_RELEASE="-O3 -fno-fast-math -ffp-contract=off"` ou injetando `-ffp-contract=off -fno-fast-math`).
+  * Regenerar todas as fixtures `.bin` usando o novo renderizador IEEE-strict.
+  * Medir os desvios de ESR/SNR em relação às fixtures antigas e atualizar as tolerâncias e thresholds dos testes de fidelidade e paridade que falharem após essa mudança.
+* **Arquivos Afetados:**
+  * [tests/fixtures/golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) — Seção de compilação do renderizador.
+* **Critério de Aceitação:**
+  * Execução do build do renderizador sem erros.
+  * O compilador não deve utilizar `-Ofast` (confirmado inspecionando logs ou gerando os binários).
+  * Todos os testes de fidelidade ajustados e passando com sucesso no `cargo test`.
+
+---
+
+### [ ] Tarefa 3.2: Gravação do Fingerprint do Toolchain no Manifesto (F-I4)
+
+* **Achado Associado:** [F-I4](file:///home/fabio/nam-rs/TODO-findings.md#L344) — Fingerprint de toolchain no manifest de goldens.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Para facilitar a depuração de drifts futuros nas funções matemáticas da stdlib (como `std::tanh` da glibc) entre diferentes máquinas de desenvolvedores e CI, o manifesto de freshness deve conter o fingerprint do compilador.
+  * Modificar o script [golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh#L550) para coletar a versão ativa do compilador (`$CXX --version`), a versão do glibc/sistema operacional e as flags utilizadas.
+  * Gravar esses dados como um comentário estruturado no topo do arquivo [.golden_manifest.sha256](file:///home/fabio/nam-rs/tests/fixtures/.golden_manifest.sha256). Exemplo: `# TOOLCHAIN: g++ 14.2.0 | glibc 2.40 | flags: -O3 -fno-fast-math -ffp-contract=off | cmake 3.30`.
+  * Atualizar o validador do freshness gate para exibir um alerta (sem travar a suíte) caso o toolchain local do desenvolvedor/CI divirja do fingerprint registrado no manifesto.
+* **Arquivos Afetados:**
+  * [tests/fixtures/golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) — Seção de geração do manifesto.
+  * [utils/_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh) — Função unificada de validação de freshness.
+* **Critério de Aceitação:**
+  * O cabeçalho de `.golden_manifest.sha256` contém a linha contendo `# TOOLCHAIN: ...`.
+  * Avisos informativos são impressos nos testes locais se houver mudança de toolchain, mas o gate de testes continua verde.
+
+---
+
+### [ ] Tarefa 3.3: Expansão da Cobertura do Manifesto de Freshness (F-X3)
+
+* **Achado Associado:** [F-X3](file:///home/fabio/nam-rs/TODO-findings.md#L113) — Fixtures sem cobertura do freshness manifest.
+* **Complexidade/Risco:** Médio.
+* **Descrição:**
+  Atualmente, o manifesto de frescor apenas hasheia os modelos do catálogo. Fixtures cruciais como `golden_cabsim_cpp_*.bin`, `mrstft_golden.bin`, `resampler_*.f32`, âncoras f64 (`f64_anchors/`) e arquivos WAV sintéticos não são cobertos, correndo o risco de ficarem stale após alterações nos geradores.
+  * Adicionar hashes de verificação de integridade e frescor para: todos os binários de cabsim, mrstft, resampler, wave e a árvore de diretórios `f64_anchors/`.
+  * Incluir no manifesto o hash dos próprios scripts geradores (como `render_ir.cpp`, `gen_mrstft_golden.py`, `generate_ebu_sequences.py`, `generate_resampler_reference.py`, etc.).
+  * Qualquer alteração nesses arquivos de código de suporte geradores invalidará as fixtures, forçando sua regeneração imediata.
+* **Arquivos Afetados:**
+  * [tests/fixtures/golden_gen_build.sh](file:///home/fabio/nam-rs/tests/fixtures/golden_gen_build.sh) — Lógica de escrita e cálculo do manifesto.
+* **Critério de Aceitação:**
+  * Geração do manifesto inclui todos os arquivos de dados sintéticos e de referência, além do hash SHA256 de seus respectivos scripts geradores.
+  * O gate de freshness valida a árvore completa e detecta desatualização nos geradores ou fixtures de suporte.
+
+---
+
+### [ ] Tarefa 3.4: Unificação e Fortalecimento do Freshness Gate (F-X4)
+
+* **Achado Associado:** [F-X4](file:///home/fabio/nam-rs/TODO-findings.md#L124) — Freshness gate: warn-only no long, sem reverse-check, implementação duplicada.
+* **Complexidade/Risco:** Médio.
+* **Descrição:**
+  A lógica de verificação de frescor está duplicada e divergente entre os scripts `tests-quick.sh` (que faz hard-fail) e `tests-long.sh` (que avisa mas não falha). Além disso, o gate é unidirecional (não pega arquivos `.nam` órfãos em disco).
+  * Extrair e consolidar a função `check_freshness` para o arquivo [utils/_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh).
+  * Parametrizar a função para operar em modo `hard-fail` (parar execução com erro) ou `warn-only` (apenas avisar).
+  * Configurar tanto o `tests-quick.sh` quanto o `tests-long.sh` para usar o gate em modo `hard-fail` (garantindo que builds na CI não passem com goldens inconsistentes). Oferecer bypass opcional sob a variável `NAM_BYPASS_FRESHNESS=1` (para o `tests-long.sh` em rotinas locais do desenvolvedor).
+  * Implementar o "reverse-check": varrer o diretório `tests/fixtures/models/` por arquivos `.nam` e verificar se constam no manifesto. Se houver qualquer modelo não documentado, falhar no gate.
+* **Arquivos Afetados:**
+  * [utils/_lib.sh](file:///home/fabio/nam-rs/utils/_lib.sh) — Inclusão do helper centralizado.
+  * [utils/tests-quick.sh](file:///home/fabio/nam-rs/utils/tests-quick.sh) — Remoção da lógica local e chamada do helper centralizado.
+  * [utils/tests-long.sh](file:///home/fabio/nam-rs/utils/tests-long.sh) — Remoção da lógica local e chamada do helper centralizado.
+* **Critério de Aceitação:**
+  * A suíte de testes de desenvolvimento local e CI valida o frescor em ambas as frentes.
+  * A introdução de um modelo novo sem registro no manifesto causa falha impeditiva com instruções claras.
+
+---
+
+### [ ] Tarefa 3.5: Registro de Proveniência e Sincronização do README (F-X2)
+
+* **Achado Associado:** [F-X2](file:///home/fabio/nam-rs/TODO-findings.md#L101) — Proveniência ausente para 3 modelos + 11 goldens fora da tabela.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Sincronizar a documentação de referência das fixtures com a realidade dos arquivos contidos no catálogo do manifesto.
+  * Documentar no arquivo [tests/fixtures/README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md) a proveniência dos modelos `wavenet_a2_film_chaos_stress.nam`, `wavenet_a2_film_input_mixin_pre.nam` e `wavenet_condition_lstm.nam`.
+  * Atualizar a tabela de arquivos de fixtures do README para incorporar todos os 11 goldens que constam no manifesto e estão em disco, assegurando que o README não tenha drifts estruturais.
+* **Arquivos Afetados:**
+  * [tests/fixtures/README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md) — Tabelas e registros de proveniência de fixtures e modelos.
+* **Critério de Aceitação:**
+  * Documentação completa e sem gaps de proveniência para todos os modelos do catálogo oficial.
+  * Tabela de arquivos no README sincronizada 100% com o manifesto de frescor.
+
+---
+
+### [ ] Tarefa 3.6: Higiene do Catálogo de Modelos e Fixtures (F-X5)
+
+* **Achado Associado:** [F-X5](file:///home/fabio/nam-rs/TODO-findings.md#L134) — Higiene menor de catálogo.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  Remover resquícios e referências obsoletas do repositório.
+  * Remover as entradas obsoletas dos modelos `linear_fft_rf2048.nam`, `linear_fft_rf4096.nam` e `linear_fft_rf8192.nam` de `CATALOG_EXCEPTIONS` em [tests/models/meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs#L29) (já que agora possuem pipeline golden implementado e ativo).
+  * Deletar (ou mover para `tests/fixtures/models/obsolete/`) o arquivo obsoleto `BossWN-lite.nam` de `tests/fixtures/models/` (pois foi superado por `EVH-5150-Lite.nam`).
+  * Incluir uma seção curta no README de fixtures documentando o propósito da pasta de âncoras `tests/fixtures/f64_anchors/`.
+* **Arquivos Afetados:**
+  * [tests/models/meta_coherence.rs](file:///home/fabio/nam-rs/tests/models/meta_coherence.rs) — Limpeza de catálogo de exceções.
+  * [tests/fixtures/README.md](file:///home/fabio/nam-rs/tests/fixtures/README.md) — Inclusão de documentação de anchors f64.
+  * [tests/fixtures/models/](file:///home/fabio/nam-rs/tests/fixtures/models/) — Higienização de modelos stale.
+* **Critério de Aceitação:**
+  * Execução sem falhas do teste de governança `meta_coherence`.
+  * Arquivos desnecessários limpos e novas seções documentadas no README.
