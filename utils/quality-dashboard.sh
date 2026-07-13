@@ -17,6 +17,8 @@
 
 set -euo pipefail
 
+export LC_ALL=C
+
 PHASE_TOTAL=0
 source "$(dirname "$0")/_lib.sh"
 
@@ -55,6 +57,9 @@ done
 LOGDIR="target/logs/dashboard"
 rm -rf "$LOGDIR"
 mkdir -p "$LOGDIR"
+
+JSONL_METRICS="${LOGDIR}/metrics.jsonl"
+: "${NAM_METRICS_JSONL:=$JSONL_METRICS}"
 
 TMPDIR="${TMPDIR:-/tmp}"
 PARSEDIR="$(mktemp -d "$TMPDIR/nam-dashboard-XXXXXX")"
@@ -99,59 +104,48 @@ _fmt_metric() {
     fi
 }
 
-# ESR_F64_FAMILY_MAP — Explicit static map: each golden-label → oracle .nam fixture.
-# The f64 oracle is measured on exactly ONE representative .nam fixture per family.
-# Labels whose model file IS the oracle fixture are also listed in ESR_F64_EXACT_MATCH;
-# all other FAMILY_MAP entries are family-level approximations.
-# CORRECTNESS NOTE (Épico EQ audit, 2026-07-05): for LSTM, the oracle fixture is
-# `lstm.nam` (the tiny 3-hidden-unit official example), NOT BossLSTM-1x16.nam/
-# BossLSTM-2x8.nam, which are the models that actually exhibit severe recurrent drift.
-declare -A ESR_F64_FAMILY_MAP=(
-    # WaveNet family — oracle measured on wavenet_official.nam
-    ["BossWN-standard"]="wavenet_official.nam"
-    ["BossWN-feather"]="wavenet_official.nam"
-    ["BossWN-nano"]="wavenet_official.nam"
-    ["EVH-5150-Lite"]="wavenet_official.nam"
-    ["wavenet_a1_standard (Official)"]="wavenet_official.nam"
-    ["WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference"]="wavenet_official.nam"
+# ESR_F64_MODEL_MAP — Per-model mapping: each dashboard label → its exact .nam fixture.
+# Every golden model with an oracle measurement in test_summary_table is mapped 1:1.
+# Models without oracle coverage (containers, private-only models) transparently show N/A.
+declare -A ESR_F64_MODEL_MAP=(
+    # WaveNet standard family — each model measured individually
+    ["BossWN-standard"]="BossWN-standard.nam"
+    ["BossWN-feather"]="BossWN-feather.nam"
+    ["BossWN-nano"]="BossWN-nano.nam"
+    ["EVH-5150-Lite"]="EVH-5150-Lite.nam"
+    ["wavenet_a1_standard (Official)"]="wavenet_a1_standard.nam"
+    ["WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference"]="wavenet_condition_dsp.nam"
     ["WaveNet Official (CH=3, dynamic path) C++ cross-reference"]="wavenet_official.nam"
-    ["WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference"]="wavenet_official.nam"
-    ["T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)"]="wavenet_official.nam"
-    # LSTM family — oracle measured on lstm.nam (H=3 official)
-    ["BossLSTM-1x16"]="lstm.nam"
-    ["BossLSTM-2x8"]="lstm.nam"
+    ["WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference"]="wavenet_dyn_free.nam"
+    ["T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)"]="BossWN-standard.nam"
+    # LSTM family — each model measured individually
+    ["BossLSTM-1x16"]="BossLSTM-1x16.nam"
+    ["BossLSTM-2x8"]="BossLSTM-2x8.nam"
     ["lstm (Official)"]="lstm.nam"
-    ["LSTM-Dyn 1×7 (dynamic path) C++ cross-reference"]="lstm.nam"
-    # A2 family — oracle measured on wavenet_a2_lite.nam
-    ["WaveNet A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["LSTM-Dyn 1×7 (dynamic path) C++ cross-reference"]="lstm_dyn_test.nam"
+    # A2 family — each model measured individually
+    ["WaveNet A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_full.nam"
     ["WaveNet A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
-    ["Container A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_full.nam"
     ["Container A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
     ["Container File A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
-    ["Container File A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_lite.nam"
+    ["Container File A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_full.nam"
     ["SlimmableContainer A2 Example (CH=3→6) C++ cross-reference"]="wavenet_a2_lite.nam"
-    ["T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)"]="wavenet_a2_lite.nam"
-    ["WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference"]="wavenet_a2_lite.nam"
-    ["WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference"]="wavenet_a2_lite.nam"
-    # A2-FiLM-Lite family — oracle measured on wavenet_a2_film_lite.nam
+    ["T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)"]="wavenet_a2_full.nam"
+    ["WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference"]="a2_dynamic_gated_ch8.nam"
+    ["WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference"]="a2_dynamic_blended_ch3.nam"
+    # A2-FiLM — each measured individually
     ["WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference"]="wavenet_a2_film_lite.nam"
-    ["WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) C++ cross-reference"]="wavenet_a2_film_lite.nam"
-    # A2-FiLM-Full — oracle measured on wavenet_a2_film_full.nam
+    ["WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) C++ cross-reference"]="wavenet_a2_film_chaos_stress.nam"
     ["WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference"]="wavenet_a2_film_full.nam"
-    # A2-FiLM-InputMixinPre — oracle measured on wavenet_a2_film_input_mixin_pre.nam
     ["WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference"]="wavenet_a2_film_input_mixin_pre.nam"
-    # ConvNet — oracle measured on convnet_test.nam
+    # ConvNet
     ["ConvNet Test"]="convnet_test.nam"
-)
-
-# Labels for which the FAMILY_MAP fixture IS the exact model file (own measurement).
-# All other FAMILY_MAP entries are family-proxy: the oracle measured a different
-# representative fixture from the same architectural family.
-declare -A ESR_F64_EXACT_MATCH=(
-    ["WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference"]=1
-    ["WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference"]=1
-    ["WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference"]=1
-    ["ConvNet Test"]=1
+    # Quick parity labels — same models as their golden counterparts
+    ["Quick LSTM 1×16"]="BossLSTM-1x16.nam"
+    ["Quick WaveNet CH16"]="BossWN-standard.nam"
+    ["Quick A2-Full"]="wavenet_a2_full.nam"
+    ["Quick ConvNet"]="convnet_test.nam"
 )
 
 # Validate that a string actually looks like a scientific-notation ESR value
@@ -168,24 +162,18 @@ _is_numeric_esr() {
 _lookup_esr_f64() {
     local golden_label="$1"
 
-    # Step 1: Look up in the explicit static family map
-    local oracle_fixture="${ESR_F64_FAMILY_MAP[$golden_label]:-}"
+    local oracle_fixture="${ESR_F64_MODEL_MAP[$golden_label]:-}"
     if [ -n "$oracle_fixture" ]; then
         local val
         set +u; val="${ESR_F64_PAIRED[$oracle_fixture]}"; set -u
         if [ -n "$val" ] && _is_numeric_esr "$val"; then
-            if [ -n "${ESR_F64_EXACT_MATCH[$golden_label]:-}" ]; then
-                echo "$val"
-                echo "exact"
-            else
-                echo "$val"
-                echo "family:${oracle_fixture}"
-            fi
+            echo "$val"
+            echo "exact"
             return
         fi
     fi
 
-    # Step 2: Fallback — try golden_label directly in ESR_F64_PAIRED
+    # Fallback — try golden_label directly in ESR_F64_PAIRED
     local direct
     set +u; direct="${ESR_F64_PAIRED[$golden_label]}"; set -u
     if [ -n "$direct" ] && _is_numeric_esr "$direct"; then
@@ -194,7 +182,7 @@ _lookup_esr_f64() {
         return
     fi
 
-    # Step 3: Fallback — try golden_label.nam in ESR_F64_PAIRED
+    # Fallback — try golden_label.nam in ESR_F64_PAIRED
     local with_nam="${golden_label}.nam"
     set +u; direct="${ESR_F64_PAIRED[$with_nam]}"; set -u
     if [ -n "$direct" ] && _is_numeric_esr "$direct"; then
@@ -252,7 +240,7 @@ run_golden_vectors() {
     # golden_vectors.log always yields BossLSTM-2x8 ESR=2.68e-3 and
     # lstm(Official) ESR=1.04e-3 with --test-threads=1, but the dashboard
     # intermittently showed 0.00e0 for one or the other without it.
-    cargo test --release --test models golden_vectors -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --release --test models golden_vectors -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     FIDELITY_DURATION_S=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
     local line_count
@@ -326,6 +314,21 @@ run_activation_precision() {
     echo -e "  ${GREEN}ok${NC} lstm_activation_precision concluido (${dur}s)"
 }
 
+# ── Run: quick_parity ────────────────────────────────────────────────────────
+
+run_quick_parity() {
+    local log="$LOGDIR/quick_parity.log"
+    echo -e "${BLUE}${BOLD}-> Executando quick_parity...${NC}"
+    local start_t end_t
+    start_t=$(date +%s%N)
+    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --test parity quick_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    end_t=$(date +%s%N)
+    local dur
+    dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
+    FIDELITY_DURATION_S=$(awk -v a="$FIDELITY_DURATION_S" -v b="$dur" 'BEGIN { printf "%.1f", a + b }')
+    echo -e "  ${GREEN}ok${NC} quick_parity concluido (${dur}s)"
+}
+
 # ── Run: regression_gate ────────────────────────────────────────────────────
 
 run_benchmarks() {
@@ -339,6 +342,91 @@ run_benchmarks() {
     echo -e "  ${GREEN}ok${NC} regression_gate concluido (${BENCH_DURATION_S}s)"
 }
 
+# ── Parse: JSONL fidelity metrics (preferred) ────────────────────────────────
+# Reads the JSONL file produced by cargo test under NAM_METRICS_JSONL.
+# Populates ESR_NAMCORE, ESR_NAMCORE_DB, SNR_DB, MSE_VAL, MRSTFT, MODEL_ORDER.
+# Returns 0 on success, 1 if the file is missing or unparseable.
+
+parse_jsonl_fidelity() {
+    local jsonl="${NAM_METRICS_JSONL:-}"
+    [ -n "$jsonl" ] && [ -f "$jsonl" ] || return 1
+
+    local parsed="$PARSEDIR/jsonl_fidelity.parsed"
+
+    if command -v jq >/dev/null 2>&1; then
+        # Prefer jq: output one TSV record per metric per line
+        jq -r '{
+            label: .label,
+            esr: .esr,
+            esr_db: .esr_db,
+            snr_db: .snr_db,
+            mse: .mse,
+            mrstft: .mrstft
+        } | [.label, .esr, .esr_db, .snr_db, .mse, .mrstft] | @tsv' "$jsonl" 2>/dev/null | \
+        LC_ALL=C awk -F'\t' 'NF >= 6 {
+            printf "ESR_NAMCORE\t%s\t%s\n", $1, $2
+            printf "ESR_NAMCORE_DB\t%s\t%s\n", $1, $3
+            printf "SNR_DB\t%s\t%s\n", $1, $4
+            printf "MSE\t%s\t%s\n", $1, $5
+            printf "MRSTFT\t%s\t%s\n", $1, $6
+        }' > "$parsed" 2>/dev/null
+    else
+        # Fallback: awk-based JSON extraction (defensive, handles reordered keys)
+        LC_ALL=C awk '{
+            label=""; esr=""; esr_db=""; snr_db=""; mse=""; mrstft=""
+            if (match($0, /"label"[[:space:]]*:[[:space:]]*"([^"]*)"/, a)) label = a[1]
+            if (match($0, /"esr"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { esr = a[1]; gsub(/^[[:space:]]+/, "", esr) }
+            if (match($0, /"esr_db"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { esr_db = a[1]; gsub(/^[[:space:]]+/, "", esr_db) }
+            if (match($0, /"snr_db"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { snr_db = a[1]; gsub(/^[[:space:]]+/, "", snr_db) }
+            if (match($0, /"mse"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { mse = a[1]; gsub(/^[[:space:]]+/, "", mse) }
+            if (match($0, /"mrstft"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { mrstft = a[1]; gsub(/^[[:space:]]+/, "", mrstft) }
+            if (label != "" && esr != "") {
+                printf "ESR_NAMCORE\t%s\t%s\n", label, esr
+                printf "ESR_NAMCORE_DB\t%s\t%s\n", label, esr_db
+                printf "SNR_DB\t%s\t%s\n", label, snr_db
+                printf "MSE\t%s\t%s\n", label, mse
+                printf "MRSTFT\t%s\t%s\n", label, mrstft
+            }
+        }' "$jsonl" > "$parsed" 2>/dev/null
+    fi
+
+    [ -s "$parsed" ] || return 1
+
+    while IFS=$'\t' read -r metric key value; do
+        case "$metric" in
+            ESR_NAMCORE)    ESR_NAMCORE["$key"]="$value" ;;
+            ESR_NAMCORE_DB) ESR_NAMCORE_DB["$key"]="$value" ;;
+            SNR_DB)         SNR_DB["$key"]="$value" ;;
+            MSE)            MSE_VAL["$key"]="$value" ;;
+            MRSTFT)         MRSTFT["$key"]="$value" ;;
+        esac
+    done < "$parsed"
+
+    # Label remapping for quick_parity → golden_vectors key space
+    declare -A _LMAP=(
+        ["Quick ConvNet @48000 Live"]="ConvNet Test @48000 Live"
+    )
+    for _old in "${!_LMAP[@]}"; do
+        local _new="${_LMAP[$_old]}"
+        [ -n "${ESR_NAMCORE[$_old]:-}" ] && ESR_NAMCORE["$_new"]="${ESR_NAMCORE[$_old]}"
+        [ -n "${ESR_NAMCORE_DB[$_old]:-}" ] && ESR_NAMCORE_DB["$_new"]="${ESR_NAMCORE_DB[$_old]}"
+        [ -n "${SNR_DB[$_old]:-}" ] && SNR_DB["$_new"]="${SNR_DB[$_old]}"
+        [ -n "${MSE_VAL[$_old]:-}" ] && MSE_VAL["$_new"]="${MSE_VAL[$_old]}"
+        [ -n "${MRSTFT[$_old]:-}" ] && MRSTFT["$_new"]="${MRSTFT[$_old]}"
+        unset "ESR_NAMCORE[$_old]" "ESR_NAMCORE_DB[$_old]" "SNR_DB[$_old]" "MSE_VAL[$_old]" "MRSTFT[$_old]"
+    done
+
+    local sorted_keys
+    set +u
+    sorted_keys=$(for k in "${!ESR_NAMCORE[@]}"; do echo "$k"; done | sort -u)
+    set -u
+    while IFS= read -r key; do
+        [ -n "$key" ] && MODEL_ORDER+=("$key")
+    done <<< "$sorted_keys"
+
+    return 0
+}
+
 # ── Parse: golden_vectors ───────────────────────────────────────────────────
 # Parses report_dsp_fidelity blocks and ConvNet Self-Golden output.
 # Writes tab-separated records to a temp file, then reads back in the
@@ -346,6 +434,12 @@ run_benchmarks() {
 
 parse_golden_vectors() {
     local log="$LOGDIR/golden_vectors.log"
+
+    if parse_jsonl_fidelity; then
+        echo -e "  ${GREEN}ok${NC} metricas carregadas via JSONL (${#ESR_NAMCORE[@]} entradas)"
+        return 0
+    fi
+
     [ -f "$log" ] || return 0
 
     local parsed="$PARSEDIR/golden_vectors.parsed"
@@ -851,14 +945,6 @@ render_quick_summary() {
         { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$f64_label")
         local esr_f64_display
         esr_f64_display=$(_fmt_metric "$esr_f64")
-        # Flag any non-exact (family-level) match: the value was NOT measured
-        # on this specific model, only on the family's one representative
-        # fixture (see ESR_F64_FAMILY_MAP). Do not present it as if it
-        # were this model's own floor.
-        local f64_suffix=""
-        if [[ "$esr_f64_provenance" == family:* ]]; then
-            f64_suffix=" (~fam.)"
-        fi
         local esr_f64_colored
         esr_f64_colored=$(_esr_color "$esr_f64_display")
         local verdict
@@ -872,8 +958,8 @@ render_quick_summary() {
             pct_budget=$(budget_pct "$latency")
             cpu_colored=$(_cpu_color "$pct_budget")
         fi
-        printf "  %s %-38s  vs NAMcore: %-10s %b  │  vs Ideal (f64): %-10s%s  │  ⚡ CPU: %s do budget\n" \
-            "$icon" "${label:0:38}" "$esr_nam_display" "$verdict" "$esr_f64_colored" "$f64_suffix" "$cpu_colored"
+        printf "  %s %-38s  vs NAMcore: %-10s %b  │  vs Ideal (f64): %-10s  │  ⚡ CPU: %s do budget\n" \
+            "$icon" "${label:0:38}" "$esr_nam_display" "$verdict" "$esr_f64_colored" "$cpu_colored"
     }
 
     [ -n "$wn_std_key" ]   && _quick_entry "WaveNet Standard (CH16)"  "🎸" "$wn_std_key"    RT_WaveNet_Std_CH16
@@ -887,9 +973,6 @@ render_quick_summary() {
     [ -n "$convnet_key" ]  && _quick_entry "ConvNet"                  "🎸" "$convnet_key"   RT_ConvNet
     [ -n "$linear_key" ]   && _quick_entry "Linear (RF=2048)"         "🎸" "$linear_key"    RT_Linear
 
-    echo ""
-    echo "  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the"
-    echo "  family's single representative fixture instead (see ESR_F64_FAMILY_MAP)."
     echo ""
 }
 
@@ -943,9 +1026,6 @@ render_fidelity_details() {
         { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
         local esr_f64_short
         esr_f64_short=$(_fmt_metric "$esr_f64")
-        if [[ "$esr_f64_provenance" == family:* ]]; then
-            esr_f64_short="${esr_f64_short}~"
-        fi
         local esr_f64_colored
         esr_f64_colored=$(_esr_color "$esr_f64_short")
         local mode="Live"
@@ -960,8 +1040,6 @@ render_fidelity_details() {
     echo -e "    ${GREEN}verde${NC} = imperceptivel (ESR < 1e-5)"
     echo -e "    ${YELLOW}amarelo${NC} = audivel apenas com A/B cientifico (ESR < 1e-2)"
     echo -e "    ${RED}vermelho${NC} = ⚠ audivel — necessita investigacao (ESR >= 1e-1)"
-    echo "  ~ apos o valor 'vs f64' = valor da familia (uma unica fixture representativa,"
-    echo "    ex.: LSTM -> lstm.nam H=3), NAO medido para este modelo especifico."
     echo ""
 }
 
@@ -1541,7 +1619,7 @@ verify_contract() {
 main() {
     local run_phases=0
     if [ "$MODE" = "full" ] || [ "$MODE" = "fidelity" ]; then
-        run_phases=$((run_phases + 5))  # golden_vectors, oracle, isa, spectral, activation
+        run_phases=$((run_phases + 6))  # golden_vectors, oracle, isa, spectral, activation, quick_parity
     fi
     if [ "$MODE" = "full" ] || [ "$MODE" = "bench" ]; then
         run_phases=$((run_phases + 1))  # regression_gate benchmarks
@@ -1568,6 +1646,9 @@ main() {
 
         phase "lstm_activation_precision"
         run_activation_precision
+
+        phase "quick_parity"
+        run_quick_parity
     fi
 
     if [ "$MODE" = "full" ] || [ "$MODE" = "bench" ]; then

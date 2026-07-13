@@ -532,6 +532,8 @@ fn run_render_comparison(
     let min_len = cpp_output.len().min(rust_output.len());
     let cpp_slice = &cpp_output[..min_len];
     let rust_slice = &rust_output[..min_len];
+    set_metric_model(format!("{label} @{actual_sr} Live"));
+    set_metric_mode("Live".to_string());
     if check_lufs_gate {
         report_dsp_fidelity(
             cpp_slice, rust_slice, mse_limit, min_snr_db, max_esr, mrstft_max, label, actual_sr,

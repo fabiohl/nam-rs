@@ -49,6 +49,21 @@ fn models_dir() -> PathBuf {
         .join("models")
 }
 
+fn models_dir_nondist() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("models-nondist")
+}
+
+fn resolve_model_path(model_filename: &str) -> PathBuf {
+    let path = models_dir().join(model_filename);
+    if path.exists() {
+        return path;
+    }
+    models_dir_nondist().join(model_filename)
+}
+
 fn anchors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -302,7 +317,7 @@ fn test_oracle_vs_python_anchor_a2_film_input_mixin_pre() {
 /// f64 ideal oracle with 24k warmup + 256 measurement samples, then computes
 /// ESR on the post-prewarm window only.
 fn run_oracle_esr_paired(model_filename: &str, label: &str) -> f64 {
-    let path = models_dir().join(model_filename);
+    let path = resolve_model_path(model_filename);
     let md = load_and_parse(&path);
     let total = 24_000 + 256;
     let input_f64 = gen_sweep(total, 48000.0);
@@ -1191,31 +1206,52 @@ fn test_summary_table() {
         ("convnet_test.nam", "ConvNet"),
         ("wavenet_a2_film_lite.nam", "A2-FiLM-Lite"),
         ("wavenet_a2_film_full.nam", "A2-FiLM-Full"),
+        (
+            "wavenet_a2_film_input_mixin_pre.nam",
+            "A2-FiLM-InputMixinPre",
+        ),
+        ("BossWN-standard.nam", "BossWN-standard"),
+        ("BossWN-feather.nam", "BossWN-feather"),
+        ("BossWN-nano.nam", "BossWN-nano"),
+        ("wavenet_a1_standard.nam", "wavenet_a1_standard"),
+        ("BossLSTM-1x16.nam", "BossLSTM-1x16"),
+        ("BossLSTM-2x8.nam", "BossLSTM-2x8"),
+        ("lstm_dyn_test.nam", "LSTMDyn"),
+        ("wavenet_a2_full.nam", "A2Full"),
+        ("a2_dynamic_gated_ch8.nam", "A2DynGated"),
+        ("a2_dynamic_blended_ch3.nam", "A2DynBlended"),
+        ("wavenet_a2_film_chaos_stress.nam", "A2FiLMChaos"),
+        ("wavenet_dyn_free.nam", "WaveNetDynFree"),
+        ("wavenet_condition_dsp.nam", "WaveNetCondDSP"),
+        ("EVH-5150-Lite.nam", "EVH-5150-Lite"),
     ];
-
-    let mut results: Vec<(&str, &str, f64)> = Vec::new();
-    for (filename, family) in &models {
-        let esr = run_oracle_esr_paired(filename, family);
-        results.push((filename, family, esr));
-    }
 
     println!("\n=== ESR(f32 vs f64 oracle) Summary (prewarm-paired: 24k + 256) ===");
     println!(
-        "{:<30} {:<12} {:<15} {:<15}",
+        "{:<40} {:<20} {:<15} {:<15}",
         "Model", "Family", "ESR linear", "ESR (dB)"
     );
-    println!("{}", "-".repeat(72));
+    println!("{}", "-".repeat(90));
 
-    for (filename, family, esr) in &results {
+    for (filename, family) in &models {
+        let path = resolve_model_path(filename);
+        if !path.exists() {
+            println!(
+                "{:<40} {:<20} {:<15} {:<15}",
+                filename, family, "N/A", "N/A"
+            );
+            continue;
+        }
+        let esr = run_oracle_esr_paired(filename, family);
         println!(
-            "{:<30} {:<12} {:<15.6e} {:<15.1}",
+            "{:<40} {:<20} {:<15.6e} {:<15.1}",
             filename,
             family,
             esr,
-            esr_to_db_f64(*esr)
+            esr_to_db_f64(esr)
         );
     }
-    println!("{}", "-".repeat(72));
+    println!("{}", "-".repeat(90));
 }
 
 // ── T3.3 RCA diagnostic: recurrent state drift ───────────────────────────────

@@ -64,7 +64,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ## Sprint 2: Dashboard Correto e Determinístico (EP2)
 
-### [ ] Tarefa 2.1: Hotfix de Locale (LC_ALL=C) Global no Dashboard
+### [x] Tarefa 2.1: Hotfix de Locale (LC_ALL=C) Global no Dashboard
 
 * **Achado Associado:** [F-S2](file:///home/fabio/nam-rs/TODO-findings.md#L245) — Dashboard: aritmética awk sem LC_ALL=C.
 * **Complexidade/Risco:** Baixo.
@@ -77,7 +77,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.2: Adicionar A2-FiLM-InputMixinPre na Tabela de Sumário do Oráculo f64
+### [x] Tarefa 2.2: Adicionar A2-FiLM-InputMixinPre na Tabela de Sumário do Oráculo f64
 
 * **Achado Associado:** [F-S4](file:///home/fabio/nam-rs/TODO-findings.md#L270) — Dashboard: "vs f64: N/A" para A2-FiLM-InputMixinPre.
 * **Complexidade/Risco:** Baixo.
@@ -90,7 +90,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.3: Emissão de Métricas em JSON Lines (JSONL)
+### [x] Tarefa 2.3: Emissão de Métricas em JSON Lines (JSONL)
 
 * **Achado Associado:** [F-I1](file:///home/fabio/nam-rs/TODO-findings.md#L311) — Métricas machine-readable (JSON Lines) — eliminar scraping awk.
 * **Complexidade/Risco:** Médio.
@@ -108,7 +108,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.4: Migração do Parser do Dashboard para JSON Lines com Fallback
+### [x] Tarefa 2.4: Migração do Parser do Dashboard para JSON Lines com Fallback
 
 * **Achado Associado:** [F-I1](file:///home/fabio/nam-rs/TODO-findings.md#L311) — Ingestão estruturada de métricas.
 * **Complexidade/Risco:** Médio.
@@ -123,7 +123,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.5: Ingestão de Paridade com C++ (Fim do N/A no ConvNet)
+### [x] Tarefa 2.5: Ingestão de Paridade com C++ (Fim do N/A no ConvNet)
 
 * **Achado Associado:** [F-S3](file:///home/fabio/nam-rs/TODO-findings.md#L255) — "ConvNet vs NAMcore: N/A" no dashboard.
 * **Complexidade/Risco:** Baixo.
@@ -138,7 +138,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.6: Coluna f64 por Modelo (Aposentar `~fam.`)
+### [x] Tarefa 2.6: Coluna f64 por Modelo (Aposentar `~fam.`)
 
 * **Achado Associado:** [F-I2](file:///home/fabio/nam-rs/TODO-findings.md#L323) — ESR vs f64 por modelo — aposentar a aproximação por família.
 * **Complexidade/Risco:** Médio.

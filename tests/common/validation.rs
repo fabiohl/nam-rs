@@ -18,6 +18,23 @@ thread_local! {
     static SUPPRESS_REPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+thread_local! {
+    static METRIC_MODEL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static METRIC_MODE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn set_metric_model(model: String) {
+    METRIC_MODEL.with(|c| {
+        *c.borrow_mut() = Some(model);
+    });
+}
+
+pub fn set_metric_mode(mode: String) {
+    METRIC_MODE.with(|c| {
+        *c.borrow_mut() = Some(mode);
+    });
+}
+
 /// RAII guard that sets [`SUPPRESS_REPORT`] for the current thread on creation
 /// and restores it on drop.
 ///
@@ -423,6 +440,29 @@ fn report_dsp_fidelity_impl(
         let _lock = REPORT_LOCK.lock().unwrap();
         if !SUPPRESS_REPORT.with(|c| c.get()) {
             print!("{buf}");
+        }
+    }
+
+    if let Ok(jsonl_path) = std::env::var("NAM_METRICS_JSONL") {
+        let json_label = METRIC_MODEL
+            .with(|c| c.borrow().clone())
+            .unwrap_or_else(|| format!("{label} @{sample_rate}"));
+        let obj = serde_json::json!({
+            "label": json_label,
+            "esr": esr_linear,
+            "esr_db": esr_db,
+            "snr_db": snr,
+            "mrstft": mr_stft,
+            "mse": mse,
+        });
+        let _lock = REPORT_LOCK.lock().unwrap();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&jsonl_path)
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "{obj}");
         }
     }
 

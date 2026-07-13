@@ -27,6 +27,11 @@ use std::path::PathBuf;
 use super::common;
 use common::*;
 
+fn gv_metric(label: &str) {
+    set_metric_model(format!("{label} @48000 Live"));
+    set_metric_mode("Live".to_string());
+}
+
 /// Runs a v2 golden test across a specific set of sample rates.
 ///
 /// For each sample rate, reads the committed `golden_{name}_v2_{sr}.bin` file,
@@ -110,6 +115,9 @@ fn run_v2_golden_test(
             }
         }
 
+        set_metric_model(format!("{label} @{sr} (v2) Live"));
+        set_metric_mode("Live".to_string());
+
         report_dsp_fidelity(
             &expected,
             &output,
@@ -186,6 +194,7 @@ fn test_golden_vectors_wavenet() {
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "BossWN-standard");
+    gv_metric("BossWN-standard");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -245,6 +254,7 @@ fn test_golden_vectors_lstm_1x16() {
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "BossLSTM-1x16");
+    gv_metric("BossLSTM-1x16");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -296,6 +306,7 @@ fn test_golden_vectors_lstm_2x8() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "BossLSTM-2x8");
+    gv_metric("BossLSTM-2x8");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -341,6 +352,7 @@ fn test_golden_vectors_wavenet_a1_standard() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a1_standard");
+    gv_metric("wavenet_a1_standard (Official)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -382,6 +394,7 @@ fn test_golden_vectors_lstm_official() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "lstm (Official)");
+    gv_metric("lstm (Official)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -432,6 +445,7 @@ fn test_golden_vectors_wavenet_feather() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "BossWN-feather");
+    gv_metric("BossWN-feather");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -482,6 +496,7 @@ fn test_golden_vectors_wavenet_nano() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "BossWN-nano");
+    gv_metric("BossWN-nano");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -543,6 +558,7 @@ fn test_golden_vectors_wavenet_lite() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "EVH-5150-Lite");
+    gv_metric("EVH-5150-Lite");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -595,6 +611,7 @@ fn test_golden_vectors_wavenet_a2_full() {
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_full");
+    gv_metric("WaveNet A2-Full (CH=8) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -647,6 +664,7 @@ fn test_golden_vectors_wavenet_a2_lite() {
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_lite");
+    gv_metric("WaveNet A2-Lite (CH=3) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -718,6 +736,7 @@ fn test_golden_vectors_container_a2_full() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&full_data, "wavenet_a2_full");
+    gv_metric("Container A2-Full (CH=8) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -789,6 +808,7 @@ fn test_golden_vectors_container_a2_lite() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&lite_data, "wavenet_a2_lite");
+    gv_metric("Container A2-Lite (CH=3) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -845,6 +865,7 @@ fn test_golden_vectors_wavenet_a2_container() {
 
         let (mse_limit, min_snr_db, max_esr, mrstft_max) =
             topology_thresholds(&container_data, "wavenet_a2_lite");
+        gv_metric("Container File A2-Lite (CH=3) C++ cross-reference");
         report_dsp_fidelity(
             &expected,
             &output,
@@ -876,6 +897,7 @@ fn test_golden_vectors_wavenet_a2_container() {
 
         let (mse_limit, min_snr_db, max_esr, mrstft_max) =
             topology_thresholds(&container_data, "wavenet_a2_full");
+        gv_metric("Container File A2-Full (CH=8) C++ cross-reference");
         report_dsp_fidelity(
             &expected,
             &output,
@@ -926,6 +948,7 @@ fn test_golden_vectors_a2_example_slimmable() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "a2_example");
+    gv_metric("SlimmableContainer A2 Example (CH=3→6) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1087,6 +1110,7 @@ fn test_golden_vectors_wavenet_condition_dsp() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_condition_dsp");
+    gv_metric("WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1162,6 +1186,7 @@ fn test_golden_vectors_wavenet_condition_lstm() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_condition_lstm");
+    gv_metric("WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1217,6 +1242,7 @@ fn test_golden_vectors_wavenet_official() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_official");
+    gv_metric("WaveNet Official (CH=3, dynamic path) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1540,6 +1566,7 @@ fn test_poly_regression_gate_wavenet_standard() {
     const POLY_SNR_MIN: f64 = 70.0;
     const POLY_MSE_MAX: f64 = 1e-5;
 
+    gv_metric("T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1593,6 +1620,7 @@ fn test_poly_regression_gate_wavenet_a2_full() {
     const POLY_A2_SNR_MIN: f64 = 65.0;
     const POLY_A2_MSE_MAX: f64 = 1e-5;
 
+    gv_metric("T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1657,6 +1685,7 @@ fn test_golden_vectors_a2_dynamic_gated_ch8() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "a2_dynamic_gated_ch8");
+    gv_metric("WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1711,6 +1740,7 @@ fn test_golden_vectors_a2_dynamic_blended_ch3() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "a2_dynamic_blended_ch3");
+    gv_metric("WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1769,6 +1799,7 @@ fn test_golden_vectors_wavenet_a2_film_lite() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_film_lite");
+    gv_metric("WaveNet A2-FiLM-Lite (CH=3, FiLM active) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1827,6 +1858,7 @@ fn test_golden_vectors_wavenet_a2_film_full() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_film_full");
+    gv_metric("WaveNet A2-FiLM-Full (CH=8, FiLM active) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1881,6 +1913,7 @@ fn test_golden_vectors_wavenet_a2_film_chaos_stress() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_film_chaos_stress");
+    gv_metric("WaveNet A2-FiLM Chaos Stress (CH=3, FiLM active) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1945,6 +1978,7 @@ fn test_golden_vectors_wavenet_dyn_free() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_dyn_free");
+    gv_metric("WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference");
     report_dsp_fidelity_no_lufs(
         &expected,
         &output,
@@ -1997,6 +2031,7 @@ fn test_golden_vectors_lstm_dyn_test() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "lstm_dyn_test");
+    gv_metric("LSTM-Dyn 1×7 (dynamic path) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -2322,6 +2357,7 @@ fn test_golden_vectors_wavenet_a2_film_input_mixin_pre() {
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_a2_film_input_mixin_pre");
+    gv_metric("WaveNet A2-FiLM-InputMixinPre (CH=3, input_mixin_pre_film) C++ cross-reference");
     report_dsp_fidelity(
         &expected,
         &output,
