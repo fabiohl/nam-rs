@@ -372,7 +372,7 @@ migração do parser → coluna f64 por modelo (aposentar `~fam.`) → ingestão
 (resolve o N/A do ConvNet) → documentar tolerâncias no contrato. Critério: dashboard sem N/A
 espúrios, imune a locale, contrato com tolerâncias explícitas.
 
-### EP3 — Recalibração de gates (rigor sem flakiness) [DOING]
+### EP3 — Recalibração de gates (rigor sem flakiness) [DONE]
 
 Achados: **F-T1** (crítico), **F-T3**, **F-T4**, **F-T7**.
 Gate MR-STFT por classe de sinal (impulso); recalibrar `wavenet_official`; rebaixar cap FiLM
@@ -380,7 +380,7 @@ v1; endurecer meta-testes anti-placebo. Critério: nenhum gate com utilização 
 justificativa `// Measured:`; nenhum cap acima do teto anti-placebo; varredura completa de
 margens documentada.
 
-### EP4 — Cadeia de suprimentos de fixtures determinística
+### EP4 — Cadeia de suprimentos de fixtures determinística [DONE]
 
 Achados: **F-X1** (crítico, executar isolado), **F-I4**, **F-X3**, **F-X4**, **F-X2**, **F-X5**.
 Flags IEEE-strict na geração + fingerprint de toolchain + regeneração/recalibração controlada;
@@ -389,7 +389,7 @@ em `_lib.sh` com reverse-check e hard-fail no long; por fim proveniência comple
 **Risco alto controlado:** a regeneração muda hashes/thresholds — exige diff de métricas
 antes/depois e um commit atômico dedicado.
 
-### EP5 — Paridade estrita com NAMcore (produção)
+### EP5 — Paridade estrita com NAMcore (produção) [DOING]
 
 Achados: **F-P1**, **F-P2**, **F-P3**, **F-P4**.
 ConvNet `head_scale` alinhado ao C++; enforcement de versão de arquivo; política documentada de

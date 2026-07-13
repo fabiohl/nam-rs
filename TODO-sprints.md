@@ -283,3 +283,76 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
   * Execução sem falhas do teste de governança `meta_coherence`.
   * Arquivos desnecessários limpos e novas seções documentadas no README.
   * **Concluído (2026-07-13):** 3 entradas stale de `linear_fft_rf{2048,4096,8192}.nam` removidas de `CATALOG_EXCEPTIONS` em `meta_coherence.rs` (golden pipeline já implementado e ativo desde Sprint 2). `BossWN-lite.nam` mantido em `models/` — é obsoleto como golden mas ainda é o único fixture CH=12 WaveNet git-versionado usado em `rt_deadline.rs` e `regression_gate.rs`; remover quebraria cobertura de RT deadline e benchmark. Seção `## f64 Reference Anchors` adicionada ao README documentando os 10 âncoras f64, formato binário, gate ESR < 1e-12 e regeneração via `validate_oracle_f64.py`.
+
+---
+
+## Sprint 4: Paridade Estrita com NAMcore (EP5)
+
+Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de acordo com os limites e semânticas do NAMcore C++, cobrindo conformidade de canais, faixa de versões de SemVer, aliases do Linear e tratamentos de escalas de cabeças ConvNet.
+
+### [ ] Tarefa 4.1: Alinhamento de head_scale em ConvNet (F-P1)
+
+* **Achado Associado:** [F-P1](file:///home/fabio/nam-rs/TODO-findings.md#L29) — ConvNet aplica `head_scale` — divergência semântica com NAMcore.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  O renderizador C++ oficial da NAMcore não suporta ou aplica `head_scale` no ConvNet (a saída é crua/escala 1.0). Se um arquivo `.nam` em formato plano declarar `head_scale`, devemos garantir que a escala a nível de execução seja fixada em `1.0` (já é feito pelo dispatcher `FlatCpp`) e que registremos um aviso diagnóstico caso o arquivo de modelo declare um valor diferente de `1.0`.
+* **Arquivos Afetados:**
+  * [src/loader/dispatcher/convnet/mod.rs](file:///home/fabio/nam-rs/src/loader/dispatcher/convnet/mod.rs) — Alertar via log caso `head_scale` esteja presente e diferente de `1.0` em FlatCpp.
+* **Critério de Aceitação:**
+  * A compilação e carregamento de um modelo ConvNet com `head_scale != 1.0` em formato FlatCpp deve logar um aviso explicativo e processar o áudio usando `head_scale = 1.0`.
+  * Adicionar testes unitários correspondentes em `convnet_model_test.rs`.
+
+---
+
+### [ ] Tarefa 4.2: Validação e Enforcement de Versão SemVer (F-P2)
+
+* **Achado Associado:** [F-P2](file:///home/fabio/nam-rs/TODO-findings.md#L42) — Ausência de enforcement de versão do arquivo `.nam`.
+* **Complexidade/Risco:** Médio.
+* **Descrição:**
+  O parser de JSON do C++ rejeita arquivos com versão `< 0.5.0` ou com major/minor que exceda `0.7.0` (ex: `0.8.0`), sinalizando compatibilidade `PARTIAL` para versões acima de `0.7.0` que compartilhem a mesma versão minor/major (ex: `0.7.1`).
+  * Implementar no parser JSON em `parse.rs` a validação SemVer estrita.
+  * Rejeitar versões inválidas ou menores que `0.5.0` lançando `JsonError::UnsupportedVersion` ou `JsonError::InvalidVersionFormat`.
+  * Emitir warning para versões `PARTIAL` e rejeitar maiores que `0.7.0`.
+  * Sincronizar códigos de erro e a tabela de erros do manual de arquitetura.
+* **Arquivos Afetados:**
+  * [src/loader/nam_json/parse.rs](file:///home/fabio/nam-rs/src/loader/nam_json/parse.rs) — Lógica de verificação da versão.
+  * [src/loader/nam_json/error.rs](file:///home/fabio/nam-rs/src/loader/nam_json/error.rs) — Inclusão de novas variantes `JsonError`.
+  * [src/common/diagnostics/error_codes.rs](file:///home/fabio/nam-rs/src/common/diagnostics/error_codes.rs) — Novas entradas `NamErrorCode`.
+  * [docs/architecture.md](file:///home/fabio/nam-rs/docs/architecture.md) — Sincronizar catálogo de erros.
+* **Critério de Aceitação:**
+  * Testar os limites de versão na suíte de testes unitários (`nam_json_test.rs`).
+  * Arquivos com versão `0.4.9` ou `0.8.0` ou sem versão devem falhar no carregamento com códigos de diagnósticos apropriados.
+  * Arquivos com versão `0.7.1` devem carregar emitindo um aviso em log.
+
+---
+
+### [ ] Tarefa 4.3: Documentar Política de Sample Rate Ausente e FastLUT (F-P3 e F-P4-c)
+
+* **Achados Associados:**
+  * [F-P3](file:///home/fabio/nam-rs/TODO-findings.md#L55) — Sample rate desconhecido: default 48000 vs sentinela C++ `-1.0`.
+  * [F-P4-c](file:///home/fabio/nam-rs/TODO-findings.md#L74) — `FastLUTActivation` otimização C++ não portada.
+* **Complexidade/Risco:** Baixo (Documentação).
+* **Descrição:**
+  O default adotado no Rust para sample rate ausente é `48000` Hz (iniciando prewarm real), divergindo intencionalmente do sentinela `-1.0` do C++ (que inibe prewarm). A otimização `FastLUTActivation` também não é portada por não ser feature de formato. Devemos documentar formalmente ambas as divergências intencionais.
+* **Arquivos Afetados:**
+  * [docs/cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md) — Documentar a política de sample rate ausente e o status da FastLUT.
+* **Critério de Aceitação:**
+  * Inclusão clara das seções no mapa de auditoria de paridade C++.
+
+---
+
+### [ ] Tarefa 4.4: Diagnóstico para LSTM Multi-Canal e Aliases do Linear (F-P4-a e F-P4-b)
+
+* **Achados Associados:**
+  * [F-P4-a](file:///home/fabio/nam-rs/TODO-findings.md#L67) — LSTM multi-canal: C++ aceita in/out channels arbitrários; Rust rejeita.
+  * [F-P4-b](file:///home/fabio/nam-rs/TODO-findings.md#L71) — Aliases do Linear: C++ aceita legacy/old/partitioned_fft/partitioned-fft.
+* **Complexidade/Risco:** Baixo.
+* **Descrição:**
+  * Trocar a rejeição genérica de LSTM multi-canal por um diagnóstico explícito de carregamento (`JsonError::UnsupportedMultiChannel`) em vez de falha silenciosa de detecção.
+  * Adicionar suporte em `LinearImplementation::from_str` aos aliases do C++: `"legacy"`, `"old"`, `"partitioned_fft"` e `"partitioned-fft"`.
+* **Arquivos Afetados:**
+  * [src/loader/nam_json/topology/lstm.rs](file:///home/fabio/nam-rs/src/loader/nam_json/topology/lstm.rs) — Verificação estrita com erros explícitos.
+  * [src/loader/nam_json/model.rs](file:///home/fabio/nam-rs/src/loader/nam_json/model.rs) — Aliases em `LinearImplementation`.
+* **Critério de Aceitação:**
+  * Tentar carregar um LSTM com `in_channels=2` deve retornar um erro de diagnóstico estruturado claro.
+  * Mapeamento correto de todos os aliases em testes unitários.
