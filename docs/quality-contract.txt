@@ -1,69 +1,7 @@
-# ==============================================================================
-# QUALITY CONTRACT — Linha de Base de Métricas do nam-rs
-# ==============================================================================
-#
-# Este arquivo é a baseline de referência para o modo de validação:
-#   utils/quality-dashboard.sh --check docs/quality-contract.txt
-#
-# ── Tolerâncias aplicadas pelo --check ───────────────────────────────────────
-#
-# O verificador NÃO exige correspondência exata. As seguintes margens são
-# aplicadas para evitar falsos positivos por variação de ambiente (OS, kernel,
-# alocador, governor de CPU, versão do compilador, etc.):
-#
-#   Fidelidade (ESR):        viola se novo > baseline × 10.0
-#                            (até 1 ordem de grandeza de degradação tolerada)
-#
-#   Fidelidade (SNR):        viola se novo < baseline − 6.0 dB
-#                            (até 6 dB de perda tolerada)
-#
-#   Fidelidade (MR-STFT):    viola se novo > baseline × 10.0
-#                            (até 1 ordem de grandeza de degradação tolerada)
-#
-#   Performance (latência):  viola se novo > baseline × 1.10
-#                            (até 10% de acréscimo tolerado)
-#
-# Modelos presentes no baseline mas ausentes na execução atual geram um
-# aviso informativo (amarelo), não uma violação.
-#
-# ── Workflow de calibração / recalibração ────────────────────────────────────
-#
-# 1. Após validar que uma build está limpa e correta (todos os testes passam,
-#    ISA parity ok, sem regressões visíveis no dashboard), capture o baseline:
-#
-#      utils/quality-dashboard.sh --save docs/quality-contract.txt
-#
-# 2. Em execuções subsequentes (CI, pré-PR, pós-mudança de código estrutural),
-#    valide contra o baseline:
-#
-#      utils/quality-dashboard.sh --check docs/quality-contract.txt
-#
-# 3. Recalibre o contrato quando:
-#    - Houver mudança estrutural no código que altere intencionalmente a
-#      precisão numérica (ex.: novo algoritmo de ativação, troca de acumulador).
-#    - Houver mudança de ISA-alvo (ex.: x86-64-v2 → x86-64-v3, aarch64).
-#    - O dashboard for estendido com novos modelos golden ativos.
-#    - Houver upgrade de toolchain (rustc) com mudança semântica relevante.
-#
-# ⚠ O contrato NÃO deve ser recalibrado para "esconder" uma regressão.
-#    Se uma violação for detectada, investigue a causa raiz antes de
-#    recalibrar. A primeira execução pós-recalibração deve ser inspecionada
-#    visualmente para confirmar que os novos valores são razoáveis.
-#
-# ── Formato do arquivo ──────────────────────────────────────────────────────
-#
-# O conteúdo abaixo é a saída textual de utils/quality-dashboard.sh no modo
-# "full", salva via --save. As seções são parseadas pelo --check, que extrai
-# as tabelas de fidelidade e performance. Linhas acima deste bloco (incluindo
-# este cabeçalho) são ignoradas pelo parser. O parser também ignora seções de
-# Activation Precision, ISA Parity, Spectral Fidelity e F64 Oracle Decomposition.
-#
-# ==============================================================================
-
 ╔══════════════════════════════════════════════════════════════════╗
 ║              nam-rs Quality Dashboard                            ║
 ║              ------------------------------                      ║
-║              Medido em: 2026-07-13 15:47:36 -0300                ║
+║              Medido em: 2026-07-13 15:56:41 -0300                ║
 ║              ISA: AVX2 (x86-64-v3)                               ║
 ║              CPU: AMD Ryzen 7 5700U with Radeon Graphics         ║
 ║              rustc: rustc 1.97.0 (2d8144b78 2026-07-07)          ║
@@ -72,8 +10,8 @@
 🎯 RESUMO RAPIDO (para nao-cientistas)
 ═══════════════════════════════════════
 
-  🎸 WaveNet Standard (CH16)                 vs NAMcore: 2.46e-14   IDENTICO  │  vs Ideal (f64): 9.05e-15  │  ⚡ CPU: 3.2% do budget
-  🎸 WaveNet A1 Standard                     vs NAMcore: 8.62e-14   IDENTICO  │  vs Ideal (f64): 1.05e-13  │  ⚡ CPU: 3.2% do budget
+  🎸 WaveNet Standard (CH16)                 vs NAMcore: 2.46e-14   IDENTICO  │  vs Ideal (f64): 9.05e-15  │  ⚡ CPU: 3.5% do budget
+  🎸 WaveNet A1 Standard                     vs NAMcore: 8.62e-14   IDENTICO  │  vs Ideal (f64): 1.05e-13  │  ⚡ CPU: 3.5% do budget
   🎸 WaveNet Feather (CH8)                   vs NAMcore: 4.82e-14   IDENTICO  │  vs Ideal (f64): 2.00e-14  │  ⚡ CPU: 2.0% do budget
   🎸 LSTM 1x16 (BossLSTM)                    vs NAMcore: 1.42e-11   IDENTICO  │  vs Ideal (f64): 8.90e-13  │  ⚡ CPU: 0.6% do budget
   🎸 LSTM 2x8 (BossLSTM)                     vs NAMcore: 1.67e-11   IDENTICO  │  vs Ideal (f64): 5.68e-13  │  ⚡ CPU: 0.6% do budget
@@ -99,17 +37,17 @@
   Container File A2-Lite (CH=3) C++ cros │ 6.43e-14        │ 1.82e-14 │ 131.92118788399796 │ 9.08e-06 │ Live
   ConvNet Test @48000 Live               │ 2.54e-05        │ 3.57e-15 │ 45.94851972217795 │ 0.0027   │ Live
   EVH-5150-Lite @48000 Live              │ 1.23e-12        │ 3.55e-13 │ 119.11551876946943 │ 4.58e-06 │ Live
-  LSTM-Dyn 1×7 (dynamic path) C++ cross │ 3.69e-15        │ 2.86e-15 │ 144.32828602138866 │ 1.49e-06 │ Live
-  Linear FFT RF=2048 (C++ golden) @48000 │ 1.62e-14        │ N/A          │ 137.8962514357313 │ 2.02e-06 │ Live
-  Linear FFT RF=4096 (C++ golden) @48000 │ 1.13e-14        │ N/A          │ 139.47265479018108 │ 3.76e-06 │ Live
-  Linear FFT RF=8192 (C++ golden) @48000 │ 1.69e-14        │ N/A          │ 137.72224877198045 │ 4.61e-06 │ Live
+  LSTM-Dyn 1×7 (dynamic path) C++ cross  │ 3.69e-15        │ 2.86e-15 │ 144.32828602138866 │ 1.49e-06 │ Live
+  Linear FFT RF=2048 (C++ golden) @48000 │ 1.62e-14        │ N/A      │ 137.8962514357313 │ 2.02e-06 │ Live
+  Linear FFT RF=4096 (C++ golden) @48000 │ 1.13e-14        │ N/A      │ 139.47265479018108 │ 3.76e-06 │ Live
+  Linear FFT RF=8192 (C++ golden) @48000 │ 1.69e-14        │ N/A      │ 137.72224877198045 │ 4.61e-06 │ Live
   Quick A2-Full @48000 Live              │ 1.12e-13        │ 7.83e-14 │ 129.5194746641872 │ 1.49e-05 │ Live
-  Quick LSTM 1×16 @48000 Live           │ 1.45e-11        │ 8.90e-13 │ 108.3989564574679 │ 3.20e-05 │ Live
+  Quick LSTM 1×16 @48000 Live            │ 1.45e-11        │ 8.90e-13 │ 108.3989564574679 │ 3.20e-05 │ Live
   Quick WaveNet CH16 @48000 Live         │ 2.46e-14        │ 9.05e-15 │ 136.08324321352586 │ 6.89e-06 │ Live
-  SlimmableContainer A2 Example (CH=3→ │ 3.27e-14        │ 1.82e-14 │ 134.86009586245677 │ 9.22e-06 │ Live
+  SlimmableContainer A2 Example (CH=3→   │ 3.27e-14        │ 1.82e-14 │ 134.86009586245677 │ 9.22e-06 │ Live
   T-HF1.4: WaveNet A2-Full polynomial SI │ 1.12e-13        │ 7.83e-14 │ 129.5194746641872 │ 1.49e-05 │ Live
   T-HF1.4: WaveNet Standard polynomial S │ 2.46e-14        │ 9.05e-15 │ 136.08324321352586 │ 6.89e-06 │ Live
-  T3.1: MR-STFT regression gate (synthet │ 0.2058          │ N/A          │ 6.866460521254355 │ 1.3017   │ Live
+  T3.1: MR-STFT regression gate (synthet │ 0.2058          │ N/A      │ 6.866460521254355 │ 1.3017   │ Live
   WaveNet A2 Dynamic Blended (CH=3, blen │ 5.24e-14        │ 2.53e-01 │ 132.80460429206707 │ 9.73e-06 │ Live
   WaveNet A2 Dynamic Gated (CH=8, gated  │ 5.02e-11        │ 7.07e-07 │ 102.98912123660241 │ 6.63e-05 │ Live
   WaveNet A2-FiLM Chaos Stress (CH=3, Fi │ 1.25e-14        │ 1.03e-14 │ 139.0217932740609 │ 7.32e-06 │ Live
@@ -120,7 +58,7 @@
   WaveNet A2-Lite (CH=3) C++ cross-refer │ 6.43e-14        │ 1.82e-14 │ 131.92118788399796 │ 9.08e-06 │ Live
   WaveNet Condition DSP (CH=3, cond=3, d │ 1.13e-14        │ 4.29e+01 │ 139.48352647569232 │ 3.65e-06 │ Live
   WaveNet Official (CH=3, dynamic path)  │ 8.96e-14        │ 6.13e-14 │ 130.47641610421974 │ 1.66e-05 │ Live
-  WaveNetDyn Free-Shape (CH=7→4, dynam │ 4.09e-13        │ 1.06e-12 │ 123.87973285521164 │ 2.56e-05 │ Live
+  WaveNetDyn Free-Shape (CH=7→4, dynam   │ 4.09e-13        │ 1.06e-12 │ 123.87973285521164 │ 2.56e-05 │ Live
   lstm (Official) @48000 Live            │ 8.30e-13        │ 2.71e-12 │ 120.8097419153525 │ 3.17e-05 │ Live
   wavenet_a1_standard (Official) @48000  │ 8.62e-14        │ 1.05e-13 │ 130.64555423046653 │ 2.46e-06 │ Live
 
@@ -135,14 +73,14 @@
 
   Modelo                       │ Latencia Mediana │ % do Budget  │ Folga
   ──────────────────────────── │ ──────────────── │ ──────────── │ ────────────────────
-  WaveNet Standard CH16        │ 43.0 us          │ 3.2%         │ 96.8% ok
-  WaveNet Feather CH8          │ 26.8 us          │ 2.0%         │ 98.0% ok
-  WaveNet Lite CH12            │ 64.3 us          │ 4.8%         │ 95.2% ok
-  WaveNet Nano CH4             │ 22.5 us          │ 1.7%         │ 98.3% ok
-  A2 Full CH8                  │ 28.2 us          │ 2.1%         │ 97.9% ok
-  A2 Lite CH3                  │ 18.7 us          │ 1.4%         │ 98.6% ok
-  LSTM 1x16                    │ 7.8 us           │ 0.6%         │ 99.4% ok
-  LSTM 2x8                     │ 7.8 us           │ 0.6%         │ 99.4% ok
+  WaveNet Standard CH16        │ 46.6 us          │ 3.5%         │ 96.5% ok
+  WaveNet Feather CH8          │ 26.7 us          │ 2.0%         │ 98.0% ok
+  WaveNet Lite CH12            │ 64.8 us          │ 4.9%         │ 95.1% ok
+  WaveNet Nano CH4             │ 21.9 us          │ 1.6%         │ 98.4% ok
+  A2 Full CH8                  │ 27.5 us          │ 2.1%         │ 97.9% ok
+  A2 Lite CH3                  │ 18.6 us          │ 1.4%         │ 98.6% ok
+  LSTM 1x16                    │ 7.7 us           │ 0.6%         │ 99.4% ok
+  LSTM 2x8                     │ 7.6 us           │ 0.6%         │ 99.4% ok
   Linear RF=2048               │ 0.3 us           │ 0.0%         │ 100.0% ok
   ConvNet                      │ 10.4 us          │ 0.8%         │ 99.2% ok
 
@@ -246,6 +184,4 @@
   (i) Nao coberto no modo quick — rode tests-long para verificacao completa.
 
 ───────────────────────────────────────────────────────────────
-  Dashboard gerado em 84.5s (fidelidade: 12.2s, performance: 70.6s)
-
-
+  Dashboard gerado em 83.7s (fidelidade: 12.6s, performance: 69.4s)
