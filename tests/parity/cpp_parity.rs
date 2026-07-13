@@ -401,63 +401,36 @@ fn run_render_comparison(
     let is_film = golden_name.to_lowercase().contains("film")
         || model_filename.to_lowercase().contains("film");
 
-    // S1.T06: Absolute ESR/SNR/MR-STFT caps for Fast-mode parity.
+    // S1.T06: Absolute ESR/SNR/MR-STFT caps for Standard-mode parity.
     //
     // C++ NAMCore uses native math (std::tanh) — exact-grade.
-    // Rust Fast mode uses Padé/minimax tanh (~2.3e-3 pointwise error).
-    // This deliberate asymmetry means ESR can drift well above the tight
-    // calibrated thresholds (which were measured in Standard↔Standard mode).
+    // Rust Standard mode uses polynomial exp-based kernels (~2.4e-7 error).
     // The caps below prevent false positives in both v1 (quick) and v2 tests.
     //
-    // Caps are derived from real measurements, not "what makes the test pass":
-    //
-    // - WaveNet non-HF: cap = A2ESR A1-Standard median = 6.23e-3 (perceptual baseline)
-    // - LSTM non-HF:    rate-aware cap — recurrent state accumulates Padé error
-    //   proportionally to sample rate. ≤ 96 kHz: 0.08, > 96 kHz: 0.18.
-    // - HF Standard-mode caps: tight (near-bit-exact), inherited from Tarefa β1.3.
-    // - SNR floor: 5.0 dB (absolute floor — anything lower is equivalent to broken)
-    // - MR-STFT: 0.95 cap (normalized metric ceiling), 1.20 for FiLM
-    const ABSOLUTE_ESR_CAP_WAVENET: f64 = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN;
-    const ABSOLUTE_ESR_CAP_LSTM_NATIVE: f64 = 0.08;
-    const ABSOLUTE_ESR_CAP_LSTM_HIRATE: f64 = 0.18;
+    // S1.T01 (T1.2): non-HF Fast-mode caps removed — run_v1 / run_v2_multi_sr
+    // always use Standard activation since Tarefa β1.3. The use_hf parameter
+    // is preserved in run_render_comparison for potential future Fast-mode tests.
     const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 = 1.0e-10;
     const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5;
     const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4;
     const ABSOLUTE_ESR_CAP_CONVNET_HF: f64 = 1.0e-3;
-    const ABSOLUTE_ESR_CAP_FILM_LIVE: f64 = 0.08;
     const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
     const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
     const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;
     const ABSOLUTE_MRSTFT_CAP_FILM: f64 = 1.20;
 
     let esr_cap = if model_data.architecture == "LSTM" {
-        if use_hf {
-            if sample_rate > 96_000 {
-                ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF
-            } else {
-                ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF
-            }
-        } else if sample_rate > 96_000 {
-            ABSOLUTE_ESR_CAP_LSTM_HIRATE
+        if sample_rate > 96_000 {
+            ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF
         } else {
-            ABSOLUTE_ESR_CAP_LSTM_NATIVE
+            ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF
         }
     } else if is_film {
-        if use_hf {
-            ABSOLUTE_ESR_CAP_FILM_HF
-        } else {
-            ABSOLUTE_ESR_CAP_FILM_LIVE
-        }
+        ABSOLUTE_ESR_CAP_FILM_HF
     } else if model_data.architecture == "ConvNet" {
-        if use_hf {
-            ABSOLUTE_ESR_CAP_CONVNET_HF
-        } else {
-            ABSOLUTE_ESR_CAP_WAVENET
-        }
-    } else if use_hf {
-        ABSOLUTE_ESR_CAP_WAVENET_HF
+        ABSOLUTE_ESR_CAP_CONVNET_HF
     } else {
-        ABSOLUTE_ESR_CAP_WAVENET
+        ABSOLUTE_ESR_CAP_WAVENET_HF
     };
 
     min_snr_db = min_snr_db.max(ABSOLUTE_SNR_FLOOR);
@@ -574,19 +547,9 @@ fn run_render_comparison(
     ParityOutcome::Completed
 }
 
-/// Helper: run v1 comparison (legacy 48 kHz, fast CI) — now delegates to HF mode
-/// since Standard (exact-grade) is the universal default.
+/// Helper: run v1 comparison at 48 kHz in Standard (exact-grade) mode
+/// (universal default since Tarefa β1.3 / Sprint 1).
 fn run_v1(
-    model_filename: &str,
-    golden_name: &str,
-    label: &str,
-    check_lufs_gate: bool,
-) -> ParityOutcome {
-    run_v1_hf(model_filename, golden_name, label, check_lufs_gate)
-}
-
-/// Helper: run v1 comparison in Standard (exact-grade) mode (Tarefa β1.3).
-fn run_v1_hf(
     model_filename: &str,
     golden_name: &str,
     label: &str,
@@ -699,15 +662,6 @@ fn run_v2_multi_sr_impl(
 }
 
 fn run_v2_multi_sr(
-    model_filename: &str,
-    golden_name: &str,
-    label_base: &str,
-    check_lufs_gate: bool,
-) {
-    run_v2_multi_sr_hf(model_filename, golden_name, label_base, check_lufs_gate)
-}
-
-fn run_v2_multi_sr_hf(
     model_filename: &str,
     golden_name: &str,
     label_base: &str,
@@ -1325,10 +1279,9 @@ fn live_cross_validation_v2_linear() {
 
 // =============================================================================
 // Standard (exact-grade) mode cpp_parity tests (Tarefa β1.3)
-// =============================================================================
 //
 // C++ NAMCore uses native math (std::tanh) — exact-grade.
-// Rust in HF (Standard) mode uses high-fidelity polynomial exp-based kernels
+// Rust in Standard mode uses high-fidelity polynomial exp-based kernels
 // (~2.4e-7 error vs ~2.32e-3 for Padé tanh in Fast mode). This deliberate
 // asymmetry means the interop divergence is smaller in HF mode than in
 // standard (Fast) mode.
@@ -1338,47 +1291,16 @@ fn live_cross_validation_v2_linear() {
 //
 // Quick (non-ignored): representative subset for fast CI loop
 // Comprehensive (ignored): full model × SR matrix, requires C++ toolchain
-
-// --- Quick Parity Subset (HF, non-ignored) ---
-
-#[test]
-fn quick_parity_hf_lstm_1x16() {
-    let outcome = run_v1_hf(
-        "BossLSTM-1x16.nam",
-        "lstm_1x16",
-        "Quick LSTM 1×16 (HF)",
-        true,
-    );
-    match outcome {
-        ParityOutcome::Completed => {}
-        _ => {
-            eprintln!("SKIP-COVERAGE: quick_parity_hf_lstm_1x16");
-        }
-    }
-}
-
-#[test]
-fn quick_parity_hf_wavenet_ch16() {
-    let outcome = run_v1_hf(
-        "BossWN-standard.nam",
-        "wavenet_standard",
-        "Quick WaveNet CH16 (HF)",
-        true,
-    );
-    match outcome {
-        ParityOutcome::Completed => {}
-        _ => {
-            eprintln!("SKIP-COVERAGE: quick_parity_hf_wavenet_ch16");
-        }
-    }
-}
+//
+// Sprint 1 (T1.2): quick_parity_hf_* tests removed — run_v1 now always uses
+// Standard activation, so they were 1:1 duplicates of quick_parity_*.
 
 // --- v1 (standard-rate) HF tests, ignored ---
 
 #[test]
 #[ignore]
 fn live_cross_validation_hf_lstm_1x16() {
-    let outcome = run_v1_hf(
+    let outcome = run_v1(
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Live LSTM 1×16 (HF)",
@@ -1390,14 +1312,14 @@ fn live_cross_validation_hf_lstm_1x16() {
 #[test]
 #[ignore]
 fn live_cross_validation_hf_lstm_2x8() {
-    let outcome = run_v1_hf("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (HF)", true);
+    let outcome = run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (HF)", true);
     assert_eq!(outcome, ParityOutcome::Completed);
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_hf_wavenet_standard() {
-    let outcome = run_v1_hf(
+    let outcome = run_v1(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard (HF)",
@@ -1411,7 +1333,7 @@ fn live_cross_validation_hf_wavenet_standard() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_hf_lstm_1x16() {
-    run_v2_multi_sr_hf(
+    run_v2_multi_sr(
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Live LSTM 1×16 (v2, HF)",
@@ -1422,7 +1344,7 @@ fn live_cross_validation_v2_hf_lstm_1x16() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_hf_lstm_2x8() {
-    run_v2_multi_sr_hf(
+    run_v2_multi_sr(
         "BossLSTM-2x8.nam",
         "lstm_2x8",
         "Live LSTM 2×8 (v2, HF)",
@@ -1433,7 +1355,7 @@ fn live_cross_validation_v2_hf_lstm_2x8() {
 #[test]
 #[ignore]
 fn live_cross_validation_v2_hf_wavenet_standard() {
-    run_v2_multi_sr_hf(
+    run_v2_multi_sr(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard (v2, HF)",

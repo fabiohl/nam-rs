@@ -27,7 +27,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-#### [ ] Tarefa 1.2: Deduplicar Parity no Quick e Limpar Caps Mortos
+#### [x] Tarefa 1.2: Deduplicar Parity no Quick e Limpar Caps Mortos
 
 * **Achado Associado:** [F-T2](file:///home/fabio/nam-rs/TODO-findings.md#L160) — `run_v1` é alias 1:1 de `run_v1_hf` (testes duplicados).
 * **Complexidade/Risco:** Baixo.
