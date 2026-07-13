@@ -172,7 +172,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de fixtures e goldens (tanto C++ quanto Rust). O objetivo é garantir que todas as fixtures de áudio e manifestos de validação sejam determinísticos, imunes a otimizações agressivas de compiladores, e completamente auditáveis.
 
-### [ ] Tarefa 3.1: Imposição de Flags IEEE-Strict na Compilação do Renderizador C++ (F-X1)
+### [x] Tarefa 3.1: Imposição de Flags IEEE-Strict na Compilação do Renderizador C++ (F-X1)
 
 * **Achado Associado:** [F-X1](file:///home/fabio/nam-rs/TODO-findings.md#L81) — Goldens C++ gerados com `-Ofast` — determinismo cross-compilador comprometido.
 * **Complexidade/Risco:** Alto (risco de alteração generalizada de thresholds/hashes de goldens).
@@ -187,6 +187,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
   * Execução do build do renderizador sem erros.
   * O compilador não deve utilizar `-Ofast` (confirmado inspecionando logs ou gerando os binários).
   * Todos os testes de fidelidade ajustados e passando com sucesso no `cargo test`.
+  * **Concluído (2026-07-13):** `golden_gen_build.sh` agora aplica `sed` nos `CMakeLists.txt` vendorizados (substituindo `-Ofast` por `-O3`) e injeta `-fno-fast-math -ffp-contract=off` via `CMAKE_CXX_FLAGS`. Todos os 62 `.bin` goldens (v1 + v2) foram regenerados. Nenhum threshold precisou ser recalibrado — os desvios de ESR/SNR ficaram abaixo do piso de ruído das tolerâncias existentes. 228/228 testes passam (`--test-threads=1`). O build config foi estendido com sufixo `:ieee-strict` para invalidação automática do cache de binários pré-existentes.
 
 ---
 

@@ -180,7 +180,7 @@ BUILD_CONFIG_FILE="$BUILD_DIR/.build_config"
 # asks for Release (or g++).
 if [ -f "$RENDER_BIN" ] && [ -f "$BUILD_CONFIG_FILE" ]; then
     STORED_CONFIG=$(cat "$BUILD_CONFIG_FILE")
-    CURRENT_CONFIG="$CXX:$BUILD_TYPE"
+    CURRENT_CONFIG="$CXX:$BUILD_TYPE:ieee-strict"
     if [ "$STORED_CONFIG" != "$CURRENT_CONFIG" ]; then
         echo "  Build config changed ($STORED_CONFIG → $CURRENT_CONFIG) — forcing rebuild"
         rm -f "$RENDER_BIN"
@@ -190,14 +190,37 @@ fi
 if [ -f "$RENDER_BIN" ]; then
     echo "  Render binary already exists: $RENDER_BIN"
 else
-    echo "  Building render tool ($NAM_CORE_TAG + A2-fast)..."
+    echo "  Building render tool ($NAM_CORE_TAG + A2-fast, IEEE-strict)..."
     mkdir -p "$BUILD_DIR"
+
+    # F-X1 / Task 3.1: Force IEEE-strict compilation by neutralizing -Ofast in the
+    # vendorized CMakeLists.txt.  -Ofast (≡ -O3 -ffast-math) relaxes IEEE 754,
+    # producing non-deterministic floating-point results across compilers/OSes.
+    # Step (a): replace -Ofast with -O3 in the generator expressions so the target
+    #   no longer pulls in -ffast-math.
+    # Step (b): inject -fno-fast-math -ffp-contract=off via CMAKE_CXX_FLAGS, which
+    #   are appended before target_compile_options and therefore remain effective
+    #   since -O3 alone does not contradict them.
+    RENDER_CMAKE="$NAM_CORE_DIR/tools/CMakeLists.txt"
+    AUDIO_DSP_CMAKE="$NAM_CORE_DIR/Dependencies/AudioDSPTools/tools/CMakeLists.txt"
+    if ! grep -q '\-Ofast\b' "$RENDER_CMAKE"; then
+        echo "  IEEE-strict patch already applied (no -Ofast found in $RENDER_CMAKE)"
+    else
+        echo "  Patching: replacing -Ofast with -O3 in vendorized CMakeLists.txt..."
+        for f in "$RENDER_CMAKE" "$AUDIO_DSP_CMAKE"; do
+            if [ -f "$f" ] && grep -q '\-Ofast\b' "$f"; then
+                sed -i 's/\$<\$<CONFIG:RELEASE>:-Ofast>/\$<\$<CONFIG:RELEASE>:-O3>/g' "$f"
+                echo "    Patched $f"
+            fi
+        done
+    fi
+
     CMAKE_LOG="$LOGS_DIR/render_cmake.log"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
         -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_CXX_STANDARD=20 \
-        -DCMAKE_CXX_FLAGS="-w" \
+        -DCMAKE_CXX_FLAGS="-w -fno-fast-math -ffp-contract=off" \
         -DNAM_ENABLE_A2_FAST=ON \
         > "$CMAKE_LOG" 2>&1 || {
         cmake_status=$?
@@ -221,7 +244,7 @@ else
             exit 1
         fi
     fi
-    echo "$CXX:$BUILD_TYPE" > "$BUILD_CONFIG_FILE"
+    echo "$CXX:$BUILD_TYPE:ieee-strict" > "$BUILD_CONFIG_FILE"
 fi
 echo "  Render: $RENDER_BIN"
 
