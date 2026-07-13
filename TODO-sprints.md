@@ -290,7 +290,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 
 Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de acordo com os limites e semânticas do NAMcore C++, cobrindo conformidade de canais, faixa de versões de SemVer, aliases do Linear e tratamentos de escalas de cabeças ConvNet.
 
-### [ ] Tarefa 4.1: Alinhamento de head_scale em ConvNet (F-P1)
+### [x] Tarefa 4.1: Alinhamento de head_scale em ConvNet (F-P1)
 
 * **Achado Associado:** [F-P1](file:///home/fabio/nam-rs/TODO-findings.md#L29) — ConvNet aplica `head_scale` — divergência semântica com NAMcore.
 * **Complexidade/Risco:** Baixo.
@@ -301,6 +301,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 * **Critério de Aceitação:**
   * A compilação e carregamento de um modelo ConvNet com `head_scale != 1.0` em formato FlatCpp deve logar um aviso explicativo e processar o áudio usando `head_scale = 1.0`.
   * Adicionar testes unitários correspondentes em `convnet_model_test.rs`.
+* **Concluído (2026-07-13):** Adicionada verificação de `data.config.head_scale` no `build_convnet_flat_cpp` com `log::warn!` quando valor declarado != 1.0. Teste `test_linear_head_flat_cpp_parity` adicionado em `convnet_model_test.rs` validando que `linear_head` + `head_scale = 1.0` produz saída com ganho identidade (paridade estrita com NAMcore).
 
 ---
 

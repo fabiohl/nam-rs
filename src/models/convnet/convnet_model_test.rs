@@ -58,6 +58,52 @@ fn test_head_scale() {
 }
 
 #[test]
+fn test_linear_head_flat_cpp_parity() {
+    let mut block =
+        ConvNetBlock::new(1, 1, 1, 1, false, ActivationType::Tanh, 0).expect("create block");
+    let weights = vec![1.0f32, 0.0, 0.0, 0.0];
+    block.set_conv_weights(&weights);
+    block.set_bn_params(&[1.0f32], &[0.0f32]).unwrap();
+
+    let head_weight = AlignedVec::from_vec(vec![1.0f32]).expect("head_weight alloc");
+    let head_bias = AlignedVec::from_vec(vec![0.0f32]).expect("head_bias alloc");
+
+    let linear_head = LinearHead {
+        weight: head_weight,
+        bias: head_bias,
+        in_ch: 1,
+        out_ch: 1,
+    };
+
+    let mut model = ConvNetModel {
+        blocks: vec![block],
+        head_scale: 1.0,
+        receptive_field_size: 0,
+        post_stack_head: None,
+        head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+            .expect("allocation should succeed for test-sized buffers"),
+        prewarm_on_reset: true,
+        linear_head: Some(linear_head),
+    };
+
+    let input = [0.5f32];
+    let mut output = [0.0f32];
+    model.process(&input, &mut output);
+
+    let expected = 0.5f32.tanh();
+    assert!(
+        (output[0] - expected).abs() < 1e-4,
+        "FlatCpp parity: head_scale=1.0 must produce identity gain. output={}, expected={}",
+        output[0],
+        expected
+    );
+}
+
+#[test]
 fn test_empty_model_outputs_silence() {
     let mut model = ConvNetModel {
         blocks: vec![],

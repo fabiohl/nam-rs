@@ -12,7 +12,7 @@ use crate::models::wavenet::PostStackHead;
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 use crate::models::wavenet::post_stack_head::parse_activation;
 use anyhow::Context;
-use log::info;
+use log::{info, warn};
 
 use crate::loader::dispatcher::checked_arith;
 use crate::loader::dispatcher::wavenet::layout;
@@ -128,6 +128,17 @@ fn build_convnet_flat_cpp(
 
     // head_scale = 1.0: C++ flat format has no head_scale; gain is identity.
     let head_scale: f32 = 1.0;
+
+    if let Some(cfg_head_scale) = data.config.head_scale
+        && (cfg_head_scale - 1.0).abs() > f32::EPSILON
+    {
+        warn!(
+            "[Dispatcher] ConvNet FlatCpp: config declares head_scale={}, \
+             but NAMcore does not support head_scale for ConvNet. \
+             Forcing head_scale=1.0 for strict parity with C++.",
+            cfg_head_scale
+        );
+    }
 
     let head_output_scratch = AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
         .expect("allocation should succeed for test-sized buffers");
