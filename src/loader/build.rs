@@ -134,6 +134,12 @@ pub fn load_and_build_model(
                 nam_json::JsonError::UnsupportedTopology { .. } => {
                     NamErrorCode::NamJsonUnsupportedTopology
                 }
+                nam_json::JsonError::InvalidVersionFormat { .. } => {
+                    NamErrorCode::NamJsonInvalidVersionFormat
+                }
+                nam_json::JsonError::UnsupportedVersion { .. } => {
+                    NamErrorCode::NamJsonUnsupportedVersion
+                }
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)

@@ -104,6 +104,7 @@ fn make_wavenet_json(
     let d1: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
     format!(
         r#"{{
+            "version": "0.5.4",
             "architecture": "WaveNet",
             "config": {{
                 "layers": [
@@ -430,6 +431,7 @@ fn test_topology_rejected_non_wavenet() {
 #[test]
 fn test_lstm_accepts_mono_channels() {
     let json = r#"{
+        "version": "0.5.4",
         "architecture": "LSTM",
         "config": {
             "num_layers": 2,
@@ -447,6 +449,7 @@ fn test_lstm_accepts_mono_channels() {
 #[test]
 fn test_lstm_rejects_multi_in_channels() {
     let json = r#"{
+        "version": "0.5.4",
         "architecture": "LSTM",
         "config": {
             "num_layers": 2,
@@ -463,6 +466,7 @@ fn test_lstm_rejects_multi_in_channels() {
 #[test]
 fn test_lstm_rejects_multi_out_channels() {
     let json = r#"{
+        "version": "0.5.4",
         "architecture": "LSTM",
         "config": {
             "num_layers": 2,
@@ -479,6 +483,7 @@ fn test_lstm_rejects_multi_out_channels() {
 #[test]
 fn test_lstm_accepts_absent_channels() {
     let json = r#"{
+        "version": "0.5.4",
         "architecture": "LSTM",
         "config": {
             "num_layers": 1,
@@ -766,6 +771,123 @@ fn test_parse_semver() {
     assert_eq!(parse_semver("v0.6.0"), Some((0, 6, 0)));
     assert_eq!(parse_semver(" V1.2.3 "), Some((1, 2, 3)));
     assert_eq!(parse_semver("invalid"), None);
+}
+
+// =========================================================================
+// SemVer Version Validation — Tarefa 4.2 / F-P2
+// =========================================================================
+
+/// Helper: creates minimal JSON with the given version string.
+fn make_version_json(version: &str) -> String {
+    format!(
+        r#"{{
+            "version": "{version}",
+            "architecture": "LSTM",
+            "config": {{ "num_layers": 1, "hidden_size": 8, "layers": [] }},
+            "weights": [0.0]
+        }}"#
+    )
+}
+
+#[test]
+fn test_version_exact_minimum_accepted() {
+    let json = make_version_json("0.5.0");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_exact_maximum_accepted() {
+    let json = make_version_json("0.7.0");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_0_7_1_partial_compatibility() {
+    let json = make_version_json("0.7.1");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_0_4_9_rejected() {
+    let json = make_version_json("0.4.9");
+    let err = parse_nam_json(&json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("below minimum"),
+        "Expected 'below minimum' error for 0.4.9, got: {msg}"
+    );
+}
+
+#[test]
+fn test_version_0_8_0_rejected() {
+    let json = make_version_json("0.8.0");
+    let err = parse_nam_json(&json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("exceeds maximum"),
+        "Expected 'exceeds maximum' error for 0.8.0, got: {msg}"
+    );
+}
+
+#[test]
+fn test_version_missing_rejected() {
+    let json = r#"{
+        "architecture": "LSTM",
+        "config": { "num_layers": 1, "hidden_size": 8, "layers": [] },
+        "weights": [0.0]
+    }"#;
+    let err = parse_nam_json(json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("version field is required"),
+        "Expected 'version field is required' error, got: {msg}"
+    );
+}
+
+#[test]
+fn test_version_invalid_format_rejected() {
+    let json = make_version_json("invalid");
+    let err = parse_nam_json(&json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("not valid SemVer"),
+        "Expected 'not valid SemVer' error, got: {msg}"
+    );
+}
+
+#[test]
+fn test_version_major_nonzero_rejected() {
+    let json = make_version_json("1.0.0");
+    let err = parse_nam_json(&json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("exceeds maximum"),
+        "Expected 'exceeds maximum' for 1.0.0, got: {msg}"
+    );
+}
+
+#[test]
+fn test_version_0_5_4_accepted() {
+    let json = make_version_json("0.5.4");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_0_6_0_accepted() {
+    let json = make_version_json("0.6.0");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_v_prefix_accepted() {
+    let json = make_version_json("v0.5.4");
+    assert!(parse_nam_json(&json).is_ok());
+}
+
+#[test]
+fn test_version_with_suffix_accepted() {
+    let json = make_version_json("0.5.4-rc1");
+    assert!(parse_nam_json(&json).is_ok());
 }
 
 #[test]
@@ -1091,6 +1213,7 @@ use crate::loader::nam_json::validation::{
 #[test]
 fn test_lstm_rejects_zero_layers() {
     let json = r#"{
+        "version": "0.5.4",
         "architecture": "LSTM",
         "config": {
             "num_layers": 0,
@@ -1106,7 +1229,7 @@ fn test_lstm_rejects_zero_layers() {
 #[test]
 fn test_lstm_rejects_num_layers_too_high() {
     let json = format!(
-        r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": 8, "layers": []}}, "weights": [0.0]}}"#,
+        r#"{{"version": "0.5.4", "architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": 8, "layers": []}}, "weights": [0.0]}}"#,
         MAX_LSTM_LAYERS + 1
     );
     let parsed = parse_nam_json(&json).expect("parse");
@@ -1117,7 +1240,7 @@ fn test_lstm_rejects_num_layers_too_high() {
 fn test_lstm_rejects_hidden_size_too_high() {
     // Now caught at parse time by the universal MAX_HIDDEN_SIZE=512 check (Epic 1.1)
     let json = format!(
-        r#"{{"architecture": "LSTM", "config": {{"num_layers": 2, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
+        r#"{{"version": "0.5.4", "architecture": "LSTM", "config": {{"num_layers": 2, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
         crate::loader::nam_json::MAX_HIDDEN_SIZE + 1
     );
     assert!(parse_nam_json(&json).is_err());
@@ -1127,7 +1250,7 @@ fn test_lstm_rejects_hidden_size_too_high() {
 fn test_lstm_accepts_max_bounds() {
     // MAX_HIDDEN_SIZE = 512 is the universal parse-time cap (Epic 1.1)
     let json = format!(
-        r#"{{"architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
+        r#"{{"version": "0.5.4", "architecture": "LSTM", "config": {{"num_layers": {}, "hidden_size": {}, "layers": []}}, "weights": [0.0]}}"#,
         MAX_LSTM_LAYERS, MAX_HIDDEN_SIZE
     );
     let parsed = parse_nam_json(&json).expect("parse");
@@ -1156,6 +1279,7 @@ fn make_wavenet_json_collect_fmt(
     let d1_s: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
     format!(
         r#"{{
+            "version": "0.5.4",
             "architecture": "WaveNet",
             "config": {{
                 "layers": [

@@ -64,6 +64,18 @@ pub enum JsonError {
         /// The specific limit that was exceeded.
         limit: usize,
     },
+    /// The version string cannot be parsed as SemVer.
+    InvalidVersionFormat {
+        /// The raw version string that failed to parse.
+        raw: String,
+    },
+    /// The version is outside the supported range (min 0.5.0, max 0.7.x).
+    UnsupportedVersion {
+        /// The raw version string.
+        raw: String,
+        /// Human-readable explanation.
+        reason: String,
+    },
     /// Generic serde_json parse error.
     Serde(String),
 }
@@ -130,6 +142,12 @@ impl std::fmt::Display for JsonError {
                     "unsupported topology: architecture={} — {} (limit={})",
                     architecture, issue, limit
                 )
+            }
+            Self::InvalidVersionFormat { raw } => {
+                write!(f, "invalid version format: '{raw}' is not valid SemVer")
+            }
+            Self::UnsupportedVersion { raw, reason } => {
+                write!(f, "unsupported version '{raw}': {reason}")
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),
         }

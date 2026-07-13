@@ -26,18 +26,18 @@ CLAP plugin mode uses a structurally different topology (host-driven `process()`
 
 NAM-rs uses a **static enum dispatch** pattern to route inference calls to the correct model architecture without virtual table (vtable) overhead. The `StaticModel` enum (`src/models/mod.rs:106`) has 23 variants covering all supported architectures:
 
-| Family                 | Variants                                                                                                                 | Dispatch Strategy                  |
-|:---------------------- |:------------------------------------------------------------------------------------------------------------------------ |:---------------------------------- |
-| **WaveNet A1**         | `WavenetStandard` (ch=16), `WavenetLite` (ch=12), `WavenetFeather` (ch=8), `WavenetNano` (ch=4)                          | Const-generic monomorphization     |
-| **WaveNet A2**         | `WavenetA2Full` (ch=8), `WavenetA2Lite` (ch=3)                                                                           | Const-generic monomorphization     |
-| **WaveNet A2 Dyn**     | `WavenetA2Dyn`                                                                                                           | Runtime dimensions (free channels) |
-| **WaveNet A2 Cascade** | `WavenetA2Cascade`                                                                                                       | Multi-array dynamic cascade        |
-| **WaveNet Dyn**        | `WavenetDyn` (backed by `WaveNetModelDyn`)                                                                               | Free geometry fallback             |
-| **LSTM Static**        | `Lstm1x3`, `Lstm1x8`, `Lstm1x12`, `Lstm1x16`, `Lstm1x24`, `Lstm2x8`, `Lstm2x12`, `Lstm2x16`, `Lstm1x40`, `Lstm2x24`      | Const-generic monomorphization     |
-| **LSTM Dyn**           | `LstmDyn` (backed by `LstmModelDyn`)                                                                                     | Runtime dimensions fallback        |
-| **Container**          | `Container` (backed by `ContainerModel`)                                                                                 | Nested `StaticModel` dispatch      |
-| **ConvNet**            | `ConvNet` (backed by `ConvNetModel`)                                                                                     | Layer-chain SIMD dispatch          |
-| **Linear**             | `Linear` (backed by `LinearModel`)                                                                                       | Direct SIMD FIR / Partitioned FFT  |
+| Family                 | Variants                                                                                                            | Dispatch Strategy                  |
+|:---------------------- |:------------------------------------------------------------------------------------------------------------------- |:---------------------------------- |
+| **WaveNet A1**         | `WavenetStandard` (ch=16), `WavenetLite` (ch=12), `WavenetFeather` (ch=8), `WavenetNano` (ch=4)                     | Const-generic monomorphization     |
+| **WaveNet A2**         | `WavenetA2Full` (ch=8), `WavenetA2Lite` (ch=3)                                                                      | Const-generic monomorphization     |
+| **WaveNet A2 Dyn**     | `WavenetA2Dyn`                                                                                                      | Runtime dimensions (free channels) |
+| **WaveNet A2 Cascade** | `WavenetA2Cascade`                                                                                                  | Multi-array dynamic cascade        |
+| **WaveNet Dyn**        | `WavenetDyn` (backed by `WaveNetModelDyn`)                                                                          | Free geometry fallback             |
+| **LSTM Static**        | `Lstm1x3`, `Lstm1x8`, `Lstm1x12`, `Lstm1x16`, `Lstm1x24`, `Lstm2x8`, `Lstm2x12`, `Lstm2x16`, `Lstm1x40`, `Lstm2x24` | Const-generic monomorphization     |
+| **LSTM Dyn**           | `LstmDyn` (backed by `LstmModelDyn`)                                                                                | Runtime dimensions fallback        |
+| **Container**          | `Container` (backed by `ContainerModel`)                                                                            | Nested `StaticModel` dispatch      |
+| **ConvNet**            | `ConvNet` (backed by `ConvNetModel`)                                                                                | Layer-chain SIMD dispatch          |
+| **Linear**             | `Linear` (backed by `LinearModel`)                                                                                  | Direct SIMD FIR / Partitioned FFT  |
 
 The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs:359`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
 
@@ -465,13 +465,13 @@ The existing free function `gc_cascade()` (`src/common/spsc/gc.rs`) already abst
 
 Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`. The table below shows the category ranges with representative examples; the complete catalog of 40+ codes lives in the source enum. Keep this table synchronized with the enum on every change (see [.agents/rules/testing.md](../.agents/rules/testing.md)).
 
-| Range   | Category                   | Examples                                                                                                                                     |
-|:------- |:-------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1200` NAM_JSON_PARSE_ERROR, `E1201` NAMB_CRC32_MISMATCH, `E1300` UNSUPPORTED_ARCHITECTURE, `E1304` MODEL_TOO_LARGE |
-| `E2xxx` | PipeWire / Audio / RT      | `E2001` DEADLINE_EXCEEDED, `E2100` PIPEWIRE_INIT_FAILED, `E2200` RESAMPLER_BUILD_FAILED, `E2300` SCHED_FIFO_DENIED                           |
-| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW, `E3102` GC_CORRUPTED                                                                        |
-| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND, `E4102` CTRL_C_HANDLER_FAILED, `E4103` IR_LOAD_FAILED                                   |
-| `E5xxx` | System / Hardware          | `E5000` OUT_OF_MEMORY                                                                                                                        |
+| Range   | Category                   | Examples                                                                                                                                                                                                                    |
+|:------- |:-------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1200` NAM_JSON_PARSE_ERROR, `E1201` NAMB_CRC32_MISMATCH, `E1216` NAM_JSON_INVALID_VERSION_FORMAT, `E1217` NAM_JSON_UNSUPPORTED_VERSION, `E1300` UNSUPPORTED_ARCHITECTURE, `E1304` MODEL_TOO_LARGE |
+| `E2xxx` | PipeWire / Audio / RT      | `E2001` DEADLINE_EXCEEDED, `E2100` PIPEWIRE_INIT_FAILED, `E2200` RESAMPLER_BUILD_FAILED, `E2300` SCHED_FIFO_DENIED                                                                                                          |
+| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW, `E3102` GC_CORRUPTED                                                                                                                                                       |
+| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND, `E4102` CTRL_C_HANDLER_FAILED, `E4103` IR_LOAD_FAILED                                                                                                                  |
+| `E5xxx` | System / Hardware          | `E5000` OUT_OF_MEMORY                                                                                                                                                                                                       |
 
 Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` skill (see [SKILL.md](../.agents/skills/diagnostico/SKILL.md)).
 

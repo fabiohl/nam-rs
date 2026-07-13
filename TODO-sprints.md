@@ -305,7 +305,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 
 ---
 
-### [ ] Tarefa 4.2: Validação e Enforcement de Versão SemVer (F-P2)
+### [x] Tarefa 4.2: Validação e Enforcement de Versão SemVer (F-P2)
 
 * **Achado Associado:** [F-P2](file:///home/fabio/nam-rs/TODO-findings.md#L42) — Ausência de enforcement de versão do arquivo `.nam`.
 * **Complexidade/Risco:** Médio.
@@ -324,6 +324,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
   * Testar os limites de versão na suíte de testes unitários (`nam_json_test.rs`).
   * Arquivos com versão `0.4.9` ou `0.8.0` ou sem versão devem falhar no carregamento com códigos de diagnósticos apropriados.
   * Arquivos com versão `0.7.1` devem carregar emitindo um aviso em log.
+* **Concluído (2026-07-13):** Adicionada `validate_version()` em `parse.rs` com enforcement de SemVer espelhando NAMcore: rejeita versão ausente (`UnsupportedVersion`), inválida (`InvalidVersionFormat`), `< 0.5.0` (`UnsupportedVersion`) e `> 0.7.x` (`UnsupportedVersion`). Versão `0.7.x` com `patch > 0` emite `warn!` (partial compatibility). Novos códigos `E1216`/`E1217` registrados em `error_codes.rs` e mapeados em `build.rs`. Catálogo de erros em `architecture.md` §9 sincronizado. 10 testes unitários adicionados cobrindo todos os casos-limite (missing, parse, <0.5.0, >0.7.x, 0.7.1, valid range). Test helpers (`make_wavenet_json`, LSTM JSON fixtures) atualizados para incluir `version: "0.5.4"`.
 
 ---
 
