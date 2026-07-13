@@ -357,14 +357,14 @@ robustez e eficiência da infraestrutura de qualidade — não regressões de á
 > Referenciar sempre o ID do achado. Ordem sugerida = ordem dos épicos. Só criar
 > `TODO-sprints.md` quando solicitado.
 
-### EP1 — Quick suite enxuto e honesto (baixo risco, ganho imediato)
+### EP1 — Quick suite enxuto e honesto (baixo risco, ganho imediato) [DONE]
 
 Achados: **F-S1**, **F-T2**, **F-S5**.
 Remover `rt_constraints` do quick; deduplicar `quick_parity_*` HF/não-HF e limpar caps Fast
 mortos; corrigir status SKIPPED no long. Critério de aceite: quick ≥ 15 s mais rápido (quente),
 mesma cobertura efetiva, AUDIT SUMMARY exibe SKIPPED corretamente.
 
-### EP2 — Dashboard correto e determinístico
+### EP2 — Dashboard correto e determinístico [DOING]
 
 Achados: **F-S2**, **F-S4**, **F-S3**, **F-I1**, **F-I2**, **F-S6**.
 Sequência: LC_ALL=C (hotfix) → entrada InputMixinPre no summary table → emissão JSONL +
