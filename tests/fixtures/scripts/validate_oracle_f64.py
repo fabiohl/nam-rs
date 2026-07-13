@@ -336,21 +336,25 @@ def convnet_forward(model: dict, x: np.ndarray) -> np.ndarray:
     """ConvNet forward pass in NumPy f64.
 
     Independent f64 implementation of the NAM ConvNet topology, matching the
-    Rust oracle (src/testing/reference_oracle.rs:922):
+    Rust oracle (src/testing/reference_oracle/convnet.rs):
+    - Supports both Layers format (pre-fused BN) and FlatCpp format (raw BN params)
     - [out_ch][in_ch][kernel] conv weight layout
-    - Fused BatchNorm: scale * x + offset (no running mean/var — already
-      baked into the .nam weights)
-    - Causal Conv1d with dilation (reads history buffer, padded left with 0)
-    - Per-block history buffers (each block reads its own buffer, writes into
-      the next block's buffer)
-    - Optional PostStackHead with activation and head_scale
+    - Fused BatchNorm: scale * x + offset
+    - Causal Conv1d with dilation
+    - Per-block history buffers
+    - Optional PostStackHead (Layers) or linear head (FlatCpp)
     """
     config = model["config"]
     weights = load_weights_as_f64(model)
     head_scale = np.float64(config.get("head_scale", 1.0))
     layers = config.get("layers", [])
+    conv_channels = config.get("channels")
+    conv_dilations = config.get("dilations")
+    conv_batchnorm = config.get("batchnorm")
 
-    if not layers:
+    is_flat_cpp = (not layers) and (conv_channels is not None) and (conv_dilations is not None) and (conv_batchnorm is not None)
+
+    if not is_flat_cpp and not layers:
         return np.zeros_like(x)
 
     cursor = 0
@@ -359,57 +363,103 @@ def convnet_forward(model: dict, x: np.ndarray) -> np.ndarray:
         pass
 
     blocks = []
-    for i, lc in enumerate(layers):
-        b = BlockW()
-        b.out_ch = int(lc.get("channels", 8))
-        b.in_ch = 1 if i == 0 else int(layers[i - 1].get("channels", b.out_ch))
-        b.kernel = int(lc.get("kernel_size", 3))
-        b.dilation = int(lc.get("dilations", [1])[0])
-        b.activation = lc.get("activation", "Tanh")
+    if is_flat_cpp:
+        ch = int(conv_channels)
+        dilations = conv_dilations
+        batchnorm = conv_batchnorm
+        kernel = 2
+        head_scale = np.float64(1.0)
 
-        # conv_w: [out_ch][in_ch][kernel]
-        n_conv_w = b.in_ch * b.out_ch * b.kernel
-        b.conv_w = weights[cursor : cursor + n_conv_w].reshape(b.out_ch, b.in_ch, b.kernel)
-        cursor += n_conv_w
+        for i in range(len(dilations)):
+            b = BlockW()
+            b.out_ch = ch
+            b.in_ch = 1 if i == 0 else ch
+            b.kernel = kernel
+            b.dilation = int(dilations[i])
+            b.activation = "Tanh"
 
-        b.conv_b = weights[cursor : cursor + b.out_ch]
-        cursor += b.out_ch
+            n_conv_w = b.in_ch * b.out_ch * b.kernel
+            b.conv_w = weights[cursor : cursor + n_conv_w].reshape(b.out_ch, b.in_ch, b.kernel)
+            cursor += n_conv_w
 
-        b.bn_scale = weights[cursor : cursor + b.out_ch]
-        cursor += b.out_ch
+            if batchnorm:
+                running_mean = weights[cursor : cursor + b.out_ch]
+                cursor += b.out_ch
+                running_var = weights[cursor : cursor + b.out_ch]
+                cursor += b.out_ch
+                gamma = weights[cursor : cursor + b.out_ch]
+                cursor += b.out_ch
+                beta = weights[cursor : cursor + b.out_ch]
+                cursor += b.out_ch
+                eps = weights[cursor]
+                cursor += 1
 
-        b.bn_offset = weights[cursor : cursor + b.out_ch]
-        cursor += b.out_ch
+                b.bn_scale = gamma / np.sqrt(eps + running_var)
+                b.bn_offset = beta - b.bn_scale * running_mean
+                b.conv_b = np.zeros(b.out_ch, dtype=np.float64)
+            else:
+                b.conv_b = weights[cursor : cursor + b.out_ch]
+                cursor += b.out_ch
+                b.bn_scale = np.ones(b.out_ch, dtype=np.float64)
+                b.bn_offset = np.zeros(b.out_ch, dtype=np.float64)
 
-        blocks.append(b)
+            blocks.append(b)
 
-    # Head
-    head_config = config.get("head")
-    has_head = head_config is not None
-    h_w = None
-    h_b = None
-    h_in_ch = None
-    h_out_ch = None
-    h_kernel = None
-    h_activation = None
-    if has_head:
+        # FlatCpp head: linear [1 × last_out_ch] + bias, no activation
         last_out_ch = blocks[-1].out_ch
-        h_in_ch = int(head_config.get("channels", last_out_ch))
-        h_out_ch = int(head_config.get("out_channels", 1))
-        h_kernel = int(head_config.get("kernel_size", 1))
-        h_has_bias = head_config.get("bias", True)
-        h_activation = head_config.get("activation", "Tanh")
+        h_w = weights[cursor : cursor + last_out_ch].reshape(1, last_out_ch, 1)
+        cursor += last_out_ch
+        h_b = weights[cursor : cursor + 1]
+        cursor += 1
+        has_head = True
+        h_in_ch = last_out_ch
+        h_out_ch = 1
+        h_kernel = 1
+        h_activation = "Linear"
+    else:
+        for i, lc in enumerate(layers):
+            b = BlockW()
+            b.out_ch = int(lc.get("channels", 8))
+            b.in_ch = 1 if i == 0 else int(layers[i - 1].get("channels", b.out_ch))
+            b.kernel = int(lc.get("kernel_size", 3))
+            use_dil = lc.get("dilations", [1])
+            b.dilation = int(use_dil[0])  # support int or list
+            b.activation = lc.get("activation", "Tanh")
 
-        # h_w: [h_out_ch][h_in_ch][h_kernel]
-        n_h_w = h_in_ch * h_out_ch * h_kernel
-        h_w = weights[cursor : cursor + n_h_w].reshape(h_out_ch, h_in_ch, h_kernel)
-        cursor += n_h_w
+            n_conv_w = b.in_ch * b.out_ch * b.kernel
+            b.conv_w = weights[cursor : cursor + n_conv_w].reshape(b.out_ch, b.in_ch, b.kernel)
+            cursor += n_conv_w
 
-        if h_has_bias:
-            h_b = weights[cursor : cursor + h_out_ch]
-            cursor += h_out_ch
-        else:
-            h_b = np.zeros(h_out_ch, dtype=np.float64)
+            b.conv_b = weights[cursor : cursor + b.out_ch]
+            cursor += b.out_ch
+
+            b.bn_scale = weights[cursor : cursor + b.out_ch]
+            cursor += b.out_ch
+
+            b.bn_offset = weights[cursor : cursor + b.out_ch]
+            cursor += b.out_ch
+
+            blocks.append(b)
+
+        head_config = config.get("head")
+        has_head = head_config is not None
+        if has_head:
+            last_out_ch = blocks[-1].out_ch
+            h_in_ch = int(head_config.get("channels", last_out_ch))
+            h_out_ch = int(head_config.get("out_channels", 1))
+            h_kernel = int(head_config.get("kernel_size", 1))
+            h_has_bias = head_config.get("bias", True)
+            h_activation = head_config.get("activation", "Tanh")
+
+            n_h_w = h_in_ch * h_out_ch * h_kernel
+            h_w = weights[cursor : cursor + n_h_w].reshape(h_out_ch, h_in_ch, h_kernel)
+            cursor += n_h_w
+
+            if h_has_bias:
+                h_b = weights[cursor : cursor + h_out_ch]
+                cursor += h_out_ch
+            else:
+                h_b = np.zeros(h_out_ch, dtype=np.float64)
 
     num_frames = len(x)
     max_rf = max((b.kernel - 1) * b.dilation for b in blocks) + 64
@@ -430,7 +480,6 @@ def convnet_forward(model: dict, x: np.ndarray) -> np.ndarray:
         elif name == "ReLU":
             return np.maximum(data, 0.0)
         elif name == "Sigmoid":
-            # 1 / (1 + exp(-x))
             return 1.0 / (1.0 + np.exp(-data))
         elif name == "SiLU":
             s = 1.0 / (1.0 + np.exp(-data))
@@ -440,6 +489,8 @@ def convnet_forward(model: dict, x: np.ndarray) -> np.ndarray:
             return data * relu6 / 6.0
         elif name == "Softsign":
             return data / (1.0 + np.abs(data))
+        elif name in ("Linear", "Identity"):
+            return data
         else:
             return np.tanh(data)
 

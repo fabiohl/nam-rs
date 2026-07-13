@@ -13,12 +13,18 @@ pub(crate) fn oracle_convnet_forward(
     config: &PrecisionConfig,
 ) -> Vec<f64> {
     let layers = &model_data.config.layers;
-    let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
+    let mut head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
     let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let num_frames = input.len();
     let acc_mode = config.accumulation;
 
-    if layers.is_empty() {
+    // ── FlatCpp format detection ──
+    let is_flat_cpp = layers.is_empty()
+        && model_data.config.conv_channels.is_some()
+        && model_data.config.conv_dilations.is_some()
+        && model_data.config.conv_batchnorm.is_some();
+
+    if !is_flat_cpp && layers.is_empty() {
         return vec![0.0; num_frames];
     }
 
@@ -35,43 +41,98 @@ pub(crate) fn oracle_convnet_forward(
     }
 
     let mut blocks: Vec<BlockW> = Vec::new();
-    for (i, layer) in layers.iter().enumerate() {
-        let out_ch = layer.channels.unwrap_or(8);
-        let in_ch = if i == 0 {
-            1
-        } else {
-            layers[i - 1].channels.unwrap_or(out_ch)
-        };
-        let kernel = layer.kernel_size.unwrap_or(3);
-        let dilation = layer
-            .dilations
-            .as_ref()
-            .and_then(|d| d.first().copied())
-            .unwrap_or(1);
-        let activation = layer
-            .activation
-            .clone()
-            .unwrap_or_else(|| "Tanh".to_string());
 
-        let conv_w = cursor.read_f64(in_ch * out_ch * kernel);
-        let conv_b = cursor.read_f64(out_ch);
-        let bn_scale = cursor.read_f64(out_ch);
-        let bn_offset = cursor.read_f64(out_ch);
+    if is_flat_cpp {
+        let ch = model_data.config.conv_channels.unwrap();
+        let dilations = model_data.config.conv_dilations.as_ref().unwrap();
+        let batchnorm = model_data.config.conv_batchnorm.unwrap();
+        let kernel = 2usize;
+        head_scale = 1.0;
 
-        blocks.push(BlockW {
-            conv_w,
-            conv_b,
-            bn_scale,
-            bn_offset,
-            in_ch,
-            out_ch,
-            kernel,
-            dilation,
-            activation,
-        });
+        for (i, &dilation) in dilations.iter().enumerate() {
+            let in_ch = if i == 0 { 1 } else { ch };
+            let out_ch = ch;
+
+            let conv_w = cursor.read_f64(in_ch * out_ch * kernel);
+
+            let (conv_b, bn_scale, bn_offset) = if batchnorm {
+                let running_mean = cursor.read_f64(out_ch);
+                let running_var = cursor.read_f64(out_ch);
+                let gamma = cursor.read_f64(out_ch);
+                let beta = cursor.read_f64(out_ch);
+                let eps = cursor.read_f64(1)[0];
+
+                let mut scale = vec![0.0f64; out_ch];
+                let mut offset = vec![0.0f64; out_ch];
+                let bias = vec![0.0f64; out_ch];
+                for c in 0..out_ch {
+                    scale[c] = gamma[c] / (eps + running_var[c]).sqrt();
+                    offset[c] = beta[c] - scale[c] * running_mean[c];
+                }
+                (bias, scale, offset)
+            } else {
+                let bias = cursor.read_f64(out_ch);
+                let scale = vec![1.0f64; out_ch];
+                let offset = vec![0.0f64; out_ch];
+                (bias, scale, offset)
+            };
+
+            blocks.push(BlockW {
+                conv_w,
+                conv_b,
+                bn_scale,
+                bn_offset,
+                in_ch,
+                out_ch,
+                kernel,
+                dilation,
+                activation: "Tanh".to_string(),
+            });
+        }
+    } else {
+        for (i, layer) in layers.iter().enumerate() {
+            let out_ch = layer.channels.unwrap_or(8);
+            let in_ch = if i == 0 {
+                1
+            } else {
+                layers[i - 1].channels.unwrap_or(out_ch)
+            };
+            let kernel = layer.kernel_size.unwrap_or(3);
+            let dilation = layer
+                .dilations
+                .as_ref()
+                .and_then(|d| d.first().copied())
+                .unwrap_or(1);
+            let activation = layer
+                .activation
+                .clone()
+                .unwrap_or_else(|| "Tanh".to_string());
+
+            let conv_w = cursor.read_f64(in_ch * out_ch * kernel);
+            let conv_b = cursor.read_f64(out_ch);
+            let bn_scale = cursor.read_f64(out_ch);
+            let bn_offset = cursor.read_f64(out_ch);
+
+            blocks.push(BlockW {
+                conv_w,
+                conv_b,
+                bn_scale,
+                bn_offset,
+                in_ch,
+                out_ch,
+                kernel,
+                dilation,
+                activation,
+            });
+        }
     }
 
-    let head = {
+    let head = if is_flat_cpp {
+        let last_out_ch = blocks.last().map(|b| b.out_ch).unwrap_or(1);
+        let h_w = cursor.read_f64(last_out_ch);
+        let h_b = cursor.read_f64(1);
+        Some((h_w, h_b, last_out_ch, 1usize, 1usize, "Linear".to_string()))
+    } else {
         let head_config = model_data.config.parse_head();
         head_config.map(|hc| {
             let last_out_ch = blocks.last().map(|b| b.out_ch).unwrap_or(1);

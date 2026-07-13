@@ -915,7 +915,9 @@ fn live_cross_validation_wavenet_condition_lstm() {
     match outcome {
         ParityOutcome::Completed => {}
         ParityOutcome::SkippedRateRejected => {
-            eprintln!("SKIP: Condition DSP LSTM — C++ render tool limitation (condition_size mismatch)")
+            eprintln!(
+                "SKIP: Condition DSP LSTM — C++ render tool limitation (condition_size mismatch)"
+            )
         }
         other => panic!("Unexpected outcome: {other:?}"),
     }
@@ -1073,8 +1075,10 @@ fn live_cross_validation_v2_wavenet_condition_lstm() {
             true,
         );
     }));
-    if let Err(_) = result {
-        eprintln!("SKIP: Condition DSP LSTM (v2) — C++ render tool limitation (condition_size mismatch)");
+    if result.is_err() {
+        eprintln!(
+            "SKIP: Condition DSP LSTM (v2) — C++ render tool limitation (condition_size mismatch)"
+        );
     }
 }
 

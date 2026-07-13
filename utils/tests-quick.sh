@@ -170,10 +170,9 @@ fi
 
 trap 'echo -e "\n${RED}${BOLD}❌ Erro inesperado: Comando \"$BASH_COMMAND\" falhou na linha $LINENO com status $?. Abortando suíte de testes.${NC}"; exit 1' ERR
 
-echo -e "${BLUE}${BOLD}=====================================${NC}"
+echo -e "${BLUE}${BOLD}==========================${NC}"
 echo -e "${BLUE}${BOLD}   nam-rs Quick QA Suite"
-echo -e "${BLUE}${BOLD}   ± 8 minutes${NC}"
-echo -e "${BLUE}${BOLD}=====================================${NC}"
+echo -e "${BLUE}${BOLD}==========================${NC}"
 
 
 

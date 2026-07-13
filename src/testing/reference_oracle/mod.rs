@@ -377,6 +377,7 @@ fn oracle_apply_activation(data: &mut [f64], activation: &str, config: &Precisio
                 *v /= 1.0 + v.abs();
             }
         }
+        "Linear" | "Identity" => {}
         _ => {
             for v in data.iter_mut() {
                 *v = oracle_tanh(*v, config.activation);

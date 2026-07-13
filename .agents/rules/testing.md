@@ -34,7 +34,7 @@ Each script strictly extends the previous one's scope — never repeat a check:
 1. `utils/lints.sh` — static analysis only (fmt, SPDX, check, clippy).
 2. `utils/tests-quick.sh` — agile first line. **Allowed to run once per AI task**, as
    a final validation.
-3. `utils/tests-performance-regression.sh` — baseline-gated bench check.
+3. `utils/quality-dashboard.sh --check docs/quality-contract.txt` — baseline-gated bench and audio quality checks.
 4. `utils/tests-long.sh` — nightly/pre-release audit (± 50 min, unattended).
    **NEVER run it in an AI task, under any circumstance.** If validation of its
    scope is needed, ask the human operator to run it and report results.
