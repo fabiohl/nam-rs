@@ -140,6 +140,9 @@ pub fn load_and_build_model(
                 nam_json::JsonError::UnsupportedVersion { .. } => {
                     NamErrorCode::NamJsonUnsupportedVersion
                 }
+                nam_json::JsonError::UnsupportedMultiChannel { .. } => {
+                    NamErrorCode::NamJsonUnsupportedMultiChannel
+                }
                 _ => NamErrorCode::NamJsonParseError,
             };
             NamDiagnostic::new(code, sys)
@@ -235,8 +238,8 @@ pub fn load_and_build_model(
         }
     } else if architecture == "LSTM" {
         match nam_json::get_lstm_topology(&model_data) {
-            Some((layers, hidden)) => format!("{}x{}", layers, hidden),
-            None => "Custom".to_string(),
+            Ok(Some((layers, hidden))) => format!("{}x{}", layers, hidden),
+            _ => "Custom".to_string(),
         }
     } else if architecture == "Linear" {
         match nam_json::get_linear_topology(&model_data) {

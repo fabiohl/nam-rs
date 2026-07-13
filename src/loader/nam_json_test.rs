@@ -90,7 +90,7 @@ fn test_parse_lstm() {
 
     // Checks whether the LSTM structure (layers and size) was interpreted correctly
     let topo = get_lstm_topology(&parsed);
-    assert_eq!(topo, Some((2, 16)));
+    assert_eq!(topo, Ok(Some((2, 16))));
 }
 
 /// Helper: generates minimal WaveNet JSON with provided channels, dilations, and head_size.
@@ -443,7 +443,7 @@ fn test_lstm_accepts_mono_channels() {
         "weights": [0.1, 0.2]
     }"#;
     let parsed = parse_nam_json(json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), Some((2, 16)));
+    assert_eq!(get_lstm_topology(&parsed), Ok(Some((2, 16))));
 }
 
 #[test]
@@ -460,7 +460,12 @@ fn test_lstm_rejects_multi_in_channels() {
         "weights": [0.1, 0.2]
     }"#;
     let parsed = parse_nam_json(json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), None);
+    let err = get_lstm_topology(&parsed).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("in_channels=2"),
+        "Expected multi-channel error for in_channels=2, got: {msg}"
+    );
 }
 
 #[test]
@@ -477,7 +482,12 @@ fn test_lstm_rejects_multi_out_channels() {
         "weights": [0.1, 0.2]
     }"#;
     let parsed = parse_nam_json(json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), None);
+    let err = get_lstm_topology(&parsed).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("out_channels=2"),
+        "Expected multi-channel error for out_channels=2, got: {msg}"
+    );
 }
 
 #[test]
@@ -493,7 +503,7 @@ fn test_lstm_accepts_absent_channels() {
         "weights": [0.0]
     }"#;
     let parsed = parse_nam_json(json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), Some((1, 8)));
+    assert_eq!(get_lstm_topology(&parsed), Ok(Some((1, 8))));
 }
 
 // =========================================================================
@@ -1223,7 +1233,7 @@ fn test_lstm_rejects_zero_layers() {
         "weights": [0.0]
     }"#;
     let parsed = parse_nam_json(json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), None);
+    assert_eq!(get_lstm_topology(&parsed), Ok(None));
 }
 
 #[test]
@@ -1233,7 +1243,7 @@ fn test_lstm_rejects_num_layers_too_high() {
         MAX_LSTM_LAYERS + 1
     );
     let parsed = parse_nam_json(&json).expect("parse");
-    assert_eq!(get_lstm_topology(&parsed), None);
+    assert_eq!(get_lstm_topology(&parsed), Ok(None));
 }
 
 #[test]
@@ -1256,7 +1266,7 @@ fn test_lstm_accepts_max_bounds() {
     let parsed = parse_nam_json(&json).expect("parse");
     assert_eq!(
         get_lstm_topology(&parsed),
-        Some((MAX_LSTM_LAYERS, MAX_HIDDEN_SIZE))
+        Ok(Some((MAX_LSTM_LAYERS, MAX_HIDDEN_SIZE)))
     );
 }
 

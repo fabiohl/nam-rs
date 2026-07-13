@@ -186,7 +186,8 @@ impl std::str::FromStr for LinearImplementation {
         match lower.as_str() {
             "auto" => Ok(Self::Auto),
             "direct" => Ok(Self::Direct),
-            "fft" => Ok(Self::Fft),
+            "fft" | "partitioned_fft" | "partitioned-fft" => Ok(Self::Fft),
+            "legacy" | "old" => Ok(Self::Auto),
             _ => Err(()),
         }
     }

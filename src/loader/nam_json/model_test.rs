@@ -17,8 +17,29 @@ fn parse_linear_implementation_case_insensitive() {
 }
 
 #[test]
+fn parse_linear_implementation_aliases_partitioned_fft() {
+    // C++ NAMcore aliases for partitioned FFT convolution
+    assert_eq!("partitioned_fft".parse(), Ok(LinearImplementation::Fft));
+    assert_eq!("PARTITIONED_FFT".parse(), Ok(LinearImplementation::Fft));
+    assert_eq!("Partitioned_Fft".parse(), Ok(LinearImplementation::Fft));
+    assert_eq!("partitioned-fft".parse(), Ok(LinearImplementation::Fft));
+    assert_eq!("PARTITIONED-FFT".parse(), Ok(LinearImplementation::Fft));
+}
+
+#[test]
+fn parse_linear_implementation_aliases_legacy() {
+    // C++ NAMcore aliases for legacy/old → Auto
+    assert_eq!("legacy".parse(), Ok(LinearImplementation::Auto));
+    assert_eq!("LeGaCy".parse(), Ok(LinearImplementation::Auto));
+    assert_eq!("LEGACY".parse(), Ok(LinearImplementation::Auto));
+    assert_eq!("old".parse(), Ok(LinearImplementation::Auto));
+    assert_eq!("OLD".parse(), Ok(LinearImplementation::Auto));
+    assert_eq!("Old".parse(), Ok(LinearImplementation::Auto));
+}
+
+#[test]
 fn parse_linear_implementation_invalid() {
-    assert_eq!("legacy".parse::<LinearImplementation>(), Err(()));
+    // legacy/old are now valid aliases — no longer Err
     assert_eq!("unknown".parse::<LinearImplementation>(), Err(()));
     assert_eq!("".parse::<LinearImplementation>(), Err(()));
 }

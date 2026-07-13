@@ -4,7 +4,7 @@
 //! Typed errors of the `.nam` JSON parser.
 
 /// Typed errors of the `.nam` JSON parser.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum JsonError {
     /// The `weights` array exceeds the float limit.
     WeightsExceedLimit {
@@ -75,6 +75,16 @@ pub enum JsonError {
         raw: String,
         /// Human-readable explanation.
         reason: String,
+    },
+    /// LSTM model has multi-channel I/O, which NAM-rs does not support
+    /// (C++ NAMcore supports arbitrary channels but no known .nam model uses them).
+    UnsupportedMultiChannel {
+        /// The architecture for context.
+        architecture: String,
+        /// Which channel field contains the non-mono value ("in_channels" or "out_channels").
+        field: &'static str,
+        /// The non-mono channel value found.
+        value: usize,
     },
     /// Generic serde_json parse error.
     Serde(String),
@@ -148,6 +158,17 @@ impl std::fmt::Display for JsonError {
             }
             Self::UnsupportedVersion { raw, reason } => {
                 write!(f, "unsupported version '{raw}': {reason}")
+            }
+            Self::UnsupportedMultiChannel {
+                architecture,
+                field,
+                value,
+            } => {
+                write!(
+                    f,
+                    "{architecture} {field}={value} is not supported — NAM-rs only supports mono models. \
+                     C++ NAMcore accepts multi-channel LSTM but no known production .nam model uses this feature."
+                )
             }
             Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),
         }

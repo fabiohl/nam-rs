@@ -344,7 +344,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 
 ---
 
-### [ ] Tarefa 4.4: Diagnóstico para LSTM Multi-Canal e Aliases do Linear (F-P4-a e F-P4-b)
+### [x] Tarefa 4.4: Diagnóstico para LSTM Multi-Canal e Aliases do Linear (F-P4-a e F-P4-b)
 
 * **Achados Associados:**
   * [F-P4-a](file:///home/fabio/nam-rs/TODO-findings.md#L67) — LSTM multi-canal: C++ aceita in/out channels arbitrários; Rust rejeita.
@@ -359,3 +359,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 * **Critério de Aceitação:**
   * Tentar carregar um LSTM com `in_channels=2` deve retornar um erro de diagnóstico estruturado claro.
   * Mapeamento correto de todos os aliases em testes unitários.
+* **Concluído (2026-07-13):**
+  * **F-P4-a:** `get_lstm_topology` alterado de `Option<(usize, usize)>` para `Result<Option<(usize, usize)>, JsonError>`. Multi-channel (`in_channels != 1` ou `out_channels != 1`) retorna `Err(JsonError::UnsupportedMultiChannel)` com `architecture`, `field` e `value` — erro estruturado E1218 (`NAM_JSON_UNSUPPORTED_MULTI_CHANNEL`). Callers em `build.rs` e `dispatch.rs` atualizados. Derive `PartialEq` adicionado a `JsonError` para facilitar testes.
+  * **F-P4-b:** `LinearImplementation::from_str` agora aceita aliases C++: `"partitioned_fft"` / `"partitioned-fft"` → `Fft`, `"legacy"` / `"old"` → `Auto`. Testes expandidos: `parse_linear_implementation_aliases_partitioned_fft` e `parse_linear_implementation_aliases_legacy` com case-insensitivity. Teste `parse_linear_implementation_invalid` atualizado (legacy não é mais Err).
+  * 125/125 `nam_json` tests pass, 8/8 LSTM integration tests pass, clippy clean.

@@ -8,8 +8,9 @@ use crate::models::StaticModel;
 use anyhow::Context;
 
 pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
-    let (num_layers, hidden_size) = get_lstm_topology(data)
-        .context("LSTM geometry not detectable (check num_layers and hidden_size)")?;
+    let result = get_lstm_topology(data).map_err(|e| anyhow::anyhow!(e))?;
+    let (num_layers, hidden_size) =
+        result.context("LSTM geometry not detectable (check num_layers and hidden_size)")?;
 
     match (num_layers, hidden_size) {
         (1, 3) => {

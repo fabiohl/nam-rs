@@ -389,7 +389,7 @@ em `_lib.sh` com reverse-check e hard-fail no long; por fim proveniência comple
 **Risco alto controlado:** a regeneração muda hashes/thresholds — exige diff de métricas
 antes/depois e um commit atômico dedicado.
 
-### EP5 — Paridade estrita com NAMcore (produção) [DOING]
+### EP5 — Paridade estrita com NAMcore (produção) [DONE]
 
 Achados: **F-P1**, **F-P2**, **F-P3**, **F-P4**.
 ConvNet `head_scale` alinhado ao C++; enforcement de versão de arquivo; política documentada de
