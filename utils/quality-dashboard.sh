@@ -100,7 +100,13 @@ _fmt_metric() {
     if [[ "$val" =~ [eE] ]]; then
         LC_ALL=C printf "%.2e" "$val" 2>/dev/null || echo "$val"
     else
-        LC_ALL=C printf "%.4f" "$val" 2>/dev/null || echo "$val"
+        local abs
+        abs=$(LC_ALL=C awk -v v="$val" 'BEGIN { x = v + 0; if (x < 0) x = -x; printf "%.10f", x }')
+        if [ "$abs" != "0.0000000000" ] && LC_ALL=C awk -v v="$abs" 'BEGIN { if (v < 0.0001) exit 0; exit 1 }'; then
+            LC_ALL=C printf "%.2e" "$val" 2>/dev/null || echo "$val"
+        else
+            LC_ALL=C printf "%.4f" "$val" 2>/dev/null || echo "$val"
+        fi
     fi
 }
 
