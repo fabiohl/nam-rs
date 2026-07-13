@@ -461,11 +461,11 @@ run_phase "Soak Tests (Numerical Stability)" "run_soak_phase" "phase1-soak.log" 
 # PipeWire daemon). Skips gracefully when no daemon is reachable.
 run_pipewire_phase() {
     echo "  Verificando daemon PipeWire..."
-    if pw-cli info >/dev/null 2>&1; then
+    if pw-cli info all >/dev/null 2>&1; then
         echo "  PipeWire detectado. Executando teste de integração..."
         cargo test --release --no-fail-fast --features standalone $(_test_flag pw_integration_test) -- --ignored --nocapture
     else
-        echo "  PipeWire indisponível (pw-cli info falhou). Pulando teste de integração."
+        echo "  PipeWire indisponível (pw-cli info all falhou). Pulando teste de integração."
         return 77
     fi
 }

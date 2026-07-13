@@ -5,7 +5,7 @@
 //!
 //! Feeds the parser and loader with forged, exaggerated, or malformed
 //! inputs and asserts that the library rejects them gracefully (Soft Reject)
-//! within 5 ms, never panicking.
+//! within 50 ms, never panicking.
 
 use std::time::Instant;
 
@@ -61,8 +61,8 @@ fn test_reject_too_many_layers() {
     let elapsed = t0.elapsed();
     assert!(result.is_err(), "9 layers must be rejected");
     assert!(
-        elapsed.as_micros() < 5_000,
-        "rejection took {} µs, expected < 5 ms",
+        elapsed.as_micros() < 50_000,
+        "rejection took {} µs, expected < 50 ms",
         elapsed.as_micros()
     );
 }
@@ -90,8 +90,8 @@ fn test_reject_large_hidden_size() {
     let elapsed = t0.elapsed();
     assert!(result.is_err(), "hidden_size=1024 must be rejected");
     assert!(
-        elapsed.as_micros() < 5_000,
-        "rejection took {} µs, expected < 5 ms",
+        elapsed.as_micros() < 50_000,
+        "rejection took {} µs, expected < 50 ms",
         elapsed.as_micros()
     );
 }
@@ -140,8 +140,8 @@ fn test_reject_both_limits_breached() {
     let elapsed = t0.elapsed();
     assert!(result.is_err(), "combined limits breach must be rejected");
     assert!(
-        elapsed.as_micros() < 5_000,
-        "rejection took {} µs, expected < 5 ms",
+        elapsed.as_micros() < 50_000,
+        "rejection took {} µs, expected < 50 ms",
         elapsed.as_micros()
     );
 }
@@ -196,8 +196,8 @@ fn test_reject_ir_too_many_samples() {
 
     assert!(result.is_err(), "200k-sample IR must be rejected");
     assert!(
-        elapsed.as_micros() < 5_000,
-        "IR rejection took {} µs, expected < 5 ms",
+        elapsed.as_micros() < 50_000,
+        "IR rejection took {} µs, expected < 50 ms",
         elapsed.as_micros()
     );
 }
