@@ -26,23 +26,7 @@ struct CatalogGap {
     reason: &'static str,
 }
 
-const CATALOG_EXCEPTIONS: &[CatalogGap] = &[
-    CatalogGap {
-        nam_file: "linear_fft_rf2048.nam",
-        source: "tests/linear_fft_test.rs",
-        reason: "golden pipeline not yet implemented (F3b item 2 — Sprint C.2, Task C.2.2)",
-    },
-    CatalogGap {
-        nam_file: "linear_fft_rf4096.nam",
-        source: "tests/linear_fft_test.rs",
-        reason: "golden pipeline not yet implemented (F3b item 2 — Sprint C.2, Task C.2.2)",
-    },
-    CatalogGap {
-        nam_file: "linear_fft_rf8192.nam",
-        source: "tests/linear_fft_test.rs",
-        reason: "golden pipeline not yet implemented (F3b item 2 — Sprint C.2, Task C.2.2)",
-    },
-];
+const CATALOG_EXCEPTIONS: &[CatalogGap] = &[];
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

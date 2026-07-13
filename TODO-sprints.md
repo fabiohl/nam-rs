@@ -262,11 +262,11 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * Documentação completa e sem gaps de proveniência para todos os modelos do catálogo oficial.
   * Tabela de arquivos no README sincronizada 100% com o manifesto de frescor.
-  * **Concluído (2026-07-13):** Tabela de goldens expandida de 21 para 33 entradas (73 goldens no manifesto de frescor, todos cobertos). 7 modelos sintéticos adicionados à Tabela 2 com documentação completa de proveniência (a2_example, convnet_test, lstm_dyn_test, wavenet_a2_film_chaos_stress, wavenet_a2_film_input_mixin_pre, wavenet_condition_lstm, wavenet_dyn_free) — cada um com natureza, arquitetura, gerador, testes e thresholds. Resumo rápido de contagens atualizado. Aviso de gap (Registry completeness gap) removido — substituído por nota de completude.
+  * **Concluído (2026-07-13):** Tabela de goldens expandida de 21 para 33 entradas (73 goldens no manifesto de frescor, todos cobertos). 7 modelos sintéticos adicionados à Tabela 2 com documentação completa de proveniência (a2_example, convnet_test, lstm_dyn_test, wavenet_a2_film_chaos_stress, wavenet_a2_film_input_mixin_pre, wavenet_condition_lstm, wavenet_dyn_free) — cada um com natureza, arquitetura, gerador, testes e thresholds. Resumo rápido de contagens atualizado. Aviso de gap substituído por nota de completude.
 
 ---
 
-### [ ] Tarefa 3.6: Higiene do Catálogo de Modelos e Fixtures (F-X5)
+### [x] Tarefa 3.6: Higiene do Catálogo de Modelos e Fixtures (F-X5)
 
 * **Achado Associado:** [F-X5](file:///home/fabio/nam-rs/TODO-findings.md#L134) — Higiene menor de catálogo.
 * **Complexidade/Risco:** Baixo.
@@ -282,3 +282,4 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * Execução sem falhas do teste de governança `meta_coherence`.
   * Arquivos desnecessários limpos e novas seções documentadas no README.
+  * **Concluído (2026-07-13):** 3 entradas stale de `linear_fft_rf{2048,4096,8192}.nam` removidas de `CATALOG_EXCEPTIONS` em `meta_coherence.rs` (golden pipeline já implementado e ativo desde Sprint 2). `BossWN-lite.nam` mantido em `models/` — é obsoleto como golden mas ainda é o único fixture CH=12 WaveNet git-versionado usado em `rt_deadline.rs` e `regression_gate.rs`; remover quebraria cobertura de RT deadline e benchmark. Seção `## f64 Reference Anchors` adicionada ao README documentando os 10 âncoras f64, formato binário, gate ESR < 1e-12 e regeneração via `validate_oracle_f64.py`.
