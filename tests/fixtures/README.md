@@ -60,29 +60,41 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 
 ## Files in this directory
 
-| Golden File                         | `.nam` Model                 | Nature                                                                     | Topology                                                                |
-| ----------------------------------- | ---------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `golden_wavenet_standard.bin`       | `BossWN-standard.nam`        | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                           |
-| `golden_wavenet_lite.bin`           | `EVH-5150-Lite.nam`          | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                           |
-| `golden_wavenet_feather.bin`        | `BossWN-feather.nam`         | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                            |
-| `golden_wavenet_nano.bin`           | `BossWN-nano.nam`            | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                            |
-| `golden_wavenet_a1_standard.bin`    | `wavenet_a1_standard.nam`    | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                           |
-| `golden_lstm_1x16.bin`              | `BossLSTM-1x16.nam`          | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                           |
-| `golden_lstm_2x8.bin`               | `BossLSTM-2x8.nam`           | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                           |
-| `golden_lstm_official.bin`          | `lstm.nam`                   | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                            |
-| `golden_wavenet_a2_full.bin`        | `wavenet_a2_full.nam`        | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
-| `golden_wavenet_a2_lite.bin`        | `wavenet_a2_lite.nam`        | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
-| `golden_wavenet_a2_film_full.bin`   | `wavenet_a2_film_full.nam`   | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=8, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
-| `golden_wavenet_a2_film_lite.bin`   | `wavenet_a2_film_lite.nam`   | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
-| `golden_a2_dynamic_gated_ch8.bin`   | `a2_dynamic_gated_ch8.nam`   | **Synthetic** (dynamic gating engine parity)                               | CH=8, 3 gated layers — cross-reference vs C++ generic                   |
-| `golden_a2_dynamic_blended_ch3.bin` | `a2_dynamic_blended_ch3.nam` | **Synthetic** (dynamic blending engine parity)                             | CH=3, 2 blended layers — cross-reference vs C++ generic                 |
-| `golden_linear_fft_rf320.bin`       | `linear_fft_rf320.nam`       | **Synthetic** (functional parity, partitioned convolution)                 | RF=320, 2 channels, block=128                                           |
-| `golden_linear_fft_rf2048.bin`      | `linear_fft_rf2048.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=2048, 1 channel, block=1024                                          |
-| `golden_linear_fft_rf4096.bin`      | `linear_fft_rf4096.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=4096, 1 channel, block=2048                                          |
-| `golden_linear_fft_rf8192.bin`      | `linear_fft_rf8192.nam`      | **Synthetic** (functional parity, partitioned convolution)                 | RF=8192, 1 channel, block=4096                                          |
-| `golden_cabsim_cpp_short.bin`       | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
-| `golden_cabsim_cpp_medium.bin`      | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
-| `golden_cabsim_cpp_long.bin`        | N/A                          | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
+| Golden File                                  | `.nam` Model                          | Nature                                                                     | Topology                                                                |
+| -------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `golden_wavenet_standard.bin`                | `BossWN-standard.nam`                 | Community real (Boss Waza, trained)                                        | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_wavenet_lite.bin`                    | `EVH-5150-Lite.nam`                   | **Community real** (CH=12 WaveNet Lite, non-distributable)                 | CH=12, K=3, HEAD=6, 20 layers                                           |
+| `golden_wavenet_feather.bin`                 | `BossWN-feather.nam`                  | Community real (Boss Waza, trained)                                        | CH=8, K=3, HEAD=4, 20 layers                                            |
+| `golden_wavenet_nano.bin`                    | `BossWN-nano.nam`                     | Community real (Boss Waza, trained)                                        | CH=4, K=3, HEAD=2, 20 layers                                            |
+| `golden_wavenet_a1_standard.bin`             | `wavenet_a1_standard.nam`             | **Official real** (trained model, 407 KB, md5 `1c540f40…`)                 | CH=16, K=3, HEAD=8, 20 layers                                           |
+| `golden_lstm_1x16.bin`                       | `BossLSTM-1x16.nam`                   | Community real (Boss Waza, trained)                                        | 1 layer, H=16                                                           |
+| `golden_lstm_2x8.bin`                        | `BossLSTM-2x8.nam`                    | Community real (Boss Waza, trained)                                        | 2 layers, H=8                                                           |
+| `golden_lstm_official.bin`                   | `lstm.nam`                            | **Official real** (NAM example model, 1 layer H=3)                         | 1 layer, H=3                                                            |
+| `golden_wavenet_a2_full.bin`                 | `wavenet_a2_full.nam`                 | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=8, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_lite.bin`                 | `wavenet_a2_lite.nam`                 | **Synthetic** (weights calibrated for fast-path parity; not FiLM/official) | CH=3, K=6/15, 23 layers — cross-reference vs C++ v0.5.3 `9c7b185`       |
+| `golden_wavenet_a2_film_full.bin`            | `wavenet_a2_film_full.nam`            | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=8, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_wavenet_a2_film_lite.bin`            | `wavenet_a2_film_lite.nam`            | **Synthetic** (FiLM — PM-05 conformism, RF1)                               | CH=3, K=6/15, 23 layers, FiLM post-mod — cross-reference vs C++ generic |
+| `golden_a2_dynamic_gated_ch8.bin`            | `a2_dynamic_gated_ch8.nam`            | **Synthetic** (dynamic gating engine parity)                               | CH=8, 3 gated layers — cross-reference vs C++ generic                   |
+| `golden_a2_dynamic_blended_ch3.bin`          | `a2_dynamic_blended_ch3.nam`          | **Synthetic** (dynamic blending engine parity)                             | CH=3, 2 blended layers — cross-reference vs C++ generic                 |
+| `golden_linear_fft_rf320.bin`                | `linear_fft_rf320.nam`                | **Synthetic** (functional parity, partitioned convolution)                 | RF=320, 2 channels, block=128                                           |
+| `golden_linear_fft_rf2048.bin`               | `linear_fft_rf2048.nam`               | **Synthetic** (functional parity, partitioned convolution)                 | RF=2048, 1 channel, block=1024                                          |
+| `golden_linear_fft_rf4096.bin`               | `linear_fft_rf4096.nam`               | **Synthetic** (functional parity, partitioned convolution)                 | RF=4096, 1 channel, block=2048                                          |
+| `golden_linear_fft_rf8192.bin`               | `linear_fft_rf8192.nam`               | **Synthetic** (functional parity, partitioned convolution)                 | RF=8192, 1 channel, block=4096                                          |
+| `golden_a2_example.bin`                      | `a2_example.nam`                      | **Synthetic** (SlimmableContainer with A2 submodels)                       | CH=3→6, 23 layers                                                       |
+| `golden_convnet_test.bin`                    | `convnet_test.nam`                    | **Synthetic** (ConvNet parity)                                             | CH=8, 6 blocks                                                          |
+| `golden_lstm_dyn_test.bin`                   | `lstm_dyn_test.nam`                   | **Synthetic** (LSTM dynamic path parity)                                   | 1 layer, H=7                                                            |
+| `golden_wavenet_a2_film_chaos_stress.bin`    | `wavenet_a2_film_chaos_stress.nam`    | **Synthetic** (FiLM, pre-fix chaos stress snapshot)                        | CH=3, bottleneck=3, FiLM conv/input_mixin/activation/layer1x1           |
+| `golden_wavenet_a2_film_input_mixin_pre.bin` | `wavenet_a2_film_input_mixin_pre.nam` | **Synthetic** (FiLM, isolated input_mixin_pre regression — Bug C1)         | CH=3, bottleneck=3, FiLM input_mixin_pre only                           |
+| `golden_wavenet_a2_max.bin`                  | `wavenet_a2_max.nam`                  | **Official real** (rejected fail-closed; see cpp_parity_map §7.1)          | CH=4, cond=8 FiLM, 23 layers                                            |
+| `golden_wavenet_app_evh.bin`                 | (non-distributable)                   | Community real (EVH Stealth 100)                                           | —                                                                       |
+| `golden_wavenet_boss_bd2.bin`                | (non-distributable)                   | Community real (Boss BD-2 H2O Mod)                                         | —                                                                       |
+| `golden_wavenet_condition_dsp.bin`           | `wavenet_condition_dsp.nam`           | **Official real** (FiLM+condition_dsp, near-bit-exact)                     | CH=3, cond=3 FiLM, post-FiLM DSP                                        |
+| `golden_wavenet_dyn_free.bin`                | `wavenet_dyn_free.nam`                | **Synthetic** (WaveNet free-shape dynamic path)                            | CH=7/4, free geometry                                                   |
+| `golden_wavenet_official.bin`                | `wavenet_official.nam`                | **Official real** (CH=3 free geom, dynamic path)                           | CH=3, K=3                                                               |
+| `golden_wavenet_slammin_marshall.bin`        | (non-distributable)                   | Community real (Slammin Marshall J45)                                      | —                                                                       |
+| `golden_cabsim_cpp_short.bin`                | N/A                                   | C++ reference (synthetic IR)                                               | Cabsim Short IR (64 samples) C++ dsp::ImpulseResponse                   |
+| `golden_cabsim_cpp_medium.bin`               | N/A                                   | C++ reference (synthetic IR)                                               | Cabsim Medium IR (512 samples) C++ dsp::ImpulseResponse                 |
+| `golden_cabsim_cpp_long.bin`                 | N/A                                   | C++ reference (synthetic IR)                                               | Cabsim Long IR (8192 samples) C++ dsp::ImpulseResponse                  |
 
 > [!WARNING]
 > **Automation gaps tracked:**
@@ -108,34 +120,25 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 > - **Synthetic** — pesos auto-gerados/calibrados para fins de validação; **não** representam timbres de amplificador reais.
 > - **C++ reference** — vetores de referência gerados pelo C++ upstream (`dsp::ImpulseResponse`); não são modelos NAM.
 >   [!NOTE]
->   **Resumo rápido:** 2 goldens são **oficial real** (A1-Standard, LSTM Official).
->   6 são **community real** (WaveNet Standard, Lite CH=12, Feather, Nano + LSTM 1×16/2×8,
->   todos Boss Waza).
->   8 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite, A2-Dynamic-Gated-CH8,
->   A2-Dynamic-Blended-CH3, Linear-FFT-RF320/2048/4096/8192 — os FiLM são conformismo PM-05
->   para cobertura do motor; os demais validam paridade numérica de fast-path e convolução
->   particionada, não timbres reais).
+>   **Resumo rápido:** 5 goldens são **oficial real** (A1-Standard, LSTM Official, A2-Max-disabled,
+>   Condition-DSP, Official CH=3).
+>   9 são **community real** (WaveNet Standard, Lite CH=12, Feather, Nano,
+>   LSTM 1×16/2×8 — todos Boss Waza — mais EVH Stealth 100, Boss BD-2, Slammin Marshall J45,
+>   todos não-distributáveis).
+>   16 são **synthetic** (A2-Full, A2-Lite, A2-FiLM-Full, A2-FiLM-Lite,
+>   A2-Dynamic-Gated-CH8, A2-Dynamic-Blended-CH3, Linear-FFT-RF320/2048/4096/8192,
+>   A2-Example, ConvNet-Test, LSTM-Dyn-Test, A2-FiLM-Chaos-Stress, A2-FiLM-InputMixinPre,
+>   WaveNet-Dyn-Free).
 >   Os 3 goldens C++ cabsim são vetores de referência do upstream.
 
 ### Model Files and Trust Levels Registry
 
 All captures and models in `.nam` and `.json` format located under [tests/fixtures/models/](tests/fixtures/models/) are audited to verify quality, legal provenance, and usefulness in integration tests.
 
-> [!WARNING]
-> **Registry completeness gap (found during the `golden_gen_build.sh` audit,
-> `TODO-findings.md` F3b):** the blanket claim that used to read "there are no orphan,
-> redundant, or garbage files in the directory" has been restored to true.
-> `linear_fft_rf{320,2048,4096,8192}.nam` — **F3b resolved**: the previously orphaned
-> Linear FFT fixtures now have a complete generation path via `golden_gen_build.sh`'s
-> `CATALOG` entries (`v2_scope=none`, golden output `golden_linear_fft_rf*.bin`;
-> see the dedicated rows in "Files in this directory" above and in the Synthetic
-> Models table below). Their tests (`tests/linear_fft_test.rs`) are no longer
-> `#[ignore]`d and pass with real ESR/SNR measurements — see `TODO-findings.md` N1 for
-> a rigor caveat (they currently run in the `debug` quick-suite phase instead of
-> `release`, tracked separately). Additionally, `a2_example.nam`, `convnet_test.nam`,
-> `lstm_dyn_test.nam`, and `wavenet_dyn_free.nam` are catalogued in the golden files
-> table above but lack dedicated model-provenance rows in the tables below — a
-> documentation-debt gap, not a fixture-quality concern, tracked for a follow-up pass.
+> [!NOTE]
+> **Registry completeness:** all models in `tests/fixtures/models/` are accounted for in the
+> tables above and have dedicated provenance sections below. See `TODO-findings.md`
+> F-X2 and Sprint 3 completion notes for the audit that closed the gap.
 
 #### 1. High-Quality Real Models (Git Versioned)
 
@@ -156,25 +159,32 @@ These models have real trained weights, excellent fidelity, and are certified fo
 
 These files contain synthetic weights or partial/invalid structures. They exist exclusively to validate boundary limits, error detection, and specific numerical regressions, with the goal of being progressively replaced by real, licensed models as they become available:
 
-| Model / Fixture             | Nature           | Architecture                                                   | Quality & Confidence                                                                                         | License & Provenance                                                     | Purpose in Tests                                                                                                   |
-| --------------------------- | ---------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `BossWN-lite.nam`           | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam`                                                               | Artificially generated.                                                  | Legacy fixture; no longer used in active tests. Superseded by real community model.                                |
-| `linear_test.nam`           | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                                                                                 | Simple weights defined for testing. Apache-2.0.                          | Linear parity and linear_golden.                                                                                   |
-| `wavenet_a2_full.nam`       | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                                                                  | Calibrated weights. Apache-2.0.                                          | Parity A2 fast-path (Full), container submodel.                                                                    |
-| `wavenet_a2_lite.nam`       | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                                                                  | Calibrated weights. Apache-2.0.                                          | Parity A2 fast-path (Lite), container submodel.                                                                    |
-| `wavenet_a2_container.nam`  | Synthetic        | SlimmableContainer (A2 Lite & Full)                            | **High** (Functional parity)                                                                                 | Container joining the two submodels above. Apache-2.0.                   | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                                     |
-| `keras_unsupported.json`    | Mock / Synthetic | Keras Legacy format (H5 Mock)                                  | N/A (Negative mock)                                                                                          | Clean structure without weights (legal mitigation). Apache-2.0.          | Tests graceful rejection of legacy Keras format (F13).                                                             |
-| `mock_a2.nam`               | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                                                                                          | Empty model for failure testing. Apache-2.0.                             | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                                      |
-| `slimmable_container.nam`   | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                                                                                  | Container exercising topology dispatch across architectures. Apache-2.0. | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU).                          |
-| `slimmable_wavenet.nam`     | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                                                                                          | Model with custom dilations and channels. Apache-2.0.                    | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                                  |
-| `wavenet_a2_max.nam`        | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (Rejected at dispatch — confirmed broken audio output against C++ golden; fixture retained, not removed) | Steve Atkinson official example. CC0.                                    | Rejected fail-closed at dispatch by `is_disabled_broken_a2_flagship` guardrail; ver `docs/cpp_parity_map.md` §7.1. |
-| `wavenet_condition_dsp.nam` | Official Real    | WaveNet (CH=3, cond=3 FiLM, post-FiLM DSP)                     | **High** (Near-bit-exact — SNR=139.5 dB)                                                                     | Steve Atkinson official example. CC0.                                    | Golden vectors v1 (dynamic path with FiLM+condition_dsp, §6 of this doc).                                          |
-| `wavenet_a2_film_full.nam`  | Synthetic        | WaveNet A2 (CH=8, FiLM active)                                 | **Medium** (FiLM parity — SNR=36.0 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
-| `wavenet_a2_film_lite.nam`  | Synthetic        | WaveNet A2 (CH=3, FiLM active)                                 | **Medium** (FiLM parity — SNR=18.1 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                      | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
-| `linear_fft_rf320.nam`      | Synthetic        | Linear FFT (RF=320, 2 channels, block=128)                     | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
-| `linear_fft_rf2048.nam`     | Synthetic        | Linear FFT (RF=2048, 1 channel, block=1024)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
-| `linear_fft_rf4096.nam`     | Synthetic        | Linear FFT (RF=4096, 1 channel, block=2048)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
-| `linear_fft_rf8192.nam`     | Synthetic        | Linear FFT (RF=8192, 1 channel, block=4096)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                          | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| Model / Fixture                       | Nature           | Architecture                                                   | Quality & Confidence                                                                                         | License & Provenance                                                                      | Purpose in Tests                                                                                                   |
+| ------------------------------------- | ---------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `BossWN-lite.nam`                     | Synthetic        | WaveNet (CH=12, K=3, 20 layers)                                | **Obsolete** — replaced by `EVH-5150-Lite.nam`                                                               | Artificially generated.                                                                   | Legacy fixture; no longer used in active tests. Superseded by real community model.                                |
+| `linear_test.nam`                     | Synthetic        | Linear (RF=4, bias=0.1)                                        | **High** (Functional parity)                                                                                 | Simple weights defined for testing. Apache-2.0.                                           | Linear parity and linear_golden.                                                                                   |
+| `wavenet_a2_full.nam`                 | Synthetic        | WaveNet A2 (CH=8, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                                                                  | Calibrated weights. Apache-2.0.                                                           | Parity A2 fast-path (Full), container submodel.                                                                    |
+| `wavenet_a2_lite.nam`                 | Synthetic        | WaveNet A2 (CH=3, K=6/15, 23 layers)                           | **High** (Fast-path parity)                                                                                  | Calibrated weights. Apache-2.0.                                                           | Parity A2 fast-path (Lite), container submodel.                                                                    |
+| `wavenet_a2_container.nam`            | Synthetic        | SlimmableContainer (A2 Lite & Full)                            | **High** (Functional parity)                                                                                 | Container joining the two submodels above. Apache-2.0.                                    | Golden vectors container (A2 Lite and A2 Full submodel swaps).                                                     |
+| `keras_unsupported.json`              | Mock / Synthetic | Keras Legacy format (H5 Mock)                                  | N/A (Negative mock)                                                                                          | Clean structure without weights (legal mitigation). Apache-2.0.                           | Tests graceful rejection of legacy Keras format (F13).                                                             |
+| `mock_a2.nam`                         | Mock / Synthetic | WaveNet (ReLU config, zero weights)                            | N/A (Negative mock)                                                                                          | Empty model for failure testing. Apache-2.0.                                              | Tests failure transition on the audio thread (`RT_STATUS_MODEL_LOAD_FAILED`).                                      |
+| `slimmable_container.nam`             | Mock / Synthetic | SlimmableContainer (3 submodels: LSTM 1x3 + WaveNetDyn + Nano) | **High** (Topology routing)                                                                                  | Container exercising topology dispatch across architectures. Apache-2.0.                  | Validates robust submodel routing (LSTM fast-path + WaveNetDyn free-geometry + Nano SKU).                          |
+| `slimmable_wavenet.nam`               | Mock / Synthetic | WaveNet (geometria livre)                                      | N/A (Negative mock)                                                                                          | Model with custom dilations and channels. Apache-2.0.                                     | Tests detection and rejection of invalid dynamic WaveNet (F1/F5).                                                  |
+| `wavenet_a2_max.nam`                  | Official Real    | WaveNet (CH=4, cond=8 FiLM)                                    | N/A (Rejected at dispatch — confirmed broken audio output against C++ golden; fixture retained, not removed) | Steve Atkinson official example. CC0.                                                     | Rejected fail-closed at dispatch by `is_disabled_broken_a2_flagship` guardrail; ver `docs/cpp_parity_map.md` §7.1. |
+| `wavenet_condition_dsp.nam`           | Official Real    | WaveNet (CH=3, cond=3 FiLM, post-FiLM DSP)                     | **High** (Near-bit-exact — SNR=139.5 dB)                                                                     | Steve Atkinson official example. CC0.                                                     | Golden vectors v1 (dynamic path with FiLM+condition_dsp, §6 of this doc).                                          |
+| `wavenet_a2_film_full.nam`            | Synthetic        | WaveNet A2 (CH=8, FiLM active)                                 | **Medium** (FiLM parity — SNR=36.0 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                                       | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
+| `wavenet_a2_film_lite.nam`            | Synthetic        | WaveNet A2 (CH=3, FiLM active)                                 | **Medium** (FiLM parity — SNR=18.1 dB, RF1)                                                                  | Generated by `generate_a2_fixtures.py`. Apache-2.0.                                       | Golden vectors v1 (A2+FiLM dynamic path, §FiLM Fixtures section).                                                  |
+| `linear_fft_rf320.nam`                | Synthetic        | Linear FFT (RF=320, 2 channels, block=128)                     | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf2048.nam`               | Synthetic        | Linear FFT (RF=2048, 1 channel, block=1024)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf4096.nam`               | Synthetic        | Linear FFT (RF=4096, 1 channel, block=2048)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `linear_fft_rf8192.nam`               | Synthetic        | Linear FFT (RF=8192, 1 channel, block=4096)                    | **Medium** (Functional parity)                                                                               | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), partitioned convolution cross-validation. Graceful skip if golden absent.                |
+| `a2_example.nam`                      | Synthetic        | SlimmableContainer (A2 submodels)                              | **Medium** (Container routing)                                                                               | Generated by `generate_a2_fixtures.py`. Apache-2.0.                                       | Golden vectors v1 (A2 example container, dynamic path).                                                            |
+| `convnet_test.nam`                    | Synthetic        | ConvNet (CH=8, 6 blocks)                                       | **High** (Functional parity)                                                                                 | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), ConvNet topology validation.                                                             |
+| `lstm_dyn_test.nam`                   | Synthetic        | LSTM-Dyn (1 layer, H=7)                                        | **High** (Functional parity)                                                                                 | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), LSTM dynamic path validation.                                                            |
+| `wavenet_a2_film_chaos_stress.nam`    | Synthetic        | WaveNet A2 (CH=3, FiLM 4 slots, non-identity weight scaling)   | **High** (Numerical stress)                                                                                  | Preserved snapshot of pre-fix `wavenet_a2_film_lite.nam` (commit `b96e4c7d`). Apache-2.0. | Golden vectors v1 (FiLM chaos stress, §A2-FiLM Chaos Stress).                                                      |
+| `wavenet_a2_film_input_mixin_pre.nam` | Synthetic        | WaveNet A2 (CH=3, FiLM input_mixin_pre only)                   | **High** (Bug C1 regression)                                                                                 | Generated by `generate_a2_fixtures.py`. Seed 145. Apache-2.0.                             | Golden vectors v1 (isolated input_mixin_pre FiLM, §A2-FiLM InputMixinPre).                                         |
+| `wavenet_condition_lstm.nam`          | Synthetic        | WaveNet + LSTM condition_dsp (CH=3, cond=3, LSTM 1×3)          | **Medium** (C++ golden blocked — C++ upstream channel mismatch)                                              | Generated by `generate_a2_fixtures.py`. Apache-2.0.                                       | Golden vectors v1 (WaveNet with LSTM condition_dsp; golden C++ IMPOSSÍVEL — skip_reason).                          |
+| `wavenet_dyn_free.nam`                | Synthetic        | WaveNetDyn (CH=7/4, free geometry)                             | **High** (Functional parity)                                                                                 | Simple weights defined for testing. Apache-2.0.                                           | Golden vectors v1 (@48k), WaveNet free-shape dynamic path validation.                                              |
 
 #### 3. Non-Distributable Model Management (`tests/fixtures/models-nondist`)
 
@@ -657,6 +667,88 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 - **Provenance:** Replaces the original third-party model `tw40_blues_deluxe_deerinkstudios.json` (Fender Blues Deluxe capture by Deer Ink Studios) which was distributed under the **Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0)** license.
 - **Legal Risk Mitigation:** To avoid licensing conflicts with the main Apache-2.0 codebase (specifically regarding the Non-Commercial restriction, which prevents packaging or commercial use of the repository), the 160 KB real weights have been deleted. The mock file preserves only the key-value dictionary structure (`"in_shape"`, `"layers"`) to test that the model loader/dispatcher gracefully rejects the legacy format (by returning an error due to the missing `"architecture"` field) without hosting any copyrighted or restricted weights.
 
+### `wavenet_a2_film_chaos_stress.nam` — **Numerical Stress Fixture (Pre-Fix Snapshot)**
+
+- **Nature:** Synthetic — preserved snapshot of the **original** `wavenet_a2_film_lite.nam` from commit `b96e4c7d` (2026-06-21, blob `e107e48f`), before `generate_a2_fixtures.py` was updated to fix FiLM scale bias (commit `3faa9345`) and FiLM slot activation keys (commits `445b5cb1`, `ca8c22ee`). Preserved as `wavenet_a2_film_chaos_stress.nam` in commit `743710da` (Sprint 2: Preservação do Teste de Estresse Numérico e Documentação).
+
+- **Architecture:** WaveNet A2 (CH=3, bottleneck=3, condition_size=1, 23 layers), FiLM post-modulation on all 4 slots: `conv`, `input_mixin`, `activation`, `layer1x1`. Head_scale=0.02.
+
+- **Why "chaos stress":** The pre-fix generator used FiLM scale biases that were pure noise (NOT `1.0 + noise`), producing more chaotic output than post-fix models. This makes it ideal for detecting numerical regressions in FiLM routing, reordering, or dimension dispatch.
+
+- **Golden Fixture:** `golden_wavenet_a2_film_chaos_stress.bin` — v1 only (48 kHz), `v2_scope=none`. C++ `a2_fast.cpp` rejects FiLM unconditionally; falls back to Eigen-based generic WaveNet.
+
+- **Tests:** `test_golden_vectors_wavenet_a2_film_chaos_stress` (golden_vectors.rs), `live_cross_validation_wavenet_a2_film_chaos_stress` (cpp_parity.rs), f64 oracle family "A2FiLMChaos" (reference_oracle_f64.rs).
+
+- **SNR/ESR:** Calibrated thresholds: SNR≥120 dB, ESR<1.0e-12 (validation.rs).
+
+### `wavenet_a2_film_input_mixin_pre.nam` — **Bug C1 Regression Fixture (Isolated FiLM Slot)**
+
+- **Nature:** Synthetic — isolated FiLM regression fixture generated by `tests/fixtures/generate_a2_fixtures.py` (lines 509–523), introduced in commit `3d921af4`. Seed 145 (42+3+100).
+
+- **Architecture:** WaveNet A2 (CH=3, bottleneck=3, condition_size=1, 23 layers), **single FiLM slot active**: `input_mixin_pre_film` (slot 2) only.
+
+- **Why isolated:** Bug C1 discovered that `input_mixin_pre_film` requires special channel dimensions: `FiLM(cond_size→cond_size)` instead of `FiLM(cond_size→ch)`. The per-slot generator injects `film_ch=1` for slots 2 and 7. This fixture validates the fix in isolation.
+
+- **Golden Fixture:** `golden_wavenet_a2_film_input_mixin_pre.bin` — v1 only, `v2_scope=none`.
+
+- **Tests:** `test_golden_vectors_wavenet_a2_film_input_mixin_pre` (golden_vectors.rs), `live_cross_validation_wavenet_a2_film_input_mixin_pre` (cpp_parity.rs), f64 oracle anchor `wavenet_a2_film_input_mixin_pre_256_f64.bin`.
+
+- **SNR/ESR:** Calibrated thresholds: SNR≥120 dB, ESR<1.0e-11 (validation.rs).
+
+### `wavenet_condition_lstm.nam` — **WaveNet + LSTM Condition DSP (C++ Golden Blocked)**
+
+- **Nature:** Synthetic — hybrid fixture generated by `tests/fixtures/generate_a2_fixtures.py` (lines 526–648), introduced in commit `030f1cb6` (T4.1).
+
+- **Architecture:** Outer WaveNet (2 arrays, CH=3→2, K=3) with embedded LSTM `condition_dsp` sub-model (1 layer, hidden_size=3, input_size=1). 217 total weights (147 WaveNet + 70 LSTM).
+
+- **C++ golden status:** **BLOCKED.** The NeuralAmpModelerCore C++ render tool has a known limitation where the LSTM `condition_dsp` sub-model mismatches input channels (`input_size=1` vs `hidden_size=3`). The CATALOG entry has `skip_reason` and the golden binary cannot be generated. This is documented in `golden_gen_build.sh:346`.
+
+- **Golden Fixture:** `golden_wavenet_condition_lstm.bin` — **not generated** (skip_reason). v1 golden test skipped gracefully when the golden file is absent.
+
+- **Tests:** `test_wavenet_condition_lstm_loads_and_runs` (smoke test), `test_golden_vectors_wavenet_condition_lstm` (SKIP when golden absent), `live_cross_validation_wavenet_condition_lstm` (cpp_parity.rs).
+
+- **SNR/ESR:** Calibrated thresholds: SNR≥70 dB, ESR<1.0e-8 (validation.rs — conservative floor).
+
+### `a2_example.nam` — **SlimmableContainer A2 Example**
+
+- **Nature:** Synthetic — SlimmableContainer bundling A2 submodels (CH=3→6), generated by `tests/fixtures/generate_a2_fixtures.py`.
+
+- **Golden Fixture:** `golden_a2_example.bin` and `golden_a2_example_v2_48000.bin`.
+
+- **Purpose:** Validates SlimmableContainer routing and dispatch for A2 dynamic paths.
+
+- **Tests:** Golden vectors v1/v2, live cross-validation (cpp_parity.rs).
+
+### `convnet_test.nam` — **ConvNet Topology Parity**
+
+- **Nature:** Synthetic — ConvNet (CH=8, 6 blocks), simple weights defined for testing.
+
+- **Golden Fixture:** `golden_convnet_test.bin` and `golden_convnet_test_v2_48000.bin`.
+
+- **Purpose:** Validates ConvNet architecture parity with C++ reference. v2_scope=48k_only.
+
+- **Tests:** Golden vectors v1/v2.
+
+### `lstm_dyn_test.nam` — **LSTM Dynamic Path**
+
+- **Nature:** Synthetic — LSTM-Dyn (1 layer, H=7), simple weights defined for testing.
+
+- **Golden Fixture:** `golden_lstm_dyn_test.bin` and `golden_lstm_dyn_test_v2_48000.bin`.
+
+- **Purpose:** Validates LSTM dynamic path with free geometry and variable hidden dimensions.
+
+- **Tests:** Golden vectors v1/v2, live cross-validation (cpp_parity.rs).
+
+### `wavenet_dyn_free.nam` — **WaveNet Free-Shape Dynamic Path**
+
+- **Nature:** Synthetic — WaveNetDyn (CH=7/4, free geometry), simple weights defined for testing.
+
+- **Golden Fixture:** `golden_wavenet_dyn_free.bin` and `golden_wavenet_dyn_free_v2_48000.bin`.
+
+- **Purpose:** Validates WaveNet dynamic path with free-shape geometry dispatch. v2_scope=48k_only.
+
+- **Tests:** Golden vectors v1/v2, live cross-validation (cpp_parity.rs).
+
 ## Two Layers of Validation
 
 ### Layer 1 — Pre-committed goldens (fast, `cargo test`)
@@ -672,7 +764,7 @@ Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare agai
 Both layers above assume `golden_gen_build.sh` faithfully reproduces every golden a test
 needs, on a rarely-executed, mostly-unsupervised run. A dedicated audit of that script
 (triggered by the `revisor-auditor` skill, Compliance and Parity Auditor role) found and
-tracked several concrete gaps — catalog coverage (this file's `[!WARNING]` notes above),
+tracked several concrete gaps — catalog coverage,
 error-handling robustness (a `pipefail`/`errexit` interaction that can abort the whole
 regeneration on the first failing model instead of skipping it), and a `NeuralAmpModelerPlugin`
 supply-chain gap in `utils/mod-update.sh`. See **`TODO-findings.md`** at the repository root

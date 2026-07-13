@@ -228,7 +228,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 
 ---
 
-### [ ] Tarefa 3.4: Unificação e Fortalecimento do Freshness Gate (F-X4)
+### [x] Tarefa 3.4: Unificação e Fortalecimento do Freshness Gate (F-X4)
 
 * **Achado Associado:** [F-X4](file:///home/fabio/nam-rs/TODO-findings.md#L124) — Freshness gate: warn-only no long, sem reverse-check, implementação duplicada.
 * **Complexidade/Risco:** Médio.
@@ -245,10 +245,11 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * A suíte de testes de desenvolvimento local e CI valida o frescor em ambas as frentes.
   * A introdução de um modelo novo sem registro no manifesto causa falha impeditiva com instruções claras.
+  * **Concluído (2026-07-13):** `check_freshness()` extraída para `utils/_lib.sh` com parâmetro de modo (`hard-fail` | `warn-only`). A função cobre: manifest existente, EXPECTED goldens, catalog model↔golden, fixtures standalone, generators (warn-only), reverse-check de órfãos via `# MODEL-REGISTRY:`, e toolchain fingerprint. `NAM_BYPASS_FRESHNESS=1` desvia o gate inteiramente. `tests-quick.sh` e `tests-long.sh` agora delegam à função centralizada em modo `hard-fail`. `golden_gen_build.sh` emite seção `# MODEL-REGISTRY:` com 34 modelos (28 do CATALOG + 6 test-only explícitos) para o reverse-check.
 
 ---
 
-### [ ] Tarefa 3.5: Registro de Proveniência e Sincronização do README (F-X2)
+### [x] Tarefa 3.5: Registro de Proveniência e Sincronização do README (F-X2)
 
 * **Achado Associado:** [F-X2](file:///home/fabio/nam-rs/TODO-findings.md#L101) — Proveniência ausente para 3 modelos + 11 goldens fora da tabela.
 * **Complexidade/Risco:** Baixo.
@@ -261,6 +262,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * Documentação completa e sem gaps de proveniência para todos os modelos do catálogo oficial.
   * Tabela de arquivos no README sincronizada 100% com o manifesto de frescor.
+  * **Concluído (2026-07-13):** Tabela de goldens expandida de 21 para 33 entradas (73 goldens no manifesto de frescor, todos cobertos). 7 modelos sintéticos adicionados à Tabela 2 com documentação completa de proveniência (a2_example, convnet_test, lstm_dyn_test, wavenet_a2_film_chaos_stress, wavenet_a2_film_input_mixin_pre, wavenet_condition_lstm, wavenet_dyn_free) — cada um com natureza, arquitetura, gerador, testes e thresholds. Resumo rápido de contagens atualizado. Aviso de gap (Registry completeness gap) removido — substituído por nota de completude.
 
 ---
 

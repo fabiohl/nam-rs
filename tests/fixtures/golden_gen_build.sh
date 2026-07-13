@@ -771,6 +771,35 @@ for gen_file in "${GENERATOR_FILES[@]}"; do
     fi
 done
 
+# =============================================================================
+# ── Model registry (all CATALOG models, including skip_reason) ──
+# F-X4 / Tarefa 3.4: complete listing of every .nam model known to this
+# build script.  Used by the reverse-check in check_freshness() to detect
+# orphaned .nam files in models/ that are not registered here.
+# =============================================================================
+echo "" >> "$MANIFEST"
+echo "# =============================================================================" >> "$MANIFEST"
+echo "# MODEL-REGISTRY — every .nam model in the CATALOG (reverse-check reference)" >> "$MANIFEST"
+echo "# =============================================================================" >> "$MANIFEST"
+for entry in "${CATALOG[@]}"; do
+    IFS=':' read -r nam_file _ __ ___ ___ <<< "$entry"
+    echo "# MODEL-REGISTRY: $nam_file" >> "$MANIFEST"
+done
+# Test-only model fixtures (no direct CATALOG entry; used by container/slimming/structural tests)
+EXTRA_MODELS=(
+    "BossWN-lite.nam"
+    "linear_test.nam"
+    "mock_a2.nam"
+    "slimmable_container.nam"
+    "slimmable_wavenet.nam"
+    "wavenet_a2_container.nam"
+)
+for nam in "${EXTRA_MODELS[@]}"; do
+    if [ -f "$MODELS_DIR/$nam" ]; then
+        echo "# MODEL-REGISTRY: $nam" >> "$MANIFEST"
+    fi
+done
+
 echo ""
 echo "Commit these files so that the Rust golden vector tests work."
 echo "v2 files are large (~18 MB per model across 5 SRs). Git LFS or strategic" 
