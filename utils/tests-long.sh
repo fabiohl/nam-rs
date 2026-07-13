@@ -299,6 +299,8 @@ else
     echo -e "  ${YELLOW}⚠ No freshness manifest found (.golden_manifest.sha256). Run golden_gen_build.sh to generate.${NC}"
 fi
 
+check_toolchain_fingerprint
+
 # ── Catalog↔test coherence gate (blocking) ──
 # `meta_coherence` is a cheap, dependency-free governance test (no NAMCore, no
 # goldens needed — it only parses golden_gen_build.sh + tests/*.rs). It has no

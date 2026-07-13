@@ -191,7 +191,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 
 ---
 
-### [ ] Tarefa 3.2: Gravação do Fingerprint do Toolchain no Manifesto (F-I4)
+### [x] Tarefa 3.2: Gravação do Fingerprint do Toolchain no Manifesto (F-I4)
 
 * **Achado Associado:** [F-I4](file:///home/fabio/nam-rs/TODO-findings.md#L344) — Fingerprint de toolchain no manifest de goldens.
 * **Complexidade/Risco:** Baixo.
@@ -206,6 +206,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * O cabeçalho de `.golden_manifest.sha256` contém a linha contendo `# TOOLCHAIN: ...`.
   * Avisos informativos são impressos nos testes locais se houver mudança de toolchain, mas o gate de testes continua verde.
+  * **Concluído (2026-07-13):** `golden_gen_build.sh` coleta `$CXX --version`, `cmake --version`, `ldd --version` (glibc), `uname -r` (kernel) e as flags de compilação IEEE-strict usadas, gravando-as como linhas `# TOOLCHAIN:` no cabeçalho do manifesto. `utils/_lib.sh` recebeu a função `check_toolchain_fingerprint()` que compara o toolchain atual contra o manifesto e emite aviso amarelo (não bloqueante) em caso de divergência. A função é invocada por `tests-quick.sh` (freshness gate) e `tests-long.sh` (warn-only).
 
 ---
 

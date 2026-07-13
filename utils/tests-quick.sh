@@ -147,6 +147,10 @@ check_freshness() {
         echo -e "${RED}   Run './tests/fixtures/golden_gen_build.sh' to regenerate goldens and manifest.${NC}"
         return 1
     fi
+
+    check_toolchain_fingerprint
+
+    return 0
     echo -e "  ${GREEN}✓ Freshness gate passed (all model hashes match manifest, all expected goldens present).${NC}"
     return 0
 }
