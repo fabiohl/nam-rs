@@ -732,6 +732,67 @@ and the C++ `DSP` base class.
 | `DSP::GetPrewarmSamples()` base returns `0`; overridden per-model; used by the **iterative** `DSP::prewarm()` loop         | `prewarm_samples()` per-model override                                                                                                                                                                                               | ✅ LSTM verified exact (`0.5 × sr`), and its value is load-bearing (drives real iteration). ⚠ WaveNet A1's override under-reports (§3.5) but is **provably inert** — WaveNet's `prewarm()` discards the argument and uses its own correct analytical fill instead. A2 not re-verified this pass. |
 | `Activation::using_fast_tanh` default `false` (exact `tanh`/`sigmoid`); only flipped by benchmark tools, never by `render` | Activation precision selected via `ActivationPrecision::{Fast, Standard}`; `Fast` uses Padé/minimax approximations, not exact math. `Standard` (exact-grade polynomial, universal default) matches C++ exact math parity within 2e-7 | ⚠ **Intentional divergence, not a bug.** C++'s reference path used for goldens is exact math; NAM-rs's `Fast` mode trades a small, bounded approximation error for throughput. `Standard` (exact-grade default) narrows this to identical parity within measurement noise (§2.5).                |
 
+### 5.1 Sample Rate Default Policy (F-P3)
+
+**Background:** the C++ NAMcore uses `NAM_UNKNOWN_EXPECTED_SAMPLE_RATE = -1.0`
+(`NAM/dsp.h:30`) as a sentinel when the `sample_rate` field is absent from the `.nam`
+JSON. When `expected_sample_rate == -1.0`, the LSTM prewarm computation
+(`NAM/lstm.cpp:128`) produces `max(1, (int)(0.5 × -1.0)) = 1` sample — effectively
+disabling prewarm.
+
+**NAM-rs policy:** `sample_rate` absence defaults to **48000 Hz**
+(`src/loader/loaded_model_pair.rs:13`, `pub(crate) const DEFAULT_SAMPLE_RATE: f32 = 48000.0`).
+This value drives the real prewarm computation for LSTM (24000 samples at 48 kHz) and the
+sample-rate-dependent logic in `DSP::Reset()` for all architectures.
+
+**Rationale:** the 48000 Hz default produces a correct, functional prewarm rather than the
+C++ sentinel's near-zero prewarm (1 sample). All known production `.nam` models include
+`sample_rate` explicitly, so the default is only exercised by degenerate or hand-crafted
+models. In those cases, NAM-rs's behavior is measurably "more correct" — the model settles
+to its steady state — while C++'s sentinel produces effectively no prewarm at all.
+
+**Divergence assessment:** This is an **intentional, documented, low-risk divergence**.
+It does not affect any known production model (every real community `.nam` export includes
+`sample_rate`). The behavior affects only the degenerate zero-`sample_rate` case, where
+NAM-rs's prewarm is strictly superior. The C++ sentinel is not emulated, and emulating it
+has no practical benefit for any real-world use case.
+
+**Verification:** this policy is enforced at two levels:
+
+1. **JSON parse:** `validate_sample_rate` (`src/loader/nam_json/validation.rs`) rejects
+   non-finite or ≤0 sample rates via `JsonError::InvalidSampleRate`, but `None` (absent
+   field) passes through silently — it is handled downstream.
+2. **Model build:** `build.rs:161` applies `unwrap_or(DEFAULT_SAMPLE_RATE)` to the parsed
+   `Option<f32>`. LSTM dispatchers (`static_builder.rs:27,72`, `dynamic_builder.rs:32`)
+   apply the same default independently for prewarm computation.
+
+### 5.2 FastLUTActivation — Not Ported (F-P4-c)
+
+**Background:** C++ NAMcore ships an optional `FastLUTActivation` class
+(`NAM/activations.h:127-169`) that precomputes look-up tables for `tanh` and `sigmoid`
+to accelerate inference on systems without fast `expf` hardware. It is controlled by
+`Activation::enable_fast_tanh()` and `Activation::using_fast_tanh`.
+
+**Status in NAM-rs:** `FastLUTActivation` is **not ported** and has no NAM-rs equivalent.
+This is **not a parity gap** for the following reasons:
+
+- `FastLUTActivation` is a **runtime optimization**, not a format/algorithm feature.
+  The `.nam` file format has no field for "use lookup tables" — it is a local C++-side
+  accelerator that produces the same mathematical output (within LUT precision) as exact
+  `tanh`/`sigmoid` for identical weights.
+- The NAMcore `render` tool (used for golden generation and live cross-validation) **never**
+  enables it: `enable_fast_tanh()` is only called from benchmarking tools
+  (`tools/benchmodel*.cpp`), not from `render.cpp`. This is confirmed in the NAMcore
+  audited source (`activations.h:14`: `static bool using_fast_tanh = false` is the only
+  initialization, and only `benchmodel*.cpp` flips it — verified by grep of all callers).
+- NAM-rs's `ActivationPrecision::Standard` (universal default) already produces exact-grade
+  `tanh`/`sigmoid` within 2×10⁻⁷ of C++'s exact math, making the LUT precision tradeoff
+  irrelevant.
+
+**Verdict:** FastLUTActivation is classified as **"Not Applicable"** — no port needed, no
+parity gap, no audio divergence. Documented here for completeness and to prevent future
+audit cycles from re-discovering and re-investigating it.
+
 ---
 
 ## 6. Other Architectures (Out of Scope)

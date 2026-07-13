@@ -328,7 +328,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 
 ---
 
-### [ ] Tarefa 4.3: Documentar Política de Sample Rate Ausente e FastLUT (F-P3 e F-P4-c)
+### [x] Tarefa 4.3: Documentar Política de Sample Rate Ausente e FastLUT (F-P3 e F-P4-c)
 
 * **Achados Associados:**
   * [F-P3](file:///home/fabio/nam-rs/TODO-findings.md#L55) — Sample rate desconhecido: default 48000 vs sentinela C++ `-1.0`.
@@ -340,6 +340,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
   * [docs/cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md) — Documentar a política de sample rate ausente e o status da FastLUT.
 * **Critério de Aceitação:**
   * Inclusão clara das seções no mapa de auditoria de paridade C++.
+* **Concluído (2026-07-13):** Adicionadas duas novas subseções em §5 (Shared DSP Engine Semantics): §5.1 `Sample Rate Default Policy (F-P3)` documenta o default 48000 Hz vs sentinela C++ -1.0, com justificativa (prewarm real é estritamente superior), verificação em dois níveis (JSON parse + model build) e evidência de que nenhum modelo de produção é afetado. §5.2 `FastLUTActivation — Not Ported (F-P4-c)` documenta a não-portabilidade como "Not Applicable" — otimização de runtime, não feature de formato, nunca usada pelo render tool C++ que gera goldens.
 
 ---
 
