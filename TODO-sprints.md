@@ -776,7 +776,9 @@ Para fechar o Épico E4 em definitivo:
 
 #### Tarefa T5.1 — Implementação de Verificação de Contrato em quality-dashboard.sh (F-E1)
 
-* **Status**: `[ ]`
+* **Status**: `[DONE]`
+* **Conclusão**: `--check` implementado com parse do baseline plain-text, margens de tolerância ESR (×10), SNR (−6 dB), MR-STFT (×10), latência (×1.10). Label matching com prefix e normalização Unicode ×→x. Pipefail corrigido em `render_dashboard_plain` e `_decomp_extract`. Seção de tabelas não-fidelidade reseta tracker para evitar contaminação do parser.
+
 * **Arquivos Afetados**:
   * [quality-dashboard.sh](file:///home/fabio/nam-rs/utils/quality-dashboard.sh)
 * **Descrição**:
@@ -793,7 +795,9 @@ Para fechar o Épico E4 em definitivo:
 
 #### Tarefa T5.2 — Baseline Oficial e Documentação do Fluxo (F-E1)
 
-* **Status**: `[ ]`
+* **Status**: `[DONE]`
+* **Conclusão**: `docs/quality-contract.txt` gerado via `quality-dashboard.sh --save` (209 linhas, 14KB). Documentação adicionada em `testing.md` §9 (Contrato de Qualidade) e `benchmarks.md` (Quality Contract — Performance Lens), cobrindo arquitetura, margens de tolerância, fluxo diário e procedimento de renovação deliberada do baseline com exigência de justificativa no commit. Corrigido pipefail em `render_dashboard_plain` que impedia `--save` de completar.
+
 * **Arquivos Afetados**:
   * [quality-contract.txt](file:///home/fabio/nam-rs/docs/quality-contract.txt) [NEW]
   * [testing.md](file:///home/fabio/nam-rs/docs/testing.md)

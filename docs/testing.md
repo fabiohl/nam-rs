@@ -456,3 +456,96 @@ tests were migrated to `#[ignore]` with the reason
 
 **Remain in CI (Tier 2):** All `*_vs_f32_tanh*`, `*_vs_f64*`, and sweep tests with
 analytically expected error values — these compare against mathematical ground truth.
+
+---
+
+## 9. Contrato de Qualidade (Quality Contract)
+
+O **Contrato de Qualidade** (Épico E5) é a linha de base imutável que congela os
+índices de qualidade e performance do projeto. Ele impede regressões silenciosas
+— seja na malha de fidelidade sonora, seja na latência de processamento — através
+de um mecanismo de verificação automatizado integrado ao painel de qualidade.
+
+### 9.1. Arquitetura
+
+O contrato é gerido pelo script unificado `utils/quality-dashboard.sh`, que funciona
+em três modos complementares:
+
+| Modo                  | Comando                                          | Função                                                                                         |
+|:--------------------- |:------------------------------------------------ |:---------------------------------------------------------------------------------------------- |
+| **Dashboard**         | `./utils/quality-dashboard.sh`                   | Executa todas as fases de fidelidade e performance e exibe o painel interativo.                |
+| **Save (baseline)**   | `./utils/quality-dashboard.sh --save <arquivo>`  | Salva o dashboard em texto puro (sem ANSI) como baseline oficial no arquivo indicado.          |
+| **Check (verificar)** | `./utils/quality-dashboard.sh --check <arquivo>` | Executa todas as fases e compara os resultados atuais contra o baseline, reportando violações. |
+
+O baseline oficial do projeto reside em `docs/quality-contract.txt`.
+
+### 9.2. Margens de Tolerância
+
+A verificação `--check` aplica as seguintes margens estatísticas para distinguir
+ruído de medição (variação de ISA, f64, scheduling) de regressão real:
+
+| Métrica                         | Critério de Falha                      | Justificativa                                                                  |
+|:------------------------------- |:-------------------------------------- |:------------------------------------------------------------------------------ |
+| **Fidelidade — ESR**            | `novo_esr > contrato_esr × 10.0`       | Absorve variações inter-ISA e diferenças de caminho de código f32 vs f64.      |
+| **Fidelidade — SNR (dB)**       | `novo_snr < contrato_snr − 6.0`        | Margem de 6 dB — cobre ruído térmico, quantização e variação de scheduling.    |
+| **Fidelidade — MR-STFT**        | `novo_mrstft > contrato_mrstft × 10.0` | Mesma lógica do ESR — margem ampla para variação de ponto flutuante.           |
+| **Performance — Latência (µs)** | `nova_lat > contrato_lat × 1.10`       | Margem de 10% sobre a latência mediana; abaixo disso considera-se ruído de SO. |
+
+> [!NOTE]
+> Campos com valor `N/A` no arquivo de contrato são automaticamente ignorados
+> durante a verificação (gate desabilitado para aquela métrica/modelo).
+>
+> [!IMPORTANT]
+> O script `utils/tests-performance-regression.sh` continua sendo a **autoridade
+> estatística primária** para regressões de performance (compara contra baseline
+> Criterion com teste t de duas amostras, p < 0.05). O contrato de qualidade atua
+> como uma **segunda linha de defesa** — uma verificação mais rápida e integrada
+> ao dashboard, com margens mais conservadoras (10% vs significância estatística).
+
+### 9.3. Fluxo de Trabalho Diário
+
+```sh
+# 1. Executar o dashboard completo e verificar contra o contrato oficial
+./utils/quality-dashboard.sh --check docs/quality-contract.txt
+
+# 2. VERDE (exit code 0)  → todas as métricas dentro das tolerâncias.
+#    VERMELHO (exit code 1) → violação detectada; investigar antes de prosseguir.
+
+# 3. Rodar também o gate de regressão de performance (autoridade primária):
+./utils/tests-performance-regression.sh --check
+```
+
+### 9.4. Procedimento de Renovação Deliberada do Baseline
+
+O baseline **não deve ser atualizado como parte do fluxo normal de desenvolvimento**.
+A renovação é um ato deliberado que exige justificativa explícita:
+
+1. **Pré-condições:** Todos os gates devem passar individualmente:
+
+   - `utils/lints.sh` — sem erros de formatação, clippy ou cabeçalho SPDX.
+   - `utils/tests-quick.sh` — suíte rápida verde.
+   - `utils/tests-performance-regression.sh --check` — sem regressão estatística.
+
+2. **Regeneração do baseline:**
+
+   ```sh
+   ./utils/quality-dashboard.sh --save docs/quality-contract.txt
+   ```
+
+3. **Confirmação do novo baseline:**
+
+   ```sh
+   ./utils/quality-dashboard.sh --check docs/quality-contract.txt
+   # Deve retornar exit code 0 com o baseline recém-gerado.
+   ```
+
+4. **Commit:** O commit que atualiza `docs/quality-contract.txt` deve conter
+   justificativa expressa no corpo da mensagem explicando **por que** o baseline
+   foi alterado (ex.: "novo modelo WaveNet A2-FiLM adicionado — baseline atualizado
+   para incluir suas métricas de fidelidade e latência") e **qual o impacto medido**
+   nas métricas alteradas.
+
+> [!CAUTION]
+> Atualizar o baseline sem justificativa documentada no commit **invalida o propósito
+> do contrato de qualidade** como guardião contra regressões silenciosas. O baseline
+> existe para ser a âncora de referência — não um alvo móvel.

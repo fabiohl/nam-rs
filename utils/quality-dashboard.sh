@@ -13,6 +13,7 @@
 #   ./utils/quality-dashboard.sh --fidelity-only        Fidelity tests only
 #   ./utils/quality-dashboard.sh --bench-only           Benchmarks only
 #   ./utils/quality-dashboard.sh --save <filename>      Save plain-text copy alongside display
+#   ./utils/quality-dashboard.sh --check <file>         Verify metrics against quality contract
 
 set -euo pipefail
 
@@ -22,12 +23,17 @@ source "$(dirname "$0")/_lib.sh"
 # ── Argument parsing ────────────────────────────────────────────────────────
 
 SAVE_FILE=""
+CHECK_FILE=""
 MODE="full"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --save)
             SAVE_FILE="$2"
+            shift 2
+            ;;
+        --check)
+            CHECK_FILE="$2"
             shift 2
             ;;
         --fidelity-only)
@@ -1170,7 +1176,9 @@ render_activation_precision() {
 # block (e.g. "ESR(f32 vs f64 oracle):  3.17e-3 (-25.0 dB)" -> "3.17e-3").
 _decomp_extract() {
     local block="$1" label_pattern="$2"
+    set +o pipefail
     echo "$block" | grep -oP "${label_pattern}\\K[0-9.eE+-]+" 2>/dev/null | head -1
+    set -o pipefail
 }
 
 render_f64_decomposition() {
@@ -1295,10 +1303,237 @@ render_dashboard() {
 # ── Plain-text version (no ANSI) for --save ─────────────────────────────────
 
 render_dashboard_plain() {
-    # Strip ANSI escape sequences using a literal ESC character
-    local esc
-    esc=$(printf '\033')
-    render_dashboard | sed "s/${esc}\[[0-9;]*m//g"
+    set +o pipefail
+    render_dashboard | sed "s/$(printf '\033')\[[0-9;]*m//g"
+    set -o pipefail
+}
+
+# ── Contract baseline storage ──────────────────────────────────────────────
+
+declare -A CONTRACT_ESR
+declare -A CONTRACT_SNR
+declare -A CONTRACT_MRSTFT
+declare -A CONTRACT_LATENCY
+
+# ── Load contract/baseline file ────────────────────────────────────────────
+#
+# Parses a plain-text dashboard (produced by --save) and extracts per-model
+# fidelity and performance metrics into CONTRACT_* associative arrays.
+# Expected format is the render_dashboard_plain() output with no ANSI.
+#
+# Fidelity table rows look like:
+#   BossWN-standard @48000 Live         │ 9.98e-06                  │ 1.94e-14       │ 37.59    │ 0.0131   │ Live
+#
+# Performance table rows look like:
+#   WaveNet Standard CH16    │ 56.2 us          │ 4.2%         │ 95.8% ok
+
+load_contract_baseline() {
+    local file="$1"
+    [ -f "$file" ] || { echo "ERRO: Arquivo de contrato nao encontrado: ${file}" >&2; exit 2; }
+
+    local section=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ FIDELIDADE[[:space:]]+SONORA ]]; then
+            section="fidelity"
+            continue
+        fi
+        if [[ "$line" =~ PERFORMANCE ]]; then
+            section="performance"
+            continue
+        fi
+        # Reset section tracker for other tables to avoid parsing
+        # activation precision / ISA / spectral rows as fidelity data.
+        if [[ "$line" =~ ACTIVATION|ISA[[:space:]]+PARITY|SPECTRAL[[:space:]]+FIDELITY|F64[[:space:]]+ORACLE ]]; then
+            section=""
+            continue
+        fi
+
+        if [ "$section" = "fidelity" ]; then
+            local trimmed
+            trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            if [[ "$trimmed" == *"│"* ]] && [[ ! "$trimmed" =~ ^[─═] ]] && [[ ! "$trimmed" =~ ^"Modelo" ]] && [[ ! "$trimmed" =~ ^"Padrao" ]]; then
+                local model_part=$(echo "$trimmed" | awk -F'│' '{print $1}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//')
+                local esr_part=$(echo "$trimmed" | awk -F'│' '{print $2}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//')
+                local snr_part=$(echo "$trimmed" | awk -F'│' '{print $4}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//')
+                local mrstft_part=$(echo "$trimmed" | awk -F'│' '{print $5}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//')
+
+                [ -n "$model_part" ] && [ "$model_part" != "" ] || continue
+
+                if [ -n "$esr_part" ] && [ "$esr_part" != "N/A" ] && [[ "$esr_part" =~ ^[0-9] ]]; then
+                    CONTRACT_ESR["$model_part"]="$esr_part"
+                fi
+                if [ -n "$snr_part" ] && [ "$snr_part" != "N/A" ] && [[ "$snr_part" =~ ^[0-9] ]]; then
+                    CONTRACT_SNR["$model_part"]="$snr_part"
+                fi
+                if [ -n "$mrstft_part" ] && [ "$mrstft_part" != "N/A" ] && [[ "$mrstft_part" =~ ^[0-9] ]]; then
+                    CONTRACT_MRSTFT["$model_part"]="$mrstft_part"
+                fi
+            fi
+        fi
+
+        if [ "$section" = "performance" ]; then
+            local trimmed
+            trimmed=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            if [[ "$trimmed" == *"│"* ]] && [[ ! "$trimmed" =~ ^[─═] ]] && [[ ! "$trimmed" =~ ^"Modelo" ]]; then
+                local model_part=$(echo "$trimmed" | awk -F'│' '{print $1}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//')
+                local lat_part=$(echo "$trimmed" | awk -F'│' '{print $2}' | sed 's/[[:space:]]*$//; s/^[[:space:]]*//; s/[[:space:]]us$//; s/[[:space:]]*$//')
+
+                [ -n "$model_part" ] && [ "$model_part" != "" ] || continue
+
+                if [ -n "$lat_part" ] && [ "$lat_part" != "N/A" ] && [[ "$lat_part" =~ ^[0-9] ]]; then
+                    CONTRACT_LATENCY["$model_part"]="$lat_part"
+                fi
+            fi
+        fi
+    done < "$file"
+}
+
+# ── Contract verification ──────────────────────────────────────────────────
+#
+# Compares current run metrics against the contract baseline with tolerances:
+#
+#   Fidelity (ESR):        fail if new_esr > contract_esr * 10.0
+#   Fidelity (SNR):        fail if new_snr < contract_snr - 6.0 (dB)
+#   Fidelity (MR-STFT):    fail if new_mrstft > contract_mrstft * 10.0
+#   Performance (latency): fail if new_lat > contract_lat * 1.10 (10% margin)
+#
+# Fields with value "N/A" (or empty) in the contract are skipped.
+# Returns 0 on pass, 1 on violation.
+
+verify_contract() {
+    local violations=0
+
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  VERIFICACAO DE CONTRATO DE QUALIDADE"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+
+    if [ ${#CONTRACT_ESR[@]} -eq 0 ] && [ ${#CONTRACT_LATENCY[@]} -eq 0 ]; then
+        echo -e "  ${YELLOW}(i) Arquivo de contrato vazio ou sem metricas reconhecidas.${NC}"
+        echo ""
+        return 0
+    fi
+
+    local contract_count
+    set +u; contract_count="${#CONTRACT_ESR[@]}"; set -u
+    if [ -n "$contract_count" ]; then
+        echo "  FIDELIDADE — ${contract_count} modelo(s) no contrato"
+        echo "  ─────────────────────────────────────────────"
+        echo ""
+
+        # Build a lookup from contract labels to full dashboard keys
+        # The contract and dashboard may use slightly different labels.
+        # We match by model name prefix (before @rate or mode suffix).
+        for contract_label in "${!CONTRACT_ESR[@]}"; do
+            local matched=false
+            for dash_key in "${!ESR_NAMCORE[@]}"; do
+                local dash_label
+                dash_label=$(echo "$dash_key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
+                # Prefix match: contract labels may be truncated by the 38-char
+                # column width in the plain-text dashboard table.
+                if [[ "$dash_label" == "$contract_label"* ]] || [[ "$contract_label" == "$dash_label"* ]]; then
+                    matched=true
+                    local esr_cur="${ESR_NAMCORE[$dash_key]:-N/A}"
+                    local esr_ctr="${CONTRACT_ESR[$contract_label]}"
+
+                    if [ "$esr_cur" != "N/A" ] && [ "$esr_ctr" != "N/A" ] && [ -n "$esr_ctr" ]; then
+                        local esr_fail
+                        esr_fail=$(LC_ALL=C awk -v cur="$esr_cur" -v ctr="$esr_ctr" \
+                            'BEGIN { if (cur+0 > ctr*10.0) print "1"; else print "0" }')
+                        if [ "$esr_fail" = "1" ]; then
+                            echo -e "    ${RED}✗${NC} ${contract_label}: ESR regrediu ${esr_cur} (contrato: ${esr_ctr}, limite: $(LC_ALL=C awk -v c="$esr_ctr" 'BEGIN { printf "%.2e", c*10.0 }'))"
+                            violations=$((violations + 1))
+                        else
+                            echo -e "    ${GREEN}ok${NC} ${contract_label}: ESR ${esr_cur} (contrato: ${esr_ctr})"
+                        fi
+                    fi
+
+                    # Check SNR
+                    local snr_cur="${SNR_DB[$dash_key]:-N/A}"
+                    local snr_ctr="${CONTRACT_SNR[$contract_label]:-N/A}"
+                    if [ "$snr_cur" != "N/A" ] && [ "$snr_ctr" != "N/A" ] && [ -n "$snr_ctr" ]; then
+                        local snr_fail
+                        snr_fail=$(LC_ALL=C awk -v cur="$snr_cur" -v ctr="$snr_ctr" \
+                            'BEGIN { if (cur+0 < ctr-6.0) print "1"; else print "0" }')
+                        if [ "$snr_fail" = "1" ]; then
+                            echo -e "    ${RED}✗${NC} ${contract_label}: SNR regrediu ${snr_cur} dB (contrato: ${snr_ctr} dB, limite: $(LC_ALL=C awk -v c="$snr_ctr" 'BEGIN { printf "%.1f", c-6.0 }') dB)"
+                            violations=$((violations + 1))
+                        fi
+                    fi
+
+                    # Check MR-STFT
+                    local mrstft_cur="${MRSTFT[$dash_key]:-N/A}"
+                    local mrstft_ctr="${CONTRACT_MRSTFT[$contract_label]:-N/A}"
+                    if [ "$mrstft_cur" != "N/A" ] && [ "$mrstft_ctr" != "N/A" ] && [ -n "$mrstft_ctr" ]; then
+                        local mrstft_fail
+                        mrstft_fail=$(LC_ALL=C awk -v cur="$mrstft_cur" -v ctr="$mrstft_ctr" \
+                            'BEGIN { if (cur+0 > ctr*10.0) print "1"; else print "0" }')
+                        if [ "$mrstft_fail" = "1" ]; then
+                            echo -e "    ${RED}✗${NC} ${contract_label}: MR-STFT regrediu ${mrstft_cur} (contrato: ${mrstft_ctr}, limite: $(LC_ALL=C awk -v c="$mrstft_ctr" 'BEGIN { printf "%.4f", c*10.0 }'))"
+                            violations=$((violations + 1))
+                        fi
+                    fi
+                    break
+                fi
+            done
+            if [ "$matched" = false ]; then
+                echo -e "    ${YELLOW}(i)${NC} ${contract_label}: nao encontrado na execucao atual"
+            fi
+        done
+        echo ""
+    fi
+
+    # Check performance (latency)
+    local latency_contract_count
+    set +u; latency_contract_count="${#CONTRACT_LATENCY[@]}"; set -u
+    if [ -n "$latency_contract_count" ] && [ "$latency_contract_count" -gt 0 ]; then
+        echo "  PERFORMANCE — ${latency_contract_count} benchmark(s) no contrato"
+        echo "  ─────────────────────────────────────────────────"
+        echo ""
+
+        for contract_label in "${!CONTRACT_LATENCY[@]}"; do
+            local matched=false
+            for bn in "${ALL_BENCH_NAMES[@]}"; do
+                local dash_label="${BENCH_MODEL_MAP[$bn]:-$bn}"
+                # Normalize Unicode × (U+00D7) to ASCII x for label matching
+                local dash_norm="${dash_label//×/x}"
+                local ctr_norm="${contract_label//×/x}"
+                if [ "$dash_norm" = "$ctr_norm" ]; then
+                    matched=true
+                    local lat_cur="${LATENCY_US[$bn]:-N/A}"
+                    local lat_ctr="${CONTRACT_LATENCY[$contract_label]}"
+
+                    if [ "$lat_cur" != "N/A" ] && [ "$lat_ctr" != "N/A" ] && [ -n "$lat_ctr" ]; then
+                        local lat_fail
+                        lat_fail=$(LC_ALL=C awk -v cur="$lat_cur" -v ctr="$lat_ctr" \
+                            'BEGIN { if (cur+0 > ctr*1.10) print "1"; else print "0" }')
+                        if [ "$lat_fail" = "1" ]; then
+                            echo -e "    ${RED}✗${NC} ${contract_label}: latencia regrediu ${lat_cur} us (contrato: ${lat_ctr} us, limite: $(LC_ALL=C awk -v c="$lat_ctr" 'BEGIN { printf "%.1f", c*1.10 }') us)"
+                            violations=$((violations + 1))
+                        else
+                            echo -e "    ${GREEN}ok${NC} ${contract_label}: latencia ${lat_cur} us (contrato: ${lat_ctr} us)"
+                        fi
+                    fi
+                    break
+                fi
+            done
+            if [ "$matched" = false ]; then
+                echo -e "    ${YELLOW}(i)${NC} ${contract_label}: nao encontrado na execucao atual"
+            fi
+        done
+        echo ""
+    fi
+
+    if [ "$violations" -gt 0 ]; then
+        echo -e "  ${RED}CONTRATO VIOLADO — ${violations} violacao(oes) detectada(s).${NC}"
+        echo ""
+        return 1
+    else
+        echo -e "  ${GREEN}CONTRATO OK — Todas as metricas dentro das tolerancias.${NC}"
+        echo ""
+        return 0
+    fi
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -1354,6 +1589,13 @@ main() {
     if [ -n "$SAVE_FILE" ]; then
         render_dashboard_plain > "$SAVE_FILE"
         echo -e "${GREEN}ok${NC} Dashboard salvo em: ${SAVE_FILE} (plain text, sem ANSI)"
+    fi
+
+    if [ -n "$CHECK_FILE" ]; then
+        load_contract_baseline "$CHECK_FILE"
+        if ! verify_contract; then
+            exit 1
+        fi
     fi
 
     exit 0

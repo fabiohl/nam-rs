@@ -170,6 +170,60 @@ If the script exits with `❌ PERFORMANCE REGRESSION DETECTED`:
 4. If the regression is real and unintentional: bisect your recent changes to find the cause.
 5. If the regression is intentional (e.g., a new feature with a measured, accepted overhead): re-save the baseline with `--save` **and document the change and its measured cost** in your commit message.
 
+## Quality Contract — Performance Lens
+
+The **Quality Contract** ([docs/quality-contract.txt](quality-contract.txt)) extends the
+regression defense with a dashboard-integrated second line of defense that freezes
+both fidelity and performance metrics into a versioned, machine-readable baseline.
+
+### How It Fits with the Regression Gate
+
+| Tool                                    | Statistical Rigor                    | Speed    | Scope                                                                                     |
+|:--------------------------------------- |:------------------------------------ |:-------- |:----------------------------------------------------------------------------------------- |
+| `utils/tests-performance-regression.sh` | Criterion two-sample t-test (p<0.05) | ~5-8 min | **Primary authority** — catches slow regressions within the safe zone (e.g., 100→150 µs). |
+| `quality-dashboard.sh --check`          | Conservative relative margin         | ~3-5 min | **Second line** — integrated with fidelity checks; 10% latency margin.                    |
+
+The two tools serve complementary roles:
+
+* **`tests-performance-regression.sh`** is the strict, narrow statistical gate —
+  the definitive answer to "did latency increase with p < 0.05 confidence?"
+* **`quality-dashboard.sh --check`** is the broad, integrated check — it answers
+  "do fidelity *and* performance both pass, in one command?" with conservative
+  margins designed to absorb OS scheduling noise without false positives.
+
+### Performance Tolerance in the Contract
+
+The contract applies a **10% margin** on median latency:
+
+```text
+nova_lat > contrato_lat × 1.10  →  VIOLAÇÃO
+```
+
+This is intentionally more conservative than the regression gate's statistical
+test — a 10% margin absorbs transient scheduling noise while still catching
+degradations large enough to matter (e.g., 56 µs → 62 µs is within margin;
+56 µs → 95 µs is a clear violation).
+
+> [!NOTE]
+> The contract's performance check uses the same `regression_gate` bench that
+> `tests-performance-regression.sh` runs, but via the dashboard's integrated
+> pipeline — it inherits the same `sample_size=100, measurement_time=5s,
+> noise_threshold=0.02` parameters for statistical stability.
+
+### Baselines and Renewal
+
+The official performance baseline lives in `docs/quality-contract.txt` alongside
+fidelity metrics. The **full renewal procedure** — including prerequisites, the
+`--save` / `--check` cycle, and the mandatory commit-message justification — is
+documented in [testing.md §9.4](testing.md#94-procedimento-de-renovação-deliberada-do-baseline).
+
+> [!CAUTION]
+> The Criterion `ci-baseline` (managed by `tests-performance-regression.sh
+> --save`) and the Quality Contract baseline (`docs/quality-contract.txt`) are
+> **independent artifacts** with different purposes. Updating one does not
+> automatically update the other. Both must be regenerated and committed when
+> a deliberate performance characteristic changes.
+
 ## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates)
 
 Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
@@ -381,14 +435,14 @@ Arquivo: `benches/kahan_conv1d_bench.rs`.
 
 #### Loop interno isolado (custo por tap)
 
-| K  | Kahan (ns) | Plain (ns) | Overhead | Overhead % |
-|:---|-----------:|-----------:|---------:|-----------:|
-| 1  | 8.43       | 8.00       | 0.43 ns  | +5.4%      |
-| 2  | 16.35      | 14.93      | 1.42 ns  | +9.5%      |
-| 3  | 23.54      | 22.08      | 1.47 ns  | +6.6%      |
-| 6  | 46.29      | 43.50      | 2.80 ns  | +6.4%      |
-| 15 | 113.94     | 106.72     | 7.22 ns  | +6.8%      |
-| 32 | 242.20     | 229.57     | 12.63 ns | +5.5%      |
+| K   | Kahan (ns) | Plain (ns) | Overhead | Overhead % |
+|:--- | ----------:| ----------:| --------:| ----------:|
+| 1   | 8.43       | 8.00       | 0.43 ns  | +5.4%      |
+| 2   | 16.35      | 14.93      | 1.42 ns  | +9.5%      |
+| 3   | 23.54      | 22.08      | 1.47 ns  | +6.6%      |
+| 6   | 46.29      | 43.50      | 2.80 ns  | +6.4%      |
+| 15  | 113.94     | 106.72     | 7.22 ns  | +6.8%      |
+| 32  | 242.20     | 229.57     | 12.63 ns | +5.5%      |
 
 **Custo marginal por kahan_add:** ~0.4–0.6 ns por chamada.
 O overhead relativo estabiliza em ~5–10% independente de K — a maior parte do tempo
@@ -396,12 +450,12 @@ O overhead relativo estabiliza em ~5–10% independente de K — a maior parte d
 
 #### Conv1d completo (64 frames, sem Kahan)
 
-| Config              | Static No-Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
-|:--------------------|---------------------:|------------------:|------:|
-| IN=8,  OUT=8,  K=3  | 1.09                 | 2.46              | 2.24× |
-| IN=8,  OUT=16, K=3  | 2.22                 | 4.16              | 1.87× |
-| IN=16, OUT=16, K=3  | 4.74                 | 6.46              | 1.36× |
-| IN=12, OUT=12, K=3  | 1.86                 | 4.06              | 2.18× |
+| Config             | Static No-Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
+|:------------------ | --------------------:| -----------------:| -----:|
+| IN=8,  OUT=8,  K=3 | 1.09                 | 2.46              | 2.24× |
+| IN=8,  OUT=16, K=3 | 2.22                 | 4.16              | 1.87× |
+| IN=16, OUT=16, K=3 | 4.74                 | 6.46              | 1.36× |
+| IN=12, OUT=12, K=3 | 1.86                 | 4.06              | 2.18× |
 
 ### Análise numérica
 

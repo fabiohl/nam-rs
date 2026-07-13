@@ -1,0 +1,209 @@
+===============================================================
+    nam-rs Quality Dashboard
+    Modo: full
+===============================================================
+
+[1/8] golden_vectors
+
+-> Executando golden_vectors...
+  ok golden_vectors concluido (0,4s, 377 linhas)
+
+[2/8] reference_oracle_f64
+-> Executando reference_oracle_f64...
+  ok reference_oracle_f64 concluido (6,0s)
+
+[3/8] isa_parity
+-> Executando isa_parity...
+  ok isa_parity concluido (0,1s)
+
+[4/8] spectral_fidelity
+-> Executando spectral_fidelity...
+  ok spectral_fidelity concluido (0,1s)
+
+[5/8] lstm_activation_precision
+-> Executando lstm_activation_precision...
+  ok lstm_activation_precision concluido (1,2s)
+
+[6/8] regression_gate benchmarks
+
+-> Executando regression_gate benchmarks...
+  ok regression_gate concluido (70,1s)
+
+[7/8] Parseando resultados
+
+[8/8] Renderizando dashboard
+╔══════════════════════════════════════════════════════════════════╗
+║              nam-rs Quality Dashboard                            ║
+║              ------------------------------                      ║
+║              Medido em: 2026-07-12 21:15:52 -0300                ║
+║              ISA: AVX2 (x86-64-v3)                               ║
+║              CPU: AMD Ryzen 7 5700U with Radeon Graphics         ║
+║              rustc: rustc 1.97.0 (2d8144b78 2026-07-07)          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🎯 RESUMO RAPIDO (para nao-cientistas)
+═══════════════════════════════════════
+
+  🎸 WaveNet Standard (CH16)                 vs NAMcore: 2.46e-14   IDENTICO  │  vs Ideal (f64): 6.13e-14 (~fam.)  │  ⚡ CPU: 3.2% do budget
+  🎸 WaveNet A1 Standard                     vs NAMcore: 8.62e-14   IDENTICO  │  vs Ideal (f64): 6.13e-14 (~fam.)  │  ⚡ CPU: 3.2% do budget
+  🎸 WaveNet Feather (CH8)                   vs NAMcore: 4.82e-14   IDENTICO  │  vs Ideal (f64): 6.13e-14 (~fam.)  │  ⚡ CPU: 2.0% do budget
+  🎸 LSTM 1x16 (BossLSTM)                    vs NAMcore: 1.42e-11   IDENTICO  │  vs Ideal (f64): 2.71e-12 (~fam.)  │  ⚡ CPU: 0.6% do budget
+  🎸 LSTM 2x8 (BossLSTM)                     vs NAMcore: 1.67e-11   IDENTICO  │  vs Ideal (f64): 2.71e-12 (~fam.)  │  ⚡ CPU: 0.6% do budget
+  🎸 A2 Full (CH8)                           vs NAMcore: 1.12e-13   IDENTICO  │  vs Ideal (f64): 1.82e-14 (~fam.)  │  ⚡ CPU: 2.1% do budget
+  🎸 A2 Lite (CH3)                           vs NAMcore: 6.43e-14   IDENTICO  │  vs Ideal (f64): 1.82e-14 (~fam.)  │  ⚡ CPU: 1.4% do budget
+  🎸 A2-FiLM Lite (CH3)                      vs NAMcore: 3.83e-13   IDENTICO  │  vs Ideal (f64): 1.61e-13          │  ⚡ CPU: 1.4% do budget
+  🎸 ConvNet                                 vs NAMcore: N/A        N/A       │  vs Ideal (f64): N/A               │  ⚡ CPU: 0.8% do budget
+  🎸 Linear (RF=2048)                        vs NAMcore: 1.62e-14   IDENTICO  │  vs Ideal (f64): N/A               │  ⚡ CPU: 0.0% do budget
+
+  (~fam.) = 'vs Ideal (f64)' not measured for this exact model — shown as the
+  family's single representative fixture instead (see ESR_F64_FAMILY_MAP).
+
+📊 FIDELIDADE SONORA — Detalhes Tecnicos
+═════════════════════════════════════════
+
+  Modelo                                 │ ESR (vs NAMcore)│ ESR (vs f64) │ SNR dB   │ MR-STFT  │ Modo
+  ────────────────────────────────────── │ ─────────────── │ ──────────── │ ──────── │ ──────── │ ──────
+  BossLSTM-1x16 @48000 Live              │ 1.42e-11        │ 2.71e-12~ │ 108.5    │ 2.97e-05 │ Live
+  BossLSTM-2x8 @48000 Live               │ 1.67e-11        │ 2.71e-12~ │ 107.8    │ 1.74e-05 │ Live
+  BossWN-feather @48000 Live             │ 4.82e-14        │ 6.13e-14~ │ 133.2    │ 9.10e-06 │ Live
+  BossWN-nano @48000 Live                │ 6.20e-14        │ 6.13e-14~ │ 132.1    │ 7.46e-06 │ Live
+  BossWN-standard @48000 Live            │ 2.46e-14        │ 6.13e-14~ │ 136.1    │ 6.89e-06 │ Live
+  Container A2-Full (CH=8) C++ cross-ref │ 1.12e-13        │ 1.82e-14~ │ 129.5    │ 1.50e-05 │ Live
+  Container A2-Lite (CH=3) C++ cross-ref │ 6.43e-14        │ 1.82e-14~ │ 131.9    │ 9.08e-06 │ Live
+  Container File A2-Full (CH=8) C++ cros │ 1.12e-13        │ 1.82e-14~ │ 129.5    │ 1.50e-05 │ Live
+  Container File A2-Lite (CH=3) C++ cros │ 6.43e-14        │ 1.82e-14~ │ 131.9    │ 9.08e-06 │ Live
+  ConvNet Test @48000 Live               │ N/A             │ N/A       │ N/A      │ N/A      │ Live
+  EVH-5150-Lite @48000 Live              │ 1.23e-12        │ 6.13e-14~ │ 119.1    │ 4.58e-06 │ Live
+  Linear FFT RF=2048 (C++ golden) @48000 │ 1.62e-14        │ N/A       │ 137.9    │ 2.02e-06 │ Live
+  Linear FFT RF=4096 (C++ golden) @48000 │ 1.13e-14        │ N/A       │ 139.5    │ 3.76e-06 │ Live
+  Linear FFT RF=8192 (C++ golden) @48000 │ 1.69e-14        │ N/A       │ 137.7    │ 4.61e-06 │ Live
+  LSTM-Dyn 1×7 (dynamic path) C++ cross- │ 3.69e-15        │ 2.71e-12~ │ 144.3    │ 1.49e-06 │ Live
+  lstm (Official) @48000 Live            │ 8.30e-13        │ 2.71e-12~ │ 120.8    │ 3.17e-05 │ Live
+  SlimmableContainer A2 Example (CH=3→6) │ 3.27e-14        │ 1.82e-14~ │ 134.9    │ 9.22e-06 │ Live
+  wavenet_a1_standard (Official) @48000  │ 8.62e-14        │ 6.13e-14~ │ 130.6    │ 2.46e-06 │ Live
+  WaveNet A2 Dynamic Blended (CH=3, blen │ 5.24e-14        │ 1.82e-14~ │ 132.8    │ 9.73e-06 │ Live
+  WaveNet A2 Dynamic Gated (CH=8, gated  │ 5.02e-11        │ 1.82e-14~ │ 103.0    │ 6.63e-05 │ Live
+  WaveNet A2-FiLM Chaos Stress (CH=3, Fi │ 1.25e-14        │ 1.61e-13~ │ 139.0    │ 7.32e-06 │ Live
+  WaveNet A2-FiLM-Full (CH=8, FiLM activ │ 1.15e-14        │ 8.75e-15  │ 139.4    │ 7.96e-06 │ Live
+  WaveNet A2-FiLM-InputMixinPre (CH=3, i │ 3.66e-14        │ N/A       │ 134.4    │ 7.03e-06 │ Live
+  WaveNet A2-FiLM-Lite (CH=3, FiLM activ │ 3.83e-13        │ 1.61e-13  │ 124.2    │ 1.65e-05 │ Live
+  WaveNet A2-Full (CH=8) C++ cross-refer │ 1.12e-13        │ 1.82e-14~ │ 129.5    │ 1.50e-05 │ Live
+  WaveNet A2-Lite (CH=3) C++ cross-refer │ 6.43e-14        │ 1.82e-14~ │ 131.9    │ 9.08e-06 │ Live
+  WaveNet Condition DSP (CH=3, cond=3, d │ 1.13e-14        │ 6.13e-14~ │ 139.5    │ 3.65e-06 │ Live
+  WaveNetDyn Free-Shape (CH=7→4, dynamic │ 4.09e-13        │ 6.13e-14~ │ 123.9    │ 2.56e-05 │ Live
+  WaveNet Official (CH=3, dynamic path)  │ 8.96e-14        │ 6.13e-14~ │ 130.5    │ 1.66e-05 │ Live
+
+  Legenda qualitativa (limites de audibilidade do ESR):
+    verde = imperceptivel (ESR < 1e-5)
+    amarelo = audivel apenas com A/B cientifico (ESR < 1e-2)
+    vermelho = ⚠ audivel — necessita investigacao (ESR >= 1e-1)
+  ~ apos o valor 'vs f64' = valor da familia (uma unica fixture representativa,
+    ex.: LSTM -> lstm.nam H=3), NAO medido para este modelo especifico.
+
+⚡ PERFORMANCE — Latencia por Bloco (64 amostras @ 48kHz)
+══════════════════════════════════════════════════════════
+  Deadline RT: 1333 µs (1.33 ms)
+
+  Modelo                       │ Latencia Mediana │ % do Budget  │ Folga
+  ──────────────────────────── │ ──────────────── │ ──────────── │ ────────────────────
+  WaveNet Standard CH16        │ 42.4 us          │ 3.2%         │ 96.8% ok
+  WaveNet Feather CH8          │ 26.5 us          │ 2.0%         │ 98.0% ok
+  WaveNet Lite CH12            │ 64.7 us          │ 4.9%         │ 95.1% ok
+  WaveNet Nano CH4             │ 21.7 us          │ 1.6%         │ 98.4% ok
+  A2 Full CH8                  │ 27.7 us          │ 2.1%         │ 97.9% ok
+  A2 Lite CH3                  │ 18.6 us          │ 1.4%         │ 98.6% ok
+  LSTM 1x16                    │ 7.7 us           │ 0.6%         │ 99.4% ok
+  LSTM 2x8                     │ 7.3 us           │ 0.6%         │ 99.4% ok
+  Linear RF=2048               │ 0.3 us           │ 0.0%         │ 100.0% ok
+  ConvNet                      │ 10.4 us          │ 0.8%         │ 99.2% ok
+
+  (i) Folga > 50%:  Pode usar oversampling 2x sem xruns
+  (i) Folga > 75%:  Pode usar oversampling 4x sem xruns
+  (i) Folga < 25%:  ⚠ Risco de xruns com buffer de 64 amostras
+
+🔬 ISA PARITY
+═════════════
+
+  (i) Nao coberto no modo quick — rode tests-long para verificacao completa.
+
+🎹 ACTIVATION PRECISION
+════════════════════════
+
+  Modelo               │ Fast(Pade)     │ Standard(exact)│ Δ SNR
+  ──────────────────── │ ────────────── │ ────────────── │ ──────────
+  LSTM 1×16            │ 15.9 dB        │ 103.2 dB       │ +87.3 dB
+  LSTM 2×8             │ 24.1 dB        │ 114.0 dB       │ +89.9 dB
+  LSTM Official        │ 29.3 dB        │ 120.5 dB       │ +91.2 dB
+
+  Ganho SNR medio com Standard(exact): +89,5 dB (sobre 3 modelos LSTM)
+
+🔍 F64 ORACLE — Decomposicao de Fontes de Erro
+══════════════════════════════════════════════
+
+  (i) Estas medicoes sao cold-start (256 amostras, SEM prewarm) — NAO
+      comparaveis aos valores 'vs Ideal (f64)' da tabela de fidelidade
+      acima (medidos com warmup de 24k amostras). Para WaveNet/A2, o
+      campo receptivo e maior que a janela de 256 amostras, entao o
+      ESR total abaixo reflete majoritariamente o transiente de
+      preenchimento do buffer, nao o piso de precisao em regime
+      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado F3.
+
+  test reference_oracle_f64::test_decomposition_lstm ... LSTM-H3:
+    test reference_oracle_f64::test_decomposition_lstm ... LSTM-H3 Decomposition:
+    ESR(f32 vs f64 oracle):  2.59e-3 (-25.9 dB)
+    ΔESR f16c weights:       3.64e-5 (-44.4 dB)
+    ΔESR bf16 weights:       9.97e-5 (-40.0 dB)
+    ΔESR Pade activation:    2.58e-3 (-25.9 dB)
+    ΔESR f32 accumulation:   6.43e-13 (-121.9 dB)
+    ΔESR combined (F16C+Padé+F32): 2.02e-3 (-26.9 dB)
+
+  test reference_oracle_f64::test_decomposition_a2 ... A2-Lite:
+    test reference_oracle_f64::test_decomposition_a2 ... A2-Lite Decomposition:
+    ESR(f32 vs f64 oracle):  2.22e-14 (-136.5 dB)
+    ΔESR f16c weights:       2.81e-7 (-65.5 dB)
+    ΔESR bf16 weights:       8.86e-5 (-40.5 dB)
+    ΔESR Pade activation:    0.00e0 (-inf dB)
+    ΔESR f32 accumulation:   8.02e-14 (-131.0 dB)
+    ΔESR combined (F16C+Padé+F32): 2.81e-7 (-65.5 dB)
+    ⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ 12657658×.
+      Esperado para modelos com campo receptivo > janela de medicao (cold-start).
+      Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.
+
+  test reference_oracle_f64::test_decomposition_wavenet ... WaveNet-official:
+    test reference_oracle_f64::test_decomposition_wavenet ... WaveNet-official Decomposition:
+    ESR(f32 vs f64 oracle):  1.82e-12 (-117.4 dB)
+    ΔESR f16c weights:       3.34e-6 (-54.8 dB)
+    ΔESR bf16 weights:       4.81e-4 (-33.2 dB)
+    ΔESR Pade activation:    3.66e-14 (-134.4 dB)
+    ΔESR f32 accumulation:   1.03e-12 (-119.9 dB)
+    ΔESR combined (F16C+Padé+F32): 3.34e-6 (-54.8 dB)
+    ⚠ Rule 5 (Σ sources ≈ total, within 10×) violada: total/combinado ≈ 1835165×.
+      Esperado para modelos com campo receptivo > janela de medicao (cold-start).
+      Nao usar este numero como piso de precisao calibrado sem medicao pareada-com-prewarm.
+
+  test reference_oracle_f64::test_decomposition_boss_lstm_2x8 ... BossLSTM-2x8:
+    test reference_oracle_f64::test_decomposition_boss_lstm_2x8 ... BossLSTM-2x8 Decomposition:
+    ESR(f32 vs f64 oracle):  1.73e-3 (-27.6 dB)
+    ΔESR f16c weights:       4.91e-7 (-63.1 dB)
+    ΔESR bf16 weights:       5.83e-4 (-32.3 dB)
+    ΔESR Pade activation:    1.74e-3 (-27.6 dB)
+    ΔESR f32 accumulation:   2.00e-13 (-127.0 dB)
+    ΔESR combined (F16C+Padé+F32): 1.74e-3 (-27.6 dB)
+
+  test reference_oracle_f64::test_decomposition_boss_lstm_1x16 ... BossLSTM-1x16:
+    test reference_oracle_f64::test_decomposition_boss_lstm_1x16 ... BossLSTM-1x16 Decomposition:
+    ESR(f32 vs f64 oracle):  5.06e-2 (-13.0 dB)
+    ΔESR f16c weights:       3.16e-6 (-55.0 dB)
+    ΔESR bf16 weights:       3.39e-3 (-24.7 dB)
+    ΔESR Pade activation:    4.81e-2 (-13.2 dB)
+    ΔESR f32 accumulation:   2.79e-12 (-115.5 dB)
+    ΔESR combined (F16C+Padé+F32): 4.71e-2 (-13.3 dB)
+
+  test reference_oracle_f64::test_decomposition_convnet ... ConvNet-test:
+    test reference_oracle_f64::test_decomposition_convnet ... ConvNet-test Decomposition:
+    ESR(f32 vs f64 oracle):  inf (inf dB)
+    ΔESR f16c weights:       0.00e0 (-inf dB)
+    ΔESR bf16 weights:       0.00e0 (-inf dB)
+    ΔESR Pade activation:    0.00e0 (-inf dB)
+    ΔESR f32 accumulation:   0.00e0 (-inf dB)
+    ΔESR combined (F16C+Padé+F32): 0.00e0 (-inf dB)
