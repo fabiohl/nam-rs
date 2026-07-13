@@ -323,7 +323,6 @@ if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
     if _has_clap_plugin; then
         _struct_targets="$_struct_targets clap"
     fi
-    _struct_targets="$_struct_targets rt_constraints"
     _struct_flags=""
     for _t in $_struct_targets; do
         _struct_flags="$_struct_flags --test $_t"

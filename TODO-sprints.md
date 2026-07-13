@@ -13,7 +13,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ### Tarefas Técnicas
 
-#### [ ] Tarefa 1.1: Remover `rt_constraints` do Quick
+#### [x] Tarefa 1.1: Remover `rt_constraints` do Quick
 
 * **Achado Associado:** [F-S1](file:///home/fabio/nam-rs/TODO-findings.md#L234) — `rt_constraints` compila e executa 0 testes no quick.
 * **Complexidade/Risco:** Baixo.
