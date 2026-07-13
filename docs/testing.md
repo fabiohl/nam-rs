@@ -56,7 +56,7 @@ has three phases that respect both axes:
 
 ```mermaid
 graph TD
-    F1["Fase 1: Estrutural (debug)"] -->|non-ignored, default features| F2["Fase 2: Oráculos de medida (release)"]
+    F1["Fase 1: Structural (debug)"] -->|non-ignored, default features| F2["Fase 2: Measurement oracles (release) + quick C++ parity"]
     F2 -->|5 canonical oracles, §7| F3["Fase 3: Parser fuzzing (release, --ignored)"]
 ```
 
@@ -119,6 +119,9 @@ graph TD
     A2-Full, and ConvNet. **Caveat:** the ConvNet entry always skips at runtime —
     the C++ `render` cannot load NAM-rs's bespoke ConvNet format (see
     `docs/cpp_parity_map.md` §6) — so only 3 models are actually cross-validated.
+    The `wavenet_a2_max` golden test is **disabled at dispatch**
+    (`is_disabled_broken_a2_flagship` guard, tracked in `TODO-wavenet_a2_max.md`)
+    and does not appear in any quick or long phase.
 - **Prerequisites:** gracefully skipped if goldens/NAMCore are absent. **Known gap:**
   the v1 helpers report `ok` even when every comparison was skipped (silent-skip);
   tracked in `TODO-findings.md`.

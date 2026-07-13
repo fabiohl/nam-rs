@@ -78,14 +78,14 @@ All historical tracking metrics are recorded in local files within your project 
 > **Current vs. historical numbers.** The authoritative *current* per-model latency
 > figures come from a fresh `regression_gate` run — most conveniently via
 > `utils/quality-dashboard.sh` (PERFORMANCE section, median per 64-sample block).
-> Reference snapshot (2026-07-11, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 41.7 µs,
-> Lite CH12 ≈ 63.9 µs, Feather CH8 ≈ 26.4 µs, Nano CH4 ≈ 21.5 µs, A2-Full ≈ 26.6 µs,
-> A2-Lite ≈ 18.1 µs, LSTM 1×16 ≈ 7.6 µs, LSTM 2×8 ≈ 7.5 µs, ConvNet ≈ 3.6 µs,
-> Linear ≈ 0.3 µs — all ≤ 4.8% of the 1.33 ms RT budget. The "Experiment Report"
-> sections further down are **historical point-in-time studies** documenting
-> engineering decisions; their absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate
-> later optimizations and are retained only to justify the decisions, not as current
-> performance claims.
+> Reference snapshot (2026-07-13, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 42.3 µs
+> (3.2%), Lite CH12 ≈ 64.5 µs, Feather CH8 ≈ 26.4 µs, Nano CH4 ≈ 21.6 µs,
+> A2-Full ≈ 28.9 µs, A2-Lite ≈ 18.1 µs, LSTM 1×16 ≈ 7.7 µs, LSTM 2×8 ≈ 7.5 µs,
+> ConvNet ≈ 10.3 µs, Linear RF=2048 ≈ 0.3 µs. All ≤ 4.8% of the 1333 µs RT budget
+> (64 samples @ 48 kHz). The "Experiment Report" sections further down are
+> **historical point-in-time studies** documenting engineering decisions; their
+> absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate later optimizations and are
+> retained only to justify the decisions, not as current performance claims.
 
 *(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
@@ -181,7 +181,7 @@ both fidelity and performance metrics into a versioned, machine-readable baselin
 | Tool                                    | Statistical Rigor                    | Speed    | Scope                                                                                     |
 |:--------------------------------------- |:------------------------------------ |:-------- |:----------------------------------------------------------------------------------------- |
 | `utils/tests-performance-regression.sh` | Criterion two-sample t-test (p<0.05) | ~5-8 min | **Primary authority** — catches slow regressions within the safe zone (e.g., 100→150 µs). |
-| `quality-dashboard.sh --check`          | Conservative relative margin         | ~3-5 min | **Second line** — integrated with fidelity checks; 10% latency margin.                    |
+| `quality-dashboard.sh --check`          | Conservative relative margin         | ~3-5 min | **Second line** — integrated with fidelity checks; +10% latency tolerance.                |
 
 The two tools serve complementary roles:
 

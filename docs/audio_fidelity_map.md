@@ -328,34 +328,32 @@ Adaptive Compute, a CPU spike would cause audible dropouts (xruns).
 
 Every fidelity number in this document is backed by the golden-vector supply chain
 governed by [`tests/fixtures/README.md`](../tests/fixtures/README.md) — the canonical
-operational contract for measurement fixtures. It defines:
+operational contract for measurement fixtures.
 
-- **The model↔golden catalog** (real community captures vs. synthetic generator fixtures,
-  v1 48 kHz + v2 multi-SR goldens) and the regeneration workflow
-  (`tests/fixtures/golden_gen_build.sh`, pinned NAMcore commit in `variables.env`).
-- **The freshness manifest** (`.golden_manifest.sha256`) — enforced as a hard gate by
-  `utils/tests-quick.sh`: a modified `.nam` without a regenerated golden fails the suite.
-- **Per-model calibrated thresholds** (SNR/ESR/MR-STFT), meta-audited by
-  `tests/models/threshold_calibration.rs` (anti-placebo rules, mandatory `// Measured:`
-  provenance comments).
+| Layer                               | Mechanism                                                                                                   | Hard-fail gate                |
+|:----------------------------------- |:----------------------------------------------------------------------------------------------------------- |:----------------------------- |
+| **Layer 0 — Generation pipeline**   | `golden_gen_build.sh` + `CATALOG` array, pinned NAMcore commit in `variables.env` (`1f42f88`, tag `v0.5.4`) | —                             |
+| **Layer 1 — Pre-committed goldens** | `tests/golden_vectors.rs` — compares Rust output against committed `.bin` files; no C++ toolchain required  | `utils/tests-quick.sh` Fase 2 |
+| **Layer 2 — Live cross-validation** | `tests/parity/cpp_parity.rs` (`#[ignore]`, run via `utils/tests-long.sh`)                                   | `utils/tests-long.sh`         |
+
+**Freshness manifest:** `tests/fixtures/.golden_manifest.sha256` — enforced as a hard gate by
+`utils/tests-quick.sh`: a modified `.nam` without a regenerated golden fails the suite.
+
+**Per-model calibrated thresholds** (SNR/ESR/MR-STFT) are meta-audited by
+`tests/models/threshold_calibration.rs` (anti-placebo rules, `// Measured:` provenance comments).
 
 Numbers quoted here without a matching catalog entry + manifest hash should be treated
-as historical, not current. The live view is `utils/quality-dashboard.sh`.
+as historical. The live view is `utils/quality-dashboard.sh`.
 
 ---
 
 ## 9. Historical Context (Histórico)
 
-Decisions on fidelity, trade-offs, and optimization are catalogued below:
-
-- **SQ5 PoC (2026-07-06):** Removed the F16C weight compression/decompression feature because the runtime decoding overhead on x86-64-v3 outweighed the L1/L2 cache compression benefits for LSTM topologies, and f16c quantization was shown to introduce unnecessary interoperability drift. Native `f32` weights became the default.
-- **Sprint S6 Resampler Optimization:** Discarded the dual resampler quality settings (Standard/HQ). HQ (64-tap minimum-phase Kaiser sinc) was made permanent since the lighter 32-tap resampler only saved ~40 ns per block while severely degrading the signal-to-noise ratio from ≥100 dB to ~24 dB.
-- **Épico β / Sprint B1 Activation & Gate Updates:** Standardized the exact-grade activation mode runtime dispatch across all topologies (WaveNet, LSTM, ConvNet) using Taylor-based exp kernels and degree-6 minimax tanh — now the universal `Standard` default.
-- **Sprint S10 FiLM Parity Correction (2026-07-10):** Resolved the long-standing A2 FiLM interop gap. The Python synthetic weight generator was corrected to apply the standard `+1.0` bias to the scale channels of the FiLM layer (identity-biased initialization). This collapsed the interop gap from SNR 18–36 dB to standard float32 precision limits (SNR 138+ dB, ESR ~1e-14) against the C++ Eigen path. A zero-biased chaos stress model (`wavenet_a2_film_chaos_stress`) was retained to verify engine consistency under numerical stress.
-- **Sprint S3 FiLM Bug Correction (2026-07-10):** Three production bugs (B1/B2/B3) in `input_mixin_post_film` and `layer1x1_post_film` were corrected — ordering errors where FiLM modulated already-accumulated buffers (conv+mixin, input+l1x1) instead of isolated signals, and `layer1x1_post_film` was incorrectly applied for all gating modes instead of only `BLENDED`. The 2 deactivated slots were restored to the fixtures, yielding full 4-slot coverage (previously only 2 slots were tested). Final measurements against C++ golden (all metrics pass calibrated gates at 120 dB SNR / 1.0e-11 ESR):
-  - `wavenet_a2_film_full` (CH=8): **SNR 139.4 dB**, **ESR 1.15e-14**
-  - `wavenet_a2_film_lite` (CH=3): **SNR 124.2 dB**, **ESR 3.83e-13**
-  - `wavenet_a2_film_chaos_stress` (CH=3): SNR 139.0 dB, ESR 1.25e-14
+- **SQ5 (2026-07-06):** Removed f16c weight compression; native f32 became default. LSTM per-sample latency improved 10–12% due to simpler GEMV kernel dispatch.
+- **Sprint S6:** Discarded dual resampler quality; 64-tap HQ became permanent (32-tap degraded SNR from ≥100 dB to ~24 dB while saving only ~40 ns).
+- **Épico β / Sprint B1:** Standard (exact-grade) activation mode dispatched across all topologies, universal default.
+- **Sprint S10 (2026-07-10):** A2 FiLM interop gap (SNR 18–36 dB) collapsed to float32 precision limits (SNR 124–139 dB) after correcting the synthetic weight generator's `+1.0` identity bias.
+- **Sprint S3 (2026-07-10):** Three FiLM bugs (B1/B2/B3) fixed; all 4 FiLM slots active. Final: FiLM Full SNR 139.4 dB, FiLM Lite SNR 124.2 dB, Chaos Stress SNR 139.0 dB.
 
 ---
 

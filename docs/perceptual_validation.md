@@ -653,28 +653,24 @@ absolute reference answers "How much quality did we lose by using f32?"
 For WaveNet, ESR(vs NAMCore) ≈ 1e-13 and ESR(vs f64 oracle, prewarm-paired) =
 6.13e-14 (−132 dB) — virtually indistinguishable from the numerical floor.
 
-For LSTM, the relationship is **model-dependent** — it is incorrect to quote a
-single "LSTM" figure:
+For LSTM, the relationship is **model-dependent**. In `Standard` (exact-grade, universal default) mode:
 
-| Model          | ESR vs NAMCore  | ESR vs f64 oracle (paired) | Note                             |
-| -------------- | --------------- | -------------------------- | -------------------------------- |
-| BossLSTM-1x16  | 2.59e-2 (−15.9) | 5.06e-2 (−13.0)            | Absolute floor *exceeds* interop |
-| BossLSTM-2x8   | 3.88e-3 (−24.1) | 1.73e-3 (−27.6)            | Interop ~2.2× absolute floor     |
-| lstm.nam (H=3) | 1.18e-3 (−29.3) | 3.41e-3 (−24.7)            | Interop ~0.35× absolute floor    |
+| Model          | ESR vs NAMCore | ESR vs f64 oracle (paired) | Note                            |
+| -------------- | -------------- | -------------------------- | ------------------------------- |
+| BossLSTM-1x16  | 1.42e-11       | 5.06e-2 (−13.0)            | Absolute floor exceeds interop  |
+| BossLSTM-2x8   | 1.67e-11       | 1.73e-3 (−27.6)            | Interop ~10,000× absolute floor |
+| lstm.nam (H=3) | 8.30e-13       | 3.41e-3 (−24.7)            | Interop ~0.24× absolute floor   |
 
-The dominant error source for BossLSTM-1x16 is **Padé activation approximation**
-(ΔESR = 4.81e-2 of total 5.06e-2, per Sprint 2 Tarefa 1.3 decomposition), not
-f16c weight quantization. Because both NAM-rs and NAMCore C++ share the same
-Padé/minimax approximation class, the interop gap (2.59e-2) is *lower* than
-the absolute precision floor (5.06e-2) — both engines diverge more from the
-ideal than from each other.
+With `Fast` (Padé) activations, the dominant error source for BossLSTM-1×16 is
+activation approximation (ΔESR ≈ 4.81e-2 of total 5.06e-2), not weight quantization.
+Because both NAM-rs and NAMCore C++ share the same Padé/minimax approximation class
+when both are in Fast/native modes, the interop gap is *lower* than the absolute
+precision floor — both engines diverge more from the ideal than from each other.
 
-When both engines use `Standard` (exact-grade) activations (poly-based exact approximations
-instead of Padé/minimax), the interop gap collapses to ~5.05e-11 (−103.0 dB)
-for 1x16 and ~4.02e-12 (−114.0 dB) for 2x8 (Sprint 2 Tarefa 2.2), confirming
-that the Padé approximation is the root-cause for the interop divergence as
-well — different Padé/minimax implementations across languages produce slightly
-different recurrent state trajectories that diverge over 240k steps.
+With `Standard` activations (poly-based exact approximations, universal default),
+the interop gap collapses to ~1e-11, confirming that the Padé approximation is the
+root cause of Fast-mode interop divergence: different Padé/minimax implementations
+across languages produce different recurrent state trajectories over 240k steps.
 
 Tests: `tests/parity/reference_oracle_f64.rs` (oracle, anchors, decomposition, t33 diagnostics), `tests/models/golden_vectors.rs` (v2 golden vectors).
 
@@ -690,12 +686,12 @@ approximation error.
 The measured ESR converges to a remarkably uniform floor across feed-forward
 architectures:
 
-| Architecture             | Anchor ESR       | ESR (dB) |
-| ------------------------ | ---------------- | -------- |
-| WaveNet (all SKUs)       | ~5.00 × 10⁻¹⁶    | −153     |
-| ConvNet                  | ~5.00 × 10⁻¹⁶    | −153     |
-| A2 / A2-FiLM / A2-Dyn    | ~5.00 × 10⁻¹⁶    | −153     |
-| LSTM (all SKUs)          | ~3.49 × 10⁻³⁰    | −295     |
+| Architecture          | Anchor ESR    | ESR (dB) |
+| --------------------- | ------------- | -------- |
+| WaveNet (all SKUs)    | ~5.00 × 10⁻¹⁶ | −153     |
+| ConvNet               | ~5.00 × 10⁻¹⁶ | −153     |
+| A2 / A2-FiLM / A2-Dyn | ~5.00 × 10⁻¹⁶ | −153     |
+| LSTM (all SKUs)       | ~3.49 × 10⁻³⁰ | −295     |
 
 **Why ~5.00e-16 for feed-forward architectures.** The f64 machine epsilon is
 ε = 2⁻⁵² ≈ 2.22 × 10⁻¹⁶. Two implementations of the same algorithm — Rust f64
@@ -775,66 +771,57 @@ The Sprint 2 investigation (Tarefa 2.3) confirmed:
 
 ### Empirical evidence
 
-All measurements at 48 kHz, stress signal v2 (5 s, 240k samples), golden_vectors
-vs NAMCore C++ (pre-recorded golden vectors):
+All measurements at 48 kHz, stress signal v2 (5 s, 240k samples).
 
-| Model          | ESR (vs NAMCore)   | ESR (vs f64 oracle, paired) | SNR (dB) | MR-STFT | Dominant error source           |
-| -------------- | ------------------ | --------------------------- | -------- | ------- | ------------------------------- |
-| BossLSTM-1×16  | 2.59e-2 (−15.9 dB) | 5.06e-2 (−13.0 dB)          | 15.5     | 0.56    | Padé act. (95%: 4.81e-2 ΔESR)   |
-| BossLSTM-2×8   | 3.88e-3 (−24.1 dB) | 1.73e-3 (−27.6 dB)          | 24.1     | 0.56    | Padé act. (~100%: 1.74e-3 ΔESR) |
-| lstm.nam (H=3) | 1.18e-3 (−29.3 dB) | 3.41e-3 (−24.7 dB)          | 29.3     | 0.64    | f32 accumulation + bf16 quant.  |
+| Model          | Mode     | ESR (vs NAMCore)     | ESR (vs f64, paired) | Dominant error source          |
+| -------------- | -------- | -------------------- | -------------------- | ------------------------------ |
+| BossLSTM-1x16  | Fast     | 2.59e-2 (−15.9 dB)   | 5.06e-2 (−13.0 dB)   | Padé act. (95%: 4.81e-2 ΔESR)  |
+| BossLSTM-1x16  | Standard | 1.42e-11 (−108.5 dB) | 5.06e-2 (−13.0 dB)\* | f32 accumulation               |
+| BossLSTM-2x8   | Fast     | 3.88e-3 (−24.1 dB)   | 1.73e-3 (−27.6 dB)   | Padé act. (~100%)              |
+| BossLSTM-2x8   | Standard | 1.67e-11 (−107.8 dB) | 1.73e-3 (−27.6 dB)\* | f32 accumulation               |
+| lstm.nam (H=3) | Fast     | 1.18e-3 (−29.3 dB)   | 3.41e-3 (−24.7 dB)   | f32 accumulation + bf16 quant. |
+| lstm.nam (H=3) | Standard | 8.30e-13 (−120.8 dB) | 3.41e-3 (−24.7 dB)\* | f32 accumulation               |
 
-\* Oráculo f64 measured on short sweep (256 samples); pad for long-duration.
+\* f64 oracle floor is invariant to activation mode — it measures distance from f64 ideal, not interop.
 
-The ESR grows sub-quadratically with sequence length (not ∝N²), confirming the
-forget gate limits accumulation to a rate-dependent steady-state.
+The ESR grows sub-quadratically with sequence length, confirming the forget gate limits
+accumulation to a rate-dependent steady-state.
 
-**Key finding (Sprint 2, Tarefa 2.4):** When Rust is configured in `Standard` (exact-grade) mode and C++ NAMCore runs in its default mode (which also uses native math: `using_fast_tanh = false`), the interop gap collapses to near-zero (numerical floor):
+**Key finding:** When Rust is configured in `Standard` (exact-grade, universal production default)
+and C++ NAMCore runs in its default mode (`using_fast_tanh = false`), the interop gap collapses
+to near-zero. This proves the Fast-mode interop gap is caused by different math precision across
+engines (Rust Padé/minimax vs C++ native math) producing diverging recurrent state trajectories,
+not by fundamental architectural incompatibility.
 
-- `BossLSTM-1×16`: ESR(vs NAMCore) ≈ 1.06e-10 (−99.7 dB)
-- `BossLSTM-2×8`: ESR(vs NAMCore) ≈ 4.02e-12 (−114.0 dB)
-- `lstm.nam` (H=3): ESR(vs NAMCore) = ~1e-12 (numerical floor)
-
-This proves the interop gap in `Fast` mode is caused by *different math precision/activation formulations across engines* — Rust uses FastMath Padé/minimax approximations while C++ uses standard native math, producing diverging recurrent state trajectories — not by a fundamental architectural incompatibility. When activation functions are matched (Standard in Rust vs default native in C++), both engines achieve virtually identical outputs.
-
-> Historical note: earlier versions of this table conflated per-model interop and
-> oracle figures across different models; the reclassification audit (Sprint 2,
-> Tarefa 2.4) resolved this — the values above are per-model and current.
+> [!NOTE]
+> Pre-Sprint-2 classification conflated per-model interop and oracle figures across
+> different models. The values above are per-model and current as of 2026-07-13,
+> with both Fast and Standard modes shown.
 
 ### Hypotheses ruled out
 
-Systematic testing ruled out: band-edge filtering (no DC-block in pipeline),
-denormal dither (±1e-11 symmetric, −220 dBFS), aliasing from non-linearity
-(ASR = −68.8 dB at 48 kHz), and harness resample path (48 kHz bypasses resampler).
-None of these contribute significantly to the observed ESR.
+Systematic testing ruled out: band-edge filtering, denormal dither (±1e-11 symmetric),
+aliasing (ASR = −68.8 dB at 48 kHz), and harness resample path (48 kHz bypasses).
+None contribute significantly to the observed ESR.
 
 ### Classification
 
-The divergence has two distinct layers, and the relationship between them is
-**model-dependent** — a single "LSTM" figure is misleading:
+**Interop (nam-rs vs NAMCore):** In `Fast` mode, Rust uses Padé/minimax approximations while
+NAMCore C++ uses native activations — the observed gap is accumulated recurrent drift between
+two different math implementations. In `Standard` (exact-grade, universal default) mode, both
+use native-grade math and interop collapses to near-bit-exact (~1e-11 to ~1e-12).
 
-**1. Interop (nam-rs vs NAMCore):** Golden vector measurements (v2, 240k steps
-@ 48 kHz). NAMCore C++ default mode executes with native activations (`using_fast_tanh = false`).
-In `Fast` mode, Rust uses FastMath approximations (Padé/minimax), which introduces a math discrepancy.
-The observed interop gap of `2.59e-2` (for `BossLSTM-1×16`) is the accumulated recurrent drift between FastMath (Rust) and native (C++) math.
+**Absolute correction (production f32 vs f64 ideal):** Prewarm-paired decomposition
+(24k prewarm + 4096 acoustic samples). For BossLSTM-1×16, Padé activation dominates
+(ΔESR = 4.81e-2, 95% of total). For BossLSTM-2×8, Padé accounts for ~100%. For
+lstm.nam (H=3), the floor is dominated by f32 accumulation — pre-activations stay
+within Padé/minimax calibration range.
 
-When Rust `Standard` (exact-grade) mode is enabled, it uses native activations matching NAMCore C++'s default native activations, and the interop gap collapses to near-bit-exact (~1e-11 to ~1e-12). This confirms that differing activation formulations (FastMath approximations vs native math) are the sole source of the observed interop gap.
-
-**2. Absolute correction (production f32 vs f64 ideal):** Prewarm-paired
-decomposition (Sprint 2 Tarefa 1.3, 24k prewarm + 4096 acoustic samples).
-For `BossLSTM-1×16`, Padé activation dominates (ΔESR = 4.81e-2 / 5.06e-2 =
-95% of total error). For `BossLSTM-2×8`, Padé accounts for ~100% of the
-smaller total (ΔESR = 1.74e-3 / 1.73e-3). For `lstm.nam` (H=3), the floor
-(3.41e-3) is dominated by f16c/bf16 weight effects and f32 accumulation
-— the pre-activations stay within Padé/minimax calibration range.
-
-**Summary of per-model classification:**
-
-| Model          | Interop vs Absolute | Root cause                         | Fixable?                                                      |
-| -------------- | ------------------- | ---------------------------------- | ------------------------------------------------------------- |
-| BossLSTM-1×16  | Interop < Absolute  | Padé act. out of calibration range | `Standard` reduces vs-Namcore to ~1e-11; vs-f64 to ~2.5e-3    |
-| BossLSTM-2×8   | Interop > Absolute  | Padé act. at edge of range         | `Standard` reduces vs-Namcore to ~1e-12; vs-f64 to near floor |
-| lstm.nam (H=3) | Interop < Absolute  | f32 accumulation + bf16 quant.     | Kahan accumulation in head; Padé negligible here              |
+| Model          | Interop vs Absolute | Root cause                         | Fix                                                 |
+| -------------- | ------------------- | ---------------------------------- | --------------------------------------------------- |
+| BossLSTM-1x16  | Interop < Absolute  | Padé act. out of calibration range | `Standard` → vs-Namcore ~1.4e-11; vs-f64 ~2.5e-3    |
+| BossLSTM-2x8   | Interop > Absolute  | Padé act. at edge of range         | `Standard` → vs-Namcore ~1.7e-11; vs-f64 near floor |
+| lstm.nam (H=3) | Interop < Absolute  | f32 accumulation                   | Kahan accumulation in head; Padé negligible here    |
 
 The pre-T8.2 conclusion *"both diverge from the ideal by ~1.0"* was contaminated
 by the oracle's unmatched state. The pre-Sprint-2 conclusion *"interop gap 7×
@@ -858,31 +845,21 @@ oracle floor for `lstm.nam` (H=3). The corrected picture above is per-model.
   not to long-duration stress v2 — where `BossLSTM-1×16` has a floor of
   5.06e-2, far exceeding this gate (as expected for its architecture).
 
-### Fixability verdict (final, post-Sprint-2)
+### Fixability verdict
 
-Earlier conclusions ("ESR ≈ 1.0 vs ideal, not fixable without changing the model
-format" — T3.3) were twice corrected: the "~1.0" was an oracle prewarm-state artifact,
-and the true root cause for the production-relevant BossLSTM models is **Padé/minimax
-activation approximation error** (f16c quantization was eliminated in SQ5.5). The
-absolute floor for `BossLSTM-1×16` is 5.06e-2 (−13.0 dB), 95% Padé-dominated.
-
-**Fixability:**
+**Interop is resolved.** `Standard` (exact-grade) is the universal production default — the
+interop gap for all LSTM models is ~1e-11 against NAMCore. `Fast` (Padé/minimax) remains an
+explicit opt-in for CPU-constrained scenarios.
 
 | Scope                   | BossLSTM-1×16           | BossLSTM-2×8              | lstm.nam (H=3)              |
 | ----------------------- | ----------------------- | ------------------------- | --------------------------- |
-| vs NAMCore (interop)    | `Standard` → 5.05e-11 ✓ | `Standard` → 4.02e-12 ✓   | Already ~1e-3, near floor   |
+| vs NAMCore (interop)    | `Standard` → 1.42e-11 ✓ | `Standard` → 1.67e-11 ✓   | Already ~1e-12              |
 | vs f64 ideal (absolute) | `Standard` → ~2.5e-3 ✓  | `Standard` → near floor ✓ | ~3.4e-3, f32-format limited |
-| CPU cost of Standard    | Higher (poly exp-based) | Higher                    | Not needed here             |
 
-The verdict for BossLSTM models: **the interop gap IS fixable via `Standard`
-(exact-grade) activation mode** (already implemented in NAM-rs). As of Sprint 2
-(Tarefa 1.2), `Standard` is the universal default for all models — the historical
-question of whether to make exact-grade mode the default for `BossLSTM` was resolved
-by making it the default for *every* topology. `Fast` (Padé/minimax) remains an
-explicit opt-in for CPU-constrained scenarios. The `.nam` format itself is not the
-bottleneck — the bottleneck is the *choice* of Padé/minimax approximations for models
-whose pre-activations exceed the calibration range. NAMCore C++ uses the same
-approximation class, so format-level change is not required for interop parity.
+The `.nam` format is not the bottleneck — the bottleneck was the *choice* of Padé/minimax
+approximations for models whose pre-activations exceed the calibration range. NAMCore C++ uses
+the same approximation class in its default mode, so format-level change is not required for
+interop parity.
 
 ---
 
