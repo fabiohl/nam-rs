@@ -364,7 +364,7 @@ Remover `rt_constraints` do quick; deduplicar `quick_parity_*` HF/não-HF e limp
 mortos; corrigir status SKIPPED no long. Critério de aceite: quick ≥ 15 s mais rápido (quente),
 mesma cobertura efetiva, AUDIT SUMMARY exibe SKIPPED corretamente.
 
-### EP2 — Dashboard correto e determinístico [DOING]
+### EP2 — Dashboard correto e determinístico [DONE]
 
 Achados: **F-S2**, **F-S4**, **F-S3**, **F-I1**, **F-I2**, **F-S6**.
 Sequência: LC_ALL=C (hotfix) → entrada InputMixinPre no summary table → emissão JSONL +

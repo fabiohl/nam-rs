@@ -155,7 +155,7 @@ Este documento detalha o planejamento ágil para execução do épico **EP1**, f
 
 ---
 
-### [ ] Tarefa 2.7: Documentar Tolerâncias no Contrato de Qualidade
+### [x] Tarefa 2.7: Documentar Tolerâncias no Contrato de Qualidade
 
 * **Achado Associado:** [F-S6](file:///home/fabio/nam-rs/TODO-findings.md#L289) — Tolerâncias do contrato não documentadas.
 * **Complexidade/Risco:** Baixo.
