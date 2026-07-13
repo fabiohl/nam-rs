@@ -210,7 +210,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 
 ---
 
-### [ ] Tarefa 3.3: Expansão da Cobertura do Manifesto de Freshness (F-X3)
+### [x] Tarefa 3.3: Expansão da Cobertura do Manifesto de Freshness (F-X3)
 
 * **Achado Associado:** [F-X3](file:///home/fabio/nam-rs/TODO-findings.md#L113) — Fixtures sem cobertura do freshness manifest.
 * **Complexidade/Risco:** Médio.
@@ -224,6 +224,7 @@ Este sprint aborda a governança, reprodutibilidade e integridade do pipeline de
 * **Critério de Aceitação:**
   * Geração do manifesto inclui todos os arquivos de dados sintéticos e de referência, além do hash SHA256 de seus respectivos scripts geradores.
   * O gate de freshness valida a árvore completa e detecta desatualização nos geradores ou fixtures de suporte.
+  * **Concluído (2026-07-13):** `golden_gen_build.sh` agora adiciona duas novas seções ao manifesto: `# FIXTURES` (31 arquivos: golden_cabsim_cpp, mrstft, resampler, ebu_3341, stress_signal, spectral_fidelity, f64_anchors) e `# GENERATORS` (11 scripts: render_ir.cpp, golden_gen_build.sh, generate_*.py, gen_mrstft_golden.py, validate_oracle_f64.py, gen_stress.rs, wav_to_golden.rs, check-model.py). `check_freshness` em `tests-quick.sh` e `tests-long.sh` foi estendido com parser stateful (`SECTION=catalog|fixtures|generators`) — fixtures com hash divergente causam hard-fail, generators com hash divergente emitem warning não bloqueante.
 
 ---
 
