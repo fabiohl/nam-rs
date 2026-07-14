@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# 🎸 NAM-rs 2.0
+# 🎸 NAM-rs 3.0
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
@@ -15,16 +15,16 @@ Two operation modes are available: **Standalone** (native PipeWire executable, w
 
 ## 🧠 Supported Models
 
-NAM-rs natively supports Neural Amp Modeler (A1 and A2 architectures) and Impulse Response (.wav) convolution files.
+NAM-rs natively supports Neural Amp Modeler (A1 and A2 architectures), ConvNet architectures, and Impulse Response (.wav) convolution files.
 
-> NOTE: The "A2 Architecture" is currently in Beta stage.
-
-* **Static Mode (Ultra Performance):** *Const Generics* structures sized at compile time.
-  * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4), and Nano (4×2)
+* **Const-Generic Profiles (Static Mode - Ultra Performance):** *Const Generics* structures sized at compile time.
+  * **WaveNet A1:** Standard (16 channels), Lite (12 channels), Feather (8 channels), and Nano (4 channels)
   * **WaveNet A2:** Full (8 channels) and Lite (3 channels)
-  * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 40: `1×8`, `1×12`, `1×16`, `1×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
-  * **Linear:** FIR-based model (dot product of input history with weights + bias)
-  * Non-catalogued geometries fail to load with a clear diagnostic error.
+  * **LSTM:** 1 and 2 Layers (Hidden Size 3 to 40: `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
+  * **Linear:** FIR-based model (dot product of input history with weights + bias or Partitioned FFT convolution)
+* **Dynamic Fallback Profiles (Free-Shape Mode):**
+  * **WaveNet Dyn**, **LSTM Dyn**, **WaveNet A2 Dyn / Cascade**, and **ConvNet**: Runtime-dimensioned topologies that still execute with zero allocations and absolute real-time safety.
+  * **Slimmable Container:** Bundles multiple submodels for dynamic quality transitions.
 
 ---
 
@@ -33,7 +33,7 @@ NAM-rs natively supports Neural Amp Modeler (A1 and A2 architectures) and Impuls
 NAM-rs adopts an opinionated architecture focused on four pillars:
 
 1. **Native Linux & Modern Architecture:** Standalone mode integrates directly with the PipeWire server as a native client, managing its audio ports directly in PipeWire's *Graph Engine*. Plugin mode supports only the CLAP format, which is highly efficient and modern. We chose not to support legacy (LV2) or overly complex (VST) formats.
-2. **Ultra-Fast SIMD Inference:** The baseline target is `x86-64-v3` (AVX2 + FMA are mandatory). Activation functions (tanh, sigmoid) use FastMath approximations (Padé + Newton-Raphson rsqrt) in 256-bit registers. AVX-512 multiversioning is implemented via `Avx512Math` for ZMM hardware (Intel Xeon, AMD Zen 4+), processing 16 floats per instruction. WaveNet operates in **Batch GEMM** (blocks of up to 64 frames per invocation).
+2. **Ultra-Fast SIMD Inference:** The baseline target is `x86-64-v3` (AVX2 + FMA are mandatory). Activation functions (tanh, sigmoid) use FastMath approximations (Padé + Newton-Raphson rsqrt) in 256-bit registers. AVX-512 multiversioning is implemented via `Avx512Math` and `Avx512VnniBf16Math` for ZMM hardware (Intel Xeon, AMD Zen 4+), utilizing native BF16 hardware dot products (via VNNI/dpbf16 instructions) to process 16 floats or 32 bf16 values per instruction. WaveNet operates in **Batch GEMM** (blocks of up to 64 frames per invocation).
 3. **Real-Time Determinism:** The DSP thread is promoted to `SCHED_FIFO` with strict CPU affinity (*Core Affinity*), preventing core migrations and cache misses. CLI ↔ DSP communication uses a 128-byte aligned SPSC ring buffer. **Zero heap allocations** are made during audio processing.
 4. **Pure Rust:** The choice of Rust is not just about "hype". Besides high performance, being a compiled language structurally similar to C/C++, it offers a modern, expressive syntax with compile-time safety and performance guarantees. For example, static WaveNet variants in `src/models/wavenet/` use const generics so kernel size and channel count are known at compile time, enabling aggressive loop unrolling by LLVM.
 
@@ -44,7 +44,7 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 Our automated Quality Dashboard guarantees that NAM-rs delivers top-tier performance without sacrificing a single drop of audio fidelity:
 
 * **Zero-Compromise Fidelity:** Generates bit-exact parity with the canonical NAMCore C++ reference. WaveNet models achieve identical output (differences in the imperceptible `~1e-14` range), and BossLSTM models hit `0.00e0` exact match. You are hearing the exact math the neural network intended.
-* **Extreme CPU Efficiency:** Real-time audio demands ruthless performance. A full WaveNet Standard CH16 model processes a 64-sample block in just **42 µs**—consuming only **3.2%** of the strict 1.33 ms real-time deadline. Lighter models like LSTM 1x16 take as little as **0.5%**. This leaves massive headroom for 4x oversampling or running dozens of plugins simultaneously.
+* **Extreme CPU Efficiency:** Real-time audio demands ruthless performance. A full WaveNet Standard CH16 model processes a 64-sample block in just **42 µs**—consuming only **3.1%** of the strict 1.33 ms real-time deadline. Lighter models like LSTM 1x16 take as little as **0.6%**. This leaves massive headroom for 4x oversampling or running dozens of plugins simultaneously.
 * **Rock-Solid Stability:** The engine is built for the stage. Stress tests prove the Lock-Free SPSC architecture can handle 1,000 concurrent model hot-swaps under heavy load with zero heap allocations on the RT thread. No clicks, no pops, no dropouts.
 
 ---
@@ -57,10 +57,10 @@ Our automated Quality Dashboard guarantees that NAM-rs delivers top-tier perform
 
 * An `x86-64-v3` processor with AVX2 and FMA support (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs from 2019 onwards are highly recommended for NAM neural networks.
 
-* A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
+* A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 and above was used during the development.
 
 * Development packages:
-  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find`
+  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) llvm-22-tools jq ripgrep fd-find`
 
   > [!NOTE]
   >
@@ -137,7 +137,7 @@ This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModele
 # Standard tests (< 3 min):
 ./utils/tests-quick.sh
 
-# Long-duration audit (± 38 min, requires cmake + g++/clang++):
+# Long-duration audit (± 50 min, requires cmake + g++/clang++):
 ./utils/tests-long.sh
 ```
 
@@ -149,10 +149,10 @@ This clones [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModele
 #### Standalone Mode (CLI)
 
 ```bash
-nam-rs /path/to/model.nam               # Default: no oversampling (live mode — lowest latency)
-nam-rs --oversample 2x model.nam         # 2× oversampling (12-sample latency)
-nam-rs --oversample 4x model.nam         # 4× oversampling (24-sample latency, maximum fidelity)
-nam-rs --oversample off --cab cab.wav model.nam  # Disable oversampling + load IR
+nam-rs -m /path/to/model.nam               # Default: no oversampling (live mode — lowest latency)
+nam-rs --oversample 2x -m model.nam         # 2× oversampling (12-sample latency)
+nam-rs --oversample 4x -m model.nam         # 4× oversampling (24-sample latency, maximum fidelity)
+nam-rs --oversample off --cab cab.wav -m model.nam  # Disable oversampling + load IR
 ```
 
 The `--oversample` flag (alias `--os`) accepts `off`, `2x`, or `4x`. Default is `off` for live monitoring (zero overhead, minimum latency). Use `4x` for offline rendering, mixdown, or critical listening — the half-band FIR oversampling engine suppresses aliasing from non-linear neural activations (tanh, sigmoid) with >100 dB stop-band rejection per stage.
@@ -240,13 +240,14 @@ utils/build-release.sh
 * [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics and the regression gate
 * [docs/research-references.md](docs/research-references.md) — Annotated bibliography backing the DSP/perceptual design decisions
 * [docs/functional-tests.md](docs/functional-tests.md) — Manual human QA checklist for the CLAP plugin
+* [docs/postmortem-libm-symbol-interposition.md](docs/postmortem-libm-symbol-interposition.md) — Post-mortem analysis of the dynamic symbol resolution (libm interposition) hang during initialization
 * [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector format, stress signal design, and regeneration instructions
 
 ---
 
 ## 🧪 Tests & Validation
 
-NAM-rs maintains a suite of approximately **350+ automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. The QA strategy rests on three independent, non-redundant oracles — each answers a fundamentally different question, and removing any one leaves a corresponding blind spot:
+NAM-rs maintains a suite of approximately **1,600+ automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. The QA strategy rests on three independent, non-redundant oracles — each answers a fundamentally different question, and removing any one leaves a corresponding blind spot:
 
 | Oracle                   | Question it answers                                            | What it anchors against                                    | Validation layer                |
 |:------------------------ |:-------------------------------------------------------------- |:---------------------------------------------------------- |:------------------------------- |
