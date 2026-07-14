@@ -163,6 +163,14 @@ pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64 {
         let fft = FftPlanner::<f64>::new(ws);
 
         let window: Vec<f64> = (0..ws)
+            // Symmetric (non-periodic) Hann window — denominator is (ws - 1)
+            // instead of ws. The symmetric variant places the zero samples at
+            // both endpoints, matching the original von Hann formulation and
+            // maximizing side-lobe rejection for general-purpose spectral
+            // analysis. The periodic variant (ws denominator, last sample
+            // ≠ zero) is designed for seamless overlap-add STFT resynthesis
+            // (COLA) but is not required here since MR-STFT is an analysis-
+            // only metric.
             .map(|n| 0.5 * (1.0 - (2.0 * std::f64::consts::PI * n as f64 / (ws - 1) as f64).cos()))
             .collect();
 

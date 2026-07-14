@@ -453,7 +453,7 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 
 ---
 
-### [ ] Tarefa 5.5: Documentação de Constantes, Janelamento e Fórmulas de Teste (F-T6)
+### [x] Tarefa 5.5: Documentação de Constantes, Janelamento e Fórmulas de Teste (F-T6)
 
 * **Achado Associado:** [F-T6](file:///home/fabio/nam-rs/TODO-findings.md#L206) — Precisão dos avaliadores de métricas.
 * **Complexidade/Risco:** Baixo (Documentação).
@@ -469,3 +469,8 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
   * [src/testing/spectral.rs](file:///home/fabio/nam-rs/src/testing/spectral.rs) — Documentar recomposição de energia Farina THD.
 * **Critério de Aceitação:**
   * Comentários explicativos claros e citações adicionadas aos respectivos arquivos.
+* **Concluído (2026-07-13):**
+  * **perceptual.rs:166:** Comentário explicando variante simétrica (`ws-1`) da janela Hann — denominador `ws-1` coloca zeros nas duas extremidades, maximizando rejeição de side-lobes para análise espectral (vs variante periódica com denominador `ws`, projetada para COLA em resíntese STFT).
+  * **aliasing.rs:172:** Comentário citando Sato & Smith (DAFx 2025) para o threshold 6× median noise-floor — fator acomoda leakage espectral e flutuações estatísticas do piso de ruído em espectros FFT janelados de sinais finitos.
+  * **aliasing.rs:185:** Comentário expandido documentando tolerância de 1.5 bins para classificação harmônico/aliased: (a) leakage espectral de picos harmônicos, (b) granularidade de bin-width independente de N, (c) alinhamento não-inteiro de harmônicos com centros de bin FFT. Equivale a margem ±1 bin + ½ bin slack (Sato & Smith DAFx 2025).
+  * **spectral.rs:332:** Comentário explicando que THD total é computado somando porcentagens por ordem em quadratura (equivalente a usar energias cruas), permitindo relatório harmônico por ordem consistente com a expressão analítica de Farina.

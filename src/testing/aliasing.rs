@@ -168,6 +168,11 @@ pub fn compute_asr(output: &[f32], f0: f64, sample_rate: u32) -> AsrResult {
     let noise_floor = median(&mag);
 
     // 5. Peak detection threshold
+    //    Sato & Smith (DAFx 2025) propose 6× the median noise floor as a
+    //    robust peak-detection threshold for harmonic/aliasing separation in
+    //    ASR measurements. The factor accounts for spectral leakage smearing
+    //    adjacent bins and for statistical noise-floor fluctuations inherent
+    //    to windowed FFT magnitude spectra of finite-length signals.
     let max_mag = mag.iter().cloned().fold(0.0f64, f64::max);
     let peak_threshold = (noise_floor * 6.0).max(max_mag * 1e-4);
 
@@ -180,8 +185,19 @@ pub fn compute_asr(output: &[f32], f0: f64, sample_rate: u32) -> AsrResult {
     }
 
     // 7. Classify peaks: harmonic vs aliased
-    //    Tolerance: 1.5 bins in Hz (accounts for spectral leakage and slight
-    //    detuning of non-harmonic components near harmonic frequencies).
+    //    Tolerance: 1.5 bins in Hz. This accounts for:
+    //    (a) spectral leakage — energy from sharp harmonic peaks smears into
+    //        neighboring FFT bins (especially with high-CF Blackman-Harris
+    //        windowing on high-Q harmonics),
+    //    (b) bin-width granularity — at low FFT sizes a single bin may be
+    //        several Hz wide, so a fixed fractional-bin tolerance decouples
+    //        classification accuracy from N (the FFT length),
+    //    (c) non-integer harmonic alignment — the harmonic frequency
+    //        (k × f0) does not generally coincide with an FFT bin center,
+    //        requiring a ± tolerance to avoid misclassifying true harmonics
+    //        as aliased components.
+    //    The 1.5-bin width matches Sato & Smith (DAFx 2025): a ±1-bin margin
+    //    plus ½-bin slack for the leakage shoulder.
     let tolerance = 1.5 * bin_width;
     let mut harmonic_energy = 0.0f64;
     let mut aliased_energy = 0.0f64;

@@ -329,7 +329,17 @@ where
         thd_by_order.push((*k, thd));
     }
 
-    // Compute total THD (sum of orders ≥ 2)
+    // Compute total THD (sum of orders ≥ 2).
+    //
+    // The Farina method yields harmonic distortion as per-order percentages
+    // relative to the fundamental: THD_h% = 100 × √(E_h / E_1). Computing
+    // total THD by summing these percentages in quadrature
+    // (THD_total% = 100 × √(Σ (THD_h%/100)²)) is mathematically equivalent
+    // to computing it from raw energies
+    // (THD_total% = 100 × √(Σ E_h / E_1)), but using the per-order
+    // percentages directly allows consistent per-harmonic reporting and
+    // independent verification of each THD_h% value against Farina's
+    // analytical expression.
     let thd_total_percent = if thd_by_order.len() > 1 {
         let sum_sq: f64 = thd_by_order
             .iter()
