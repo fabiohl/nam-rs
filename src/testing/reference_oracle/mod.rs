@@ -9,11 +9,47 @@ use crate::models::a2::weights_layout::FILM_KEYS;
 pub(crate) use a2::oracle_a2_forward;
 pub(crate) use convnet::oracle_convnet_forward;
 pub(crate) use lstm::oracle_lstm_forward;
-pub(crate) use wavenet::oracle_wavenet_forward;
+pub(crate) use wavenet::{oracle_wavenet_all_channels, oracle_wavenet_forward};
 pub mod a2;
 pub mod convnet;
 pub mod lstm;
 pub mod wavenet;
+
+// =============================================================================
+// Condition DSP multi-channel forward
+// =============================================================================
+
+/// Compute the full multi-channel output of a `condition_dsp` sub-model.
+///
+/// Unlike `oracle_forward` (which always returns mono audio — 1 sample/frame),
+/// this function returns all head output channels in **interleaved** order
+/// (`[ch0_f0, ch1_f0, ..., chN_f0, ch0_f1, ...]`), matching the layout used
+/// by the Rust production engine (`condition_dsp_output`) and C++ NAMcore
+/// (`_condition_dsp_output_buffers`).
+///
+/// For LSTM sub-models the output is always mono (LSTM head has 1 output),
+/// so it returns `num_frames` samples — the caller's broadcast logic handles
+/// the dimensional mismatch identically to production code.
+pub(crate) fn oracle_condition_dsp_channels(
+    sub_model: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    match sub_model.architecture.as_str() {
+        "WaveNet" => {
+            if is_a2_model(sub_model) {
+                // A2 condition_dsp: fall back to single-channel oracle_forward
+                // (full A2 multi-channel support tracked in §4.4 of cpp_parity_map.md).
+                oracle_a2_forward(sub_model, input, config)
+            } else {
+                oracle_wavenet_all_channels(sub_model, input, config)
+            }
+        }
+        "LSTM" => oracle_lstm_forward(sub_model, input, config),
+        "ConvNet" => oracle_convnet_forward(sub_model, input, config),
+        _ => vec![0.0; input.len()],
+    }
+}
 
 // =============================================================================
 // Precision Configuration

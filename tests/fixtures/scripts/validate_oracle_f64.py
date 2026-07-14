@@ -69,6 +69,16 @@ def write_output_bin(path: str, data: np.ndarray):
 # ── WaveNet f64 model ─────────────────────────────────────────────────────
 
 def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
+    """WaveNet forward pass in NumPy f64 — mono output."""
+    return _wavenet_core(model, x, all_channels=False)
+
+
+def wavenet_forward_all_channels(model: dict, x: np.ndarray) -> np.ndarray:
+    """WaveNet forward pass — all head output channels (condition_dsp)."""
+    return _wavenet_core(model, x, all_channels=True)
+
+
+def _wavenet_core(model: dict, x: np.ndarray, *, all_channels: bool) -> np.ndarray:
     """WaveNet forward pass in NumPy f64.
 
     Independent f64 implementation of the NAM WaveNet topology (cross-checked
@@ -90,6 +100,7 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
     a_head = [int(lc.get("head_size", 8)) for lc in layers]
     a_k = [int(lc.get("kernel_size", 3)) for lc in layers]
     a_dil = [lc.get("dilations", [1, 2, 4, 8]) for lc in layers]
+    a_cond = [int(lc.get("condition_size", 1)) for lc in layers]
 
     a_rf = [sum((a_k[ai] - 1) * d for d in a_dil[ai]) for ai in range(len(layers))]
     max_rf = max(a_rf) + 64
@@ -97,6 +108,41 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
 
     num_frames = len(x)
     cursor = 0
+
+    # ── condition_dsp sub-model (T1.2) ──
+    cond_dsp_out = None
+    if not all_channels and config.get("condition_dsp") is not None:
+        import copy
+        cond_model = copy.deepcopy(config["condition_dsp"])
+        dsp_arch = cond_model.get("architecture", None)
+        raw = None
+        if dsp_arch == "WaveNet":
+            dsp_cfg = cond_model.get("config", {})
+            dsp_layers_cfg = dsp_cfg.get("layers", [])
+            is_a2 = dsp_layers_cfg and dsp_cfg.get("head_scale") is not None
+            if is_a2 and len(dsp_layers_cfg) > 1:
+                is_a2 = any(
+                    l.get("head1x1", {}).get("active", False)
+                    or any(l.get(k, {}).get("active", False) for k, _ in FILM_KEYS)
+                    for l in dsp_layers_cfg
+                ) or (
+                    isinstance(dsp_layers_cfg[0].get("activation"), str)
+                    and dsp_layers_cfg[0].get("activation") not in ("Tanh", "HardTanh", "FastTanh")
+                )
+            if not is_a2:
+                raw = wavenet_forward_all_channels(cond_model, x)
+            else:
+                raw = forward_dispatch(cond_model, x)
+        elif dsp_arch == "LSTM":
+            raw = lstm_forward(cond_model, x)
+        else:
+            raw = forward_dispatch(cond_model, x)
+        if raw is not None:
+            first_cond = max(1, a_cond[0])
+            if first_cond > 1 and len(raw) == num_frames:
+                cond_dsp_out = np.tile(raw, (first_cond, 1)).T.ravel()
+            else:
+                cond_dsp_out = raw
 
     a_rech = []
     a_lws = []
@@ -116,12 +162,13 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
 
         lws = []
         for dil in a_dil[ai]:
+            cond_i = a_cond[ai]
             conv_w = weights[cursor : cursor + ch * ch * k].reshape(ch, ch, k)
             cursor += ch * ch * k
             conv_b = weights[cursor : cursor + ch]
             cursor += ch
-            mixin_w = weights[cursor : cursor + ch]
-            cursor += ch
+            mixin_w = weights[cursor : cursor + cond_i * ch]
+            cursor += cond_i * ch
             l1x1_w = weights[cursor : cursor + ch * ch].reshape(ch, ch)
             cursor += ch * ch
             l1x1_b = weights[cursor : cursor + ch]
@@ -200,8 +247,16 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
                                 lw["conv_w"][oc, :, kt],
                             )
 
-                # Mixin
-                cv += x[f] * lw["mixin_w"]
+                # Mixin — use condition_dsp output when available
+                cond_i = a_cond[ai]
+                if cond_i == 1:
+                    cv += x[f] * lw["mixin_w"]
+                elif cond_dsp_out is not None:
+                    off = f * cond_i
+                    mix_mat = lw["mixin_w"].reshape(ch, cond_i)
+                    cv += np.dot(mix_mat, cond_dsp_out[off : off + cond_i])
+                else:
+                    cv += x[f] * lw["mixin_w"]
 
                 # Tanh
                 cv = np.tanh(cv)
@@ -233,8 +288,13 @@ def wavenet_forward(model: dict, x: np.ndarray) -> np.ndarray:
         proj = ha @ a_head_w[ai].T + a_head_b[ai]
         head_proj_out.append(proj)
 
-    output = head_proj_out[-1][:, 0] * head_scale
-    return output
+    if all_channels:
+        output = head_proj_out[-1] * head_scale
+        # Interleaved: [ch0_f0, ch1_f0, ..., chN_f0, ch0_f1, ...]
+        return output.ravel(order='C')
+    else:
+        output = head_proj_out[-1][:, 0] * head_scale
+        return output
 
 
 # ── LSTM f64 model ─────────────────────────────────────────────────────────
@@ -728,11 +788,35 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         return np.zeros(0, dtype=np.float64)
 
     # ── condition_dsp sub-model ──
+    # T1.2: Use wavenet_forward_all_channels for WaveNet A1 condition_dsp
+    # to get ALL head output channels (matching C++ NumOutputChannels()).
+    # A2 condition_dsp falls back to forward_dispatch (mono) until §4.4.
     cond_dsp_out = None
     if config.get("condition_dsp") is not None:
         import copy
         cond_model = copy.deepcopy(config["condition_dsp"])
-        cond_dsp_out = forward_dispatch(cond_model, x)
+        dsp_arch = cond_model.get("architecture", None)
+        if dsp_arch == "WaveNet":
+            dsp_cfg = cond_model.get("config", {})
+            dsp_layers = dsp_cfg.get("layers", [])
+            # Mirror Rust's is_a2_model: A1 (use all_channels) unless
+            # head_scale present AND (single-array OR A2-specific features).
+            is_a2 = dsp_layers and dsp_cfg.get("head_scale") is not None
+            if is_a2 and len(dsp_layers) > 1:
+                is_a2 = any(
+                    l.get("head1x1", {}).get("active", False)
+                    or any(l.get(k, {}).get("active", False) for k, _ in FILM_KEYS)
+                    for l in dsp_layers
+                ) or (
+                    isinstance(dsp_layers[0].get("activation"), str)
+                    and dsp_layers[0].get("activation") not in ("Tanh", "HardTanh", "FastTanh")
+                )
+            if is_a2:
+                cond_dsp_out = forward_dispatch(cond_model, x)
+            else:
+                cond_dsp_out = wavenet_forward_all_channels(cond_model, x)
+        else:
+            cond_dsp_out = forward_dispatch(cond_model, x)
 
     # ── Read all arrays' weights ──
     cursor = 0
@@ -1195,12 +1279,20 @@ def main():
         # A2 detection: head_scale present, no post-stack head, and layers
         # have dilations+channels (either with kernel_sizes array or
         # kernel_size scalar).
+        # S16.4 (T5.1): condition_dsp models with Tanh activation route through
+        # the WaveNet A1 oracle, matching Rust's is_a2_model routing.
         has_head_scale = "head_scale" in config
         has_head = bool(config.get("head"))
+        has_cond_dsp = config.get("condition_dsp") is not None
+        has_tanh = has_cond_dsp and any(
+            l.get("activation") == "Tanh"
+            or (isinstance(l.get("activation"), list) and "Tanh" in l.get("activation", []))
+            for l in layers
+        )
         if has_head_scale and not has_head and layers and any(
             "dilations" in l and "channels" in l
             for l in layers
-        ):
+        ) and not has_tanh:
             arch = "A2"
 
     print(f"Architecture: {arch}", file=sys.stderr)

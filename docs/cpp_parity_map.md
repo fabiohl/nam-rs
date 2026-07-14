@@ -515,6 +515,169 @@ LSTM Official 8.30e-13, Linear FFT RF=2048 1.62e-14. All are v1 stress signal @ 
 ESR vs f64 oracle (prewarm-paired): WaveNet 6.13e-14, LSTM(H3) 2.71e-12, A2-Lite 1.82e-14,
 ConvNet 3.57e-15, A2-FiLM-Lite 1.61e-13, A2-FiLM-Full 8.75e-15.
 
+### 3.9 `condition_dsp` specification (canonical semantics)
+
+> This section is the formal specification for T1.1 (EP-A, Sprint 1). It was derived by
+> reading the C++ reference, the Python trainer, and the Rust production code side-by-side
+> on 2026-07-14. All file:line citations reference NAMcore v0.5.4 (tag `1f42f88`).
+
+#### 3.9.1 C++ semantics — `WaveNet::_process_condition` and sizing
+
+**Source:** `tests/fixtures/NeuralAmpModelerCore/NAM/wavenet/model.cpp`
+
+The `condition` matrix flowing through the WaveNet layer cascade is `_condition_output`
+(`Eigen::MatrixXf`, `model.h:76`). Its dimensions are decided in `SetMaxBufferSize`
+(`model.cpp:647-687`):
+
+- **Without `condition_dsp`** (`model.cpp:652-654`): `_condition_output` is resized to
+  `[_get_condition_dim(), maxBufferSize]`. `_get_condition_dim()` returns
+  `NumInputChannels()` (`model.h:106`), which is always **1** for WaveNet (mono-in).
+  So `_condition_output` = `[1 × maxBufferSize]` — a single row holding the raw input.
+
+- **With `condition_dsp`** (`model.cpp:656-660`): `_condition_output` is resized to
+  `[condition_dsp->NumOutputChannels(), maxBufferSize]`. The number of **rows** in the
+  condition matrix is the condition DSP's output channel count, **not** the WaveNet's
+  `in_channels`.
+
+The `_process_condition` method (`model.cpp:699-729`) fills `_condition_output`:
+
+- **Without `condition_dsp`** (`model.cpp:703-704`): copies `_condition_input.leftCols(num_frames)`
+  into `_condition_output.leftCols(num_frames)`. Both are `[1 × num_frames]`.
+
+- **With `condition_dsp`** (`model.cpp:710-728`):
+
+  1. Input (`_condition_input`, shape `[condition_dim, num_frames]`, where
+     `condition_dim = _get_condition_dim() = 1`) is copied row-by-row into
+     pre-allocated contiguous DSP buffers (`model.cpp:710-715`).
+  2. The condition DSP processes these buffers in-place (`model.cpp:718-719`).
+  3. Output is copied back row-by-row from the DSP output buffers into
+     `_condition_output` (`model.cpp:722-727`). The row count is
+     `condition_dsp->NumOutputChannels()` — there is **no** broadcast, tile, or
+     dimension coercion. Output channels are written 1:1.
+
+**Construction-time validation** (`model.cpp:592-601`): when `condition_dsp` exists, C++
+asserts that **every** layer array's `condition_size` matches
+`condition_dsp->NumOutputChannels()` exactly — and throws `std::runtime_error` on mismatch:
+
+```cpp
+// model.cpp:594-601
+if (layer_array_params[i].condition_size != this->_condition_dsp->NumOutputChannels())
+{
+    std::stringstream ss;
+    ss << "condition_size of layer " << i << " ("
+       << layer_array_params[i].condition_size
+       << ") doesn't match output channels of condition DSP ("
+       << this->_condition_dsp->NumOutputChannels() << "!\n";
+    throw std::runtime_error(ss.str().c_str());
+}
+```
+
+**Conclusion:** In C++, a model where `condition_dsp->NumOutputChannels() < condition_size`
+is **rejected at construction**. The case `out_channels == condition_size` is guaranteed
+by this check. There is no broadcast logic — dimensional matching is enforced structurally.
+
+#### 3.9.2 How `_condition_output` is consumed by layers
+
+In `WaveNet::process` (`model.cpp:744-832`):
+
+- `_condition_output` (the multi-row condition matrix) is passed **as-is** to every
+  layer array's `Process` method (`model.cpp:761,770`), alongside the layer inputs.
+- Inside each `Layer::Process` (`model.cpp:166+`), the condition is consumed by
+  `InputMixer` — a `Conv1D(kernel=1, in_channels=condition_size, out_channels=mid_channels)`
+  — which projects `condition_size` channels to `mid_channels` (= `2*bottleneck` for
+  gated, `bottleneck` for plain). FiLM modules also consume the condition channels
+  directly.
+- **No broadcasting between `_condition_output` and the layer internals.** The matrix
+  already has the correct row count by construction (§3.9.1).
+
+#### 3.9.3 Python trainer semantics (`neural-amp-modeler`, v0.13.0)
+
+**Source:** `nam/models/wavenet/_wavenet.py` (tag `v0.13.0`)
+
+The trainer's `WaveNet.parse_config` (`_wavenet.py:142-155`) handles `condition_dsp`:
+
+```python
+if condition_dsp_config.get("name") != "WaveNet":
+    raise NotImplementedError("Only WaveNet condition DSP is supported")
+condition_dsp = WaveNet.init_from_config(condition_dsp_config["config"])
+```
+
+- The Python trainer **only supports WaveNet as `condition_dsp`** — any other
+  architecture (including LSTM) raises `NotImplementedError`.
+
+- During training (`forward`, `_wavenet.py:189`):
+
+  ```python
+  c = x if self._condition_dsp is None else self._condition_dsp(x)
+  ```
+
+  The condition tensor `c` has shape `[B, condition_dsp_head_out_channels, L]` — exactly
+  the head output of the condition-dsp WaveNet.
+
+- Export (`export_config`, `_wavenet.py:176-195`): the `condition_dsp` sub-model is
+  serialized as a complete `.nam` JSON object embedded inside the parent model's config
+  under the `"condition_dsp"` key. The note at line 192 reads:
+
+  ```python
+  # Build condition_dsp export dict without running forward (condition_dsp
+  # may have multiple output channels; WaveNet wrapper asserts 1 channel).
+  ```
+
+**Conclusion:** The Python trainer's `condition_dsp` output channels match the
+`condition_size` of the parent's layer arrays by the trainer's own structural design
+(the condition-dsp WaveNet's `head.out_channels` = layer arrays' `condition_size`).
+There is **no** code path in the official trainer that produces a `condition_dsp`
+output-channel-count mismatch — it would fail dimension checks during forward
+computation.
+
+#### 3.9.4 LSTM as `condition_dsp` — veredicto
+
+The `wavenet_condition_lstm.nam` fixture (LSTM sub-model inside a WaveNet) represents
+a configuration that:
+
+1. **The Python trainer cannot produce** — raises `NotImplementedError` for non-WaveNet
+   `condition_dsp` (§3.9.3).
+2. **C++ NAMcore would reject at construction** — the LSTM's `NumOutputChannels() = 1`
+   would fail the assertion `layer_array.condition_size == condition_dsp->NumOutputChannels()`
+   when `condition_size = 3` (the standard WaveNet case) (§3.9.1).
+3. **The C++ `render` tool does not support** this model — there is **no golden vector**
+   generated by NAMcore for this fixture. The only committed golden
+   (`golden_wavenet_condition_dsp.bin`) was generated from `wavenet_condition_dsp.nam`,
+   which uses a **WaveNet** `condition_dsp`, not LSTM.
+
+**It is not possible to produce a C++-generated golden for** `wavenet_condition_lstm.nam`
+**because the upstream toolchain rejects the architecture.** The only available reference
+for this model is the f64 oracle — which itself has a disputed `condition_dsp` semantic
+(the broadcast logic at `wavenet.rs:38-49` and `a2.rs:303-316`). This creates a circular
+dependency: the oracle's correctness for this fixture cannot be independently validated.
+
+**Rust production code behavior** (`src/models/wavenet/model_dyn.rs:236-251`): when
+`condition_dsp` output channels (`dsp_ch`) are fewer than the layer array's
+`condition_size` (`cond`), the production engine **broadcasts** the first channel's
+value across all condition channels. This broadcast is present in both the A1
+dynamic path (`model_dyn.rs:240-247`) and the A2 dynamic/cascade paths (via the
+same `condition_dsp_output` buffer). This is a **NAM-rs-specific behavior** with
+no C++ precedent — it exists because NAM-rs loads models the upstream toolchain
+rejects.
+
+**Recommendation for T1.2 (oracle fix):** The f64 oracle's broadcast logic
+(`wavenet.rs:38-49`, `a2.rs:303-316`) should match the production code's broadcast
+**if** the production broadcast is deemed the intended semantics for models the
+upstream toolchain cannot validate. Since the C++ golden cannot serve as arbiter
+for the LSTM case, the "correct" broadcast behavior is a product decision documented
+here — not a parity claim.
+
+#### 3.9.5 Summary: canonical `condition_dsp` semantics
+
+| Aspect                                 | C++ (NAMcore v0.5.4)                                                        | Python trainer (v0.13.0)                               | Rust production (NAM-rs)                                     |
+|:-------------------------------------- |:--------------------------------------------------------------------------- |:------------------------------------------------------ |:------------------------------------------------------------ |
+| `condition_dsp` matrix rows            | `condition_dsp->NumOutputChannels()`                                        | `condition_dsp.head.out_channels`                      | `condition_dsp.num_output_channels()`                        |
+| Dimension enforcement                  | Hard assertion: `condition_size == NumOutputChannels()` (throw on mismatch) | Structural match (fails dimension check in forward)    | `assert` on max channels; broadcasts when `dsp_ch < cond`    |
+| Broadcasting (dsp_ch < cond)           | **None** — construction rejected                                            | **None** — structural match prevents mismatch          | **Yes** — replicates channel 0 across all condition channels |
+| Supported condition_dsp architectures  | Only WaveNet (and LSTM — but see §3.9.4 re: assertion rejection)            | Only WaveNet (raises `NotImplementedError` for others) | Any (LSTM accepted; see §3.9.4)                              |
+| Reference for `condition_lstm` fixture | N/A — model rejected                                                        | N/A — model cannot be produced                         | Golden from `wavenet_condition_dsp.nam` (WaveNet sub-model)  |
+| Key file:line references               | `model.cpp:592-601,652-660,699-729,744-770`                                 | `_wavenet.py:142-155,171-195`                          | `model_dyn.rs:236-251`, `model_dyn.rs:357-373`               |
+
 ---
 
 ## 4. WaveNet A2 Architecture

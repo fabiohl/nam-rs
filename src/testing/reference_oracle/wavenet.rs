@@ -12,6 +12,23 @@ pub(crate) fn oracle_wavenet_forward(
     input: &[f64],
     config: &PrecisionConfig,
 ) -> Vec<f64> {
+    oracle_wavenet_forward_inner(model_data, input, config, false)
+}
+
+pub(crate) fn oracle_wavenet_all_channels(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+) -> Vec<f64> {
+    oracle_wavenet_forward_inner(model_data, input, config, true)
+}
+
+fn oracle_wavenet_forward_inner(
+    model_data: &NamModelData,
+    input: &[f64],
+    config: &PrecisionConfig,
+    _all_channels: bool,
+) -> Vec<f64> {
     let layers = &model_data.config.layers;
     let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
     let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
@@ -29,25 +46,34 @@ pub(crate) fn oracle_wavenet_forward(
     let a0_dilations = l0.dilations.clone().unwrap_or_else(|| vec![1, 2, 4, 8]);
     let a0_cond = l0.condition_size.unwrap_or(1);
 
-    // T5.1: Process condition_dsp sub-model and broadcast to condition_size channels.
-    let cond_output: Option<Vec<f64>> = model_data.config.condition_dsp.as_ref().map(|json| {
-        let cond_model: NamModelData =
-            serde_json::from_value(json.clone()).expect("Failed to parse condition_dsp JSON");
-        let raw = oracle_forward(&cond_model, input, config);
-        let cond_size = a0_cond.max(1);
-        if cond_size > 1 && raw.len() == num_frames {
-            let mut broadcasted = vec![0.0f64; num_frames * cond_size];
-            for f in 0..num_frames {
-                let val = raw[f];
-                for c in 0..cond_size {
-                    broadcasted[f * cond_size + c] = val;
+    // T1.2: Process condition_dsp sub-model to obtain per-frame condition
+    // vectors. Use oracle_condition_dsp_channels for ALL output channels
+    // (matching C++ _condition_dsp_output_buffers), falling back to broadcast
+    // only when the sub-model outputs a single channel (e.g. LSTM).
+    let cond_output: Option<Vec<f64>> = if _all_channels {
+        // Inner call: computing a condition_dsp sub-model itself — no nested
+        // condition_dsp to process (would be infinite recursion).
+        None
+    } else {
+        model_data.config.condition_dsp.as_ref().map(|json| {
+            let cond_model: NamModelData =
+                serde_json::from_value(json.clone()).expect("Failed to parse condition_dsp JSON");
+            let raw = oracle_condition_dsp_channels(&cond_model, input, config);
+            let cond_size = a0_cond.max(1);
+            if cond_size > 1 && raw.len() == num_frames {
+                let mut broadcasted = vec![0.0f64; num_frames * cond_size];
+                for f in 0..num_frames {
+                    let val = raw[f];
+                    for c in 0..cond_size {
+                        broadcasted[f * cond_size + c] = val;
+                    }
                 }
+                broadcasted
+            } else {
+                raw
             }
-            broadcasted
-        } else {
-            raw
-        }
-    });
+        })
+    };
 
     let a1_ch = a0_head;
     let a1_head = l1.head_size.unwrap_or(1);
@@ -172,7 +198,7 @@ pub(crate) fn oracle_wavenet_forward(
                         for j in 0..a0_cond {
                             s = mul_add_f64(
                                 co_vec[f * a0_cond + j],
-                                lw.mixin_w[j * a0_ch + c],
+                                lw.mixin_w[c * a0_cond + j],
                                 s,
                                 acc_mode,
                             );
@@ -295,7 +321,7 @@ pub(crate) fn oracle_wavenet_forward(
                         for j in 0..a1_cond {
                             s = mul_add_f64(
                                 co_vec[f * a1_cond + j],
-                                lw.mixin_w[j * a1_ch + c],
+                                lw.mixin_w[c * a1_cond + j],
                                 s,
                                 acc_mode,
                             );
@@ -336,21 +362,74 @@ pub(crate) fn oracle_wavenet_forward(
         }
     }
 
-    // Array1 head rechannel → 1-channel output × head_scale
-    for f in 0..num_frames {
-        let mut y = a1_head_b[0];
-        for c in 0..a1_ch {
-            y = mul_add_f64(
-                a1_head_accum[f * a1_ch + c],
-                a1_head_w[c * a1_head],
-                y,
-                acc_mode,
-            );
-        }
-        output[f] = y * head_scale;
-    }
+    // Array1 head rechannel → output × head_scale
+    // T1.2: Use oracle_wavenet_head_final for both mono and all-channels output.
+    oracle_wavenet_head_final(
+        &mut output,
+        &a1_head_accum,
+        &a1_head_w,
+        &a1_head_b,
+        a1_ch,
+        a1_head,
+        head_scale,
+        num_frames,
+        acc_mode,
+        _all_channels,
+    );
 
     output
+}
+
+/// Compute WaveNet head finalization.
+///
+/// When `all_channels` is `false`, writes `num_frames` mono samples (channel 0 only).
+/// When `all_channels` is `true`, writes `num_frames * head_size` interleaved samples
+/// for all head output channels — used for `condition_dsp` sub-model output.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn oracle_wavenet_head_final(
+    output: &mut Vec<f64>,
+    head_accum: &[f64],
+    head_w: &[f64],
+    head_b: &[f64],
+    accum_ch: usize,
+    head_size: usize,
+    head_scale: f64,
+    num_frames: usize,
+    acc_mode: AccumulationMode,
+    all_channels: bool,
+) {
+    if all_channels {
+        *output = vec![0.0f64; num_frames * head_size];
+        for f in 0..num_frames {
+            for hc in 0..head_size {
+                let mut y = if hc < head_b.len() { head_b[hc] } else { 0.0 };
+                for c in 0..accum_ch {
+                    y = mul_add_f64(
+                        head_accum[f * accum_ch + c],
+                        head_w[hc * accum_ch + c],
+                        y,
+                        acc_mode,
+                    );
+                }
+                output[f * head_size + hc] = y * head_scale;
+            }
+        }
+    } else {
+        *output = vec![0.0f64; num_frames];
+        for f in 0..num_frames {
+            let mut y = head_b[0];
+            for c in 0..accum_ch {
+                y = mul_add_f64(
+                    head_accum[f * accum_ch + c],
+                    head_w[c * head_size],
+                    y,
+                    acc_mode,
+                );
+            }
+            output[f] = y * head_scale;
+        }
+    }
 }
 
 // =============================================================================

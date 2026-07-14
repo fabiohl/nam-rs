@@ -289,16 +289,20 @@ pub(crate) fn oracle_a2_forward(
     // S14.2 (PM-15): Process condition_dsp sub-model to obtain per-frame condition
     // vectors. The sub-model processes the raw input and produces condition_size
     // samples per frame (the head_size of the condition_dsp's last array).
+    // T1.2: Use oracle_condition_dsp_channels to get ALL head output channels
+    // (for WaveNet sub-models) instead of only the mono oracle_forward output.
     let cond_output: Option<Vec<f64>> = model_data.config.condition_dsp.as_ref().map(|json| {
         let cond_model: NamModelData =
             serde_json::from_value(json.clone()).expect("Failed to parse condition_dsp JSON");
-        oracle_forward(&cond_model, input, config)
+        oracle_condition_dsp_channels(&cond_model, input, config)
     });
 
     // T5.1: Broadcast single-channel condition_dsp output (e.g. LSTM) to
     // condition_size channels. The LSTM head produces 1 scalar per frame; the
     // WaveNet layers expect cond_size independent values per frame. We replicate
     // the scalar across all condition channels.
+    // T1.2: When condition_dsp outputs multi-channel (raw_out.len() != num_frames),
+    // dimensions already match — no broadcast needed.
     let cond_size_oracle = layers.first().and_then(|l| l.condition_size).unwrap_or(1);
     let cond_output: Option<Vec<f64>> = cond_output.map(|raw_out| {
         if cond_size_oracle > 1 && raw_out.len() == num_frames {

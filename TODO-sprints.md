@@ -43,7 +43,7 @@ gantt
 
 **Foco:** Estabelecer a verdade matemática e corrigir o oráculo f64 para o caso `condition_dsp` padrão.
 
-#### [NEW] Tarefa T1.1 — Especificação da Semântica de `condition_dsp`
+#### [DONE] Tarefa T1.1 — Especificação da Semântica de `condition_dsp`
 
 * **Referência:** [F1.1](file:///home/fabio/nam-rs/TODO-findings.md#L67)
 * **Responsável:** Engenheiro de DSP / Cientista
@@ -55,7 +55,7 @@ gantt
   * Documentar as descobertas detalhadamente em [docs/cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md).
 * **Critério de Aceite:** Especificação formalizada e documentada com referências de arquivo e linha (file:line) do C++ e Python.
 
-#### [NEW] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
+#### [DONE] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
 
 * **Referência:** [F1.2](file:///home/fabio/nam-rs/TODO-findings.md#L76)
 * **Responsável:** Engenheiro de Paridade

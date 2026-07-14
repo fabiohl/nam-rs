@@ -178,8 +178,8 @@ b19d5f7f13f52b2d15d3d2ff1a3dfdf4b6609ba6332c121544908253f5a713f4 f64_anchors/swe
 d243f4916b9e6e895363de10dc1aebdde30b3fd64e2ca5db9cefc6d480d0c5af f64_anchors/wavenet_a2_film_full_256_f64.bin
 855c5bf7052c7f717f5071e8f8ac73d1ed401455160ea1fd3061863376488c0c f64_anchors/wavenet_a2_film_input_mixin_pre_256_f64.bin
 c736ab3abb81bbb399e670d0ae10b8545d4d9fbd62f717118934f92f43217ca3 f64_anchors/wavenet_a2_film_lite_256_f64.bin
-4325cc4ff93558e96078b4c6635b289d89472884ebdd188ccdb57da92acb7bf7 f64_anchors/wavenet_condition_dsp_256_f64.bin
-eede4200d1e4423150e331f84b1f4c00a5db902d8a19f14de92998175f19dcce f64_anchors/wavenet_condition_lstm_256_f64.bin
+f9bcab21da6b330b60e74ba79af68b1ad05f4c934c7f8831ac12ae18a91dc2de f64_anchors/wavenet_condition_dsp_256_f64.bin
+05c99afc9f976d8a5a02d2e57658a3d6fd8b9b5023e6864cb3aca987e52585c2 f64_anchors/wavenet_condition_lstm_256_f64.bin
 b4ed110bd69e6beb07776935f34c47d9cccee23f3b3e484545000fdd9f7b5cf0 f64_anchors/wavenet_official_256_f64.bin
 
 # =============================================================================
@@ -194,7 +194,7 @@ d929082dcb673a144f6b13ac7938fa111a8d201f21438cfd4e901cb3f13b4123 tests/fixtures/
 e5c7a96fbad9ce68f41a4f0deb060b85aa7fc944586fa16504281b569f000e95 tests/fixtures/generate_ebu_sequences.py
 4ed3f5d570dc510dc8d421fbca889a711d2358f13b733b92740b5e836e469d59 tests/fixtures/generate_resampler_reference.py
 0e218fca1e864195645f87a5b1fffa34da5e47753f388f881727ae23aef38467 tests/fixtures/scripts/gen_mrstft_golden.py
-1f39ffcbea5f5b0ad0605d3470d76965c68e5521b7331c7c44efa2339a9510ef tests/fixtures/scripts/validate_oracle_f64.py
+2903610e0798f71b5ea1f8ed911beb4142c895a1380176a999041fbcdf89f7bc tests/fixtures/scripts/validate_oracle_f64.py
 af27424abbff1fcd941010c161e154ec3937a677a9f700bec8c3add60c97ad21 src/bin/gen_stress.rs
 572832d45b3c32162d7b9f648e251eda0b3c32255bce66c8456f084d3c0e933c src/bin/wav_to_golden.rs
 04989fb59f6b8bf4b83bcd88c72edc0cbd0864153849edac087b2634769449c3 utils/check-model.py
