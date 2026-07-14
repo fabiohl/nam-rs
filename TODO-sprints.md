@@ -394,7 +394,7 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 
 ---
 
-### [ ] Tarefa 5.2: Validação Externa e Cobertura de Âncoras do Oráculo f64 (F-T5-a parte 2)
+### [x] Tarefa 5.2: Validação Externa e Cobertura de Âncoras do Oráculo f64 (F-T5-a parte 2)
 
 * **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L194) — Cobertura morta/adormecida: `condition_lstm` no oráculo.
 * **Complexidade/Risco:** Baixo.
@@ -407,6 +407,10 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 * **Critério de Aceitação:**
   * Execução do teste de âncora com sucesso (`ESR < 1e-12`).
   * Exibição correta da linha de sumário para `wavenet_condition_lstm.nam` no console de testes.
+* **Concluído (2026-07-13):**
+  * **Âncora:** `test_oracle_vs_python_anchor_condition_lstm` já adicionado em T5.1 — passa com ESR=5e-16. Nenhuma ação adicional necessária aqui.
+  * **Sumário:** Entrada `("wavenet_condition_lstm.nam", "WaveNetCondLSTM")` adicionada ao vetor de `test_summary_table`.
+  * **Decomposição:** `test_decomposition_wavenet_condition_lstm` adicionado com `#[ignore]` (diagnóstico). O teste revela que a divergência da engine de produção (ESR≈1, ratio 22M) não é explicada por quantização/ativação/acúmulo — confirma bug no dispatcher para sub-modelos LSTM condition_dsp.
 
 ---
 

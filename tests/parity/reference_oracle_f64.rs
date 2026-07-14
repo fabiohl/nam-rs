@@ -1022,6 +1022,83 @@ fn test_decomposition_convnet() {
 }
 
 #[test]
+#[ignore = "diagnostic only — production engine diverges from oracle for LSTM condition_dsp sub-models (ESR≈1). Root cause: dispatcher bug (see T5.1 conclusion). Anchor ESR=5e-16 proves oracle is correct."]
+fn test_decomposition_wavenet_condition_lstm() {
+    use nam_rs::testing::stress::generate_stress_signal_v2_default;
+
+    let path = models_dir().join("wavenet_condition_lstm.nam");
+    let md = load_and_parse(&path);
+
+    const WARMUP_LEN: usize = 24_000;
+    const MEASURE_LEN: usize = 4_096;
+    let total = WARMUP_LEN + MEASURE_LEN;
+
+    let stress_signal = generate_stress_signal_v2_default(48000);
+    assert!(
+        stress_signal.len() >= total,
+        "Stress signal is too short ({} < {})",
+        stress_signal.len(),
+        total
+    );
+    let input_f32 = &stress_signal[0..total];
+    let input_f64: Vec<f64> = input_f32.iter().map(|&x| x as f64).collect();
+
+    let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("Failed to build model");
+    let mut prod_output = vec![0.0f32; total];
+    let mut pos = 0;
+    {
+        let _guard = nam_rs::math::activations::set_thread_local_activation_precision(Some(
+            nam_rs::math::activations::ActivationPrecision::Fast,
+        ));
+        while pos < total {
+            let nf = (total - pos).min(64);
+            model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+            pos += nf;
+        }
+    }
+    let prod_output_f64: Vec<f64> = prod_output.iter().map(|&x| x as f64).collect();
+
+    let result = run_decomposition_paired(
+        "WaveNet-Condition-LSTM",
+        "WaveNet",
+        &md,
+        &prod_output_f64,
+        &input_f64,
+        WARMUP_LEN,
+    );
+    print_decomposition(&result);
+
+    let sum_sources = result.esr_quant_f16c_display()
+        + result.esr_activation_display()
+        + result.esr_accumulation_display();
+    let total_esr = result.esr_f32_vs_f64;
+    let ratio = if sum_sources > 0.0 {
+        total_esr / sum_sources
+    } else {
+        0.0
+    };
+    let inverse_ratio = if total_esr > 0.0 {
+        sum_sources / total_esr
+    } else {
+        0.0
+    };
+
+    println!(
+        "WaveNet-Condition-LSTM Rule 5: Total ESR = {:.6e}, Sum of sources = {:.6e}, Ratio = {:.2}, InvRatio = {:.2}",
+        total_esr, sum_sources, ratio, inverse_ratio
+    );
+
+    assert!(
+        ratio <= 10.0 && inverse_ratio <= 10.0,
+        "Sanity check failed: total ESR ({:.2e}) is not consistent with sum of sources ({:.2e}) (ratio = {:.2}, invRatio = {:.2})",
+        total_esr,
+        sum_sources,
+        ratio,
+        inverse_ratio
+    );
+}
+
+#[test]
 fn test_combined_simulation_convnet() {
     run_combined_paired_test("convnet_test.nam", "ConvNet");
 }
@@ -1267,6 +1344,7 @@ fn test_summary_table() {
         ("wavenet_a2_film_chaos_stress.nam", "A2FiLMChaos"),
         ("wavenet_dyn_free.nam", "WaveNetDynFree"),
         ("wavenet_condition_dsp.nam", "WaveNetCondDSP"),
+        ("wavenet_condition_lstm.nam", "WaveNetCondLSTM"),
         ("EVH-5150-Lite.nam", "EVH-5150-Lite"),
     ];
 
