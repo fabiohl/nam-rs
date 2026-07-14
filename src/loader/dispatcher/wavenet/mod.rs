@@ -49,6 +49,32 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
     Ok(())
 }
 
+/// Rejects WaveNet models whose `condition_dsp` sub-model is an LSTM.
+///
+/// **Postura fail-closed (T3.1):** LSTM `condition_dsp` models produce structurally
+/// wrong audio (ESR ≈ 1.3e-1, -8.9 dB — plainly audible). The root cause is a
+/// state-update divergence between the production LSTM and the f64 oracle, confirmed
+/// in T2.3 investigation. The upstream C++ NAMcore does not process these files
+/// correctly either (parity-first). The fix is tracked for Sprint 4.
+///
+/// **Scope:** Applies to any LSTM architecture embedded as `condition_dsp` inside a
+/// WaveNet model. Standalone LSTM models (`.nam` with `architecture: "LSTM"`) are
+/// unaffected.
+#[cold]
+#[inline(never)]
+fn reject_condition_dsp_lstm(cond_dsp_data: &NamModelData) -> anyhow::Result<()> {
+    if cond_dsp_data.architecture.eq_ignore_ascii_case("LSTM") {
+        bail!(
+            "LSTM condition_dsp is not supported — the sub-model embedded in this \
+             WaveNet model uses an LSTM architecture which produces structurally \
+             incorrect audio (ESR ≈ 1.3e-1, confirmed in T2.3 investigation). \
+             Upstream NAMcore also does not support this combination. Tracking: \
+             Sprint 4. Use a standalone WaveNet or LSTM model instead."
+        );
+    }
+    Ok(())
+}
+
 /// Predicate that identifies the known-broken WaveNet A2 flagship model
 /// (`wavenet_a2_max.nam`) by structural signature.
 ///
@@ -318,6 +344,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 let condition_dsp = if let Some(ref cond_dsp_json) = data.config.condition_dsp {
                     let cond_dsp_data: NamModelData =
                         serde_json::from_value(cond_dsp_json.clone())?;
+                    reject_condition_dsp_lstm(&cond_dsp_data)?;
                     let cond_model = crate::loader::dispatcher::build_model(&cond_dsp_data)?;
                     let cond_out = cond_model.num_output_channels();
                     if cond_out > condition_size {

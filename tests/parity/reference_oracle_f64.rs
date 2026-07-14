@@ -1423,7 +1423,6 @@ fn test_summary_table() {
         ("wavenet_a2_film_chaos_stress.nam", "A2FiLMChaos"),
         ("wavenet_dyn_free.nam", "WaveNetDynFree"),
         ("wavenet_condition_dsp.nam", "WaveNetCondDSP"),
-        ("wavenet_condition_lstm.nam", "WaveNetCondLSTM"),
         ("EVH-5150-Lite.nam", "EVH-5150-Lite"),
     ];
 

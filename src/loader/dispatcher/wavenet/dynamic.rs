@@ -3,6 +3,7 @@
 
 use super::super::WeightCursor;
 use super::layout;
+use super::reject_condition_dsp_lstm;
 use crate::loader::dispatcher::checked_arith;
 use crate::loader::nam_json::{
     FreeWavenetGeometry, NamModelData, WavenetTopologyResult, get_wavenet_topology,
@@ -262,6 +263,8 @@ fn build_wavenet_dynamic_inner(
         }
 
         let cond_dsp_data: NamModelData = serde_json::from_value(cond_dsp_json.clone())?;
+
+        reject_condition_dsp_lstm(&cond_dsp_data)?;
 
         if let (Some(main_sr), Some(cond_sr)) = (data.sample_rate, cond_dsp_data.sample_rate)
             && (main_sr - cond_sr).abs() > 1.0

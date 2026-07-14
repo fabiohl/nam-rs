@@ -130,7 +130,7 @@ gantt
 
 **Foco:** Garantir a robustez de segurança contra regressões e calibrar thresholds de produção reais.
 
-#### [NEW] Tarefa T3.1 — Política de Carregamento de Modelos LSTM `condition_dsp`
+#### [DONE] Tarefa T3.1 — Política de Carregamento de Modelos LSTM `condition_dsp`
 
 * **Referência:** [F1.4](file:///home/fabio/nam-rs/TODO-findings.md#L83)
 * **Responsável:** Arquiteto / Engenheiro de Sistemas
@@ -140,6 +140,16 @@ gantt
   * Se o suporte do upstream (C++) for julgado permanentemente quebrado/incompatível, avaliar a rejeição desses modelos `.nam` no carregamento (fail-closed) com uma mensagem informativa clara.
   * Alternativamente, emitir um `Warning` de carregamento (advisory) e marcar o modelo como "sob investigação" na malha e dashboard de qualidade.
 * **Critério de Aceite:** Código de carregamento validado com o comportamento escolhido coberto por testes unitários de erro.
+* **Conclusão (2026-07-14):**
+  * Implementada política **fail-closed** — modelos WaveNet com `condition_dsp` LSTM são rejeitados no dispatch com mensagem diagnóstica clara referenciando a investigação T2.3 (ESR ≈ 1.3e-1, divergência estrutural).
+  * Função `reject_condition_dsp_lstm` em `src/loader/dispatcher/wavenet/mod.rs:59-76` acionada nos dois pontos de construção de condition_dsp (A1 dynamic e A2).
+  * Postura parity-first: o upstream C++ NAMcore também não processa corretamente essa combinação.
+  * Testes `test_wavenet_condition_lstm_loads_and_runs` e `test_golden_vectors_wavenet_condition_lstm` convertidos para validação de rejeição.
+  * Removida entrada `WaveNet Condition DSP LSTM` do contrato de qualidade (`docs/quality-contract.txt:62`).
+  * Entrada removida da tabela-sumário `test_summary_table` em `reference_oracle_f64.rs`.
+  * Oracle f64 vs Python anchor mantém-se ativo (`test_oracle_vs_python_anchor_condition_lstm`) — o oráculo é confiável, o bug é de produção.
+  * Standalone LSTM (`.nam` com `architecture: "LSTM"`) não é afetado — apenas `condition_dsp` LSTM embarcado em WaveNet.
+  * **Reversão:** remover a chamada `reject_condition_dsp_lstm` dos dois pontos de dispatch quando o bug de estado LSTM for corrigido (Sprint 4).
 
 #### [NEW] Tarefa T3.2 — Recalibração de Gates de Qualidade do LSTM e Contrato
 

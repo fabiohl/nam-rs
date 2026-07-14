@@ -1014,29 +1014,28 @@ fn test_wavenet_condition_dsp_still_loads() {
     );
 }
 
-/// Test 8k-1b: `wavenet_condition_lstm.nam` loads and processes — T4.1 smoke test.
+/// Test 8k-1b: `wavenet_condition_lstm.nam` fail-closed rejection — T3.1 policy.
 ///
-/// Validates that the dispatcher correctly builds a WaveNet model with an LSTM
-/// condition_dsp sub-model (1 layer, 3 hidden units). The LSTM is recurrent and
-/// requires proper prewarm initialization of internal `h`/`c` states.
-///
-/// Processes a short silence buffer to exercise the full code path including
-/// condition_dsp process, prewarm, and gain application.
+/// Validates that the dispatcher rejects WaveNet models with an LSTM
+/// condition_dsp sub-model. LSTM condition_dsp produces structurally wrong
+/// audio (ESR ≈ 1.3e-1, confirmed in T2.3). The model is rejected at load
+/// time with a clear diagnostic message.
 #[test]
 fn test_wavenet_condition_lstm_loads_and_runs() {
     let path = model_path("wavenet_condition_lstm.nam");
     assert!(path.exists());
     let json = fs::read_to_string(&path).expect("Failed to read wavenet_condition_lstm.nam");
     let data = parse_nam_json(&json).expect("Failed to parse wavenet_condition_lstm.nam");
-    let mut model =
-        build_model(&data).expect("Dispatcher failed to build WaveNet Condition DSP LSTM");
-    model.prewarm(2048);
-    let input = vec![0.0f32; 64];
-    let mut output = vec![0.0f32; 64];
-    model.process(&input, &mut output);
+    let result = build_model(&data);
     assert!(
-        output.iter().all(|&x| x.is_finite()),
-        "Output must be finite after processing silence through LSTM condition_dsp"
+        result.is_err(),
+        "Expected LSTM condition_dsp to be rejected (fail-closed policy T3.1), but it loaded"
+    );
+    let err_msg = format!("{}", result.err().unwrap());
+    assert!(
+        err_msg.contains("LSTM condition_dsp is not supported"),
+        "Expected LSTM condition_dsp rejection message, got: {}",
+        err_msg
     );
 }
 
@@ -1123,23 +1122,15 @@ fn test_golden_vectors_wavenet_condition_dsp() {
     );
 }
 
-/// Test 8l-2: Golden Vectors WaveNet Condition DSP LSTM — T5.1 f64 oracle validation.
+/// Test 8l-2: Rejection of LSTM condition_dsp via f64 oracle path — T3.1.
 ///
-/// Validates the Rust f32 production engine against the Rust f64 reference oracle
-/// for a WaveNet model whose `condition_dsp` sub-model is an LSTM (1 layer, 3 hidden
-/// units). Unlike the C++ golden binary approach (which is unusable due to upstream
-/// LSTM condition_dsp channel mismatch), this test uses the f64 oracle as ground
-/// truth, with confidence chain anchored by `test_oracle_vs_python_anchor_condition_lstm`
-/// in `reference_oracle_f64.rs`.
-///
-/// The LSTM is recurrent and requires proper prewarm to initialize its `h`/`c` states.
-/// Uses the same sweep signal as the NumPy anchor (sweep_256_48k.bin) for direct
-/// comparability.
+/// Validates that the dispatcher fails-closed when attempting to build a WaveNet
+/// model whose `condition_dsp` sub-model is an LSTM. The
+/// `test_oracle_vs_python_anchor_condition_lstm` in `reference_oracle_f64.rs`
+/// separately validates the oracle itself (which does not go through the
+/// production dispatcher and is unaffected by this policy).
 #[test]
 fn test_golden_vectors_wavenet_condition_lstm() {
-    use nam_rs::testing::reference_oracle::{PrecisionConfig, oracle_forward};
-    use std::io::Read;
-
     let nam_path = model_path("wavenet_condition_lstm.nam");
     assert!(
         nam_path.exists(),
@@ -1152,49 +1143,16 @@ fn test_golden_vectors_wavenet_condition_lstm() {
     let model_data =
         parse_nam_json(&json_data).expect("Failed to parse wavenet_condition_lstm.nam JSON");
 
-    let sweep_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/f64_anchors/sweep_256_48k.bin");
-    let mut f = std::fs::File::open(&sweep_path).expect("sweep_256_48k.bin not found");
-    let mut buf = [0u8; 4];
-    f.read_exact(&mut buf).expect("Failed to read sweep count");
-    let n = u32::from_le_bytes(buf) as usize;
-    let mut raw = vec![0u8; n * 8];
-    f.read_exact(&mut raw).expect("Failed to read sweep data");
-    let input_f64: Vec<f64> = raw
-        .chunks_exact(8)
-        .map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
-        .collect();
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build WaveNet Condition DSP LSTM for oracle test");
-
-    let mut prod_output = vec![0.0f32; input_f32.len()];
-    let mut pos = 0;
-    while pos < input_f32.len() {
-        let nf = (input_f32.len() - pos).min(64);
-        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
-        pos += nf;
-    }
-
-    let oracle = oracle_forward(&model_data, &input_f64, &PrecisionConfig::default());
-
-    let oracle_f32: Vec<f32> = oracle.iter().map(|&x| x as f32).collect();
-
-    let (mse_limit, min_snr_db, max_esr, mrstft_max) =
-        topology_thresholds(&model_data, "wavenet_condition_lstm");
-    gv_metric(
-        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) f64 oracle cross-reference",
+    let result = build_model(&model_data);
+    assert!(
+        result.is_err(),
+        "Expected LSTM condition_dsp to be rejected (fail-closed policy T3.1), but it loaded"
     );
-    report_dsp_fidelity(
-        &oracle_f32,
-        &prod_output,
-        mse_limit,
-        min_snr_db,
-        max_esr,
-        mrstft_max,
-        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) f64 oracle cross-reference",
-        STRESS_SAMPLE_RATE,
+    let err_msg = format!("{}", result.err().unwrap());
+    assert!(
+        err_msg.contains("LSTM condition_dsp is not supported"),
+        "Expected LSTM condition_dsp rejection message, got: {}",
+        err_msg
     );
 }
 

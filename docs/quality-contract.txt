@@ -59,7 +59,6 @@
   WaveNet A2-Full (CH=8) C++ cross-refer │ 1.46e-13        │ 7.83e-14 │ 128.34899677944898 │ 1.68e-05 │ Live
   WaveNet A2-Lite (CH=3) C++ cross-refer │ 8.36e-14        │ 1.82e-14 │ 130.77817724731185 │ 9.54e-06 │ Live
   WaveNet Condition DSP (CH=3, cond=3, d │ 1.11e-14        │ 4.21e+01 │ 139.5524092464364  │ 3.59e-06 │ Live
-  WaveNet Condition DSP LSTM (CH=3, cond │ 0.1162          │ N/A      │ 9.347582258729283  │ 0.6598   │ Live
   WaveNet Official (CH=3, dynamic path)  │ 9.03e-14        │ 6.13e-14 │ 130.4449622848953  │ 1.66e-05 │ Live
   WaveNetDyn Free-Shape (CH=7→4, dynam   │ 4.10e-13        │ 1.06e-12 │ 123.87643358939606 │ 2.58e-05 │ Live
   lstm (Official) @48000 Live            │ 7.86e-13        │ 2.71e-12 │ 121.04361720205787 │ 3.08e-05 │ Live
