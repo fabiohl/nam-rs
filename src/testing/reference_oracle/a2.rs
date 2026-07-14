@@ -126,6 +126,22 @@ fn a2_read_activation(raw: &serde_json::Value, li: usize, _num_layers: usize) ->
     }
 }
 
+fn a2_read_secondary_activation(raw: &serde_json::Value, li: usize) -> ActivationConfig {
+    let arr = raw.get("secondary_activation").and_then(|v| v.as_array());
+    if let Some(arr) = arr
+        && li < arr.len()
+    {
+        if arr[li].is_null() {
+            return ActivationConfig::Sigmoid;
+        }
+        return ActivationConfig::from_json(&arr[li]);
+    }
+    if let Some(obj) = raw.get("secondary_activation").and_then(|v| v.as_object()) {
+        return ActivationConfig::from_json_obj(obj);
+    }
+    ActivationConfig::Sigmoid
+}
+
 fn a2_read_gating_mode(raw: &serde_json::Value, li: usize) -> GatingModeOracle {
     let arr = raw.get("gating_mode").and_then(|v| v.as_array());
     if let Some(arr) = arr
@@ -386,6 +402,14 @@ pub(crate) fn oracle_a2_forward(
             ]
         };
 
+        let pre_secondary_activations: Vec<ActivationConfig> = if let Some(ref raw) = layer_raw {
+            (0..num_layers)
+                .map(|li| a2_read_secondary_activation(raw, li))
+                .collect()
+        } else {
+            vec![ActivationConfig::Sigmoid; num_layers]
+        };
+
         let film_configs: [bool; 8] = if let Some(ref raw) = layer_raw {
             let mut active = [false; 8];
             for &(key, idx) in FILM_KEYS {
@@ -486,6 +510,7 @@ pub(crate) fn oracle_a2_forward(
                 film: film_slots,
                 gating_mode: gmode,
                 activation: pre_activations[li].clone(),
+                secondary_activation: pre_secondary_activations[li].clone(),
                 conv_out,
             });
         }
@@ -725,7 +750,7 @@ pub(crate) fn oracle_a2_forward(
                 };
                 let mut mixin_contrib = vec![0.0f64; z_out_ch];
                 if !condition_mod.is_empty() {
-                    for c in 0..z_out_ch.min(bottleneck) {
+                    for c in 0..z_out_ch {
                         let mut sum = 0.0;
                         for k in 0..cond_size.min(condition_mod.len()) {
                             sum += lw.mixin_w[c * cond_size + k] * condition_mod[k];
@@ -754,18 +779,23 @@ pub(crate) fn oracle_a2_forward(
                     let half = bottleneck;
                     lw.activation
                         .apply(&mut z_scratch[..half], config.activation);
+                    lw.secondary_activation
+                        .apply(&mut z_scratch[half..half * 2], config.activation);
                     for i in 0..half {
-                        let gate = exact_sigmoid_f64(z_scratch[half + i]);
-                        z_scratch[i] *= gate;
+                        z_scratch[i] *= z_scratch[half + i];
                     }
                     half
                 } else if use_blending {
                     let half = bottleneck;
+                    let mut original = vec![0.0f64; half];
+                    original.copy_from_slice(&z_scratch[..half]);
                     lw.activation
                         .apply(&mut z_scratch[..half], config.activation);
+                    lw.secondary_activation
+                        .apply(&mut z_scratch[half..half * 2], config.activation);
                     for i in 0..half {
-                        let alpha = exact_sigmoid_f64(z_scratch[half + i]);
-                        z_scratch[i] = alpha * z_scratch[i] + (1.0 - alpha) * z_scratch[half + i];
+                        let alpha = z_scratch[half + i];
+                        z_scratch[i] = original[i] + alpha * (z_scratch[i] - original[i]);
                     }
                     half
                 } else {
@@ -902,6 +932,7 @@ struct A2OracleLayerWeights {
     film: Vec<Option<FiLMOracleSlot>>,
     gating_mode: GatingModeOracle,
     activation: ActivationConfig,
+    secondary_activation: ActivationConfig,
     conv_out: usize,
 }
 

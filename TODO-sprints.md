@@ -72,7 +72,7 @@ gantt
 
 **Foco:** Estender a correção do oráculo f64 para gating dinâmico e determinar se a produção diverge no caso LSTM.
 
-#### [NEW] Tarefa T2.1 — Correção do Oráculo f64 para Gating (Gated / Blended)
+#### [DONE] Tarefa T2.1 — Correção do Oráculo f64 para Gating (Gated / Blended)
 
 * **Referência:** [F4](file:///home/fabio/nam-rs/TODO-findings.md#L136)
 * **Responsável:** Engenheiro de DSP
@@ -84,6 +84,11 @@ gantt
 * **Critério de Aceite:**
   * Blended vs Golden C++ no oráculo: $\le 1\times10^{-12}$.
   * Gated vs Golden C++ no oráculo: $\le 1\times10^{-10}$.
+* **Conclusão (2026-07-14):** Três bugs corrigidos no oráculo A2:
+  1. **Mixin truncado em gating/blending:** o laço de mixin usava `z_out_ch.min(bottleneck)`, aplicando-se apenas aos primeiros `bottleneck` canais em vez dos `z_out_ch = 2*bottleneck` canais. Canais de gate/blend não recebiam contribuição do mixin. Corrigido em `a2.rs:753`.
+  2. **Blending fórmula errada:** a fórmula antiga usava o valor bruto do canal de gate (`z_scratch[half + i]`) como "original" na interpolação — mas esse é o canal de gate, não o valor original da primeira metade. Corrigido para `original + alpha * (activated - original)`, que mantém o input original e interpola com alpha derivado da ativação correta (Tanh).
+  3. **Secondary activation ausente:** o oráculo não lia `secondary_activation` do JSON, hardcodando sigmoid para gate (quando o modelo blended usa Tanh). Adicionada função `a2_read_secondary_activation` com fallback Sigmoid para entradas nulas.
+  Resultados: Gated `7.07e-7 → 1.00e-10` (-100 dB) ✓, Blended `2.53e-1 → 2.65e-14` (-136 dB) ✓. Ambos dentro dos critérios de aceite.
 
 #### [NEW] Tarefa T2.2 — Criação de Âncoras NumPy para Gating
 
