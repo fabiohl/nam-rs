@@ -707,9 +707,11 @@ def _extract_head1x1_active(layer_raw):
 def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     """A2 forward pass in NumPy f64 — Multi-array cascade (S14.2).
 
-    Supports open topologies, multi-array cascade, condition_dsp sub-model,
-    arbitrary channels, bottleneck, kernel_sizes, dilations, condition_size>1,
-    head1x1, gating/blending, heterogeneous activations, and all 8 FiLM slots.
+    Supports open topologies, multi-array cascade, condition_dsp sub-model
+    (dispatched via forward_dispatch, supporting any architecture: LSTM, A2,
+    WaveNet, ConvNet), arbitrary channels, bottleneck, kernel_sizes, dilations,
+    condition_size>1, head1x1, gating/blending, heterogeneous activations, and
+    all 8 FiLM slots.
     Backward-compatible with legacy 23-layer fast-path A2 models and
     single-array A2 generic models.
     """
@@ -730,7 +732,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
     if config.get("condition_dsp") is not None:
         import copy
         cond_model = copy.deepcopy(config["condition_dsp"])
-        cond_dsp_out = a2_forward(cond_model, x)
+        cond_dsp_out = forward_dispatch(cond_model, x)
 
     # ── Read all arrays' weights ──
     cursor = 0
@@ -851,8 +853,29 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
 
         # Head conv weights
         head_accum_size = int(layer_raw.get("head1x1", {}).get("out_channels", bottleneck)) if head1x1_active else bottleneck
-        head_size = int(layer_raw.get("head_size", 1))
-        if head_size == 1:
+
+        # S16.4 (T5.1): head layout format — A2 legacy (no explicit head_size in
+        # JSON) vs rechannel (explicit head_size).  A2 uses K=16 Conv1D with
+        # per-array bias+scale; rechannel uses a simple dense readout with
+        # per-array bias (only when head_bias=True) and a global head_scale at
+        # the end of the weight stream.
+        head_size_raw = layer_raw.get("head_size")
+        is_head_rechannel = head_size_raw is not None
+        if is_head_rechannel:
+            head_size = int(head_size_raw)
+            hw_count = head_accum_size * head_size
+            head_w = weights[cursor : cursor + hw_count].copy()
+            cursor += hw_count
+            head_bias_flag = bool(layer_raw.get("head_bias", False))
+            if head_bias_flag:
+                head_b_arr = weights[cursor : cursor + head_size].copy()
+                cursor += head_size
+            else:
+                head_b_arr = np.zeros(head_size, dtype=np.float64)
+            head_b = np.float64(head_b_arr[0]) if len(head_b_arr) == 1 else head_b_arr
+        else:
+            # Legacy A2 format: head_size not in JSON → A2_HEAD_K=16 Conv1D
+            head_size = 1
             head_w_raw = weights[cursor : cursor + A2_HEAD_K * head_accum_size]
             cursor += A2_HEAD_K * head_accum_size
             head_w = np.zeros(A2_HEAD_K * head_accum_size, dtype=np.float64)
@@ -861,14 +884,8 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                     head_w[tap * head_accum_size + c] = head_w_raw[c * A2_HEAD_K + tap]
             head_b = np.float64(weights[cursor])
             cursor += 1
-            # read head_scale
             _head_scale_val = np.float64(weights[cursor])
             cursor += 1
-        else:
-            hw_count = head_accum_size * head_size
-            head_w = weights[cursor : cursor + hw_count].copy()
-            cursor += hw_count
-            head_b = 0.0
 
         arr = ArrayWeights()
         arr.head_accum_size = head_accum_size
@@ -876,6 +893,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         arr.bottleneck = bottleneck
         arr.cond_size = cond_size
         arr.head_size = head_size
+        arr.head_is_rechannel = is_head_rechannel
         arr.rechannel_w = rechannel_w
         arr.layer_weights = layer_weights
         arr.head1x1_active = head1x1_active
@@ -1075,9 +1093,12 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         # ── Head finalize (last array) ──
         last_arr = array_list[-1]
         lch = last_arr.head_accum_size
-        k = A2_HEAD_K if last_arr.head_size == 1 else last_arr.head_size
+        if last_arr.head_is_rechannel:
+            k = last_arr.head_size
+        else:
+            k = A2_HEAD_K if last_arr.head_size == 1 else last_arr.head_size
         cb = head_col - (k - 1)
-        y = last_arr.head_b
+        y = float(last_arr.head_b) if np.ndim(last_arr.head_b) == 0 else float(last_arr.head_b[0])
         for t in range(k):
             col = (cb + t) & ring_mask
             wo = t * lch
@@ -1085,6 +1106,64 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
         output[f] = y * head_scale
 
     return output
+
+
+# ── Architecture detection and forward dispatch ──────────────────────────────
+
+def detect_architecture(model: dict) -> str:
+    """Detect model architecture from model dict (without --architecture flag).
+
+    Used for recursive condition_dsp dispatching where the sub-model may be
+    any architecture family (LSTM, A2, WaveNet, ConvNet), not just A2.
+    """
+    arch = model.get("architecture", None)
+    if arch:
+        return arch
+
+    config = model.get("config", {})
+    layers = config.get("layers", [])
+
+    if not layers:
+        if config.get("hidden_size") is not None:
+            return "LSTM"
+        if config.get("channels") and config.get("dilations"):
+            return "ConvNet"
+        return "Unknown"
+
+    has_head_scale = "head_scale" in config
+    has_head = bool(config.get("head"))
+    if has_head_scale and not has_head and any(
+        "dilations" in l and "channels" in l
+        for l in layers
+    ):
+        return "A2"
+
+    if any("dilations" in l for l in layers):
+        return "WaveNet"
+
+    return "Unknown"
+
+
+def forward_dispatch(model: dict, x: np.ndarray) -> np.ndarray:
+    """Generic forward dispatcher — routes to correct architecture-specific function.
+
+    This is the recursive dispatch point for condition_dsp sub-models (T5.1).
+    Unlike the command-line --architecture flag, this function auto-detects the
+    architecture from the model dict, supporting sub-models of any type.
+    """
+    arch = detect_architecture(model)
+
+    if arch == "WaveNet":
+        return wavenet_forward(model, x)
+    elif arch == "LSTM":
+        return lstm_forward(model, x)
+    elif arch == "A2":
+        return a2_forward(model, x)
+    elif arch == "ConvNet":
+        return convnet_forward(model, x)
+    else:
+        print(f"Warning: unknown architecture '{arch}' in forward_dispatch, returning zeros ({len(x)} samples)", file=sys.stderr)
+        return np.zeros_like(x)
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

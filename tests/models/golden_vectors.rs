@@ -1123,48 +1123,22 @@ fn test_golden_vectors_wavenet_condition_dsp() {
     );
 }
 
-/// Test 8l-2: Golden Vectors WaveNet Condition DSP LSTM — T4.1 cross-reference C++ ↔ NAM-rs.
+/// Test 8l-2: Golden Vectors WaveNet Condition DSP LSTM — T5.1 f64 oracle validation.
 ///
-/// Validates the Rust dynamic engine against the C++ reference for a WaveNet model
-/// whose `condition_dsp` sub-model is an LSTM (1 layer, 3 hidden units). The LSTM
-/// is recurrent and requires proper prewarm to initialize its `h`/`c` states.
+/// Validates the Rust f32 production engine against the Rust f64 reference oracle
+/// for a WaveNet model whose `condition_dsp` sub-model is an LSTM (1 layer, 3 hidden
+/// units). Unlike the C++ golden binary approach (which is unusable due to upstream
+/// LSTM condition_dsp channel mismatch), this test uses the f64 oracle as ground
+/// truth, with confidence chain anchored by `test_oracle_vs_python_anchor_condition_lstm`
+/// in `reference_oracle_f64.rs`.
 ///
-/// Reads `tests/fixtures/golden_wavenet_condition_lstm.bin`, builds the dynamic
-/// `StaticModel` from `wavenet_condition_lstm.nam`, and compares via ESR/SNR/MSE
-/// fusion report.
-///
-/// ## C++ upstream limitation
-///
-/// The NeuralAmpModelerCore C++ render tool cannot generate the golden binary
-/// for this model — it rejects LSTM condition_dsp sub-models with a channel
-/// mismatch (`condition_size of layer 0 (3) doesn't match output channels of
-/// condition DSP (1)`). The C++ upstream interprets LSTM output channels from
-/// `input_size` (1) instead of `hidden_size` (3). Until the C++ upstream is
-/// fixed to support LSTM condition_dsp sub-models, this test is ignored.
-///
-/// The model is validated via `test_wavenet_condition_lstm_loads_and_runs`
-/// which confirms the Rust dispatcher loads the model correctly and produces
-/// finite output through the full dynamic engine path.
-///
-/// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors
-/// (once the C++ upstream supports this topology).
+/// The LSTM is recurrent and requires proper prewarm to initialize its `h`/`c` states.
+/// Uses the same sweep signal as the NumPy anchor (sweep_256_48k.bin) for direct
+/// comparability.
 #[test]
-#[ignore = "C++ upstream does not support LSTM condition_dsp sub-models (channel mismatch)"]
 fn test_golden_vectors_wavenet_condition_lstm() {
-    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/golden_wavenet_condition_lstm.bin");
-
-    if !golden_path.exists() {
-        eprintln!(
-            "SKIP: golden_wavenet_condition_lstm.bin not found at {golden_path:?}. \
-                   The C++ upstream cannot generate this golden (LSTM condition_dsp channel \
-                   mismatch); see test doc comment. Skipping golden comparison."
-        );
-        return;
-    }
-
-    let (input, expected) =
-        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_condition_lstm.bin");
+    use nam_rs::testing::reference_oracle::{PrecisionConfig, oracle_forward};
+    use std::io::Read;
 
     let nam_path = model_path("wavenet_condition_lstm.nam");
     assert!(
@@ -1177,24 +1151,48 @@ fn test_golden_vectors_wavenet_condition_lstm() {
         fs::read_to_string(&nam_path).expect("Failed to read wavenet_condition_lstm.nam");
     let model_data =
         parse_nam_json(&json_data).expect("Failed to parse wavenet_condition_lstm.nam JSON");
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build WaveNet Condition DSP LSTM for golden test");
 
-    model.prewarm(2048);
-    let mut output = vec![0.0f32; input.len()];
-    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+    let sweep_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/f64_anchors/sweep_256_48k.bin");
+    let mut f = std::fs::File::open(&sweep_path).expect("sweep_256_48k.bin not found");
+    let mut buf = [0u8; 4];
+    f.read_exact(&mut buf).expect("Failed to read sweep count");
+    let n = u32::from_le_bytes(buf) as usize;
+    let mut raw = vec![0u8; n * 8];
+    f.read_exact(&mut raw).expect("Failed to read sweep data");
+    let input_f64: Vec<f64> = raw
+        .chunks_exact(8)
+        .map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
+
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher failed to build WaveNet Condition DSP LSTM for oracle test");
+    let mut prod_output = vec![0.0f32; input_f32.len()];
+    let mut pos = 0;
+    while pos < input_f32.len() {
+        let nf = (input_f32.len() - pos).min(64);
+        model.process(&input_f32[pos..pos + nf], &mut prod_output[pos..pos + nf]);
+        pos += nf;
+    }
+
+    let oracle = oracle_forward(&model_data, &input_f64, &PrecisionConfig::default());
+
+    let oracle_f32: Vec<f32> = oracle.iter().map(|&x| x as f32).collect();
 
     let (mse_limit, min_snr_db, max_esr, mrstft_max) =
         topology_thresholds(&model_data, "wavenet_condition_lstm");
-    gv_metric("WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) C++ cross-reference");
+    gv_metric(
+        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) f64 oracle cross-reference",
+    );
     report_dsp_fidelity(
-        &expected,
-        &output,
+        &oracle_f32,
+        &prod_output,
         mse_limit,
         min_snr_db,
         max_esr,
         mrstft_max,
-        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) C++ cross-reference",
+        "WaveNet Condition DSP LSTM (CH=3, cond=3, LSTM sub-model) f64 oracle cross-reference",
         STRESS_SAMPLE_RATE,
     );
 }

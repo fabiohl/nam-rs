@@ -294,6 +294,13 @@ fn is_a2_model(model_data: &NamModelData) -> bool {
     {
         return false;
     }
+    // S16.4 (T5.1): condition_dsp models use the A2 oracle path, which supports
+    // condition_dsp dispatch.  The condition_dsp sub-model itself (which may also
+    // be a rechannel-head WaveNet) is dispatched separately by oracle_forward
+    // and may go through oracle_wavenet_forward.
+    if model_data.config.condition_dsp.is_some() {
+        return true;
+    }
     // Multi-array: require A2-specific features to avoid misclassifying
     // standard WaveNet models (which also have head_scale + dilations).
     if layers.len() > 1 {

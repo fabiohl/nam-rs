@@ -309,6 +309,7 @@ pub(crate) fn oracle_a2_forward(
         bottleneck: usize,
         cond_size: usize,
         head_size: usize,
+        head_is_rechannel: bool,
         rechannel_w: Vec<f64>,
         lws: Vec<A2OracleLayerWeights>,
         head1x1_active: bool,
@@ -498,8 +499,20 @@ pub(crate) fn oracle_a2_forward(
             vec![]
         };
 
-        let head_size = layer_cfg.head_size.unwrap_or(1);
-        let (head_w, head_b) = if head_size == 1 {
+        let head_size_raw = layer_cfg.head_size;
+        let head_is_rechannel = head_size_raw.is_some();
+        let head_size = head_size_raw.unwrap_or(1);
+        let (head_w, head_b) = if head_is_rechannel {
+            let hw_count = head_accum_size * head_size;
+            let head_w = cursor.read_f64(hw_count);
+            let head_bias = layer_cfg.head_bias.unwrap_or(false);
+            let head_b = if head_bias {
+                cursor.read_f64(head_size)
+            } else {
+                vec![0.0f64; head_size]
+            };
+            (head_w, head_b)
+        } else {
             let head_w_raw = cursor.read_f64(A2_HEAD_KERNEL * head_accum_size);
             let mut head_w = vec![0.0f64; A2_HEAD_KERNEL * head_accum_size];
             for tap in 0..A2_HEAD_KERNEL {
@@ -509,16 +522,6 @@ pub(crate) fn oracle_a2_forward(
             }
             let head_b = vec![cursor.read_one_f64()];
             let _head_scale_val = cursor.read_one_f64();
-            (head_w, head_b)
-        } else {
-            let hw_count = head_accum_size * head_size;
-            let head_w = cursor.read_f64(hw_count);
-            let head_bias = layer_cfg.head_bias.unwrap_or(false);
-            let head_b = if head_bias {
-                cursor.read_f64(head_size)
-            } else {
-                vec![0.0f64; head_size]
-            };
             (head_w, head_b)
         };
 
@@ -533,6 +536,7 @@ pub(crate) fn oracle_a2_forward(
             bottleneck,
             cond_size,
             head_size,
+            head_is_rechannel,
             rechannel_w,
             lws,
             head1x1_active,
@@ -599,11 +603,9 @@ pub(crate) fn oracle_a2_forward(
                 // for condition_size==1 we use the raw audio directly.
                 std::slice::from_ref(&x)
             } else if let Some(ref cond_out) = cond_output {
-                // condition_dsp produces a mono stream; form the per-frame
-                // condition vector by taking a sliding window of cond_size
-                // samples: condition[s] = cond_out[f + s].
-                if f + cond_size <= cond_out.len() {
-                    &cond_out[f..f + cond_size]
+                let offset = f * cond_size;
+                if offset + cond_size <= cond_out.len() {
+                    &cond_out[offset..offset + cond_size]
                 } else {
                     &[]
                 }
@@ -838,10 +840,14 @@ pub(crate) fn oracle_a2_forward(
         // ── Head finalize (last array only) ──
         let last_arr = &arrays[num_arrays - 1];
         let lch = last_arr.head_accum_size;
-        let k = if last_arr.head_size == 1 {
-            A2_HEAD_KERNEL
-        } else {
+        let k = if last_arr.head_is_rechannel {
             last_arr.head_size
+        } else {
+            if last_arr.head_size == 1 {
+                A2_HEAD_KERNEL
+            } else {
+                last_arr.head_size
+            }
         };
         let cb = head_col.wrapping_sub(k - 1);
         let mut y = last_arr.head_b[0];

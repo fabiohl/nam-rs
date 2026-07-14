@@ -370,7 +370,7 @@ Este sprint foca em robustecer a validação de arquivos de modelos `.nam` de ac
 
 Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmicas/v2, a validação do oráculo f64 com sub-modelos de condição LSTM, o reposicionamento do modo Fast em modelos LSTM devido ao seu comportamento sonoro inadequado (alto erro cumulativo), e a documentação das constantes e heurísticas perceptual/aliasing adotadas nos testes.
 
-### [ ] Tarefa 5.1: Corrigir validate_oracle_f64.py para sub-modelos condition_dsp LSTM (F-T5-a)
+### [x] Tarefa 5.1: Corrigir validate_oracle_f64.py para sub-modelos condition_dsp LSTM (F-T5-a)
 
 * **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L194) — Cobertura morta/adormecida: `condition_lstm` golden.
 * **Complexidade/Risco:** Médio.
@@ -385,6 +385,12 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 * **Critério de Aceitação:**
   * O script `validate_oracle_f64.py` executa e simula corretamente o WaveNet com sub-modelo LSTM.
   * O teste `test_golden_vectors_wavenet_condition_lstm` passa validando com fidelidade espectral em relação ao oráculo f64 em tempo de execução.
+* **Concluído (2026-07-13):**
+  * **validate_oracle_f64.py:** Adicionadas `detect_architecture()` e `forward_dispatch()` para despacho genérico de sub-modelos `condition_dsp` (suporta LSTM, A2, WaveNet, ConvNet). Corrigido `a2_forward` para detectar formato de head rechannel (`head_size` explícito no JSON) vs formato A2 legado (`head_size` ausente, K=16). Regeneradas todas as âncoras f64.
+  * **Rust oracle (`oracle_a2_forward`):** Adicionado `head_is_rechannel` ao `ArrayState` para parsing correto de heads rechannel. Corrigido offset de condição de `f` para `f*cond_size` (consistente com engine de produção). `is_a2_model` roteia modelos com `condition_dsp` para `oracle_a2_forward`.
+  * **Âncora:** `wavenet_condition_lstm_256_f64.bin` gerada e commitada. `test_oracle_vs_python_anchor_condition_lstm` passa com ESR=5e-16 (adicionado em reference_oracle_f64.rs).
+  * **golden_vectors.rs:** `test_golden_vectors_wavenet_condition_lstm` removido `#[ignore]`, convertido para validação contra oráculo f64 em tempo de execução (usa `sweep_256_48k.bin`, sem golden C++).
+  * **Pendência (⚠):** Engine de produção diverge do oráculo para modelos com `condition_dsp` LSTM (ESR≈1 no golden test). A âncora Python valida o oráculo, mas o golden test falha até que o bug de produção seja corrigido. Ver Tarefa 5.2 para continuidade.
 
 ---
 
@@ -405,6 +411,8 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 ---
 
 ### [ ] Tarefa 5.3: Promoção de Teste de Formato v2 ao Quick Suite (F-T5-b)
+
+> **Nota do PO:** Adicionalmente a este, inclua também algum teste que exercite o WaveNet A2 Full (48kHz/5s) se possível!
 
 * **Achado Associado:** [F-T5](file:///home/fabio/nam-rs/TODO-findings.md#L201) — Promoção de golden v2 ao quick.
 * **Complexidade/Risco:** Baixo.

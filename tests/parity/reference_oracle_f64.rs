@@ -188,6 +188,50 @@ fn test_oracle_vs_python_anchor_wavenet() {
 }
 
 #[test]
+fn test_oracle_vs_python_anchor_condition_dsp() {
+    let path = models_dir().join("wavenet_condition_dsp.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("wavenet_condition_dsp_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "Condition DSP: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-12,
+        "Condition DSP Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
+#[test]
+fn test_oracle_vs_python_anchor_condition_lstm() {
+    let path = models_dir().join("wavenet_condition_lstm.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("wavenet_condition_lstm_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "Condition DSP LSTM: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-12,
+        "Condition DSP LSTM Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
+#[test]
 fn test_oracle_vs_python_anchor_lstm() {
     let path = models_dir().join("lstm.nam");
     let md = load_and_parse(&path);
