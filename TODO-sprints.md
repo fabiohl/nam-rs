@@ -3,21 +3,36 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO-sprints.md — Planejamento de Sprints & Tarefas Técnicas (EP-A)
+# TODO-sprints.md — Planejamento de Sprints & Tarefas Técnicas (EP-A + EP-B + EP-C)
 
-Este documento detalha o planejamento ágil para a execução do **EP-A — Veredito do `condition_dsp` (F1 + F4)**, classificado como o núcleo desta rodada de auditoria de compliance e paridade.
+Este documento detalha o planejamento ágil para a execução das sprints de auditoria de compliance e paridade:
+
+1. **EP-A — Veredito do `condition_dsp` (F1 + F4)** [DONE]
+2. **EP-B — Integridade da malha de qualidade (F2 + F3 + F5)** [PLANEJADO/EM EXECUÇÃO]
+3. **EP-C — Polimento do dashboard (F6)** [PLANEJADO]
 
 Todas as referências de findings apontam para o arquivo [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
 ---
 
-## Visão Geral do Épico EP-A
+## Visão Geral dos Épicos
 
-* **Objetivo:** Resolver a semântica sem árbitro confiável do sub-modelo `condition_dsp` (caso WaveNet e LSTM) e corrigir as discrepâncias do oráculo f64 nos modos de gating (Gated/Blended).
-* **Risco:** **Médio-Alto**. Mexer no oráculo f64 altera o pilar de medição e validação do projeto. A principal mitigação é usar os fixtures golden-validados existentes como critério objetivo de aceitação, garantindo que a produção nunca seja alterada para "concordar" com um oráculo potencialmente incorreto.
-* **Critério de Fechamento:**
-  1. Dashboard de qualidade sem nenhum valor "vs Ideal" maior que `1e-6` para as famílias avaliadas.
-  2. Sub-modelo `condition_lstm` com veredito definitivo documentado e gate real calibrado.
+### EP-A — Veredito do `condition_dsp` (F1 + F4) [DONE]
+
+* **Objetivo:** Resolver a semântica sem árbitro confiável de `condition_dsp` e corrigir o oráculo f64 em gating (Gated/Blended).
+* **Risco:** **Médio-Alto**. Critério de fechamento atingido em 2026-07-14.
+
+### EP-B — Integridade da malha de qualidade (F2 + F3 + F5)
+
+* **Objetivo:** Garantir que self-tests sintéticos não contaminem a telemetria, ampliar a auditoria anti-placebo de thresholds a todo o CATALOG com datas nas skip reasons, e robustecer a tolerância de latência sub-µs com piso de +0.05 µs.
+* **Risco:** **Baixo**. Alto ganho de segurança e imunidade contra jitter de medição.
+* **Critério de Fechamento:** `tests-quick.sh && quality-dashboard.sh --check` verde sem dados sintéticos no contrato; meta-teste falhando se a data do `condition_lstm` na skip_reason estiver ausente (trava de segurança correta).
+
+### EP-C — Polimento do dashboard (F6)
+
+* **Objetivo:** Melhorar a formatação do SNR, separar a tabela de fidelidade em modelos primários e cobertura redundante para de-clutter visual, e fornecer contexto/warning em medições vermelhas de ESR alto.
+* **Risco:** **Mínimo**. Puramente estético e apresentacional na CLI/dashboard.
+* **Critério de Fechamento:** Dashboard gerando tabelas limpas e com formatação decimal uniforme e adequada.
 
 ---
 
@@ -25,18 +40,25 @@ Todas as referências de findings apontam para o arquivo [TODO-findings.md](file
 
 ```mermaid
 gantt
-    title Cronograma Estimado - EP-A
+    title Cronograma Estimado - NAM-rs
     dateFormat  YYYY-MM-DD
-    section Sprint 1: Spec e Oráculo DSP
-    T1.1 - Spec C++/Trainer          :active, t1_1, 2026-07-14, 2d
-    T1.2 - Correção Oráculo f64 DSP  :t1_2, after t1_1, 2d
-    section Sprint 2: Gating e LSTM
-    T2.1 - Oráculo Gated/Blended     :t2_1, after t1_2, 2d
-    T2.2 - Âncoras NumPy Gating      :t2_2, after t2_1, 1d
-    T2.3 - Adjudicação LSTM          :t2_3, after t2_2, 2d
-    section Sprint 3: Segurança e Calibração
-    T3.1 - Política de Carregamento  :t3_1, after t2_3, 1d
-    T3.2 - Recalibração de Gates     :t3_2, after t3_1, 1d
+    section Sprint 1: Spec e Oráculo DSP (EP-A)
+    T1.1 - Spec C++/Trainer          :done, t1_1, 2026-07-14, 2d
+    T1.2 - Correção Oráculo f64 DSP  :done, t1_2, after t1_1, 2d
+    section Sprint 2: Gating e LSTM (EP-A)
+    T2.1 - Oráculo Gated/Blended     :done, t2_1, after t1_2, 2d
+    T2.2 - Âncoras NumPy Gating      :done, t2_2, after t2_1, 1d
+    T2.3 - Adjudicação LSTM          :done, t2_3, after t2_2, 2d
+    section Sprint 3: Segurança e Calibração (EP-A)
+    T3.1 - Política de Carregamento  :done, t3_1, after t2_3, 1d
+    T3.2 - Recalibração de Gates     :done, t3_2, after t3_1, 1d
+    section Sprint 4: Integridade da Malha (EP-B)
+    T4.1 - Isolamento JSONL/Dashboard :done, t4_1, after t3_2, 1d
+    T4.2 - Auditoria Anti-Placebo    :done, t4_2, after t4_1, 1d
+    T4.3 - Tolerância de Latência     :done, t4_3, after t4_2, 1d
+    section Sprint 5: Polimento Dashboard (EP-C)
+    T5.1 - Formatação e Deduplicação  :active, t5_1, after t4_3, 1d
+    T5.2 - Contexto e Flags de ESR    :t5_2, after t5_1, 1d
 ```
 
 ### Sprint 1: Especificação & Alinhamento do Oráculo DSP
@@ -169,3 +191,76 @@ gantt
     * Contrato de qualidade já limpo na T3.1 (`docs/quality-contract.txt`).
   * **Verificação:** `./utils/tests-quick.sh` executado com sucesso (estrutural + medida + parser fuzzing, todos passaram).
   * **Nota:** Quando o bug de estado LSTM for corrigido (Sprint 4) e o modelo voltar a carregar, a recalibração original de T3.2 deverá ser reexecutada com medições reais. Até lá, os thresholds removidos eram placebos (SNR ≥ 5 dB, MR-STFT < 0.80) que não ofereciam proteção real.
+
+---
+
+### Sprint 4: Integridade da Malha de Qualidade (EP-B)
+
+**Foco:** Reforçar a segurança da infraestrutura de testes, calibrar limites flexíveis para latência e estender auditoria anti-placebo.
+
+#### Tarefa T4.1 — Isolamento de Métricas JSONL & Supressão de Self-Tests
+
+* **Referência:** [F2](file:///home/fabio/nam-rs/TODO-findings.md#L93)
+* **Responsável:** Engenheiro de Testes / DevOps
+* **Complexidade:** Baixa
+* **Descrição:**
+  Evitar contaminação do dashboard de qualidade com testes controlados de regressão.
+  * Adicionar campo `"kind"` aos registros JSONL (`"fidelity"` vs `"selftest"`).
+  * Implementar o guard thread-local `MetricKindGuard` em `tests/common/validation.rs` e usá-lo em `test_mrstft_hard_gate_catches_regression` para rotular como `"selftest"`.
+  * Atualizar o script `utils/quality-dashboard.sh` para ignorar registros JSONL que não sejam de `"fidelity"`.
+  * Expurgar a entrada do self-test degradado do arquivo `docs/quality-contract.txt`.
+* **Critério de Aceite:** Execução do dashboard `--check` limpa, sem a entrada sintética `T3.1: MR-STFT regression gate (synthetic)` presente.
+
+#### Tarefa T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG & Meta-Teste
+
+* **Referência:** [F3](file:///home/fabio/nam-rs/TODO-findings.md#L116)
+* **Responsável:** Engenheiro de Qualidade
+* **Complexidade:** Média
+* **Descrição:**
+  Garantir que todos os modelos do catálogo passem por auditoria anti-placebo de thresholds, incluindo os sem fixture `.bin`.
+  * Alterar o meta-teste `test_all_thresholds_anti_placebo` em `tests/models/threshold_calibration.rs` para varrer todas as entradas do `CATALOG` em `golden_gen_build.sh`.
+  * Se o modelo do catálogo possuir `skip_reason`, exigir que o texto do motivo contenha uma data no formato `(YYYY-MM-DD)`.
+  * Se não possuir, exigir que retorne `Some` calibrado e validar Rules 1–4.
+  * Adicionar meta-teste no Rust para auditar `docs/quality-contract.txt` garantindo que não contenha rótulos contendo `(synthetic)`.
+* **Critério de Aceite:** O teste anti-placebo deve falhar para `wavenet_condition_lstm` devido à falta de data em sua `skip_reason` atual (mostrando a trava de segurança em funcionamento).
+
+#### Tarefa T4.3 — Tolerância de Latência Composta com Piso Absoluto
+
+* **Referência:** [F5](file:///home/fabio/nam-rs/TODO-findings.md#L156)
+* **Responsável:** Engenheiro de Paridade / Sistemas
+* **Complexidade:** Baixa
+* **Descrição:**
+  Robustecer o validador de latência contra jitter de medição de nanosegundos na CPU.
+  * Implementar limite composto de latência no `utils/quality-dashboard.sh`: `limite = max(contrato * 1.10, contrato + 0.05 us)`.
+  * Documentar no cabeçalho/comentários de `docs/quality-contract.txt` a aplicação do piso absoluto de `0.05 us`.
+* **Critério de Aceite:** Execução do dashboard sem quebras por micro-variações no benchmark `Linear RF=2048`.
+
+---
+
+### Sprint 5: Polimento do Dashboard (EP-C)
+
+**Foco:** Refinar a apresentação visual do dashboard, consolidando o de-clutter de medições duplicadas e formatação uniforme de SNR e alertas.
+
+#### Tarefa T5.1 — Formatação do SNR e Divisão de Tabelas (Deduplicação)
+
+* **Referência:** [F6.1, F6.2](file:///home/fabio/nam-rs/TODO-findings.md#L168)
+* **Responsável:** Engenheiro Frontend/DevOps
+* **Complexidade:** Baixa
+* **Descrição:**
+  De-clutter visual do relatório de fidelidade sonora do dashboard.
+  * Limitar a coluna SNR para exibir números formatados com 1 casa decimal (`%.1f`) usando a função `_nfmt`.
+  * Criar função `is_redundant_measurement` para classificar linhas de teste de integração e cobertura secundária.
+  * Renderizar a tabela de fidelidade dividida em duas: a tabela canônica principal e a tabela de cobertura adicional (medições redundantes).
+* **Critério de Aceite:** Execução limpa do dashboard mostrando a separação lógica das tabelas e a coluna SNR padronizada com uma única casa decimal.
+
+#### Tarefa T5.2 — Contexto de Alertas em Linhas de Alta Divergência (Linhas Vermelhas)
+
+* **Referência:** [F6.3](file:///home/fabio/nam-rs/TODO-findings.md#L168)
+* **Responsável:** Engenheiro de Qualidade
+* **Complexidade:** Baixa
+* **Descrição:**
+  Enriquecer o feedback visual quando houver falhas críticas de fidelidade.
+  * Se o ESR contra o NAMcore ou oráculo exceder `0.1` (zona vermelha), extrair o valor do contrato para anexar contextualmente `[gate: <limite>]`.
+  * Adicionar tag `[EM INVESTIGAÇÃO]` se o modelo sob suspeita for `condition_lstm`.
+  * Adicionar tag `[orac: f64 div]` se a divergência for proveniente do caminho de oráculo f64.
+* **Critério de Aceite:** Rótulos informativos de aviso renderizados ao final de linhas vermelhas no dashboard, sem quebrar o alinhamento das demais colunas.
