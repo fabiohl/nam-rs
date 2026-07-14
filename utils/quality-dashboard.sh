@@ -992,6 +992,40 @@ render_quick_summary() {
 
 # ── Render: fidelity details table ──────────────────────────────────────────
 
+# T5.1 — Classifies fidelity measurement rows as redundant (coverage from
+# alternative entry points) vs canonical (primary golden_vector measurement).
+#
+# Redundant entries: quick_parity, container tests, regression-gate tests.
+# Canonical entries: direct golden_vectors measurements.
+_is_redundant_measurement() {
+    local label="$1"
+    [[ "$label" == Quick\ * ]]  && return 0
+    [[ "$label" == Container\ * ]]  && return 0
+    [[ "$label" == Container\ File\ * ]]  && return 0
+    [[ "$label" == T-* ]]  && return 0
+    [[ "$label" == T[0-9]* ]]  && return 0
+    return 1
+}
+
+# Emits one row of the fidelity table (shared between canonical and coverage tables).
+# Parameters are passed as local variables in the caller (esr_nam_short, snr_formatted, etc.)
+_render_fidelity_row() {
+    local display_key="$1" esr_nam_cell="$2" esr_f64_cell="$3" \
+          snr_cell="$4" mrstft_cell="$5" mode="$6"
+    printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %s\n" \
+        "$display_key" "$esr_nam_cell" "$esr_f64_cell" "$snr_cell" "$mrstft_cell" "$mode"
+}
+
+# Renders the header row for fidelity tables.
+_render_fidelity_header() {
+    printf "  %-38s │ %-16s │ %-12s │ %-8s │ %-8s │ %s\n" \
+        "Modelo" "ESR (vs NAMcore)" "ESR (vs f64)" "SNR dB" "MR-STFT" "Modo"
+    printf "  %s │ %s │ %s │ %s │ %s │ %s\n" \
+        "$(printf '─%.0s' {1..38})" "$(printf '─%.0s' {1..16})" \
+        "$(printf '─%.0s' {1..12})" "$(printf '─%.0s' {1..8})" \
+        "$(printf '─%.0s' {1..8})" "$(printf '─%.0s' {1..6})"
+}
+
 render_fidelity_details() {
     echo "📊 FIDELIDADE SONORA — Detalhes Tecnicos"
     echo "═════════════════════════════════════════"
@@ -1003,53 +1037,119 @@ render_fidelity_details() {
         return
     fi
 
-    printf "  %-38s │ %-16s │ %-12s │ %-8s │ %-8s │ %s\n" \
-        "Modelo" "ESR (vs NAMcore)" "ESR (vs f64)" "SNR dB" "MR-STFT" "Modo"
-    printf "  %s │ %s │ %s │ %s │ %s │ %s\n" \
-        "$(printf '─%.0s' {1..38})" "$(printf '─%.0s' {1..16})" \
-        "$(printf '─%.0s' {1..12})" "$(printf '─%.0s' {1..8})" \
-        "$(printf '─%.0s' {1..8})" "$(printf '─%.0s' {1..6})"
-
+    # Pre-classify entries into canonical and redundant arrays
+    local -a canonicals=()
+    local -a redundants=()
     for key in "${MODEL_ORDER[@]}"; do
-        local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
-        local esr_nam_short
-        esr_nam_short=$(_fmt_metric "$esr_nam")
-        # Color ESR value by quality
-        local esr_color=""
-        if [ "$esr_nam" != "N/A" ]; then
-            esr_color=$(awk -v v="$esr_nam" 'BEGIN {
-                if (v+0 < 1e-10) print "GREEN"
-                else if (v+0 < 1e-5) print "GREEN"
-                else if (v+0 < 1e-2) print "YELLOW"
-                else if (v+0 < 1e-1) print "YELLOW"
-                else print "RED"
-            }')
-            case "$esr_color" in
-                GREEN)  esr_nam_short="${GREEN}${esr_nam_short}${NC}" ;;
-                YELLOW) esr_nam_short="${YELLOW}${esr_nam_short}${NC}" ;;
-                RED)    esr_nam_short="${RED}${esr_nam_short}${NC}" ;;
-            esac
-        fi
-        local snr="${SNR_DB[$key]:-N/A}"
-        local mrstft="${MRSTFT[$key]:-N/A}"
-        local mrstft_short
-        mrstft_short=$(_fmt_metric "$mrstft")
         local model_label
         model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
-        local esr_f64 esr_f64_provenance
-        { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
-        local esr_f64_short
-        esr_f64_short=$(_fmt_metric "$esr_f64")
-        local esr_f64_colored
-        esr_f64_colored=$(_esr_color "$esr_f64_short")
-        local mode="Live"
-        [[ "$key" == *" HQ"* ]] && mode="HQ"
-        local display_key="${key:0:38}"
-
-        printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %s\n" \
-            "$display_key" "$esr_nam_short" "$esr_f64_colored" "$snr" "$mrstft_short" "$mode"
+        if _is_redundant_measurement "$model_label"; then
+            redundants+=("$key")
+        else
+            canonicals+=("$key")
+        fi
     done
-    echo ""
+
+    # ── Canonical table ──────────────────────────────────────────────────
+    if [ ${#canonicals[@]} -gt 0 ]; then
+        echo "  ── Fidelidade Canônica (golden_vectors) ──"
+        echo ""
+        _render_fidelity_header
+
+        for key in "${canonicals[@]}"; do
+            local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
+            local esr_nam_short
+            esr_nam_short=$(_fmt_metric "$esr_nam")
+            local esr_color=""
+            if [ "$esr_nam" != "N/A" ]; then
+                esr_color=$(awk -v v="$esr_nam" 'BEGIN {
+                    if (v+0 < 1e-10) print "GREEN"
+                    else if (v+0 < 1e-5) print "GREEN"
+                    else if (v+0 < 1e-2) print "YELLOW"
+                    else if (v+0 < 1e-1) print "YELLOW"
+                    else print "RED"
+                }')
+                case "$esr_color" in
+                    GREEN)  esr_nam_short="${GREEN}${esr_nam_short}${NC}" ;;
+                    YELLOW) esr_nam_short="${YELLOW}${esr_nam_short}${NC}" ;;
+                    RED)    esr_nam_short="${RED}${esr_nam_short}${NC}" ;;
+                esac
+            fi
+            local snr_val="${SNR_DB[$key]:-N/A}"
+            local snr_formatted="$snr_val"
+            [ "$snr_val" != "N/A" ] && snr_formatted=$(_nfmt "%.1f" "$snr_val")
+            local mrstft="${MRSTFT[$key]:-N/A}"
+            local mrstft_short
+            mrstft_short=$(_fmt_metric "$mrstft")
+            local model_label
+            model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
+            local esr_f64 esr_f64_provenance
+            { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
+            local esr_f64_short
+            esr_f64_short=$(_fmt_metric "$esr_f64")
+            local esr_f64_colored
+            esr_f64_colored=$(_esr_color "$esr_f64_short")
+            local mode="Live"
+            [[ "$key" == *" HQ"* ]] && mode="HQ"
+            local display_key="${key:0:38}"
+
+            _render_fidelity_row "$display_key" "$esr_nam_short" "$esr_f64_colored" \
+                "$snr_formatted" "$mrstft_short" "$mode"
+        done
+        echo ""
+    fi
+
+    # ── Redundant/coverage table ─────────────────────────────────────────
+    if [ ${#redundants[@]} -gt 0 ]; then
+        echo "  ── Cobertura Adicional (quick_parity, containers, regression gates) ──"
+        echo "  (i) Estas medições validam os mesmos modelos por entry points alternativos."
+        echo "       Linhas equivalentes da tabela canônica acima."
+        echo ""
+        _render_fidelity_header
+
+        for key in "${redundants[@]}"; do
+            local esr_nam="${ESR_NAMCORE[$key]:-N/A}"
+            local esr_nam_short
+            esr_nam_short=$(_fmt_metric "$esr_nam")
+            local esr_color=""
+            if [ "$esr_nam" != "N/A" ]; then
+                esr_color=$(awk -v v="$esr_nam" 'BEGIN {
+                    if (v+0 < 1e-10) print "GREEN"
+                    else if (v+0 < 1e-5) print "GREEN"
+                    else if (v+0 < 1e-2) print "YELLOW"
+                    else if (v+0 < 1e-1) print "YELLOW"
+                    else print "RED"
+                }')
+                case "$esr_color" in
+                    GREEN)  esr_nam_short="${GREEN}${esr_nam_short}${NC}" ;;
+                    YELLOW) esr_nam_short="${YELLOW}${esr_nam_short}${NC}" ;;
+                    RED)    esr_nam_short="${RED}${esr_nam_short}${NC}" ;;
+                esac
+            fi
+            local snr_val="${SNR_DB[$key]:-N/A}"
+            local snr_formatted="$snr_val"
+            [ "$snr_val" != "N/A" ] && snr_formatted=$(_nfmt "%.1f" "$snr_val")
+            local mrstft="${MRSTFT[$key]:-N/A}"
+            local mrstft_short
+            mrstft_short=$(_fmt_metric "$mrstft")
+            local model_label
+            model_label=$(echo "$key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
+            local esr_f64 esr_f64_provenance
+            { read -r esr_f64; read -r esr_f64_provenance; } < <(_lookup_esr_f64 "$model_label")
+            local esr_f64_short
+            esr_f64_short=$(_fmt_metric "$esr_f64")
+            local esr_f64_colored
+            esr_f64_colored=$(_esr_color "$esr_f64_short")
+            local mode="Live"
+            [[ "$key" == *" HQ"* ]] && mode="HQ"
+            local display_key="${key:0:38}"
+
+            _render_fidelity_row "$display_key" "$esr_nam_short" "$esr_f64_colored" \
+                "$snr_formatted" "$mrstft_short" "$mode"
+        done
+        echo ""
+    fi
+
     echo "  Legenda qualitativa (limites de audibilidade do ESR):"
     echo -e "    ${GREEN}verde${NC} = imperceptivel (ESR < 1e-5)"
     echo -e "    ${YELLOW}amarelo${NC} = audivel apenas com A/B cientifico (ESR < 1e-2)"

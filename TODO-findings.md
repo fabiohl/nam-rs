@@ -201,7 +201,7 @@ golden-validados são o critério de aceite objetivo em cada passo; jamais alter
 "concordar" com o oráculo (lição §4.5). Critério de fechamento do épico: dashboard sem nenhum
 valor "vs Ideal" > 1e-6; `condition_lstm` com veredito documentado e gate calibrado real.
 
-### EP-B — Integridade da malha de qualidade (F2 + F3 + F5)
+### EP-B — Integridade da malha de qualidade (F2 + F3 + F5) [DONE]
 
 Filtro `kind` no JSONL + expurgo do contrato + meta-teste de labels (F2); anti-placebo
 estendido a `topology_thresholds` com Rules 1–4 e skip_reason datado (F3); tolerância composta

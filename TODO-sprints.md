@@ -241,7 +241,7 @@ gantt
   * Criado `test_quality_contract_no_synthetic_labels` (`tests/models/threshold_calibration.rs:944-970`): guarda permanente contra contaminação do contrato por entradas sintéticas de self-tests.
   * **Verificação:** `./utils/tests-quick.sh` passou completo. Ambos os novos meta-testes passam.
 
-#### Tarefa T4.3 — Tolerância de Latência Composta com Piso Absoluto
+#### Tarefa T4.3 — Tolerância de Latência Composta com Piso Absoluto [DONE]
 
 * **Referência:** [F5](file:///home/fabio/nam-rs/TODO-findings.md#L156)
 * **Responsável:** Engenheiro de Paridade / Sistemas
@@ -264,7 +264,7 @@ gantt
 
 **Foco:** Refinar a apresentação visual do dashboard, consolidando o de-clutter de medições duplicadas e formatação uniforme de SNR e alertas.
 
-#### Tarefa T5.1 — Formatação do SNR e Divisão de Tabelas (Deduplicação)
+#### Tarefa T5.1 — Formatação do SNR e Divisão de Tabelas (Deduplicação) [DONE]
 
 * **Referência:** [F6.1, F6.2](file:///home/fabio/nam-rs/TODO-findings.md#L168)
 * **Responsável:** Engenheiro Frontend/DevOps
@@ -275,6 +275,12 @@ gantt
   * Criar função `is_redundant_measurement` para classificar linhas de teste de integração e cobertura secundária.
   * Renderizar a tabela de fidelidade dividida em duas: a tabela canônica principal e a tabela de cobertura adicional (medições redundantes).
 * **Critério de Aceite:** Execução limpa do dashboard mostrando a separação lógica das tabelas e a coluna SNR padronizada com uma única casa decimal.
+* **Conclusão (2026-07-14):**
+  * Coluna SNR formada com `_nfmt "%.1f"` na renderização da tabela de fidelidade (`quality-dashboard.sh`).
+  * Função `_is_redundant_measurement` (`quality-dashboard.sh`): classifica labels com prefixos `Quick`, `Container`, `Container File`, `T-`, `T<n>.` como cobertura redundante.
+  * Funções auxiliares `_render_fidelity_row` e `_render_fidelity_header` extraídas para reuso entre as duas tabelas.
+  * Tabela de fidelidade dividida em: (a) **Fidelidade Canônica** — medições diretas do golden_vectors; (b) **Cobertura Adicional** — quick_parity, containers, regression gates.
+  * **Verificação:** `utils/lints.sh` e `./utils/tests-quick.sh` passaram limpos.
 
 #### Tarefa T5.2 — Contexto de Alertas em Linhas de Alta Divergência (Linhas Vermelhas)
 
