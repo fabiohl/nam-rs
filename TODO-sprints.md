@@ -198,7 +198,7 @@ gantt
 
 **Foco:** Reforçar a segurança da infraestrutura de testes, calibrar limites flexíveis para latência e estender auditoria anti-placebo.
 
-#### Tarefa T4.1 — Isolamento de Métricas JSONL & Supressão de Self-Tests
+#### Tarefa T4.1 — Isolamento de Métricas JSONL & Supressão de Self-Tests [DONE]
 
 * **Referência:** [F2](file:///home/fabio/nam-rs/TODO-findings.md#L93)
 * **Responsável:** Engenheiro de Testes / DevOps
@@ -230,6 +230,16 @@ gantt
   * Se não possuir, exigir que retorne `Some` calibrado e validar Rules 1–4.
   * Adicionar meta-teste no Rust para auditar `docs/quality-contract.txt` garantindo que não contenha rótulos contendo `(synthetic)`.
 * **Critério de Aceite:** O teste anti-placebo deve falhar para `wavenet_condition_lstm` devido à falta de data em sua `skip_reason` atual (mostrando a trava de segurança em funcionamento).
+* **Conclusão (2026-07-14):**
+  * Criado `test_catalog_anti_placebo_audit` (`tests/models/threshold_calibration.rs:808-937`): varre todas as 31 entradas do CATALOG em `golden_gen_build.sh`, não apenas as com `.bin`.
+  * Função `catalog_entry_to_model_name` (`tests/models/threshold_calibration.rs:756`) mapeia todos os golden names do catálogo para `get_calibrated_threshold`.
+  * Para entradas com `skip_reason`: exige `(YYYY-MM-DD)` no texto (função `skip_reason_has_date`).
+  * Para entradas sem `skip_reason`: exige `Some` calibrado em `get_calibrated_threshold` + Rules 1–4 (SNR>0, ESR<1.0, MSE-None compensation, MR-STFT<0.5).
+  * **Gaps fechados:**
+    * `wavenet_condition_lstm`: adicionada data `(2026-07-11)` ao `skip_reason` em `golden_gen_build.sh:346`.
+    * `linear_fft_rf320`: adicionado ao match arm em `get_calibrated_threshold` (`validation.rs:886`), unificado com rf2048/rf4096/rf8192 (precisão FFT é RF-independent em f32).
+  * Criado `test_quality_contract_no_synthetic_labels` (`tests/models/threshold_calibration.rs:944-970`): guarda permanente contra contaminação do contrato por entradas sintéticas de self-tests.
+  * **Verificação:** `./utils/tests-quick.sh` passou completo. Ambos os novos meta-testes passam.
 
 #### Tarefa T4.3 — Tolerância de Latência Composta com Piso Absoluto
 

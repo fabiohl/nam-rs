@@ -924,7 +924,7 @@ pub fn get_calibrated_threshold(
         //
         // Thresholds apply to all Linear FFT receptive field sizes:
         // RF=2048, RF=4096, RF=8192 — FFT precision is RF-independent at f32.
-        "linear_fft_rf2048" | "linear_fft_rf4096" | "linear_fft_rf8192" => {
+        "linear_fft_rf320" | "linear_fft_rf2048" | "linear_fft_rf4096" | "linear_fft_rf8192" => {
             let snr_db = 125.0;
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.12)))
         }

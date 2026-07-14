@@ -720,3 +720,272 @@ fn test_no_silent_let_underscore_in_cpp_parity_wrappers() {
          must capture the returned ParityOutcome and assert on it (Tarefa T1.1)."
     );
 }
+
+/// T4.2 — Checks that a skip_reason string contains a date annotation
+/// in the format `(YYYY-MM-DD)`, proving the skip was reviewed.
+fn skip_reason_has_date(reason: &str) -> bool {
+    let bytes = reason.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'('
+            && let Some(close_offset) = bytes[i..].iter().position(|&b| b == b')')
+        {
+            let inside = &bytes[i + 1..i + close_offset];
+            if inside.len() == 10
+                && inside[0].is_ascii_digit()
+                && inside[1].is_ascii_digit()
+                && inside[2].is_ascii_digit()
+                && inside[3].is_ascii_digit()
+                && inside[4] == b'-'
+                && inside[5].is_ascii_digit()
+                && inside[6].is_ascii_digit()
+                && inside[7] == b'-'
+                && inside[8].is_ascii_digit()
+                && inside[9].is_ascii_digit()
+            {
+                return true;
+            }
+            i += close_offset + 1;
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// T4.2 — Maps a catalog entry golden_name to the model name key used
+/// in `get_calibrated_threshold()`. Returns `None` for entries that only
+/// need date-check validation (skip_reason).
+///
+/// Covers ALL entries in `golden_gen_build.sh` CATALOG, including models
+/// that don't have committed `.bin` fixtures (e.g. A2-FiLM, dynamic engines).
+fn catalog_entry_to_model_name<'a>(_nam_file: &str, golden_name: &'a str) -> Option<&'a str> {
+    let base = golden_name.strip_prefix("golden_").unwrap_or(golden_name);
+    match base {
+        "wavenet_standard" => Some("BossWN-standard"),
+        "wavenet_lite" => Some("EVH-5150-Lite"),
+        "wavenet_feather" => Some("BossWN-feather"),
+        "wavenet_nano" => Some("BossWN-nano"),
+        "wavenet_a1_standard" => Some("wavenet_a1_standard"),
+        "wavenet_official" => Some("wavenet_official"),
+        "lstm_1x16" => Some("BossLSTM-1x16"),
+        "lstm_2x8" => Some("BossLSTM-2x8"),
+        "lstm_official" => Some("lstm (Official)"),
+        "wavenet_a2_full" => Some("wavenet_a2_full"),
+        "wavenet_a2_lite" => Some("wavenet_a2_lite"),
+        "wavenet_condition_dsp" => Some("wavenet_condition_dsp"),
+        // condition_lstm has skip_reason → only date check, not calibration check
+        "wavenet_condition_lstm" => None,
+        "a2_example" => Some("a2_example"),
+        "wavenet_app_evh" => Some("APP-EVH-Stealth100-Dialled-xSTD"),
+        "wavenet_boss_bd2" => Some("Boss BD-2 H2O Mod T-12_00 G-12_00"),
+        "wavenet_slammin_marshall" => Some("SLAMMIN MARSHALL JTM 45 REISSUE"),
+        "wavenet_dyn_free" => Some("wavenet_dyn_free"),
+        "lstm_dyn_test" => Some("lstm_dyn_test"),
+        "convnet_test" => Some("convnet_test"),
+        "wavenet_a2_max" => Some("wavenet_a2_max"),
+        "a2_dynamic_gated_ch8" => Some("a2_dynamic_gated_ch8"),
+        "a2_dynamic_blended_ch3" => Some("a2_dynamic_blended_ch3"),
+        "wavenet_a2_film_lite" => Some("wavenet_a2_film_lite"),
+        "wavenet_a2_film_full" => Some("wavenet_a2_film_full"),
+        "wavenet_a2_film_chaos_stress" => Some("wavenet_a2_film_chaos_stress"),
+        "wavenet_a2_film_input_mixin_pre" => Some("wavenet_a2_film_input_mixin_pre"),
+        "linear_fft_rf2048" => Some("linear_fft_rf2048"),
+        "linear_fft_rf4096" => Some("linear_fft_rf4096"),
+        "linear_fft_rf8192" => Some("linear_fft_rf8192"),
+        "linear_fft_rf320" => Some("linear_fft_rf320"),
+        _ => None,
+    }
+}
+
+/// T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG.
+///
+/// Extends `test_all_thresholds_anti_placebo` beyond `.bin` fixtures to
+/// cover ALL entries in the `golden_gen_build.sh` CATALOG, including models
+/// without golden binaries (e.g. FiLM, dynamic engines).
+///
+/// # Rules enforced:
+///
+/// 1. **Entries with `skip_reason`**: the reason must contain a date annotation
+///    in `(YYYY-MM-DD)` format, proving the skip is reviewed and not perpetual.
+///
+/// 2. **Entries without `skip_reason`**: must have a `Some` calibrated entry in
+///    `get_calibrated_threshold()` that passes the anti-placebo Rules 1–4:
+///    SNR > 0, ESR < 1.0, MSE-None compensation, MR-STFT < 0.5.
+///
+/// # Catalog parsing (from golden_gen_build.sh):
+///
+/// Format: `.nam_file:golden_name:label:v2_scope[:skip_srs[:skip_reason]]`
+///
+/// Part of T4.2 (F-3): close the gap where models without `.bin` fixtures
+/// (condition_lstm) escaped anti-placebo audit entirely.
+#[test]
+fn test_catalog_anti_placebo_audit() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let catalog_script = project_root
+        .join("tests")
+        .join("fixtures")
+        .join("golden_gen_build.sh");
+
+    let script = fs::read_to_string(&catalog_script).expect("Failed to read golden_gen_build.sh");
+
+    let cat_start = script
+        .find("CATALOG=(")
+        .expect("Could not find CATALOG=() in golden_gen_build.sh");
+
+    let rest = &script[cat_start..];
+    let cat_end = rest
+        .find("\n)")
+        .expect("Could not find closing ')' of CATALOG array");
+
+    let cat_body = &rest[..=cat_end];
+    let mut lines = cat_body.lines();
+
+    let mut tested_skip = 0usize;
+    let mut tested_calibrated = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+
+    for line in lines.by_ref() {
+        let trimmed = line.trim();
+        if trimmed == "CATALOG=(" || trimmed.is_empty() {
+            continue;
+        }
+        if trimmed == ")" {
+            break;
+        }
+
+        let inner = trimmed.trim_matches('"').trim();
+        let mut parts = inner.splitn(6, ':');
+        let nam_file = parts.next().unwrap_or("");
+        let golden_name = parts.next().unwrap_or("");
+        let label = parts.next().unwrap_or("");
+        let _v2_scope = parts.next().unwrap_or("");
+        let _skip_srs = parts.next().unwrap_or("");
+        let skip_reason = parts.next().unwrap_or("");
+
+        if !skip_reason.is_empty() {
+            tested_skip += 1;
+            if !skip_reason_has_date(skip_reason) {
+                failures.push(format!(
+                    "CATALOG entry '{label}' ({nam_file}/{golden_name}) has skip_reason=\"{skip_reason}\" \
+                     without (YYYY-MM-DD) date.\n  \
+                     Add a date annotation (e.g. \"(2026-07-11)\") to prove the skip is reviewed."
+                ));
+            }
+        } else {
+            match catalog_entry_to_model_name(nam_file, golden_name) {
+                None => {
+                    failures.push(format!(
+                        "CATALOG entry '{label}' ({nam_file}/{golden_name}) has no skip_reason \
+                         but golden_name \"{golden_name}\" is not recognized by \
+                         catalog_entry_to_model_name().\n  \
+                         Add a mapping in catalog_entry_to_model_name() or set skip_reason."
+                    ));
+                }
+                Some(model_name) => {
+                    let threshold = get_calibrated_threshold(model_name);
+                    match threshold {
+                        None => {
+                            failures.push(format!(
+                                "CATALOG entry '{label}' ({nam_file}/{golden_name}) mapped to model \
+                                 '{model_name}' but get_calibrated_threshold() returned None.\n  \
+                                 Add a calibrated entry in get_calibrated_threshold() for '{model_name}'."
+                            ));
+                        }
+                        Some((mse_limit, snr_db, esr_opt, mrstft_opt)) => {
+                            tested_calibrated += 1;
+
+                            if snr_db <= 0.0 {
+                                failures.push(format!(
+                                    "CATALOG '{label}' ({model_name}): SNR={snr_db} dB ≤ 0 — placebo gate."
+                                ));
+                            }
+
+                            if let Some(esr) = esr_opt
+                                && esr >= 1.0
+                            {
+                                failures.push(format!(
+                                        "CATALOG '{label}' ({model_name}): ESR={esr} ≥ 1.0 — placebo gate."
+                                    ));
+                            }
+
+                            if mse_limit.is_none() {
+                                let esr_rigid = esr_opt.is_some() && esr_opt.unwrap() < 0.1;
+                                if !(snr_db >= 40.0 && esr_rigid) {
+                                    failures.push(format!(
+                                        "CATALOG '{label}' ({model_name}): MSE=None without rigid SNR/ESR \
+                                         compensation (SNR={snr_db} dB, ESR={esr_opt:?})."
+                                    ));
+                                }
+                            }
+
+                            if let Some(mrstft) = mrstft_opt
+                                && mrstft >= 0.5
+                            {
+                                failures.push(format!(
+                                        "CATALOG '{label}' ({model_name}): MR-STFT={mrstft} ≥ 0.5 — placebo gate."
+                                    ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        tested_skip + tested_calibrated > 0,
+        "No CATALOG entries parsed — check golden_gen_build.sh format"
+    );
+
+    if !failures.is_empty() {
+        panic!(
+            "T4.2 CATALOG anti-placebo audit FAILED ({} failure(s)):\n\n{}\n\n\
+             {} entries checked ({} with skip_reason, {} calibrated).\n\
+             \n\
+             Fixes needed:\n\
+             - For skip_reason entries: add (YYYY-MM-DD) date annotation.\n\
+             - For uncalibrated entries: add a match arm in get_calibrated_threshold()\n\
+               with real measurement data and // Measured: comment.\n",
+            failures.len(),
+            failures
+                .iter()
+                .map(|f| format!("  ✗ {f}"))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            tested_skip + tested_calibrated,
+            tested_skip,
+            tested_calibrated,
+        );
+    }
+}
+
+/// T4.2 — Meta-teste: qualidade-contract.txt não pode conter rótulos sintéticos.
+///
+/// Self-tests que degradam o sinal para validar gates de regressão (ex:
+/// `test_mrstft_hard_gate_catches_regression`) emitem labels com `(synthetic)`.
+/// Essas labels contaminavam o `--save` do dashboard e eram carregadas pelo
+/// `--check` como parte do contrato de qualidade — uma violação da integridade
+/// da baseline.
+///
+/// Este meta-teste audita `docs/quality-contract.txt` e falha se QUALQUER linha
+/// contiver `(synthetic)`, garantindo que o contrato só contém medições reais
+/// de fidelidade.
+///
+/// Parte do F-2/T4.1: completar o expurgo com a trava de segurança permanente.
+#[test]
+fn test_quality_contract_no_synthetic_labels() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let contract_file = project_root.join("docs").join("quality-contract.txt");
+
+    let content =
+        fs::read_to_string(&contract_file).expect("Failed to read docs/quality-contract.txt");
+
+    assert!(
+        !content.contains("(synthetic)"),
+        "docs/quality-contract.txt contains labels with '(synthetic)' — \
+         self-test degradation entries have contaminated the quality baseline.\n\
+         Remove all lines containing '(synthetic)' from the contract file.\n\
+         (T4.1 fixed the source; this meta-test is the permanent guard.)"
+    );
+}

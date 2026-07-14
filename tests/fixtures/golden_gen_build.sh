@@ -343,7 +343,7 @@ CATALOG=(
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8):48k_only"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3):48k_only"
     "wavenet_condition_dsp.nam:golden_wavenet_condition_dsp:Condition DSP (CH=3, cond=3):48k_only"
-    "wavenet_condition_lstm.nam:golden_wavenet_condition_lstm:Condition DSP LSTM (CH=3, cond=3, LSTM):48k_only::C++ upstream limitation: LSTM condition_dsp sub-model channel mismatch (uses input_size=1 instead of hidden_size=3) — golden binary cannot be generated"
+    "wavenet_condition_lstm.nam:golden_wavenet_condition_lstm:Condition DSP LSTM (CH=3, cond=3, LSTM):48k_only::C++ upstream limitation: LSTM condition_dsp sub-model channel mismatch (uses input_size=1 instead of hidden_size=3) — golden binary cannot be generated (2026-07-11)"
     "a2_example.nam:golden_a2_example:SlimmableContainer A2 Example (CH=3→6):none"
     "APP-EVH-Stealth100-Dialled-xSTD.nam:golden_wavenet_app_evh:APP EVH Stealth 100:48k_only"
     "Boss BD-2 H2O Mod T-12_00 G-12_00.nam:golden_wavenet_boss_bd2:Boss BD-2 H2O Mod:48k_only"
