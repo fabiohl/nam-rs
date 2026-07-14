@@ -105,7 +105,7 @@ gantt
 
 * **Descrição:**
   Corrigir a lógica de processamento do `condition_dsp` e o respectivo broadcast no oráculo f64 em [wavenet.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/wavenet.rs#L32) e [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs#L289).
-  
+
   * Ajustar a âncora em Python em `validate_oracle_f64.py` para refletir a mesma semântica corrigida.
   * Validar contra o fixture golden-validado [golden_wavenet_condition_dsp.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_wavenet_condition_dsp.bin).
 
@@ -116,13 +116,13 @@ gantt
   Conclusão com números antes/depois (diferente de T2.1/T3.1/T3.2, que documentam evidência).
   Reexecução direta de `cargo test --release --test parity test_summary_table -- --nocapture`
   nesta auditoria confirma que **o critério não foi atingido**:
-  
+
   ```text
   WaveNetCondDSP ESR(f32 vs oracle, prewarm-paired): 4.23e1 (16.3 dB)
   PROD FIRST 10:   [0.170, 0.170, 0.170, 0.172, 0.174, ...]
   ORACLE FIRST 10: [-0.033, -0.033, -0.033, -0.033, -0.033, ...]
   ```
-  
+
   Valor essencialmente idêntico ao ESR 4.21e+01 original do F1 (delta é ruído de stress-signal).
   Produção permanece bit-exata vs golden C++ (ESR 1.11e-14) — o problema é exclusivamente do
   oráculo. O teste de âncora (`test_oracle_vs_python_anchor_condition_dsp`, ESR 4.96e-16) **não
@@ -434,32 +434,28 @@ coincidem; para modelos de script de teste (`create_wavenet.py`), divergem.
 | `TODO-sprints.md` (topo)                        | Nova seção "Política de Conclusão de Tarefas" formalizando exigência |
 | Nenhuma mudança de comportamento                | Critério de aceite atendido — zero alterações em testes ou produção  |
 
-#### [ABERTA] Tarefa T6.3 — Limpeza do Teste Morto `test_decomposition_wavenet_condition_lstm`
+#### [DONE] Tarefa T6.3 — Limpeza do Teste Morto `test_decomposition_wavenet_condition_lstm`
 
 * **Referência:** achado secundário da auditoria de verificação de 2026-07-14 (residual de
   baixo risco, independente da T6.1).
 * **Responsável:** Engenheiro de Testes.
 * **Complexidade:** Baixa.
-* **Contexto:** o teste `#[ignore]`d
-  [test_decomposition_wavenet_condition_lstm](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs#L1069)
-  chama `build_model` sobre `wavenet_condition_lstm.nam`, que a política fail-closed da T3.1
-  agora rejeita — confirmado ao vivo: `cargo test --release --test parity
-  test_decomposition_wavenet_condition_lstm -- --ignored --nocapture` **entra em panic**
-  (`Failed to build model: LSTM condition_dsp is not supported...`). O texto do `#[ignore]`
-  também está desatualizado: diz "Root cause not yet identified", mas a Conclusão da T2.3 (acima
-  neste documento) já identificou a causa como bug de atualização de estado do LSTM entre o
-  frame 0 e o frame 1.
-* **Descrição (escolher uma opção):**
-  * **Opção recomendada — remover:** a cobertura de rejeição já é feita por
-    `test_golden_vectors_wavenet_condition_lstm` (T3.1) e a análise de decomposição de erro já
-    está permanentemente registrada na Conclusão da T2.3 deste documento. Deletar o teste e a
-    função auxiliar que só ele usa (se nenhuma outra a referenciar).
-  * **Alternativa — manter como esqueleto para a Sprint 4/T6.1 futura:** atualizar a mensagem do
-    `#[ignore]` para: *"Bloqueado por política fail-closed (T3.1). Causa raiz parcialmente
-    identificada em T2.3: bug de atualização de estado do LSTM entre frame 0 (ESR ~1e-10) e
-    frame 1 (diverge em 8e-5). Reativar apenas quando o LSTM condition_dsp for corrigido em
-    produção e a rejeição da T3.1 for revertida."*
-* **Critério de Aceite:** `cargo test --release --test parity -- --ignored` não produz mais
-  panics/falhas inesperadas para este teste (seja por remoção, seja por mensagem de `#[ignore]`
-  coerente com o estado real documentado em T2.3/T3.1).
-* **Risco:** Mínimo — código de teste morto, sem impacto em produção ou em outros testes.
+
+**✅ Conclusão (2026-07-14):**
+
+Opção escolhida: **remover** (recomendada). A cobertura de rejeição de LSTM condition_dsp
+já é feita por `test_golden_vectors_wavenet_condition_lstm` (T3.1), e a análise de
+decomposição de erro está permanentemente registrada na Conclusão da T2.3.
+
+* Teste `test_decomposition_wavenet_condition_lstm` removido de
+  `tests/parity/reference_oracle_f64.rs` (77 linhas deletadas).
+* Função auxiliar `run_decomposition_paired` mantida — é usada por 7 outros testes de
+  decomposição.
+* `cargo test --release --test parity test_decomposition_wavenet_condition_lstm` — 0 tests
+  encontrados (teste não existe mais).
+* `cargo test --release --test parity` — 43 passed, 0 failed, todas as suítes não-ignoradas
+  passam limpo.
+
+**Nota de follow-up:** O teste-irmão `test_diag_condition_lstm_raw_vs_dsp` (também
+`#[ignore]`, linha 1150) sofre do mesmo problema (panic por rejeição fail-closed),
+mas está fora do escopo desta tarefa. Pode ser tratado em sprint futura de limpeza.
