@@ -1071,41 +1071,6 @@ fn test_decomposition_convnet() {
 }
 
 #[test]
-#[ignore = "diagnostic only"]
-fn test_diag_condition_lstm_raw_vs_dsp() {
-    // Compare production output WITH vs WITHOUT condition_dsp to see if
-    // condition_dsp is actually being used.
-    use nam_rs::loader::dispatcher::build_model;
-    let path = models_dir().join("wavenet_condition_lstm.nam");
-    let md = load_and_parse(&path);
-    let total = 256;
-    let input_f64: Vec<f64> = (0..total).map(|i| (i as f64 * 0.5).sin() * 0.5).collect();
-    let input_f32: Vec<f32> = input_f64.iter().map(|&x| x as f32).collect();
-
-    // Production with condition_dsp
-    let mut model_with = build_model(&md).expect("build with cond_dsp");
-    let mut out_with = vec![0.0f32; total];
-    model_with.process(&input_f32, &mut out_with);
-
-    // Production WITHOUT condition_dsp (copy model but set condition_dsp to None)
-    let mut model_without = build_model(&md).expect("build");
-    if let nam_rs::models::StaticModel::WavenetDyn(ref mut w) = *model_without {
-        w.condition_dsp = None;
-    }
-    let mut out_without = vec![0.0f32; total];
-    model_without.process(&input_f32, &mut out_without);
-
-    println!("Frame | With DSP        | Without DSP     | Same?");
-    for f in 0..10.min(total) {
-        let same = (out_with[f] - out_without[f]).abs() < 1e-10;
-        println!(
-            "{:<5} | {:<15.10} | {:<15.10} | {}",
-            f, out_with[f], out_without[f], !same
-        );
-    }
-}
-
-#[test]
 fn test_combined_simulation_convnet() {
     run_combined_paired_test("convnet_test.nam", "ConvNet");
 }

@@ -7,10 +7,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Este documento detalha o planejamento ágil para a execução das sprints de auditoria de compliance e paridade:
 
-1. **EP-A — Veredito do `condition_dsp` (F1 + F4)** [PARCIAL — T1.2 reaberta, ver nota 2026-07-14; correção definitiva movida para a Sprint 6 (T6.1)]
+1. **EP-A — Veredito do `condition_dsp` (F1 + F4)** [DONE — T1.2 corrigida definitivamente na T6.1 (Sprint 6), reverificada ao vivo: ESR 4.23e+01 → 6.33e-15]
 2. **EP-B — Integridade da malha de qualidade (F2 + F3 + F5)** [DONE]
 3. **EP-C — Polimento do dashboard (F6)** [DONE]
-4. **Sprint 6 — Reabertura EP-A & Dívida Técnica Residual** [ABERTA — T6.1 (crítica/bloqueante), T6.2 (blindagem de processo), T6.3 (limpeza de teste morto)]
+4. **Sprint 6 — Reabertura EP-A & Dívida Técnica Residual** [DONE — T6.1, T6.2, T6.3 e T6.4 concluídas e reverificadas ao vivo em 2026-07-14]
 
 Todas as referências de findings apontam para o arquivo [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
@@ -28,13 +28,16 @@ seguida organicamente por T2.1/T3.1/T4.x e agora está formalizada.
 
 ## Visão Geral dos Épicos
 
-### EP-A — Veredito do `condition_dsp` (F1 + F4) [PARCIAL — ver reabertura T1.2 abaixo]
+### EP-A — Veredito do `condition_dsp` (F1 + F4) [DONE]
 
 * **Objetivo:** Resolver a semântica sem árbitro confiável de `condition_dsp` e corrigir o oráculo f64 em gating (Gated/Blended).
-* **Risco:** **Médio-Alto**. F4 (Gated/Blended) e a política de `condition_lstm` (T2.3/T3.1/T3.2) fecharam
-  em 2026-07-14 e foram reverificados nesta auditoria (Gated 1.00e-10, Blended 2.65e-14, ambos confirmados
-  ao vivo). **T1.2 permanece aberta** — ver nota de reabertura 2026-07-14 (auditoria de verificação):
-  o critério de aceite não foi atingido, apesar da marcação `[DONE]` original.
+* **Risco:** **Médio-Alto**. F4 (Gated/Blended) e a política de `condition_lstm` (T2.3/T3.1/T3.2)
+  fecharam em 2026-07-14. T1.2 foi reaberta na mesma data (critério de aceite não atingido pela
+  correção original de `bdbd1956`) e **corrigida definitivamente na Tarefa T6.1** (Sprint 6,
+  causa raiz real: `head_scale` lido do JSON em vez do weight stream). Todas as três frentes
+  (F1 non-LSTM, F1 LSTM/fail-closed, F4 gating) reverificadas ao vivo nesta auditoria: Gated
+  1.00e-10, Blended 2.65e-14, `condition_dsp` 6.33e-15 (era 4.23e+01) — todas dentro dos
+  critérios de aceite originais.
 
 ### EP-B — Integridade da malha de qualidade (F2 + F3 + F5) [DONE]
 
@@ -74,9 +77,10 @@ gantt
     T5.1 - Formatação e Deduplicação  :active, t5_1, after t4_3, 1d
     T5.2 - Contexto e Flags de ESR    :t5_2, after t5_1, 1d
     section Sprint 6: Reabertura EP-A e Dívida Técnica
-    T6.1 - Diagnóstico Estrutural Oráculo :crit, t6_1, after t5_2, 3d
-    T6.2 - Blindagem Anti-Âncora-Circular  :t6_2, after t6_1, 1d
-    T6.3 - Limpeza Teste Morto LSTM        :t6_3, after t5_2, 1d
+    T6.1 - Diagnóstico Estrutural Oráculo :done, crit, t6_1, after t5_2, 3d
+    T6.2 - Blindagem Anti-Âncora-Circular  :done, t6_2, after t6_1, 1d
+    T6.3 - Limpeza Teste Morto LSTM        :done, t6_3, after t5_2, 1d
+    T6.4 - Regenerar Manifest de Fixtures  :done, crit, t6_4, after t6_2, 1d
 ```
 
 ### Sprint 1: Especificação & Alinhamento do Oráculo DSP
@@ -95,7 +99,14 @@ gantt
   * Documentar as descobertas detalhadamente em [docs/cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md).
 * **Critério de Aceite:** Especificação formalizada e documentada com referências de arquivo e linha (file:line) do C++ e Python.
 
-#### [REABERTA 2026-07-14] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
+#### [DONE — corrigida definitivamente na Tarefa T6.1, Sprint 6] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
+
+> **Fechamento (2026-07-14):** a reabertura abaixo permanece registrada como estudo de caso
+> (ver também §4.5.1 em `docs/cpp_parity_map.md`, criada pela T6.2, que cita este incidente
+> como exemplo definitivo de validação circular de âncora). A causa raiz real e a correção
+> verificada ao vivo estão documentadas na **Tarefa T6.1** (Sprint 6, abaixo neste arquivo):
+> `head_scale` estava sendo lido da configuração JSON em vez do weight stream do `.nam`,
+> corrigindo o ESR pareado produção×oráculo de `4.23e+01` para `6.33e-15`.
 
 * **Referência:** [F1.2](file:///home/fabio/nam-rs/TODO-findings.md#L76)
 
@@ -456,6 +467,58 @@ decomposição de erro está permanentemente registrada na Conclusão da T2.3.
 * `cargo test --release --test parity` — 43 passed, 0 failed, todas as suítes não-ignoradas
   passam limpo.
 
-**Nota de follow-up:** O teste-irmão `test_diag_condition_lstm_raw_vs_dsp` (também
-`#[ignore]`, linha 1150) sofre do mesmo problema (panic por rejeição fail-closed),
-mas está fora do escopo desta tarefa. Pode ser tratado em sprint futura de limpeza.
+**Nota de follow-up (resolvida em 2026-07-14, auditoria de verificação da Sprint 6):** o
+teste-irmão `test_diag_condition_lstm_raw_vs_dsp` (também `#[ignore = "diagnostic only"]`,
+linha 1073) sofria do mesmo problema — confirmado ao vivo via
+`cargo test --release --test parity test_diag_condition_lstm_raw_vs_dsp -- --ignored
+--nocapture` (panic: `Failed to build model: LSTM condition_dsp is not supported...`).
+Removido pela mesma razão e com a mesma decisão já validada aqui (cobertura de rejeição
+já existe em T3.1; a comparação "with vs without condition_dsp" que este teste fazia não
+agrega informação adicional à decisão fail-closed já tomada). Reverificado:
+`cargo test --release --test parity -- --ignored` não produz mais nenhum panic relacionado
+a `condition_lstm` (os 4 panics remanescentes na suíte `--ignored` são do
+`wavenet_a2_max`/A2-generic, achado pré-existente e fora de escopo, rastreado em
+`docs/cpp_parity_map.md` §7.1 e `TODO-wavenet_a2_max.md`).
+
+---
+
+#### [DONE] Tarefa T6.4 — Regenerar Manifest de Frescor de Fixtures (gate quebrado pós T6.1/T4.2/T6.2)
+
+* **Referência:** achado crítico da auditoria de verificação de 2026-07-14, descoberto ao
+  reexecutar `./utils/tests-quick.sh` após confirmar T6.1–T6.3.
+* **Responsável:** Engenheiro de Testes / DevOps.
+* **Complexidade:** Baixa (execução de script existente), mas **severidade Alta** — é o
+  gate primário de CI (`./utils/tests-quick.sh`) que estava quebrado.
+* **Descrição do problema:** `./utils/tests-quick.sh` **falhava com exit code 1**
+  (`❌ 1 file(s) stale.`) porque o manifest de frescor
+  (`tests/fixtures/.golden_manifest.sha256`, epic EP4 da primeira rodada de auditoria —
+  "Cadeia de Suprimentos de Fixtures Determinística") não foi regravado desde o commit
+  `bdbd1956`. Três commits subsequentes invalidaram o manifest sem que ninguém o
+  regenerasse:
+  * `adeab8e0` (T4.2) editou `tests/fixtures/golden_gen_build.sh`.
+  * `3c4187a6` (T6.1) corrigiu o oráculo e regenerou o `.bin` da âncora
+    `wavenet_condition_dsp_256_f64.bin` (hash mudou, manifest não).
+  * `b8012e1b` (T6.2) editou `validate_oracle_f64.py` e `generate_a2_fixtures.py`
+    (adicionando os comentários da política §4.5.1) — hashes dos geradores mudaram.
+  * Esse gap ficou **invisível em todas as auditorias anteriores** porque a verificação
+    padrão usada nas rodadas (`utils/quality-dashboard.sh --check`) não exercita este
+    checador de frescor — só `./utils/tests-quick.sh` o faz.
+* **Correção:**
+  1. Executado `./tests/fixtures/golden_gen_build.sh` (build C++ do NAMcore já vendorizado,
+     sem necessidade de rede — apenas verifica SHA do submódulo vendorizado contra
+     `variables.env`) para regenerar todos os goldens e reescrever o manifest.
+  2. `git status` confirmou que **nenhum `.bin` golden mudou de conteúdo** — a regeneração é
+     determinística (IEEE-strict, herdada do épico EP4 da rodada anterior). Único arquivo
+     alterado: `tests/fixtures/.golden_manifest.sha256` (hashes atualizados dos geradores e
+     da âncora `condition_dsp`).
+  3. Reexecutado `./utils/tests-quick.sh` → **exit 0**, "Todos os testes rápidos passaram!".
+* **Critério de Aceite:** `./utils/tests-quick.sh` retorna exit 0 sem avisos de
+  `STALE`/`GENERATOR CHANGED`. ✅ Atingido e verificado ao vivo.
+* **Ação preventiva (reforço da T6.2):** a política de regeneração de âncoras (§4.5.1,
+  `docs/cpp_parity_map.md`) deve ser lida em conjunto com esta lição — **qualquer edição em
+  `tests/fixtures/golden_gen_build.sh`, `tests/fixtures/generate_a2_fixtures.py`,
+  `tests/fixtures/scripts/validate_oracle_f64.py`, ou em qualquer `.bin` de
+  `tests/fixtures/f64_anchors/`, exige rodar `./tests/fixtures/golden_gen_build.sh` e
+  commitar o manifest atualizado antes de marcar a tarefa como `[DONE]`.** Recomenda-se
+  adicionar esse passo como checklist explícito no template de Conclusão de tarefas
+  futuras que toquem esses arquivos.

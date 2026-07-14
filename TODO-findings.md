@@ -191,7 +191,7 @@ causou uma regressão real no passado (episódio head1x1, revertido).
 
 ## Épicos (ordem de execução recomendada)
 
-### EP-A — Veredito do `condition_dsp` (F1 + F4) — **o núcleo desta rodada** [PARCIAL]
+### EP-A — Veredito do `condition_dsp` (F1 + F4) — **o núcleo desta rodada** [DONE]
 
 Sequência: T1 spec C++/trainer → T2 correção do oráculo DSP (aceite: condition_dsp ≤ 1e-11
 vs prod) → F4 correção Blended/Gated (aceite: ≤ 1e-12 / ≤ 1e-10) → T3 re-adjudicação do
@@ -201,18 +201,23 @@ golden-validados são o critério de aceite objetivo em cada passo; jamais alter
 "concordar" com o oráculo (lição §4.5). Critério de fechamento do épico: dashboard sem nenhum
 valor "vs Ideal" > 1e-6; `condition_lstm` com veredito documentado e gate calibrado real.
 
-**Status real (verificado em auditoria de follow-up, 2026-07-14):** F4 (Gated/Blended) e o
-veredito+política de `condition_lstm` (T2.3/T3.1/T3.2) fecharam de fato — reconfirmados ao vivo
-nesta rodada (Gated 1.00e-10, Blended 2.65e-14). **A tarefa T1.2 (correção do oráculo para
-`wavenet_condition_dsp`, o caso não-LSTM que TEM juiz C++) foi marcada `[DONE]` mas o critério
-de aceite não foi atingido**: reexecução de `test_summary_table` mostra ESR(prod × oráculo) =
-4.23e+01, estatisticamente igual ao valor original de 4.21e+01 que abriu este achado. A
-produção continua bit-exata vs golden C++ (1.11e-14) — o oráculo é quem está errado, e continua
-errado. O teste de âncora Python passa apenas porque a âncora foi regenerada a partir do
-próprio oráculo "corrigido" (validação circular). Ver reabertura detalhada em
-`TODO-sprints.md` (Tarefa T1.2, `[REABERTA 2026-07-14]`). Épico não pode ser fechado como
-`[DONE]` até o critério objetivo (ESR ≤ 1e-11) ser realmente atingido contra uma medição
-independente da própria correção.
+**Histórico da verificação (2026-07-14):** uma primeira tentativa (`bdbd1956`, T1.2) foi
+marcada `[DONE]` sem reverificação e **não atingiu o critério de aceite** — reexecução de
+`test_summary_table` mostrou ESR(prod × oráculo) = 4.23e+01, igual ao valor original de
+4.21e+01. O teste de âncora Python passava apenas porque a âncora fora regenerada a partir do
+próprio oráculo "corrigido" (validação circular) — ver `TODO-sprints.md`, nota histórica na
+Tarefa T1.2. F4 (Gated/Blended) e o veredito+política de `condition_lstm` (T2.3/T3.1/T3.2), em
+contraste, fecharam de fato nessa mesma verificação (Gated 1.00e-10, Blended 2.65e-14,
+confirmados ao vivo).
+
+**Fechamento definitivo (Sprint 6, Tarefa T6.1, 2026-07-14):** causa raiz real identificada —
+`head_scale` do sub-modelo `condition_dsp` estava sendo lido da configuração JSON em vez do
+weight stream binário do `.nam` (onde o C++/trainer efetivamente o serializa). Corrigido em
+`src/testing/reference_oracle/wavenet.rs`. Reverificado ao vivo:
+`cargo test --release --test parity test_summary_table -- --nocapture` →
+`ESR(WaveNetCondDSP) = 6.33e-15` (dentro do critério ≤ 1e-11); dashboard sem mais a tag
+`[orac: f64 div]` na linha "WaveNet Condition DSP". Épico fechado nas três frentes (F1
+non-LSTM, F1 LSTM/fail-closed, F4 gating).
 
 ### EP-B — Integridade da malha de qualidade (F2 + F3 + F5) [DONE]
 
@@ -221,9 +226,11 @@ estendido a `topology_thresholds` com Rules 1–4 e skip_reason datado (F3); tol
 de latência com piso absoluto + `--save` do Linear (F5). Baixo risco, alto ganho de segurança.
 Critério: `tests-quick.sh && quality-dashboard.sh --check` verde sem entradas sintéticas no
 contrato; meta-teste falhando se F1-T5 ainda não recalibrou o condition_lstm (é o comportamento
-desejado — trava de segurança).
+desejado — trava de segurança). **Verificado ao vivo em 2026-07-14** (após correção do gate de
+frescor de fixtures, ver `TODO-sprints.md` Tarefa T6.4): `./utils/tests-quick.sh` exit 0.
 
-### EP-C — Polimento do dashboard (F6)
+### EP-C — Polimento do dashboard (F6) [DONE]
 
-Formatação SNR, deduplicação de linhas, contexto de gate em linhas vermelhas. Executar por
-último; puramente apresentacional.
+Formatação SNR, deduplicação de linhas, contexto de gate em linhas vermelhas. Executado e
+verificado ao vivo em 2026-07-14 — tags `[EM INVESTIGAÇÃO]`/`[orac: f64 div]`/`[gate: <limite>]`
+funcionando corretamente no dashboard.
