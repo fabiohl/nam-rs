@@ -295,6 +295,26 @@ pub(crate) fn oracle_a2_forward(
         oracle_forward(&cond_model, input, config)
     });
 
+    // T5.1: Broadcast single-channel condition_dsp output (e.g. LSTM) to
+    // condition_size channels. The LSTM head produces 1 scalar per frame; the
+    // WaveNet layers expect cond_size independent values per frame. We replicate
+    // the scalar across all condition channels.
+    let cond_size_oracle = layers.first().and_then(|l| l.condition_size).unwrap_or(1);
+    let cond_output: Option<Vec<f64>> = cond_output.map(|raw_out| {
+        if cond_size_oracle > 1 && raw_out.len() == num_frames {
+            let mut broadcasted = vec![0.0f64; num_frames * cond_size_oracle];
+            for f in 0..num_frames {
+                let val = raw_out[f];
+                for c in 0..cond_size_oracle {
+                    broadcasted[f * cond_size_oracle + c] = val;
+                }
+            }
+            broadcasted
+        } else {
+            raw_out
+        }
+    });
+
     let head_scale = model_data.config.head_scale.unwrap_or(1.0) as f64;
     let mut cursor = Cursor::new(&model_data.weights, config.weight_precision);
     let acc_mode = config.accumulation;

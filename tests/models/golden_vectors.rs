@@ -1168,6 +1168,7 @@ fn test_golden_vectors_wavenet_condition_lstm() {
 
     let mut model = build_model(&model_data)
         .expect("Dispatcher failed to build WaveNet Condition DSP LSTM for oracle test");
+
     let mut prod_output = vec![0.0f32; input_f32.len()];
     let mut pos = 0;
     while pos < input_f32.len() {

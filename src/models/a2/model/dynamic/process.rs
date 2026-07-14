@@ -94,6 +94,16 @@ impl WaveNetA2Dyn {
                     &input[pos..pos + nf],
                     &mut self.condition_dsp_output[0..nf * cond_size],
                 );
+                let dsp_ch = cond_dsp.num_output_channels();
+                if dsp_ch > 0 && dsp_ch < cond_size {
+                    let buf = &mut self.condition_dsp_output[0..nf * cond_size];
+                    for f in (0..nf).rev() {
+                        let val = buf[f];
+                        for c in 1..cond_size {
+                            buf[f * cond_size + c] = val;
+                        }
+                    }
+                }
             }
             let use_cond_dsp = self.condition_dsp.is_some();
 

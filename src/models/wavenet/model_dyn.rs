@@ -236,6 +236,15 @@ impl WaveNetModelDyn {
             let condition_slice: &[f32] = if let Some(ref mut cond_dsp) = self.condition_dsp {
                 let cond_out = &mut self.condition_dsp_output[0..num_frames * cond];
                 cond_dsp.process(in_slice, cond_out);
+                let dsp_ch = cond_dsp.num_output_channels();
+                if dsp_ch > 0 && dsp_ch < cond {
+                    for f in (0..num_frames).rev() {
+                        let val = cond_out[f];
+                        for c in 1..cond {
+                            cond_out[f * cond + c] = val;
+                        }
+                    }
+                }
                 cond_out
             } else {
                 in_slice
@@ -354,6 +363,13 @@ impl WaveNetModelDyn {
 
         let condition: &[f32] = if let Some(ref mut cond_dsp) = self.condition_dsp {
             cond_dsp.process(&zero_input, &mut self.condition_dsp_output[0..cond]);
+            let dsp_ch = cond_dsp.num_output_channels();
+            if dsp_ch > 0 && dsp_ch < cond {
+                let val = self.condition_dsp_output[0];
+                for c in 1..cond {
+                    self.condition_dsp_output[c] = val;
+                }
+            }
             &self.condition_dsp_output[0..cond]
         } else {
             &zero_input

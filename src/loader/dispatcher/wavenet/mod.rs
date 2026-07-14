@@ -320,9 +320,9 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                         serde_json::from_value(cond_dsp_json.clone())?;
                     let cond_model = crate::loader::dispatcher::build_model(&cond_dsp_data)?;
                     let cond_out = cond_model.num_output_channels();
-                    if cond_out != condition_size {
+                    if cond_out > condition_size {
                         bail!(
-                            "condition_dsp output channels ({}) must match A2 condition_size ({})",
+                            "condition_dsp output channels ({}) exceed A2 condition_size ({})",
                             cond_out,
                             condition_size
                         );

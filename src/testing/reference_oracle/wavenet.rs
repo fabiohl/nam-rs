@@ -28,6 +28,27 @@ pub(crate) fn oracle_wavenet_forward(
     let a0_k = l0.kernel_size.unwrap_or(3);
     let a0_dilations = l0.dilations.clone().unwrap_or_else(|| vec![1, 2, 4, 8]);
     let a0_cond = l0.condition_size.unwrap_or(1);
+
+    // T5.1: Process condition_dsp sub-model and broadcast to condition_size channels.
+    let cond_output: Option<Vec<f64>> = model_data.config.condition_dsp.as_ref().map(|json| {
+        let cond_model: NamModelData =
+            serde_json::from_value(json.clone()).expect("Failed to parse condition_dsp JSON");
+        let raw = oracle_forward(&cond_model, input, config);
+        let cond_size = a0_cond.max(1);
+        if cond_size > 1 && raw.len() == num_frames {
+            let mut broadcasted = vec![0.0f64; num_frames * cond_size];
+            for f in 0..num_frames {
+                let val = raw[f];
+                for c in 0..cond_size {
+                    broadcasted[f * cond_size + c] = val;
+                }
+            }
+            broadcasted
+        } else {
+            raw
+        }
+    });
+
     let a1_ch = a0_head;
     let a1_head = l1.head_size.unwrap_or(1);
     let a1_k = l1.kernel_size.unwrap_or(3);
@@ -144,7 +165,23 @@ pub(crate) fn oracle_wavenet_forward(
                     *cv = sum;
                 }
                 for (c, co) in conv_out.iter_mut().enumerate() {
-                    *co = mul_add_f64(inp, lw.mixin_w[c], *co, acc_mode);
+                    let mix = if a0_cond == 1 {
+                        inp * lw.mixin_w[c]
+                    } else if let Some(ref co_vec) = cond_output {
+                        let mut s = 0.0f64;
+                        for j in 0..a0_cond {
+                            s = mul_add_f64(
+                                co_vec[f * a0_cond + j],
+                                lw.mixin_w[j * a0_ch + c],
+                                s,
+                                acc_mode,
+                            );
+                        }
+                        s
+                    } else {
+                        inp * lw.mixin_w[c]
+                    };
+                    *co = accum_f64(*co, mix, acc_mode);
                 }
                 for cv in conv_out.iter_mut() {
                     *cv = oracle_tanh(*cv, config.activation);
@@ -251,7 +288,23 @@ pub(crate) fn oracle_wavenet_forward(
                     *cv = sum;
                 }
                 for (c, co) in conv_out.iter_mut().enumerate() {
-                    *co = mul_add_f64(inp, lw.mixin_w[c], *co, acc_mode);
+                    let mix = if a1_cond == 1 {
+                        inp * lw.mixin_w[c]
+                    } else if let Some(ref co_vec) = cond_output {
+                        let mut s = 0.0f64;
+                        for j in 0..a1_cond {
+                            s = mul_add_f64(
+                                co_vec[f * a1_cond + j],
+                                lw.mixin_w[j * a1_ch + c],
+                                s,
+                                acc_mode,
+                            );
+                        }
+                        s
+                    } else {
+                        inp * lw.mixin_w[c]
+                    };
+                    *co = accum_f64(*co, mix, acc_mode);
                 }
                 for cv in conv_out.iter_mut() {
                     *cv = oracle_tanh(*cv, config.activation);

@@ -276,9 +276,9 @@ fn build_wavenet_dynamic_inner(
         let cond_model = build_sub_model(&cond_dsp_data, depth + 1, container_depth)?;
 
         let cond_out = cond_model.num_output_channels();
-        if cond_out != cond {
+        if cond_out > cond {
             anyhow::bail!(
-                "condition_dsp output channels ({}) must match WaveNet condition_size ({})",
+                "condition_dsp output channels ({}) exceed WaveNet condition_size ({})",
                 cond_out,
                 cond
             );

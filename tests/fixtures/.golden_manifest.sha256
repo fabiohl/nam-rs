@@ -178,8 +178,8 @@ b19d5f7f13f52b2d15d3d2ff1a3dfdf4b6609ba6332c121544908253f5a713f4 f64_anchors/swe
 d243f4916b9e6e895363de10dc1aebdde30b3fd64e2ca5db9cefc6d480d0c5af f64_anchors/wavenet_a2_film_full_256_f64.bin
 855c5bf7052c7f717f5071e8f8ac73d1ed401455160ea1fd3061863376488c0c f64_anchors/wavenet_a2_film_input_mixin_pre_256_f64.bin
 c736ab3abb81bbb399e670d0ae10b8545d4d9fbd62f717118934f92f43217ca3 f64_anchors/wavenet_a2_film_lite_256_f64.bin
-4d4812d8889b0ae19b8fedb58ee9a23b04a3749eb0581c6b023091e1c1896fdf f64_anchors/wavenet_condition_dsp_256_f64.bin
-fc8817e8e13bea5ff50683986f96ae1fbb82f9d113c4d08e4cbf226743eb95b8 f64_anchors/wavenet_condition_lstm_256_f64.bin
+4325cc4ff93558e96078b4c6635b289d89472884ebdd188ccdb57da92acb7bf7 f64_anchors/wavenet_condition_dsp_256_f64.bin
+eede4200d1e4423150e331f84b1f4c00a5db902d8a19f14de92998175f19dcce f64_anchors/wavenet_condition_lstm_256_f64.bin
 b4ed110bd69e6beb07776935f34c47d9cccee23f3b3e484545000fdd9f7b5cf0 f64_anchors/wavenet_official_256_f64.bin
 
 # =============================================================================

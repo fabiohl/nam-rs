@@ -341,13 +341,17 @@ impl StaticModel {
             Self::WavenetA2Cascade(m) => m.arrays.last().map(|a| a.head_size).unwrap_or(1),
             Self::WavenetDyn(m) => m.arrays.last().map(|a| a.head).unwrap_or(0),
             Self::Container(c) => c.active().num_output_channels(),
-            Self::Lstm1x3(_) => 3,
-            Self::Lstm1x8(_) | Self::Lstm2x8(_) => 8,
-            Self::Lstm1x12(_) | Self::Lstm2x12(_) => 12,
-            Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
-            Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
-            Self::Lstm1x40(_) => 40,
-            Self::LstmDyn(m) => m.head_weights.len(),
+            Self::Lstm1x3(_)
+            | Self::Lstm1x8(_)
+            | Self::Lstm2x8(_)
+            | Self::Lstm1x12(_)
+            | Self::Lstm2x12(_)
+            | Self::Lstm1x16(_)
+            | Self::Lstm2x16(_)
+            | Self::Lstm1x24(_)
+            | Self::Lstm2x24(_)
+            | Self::Lstm1x40(_)
+            | Self::LstmDyn(_) => 1,
             Self::Linear(_) => 1,
             Self::ConvNet(m) => m.out_channels(),
         }

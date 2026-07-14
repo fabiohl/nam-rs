@@ -98,6 +98,14 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
             }
         }
         if any_layer_raw && !has_a2_feature {
+            // T5.1: condition_dsp is an A2-specific feature — the oracle always
+            // routes models with condition_dsp through the A2 path. The builder
+            // must match to avoid architecture mismatch.
+            if data.config.condition_dsp.is_some() {
+                has_a2_feature = true;
+            }
+        }
+        if any_layer_raw && !has_a2_feature {
             return None;
         }
     }
