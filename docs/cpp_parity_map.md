@@ -408,22 +408,14 @@ Two real issues, though:
   plugin latency compensation), it would report a materially wrong number. Should either be
   fixed to the correct sum or removed/marked `#[deprecated]` with a comment explaining why it's
   currently safe to be wrong.
-- **`condition_dsp.prewarm(0)` is a real, confirmed bug (`model_dyn.rs:348-350`).**
-  `WaveNetModelDyn::prewarm_internal()` calls `cond_dsp.prewarm(0)` — a **hardcoded zero** — then
-  runs `cond_dsp.process()` for exactly one frame to obtain a "steady-state" condition value to
-  feed the analytical fill. This is correct **only if `condition_dsp` is itself feedforward**
-  (WaveNet/ConvNet/Linear), where `prewarm(0)` is harmless because those models' own `prewarm()`
-  likewise ignores its argument and does a full analytical fill regardless. **It is wrong if
-  `condition_dsp` is an LSTM** (a legitimate, officially supported NAMcore configuration — LSTM
-  implements genuine per-sample recurrence with no analytical shortcut): `lstm_prewarm_common`
-  iterates `num_samples` times, so `prewarm(0)` performs **zero** iterations, leaving the LSTM's
-  hidden/cell state at its raw loaded-from-file values instead of the settled state C++ would
-  have reached after `GetPrewarmSamples()` (`0.5 × sample_rate`) samples. The subsequent single
-  `process()` call then reads a stale, unconverged condition signal. No committed fixture
-  currently exercises an LSTM `condition_dsp` (all `condition_dsp` fixtures found are
-  WaveNet-based — `wavenet_condition_dsp.nam`), so this has not surfaced in the test suite, but
-  it is a genuine, code-confirmed correctness gap for a supported configuration, not a
-  hypothetical.
+- **`condition_dsp.prewarm(0)` — FIXED.** `WaveNetModelDyn::prewarm_internal()` previously
+  called `cond_dsp.prewarm(0)` (hardcoded zero), which was wrong when `condition_dsp` is an
+  LSTM (genuine per-sample recurrence, no analytical shortcut — `prewarm(0)` left hidden/cell
+  state unconverged). The code now calls `cond_dsp.prewarm(cond_dsp.prewarm_samples())`
+  (`model_dyn.rs`, `prewarm_internal`), matching C++'s `GetPrewarmSamples()` semantics.
+  An LSTM `condition_dsp` fixture now exists (`wavenet_condition_lstm.nam`), but its
+  production output remains under investigation — the only available reference is the f64
+  oracle, whose `condition_dsp` semantics is itself disputed (see `TODO-findings.md`).
 
 ### 3.6 Coverage gap: generic gating/FiLM/head1x1/layer1x1 silently ignored outside A2 shape
 
