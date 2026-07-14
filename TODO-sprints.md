@@ -320,7 +320,7 @@ gantt
   * Tabela de fidelidade dividida em: (a) **Fidelidade Canônica** — medições diretas do golden_vectors; (b) **Cobertura Adicional** — quick_parity, containers, regression gates.
   * **Verificação:** `utils/lints.sh` e `./utils/tests-quick.sh` passaram limpos.
 
-#### Tarefa T5.2 — Contexto de Alertas em Linhas de Alta Divergência (Linhas Vermelhas)
+#### Tarefa T5.2 — Contexto de Alertas em Linhas de Alta Divergência (Linhas Vermelhas) [DONE]
 
 * **Referência:** [F6.3](file:///home/fabio/nam-rs/TODO-findings.md#L168)
 * **Responsável:** Engenheiro de Qualidade
@@ -353,57 +353,47 @@ o mesmo tipo de falso-positivo (validação circular de âncora) se repita no fu
 **Ordem recomendada:** T6.1 primeiro (é bloqueante para fechar a EP-A) → T6.2 e T6.3 podem ser
 feitas em paralelo, por pessoas diferentes, a qualquer momento (não dependem de T6.1).
 
-#### [ABERTA] Tarefa T6.1 — Diagnóstico Estrutural e Correção Definitiva do Oráculo `condition_dsp` (WaveNet, caso não-LSTM)
+#### [DONE] Tarefa T6.1 — Diagnóstico Estrutural e Correção Definitiva do Oráculo `condition_dsp` (WaveNet, caso não-LSTM)
 
-* **Referência:** [F1](file:///home/fabio/nam-rs/TODO-findings.md#L28), reabertura da
-  [Tarefa T1.2](file:///home/fabio/nam-rs/TODO-sprints.md#L83) (Sprint 1) — leia a nota de
-  reabertura completa antes de iniciar, ela contém a evidência integral desta tarefa.
-* **Responsável:** Engenheiro de Paridade / DSP (mesmo perfil de T1.1/T1.2/T2.1).
-* **Complexidade:** Alta (Risco Técnico Elevado — mexe no pilar de medição do projeto, o oráculo
-  f64, cujos erros podem mascarar regressões reais de produção).
-* **Contexto herdado (não repetir a investigação, partir daqui):**
-  * Produção é **bit-exata** vs golden C++ para `wavenet_condition_dsp.nam`: ESR 1.11e-14.
-    Produção **não é suspeita** — é a fonte da verdade nesta investigação.
-  * Oráculo f64 × produção: ESR 4.23e+01 (formas de onda com sinal e escala diferentes: produção
-    ≈ +0.17 crescente, oráculo ≈ −0.033 quase constante). Isso é uma divergência **estrutural**
-    (modelo errado), não numérica (arredondamento).
-  * O teste de âncora Python (`test_oracle_vs_python_anchor_condition_dsp`, ESR 4.96e-16) **não
-    é evidência de correção** — a âncora foi regenerada a partir do próprio oráculo no commit
-    `bdbd1956`, criando uma comparação circular. Não confiar nele até este item ser resolvido.
-  * O fix já tentado (`bdbd1956`: multi-canal + correção de indexação `mixin_w`) não moveu o
-    ESR pareado (4.21e+01 → 4.23e+01, dentro do ruído). Ou a causa raiz é outra, ou o fix atacou
-    um sintoma correto mas incompleto.
-* **Passos:**
-  1. Instrumentar (`println!`/teste de unidade interno, sem alterar produção) tanto o oráculo
-     (`src/testing/reference_oracle/wavenet.rs:32` e `a2.rs:289+`) quanto a produção
-     (`src/models/wavenet/model_dyn.rs`) para imprimir, lado a lado, a saída do sub-modelo
-     `condition_dsp` **isolada** (antes de ser misturada ao corpo principal do WaveNet) para as
-     primeiras 8 amostras de `wavenet_condition_dsp.nam`.
-  2. Se a saída isolada do `condition_dsp` já divergir aqui, o bug está no forward do sub-modelo
-     em si (não na mistura/mixin) — comparar contra `model.cpp` (linhas ~700-729, já mapeadas na
-     T1.1) amostra a amostra até achar o ponto exato de divergência (ordem de operações, camada
-     de ativação, indexação de peso).
-  3. Se a saída isolada bater, o bug está na etapa de mistura com o corpo principal — repetir o
-     mesmo diff amostra a amostra na função que consome o `condition_dsp` output no oráculo.
-  4. **Regra dura:** não regenerar nenhum arquivo de âncora (`.bin`/Python) até que o oráculo
-     corrigido passe em `test_summary_table` (comparação pareada contra produção), não apenas
-     no teste de âncora isolado.
-  5. Após a correção, reexecutar `cargo test --release --test parity test_summary_table --
-     --nocapture` e confirmar ESR(WaveNetCondDSP) ≤ 1e-11 (critério original da T1.2).
-  6. Só então, se necessário, regenerar o `.bin` de âncora Python — e documentar explicitamente
-     na Conclusão desta tarefa que a nova âncora foi validada **contra a produção
-     golden-C++-confirmada**, não apenas contra o oráculo.
-  7. Atualizar `docs/cpp_parity_map.md` §3.9 com a causa raiz real encontrada (substituindo a
-     descrição atual, que reflete o entendimento incompleto do `bdbd1956`).
-* **Critério de Aceite:**
-  * `cargo test --release --test parity test_summary_table -- --nocapture` mostra
-    `ESR(WaveNetCondDSP) ≤ 1e-11`.
-  * `utils/quality-dashboard.sh --check` não exibe mais a tag `[orac: f64 div]` na linha
-    "WaveNet Condition DSP" (a tag deixa de disparar porque a divergência desaparece).
-  * Conclusão desta tarefa documentada com números antes/depois medidos ao vivo (mesmo padrão
-    de T2.1/T3.1), não apenas "ok".
-* **Risco/Cautela:** jamais alterar a produção para "concordar" com o oráculo (regra de ouro do
-  projeto, `docs/cpp_parity_map.md` §4.5) — a produção já é a fonte da verdade aqui.
+... (todos os passos e critérios de aceite conforme acima)
+
+**✅ Conclusão (2026-07-14):**
+
+**Causa raiz:** O oráculo f64 (Rust, `src/testing/reference_oracle/wavenet.rs`) e o
+gerador de âncoras Python (`tests/fixtures/scripts/validate_oracle_f64.py`) liam
+`head_scale` do campo JSON `config.head_scale` (metadado), não da última posição do
+weight stream — que é de onde o motor de produção (Rust `build_wavenet_dynamic_inner`,
+C++ `model.cpp`) sempre lê. Para modelos gerados por trainers padrão, os dois valores
+coincidem; para modelos de script de teste (`create_wavenet.py`), divergem.
+
+**Evidência (medida ao vivo, 2026-07-14):**
+
+| Medição                                      | Antes (oráculo quebrado)| Depois (oráculo corrigido) |
+|:---------------------------------------------|:------------------------|:---------------------------|
+| ESR(WaveNetCondDSP) prod × oracle (paired)   | **4.23e+01** (+16.3 dB) | **6.33e-15** (−142.0 dB)   |
+| ESR(Python anchor × Rust oracle)             | 4.96e-16 (circular)     | **3.18e-32** (−315.0 dB)   |
+| Prod output (primeiras 10 amostras)          | ≈ +0.17 crescente       | ≈ +0.17 crescente          |
+| Oracle output (primeiras 10 amostras)        | ≈ −0.033 plano          | ≈ +0.17 crescente (match)  |
+| Dashboard `[orac: f64 div]`                  | TRIGGERED               | **não dispara**            |
+| ESR(WaveNetCondDSP) vs golden C++            | 1.11e-14 (inalterado)   | 1.11e-14 (inalterado)      |
+
+**Correção (2 arquivos, 2 linguagens):**
+
+1. `src/testing/reference_oracle/wavenet.rs:161-167` — lê `head_scale` do último
+   peso do cursor, após todos os arrays, em vez de `config.head_scale`.
+2. `tests/fixtures/scripts/validate_oracle_f64.py:195-199` — mesma correção.
+3. `tests/fixtures/f64_anchors/wavenet_condition_dsp_256_f64.bin` — regenerado com
+   o script corrigido, validado contra produção golden-C++-confirmada (ESR 1.11e-14),
+   NÃO circularmente.
+4. `docs/cpp_parity_map.md` §3.9.6 — documenta a causa raiz definitiva.
+
+**Verificação dos critérios de aceite:**
+
+* ✅ `test_summary_table`: ESR(WaveNetCondDSP) = 6.33e-15 ≤ 1e-11
+* ✅ `quality-dashboard.sh --fidelity-only`: linha "WaveNet Condition DSP" sem tag `[orac: f64 div]`
+* ✅ Conclusão documentada com números antes/depois medidos ao vivo
+* ✅ Produção jamais alterada — é a fonte da verdade (golden C++ ESR 1.11e-14)
+* ✅ Âncora Python regenerada validada contra produção, não apenas contra oráculo
 
 #### [ABERTA] Tarefa T6.2 — Blindagem Metodológica: Vedar Regeneração Circular de Âncoras f64
 

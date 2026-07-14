@@ -90,7 +90,6 @@ def _wavenet_core(model: dict, x: np.ndarray, *, all_channels: bool) -> np.ndarr
     """
     config = model["config"]
     weights = load_weights_as_f64(model)
-    head_scale = np.float64(config.get("head_scale", 1.0))
     layers = config.get("layers", [])
 
     if not layers:
@@ -192,6 +191,14 @@ def _wavenet_core(model: dict, x: np.ndarray, *, all_channels: bool) -> np.ndarr
             hb = weights[cursor : cursor + head_ch]
             cursor += head_ch
         a_head_b.append(hb)
+
+    # head_scale is the LAST weight in the WaveNet weight stream.
+    # The JSON config's head_scale field is metadata and may differ
+    # from the weight-stream value (e.g. test-script-generated models
+    # where random weights overwrite the config default). Production
+    # engines always use the weight-stream value.
+    head_scale = np.float64(weights[cursor])
+    cursor += 1
 
     # Per-layer history buffers (matches production and the Rust oracle).
     # A single shared buffer is INCORRECT for dilated convolutions: with
