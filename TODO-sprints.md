@@ -90,7 +90,7 @@ gantt
   3. **Secondary activation ausente:** o oráculo não lia `secondary_activation` do JSON, hardcodando sigmoid para gate (quando o modelo blended usa Tanh). Adicionada função `a2_read_secondary_activation` com fallback Sigmoid para entradas nulas.
   Resultados: Gated `7.07e-7 → 1.00e-10` (-100 dB) ✓, Blended `2.53e-1 → 2.65e-14` (-136 dB) ✓. Ambos dentro dos critérios de aceite.
 
-#### [NEW] Tarefa T2.2 — Criação de Âncoras NumPy para Gating
+#### [DONE] Tarefa T2.2 — Criação de Âncoras NumPy para Gating
 
 * **Referência:** [F4.2](file:///home/fabio/nam-rs/TODO-findings.md#L149)
 * **Responsável:** Engenheiro de Testes
@@ -98,6 +98,12 @@ gantt
 * **Descrição:**
   Criar scripts e arquivos de âncora NumPy equivalentes para os modos Gated e Blended (que hoje não possuem cobertura de âncora no pipeline do oráculo).
 * **Critério de Aceite:** Âncoras NumPy executadas e integradas ao pipeline de verificação automatizada de oráculo com ESR $\le 1\times10^{-15}$ contra o oráculo Rust corrigido.
+* **Conclusão (2026-07-14):**
+  * O script `validate_oracle_f64.py` continha os mesmos três bugs que o oráculo Rust (T2.1): mixin truncado a `bottleneck`, gating sem secondary activation, blending com fórmula errada e uso do canal de gate como "original". Corrigidos de forma idêntica.
+  * Adicionada função `_extract_secondary_activation` ao script Python, espelhando `a2_read_secondary_activation` do Rust.
+  * Gerados arquivos de âncora binários: `a2_dynamic_gated_ch8_256_f64.bin` e `a2_dynamic_blended_ch3_256_f64.bin` em `tests/fixtures/f64_anchors/`.
+  * Adicionados testes `test_oracle_vs_python_anchor_a2_gated` e `test_oracle_vs_python_anchor_a2_blended` em `reference_oracle_f64.rs`.
+  * Resultados: Gated ESR(Rust vs NumPy) = `5.00e-16`, Blended ESR = `5.00e-16` — ambos $\le 1\times10^{-15}$ ✓.
 
 #### [NEW] Tarefa T2.3 — Re-adjudicação de `condition_lstm`
 

@@ -344,6 +344,50 @@ fn test_oracle_vs_python_anchor_a2_film_input_mixin_pre() {
     );
 }
 
+#[test]
+fn test_oracle_vs_python_anchor_a2_gated() {
+    let path = models_dir().join("a2_dynamic_gated_ch8.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("a2_dynamic_gated_ch8_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "A2-Dyn-Gated: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-15,
+        "A2-Dyn-Gated Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
+#[test]
+fn test_oracle_vs_python_anchor_a2_blended() {
+    let path = models_dir().join("a2_dynamic_blended_ch3.nam");
+    let md = load_and_parse(&path);
+    let input_f64 = load_f64_binary(&anchors_dir().join("sweep_256_48k.bin"));
+    let anchor = load_f64_binary(&anchors_dir().join("a2_dynamic_blended_ch3_256_f64.bin"));
+
+    let oracle = oracle_forward(&md, &input_f64, &PrecisionConfig::default());
+    let esr = compute_esr_f64(&oracle, &anchor);
+
+    println!(
+        "A2-Dyn-Blended: ESR(Rust oracle vs NumPy f64) = {:.2e} ({:.1} dB)",
+        esr,
+        esr_to_db_f64(esr)
+    );
+    assert!(
+        esr < 1e-15,
+        "A2-Dyn-Blended Rust oracle does not match NumPy f64 anchor: ESR={:.6e}",
+        esr
+    );
+}
+
 // ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
 // Oracle ESR limits are defined in tests/common/constants.rs as pub const
 // (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT) and shared between

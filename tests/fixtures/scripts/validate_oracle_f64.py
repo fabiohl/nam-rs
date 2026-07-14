@@ -757,6 +757,19 @@ def _extract_gating_mode(layer_raw, li):
     return "none"
 
 
+def _extract_secondary_activation(layer_raw, li):
+    """Extract per-layer secondary activation (mirrors a2_read_secondary_activation in Rust)."""
+    sec = layer_raw.get("secondary_activation")
+    if isinstance(sec, list) and li < len(sec):
+        val = sec[li]
+        if val is None:
+            return {"type": "Sigmoid"}
+        return val
+    if isinstance(sec, dict):
+        return sec
+    return {"type": "Sigmoid"}
+
+
 def _extract_head1x1_active(layer_raw):
     h1 = layer_raw.get("head1x1")
     if isinstance(h1, dict):
@@ -915,11 +928,13 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 film_slots[slot_idx] = FiLMSlot(shift, g, slot_w, slot_b, film_ch)
 
             act = _extract_activation(activation_raw, li, num_layers)
+            sec_act = _extract_secondary_activation(layer_raw, li)
             layer_weights.append({
                 "conv_w": conv_w, "conv_b": conv_b, "mixin_w": mixin_w,
                 "l1x1_w": l1x1_w, "l1x1_b": l1x1_b, "ks": ks, "dil": dil,
                 "film": film_slots, "gating_mode": gmode,
-                "activation": act, "conv_out": conv_out,
+                "activation": act, "secondary_activation": sec_act,
+                "conv_out": conv_out,
             })
 
         # Head1x1 weights
@@ -1101,7 +1116,7 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 mixin_contrib = np.zeros_like(z)
                 if len(condition_mod) > 0:
                     k_used = min(cond_size, len(condition_mod))
-                    for c in range(min(conv_out, bottleneck)):
+                    for c in range(conv_out):
                         mixin_contrib[c] = np.dot(lw["mixin_w"][c, :k_used], condition_mod[:k_used])
 
                 # input_mixin_post_film (slot 3)
@@ -1118,14 +1133,17 @@ def a2_forward(model: dict, x: np.ndarray) -> np.ndarray:
                 # Activation or Gating/Blending
                 if use_gating:
                     half = bottleneck
-                    act = apply_activation_a2(z[:half], lw["activation"])
-                    z[:half] = act * (1.0 / (1.0 + np.exp(-z[half:half * 2])))
+                    z[:half] = apply_activation_a2(z[:half], lw["activation"])
+                    z[half:half * 2] = apply_activation_a2(z[half:half * 2], lw["secondary_activation"])
+                    z[:half] *= z[half:half * 2]
                     z_len = half
                 elif use_blending:
                     half = bottleneck
-                    act = apply_activation_a2(z[:half], lw["activation"])
-                    alpha = 1.0 / (1.0 + np.exp(-z[half:half * 2]))
-                    z[:half] = alpha * act + (1.0 - alpha) * z[half:half * 2]
+                    original = z[:half].copy()
+                    z[:half] = apply_activation_a2(z[:half], lw["activation"])
+                    z[half:half * 2] = apply_activation_a2(z[half:half * 2], lw["secondary_activation"])
+                    alpha = z[half:half * 2]
+                    z[:half] = original + alpha * (z[:half] - original)
                     z_len = half
                 else:
                     z[:bottleneck] = apply_activation_a2(z[:bottleneck], lw["activation"])
