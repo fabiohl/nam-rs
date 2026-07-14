@@ -16,6 +16,16 @@ Todas as referências de findings apontam para o arquivo [TODO-findings.md](file
 
 ---
 
+## Política de Conclusão de Tarefas (T6.2, 2026-07-14)
+
+Toda tarefa envolvendo o oráculo f64 (`src/testing/reference_oracle/`), o dashboard de qualidade
+(`utils/quality-dashboard.sh`), ou a regeneração de âncoras (`tests/fixtures/f64_anchors/`), ao ser
+marcada `[DONE]`, **deve** incluir uma seção **Conclusão** com números antes/depois medidos ao vivo.
+"Não ok" ou ausência de seção não são aceitos como evidência de conclusão. Esta política já é
+seguida organicamente por T2.1/T3.1/T4.x e agora está formalizada.
+
+---
+
 ## Visão Geral dos Épicos
 
 ### EP-A — Veredito do `condition_dsp` (F1 + F4) [PARCIAL — ver reabertura T1.2 abaixo]
@@ -88,25 +98,31 @@ gantt
 #### [REABERTA 2026-07-14] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
 
 * **Referência:** [F1.2](file:///home/fabio/nam-rs/TODO-findings.md#L76)
+
 * **Responsável:** Engenheiro de Paridade
+
 * **Complexidade:** Alta
+
 * **Descrição:**
   Corrigir a lógica de processamento do `condition_dsp` e o respectivo broadcast no oráculo f64 em [wavenet.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/wavenet.rs#L32) e [a2.rs](file:///home/fabio/nam-rs/src/testing/reference_oracle/a2.rs#L289).
+  
   * Ajustar a âncora em Python em `validate_oracle_f64.py` para refletir a mesma semântica corrigida.
   * Validar contra o fixture golden-validado [golden_wavenet_condition_dsp.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_wavenet_condition_dsp.bin).
+
 * **Critério de Aceite:** ESR do par produção × oráculo f64 cair de `4.21e+01` para o patamar aceitável de paridade de ruído f64/f32 ($\le 1\times10^{-11}$).
+
 * **Reabertura (auditoria de verificação, 2026-07-14):** o commit `bdbd1956` ("add multi-channel
   condition_dsp oracle and fix mixin_w index order") foi marcado `[DONE]` sem uma seção de
   Conclusão com números antes/depois (diferente de T2.1/T3.1/T3.2, que documentam evidência).
   Reexecução direta de `cargo test --release --test parity test_summary_table -- --nocapture`
   nesta auditoria confirma que **o critério não foi atingido**:
-
+  
   ```text
   WaveNetCondDSP ESR(f32 vs oracle, prewarm-paired): 4.23e1 (16.3 dB)
   PROD FIRST 10:   [0.170, 0.170, 0.170, 0.172, 0.174, ...]
   ORACLE FIRST 10: [-0.033, -0.033, -0.033, -0.033, -0.033, ...]
   ```
-
+  
   Valor essencialmente idêntico ao ESR 4.21e+01 original do F1 (delta é ruído de stress-signal).
   Produção permanece bit-exata vs golden C++ (ESR 1.11e-14) — o problema é exclusivamente do
   oráculo. O teste de âncora (`test_oracle_vs_python_anchor_condition_dsp`, ESR 4.96e-16) **não
@@ -148,7 +164,7 @@ gantt
   1. **Mixin truncado em gating/blending:** o laço de mixin usava `z_out_ch.min(bottleneck)`, aplicando-se apenas aos primeiros `bottleneck` canais em vez dos `z_out_ch = 2*bottleneck` canais. Canais de gate/blend não recebiam contribuição do mixin. Corrigido em `a2.rs:753`.
   2. **Blending fórmula errada:** a fórmula antiga usava o valor bruto do canal de gate (`z_scratch[half + i]`) como "original" na interpolação — mas esse é o canal de gate, não o valor original da primeira metade. Corrigido para `original + alpha * (activated - original)`, que mantém o input original e interpola com alpha derivado da ativação correta (Tanh).
   3. **Secondary activation ausente:** o oráculo não lia `secondary_activation` do JSON, hardcodando sigmoid para gate (quando o modelo blended usa Tanh). Adicionada função `a2_read_secondary_activation` com fallback Sigmoid para entradas nulas.
-  Resultados: Gated `7.07e-7 → 1.00e-10` (-100 dB) ✓, Blended `2.53e-1 → 2.65e-14` (-136 dB) ✓. Ambos dentro dos critérios de aceite.
+     Resultados: Gated `7.07e-7 → 1.00e-10` (-100 dB) ✓, Blended `2.53e-1 → 2.65e-14` (-136 dB) ✓. Ambos dentro dos critérios de aceite.
 
 #### [DONE] Tarefa T2.2 — Criação de Âncoras NumPy para Gating
 
@@ -368,14 +384,14 @@ coincidem; para modelos de script de teste (`create_wavenet.py`), divergem.
 
 **Evidência (medida ao vivo, 2026-07-14):**
 
-| Medição                                      | Antes (oráculo quebrado)| Depois (oráculo corrigido) |
-|:---------------------------------------------|:------------------------|:---------------------------|
-| ESR(WaveNetCondDSP) prod × oracle (paired)   | **4.23e+01** (+16.3 dB) | **6.33e-15** (−142.0 dB)   |
-| ESR(Python anchor × Rust oracle)             | 4.96e-16 (circular)     | **3.18e-32** (−315.0 dB)   |
-| Prod output (primeiras 10 amostras)          | ≈ +0.17 crescente       | ≈ +0.17 crescente          |
-| Oracle output (primeiras 10 amostras)        | ≈ −0.033 plano          | ≈ +0.17 crescente (match)  |
-| Dashboard `[orac: f64 div]`                  | TRIGGERED               | **não dispara**            |
-| ESR(WaveNetCondDSP) vs golden C++            | 1.11e-14 (inalterado)   | 1.11e-14 (inalterado)      |
+| Medição                                    | Antes (oráculo quebrado) | Depois (oráculo corrigido) |
+|:------------------------------------------ |:------------------------ |:-------------------------- |
+| ESR(WaveNetCondDSP) prod × oracle (paired) | **4.23e+01** (+16.3 dB)  | **6.33e-15** (−142.0 dB)   |
+| ESR(Python anchor × Rust oracle)           | 4.96e-16 (circular)      | **3.18e-32** (−315.0 dB)   |
+| Prod output (primeiras 10 amostras)        | ≈ +0.17 crescente        | ≈ +0.17 crescente          |
+| Oracle output (primeiras 10 amostras)      | ≈ −0.033 plano           | ≈ +0.17 crescente (match)  |
+| Dashboard `[orac: f64 div]`                | TRIGGERED                | **não dispara**            |
+| ESR(WaveNetCondDSP) vs golden C++          | 1.11e-14 (inalterado)    | 1.11e-14 (inalterado)      |
 
 **Correção (2 arquivos, 2 linguagens):**
 
@@ -395,33 +411,28 @@ coincidem; para modelos de script de teste (`create_wavenet.py`), divergem.
 * ✅ Produção jamais alterada — é a fonte da verdade (golden C++ ESR 1.11e-14)
 * ✅ Âncora Python regenerada validada contra produção, não apenas contra oráculo
 
-#### [ABERTA] Tarefa T6.2 — Blindagem Metodológica: Vedar Regeneração Circular de Âncoras f64
+#### [DONE] Tarefa T6.2 — Blindagem Metodológica: Vedar Regeneração Circular de Âncoras f64
 
 * **Referência:** causa-raiz do falso `[DONE]` da T1.2, identificada na auditoria de verificação
   de 2026-07-14.
 * **Responsável:** Engenheiro de Qualidade / Testes.
 * **Complexidade:** Baixa (tarefa de processo/documentação, sem mudança de comportamento).
 * **Descrição:**
-  1. Documentar em `docs/cpp_parity_map.md` (nova subseção, próxima ao §4.5) a seguinte regra:
-     *"Uma âncora f64 (`tests/fixtures/f64_anchors/*.bin`) só pode ser regenerada quando: (a)
-     existe golden C++ para o mesmo fixture E o teste pareado produção×oráculo
-     (`test_summary_table`) já passa dentro do critério de aceite **antes** da regeneração; OU
-     (b) não existe golden C++ e a regeneração é acompanhada de revisão humana explícita,
-     documentada no commit e em `TODO-sprints.md`, com números antes/depois. Regenerar uma
-     âncora a partir do próprio oráculo que ela deveria validar é uma comparação circular e não
-     constitui evidência de correção."*
+  1. Documentar em `docs/cpp_parity_map.md` (nova subseção, próxima ao §4.5) a seguinte regra: ...
   2. Adicionar um comentário curto apontando para essa regra no cabeçalho de
-     `tests/fixtures/generate_a2_fixtures.py`/`validate_oracle_f64.py` (script(s) que geram
-     âncoras) e próximo às funções `load_f64_binary`/leitura de âncora em
-     `tests/parity/reference_oracle_f64.rs`.
-  3. Formalizar no topo deste arquivo (`TODO-sprints.md`) a exigência já seguida organicamente
-     por T2.1/T3.1/T4.x: toda tarefa envolvendo o oráculo f64 ou o dashboard de qualidade só
-     pode ser marcada `[DONE]` com uma seção **Conclusão** contendo números antes/depois medidos
-     ao vivo (não apenas "ok" ou ausência de seção).
-* **Critério de Aceite:** regra documentada e referenciada nos três locais (cpp_parity_map.md,
-  script(s) Python, reference_oracle_f64.rs); nenhuma mudança de comportamento de teste ou
-  produção é necessária.
-* **Risco:** Mínimo — puramente documental/processo.
+     `tests/fixtures/generate_a2_fixtures.py`/`validate_oracle_f64.py` ...
+  3. Formalizar no topo deste arquivo (`TODO-sprints.md`) a exigência ...
+
+**✅ Conclusão (2026-07-14):**
+
+| Local                                           | Mudança                                                              |
+|:----------------------------------------------- |:-------------------------------------------------------------------- |
+| `docs/cpp_parity_map.md` §4.5.1                 | Nova subseção com a política completa de regeneração de âncoras      |
+| `tests/fixtures/scripts/validate_oracle_f64.py` | Comentário no cabeçalho apontando para §4.5.1                        |
+| `tests/fixtures/generate_a2_fixtures.py`        | Comentário no cabeçalho apontando para §4.5.1                        |
+| `tests/parity/reference_oracle_f64.rs`          | Comentário em `load_f64_binary` apontando para §4.5.1                |
+| `TODO-sprints.md` (topo)                        | Nova seção "Política de Conclusão de Tarefas" formalizando exigência |
+| Nenhuma mudança de comportamento                | Critério de aceite atendido — zero alterações em testes ou produção  |
 
 #### [ABERTA] Tarefa T6.3 — Limpeza do Teste Morto `test_decomposition_wavenet_condition_lstm`
 

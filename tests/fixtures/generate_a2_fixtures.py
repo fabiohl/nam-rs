@@ -15,6 +15,11 @@ validation (Task 3.3: Golden Vectors e C++ Parity).
 Source of truth: NAM/wavenet/a2_fast.h:30-43
 Weight stream order mirrors C++ WaveNet::set_weights_() as consumed by
 both C++ generic WaveNet and Rust WaveNetA2Dyn::set_weights().
+
+ANCHOR REGENERATION POLICY: anchors generated from this script must follow
+docs/cpp_parity_map.md §4.5.1. In particular, regenerating an anchor from
+the oracle it is supposed to validate is circular — anchors for models with
+a C++ golden must be regenerated only after test_summary_table passes.
 """
 
 import json

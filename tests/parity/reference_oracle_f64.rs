@@ -72,6 +72,11 @@ fn anchors_dir() -> PathBuf {
 }
 
 fn load_f64_binary(path: &PathBuf) -> Vec<f64> {
+    // Anchor regeneration policy: docs/cpp_parity_map.md §4.5.1.
+    // Anchors may only be regenerated when a C++ golden exists and
+    // test_summary_table passes before regeneration, OR with explicit
+    // human review documented in the commit. Regenerating from the
+    // oracle itself is circular and does not prove correctness.
     let mut f = std::fs::File::open(path).expect("Failed to open f64 binary");
     let mut buf = [0u8; 4];
     f.read_exact(&mut buf).expect("Failed to read count");

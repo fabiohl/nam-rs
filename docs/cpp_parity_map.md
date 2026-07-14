@@ -868,6 +868,28 @@ h1_in_size` the "fix" reverted to). That change was reverted. The lesson, now lo
 this document's methodology (§1.2): **the C++ golden is the only arbiter; the oracle decomposes
 error but never adjudicates it.**
 
+### 4.5.1 Anchor Regeneration Policy (T6.2, 2026-07-14)
+
+A f64 anchor (`tests/fixtures/f64_anchors/*.bin`) may only be regenerated when:
+
+**(a)** a C++ golden vector exists for the same fixture **and** the paired
+production×oracle test (`test_summary_table`) already passes within the
+acceptance criterion **before** regeneration; **or**
+
+**(b)** no C++ golden exists and the regeneration is accompanied by explicit
+human review, documented in the commit message and in `TODO-sprints.md`, with
+before/after numbers.
+
+Regenerating an anchor from the very oracle it is meant to validate constitutes
+a circular comparison and does **not** constitute evidence of correctness —
+see the T1.2 reopen audit (2026-07-14, `TODO-findings.md` §F1) and the
+`bdbd1956` incident for the definitive case study.
+
+This rule is referenced from the anchor-generation scripts
+(`tests/fixtures/scripts/validate_oracle_f64.py`,
+`tests/fixtures/generate_a2_fixtures.py`) and the anchor-loading code
+(`tests/parity/reference_oracle_f64.rs`, `load_f64_binary` / `anchors_dir`).
+
 ### 4.6 S3 Spec — Canonical C++ layouts referenced by the current investigation
 
 The following point-in-time technical spec (file:line references against the vendored C++,
