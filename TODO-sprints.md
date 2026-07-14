@@ -7,9 +7,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Este documento detalha o planejamento ágil para a execução das sprints de auditoria de compliance e paridade:
 
-1. **EP-A — Veredito do `condition_dsp` (F1 + F4)** [DONE]
-2. **EP-B — Integridade da malha de qualidade (F2 + F3 + F5)** [PLANEJADO/EM EXECUÇÃO]
-3. **EP-C — Polimento do dashboard (F6)** [PLANEJADO]
+1. **EP-A — Veredito do `condition_dsp` (F1 + F4)** [PARCIAL — T1.2 reaberta, ver nota 2026-07-14; correção definitiva movida para a Sprint 6 (T6.1)]
+2. **EP-B — Integridade da malha de qualidade (F2 + F3 + F5)** [DONE]
+3. **EP-C — Polimento do dashboard (F6)** [DONE]
+4. **Sprint 6 — Reabertura EP-A & Dívida Técnica Residual** [ABERTA — T6.1 (crítica/bloqueante), T6.2 (blindagem de processo), T6.3 (limpeza de teste morto)]
 
 Todas as referências de findings apontam para o arquivo [TODO-findings.md](file:///home/fabio/nam-rs/TODO-findings.md).
 
@@ -17,22 +18,25 @@ Todas as referências de findings apontam para o arquivo [TODO-findings.md](file
 
 ## Visão Geral dos Épicos
 
-### EP-A — Veredito do `condition_dsp` (F1 + F4) [DONE]
+### EP-A — Veredito do `condition_dsp` (F1 + F4) [PARCIAL — ver reabertura T1.2 abaixo]
 
 * **Objetivo:** Resolver a semântica sem árbitro confiável de `condition_dsp` e corrigir o oráculo f64 em gating (Gated/Blended).
-* **Risco:** **Médio-Alto**. Critério de fechamento atingido em 2026-07-14.
+* **Risco:** **Médio-Alto**. F4 (Gated/Blended) e a política de `condition_lstm` (T2.3/T3.1/T3.2) fecharam
+  em 2026-07-14 e foram reverificados nesta auditoria (Gated 1.00e-10, Blended 2.65e-14, ambos confirmados
+  ao vivo). **T1.2 permanece aberta** — ver nota de reabertura 2026-07-14 (auditoria de verificação):
+  o critério de aceite não foi atingido, apesar da marcação `[DONE]` original.
 
-### EP-B — Integridade da malha de qualidade (F2 + F3 + F5)
+### EP-B — Integridade da malha de qualidade (F2 + F3 + F5) [DONE]
 
 * **Objetivo:** Garantir que self-tests sintéticos não contaminem a telemetria, ampliar a auditoria anti-placebo de thresholds a todo o CATALOG com datas nas skip reasons, e robustecer a tolerância de latência sub-µs com piso de +0.05 µs.
-* **Risco:** **Baixo**. Alto ganho de segurança e imunidade contra jitter de medição.
-* **Critério de Fechamento:** `tests-quick.sh && quality-dashboard.sh --check` verde sem dados sintéticos no contrato; meta-teste falhando se a data do `condition_lstm` na skip_reason estiver ausente (trava de segurança correta).
+* **Risco:** **Baixo**. Alto ganho de segurança e imunidade contra jitter de medição. Critério de
+  fechamento atingido e reverificado em 2026-07-14 (T4.1–T4.3, com conclusões documentadas).
 
-### EP-C — Polimento do dashboard (F6)
+### EP-C — Polimento do dashboard (F6) [DONE]
 
 * **Objetivo:** Melhorar a formatação do SNR, separar a tabela de fidelidade em modelos primários e cobertura redundante para de-clutter visual, e fornecer contexto/warning em medições vermelhas de ESR alto.
-* **Risco:** **Mínimo**. Puramente estético e apresentacional na CLI/dashboard.
-* **Critério de Fechamento:** Dashboard gerando tabelas limpas e com formatação decimal uniforme e adequada.
+* **Risco:** **Mínimo**. Puramente estético e apresentacional na CLI/dashboard. Critério de fechamento
+  atingido e reverificado em 2026-07-14 (T5.1–T5.2, com conclusões documentadas).
 
 ---
 
@@ -59,6 +63,10 @@ gantt
     section Sprint 5: Polimento Dashboard (EP-C)
     T5.1 - Formatação e Deduplicação  :active, t5_1, after t4_3, 1d
     T5.2 - Contexto e Flags de ESR    :t5_2, after t5_1, 1d
+    section Sprint 6: Reabertura EP-A e Dívida Técnica
+    T6.1 - Diagnóstico Estrutural Oráculo :crit, t6_1, after t5_2, 3d
+    T6.2 - Blindagem Anti-Âncora-Circular  :t6_2, after t6_1, 1d
+    T6.3 - Limpeza Teste Morto LSTM        :t6_3, after t5_2, 1d
 ```
 
 ### Sprint 1: Especificação & Alinhamento do Oráculo DSP
@@ -77,7 +85,7 @@ gantt
   * Documentar as descobertas detalhadamente em [docs/cpp_parity_map.md](file:///home/fabio/nam-rs/docs/cpp_parity_map.md).
 * **Critério de Aceite:** Especificação formalizada e documentada com referências de arquivo e linha (file:line) do C++ e Python.
 
-#### [DONE] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
+#### [REABERTA 2026-07-14] Tarefa T1.2 — Correção do Oráculo f64 para `wavenet_condition_dsp`
 
 * **Referência:** [F1.2](file:///home/fabio/nam-rs/TODO-findings.md#L76)
 * **Responsável:** Engenheiro de Paridade
@@ -87,6 +95,36 @@ gantt
   * Ajustar a âncora em Python em `validate_oracle_f64.py` para refletir a mesma semântica corrigida.
   * Validar contra o fixture golden-validado [golden_wavenet_condition_dsp.bin](file:///home/fabio/nam-rs/tests/fixtures/golden_wavenet_condition_dsp.bin).
 * **Critério de Aceite:** ESR do par produção × oráculo f64 cair de `4.21e+01` para o patamar aceitável de paridade de ruído f64/f32 ($\le 1\times10^{-11}$).
+* **Reabertura (auditoria de verificação, 2026-07-14):** o commit `bdbd1956` ("add multi-channel
+  condition_dsp oracle and fix mixin_w index order") foi marcado `[DONE]` sem uma seção de
+  Conclusão com números antes/depois (diferente de T2.1/T3.1/T3.2, que documentam evidência).
+  Reexecução direta de `cargo test --release --test parity test_summary_table -- --nocapture`
+  nesta auditoria confirma que **o critério não foi atingido**:
+
+  ```text
+  WaveNetCondDSP ESR(f32 vs oracle, prewarm-paired): 4.23e1 (16.3 dB)
+  PROD FIRST 10:   [0.170, 0.170, 0.170, 0.172, 0.174, ...]
+  ORACLE FIRST 10: [-0.033, -0.033, -0.033, -0.033, -0.033, ...]
+  ```
+
+  Valor essencialmente idêntico ao ESR 4.21e+01 original do F1 (delta é ruído de stress-signal).
+  Produção permanece bit-exata vs golden C++ (ESR 1.11e-14) — o problema é exclusivamente do
+  oráculo. O teste de âncora (`test_oracle_vs_python_anchor_condition_dsp`, ESR 4.96e-16) **não
+  serve de evidência de correção**: o `.bin` de âncora foi regenerado a partir do próprio
+  oráculo corrigido (ver commit), tornando a comparação circular — prova apenas que o Rust-f64 e
+  o NumPy concordam entre si sobre a mesma leitura (ainda incorreta) da spec, exatamente o
+  padrão de armadilha descrito em `TODO-findings.md` F1 (§"Diagnóstico lógico"). O dashboard
+  continua a exibir a divergência, agora anotada pelas tags `[orac: f64 div]`/`[gate: 1.0e-10]`
+  introduzidas na T5.2 — o mecanismo de alerta funciona corretamente; o bug subjacente não foi
+  corrigido. Formas de onda com sinal e escala completamente diferentes (prod ≈ +0.17 crescente,
+  oráculo ≈ −0.033 quase constante) sugerem que o problema está na própria mistura do corpo
+  principal do WaveNet com a saída de `condition_dsp` no oráculo (não apenas indexação de
+  `mixin_w`), e não em algo que o fix aplicado tenha endereçado. Necessário retomar T1.1
+  (revisitar a spec extraída de `model.cpp`) e comparar passo a passo (por camada/bloco) o
+  oráculo vs a implementação de produção em
+  [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs) para achar onde a
+  leitura da spec diverge, em vez de ajustar o oráculo isoladamente e revalidar apenas contra
+  âncora auto-gerada.
 
 ---
 
@@ -301,3 +339,126 @@ gantt
   * `_render_fidelity_row` recebe parâmetro opcional `tags` (7º arg), renderizado após a coluna Modo sem afetar alinhamento.
   * Tags aplicadas em ambas as tabelas (canônica e cobertura).
   * **Verificação:** `utils/lints.sh` e `./utils/tests-quick.sh` passaram limpos.
+
+---
+
+### Sprint 6: Reabertura da EP-A — Diagnóstico Estrutural do Oráculo `condition_dsp` & Dívida Técnica Residual
+
+**Foco:** Fechar de fato a EP-A. A auditoria de verificação de 2026-07-14 (ver reabertura da
+Tarefa T1.2, Sprint 1) confirmou ao vivo que o critério de aceite original da T1.2 **não foi
+atingido**, apesar da marcação `[DONE]` — e identificou um segundo residual de baixo risco
+(teste morto). Esta sprint corrige ambos e adiciona uma blindagem de processo para impedir que
+o mesmo tipo de falso-positivo (validação circular de âncora) se repita no futuro.
+
+**Ordem recomendada:** T6.1 primeiro (é bloqueante para fechar a EP-A) → T6.2 e T6.3 podem ser
+feitas em paralelo, por pessoas diferentes, a qualquer momento (não dependem de T6.1).
+
+#### [ABERTA] Tarefa T6.1 — Diagnóstico Estrutural e Correção Definitiva do Oráculo `condition_dsp` (WaveNet, caso não-LSTM)
+
+* **Referência:** [F1](file:///home/fabio/nam-rs/TODO-findings.md#L28), reabertura da
+  [Tarefa T1.2](file:///home/fabio/nam-rs/TODO-sprints.md#L83) (Sprint 1) — leia a nota de
+  reabertura completa antes de iniciar, ela contém a evidência integral desta tarefa.
+* **Responsável:** Engenheiro de Paridade / DSP (mesmo perfil de T1.1/T1.2/T2.1).
+* **Complexidade:** Alta (Risco Técnico Elevado — mexe no pilar de medição do projeto, o oráculo
+  f64, cujos erros podem mascarar regressões reais de produção).
+* **Contexto herdado (não repetir a investigação, partir daqui):**
+  * Produção é **bit-exata** vs golden C++ para `wavenet_condition_dsp.nam`: ESR 1.11e-14.
+    Produção **não é suspeita** — é a fonte da verdade nesta investigação.
+  * Oráculo f64 × produção: ESR 4.23e+01 (formas de onda com sinal e escala diferentes: produção
+    ≈ +0.17 crescente, oráculo ≈ −0.033 quase constante). Isso é uma divergência **estrutural**
+    (modelo errado), não numérica (arredondamento).
+  * O teste de âncora Python (`test_oracle_vs_python_anchor_condition_dsp`, ESR 4.96e-16) **não
+    é evidência de correção** — a âncora foi regenerada a partir do próprio oráculo no commit
+    `bdbd1956`, criando uma comparação circular. Não confiar nele até este item ser resolvido.
+  * O fix já tentado (`bdbd1956`: multi-canal + correção de indexação `mixin_w`) não moveu o
+    ESR pareado (4.21e+01 → 4.23e+01, dentro do ruído). Ou a causa raiz é outra, ou o fix atacou
+    um sintoma correto mas incompleto.
+* **Passos:**
+  1. Instrumentar (`println!`/teste de unidade interno, sem alterar produção) tanto o oráculo
+     (`src/testing/reference_oracle/wavenet.rs:32` e `a2.rs:289+`) quanto a produção
+     (`src/models/wavenet/model_dyn.rs`) para imprimir, lado a lado, a saída do sub-modelo
+     `condition_dsp` **isolada** (antes de ser misturada ao corpo principal do WaveNet) para as
+     primeiras 8 amostras de `wavenet_condition_dsp.nam`.
+  2. Se a saída isolada do `condition_dsp` já divergir aqui, o bug está no forward do sub-modelo
+     em si (não na mistura/mixin) — comparar contra `model.cpp` (linhas ~700-729, já mapeadas na
+     T1.1) amostra a amostra até achar o ponto exato de divergência (ordem de operações, camada
+     de ativação, indexação de peso).
+  3. Se a saída isolada bater, o bug está na etapa de mistura com o corpo principal — repetir o
+     mesmo diff amostra a amostra na função que consome o `condition_dsp` output no oráculo.
+  4. **Regra dura:** não regenerar nenhum arquivo de âncora (`.bin`/Python) até que o oráculo
+     corrigido passe em `test_summary_table` (comparação pareada contra produção), não apenas
+     no teste de âncora isolado.
+  5. Após a correção, reexecutar `cargo test --release --test parity test_summary_table --
+     --nocapture` e confirmar ESR(WaveNetCondDSP) ≤ 1e-11 (critério original da T1.2).
+  6. Só então, se necessário, regenerar o `.bin` de âncora Python — e documentar explicitamente
+     na Conclusão desta tarefa que a nova âncora foi validada **contra a produção
+     golden-C++-confirmada**, não apenas contra o oráculo.
+  7. Atualizar `docs/cpp_parity_map.md` §3.9 com a causa raiz real encontrada (substituindo a
+     descrição atual, que reflete o entendimento incompleto do `bdbd1956`).
+* **Critério de Aceite:**
+  * `cargo test --release --test parity test_summary_table -- --nocapture` mostra
+    `ESR(WaveNetCondDSP) ≤ 1e-11`.
+  * `utils/quality-dashboard.sh --check` não exibe mais a tag `[orac: f64 div]` na linha
+    "WaveNet Condition DSP" (a tag deixa de disparar porque a divergência desaparece).
+  * Conclusão desta tarefa documentada com números antes/depois medidos ao vivo (mesmo padrão
+    de T2.1/T3.1), não apenas "ok".
+* **Risco/Cautela:** jamais alterar a produção para "concordar" com o oráculo (regra de ouro do
+  projeto, `docs/cpp_parity_map.md` §4.5) — a produção já é a fonte da verdade aqui.
+
+#### [ABERTA] Tarefa T6.2 — Blindagem Metodológica: Vedar Regeneração Circular de Âncoras f64
+
+* **Referência:** causa-raiz do falso `[DONE]` da T1.2, identificada na auditoria de verificação
+  de 2026-07-14.
+* **Responsável:** Engenheiro de Qualidade / Testes.
+* **Complexidade:** Baixa (tarefa de processo/documentação, sem mudança de comportamento).
+* **Descrição:**
+  1. Documentar em `docs/cpp_parity_map.md` (nova subseção, próxima ao §4.5) a seguinte regra:
+     *"Uma âncora f64 (`tests/fixtures/f64_anchors/*.bin`) só pode ser regenerada quando: (a)
+     existe golden C++ para o mesmo fixture E o teste pareado produção×oráculo
+     (`test_summary_table`) já passa dentro do critério de aceite **antes** da regeneração; OU
+     (b) não existe golden C++ e a regeneração é acompanhada de revisão humana explícita,
+     documentada no commit e em `TODO-sprints.md`, com números antes/depois. Regenerar uma
+     âncora a partir do próprio oráculo que ela deveria validar é uma comparação circular e não
+     constitui evidência de correção."*
+  2. Adicionar um comentário curto apontando para essa regra no cabeçalho de
+     `tests/fixtures/generate_a2_fixtures.py`/`validate_oracle_f64.py` (script(s) que geram
+     âncoras) e próximo às funções `load_f64_binary`/leitura de âncora em
+     `tests/parity/reference_oracle_f64.rs`.
+  3. Formalizar no topo deste arquivo (`TODO-sprints.md`) a exigência já seguida organicamente
+     por T2.1/T3.1/T4.x: toda tarefa envolvendo o oráculo f64 ou o dashboard de qualidade só
+     pode ser marcada `[DONE]` com uma seção **Conclusão** contendo números antes/depois medidos
+     ao vivo (não apenas "ok" ou ausência de seção).
+* **Critério de Aceite:** regra documentada e referenciada nos três locais (cpp_parity_map.md,
+  script(s) Python, reference_oracle_f64.rs); nenhuma mudança de comportamento de teste ou
+  produção é necessária.
+* **Risco:** Mínimo — puramente documental/processo.
+
+#### [ABERTA] Tarefa T6.3 — Limpeza do Teste Morto `test_decomposition_wavenet_condition_lstm`
+
+* **Referência:** achado secundário da auditoria de verificação de 2026-07-14 (residual de
+  baixo risco, independente da T6.1).
+* **Responsável:** Engenheiro de Testes.
+* **Complexidade:** Baixa.
+* **Contexto:** o teste `#[ignore]`d
+  [test_decomposition_wavenet_condition_lstm](file:///home/fabio/nam-rs/tests/parity/reference_oracle_f64.rs#L1069)
+  chama `build_model` sobre `wavenet_condition_lstm.nam`, que a política fail-closed da T3.1
+  agora rejeita — confirmado ao vivo: `cargo test --release --test parity
+  test_decomposition_wavenet_condition_lstm -- --ignored --nocapture` **entra em panic**
+  (`Failed to build model: LSTM condition_dsp is not supported...`). O texto do `#[ignore]`
+  também está desatualizado: diz "Root cause not yet identified", mas a Conclusão da T2.3 (acima
+  neste documento) já identificou a causa como bug de atualização de estado do LSTM entre o
+  frame 0 e o frame 1.
+* **Descrição (escolher uma opção):**
+  * **Opção recomendada — remover:** a cobertura de rejeição já é feita por
+    `test_golden_vectors_wavenet_condition_lstm` (T3.1) e a análise de decomposição de erro já
+    está permanentemente registrada na Conclusão da T2.3 deste documento. Deletar o teste e a
+    função auxiliar que só ele usa (se nenhuma outra a referenciar).
+  * **Alternativa — manter como esqueleto para a Sprint 4/T6.1 futura:** atualizar a mensagem do
+    `#[ignore]` para: *"Bloqueado por política fail-closed (T3.1). Causa raiz parcialmente
+    identificada em T2.3: bug de atualização de estado do LSTM entre frame 0 (ESR ~1e-10) e
+    frame 1 (diverge em 8e-5). Reativar apenas quando o LSTM condition_dsp for corrigido em
+    produção e a rejeição da T3.1 for revertida."*
+* **Critério de Aceite:** `cargo test --release --test parity -- --ignored` não produz mais
+  panics/falhas inesperadas para este teste (seja por remoção, seja por mensagem de `#[ignore]`
+  coerente com o estado real documentado em T2.3/T3.1).
+* **Risco:** Mínimo — código de teste morto, sem impacto em produção ou em outros testes.
