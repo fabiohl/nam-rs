@@ -151,7 +151,7 @@ gantt
   * Standalone LSTM (`.nam` com `architecture: "LSTM"`) não é afetado — apenas `condition_dsp` LSTM embarcado em WaveNet.
   * **Reversão:** remover a chamada `reject_condition_dsp_lstm` dos dois pontos de dispatch quando o bug de estado LSTM for corrigido (Sprint 4).
 
-#### [NEW] Tarefa T3.2 — Recalibração de Gates de Qualidade do LSTM e Contrato
+#### [DONE] Tarefa T3.2 — Recalibração de Gates de Qualidade do LSTM e Contrato
 
 * **Referência:** [F1.5](file:///home/fabio/nam-rs/TODO-findings.md#L87)
 * **Responsável:** Engenheiro de Qualidade
@@ -161,3 +161,11 @@ gantt
   * Eliminar os gates placebo vigentes (SNR $\ge$ 5 dB e MR-STFT < 0.80) e gravá-los com pisos reais medidos pós-veredito estável.
   * Regravar o contrato de qualidade atualizado em `docs/quality-contract.txt`.
 * **Critério de Aceite:** Execução limpa do script `./utils/tests-quick.sh` com o contrato verificado e gates reais validados.
+* **Conclusão (2026-07-14): Superseded by T3.1.**
+  * A política fail-closed da T3.1 tornou o modelo `wavenet_condition_lstm` não-carregável — a recalibração de gates com medições reais tornou-se inviável.
+  * **Limpeza de dead code pós-T3.1:**
+    * Removido bloco `wavenet_condition_lstm` de `tests/common/validation.rs:700-709` (thresholds placebo SNR 5 dB / MR-STFT 0.80).
+    * Removida entrada `wavenet_condition_lstm` da lista de calibração em `tests/models/threshold_calibration.rs:178`.
+    * Contrato de qualidade já limpo na T3.1 (`docs/quality-contract.txt`).
+  * **Verificação:** `./utils/tests-quick.sh` executado com sucesso (estrutural + medida + parser fuzzing, todos passaram).
+  * **Nota:** Quando o bug de estado LSTM for corrigido (Sprint 4) e o modelo voltar a carregar, a recalibração original de T3.2 deverá ser reexecutada com medições reais. Até lá, os thresholds removidos eram placebos (SNR ≥ 5 dB, MR-STFT < 0.80) que não ofereciam proteção real.

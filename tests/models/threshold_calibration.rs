@@ -175,7 +175,6 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "wavenet_a2_full",
         "wavenet_a2_lite",
         "wavenet_condition_dsp",
-        "wavenet_condition_lstm",
         // First nondist model — the `// Measured:` comment is above this pattern
         "APP-EVH-Stealth100-Dialled-xSTD",
         "wavenet_a2_film_lite",

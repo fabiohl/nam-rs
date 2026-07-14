@@ -191,7 +191,7 @@ causou uma regressão real no passado (episódio head1x1, revertido).
 
 ## Épicos (ordem de execução recomendada)
 
-### EP-A — Veredito do `condition_dsp` (F1 + F4) — **o núcleo desta rodada** [DOING]
+### EP-A — Veredito do `condition_dsp` (F1 + F4) — **o núcleo desta rodada** [DONE]
 
 Sequência: T1 spec C++/trainer → T2 correção do oráculo DSP (aceite: condition_dsp ≤ 1e-11
 vs prod) → F4 correção Blended/Gated (aceite: ≤ 1e-12 / ≤ 1e-10) → T3 re-adjudicação do
