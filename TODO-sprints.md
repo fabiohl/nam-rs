@@ -293,3 +293,11 @@ gantt
   * Adicionar tag `[EM INVESTIGAÇÃO]` se o modelo sob suspeita for `condition_lstm`.
   * Adicionar tag `[orac: f64 div]` se a divergência for proveniente do caminho de oráculo f64.
 * **Critério de Aceite:** Rótulos informativos de aviso renderizados ao final de linhas vermelhas no dashboard, sem quebrar o alinhamento das demais colunas.
+* **Conclusão (2026-07-14):**
+  * Função `_red_zone_tags` (`quality-dashboard.sh`): gera tags de contexto apenas para linhas com ESR ≥ 0.1.
+    * `[EM INVESTIGAÇÃO]` (vermelho): quando o modelo é `condition_lstm`/`Condition DSP LSTM` (bug LSTM não resolvido).
+    * `[orac: f64 div]` (amarelo): quando ESR f64 ≥ 0.1 e excede ESR NAMcore por fator > 10× (oráculo divergente, F1/F4).
+    * `[gate: <limite>]` (amarelo): exibe o gate calibrado de `get_calibrated_threshold` (1.0e-10, 1.0e-12, 1.0e-9, fail-closed ou 0.1).
+  * `_render_fidelity_row` recebe parâmetro opcional `tags` (7º arg), renderizado após a coluna Modo sem afetar alinhamento.
+  * Tags aplicadas em ambas as tabelas (canônica e cobertura).
+  * **Verificação:** `utils/lints.sh` e `./utils/tests-quick.sh` passaram limpos.

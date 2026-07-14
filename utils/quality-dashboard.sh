@@ -1007,13 +1007,56 @@ _is_redundant_measurement() {
     return 1
 }
 
+# T5.2 — Generates context tags for fidelity rows in the red zone (ESR ≥ 0.1).
+# Tags are appended after the Mode column without breaking table alignment.
+#
+# Returns empty string when no red-zone context is applicable.
+_red_zone_tags() {
+    local label="$1" esr_nam="$2" esr_f64="$3"
+    local tags=""
+
+    local is_red=0
+    if [ "$esr_nam" != "N/A" ]; then
+        LC_ALL=C awk -v v="$esr_nam" 'BEGIN { if (v+0 >= 0.1) exit 0; exit 1 }' && is_red=1
+    fi
+    if [ "$is_red" -eq 0 ] && [ "$esr_f64" != "N/A" ]; then
+        LC_ALL=C awk -v v="$esr_f64" 'BEGIN { if (v+0 >= 0.1) exit 0; exit 1 }' && is_red=1
+    fi
+    [ "$is_red" -eq 0 ] && { echo ""; return; }
+
+    if [[ "$label" == *"condition_lstm"* ]] || [[ "$label" == *"Condition DSP LSTM"* ]]; then
+        tags="$tags${RED}[EM INVESTIGAÇÃO]${NC} "
+    fi
+
+    if [ "$esr_f64" != "N/A" ] && [ "$esr_nam" != "N/A" ]; then
+        local f64_div=0
+        LC_ALL=C awk -v f64="$esr_f64" -v nam="$esr_nam" \
+            'BEGIN { if (f64+0 >= 0.1 && f64+0 > nam*10.0) exit 0; exit 1 }' && f64_div=1
+        if [ "$f64_div" -eq 1 ]; then
+            tags="$tags${YELLOW}[orac: f64 div]${NC} "
+        fi
+    fi
+
+    local gate
+    case "$label" in
+        *"condition_dsp"*|*"Condition DSP"*)         gate="1.0e-10" ;;
+        *"Dynamic Blended"*)                         gate="1.0e-12" ;;
+        *"Dynamic Gated"*)                           gate="1.0e-9" ;;
+        *"condition_lstm"*|*"Condition DSP LSTM"*)   gate="fail-closed" ;;
+        *)                                           gate="0.1" ;;
+    esac
+    tags="$tags${YELLOW}[gate: ${gate}]${NC}"
+
+    echo "$tags"
+}
+
 # Emits one row of the fidelity table (shared between canonical and coverage tables).
-# Parameters are passed as local variables in the caller (esr_nam_short, snr_formatted, etc.)
+# Parameters: display_key esr_nam_cell esr_f64_cell snr_cell mrstft_cell mode [tags]
 _render_fidelity_row() {
     local display_key="$1" esr_nam_cell="$2" esr_f64_cell="$3" \
-          snr_cell="$4" mrstft_cell="$5" mode="$6"
-    printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %s\n" \
-        "$display_key" "$esr_nam_cell" "$esr_f64_cell" "$snr_cell" "$mrstft_cell" "$mode"
+          snr_cell="$4" mrstft_cell="$5" mode="$6" tags="${7:-}"
+    printf "  %-38s │ %-26b │ %-12s │ %-8s │ %-8s │ %-6s %s\n" \
+        "$display_key" "$esr_nam_cell" "$esr_f64_cell" "$snr_cell" "$mrstft_cell" "$mode" "$tags"
 }
 
 # Renders the header row for fidelity tables.
@@ -1093,8 +1136,11 @@ render_fidelity_details() {
             [[ "$key" == *" HQ"* ]] && mode="HQ"
             local display_key="${key:0:38}"
 
+            local tags
+            tags=$(_red_zone_tags "$model_label" "$esr_nam" "$esr_f64")
+
             _render_fidelity_row "$display_key" "$esr_nam_short" "$esr_f64_colored" \
-                "$snr_formatted" "$mrstft_short" "$mode"
+                "$snr_formatted" "$mrstft_short" "$mode" "$tags"
         done
         echo ""
     fi
@@ -1144,8 +1190,11 @@ render_fidelity_details() {
             [[ "$key" == *" HQ"* ]] && mode="HQ"
             local display_key="${key:0:38}"
 
+            local tags
+            tags=$(_red_zone_tags "$model_label" "$esr_nam" "$esr_f64")
+
             _render_fidelity_row "$display_key" "$esr_nam_short" "$esr_f64_colored" \
-                "$snr_formatted" "$mrstft_short" "$mode"
+                "$snr_formatted" "$mrstft_short" "$mode" "$tags"
         done
         echo ""
     fi
