@@ -682,12 +682,11 @@ fn run_v2_multi_sr(
 // Tests — Quick Parity Subset (non-ignored, 48 kHz, v1 short signal)
 // =============================================================================
 //
-// Sprint S4, Tarefa 4.1 (F-3): representative subset of 3 cross-validations
-// running in the ~3 min quick loop. Uses v1 stress signal (2048 samples, 48 kHz)
-// with MR-STFT hard gate from S3. BUILD_LOCK caches the C++ render tool.
+// Sprint S4, Tarefa 4.1 (F-3): representative subset of cross-validations
+// running in the ~3 min quick loop. BUILD_LOCK caches the C++ render tool.
 //
-// Selected models: 1 LSTM (BossLSTM-1x16), 1 WaveNet CH16 (BossWN-standard),
-// 1 A2 (wavenet_a2_full) — covering the three main architectures.
+// v1 tests (2048 samples, 48 kHz) — covering the three main architectures.
+// v2 tests (5-second stress signal, 48 kHz) — Sprint S5, Tarefa 5.3 (F-T5-b).
 
 #[test]
 fn quick_parity_lstm_1x16() {
@@ -739,6 +738,49 @@ fn quick_parity_convnet() {
         ParityOutcome::Completed => {}
         _ => {
             eprintln!("SKIP-COVERAGE: quick_parity_convnet");
+        }
+    }
+}
+
+/// Quick v2 parity: WaveNet Standard with 5-second stress signal at 48 kHz.
+/// Promoted from `#[ignore]` in Sprint 5 / Tarefa 5.3 to ensure v2 format
+/// coverage in the pre-commit quick suite.
+#[test]
+fn quick_parity_wavenet_standard_v2_48k() {
+    let outcome = run_render_comparison(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Quick WaveNet Standard v2",
+        48000,
+        true,
+        true,
+        true,
+    );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_wavenet_standard_v2_48k");
+        }
+    }
+}
+
+/// Quick v2 parity: A2 Full with 5-second stress signal at 48 kHz.
+/// Added per PO request (Sprint 5 / Tarefa 5.3) alongside the WaveNet Standard v2 quick test.
+#[test]
+fn quick_parity_a2_full_v2_48k() {
+    let outcome = run_render_comparison(
+        "wavenet_a2_full.nam",
+        "wavenet_a2_full",
+        "Quick A2-Full v2",
+        48000,
+        true,
+        true,
+        true,
+    );
+    match outcome {
+        ParityOutcome::Completed => {}
+        _ => {
+            eprintln!("SKIP-COVERAGE: quick_parity_a2_full_v2_48k");
         }
     }
 }

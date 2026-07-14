@@ -414,7 +414,7 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 
 ---
 
-### [ ] Tarefa 5.3: Promoção de Teste de Formato v2 ao Quick Suite (F-T5-b)
+### [x] Tarefa 5.3: Promoção de Teste de Formato v2 ao Quick Suite (F-T5-b)
 
 > **Nota do PO:** Adicionalmente a este, inclua também algum teste que exercite o WaveNet A2 Full (48kHz/5s) se possível!
 
@@ -427,6 +427,10 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 * **Critério de Aceitação:**
   * O teste `quick_parity_wavenet_standard_v2_48k` é executado na suíte ágil rápida.
   * O teste passa com sucesso de paridade em menos de 1s.
+* **Concluído (2026-07-13):**
+  * **`quick_parity_wavenet_standard_v2_48k`:** adicionado como teste não-`#[ignore]`. Usa `run_render_comparison` com `use_v2=true`, `sample_rate=48000`, `use_hf=true`. Resultado: SNR=130.0 dB, ESR=9.92e-14, MR-STFT=4.31e-5 (threshold 7.06e-2).
+  * **`quick_parity_a2_full_v2_48k`:** adicionado por solicitação do PO como teste adicional. Resultado: SNR=128.0 dB, ESR=1.58e-13, MR-STFT=2.76e-5. Ambos executam em 0.73s combinados, bem abaixo do limite de 1s por teste.
+  * Testes skipam graciosamente se toolchain C++ estiver ausente (padrão `ParityOutcome::SkippedToolNotAvailable` + `SKIP-COVERAGE`), sem quebrar CI.
 
 ---
 
