@@ -434,7 +434,7 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 
 ---
 
-### [ ] Tarefa 5.4: Aviso de Deprecação / Advisory para Ativação Fast em LSTM (F-I3)
+### [x] Tarefa 5.4: Aviso de Deprecação / Advisory para Ativação Fast em LSTM (F-I3)
 
 * **Achado Associado:** [F-I3](file:///home/fabio/nam-rs/TODO-findings.md#L332) — Modo Fast em LSTM: erro audível e inadequado.
 * **Complexidade/Risco:** Baixo.
@@ -447,6 +447,9 @@ Este sprint aborda a ampliação da cobertura de paridade em topologias dinâmic
 * **Critério de Aceitação:**
   * Executar a CLI com um modelo LSTM e a flag `--activation fast` exibe um aviso claro no console.
   * A documentação reflete o posicionamento e os dados medidos do erro.
+* **Concluído (2026-07-13):**
+  * **main.rs:** Adicionada variável `model_architecture` capturada durante o carregamento do modelo. No bloco de ativação (pós-load), se `activation == Fast && architecture == "LSTM"`, `log::warn!` emite aviso explicativo citando degradação de ~−13 dB ESR e referenciando `docs/audio_fidelity_map.md §2`. Compila sem warnings.
+  * **audio_fidelity_map.md:** Adicionado parágrafo "Deprecation advisory: Fast mode for LSTM models" em §2.1, explicando que o erro Padé (2.32e-3) acumula recursivamente no estado oculto do LSTM (~−13 dB ESR audível) vs WaveNet feedforward (~−134 dB inaudível), que o ganho de CPU (~10–15%) é negligenciável frente ao GEMV, e referenciando F-I3.
 
 ---
 

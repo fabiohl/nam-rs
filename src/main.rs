@@ -144,6 +144,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     let mut full_wavenet_model: Option<Box<StaticModel>> = None;
+    let mut model_architecture = String::new();
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(path, &sys, true, loader::LoadOptions::default()) {
@@ -154,6 +155,8 @@ fn main() -> anyhow::Result<()> {
                 }
                 nam_rs::diagnostics::ACTIVE_SAMPLE_RATE
                     .store(loaded.sample_rate, Ordering::Relaxed);
+
+                model_architecture = loaded.architecture.clone();
 
                 let model_info = loaded.model_info(path);
                 if let Ok(mut info_guard) = nam_rs::diagnostics::ACTIVE_MODEL_INFO.write() {
@@ -203,6 +206,18 @@ fn main() -> anyhow::Result<()> {
             "⚡".yellow(),
             activation
         );
+
+        if activation == nam_rs::math::activations::ActivationPrecision::Fast
+            && model_architecture.eq_ignore_ascii_case("LSTM")
+        {
+            log::warn!(
+                "{} Fast activation (Padé) with LSTM architecture is NOT recommended — \
+                 measured degradation is ~−13 dB ESR (clearly audible). \
+                 Standard (exact-grade) activation is the universal default and costs only \
+                 +10–15% CPU for LSTM models. See docs/audio_fidelity_map.md §2.",
+                "⚠️".yellow(),
+            );
+        }
     }
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.

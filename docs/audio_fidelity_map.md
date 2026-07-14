@@ -74,6 +74,17 @@ activations per 1.3 ms RT window, this can be the difference between real-time a
 (Padé/minimax) mode is an explicit opt-in (`--activation fast`) for CPU-constrained setups;
 `Standard` (exact-grade polynomial exp-based) is the universal production default.
 
+**Deprecation advisory: Fast mode for LSTM models.** Fast (Padé) activation degrades LSTM
+fidelity to audibly unacceptable levels (~−13 dB ESR, approx. voice-through-a-wall quality).
+This is because LSTM gate activations accumulate errors recursively through the hidden state
+vector over time — the 2.32e-3 Padé error compounds far more aggressively in LSTM feedback loops
+than in WaveNet feedforward paths (where ΔESR Padé ≈ −134 dB, inaudible). For LSTM models, the
+CPU saving (~10–15%) is negligible relative to the fidelity loss; LSTM inference is dominated by
+GEMV operations, not activation evaluation. The CLI emits a `log::warn` advisory when
+`--activation fast` is combined with an LSTM architecture model. Users are strongly encouraged to
+keep the default `Standard` mode for all LSTM models. See F-I3 in [`TODO-findings.md`](../TODO-findings.md#L332)
+for measured data.
+
 ### 2.2 Standard mode — universal default
 
 `ActivationPrecision::Standard` uses Taylor-based polynomial exp kernels for tanh/sigmoid
