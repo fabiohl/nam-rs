@@ -360,15 +360,20 @@ parse_jsonl_fidelity() {
     local parsed="$PARSEDIR/jsonl_fidelity.parsed"
 
     if command -v jq >/dev/null 2>&1; then
-        # Prefer jq: output one TSV record per metric per line
-        jq -r '{
-            label: .label,
-            esr: .esr,
-            esr_db: .esr_db,
-            snr_db: .snr_db,
-            mse: .mse,
-            mrstft: .mrstft
-        } | [.label, .esr, .esr_db, .snr_db, .mse, .mrstft] | @tsv' "$jsonl" 2>/dev/null | \
+        # Prefer jq: output one TSV record per metric per line.
+        # Filter: only "fidelity" entries (or entries without "kind", for backward compat).
+        jq -r '
+            select(.kind == "fidelity" or (.kind | not))
+            | {
+                label: .label,
+                esr: .esr,
+                esr_db: .esr_db,
+                snr_db: .snr_db,
+                mse: .mse,
+                mrstft: .mrstft
+              }
+            | [.label, .esr, .esr_db, .snr_db, .mse, .mrstft]
+            | @tsv' "$jsonl" 2>/dev/null | \
         LC_ALL=C awk -F'\t' 'NF >= 6 {
             printf "ESR_NAMCORE\t%s\t%s\n", $1, $2
             printf "ESR_NAMCORE_DB\t%s\t%s\n", $1, $3
@@ -377,10 +382,13 @@ parse_jsonl_fidelity() {
             printf "MRSTFT\t%s\t%s\n", $1, $6
         }' > "$parsed" 2>/dev/null
     else
-        # Fallback: awk-based JSON extraction (defensive, handles reordered keys)
+        # Fallback: awk-based JSON extraction (defensive, handles reordered keys).
+        # Filter: only "fidelity" entries (or entries without "kind", for backward compat).
         LC_ALL=C awk '{
-            label=""; esr=""; esr_db=""; snr_db=""; mse=""; mrstft=""
+            label=""; esr=""; esr_db=""; snr_db=""; mse=""; mrstft=""; kind=""
             if (match($0, /"label"[[:space:]]*:[[:space:]]*"([^"]*)"/, a)) label = a[1]
+            if (match($0, /"kind"[[:space:]]*:[[:space:]]*"([^"]*)"/, a)) kind = a[1]
+            if (kind != "" && kind != "fidelity") next
             if (match($0, /"esr"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { esr = a[1]; gsub(/^[[:space:]]+/, "", esr) }
             if (match($0, /"esr_db"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { esr_db = a[1]; gsub(/^[[:space:]]+/, "", esr_db) }
             if (match($0, /"snr_db"[[:space:]]*:[[:space:]]*([^,}]+)/, a)) { snr_db = a[1]; gsub(/^[[:space:]]+/, "", snr_db) }

@@ -21,6 +21,7 @@ thread_local! {
 thread_local! {
     static METRIC_MODEL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
     static METRIC_MODE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static METRIC_KIND: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 pub fn set_metric_model(model: String) {
@@ -32,6 +33,12 @@ pub fn set_metric_model(model: String) {
 pub fn set_metric_mode(mode: String) {
     METRIC_MODE.with(|c| {
         *c.borrow_mut() = Some(mode);
+    });
+}
+
+pub fn set_metric_kind(kind: String) {
+    METRIC_KIND.with(|c| {
+        *c.borrow_mut() = Some(kind);
     });
 }
 
@@ -58,6 +65,36 @@ impl SuppressReportGuard {
 impl Drop for SuppressReportGuard {
     fn drop(&mut self) {
         SUPPRESS_REPORT.with(|c| c.set(false));
+    }
+}
+
+/// RAII guard that sets [`METRIC_KIND`] for the current thread on creation
+/// and restores it on drop.
+///
+/// # Usage
+/// ```ignore
+/// {
+///     let _guard = MetricKindGuard::selftest();
+///     report_dsp_fidelity(...); // JSONL emission labeled "selftest"
+/// }
+/// // METRIC_KIND restored to default ("fidelity") here
+/// ```
+pub struct MetricKindGuard;
+
+impl MetricKindGuard {
+    pub fn selftest() -> Self {
+        METRIC_KIND.with(|c| {
+            *c.borrow_mut() = Some("selftest".to_string());
+        });
+        MetricKindGuard
+    }
+}
+
+impl Drop for MetricKindGuard {
+    fn drop(&mut self) {
+        METRIC_KIND.with(|c| {
+            *c.borrow_mut() = None;
+        });
     }
 }
 
@@ -447,8 +484,12 @@ fn report_dsp_fidelity_impl(
         let json_label = METRIC_MODEL
             .with(|c| c.borrow().clone())
             .unwrap_or_else(|| format!("{label} @{sample_rate}"));
+        let json_kind = METRIC_KIND
+            .with(|c| c.borrow().clone())
+            .unwrap_or_else(|| "fidelity".to_string());
         let obj = serde_json::json!({
             "label": json_label,
+            "kind": json_kind,
             "esr": esr_linear,
             "esr_db": esr_db,
             "snr_db": snr,

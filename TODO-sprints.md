@@ -210,6 +210,13 @@ gantt
   * Atualizar o script `utils/quality-dashboard.sh` para ignorar registros JSONL que não sejam de `"fidelity"`.
   * Expurgar a entrada do self-test degradado do arquivo `docs/quality-contract.txt`.
 * **Critério de Aceite:** Execução do dashboard `--check` limpa, sem a entrada sintética `T3.1: MR-STFT regression gate (synthetic)` presente.
+* **Conclusão (2026-07-14):**
+  * Adicionado campo `"kind"` ao JSONL (`tests/common/validation.rs:450-459`): default `"fidelity"`, sobrecarregável via `MetricKindGuard`.
+  * Implementado `MetricKindGuard` thread-local (`tests/common/validation.rs:72-95`): guard RAII que define `METRIC_KIND` como `"selftest"`.
+  * `test_mrstft_hard_gate_catches_regression` (`tests/models/golden_vectors.rs:2205-2206`) usa `MetricKindGuard::selftest()` para isolar suas emissões JSONL.
+  * `parse_jsonl_fidelity()` em `utils/quality-dashboard.sh:362-398` filtra registros por `kind == "fidelity"` (jq e awk fallback), com backward-compat para entradas sem campo `kind`.
+  * Entrada sintética `T3.1: MR-STFT regression gate (synthetic)` removida de `docs/quality-contract.txt:52`.
+  * **Verificação:** `./utils/tests-quick.sh` passou completo (estrutural + medida + parser fuzzing). JSONL do regression test confirmado com `"kind":"selftest"`.
 
 #### Tarefa T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG & Meta-Teste
 

@@ -2200,6 +2200,9 @@ fn test_mrstft_hard_gate_catches_regression() {
     // S3.T07: Suppress report output and panic messages during this
     // controlled-panic regression test to keep the green-test suite clean.
     let _report_guard = SuppressReportGuard::new();
+    // T4.1: Label JSONL emissions as "selftest" to prevent contamination
+    // of the quality dashboard with synthetic regression metrics.
+    let _kind_guard = MetricKindGuard::selftest();
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
 
