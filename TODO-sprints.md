@@ -218,7 +218,7 @@ gantt
   * Entrada sintética `T3.1: MR-STFT regression gate (synthetic)` removida de `docs/quality-contract.txt:52`.
   * **Verificação:** `./utils/tests-quick.sh` passou completo (estrutural + medida + parser fuzzing). JSONL do regression test confirmado com `"kind":"selftest"`.
 
-#### Tarefa T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG & Meta-Teste
+#### Tarefa T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG & Meta-Teste [DONE]
 
 * **Referência:** [F3](file:///home/fabio/nam-rs/TODO-findings.md#L116)
 * **Responsável:** Engenheiro de Qualidade
@@ -251,6 +251,12 @@ gantt
   * Implementar limite composto de latência no `utils/quality-dashboard.sh`: `limite = max(contrato * 1.10, contrato + 0.05 us)`.
   * Documentar no cabeçalho/comentários de `docs/quality-contract.txt` a aplicação do piso absoluto de `0.05 us`.
 * **Critério de Aceite:** Execução do dashboard sem quebras por micro-variações no benchmark `Linear RF=2048`.
+* **Conclusão (2026-07-14):**
+  * `verify_contract()` em `utils/quality-dashboard.sh:1601-1604`: substituído `cur > ctr * 1.10` por `cur > max(ctr * 1.10, ctr + 0.05)`.
+  * Para o benchmark `Linear RF=2048` (contrato ~0.3 us), o novo piso de 0.35 us tolera micro-variações que o limite `0.33 us` (só 10%) rejeitava falsamente.
+  * Para benchmarks maiores (WaveNet Standard ~42 us), o termo `ctr * 1.10` domina e o comportamento é inalterado.
+  * Documentado no cabeçalho de `docs/quality-contract.txt:8-9` e nos comentários de `verify_contract` (linha 1490).
+  * **Verificação:** `utils/lints.sh` passou limpo.
 
 ---
 

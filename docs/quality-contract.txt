@@ -5,6 +5,8 @@
 ║              ISA: AVX2 (x86-64-v3)                               ║
 ║              CPU: AMD Ryzen 7 5700U with Radeon Graphics         ║
 ║              rustc: rustc 1.97.0 (2d8144b78 2026-07-07)          ║
+║      Latency tolerance: max(contract × 1.10, contract + 0.05 us) ║
+║      (compound threshold with absolute floor against CPU jitter) ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 🎯 RESUMO RAPIDO (para nao-cientistas)

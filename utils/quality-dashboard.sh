@@ -1487,7 +1487,11 @@ load_contract_baseline() {
 #   Fidelity (ESR):        fail if new_esr > contract_esr * 10.0
 #   Fidelity (SNR):        fail if new_snr < contract_snr - 6.0 (dB)
 #   Fidelity (MR-STFT):    fail if new_mrstft > contract_mrstft * 10.0
-#   Performance (latency): fail if new_lat > contract_lat * 1.10 (10% margin)
+#   Performance (latency): fail if new_lat > max(contract * 1.10, contract + 0.05 us)
+#     The compound threshold protects against sub-µs measurement jitter on
+#     fast DSP paths (e.g. Linear FFT at ~0.3 us) where a 10% margin is
+#     smaller than CPU cycle-level noise from nanosecond timers.
+#     (T4.3 — F5: tolerância de latência composta com piso absoluto)
 #
 # Fields with value "N/A" (or empty) in the contract are skipped.
 # Returns 0 on pass, 1 on violation.
@@ -1599,9 +1603,9 @@ verify_contract() {
                     if [ "$lat_cur" != "N/A" ] && [ "$lat_ctr" != "N/A" ] && [ -n "$lat_ctr" ]; then
                         local lat_fail
                         lat_fail=$(LC_ALL=C awk -v cur="$lat_cur" -v ctr="$lat_ctr" \
-                            'BEGIN { if (cur+0 > ctr*1.10) print "1"; else print "0" }')
+                            'BEGIN { limit = ctr * 1.10; if (limit < ctr + 0.05) limit = ctr + 0.05; if (cur+0 > limit) print "1"; else print "0" }')
                         if [ "$lat_fail" = "1" ]; then
-                            echo -e "    ${RED}✗${NC} ${contract_label}: latencia regrediu ${lat_cur} us (contrato: ${lat_ctr} us, limite: $(LC_ALL=C awk -v c="$lat_ctr" 'BEGIN { printf "%.1f", c*1.10 }') us)"
+                            echo -e "    ${RED}✗${NC} ${contract_label}: latencia regrediu ${lat_cur} us (contrato: ${lat_ctr} us, limite: $(LC_ALL=C awk -v c="$lat_ctr" 'BEGIN { lim = c * 1.10; if (lim < c + 0.05) lim = c + 0.05; printf "%.1f", lim }') us)"
                             violations=$((violations + 1))
                         else
                             echo -e "    ${GREEN}ok${NC} ${contract_label}: latencia ${lat_cur} us (contrato: ${lat_ctr} us)"
