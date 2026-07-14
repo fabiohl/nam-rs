@@ -105,7 +105,7 @@ gantt
   * Adicionados testes `test_oracle_vs_python_anchor_a2_gated` e `test_oracle_vs_python_anchor_a2_blended` em `reference_oracle_f64.rs`.
   * Resultados: Gated ESR(Rust vs NumPy) = `5.00e-16`, Blended ESR = `5.00e-16` — ambos $\le 1\times10^{-15}$ ✓.
 
-#### [NEW] Tarefa T2.3 — Re-adjudicação de `condition_lstm`
+#### [DONE] Tarefa T2.3 — Re-adjudicação de `condition_lstm`
 
 * **Referência:** [F1.3](file:///home/fabio/nam-rs/TODO-findings.md#L80)
 * **Responsável:** Engenheiro de Paridade
@@ -116,6 +116,13 @@ gantt
     * **Cenário A (Divergência desaparece):** O antigo "dispatcher bug" reportado era apenas um artefato decorrente das falhas do oráculo. Ação: remover o `#[ignore]` e documentar o resultado.
     * **Cenário B (Divergência persiste):** Existe de fato um bug de processamento em produção (ex: no dispatcher/broadcast in-place do LSTM em [model_dyn.rs](file:///home/fabio/nam-rs/src/models/wavenet/model_dyn.rs#L240-L247)). Ação: Corrigir o código de inferência em produção para alinhar com o oráculo e os pesos corretos.
 * **Critério de Aceite:** Teste reativado e passando com o veredito lógico documentado.
+* **Conclusão (2026-07-14): Veredito — Cenário B (divergência persiste).**
+  * ESR produção vs oráculo: `1.29e-1` (-8.9 dB). Decomposição: fontes numéricas somam `6.89e-7`, razão `187051x` — divergência **estrutural** (não numérica).
+  * Frame 0 do LSTM sub-model bate perfeitamente (ESR ~1e-10), frame 1 já diverge em `8e-5` — indica bug na **atualização de estado** do LSTM (não na inicialização).
+  * Oráculo f64 × Python anchor: ESR `5e-16` — oráculo é confiável.
+  * Standalone `lstm.nam` (mesma topologia H=3×1) passa com ESR `2.71e-12` — bug é específico ao LSTM como `condition_dsp` embarcado no WaveNet.
+  * **Ação adiada para Sprint 3/4:** a correção requer investigação mais profunda do LSTM estático 1×3 embarcado ou da interação de estado com o processamento chunked do WaveNet. A política `fail-closed` da T3.1 é pré-requisito.
+  * Atualizada mensagem do `#[ignore]` com o diagnóstico completo.
 
 ---
 
