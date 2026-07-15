@@ -138,7 +138,7 @@ pub fn run_pipewire_host(
     // =========================================================
     let mut was_silent = false;
     let mut was_fading = false;
-    while !SHUTDOWN.load(Ordering::Relaxed) {
+    while !SHUTDOWN.load(Ordering::Acquire) {
         let active = rt_status.active_rate.load(Ordering::Relaxed);
         if active != 0 {
             crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(active, Ordering::Relaxed);

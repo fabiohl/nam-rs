@@ -670,7 +670,7 @@ correções não podem mudar um único bit do áudio; se mudarem, algo está err
 `inference_bench`/`regression_gate` sem regressão > ruído. Risco: baixo-médio (toca hot path;
 mitigado pelo contrato bit-exact e pelos goldens).
 
-### EP-R2 — Ciclo de vida à prova de host hostil (R2 + R13 + R11 + R3) [DOING]
+### EP-R2 — Ciclo de vida à prova de host hostil (R2 + R13 + R11 + R3) [DONE]
 
 Escopo: `Arc<DialogSharedState>` nas threads de diálogo + join com deadline no destroy da GUI
 
@@ -679,7 +679,7 @@ Escopo: `Arc<DialogSharedState>` nas threads de diálogo + join com deadline no 
   trânsito) verdes no tests-long; `clap-validator` completo sem regressão. Risco: médio
   (lifecycle CLAP tem sutilezas de thread; usar o harness `clack-host` já existente).
 
-### EP-R3 — Formalização da concorrência (R8 completo + P1)
+### EP-R3 — Formalização da concorrência (R8 completo + P1) [DOING]
 
 Escopo: aplicar a tabela R8 (8 correções de uma linha + comentários de pareamento) e
 introduzir os testes `loom` dos 3 protocolos (P1). Ordem interna: primeiro loom modelando o

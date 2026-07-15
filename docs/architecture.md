@@ -477,6 +477,28 @@ Preferível a congelar a main thread do host (freeze do DAW).
 
 Referência: [TODO-findings.md §R13](../TODO-findings.md#r13).
 
+## Comportamento de shutdown (SIGINT / SIGTERM)
+
+### Standalone (src/main.rs)
+
+O handler de SIGINT usa dois níveis:
+
+1. **Primeiro Ctrl-C**: seta `SHUTDOWN` (Release) → o loop principal (`run.rs`)
+   detecta via Acquire, drena o GC, fecha streams PipeWire e retorna normalmente.
+   PM QoS (`/dev/cpu_dma_latency`) e THP advice são liberados pelos destrutores.
+
+2. **Segundo Ctrl-C** (double-SIGINT, shutdown não respondeu): chama `_exit(1)`.
+   Nenhum destrutor roda — mas o **kernel fecha todos os fds e mapeamentos** no
+   exit do processo. Recursos persistentes (PM QoS, THP) **não** ficam presos:
+   o kernel os libera automaticamente (verificado; não há file lock pós-processo).
+   O único efeito é skip da drenagem do GC (itens em trânsito são liberados pelo
+   kernel junto com o heap do processo).
+
+### Plugin CLAP (src/clap/)
+
+O lifecycle é controlado pelo host via `clap_plugin.destroy()`. Ver §EP-R2 nos
+[findings de auditoria](../TODO-findings.md) para detalhes de R2/R13/R11.
+
 ## 9. Error Catalog (NamErrorCode)
 
 Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`. The table below shows the category ranges with representative examples; the complete catalog of 40+ codes lives in the source enum. Keep this table synchronized with the enum on every change (see [.agents/rules/testing.md](../.agents/rules/testing.md)).

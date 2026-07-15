@@ -805,7 +805,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sprint S7 — R3: Documentação e Acquire no double-SIGINT
+## Sprint S7 — R3: Documentação e Acquire no double-SIGINT [DONE]
 
 > **Ref:** [TODO-findings.md §R3](TODO-findings.md#r3--double-sigint-vaza-o-lock-de-pm-qos-devcpu_dma_latency-até-o-reboot--alta) (L166-203)
 >
@@ -813,7 +813,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Única linha de código tocada no standalone (`main.rs`). Docs apenas.
 
-### T7.1 — Corrigir ordering do `SHUTDOWN.load` no handler SIGINT
+### T7.1 — Corrigir ordering do `SHUTDOWN.load` no handler SIGINT [DONE]
 
 - **Arquivo:** [`src/main.rs`](src/main.rs)
 
@@ -850,7 +850,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `SHUTDOWN.load` usa `Acquire`; `SHUTDOWN.store` usa `Release`. `cargo check` passa.
 
-### T7.2 — Nota operacional em `docs/`
+### T7.2 — Nota operacional em `docs/` [DONE]
 
 - **Arquivo:** [`docs/architecture.md`](docs/architecture.md) (ou criar `docs/operations.md` se não existir)
 
@@ -882,7 +882,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Seção existe. `cargo check` inalterado.
 
-### T7.3 — Checkpoint S7: Verificação intermediária
+### T7.3 — Checkpoint S7: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.
@@ -892,7 +892,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## VF — Verificação Final Integrada EP-R2
+## VF — Verificação Final Integrada EP-R2 [DONE]
 
 > **Gate de aceite do épico inteiro.** Rodar apenas após os 4 sprints com checkpoints verdes.
 
@@ -938,3 +938,177 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `_exit(1)` no double-SIGINT pula drenagem do GC          | Leak finito e limitado ao heap do processo; kernel recolhe tudo no exit                                                  |
 | Mudança de ordering em `alive_fence` (Release/Acquire)   | Comportamento idêntico em x86-TSO; pode tornar o fence mais conservador em arquiteturas fracas — sem efeito prático      |
 | Arquitetura do site de chamada de `spawn_file_dialog`    | A integração com `NamClapMainThread` requer acesso mutável; verificar se o contexto CLAP permite — adaptar se necessário |
+
+---
+
+## Épico EP-R3 — Formalização da concorrência
+
+> **Origem:** [TODO-findings.md §EP-R3](TODO-findings.md#ep-r3--formalização-da-concorrência-r8-completo--p1) (Auditoria de Resiliência & Robustez, 2026-07-14)
+>
+> **Escopo:** Correção formal de 8 pontos de atomic ordering (R8 completo) + Testes de model-checking de concorrência com `loom` (P1).
+>
+> **Pré-requisito:** EP-R2 concluído e `quality-dashboard.sh --check` verde.
+>
+> **Invariante absoluto:** zero alteração de comportamento sonoro. Critério de aceite global: `quality-dashboard.sh --check` sem diff de um único número no contrato. Risco: baixo (concorrência formalizada e testada via model-checking).
+
+---
+
+## EP-R3 — Sumário dos Sprints
+
+| Sprint  | Finding                                         | Risco | Arquivos tocados | Estimativa |
+| ------- | ----------------------------------------------- | ----- | ---------------- | ---------- |
+| **S8**  | P1 — Model-checking dos protocolos com `loom`   | Baixo | 2                | ~60 min    |
+| **S9**  | R8 — Formalização e pareamento dos atômicos     | Baixo | 8                | ~60 min    |
+| **S10** | Integração — Novo job `loom` no `tests-long.sh` | Baixo | 1                | ~15 min    |
+| **VF**  | Verificação final integrada EP-R3               | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S8 — Loom: Model-checking dos protocolos com `loom`
+
+> **Ref:** [TODO-findings.md §P1](TODO-findings.md#p1--model-checking-do-protocolo-spscgc-com-loom-dev-dependency-roda-em-stable) (L563-578)
+>
+> **Objetivo:** Sincronizar o model-checking determinístico e exaustivo com `loom` para os 3 protocolos críticos de concorrência do projeto. Sem tocar a produção, modelar os handshakes dentro do arquivo de teste.
+>
+> **Risco:** Baixo. Modificações apenas na suíte de testes e dependências de desenvolvimento.
+
+### T8.1 — Adicionar `loom` às `dev-dependencies` [ ]
+
+- **Arquivo:** [`Cargo.toml`](Cargo.toml)
+- **Ação:** Adicionar `loom = "0.7"` na seção `[dev-dependencies]`.
+- **Critério de aceite:** `cargo check` passa normalmente.
+
+### T8.2 — Modelar protocolo de Handshake [ ]
+
+- **Arquivo (novo):** `tests/loom_tests.rs`
+- **Ação:** Implementar teste `#[cfg(loom)]` com `loom::thread::spawn` que simula duas threads trocando dados através de um booleano de controle (`SHUTDOWN` ou `active_rate`). Verificar que o uso de `Relaxed` causa falha no loom (data race) e que `Release`/`Acquire` resolve.
+- **Critério de aceite:** O teste falha sob `Relaxed` e passa sob `Release`/`Acquire`.
+
+### T8.3 — Modelar fila de GC Overflow [ ]
+
+- **Arquivo:** `tests/loom_tests.rs`
+- **Ação:** Modelar o buffer SPSC de overflow (`GcOverflowBuffer`). Simular uma thread RT empurrando dados e uma thread de controle drenando. Testar reordenamento do `write_idx` vs `swap` do slot.
+- **Critério de aceite:** O teste de concorrência passa sob loom.
+
+### T8.4 — Modelar Double-Buffering `DspBridge` [ ]
+
+- **Arquivo:** `tests/loom_tests.rs`
+- **Ação:** Modelar a Sincronização de buffer duplo do `DspBridge` utilizando `generation` e `active_read_idx`. Verificar que o leitor sempre obtém dados válidos e ordenados em relação às escritas.
+- **Critério de aceite:** O teste de concorrência passa sob loom.
+
+---
+
+## Sprint S9 — R8: Sincronização e pareamento dos atômicos
+
+> **Ref:** [TODO-findings.md §R8](TODO-findings.md#r8--família-de-orderings-atômicos-formalmente-incorretos-funcionam-em-x86-tso-incorretos-no-modelo-de-memória--média) (L342-364)
+>
+> **Objetivo:** Corrigir os 8 pontos da tabela R8 de atomic orderings incorretos e adicionar comentários estruturados de pareamento.
+>
+> **Risco:** Baixo. Sem custo de release em x86 (Release/Acquire compila para mov).
+
+### T9.1 — Corrigir R8-b: Sample rate sync [ ]
+
+- **Arquivos:**
+  - [`src/standalone/pw_host/capture/listeners.rs`](src/standalone/pw_host/capture/listeners.rs)
+  - [`src/standalone/pw_host/rt_callback/rate_sync.rs`](src/standalone/pw_host/rt_callback/rate_sync.rs)
+- **Ação:**
+  - No `listeners.rs`, mudar o store do `rate_for_param` para `Ordering::Release`.
+  - No `rate_sync.rs`, mudar o swap no `rate_for_process` para `Ordering::Acquire`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.2 — Corrigir R8-c: Panic hook SHUTDOWN load [ ]
+
+- **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
+- **Ação:** Modificar a leitura do `SHUTDOWN` na linha 30 para usar `Ordering::Acquire`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.3 — Corrigir R8-d: Telemetry Reset [ ]
+
+- **Arquivo:** [`src/dsp/telemetry.rs`](src/dsp/telemetry.rs)
+- **Ação:** No reset, substituir `bin.store(0, Ordering::Relaxed)` por `bin.swap(0, Ordering::Relaxed)` e adicionar comentário explicando o comportamento concorrente "best-effort".
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.4 — Corrigir R8-e: alive_fence ordering [ ]
+
+- **Arquivos:**
+  - [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs)
+  - [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
+- **Ação:**
+  - Em `shared.rs:262` (no Drop), mudar para `alive_fence.store(false, Ordering::Release)`.
+  - Em `state.rs:190` (no safe_shared), mudar para `alive_fence.load(Ordering::Acquire)`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.5 — Corrigir R8-f: write_idx fetch_add [ ]
+
+- **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
+- **Ação:** Mudar `write_idx.fetch_add(1, Ordering::Relaxed)` para `Ordering::AcqRel` (ou documentar por que `Relaxed` é seguro dada a sweep total).
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.6 — Corrigir R8-g: clear_flag_relaxed [ ]
+
+- **Arquivos:**
+  - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
+  - [`src/standalone/pw_host/run.rs`](src/standalone/pw_host/run.rs)
+- **Ação:**
+  - Em `status.rs`, introduzir `pub fn clear_flag_relaxed(&self, flag: u64)` que executa `fetch_and(!flag, Ordering::Relaxed)`.
+  - Em `run.rs`, substituir as 5 chamadas de `clear_flag_release` por `clear_flag_relaxed` (pois o leitor RT não faz acquire do clear).
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.7 — Corrigir R8-h: RT_STATUS_GC_OVERFLOW condicionamento [ ]
+
+- **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
+- **Ação:** Condicionar o `set_flag(RT_STATUS_GC_OVERFLOW)` ao retorno `true` (sobrescrita real) do `gc_overflow.push(i)`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T9.8 — Comentários de pareamento [ ]
+
+- **Ação:** Adicionar comentários `// pairs with Release store em <file:line>` ou similar em cada par Acquire/Release atômico da base de código tocada.
+- **Critério de aceite:** Código revisado e documentado.
+
+---
+
+## Sprint S10 — Sincronização: Habilitar testes loom no tests-long.sh
+
+> **Ref:** [TODO-findings.md §EP-R3](TODO-findings.md#ep-r3--formalização-da-concorrência-r8-completo--p1) (L685-689)
+>
+> **Objetivo:** Adicionar estágio ao pipeline longo de testes.
+>
+> **Risco:** Baixo.
+
+### T10.1 — Novo estágio de loom no tests-long.sh [ ]
+
+- **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
+- **Ação:** Adicionar fase que executa `RUSTFLAGS="--cfg loom" cargo test --test loom_tests --release`.
+- **Critério de aceite:** O script executa o teste sob flag loom de forma resiliente.
+
+---
+
+## VF — Verificação Final Integrada EP-R3
+
+> **Gate de aceite do épico inteiro.**
+
+### VF3.1 — Lints completos
+
+- `utils/lints.sh` — fmt + SPDX + check + clippy, **zero erros/warnings**.
+
+### VF3.2 — Suite rápida completa
+
+- `utils/tests-quick.sh` — **verde total**.
+
+### VF3.3 — Contrato de qualidade bit-exact
+
+- `utils/quality-dashboard.sh --check docs/quality-contract.txt` — **zero diff**.
+
+### VF3.4 — Solicitar tests-long ao operador
+
+- Solicitar que o operador execute `utils/tests-long.sh` incluindo o novo estágio loom.
+
+---
+
+## Notas de risco e mitigação (EP-R3)
+
+| Risco                                                | Mitigação                                                                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `loom` trava ou atinge limite de iterações em CI     | Configurar limites adequados no loom (`LOOM_MAX_PREEMPTIONS` se necessário); manter os modelos de teste simples e enxutos |
+| `fetch_add(AcqRel)` no GC impacta desempenho do RT   | Operação não-bloqueante; caminho de overflow é alternativo (raramente executado no hot path)                              |
+| Divergência entre modelo `loom` e código de produção | Manter os modelos atômicos nos testes 100% fiéis à topologia implementada em produção                                     |

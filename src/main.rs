@@ -78,6 +78,13 @@ fn main() -> anyhow::Result<()> {
     // If you want to close the program, it ensures the audio stops smoothly, without clicks.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
         if spsc::SHUTDOWN.load(Ordering::Acquire) {
+            // Segundo Ctrl-C: o graceful shutdown não respondeu a tempo.
+            // `_exit(1)` encerra o processo sem rodar destrutores.
+            // O kernel recolhe TODOS os recursos abertos (fds, mapeamentos, PM QoS,
+            // THP advice) — nada persiste após o exit do processo (R3, verificado
+            // via /proc/<pid>/fd e pm_qos_constraint após o exit).
+            // Preferir `_exit` a `abort` para evitar core dump desnecessário;
+            // usar `abort()` apenas se core dump for desejado para diagnóstico.
             unsafe { libc::_exit(1) };
         }
         spsc::SHUTDOWN.store(true, Ordering::Release);
