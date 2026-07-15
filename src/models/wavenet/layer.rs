@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use core::mem::MaybeUninit;
-
 use super::common::{WAVENET_MAX_NUM_FRAMES, WavenetProcessContext};
 use super::conv1d::Conv1d;
 use super::dense::DenseLayer;
-use crate::math::common::SimdMath;
+use crate::math::common::{AlignedVec, SimdMath};
 
 /// Complete Convolutional Cell (WaveNet Layer).
 #[derive(Clone)]
@@ -17,6 +15,12 @@ pub struct WaveNetLayer<const COND: usize, const CH: usize, const K: usize> {
     pub input_mixin: DenseLayer<COND, CH>,
     /// 1x1 decompression linear affine transform of the layer.
     pub one_by_one: DenseLayer<CH, CH>,
+    /// Pre-allocated scratch buffer for conditioning mixin output
+    /// (size: `CH * WAVENET_MAX_NUM_FRAMES`).
+    pub scratch_mixin: AlignedVec<f32>,
+    /// Pre-allocated scratch buffer for Conv1D + mixin intermediate results
+    /// (size: `CH * WAVENET_MAX_NUM_FRAMES`).
+    pub scratch_conv: AlignedVec<f32>,
 }
 
 impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, K> {

@@ -32,7 +32,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Médio. Toca o hot path de inferência do WaveNet A1. Mitigado pelo contrato bit-exact e pelos goldens.
 
-### T1.1 — Adicionar campos `scratch_mixin` e `scratch_conv` à struct `WaveNetLayer`
+### T1.1 — Adicionar campos `scratch_mixin` e `scratch_conv` à struct `WaveNetLayer` [DONE]
 
 - **Arquivo:** [`src/models/wavenet/layer.rs`](src/models/wavenet/layer.rs)
 
