@@ -972,25 +972,25 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Modificações apenas na suíte de testes e dependências de desenvolvimento.
 
-### T8.1 — Adicionar `loom` às `dev-dependencies` [ ]
+### T8.1 — Adicionar `loom` às `dev-dependencies` [x]
 
 - **Arquivo:** [`Cargo.toml`](Cargo.toml)
 - **Ação:** Adicionar `loom = "0.7"` na seção `[dev-dependencies]`.
 - **Critério de aceite:** `cargo check` passa normalmente.
 
-### T8.2 — Modelar protocolo de Handshake [ ]
+### T8.2 — Modelar protocolo de Handshake [x]
 
 - **Arquivo (novo):** `tests/loom_tests.rs`
 - **Ação:** Implementar teste `#[cfg(loom)]` com `loom::thread::spawn` que simula duas threads trocando dados através de um booleano de controle (`SHUTDOWN` ou `active_rate`). Verificar que o uso de `Relaxed` causa falha no loom (data race) e que `Release`/`Acquire` resolve.
 - **Critério de aceite:** O teste falha sob `Relaxed` e passa sob `Release`/`Acquire`.
 
-### T8.3 — Modelar fila de GC Overflow [ ]
+### T8.3 — Modelar fila de GC Overflow [x]
 
 - **Arquivo:** `tests/loom_tests.rs`
 - **Ação:** Modelar o buffer SPSC de overflow (`GcOverflowBuffer`). Simular uma thread RT empurrando dados e uma thread de controle drenando. Testar reordenamento do `write_idx` vs `swap` do slot.
 - **Critério de aceite:** O teste de concorrência passa sob loom.
 
-### T8.4 — Modelar Double-Buffering `DspBridge` [ ]
+### T8.4 — Modelar Double-Buffering `DspBridge` [x]
 
 - **Arquivo:** `tests/loom_tests.rs`
 - **Ação:** Modelar a Sincronização de buffer duplo do `DspBridge` utilizando `generation` e `active_read_idx`. Verificar que o leitor sempre obtém dados válidos e ordenados em relação às escritas.
