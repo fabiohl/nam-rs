@@ -660,7 +660,7 @@ artefato já produzido em guarda permanente.
 
 ## Épicos (ordem de execução recomendada)
 
-### EP-R1 — Desarmar as minas de memória (R1 + R10 + R9) — **primeiro, é o núcleo da rodada**
+### EP-R1 — Desarmar as minas de memória (R1 + R10 + R9) — **primeiro, é o núcleo da rodada** [DOING]
 
 Escopo: scratch pré-alocado no layer WaveNet (R1, preferência 1), clamp defensivo no
 oversampler (R10), `try_clone` no MirroredBuffer (R9). Três correções locais, sem mudança de
