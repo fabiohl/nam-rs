@@ -19,10 +19,32 @@ impl<'a> NamClapMainThread<'a> {
     /// Idempotent — safe to call even when no windows are open.
     fn teardown_gui_resources(&mut self) {
         if let Some(signal) = self.floating_close_signal.take() {
-            signal.store(true, Ordering::Relaxed);
+            signal.store(true, Ordering::Release);
         }
         if let Some(handle) = self.floating_thread_handle.take() {
-            let _ = handle.join();
+            // R13: watchdog com deadline de 2 s para evitar freeze do host.
+            // Se a janela X11/Wayland não responder ao close_signal dentro do prazo,
+            // abandonamos o handle (leak controlado de 1 thread — preferível a congelar o DAW).
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if handle.is_finished() {
+                    let _ = handle.join();
+                    break;
+                }
+                if std::time::Instant::now() >= deadline {
+                    // Abandono controlado: a thread vive até o processo terminar.
+                    // O sistema operacional recolhe todos os recursos (fds, mapeamentos)
+                    // no exit do processo. Ver docs/architecture.md §lifecycle-r13.
+                    log::warn!(
+                        "NAM-rs: floating window thread did not exit within 2 s on destroy \
+                         — abandoning handle to avoid host freeze (R13 controlled leak)"
+                    );
+                    // handle é movido para fora do `if let` e dropado aqui,
+                    // sem join — a thread continua rodando detached.
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
         for sink in [
             &self.shared.cold.dialog_handle_sink,

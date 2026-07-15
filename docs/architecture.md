@@ -467,6 +467,16 @@ An investigation into unifying the object-swap + GC-cascade logic shared between
 
 The existing free function `gc_cascade()` (`src/common/spsc/gc.rs`) already abstracts the 3-tier cascade (SPSC → parking-lot → overflow, detailed in [docs/clap_integration.md](clap_integration.md) §6.3); both standalone and CLAP call it directly instead of through an added abstraction layer.
 
+### 8.5 R13 — GUI floating thread lifecycle (destroy watchdog)
+
+`gui.destroy()` sinaliza `close_signal = true` e aguarda até 2 s pela thread da
+janela flutuante via `is_finished()` polling. Se o event loop não responder
+(X11/Wayland degradado), o handle é abandonado (leak controlado: 1 thread, sem
+fds extras). O sistema operacional recolhe todos os recursos no exit do processo.
+Preferível a congelar a main thread do host (freeze do DAW).
+
+Referência: [TODO-findings.md §R13](../TODO-findings.md#r13).
+
 ## 9. Error Catalog (NamErrorCode)
 
 Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`. The table below shows the category ranges with representative examples; the complete catalog of 40+ codes lives in the source enum. Keep this table synchronized with the enum on every change (see [.agents/rules/testing.md](../.agents/rules/testing.md)).

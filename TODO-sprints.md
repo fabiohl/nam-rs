@@ -606,7 +606,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Médio. Toca o `teardown_gui_resources()` — ponto crítico do lifecycle CLAP. Mitigado: (a) o comportamento no caso comum (janela fecha normalmente) é idêntico; (b) o abandono após timeout é leak controlado e documentado, preferível ao freeze; (c) o `close_signal` já existe e já é setado antes do join.
 
-### T5.1 — Reescrever `teardown_gui_resources` com polling + deadline
+### T5.1 — Reescrever `teardown_gui_resources` com polling + deadline [DONE]
 
 - **Arquivo:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
 
@@ -652,7 +652,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `teardown_gui_resources` não bloqueia por mais de `2 s + ε` em nenhum caminho. `cargo check` passa.
 
-### T5.2 — Documentar o trade-off no `architecture.md`
+### T5.2 — Documentar o trade-off no `architecture.md` [DONE]
 
 - **Arquivo:** [`docs/architecture.md`](docs/architecture.md)
 
@@ -672,7 +672,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Seção existe em `docs/architecture.md`. `cargo check` inalterado.
 
-### T5.3 — Checkpoint S5: Verificação intermediária
+### T5.3 — Checkpoint S5: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.
