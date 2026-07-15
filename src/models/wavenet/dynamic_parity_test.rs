@@ -85,6 +85,10 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 bias: make_bias(CH),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 
@@ -139,6 +143,10 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 bias: make_bias(HEAD),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 

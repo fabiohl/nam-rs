@@ -145,6 +145,8 @@ pub(crate) fn build_wavenet_array<
             conv1d,
             input_mixin,
             one_by_one,
+            scratch_mixin: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
+            scratch_conv: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
         });
 
         let rf = (K - 1) * dilation;

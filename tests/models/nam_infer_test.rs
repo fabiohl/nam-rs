@@ -62,6 +62,10 @@ fn make_wavenet_layer(
                 .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
+        scratch_mixin: AlignedVec::new(ch * wavenet::WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("scratch alloc"),
+        scratch_conv: AlignedVec::new(ch * wavenet::WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("scratch alloc"),
     }
 }
 
@@ -98,6 +102,10 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
                 .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
+        scratch_mixin: AlignedVec::new(8 * wavenet::WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("scratch alloc"),
+        scratch_conv: AlignedVec::new(8 * wavenet::WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            .expect("scratch alloc"),
     }
 }
 

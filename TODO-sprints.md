@@ -57,7 +57,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa; struct compila com os novos campos.
 
-### T1.2 — Reescrever `process_block_internal` sem `MaybeUninit`
+### T1.2 — Reescrever `process_block_internal` sem `MaybeUninit` [DONE]
 
 - **Arquivo:** [`src/models/wavenet/layer.rs`](src/models/wavenet/layer.rs)
 
@@ -82,7 +82,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Zero `from_raw_parts_mut` sobre `MaybeUninit` no arquivo. `cargo check` passa.
 
-### T1.3 — Adaptar `WaveNetLayerArray` para `&mut WaveNetLayer`
+### T1.3 — Adaptar `WaveNetLayerArray` para `&mut WaveNetLayer` [DONE]
 
 - **Arquivo:** [`src/models/wavenet/layer_array.rs`](src/models/wavenet/layer_array.rs)
 - **Ação:**
@@ -91,7 +91,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Nenhuma outra alteração no fluxo de orquestração (contexts, states, prefetch).
 - **Critério de aceite:** `cargo check` passa; loop de inferência compila com referências mutáveis.
 
-### T1.4 — Atualizar construtores de `WaveNetLayer` (loader + testes)
+### T1.4 — Atualizar construtores de `WaveNetLayer` (loader + testes) [DONE]
 
 - **Arquivos afetados:**
 
@@ -111,7 +111,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check --all-targets` passa; nenhum call-site esquecido.
 
-### T1.5 — Checkpoint S1: Verificação intermediária
+### T1.5 — Checkpoint S1: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo (nenhum warning novo).

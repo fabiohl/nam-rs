@@ -88,7 +88,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             let last_layer = num_layers - 1;
 
             // [STEP 4: Layer Inference Cascade]
-            for (i, layer) in self.layers.iter().enumerate() {
+            for (i, layer) in self.layers.iter_mut().enumerate() {
                 if i >= num_layers {
                     break;
                 }

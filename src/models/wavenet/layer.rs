@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::common::{WAVENET_MAX_NUM_FRAMES, WavenetProcessContext};
+use super::common::WavenetProcessContext;
 use super::conv1d::Conv1d;
 use super::dense::DenseLayer;
 use crate::math::common::{AlignedVec, SimdMath};
@@ -31,7 +31,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
     #[inline]
-    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
+    pub unsafe fn process_block_internal<M: SimdMath>(&mut self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,
             head_input,
@@ -45,34 +45,19 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
         } = ctx;
 
         unsafe {
-            const {
-                assert!(
-                    CH * WAVENET_MAX_NUM_FRAMES <= 1024,
-                    "topology CH exceeds stack buffer (1024)"
-                );
-            }
             debug_assert!(
-                num_frames * CH <= 1024,
-                "process_block_internal: num_frames*CH ({}) exceeds stack buffer (1024)",
+                num_frames * CH <= self.scratch_mixin.len(),
+                "process_block_internal: num_frames*CH ({}) exceeds scratch_mixin capacity ({})",
                 num_frames * CH,
+                self.scratch_mixin.len(),
             );
 
-            // SAFETY: mixin_out is fully written by input_mixin.process_block before
-            // any read. MaybeUninit avoids the 4 KB memset the compiler emits for
-            // `[0.0f32; 1024]`.
-            let mut mixin_out = MaybeUninit::<[f32; 1024]>::uninit();
-            let mixin_out_ptr = mixin_out.as_mut_ptr() as *mut f32;
-            let mixin_out_slice = core::slice::from_raw_parts_mut(mixin_out_ptr, num_frames * CH);
+            let mixin_out = &mut self.scratch_mixin[..num_frames * CH];
             self.input_mixin
-                .process_block::<M>(condition, mixin_out_slice, num_frames);
+                .process_block::<M>(condition, mixin_out, num_frames);
 
-            // SAFETY: conv_plus_mixin is fully written by the Conv1D path before
-            // any read (tanh activation). MaybeUninit avoids a second 4 KB memset.
-            let mut conv_plus_mixin = MaybeUninit::<[f32; 1024]>::uninit();
-            let conv_plus_mixin_ptr = conv_plus_mixin.as_mut_ptr() as *mut f32;
-            let conv_slice = core::slice::from_raw_parts_mut(conv_plus_mixin_ptr, num_frames * CH);
+            let conv_slice = &mut self.scratch_conv[..num_frames * CH];
 
-            // Dual-Frame Tiling with f32-native Conv1D path
             let mut i = 0;
             let mut chunks = conv_slice.chunks_exact_mut(2 * CH);
             for chunk in chunks.by_ref() {
@@ -80,9 +65,8 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 
                 let mix_idx_f0 = i * CH;
                 let mix_idx_f1 = (i + 1) * CH;
-                // SAFETY: mixin_out was fully written by input_mixin.process_block above.
-                let mixin_f0 = core::slice::from_raw_parts(mixin_out_ptr.add(mix_idx_f0), CH);
-                let mixin_f1 = core::slice::from_raw_parts(mixin_out_ptr.add(mix_idx_f1), CH);
+                let mixin_f0 = &mixin_out[mix_idx_f0..mix_idx_f0 + CH];
+                let mixin_f1 = &mixin_out[mix_idx_f1..mix_idx_f1 + CH];
 
                 self.conv1d.process_dual_frame_with_mixin::<M>(
                     layer_buffer,
@@ -99,8 +83,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             let rem = chunks.into_remainder();
             if !rem.is_empty() {
                 let mix_idx = i * CH;
-                // SAFETY: mixin_out was fully written by input_mixin.process_block above.
-                let mixin_slice = core::slice::from_raw_parts(mixin_out_ptr.add(mix_idx), CH);
+                let mixin_slice = &mixin_out[mix_idx..mix_idx + CH];
 
                 self.conv1d.process_single_frame_with_mixin::<M>(
                     layer_buffer,

@@ -64,6 +64,10 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(4 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(4 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 
@@ -104,6 +108,10 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(2 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(2 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 
@@ -362,6 +370,8 @@ fn test_prewarm_zero_rf() {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32).expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0f32).expect("scratch alloc"),
         }
     };
 

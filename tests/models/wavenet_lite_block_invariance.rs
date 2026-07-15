@@ -43,6 +43,10 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(12 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(12 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 
@@ -72,6 +76,10 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
+            scratch_mixin: AlignedVec::new(6 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
+            scratch_conv: AlignedVec::new(6 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+                .expect("scratch alloc"),
         }
     };
 
