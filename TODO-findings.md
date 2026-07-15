@@ -679,6 +679,10 @@ Escopo: `Arc<DialogSharedState>` nas threads de diálogo + join com deadline no 
   trânsito) verdes no tests-long; `clap-validator` completo sem regressão. Risco: médio
   (lifecycle CLAP tem sutilezas de thread; usar o harness `clack-host` já existente).
 
+> Nota do PO: Ao final da Sprint "S4 — R2: Eliminar UAF no file-dialog com `Arc<DialogSharedState>`"
+> foi descoberta uma regressão de performance confirmada. Investigar!
+> ✗ WaveNet Standard CH16: latencia regrediu 46.43 us (contrato: 42.0 us, limite: 46.2 us)
+
 ### EP-R3 — Formalização da concorrência (R8 completo + P1)
 
 Escopo: aplicar a tabela R8 (8 correções de uma linha + comentários de pareamento) e

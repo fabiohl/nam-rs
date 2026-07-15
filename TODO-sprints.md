@@ -594,6 +594,8 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   4. `grep -rn "from_raw_parts\|as \*const NamClapShared" src/clap/gui/` → **zero hits**.
 - **Critério de aceite:** Todos verdes. **Não prosseguir para S5 sem este checkpoint.**
 
+> Nota do PO: Todos os testes passaram, à exceção de 1. Investigar isso!
+> ✗ WaveNet Standard CH16: latencia regrediu 46.43 us (contrato: 42.0 us, limite: 46.2 us)
 ---
 
 ## Sprint S5 — R13: Watchdog com deadline no `join()` da janela flutuante
