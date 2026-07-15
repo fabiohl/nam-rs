@@ -129,7 +129,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Correção defensiva; o braço `OsStages::Off` já clampa.
 
-### T2.1 — Adicionar clamp defensivo em `upsample` e `downsample`
+### T2.1 — Adicionar clamp defensivo em `upsample` e `downsample` [DONE]
 
 - **Arquivo:** [`src/dsp/oversample.rs`](src/dsp/oversample.rs)
 
@@ -158,7 +158,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa; `debug_assert!` preservados.
 
-### T2.2 — Novo teste: input acima de `max_samples` é clampado
+### T2.2 — Novo teste: input acima de `max_samples` é clampado [DONE]
 
 - **Arquivo:** [`src/dsp/oversample_test.rs`](src/dsp/oversample_test.rs)
 
@@ -182,7 +182,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Testes novos passam; testes existentes inalterados.
 
-### T2.3 — Checkpoint S2: Verificação intermediária
+### T2.3 — Checkpoint S2: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.

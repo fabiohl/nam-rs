@@ -284,3 +284,43 @@ fn test_halfband_filter_coefficients() {
         "Half-band DC gain should be ~2.0, got {dc_gain} (odd_sum={odd_sum})"
     );
 }
+
+#[test]
+fn test_oversized_input_clamped_off() {
+    let mut engine = OversampleEngine::new(OversampleFactor::Off, 64).unwrap();
+    let input = vec![1.0f32; 96];
+    let mut up = vec![0.0f32; 96];
+    let n_up = engine.upsample(&input, &mut up);
+    assert!(n_up <= 64);
+
+    let mut down = vec![0.0f32; 96];
+    let n_down = engine.downsample(&input, &mut down);
+    assert!(n_down <= 64);
+}
+
+#[test]
+fn test_oversized_input_clamped_x2() {
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 64).unwrap();
+    let input = vec![0.5f32; 96];
+    let mut up = vec![0.0f32; 192];
+    let n_up = engine.upsample(&input, &mut up);
+    assert!(n_up <= 128, "expected n_up <= 128, got {n_up}");
+}
+
+#[test]
+fn test_oversized_input_clamped_x4() {
+    let mut engine = OversampleEngine::new(OversampleFactor::X4, 64).unwrap();
+    let input = vec![0.5f32; 96];
+    let mut up = vec![0.0f32; 384];
+    let n_up = engine.upsample(&input, &mut up);
+    assert!(n_up <= 256, "expected n_up <= 256, got {n_up}");
+}
+
+#[test]
+fn test_oversized_downsample_clamped_x2() {
+    let mut engine = OversampleEngine::new(OversampleFactor::X2, 64).unwrap();
+    let input = vec![0.25f32; 96];
+    let mut down = vec![0.0f32; 48];
+    let n_down = engine.downsample(&input, &mut down);
+    assert!(n_down <= 64, "expected n_down <= 64, got {n_down}");
+}

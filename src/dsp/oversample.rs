@@ -186,6 +186,8 @@ impl OversampleEngine {
     /// `output` must have room for `input.len() * factor.multiplier()` samples.
     /// Returns number of oversampled samples written.
     pub fn upsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
+        let n_in = input.len().min(self.max_samples);
+        let input = &input[..n_in];
         debug_assert!(input.len() <= self.max_samples);
         debug_assert!(
             output.len() >= input.len() * self.factor.multiplier(),
@@ -213,6 +215,9 @@ impl OversampleEngine {
     /// `output` must have room for `input.len() / factor.multiplier()` samples.
     /// Returns number of native-rate samples written.
     pub fn downsample(&mut self, input: &[f32], output: &mut [f32]) -> usize {
+        let max_os = self.max_samples * self.factor.multiplier();
+        let n_in = input.len().min(max_os);
+        let input = &input[..n_in];
         debug_assert!(
             output.len() >= input.len() / self.factor.multiplier(),
             "oversample: output buffer too small for downsampling factor"
